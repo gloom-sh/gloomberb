@@ -26,7 +26,7 @@ function createDividendYieldModule({
           id: DIVIDENDS_CONNECTION_ID,
           name: "Gloom Dividends",
           kind: "api",
-          ownerId: "ticker-research",
+          ownerId: "ticker-core",
           detail: "api.gloom.sh",
           priority: 300,
         });

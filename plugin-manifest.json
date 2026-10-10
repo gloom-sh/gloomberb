@@ -17,8 +17,8 @@
     },
     {
       "id": "alt-data",
-      "name": "Alt Data",
-      "description": "Research attention, GPU rental prices, and power interconnection queues and capacity.",
+      "name": "Supply Chain & Alt Data",
+      "description": "Supply chains and exposure, government awards, hiring, apps and job postings, social mentions, research attention, GPU prices, and power queues.",
       "categories": [
         "research",
         "data"
@@ -26,10 +26,17 @@
       "toggleable": true,
       "contributes": {
         "panes": [
+          "apps",
           "attention",
           "attention-trending",
+          "awards",
+          "exposure",
           "gpu",
-          "power"
+          "hiring",
+          "jobs",
+          "power",
+          "social-mentions",
+          "supply-chain"
         ],
         "capabilities": [],
         "broker": false
@@ -106,7 +113,7 @@
     {
       "id": "credit",
       "name": "Credit & Bonds",
-      "description": "Single-name, index and sovereign CDS, credit spreads, Treasury auctions, and a bond calculator.",
+      "description": "Single-name, index and sovereign CDS, credit spreads, Treasury auctions, a bond calculator, credit documents and covenants, and debt maturities.",
       "categories": [
         "macro",
         "markets"
@@ -118,6 +125,8 @@
           "cds",
           "cdx-board",
           "credit-conditions",
+          "credit-documents",
+          "debt-maturities",
           "treasury-auctions"
         ],
         "capabilities": [],
@@ -176,7 +185,7 @@
     {
       "id": "earnings",
       "name": "Earnings",
-      "description": "Earnings calendar with surprises and implied moves, and earnings call transcripts.",
+      "description": "Earnings calendar with surprises and implied moves, call transcripts, and the earnings ripple through customers and suppliers.",
       "categories": [
         "research",
         "markets"
@@ -185,7 +194,29 @@
       "contributes": {
         "panes": [
           "earnings-calendar",
-          "earnings-calls"
+          "earnings-calls",
+          "earnings-ripple"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "filings",
+      "name": "Filings & Events",
+      "description": "SEC filings, risk factors, 8-K events, catalysts and litigation, and M&A and distress.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "catalysts",
+          "filing-events",
+          "litigation",
+          "mna",
+          "risk-factors",
+          "sec"
         ],
         "capabilities": [],
         "broker": false
@@ -333,6 +364,50 @@
       }
     },
     {
+      "id": "options-volatility",
+      "name": "Options & Volatility",
+      "description": "Option chains and positioning, a pricing calculator, scenarios, the volatility surface, and realized and implied volatility history.",
+      "categories": [
+        "research",
+        "markets"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "iv-history",
+          "iv-screen",
+          "options",
+          "options-calculator",
+          "options-positioning",
+          "options-scenario",
+          "realized-vol",
+          "vol-surface"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "ownership",
+      "name": "Ownership & Insiders",
+      "description": "Holders, 13F funds, insider trades, short interest and volume, and congressional trades.",
+      "categories": [
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "holders",
+          "insider",
+          "short-interest",
+          "short-watch",
+          "thirteenf-funds"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "portfolio",
       "name": "Portfolio",
       "description": "Portfolio and watchlist management, analytics, and position sizing.",
@@ -353,7 +428,7 @@
     {
       "id": "quant",
       "name": "Quant",
-      "description": "Correlation matrix and relationship graphs with beta and hedge ratios.",
+      "description": "Correlation matrix and relationship graphs, backtests, seasonality, and moves on macro release days.",
       "categories": [
         "markets",
         "research"
@@ -361,8 +436,11 @@
       "toggleable": true,
       "contributes": {
         "panes": [
+          "backtest",
           "correlation",
-          "relationship-graph"
+          "macro-day",
+          "relationship-graph",
+          "seasonality"
         ],
         "capabilities": [],
         "broker": false
@@ -431,9 +509,9 @@
       }
     },
     {
-      "id": "ticker-research",
+      "id": "ticker-core",
       "name": "Ticker Research",
-      "description": "Company research workspace: overview, charts, financials, filings, ownership, options, analyst research, and events.",
+      "description": "Company overview, charts, financials, quotes and returns, analyst research and estimates, KPIs and segments, valuation, dividends, executives, and time and sales.",
       "categories": [
         "research"
       ],
@@ -441,58 +519,26 @@
       "contributes": {
         "panes": [
           "analyst-research",
-          "apps",
-          "awards",
-          "backtest",
-          "catalysts",
           "chart-composer",
           "company-guidance",
           "company-kpis",
           "corporate-actions",
-          "credit-documents",
           "data-catalog",
-          "debt-maturities",
           "dividend-yield",
           "earnings-estimates",
-          "earnings-ripple",
           "equity-diagnostic",
           "estimate-revisions",
           "executives",
-          "exposure",
-          "filing-events",
           "financial-analysis",
-          "hiring",
           "historical-prices",
-          "holders",
-          "insider",
-          "iv-history",
-          "iv-screen",
-          "jobs",
-          "litigation",
-          "macro-day",
-          "mna",
-          "options",
-          "options-calculator",
-          "options-positioning",
-          "options-scenario",
           "pe-band",
           "quote-monitor",
-          "realized-vol",
           "relative-valuation",
           "returns",
           "revenue-breakdown",
           "reverse-dcf",
-          "risk-factors",
-          "seasonality",
-          "sec",
-          "short-interest",
-          "short-watch",
-          "social-mentions",
-          "supply-chain",
-          "thirteenf-funds",
           "ticker-research",
-          "time-sales",
-          "vol-surface"
+          "time-sales"
         ],
         "capabilities": [],
         "broker": false

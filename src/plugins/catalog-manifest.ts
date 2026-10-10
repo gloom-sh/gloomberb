@@ -54,6 +54,7 @@ const EDITORIAL: Record<
   debug: { categories: ["developer"] },
   earnings: { categories: ["research", "markets"] },
   "fear-greed": { categories: ["markets", "sentiment"], icon: "plugin-icons/fear-greed.webp" },
+  filings: { categories: ["research"] },
   "futures-commodities": { categories: ["markets", "macro"] },
   "global-markets": { categories: ["markets"] },
   "ipo-calendar": { categories: ["macro", "markets"], icon: "plugin-icons/ipo-calendar.webp" },
@@ -63,12 +64,14 @@ const EDITORIAL: Record<
   news: { categories: ["news"] },
   notes: { categories: ["productivity"] },
   openfda: { categories: ["research"] },
+  "options-volatility": { categories: ["research", "markets"] },
+  ownership: { categories: ["research"] },
   portfolio: { categories: ["portfolio"] },
   quant: { categories: ["markets", "research"] },
   "rates-macro": { categories: ["macro"] },
   "research-search": { categories: ["research", "news"] },
   screeners: { categories: ["markets"] },
-  "ticker-research": { categories: ["research"] },
+  "ticker-core": { categories: ["research"] },
 };
 
 export interface BuiltinManifest {

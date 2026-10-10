@@ -2,8 +2,9 @@
 // the browser catalog (catalog-browser.ts). Keep this file import-free so the
 // browser catalog can read it without pulling in native-only modules.
 //
-// Screeners & Movers ships without top movers on the web, so each catalog
-// gives it its own description rather than advertising a pane it lacks.
+// Screeners & Movers, Ownership & Insiders and Earnings ship fewer panes on
+// the web, so each catalog gives them their own description rather than
+// advertising panes they lack.
 
 export const applicationPluginMeta = {
   id: "application",
@@ -20,11 +21,44 @@ export const portfolioPluginMeta = {
   toggleable: true,
 };
 
-export const tickerResearchPluginMeta = {
-  id: "ticker-research",
+// Ticker Research's successors. Every module keeps the `ticker-research`
+// state namespace: these four declare it, Alt Data and Quant default to it,
+// and Credit & Bonds and Earnings compose theirs with an override.
+// `ticker-research` itself now stands for all eight in disabledPlugins (see
+// ownership.ts). The core keeps the name people know.
+
+export const tickerCorePluginMeta = {
+  id: "ticker-core",
+  stateId: "ticker-research",
   name: "Ticker Research",
   version: "1.0.0",
-  description: "Company research workspace: overview, charts, financials, filings, ownership, options, analyst research, and events.",
+  description: "Company overview, charts, financials, quotes and returns, analyst research and estimates, KPIs and segments, valuation, dividends, executives, and time and sales.",
+  toggleable: true,
+};
+
+export const optionsVolatilityPluginMeta = {
+  id: "options-volatility",
+  stateId: "ticker-research",
+  name: "Options & Volatility",
+  version: "1.0.0",
+  description: "Option chains and positioning, a pricing calculator, scenarios, the volatility surface, and realized and implied volatility history.",
+  toggleable: true,
+};
+
+export const ownershipPluginMeta = {
+  id: "ownership",
+  stateId: "ticker-research",
+  name: "Ownership & Insiders",
+  version: "1.0.0",
+  toggleable: true,
+};
+
+export const filingsPluginMeta = {
+  id: "filings",
+  stateId: "ticker-research",
+  name: "Filings & Events",
+  version: "1.0.0",
+  description: "SEC filings, risk factors, 8-K events, catalysts and litigation, and M&A and distress.",
   toggleable: true,
 };
 
@@ -37,9 +71,9 @@ export const newsPluginMeta = {
 };
 
 // Market Overview's successors. Its modules keep the `market-overview` state
-// namespace; Alt Data and Quant default to `ticker-research`, where the
-// Ticker Research modules they will hold keep theirs, and compose their Market
-// Overview modules with a `market-overview` override. `market-overview` itself
+// namespace; Alt Data and Quant default to `ticker-research`, where their
+// Ticker Research modules keep theirs, and compose their Market Overview
+// modules with a `market-overview` override. `market-overview` itself
 // now stands for all six in disabledPlugins (see ownership.ts).
 
 export const globalMarketsPluginMeta = {
@@ -80,9 +114,9 @@ export const cryptoPluginMeta = {
 export const altDataPluginMeta = {
   id: "alt-data",
   stateId: "ticker-research",
-  name: "Alt Data",
+  name: "Supply Chain & Alt Data",
   version: "1.0.0",
-  description: "Research attention, GPU rental prices, and power interconnection queues and capacity.",
+  description: "Supply chains and exposure, government awards, hiring, apps and job postings, social mentions, research attention, GPU prices, and power queues.",
   toggleable: true,
 };
 
@@ -91,12 +125,13 @@ export const quantPluginMeta = {
   stateId: "ticker-research",
   name: "Quant",
   version: "1.0.0",
-  description: "Correlation matrix and relationship graphs with beta and hedge ratios.",
+  description: "Correlation matrix and relationship graphs, backtests, seasonality, and moves on macro release days.",
   toggleable: true,
 };
 
 // Macro's successors keep its state namespace, so the pane state, settings and
-// caches saved while they were one plugin stay theirs. `macro` itself now
+// caches saved while they were one plugin stay theirs; the Ticker Research
+// modules Credit & Bonds and Earnings hold keep `ticker-research`. `macro` itself now
 // stands for all three in disabledPlugins (see ownership.ts).
 
 export const ratesMacroPluginMeta = {
@@ -113,7 +148,7 @@ export const creditPluginMeta = {
   stateId: "macro",
   name: "Credit & Bonds",
   version: "1.0.0",
-  description: "Single-name, index and sovereign CDS, credit spreads, Treasury auctions, and a bond calculator.",
+  description: "Single-name, index and sovereign CDS, credit spreads, Treasury auctions, a bond calculator, credit documents and covenants, and debt maturities.",
   toggleable: true,
 };
 
@@ -122,6 +157,5 @@ export const earningsPluginMeta = {
   stateId: "macro",
   name: "Earnings",
   version: "1.0.0",
-  description: "Earnings calendar with surprises and implied moves, and earnings call transcripts.",
   toggleable: true,
 };

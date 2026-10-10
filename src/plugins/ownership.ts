@@ -51,13 +51,31 @@ const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
  * while its switch belongs to the successor that holds the module now.
  */
 const BUILTIN_DISABLED_PLUGIN_ALIASES: Record<string, string> = {
+  "chart-composer": "ticker-core",
+  "company-research": "ticker-core",
+  "comparison-chart": "ticker-core",
   correlation: "quant",
   "crypto-board": "crypto",
+  "dividend-yield": "ticker-core",
   "earnings-calendar": "earnings",
   "earnings-calls": "earnings",
+  executives: "ticker-core",
+  "filing-events": "filings",
   "fx-matrix": "global-markets",
+  holders: "ownership",
+  insider: "ownership",
+  jobs: "alt-data",
   "market-movers": "screeners",
+  options: "options-volatility",
+  research: "ticker-core",
+  "risk-factors": "filings",
+  sec: "filings",
   sectors: "global-markets",
+  "short-interest": "ownership",
+  "short-volume": "ownership",
+  "social-mentions": "alt-data",
+  thirteenf: "ownership",
+  "ticker-detail": "ticker-core",
   "world-indices": "global-markets",
   // `macro-tv` keeps meaning all of Macro: TV left for its own repository, so
   // no successor holds it, and turning it off was turning Macro off.
@@ -74,6 +92,9 @@ const BUILTIN_DISABLED_PLUGIN_ALIASES: Record<string, string> = {
 const BUILTIN_PLUGIN_GROUPS: Readonly<Record<string, readonly string[]>> = {
   macro: ["rates-macro", "credit", "earnings"],
   "market-overview": ["global-markets", "screeners", "futures-commodities", "crypto", "alt-data", "quant"],
+  // Shares Credit & Bonds and Earnings with Macro, and Alt Data and Quant with
+  // Market Overview: each holds modules from both.
+  "ticker-research": ["ticker-core", "options-volatility", "ownership", "filings", "alt-data", "quant", "credit", "earnings"],
 };
 
 let pluginGroups = BUILTIN_PLUGIN_GROUPS;

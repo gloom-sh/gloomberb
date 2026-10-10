@@ -95,7 +95,12 @@ import { ratePathModule } from "./builtin/rate-path";
 import {
   applicationPluginMeta,
   creditPluginMeta,
+  earningsPluginMeta,
+  filingsPluginMeta,
+  optionsVolatilityPluginMeta,
+  ownershipPluginMeta,
   ratesMacroPluginMeta,
+  tickerCorePluginMeta,
   altDataPluginMeta,
   cryptoPluginMeta,
   futuresCommoditiesPluginMeta,
@@ -104,7 +109,6 @@ import {
   screenersPluginMeta,
   newsPluginMeta,
   portfolioPluginMeta,
-  tickerResearchPluginMeta,
 } from "./builtin/builtin-plugin-meta";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
@@ -117,52 +121,55 @@ const browserPortfolioPlugin = composeBuiltinPlugin({
   modules: [portfolioListModule, portfolioAnalyticsModule, positionSizerModule],
 });
 
-const browserTickerResearchPlugin = composeBuiltinPlugin({
-  ...tickerResearchPluginMeta,
+// Ticker Research's successors with the modules it had on the web. Holders,
+// 13F funds and the Congress tab are terminal-only, so Ownership & Insiders
+// is smaller here.
+const browserTickerCorePlugin = composeBuiltinPlugin({
+  ...tickerCorePluginMeta,
   modules: [
     tickerDetailModule,
     chartComposerModule,
+    researchModule,
+    estimateRevisionsModule,
+    companyKpisModule,
+    revenueBreakdownModule,
+    browserDividendYieldModule,
+    reverseDcfModule,
+    peBandModule,
+    executivesModule,
+    timeSalesModule,
+  ],
+});
+
+const browserOptionsVolatilityPlugin = composeBuiltinPlugin({
+  ...optionsVolatilityPluginMeta,
+  modules: [
     optionsModule,
     optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
-    seasonalityModule,
-    earningsRippleModule,
-    reverseDcfModule,
-    peBandModule,
-    macroDayModule,
     ivHistoryModule,
-    backtestModule,
-    timeSalesModule,
-    estimateRevisionsModule,
-    researchModule,
+  ],
+});
+
+const browserOwnershipPlugin = composeBuiltinPlugin({
+  ...ownershipPluginMeta,
+  description: "Insider trades, and short interest and volume.",
+  modules: [
+    // Form 4s come through Gloom Cloud, behind a sign-in wall.
+    insiderModule,
     // Daily volume shares open this pane.
     shortInterestModule,
     shortVolumeModule,
-    socialMentionsModule,
-    debtMaturitiesModule,
-    revenueBreakdownModule,
-    supplyChainModule,
-    creditDocumentsModule,
-    companyAttentionModule,
-    catalystsModule,
-    companyKpisModule,
-    awardsModule,
-    exposureModule,
-    mnaModule,
-    browserDividendYieldModule,
-    earningsCallsModule,
-    executivesModule,
-    riskFactorsModule,
-    filingEventsModule,
-    // Filings and Form 4s come through Gloom Cloud, behind a sign-in wall.
-    secModule,
-    insiderModule,
-    // Hiring data is a Gloom Cloud Pro dataset.
-    jobsModule,
   ],
+});
+
+const browserFilingsPlugin = composeBuiltinPlugin({
+  ...filingsPluginMeta,
+  // Filings come through Gloom Cloud, behind a sign-in wall.
+  modules: [secModule, riskFactorsModule, filingEventsModule, catalystsModule, mnaModule],
 });
 
 const browserNewsPlugin = composeBuiltinPlugin({
@@ -195,17 +202,24 @@ const browserCryptoPlugin = composeBuiltinPlugin({
 
 const browserAltDataPlugin = composeBuiltinPlugin({
   ...altDataPluginMeta,
-  modules: [attentionModule, gpuModule, powerModule].map((module) => ({ module, stateId: "market-overview" })),
+  modules: [
+    ...[attentionModule, gpuModule, powerModule].map((module) => ({ module, stateId: "market-overview" })),
+    supplyChainModule,
+    exposureModule,
+    awardsModule,
+    companyAttentionModule,
+    // Hiring data is a Gloom Cloud Pro dataset.
+    jobsModule,
+    socialMentionsModule,
+  ],
 });
 
 const browserQuantPlugin = composeBuiltinPlugin({
   ...quantPluginMeta,
-  modules: [{ module: correlationModule, stateId: "market-overview" }],
+  modules: [{ module: correlationModule, stateId: "market-overview" }, backtestModule, seasonalityModule, macroDayModule],
 });
 
-// The same panes as on the terminal. The web app has never carried the
-// earnings calendar, and runs the call transcripts with Ticker Research, so
-// Earnings has no browser build.
+// The same panes as on the terminal.
 const browserRatesMacroPlugin = composeBuiltinPlugin({
   ...ratesMacroPluginMeta,
   modules: [
@@ -230,6 +244,20 @@ const browserCreditPlugin = composeBuiltinPlugin({
     creditConditionsModule,
     treasuryAuctionsModule,
     bondCalculatorModule,
+    { module: creditDocumentsModule, stateId: "ticker-research" },
+    { module: debtMaturitiesModule, stateId: "ticker-research" },
+  ],
+});
+
+// The web app has never carried the earnings calendar. The call transcripts
+// and the ripple ran with Ticker Research here, so their pane state is under
+// its namespace, not Macro's as on the terminal.
+const browserEarningsPlugin = composeBuiltinPlugin({
+  ...earningsPluginMeta,
+  description: "Earnings call transcripts, and the earnings ripple through customers and suppliers.",
+  modules: [
+    { module: earningsCallsModule, stateId: "ticker-research" },
+    { module: earningsRippleModule, stateId: "ticker-research" },
   ],
 });
 
@@ -241,7 +269,10 @@ const browserCreditPlugin = composeBuiltinPlugin({
 export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   browserGloomberbCloudPlugin,
   browserPortfolioPlugin,
-  browserTickerResearchPlugin,
+  browserTickerCorePlugin,
+  browserOptionsVolatilityPlugin,
+  browserOwnershipPlugin,
+  browserFilingsPlugin,
   browserApplicationPlugin,
   browserNewsPlugin,
   browserGlobalMarketsPlugin,
@@ -260,6 +291,7 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   openFdaPlugin,
   browserRatesMacroPlugin,
   browserCreditPlugin,
+  browserEarningsPlugin,
   alertsPlugin,
   researchSearchPlugin,
 ];

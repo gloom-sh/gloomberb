@@ -37,7 +37,7 @@ import { positionSizerModule } from "./kelly-sizer";
 import { layoutManagerModule } from "./layout-manager";
 import { marketMoversModule } from "./market-movers";
 import { volatilityModule } from "./volatility";
-import { composeBuiltinPlugin } from "./plugin-module";
+import { composeBuiltinPlugin, type PluginModule } from "./plugin-module";
 import { portfolioListModule } from "./portfolio-list";
 import { scannerModule } from "./scanner";
 import { sectorsModule } from "./sectors";
@@ -93,10 +93,13 @@ import {
   futuresCommoditiesPluginMeta,
   globalMarketsPluginMeta,
   portfolioPluginMeta,
+  filingsPluginMeta,
+  optionsVolatilityPluginMeta,
+  ownershipPluginMeta,
   quantPluginMeta,
   ratesMacroPluginMeta,
   screenersPluginMeta,
-  tickerResearchPluginMeta,
+  tickerCorePluginMeta,
 } from "./builtin-plugin-meta";
 
 export const applicationPlugin = composeBuiltinPlugin({
@@ -109,53 +112,59 @@ export const portfolioPlugin = composeBuiltinPlugin({
   modules: [portfolioListModule, portfolioAnalyticsModule, positionSizerModule],
 });
 
-export const tickerResearchPlugin = composeBuiltinPlugin({
-  ...tickerResearchPluginMeta,
-  // The desktop backend process runs none of these: Ticker Research is
-  // drawn in the renderer and keeps only its identity there.
+// Ticker Research's modules are drawn in the renderer: the desktop backend
+// process runs none of them, and keeps only the identity of the plugins that
+// hold nothing else.
+const rendererOnly = (module: PluginModule) => ({ module, rendererOnly: true });
+const tickerResearchModule = (module: PluginModule) => ({ module, stateId: "ticker-research", rendererOnly: true });
+
+export const tickerCorePlugin = composeBuiltinPlugin({
+  ...tickerCorePluginMeta,
   modules: [
     tickerDetailModule,
     chartComposerModule,
-    congressResearchModule,
+    researchModule,
+    estimateRevisionsModule,
+    companyKpisModule,
+    revenueBreakdownModule,
+    dividendYieldModule,
+    reverseDcfModule,
+    peBandModule,
+    executivesModule,
+    timeSalesModule,
+  ].map(rendererOnly),
+});
+
+export const optionsVolatilityPlugin = composeBuiltinPlugin({
+  ...optionsVolatilityPluginMeta,
+  modules: [
     optionsModule,
     optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
-    seasonalityModule,
-    earningsRippleModule,
-    reverseDcfModule,
-    peBandModule,
-    macroDayModule,
     ivHistoryModule,
-    backtestModule,
-    estimateRevisionsModule,
-    researchModule,
-    shortVolumeModule,
-    socialMentionsModule,
-    debtMaturitiesModule,
-    revenueBreakdownModule,
-    supplyChainModule,
-    creditDocumentsModule,
-    companyAttentionModule,
-    catalystsModule,
-    companyKpisModule,
-    awardsModule,
-    exposureModule,
-    mnaModule,
-    dividendYieldModule,
+  ].map(rendererOnly),
+});
+
+export const ownershipPlugin = composeBuiltinPlugin({
+  ...ownershipPluginMeta,
+  description: "Holders, 13F funds, insider trades, short interest and volume, and congressional trades.",
+  modules: [
     holdersModule,
-    shortInterestModule,
-    timeSalesModule,
     thirteenFModule,
-    secModule,
     insiderModule,
-    jobsModule,
-    executivesModule,
-    riskFactorsModule,
-    filingEventsModule,
-  ].map((module) => ({ module, rendererOnly: true })),
+    shortInterestModule,
+    shortVolumeModule,
+    // The Congress research tab; the CONG pane is Gloom Cloud's.
+    congressResearchModule,
+  ].map(rendererOnly),
+});
+
+export const filingsPlugin = composeBuiltinPlugin({
+  ...filingsPluginMeta,
+  modules: [secModule, riskFactorsModule, filingEventsModule, catalystsModule, mnaModule].map(rendererOnly),
 });
 
 export const brokerPlugin = composeBuiltinPlugin({
@@ -190,12 +199,18 @@ export const cryptoPlugin = composeBuiltinPlugin({
 
 export const altDataPlugin = composeBuiltinPlugin({
   ...altDataPluginMeta,
-  modules: [attentionModule, gpuModule, powerModule].map((module) => ({ module, stateId: "market-overview" })),
+  modules: [
+    ...[attentionModule, gpuModule, powerModule].map((module) => ({ module, stateId: "market-overview" })),
+    ...[supplyChainModule, exposureModule, awardsModule, companyAttentionModule, jobsModule, socialMentionsModule].map(rendererOnly),
+  ],
 });
 
 export const quantPlugin = composeBuiltinPlugin({
   ...quantPluginMeta,
-  modules: [{ module: correlationModule, stateId: "market-overview" }],
+  modules: [
+    { module: correlationModule, stateId: "market-overview" },
+    ...[backtestModule, seasonalityModule, macroDayModule].map(rendererOnly),
+  ],
 });
 
 export const ratesMacroPlugin = composeBuiltinPlugin({
@@ -224,10 +239,13 @@ export const creditPlugin = composeBuiltinPlugin({
     creditConditionsModule,
     treasuryAuctionsModule,
     bondCalculatorModule,
+    tickerResearchModule(creditDocumentsModule),
+    tickerResearchModule(debtMaturitiesModule),
   ],
 });
 
 export const earningsPlugin = composeBuiltinPlugin({
   ...earningsPluginMeta,
-  modules: [earningsModule, earningsCallsModule],
+  description: "Earnings calendar with surprises and implied moves, call transcripts, and the earnings ripple through customers and suppliers.",
+  modules: [earningsModule, earningsCallsModule, tickerResearchModule(earningsRippleModule)],
 });

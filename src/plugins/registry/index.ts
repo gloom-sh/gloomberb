@@ -442,6 +442,14 @@ export class PluginRegistry implements PluginRuntimeAccess {
       ?? (paneType ? this.getDisabledPaneOwner(paneType, disabledPlugins) : null);
   }
 
+  /** The plugin behind a research tab when it is switched off, which hides the tab. */
+  getDisabledTickerResearchTabOwner(
+    tabId: string,
+    disabledPlugins: readonly string[] = this.getConfig().disabledPlugins,
+  ): DisabledPluginOwner | null {
+    return this.disabledOwner(this.getTickerResearchTabPluginId(tabId), disabledPlugins);
+  }
+
   private disabledOwner(pluginId: string | undefined, disabledPlugins: readonly string[]): DisabledPluginOwner | null {
     if (!pluginId || !disabledPlugins.includes(pluginId)) return null;
     return { id: pluginId, name: this.plugins.get(pluginId)?.name ?? pluginId };

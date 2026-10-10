@@ -111,8 +111,10 @@ export function useAppTickerInspectorRuntime({
   }, [pluginRegistry, resolveInspectorPane, state.config.layout]);
 
   const switchTickerResearchTab = useCallback((tabId: string, preferredPaneId?: string | null) => {
-    // The tab lives in a research pane, which stays hidden while its plugin is off.
-    const owner = pluginRegistry.getDisabledPaneOwner(TICKER_RESEARCH_PANE_ID, state.config.disabledPlugins);
+    // The tab lives in a research pane, which stays hidden while its plugin is
+    // off, and the tab itself is hidden while its own plugin is.
+    const owner = pluginRegistry.getDisabledPaneOwner(TICKER_RESEARCH_PANE_ID, state.config.disabledPlugins)
+      ?? pluginRegistry.getDisabledTickerResearchTabOwner(tabId, state.config.disabledPlugins);
     if (owner) {
       const tabName = pluginRegistry.tickerResearchTabs.get(tabId)?.name ?? "this tab";
       notifyPluginOff(pluginRegistry, new PluginOffError(owner, tabName), () => pluginRegistry.switchTab(tabId, preferredPaneId ?? undefined));

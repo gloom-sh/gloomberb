@@ -24,7 +24,7 @@ export const shortInterestModule: PluginModule = {
       id: SHORT_INTEREST_CONNECTION_ID,
       name: "Gloom Short Interest",
       kind: "api",
-      ownerId: "ticker-research",
+      ownerId: "ownership",
       detail: "api.gloom.sh",
       priority: 300,
     });
