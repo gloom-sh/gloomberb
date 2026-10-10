@@ -86,6 +86,7 @@ import {
   clipPriceHistoryToRange,
   createFallbackTicker,
   fetchTickerFinancials,
+  loadBrokerMarkedHolding,
   isFinancialAnalysisFunction,
   readsDailyReturns,
   withShotDailyReturns,
@@ -560,7 +561,17 @@ export async function buildDesktopShotPayload(
       ...history, start: history.start?.toISOString() ?? null, end: history.end?.toISOString() ?? null,
     })));
   } else for (const symbol of await collectShotSymbolsWithCollections(resolved, context, rawArg)) {
-    const entry = await fetchTickerFinancials(context, symbol);
+    let entry: Awaited<ReturnType<typeof fetchTickerFinancials>>;
+    try {
+      entry = await fetchTickerFinancials(context, symbol);
+    } catch (error) {
+      // The pane values a holding no quote covers, such as an option contract,
+      // at the broker's mark. It has no financials to capture.
+      const holding = COLLECTION_PANE_IDS.has(resolved.pane.id) ? await loadBrokerMarkedHolding(context, symbol) : null;
+      if (!holding) throw error;
+      tickers.push(holding);
+      continue;
+    }
     const requestedRange = shotPriceHistoryRange(resolved);
     let data = entry.financials;
     const exchange = entry.instrument.exchange

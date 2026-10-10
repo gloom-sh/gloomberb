@@ -23,6 +23,26 @@ const SHOT_PRICE_HISTORY_RANGE = "5Y" as const;
 const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
 const FINANCIAL_ANALYSIS_TEMPLATE_ID = "financial-analysis-pane";
 
+async function loadStoredShotTicker(context: MarketContext, symbol: string): Promise<TickerRecord | null> {
+  const normalized = cleanTickerInput(symbol);
+  const { symbol: bare } = parsePublicTickerKey(normalized);
+  return await context.store.loadTicker(normalized)
+    ?? (bare !== normalized ? await context.store.loadTicker(bare) : null);
+}
+
+/**
+ * A holding the pane can value without a quote: some position carries the
+ * broker's own mark or market value. An option contract no quote covers stays
+ * at that mark in the pane, so a failed quote lookup for it is not an error.
+ */
+export async function loadBrokerMarkedHolding(context: MarketContext, symbol: string): Promise<TickerRecord | null> {
+  const ticker = await loadStoredShotTicker(context, symbol);
+  const marked = ticker?.metadata.positions.some(({ shares, markPrice, marketValue }) => (
+    shares !== 0 && (Number.isFinite(markPrice) || Number.isFinite(marketValue))
+  ));
+  return marked ? ticker : null;
+}
+
 export async function fetchTickerFinancials(
   context: MarketContext,
   symbol: string,
@@ -33,8 +53,7 @@ export async function fetchTickerFinancials(
 }> {
   const normalized = cleanTickerInput(symbol);
   const instrument = parsePublicTickerKey(normalized);
-  const tickerFile = await context.store.loadTicker(normalized)
-    ?? (instrument.symbol !== normalized ? await context.store.loadTicker(instrument.symbol) : null);
+  const tickerFile = await loadStoredShotTicker(context, symbol);
   const exchange = instrument.exchange ?? tickerFile?.metadata.exchange ?? "";
   const financials = await context.dataProvider.getTickerFinancials(instrument.symbol, exchange);
   return { tickerFile, financials, instrument: { symbol: instrument.symbol, ...(exchange ? { exchange } : {}) } };
