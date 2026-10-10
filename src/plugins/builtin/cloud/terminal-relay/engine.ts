@@ -623,8 +623,8 @@ export class TerminalRelayEngine {
   }
 
   /**
-   * `confirmKey` is the change the person allowed; when the app would now
-   * change something else it asks in the app itself, and that question
+   * `confirmKey` is the change the person allowed. An operation that would
+   * now change something else asks in the app itself, and that question
    * closes, unanswered, with the call or its budget.
    */
   private async run(request: RemoteControlRequest, call: LiveCall, confirmKey?: string): Promise<RemoteControlResponse & { ok: true }> {
@@ -632,9 +632,10 @@ export class TerminalRelayEngine {
     const end = () => ended.abort();
     call.controller.signal.addEventListener("abort", end, { once: true });
     try {
-      const response = await this.withBudget(confirmKey
-        ? this.options.handle(request, { confirmed: confirmKey, signal: ended.signal })
-        : this.options.handle(request));
+      const response = await this.withBudget(this.options.handle(request, {
+        signal: ended.signal,
+        ...(confirmKey ? { confirmed: confirmKey } : {}),
+      }));
       if (!response.ok) throw new RelayRefusal("app_error", response.error.message);
       return response;
     } finally {
