@@ -68,6 +68,12 @@ export interface PluginHostActions {
   notify(notification: AppNotificationRequest): AppNotificationDelivery | void;
   /** Switches a plugin on or off the way the Plugins pane does. Not on the plugin API. */
   setPluginEnabled(pluginId: string, enabled: boolean): void;
+  /**
+   * Switches several plugins on or off as one change: one config write and
+   * one save. A switched-off plugin's panes are hidden, never removed, so
+   * switching it back on shows them where they were. Not on the plugin API.
+   */
+  setPluginsEnabled(changes: Readonly<Record<string, boolean>>): void;
   getPaneRuntimeState(paneId: string): PaneRuntimeState | null;
   updatePaneRuntimeState(paneId: string, patch: Partial<PaneRuntimeState>): void;
   applyPaneSettingValue(paneId: string, field: PaneSettingField, value: unknown): Promise<void>;
@@ -118,6 +124,7 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
     watchNewsQuery: () => () => {},
     notify: () => {},
     setPluginEnabled: () => {},
+    setPluginsEnabled: () => {},
     getPaneRuntimeState: () => null,
     updatePaneRuntimeState: () => {},
     applyPaneSettingValue: async () => {},

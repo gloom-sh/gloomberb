@@ -139,7 +139,8 @@ export type AppAction =
   | { type: "SET_UPDATE_PROGRESS"; progress: UpdateProgress | null }
   | { type: "SET_UPDATE_CHECK_IN_PROGRESS"; checking: boolean }
   | { type: "SET_UPDATE_NOTICE"; notice: string | null }
-  | { type: "TOGGLE_PLUGIN"; pluginId: string }
+  /** Plugins switched on or off; `focusedPaneId` moves focus off a pane that just went hidden. */
+  | { type: "SET_DISABLED_PLUGINS"; disabledPlugins: string[]; focusedPaneId?: string | null }
   | { type: "SET_INPUT_CAPTURED"; captured: boolean }
   /** @deprecated Only writes the unused `AppState.exchangeRates`. Use `useFxRatesMap`. */
   | { type: "SET_EXCHANGE_RATE"; currency: string; rate: number }

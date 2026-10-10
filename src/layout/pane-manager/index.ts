@@ -49,6 +49,7 @@ export {
   swapPanes,
 } from "./docking";
 
+export { restoreHiddenPanes } from "./hidden-panes";
 export {
   removeFloatingPanes,
   removePane,

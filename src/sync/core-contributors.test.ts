@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createInitialState } from "../core/state/app/state";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { createDefaultConfig } from "../types/config";
+import { createDefaultConfig, createPaneInstance } from "../types/config";
+import { removePane, removeUnavailablePaneTypes, restoreHiddenPanes } from "../layout/pane-manager";
 import type { PricePoint } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
 import {
@@ -260,6 +261,54 @@ describe("core sync contributors", () => {
     expect(await push(all)).toEqual(["market-overview"]);
     expect(await push(["global-markets"])).toEqual(["global-markets"]);
     expect(pull((await push([...all, "news"])).filter((pluginId: string) => pluginId !== "market-overview"))).toEqual(["news"]);
+  });
+
+  test("plugins a pull switches off and back on keep their panes through a local edit in between", async () => {
+    const hiddenTypes = new Set(["cds", "econ"]);
+    const config = createDefaultConfig("/tmp/gloomberb-sync-plugin-panes-test");
+    config.layout = {
+      dockRoot: {
+        kind: "split",
+        axis: "horizontal",
+        ratio: 0.4,
+        first: { kind: "split", axis: "vertical", ratio: 0.6, first: { kind: "pane", instanceId: "list" }, second: { kind: "pane", instanceId: "cds" } },
+        second: { kind: "pane", instanceId: "des" },
+      },
+      instances: [
+        createPaneInstance("portfolio-list", { instanceId: "list" }),
+        createPaneInstance("cds", { instanceId: "cds", binding: { kind: "fixed", symbol: "F" } }),
+        createPaneInstance("ticker-detail", { instanceId: "des", binding: { kind: "fixed", symbol: "AAPL" } }),
+        createPaneInstance("econ", { instanceId: "eco" }),
+      ],
+      floating: [{ instanceId: "eco", x: 40, y: 5, width: 50, height: 18, zIndex: 51 }],
+      detached: [],
+    };
+    config.layouts = [{ name: "Main", layout: config.layout }];
+    const local = createInitialState(config).config;
+    // The other device sends its whole config: the same layout, with plugins switched.
+    const pullFrom = async (remote: typeof local, disabledPlugins: string[]) => (
+      __syncContributorInternalsForTests.mergeConfigPayload(
+        remote,
+        await coreConfigSyncContributor.collect({ state: createInitialState({ ...remote, disabledPlugins }) }),
+      )!
+    );
+
+    const off = await pullFrom(local, ["credit", "rates-macro"]);
+    expect(off.disabledPlugins).toEqual(["credit", "rates-macro"]);
+    expect(off.layout).toEqual(local.layout);
+
+    // Closing a pane here saves the layout the shell shows, with the hidden panes put back.
+    const shown = removeUnavailablePaneTypes(off.layout, () => true, { disabledPaneIds: hiddenTypes });
+    const edited = {
+      ...off,
+      layout: restoreHiddenPanes(off.layout, removePane(shown, "des"), (instance) => hiddenTypes.has(instance.paneId)),
+    };
+
+    const on = await pullFrom(edited, []);
+    expect(on.disabledPlugins).toEqual([]);
+    expect(on.layout.instances.map((instance) => instance.instanceId)).toEqual(["list", "cds", "eco"]);
+    expect(on.layout.dockRoot).toMatchObject({ axis: "vertical", ratio: 0.6, first: { instanceId: "list" }, second: { instanceId: "cds" } });
+    expect(on.layout.floating).toEqual(local.layout.floating);
   });
 
   test("preserves local broker identity when applying sanitized portfolios", () => {

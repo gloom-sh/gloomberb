@@ -8,6 +8,13 @@ import { openFormModal } from "../../components/form-modal";
 import { t } from "../../i18n";
 import { openBrokerAddFlow } from "../../plugins/builtin/broker-manager/add-request";
 import { getPanelFocusTarget } from "../../core/state/app/layout";
+import { getVisiblePaneCycleOrder } from "../../components/layout/pane/cycle-order";
+import {
+  collectDisabledPaneIds,
+  resolveShellVisibleLayout,
+  restoreShellHiddenPanes,
+} from "../../components/layout/shell/visible-layout";
+import { applyPluginToggles } from "../../plugins/ownership";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
 import { setMarketplaceHost } from "../../plugins/builtin/plugin-marketplace/store";
 import type { InstalledPlugin } from "../../plugins/builtin/plugin-marketplace/model";
@@ -131,25 +138,33 @@ export function bindAppPanePluginRegistry({
   switchTickerResearchTab,
   tickerRepository,
 }: BindAppPanePluginRegistryOptions): void {
-  const setPluginEnabled = (pluginId: string, enabled: boolean) => {
-    const current = stateRef.current.config;
-    const disabled = current.disabledPlugins ?? [];
-    // A second "Turn on" from an older toast must not switch it back off.
-    if (disabled.includes(pluginId) !== enabled) return;
-    if (!enabled) {
-      for (const paneId of pluginRegistry.getPluginPaneIds(pluginId)) pluginRegistry.hidePane(paneId);
-    }
-    dispatch({ type: "TOGGLE_PLUGIN", pluginId });
-    persistConfig({
-      ...current,
-      disabledPlugins: enabled
-        ? disabled.filter((entry) => entry !== pluginId)
-        : [...disabled, pluginId],
-    });
+  // Switching plugins never edits the layout: the shell hides a switched-off
+  // plugin's panes where they are and shows them again when it comes back.
+  // Only focus moves, off a pane that just went hidden.
+  const setPluginsEnabled = (changes: Readonly<Record<string, boolean>>) => {
+    const current = stateRef.current;
+    // Setting a state, not flipping it, so a second "Turn on" from an older
+    // toast cannot switch the plugin back off.
+    const disabledPlugins = applyPluginToggles(current.config.disabledPlugins ?? [], changes);
+    if (!disabledPlugins) return;
+    const focused = current.focusedPaneId ? findPaneInstance(current.config.layout, current.focusedPaneId) : undefined;
+    const focusHidden = !!focused && collectDisabledPaneIds(pluginRegistry, disabledPlugins).has(focused.paneId);
+    dispatch(focusHidden
+      ? {
+        type: "SET_DISABLED_PLUGINS",
+        disabledPlugins,
+        focusedPaneId: getVisiblePaneCycleOrder(current.config.layout, pluginRegistry, disabledPlugins)[0] ?? null,
+      }
+      : { type: "SET_DISABLED_PLUGINS", disabledPlugins });
+    const nextConfig = { ...current.config, disabledPlugins };
+    persistConfig(nextConfig);
+    pluginRegistry.events.emit("config:changed", { config: nextConfig });
   };
+  const setPluginEnabled = (pluginId: string, enabled: boolean) => setPluginsEnabled({ [pluginId]: enabled });
 
   pluginRegistry.bindHost({
     setPluginEnabled,
+    setPluginsEnabled,
     selectTicker: (symbol, paneId) => selectTickerInPane(symbol, paneId),
     switchPanel: (panel) => {
       if (isDetachedWindow) return;
@@ -368,12 +383,15 @@ export function bindAppPanePluginRegistry({
     },
   });
 
+  // Layout commands (Tidy, Swap, Float, Close) act on what is on screen, as
+  // the shell's own menus do, and leave a switched-off plugin's panes alone.
+  const disabledPaneIds = () => collectDisabledPaneIds(pluginRegistry, stateRef.current.config.disabledPlugins);
   setLayoutManagerDispatch(dispatch, () => ({
-    layout: state.config.layout,
+    layout: resolveShellVisibleLayout(state.config.layout, disabledPaneIds(), pluginRegistry.panes),
     termWidth: pluginRegistry.getTermSize().width,
     termHeight: pluginRegistry.getTermSize().height,
     focusedPaneId: state.focusedPaneId,
-  }));
+  }), (edited) => restoreShellHiddenPanes(stateRef.current.config.layout, edited, disabledPaneIds(), pluginRegistry.panes));
 
   setExternalPlugins(externalPlugins);
 

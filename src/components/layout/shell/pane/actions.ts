@@ -172,7 +172,8 @@ export function useShellPaneActions({
       paneTypes: pluginRegistry.panes,
       apply: persistLayout,
       notify: pluginRegistry.notify,
-      onRevert: () => pluginRegistry.updateLayout(visibleLayout),
+      // Back through the shell's save, which puts hidden panes back too.
+      onRevert: () => persistLayout(visibleLayout),
     });
     return true;
   }, [contentHeight, persistLayout, pluginRegistry, visibleLayout, width]);

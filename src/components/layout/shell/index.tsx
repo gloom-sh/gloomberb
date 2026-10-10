@@ -59,6 +59,7 @@ import {
   useShellResolvedPanes,
   useShellVisibleLayout,
 } from "./layout-state";
+import { restoreShellHiddenPanes } from "./visible-layout";
 import { AuthDialogHost } from "../../../plugins/builtin/cloud/auth-dialog";
 import { DeviceSignInDialogHost } from "../../../plugins/builtin/cloud/device-signin-dialog";
 import { McpConnectDialogHost } from "../../../plugins/builtin/cloud/mcp-connect/dialog";
@@ -192,7 +193,15 @@ export function Shell({
   ), [nativePaneChrome, cellHeightPx]);
   const bounds = useMemo<LayoutBounds>(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
 
-  const persistLayout = useCallback((nextLayout: LayoutConfig, options?: { pushHistory?: boolean; focusedPaneId?: string | null }) => {
+  // Every edit here starts from the visible layout, so the panes it hides go
+  // back in before the layout is saved, rather than being deleted with it.
+  const persistLayout = useCallback((editedLayout: LayoutConfig, options?: { pushHistory?: boolean; focusedPaneId?: string | null }) => {
+    const nextLayout = restoreShellHiddenPanes(
+      stateRef.current.config.layout,
+      editedLayout,
+      disabledPaneIds,
+      pluginRegistry.panes,
+    );
     if (options?.pushHistory !== false) {
       dispatch({ type: "PUSH_LAYOUT_HISTORY" });
     }
@@ -206,7 +215,7 @@ export function Shell({
       currentState.paneState,
       hasFocusTarget ? (options.focusedPaneId ?? null) : currentState.focusedPaneId,
     ));
-  }, [dispatch, stateRef]);
+  }, [disabledPaneIds, dispatch, pluginRegistry, stateRef]);
 
   const focusPane = useCallback((paneId: string) => {
     dispatch({ type: "FOCUS_PANE", paneId });

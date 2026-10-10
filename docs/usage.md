@@ -662,6 +662,8 @@ Each built-in plugin can be switched on or off in `PL`. Ticker Research, Market 
 
 A research tab belongs to the plugin of its function: switching off Ownership & Insiders removes the Holders, 13F, Insider, Short Interest and Congress tabs.
 
+Switching a plugin off hides its panes without closing them. They stay in every layout, even as you close or move other panes, and come back where they were, with their state, when it is switched on. Typing one of its codes in the command bar offers **Turn on** the plugin, which then runs what you typed.
+
 The old ids still switch a whole group: `gloomberb plugin disable ticker-research` (or `macro`, `market-overview`) turns off every successor. Credit & Bonds and Earnings belong to both Ticker Research and Macro, and Supply Chain & Alt Data and Quant to both Ticker Research and Market Overview. An older Gloomberb on the same account shows an old plugin off only while all of its successors are off.
 
 Polls lives in its own repository rather than inside the app. It reads one third-party site directly, so the plugin can ship a fix the day that site changes instead of waiting for an app release.
