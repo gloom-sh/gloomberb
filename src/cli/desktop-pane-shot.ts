@@ -176,7 +176,8 @@ const SHOT_MODE_CSS = [
   + " line-height: var(--cell-h); font-size: 12px; letter-spacing: 0.02em; color: var(--gloom-text-dim, #888);"
   + " pointer-events: none; z-index: 1000; }";
 
-const CHROME_POLL_ATTEMPTS = 80;
+// Chrome gets 30 s (300 polls x 100 ms) to open its DevTools port: 8 s was not enough on a busy machine.
+const CHROME_POLL_ATTEMPTS = 300;
 const SHOT_READY_TIMEOUT_MS = 45_000;
 const CDP_CALL_TIMEOUT_MS = 10_000;
 const DEFAULT_DEVICE_SCALE_FACTOR = 2;
