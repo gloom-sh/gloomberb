@@ -20,9 +20,9 @@ function usePromptWidth(): { width: number | string; maxWidth?: number } {
   return useUiHost().kind === "opentui" ? { width: WIDTH } : { width: "100%", maxWidth: WIDTH };
 }
 
-function useKeyGrace(): () => boolean {
+function useKeyGrace(graceMs: number): () => boolean {
   const openedAt = useRef(Date.now());
-  return useCallback(() => Date.now() - openedAt.current >= KEY_GRACE_MS, []);
+  return useCallback(() => Date.now() - openedAt.current >= graceMs, [graceMs]);
 }
 
 function useCloseOnAbort(signal: AbortSignal, close: () => void) {
@@ -36,15 +36,23 @@ function useCloseOnAbort(signal: AbortSignal, close: () => void) {
   }, [close, signal]);
 }
 
+interface PromptProps {
+  caller: RelayCaller;
+  signal: AbortSignal;
+  /** How long after opening keys are ignored; tests pass 0. */
+  keyGraceMs?: number;
+}
+
 /** First time an assistant asks to drive this terminal. */
-function AssistantApprovalDialog({
+export function AssistantApprovalDialog({
   resolve,
   caller,
   signal,
-}: PromptContext<AssistantDecision> & { caller: RelayCaller; signal: AbortSignal }) {
+  keyGraceMs = KEY_GRACE_MS,
+}: PromptContext<AssistantDecision> & PromptProps) {
   const colors = useThemeColors();
   const size = usePromptWidth();
-  const keysReady = useKeyGrace();
+  const keysReady = useKeyGrace(keyGraceMs);
   const deny = useCallback(() => resolve("deny"), [resolve]);
   useCloseOnAbort(signal, deny);
   useDialogKeyboard((event) => {
@@ -82,16 +90,20 @@ function AssistantApprovalDialog({
   );
 }
 
-/** Every call that can reach an outside service. There is no "always" here. */
-function CallConfirmationDialog({
+/**
+ * Every call that can reach an outside service. There is no "always" here,
+ * and only `y` allows: `a` means "always" in the approval prompt.
+ */
+export function CallConfirmationDialog({
   resolve,
   caller,
   summary,
   signal,
-}: PromptContext<ConfirmationAnswer> & { caller: RelayCaller; summary: CallSummary; signal: AbortSignal }) {
+  keyGraceMs = KEY_GRACE_MS,
+}: PromptContext<ConfirmationAnswer> & PromptProps & { summary: CallSummary }) {
   const colors = useThemeColors();
   const size = usePromptWidth();
-  const keysReady = useKeyGrace();
+  const keysReady = useKeyGrace(keyGraceMs);
   const deny = useCallback(() => resolve("deny"), [resolve]);
   useCloseOnAbort(signal, deny);
   useDialogKeyboard((event) => {
@@ -101,7 +113,7 @@ function CallConfirmationDialog({
       deny();
       return;
     }
-    if (keysReady() && isPlainKey(event, "y", "a")) resolve("allow");
+    if (keysReady() && isPlainKey(event, "y")) resolve("allow");
   }, { allowEditable: true });
   const labelWidth = Math.max(0, ...summary.lines.map((line) => line.label.length)) + 2;
 
