@@ -140,6 +140,11 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   DSMD: "QE",
   DFM: "DFM",
   XDFM: "DFM",
+  // Boursa Kuwait, which Gloom Cloud names KUWAIT.
+  KUWAIT: "KUWAIT",
+  XKUW: "KUWAIT",
+  BOURSA: "KUWAIT",
+  "BOURSA KUWAIT": "KUWAIT",
   CCC: "CCC",
 };
 
@@ -232,6 +237,7 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   TADAWUL: "Asia/Riyadh",
   QE: "Asia/Qatar",
   DFM: "Asia/Dubai",
+  KUWAIT: "Asia/Kuwait",
   CCC: "UTC",
 };
 
@@ -288,6 +294,7 @@ const EXCHANGE_NAMES: Record<string, string> = {
   TADAWUL: "Saudi Exchange",
   QE: "Qatar Stock Exchange",
   DFM: "Dubai Financial Market",
+  KUWAIT: "Boursa Kuwait",
 };
 
 const KNOWN_EXCHANGE_CODES: ReadonlySet<string> = new Set([

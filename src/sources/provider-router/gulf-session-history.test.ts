@@ -4,20 +4,23 @@ import { fallbackProvider } from "../../test-support/data-provider";
 import { AssetDataRouter } from "./index";
 
 // One-day history of Gulf listings between sessions, asked the way the CLI
-// asks: no exchange, the venue read off the symbol. Riyadh and Doha are UTC+3
-// and Dubai UTC+4, with no daylight time. Tadawul and Qatar trade Sunday to
-// Thursday, DFM Monday to Friday. Gloom Cloud's five-minute copies run from
-// 10:00 to 14:55 in Riyadh, 09:30 to 13:10 in Doha and 10:00 to 14:55 in Dubai.
+// asks: no exchange, the venue read off the symbol. Riyadh, Doha and Kuwait
+// are UTC+3 and Dubai UTC+4, with no daylight time. Tadawul, Qatar and Boursa
+// Kuwait trade Sunday to Thursday, DFM Monday to Friday. Gloom Cloud's
+// five-minute copies run from 10:00 to 14:55 in Riyadh, 09:30 to 13:10 in
+// Doha, 10:00 to 14:55 in Dubai and 09:00 to 12:40 in Kuwait.
 
 const VENUES = {
   TADAWUL: { offset: "+03:00", first: "10:00", last: "14:55" },
   QE: { offset: "+03:00", first: "09:30", last: "13:10" },
   DFM: { offset: "+04:00", first: "10:00", last: "14:55" },
+  KUWAIT: { offset: "+03:00", first: "09:00", last: "12:40" },
 } as const;
 type Venue = keyof typeof VENUES;
 
 const SYMBOLS: Array<[string, Venue]> = [
   ["1120.SR", "TADAWUL"], ["^TASI.SR", "TADAWUL"], ["2222:TADAWUL", "TADAWUL"], ["QNBK:QE", "QE"], ["EMAAR:DFM", "DFM"],
+  ["NBK.KW", "KUWAIT"], ["NBK:KUWAIT", "KUWAIT"],
 ];
 
 /** [what, now, the day the bars are from, their last bar (the full session when null), served]; times are local to the venue. */
@@ -51,6 +54,17 @@ const ROWS: Record<Venue, Row[]> = {
     ["Monday before the open, Friday's session", "2026-10-12T09:00", "2026-10-09", null, true],
     ["Tuesday after the close", "2026-10-06T16:00", "2026-10-06", null, true],
     ["Tuesday after the close, a copy that stopped at noon", "2026-10-06T16:00", "2026-10-06", "12:00", false],
+  ],
+  KUWAIT: [
+    ["Friday, Thursday's session", "2026-10-09T12:00", "2026-10-08", null, true],
+    ["Saturday, Thursday's session", "2026-10-10T12:00", "2026-10-08", null, true],
+    ["Saturday, Wednesday's session: Thursday is missing", "2026-10-10T12:00", "2026-10-07", null, false],
+    ["Sunday before the open, Thursday's session", "2026-10-11T08:30", "2026-10-08", null, true],
+    ["Sunday in session, today's bars so far", "2026-10-11T11:00", "2026-10-11", "10:40", true],
+    ["Sunday in session, bars that stopped at 10:00", "2026-10-11T11:30", "2026-10-11", "10:00", false],
+    ["Tuesday in the closing auction, bars through 12:40", "2026-10-06T13:05", "2026-10-06", null, true],
+    ["Tuesday after the close", "2026-10-06T14:00", "2026-10-06", null, true],
+    ["Tuesday after the close, a copy that stopped at 11:00", "2026-10-06T14:00", "2026-10-06", "11:00", false],
   ],
 };
 
