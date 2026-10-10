@@ -11,6 +11,21 @@ export interface EventAlertRule {
   value: string;
   createdAt: number;
   status: "active" | "paused";
+  /**
+   * Scheduled events (earnings, a macro release): the date of the next one
+   * (YYYY-MM-DD), as last looked up, so a list can show it without a request.
+   */
+  eventDate?: string;
+  /** Scheduled events: the event date it already alerted for. The next event date arms it again. */
+  firedFor?: string;
+}
+
+const isDateKey = (value: unknown): value is string =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(Date.parse(`${value}T00:00:00Z`));
+
+/** Earnings and macro event rules: they follow a dated event and alert a number of days before it. */
+export function isScheduledEventRule(rule: Pick<EventAlertRule, "kind">): boolean {
+  return rule.kind === "earnings_date" || rule.kind === "macro_event";
 }
 
 export const EVENT_ALERT_TEMPLATES = [
@@ -102,14 +117,20 @@ export function readEventAlerts(json: string): { rules: EventAlertRule[]; error:
         throw new Error();
       const normalized = research ? normalizeResearchRule(value.kind, value.value) : template!.normalize(value.value);
       if (normalized == null || (template?.field && !normalized)) throw new Error();
-      rules.push({
+      const rule: EventAlertRule = {
         id: value.id,
         kind: value.kind,
         target: value.target,
         value: normalized,
         status: value.status,
         createdAt: value.createdAt,
-      });
+      };
+      // A date that does not read is dropped, not the rule: the next lookup puts it back.
+      if (isScheduledEventRule(rule)) {
+        if (isDateKey(value.eventDate)) rule.eventDate = value.eventDate;
+        if (isDateKey(value.firedFor)) rule.firedFor = value.firedFor;
+      }
+      rules.push(rule);
       ids.add(value.id);
     }
     return { rules, error: null };

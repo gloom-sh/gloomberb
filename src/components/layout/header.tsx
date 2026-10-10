@@ -390,6 +390,24 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
   );
 }
 
+/**
+ * Help, one click away on every renderer: the same pane the typed HELP and the
+ * `?` key open. It takes its columns from the update status beside it, which
+ * is transient, rather than from the prompt or the market cluster.
+ */
+function HeaderHelpButton({ nativePaneChrome, onPress }: { nativePaneChrome: boolean; onPress: () => void }) {
+  return (
+    <Box
+      flexShrink={0}
+      paddingRight={nativePaneChrome ? undefined : 1}
+      data-gloom-role="header-help-action"
+      style={nativePaneChrome ? { marginRight: 8 } : undefined}
+    >
+      <Button compact label="Open Help" displayLabel={t("Help")} shortcut="?" onPress={onPress} stopPropagation />
+    </Box>
+  );
+}
+
 export function Header({
   onOpenHelp,
   onRestartForUpdate,
@@ -463,11 +481,7 @@ export function Header({
         <Box flexGrow={1} paddingLeft={2} paddingRight={2} minWidth={0}>
           <UpdateStatus onRestart={onRestartForUpdate} />
         </Box>
-        {onOpenHelp ? (
-          <Box flexShrink={0} data-gloom-role="header-help-action" style={{ marginRight: 8 }}>
-            <Button compact label="Open Help" displayLabel="Help" shortcut="?" onPress={onOpenHelp} stopPropagation />
-          </Box>
-        ) : null}
+        {onOpenHelp ? <HeaderHelpButton nativePaneChrome onPress={onOpenHelp} /> : null}
         {marketSummary}
         {showWindowControls ? <Box flexShrink={0} width={`${WINDOWS_CONTROL_GROUP_WIDTH_PX}px`} /> : null}
         {showWindowControls ? <WindowControls /> : null}
@@ -489,6 +503,7 @@ export function Header({
       <Box flexGrow={1} minWidth={0} paddingLeft={2}>
         <UpdateStatus onRestart={onRestartForUpdate} />
       </Box>
+      {onOpenHelp ? <HeaderHelpButton nativePaneChrome={nativePaneChrome} onPress={onOpenHelp} /> : null}
       {marketSummary}
       {showWindowControls ? <WindowControls /> : null}
     </Box>

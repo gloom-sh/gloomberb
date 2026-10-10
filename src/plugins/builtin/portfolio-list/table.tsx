@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef } from "react";
+import { QUICK_ADD_KEY } from "./quick-add";
 import {
   TickerListTableView,
   type DataTableKeyEvent,
@@ -98,6 +99,7 @@ export function PortfolioTickerTable({
   visibleRangeBuffer,
   resetScrollKey,
   onRowActivate,
+  onAddTicker,
   rootHeight,
 }: {
   columns: ColumnConfig[];
@@ -117,6 +119,8 @@ export function PortfolioTickerTable({
   visibleRangeBuffer?: number;
   resetScrollKey?: unknown;
   onRowActivate?: (ticker: TickerRecord) => void;
+  /** Opens the add row; the empty table offers it as a button. */
+  onAddTicker?: () => void;
   rootHeight?: number;
 }) {
   const cellCacheRef = useRef(createRowValueCache<string, ReturnType<typeof getColumnValue>>(5000));
@@ -175,6 +179,8 @@ export function PortfolioTickerTable({
       resetScrollKey={resetScrollKey}
       onRowActivate={onRowActivate}
       rowMenuAccelerators={PORTFOLIO_ROW_MENU_KEYS}
+      onAddTicker={onAddTicker}
+      addTickerShortcut={onAddTicker ? QUICK_ADD_KEY : undefined}
       rootHeight={rootHeight}
     />
   );

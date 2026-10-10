@@ -32,6 +32,8 @@ export interface CommandBarPanelProps {
   queryDisplayWidth: number;
   rootGhostSuffix: string | null;
   rootShortcutFeedback: string | null;
+  /** What Enter does on the root screen: runs the typed shortcut the feedback line names. */
+  onRunShortcut: () => void;
   /**
    * Line the scroll box has to reach for the selected row to be fully visible,
    * or -1 when nothing is selected. Rows are not all one line tall, so this is a

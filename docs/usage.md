@@ -399,6 +399,34 @@ matching print, or how many of its contracts are being watched. **History** list
 delivered to your phone over the last 90 days; `r` refreshes it. The phone's
 notification settings have one switch for these market and research alerts.
 
+### Alerts before earnings, CPI and FOMC
+
+To watch a position through a scheduled event, alert a number of days before
+it. In `ALRT`, open **Events**, click **add event** (or run **Add Event Alert**)
+and pick **Earnings date** with a US-listed symbol, or **Macro event** with the
+CPI release or the FOMC decision, then the days before: 1 to 14, 1 by default.
+From the shell:
+
+```bash
+gloomberb alerts add CRWV earnings --days 3
+gloomberb alerts add CPI --days 1
+gloomberb alerts add FOMC
+```
+
+The next date comes from what the app already shows: the earnings calendar
+(`ERN`), the BLS release calendar behind `CPI` and the Fed meeting calendar
+behind `WIRP`. A symbol with no upcoming earnings date, or an event with no
+known next date, gets no alert. The **Events** tab and `gloomberb alerts list`
+show each alert's next event date and its state. While the app runs it looks
+the dates up every 15 minutes and notifies once when the lead time is reached
+("CRWV earnings in 3 days, Mon, Nov 9"), counting calendar days in New York;
+an app that was closed on that day notifies when it next runs, up to the event
+day. The alert then reads **Alerted** until the event passes and arms itself
+for the next date. Re-arm (`m`, or `gloomberb alerts rearm <id>`) sends it again
+for the same event, and `gloomberb alerts delete <id>` removes it. Earnings
+alerts also reach the phone app like the other market alerts; CPI and FOMC
+alerts notify in the running app only.
+
 ## Live prices and refresh cadence
 
 Prices come from one shared stream: a symbol shown in several panes is subscribed once. Rows on screen and the selected symbol update on every frame (about 10 per second); everything else about once a second. A pane covered by floating windows keeps its subscriptions at that slower rate and its refresh clocks rest until it is uncovered. Minimizing or hiding the app pauses streams and polling; the terminal always counts as visible. Plans that cap streamed symbols spend them on the rows in view.
@@ -466,7 +494,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |
 | `gloomberb portfolio [action]` | Show a portfolio's value, weights, targets and P&L; manage manual portfolios, cash and target weights |
 | `gloomberb watchlist [action]` | Manage watchlists |
-| `gloomberb notes\|alerts [action]` | Manage local notes and alerts |
+| `gloomberb notes\|alerts [action]` | Manage local notes and alerts: price alerts, and alerts days before earnings, CPI or FOMC (`alerts add CRWV earnings --days 3`) |
 | `gloomberb broker list [--type <broker>]` | List connected broker accounts, optionally one kind such as `ibkr` |
 | `gloomberb ai providers\|ask` | Use configured AI providers ([BYOK AI plugin](https://github.com/gloom-sh/gloom-byok-ai)) |
 | `gloomberb rss fetch <url>` | Fetch an RSS feed |

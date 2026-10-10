@@ -1,6 +1,7 @@
 
 const RESEARCH_ALERT_KINDS = [
   "earnings_date",
+  "macro_event",
   "filing_type",
   "news_keyword",
   "analyst_change",
@@ -27,7 +28,17 @@ export interface ResearchAlertConfig {
   marketId?: string
   metric?: "funding8h" | "oiChange24h" | "premium" | "closedMarketPremium"
   print?: string
+  /** Macro event: which scheduled release (`MACRO_ALERT_EVENTS`). */
+  event?: string
 }
+/** Days before a scheduled event (earnings, a macro release) an alert fires when none is given, and the most it takes. */
+export const DEFAULT_LEAD_DAYS = 1
+export const MAX_LEAD_DAYS = 14
+/** Scheduled US releases a macro event rule can follow, by the name the CLI and the form take. */
+export const MACRO_ALERT_EVENTS = ["cpi", "fomc"] as const
+export type MacroAlertEvent = (typeof MACRO_ALERT_EVENTS)[number]
+export const isMacroAlertEvent = (value: unknown): value is MacroAlertEvent =>
+  MACRO_ALERT_EVENTS.includes(value as MacroAlertEvent)
 export const RESEARCH_ALERT_FORMS = [
   "8-K",
   "10-K",
@@ -83,7 +94,11 @@ export function normalizeResearchRule(
     const input: unknown = typeof raw === "string" ? JSON.parse(raw) : raw
     if (!object(input) || input.version !== 1) return null
     const result: ResearchAlertConfig = { version: 1 }
-    if (kind === "perps_threshold") {
+    if (kind === "macro_event") {
+      const event = typeof input.event === "string" ? input.event.trim().toLowerCase() : ""
+      if (!isMacroAlertEvent(event)) return null
+      result.event = event
+    } else if (kind === "perps_threshold") {
       const marketId = typeof input.marketId === "string" ? input.marketId.trim() : "";
       const metric = input.metric;
       if (!/^[a-z][a-z0-9-]*:[^\s:]*:[^\s]+$/.test(marketId) || marketId.length > 180
@@ -148,7 +163,8 @@ export function normalizeResearchRule(
         direction(["above", "below"], "above");
         break;
       case "earnings_date":
-        numeric("leadDays", 1, 0, 14, true)
+      case "macro_event":
+        numeric("leadDays", DEFAULT_LEAD_DAYS, 0, MAX_LEAD_DAYS, true)
         break
       case "filing_type": {
         const form =

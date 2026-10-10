@@ -1051,7 +1051,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     docs: "PORT",
   },
   ALRT: {
-    summary: "Your price alerts with current price, distance to target and trigger state, plus market and filing event alerts.",
+    summary: "Your price alerts with current price, distance to target and trigger state, plus alerts days before earnings, CPI or FOMC and market and filing event alerts.",
     usage: ["ALRT"],
     keys: [key("a", "dd alert"), key("e", "dit"), key("d", "elete"), key("m", "re-arm")],
     data: QUOTES,

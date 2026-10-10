@@ -29,6 +29,8 @@ import type { QuoteFlashDirection } from "../quote-flash";
 import { objectVersion } from "../../utils/object-version";
 import { getCompletedRegularSessionDisplay } from "../../market-data/market/status";
 import { usePaneFooter } from "../layout/pane/footer";
+import { Button } from "../ui/button";
+import { PaneStatusBody } from "../ui/status";
 
 export interface TickerTableCell {
   text: string;
@@ -83,6 +85,13 @@ export interface TickerListTableViewProps {
   rowMenuAccelerators?: Readonly<Record<string, string>>;
   emptyTitle?: string;
   emptyHint?: string;
+  /**
+   * Starts the pane's add-ticker flow. Given, the empty table offers a
+   * "+ ticker" button for it and says so before the key.
+   */
+  onAddTicker?: () => void;
+  /** The pane's key for the same flow, named after the click. The command bar's key when absent. */
+  addTickerShortcut?: string;
   virtualize?: boolean;
   overscan?: number;
 }
@@ -214,11 +223,24 @@ export function TickerListTableView({
   rowMenuAccelerators,
   emptyTitle = t("No tickers."),
   emptyHint,
+  onAddTicker,
+  addTickerShortcut,
   virtualize = true,
   overscan = 4,
 }: TickerListTableViewProps) {
   const commandBarShortcut = useCommandBarShortcut();
-  const resolvedEmptyHint = emptyHint ?? tf("Press {shortcut} to add one.", { shortcut: commandBarShortcut });
+  const addLabel = `+ ${t("ticker")}`;
+  const resolvedEmptyHint = emptyHint ?? (onAddTicker
+    ? tf("Click {button} to add one, or press {shortcut}.", { button: addLabel, shortcut: addTickerShortcut ?? commandBarShortcut })
+    : tf("Press {shortcut} to add one.", { shortcut: commandBarShortcut }));
+  const emptyContent = onAddTicker ? (
+    <PaneStatusBody
+      empty
+      emptyTitle={emptyTitle}
+      emptyMessage={resolvedEmptyHint}
+      actions={<Button label="Add ticker" displayLabel={addLabel} compact onPress={onAddTicker} />}
+    />
+  ) : undefined;
   const renderer = useRendererHost();
   const { showContextMenu } = useContextMenu();
   const { nativeContextMenu } = useUiCapabilities();
@@ -349,6 +371,7 @@ export function TickerListTableView({
       getRowVersion={getRowVersion}
       emptyStateTitle={emptyTitle}
       emptyStateHint={resolvedEmptyHint}
+      emptyContent={emptyContent}
       virtualize={virtualize}
       overscan={overscan}
       rootBefore={rootBefore}
