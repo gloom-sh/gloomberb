@@ -11,6 +11,7 @@ import {
   coreConfigSyncContributor,
 } from "./core-contributors";
 import { setSyncedProfileAnalytics } from "./profile-analytics";
+import { setBuiltinPluginGroupsForTests } from "../plugins/ownership";
 import { createTestTicker } from "../test-support/ticker";
 import { createTestFinancials } from "../test-support/data-provider";
 
@@ -191,6 +192,27 @@ describe("core sync contributors", () => {
     ]);
     for (const pluginId of ["portfolio", "portfolio-list", "analytics", "kelly-sizer"]) {
       expect(payload.pluginConfig[pluginId]).toEqual(config.pluginConfig.portfolio);
+    }
+  });
+
+  test("a retired plugin id round-trips through sync with older apps as its group", async () => {
+    setBuiltinPluginGroupsForTests({ macro: ["rates-macro", "credit", "earnings"] });
+    try {
+      const config = createDefaultConfig("/tmp/gloomberb-sync-group-test");
+      // An older app pushes Macro off, under the module id it once had or its own.
+      for (const pushed of [["macro"], ["macro-tv"]]) {
+        const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, { disabledPlugins: pushed });
+        expect(merged?.disabledPlugins).toEqual(["rates-macro", "credit", "earnings"]);
+        // All of it off goes back out as the one id the older app knows.
+        const payload = await coreConfigSyncContributor.collect({ state: createInitialState(merged!) }) as any;
+        expect(payload.disabledPlugins).toEqual(["macro"]);
+      }
+
+      config.disabledPlugins = ["credit"];
+      const partial = await coreConfigSyncContributor.collect({ state: createInitialState(config) }) as any;
+      expect(partial.disabledPlugins).toEqual(["credit"]);
+    } finally {
+      setBuiltinPluginGroupsForTests(null);
     }
   });
 

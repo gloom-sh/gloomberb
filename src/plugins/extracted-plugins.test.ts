@@ -4,6 +4,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 
 import { EXTRACTED_PLUGINS, seedExtractedPlugins } from "./extracted-plugins";
+import { setBuiltinPluginGroupsForTests } from "./ownership";
 import type { AppConfig } from "../types/config";
 
 /**
@@ -109,6 +110,25 @@ describe("seedExtractedPlugins", () => {
       expect(installs).not.toContain(entry.repo);
       // Recorded, so it is not offered again on every launch.
       expect(result.seeded).toContain(id);
+    }
+  });
+
+  test("counts a previous owner that became a group as off only while every member is", async () => {
+    setBuiltinPluginGroupsForTests({ macro: ["rates-macro", "credit", "earnings"] });
+    try {
+      const tvRepo = EXTRACTED_PLUGINS.find((candidate) => candidate.id === "tv")!.repo;
+      for (const [disabledPlugins, restored] of [
+        [["rates-macro", "credit", "earnings"], false],
+        [["credit"], true],
+      ] as const) {
+        const installs: string[] = [];
+        await withPluginsDir((dir) => seedExtractedPlugins(
+          config({ disabledPlugins: [...disabledPlugins] }), async (ref) => { installs.push(ref); }, dir,
+        ));
+        expect(installs.includes(tvRepo)).toBe(restored);
+      }
+    } finally {
+      setBuiltinPluginGroupsForTests(null);
     }
   });
 
