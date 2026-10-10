@@ -775,6 +775,7 @@ class GloomApiClient {
   getCloudSocialMentionPosts = this.data.getCloudSocialMentionPosts.bind(this.data);
   getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
   getCloudFuturesCurveAsOf = this.data.getCloudFuturesCurveAsOf.bind(this.data);
+  getCloudFuturesContract = this.data.getCloudFuturesContract.bind(this.data);
   getCloudRatePath = this.data.getCloudRatePath.bind(this.data);
   getCloudShiller = this.data.getCloudShiller.bind(this.data);
   getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);

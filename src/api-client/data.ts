@@ -32,7 +32,7 @@ import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./beneficial-owners";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
-import type { FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
+import type { FuturesContractTermsPayload, FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
 import type { DoeBoardPayload } from "./doe";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery } from "./gpu";
@@ -701,6 +701,11 @@ export class CloudDataApi {
 
   async getCloudFuturesCurve(root: string): Promise<FuturesCurvePayload> {
     return this.request<FuturesCurvePayload>(`/cloud/futures/curve/${encodeURIComponent(root)}`, { signal: AbortSignal.timeout(60_000) });
+  }
+
+  /** What a futures symbol (GC=F, GCZ26, CL1) trades: its contract, terms and latest confirmed settlement. */
+  async getCloudFuturesContract(symbol: string): Promise<FuturesContractTermsPayload> {
+    return this.request<FuturesContractTermsPayload>(`/cloud/futures/contract/${encodeURIComponent(symbol)}`, { signal: AbortSignal.timeout(20_000) });
   }
 
   async getCloudFuturesCurveAsOf(root: string, date: string): Promise<FuturesCurveAsOfPayload> {
