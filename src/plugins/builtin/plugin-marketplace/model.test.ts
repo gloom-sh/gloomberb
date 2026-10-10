@@ -66,6 +66,18 @@ describe("mergeCatalog", () => {
     expect(entry?.section).toBe("builtin");
   });
 
+  // The feed is built from the published catalog and can trail this build. A
+  // row for Macro would toggle an id that is now only an alias for three plugins.
+  test("drops a built-in this build split, which an older feed still lists", () => {
+    const entries = mergeCatalog({
+      registry: [registryPlugin({ id: "macro", bundled: true, tier: "official" })],
+      installed: [installedPlugin({ id: "credit", source: "builtin" })],
+      target: "tui",
+    });
+
+    expect(entries.map((entry) => entry.id)).toEqual(["credit"]);
+  });
+
   test("takes enabled state and version from the local catalog, not the registry", () => {
     const [entry] = mergeCatalog({
       registry: [registryPlugin({ id: "hackernews", ref: "v0.3.0" })],

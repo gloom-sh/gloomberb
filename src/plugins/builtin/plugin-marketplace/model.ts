@@ -1,6 +1,7 @@
 import type { PluginTarget } from "../../../types/plugin";
 import { compareSemver, formatVersion, requiredGloomberb } from "../../../utils/semver";
 import { runsExternalPlugins } from "../../current-target";
+import { builtinPluginGroupMembers } from "../../ownership";
 
 type PluginTier = "official" | "verified" | "community";
 
@@ -158,7 +159,11 @@ export function mergeCatalog(options: {
   installed: readonly InstalledPlugin[];
   target: PluginTarget;
 }): MarketplaceEntry[] {
-  const { registry, installed, target, remoteHeads } = options;
+  const { installed, target, remoteHeads } = options;
+  // A built-in this build split into several, which a feed generated before
+  // the split still lists. Its id now only switches its successors together,
+  // and they have rows of their own.
+  const registry = options.registry.filter((plugin) => !(plugin.bundled && builtinPluginGroupMembers(plugin.id)));
   const remoteHeadFor = (local: InstalledPlugin | undefined) => (
     local?.directory ? remoteHeads?.[local.directory] : undefined
   );
