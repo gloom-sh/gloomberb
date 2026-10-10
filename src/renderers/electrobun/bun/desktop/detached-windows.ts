@@ -73,7 +73,18 @@ export class DesktopDetachedWindowManager {
     const config = this.backend.config;
     if (!config) return;
 
-    const desiredEntries = new Map(config.layout.detached.map((entry) => [entry.instanceId, entry] as const));
+    // A pane whose plugin is switched off stays in the layout, out of sight,
+    // as it does in the main window: its window closes without undocking or
+    // removing it, and opens again where it was when the plugin is back on.
+    const disabledPlugins = new Set(config.disabledPlugins);
+    const hidden = (instanceId: string) => {
+      const paneType = findPaneInstance(config.layout, instanceId)?.paneId;
+      const owner = paneType ? this.backend.paneOwners.get(paneType) : undefined;
+      return !!owner && disabledPlugins.has(owner);
+    };
+    const desiredEntries = new Map(config.layout.detached
+      .filter((entry) => !hidden(entry.instanceId))
+      .map((entry) => [entry.instanceId, entry] as const));
     for (const [instanceId, entry] of desiredEntries) {
       const existingWindow = this.windows.get(instanceId);
       if (!existingWindow) {

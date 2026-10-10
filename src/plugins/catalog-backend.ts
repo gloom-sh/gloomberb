@@ -21,9 +21,17 @@ export interface DesktopBackendPlugins {
    * that fails to register is marked failed rather than failing the launch.
    */
   externalPlugins: LoadedExternalPlugin[];
+  /**
+   * Each pane type's plugin, renderer-only modules included, so the windows
+   * of a switched-off plugin's popped-out panes can be hidden with it.
+   */
+  paneOwners: ReadonlyMap<string, string>;
 }
 
 export async function loadDesktopBackendPlugins(): Promise<DesktopBackendPlugins> {
   const externalPlugins = await loadExternalPlugins("desktop");
-  return { plugins: getDesktopBackendPlugins(externalPlugins), externalPlugins };
+  const paneOwners = new Map(getLoadablePlugins(externalPlugins).flatMap((plugin) => (
+    (plugin.panes ?? []).map((pane) => [pane.id, plugin.id] as const)
+  )));
+  return { plugins: getDesktopBackendPlugins(externalPlugins), externalPlugins, paneOwners };
 }

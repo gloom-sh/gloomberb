@@ -105,6 +105,8 @@ export class DesktopBackend {
     getWindowKey: this.rpcs.getRpcWindowKey,
   });
   readonly detachedWindows = new DesktopDetachedWindowManager(this);
+  /** Each pane type's plugin, for hiding popped-out windows with their plugin. */
+  paneOwners: ReadonlyMap<string, string> = new Map();
 
   private crashReporterInstalled = false;
   private restartInProgress = false;
@@ -162,9 +164,11 @@ export class DesktopBackend {
   async startServices(nextConfig: AppConfig): Promise<{ config: AppConfig; services: AppServices }> {
     this.setConfig(nextConfig);
     const config = this.requireConfig();
+    const { paneOwners, ...backendPlugins } = await loadDesktopBackendPlugins();
+    this.paneOwners = paneOwners;
     const services = createAppServices({
       config,
-      ...await loadDesktopBackendPlugins(),
+      ...backendPlugins,
     });
     this.services = services;
     await services.ready;
