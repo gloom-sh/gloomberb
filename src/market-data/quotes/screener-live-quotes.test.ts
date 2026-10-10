@@ -178,3 +178,72 @@ describe("a heat map board outside the regular session", () => {
     expect(overlayScreenerQuoteEntries(rows, entriesFor([open]), { extendedSessions: true })[0]).toMatchObject({ price: 161, changePercent: 0.6, regularChangePercent: null });
   });
 });
+
+describe("a board read by its regular session alone", () => {
+  // Friday 2026-10-09: NVDA closed at 229.28, down 1.20 from 230.48, and traded up after hours.
+  const tile = { symbol: "NVDA", exchange: "NASDAQ", name: "NVIDIA", currency: "USD", price: 229.28, change: -1.2,
+    changePercent: -0.5207, volume: 1, regularChangePercent: -0.5207 };
+  const friday: Quote = { symbol: "NVDA", currency: "USD", listingExchangeName: "NASDAQ", marketState: "POST",
+    price: 229.95, change: -0.53, changePercent: -0.23, previousClose: 230.48, regularClose: 229.28,
+    regularCloseSessionDate: "2026-10-09", regularChange: -1.2, regularChangePercent: -0.5207, changeSessionDate: "2026-10-09",
+    postMarketPrice: 229.95, postMarketChange: 0.67, postMarketChangePercent: 0.2922, lastUpdated: Date.parse("2026-10-09T22:58:00Z") };
+  const entriesFor = (quote: Quote) => new Map([[buildQuoteKey(tile), readyEntry(quote)]]);
+  const regular = (quote: Quote, row: typeof tile = tile, completedSessionDate: string | null = "2026-10-09") =>
+    overlayScreenerQuoteEntries([row], entriesFor(quote), { regularSession: true, completedSessionDate })[0]!;
+
+  test("after hours it keeps the regular move where the active session shows the after-hours one, and a setting change is not served from the cache", () => {
+    const entries = entriesFor(friday);
+    const active = overlayScreenerQuoteEntries([tile], entries, { extendedSessions: true })[0]!;
+    expect(active).toMatchObject({ price: 229.95, extendedSession: "POST" });
+    expect(active.changePercent).toBeGreaterThan(0);
+    const closed = overlayScreenerQuoteEntries([tile], entries, { regularSession: true, completedSessionDate: "2026-10-09" })[0]!;
+    expect(closed).toMatchObject({ price: 229.28, change: -1.2, changePercent: -0.5207, regularChangePercent: -0.5207 });
+    expect(closed.extendedSession).toBeUndefined();
+    expect(overlayScreenerQuoteEntries([tile], entries, { extendedSessions: true })[0]).toMatchObject({ extendedSession: "POST" });
+  });
+
+  test("without an after-hours print, or without the close, it keeps the regular pair rather than a flat move", () => {
+    const quiet: Quote = { ...friday, price: 229.28, change: -1.2, changePercent: -0.5207,
+      postMarketPrice: undefined, postMarketChange: undefined, postMarketChangePercent: undefined };
+    expect(regular(quiet)).toMatchObject({ price: 229.28, changePercent: -0.5207, regularChangePercent: -0.5207 });
+    const noClose: Quote = { ...quiet, regularClose: undefined, regularCloseSessionDate: undefined, regularChange: undefined, regularChangePercent: undefined };
+    expect(regular(noClose)).toBe(tile);
+    // A name the snapshot has no close for stays without a move until its quote can say which close it is.
+    const unknown = { ...tile, change: 0, changePercent: 0, regularChangePercent: null };
+    expect(regular(noClose, unknown)).toBe(unknown);
+    expect(regular(quiet, unknown)).toMatchObject({ changePercent: -0.5207, regularChangePercent: -0.5207 });
+  });
+
+  test("over a weekend and a holiday it holds the last session's close, never the last extended print or a rolled day", () => {
+    // Saturday: the quote's own price is the 19:59 print, its close is Friday's.
+    const saturday: Quote = { ...friday, marketState: "CLOSED", price: 229.33, change: -1.15, changePercent: -0.499,
+      postMarketPrice: undefined, postMarketChange: undefined, postMarketChangePercent: undefined, lastUpdated: Date.parse("2026-10-09T23:59:50Z") };
+    expect(regular(saturday)).toMatchObject({ price: 229.28, changePercent: -0.5207 });
+    // Thanksgiving: a quote whose day rolled to the holiday cannot date its close, so the snapshot's session stands.
+    const thanksgiving: Quote = { ...saturday, changeSessionDate: "2026-11-26", regularCloseSessionDate: "2026-11-25",
+      lastUpdated: Date.parse("2026-11-26T15:00:00Z") };
+    const wednesday = { ...tile, price: 231, change: 1.72, changePercent: 0.7501, regularChangePercent: 0.7501 };
+    expect(regular(thanksgiving, wednesday, "2026-11-25")).toBe(wednesday);
+  });
+
+  test("in the pre-market after the day rolls it shows the prior session's move, and only a close no older than the board's", () => {
+    const monday: Quote = { ...friday, marketState: "PRE", changeSessionDate: "2026-10-12", price: 231, change: 1.72, changePercent: 0.75,
+      postMarketPrice: undefined, postMarketChange: undefined, postMarketChangePercent: undefined,
+      preMarketPrice: 231, preMarketChange: 1.72, preMarketChangePercent: 0.75, lastUpdated: Date.parse("2026-10-12T12:00:00Z") };
+    expect(overlayScreenerQuoteEntries([tile], entriesFor(monday), { extendedSessions: true })[0]).toMatchObject({ extendedSession: "PRE" });
+    expect(regular(monday)).toMatchObject({ price: 229.28, changePercent: -0.5207 });
+    expect(regular(monday).extendedSession).toBeUndefined();
+    // A quote still carrying Thursday's close does not replace the board's Friday.
+    const thursday: Quote = { ...monday, regularClose: 230.48, regularCloseSessionDate: "2026-10-08", regularChange: -6.99, regularChangePercent: -2.9435 };
+    expect(regular(thursday)).toBe(tile);
+  });
+
+  test("a live quote replaces a completed board only once a later session trades", () => {
+    const fridayMidday: Quote = { ...friday, marketState: "REGULAR", price: 231.5, change: 1.02, changePercent: 0.44,
+      postMarketPrice: undefined, postMarketChange: undefined, postMarketChangePercent: undefined, lastUpdated: Date.parse("2026-10-09T17:00:00Z") };
+    expect(regular(fridayMidday)).toBe(tile);
+    const mondayOpen: Quote = { ...fridayMidday, changeSessionDate: "2026-10-12", lastUpdated: Date.parse("2026-10-12T14:00:00Z") };
+    expect(regular(mondayOpen)).toMatchObject({ price: 231.5, changePercent: 0.44, regularChangePercent: null });
+    expect(regular(fridayMidday, tile, null)).toMatchObject({ price: 231.5, changePercent: 0.44 });
+  });
+});

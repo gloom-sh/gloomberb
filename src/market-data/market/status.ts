@@ -284,6 +284,22 @@ function getOpenExtendedSessionDisplay(quote: Quote | null | undefined): Extende
 }
 
 /**
+ * The regular session alone, for a board that never shows extended trading:
+ * the live quote while the session trades, then the completed session's close
+ * and its move (getCompletedRegularSessionDisplay). Null outside the session
+ * when the quote cannot say which close that is, rather than an extended
+ * print or a flat move standing in for one. A quote that does not say its
+ * session is read as the regular one, as getRegularSessionDisplay does.
+ */
+export function getRegularSessionMoveDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
+  if (!quote) return null;
+  if (quote.marketState == null || quote.marketState === "REGULAR") {
+    return { price: quote.price, change: quote.change, changePercent: quote.changePercent };
+  }
+  return getCompletedRegularSessionDisplay(quote);
+}
+
+/**
  * The move a board of tiles colors by: the open pre-market or after-hours
  * session's, from the regular close, otherwise the day's regular session.
  */

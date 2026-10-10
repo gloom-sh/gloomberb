@@ -6,6 +6,7 @@ import type { QueryEntry } from "../result-types";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { isFiniteNumber } from "../../utils/guards";
 import { getCompletedRegularSessionDisplay, getSessionMoveDisplay, type ExtendedSession } from "../market/status";
+import { quoteTradingDay } from "./day-range";
 
 const STREAM_FRESHNESS_MS = 2 * 60_000;
 const STREAM_CONNECTING_GRACE_MS = 15_000;
@@ -39,6 +40,21 @@ export interface ScreenerQuoteOverlayOptions {
    * two different days.
    */
   extendedSessions?: boolean;
+  /**
+   * Only the regular session, never an extended print, whatever
+   * `extendedSessions` says: the live quote while the session trades, then
+   * the completed session's close and its move, given as
+   * `regularChangePercent`. A quote that cannot say which close that is
+   * leaves its row as it was.
+   */
+  regularSession?: boolean;
+  /**
+   * With `regularSession`, the completed regular session the rows already
+   * are (a New York date) when they were taken outside the session. A quote
+   * replaces such a row only with that session's close or a later one, and a
+   * live quote only once a later session trades.
+   */
+  completedSessionDate?: string | null;
 }
 
 export interface ScreenerQuoteFreshness {
@@ -83,14 +99,18 @@ function overlayCurrency(row: ScreenerQuoteRow, quote: Quote): string {
  * entries map, but most rows' quotes did not move; returning the same row
  * object for those lets memoized table rows skip the render.
  */
-const overlayCache = new WeakMap<object, { quote: Quote; extended: boolean; row: ScreenerQuoteRow }>();
+const overlayCache = new WeakMap<object, { quote: Quote; basis: string; row: ScreenerQuoteRow }>();
 
 export function overlayScreenerQuoteEntries<T extends ScreenerQuoteRow>(
   rows: readonly T[],
   entries: ReadonlyMap<string, QueryEntry<Quote>>,
   options: ScreenerQuoteOverlayOptions = {},
 ): T[] {
-  const extended = options.extendedSessions === true;
+  const regular = options.regularSession === true;
+  const completedSessionDate = regular ? options.completedSessionDate ?? null : null;
+  const extended = !regular && options.extendedSessions === true;
+  // The cached row is reused only for the same quote under the same options.
+  const basis = regular ? `regular:${completedSessionDate ?? ""}` : extended ? "extended" : "plain";
   return rows.map((row) => {
     const quote = resolveEntryData(entries.get(quoteKey(row)));
     if (!quote || !isFiniteNumber(quote.price)) return row;
@@ -102,9 +122,11 @@ export function overlayScreenerQuoteEntries<T extends ScreenerQuoteRow>(
       return row;
     }
     const cached = overlayCache.get(row);
-    if (cached?.quote === quote && cached.extended === extended) return cached.row as T;
-    const overlaid = extended ? overlaySessionQuote(row, quote) : overlayQuote(row, quote);
-    overlayCache.set(row, { quote, extended, row: overlaid });
+    if (cached?.quote === quote && cached.basis === basis) return cached.row as T;
+    const overlaid = regular
+      ? overlayRegularSessionQuote(row, quote, completedSessionDate)
+      : extended ? overlaySessionQuote(row, quote) : overlayQuote(row, quote);
+    overlayCache.set(row, { quote, basis, row: overlaid });
     return overlaid;
   });
 }
@@ -146,6 +168,35 @@ function overlaySessionQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): 
     change: isFiniteNumber(display.change) ? display.change : null,
     changePercent: isFiniteNumber(display.changePercent) ? display.changePercent : null,
     extendedSession: display.session,
+  };
+}
+
+function overlayRegularSessionQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote, completedSessionDate: string | null): T {
+  const state = quote.marketState;
+  if (state == null || state === "REGULAR") {
+    // On a board of a completed session, only a session that trades after it is news.
+    if (completedSessionDate) {
+      const day = state === "REGULAR" ? quoteTradingDay(quote) : null;
+      if (day == null || day <= completedSessionDate) return row;
+    }
+    return overlayQuote(row, quote);
+  }
+  const display = getCompletedRegularSessionDisplay(quote);
+  const closeDate = quote.regularCloseSessionDate;
+  if (
+    !display
+    || !(isFiniteNumber(display.price) && display.price > 0)
+    || !isFiniteNumber(display.changePercent)
+    || (completedSessionDate != null && closeDate != null && closeDate < completedSessionDate)
+  ) {
+    return row;
+  }
+  return {
+    ...overlayQuote(row, quote),
+    price: display.price,
+    change: isFiniteNumber(display.change) ? display.change : null,
+    changePercent: display.changePercent,
+    regularChangePercent: display.changePercent,
   };
 }
 

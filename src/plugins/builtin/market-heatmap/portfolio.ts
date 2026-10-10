@@ -3,7 +3,12 @@ import type { MarketHeatmapAsset, MarketHeatmapUniverseId } from "../../../api-c
 import { useAppSelector, usePaneStateValue } from "../../../state/app/context";
 import type { ColumnConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
-import { getSessionMoveDisplay, type ExtendedSession } from "../../../market-data/market/status";
+import {
+  getRegularSessionMoveDisplay,
+  getSessionMoveDisplay,
+  type ActiveQuoteDisplay,
+  type ExtendedSession,
+} from "../../../market-data/market/status";
 import type { TickerRecord } from "../../../types/ticker";
 import { getSortValue, type ColumnContext } from "../portfolio-list/metrics";
 
@@ -195,6 +200,7 @@ export function buildPortfolioHeatmapAssets({
   currency,
   exchangeRates,
   sizeBy = "sqrt-market-cap",
+  regularSession = false,
 }: {
   tickers: readonly TickerRecord[];
   financials: ReadonlyMap<string, TickerFinancials>;
@@ -204,6 +210,8 @@ export function buildPortfolioHeatmapAssets({
   currency: string;
   exchangeRates: Map<string, number>;
   sizeBy?: HeatmapSizeBy;
+  /** Color by the regular session alone, never an extended print (`getRegularSessionMoveDisplay`). */
+  regularSession?: boolean;
 }): { assets: HeatmapBoardAsset[]; omitted: number } {
   const context: ColumnContext = {
     activeTab: kind === "portfolio" ? collectionId : undefined,
@@ -217,7 +225,9 @@ export function buildPortfolioHeatmapAssets({
     const snapshot = financials.get(symbol);
     const quote = snapshot?.quote;
     // Colored like the market boards: an open extended session's move, else the regular session's.
-    const display = getSessionMoveDisplay(quote);
+    const display: (ActiveQuoteDisplay & { session?: ExtendedSession }) | null = regularSession
+      ? getRegularSessionMoveDisplay(quote)
+      : getSessionMoveDisplay(quote);
     const price = display != null && Number.isFinite(display.price) ? display.price : null;
     const size = positiveNumber(getSortValue(sizeColumn, ticker, snapshot, context));
     const hasChange = display?.changePercent != null && Number.isFinite(display.changePercent);
