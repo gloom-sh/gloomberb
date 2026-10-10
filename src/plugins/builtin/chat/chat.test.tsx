@@ -1272,7 +1272,7 @@ describe("ChatContent", () => {
 
     expect(openedTemplates).toEqual([
       { templateId: "new-chat-pane", options: { arg: "everyone" } },
-      { templateId: "unread-inbox-pane", options: undefined },
+      { templateId: "notification-center-pane", options: undefined },
     ]);
   });
 
@@ -1347,7 +1347,7 @@ describe("ChatContent", () => {
 
     expect(openedTemplates).toEqual([
       { templateId: "new-chat-pane", options: { arg: dmChannelId } },
-      { templateId: "unread-inbox-pane", options: undefined },
+      { templateId: "notification-center-pane", options: undefined },
     ]);
   });
 

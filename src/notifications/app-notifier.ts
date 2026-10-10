@@ -4,6 +4,7 @@ import type {
   AppNotificationType,
 } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
+import { appendNotificationLog } from "./notification-log";
 
 const DEFAULT_NOTIFICATION_TITLE = "Gloomberb";
 const notificationLog = debugLog.createLogger("notifications");
@@ -244,6 +245,7 @@ export function createAppNotifier({
 }: CreateAppNotifierOptions): AppNotifier {
   return {
     notify(notification) {
+      appendNotificationLog(notification, notification.source ?? "app");
       const appActive = isAppActive();
       const toastEnabled = notification.toast !== false;
       const desktopMode = notification.desktop ?? "never";

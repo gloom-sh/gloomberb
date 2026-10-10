@@ -270,6 +270,20 @@
       }
     },
     {
+      "id": "notification-center",
+      "name": "Notification Center",
+      "description": "Review alert, chat, and app notification history",
+      "categories": [
+        "alerts"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "openfda",
       "name": "FDA Reports and Recalls",
       "description": "FDA adverse event reports for drugs and devices, and drug recalls, from openFDA. Search by drug, device, or firm name.",

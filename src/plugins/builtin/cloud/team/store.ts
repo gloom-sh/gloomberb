@@ -6,7 +6,8 @@ import {
   type TeamUpdatedEvent,
 } from "../../../../api-client";
 import type { AppNotificationDelivery, AppNotificationRequest, PluginPersistence } from "../../../../types/plugin";
-import { describeTeamNotification, findTeam, teamIdFromChannelId } from "./model";
+import { appendNotificationLog, markNotificationLogReadByRef } from "../../../../notifications/notification-log";
+import { describeTeamNotification, findTeam, teamIdFromChannelId, teamNotificationRefId } from "./model";
 
 export interface TeamStoreSnapshot {
   /** Teams the signed-in person belongs to, sorted by name. */
@@ -248,9 +249,13 @@ export class TeamStore {
   /** Marks cards handled and tells the server so they stop coming back. */
   async dismissNotifications(ids: readonly string[]): Promise<void> {
     if (ids.length === 0) return;
+    const dismissed = this.snapshot.notifications.filter((entry) => ids.includes(entry.id));
     const remaining = this.snapshot.notifications.filter((entry) => !ids.includes(entry.id));
     this.update({ notifications: remaining });
     this.persistNotifications();
+    // The pending list is the team badge. The log keeps the card as history.
+    this.rememberInNotificationCenter(dismissed);
+    markNotificationLogReadByRef(dismissed.map((entry) => teamNotificationRefId(entry.id)));
     try {
       await this.client.markChatNotificationsDelivered([...ids]);
     } catch {
@@ -271,15 +276,32 @@ export class TeamStore {
     if (notification.type === "team-joined" || notification.type === "team-invite") {
       void this.refresh();
     }
+    this.rememberInNotificationCenter([notification]);
     const { title, body } = describeTeamNotification(notification);
     const action = this.actionFor(notification);
     this.notifier?.({
+      refId: teamNotificationRefId(notification.id),
       title,
       body,
       type: "info",
+      source: "team",
       desktop: "when-inactive",
       ...(action ? { action } : {}),
     });
+  }
+
+  /** `at` is the card's createdAt. The toast upsert keeps that time. */
+  private rememberInNotificationCenter(notifications: readonly TeamNotification[]): void {
+    for (const notification of notifications) {
+      const { title, body } = describeTeamNotification(notification);
+      const at = Date.parse(notification.createdAt);
+      appendNotificationLog({
+        title,
+        body,
+        type: "info",
+        refId: teamNotificationRefId(notification.id),
+      }, "team", Number.isFinite(at) ? at : Date.now());
+    }
   }
 
   private actionFor(notification: TeamNotification): AppNotificationRequest["action"] | null {

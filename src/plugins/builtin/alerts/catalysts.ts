@@ -50,7 +50,7 @@ export function startCatalystAlerts(ctx: GloomPluginContext): () => void {
           const ruleKey = `${rule.id}:${rule.createdAt}`;
           if (state.delivered[ruleKey] && BigInt(state.delivered[ruleKey]!) >= BigInt(event.revisionId)) continue;
           if (!catalystMatches(rule, event, watched)) continue;
-          ctx.notify({ body: `${event.title} · ${event.status}`, type: "info", desktop: "always", persistent: true,
+          ctx.notify({ body: `${event.title} · ${event.status}`, type: "info", desktop: "always", persistent: true, source: "alerts", refId: `catalyst:${event.id}`,
             action: { label: "Open catalyst", onClick: () => ctx.createPaneFromTemplate("catalysts-pane", { values: { event: event.id }, symbol: (() => { const party = event.parties.find((party) => party.ticker); return party?.ticker ? publicTickerKey(party.ticker, party.exchange ?? undefined) : undefined; })() }) } });
           state.delivered[ruleKey] = event.revisionId;
         }

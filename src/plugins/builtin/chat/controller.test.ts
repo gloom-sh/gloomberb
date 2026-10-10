@@ -1505,7 +1505,9 @@ describe("ChatController", () => {
       title: "#everyone",
       body: "@bob mentioned you: hey @ada",
       type: "info",
+      source: "chat",
       desktop: "when-inactive",
+      refId: "m1",
     }]);
     expect(controller.getSnapshot().unreadMentionCount).toBe(1);
     expect(deliveredIds).toEqual([["n1"]]);
@@ -1712,7 +1714,9 @@ describe("ChatController", () => {
       title: "#options",
       body: "@bob replied to you: answering you",
       type: "info",
+      source: "chat",
       desktop: "when-inactive",
+      refId: "m2",
     }]);
     expect(deliveredIds).toEqual([["n1"]]);
   });
@@ -1816,7 +1820,9 @@ describe("ChatController", () => {
       title: "#options",
       body: "@bob: new option flow",
       type: "info",
+      source: "chat",
       desktop: "when-inactive",
+      refId: "m1",
       action: expect.objectContaining({ label: "Open" }),
     }]);
     notifications[0]?.action?.onClick();
@@ -1873,7 +1879,9 @@ describe("ChatController", () => {
       title: "@bob",
       body: "ping",
       type: "info",
+      source: "chat",
       desktop: "when-inactive",
+      refId: "m1",
     }]);
   });
 
@@ -1938,7 +1946,9 @@ describe("ChatController", () => {
       title: "#options",
       body: "@bob replied to you: reply without channel notify",
       type: "info",
+      source: "chat",
       desktop: "when-inactive",
+      refId: "m2",
     }]);
   });
 

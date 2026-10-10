@@ -43,6 +43,7 @@ const EDITORIAL: Record<
     icon: "plugin-icons/gloomberb-cloud.webp",
   },
   alerts: { categories: ["alerts"] },
+  "notification-center": { categories: ["alerts"] },
   application: { categories: ["core"] },
   broker: { categories: ["broker"] },
   "clinical-trials": { categories: ["research"] },

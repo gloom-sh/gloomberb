@@ -1020,6 +1020,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: QUOTES,
     bloomberg: ["ALRT"],
   },
+  NOT: {
+    summary: "Alert, chat, team, and app notification history. Open a row to jump to the price alert, the catalyst, the chat message, or the team card it came from.",
+    usage: ["NOT"],
+    keys: [key("o", "pen"), key("m", "ark all read"), key("c", "lear")],
+    data: null,
+    bloomberg: [],
+  },
   SA: {
     summary: "Creates an alert from a symbol, a condition (above, below, crosses, or >, <, x) and a target price.",
     usage: ["SA NVDA above 240"],

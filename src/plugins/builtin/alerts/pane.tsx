@@ -3,7 +3,7 @@ import { Button, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../c
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   confirmDialog,
   DataTableView,
@@ -42,6 +42,7 @@ import { useQuoteEntries } from "../../../market-data/hooks";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { alertInstrument, streamedAlertQuote, syncAlertQuoteStream } from "./live";
 import { quoteAlertFields } from "./quotes";
+import { clearPriceAlertFocus, getPriceAlertFocus, subscribePriceAlertFocus } from "./focus";
 
 type AlertColumnId =
   | "status"
@@ -79,6 +80,9 @@ const ALERT_TABS = [
 
 export function AlertsPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("tab", "prices");
+  useEffect(() => subscribePriceAlertFocus(() => {
+    if (getPriceAlertFocus()) setTab("prices");
+  }), [setTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs: ALERT_TABS,
     activeValue: tab,
@@ -123,6 +127,15 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       quoteError: parsed.find((alert) => alert.lastCheckError)?.lastCheckError ?? null,
     };
   }, [alertsJson]);
+
+  const focusedAlertId = useSyncExternalStore(subscribePriceAlertFocus, getPriceAlertFocus, getPriceAlertFocus);
+  useEffect(() => {
+    if (!focusedAlertId) return;
+    const index = rows.findIndex((row) => row.id === focusedAlertId);
+    if (index < 0) return;
+    setSelectedIdx(index);
+    clearPriceAlertFocus();
+  }, [focusedAlertId, rows]);
 
   // The store keeps the last checked price at a coarse cadence; while a
   // symbol streams the table shows its live price instead.

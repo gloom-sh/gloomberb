@@ -77,6 +77,12 @@ import {
 const chatLog = debugLog.createLogger("chat-controller");
 const IMAGE_LINK_REFRESH_INTERVAL_MS = 60_000;
 
+function unseenChannelMessages(messages: ChatMessage[], lastViewedMessageId: string | null): ChatMessage[] {
+  if (!lastViewedMessageId) return messages;
+  const viewedIndex = messages.findIndex((message) => message.id === lastViewedMessageId);
+  return viewedIndex >= 0 ? messages.slice(viewedIndex + 1) : messages;
+}
+
 export type { ChatControllerSnapshot } from "./state";
 
 export class ChatController {
@@ -148,6 +154,64 @@ export class ChatController {
   ): void {
     this.notifyFn = notify;
     this.openMessageFn = openMessage;
+  }
+
+  channelIdForMessage(messageId: string): string | null {
+    for (const [channelId, channel] of this.storage.channelStates) {
+      if (channel.messages.some((message) => message.id === messageId)) return channelId;
+    }
+    return null;
+  }
+
+  totalUnreadCount(): number {
+    let total = 0;
+    for (const channel of this.storage.channelStates.values()) {
+      total += Math.max(0, channel.unreadCount);
+    }
+    return total;
+  }
+
+  /**
+   * Unseen message ids. An unread channel whose transcript is not loaded
+   * leaves the set short, and the pane falls back to the newest chat log rows.
+   */
+  unreadMessageIds(): ReadonlySet<string> {
+    const ids = new Set<string>();
+    const userId = this.session.user?.id ?? null;
+    for (const channel of this.storage.channelStates.values()) {
+      if (channel.unreadCount <= 0) continue;
+      const unseen = unseenChannelMessages(channel.messages, channel.lastViewedMessageId)
+        .filter((message) => message.user.id !== userId);
+      const ranked = unseen.slice(-channel.unreadCount);
+      for (const message of ranked) ids.add(message.id);
+    }
+    return ids;
+  }
+
+  /** Log read and channel unread are separate; clearing only the log leaves the badge. */
+  markAllChannelsRead(): void {
+    const pending: string[] = [];
+    let changed = false;
+    for (const [channelId, channel] of this.storage.channelStates) {
+      if (channel.unreadCount <= 0) continue;
+      changed = true;
+      if (channel.messages.length > 0) {
+        this.markViewedThroughLatestMessage(channelId);
+        continue;
+      }
+      channel.unreadCount = 0;
+      this.storage.persistChannelState(channelId);
+      pending.push(channelId);
+    }
+    if (changed) this.emit();
+    for (const channelId of pending) {
+      void this.refreshChannelMessages(channelId).finally(() => {
+        const channel = this.ensureChannelState(channelId);
+        channel.unreadCount = 0;
+        if (channel.messages.length > 0) this.markViewedThroughLatestMessage(channelId);
+        this.emit();
+      });
+    }
   }
 
   hydrate(): void {

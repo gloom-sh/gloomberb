@@ -32,6 +32,16 @@ export function teamIdFromChannelId(channelId: string): string | null {
   return teamId || null;
 }
 
+export function teamNotificationRefId(id: string): string {
+  return `team:${id}`;
+}
+
+export function teamNotificationIdFromRef(refId: string | undefined): string | null {
+  if (!refId?.startsWith("team:")) return null;
+  const id = refId.slice("team:".length);
+  return id.length > 0 ? id : null;
+}
+
 /** #general first, then the rest by name, whatever order the server used. */
 export function sortTeamChannels<T extends { id: string; name: string }>(channels: readonly T[]): T[] {
   return [...channels].sort((a, b) => {
