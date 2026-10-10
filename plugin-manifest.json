@@ -5,10 +5,17 @@
       "id": "alerts",
       "name": "Alerts",
       "description": "Price, market and filing event alerts",
+      "tagline": "Price, market and filing alerts.",
       "categories": [
         "alerts"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [],
         "capabilities": [],
@@ -19,11 +26,18 @@
       "id": "alt-data",
       "name": "Supply Chain & Alt Data",
       "description": "Supply chains and exposure, government awards, hiring, apps and job postings, social mentions, research attention, GPU prices, and power queues.",
+      "tagline": "Supply chains, hiring, apps, GPUs and power.",
       "categories": [
         "research",
         "data"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "apps",
@@ -39,8 +53,79 @@
           "supply-chain"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "ATTN",
+            "name": "Research Attention",
+            "description": "Pro research attention: rankings, abnormal activity, sectors, countries and privacy-qualified hourly history.",
+            "access": "preview"
+          },
+          {
+            "code": "GPU",
+            "name": "GPU Rental Prices",
+            "description": "Pro GPU rental list prices, provider-declared spot and marketplace asks, with sourced price history and related equities. Free preview available.",
+            "access": "preview"
+          },
+          {
+            "code": "POWER",
+            "name": "Power & Grid",
+            "description": "Pro: interconnection queues, historical MW and outcomes, datacenter loads, utility exposure and generation capacity, with primary evidence.",
+            "access": "preview"
+          },
+          {
+            "code": "SPLC",
+            "name": "Supply Chain",
+            "description": "Pro global supply chain evidence from filings, company announcements, calls and news, with trust tiers, original quotes, native units, four-hop graphs, ranked paths and a free preview.",
+            "access": "preview"
+          },
+          {
+            "code": "EXPO",
+            "name": "Exposure",
+            "description": "Pro scenario exposures across holdings, geographic revenue and supply chains, with source evidence and portfolio concentrations.",
+            "access": "preview"
+          },
+          {
+            "code": "AWARDS",
+            "name": "Government Awards",
+            "description": "Pro: government awards, company history, agency concentration and revenue exposure with source evidence.",
+            "access": "preview"
+          },
+          {
+            "code": "HIRE",
+            "name": "Hiring Momentum",
+            "description": "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons and primary posting evidence.",
+            "access": "preview"
+          },
+          {
+            "code": "APPS",
+            "name": "App Attention",
+            "description": "Pro app attention: public global app ranks, rank velocity, rating drift, company ownership and source evidence.",
+            "access": "preview"
+          },
+          {
+            "code": "JOBS",
+            "name": "Hiring",
+            "description": "Hiring read from the company's own careers system: open roles over time, by function and location, new roles, pay ranges. Alone, every covered company ranked.",
+            "access": "pro"
+          },
+          {
+            "code": "BUZZ",
+            "name": "Social Mentions",
+            "description": "Daily posts on X naming the ticker's cashtag, the day's top posts and their stance."
+          }
+        ]
+      },
+      "highlights": [
+        "SPLC",
+        "GPU",
+        "JOBS"
+      ],
+      "screenshots": [
+        "SPLC",
+        "GPU",
+        "JOBS"
+      ]
     },
     {
       "id": "application",
@@ -50,6 +135,12 @@
         "core"
       ],
       "toggleable": false,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "changelog",
@@ -59,66 +150,150 @@
           "plugin-marketplace"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "PL",
+            "name": "Plugins",
+            "description": "Browse and install Gloomberb plugins, and enable or disable the ones you have.",
+            "targets": [
+              "cli",
+              "tui",
+              "desktop"
+            ]
+          },
+          {
+            "code": "CHG",
+            "name": "Changelog",
+            "description": "Browse version history and release notes."
+          },
+          {
+            "code": "CONN",
+            "name": "Connections",
+            "description": "Inspect live request and socket health."
+          }
+        ]
+      },
+      "highlights": [
+        "PL",
+        "CHG",
+        "CONN"
+      ]
     },
     {
       "id": "broker",
       "name": "Broker",
       "description": "Broker profiles, account sync, and connection status.",
+      "tagline": "Broker accounts, sync and connections.",
       "categories": [
         "broker"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop"
+      ],
       "contributes": {
         "panes": [
           "brokers"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "BR",
+            "name": "Brokers",
+            "description": "Open broker profiles and connection status"
+          }
+        ]
+      },
+      "highlights": [
+        "BR"
+      ]
     },
     {
       "id": "clinical-trials",
       "name": "Clinical Trials",
       "description": "Track clinical trials from ClinicalTrials.gov. Search by condition, drug, or sponsor with phase and status.",
+      "tagline": "Clinical trials by drug, condition, sponsor.",
       "categories": [
         "research"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "trials"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "TRIAL",
+            "name": "Clinical Trials",
+            "description": "Search ClinicalTrials.gov studies by condition, drug, or sponsor. Shows phase, status, and sponsor."
+          }
+        ]
+      },
+      "highlights": [
+        "TRIAL"
+      ]
     },
     {
       "id": "comment-letters",
       "name": "SEC Comment Letters",
       "description": "SEC staff comment letters and company responses (CORRESP and UPLOAD). Search their text or list a company's letters by ticker.",
+      "tagline": "SEC comment letters and company replies.",
       "categories": [
         "research"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "comment-letters"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "CLTR",
+            "name": "SEC Comment Letters",
+            "description": "SEC staff comment letters and company responses (CORRESP, UPLOAD): search their text, or a ticker for one company's letters."
+          }
+        ]
+      },
+      "highlights": [
+        "CLTR"
+      ]
     },
     {
       "id": "credit",
       "name": "Credit & Bonds",
       "description": "Single-name, index and sovereign CDS, credit spreads, Treasury auctions, a bond calculator, credit documents and covenants, and debt maturities.",
+      "tagline": "CDS, credit spreads, auctions and bonds.",
       "categories": [
         "macro",
         "markets"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "bond-calculator",
@@ -130,26 +305,112 @@
           "treasury-auctions"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "CDS",
+            "name": "Single-Name CDS",
+            "description": "Single-name corporate CDS trades and 5Y spread history from DTCC public dissemination."
+          },
+          {
+            "code": "CDX",
+            "name": "Index CDS",
+            "description": "CDX IG, HY, EM, iTraxx Main and Crossover on the run from DTCC public dissemination: level, 1D and 1W moves, 1Y rank. Sovereign CDS is the other tab."
+          },
+          {
+            "code": "SOVR",
+            "name": "Sovereign CDS",
+            "description": "The CDS pane on Sovereign: 5Y CDS from DTCC public dissemination, ranked by the month's move, beside each local currency's month."
+          },
+          {
+            "code": "CRD",
+            "name": "Credit Spreads",
+            "description": "ICE BofA US corporate option-adjusted spreads from FRED."
+          },
+          {
+            "code": "AUCT",
+            "name": "Treasury Auctions",
+            "description": "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: auction rate, bid-to-cover, indirect share, and size."
+          },
+          {
+            "code": "YAS",
+            "name": "Bond Calculator",
+            "description": "Price, yield, accrued interest, duration, convexity and Treasury spread for a fixed coupon bond."
+          },
+          {
+            "code": "CRDOC",
+            "name": "Credit Documents",
+            "description": "Pro credit documents: capital structure, covenant headroom, maturities and amendment evidence. Free preview available.",
+            "access": "preview"
+          },
+          {
+            "code": "COVN",
+            "name": "Covenants",
+            "description": "Pro covenant thresholds, supported headroom and credit-document evidence. Free preview available.",
+            "access": "preview"
+          },
+          {
+            "code": "DDIS",
+            "name": "Debt Maturities",
+            "description": "Principal maturity wall, concentration and dated annual filing history."
+          }
+        ]
+      },
+      "highlights": [
+        "CDS",
+        "CRD",
+        "YAS"
+      ],
+      "screenshots": [
+        "CDX",
+        "SOVR",
+        "YAS"
+      ]
     },
     {
       "id": "crypto",
       "name": "Crypto & Perps",
       "description": "Top crypto assets by market cap, and perpetual funding, open interest and premiums.",
+      "tagline": "Crypto prices, funding and open interest.",
       "categories": [
         "markets",
         "crypto"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "crypto-board",
           "perps"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "CRYP",
+            "name": "Crypto",
+            "description": "Top crypto assets by market cap with live prices, 7D, 30D and 1Y returns, volume and market cap."
+          },
+          {
+            "code": "PERP",
+            "name": "Perpetuals",
+            "description": "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison and Pro history.",
+            "access": "preview"
+          }
+        ]
+      },
+      "highlights": [
+        "CRYP",
+        "PERP"
+      ],
+      "screenshots": [
+        "CRYP"
+      ]
     },
     {
       "id": "custom-view",
@@ -160,22 +421,43 @@
         "productivity"
       ],
       "toggleable": false,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop"
+      ],
       "contributes": {
         "panes": [
           "custom-view"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "VIEW",
+            "name": "Custom View",
+            "description": "A table from any data function with your columns, filter, and sort."
+          }
+        ]
+      },
+      "highlights": [
+        "VIEW"
+      ]
     },
     {
       "id": "debug",
       "name": "Debug",
       "description": "View and export debug logs",
+      "tagline": "Debug logs to read and export.",
       "categories": [
         "developer"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop"
+      ],
       "contributes": {
         "panes": [],
         "capabilities": [],
@@ -186,11 +468,18 @@
       "id": "earnings",
       "name": "Earnings",
       "description": "Earnings calendar with surprises and implied moves, call transcripts, and the earnings ripple through customers and suppliers.",
+      "tagline": "Earnings calendar, calls and the ripple.",
       "categories": [
         "research",
         "markets"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "earnings-calendar",
@@ -198,17 +487,65 @@
           "earnings-ripple"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "ERN",
+            "name": "Earnings Calendar",
+            "description": "The market's report days with implied and past moves; with a ticker, its report history.",
+            "targets": [
+              "cli",
+              "tui",
+              "desktop"
+            ]
+          },
+          {
+            "code": "EVTS",
+            "name": "Earnings Days",
+            "description": "The market's report days with implied and past moves; a ticker picks its row.",
+            "targets": [
+              "cli",
+              "tui",
+              "desktop"
+            ]
+          },
+          {
+            "code": "CALLS",
+            "name": "Earnings Calls",
+            "description": "Earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, every transcribed call; with a ticker, that company's calls.",
+            "access": "pro"
+          },
+          {
+            "code": "RIPL",
+            "name": "Earnings Ripple",
+            "description": "Customers and suppliers of your holdings that report soon, with the disclosed revenue share, and with Pro the companies two hops away."
+          }
+        ]
+      },
+      "highlights": [
+        "ERN",
+        "EVTS",
+        "CALLS"
+      ],
+      "screenshots": [
+        "ERN"
+      ]
     },
     {
       "id": "filings",
       "name": "Filings & Events",
       "description": "SEC filings, risk factors, 8-K events, catalysts and litigation, and M&A and distress.",
+      "tagline": "SEC filings, 8-Ks, risk factors, litigation.",
       "categories": [
         "research"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "catalysts",
@@ -219,18 +556,80 @@
           "sec"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "SEC",
+            "name": "SEC",
+            "description": "Recent SEC filings for the selected ticker."
+          },
+          {
+            "code": "ETF",
+            "name": "ETF Filings",
+            "description": "A US-listed fund's SEC filings: registration statements, prospectus updates, shareholder reports, N-CEN and N-PORT."
+          },
+          {
+            "code": "RISK",
+            "name": "Risk Factors",
+            "description": "The company's 10-K risk factors, and what was added, dropped, or rewritten since the prior year.",
+            "access": "pro"
+          },
+          {
+            "code": "EK",
+            "name": "8-K Filings",
+            "description": "The company's 8-K filings, classified by item and read: agreements, executive changes, auditor changes, restructurings, and what each said.",
+            "access": "pro"
+          },
+          {
+            "code": "CATL",
+            "name": "Catalysts",
+            "description": "Pro regulatory, clinical, legal and trade-policy calendar with source evidence and revision history.",
+            "access": "preview"
+          },
+          {
+            "code": "LITI",
+            "name": "Litigation",
+            "description": "Pro company litigation, enforcement and antitrust dockets with dated source evidence.",
+            "access": "preview"
+          },
+          {
+            "code": "MA",
+            "name": "M&A",
+            "description": "Pending, rumored and closed mergers and acquisitions, with live arbitrage spreads on listed targets."
+          },
+          {
+            "code": "DIST",
+            "name": "Distress",
+            "description": "Dated public records about companies in difficulty: US 8-K bankruptcy, obligation and listing filings, SEC going-concern disclosures, Taiwan listing designations, and French and UK insolvency notices."
+          }
+        ]
+      },
+      "highlights": [
+        "SEC",
+        "EK",
+        "RISK"
+      ],
+      "screenshots": [
+        "EK",
+        "RISK"
+      ]
     },
     {
       "id": "futures-commodities",
       "name": "Futures & Commodities",
       "description": "Futures board and curves, CFTC positioning, and EIA petroleum and gas storage.",
+      "tagline": "Futures, curves, positioning, energy data.",
       "categories": [
         "markets",
         "macro"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "cot",
@@ -239,17 +638,61 @@
           "futures-curve"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "FUT",
+            "name": "Futures Board",
+            "description": "Front-month futures across equity index, rates, energy, metals, agriculture, livestock, and FX with last price, session change, search, and collapsible sectors."
+          },
+          {
+            "code": "CTM",
+            "name": "Futures Curve",
+            "description": "Listed futures contracts, historical curves, roll yield and open interest including VIX and CME crypto futures."
+          },
+          {
+            "code": "COT",
+            "name": "CFTC Positioning",
+            "description": "Weekly futures positioning, changes, historical percentiles and cross-market extremes."
+          },
+          {
+            "code": "DOE",
+            "name": "Oil and Gas Inventories",
+            "description": "EIA weekly petroleum and gas storage: builds and draws, year-ago and five-year ranges, seasonal charts."
+          },
+          {
+            "code": "NGS",
+            "name": "Natural Gas Storage",
+            "description": "EIA weekly working gas in storage, lower 48 and by region, against a year ago and the five-year range."
+          }
+        ]
+      },
+      "highlights": [
+        "FUT",
+        "CTM",
+        "COT"
+      ],
+      "screenshots": [
+        "CTM",
+        "COT",
+        "FUT"
+      ]
     },
     {
       "id": "global-markets",
       "name": "Global Markets",
       "description": "World indices, the world map with chokepoint transits, sector and thematic performance, the FX matrix, and relative rotation.",
+      "tagline": "World indices, map, sectors, FX, rotation.",
       "categories": [
         "markets"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "fx-matrix",
@@ -261,13 +704,61 @@
         "capabilities": [
           "geo-series"
         ],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "WEI",
+            "name": "World Equity Indices",
+            "description": "Monitor global equity indices grouped by region."
+          },
+          {
+            "code": "MAP",
+            "name": "World Map",
+            "description": "A world map with trading venues and their hours; ships, ports, energy and airports as layers."
+          },
+          {
+            "code": "CHOKE",
+            "name": "Chokepoint Transits",
+            "description": "Chart daily vessel transits through the main shipping chokepoints, or one of them."
+          },
+          {
+            "code": "BI",
+            "name": "Sector Performance",
+            "description": "S&P 500 sector and industry performance sorted by daily change."
+          },
+          {
+            "code": "THEM",
+            "name": "Thematic Baskets",
+            "description": "Curated themes with equal-weight returns, breadth and member leaders and laggards."
+          },
+          {
+            "code": "FXC",
+            "name": "FX Cross Rates",
+            "description": "Currency cross-rate matrix for major FX pairs."
+          },
+          {
+            "code": "RRG",
+            "name": "Relative Rotation",
+            "description": "Sector or watchlist strength and momentum versus a benchmark, with weekly trails."
+          }
+        ]
+      },
+      "highlights": [
+        "WEI",
+        "MAP",
+        "RRG"
+      ],
+      "screenshots": [
+        "MAP",
+        "RRG",
+        "WEI"
+      ]
     },
     {
       "id": "gloomberb-cloud",
       "name": "Gloom Cloud",
       "description": "Free market, macro, and chat services. Chat requires signup.",
+      "tagline": "Account, chat, Ask Gloom and Cloud data.",
       "categories": [
         "data",
         "cloud"
@@ -275,6 +766,12 @@
       "toggleable": true,
       "featured": true,
       "icon": "plugin-icons/gloomberb-cloud.webp",
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "account-management",
@@ -292,34 +789,100 @@
           "cloud.views",
           "news.gloomberb-cloud"
         ],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "CHAT",
+            "name": "New Chat Pane",
+            "description": "Open the floating chat window for a channel"
+          },
+          {
+            "code": "THESIS",
+            "name": "Theses",
+            "description": "Every thesis you and your teams hold, sorted by what needs a ruling"
+          },
+          {
+            "code": "ACM",
+            "name": "Account Management",
+            "description": "Edit your Gloom Cloud profile, password, public portfolio sharing, and calendar feed"
+          },
+          {
+            "code": "ASKG",
+            "name": "Ask Gloom",
+            "description": "Ask a question about your panes and watch the tools Gloom runs"
+          },
+          {
+            "code": "TBO",
+            "name": "TheBuildout",
+            "description": "Open TheBuildout infrastructure intelligence.",
+            "targets": [
+              "cli",
+              "tui",
+              "desktop"
+            ]
+          },
+          {
+            "code": "CG",
+            "name": "Congress Trades",
+            "description": "Track newly disclosed House and Senate periodic transaction reports."
+          }
+        ]
+      },
+      "highlights": [
+        "CHAT",
+        "THESIS",
+        "ACM"
+      ]
     },
     {
       "id": "members",
       "name": "Index and ETF members",
       "description": "ETF holdings, member returns, contributions and index changes",
+      "tagline": "ETF holdings and index changes.",
       "categories": [
         "markets",
         "research"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "members"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "MEMB",
+            "name": "Index and ETF members",
+            "description": "ETF holdings, member returns, daily contributions and index changes."
+          }
+        ]
+      },
+      "highlights": [
+        "MEMB"
+      ]
     },
     {
       "id": "news",
       "name": "News",
       "description": "Market news wire and company news for each ticker.",
+      "tagline": "Market news wire and company news.",
       "categories": [
         "news"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "news-breaking",
@@ -330,17 +893,55 @@
           "ticker-news"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "CN",
+            "name": "Ticker News",
+            "description": "Company news for the selected ticker."
+          },
+          {
+            "code": "TOP",
+            "name": "Top News",
+            "description": "Curated top market stories ranked by importance"
+          },
+          {
+            "code": "N",
+            "name": "News Feed",
+            "description": "Chronological market news firehose"
+          },
+          {
+            "code": "NI",
+            "name": "Topic News",
+            "description": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector"
+          },
+          {
+            "code": "FIRST",
+            "name": "Breaking News",
+            "description": "Breaking and urgent market news"
+          }
+        ]
+      },
+      "highlights": [
+        "CN",
+        "TOP",
+        "N"
+      ]
     },
     {
       "id": "notes",
       "name": "Notes",
       "description": "Markdown notes on tickers and on their own, personal or shared with a team.",
+      "tagline": "Notes on tickers, personal or shared.",
       "categories": [
         "productivity"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop"
+      ],
       "contributes": {
         "panes": [],
         "capabilities": [],
@@ -351,27 +952,51 @@
       "id": "openfda",
       "name": "FDA Reports and Recalls",
       "description": "FDA adverse event reports for drugs and devices, and drug recalls, from openFDA. Search by drug, device, or firm name.",
+      "tagline": "FDA adverse events and drug recalls.",
       "categories": [
         "research"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "adverse-events"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "FDA",
+            "name": "FDA Reports",
+            "description": "Drug and device adverse event reports and drug recalls, by drug, device, or firm name."
+          }
+        ]
+      },
+      "highlights": [
+        "FDA"
+      ]
     },
     {
       "id": "options-volatility",
       "name": "Options & Volatility",
       "description": "Option chains and positioning, a pricing calculator, scenarios, the volatility surface, and realized and implied volatility history.",
+      "tagline": "Option chains, positioning and volatility.",
       "categories": [
         "research",
         "markets"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "iv-history",
@@ -384,17 +1009,86 @@
           "vol-surface"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "OMON",
+            "name": "Options",
+            "description": "Options chain for the selected ticker."
+          },
+          {
+            "code": "OPX",
+            "name": "Options Positioning",
+            "description": "Open interest by strike and expiry, max pain, and dealer gamma (GEX)."
+          },
+          {
+            "code": "GEX",
+            "name": "Dealer Gamma",
+            "description": "Net dealer gamma by strike, its total, flip level and the range for the dealer assumption."
+          },
+          {
+            "code": "OVME",
+            "name": "Options Calculator",
+            "description": "European Black-Scholes or American CRR value, Greeks, implied volatility and cash dividends."
+          },
+          {
+            "code": "OSA",
+            "name": "Options Scenario",
+            "description": "Build multi-leg positions and compare scenario P&L, payoff and aggregate Greeks."
+          },
+          {
+            "code": "OVDV",
+            "name": "Volatility Surface",
+            "description": "Implied volatility surface, smiles, term structure, skew and forwards."
+          },
+          {
+            "code": "HVG",
+            "name": "Realized Volatility Graph",
+            "description": "Rolling realized volatility, price and a dated current ATM IV reference."
+          },
+          {
+            "code": "HVT",
+            "name": "Realized Volatility Cone",
+            "description": "Current realized volatility against its historical range and percentile."
+          },
+          {
+            "code": "HIVG",
+            "name": "Implied Volatility History",
+            "description": "30-day, 90-day and one-year ATM implied volatility since 2024 against realized, with IV rank and percentile."
+          },
+          {
+            "code": "VCA",
+            "name": "Volatility Rich/Cheap",
+            "description": "IV rank, percentile, one-year IV, term slope, skew and IV/HV across a list, ranked rich to cheap."
+          }
+        ]
+      },
+      "highlights": [
+        "OMON",
+        "OPX",
+        "OVDV"
+      ],
+      "screenshots": [
+        "OPX",
+        "HIVG",
+        "HVG"
+      ]
     },
     {
       "id": "ownership",
       "name": "Ownership & Insiders",
       "description": "Holders, 13F funds, insider trades, short interest and volume, and congressional trades.",
+      "tagline": "Holders, 13F funds, insiders, short interest.",
       "categories": [
         "research"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "holders",
@@ -404,17 +1098,75 @@
           "thirteenf-funds"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "HDS",
+            "name": "Holders",
+            "description": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class.",
+            "targets": [
+              "cli",
+              "tui",
+              "desktop"
+            ]
+          },
+          {
+            "code": "13F",
+            "name": "13F Funds",
+            "description": "Browse institutional 13F fund filings and estimated long-book performance.",
+            "targets": [
+              "cli",
+              "tui",
+              "desktop"
+            ]
+          },
+          {
+            "code": "INS",
+            "name": "Insider",
+            "description": "Insider transaction activity for the selected ticker."
+          },
+          {
+            "code": "SI",
+            "name": "Short Interest",
+            "description": "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume is the other tab."
+          },
+          {
+            "code": "SIV",
+            "name": "Daily Short Volume",
+            "description": "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities."
+          },
+          {
+            "code": "SIW",
+            "name": "Short Squeeze Watch",
+            "description": "Short interest as a share of float, days to cover, the change since the prior settlement and the month's price move across your names."
+          }
+        ]
+      },
+      "highlights": [
+        "HDS",
+        "INS",
+        "SI"
+      ],
+      "screenshots": [
+        "INS",
+        "SI"
+      ]
     },
     {
       "id": "portfolio",
       "name": "Portfolio",
       "description": "Portfolio and watchlist management, analytics, and position sizing.",
+      "tagline": "Portfolios, watchlists and position sizing.",
       "categories": [
         "portfolio"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "analytics",
@@ -422,18 +1174,52 @@
           "portfolio-list"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "PF",
+            "name": "Collection Pane",
+            "description": "Open another pane for the current portfolio or watchlist"
+          },
+          {
+            "code": "PORT",
+            "name": "Portfolio Analytics",
+            "description": "Benchmark-relative risk, factor betas, stress shifts and local account evidence."
+          },
+          {
+            "code": "MARS",
+            "name": "Portfolio Market Risk",
+            "description": "Benchmark-relative risk, factor betas, stress shifts and local account evidence."
+          },
+          {
+            "code": "KELLY",
+            "name": "Position Sizer",
+            "description": "Open Kelly-based position sizing for a ticker."
+          }
+        ]
+      },
+      "highlights": [
+        "PF",
+        "PORT",
+        "MARS"
+      ]
     },
     {
       "id": "quant",
       "name": "Quant",
       "description": "Correlation matrix and relationship graphs, backtests, seasonality, and moves on macro release days.",
+      "tagline": "Correlations, backtests and seasonality.",
       "categories": [
         "markets",
         "research"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "backtest",
@@ -443,17 +1229,66 @@
           "seasonality"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "CORR",
+            "name": "Correlation Matrix",
+            "description": "Date-aligned Pearson correlation matrix for ticker returns and map series such as GEO:HORMUZ."
+          },
+          {
+            "code": "GR",
+            "name": "Relationship Graph",
+            "description": "Graph ratio, rolling correlation, and regression between two tickers."
+          },
+          {
+            "code": "BT",
+            "name": "Backtest",
+            "description": "Test a long-only indicator rule on daily history against buy-and-hold."
+          },
+          {
+            "code": "BTST",
+            "name": "Backtest (BTST)",
+            "description": "Test a long-only indicator rule on daily history against buy-and-hold."
+          },
+          {
+            "code": "SEAS",
+            "name": "Seasonality",
+            "description": "Monthly returns by year, each month's average and hit rate, and every year's path on one calendar."
+          },
+          {
+            "code": "MDAY",
+            "name": "Macro-Day Reaction",
+            "description": "How a name moves on CPI, jobs and FOMC days against a normal day: average move, direction, hit rate and every release day."
+          }
+        ]
+      },
+      "highlights": [
+        "CORR",
+        "BT",
+        "SEAS"
+      ],
+      "screenshots": [
+        "BT",
+        "CORR",
+        "SEAS"
+      ]
     },
     {
       "id": "rates-macro",
       "name": "Rates & Macro",
       "description": "Economic calendar and statistics, consumer prices, yield curve, rate path, money markets, central bank rates, volatility, and market valuation.",
+      "tagline": "Economic data, yield curves, the rate path.",
       "categories": [
         "macro"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "central-bank-rates",
@@ -469,34 +1304,121 @@
         "capabilities": [
           "market-valuation"
         ],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "ECO",
+            "name": "Economic Calendar",
+            "description": "Upcoming economic events, releases, and indicators."
+          },
+          {
+            "code": "ECST",
+            "name": "Economic Statistics",
+            "description": "Inflation, labour, growth, housing and rates against their own history."
+          },
+          {
+            "code": "CPI",
+            "name": "US Consumer Prices",
+            "description": "The US consumer price index by component: weights, monthly, annualised and yearly changes, and contributions to the headline."
+          },
+          {
+            "code": "GC",
+            "name": "Yield Curve",
+            "description": "Government bond curves: US Treasury, TIPS real, breakevens, euro AAA, Bund, Gilt, JGB and Canada, with a world grid."
+          },
+          {
+            "code": "WIRP",
+            "name": "US Rate Path",
+            "description": "Fed funds futures implied FOMC path and conditional target probabilities."
+          },
+          {
+            "code": "BTMM",
+            "name": "Money Markets",
+            "description": "Funding rates, Treasury bills and Federal Reserve liquidity with historical context."
+          },
+          {
+            "code": "CBR",
+            "name": "Central Bank Rates",
+            "description": "G20 policy rates, last observed changes and dated historical context."
+          },
+          {
+            "code": "VIX",
+            "name": "VIX Curve",
+            "description": "Dated VIX tenor closes, FRED history and the cross-asset volatility board."
+          },
+          {
+            "code": "VOLS",
+            "name": "Cross-asset Volatility",
+            "description": "Volatility index closes, daily changes and one-year percentiles."
+          },
+          {
+            "code": "VAL",
+            "name": "Market Valuation",
+            "description": "Whole-market valuation ratios against their own history, with zones and trend deviation."
+          }
+        ]
+      },
+      "highlights": [
+        "ECO",
+        "GC",
+        "WIRP"
+      ],
+      "screenshots": [
+        "WIRP",
+        "CPI",
+        "GC"
+      ]
     },
     {
       "id": "research-search",
       "name": "Research Search",
       "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.",
+      "tagline": "Search calls, wires and filings.",
       "categories": [
         "research",
         "news"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "research-search"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "SRCH",
+            "name": "Research Search",
+            "description": "Full-text search across earnings call transcripts, news wires, and SEC filings, with saved searches and keyword alerts.",
+            "access": "pro"
+          }
+        ]
+      },
+      "highlights": [
+        "SRCH"
+      ]
     },
     {
       "id": "screeners",
       "name": "Screeners & Movers",
       "description": "Equity screener, top movers, session highs and lows, and unusual options flow.",
+      "tagline": "Screener, movers, highs and lows, flow.",
       "categories": [
         "markets"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "equity-screener",
@@ -505,17 +1427,61 @@
           "scanner-hilo"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "EQS",
+            "name": "Equity Screener",
+            "description": "Screen stored equities by valuation, growth, liquidity and reported activity; save criteria to your Cloud account."
+          },
+          {
+            "code": "MOST",
+            "name": "Market Movers",
+            "description": "Top gainers, losers, most active, and trending tickers, pre-market and after-hours movers, and gaps.",
+            "targets": [
+              "cli",
+              "tui",
+              "desktop"
+            ]
+          },
+          {
+            "code": "HILO",
+            "name": "New Highs / Lows",
+            "description": "Session new-high and new-low momentum with 30s/1m/5m counts."
+          },
+          {
+            "code": "FLOW",
+            "name": "Options Flow",
+            "description": "Unusual options activity: sweeps, blocks, and large premium prints.",
+            "access": "pro"
+          }
+        ]
+      },
+      "highlights": [
+        "EQS",
+        "MOST",
+        "FLOW"
+      ],
+      "screenshots": [
+        "EQS",
+        "MOST"
+      ]
     },
     {
       "id": "ticker-core",
       "name": "Ticker Research",
       "description": "Company overview, charts, financials, quotes and returns, analyst research and estimates, KPIs and segments, valuation, dividends, executives, and time and sales.",
+      "tagline": "Quotes, charts, financials and estimates.",
       "categories": [
         "research"
       ],
       "toggleable": true,
+      "targets": [
+        "cli",
+        "tui",
+        "desktop",
+        "web"
+      ],
       "contributes": {
         "panes": [
           "analyst-research",
@@ -541,8 +1507,165 @@
           "time-sales"
         ],
         "capabilities": [],
-        "broker": false
-      }
+        "broker": false,
+        "shortcuts": [
+          {
+            "code": "DES",
+            "name": "Ticker Research",
+            "description": "Open another research pane for the selected ticker or current collection"
+          },
+          {
+            "code": "QQ",
+            "name": "Quote Monitor",
+            "description": "Open a compact quote monitor for one or more tickers"
+          },
+          {
+            "code": "RETURN",
+            "name": "Returns",
+            "description": "Inspect interval and cumulative price returns over a selectable range and granularity."
+          },
+          {
+            "code": "HP",
+            "name": "Historical Prices",
+            "description": "Open a historical OHLCV table for a ticker."
+          },
+          {
+            "code": "FA",
+            "name": "Financial Analysis",
+            "description": "Open financial statements for a ticker."
+          },
+          {
+            "code": "G",
+            "name": "Custom Chart",
+            "description": "Chart arbitrary market, fundamental, valuation, and FRED series together."
+          },
+          {
+            "code": "CAT",
+            "name": "Data Catalog",
+            "description": "Browse and search the series Custom Chart already knows: securities, options, crypto, FRED, treasuries, and futures."
+          },
+          {
+            "code": "GP",
+            "name": "Graph Price",
+            "description": "Open a price chart for a ticker."
+          },
+          {
+            "code": "GIP",
+            "name": "Intraday Price Graph",
+            "description": "Open an intraday price chart for one or five sessions."
+          },
+          {
+            "code": "CMP",
+            "name": "Comparison Chart",
+            "description": "Compare price returns over shared observation dates for two or more tickers."
+          },
+          {
+            "code": "GF",
+            "name": "Fundamental Graph",
+            "description": "Graph quarterly revenue for one or more tickers, then choose any available field in Series."
+          },
+          {
+            "code": "GE",
+            "name": "Valuation Graph",
+            "description": "Graph trailing P/E for one or more tickers, then choose any available field in Series."
+          },
+          {
+            "code": "ANR",
+            "name": "Analyst Research",
+            "description": "Price targets, recommendations, and recent analyst actions."
+          },
+          {
+            "code": "DIAG",
+            "name": "Equity Diagnostic",
+            "description": "Red flags, anomalies, green flags, and watch items for one company, with cited evidence.",
+            "access": "preview"
+          },
+          {
+            "code": "EVT",
+            "name": "Corporate Actions",
+            "description": "Dividends, splits, reported earnings, and analyst estimates."
+          },
+          {
+            "code": "EE",
+            "name": "Earnings Estimates",
+            "description": "EPS and revenue estimates with reported earnings."
+          },
+          {
+            "code": "RV",
+            "name": "Relative Valuation",
+            "description": "Compare valuation and operating metrics across peers."
+          },
+          {
+            "code": "EM",
+            "name": "Estimate Revisions",
+            "description": "Consensus EPS changes, analyst revision counts, surprises and cited guidance."
+          },
+          {
+            "code": "GUID",
+            "name": "Company Guidance",
+            "description": "Company EPS guidance cited from filings and transcripts, against consensus."
+          },
+          {
+            "code": "KPIS",
+            "name": "Company KPIs",
+            "description": "Pro company operating KPIs, comparable history, revisions and cited evidence. Free preview.",
+            "access": "preview"
+          },
+          {
+            "code": "GUIDE",
+            "name": "Company Guidance",
+            "description": "Pro management guidance ranges, raises and cuts, actual versus guide and cited evidence. Free preview.",
+            "access": "preview"
+          },
+          {
+            "code": "SEG",
+            "name": "Revenue Breakdown",
+            "description": "Quarterly revenue by product, segment or region from the company's 10-Q and 10-K filings.",
+            "access": "preview"
+          },
+          {
+            "code": "DVD",
+            "name": "Dividend Yield",
+            "description": "Cash distribution history, trailing cash yield, indicated rates when available, and growth. Future payments are not forecast."
+          },
+          {
+            "code": "RDCF",
+            "name": "Reverse DCF",
+            "description": "The free cash flow growth the current enterprise value prices in, next to the growth the company delivered."
+          },
+          {
+            "code": "PEB",
+            "name": "P/E Band",
+            "description": "Price against round multiples of trailing EPS, and where today's P/E ranks in the stock's own history."
+          },
+          {
+            "code": "EXEC",
+            "name": "Executives",
+            "description": "Named executive officers and what they were paid, read from the company's proxy statement and checked against the filing.",
+            "access": "pro"
+          },
+          {
+            "code": "TAS",
+            "name": "Time and Sales",
+            "description": "Trade prints, observed VWAP and large prints."
+          },
+          {
+            "code": "QR",
+            "name": "Quote Recap",
+            "description": "NBBO history: bid and ask with sizes, venues and spread."
+          }
+        ]
+      },
+      "highlights": [
+        "DES",
+        "G",
+        "FA"
+      ],
+      "screenshots": [
+        "DES",
+        "G",
+        "FA"
+      ]
     }
   ]
 }

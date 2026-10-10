@@ -15,7 +15,14 @@ const manifest = buildBuiltinManifest();
 if (manifest.uncategorised.length > 0) {
   console.error(
     `Built-in plugins missing editorial metadata: ${manifest.uncategorised.join(", ")}\n` +
-      "Add them to EDITORIAL in src/plugins/catalog-manifest.ts so they are not listed uncategorised.",
+      "Add them to BUILTIN_EDITORIAL in src/plugins/builtin-editorial.ts so they are not listed uncategorised.",
+  );
+  process.exit(1);
+}
+
+if (manifest.unknownCodes.length > 0) {
+  console.error(
+    `Editorial highlights or screenshots name codes their plugin does not have: ${manifest.unknownCodes.join(", ")}`,
   );
   process.exit(1);
 }
@@ -34,14 +41,14 @@ const missingIcons = await Promise.all(
 
 if (missingIcons.length > 0) {
   console.error(
-    `Plugin icons declared in EDITORIAL but missing from the repo: ${missingIcons
+    `Plugin icons declared in BUILTIN_EDITORIAL but missing from the repo: ${missingIcons
       .map((result) => result.icon)
       .join(", ")}`,
   );
   process.exit(1);
 }
 
-const { uncategorised: _drop, ...published } = manifest;
+const { uncategorised: _drop, unknownCodes: _unknown, ...published } = manifest;
 const next = `${JSON.stringify(published, null, 2)}\n`;
 
 if (process.argv.includes("--check")) {

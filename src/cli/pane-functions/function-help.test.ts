@@ -37,3 +37,11 @@ test("every built-in function has a help card, and every card a function", async
   expect(codes.filter((code) => !FUNCTION_HELP[code]).sort()).toEqual([]);
   expect(Object.keys(FUNCTION_HELP).filter((code) => !codes.includes(code)).sort()).toEqual([]);
 });
+
+// The Plugins pane and gloom.sh count a plugin's Pro functions from `access`,
+// so a card whose freshness says Pro only has to be tagged as one.
+test("a function is tagged Pro exactly when Free gets nothing but the upgrade", () => {
+  const proOnly = Object.entries(FUNCTION_HELP).filter(([, help]) => help.data?.free === "Pro only").map(([code]) => code);
+  const tagged = Object.entries(FUNCTION_HELP).filter(([, help]) => help.access === "pro").map(([code]) => code);
+  expect(tagged.sort()).toEqual(proOnly.sort());
+});

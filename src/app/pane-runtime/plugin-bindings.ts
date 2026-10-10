@@ -509,7 +509,7 @@ export function bindAppPanePluginRegistry({
         });
       const commands = [...pluginRegistry.commands.entries()]
         .filter(([id]) => pluginRegistry.getCommandPluginId(id) === pluginId && !id.endsWith(":setup"))
-        .map(([id, command]) => ({ id, label: command.label }));
+        .map(([id, command]) => ({ id, label: command.label, ...(command.shortcut ? { shortcut: command.shortcut } : {}) }));
       const capabilities = pluginRegistry.capabilities.manifests()
         .filter((manifest) => pluginRegistry.getCapabilityPluginId(manifest.id) === pluginId).length;
       const broker = [...pluginRegistry.brokers.keys()].some((type) => pluginRegistry.getBrokerPluginId(type) === pluginId);
@@ -519,5 +519,6 @@ export function bindAppPanePluginRegistry({
       pluginRegistry.notify(notification);
     },
     setPluginEnabled,
+    setPluginsEnabled,
   });
 }

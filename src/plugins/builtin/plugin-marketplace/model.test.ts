@@ -407,7 +407,7 @@ describe("statusOf", () => {
 });
 
 describe("sortEntries and buildRows", () => {
-  test("groups installed, then available, then built in, with headers", () => {
+  test("groups built in, then installed, then available, with headers", () => {
     const entries = mergeCatalog({
       registry: [
         registryPlugin({ id: "popular-uninstalled", tier: "official", stars: 5000 }),
@@ -419,9 +419,9 @@ describe("sortEntries and buildRows", () => {
     });
 
     const sorted = sortEntries(entries);
-    expect(sorted.map((entry) => entry.id)).toEqual(["quiet-installed", "popular-uninstalled", "cloud"]);
+    expect(sorted.map((entry) => entry.id)).toEqual(["cloud", "quiet-installed", "popular-uninstalled"]);
     expect(buildRows(sorted).map((row) => (row.type === "header" ? `#${row.section}:${row.count}` : row.entry.id)))
-      .toEqual(["#installed:1", "quiet-installed", "#available:1", "popular-uninstalled", "#builtin:1", "cloud"]);
+      .toEqual(["#builtin:1", "cloud", "#installed:1", "quiet-installed", "#available:1", "popular-uninstalled"]);
   });
 
   test("keeps the curated order inside a section: featured, tier, stars", () => {

@@ -105,6 +105,26 @@ describe("matchPluginInstallOffer", () => {
     for (const [, code] of codes) expect(match(code, { registry: absorbed })).toBeNull();
   });
 
+  /**
+   * Built-ins list their codes in the feed for gloom.sh. The web app lacks a
+   * few (HDS and 13F among them), so nothing claims them there, and an offer
+   * would point at a plugin that cannot be installed.
+   */
+  test("never offers a built-in for its codes, even where this app lacks them", () => {
+    const ownership = registryPlugin({
+      id: "ownership",
+      bundled: true,
+      contributes: {
+        panes: ["holders"],
+        capabilities: [],
+        broker: false,
+        shortcuts: [{ code: "HDS", name: "Holders", description: "" }, { code: "13F", name: "13F Funds", description: "" }],
+      },
+    });
+    expect(match("HDS NVDA", { registry: [ownership] })).toBeNull();
+    expect(match("13F", { registry: [ownership, { ...ownership, repo: "gloom-sh/gloom-ownership" }] })).toBeNull();
+  });
+
   test("offers only plugins Gloom publishes from gloom-sh", () => {
     const shortcuts = [{ code: "POLL", name: "Polls", description: "" }];
     const contributes = { panes: [], capabilities: [], broker: false, shortcuts };

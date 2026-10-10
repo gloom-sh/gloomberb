@@ -15,6 +15,12 @@ export interface MarketplaceHost {
   listInstalled(): InstalledPlugin[];
   setPluginEnabled(pluginId: string, enabled: boolean): void;
   /**
+   * Switches several plugins as one change, the way a starter pack does. A
+   * switched-off plugin's panes are hidden, not closed, so switching it back
+   * on shows them where they were.
+   */
+  setPluginsEnabled(changes: Readonly<Record<string, boolean>>): void;
+  /**
    * Registers a plugin that was loaded after startup, so its panes and
    * commands exist in this session. Replaces a previous registration of the
    * same id (an update). Rejects with the setup error when the plugin cannot
@@ -37,7 +43,7 @@ export interface MarketplaceHost {
 interface PluginContributions {
   panes: Array<{ id: string; name: string }>;
   templates: Array<{ id: string; label: string; prefix?: string }>;
-  commands: Array<{ id: string; label: string }>;
+  commands: Array<{ id: string; label: string; shortcut?: string }>;
   capabilities: number;
   broker: boolean;
 }

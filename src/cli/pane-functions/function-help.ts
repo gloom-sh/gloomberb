@@ -21,6 +21,9 @@ export interface FunctionHelpKey {
   label: string;
 }
 
+/** A function Free cannot fully open: Pro only, or a limited preview on Free. */
+export type FunctionAccess = "pro" | "preview";
+
 /** How fresh the function's data is on each plan, in the words a pane footer uses. */
 export interface FunctionFreshness {
   free: string;
@@ -36,6 +39,12 @@ export interface FunctionHelp {
   keys: readonly FunctionHelpKey[];
   /** Null when the function shows no market data (settings, your own notes). */
   data: FunctionFreshness | null;
+  /**
+   * What Free gets: `pro` when only Pro opens it, `preview` when Free sees a
+   * limited preview of the same data. Absent when Free gets the whole
+   * function, even where Pro makes it fresher.
+   */
+  access?: FunctionAccess;
   /** The Bloomberg mnemonics it stands in for; empty when Bloomberg has none. */
   bloomberg: readonly string[];
   /** The docs entry when it is filed under another mnemonic (BTST under BT), or the full URL of a page of its own. */
@@ -413,6 +422,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["DIAG NVDA"],
     keys: [OPEN_SOURCE],
     data: { free: "A preview of the latest report, verified email", pro: "The full report, rerun on demand" },
+    access: "preview",
     bloomberg: [],
   },
   RISK: {
@@ -420,6 +430,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["RISK TSLA"],
     keys: [key("y", "ear"), key("o", "pen filing")],
     data: pro(AS_FILED.pro),
+    access: "pro",
     bloomberg: [],
   },
   EXEC: {
@@ -427,6 +438,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["EXEC NVDA"],
     keys: [key("y", "ear"), key("o", "pen filing")],
     data: pro(AS_FILED.pro),
+    access: "pro",
     bloomberg: ["MGMT"],
   },
   EK: {
@@ -434,6 +446,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["EK NVDA"],
     keys: [key("o", "pen filing")],
     data: pro(AS_FILED.pro),
+    access: "pro",
     bloomberg: ["CF"],
   },
   CALLS: {
@@ -441,6 +454,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["CALLS", "CALLS NVDA"],
     keys: [OPEN, key("/", "find"), OPEN_SOURCE],
     data: pro("Within hours of the call"),
+    access: "pro",
     bloomberg: ["EVT"],
   },
   JOBS: {
@@ -448,6 +462,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["JOBS", "JOBS NVDA"],
     keys: [key("1-4", " section"), key("o", "pen role"), key("c", "areers site")],
     data: pro("Daily"),
+    access: "pro",
     bloomberg: [],
   },
   SRCH: {
@@ -455,6 +470,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["SRCH data center capex"],
     keys: [SEARCH, key("Ctrl+S", " save search"), key("a", "lerts")],
     data: pro("As calls, stories and filings arrive"),
+    access: "pro",
     bloomberg: ["NSE"],
   },
   COVN: {
@@ -462,6 +478,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["COVN FICO"],
     keys: [TABS, OPEN, OPEN_SOURCE, key("f", "a"), key("m", "aturities")],
     data: { free: "As filed; three supported rows per section", pro: "As filed; all covenants, evidence and revisions" },
+    access: "preview",
     bloomberg: ["CAST"],
   },
   CRDOC: {
@@ -469,6 +486,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["CRDOC FICO", "COVN AAPL"],
     keys: [TABS, OPEN, OPEN_SOURCE, key("d", "es"), key("f", "a"), key("m", "aturities"), key("c", "ds")],
     data: { free: "As filed; three rows per section with supporting evidence", pro: "As filed; all stored terms, revisions and risk screens" },
+    access: "preview",
     bloomberg: ["CAST", "DDIS"],
   },
   ATTN: {
@@ -476,6 +494,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["ATTN", "ATTN 6758:JPX"],
     keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph"), key("n", "ews")],
     data: { free: "Three published rows per section and the latest history point", pro: "All published rows and hourly history; minimum one-hour publication lag" },
+    access: "preview",
     bloomberg: [],
   },
   HIRE: {
@@ -483,6 +502,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX"],
     keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph")],
     data: { free: "Latest values and three rows per section", pro: "Weekly history, all stored observations and evidence" },
+    access: "preview",
     bloomberg: [],
   },
   APPS: {
@@ -490,6 +510,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["APPS", "APPS META", "APPS 0700:HKEX"],
     keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph")],
     data: { free: "Latest values and three rows per section", pro: "Daily observations, full history, countries and evidence" },
+    access: "preview",
     bloomberg: [],
   },
   CATL: {
@@ -497,6 +518,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["CATL", "CATL PFE", "CATL NOVN:SIX"],
     keys: [TABS, OPEN, OPEN_SOURCE, key("a", "lert"), key("d", "es")],
     data: { free: "Three events with primary-source evidence", pro: "All stored events, revision history and local alerts" },
+    access: "preview",
     bloomberg: [],
   },
   LITI: {
@@ -504,6 +526,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["LITI AAPL", "LITI MSFT"],
     keys: [TABS, OPEN, OPEN_SOURCE, key("t", "o calendar")],
     data: { free: "Three company events with evidence", pro: "All stored company dockets and history" },
+    access: "preview",
     bloomberg: ["LITI"],
   },
   KPIS: {
@@ -511,6 +534,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["KPIS CRM", "KPIS 005930:KRX"],
     keys: [TABS, OPEN, key("e", "vidence"), OPEN_SOURCE],
     data: { free: "Pro dataset; fixed latest preview with evidence", pro: "As disclosed; all stored observations and history" },
+    access: "preview",
     bloomberg: [],
   },
   GUIDE: {
@@ -518,6 +542,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["GUIDE DAL", "GUIDE CRM"],
     keys: [TABS, OPEN, key("e", "vidence"), OPEN_SOURCE],
     data: { free: "Pro dataset; fixed latest preview with evidence", pro: "As issued; full guidance history and actual matches" },
+    access: "preview",
     bloomberg: [],
   },
   EXPO: {
@@ -525,6 +550,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["EXPO AAPL=60% NVDA=40%", "EXPO PORT:portfolio-id", "EXPO WATCH:watchlist-id"],
     keys: [TABS, OPEN, key("s", "cenario and holdings"), key("e", "vidence"), key("a", "ll company disclosures"), key("v", "isibility"), key("o", "pen source")],
     data: { free: "One holding and one-hop evidence preview", pro: "Full holdings and up to four-hop paths, as filed" },
+    access: "preview",
     bloomberg: ["PORT", "SPLC"],
   },
   SPLC: {
@@ -532,6 +558,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["SPLC NVDA", "SUPPLY AAPL", "SPLC 005930.KS", "SPLC 8035.T"],
     keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph")],
     data: { free: "Three relationships per role with evidence and a one-hop graph preview", pro: "Full evidence tiers, one-to-four-hop graphs and ranked paths" },
+    access: "preview",
     bloomberg: ["SPLC"],
   },
   AWARDS: {
@@ -539,6 +566,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["AWARDS", "AWARDS LMT", "AWARDS BA.:LSE"],
     keys: [TABS, OPEN, SEARCH, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("f", "a"), key("g", "raph"), key("s", "plc"), key("c", "alendar")],
     data: { free: "Pro preview: three rows per section", pro: "All collected awards, history, revisions and relationships" },
+    access: "preview",
     bloomberg: [],
   },
   SEG: {
@@ -546,6 +574,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["SEG AAPL"],
     keys: [],
     data: { free: "First two lines, about five weeks after each filing", pro: "Every line, about five weeks after each filing" },
+    access: "preview",
     bloomberg: [],
   },
   TAS: {
@@ -704,6 +733,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["PERP", "PERP BTC", "PERP TSLA"],
     keys: [TABS, OPEN, SEARCH, key("e", "vidence"), key("a", "lert")],
     data: { free: "A fixed preview and any one market's latest values", pro: "Every market, full rankings and stored history; source timestamps retained" },
+    access: "preview",
     bloomberg: [],
   },
   CRYP: {
@@ -753,6 +783,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["POWER", "POWER NEE"],
     keys: [SEARCH, key("o", "pen source"), key("d", "es"), key("f", "a"), key("g", "raph"), key("s", "plc"), key("c", "ompute"), key("t", "BO")],
     data: { free: "Three rows per section; limited history", pro: "Snapshots as public registers update; coverage by region" },
+    access: "preview",
     bloomberg: [],
   },
   GPU: {
@@ -760,6 +791,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["GPU", "GPU H100", "GPU B200"],
     keys: [key("t", "BO")],
     data: same("Hourly asks and AWS spot; other published prices every 6 or 24 hours"),
+    access: "preview",
     bloomberg: [],
   },
   NGS: {
@@ -796,6 +828,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["FLOW"],
     keys: [OPEN],
     data: pro(REAL_TIME),
+    access: "pro",
     bloomberg: ["FLOW"],
   },
   HALT: {
@@ -1189,9 +1222,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   PL: {
-    summary: "The plugin directory: install from GitHub, and enable or disable the plugins you have.",
+    summary: "What Gloomberb is made of: switch built-ins on and off, one by one or with a starter pack, and install plugins from GitHub.",
     usage: ["PL"],
-    keys: [key("i", "nstall"), key("e", "nable"), key("s", "etup"), SEARCH],
+    keys: [key("e", "nable"), key("a", " packs"), key("i", "nstall"), SEARCH],
     data: null,
     bloomberg: [],
   },

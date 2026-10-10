@@ -1,13 +1,19 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import {
   Button,
+  ChoiceDialog,
   confirmDialog,
+  DetailScrollBody,
   DataTableStackView,
   EmptyState,
   KeyValueRow,
+  openUrl,
   PaneStatusBody,
   QueryBar,
+  RemoteImage,
+  Section,
+  SectionHeading,
   useExternalLinkFooter,
   useQueryBarSearch,
   type DataTableCell,
@@ -18,20 +24,33 @@ import {
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
-import { useDialog } from "../../../ui/dialog";
+import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { requiredGloomberb } from "../../../utils/semver";
 import { VERSION } from "../../../version";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
 import { pluginSetupCommandId } from "../../registry/setup-command";
+import { useAppSelector } from "../../../state/app/context";
+import { BUILTIN_EDITORIAL } from "../../builtin-editorial";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID } from "../debug/template";
 import { loadRegistry, registryPluginUrl } from "./feed";
+import { highlightedCodes, pluginFunctions, proFunctionCount, type PluginFunction } from "../../plugin-functions";
+import {
+  matchingPack,
+  packChange,
+  packToggles,
+  restoreToggles,
+  STARTER_PACKS,
+  type PackChange,
+  type StarterPack,
+} from "./packs";
 import {
   buildRows,
   collectCategories,
+  CORE_PLUGIN_ID,
   filterEntries,
   hasUpdate,
   installConsent,
@@ -54,7 +73,7 @@ import { getMarketplaceHost, getPluginManager, type MarketplaceHost } from "./st
 
 import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
 
-type Column = DataTableColumn & { id: "name" | "tagline" | "version" | "status" };
+type Column = DataTableColumn & { id: "name" | "tagline" | "panes" | "functions" | "pro" | "status" };
 
 const ALL_CATEGORIES = "all";
 /** Category ids are lowercase words; these read wrong title-cased. */
@@ -64,16 +83,60 @@ function categoryLabel(category: string): string {
   return CATEGORY_LABELS[category] ?? category.charAt(0).toUpperCase() + category.slice(1);
 }
 
-function buildColumns(width: number): Column[] {
-  const nameWidth = Math.min(24, Math.max(14, Math.floor(width * 0.22)));
-  // The description takes what the other columns leave.
+/**
+ * A row reads as a name, a short line and three chips: how many panes, the
+ * codes that open them, and how many of its functions Pro unlocks. Narrow
+ * panes give up the Pro count, then the codes. Versions are in the detail;
+ * a waiting update shows in the status.
+ */
+function buildColumns(width: number, fit: { functions: number; status: number }): Column[] {
+  const nameWidth = Math.min(23, Math.max(14, Math.floor(width * 0.2)));
+  // The description takes what the other columns leave; the chips take what they need.
   return [
     { id: "name", label: "PLUGIN", width: nameWidth, align: "left" },
     { id: "tagline", label: "DESCRIPTION", width: 16, align: "left", flexGrow: 1 },
-    { id: "version", label: "VERSION", width: 16, align: "right" },
-    { id: "status", label: "STATUS", width: 14, align: "left" },
+    { id: "panes", label: "PANES", width: 5, align: "right" },
+    ...(width >= 80 ? [{ id: "functions" as const, label: "FUNCTIONS", width: fit.functions, align: "left" as const }] : []),
+    ...(width >= 96 ? [{ id: "pro" as const, label: "PRO", width: 3, align: "right" as const }] : []),
+    { id: "status", label: "STATUS", width: fit.status, align: "left" },
   ];
 }
+
+/** What a row's chips say about a plugin. */
+interface EntryFacts {
+  panes: number;
+  paneNames: string[];
+  functions: PluginFunction[];
+  /** At most three codes, for the row. */
+  codes: string[];
+  /** Functions Free cannot fully open. */
+  pro: number;
+}
+
+/**
+ * Read from what the plugin registered when it is loaded here, so a built-in
+ * reads the way this build has it; from what the feed says otherwise.
+ */
+function entryFacts(entry: MarketplaceEntry, host: MarketplaceHost | null): EntryFacts {
+  const live = entry.installed && host && !entry.loadError ? host.contributions(entry.id) : null;
+  const functions = live
+    ? pluginFunctions({ templates: live.templates, commands: live.commands })
+    : (entry.contributes?.shortcuts ?? []).map((shortcut) => ({
+      code: shortcut.code,
+      name: shortcut.name,
+      description: shortcut.description,
+      ...(shortcut.access ? { access: shortcut.access } : {}),
+    }));
+  return {
+    panes: live ? live.panes.length : entry.contributes?.panes.length ?? 0,
+    paneNames: live ? live.panes.map((pane) => pane.name) : [],
+    functions,
+    codes: entry.bundled ? highlightedCodes(entry.id, functions) : functions.slice(0, 3).map((fn) => fn.code),
+    pro: proFunctionCount(functions),
+  };
+}
+
+const ACCESS_LABELS = { pro: "Pro", preview: "Pro, free preview" } as const;
 
 const STATUS_COLORS: Record<MarketplaceStatusKind, string> = {
   failed: colors.negative,
@@ -83,8 +146,9 @@ const STATUS_COLORS: Record<MarketplaceStatusKind, string> = {
   update: colors.textBright,
   "needs-gloomberb": colors.warning,
   errors: colors.warning,
-  enabled: colors.positive,
-  disabled: colors.textDim,
+  // On is the normal state, so it stays quiet and what is off stands out.
+  enabled: colors.textDim,
+  disabled: colors.textBright,
   none: colors.textDim,
 };
 
@@ -105,12 +169,23 @@ function renderCell(
   column: Column,
   rowState: { selected: boolean },
   busyId: string | null,
+  facts: (entry: MarketplaceEntry) => EntryFacts,
 ): DataTableCell {
   if (row.type === "header") return { text: "" };
   const { entry } = row;
   const selected = rowState.selected ? colors.selectedText : undefined;
 
   switch (column.id) {
+    case "panes": {
+      const panes = facts(entry).panes;
+      return { text: panes > 0 ? String(panes) : "", color: selected ?? colors.textDim };
+    }
+    case "functions":
+      return { text: facts(entry).codes.join(" "), color: selected ?? colors.text };
+    case "pro": {
+      const pro = facts(entry).pro;
+      return { text: pro > 0 ? String(pro) : "", color: selected ?? colors.warning };
+    }
     case "name":
       return {
         text: entry.name,
@@ -119,10 +194,6 @@ function renderCell(
       };
     case "tagline":
       return { text: entry.tagline, color: selected ?? colors.textDim };
-    case "version": {
-      const update = hasUpdate(entry);
-      return { text: versionLabel(entry), color: selected ?? (update ? colors.textBright : colors.textDim) };
-    }
     case "status": {
       if (busyId === entry.id) return { text: "working", color: selected ?? colors.textDim };
       const status = statusOf(entry);
@@ -206,6 +277,123 @@ function EntryDetail({ entry, width, host }: { entry: MarketplaceEntry; width: n
   );
 }
 
+/** gloom.sh keeps a reviewed capture of these functions. */
+function functionShotUrl(code: string): string {
+  return `https://gloom.sh/screenshots/fn/${encodeURIComponent(code)}.png`;
+}
+
+/**
+ * A built-in: what it adds and what Pro opens, function by function. The
+ * desktop shows a capture or two; the terminal leaves them to gloom.sh.
+ */
+function BuiltinDetail({ entry, width, facts, scrollRef }: {
+  entry: MarketplaceEntry;
+  width: number;
+  facts: EntryFacts;
+  scrollRef: RefObject<ScrollBoxRenderable | null>;
+}) {
+  const { nativePaneChrome } = useUiCapabilities();
+  // DetailScrollBody pads a cell on each side, and its scrollbar takes one.
+  const rowWidth = Math.max(1, width - 4);
+  const nameWidth = Math.max(12, Math.min(34, rowWidth - 8 - 20));
+  const status = statusOf(entry);
+  const shots = nativePaneChrome ? (BUILTIN_EDITORIAL[entry.id]?.screenshots ?? []).slice(0, 2) : [];
+  const shotWidth = Math.min(rowWidth, 72);
+  const summary = [
+    `${facts.panes} pane${facts.panes === 1 ? "" : "s"}`,
+    `${facts.functions.length} function${facts.functions.length === 1 ? "" : "s"}`,
+    ...(facts.pro > 0 ? [`${facts.pro} Pro`] : []),
+  ];
+
+  return (
+    <DetailScrollBody ref={scrollRef} resetScrollKey={entry.id}>
+      <Box flexDirection="row" gap={2} height={1}>
+        <Text fg={STATUS_COLORS[status.kind]}>{status.text}</Text>
+        <Text fg={colors.textDim}>{summary.join(" · ")}</Text>
+      </Box>
+
+      {entry.description ? (
+        <Box paddingTop={1} flexDirection="column">
+          <Text fg={colors.text}>{entry.description}</Text>
+        </Box>
+      ) : null}
+
+      {shots.length > 0 ? (
+        <Box paddingTop={1} flexDirection="column" gap={1}>
+          {shots.map((code) => (
+            <RemoteImage
+              key={code}
+              src={functionShotUrl(code)}
+              alt={`${code} in Gloomberb`}
+              label={code}
+              width={shotWidth}
+              height={Math.max(8, Math.floor(shotWidth * 0.3))}
+            />
+          ))}
+        </Box>
+      ) : null}
+
+      {facts.functions.length > 0 ? (
+        <Section title="Functions" width={rowWidth}>
+          {facts.functions.map((fn) => (
+            // The code is what people type, so it leads; Pro reads in the PRO column's colour.
+            <Box key={fn.code} flexDirection="row" height={1} width={rowWidth} overflow="hidden">
+              <Box width={8} flexShrink={0}><Text fg={colors.textBright}>{fn.code}</Text></Box>
+              <Box width={nameWidth} flexShrink={0} overflow="hidden"><Text fg={colors.text}>{fn.name}</Text></Box>
+              {fn.access ? <Box flexShrink={1} minWidth={0} overflow="hidden"><Text fg={colors.warning}>{ACCESS_LABELS[fn.access]}</Text></Box> : null}
+            </Box>
+          ))}
+        </Section>
+      ) : null}
+
+      {facts.paneNames.length > 0 ? (
+        <Box paddingTop={1} flexDirection="column">
+          <SectionHeading title="Panes" width={rowWidth} />
+          <Text fg={colors.textDim}>{facts.paneNames.join(", ")}</Text>
+        </Box>
+      ) : null}
+    </DetailScrollBody>
+  );
+}
+
+/** The strip's labels; the full names are in the menu, the confirmation and the toast. */
+const PACK_SHORT_LABELS: Record<string, string> = {
+  everything: "Everything",
+  "equity-research": "Equity",
+  "options-desk": "Options",
+  "macro-rates": "Macro",
+  "credit-bonds": "Credit",
+  "alt-data-quant": "Alt data",
+};
+/** The strip's value when the plugins on match no pack. */
+const CUSTOM_PACK = "custom";
+
+/** One line per kind of change, with the plugins it names. */
+function PackChangeBody({ change, name, width }: { change: PackChange; name: (id: string) => string; width: number }) {
+  const lines = [
+    { label: "Turn off", ids: change.turnOff },
+    { label: "Turn on", ids: change.turnOn },
+    { label: "Keep", ids: change.keep },
+  ].filter((line) => line.ids.length > 0);
+  return (
+    <Box flexDirection="column" width={width} gap={1}>
+      {lines.map((line) => (
+        <Box key={line.label} flexDirection="row" width={width}>
+          <Box width={12} flexShrink={0}>
+            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{`${line.label} ${line.ids.length}`}</Text>
+          </Box>
+          <Box flexGrow={1} flexShrink={1} minWidth={0}>
+            <Text fg={colors.text} wrapText>{line.ids.map(name).join(", ")}</Text>
+          </Box>
+        </Box>
+      ))}
+      {change.turnOff.length > 0 ? (
+        <Text fg={colors.textDim} wrapText>Panes are hidden, not closed. Undo brings them back.</Text>
+      ) : null}
+    </Box>
+  );
+}
+
 type Busy = { id: string; verb: "installing" | "updating" | "removing" } | null;
 
 export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
@@ -213,10 +401,12 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const { createPaneFromTemplate, showPane, openPluginCommandWorkflow, notify } = usePluginAppActions();
   const [query, setQuery] = useState("");
   const [category, setCategory] = usePluginPaneState<string | null>("category", null);
-  const [showBuiltin, setShowBuiltin] = useState(false);
+  // Built-ins are what Gloomberb is made of, so they show unless filtered out.
+  const [showBuiltin, setShowBuiltin] = usePluginPaneState<boolean>("showBuiltin", true);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedId", null);
   const [detailOpen, setDetailOpen] = usePluginPaneState<boolean>("detailOpen", false);
   const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
+  const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const [registry, setRegistry] = useState<RegistryPlugin[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -231,12 +421,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const [remoteHeads, setRemoteHeads] = useState<Record<string, string>>({});
   const [checkingRemotes, setCheckingRemotes] = useState(false);
   const busyId = busy?.id ?? null;
-  const renderRow = useCallback((
-    row: MarketplaceRow,
-    column: Column,
-    _index: number,
-    rowState: { selected: boolean },
-  ) => renderCell(row, column, rowState, busyId), [busyId]);
 
   const refresh = useCallback((force: boolean) => {
     setStatus((current) => (current === "ready" ? current : "loading"));
@@ -253,11 +437,32 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   const host = getMarketplaceHost();
   const manager = getPluginManager();
   const target = getCurrentPluginTarget();
+  // A switch from anywhere (a pack, a toast, a sync) re-reads the list.
+  const disabledPlugins = useAppSelector((state) => state.config.disabledPlugins);
   const entries = useMemo(() => {
     void localRevision;
+    void disabledPlugins;
     const installed = host?.listInstalled() ?? [];
     return sortEntries(mergeCatalog({ registry, installed, target, remoteHeads }));
-  }, [host, registry, target, localRevision, remoteHeads]);
+  }, [host, registry, target, localRevision, remoteHeads, disabledPlugins]);
+  const currentPack = useMemo(() => matchingPack(disabledPlugins), [disabledPlugins]);
+  // Rebuilt with the entries, which a switch or an install already refreshes.
+  const factsFor = useMemo(() => {
+    const cache = new Map<string, EntryFacts>();
+    return (entry: MarketplaceEntry): EntryFacts => {
+      const cached = cache.get(entry.id);
+      if (cached) return cached;
+      const facts = entryFacts(entry, host);
+      cache.set(entry.id, facts);
+      return facts;
+    };
+  }, [entries, host]);
+  const renderRow = useCallback((
+    row: MarketplaceRow,
+    column: Column,
+    _index: number,
+    rowState: { selected: boolean },
+  ) => renderCell(row, column, rowState, busyId, factsFor), [busyId, factsFor]);
 
   // Keyed by the folders themselves: the entries array is rebuilt whenever an
   // answer lands, and re-running the check on its own result would never stop.
@@ -442,11 +647,84 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     }
   }, [bump, busy, confirmWidth, dialog, host, manager, notify, selected]);
 
-  const toggleSelected = useCallback(() => {
+  const toggleSelected = useCallback(async () => {
     if (!host || !selected || !selected.installed || !selected.toggleable || selected.loadError) return;
-    host.setPluginEnabled(selected.id, !selected.enabled);
+    const entry = selected;
+    if (entry.id === CORE_PLUGIN_ID && entry.bundled && entry.enabled) {
+      const confirmed = await confirmDialog(dialog, {
+        title: `Turn off ${entry.name}?`,
+        body: ["DES, G and the research pane stop working until you turn it back on."],
+        confirmLabel: "Turn off",
+        width: confirmWidth,
+      });
+      if (!confirmed) return;
+    }
+    host.setPluginEnabled(entry.id, !entry.enabled);
     bump();
-  }, [bump, host, selected]);
+  }, [bump, confirmWidth, dialog, host, selected]);
+
+  const pluginName = useCallback(
+    (id: string) => entries.find((entry) => entry.id === id)?.name ?? id,
+    [entries],
+  );
+
+  /**
+   * Says exactly what the pack turns off and on, applies it in one switch,
+   * and offers Undo: nothing is closed, so the old set comes back as it was.
+   */
+  const applyPack = useCallback(async (pack: StarterPack) => {
+    if (!host) return;
+    const previous = [...disabledPlugins];
+    const change = packChange(previous, pack);
+    const toggles = packToggles(change);
+    if (Object.keys(toggles).length === 0) {
+      notify({ body: `${pack.name} is already what you have on.`, type: "info" });
+      return;
+    }
+    const confirmed = await confirmDialog(dialog, {
+      title: `Switch to ${pack.name}?`,
+      body: <PackChangeBody change={change} name={pluginName} width={confirmWidth} />,
+      confirmLabel: "Switch",
+      confirmVariant: "primary",
+      width: confirmWidth,
+    });
+    if (!confirmed) return;
+    host.setPluginsEnabled(toggles);
+    bump();
+    const parts = [
+      ...(change.turnOff.length > 0 ? [`${change.turnOff.length} off`] : []),
+      ...(change.turnOn.length > 0 ? [`${change.turnOn.length} back on`] : []),
+    ];
+    notify({
+      body: `${pack.name}: ${parts.join(", ")}.`,
+      type: "success",
+      // Long enough to reach for Undo after looking at the list.
+      duration: 12_000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          host.setPluginsEnabled(restoreToggles(previous));
+          bump();
+        },
+      },
+    });
+  }, [bump, confirmWidth, dialog, disabledPlugins, host, notify, pluginName]);
+
+  const choosePack = useCallback(async () => {
+    const id = await dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (context: PromptContext<string>) => (
+        <ChoiceDialog
+          {...context}
+          title="Starter packs"
+          selectedChoiceId={currentPack?.id}
+          choices={STARTER_PACKS.map((pack) => ({ id: pack.id, label: pack.name, description: pack.tagline }))}
+        />
+      ),
+    }).catch(() => null);
+    const pack = STARTER_PACKS.find((candidate) => candidate.id === id);
+    if (pack) await applyPack(pack);
+  }, [applyPack, currentPack, dialog]);
 
   const setupSelected = useCallback(() => {
     if (!selected || !selected.installed || !selected.hasSetup || !selected.enabled) return;
@@ -484,7 +762,8 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       // Not u: that installs an app update whenever one is waiting.
       case "g": void updateSelected(); return true;
       case "x": void removeSelected(); return true;
-      case "e": toggleSelected(); return true;
+      case "e": void toggleSelected(); return true;
+      case "a": void choosePack(); return true;
       case "s": setupSelected(); return true;
       case "p": openSelected(); return true;
       case "d": openLog(); return true;
@@ -492,7 +771,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       case "b": setShowBuiltin((value) => !value); return true;
       default: return false;
     }
-  }, [installSelected, openLog, openSelected, refresh, removeSelected, setupSelected, toggleSelected, updateSelected]);
+  }, [choosePack, installSelected, openLog, openSelected, refresh, removeSelected, setShowBuiltin, setupSelected, toggleSelected, updateSelected]);
 
   /**
    * Pane keys go through the table's key handler, which runs while the pane
@@ -542,11 +821,15 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       ? { id: "update", key: "g", label: " reload", title: "Reload", onPress: () => { void updateSelected(); } }
       : { id: "update", key: "g", label: "et update", onPress: () => { void updateSelected(); } });
   }
-  if (canToggle) hints.push({ id: "toggle", key: "e", label: selected?.enabled ? "disable" : "nable", title: selected?.enabled ? "Disable" : "Enable", onPress: toggleSelected });
+  if (canToggle) hints.push({ id: "toggle", key: "e", label: selected?.enabled ? "disable" : "nable", title: selected?.enabled ? "Disable" : "Enable", onPress: () => { void toggleSelected(); } });
   if (canSetup) hints.push({ id: "setup", key: "s", label: "etup", onPress: setupSelected });
   if (canOpen) hints.push({ id: "open-pane", key: "p", label: "ane", onPress: openSelected });
   if (canLog) hints.push({ id: "log", key: "d", label: "ebug log", onPress: openLog });
   if (canRemove) hints.push({ id: "remove", key: "x", label: " remove", onPress: () => { void removeSelected(); } });
+  if (host) hints.push({ id: "packs", key: "a", label: " packs", title: "Starter packs", onPress: () => { void choosePack(); } });
+  // A built-in has no repository; its page on gloom.sh shows it at work.
+  const seeItUrl = selected?.bundled ? registryPluginUrl(selected.id) : null;
+  if (seeItUrl) hints.push({ id: "see-it", key: "o", label: " see it", title: "See it on gloom.sh", onPress: () => openUrl(seeItUrl) });
 
   useExternalLinkFooter({
     registrationId: PLUGIN_MARKETPLACE_PANE_ID,
@@ -557,7 +840,15 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     hints,
   });
 
-  const columns = useMemo(() => buildColumns(width), [width]);
+  const fit = useMemo(() => ({
+    functions: Math.min(16, Math.max(9, ...visible.map((entry) => factsFor(entry).codes.join(" ").length))),
+    status: Math.min(14, Math.max(7, ...visible.map((entry) => statusOf(entry).text.length))),
+  }), [factsFor, visible]);
+  const columns = useMemo(() => buildColumns(width, fit), [fit, width]);
+  const packOptions = useMemo(() => [
+    ...STARTER_PACKS.map((pack) => ({ value: pack.id, label: pack.name, short: PACK_SHORT_LABELS[pack.id], description: pack.tagline })),
+    ...(currentPack ? [] : [{ value: CUSTOM_PACK, label: "Custom", description: "Your own set of plugins.", disabled: true }]),
+  ], [currentPack]);
   // The pick is saved with the pane, so keep it listed (and resettable) even
   // when the catalog no longer has plugins in it.
   const categoryOptions = useMemo(
@@ -599,10 +890,30 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
       <DataTableStackView<MarketplaceRow, Column>
         focused={focused && !searchFocused}
         detailOpen={detailOpen && !!selected}
+        detailScrollRef={selected?.bundled ? detailScrollRef : undefined}
         onBack={() => setDetailOpen(false)}
-        detailContent={selected ? <EntryDetail entry={selected} width={width} host={host} /> : null}
+        detailContent={selected
+          ? selected.bundled
+            ? <BuiltinDetail entry={selected} width={width} facts={factsFor(selected)} scrollRef={detailScrollRef} />
+            : <EntryDetail entry={selected} width={width} host={host} />
+          : null}
         detailTitle={selected?.name}
         rootBefore={(
+          <Box flexDirection="column" flexShrink={0}>
+          <QueryBar
+            width={width}
+            filters={[{
+              id: "pack",
+              label: "Starter pack",
+              inline: true,
+              value: currentPack?.id ?? CUSTOM_PACK,
+              options: packOptions,
+              onChange: (value: string) => {
+                const pack = STARTER_PACKS.find((candidate) => candidate.id === value);
+                if (pack) void applyPack(pack);
+              },
+            }]}
+          />
           <QueryBar
             width={width}
             search={{
@@ -621,9 +932,10 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
                 options: categoryOptions,
                 onChange: (value: string) => setCategory(value === ALL_CATEGORIES ? null : value),
               }] : []),
-              { kind: "toggle" as const, id: "builtin", label: "Built in", value: showBuiltin, onChange: setShowBuiltin },
+              { kind: "toggle" as const, id: "builtin", label: "Built in", value: showBuiltin, defaultValue: true, onChange: setShowBuiltin },
             ]}
           />
+          </Box>
         )}
         selection={{
           kind: "id",

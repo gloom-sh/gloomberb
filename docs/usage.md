@@ -513,7 +513,11 @@ A rendered-view report (a pane without a structured report) names the pane's sou
 
 ## Plugins pane
 
-Open it with `PL` in the command bar. It lists what you have installed, what the registry offers, and, behind `b`, the [built-in plugins](#built-in-plugins) that can be switched off. Every row has a version and a status: `enabled`, `disabled`, `update` when the registry has something newer, `needs setup` when the plugin is missing a required setting, `errors (n)` when it has logged failures this session, and `failed` when it did not load at all, with the reason in the detail view.
+Open it with `PL` in the command bar. It lists the [built-in plugins](#built-in-plugins) that can be switched off, research and markets first, then what you have installed and what the registry offers. A row shows how many panes the plugin adds, three of its codes, and how many of its functions need Pro or give Free a preview.
+
+The status reads `on`, `off`, `core` for Ticker Research, `update` when the registry has something newer, `needs setup` when a required setting is missing, `errors (n)` after failures this session, or `failed` when it did not load. Enter opens the detail: every function, Pro ones marked, and the panes.
+
+Starter packs at the top switch the research and markets built-ins to fit how you trade: Everything, Equity research, Options desk, Macro & rates, Credit & bonds, and Alt data & quant. Every pack keeps Ticker Research on and never touches other plugins. Panes of plugins a pack turns off are hidden, not closed, and Undo on the toast brings them back.
 
 Plugin GitHub star counts are currently hidden. The marketplace keeps its curated ordering.
 
@@ -522,12 +526,14 @@ Plugin GitHub star counts are currently hidden. The marketplace keeps its curate
 | `i` | Install the selected plugin, after a confirmation that names its source and declared hosts |
 | `g` | Get its update, or reload one that failed to load |
 | `x` | Remove it |
-| `e` | Enable or disable it |
+| `e` | Switch it on or off; Ticker Research asks first |
+| `a` | Choose a starter pack |
+| `o` | See a built-in on gloom.sh, or open a plugin's page |
 | `s` | Open its setup form |
 | `p` | Open a pane it provides |
 | `d` | Open the debug log filtered to it |
 | `h` `l` or arrows | Move between category tabs |
-| `b` | Show or hide built-in modules |
+| `b` | Show or hide the built-in plugins |
 | `/` | Search |
 
 A plugin installed or updated from the pane is loaded into the running session: its panes and commands are available immediately. If your app starts with a plugin that failed to load, a notification says so and opens this pane.

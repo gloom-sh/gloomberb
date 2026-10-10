@@ -97,6 +97,11 @@ const BUILTIN_PLUGIN_GROUPS: Readonly<Record<string, readonly string[]>> = {
   "ticker-research": ["ticker-core", "options-volatility", "ownership", "filings", "alt-data", "quant", "credit", "earnings"],
 };
 
+/** Every built-in that came out of a retired group: the plugins starter packs switch. */
+export function regroupedBuiltinPluginIds(): string[] {
+  return [...new Set(Object.values(BUILTIN_PLUGIN_GROUPS).flat())];
+}
+
 /** The built-ins a retired group id stands for, or null when the id is not a group. */
 export function builtinPluginGroupMembers(pluginId: string): readonly string[] | null {
   return Object.prototype.hasOwnProperty.call(BUILTIN_PLUGIN_GROUPS, pluginId) ? BUILTIN_PLUGIN_GROUPS[pluginId]! : null;
