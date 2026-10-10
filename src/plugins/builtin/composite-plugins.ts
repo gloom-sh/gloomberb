@@ -85,12 +85,17 @@ import { thirteenFModule } from "./thirteenf";
 import { tickerDetailModule } from "./ticker-detail";
 import { macroSharedResourcesModule } from "./macro-resources";
 import {
+  altDataPluginMeta,
   applicationPluginMeta,
   creditPluginMeta,
+  cryptoPluginMeta,
   earningsPluginMeta,
-  marketOverviewPluginMeta,
+  futuresCommoditiesPluginMeta,
+  globalMarketsPluginMeta,
   portfolioPluginMeta,
+  quantPluginMeta,
   ratesMacroPluginMeta,
+  screenersPluginMeta,
   tickerResearchPluginMeta,
 } from "./builtin-plugin-meta";
 
@@ -162,29 +167,35 @@ export const brokerPlugin = composeBuiltinPlugin({
   modules: [brokerManagerModule],
 });
 
-export const marketOverviewPlugin = composeBuiltinPlugin({
-  ...marketOverviewPluginMeta,
-  description: "Global indices, movers, scanners, sectors, FX, futures, and correlations.",
-  modules: [
-    correlationModule,
-    relativeRotationModule,
-    equityScreenerModule,
-    worldIndicesModule,
-    worldVenueMapModule,
-    marketMoversModule,
-    scannerModule,
-    sectorsModule,
-    fxMatrixModule,
-    futuresModule,
-    futuresCurveModule,
-    cotModule,
-    doeModule,
-    gpuModule,
-    attentionModule,
-    powerModule,
-    cryptoBoardModule,
-    perpsModule,
-  ],
+export const globalMarketsPlugin = composeBuiltinPlugin({
+  ...globalMarketsPluginMeta,
+  modules: [worldIndicesModule, worldVenueMapModule, sectorsModule, fxMatrixModule, relativeRotationModule],
+});
+
+export const screenersPlugin = composeBuiltinPlugin({
+  ...screenersPluginMeta,
+  description: "Equity screener, top movers, session highs and lows, and unusual options flow.",
+  modules: [equityScreenerModule, marketMoversModule, scannerModule],
+});
+
+export const futuresCommoditiesPlugin = composeBuiltinPlugin({
+  ...futuresCommoditiesPluginMeta,
+  modules: [futuresModule, futuresCurveModule, cotModule, doeModule],
+});
+
+export const cryptoPlugin = composeBuiltinPlugin({
+  ...cryptoPluginMeta,
+  modules: [cryptoBoardModule, perpsModule],
+});
+
+export const altDataPlugin = composeBuiltinPlugin({
+  ...altDataPluginMeta,
+  modules: [attentionModule, gpuModule, powerModule].map((module) => ({ module, stateId: "market-overview" })),
+});
+
+export const quantPlugin = composeBuiltinPlugin({
+  ...quantPluginMeta,
+  modules: [{ module: correlationModule, stateId: "market-overview" }],
 });
 
 export const ratesMacroPlugin = composeBuiltinPlugin({

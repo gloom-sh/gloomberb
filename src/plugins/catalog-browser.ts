@@ -96,7 +96,12 @@ import {
   applicationPluginMeta,
   creditPluginMeta,
   ratesMacroPluginMeta,
-  marketOverviewPluginMeta,
+  altDataPluginMeta,
+  cryptoPluginMeta,
+  futuresCommoditiesPluginMeta,
+  globalMarketsPluginMeta,
+  quantPluginMeta,
+  screenersPluginMeta,
   newsPluginMeta,
   portfolioPluginMeta,
   tickerResearchPluginMeta,
@@ -165,28 +170,37 @@ const browserNewsPlugin = composeBuiltinPlugin({
   modules: [tickerNewsModule, browserNewsWireModule],
 });
 
-const browserMarketOverviewPlugin = composeBuiltinPlugin({
-  ...marketOverviewPluginMeta,
-  description: "Global indices, scanners, sectors, FX, futures, and correlations.",
-  modules: [
-    correlationModule,
-    relativeRotationModule,
-    equityScreenerModule,
-    worldIndicesModule,
-    worldVenueMapModule,
-    scannerModule,
-    sectorsModule,
-    fxMatrixModule,
-    futuresModule,
-    futuresCurveModule,
-    cotModule,
-    doeModule,
-    gpuModule,
-    attentionModule,
-    powerModule,
-    cryptoBoardModule,
-    perpsModule,
-  ],
+// Market Overview's successors with the modules it had on the web: all of
+// them but top movers.
+const browserGlobalMarketsPlugin = composeBuiltinPlugin({
+  ...globalMarketsPluginMeta,
+  modules: [worldIndicesModule, worldVenueMapModule, sectorsModule, fxMatrixModule, relativeRotationModule],
+});
+
+const browserScreenersPlugin = composeBuiltinPlugin({
+  ...screenersPluginMeta,
+  description: "Equity screener, session highs and lows, and unusual options flow.",
+  modules: [equityScreenerModule, scannerModule],
+});
+
+const browserFuturesCommoditiesPlugin = composeBuiltinPlugin({
+  ...futuresCommoditiesPluginMeta,
+  modules: [futuresModule, futuresCurveModule, cotModule, doeModule],
+});
+
+const browserCryptoPlugin = composeBuiltinPlugin({
+  ...cryptoPluginMeta,
+  modules: [cryptoBoardModule, perpsModule],
+});
+
+const browserAltDataPlugin = composeBuiltinPlugin({
+  ...altDataPluginMeta,
+  modules: [attentionModule, gpuModule, powerModule].map((module) => ({ module, stateId: "market-overview" })),
+});
+
+const browserQuantPlugin = composeBuiltinPlugin({
+  ...quantPluginMeta,
+  modules: [{ module: correlationModule, stateId: "market-overview" }],
 });
 
 // The same panes as on the terminal. The web app has never carried the
@@ -230,7 +244,12 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   browserTickerResearchPlugin,
   browserApplicationPlugin,
   browserNewsPlugin,
-  browserMarketOverviewPlugin,
+  browserGlobalMarketsPlugin,
+  browserScreenersPlugin,
+  browserFuturesCommoditiesPlugin,
+  browserCryptoPlugin,
+  browserAltDataPlugin,
+  browserQuantPlugin,
   marketHeatmapPlugin,
   marketHaltsPlugin,
   fearGreedPlugin,

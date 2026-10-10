@@ -16,6 +16,26 @@
       }
     },
     {
+      "id": "alt-data",
+      "name": "Alt Data",
+      "description": "Research attention, GPU rental prices, and power interconnection queues and capacity.",
+      "categories": [
+        "research",
+        "data"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "attention",
+          "attention-trending",
+          "gpu",
+          "power"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "application",
       "name": "Application",
       "description": "Core layout, help, and release information.",
@@ -105,6 +125,24 @@
       }
     },
     {
+      "id": "crypto",
+      "name": "Crypto & Perps",
+      "description": "Top crypto assets by market cap, and perpetual funding, open interest and premiums.",
+      "categories": [
+        "markets",
+        "crypto"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "crypto-board",
+          "perps"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "custom-view",
       "name": "Custom Views",
       "description": "Tables built from any data function: columns, a filter, a sort. Made by the agent, shared with a team.",
@@ -154,6 +192,48 @@
       }
     },
     {
+      "id": "futures-commodities",
+      "name": "Futures & Commodities",
+      "description": "Futures board and curves, CFTC positioning, and EIA petroleum and gas storage.",
+      "categories": [
+        "markets",
+        "macro"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "cot",
+          "doe",
+          "futures",
+          "futures-curve"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "global-markets",
+      "name": "Global Markets",
+      "description": "World indices, the world map with chokepoint transits, sector and thematic performance, the FX matrix, and relative rotation.",
+      "categories": [
+        "markets"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "fx-matrix",
+          "relative-rotation",
+          "sectors",
+          "world-indices",
+          "world-venue-map"
+        ],
+        "capabilities": [
+          "geo-series"
+        ],
+        "broker": false
+      }
+    },
+    {
       "id": "gloomberb-cloud",
       "name": "Gloom Cloud",
       "description": "Free market, macro, and chat services. Chat requires signup.",
@@ -180,44 +260,6 @@
           "cloud.team",
           "cloud.views",
           "news.gloomberb-cloud"
-        ],
-        "broker": false
-      }
-    },
-    {
-      "id": "market-overview",
-      "name": "Market Overview",
-      "description": "Global indices, movers, scanners, sectors, FX, futures, and correlations.",
-      "categories": [
-        "markets"
-      ],
-      "toggleable": true,
-      "contributes": {
-        "panes": [
-          "attention",
-          "attention-trending",
-          "correlation",
-          "cot",
-          "crypto-board",
-          "doe",
-          "equity-screener",
-          "futures",
-          "futures-curve",
-          "fx-matrix",
-          "gpu",
-          "market-movers",
-          "perps",
-          "power",
-          "relationship-graph",
-          "relative-rotation",
-          "scanner-flow",
-          "scanner-hilo",
-          "sectors",
-          "world-indices",
-          "world-venue-map"
-        ],
-        "capabilities": [
-          "geo-series"
         ],
         "broker": false
       }
@@ -309,6 +351,24 @@
       }
     },
     {
+      "id": "quant",
+      "name": "Quant",
+      "description": "Correlation matrix and relationship graphs with beta and hedge ratios.",
+      "categories": [
+        "markets",
+        "research"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "correlation",
+          "relationship-graph"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
       "id": "rates-macro",
       "name": "Rates & Macro",
       "description": "Economic calendar and statistics, consumer prices, yield curve, rate path, money markets, central bank rates, volatility, and market valuation.",
@@ -346,6 +406,25 @@
       "contributes": {
         "panes": [
           "research-search"
+        ],
+        "capabilities": [],
+        "broker": false
+      }
+    },
+    {
+      "id": "screeners",
+      "name": "Screeners & Movers",
+      "description": "Equity screener, top movers, session highs and lows, and unusual options flow.",
+      "categories": [
+        "markets"
+      ],
+      "toggleable": true,
+      "contributes": {
+        "panes": [
+          "equity-screener",
+          "market-movers",
+          "scanner-flow",
+          "scanner-hilo"
         ],
         "capabilities": [],
         "broker": false

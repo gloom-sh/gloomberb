@@ -15,13 +15,18 @@ import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
 import { commentLettersPlugin } from "./builtin/comment-letters";
 import { openFdaPlugin } from "./builtin/openfda";
 import {
+  altDataPlugin,
   applicationPlugin,
   brokerPlugin,
   creditPlugin,
+  cryptoPlugin,
   earningsPlugin,
-  marketOverviewPlugin,
+  futuresCommoditiesPlugin,
+  globalMarketsPlugin,
   portfolioPlugin,
+  quantPlugin,
   ratesMacroPlugin,
+  screenersPlugin,
   tickerResearchPlugin,
 } from "./builtin/composite-plugins";
 
@@ -34,7 +39,12 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   newsPlugin,
   notesPlugin,
   customViewPlugin,
-  marketOverviewPlugin,
+  globalMarketsPlugin,
+  screenersPlugin,
+  futuresCommoditiesPlugin,
+  cryptoPlugin,
+  altDataPlugin,
+  quantPlugin,
   marketHeatmapPlugin,
   marketHaltsPlugin,
   fearGreedPlugin,
