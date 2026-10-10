@@ -59,7 +59,7 @@ const AS_OF_COLUMN: DataTableColumn = { id: "asOf", label: "As of", width: 12, a
 const tenorKey = (row: YieldTenorRow) => row.id;
 // Left and Right step along the maturities, the way the curve reads.
 const tenorPosition = (row: YieldTenorRow) => new Date(row.years * 86_400_000);
-const RELATIVE_COMPARE = /^\d+[WMY]$/;
+const RELATIVE_COMPARE = /^\d+[DWMY]$/;
 /** A difference in basis points: `+7bp`, `-12bp`. */
 const formatBp = (value: number) => {
   const bp = Math.round(value);

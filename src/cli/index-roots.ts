@@ -49,3 +49,10 @@ export function indexRootTryLine(root: IndexRoot, command = "quote"): string {
 export function indexRootAlsoLine(root: IndexRoot, command = "quote"): string {
   return `also ${root.symbol} ${root.name} (gloomberb ${command} ${root.symbol})`;
 }
+
+/** Cboe's Treasury yield indices: 13-week bill, 5-, 10- and 30-year notes. Each level is a yield in percent. */
+const YIELD_INDEX_SYMBOLS: ReadonlySet<string> = new Set(["^IRX", "^FVX", "^TNX", "^TYX"]);
+
+export function isYieldIndexSymbol(symbol: string): boolean {
+  return YIELD_INDEX_SYMBOLS.has(symbol.trim().toUpperCase());
+}

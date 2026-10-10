@@ -103,6 +103,8 @@ export interface HeadlessPaneColumn {
   shrink?: boolean;
   description?: string;
   format?: (value: unknown, row: HeadlessPaneRow) => string;
+  /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */
+  textFormat?: (value: unknown, row: HeadlessPaneRow) => string;
 }
 
 export interface HeadlessPaneEntry {
@@ -153,6 +155,12 @@ export interface HeadlessPaneFreshness {
   delayMinutes?: number;
   /** What not-a-feed data is, in a few words: "filed data", "monthly release", "your inputs". */
   basis?: string;
+  /**
+   * How often the data is published, when its dates mark the start of a period
+   * (a monthly statistic is dated the 1st). The report then names the month,
+   * quarter or year, not a day it was never observed on.
+   */
+  periodicity?: "monthly" | "quarterly" | "annual";
   /** The newest observation is stale once it is older than this many minutes. */
   maxAgeMinutes?: number;
   /**

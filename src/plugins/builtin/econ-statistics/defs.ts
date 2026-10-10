@@ -45,6 +45,11 @@ export interface StatDef {
   /** Drives the chart axis and the cursor readout. */
   axisUnit: "%" | "";
   formatValue: (value: number) => string;
+  /**
+   * A spread, kept in percentage points like every level here: the pane draws
+   * it as such, but a text report reads it in basis points like GC does.
+   */
+  basisPoints?: boolean;
   /** A level that means something: the Fed's target, zero for a spread. */
   reference: { value: number; label: string } | null;
   /** How old the newest print may get before the pane flags it stale. */

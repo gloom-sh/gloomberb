@@ -1,4 +1,5 @@
 import type { CurveSeries } from "../../../components/chart/curve";
+import { formatBasisPoints } from "../../../utils/basis-points";
 import type { CurveNode } from "./forward";
 import type { YieldCurveLookbackId } from "./history";
 import { curveAsOf, curveSpread, isYieldObservationDate, type YieldPoint } from "./treasury-data";
@@ -9,8 +10,7 @@ export function formatYield(value: number): string {
 
 /** A yield change in percentage points, read in basis points: `+7bp`, `-12bp`. */
 export function formatYieldChange(change: number): string {
-  const bp = Math.round(change * 100);
-  return `${bp > 0 ? "+" : ""}${bp === 0 ? 0 : bp}bp`;
+  return formatBasisPoints(change);
 }
 
 export function buildYieldCurveSeries(points: readonly YieldPoint[]): CurveSeries {

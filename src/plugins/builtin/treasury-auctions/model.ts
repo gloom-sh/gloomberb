@@ -275,6 +275,14 @@ export function rateLabel(auction: TreasuryAuction): string {
   return FILTER_TYPES.bill.has(auction.secType) ? "Investment rate" : "High yield";
 }
 
+/**
+ * What a rate needs beside its number to be read right: a TIPS yield is a real
+ * yield, and an FRN's figure is a spread over the 13-week bill index, not a yield.
+ */
+export function rateQualifier(auction: TreasuryAuction): "real" | "spread" | null {
+  return auction.secType === "TIPS" ? "real" : auction.secType === "FRN" ? "spread" : null;
+}
+
 /** FRN discount margins read in basis points; every other rate in percent. */
 export function formatAuctionRate(auction: TreasuryAuction, value: number | null, empty: string): string {
   if (value == null) return empty;

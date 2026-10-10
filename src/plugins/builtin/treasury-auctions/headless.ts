@@ -18,6 +18,7 @@ import {
   formatAuctionRate,
   indirectPct,
   nextAuctionHistoryWindow,
+  rateQualifier,
   rateValue,
   stopOutVsAverageBp,
   visibleAuctions,
@@ -30,11 +31,24 @@ const formatPercent = (value: unknown) => value == null ? "-" : `${Number(value)
 const STOP_OUT_NOTE = "Stop-out vs avg is the high yield minus the average/median yield, in bp (bills: discount rates). "
   + "A true tail, the stop-out against the 1 pm when-issued yield, needs the when-issued yield, which the source does not carry.";
 
+/** The rate as the table prints it; a TIPS or FRN row says what its number is (`2.653% real`, `4.0bp spread`). */
+const rateCell = (value: unknown, row: Record<string, unknown>) => {
+  const text = formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-");
+  const qualifier = value == null ? null : rateQualifier(row as unknown as TreasuryAuction);
+  return qualifier ? `${text} ${qualifier}` : text;
+};
+
 const COLUMNS = [
   { key: "auctionDate", header: "Date" },
   { key: "secType", header: "Type" },
   { key: "securityTerm", header: "Term" },
-  { key: "rate", header: "Rate", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-") },
+  {
+    key: "rate",
+    header: "Rate",
+    align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-"),
+    textFormat: rateCell,
+  },
   { key: "stopOutVsAvgBp", header: "Stop-out vs avg (bp)", align: "right" as const, format: (value: unknown) => value == null ? "-" : Number(value).toFixed(1) },
   { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "-" : Number(value).toFixed(2) },
   { key: "indirectPercent", header: "Indirect", align: "right" as const, format: formatPercent },
