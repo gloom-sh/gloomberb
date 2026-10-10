@@ -1,12 +1,13 @@
 import type { CliCommandDef } from "../../types/plugin";
 import { TIME_RANGES, type TimeRange } from "../../time-series/range";
-import type { EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
+import type { DataProvider, EarningsEvent, QuoteBatchResult, QuoteSubscriptionTarget, SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle, NewsFeed, NewsQuery } from "../../news/types";
 import type {
   AnalystResearchData,
   CorporateActionsData,
   HolderData,
   OptionsChain,
+  Quote,
   TickerFinancials,
 } from "../../types/financials";
 import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
@@ -32,9 +33,22 @@ import {
   recommendationTotal,
   targetUpside,
 } from "../../plugins/builtin/research/analyst-model";
-import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
+import {
+  chainHasExpiry,
+  chainWithModelFigures,
+  formatExpiryList,
+  formatOptionDeltaCell,
+  formatOptionIvCell,
+  formatOptionQuoteCell,
+  missingExpiryMessage,
+  OPTION_MODEL_RATE,
+  OPTIONS_USAGE,
+  optionRows,
+  parseOptionExpiration,
+  type OptionModelInputs,
+} from "./options-chain";
 import type { CliResultColumn } from "../result";
 import {
   exportRowsTable,
@@ -350,22 +364,6 @@ function corporateActionRows(data: CorporateActionsData) {
   ].sort((left, right) => right.date.localeCompare(left.date));
 }
 
-function optionRows(chain: OptionsChain) {
-  return [...chain.calls.map((contract) => ({ side: "call", ...contract })), ...chain.puts.map((contract) => ({ side: "put", ...contract }))]
-    .map((contract) => ({
-      side: contract.side,
-      contract: contract.contractSymbol,
-      strike: contract.strike,
-      last: contract.lastPrice,
-      bid: contract.bid,
-      ask: contract.ask,
-      volume: contract.volume,
-      openInterest: contract.openInterest,
-      iv: contract.impliedVolatility,
-      expiration: new Date(contract.expiration * 1000).toISOString().slice(0, 10),
-    }));
-}
-
 /**
  * After a US open, a chain whose latest trade predates it still carries the
  * prior session's quotes and volume. The delayed feed lags the open by about
@@ -378,11 +376,6 @@ function priorSessionChainWarning(chain: OptionsChain, exchange: string, now: nu
   const session = getPublishedUsEquitySession(exchange || "NYSE", today);
   if (session?.kind !== "session" || now < session.open || observed >= session.open) return null;
   return `No option trades this session yet (last trade ${chain.asOf})`;
-}
-
-function formatOptionQuoteCell(row: Record<string, unknown>, side: "bid" | "ask"): string {
-  const quote = optionQuoteSide({ bid: Number(row.bid), ask: Number(row.ask) }, side);
-  return quote == null ? "—" : String(quote);
 }
 
 /** Per-share earnings to the cent, as reported; consensus averages carry more digits. */
@@ -965,52 +958,112 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
   });
 }
 
+/** Spot and dividend yield for IV and delta, read from the underlying the way the options pane does; missing ones stay missing. */
+async function loadOptionModelInputs(
+  dataProvider: Pick<DataProvider, "getTickerFinancials">,
+  listing: CliListing,
+  quote: Promise<Quote | null>,
+  refresh: boolean,
+): Promise<OptionModelInputs> {
+  const financials = await Promise.resolve().then(() => dataProvider.getTickerFinancials(
+    listing.request.symbol, listing.request.exchange, { cacheMode: refresh ? "refresh" : "default" },
+  )).catch(() => null);
+  const current = [await quote, financials?.quote]
+    .find((candidate) => candidate && candidate.stale !== true && isFiniteNumber(candidate.price) && candidate.price > 0);
+  const dividendYield = financials?.fundamentals?.dividendYield;
+  return {
+    ...(current ? { spot: current.price } : {}),
+    ...(isFiniteNumber(dividendYield) && dividendYield >= 0 ? { dividendYield } : {}),
+  };
+}
+
 async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const expiration = takeOption(args, "--expiration");
   const exchangeOption = takeOption(args, "--exchange");
-  const raw = requireOneArg(args, "options <symbol> [--expiration <unix>]", "symbol", ctx);
+  const raw = requireOneArg(args, OPTIONS_USAGE, "symbol", ctx);
+  let expirationDate: number | undefined;
+  if (expiration != null || rawArgs.includes("--expiration")) {
+    const parsed = expiration == null ? null : parseOptionExpiration(expiration);
+    if (parsed == null) {
+      ctx.fail(
+        expiration == null ? "--expiration needs a date." : `Invalid --expiration "${expiration}".`,
+        `Use YYYY-MM-DD (2028-01-21) or Unix seconds (1832025600).\nUsage: gloomberb ${OPTIONS_USAGE}`,
+      );
+    }
+    expirationDate = parsed;
+  }
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const { symbol, exchange } = listing.request;
-    const expirationDate = expiration == null ? undefined : Number(expiration);
+    const refresh = ctx.cliOptions.refresh;
     const quotePromise = loadListingQuote(market.dataProvider, listing);
-    const { result, chain } = await loadForListing(listing, market, ctx, async () => {
+    const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quotePromise, refresh);
+    const { result, chain: loaded } = await loadForListing(listing, market, ctx, async () => {
       const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
-        .load({ force: ctx.cliOptions.refresh });
+        .load({ force: refresh });
       return {
         result: cached,
         chain: cached?.value ?? await market.dataProvider.getOptionsChain(symbol, exchange, expirationDate, {
-          cacheMode: ctx.cliOptions.refresh ? "refresh" : "default",
+          cacheMode: refresh ? "refresh" : "default",
         }),
       };
     }, undefined, { command: "options", noun: "options chain" });
+    const inputs = await inputsPromise;
+    if (expirationDate != null && !chainHasExpiry(loaded, expirationDate)) {
+      // An unlisted date comes back as an empty chain; its own list of expiries, else the default chain's, says what to pick.
+      const listed = loaded.expirationDates.length > 0 ? loaded.expirationDates : await market.dataProvider
+        .getOptionsChain(symbol, exchange, undefined, { cacheMode: "default" })
+        .then((fallback) => fallback.expirationDates, () => []);
+      const miss = missingExpiryMessage(listing.key, expirationDate, listed);
+      ctx.fail(miss.message, miss.details);
+    }
     const identity = listingIdentity(listing, await quotePromise);
+    const chain = chainWithModelFigures(loaded, inputs);
     // A failed refresh falls back to the stored chain, which can be days old.
     const refreshWarning = result?.refreshError == null ? null
       : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
         + (chain.asOf ? ` (last trade ${chain.asOf})` : "");
     const sessionWarning = refreshWarning ? null : priorSessionChainWarning(chain, identity.exchange, Date.now());
-    const warnings = refreshWarning ? [refreshWarning] : sessionWarning ? [sessionWarning] : undefined;
+    const modelWarning = inputs.spot == null && (chain.calls.length > 0 || chain.puts.length > 0)
+      ? `IV and delta need a current ${listing.key} quote; those columns are blank`
+      : null;
+    const warnings = [refreshWarning ?? sessionWarning, modelWarning].filter((warning): warning is string => warning != null);
     // Dated by the chain's last trade; a chain that failed to refresh is the stored one, stale.
     const freshness = rowsFreshness([], { asOf: chain.asOf ?? null }, {
       ...(chain.dataSource ? { dataSource: chain.dataSource } : {}),
       ...(chain.delayMinutes != null ? { delayMinutes: chain.delayMinutes } : {}),
       stale: refreshWarning != null,
     });
-    ctx.printResult({ data: chain, metadata: { ...listingMetadata(identity), expirations: chain.expirationDates }, warnings, freshness }, {
+    ctx.printResult({
+      data: chain,
+      metadata: {
+        ...listingMetadata(identity),
+        expirations: chain.expirationDates,
+        // What `iv` and `delta` on each contract are valued from; the provider's own impliedVolatility is left as sent.
+        model: { spot: inputs.spot ?? null, dividendYield: inputs.dividendYield ?? null, rate: OPTION_MODEL_RATE },
+      },
+      ...(warnings.length > 0 ? { warnings } : {}),
+      freshness,
+    }, {
       heading: listingHeading(identity),
       rows: optionRows,
+      // Choosing an expiry needs the list; once one is chosen the table is that expiry.
+      summary: (data: OptionsChain) => expirationDate == null ? formatExpiryList(data.expirationDates) : "",
+      empty: `No option contracts for ${listingTitle(identity)}.`,
       columns: [
         { key: "side", header: "Side" },
         { key: "contract", header: "Contract", shrink: false },
-        { key: "expiration", header: "Expiry" },
+        // The contract symbol already carries the date, so this goes first when the table is narrow.
+        { key: "expiration", header: "Expiry", optional: true, dropPriority: 2 },
         { key: "strike", header: "Strike", align: "right" },
         { key: "last", header: "Last", align: "right" },
         { key: "bid", header: "Bid", align: "right", format: (_value, row) => formatOptionQuoteCell(row, "bid") },
         { key: "ask", header: "Ask", align: "right", format: (_value, row) => formatOptionQuoteCell(row, "ask") },
-        { key: "volume", header: "Vol", align: "right", format: formatCountCell },
-        { key: "openInterest", header: "OI", align: "right", format: formatCountCell },
+        { key: "iv", header: "IV", align: "right", format: formatOptionIvCell },
+        { key: "delta", header: "Delta", align: "right", format: formatOptionDeltaCell },
+        { key: "volume", header: "Vol", align: "right", format: formatCountCell, optional: true, dropPriority: 1 },
+        { key: "openInterest", header: "OI", align: "right", format: formatCountCell, optional: true, dropPriority: 1 },
       ],
     });
   });
@@ -1153,12 +1206,15 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
     description: "Fetch an options chain",
     help: {
       group: CLI_COMMAND_GROUPS.research,
-      usage: ["options <symbol> [--expiration <unix>]"],
+      usage: [OPTIONS_USAGE],
       options: [
-        { flags: "--expiration <unix>", description: "Expiration as Unix seconds; defaults to the nearest one" },
+        {
+          flags: "--expiration <YYYY-MM-DD|unix>",
+          description: "Expiration as a date (2028-01-21) or Unix seconds; defaults to the nearest one, and lists the others",
+        },
         EXCHANGE_OPTION,
       ],
-      examples: ["options AAPL", "options AAPL:NASDAQ --json"],
+      examples: ["options AAPL", "options AAPL --expiration 2028-01-21", "options AAPL:NASDAQ --json"],
     },
     execute: runOptions,
   },

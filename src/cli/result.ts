@@ -301,6 +301,7 @@ function renderTextTable<Row extends Record<string, unknown>>(
       width: column.width,
       maxWidth: column.maxWidth,
       optional: column.optional,
+      dropPriority: column.dropPriority,
       shrink: column.shrink,
     })),
     cells.map((row) => shown.map(({ index }) => row[index]!)),

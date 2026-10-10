@@ -459,6 +459,8 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb plugin link <path>` | Load a plugin from a local checkout while developing it |
 | `gloomberb plugin doctor [name]` | Check that a plugin loads, declares its hosts, and compiles for the desktop |
 
+`gloomberb options AAPL` prints the nearest expiry's contracts and lists every expiry above them (the nearest 40 when a chain has more). `--expiration` takes a date (`2028-01-21`, the expiry's calendar date) or Unix seconds; a date the chain does not list fails with the nearest listed dates. The IV and Delta columns are valued as the options pane values them: IV is solved from quote midpoints (the provider's own implied volatility is not used), delta from that IV, the underlying's current price, its dividend yield and a 4% risk-free rate. A contract with no two-sided quote, no current underlying price or no time left shows a dash. `--json` and `--ndjson` carry the same figures as `iv` (a fraction) and `delta` on each contract, and `metadata.model` names the spot, dividend yield and rate behind them.
+
 `portfolio` and `watchlist` come with the Portfolio plugin, `notes` with Notes, `alerts` with Alerts, and `rss` with News. Turning one of those plugins off with `gloomberb plugin disable` also removes its commands.
 
 `gloomberb shot TAS AAPL --output tape.png` and `gloomberb shot QR AAPL --output quotes.png` capture a dated trade or NBBO snapshot with the current Cloud session's access delay.
