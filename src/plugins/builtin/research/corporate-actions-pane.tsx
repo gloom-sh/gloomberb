@@ -25,7 +25,7 @@ import { formatPercent } from "../../../utils/format";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
-import { isUsEquityTicker } from "../../../utils/sec";
+import { mayBeUsEquityTicker } from "../../../utils/sec";
 import { useAssetData, usePluginPaneState } from "../../runtime";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -496,7 +496,7 @@ export function CorporateActionsView({
     : null;
   const instrument = useMemo(() => instrumentFromTicker(ticker, symbol), [symbol, ticker]);
   const secFilingsEntry = useSecFilingsQuery(
-    openRow?.status === "Earnings" && instrument && isUsEquityTicker(ticker)
+    openRow?.status === "Earnings" && instrument && mayBeUsEquityTicker(ticker)
       ? { instrument, count: SEC_EVENT_FILING_LIMIT }
       : null,
   );

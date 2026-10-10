@@ -130,6 +130,8 @@ describe("quote freshness", () => {
     ["no label", "2026-10-09T20:06:00Z", { marketState: undefined }, true],
     ["the server flagged it stale", "2026-10-09T20:06:00Z", { stale: true }, true],
     ["a price from yesterday's after-hours", "2026-10-09T20:06:00Z", { postMarketPrice: 168, lastUpdated: Date.parse("2026-10-08T21:00:00Z") }, true],
+    // A thin listing's after-hours price derived from today's close: its age is the provider bound's call.
+    ["an after-hours price derived from today's close", "2026-10-09T23:30:00Z", { postMarketPrice: 168, sessionConfidence: "derived" }, false],
     // Early close: Friday 2026-11-27 closes at 13:00 New York (18:00Z, UTC-5).
     ["early close, 12:55 print at 13:20", "2026-11-27T18:20:00Z", { lastUpdated: Date.parse("2026-11-27T17:55:00Z") }, false],
     ["early close, 12:55 print at 16:20", "2026-11-27T21:20:00Z", { lastUpdated: Date.parse("2026-11-27T17:55:00Z") }, false],

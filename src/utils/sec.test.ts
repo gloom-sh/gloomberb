@@ -1,54 +1,53 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerRecord } from "../types/ticker";
-import { isKnownNonUsEquityTicker, isUsEquityOrFundTicker, isUsEquityTicker } from "./sec";
+import { isKnownNonUsEquityTicker, mayBeUsEquityOrFundTicker, mayBeUsEquityTicker } from "./sec";
 import { createTestTicker } from "../test-support/ticker";
 
 const makeTicker = (overrides: Partial<TickerRecord["metadata"]>) => createTestTicker("AAPL", "Apple Inc.", overrides);
+const smart = (primaryExchange?: string) => ({ exchange: "SMART", assetCategory: "STK", broker_contracts: [{
+  brokerId: "ibkr", symbol: "AAPL", exchange: "SMART", primaryExchange, secType: "STK", currency: "USD",
+}] });
 
-describe("isUsEquityTicker", () => {
-  test("accepts SMART-routed US stocks with a primary exchange", () => {
-    expect(isUsEquityTicker(makeTicker({
-      exchange: "SMART",
-      assetCategory: "STK",
-      broker_contracts: [{
-        brokerId: "ibkr",
-        symbol: "AAPL",
-        exchange: "SMART",
-        primaryExchange: "NASDAQ",
-        secType: "STK",
-        currency: "USD",
-      }],
-    }))).toBe(true);
-  });
+describe("SEC pane eligibility", () => {
+  // Unknown is not foreign: a ticker whose venue, currency or type were never
+  // filled in (its quote failed) is looked up as a US ticker. A listing known
+  // to be abroad, or a type the pane does not cover, gets the notice.
+  /** [what, metadata, equity panes (SEC, INS), fund filings view (ETF)] */
+  const rows: Array<[string, Partial<TickerRecord["metadata"]>, boolean, boolean]> = [
+    ["US equity on NASDAQ", {}, true, true],
+    ["US equity, no exchange", { exchange: "" }, true, true],
+    ["US equity, no currency", { currency: "" }, true, true],
+    ["US equity, no exchange or currency", { exchange: "", currency: "" }, true, true],
+    ["SMART-routed with a primary exchange", smart("NASDAQ"), true, true],
+    ["SMART-routed, no primary exchange", smart(), true, true],
+    ["catalogue ADR", { assetCategory: "ADR" }, true, true],
+    ["catalogue common stock on XNYS", { assetCategory: "Common Stock", exchange: "XNYS" }, true, true],
+    ["depositary receipt on NGM", { assetCategory: "Depositary Receipt", exchange: "NGM" }, true, true],
+    ["share class with a dot, no exchange", { ticker: "BRK.B", exchange: "", currency: "" }, true, true],
+    ["London listing", { exchange: "LSE", currency: "GBP" }, false, false],
+    ["London listing in USD", { exchange: "LSE" }, false, false],
+    ["Toronto listing in USD", { exchange: "TSX" }, false, false],
+    ["CAD on a US venue", { currency: "CAD" }, false, false],
+    ["EUR, no exchange", { exchange: "", currency: "EUR" }, false, false],
+    [".L symbol, no exchange", { ticker: "VOD.L", exchange: "", currency: "" }, false, false],
+    [".T symbol, no exchange", { ticker: "7203.T", exchange: "", currency: "" }, false, false],
+    [".HK symbol, no exchange", { ticker: "0700.HK", exchange: "", currency: "" }, false, false],
+    ["listing key abroad, no exchange", { ticker: "SAN:EPA", exchange: "", currency: "" }, false, false],
+    ["listing key in New York, no exchange", { ticker: "SAN:NYSE", exchange: "", currency: "" }, true, true],
+    ["ETF on ARCA", { assetCategory: "ETF", exchange: "NYSEARCA" }, false, true],
+    ["ETF, no exchange", { assetCategory: "ETF", exchange: "" }, false, true],
+    ["mutual fund", { assetCategory: "Mutual Fund" }, false, true],
+    ["ETF in London", { assetCategory: "ETF", exchange: "LSE" }, false, false],
+    ["crypto", { assetCategory: "CRYPTOCURRENCY", exchange: "CCC" }, false, false],
+    ["crypto, no exchange", { assetCategory: "CRYPTOCURRENCY", exchange: "" }, false, false],
+    ["option", { assetCategory: "OPT" }, false, false],
+    ["preferred stock", { assetCategory: "Preferred Stock" }, false, false],
+  ];
 
-  test("accepts catalogue common stocks and depositary receipts without admitting funds or foreign listings", () => {
-    for (const assetCategory of ["ADR", "Common Stock", "Depositary Receipt"]) {
-      expect(isUsEquityTicker(makeTicker({ assetCategory }))).toBe(true);
-      expect(isUsEquityTicker(makeTicker({ assetCategory, exchange: "LSE" }))).toBe(false);
-      expect(isUsEquityTicker(makeTicker({ assetCategory, currency: "CAD" }))).toBe(false);
-    }
-    for (const exchange of ["XNAS", "NGM", "NCM", "XNYS", "XASE"]) {
-      expect(isUsEquityTicker(makeTicker({ assetCategory: "Common Stock", exchange }))).toBe(true);
-    }
-    for (const assetCategory of ["OPT", "ETF", "Mutual Fund", "Preferred Stock"]) {
-      expect(isUsEquityTicker(makeTicker({ assetCategory }))).toBe(false);
-    }
-  });
-
-  test("the fund filings view also admits US-listed funds, still not foreign listings or options", () => {
-    for (const assetCategory of ["ETF", "Mutual Fund", "Common Stock"]) {
-      expect(isUsEquityOrFundTicker(makeTicker({ assetCategory, exchange: "NYSEARCA" }))).toBe(true);
-      expect(isUsEquityOrFundTicker(makeTicker({ assetCategory, exchange: "LSE" }))).toBe(false);
-    }
-    expect(isUsEquityOrFundTicker(makeTicker({ assetCategory: "OPT" }))).toBe(false);
-  });
-});
-
-describe("isKnownNonUsEquityTicker", () => {
-  test("treats a USD ticker without an exchange as unknown, not foreign", () => {
-    expect(isKnownNonUsEquityTicker(makeTicker({ ticker: "GME", exchange: "" }))).toBe(false);
-    expect(isKnownNonUsEquityTicker(makeTicker({ ticker: "7203", exchange: "", currency: "JPY" }))).toBe(true);
-    expect(isKnownNonUsEquityTicker(makeTicker({ ticker: "SHOP", exchange: "TSX", currency: "USD" }))).toBe(true);
-    expect(isKnownNonUsEquityTicker(makeTicker({ ticker: "SPY", exchange: "", assetCategory: "ETF" }))).toBe(true);
+  test.each(rows)("%s", (_what, metadata, equity, equityOrFund) => {
+    const ticker = makeTicker(metadata);
+    expect(mayBeUsEquityTicker(ticker)).toBe(equity);
+    expect(mayBeUsEquityOrFundTicker(ticker)).toBe(equityOrFund);
+    expect(isKnownNonUsEquityTicker(ticker)).toBe(!equity);
   });
 });

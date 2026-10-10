@@ -528,7 +528,7 @@ export async function buildDesktopShotPayload(
     shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, ...prepared.settings } };
     for (const [symbol, data] of prepared.financials ?? []) {
       financials.push([symbol, data]);
-      tickers.push(createFallbackTicker(symbol, data, context));
+      tickers.push(await createFallbackTicker(symbol, data, context));
     }
   } else if (resolved.pane.id === "analytics") {
     const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
@@ -554,7 +554,7 @@ export async function buildDesktopShotPayload(
       if (!target.instrument) financials.push([label, data]);
       const { symbol } = parsePublicTickerKey(key);
       const ticker = await context.store.loadTicker(key) ?? await context.store.loadTicker(symbol);
-      tickers.push(ticker ?? createFallbackTicker(key, data, context));
+      tickers.push(ticker ?? await createFallbackTicker(key, data, context));
     }
     intradayHistories.push(...chartModel.snapshot.intradayHistories.map((history) => ({
       ...history, start: history.start?.toISOString() ?? null, end: history.end?.toISOString() ?? null,
@@ -603,7 +603,7 @@ export async function buildDesktopShotPayload(
       // letting the pane fetch them.
       data = await withShotPriceHistory(context, symbol, entry.tickerFile, data);
     }
-    tickers.push(entry.tickerFile ?? createFallbackTicker(symbol, data, context));
+    tickers.push(entry.tickerFile ?? await createFallbackTicker(symbol, data, context));
     financials.push([symbol, data]);
     if (resolved.pane.id === "time-sales") {
       tapeSnapshots.push([entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)]);

@@ -71,6 +71,17 @@ describe("VCA dates", () => {
     expect(keys).not.toContain("rankDate");
   });
 
+  test("IV1Y and its percentile join only when a row has them, ranked on the same close", async () => {
+    expect((await load([row("NVDA", reading("2026-10-09", "quote-mid", 0.293), "2026-10-09")])).keys).not.toContain("iv1y");
+    const oneYear = (symbol: string, closeDate: string) => {
+      const base = row(symbol, reading("2026-10-09", "quote-mid", 0.3), "2026-10-09");
+      return { ...base, latest: { ...base.latest!, iv365: 0.31 }, iv365: { ...base.iv30!, value: 0.3, percentile: 22, date: closeDate } };
+    };
+    const { keys, cell } = await load([oneYear("NVDA", "2026-10-09"), oneYear("AAPL", "2026-10-08")]);
+    expect(keys.slice(keys.indexOf("verdict"), keys.indexOf("verdict") + 3)).toEqual(["verdict", "iv1y", "iv1yPercentile"]);
+    expect([0, 1].map((index) => [cell("iv1y", index), cell("iv1yPercentile", index)])).toEqual([["31.0%", "22"], ["31.0%", "--"]]);
+  });
+
   test("skew from an older capture than the reading is dated", async () => {
     const stale = { ...row("NVDA", reading("2026-10-09", "trade-close", 0.293), "2026-10-09"),
       skew: { date: "2026-10-08", put25: 0.3, call25: 0.28, skew: 0.02 } };

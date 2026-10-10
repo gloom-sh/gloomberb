@@ -14,7 +14,8 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily", observedKey: "date", oldest: null },
   describe: (args) => `HIVG ${args.symbols[0] ?? ""}`,
   discovery: { aliases: ["HIVG"], screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
-    limitations: ["History starts February 2024 (OPRA daily trade closes)", "Rank and percentile use trade-close readings only"] },
+    limitations: ["History starts February 2024 (daily option trade closes)", "Rank and percentile use trade-close readings only",
+      "IV1Y needs long-dated trades: it can start later, has gaps, and ranks from 60 prior sessions"] },
   options: [
     { key: "lookback", type: "enum", values: [{ value: "1Y" }, { value: "2Y" }, { value: "ALL" }], defaultValue: "1Y", description: "Visible history" },
     { key: "hvWindow", type: "enum", values: HV_WINDOWS.map((window) => ({ value: String(window) })), defaultValue: "20", description: "Realized volatility window in sessions" },
@@ -28,8 +29,10 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     const model = projectIvHistory(payload, prices.history, { lookback: String(args.options.lookback) as IvLookback,
       hvWindow: (Number(args.options.hvWindow) === 30 ? 30 : 20) as HvWindow });
     const hvByDay = new Map(model.hv.map((point) => [point.date.getTime(), point.value]));
+    const iv365ByDay = new Map(model.iv365.map((point) => [point.date.getTime(), point.value]));
     const rows = model.iv30.map((point, index) => ({ date: point.date.toISOString().slice(0, 10), iv30: point.value,
       iv90: model.iv90.find((entry) => entry.date.getTime() === point.date.getTime())?.value ?? null,
+      iv365: iv365ByDay.get(point.date.getTime()) ?? null,
       hv: hvByDay.get(point.date.getTime()) ?? null, spread: model.spread[index]?.value ?? null })).reverse();
     const errors = [prices.error, ...model.warnings].filter((value): value is string => !!value);
     return {
@@ -45,11 +48,12 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "samples", header: "Sessions" },
         ], rows: model.stats.map((row) => ({ ...row })) },
         { title: "Daily history", columns: [{ key: "date", header: "Session" },
-          ...["iv30", "iv90", "hv"].map((key) => ({ key, header: key.toUpperCase(), format: percent })),
+          ...[["iv30", "IV30"], ["iv90", "IV90"], ["iv365", "IV1Y"], ["hv", "HV"]].map(([key, header]) => ({ key: key!, header: header!, format: percent })),
           { key: "spread", header: "IV-HV", format: (value: unknown) => typeof value === "number" ? formatPoints(value) : "--" }], rows },
       ],
       complete: payload.status === "ready" && errors.length === 0,
       unavailableSymbols: model.iv30.length ? [] : [instrument.symbol], errors,
+      ...(model.oneYearNote ? { notes: [model.oneYearNote] } : {}),
       metadata: { status: payload.status, coverage: payload.coverage, latest: payload.latest, stats: payload.stats,
         unit: "decimal annualized volatility", methodology: METHODOLOGY },
     };
@@ -76,6 +80,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     const queued = rows.filter((row) => row.status === "queued").map((row) => row.symbol);
     const dates = richCheapDates(rows);
     const hasSkew = rows.some((row) => row.skew != null);
+    const hasIv1y = rows.some((row) => row.iv1y != null), hasIv1yRank = rows.some((row) => row.iv1yPercentile != null);
     const dated = (value: unknown) => typeof value === "string" ? value : "--";
     return {
       sections: [{ title: ["Rich/cheap", universe.label, ...sharedDates(dates)].join(" · "), columns: [
@@ -86,6 +91,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         { key: "rank", header: "IVR", format: (value: unknown) => formatRank(value as number | null) },
         { key: "percentile", header: "IVP", format: (value: unknown) => formatRank(value as number | null) },
         { key: "verdict", header: "Rich/Cheap", format: (value: unknown) => verdictLabel(value as never) },
+        ...(hasIv1y ? [{ key: "iv1y", header: "IV1Y", format: percent }] : []),
+        ...(hasIv1yRank ? [{ key: "iv1yPercentile", header: "IVP1Y", format: (value: unknown) => formatRank(value as number | null) }] : []),
         { key: "termSlope", header: "30-90", format: (value: unknown) => formatPoints(value as number | null) },
         ...(hasSkew ? [{ key: "skew", header: "25D skew", format: (value: unknown) => formatPoints(value as number | null) }] : []),
         ...(hasSkew && dates.skewApart ? [{ key: "skewDate", header: "Skew as of", format: dated }] : []),

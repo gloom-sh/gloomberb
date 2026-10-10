@@ -9,6 +9,7 @@ import { cleanTickerInput } from "./options";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import type { ResolvedPaneFunction } from "./resolver";
 import { toMarketDataContext } from "../../market-data/selectors";
+import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
 import { loadSeasonalityHistory, SEASONALITY_HISTORY_RESOLUTION } from "../../plugins/builtin/seasonality/client";
 import type { InstrumentRef } from "../../market-data/request-types";
 import { CORRELATION_HISTORY_RESOLUTION, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
@@ -142,14 +143,25 @@ export function isFinancialAnalysisFunction(resolved: ResolvedPaneFunction): boo
     && resolved.instance.settings?.lockedTabId === "financials";
 }
 
-export function createFallbackTicker(symbol: string, financials: TickerFinancials | null, context: MarketContext): TickerRecord {
+/**
+ * The ticker a shot shows for a symbol that is not saved. Without a usable
+ * quote (a thin US listing after the close), the listing comes from the quote
+ * metadata kept when the quote was dropped, or else from asking the source
+ * for it, so the pane still knows a US stock from a listing abroad. What no
+ * source knows stays empty rather than guessed from the base currency.
+ */
+export async function createFallbackTicker(symbol: string, financials: TickerFinancials | null, context: MarketContext): Promise<TickerRecord> {
   const instrument = parsePublicTickerKey(symbol);
   const quote = financials?.quote;
+  const known = quote ? quoteMetadataFromQuote(quote) : financials?.quoteMetadata;
+  const listing = instrument.exchange || known?.listingExchangeName
+    ? known
+    : await context.dataProvider.getQuoteMetadata?.(instrument.symbol, "").catch(() => null) ?? known;
   return {
     metadata: {
       ticker: instrument.symbol,
-      exchange: instrument.exchange ?? quote?.listingExchangeName ?? quote?.exchangeName ?? "",
-      currency: quote?.currency ?? context.config.baseCurrency,
+      exchange: instrument.exchange ?? listing?.listingExchangeName ?? "",
+      currency: listing?.currency ?? "",
       name: quote?.name ?? instrument.symbol,
       portfolios: [],
       watchlists: [],

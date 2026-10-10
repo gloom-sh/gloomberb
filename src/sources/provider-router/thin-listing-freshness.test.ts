@@ -64,12 +64,71 @@ describe("a delayed quote's last trade age", () => {
       ["US after-hours, 3 h, real-time", afterHours, { ...usPost, dataSource: "live" }, true, false],
       ["US after-hours, an answer without the flag", afterHours, { ...usPost, stale: undefined }, true, false],
       ["US after-hours label without an after-hours price", afterHours, { ...usPost, postMarketPrice: undefined }, true, false],
-      ["US after-hours label on a regular-session print", afterHours, { ...usPost, lastUpdated: at("2026-10-09T19:51:00Z") }, true, false],
       // 12:30 Hong Kong: over lunch the morning's last print stands for any source.
       ["HKEX over lunch", "2026-10-09T04:30:00Z", quote("0700", "HKEX", "2026-10-09T03:59:00Z", { providerId: "other" }), false, true],
       ["HKEX thin over lunch, traded at 10:00", "2026-10-09T04:30:00Z", quote("1234", "HKEX", "2026-10-09T02:00:00Z"), true, true],
     ];
     for (const [what, now, observed, recentAnswer, usable] of rows) {
+      clock.mockReturnValue(at(now));
+      const exchange = observed.listingExchangeName;
+      expect(isProviderQuoteUsableForCurrentSession(observed, exchange, observed.symbol, { recentAnswer }), what).toBe(usable);
+    }
+  });
+
+  // A thin US listing that does not trade after the close: the service labels
+  // it POST, derives the after-hours price from the regular close and says it
+  // is not stale, as it did for CRBG, PRTA and SAH on Friday 9 Oct 2026.
+  const thinPost = (lastPrint: string, overrides: Partial<Quote> = {}) => quote("CRBG", "NYSE", lastPrint, {
+    marketState: "POST", price: 34.09, regularClose: 34.09, postMarketPrice: 34.09, sessionConfidence: "derived", ...overrides,
+  });
+  // Before the open: the service labels it PRE with the previous close as the pre-market price.
+  const thinPre = (lastPrint: string, overrides: Partial<Quote> = {}) => quote("PRTA", "NASDAQ", lastPrint, {
+    marketState: "PRE", price: 8.84, preMarketPrice: 8.84, sessionConfidence: "derived", ...overrides,
+  });
+  // Fri 9 Oct 2026 is on daylight time: 16:00 New York is 20:00Z.
+  const evening = "2026-10-09T23:30:00Z";
+  const morning = "2026-10-09T12:30:00Z";
+  // Fri 27 Nov 2026 closes at 13:00 New York (18:00Z); the app's clock reads 14:30 as regular hours.
+  const earlyClose = "2026-11-27T19:30:00Z";
+  const extendedRows: Row[] = [
+    ["17:05, PRTA's 16:01 print", "2026-10-09T21:05:00Z", thinPost("2026-10-09T20:01:24Z"), true, true],
+    ["17:05, PRTA's 16:01 print, past the TTL", "2026-10-09T21:05:00Z", thinPost("2026-10-09T20:01:24Z"), false, false],
+    ["POST, 1 h old after-hours print", evening, thinPost("2026-10-09T22:30:00Z"), true, true],
+    ["POST, 1 h old after-hours print, past the TTL", evening, thinPost("2026-10-09T22:30:00Z"), false, false],
+    ["POST, 5 h old regular-session print", evening, thinPost("2026-10-09T18:30:00Z"), true, true],
+    ["POST, 5 h old regular-session print, past the TTL", evening, thinPost("2026-10-09T18:30:00Z"), false, false],
+    ["POST, print at today's open", evening, thinPost("2026-10-09T13:30:00Z"), true, true],
+    ["POST, print just before today's open", evening, thinPost("2026-10-09T13:29:59Z"), true, false],
+    ["POST, print from this morning's pre-market", evening, thinPost("2026-10-09T12:00:00Z"), true, false],
+    ["POST, print from yesterday's regular session", evening, thinPost("2026-10-08T18:30:00Z"), true, false],
+    ["POST, print from yesterday's after-hours", evening, thinPost("2026-10-08T22:30:00Z"), true, false],
+    ["POST, an answer without the flag", evening, thinPost("2026-10-09T18:30:00Z", { stale: undefined }), true, false],
+    ["POST, the service says stale", evening, thinPost("2026-10-09T18:30:00Z", { stale: true }), true, false],
+    ["POST, real-time", evening, thinPost("2026-10-09T18:30:00Z", { dataSource: "live" }), true, false],
+    ["POST, another source", evening, thinPost("2026-10-09T18:30:00Z", { providerId: "other" }), true, false],
+    ["PRE, 3 h old pre-market print", morning, thinPre("2026-10-09T09:30:00Z"), true, true],
+    ["PRE, 3 h old pre-market print, past the TTL", morning, thinPre("2026-10-09T09:30:00Z"), false, false],
+    ["PRE, the previous close", morning, thinPre("2026-10-08T19:40:00Z"), true, true],
+    ["PRE, the previous session's after-hours", morning, thinPre("2026-10-08T21:10:00Z"), true, true],
+    ["PRE, print from yesterday's pre-market", morning, thinPre("2026-10-08T12:00:00Z"), true, false],
+    ["PRE, the close two sessions back", morning, thinPre("2026-10-07T19:40:00Z"), true, false],
+    ["PRE, pre-market print, an answer without the flag", morning, thinPre("2026-10-09T09:30:00Z", { stale: undefined }), true, false],
+    ["PRE, pre-market print, real-time", morning, thinPre("2026-10-09T09:30:00Z", { dataSource: "live" }), true, false],
+    ["PRE, pre-market print, another source", morning, thinPre("2026-10-09T09:30:00Z", { providerId: "other" }), true, false],
+    ["early close, 14:30, a 12:10 print", earlyClose, thinPost("2026-11-27T17:10:00Z"), true, true],
+    ["early close, 14:30, a 12:10 print, past the TTL", earlyClose, thinPost("2026-11-27T17:10:00Z"), false, false],
+    ["early close, 16:30, a 12:10 print", "2026-11-27T21:30:00Z", thinPost("2026-11-27T17:10:00Z"), true, true],
+    ["early close, 14:30, the day before's close", earlyClose, thinPost("2026-11-25T20:50:00Z"), true, false],
+    // Unchanged: a Saturday has no session to age a print in, and Labor Day's
+    // weekday session hours still read Friday's print as an old day's.
+    ["Saturday, Friday's print", "2026-10-10T15:00:00Z", thinPost("2026-10-09T22:30:00Z"), true, true],
+    ["Saturday, Friday's print, past the TTL", "2026-10-10T15:00:00Z", thinPost("2026-10-09T22:30:00Z"), false, true],
+    ["Labor Day evening, Friday's print", "2026-09-07T22:00:00Z", thinPost("2026-09-04T18:30:00Z"), true, false],
+    ["Labor Day morning, Friday's close", "2026-09-07T12:30:00Z", thinPre("2026-09-04T19:40:00Z"), true, false],
+  ];
+
+  test("in the US extended-hours sessions, back to the regular session they extend", () => {
+    for (const [what, now, observed, recentAnswer, usable] of extendedRows) {
       clock.mockReturnValue(at(now));
       const exchange = observed.listingExchangeName;
       expect(isProviderQuoteUsableForCurrentSession(observed, exchange, observed.symbol, { recentAnswer }), what).toBe(usable);

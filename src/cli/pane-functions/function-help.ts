@@ -267,7 +267,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["OVDV"],
   },
   HIVG: {
-    summary: "Daily 30- and 90-day at-the-money implied vol since February 2024 against realized vol, with each measure's 52-week rank and percentile.",
+    summary: "Daily 30-day, 90-day and one-year at-the-money implied vol since February 2024 against realized vol, with each measure's 52-week rank and percentile.",
     usage: ["HIVG AAPL"],
     keys: [key("s", "urface")],
     data: IV_DAILY,
@@ -324,7 +324,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   VCA: {
-    summary: "IV rank, term slope, skew and IV against realized vol for up to 60 US tickers, flagged rich or cheap against each name's own year. Alone it screens index and sector ETFs.",
+    summary: "IV rank, one-year IV and its percentile, term slope, skew and IV against realized vol for up to 60 US tickers, flagged rich or cheap against each name's own year. Alone it screens index and sector ETFs.",
     usage: ["VCA", "VCA NVDA, AAPL, TSLA"],
     keys: [OPEN],
     data: IV_DAILY,

@@ -31,7 +31,7 @@ import { PluginRenderProvider } from "../../runtime";
 import { tickerDetailModule } from ".";
 import { chartComposerModule } from "../chart-composer";
 import { ResolvedFinancialsTab } from "./financials/tab";
-import { isUsEquityTicker } from "../../../utils/sec";
+import { mayBeUsEquityTicker } from "../../../utils/sec";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { createTestTicker } from "../../../test-support/ticker";
 import { createTestPaneConfig } from "../../../test-support/pane";
@@ -158,7 +158,7 @@ function makeRegistry(): PluginRegistry {
       isVisible: ({ config }) => config.brokerInstances.some((instance) => instance.brokerType === "ibkr" && instance.connectionMode === "gateway"),
     }],
     ["options", { id: "options", name: "Options", order: 35, component: stubTab, isVisible: ({ hasOptionsChain }) => hasOptionsChain }],
-    ["sec", { id: "sec", name: "SEC", order: 45, component: stubTab, isVisible: ({ ticker }) => isUsEquityTicker(ticker) }],
+    ["sec", { id: "sec", name: "SEC", order: 45, component: stubTab, isVisible: ({ ticker }) => mayBeUsEquityTicker(ticker) }],
     ["ai-chat", { id: "ai-chat", name: "Ask AI", order: 60, component: stubTab }],
   ] as Array<[string, TickerResearchTabDef]>) {
     tickerResearchTabs.set(tab[0], tab[1]);
@@ -544,7 +544,7 @@ describe("TickerResearchPane", () => {
     };
     setSharedRegistryForTests({
       tickerResearchTabs: new Map<string, TickerResearchTabDef>([
-        ["sec", { id: "sec", name: "SEC", order: 45, component: probeTab, isVisible: ({ ticker }) => isUsEquityTicker(ticker) }],
+        ["sec", { id: "sec", name: "SEC", order: 45, component: probeTab, isVisible: ({ ticker }) => mayBeUsEquityTicker(ticker) }],
       ]),
     } as unknown as PluginRegistry);
     setOptionsProvider(createProvider(false));

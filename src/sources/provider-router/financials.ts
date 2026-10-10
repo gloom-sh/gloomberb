@@ -12,7 +12,7 @@ import {
   delayedFeedLagMs,
   isMiddayBreakPrint,
   isRegularSessionTime,
-  isUsPostSessionPrint,
+  isUsExtendedHoursSessionPrint,
   isUsPriorSessionPremarketQuote,
   isUsRegularCloseQuoteInPostSession,
   latestRegularSessionOpen,
@@ -147,17 +147,20 @@ const OPENING_AUCTION_MS = 15 * 60_000;
  * - the quote is delayed. The service bounds a delayed quote's feed age itself
  *   but not a real-time one's, so real-time quotes keep the age bound;
  * - it reports the regular session, the venue's session is in progress as
- *   the delayed feed shows it, and the trade belongs to that session; or it
- *   reports a US after-hours price, the after-hours session is in progress and
- *   the trade belongs to it.
+ *   the delayed feed shows it, and the trade belongs to that session; or
+ * - it reports a US extended-hours session and the trade is no older than
+ *   the regular session that session extends: after the close, today's
+ *   regular session or its after-hours; before the open, the previous
+ *   regular session or anything since. Whether the quote carries the
+ *   session's price is the freshness rule's call, made before this one.
  * The answer says nothing about how often a listing trades, so a liquid
  * listing the service wrongly vouches for is accepted too. The service's own
  * bound for liquid listings, about twenty minutes, is tighter than this one.
  */
 function isVouchedCurrentByService(quote: Quote, exchange: string | undefined, now: number): boolean {
   if (quote.providerId !== "gloomberb-cloud" || quote.stale !== false || quote.dataSource !== "delayed") return false;
-  if (quote.marketState === "POST") {
-    return finitePositiveNumber(quote.postMarketPrice) && isUsPostSessionPrint(quote.lastUpdated, exchange, now);
+  if (quote.marketState === "PRE" || quote.marketState === "POST") {
+    return isUsExtendedHoursSessionPrint(quote.lastUpdated, exchange, quote.marketState, now);
   }
   if (quote.marketState !== "REGULAR") return false;
   const feedTime = now - delayedFeedLagMs(exchange);

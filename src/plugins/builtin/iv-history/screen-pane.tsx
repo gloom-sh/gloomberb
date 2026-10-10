@@ -24,6 +24,8 @@ const COLUMNS: DataTableColumn[] = [
   { id: "rank", label: "IVR", width: 5, align: "right" },
   { id: "percentile", label: "IVP", width: 5, align: "right" },
   { id: "verdict", label: "Rich/Cheap", width: 11, align: "left" },
+  { id: "iv1y", label: "IV1Y", width: 7, align: "right" },
+  { id: "iv1yPercentile", label: "IVP1Y", width: 6, align: "right" },
   { id: "termSlope", label: "30-90", width: 7, align: "right" },
   { id: "skew", label: "25D skew", width: 9, align: "right" },
   { id: "skewDate", label: "Skew as of", width: 11, align: "right" },
@@ -67,6 +69,8 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     switch (column.id) {
       case "date": return !dates.reading;
       case "rankDate": return dates.rankApart;
+      case "iv1y": return rows.some((row) => row.iv1y != null);
+      case "iv1yPercentile": return rows.some((row) => row.iv1yPercentile != null);
       case "skew": return rows.some((row) => row.skew != null);
       case "skewDate": return dates.skewApart;
       default: return true;
@@ -103,6 +107,8 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
       case "verdict": return { text: verdictLabel(row.verdict), color: row.verdict === "rich" ? colors.negative : row.verdict === "cheap" ? colors.positive : colors.textDim };
+      case "iv1y": return { text: formatVol(row.iv1y) };
+      case "iv1yPercentile": return { text: formatRank(row.iv1yPercentile) };
       case "termSlope": return { text: formatPoints(row.termSlope), color: row.termSlope != null && row.termSlope > 0 ? colors.negative : colors.text };
       case "skew": return { text: formatPoints(row.skew) };
       case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, "quote-mid", true) : "--", color: colors.textDim };
@@ -127,7 +133,7 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
         selection={{ kind: "id", selectedId: selected ?? rows[0]?.symbol ?? "", getId: (row) => row.symbol, onChange: (id) => setSelected(id) }}
         onActivate={openHistory} onRootKeyDown={handleKey}
         getExportMetadata={() => [["universe", universe.label], ["as of", fullDatesText || undefined],
-          ["IV", "30-day ATM, annualized"], ["rank window", "prior 52 weeks of trade-close readings"], ["HV", `${HV_WINDOW}-session close-to-close`]]}
+          ["IV", "30-day ATM, annualized"], ["IV1Y", "one-year ATM, annualized"], ["rank window", "prior 52 weeks of trade-close readings"], ["HV", `${HV_WINDOW}-session close-to-close`]]}
         renderCell={(row, column) => cell(row, column.id)} />
     </PaneStatusBody>
   </Box>;

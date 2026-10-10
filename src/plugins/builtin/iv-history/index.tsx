@@ -26,12 +26,12 @@ export const ivHistoryModule: PluginModule = {
   paneTemplates: [
     { ...createTickerSurfacePaneTemplate({
       id: "iv-history-pane", paneId: "iv-history", label: "Implied Volatility History",
-      description: "30 and 90-day ATM implied volatility since 2024 against realized, with IV rank and percentile.",
-      keywords: ["hivg", "implied", "volatility", "history", "iv rank", "ivr", "percentile", "vrp"], shortcut: "HIVG", publicShare: true,
+      description: "30-day, 90-day and one-year ATM implied volatility since 2024 against realized, with IV rank and percentile.",
+      keywords: ["hivg", "implied", "volatility", "history", "iv rank", "ivr", "percentile", "vrp", "iv1y", "leaps"], shortcut: "HIVG", publicShare: true,
     }), headless: ivHistoryHeadless },
     {
       id: "iv-screen-pane", paneId: "iv-screen", label: "Volatility Rich/Cheap",
-      description: "IV rank, percentile, term slope, skew and IV/HV across a list, ranked rich to cheap.",
+      description: "IV rank, percentile, one-year IV, term slope, skew and IV/HV across a list, ranked rich to cheap.",
       keywords: ["vca", "rich", "cheap", "iv rank", "implied volatility", "screen"],
       shortcut: { prefix: "VCA", argKind: "ticker-list" as const, argOptional: true }, headless: ivScreenHeadless,
       createInstance: (_context, options) => ({

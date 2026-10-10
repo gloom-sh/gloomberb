@@ -49,7 +49,7 @@ import {
   formatWatchlistNames,
 } from "../helpers";
 import { NotesFiles } from "../../plugins/builtin/notes/files";
-import { isUsEquityTicker } from "../../utils/sec";
+import { isKnownNonUsListing } from "../../utils/sec";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
 import { failIfNotTraded, ListingArgError, listingIdentity, resolveCliListing, type CliListing } from "../listing-arg";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
@@ -179,26 +179,35 @@ function getFilingDescription(filing: SecFilingItem): string | undefined {
   return description;
 }
 
-function shouldFetchSecFilings(tickerFile: TickerRecord | null, financials: TickerFinancials): boolean {
-  if (isUsEquityTicker(tickerFile)) {
-    return true;
-  }
-
-  const quote = financials.quote;
-  if (!quote || quote.currency.toUpperCase() !== "USD") {
-    return false;
-  }
-
-  const exchangeHints = [
-    tickerFile?.metadata.exchange,
-    quote.exchangeName,
-    quote.fullExchangeName,
-  ]
-    .filter((value): value is string => !!value)
-    .join(" ")
-    .toUpperCase();
-
-  return /(NASDAQ|NYSE|AMEX|ARCA|IEX|BATS|PINK|OTC|NMS)/.test(exchangeHints);
+/**
+ * SEC filings are asked for unless the listing is known to be outside the US:
+ * by the saved ticker, the requested venue, the quote, or the listing the
+ * source still describes when it has no current quote. A symbol nothing is
+ * known about yet is looked up as a US ticker.
+ */
+function shouldFetchSecFilings(
+  symbol: string,
+  exchange: string,
+  tickerFile: TickerRecord | null,
+  financials: TickerFinancials,
+): boolean {
+  const saved = tickerFile?.metadata;
+  const { quote, quoteMetadata } = financials;
+  return !isKnownNonUsListing({
+    metadata: {
+      ticker: saved?.ticker ?? symbol,
+      exchange: saved?.exchange || exchange || quote?.listingExchangeName || quote?.exchangeName
+        || quoteMetadata?.listingExchangeName || "",
+      currency: saved?.currency || quote?.currency || quoteMetadata?.currency || "",
+      name: saved?.name ?? symbol,
+      broker_contracts: saved?.broker_contracts,
+      portfolios: [],
+      watchlists: [],
+      positions: [],
+      custom: {},
+      tags: [],
+    },
+  });
 }
 
 async function appendTickerPositions(lines: string[], tickerFile: TickerRecord | null, quote: TickerFinancials["quote"],
@@ -758,7 +767,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
       }),
       // Outside the US the lookup checks the SEC registrant against the listing's company,
       // and refuses another company's filings.
-      shouldFetchSecFilings(tickerFile, resolvedFinancials) && dataProvider.getSecFilings
+      shouldFetchSecFilings(requestSymbol, exchange, tickerFile, resolvedFinancials) && dataProvider.getSecFilings
         ? dataProvider.getSecFilings(requestSymbol, SEC_FILING_LIMIT, exchange || quote?.exchangeName || "",
           listingName ? { listingName } : undefined)
         : Promise.resolve([]),
