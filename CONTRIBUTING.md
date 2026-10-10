@@ -77,8 +77,19 @@ Some changes need one more check:
 | Web app, share page or Worker code | `bun run web:audit` and `bun run cloudflare:dry-run` |
 | Build scripts or the terminal entry point | `bun run build` |
 | Tables, rendering, or market data stores | `bun run benchmark:tui:compare --base <main checkout>` and `bun run benchmark:tui:memory` (need tmux); the Performance workflow runs both on every PR |
+| Pane chrome, docking, the DOM renderer or the desktop view | `bun run check:pane-chrome` and `bun run benchmark:pane-drag:compare --base <main checkout>`; see [Pane chrome checks](#pane-chrome-checks) |
 
-Try UI changes in the app as well. [`.agents/skills/tui-testing/SKILL.md`](.agents/skills/tui-testing/SKILL.md) shows how to drive the terminal app from tmux; give it a throwaway `GLOOMBERB_HOME`.
+Try UI changes in the app as well.
+
+### Pane chrome checks
+
+Unit tests press a pane's header with synthetic events, which is how v0.16.1 shipped panes that only moved from the grip and the title. `scripts/pane-chrome` drives the real desktop shell in headless Chrome with real pointer input instead, over a fixed layout of stand-in panes (`fixture.tsx`) with no network, and checks where each pane ends up: drags by the grip, the title and the bare header bar for docked, tabbed, failed, floating and fullscreen panes, tab select and reorder, the resize corner, a dock divider, and a popped-out window's title bar (the native window bridge is a recorder). The Pane chrome workflow runs it, and a drag frame budget against the base branch, on pull requests that touch the paths listed in `.github/workflows/pane-chrome.yml`.
+
+- `bun run check:pane-chrome` runs every step once; `--only <text>` picks steps by name, `--repeat <n>` runs them again, `--root <checkout>` checks another checkout's sources. A failed step saves a screenshot under `~/.cache/gloomberb-pane-chrome/failures`.
+- `bun run benchmark:pane-drag:compare --base <main checkout>` compares main-thread time per frame and React commits while dragging a docked and a floating pane.
+- The first run downloads the pinned Chrome for Testing headless shell (`browser.ts`); `CHROME_PATH` uses another Chrome instead.
+- To add a case, add a step to `checks.ts` that starts from a fixture scenario, moves the pointer with `drag` or `click`, and checks the result in the page (where a pane is, what is selected), not which handler ran. A new kind of pane or layout goes in `fixture.tsx`.
+- Not covered: GPU compositing (the runner has none) and the native macOS WebKit view; the desktop window move is checked up to the bridge message. [`.agents/skills/tui-testing/SKILL.md`](.agents/skills/tui-testing/SKILL.md) shows how to drive the terminal app from tmux; give it a throwaway `GLOOMBERB_HOME`.
 
 ## Tests
 

@@ -9,6 +9,8 @@
     "scripts/install-electrobun-tui-shim.ts",
     // Preloaded by path in scripts/benchmark-tui-memory.ts.
     "scripts/heap-probe.ts",
+    // Built by path in scripts/pane-chrome/page.ts.
+    "scripts/pane-chrome/fixture.tsx",
     "src/renderers/electrobun/bun/index.ts",
     "src/renderers/electrobun/bun/tui-entry.ts",
     "src/renderers/electrobun/view/main.tsx",

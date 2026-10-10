@@ -8,6 +8,7 @@
     "src/renderers/share/main.tsx",
     "src/renderers/electrobun/bun/index.ts",
     "src/renderers/electrobun/view/main.tsx",
-    "src/renderers/electrobun/view/cli-pane-shot-entry.tsx"
+    "src/renderers/electrobun/view/cli-pane-shot-entry.tsx",
+    "scripts/pane-chrome/fixture.tsx"
   ]
 }
