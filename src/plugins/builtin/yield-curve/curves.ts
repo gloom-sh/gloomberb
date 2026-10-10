@@ -140,29 +140,42 @@ export async function loadComparePoints(curve: CurveId, date: string, client: Cu
   }
 }
 
-const RELATIVE = /^(\d{1,2})([WMY])$/i;
+const RELATIVE = /^(\d{1,2})([DWMY])$/i;
+const COMPARE_HELP = "Compare with a date in YYYY-MM-DD format or a span such as 1D, 1W, 3M or 1Y.";
+
+/** A span back from the session (1D, 1W, 3M, 1Y): what the compare field takes besides a date. */
+export function isCompareSpan(value: string): boolean {
+  const match = value.trim().match(RELATIVE);
+  return match != null && Number(match[1]) > 0;
+}
 
 /**
  * What the compare field accepts: a date, or a span back from the curve's
- * session (1W, 3M, 1Y). Empty turns comparing off.
+ * session (1D, 1W, 3M, 1Y). Empty turns comparing off. Anything else gets the
+ * help for both forms, not the as-of field's date-only message.
  */
 export function parseCompareInput(value: string, now = new Date()): string {
   const text = value.trim();
   if (!text) return "";
-  if (RELATIVE.test(text)) return text.toUpperCase();
-  const date = yieldCurveDate(text, now);
-  if (!date) throw new Error("Compare with a date in YYYY-MM-DD format or a span such as 1W, 3M or 1Y.");
-  return date;
+  if (isCompareSpan(text)) return text.toUpperCase();
+  if (!isYieldObservationDate(text)) throw new Error(COMPARE_HELP);
+  return yieldCurveDate(text, now);
 }
 
-/** The date a compare input asks for, given the session shown. */
+/**
+ * The date a compare input asks for, given the session shown. A day back is the
+ * day before, and the curve loaded for it is the last session on or before
+ * that day, so 1D is the previous session.
+ */
 export function compareDate(input: string, asOf: string): string {
   const match = input.match(RELATIVE);
   if (!match) return input;
   const count = Number(match[1]);
   const unit = match[2]!.toUpperCase();
   const [year, month, day] = asOf.split("-").map(Number) as [number, number, number];
-  if (unit === "W") return new Date(Date.UTC(year, month - 1, day - 7 * count)).toISOString().slice(0, 10);
+  if (unit === "D" || unit === "W") {
+    return new Date(Date.UTC(year, month - 1, day - (unit === "W" ? 7 : 1) * count)).toISOString().slice(0, 10);
+  }
   const months = unit === "M" ? count : count * 12;
   const target = new Date(Date.UTC(year, month - 1 - months, 1));
   const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();

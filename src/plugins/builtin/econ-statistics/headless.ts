@@ -3,7 +3,9 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneEntry,
 } from "../../../types/plugin";
+import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 import { formatNumber } from "../../../utils/format";
+import type { StatDef } from "./defs";
 import {
   createStatSeriesLoader,
   loadStatsBundle,
@@ -14,8 +16,13 @@ import { STAT_CATEGORIES } from "./defs";
 import { DEFAULT_STAT_ID, resolveStatArg, STATS } from "./stats";
 import { selectStatViews, type StatRangeId, type StatViewModel } from "./view";
 
+/** How a report reads a statistic: a spread in basis points, everything else as the pane does. */
+function reportFormat(stat: StatDef): (value: number) => string {
+  return stat.basisPoints ? (value) => formatBasisPoints(value) : stat.formatValue;
+}
+
 function detailEntries(view: StatViewModel): HeadlessPaneEntry[] {
-  const format = view.stat.formatValue;
+  const format = reportFormat(view.stat);
   return [
     { label: "Latest", value: view.latest.value, formatted: format(view.latest.value) },
     {
@@ -100,9 +107,14 @@ export function projectStatsHeadlessBundle(
         id: view.stat.id,
         indicator: view.stat.shortLabel,
         latest: view.latest.value,
-        formattedLatest: view.stat.formatValue(view.latest.value),
+        formattedLatest: reportFormat(view.stat)(view.latest.value),
         previous: view.previous?.value ?? null,
-        formattedPrevious: view.previous ? view.stat.formatValue(view.previous.value) : "-",
+        formattedPrevious: view.previous ? reportFormat(view.stat)(view.previous.value) : "-",
+        // A spread's values stay in percentage points; these carry the figures its text shows.
+        ...(view.stat.basisPoints ? {
+          latestBasisPoints: toBasisPoints(view.latest.value),
+          previousBasisPoints: view.previous ? toBasisPoints(view.previous.value) : null,
+        } : {}),
         percentile: view.percentile,
         asOf: view.latest.date,
         reading: view.reading,
@@ -121,7 +133,10 @@ export function projectStatsHeadlessBundle(
       ...(selected ? [{ title: selected.stat.label, entries: detailEntries(selected) }] : []),
     ],
     errors: bundle.errors,
-    notes: [`%ile is the share of past readings at or below the latest one, over ${PERCENTILE_WINDOW[range]}.`],
+    notes: [
+      `%ile is the share of past readings at or below the latest one, over ${PERCENTILE_WINDOW[range]}.`
+      + (range === "ALL" ? "" : " Full history: --range ALL."),
+    ],
     metadata: {
       fetchedAt: bundle.fetchedAt,
       fetchedAtComplete: bundle.fetchedAtComplete,

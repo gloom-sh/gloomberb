@@ -433,6 +433,7 @@ export const STATS: readonly StatDef[] = [
     direction: "higher-is-good",
     axisUnit: "%",
     formatValue: pct2,
+    basisPoints: true,
     reference: { value: 0, label: "inversion" },
     staleAfterMs: DAILY,
     note: "The curve spread. Below zero it has preceded every modern recession.",

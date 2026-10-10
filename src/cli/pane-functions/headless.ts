@@ -386,7 +386,8 @@ function renderRows(
     })),
     rows.map((row) => columns.map((column) => {
       const value = row[column.key];
-      return column.format ? column.format(value, row) : displayValue(value);
+      const format = column.textFormat ?? column.format;
+      return format ? format(value, row) : displayValue(value);
     })),
   );
 }

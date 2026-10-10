@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { HeadlessPaneDefinition, HeadlessPaneResult } from "../../types/plugin";
 import { cloudNewsFreshness } from "../../plugins/builtin/shared/report-freshness";
 import { formatUtcTime, setDisplayTimeZone } from "../../utils/utc-time";
-import { delayLength, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, statusLineVariants } from "./freshness";
+import { delayLength, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, periodicityOf, statusLineVariants } from "./freshness";
 
 const NOW = Date.parse("2026-10-09T05:00:00Z"); // Friday, before the US open
 const rows = (freshness?: HeadlessPaneDefinition["freshness"]) => ({ shape: "rows" as const, ...(freshness ? { freshness } : {}) });
@@ -11,6 +11,25 @@ const line = (definition: Pick<HeadlessPaneDefinition, "shape" | "freshness">, r
 );
 
 describe("report freshness", () => {
+  test("a monthly, quarterly or annual observation is the period it starts, not a day; a daily one keeps its date", () => {
+    const fred = (periodicity: "monthly" | "quarterly" | "annual" | undefined) => rows({
+      source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null, ...(periodicity ? { periodicity } : {}),
+    });
+    const observed = { rows: [{ date: "2026-09-01" }, { date: "2026-08-01" }] };
+    expect(line(fred("monthly"), observed)).toBe("Source: FRED · Sep 2026 (monthly) · not a live feed (published statistics)");
+    expect(line(fred("quarterly"), { rows: [{ date: "2026-04-01" }] })).toBe("Source: FRED · Q2 2026 (quarterly) · not a live feed (published statistics)");
+    expect(line(fred("annual"), { rows: [{ date: "2025-01-01" }] })).toBe("Source: FRED · 2025 (annual) · not a live feed (published statistics)");
+    expect(line(fred(undefined), observed)).toBe("Source: FRED · Tue 1 Sep 2026 · not a live feed (published statistics)");
+    expect(deriveHeadlessFreshness(fred("monthly"), observed, NOW)).toMatchObject({ asOf: "2026-09-01", periodicity: "monthly" });
+    // A report that is not a history names the oldest observation as a period too.
+    const board = deriveHeadlessFreshness(rows({ source: "FRED", status: "not-a-feed", periodicity: "monthly" }), { rows: [{ asOf: "2026-09-01" }, { asOf: "2026-06-01" }] }, NOW);
+    expect(formatFreshnessLine(board)).toBe("Source: FRED · Sep 2026 (monthly) (oldest Jun 2026) · not a live feed");
+    // Without a dated observation there is no period to name.
+    expect(deriveHeadlessFreshness(fred("monthly"), { rows: [] }, NOW).periodicity).toBeUndefined();
+    expect(["Monthly", "Quarterly", "Annual", "Daily", "Weekly, Ending Friday", undefined].map(periodicityOf))
+      .toEqual(["monthly", "quarterly", "annual", null, null, null]);
+  });
+
   test("says how long a delay is in minutes or hours, as a range when rows differ", () => {
     expect([15, 20, 60, 90, 720, 3 * 24 * 60].map(delayLength)).toEqual(["15 min", "20 min", "1 h", "90 min", "12 h", "3 days"]);
     const delayed = (delayMinutes: number) => ({ dataSource: "delayed", delayMinutes, lastUpdated: NOW - 20 * 60_000 });

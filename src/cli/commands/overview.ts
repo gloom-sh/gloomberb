@@ -35,6 +35,16 @@ import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/s
 import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
 import { localTimeSuffix, newestReportTime, oldestReportTime } from "../../utils/utc-time";
 import { quotesFreshness, rowsFreshness } from "../freshness";
+import { periodicityOf } from "../pane-functions/freshness";
+import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
+import {
+  DEFAULT_FRED_START,
+  fredEmptyMessage,
+  fredHistoryNotes,
+  isSpreadSeries,
+  laggingSeriesNote,
+  spreadBasisPointsCell,
+} from "./fred-series";
 
 // Batch quotes often omit names for indices and ETFs; these baskets are fixed, so name them here.
 const BASKET_NAMES = new Map<string, string>([
@@ -80,7 +90,10 @@ const MOVER_COLUMNS = [
   { key: "volume", header: "Volume", align: "right" as const, format: formatCompactCell },
   { ...MARKET_CAP_CELL, format: formatCompactCell },
 ];
-const START_OPTION = { flags: "--start <yyyy-mm-dd>", description: "First observation date (default 2021-01-01)" };
+const START_OPTION = {
+  flags: "--start <yyyy-mm-dd>",
+  description: `First observation date; yyyy or yyyy-mm start at the first of that year or month (default ${DEFAULT_FRED_START})`,
+};
 
 const MOVER_LISTS: Record<string, ScreenerCategory | "trending"> = {
   gainers: "day_gainers",
@@ -204,13 +217,22 @@ function econEmptyMessage(from: string | null, listedThrough: string | null, sto
     : `No matching events${range} through ${listedThrough}.`;
 }
 
-/** A `yyyy-mm-dd` option, checked here; null when it was not given. */
-function parseDateOption(value: string | undefined, flag: string, ctx: Parameters<CliCommandDef["execute"]>[1]): string | null {
+/**
+ * A `yyyy-mm-dd` option, checked here; null when it was not given. `expand`
+ * reads a shorthand as a full date first, and `form` is how the message names
+ * what the option takes.
+ */
+function parseDateOption(
+  value: string | undefined,
+  flag: string,
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+  { expand = (text: string) => text, form = "yyyy-mm-dd" }: { expand?: (text: string) => string; form?: string } = {},
+): string | null {
   if (value == null) return null;
-  const date = value.trim();
+  const date = expand(value.trim());
   const time = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
   if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
-    ctx.fail(`${flag} takes a date as yyyy-mm-dd, got "${value}".`);
+    ctx.fail(`${flag} takes a date as ${form}, got "${value}".`);
   }
   return date;
 }
@@ -281,9 +303,15 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
 const FRED_USAGE = "fred <series-id> [--start <yyyy-mm-dd>] [--sort desc|asc]";
 const FRED_LIST_USAGE = "fred --list [filter]";
 
-/** `--start`, checked here: Gloom Cloud cannot read anything but yyyy-mm-dd. */
+/** A year or a month stands for the first day of it. */
+function startOfPeriod(text: string): string {
+  if (/^\d{4}$/.test(text)) return `${text}-01-01`;
+  return /^\d{4}-\d{2}$/.test(text) ? `${text}-01` : text;
+}
+
+/** `--start`, checked here: Gloom Cloud cannot read anything but yyyy-mm-dd, so yyyy and yyyy-mm are spelled out. */
 function parseStartDate(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): string {
-  return parseDateOption(value, "--start", ctx) ?? "2021-01-01";
+  return parseDateOption(value, "--start", ctx, { expand: startOfPeriod, form: "yyyy-mm-dd, yyyy-mm or yyyy" }) ?? DEFAULT_FRED_START;
 }
 
 /** Gloom Cloud serves a curated set of FRED series and answers 400 for any other id. */
@@ -336,15 +364,37 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     throw error;
   });
   const rows = data.observations;
+  // The default start hides older history and a start before the series begins is moved up silently: say where it really starts.
+  const notes = [
+    ...fredHistoryNotes({ startDate, startGiven: start != null, seriesStart: data.info?.observationStart }),
+    laggingSeriesNote(seriesId),
+  ].filter((note): note is string => note != null);
+  // Nothing on or after the start: name where the series ends, so an empty answer is not a dead end.
+  const latest = rows.length > 0 ? null : await apiClient.getCloudFredSeries(seriesId, { limit: 1, sortOrder: "desc" })
+    .then((payload) => payload.observations[0] ?? null).catch(() => null);
+  const periodicity = periodicityOf(data.info?.frequency);
   ctx.printResult({
     data: rows,
-    metadata: { info: data.info, seriesId, startDate, sortOrder },
-    freshness: rowsFreshness(rows, { source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null }),
+    metadata: {
+      info: data.info, seriesId, startDate, sortOrder,
+      ...(notes.length ? { notes } : {}),
+      ...(latest ? { latestObservation: latest } : {}),
+    },
+    freshness: rowsFreshness(rows, {
+      source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
+      // A monthly or quarterly observation is dated the first of its period, not a day it was seen.
+      ...(periodicity ? { periodicity } : {}),
+    }),
   }, {
     dateKey: "date",
+    empty: fredEmptyMessage(startDate, latest),
+    ...(notes.length ? { footnote: notes.join("\n") } : {}),
     textColumns: [
       { key: "date", header: "Date" },
-      { key: "value", header: data.info?.units ? `Value (${data.info.units})` : "Value", align: "right" },
+      isSpreadSeries(seriesId)
+        // A spread is read in basis points; JSON and CSV keep FRED's percentage points.
+        ? { key: "value", header: "Value (bp)", align: "right", format: spreadBasisPointsCell }
+        : { key: "value", header: data.info?.units ? `Value (${data.info.units})` : "Value", align: "right" },
     ],
   });
 }
@@ -358,12 +408,16 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   const series = Object.keys(YIELD_TENORS);
   const results = await Promise.all(series.map(async (seriesId) => {
     const data = await apiClient.getCloudFredSeries(seriesId, { startDate, sortOrder: "desc" });
-    const latest = data.observations[0];
+    const [latest, previous] = data.observations;
     return {
       seriesId,
       date: latest?.date ?? "",
       value: latest?.value ?? null,
       title: data.info?.title ?? "",
+      // The move since the previous observation FRED has, not calendar yesterday: a Monday reads against Friday.
+      previousDate: previous?.date ?? null,
+      previousValue: previous?.value ?? null,
+      changeBasisPoints: latest?.value != null && previous?.value != null ? toBasisPoints(latest.value - previous.value, 1) : null,
     };
   }));
   ctx.printResult({
@@ -373,7 +427,13 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   }, {
     textColumns: [
       { key: "tenor", header: "Tenor", value: (row) => YIELD_TENORS[String(row.seriesId)] ?? row.seriesId },
-      { key: "value", header: "Yield %", align: "right" },
+      { key: "value", header: "Yield %", align: "right", format: (value) => typeof value === "number" ? value.toFixed(2) : "-" },
+      {
+        key: "changeBasisPoints",
+        header: "1D bp",
+        align: "right",
+        format: (value) => typeof value === "number" ? formatBasisPoints(value / 100) : "-",
+      },
       { key: "date", header: "Date" },
       { key: "seriesId", header: "Series" },
     ],

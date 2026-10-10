@@ -30,7 +30,7 @@ import {
   formatFractionPercentCell,
   formatPriceRange,
 } from "../helpers";
-import { cliStyles, renderStats } from "../../utils/cli-output";
+import { cliStyles, colorBySign, renderStats } from "../../utils/cli-output";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
   analystTargetCurrency,
@@ -106,7 +106,8 @@ import {
   type ListingDataRequest,
   type ListingIdentity,
 } from "../listing-arg";
-import { indexRootAlsoLine, indexRootFor, indexRootTryLine } from "../index-roots";
+import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
+import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
@@ -186,10 +187,15 @@ const QUOTE_LEAD_COLUMNS = [
       row.error && !value
         // A typo is not an outage: say what is wrong with the symbol itself.
         ? isNotATickerMessage(row.error) ? cliStyles.warning("not a ticker") : cliStyles.danger("unavailable")
-        : String(value ?? "")
+        : yieldLevelCell(value, row)
     ),
   },
-  { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
+  {
+    key: "changePercent",
+    header: "Chg%",
+    align: "right" as const,
+    format: (value: unknown, row: QuoteRow) => row.yieldIndex ? yieldChangeCell(row) : formatChangePercentCell(value),
+  },
   // Text drops a column no row fills, so a table without an extended print stays as narrow as before.
   extendedColumn("PRE"),
   extendedColumn("POST"),
@@ -197,6 +203,17 @@ const QUOTE_LEAD_COLUMNS = [
 ];
 
 type QuoteRow = ReturnType<typeof quoteRows>[number];
+
+/** A Cboe yield index level is a yield: `5.24%`, not a price. */
+function yieldLevelCell(value: unknown, row: QuoteRow): string {
+  const text = String(value ?? "");
+  return row.yieldIndex && text ? `${text}%` : text;
+}
+
+/** A yield index moves in basis points: `+1.3bp`, from the real previous close, not a percent of a percent. */
+function yieldChangeCell(row: QuoteRow): string {
+  return row.changeBasisPoints == null ? "" : colorBySign(formatBasisPoints(row.changeBasisPoints / 100, 1), row.changeBasisPoints);
+}
 
 /** The pre-market or after-hours print and its move from the regular close, in its own column. */
 function extendedColumn(session: ExtendedSession) {
@@ -240,7 +257,7 @@ function quoteColumns() {
 function compareColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS,
-    { key: "previousClose", header: "Prev Close", align: "right" as const },
+    { key: "previousClose", header: "Prev Close", align: "right" as const, format: yieldLevelCell },
     // A narrow terminal drops these before it cuts the names short.
     { key: "dayRange", header: "Day Range", align: "right" as const, optional: true, dropPriority: 1 },
     { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
@@ -267,6 +284,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     // pre-market or after-hours print is its own column, measured from that session's close.
     const display = getRegularSessionDisplay(quote);
     const extended = getExtendedSessionDisplay(quote);
+    const yieldIndex = isYieldIndexSymbol(result.target.symbol);
     // An index level is in points, not in the currency its members trade in.
     const indexPoints = quote?.instrumentType?.trim().toUpperCase() === "INDEX";
     // Pad to two decimals so a column lines up, but never past the currency's minor unit (JPY has none).
@@ -289,6 +307,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       instrumentType: quote?.instrumentType ?? null,
       change: display?.change ?? null,
       changePercent: roundedPercent(display?.changePercent),
+      // A Cboe yield index is read as a yield in percent and moves in basis points.
+      yieldIndex,
+      changeBasisPoints: yieldIndex && display?.change != null ? toBasisPoints(display.change, 1) : null,
       extendedSession: extended?.session ?? null,
       extendedPrice: price(extended?.price),
       rawExtendedPrice: extended?.price ?? null,
@@ -493,6 +514,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...getQuoteSessionFields(result.quote),
       quote: result.quote,
       error: failure?.oneLine ?? errorMessage(result.error),
+      ...yieldIndexFields(result),
     }));
     const notes = [
       // Which listing a bare symbol was read as, and the index a bare root is not, are in no row.
@@ -500,15 +522,30 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       // Text mode shows only "unavailable" in the cell; the JSON rows already carry each reason.
       ...ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [],
     ];
+    const columns = commandName === "compare" ? compareColumns() : quoteColumns();
+    // Only yield indices: their change is in bp, so the text header drops the percent sign (CSV keeps the percent it holds).
+    const yieldsOnly = data.length > 0 && data.every((row) => isYieldIndexSymbol(row.target.symbol));
     ctx.printResult({
       data,
       warnings: notes.length > 0 ? notes : undefined,
       freshness: quotesFreshness(data.map((row) => row.quote)),
     }, {
       rows: quoteRows,
-      columns: commandName === "compare" ? compareColumns() : quoteColumns(),
+      columns,
+      ...(yieldsOnly ? { textColumns: columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column) } : {}),
     });
   });
+}
+
+/**
+ * What a Cboe yield index adds to its JSON row: the level is a yield in percent
+ * and its change since the previous close is in basis points (the quote's own
+ * `change` is the same move in percentage points).
+ */
+function yieldIndexFields(result: QuoteBatchResult): { unit?: "percent"; changeBasisPoints?: number } {
+  if (!isYieldIndexSymbol(result.target.symbol)) return {};
+  const change = getRegularSessionDisplay(result.quote)?.change;
+  return { unit: "percent", ...(change == null ? {} : { changeBasisPoints: toBasisPoints(change, 1) }) };
 }
 
 interface QuoteAnswer {

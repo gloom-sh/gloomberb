@@ -40,6 +40,8 @@ export interface ReportFreshness {
   /** ...and what the rest are. */
   feed?: "live" | "delayed";
   basis?: string;
+  /** Set when the dates are the start of a period: the status line then reads `Sep 2026 (monthly)`. */
+  periodicity?: "monthly" | "quarterly" | "annual";
   /** The local date of the session close `asOf` is, when the newest observation is its venue's latest close. */
   asOfClose?: string;
   /**
@@ -341,6 +343,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(status === "stale" && staleAt ? { ageMinutes: Math.max(0, Math.floor((now - staleAt.time) / 60_000)) } : {}),
     ...(partial ?? {}),
     ...(status === "not-a-feed" && declared.basis ? { basis: declared.basis } : {}),
+    ...(declared.periodicity && asOf?.dateOnly ? { periodicity: declared.periodicity } : {}),
     ...(asOfClose ? { asOfClose } : {}),
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
@@ -428,6 +431,23 @@ function tradingDayText(date: string, market: string | undefined): string {
   return market ? `${market} trading day ${dayText(date)}` : dayText(date);
 }
 
+/** `Sep 2026`, `Q2 2026` or `2026` for the period a date starts. */
+function periodText(date: string, periodicity: NonNullable<ReportFreshness["periodicity"]>): string {
+  const day = new Date(`${date.slice(0, 10)}T00:00:00Z`);
+  if (!Number.isFinite(day.getTime())) return date;
+  const year = day.getUTCFullYear();
+  const month = day.getUTCMonth();
+  return periodicity === "monthly" ? `${MONTHS[month]} ${year}`
+    : periodicity === "quarterly" ? `Q${Math.floor(month / 3) + 1} ${year}`
+      : `${year}`;
+}
+
+/** The period a FRED series frequency ("Monthly", "Quarterly") publishes in; null for daily and weekly series, whose dates are days. */
+export function periodicityOf(frequency: string | null | undefined): ReportFreshness["periodicity"] | null {
+  const word = frequency?.trim().toLowerCase() ?? "";
+  return word.startsWith("monthly") ? "monthly" : word.startsWith("quarterly") ? "quarterly" : word.startsWith("annual") ? "annual" : null;
+}
+
 /**
  * `Fri 9 Oct 2026 23:59 UTC`, or `Fri 9 Oct 2026` for a date. With `local`, the
  * reader's own time follows when they set a zone: `(Sat 10 Oct 08:59 Asia/Tokyo)`.
@@ -505,10 +525,13 @@ function statusText(freshness: ReportFreshness, short = false): string {
 function asOfText(freshness: ReportFreshness, short: boolean, local: boolean): string {
   if (!freshness.asOf) return `retrieved ${timeText(freshness.retrievedAt, local)}`;
   const market = freshness.tradingDayMarket;
-  const asOf = freshness.asOfClose
-    ? `${tradingDayText(freshness.asOfClose, market)} close`
-    : parseReportTime(freshness.asOf)?.dateOnly ? tradingDayText(freshness.asOf, market) : timeText(freshness.asOf, local);
-  return freshness.oldest && !short ? `${asOf} (oldest ${dayText(freshness.oldest)})` : asOf;
+  const period = freshness.periodicity;
+  const asOf = period ? `${periodText(freshness.asOf, period)} (${period})`
+    : freshness.asOfClose
+      ? `${tradingDayText(freshness.asOfClose, market)} close`
+      : parseReportTime(freshness.asOf)?.dateOnly ? tradingDayText(freshness.asOf, market) : timeText(freshness.asOf, local);
+  const oldest = freshness.oldest && (period ? periodText(freshness.oldest, period) : dayText(freshness.oldest));
+  return oldest && !short ? `${asOf} (oldest ${oldest})` : asOf;
 }
 
 /**
