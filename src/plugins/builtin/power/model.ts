@@ -8,6 +8,31 @@ export const powerTab = (value: unknown): PowerTab => POWER_TABS.find((tab) => t
 const REGISTERS: Record<string, string> = { "neso-tec": "GB transmission", "neso-embedded": "GB embedded", "neso-interconnector": "GB interconnectors" };
 const REGIONS: Record<string, string> = { LBNL: "US project queues", "LBNL-ANNUAL": "US annual queues", EIA860: "US generation capacity", EIA861: "US utilities", EIA923: "US generation output" };
 export const powerRegion = (value: string, sourceId?: string) => REGISTERS[sourceId ?? ""] ?? REGIONS[value] ?? value;
+/** A source with stored records, even when its latest refresh failed. */
+const loadedSource = (c: PowerCoverage) => (c.status === "current" || c.status === "stale") && c.records > 0;
+const names = (rows: readonly PowerCoverage[]) => [...new Set(rows.map((c) => c.region === "EirGrid" ? "Ireland" : c.region))].join(", ");
+/**
+ * Which US grid operators' queues loaded, in plain words. Source errors and
+ * unsupported registers stay in the Coverage tab and on the server; a missing
+ * queue is a gap in coverage, never zero.
+ */
+export function powerCoverageNote(coverage: readonly PowerCoverage[]): string | null {
+  const queues = coverage.filter((c) => c.country === "US" && c.role === "direct" && c.kind === "queue");
+  const missing = queues.filter((c) => !loadedSource(c));
+  if (!missing.length) return null;
+  const loaded = queues.filter(loadedSource);
+  return `US queues: ${loaded.length ? `${names(loaded)} loaded; ` : ""}${names(missing)} not available`;
+}
+/**
+ * The registers carrying records right now, named, for a ticker that has none
+ * in them: grid operator and TSO registers, or the EIA filings behind the
+ * Capacity tab. Null when nothing is loaded.
+ */
+export function powerLoadedSources(tab: PowerTab, coverage: readonly PowerCoverage[]): string | null {
+  const loaded = coverage.filter((c) => loadedSource(c) && (tab === "capacity" ? c.role === "context" : c.role === "direct"));
+  if (!loaded.length) return null;
+  return tab === "capacity" ? "US EIA generation and utility filings" : names([...loaded.filter((c) => c.country === "US"), ...loaded.filter((c) => c.country !== "US")]);
+}
 export const titleCase = (value: string) => value.replace(/(^|[ _-])\w/g, (match) => match.toUpperCase());
 export const powerNumber = (n: number | null | undefined) => n == null ? "--" : n.toLocaleString("en-US", { maximumFractionDigits: 1 });
 export const powerPercent = (n: number | null) => n == null ? "--" : `${(n * 100).toFixed(1)}%`;

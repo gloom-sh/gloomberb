@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { powerHeadless } from "./headless";
-import { powerBoard, powerPoint, powerProject } from "./test-fixture";
+import { powerBoard, powerCoverage, powerPoint, powerProject } from "./test-fixture";
 
 test("headless exports all pages and preserves primary provenance while enforcing a progressing cursor", async () => {
   const requests: number[] = [];
@@ -55,7 +55,18 @@ test("the report prints the pane's columns with the ticker map, and an empty tic
     return powerBoard({ projects: [], exposure: [], total: query?.kind === "capacity" && query.sourceId === "us-eia860" ? 4 : 0 });
   };
   const utilities = (await powerHeadless.load(createTestHeadlessArgs({ argument: "VST", options: { tab: "utilities" } }), ctx)).sections[0]!;
-  expect("empty" in utilities && utilities.empty).toBe("No large-load requests or utility exposure map to VST. VST has 4 generation capacity records (--tab capacity).");
+  expect("empty" in utilities && utilities.empty).toBe("No large-load requests or utility exposure map to VST. VST has 4 generation capacity records (--tab capacity). Sources loaded now: PJM.");
   // Loads are what utilities sum, so they are not counted again.
   expect(asked.filter((query) => (query as { kind?: string }).kind === "load")).toHaveLength(1);
+});
+
+test("a company with no rows hears what is loaded, and unavailable queues are a note, not an error", async () => {
+  const ctx = createTestHeadlessContext();
+  ctx.apiClient.getCloudPowerBoard = async () => powerBoard({ projects: [], total: 0, exposure: [], coverage: [powerCoverage({ records: 8253 }),
+    powerCoverage({ id: "us-miso", region: "MISO", status: "failed", reason: "The operator's site does not allow automated downloads.", records: 0 })] });
+  const result = await powerHeadless.load(createTestHeadlessArgs({ argument: "VST", options: { tab: "utilities" } }), ctx);
+  expect(result.sections[0]!.rows).toEqual([]);
+  expect(result.errors).toBeUndefined();
+  expect(result.notes).toEqual(["US queues: PJM loaded; MISO not available"]);
+  expect((result.sections[0] as { empty?: string }).empty).toMatch(/ Sources loaded now: PJM\.$/);
 });

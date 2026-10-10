@@ -21,7 +21,7 @@ import { POWER_SORT_COLUMNS, powerQuery } from "./query";
 import { PowerDetailView } from "./detail";
 import { blendHex } from "../../../theme/colors";
 import { missingCell, PartsBar, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
-import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
+import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerCoverageNote, powerFigures, powerLoadedSources, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
 
 const rowId = (r: PowerRow) => r.id;
 const isRecord = (r: PowerRow) => !r.section;
@@ -118,6 +118,7 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const scopes = useAsyncResource(tickerEmpty && !snapshot ? scopesLoader : null);
   const tickerScopes = snapshot ? snapshot.tickerScopes : scopes.data;
   const tickerMessage = tickerEmpty ? powerTickerEmpty(symbol, tab, context, tickerScopes ?? []) : null;
+  const loadedSources = tickerEmpty && board ? powerLoadedSources(tab, board.coverage) : null;
   const selected = rows.find((r) => r.id === selectedId && isRecord(r)) ?? rows.find(isRecord);
   const openRow = rows.find((r) => r.id === openId);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
@@ -146,8 +147,9 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
     error: board ? error : null, stale: pages.pages.some((p) => p.stale) || historyData?.stale,
     info: [...(pages.loadingMore || historyPages.loadingMore ? [{ id: "more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
       ...(active?.project ? [{ id: "as-of", parts: [{ text: active.project.asOf ? `as of ${active.project.asOf}` : `observed ${active.project.observedAt.slice(0, 10)}`, tone: "muted" as const }] }] : [])], hints });
+  // Unavailable queues are a coverage gap in plain words; per-source reasons live on the Coverage tab.
   const notices = [pages.moreError?.message, historyPages.moreError?.message, ...pages.pages.map((p) => p.refreshError), historyData?.refreshError,
-    ...(board?.coverage.filter((c) => c.status !== "current").map((c) => `${powerRegion(c.region)} ${titleCase(c.kind)}: ${c.status}${c.reason ? ` · ${c.reason}` : ""}`) ?? [])].filter((v): v is string => !!v);
+    board && tab !== "capacity" ? powerCoverageNote(board.coverage) : null].filter((v): v is string => !!v);
   usePaneNoticeFooter({ registrationId: "power:notices", focused, notices: [...new Set(notices)], enabled: !openRow });
   const { strip, rows: tabRows } = usePaneTabs(board ? { tabs: [...POWER_TABS], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
   const baseColumns = tab === "capacity" && context === "generation" ? GENERATION_COLUMNS : tab === "capacity" && context === "utility" ? UTILITY_COLUMNS : projectTab ? PROJECT_COLUMNS : tab === "history" ? HISTORY_COLUMNS : tab === "outcomes" ? RATE_COLUMNS : tab === "utilities" ? EXPOSURE_COLUMNS : COVERAGE_COLUMNS;
@@ -217,7 +219,7 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
             empty: series.length ? undefined : historyPages.moreError ? "Full history could not load. Refresh to retry." : historyData?.payload.access === "preview" ? "Full history is available with Pro." : "History is accumulating from recorded snapshots.", remoteKind: "power-history" } : null} />}
         emptyStateTitle={tab === "history" ? historyPages.error?.message ?? "No recorded history for these filters." : "No reported records match these filters."}
         emptyContent={tickerMessage ? <Box paddingX={1} paddingY={1}>
-          <EmptyState title={tickerMessage.title} hint={tickerMessage.hint ?? undefined}
+          <EmptyState title={tickerMessage.title} hint={[tickerMessage.hint, loadedSources ? `Sources loaded now: ${loadedSources}.` : null].filter(Boolean).join(" ") || undefined}
             actions={tickerMessage.found.length ? tickerMessage.found.map((scope) => <Button key={`${scope.tab}:${scope.context}`} label={`Open ${scope.view}`}
               onPress={() => { if (scope.tab === "capacity") setContext(scope.context); setTab(scope.tab); }} />) : undefined} />
         </Box> : undefined}

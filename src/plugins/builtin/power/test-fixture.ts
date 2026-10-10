@@ -1,4 +1,4 @@
-import type { PowerBoard, PowerHistoryPoint, PowerProject } from "../../../api-client/power";
+import type { PowerBoard, PowerCoverage, PowerHistoryPoint, PowerProject } from "../../../api-client/power";
 export function powerProject(overrides: Partial<PowerProject> = {}): PowerProject {
   return { id: "test:queue-1", sourceId: "test", sourceProjectId: "queue-1", kind: "queue", name: "Storage project", country: "US", region: "PJM",
     state: "Virginia", county: "Loudoun", zone: null, developer: "Test developer", utility: null, fuel: "storage", technology: "Battery",
@@ -18,4 +18,8 @@ export function powerBoard(overrides: Partial<PowerBoard> = {}): PowerBoard {
 export function powerPoint(overrides: Partial<PowerHistoryPoint> = {}): PowerHistoryPoint {
   return { basis: "observed", sourceUrls: ["https://example.org/queue.csv"], sourceId: "test", country: "US", region: "PJM", kind: "queue", fuel: "storage", status: "active", projects: 1, capacityMw: 100,
     unknownCapacity: 0, observedAt: "2026-10-04T12:00:00.000Z", asOf: null, period: null, historical: false, ...overrides };
+}
+export function powerCoverage(overrides: Partial<PowerCoverage> = {}): PowerCoverage {
+  return { id: "test", country: "US", region: "PJM", kind: "queue", role: "direct", status: "current", reason: null, sourceUrl: "https://example.org/queue.csv",
+    asOf: "2026-10-01", observedAt: "2026-10-04T12:00:00.000Z", records: 1, nextPollAt: null, ...overrides };
 }
