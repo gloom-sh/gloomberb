@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Box, Text } from "../../../../ui";
+import { Box, Text, useUiHost } from "../../../../ui";
 import { Button } from "../../../../components/ui/button";
 import { DialogFrame } from "../../../../components/ui/frame";
 import { t, tf } from "../../../../i18n";
@@ -14,6 +14,11 @@ import type { CallSummary } from "./summary";
 const WIDTH = 56;
 /** Keys typed just before a prompt appeared do not answer it. */
 const KEY_GRACE_MS = 600;
+
+/** A fixed width in the terminal; on the desktop and the web, up to it, so a phone fits. */
+function usePromptWidth(): { width: number | string; maxWidth?: number } {
+  return useUiHost().kind === "opentui" ? { width: WIDTH } : { width: "100%", maxWidth: WIDTH };
+}
 
 function useKeyGrace(): () => boolean {
   const openedAt = useRef(Date.now());
@@ -32,12 +37,13 @@ function useCloseOnAbort(signal: AbortSignal, close: () => void) {
 }
 
 /** First time an assistant asks to drive this terminal. */
-export function AssistantApprovalDialog({
+function AssistantApprovalDialog({
   resolve,
   caller,
   signal,
 }: PromptContext<AssistantDecision> & { caller: RelayCaller; signal: AbortSignal }) {
   const colors = useThemeColors();
+  const size = usePromptWidth();
   const keysReady = useKeyGrace();
   const deny = useCallback(() => resolve("deny"), [resolve]);
   useCloseOnAbort(signal, deny);
@@ -56,7 +62,7 @@ export function AssistantApprovalDialog({
   return (
     <RemoteUiScope scope={RELAY_PROMPT_SCOPE}>
       <DialogFrame title={tf("{name} wants to control this terminal", { name: caller.name })} footer={t("S this session · A always · N or Esc deny")}>
-        <Box flexDirection="column" width={WIDTH}>
+        <Box flexDirection="column" {...size}>
           <Text fg={colors.text} wrapText>
             {t("It connected through Gloom Cloud with Terminal control. It can read what is on screen, open and arrange panes and switch layouts.")}
           </Text>
@@ -65,7 +71,7 @@ export function AssistantApprovalDialog({
             {t("Orders, transfers, messages and plugin actions still ask you each time. Revoke it any time in Account Management, Agents.")}
           </Text>
           <Box height={1} />
-          <Box flexDirection="row" gap={1}>
+          <Box flexDirection="row" flexWrap="wrap" gap={1}>
             <Button label={t("Allow for this session")} variant="primary" onPress={() => resolve("session")} />
             <Button label={t("Always allow")} variant="secondary" onPress={() => resolve("always")} />
             <Button label={t("Deny")} variant="secondary" onPress={deny} />
@@ -77,13 +83,14 @@ export function AssistantApprovalDialog({
 }
 
 /** Every call that can reach an outside service. There is no "always" here. */
-export function CallConfirmationDialog({
+function CallConfirmationDialog({
   resolve,
   caller,
   summary,
   signal,
 }: PromptContext<ConfirmationAnswer> & { caller: RelayCaller; summary: CallSummary; signal: AbortSignal }) {
   const colors = useThemeColors();
+  const size = usePromptWidth();
   const keysReady = useKeyGrace();
   const deny = useCallback(() => resolve("deny"), [resolve]);
   useCloseOnAbort(signal, deny);
@@ -104,7 +111,7 @@ export function CallConfirmationDialog({
         title={tf("{name} asks to run an action", { name: caller.name })}
         footer={tf("Y allow · N or Esc deny · denied after {seconds} s", { seconds: Math.round(CONFIRM_WINDOW_MS / 1_000) })}
       >
-        <Box flexDirection="column" width={WIDTH}>
+        <Box flexDirection="column" {...size}>
           <Text fg={colors.textBright} wrapText>{summary.title}</Text>
           <Box height={1} />
           {summary.lines.map((line, index) => (
@@ -116,7 +123,7 @@ export function CallConfirmationDialog({
             </Box>
           ))}
           <Box height={1} />
-          <Box flexDirection="row" gap={1}>
+          <Box flexDirection="row" flexWrap="wrap" gap={1}>
             <Button label={t("Allow")} variant="primary" onPress={() => resolve("allow")} />
             <Button label={t("Deny")} variant="secondary" onPress={deny} />
           </Box>

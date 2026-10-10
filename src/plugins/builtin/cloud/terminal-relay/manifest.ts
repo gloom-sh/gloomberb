@@ -12,6 +12,7 @@ import {
   operationPolicy,
   patchPolicy,
   policySentence,
+  readPolicy,
   tierLabel,
   type TerminalRelayPolicy,
 } from "./policy";
@@ -76,14 +77,15 @@ function readTool(
   inputSchema: RemoteJsonSchema,
   binding: TerminalRelayToolKind,
 ): TerminalRelayTool {
+  const { policy } = readPolicy();
   return {
     name,
     title,
-    description: describe(text, "none", "allow"),
+    description: describe(text, "none", policy),
     inputSchema,
     tier: "none",
     writeTier: "read",
-    policy: "allow",
+    policy,
     annotations: { readOnly: true, destructive: false, idempotent: true, openWorld: false },
     binding,
   };

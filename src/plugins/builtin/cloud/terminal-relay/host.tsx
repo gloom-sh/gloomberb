@@ -54,13 +54,17 @@ export function TerminalRelayHost({ device }: { device: TerminalRelayDevice | un
       onActivity: recordRelayActivity,
     });
     const client = new TerminalRelayClient(cloudSocket, engine, () => {
+      // Signed out, or not verified yet: nothing to announce.
+      if (!apiClient.isVerified()) return null;
       const id = terminalRelayGrants.deviceId();
       return id ? { id, kind, name, appVersion: VERSION } : null;
     });
     clientRef.current = client;
     const stop = client.start();
+    const unsubscribeUser = apiClient.subscribeCurrentUser(() => client.refresh());
     return () => {
       clientRef.current = null;
+      unsubscribeUser();
       stop();
       engine.dispose();
     };

@@ -7,7 +7,7 @@
 const SECRET_KEY = /(pass(word|phrase)?|secret|token|api[-_]?key|private[-_]?key|credential|cookie|session)/i;
 export const REDACTED = "[redacted]";
 
-export function redactSecrets(value: unknown, depth = 0): unknown {
+function redactSecrets(value: unknown, depth = 0): unknown {
   if (depth > 24 || value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((entry) => redactSecrets(entry, depth + 1));
   const result: Record<string, unknown> = {};

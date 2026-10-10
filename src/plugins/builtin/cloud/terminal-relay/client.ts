@@ -55,6 +55,19 @@ export class TerminalRelayClient {
     };
   }
 
+  /**
+   * The session changed: announce once signed in, say goodbye once signed
+   * out, without waiting for the socket to reconnect.
+   */
+  refresh(): void {
+    if (this.announced && !this.device()) {
+      this.socket.sendFrame({ type: "terminal.bye" });
+      this.lost();
+    } else if (!this.announced) {
+      this.announce();
+    }
+  }
+
   /** The person used the app; Gloom Cloud picks the most recently used terminal by default. */
   activity(): void {
     if (!this.announced || this.now() - this.lastActivityAt < ACTIVITY_INTERVAL_MS) return;

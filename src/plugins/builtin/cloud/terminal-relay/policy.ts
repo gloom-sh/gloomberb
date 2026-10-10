@@ -79,7 +79,7 @@ export const TERMINAL_RELAY_OPERATION_POLICY: Readonly<Record<string, TerminalRe
 };
 
 /** Reads never change anything; app://config arrives with credentials removed (redact.ts). */
-export const TERMINAL_RELAY_READ_POLICY: TerminalRelayPolicyEntry = {
+const TERMINAL_RELAY_READ_POLICY: TerminalRelayPolicyEntry = {
   policy: "allow",
   reason: "Reads what the app shows; credentials are removed from configuration.",
 };
@@ -89,6 +89,11 @@ export function patchPolicy(resource: string): TerminalRelayPolicyEntry {
   return resource === "app://config"
     ? { policy: "confirm", reason: "Configuration holds broker connections and plugin settings." }
     : { policy: "allow", reason: "Patches layout, pane state or pane settings; layout.undo reverts layout changes." };
+}
+
+/** Every read: snapshots, pane content, resources, market data. */
+export function readPolicy(): TerminalRelayPolicyEntry {
+  return TERMINAL_RELAY_READ_POLICY;
 }
 
 export function operationPolicy(operation: string): TerminalRelayPolicyEntry {

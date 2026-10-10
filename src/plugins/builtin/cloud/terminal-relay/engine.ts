@@ -40,7 +40,7 @@ import { keyArgumentLines, shortValue, type CallSummary } from "./summary";
 
 export const RELAY_PROMPT_SCOPE = "terminal-relay-prompt";
 export const CONFIRM_WINDOW_MS = 60_000;
-export const EXECUTION_BUDGET_MS = 15_000;
+const EXECUTION_BUDGET_MS = 15_000;
 /** Answers the server cannot take (a call frame tens of megabytes long) are cut to fit. */
 const MAX_RESULT_CHARS = 900_000;
 const SEEN_CALL_TTL_MS = 10 * 60_000;
@@ -598,7 +598,11 @@ export class TerminalRelayEngine {
     } catch {
       // A pane without settings.
     }
-    const nodes = (await this.uiNodes()).filter((node) => node.paneId === instanceId || node.metadata?.paneInstanceId === instanceId);
+    const nodes = (await this.uiNodes()).filter((node) => (
+      (node.paneId === instanceId || node.metadata?.paneInstanceId === instanceId)
+      // A bare clickable box says nothing about what the pane shows.
+      && !(node.role === "box" && !node.label)
+    ));
     return {
       pane,
       settings: redactConfig(settings),

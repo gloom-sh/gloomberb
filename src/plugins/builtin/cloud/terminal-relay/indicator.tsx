@@ -1,5 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { Button } from "../../../../components/ui/button";
+import { Box } from "../../../../ui";
 import { t, tf } from "../../../../i18n";
 import { getSharedRegistry } from "../../../registry";
 import { requestAccountManagementTab } from "../../account-management/navigation";
@@ -63,17 +64,19 @@ export function TerminalRelayStatusWidget() {
   if (!activity || now - activity.at > CONNECTED_FOR_MS) return null;
   const acting = now - activity.at < ACTING_FOR_MS;
   return (
-    <Button
-      label={acting ? tf("{name} is acting", { name: activity.name }) : tf("{name} connected", { name: activity.name })}
-      title={t("A remote assistant controls this terminal. Open Agents to revoke it.")}
-      variant="plain"
-      active={acting}
-      compact
-      stopPropagation
-      onPress={() => {
-        requestAccountManagementTab("agents");
-        getSharedRegistry()?.showPane("account-management");
-      }}
-    />
+    <Box paddingRight={1} flexShrink={0}>
+      <Button
+        label={acting ? tf("{name} is acting", { name: activity.name }) : tf("{name} connected", { name: activity.name })}
+        title={t("A remote assistant controls this terminal. Open Agents to revoke it.")}
+        variant="plain"
+        active={acting}
+        compact
+        stopPropagation
+        onPress={() => {
+          requestAccountManagementTab("agents");
+          getSharedRegistry()?.showPane("account-management");
+        }}
+      />
+    </Box>
   );
 }
