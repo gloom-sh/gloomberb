@@ -115,7 +115,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op("pane.close", "Close a pane instance or pane type.", "{ paneId: string }", "local-write", paneIdInput),
   op(
     "pane.createFromTemplate",
-    "Create a pane from a registered template.",
+    "Open a pane from a registered template. It only opens the pane: it adds nothing to a portfolio or watchlist.",
     "{ templateId: string, options?: object }",
     "local-write",
     objectSchema({ templateId: requiredStringSchema, options: openObjectSchema }, ["templateId"]),

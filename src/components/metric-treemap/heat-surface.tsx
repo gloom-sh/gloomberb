@@ -209,6 +209,17 @@ function useItemsById<T>(scene: MetricTreemapScene<T>, items: readonly MetricTre
 
 const VISIBLE_FADE_DISTANCE = 0.03;
 
+/** Text up a tall tile reads bottom to top, as a chart's vertical axis title does; the move sits right of the ticker. */
+const VERTICAL_LABEL_STYLE: CSSProperties = {
+  position: "relative",
+  display: "block",
+  flexShrink: 0,
+  maxHeight: "100%",
+  overflow: "hidden",
+  writingMode: "vertical-rl",
+  transform: "rotate(180deg)",
+};
+
 const DomHeatTile = memo(function DomHeatTile({
   id, rect, canvasWidth, canvasHeight, gap, label, value, valueSuffix, background, foreground,
   selected, reducedMotion, glide, pulseCount, events,
@@ -230,7 +241,10 @@ const DomHeatTile = memo(function DomHeatTile({
   events: SurfaceEvents;
 }) {
   const text = heatTileLabelPx(rect.width - gap * 2, rect.height - gap * 2, label, value);
-  const shownValue = heatTileValueWithSuffix(value, valueSuffix, { width: rect.width - gap * 2, valuePx: text.valuePx });
+  const shownValue = heatTileValueWithSuffix(value, valueSuffix, {
+    width: (text.vertical ? rect.height : rect.width) - gap * 2,
+    valuePx: text.valuePx,
+  });
   // Where this tile sat before the last relayout, kept to slide it from there.
   const placedRef = useRef(rect);
   const glideRef = useRef<{ dx: number; dy: number; count: number }>({ dx: 0, dy: 0, count: 0 });
@@ -305,13 +319,23 @@ const DomHeatTile = memo(function DomHeatTile({
   const lineStyle: CSSProperties = {
     position: "relative",
     display: "block",
-    maxWidth: "100%",
+    maxWidth: text.vertical ? undefined : "100%",
     overflow: "hidden",
     whiteSpace: "nowrap",
     textAlign: "center",
     letterSpacing: 0,
     color: foreground,
   };
+  const lines = (
+    <>
+      {text.tier !== "none" && (
+        <Text style={{ ...lineStyle, fontSize: text.tickerPx, fontWeight: 700, lineHeight: 1.12 }}>{label}</Text>
+      )}
+      {text.tier === "full" && value && (
+        <Text style={{ ...lineStyle, fontSize: text.valuePx, fontWeight: 500, lineHeight: 1.12 }}>{shownValue}</Text>
+      )}
+    </>
+  );
   return (
     <Box
       data-gloom-role="heat-tile"
@@ -347,12 +371,7 @@ const DomHeatTile = memo(function DomHeatTile({
           }}
         />
       )}
-      {text.tier !== "none" && (
-        <Text style={{ ...lineStyle, fontSize: text.tickerPx, fontWeight: 700, lineHeight: 1.12 }}>{label}</Text>
-      )}
-      {text.tier === "full" && value && (
-        <Text style={{ ...lineStyle, fontSize: text.valuePx, fontWeight: 500, lineHeight: 1.12 }}>{shownValue}</Text>
-      )}
+      {text.vertical ? <Box style={VERTICAL_LABEL_STYLE}>{lines}</Box> : lines}
     </Box>
   );
 });

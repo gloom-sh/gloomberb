@@ -80,6 +80,20 @@ test("a broker portfolio's positions come largest first with weights and totals 
   });
 });
 
+test("every column PF declares is a field of its position rows, the listing included", async () => {
+  // Ask Gloom's scripts read rows by the declared keys: a declared key the rows
+  // lack reads undefined, and an undeclared field is never printed (a turn took
+  // two European holdings for their US listings).
+  const keys = (collectionHoldingsHeadless.columns ?? []).map((column) => column.key);
+  expect(keys).toContain("exchange");
+  const result = await collectionHoldingsHeadless.load(args(BROKER.id), context());
+  expect(result.rows.length).toBeGreaterThan(0);
+  for (const row of result.rows) {
+    for (const key of keys) expect(row).toHaveProperty(key);
+  }
+  expect(result.rows[0]).toMatchObject({ exchange: "NASDAQ" });
+});
+
 test("a watchlist reads by name, and an unknown id lists the ones that exist", async () => {
   const watchlist = await collectionHoldingsHeadless.load(args("tech"), context());
   expect(watchlist.rows).toEqual([{ symbol: "SPY", name: "SPDR S&P 500", exchange: "NASDAQ", price: 500, priceCurrency: "USD", changePercent: 1.5, stale: false, updatedAt: expect.any(Number) }]);

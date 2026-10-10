@@ -1448,6 +1448,11 @@ export const zhTW: Record<string, string> = {
   "Connected! Positions will sync automatically.": "已連線！持倉將自動同步。",
   "No connectable brokers are installed.": "未安裝可連線的券商。",
   "{broker} was not connected.": "{broker} 未連線。",
+  "Ends {date}": "{date} 結束",
+  "Ended {date}": "{date} 已結束",
+  "Sign-in ends {when}": "登入將於 {when} 結束",
+  "Sign-in ended {when}": "登入已於 {when} 結束",
+  "{broker} sign-in was not renewed.": "{broker} 的登入未續期。",
 
   // ── Company picker ───────────────────────────────────────────
   "Which companies do you follow?": "你關注哪些公司？",

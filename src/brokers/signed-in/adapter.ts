@@ -23,11 +23,38 @@ import { SIGNED_IN_BROKER_TYPE, signedInBrokerId } from "./profile";
 
 const METHOD = "Sign in";
 
+/**
+ * The message Gloom wrote for the client. The request error's own `message`
+ * has the error code appended to it, so this reads the body's field first.
+ */
+function writtenMessage(error: ApiRequestError): string | null {
+  const written = error.details?.message;
+  if (typeof written === "string" && written.trim()) return written.trim();
+  const { message, code } = error;
+  const text = code && message.endsWith(` ${code}`) ? message.slice(0, -(code.length + 1)) : message;
+  return text.trim() || null;
+}
+
+/**
+ * Why the broker ended a sign-in, as Gloom stores it, without the OAuth code
+ * in front: "invalid_grant: Authorization grant has expired" reads
+ * "Authorization grant has expired".
+ */
+function brokerReason(lastError: string | null | undefined): string | null {
+  const text = lastError?.trim();
+  if (!text) return null;
+  const described = /^[a-z_]+:\s*(\S[\s\S]*)$/.exec(text)?.[1] ?? text;
+  return described.replace(/[\s.]+$/, "").slice(0, 200) || null;
+}
+
 /** What to tell the user when Gloom answers a broker call with an error. */
 function describeSignedInBrokerError(error: unknown, brokerName: string): string {
   const status = error instanceof ApiRequestError ? error.status : undefined;
   if (status === 401) return `Sign in to Gloom first, then connect ${brokerName}.`;
-  if (status === 404 || status === 409) return `${brokerName} needs you to sign in again. Press Connect in Brokers.`;
+  const signInAgain = `${brokerName} needs you to sign in again. Press Connect in Brokers.`;
+  // A sign-in the broker ended says why, in Gloom's words.
+  if (status === 409) return (error instanceof ApiRequestError && writtenMessage(error)) || signInAgain;
+  if (status === 404) return signInAgain;
   if (status === 502) return `${brokerName} is not responding. Try again shortly.`;
   return error instanceof Error && error.message ? error.message : String(error);
 }
@@ -215,7 +242,11 @@ export function createSignedInBrokerAdapter(overrides: Partial<SignedInBrokerAda
       await track(instance, async () => {
         const connection = await get<SignedInBrokerConnection>(instance, "");
         if (connection.status !== "connected") {
-          throw new Error(`Press Connect in Brokers to sign in to ${brokerName(instance)}.`);
+          const name = brokerName(instance);
+          const reason = brokerReason(connection.lastError);
+          throw new Error(reason
+            ? `${name} needs you to sign in again: ${reason}. Press Connect in Brokers.`
+            : `Press Connect in Brokers to sign in to ${name}.`);
         }
       });
     },

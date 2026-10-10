@@ -17,6 +17,7 @@ import {
   loadCalendar,
   matchesCountry,
   matchesImpact,
+  shortCalendarEnd,
   type CountryFilter,
   type ImpactFilter,
 } from "../../plugins/builtin/econ/calendar-model";
@@ -150,7 +151,32 @@ function utcDateTimePart(value: unknown, part: "date" | "time"): string {
   return part === "date" ? iso.slice(0, 10) : `${iso.slice(11, 16)} UTC`;
 }
 
-const ECON_USAGE = "econ [--country <region>] [--impact <level>]";
+const ECON_USAGE = "econ [--country <region>] [--impact <level>] [--from <yyyy-mm-dd>]";
+const DAY_MS = 86_400_000;
+
+/**
+ * What an empty calendar says. A window that starts after the last day listed
+ * says where the listing stops, whatever the filters, rather than nothing.
+ */
+function econEmptyMessage(from: string | null, listedThrough: string | null, stopsShort: boolean): string {
+  if (!listedThrough) return "No events listed.";
+  if (from != null && from > listedThrough) return `No events listed after ${listedThrough}.`;
+  const range = from ? ` from ${from}` : "";
+  return stopsShort
+    ? `No matching events${range}; none listed after ${listedThrough}.`
+    : `No matching events${range} through ${listedThrough}.`;
+}
+
+/** A `yyyy-mm-dd` option, checked here; null when it was not given. */
+function parseDateOption(value: string | undefined, flag: string, ctx: Parameters<CliCommandDef["execute"]>[1]): string | null {
+  if (value == null) return null;
+  const date = value.trim();
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
+  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
+    ctx.fail(`${flag} takes a date as yyyy-mm-dd, got "${value}".`);
+  }
+  return date;
+}
 
 /** One of a filter's values, matched without regard to case; anything else fails with the list. */
 function parseFilter<T extends string>(value: string | undefined, values: readonly T[], label: string, ctx: Parameters<CliCommandDef["execute"]>[1]): T {
@@ -164,11 +190,21 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
   const rawArgs = [...args];
   const country: CountryFilter = parseFilter(takeOption(rawArgs, "--country"), COUNTRY_CYCLE, "country", ctx);
   const impact: ImpactFilter = parseFilter(takeOption(rawArgs, "--impact"), FILTER_CYCLE, "impact", ctx);
+  const fromOption = parseDateOption(takeOption(rawArgs, "--from"), "--from", ctx);
   rejectArgs(rawArgs, ECON_USAGE, ctx, "Filter with --country and --impact.");
-  await withCliServices(ctx, async (services) => {
-    const { data: events } = await loadCalendar(ctx.cliOptions.refresh);
+  await withCliServices(ctx, async () => {
+    const { data: events, fetchedAt, stale } = await loadCalendar(ctx.cliOptions.refresh);
+    const todayStart = Math.floor(Date.now() / DAY_MS) * DAY_MS;
+    // The calendar lists from today (UTC). --from moves the first day; --tail
+    // alone keeps the newest events of the whole calendar, the past week's too.
+    const from = fromOption ?? (ctx.cliOptions.tail != null ? null : new Date(todayStart).toISOString().slice(0, 10));
+    const fromTime = from == null ? Number.NEGATIVE_INFINITY : Date.parse(`${from}T00:00:00Z`);
+    const lastEvent = events.reduce<Date | null>((last, event) => (!last || event.date > last ? event.date : last), null);
+    const listedThrough = lastEvent ? lastEvent.toISOString().slice(0, 10) : null;
+    // A calendar that stops short of a week ahead says so under the table.
+    const listedAfter = shortCalendarEnd(events, Math.max(todayStart, fromTime)) ? `No events listed after ${listedThrough}` : null;
     const rows = events
-      .filter((event) => matchesCountry(event, country) && matchesImpact(event, impact))
+      .filter((event) => event.date.getTime() >= fromTime && matchesCountry(event, country) && matchesImpact(event, impact))
       .sort((left, right) => left.date.getTime() - right.date.getTime())
       .map((event) => ({
         date: isoDate(event.date),
@@ -182,11 +218,14 @@ async function runEcon(args: string[], ctx: Parameters<CliCommandDef["execute"]>
       }));
     ctx.printResult({
       data: rows,
-      metadata: { country, impact },
-      freshness: rowsFreshness(rows, { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
+      metadata: { country, impact, from, listedThrough },
+      // The calendar as read, not its rows: those are scheduled, mostly ahead.
+      freshness: rowsFreshness([], { status: "not-a-feed", basis: "calendar", asOf: fetchedAt }, { stale }),
     }, {
       dateKey: "date",
       defaultLimit: 50,
+      empty: econEmptyMessage(from, listedThrough, listedAfter != null),
+      ...(listedAfter ? { footnote: listedAfter } : {}),
       columns: [
         // Text shows both halves of the event timestamp in UTC, never the host's zone; exports keep the source values.
         { key: "date", header: "Date", format: (value) => utcDateTimePart(value, "date") },
@@ -207,13 +246,7 @@ const FRED_LIST_USAGE = "fred --list [filter]";
 
 /** `--start`, checked here: Gloom Cloud cannot read anything but yyyy-mm-dd. */
 function parseStartDate(value: string | undefined, ctx: Parameters<CliCommandDef["execute"]>[1]): string {
-  if (value == null) return "2021-01-01";
-  const date = value.trim();
-  const time = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00Z`) : Number.NaN;
-  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
-    ctx.fail(`--start takes a date as yyyy-mm-dd, got "${value}".`);
-  }
-  return date;
+  return parseDateOption(value, "--start", ctx) ?? "2021-01-01";
 }
 
 /** Gloom Cloud serves a curated set of FRED series and answers 400 for any other id. */
@@ -403,8 +436,9 @@ export const overviewCliCommands: CliCommandDef[] = [
       options: [
         { flags: "--country <region>", description: "US, G7, EU, or all (default all)" },
         { flags: "--impact <level>", description: "high, medium, low, or all (default all)" },
+        { flags: "--from <yyyy-mm-dd>", description: "First day listed (default today, UTC); an earlier day reaches past events" },
       ],
-      examples: ["econ", "econ --country US --impact high"],
+      examples: ["econ", "econ --country US --impact high", "econ --tail 20"],
     },
     execute: runEcon,
   },

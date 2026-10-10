@@ -1448,6 +1448,11 @@ export const zhCN: Record<string, string> = {
   "Connected! Positions will sync automatically.": "已连接！持仓将自动同步。",
   "No connectable brokers are installed.": "未安装可连接的券商。",
   "{broker} was not connected.": "{broker} 未连接。",
+  "Ends {date}": "{date} 结束",
+  "Ended {date}": "{date} 已结束",
+  "Sign-in ends {when}": "登录将于 {when} 结束",
+  "Sign-in ended {when}": "登录已于 {when} 结束",
+  "{broker} sign-in was not renewed.": "{broker} 的登录未续期。",
 
   // ── Company picker ───────────────────────────────────────────
   "Which companies do you follow?": "你关注哪些公司？",

@@ -31,6 +31,16 @@ export interface SignedInBrokerConnection {
   connectedAt: string | null;
   refreshedAt: string | null;
   syncedAt: string | null;
+  /**
+   * When the broker ends this sign-in on its own clock, however often it was
+   * refreshed. Set only while connected and only for a broker that does so.
+   * The three fields below are absent from a Gloom server that predates them.
+   */
+  expiresAt?: string | null;
+  /** Within a day of `expiresAt`, or past it: time to connect again. */
+  expiresSoon?: boolean;
+  /** Why the broker ended the sign-in, in its own words. Null while connected. */
+  lastError?: string | null;
 }
 
 /** Public: the list does not depend on the user, so Add Broker can show it signed out. */

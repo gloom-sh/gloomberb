@@ -1448,6 +1448,11 @@ export const ja: Record<string, string> = {
   "Connected! Positions will sync automatically.": "接続しました。ポジションは自動で同期されます。",
   "No connectable brokers are installed.": "接続できる証券会社がインストールされていません。",
   "{broker} was not connected.": "{broker} は接続されませんでした。",
+  "Ends {date}": "{date} 終了",
+  "Ended {date}": "{date} に終了",
+  "Sign-in ends {when}": "サインインは {when} に終了します",
+  "Sign-in ended {when}": "サインインは {when} に終了しました",
+  "{broker} sign-in was not renewed.": "{broker} のサインインは更新されませんでした。",
 
   // ── Company picker ───────────────────────────────────────────
   "Which companies do you follow?": "どの企業をフォローしていますか？",
