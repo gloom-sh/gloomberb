@@ -174,6 +174,8 @@ export interface HeadlessPaneFreshness {
    * completed session has passed after the newest (a day's lag is allowed).
    */
   cadence?: "daily";
+  /** The venue whose trading days a `daily` cadence counts instead, when the app knows its sessions. */
+  cadenceExchange?: string;
   /**
    * Whose trading day a dated (`YYYY-MM-DD`) as-of is, as a reader names the
    * market: `US` for a US trading or business day. The report then reads

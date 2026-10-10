@@ -1383,6 +1383,8 @@ export interface CloudMarketResponse<T> {
   historySession?: unknown;
   /** "extended" when the history includes the pre-market and after-hours bars asked for. */
   session?: unknown;
+  /** "1day" when daily bars answer an intraday range: the listing has no intraday bars. */
+  servedResolution?: unknown;
   /** Untrusted until the history adapter validates its boundary dates. */
   coverage?: CloudHistoryCoverage;
   providerMeta?: {

@@ -85,3 +85,25 @@ test("Boursa Kuwait trades Sunday to Thursday and closes with its auction", () =
   }
   expect(iso(nextRegularSessionOpen("KUWAIT", at("2026-10-10T09:00:00Z"))?.open)).toBe("2026-10-11T06:00:00.000Z");
 });
+
+test("the Egyptian Exchange trades Sunday to Thursday and kept Thursday 8 Oct 2026 closed", () => {
+  // Cairo is UTC+3 in October 2026. Continuous trading opens 10:00; the close
+  // is the end of the closing auction, 14:25 (11:25 UTC).
+  // [now, in session, latest close]
+  const rows: Array<[string, boolean, string]> = [
+    // Armed Forces Day, moved to Thursday, then the weekend: on Wednesday's session.
+    ["2026-10-08T09:00:00Z", false, "2026-10-07T11:25:00.000Z"],
+    ["2026-10-10T09:00:00Z", false, "2026-10-07T11:25:00.000Z"],
+    // Sunday a minute before the open, then at 11:00 Cairo.
+    ["2026-10-11T06:59:00Z", false, "2026-10-07T11:25:00.000Z"],
+    ["2026-10-11T08:00:00Z", true, "2026-10-07T11:25:00.000Z"],
+    // A Tuesday session through the closing auction.
+    ["2026-10-06T11:24:00Z", true, "2026-10-05T11:25:00.000Z"],
+    ["2026-10-06T11:25:00Z", false, "2026-10-06T11:25:00.000Z"],
+  ];
+  for (const [now, inSession, close] of rows) {
+    expect(isRegularSessionTime("EGX", at(now)), now).toBe(inSession);
+    expect(iso(latestRegularSessionClose("EGX", at(now))?.close), now).toBe(close);
+  }
+  expect(iso(nextRegularSessionOpen("EGX", at("2026-10-08T09:00:00Z"))?.open)).toBe("2026-10-11T07:00:00.000Z");
+});

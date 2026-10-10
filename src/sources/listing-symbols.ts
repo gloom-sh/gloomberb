@@ -24,6 +24,7 @@ const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   JSE: ".JO",
   BVMF: ".SA", MEXI: ".MX", BYMA: ".BA", BCS: ".SN",
   TADAWUL: ".SR", QE: ".QA", DFM: ".AE", KUWAIT: ".KW",
+  EGX: ".CA",
 };
 
 const EXCHANGE_FALLBACKS: Record<string, string[]> = {

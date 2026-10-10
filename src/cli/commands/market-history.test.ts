@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createTestCliContext } from "../../test-support/cli-context";
@@ -33,4 +33,28 @@ test("history CSV keeps the price columns first and every row says its currency,
   expect(result.metadata).toMatchObject({
     currency: "ZAR", unit: "ZAR", interval: "1d", requestedRange: "1Y", firstDate: "2025-10-09", lastDate: "2025-10-10", bars: 2,
   });
+});
+
+test("a venue's daily bars are dated by its own trading days, not New York's", async () => {
+  // Saturday 10 Oct 2026: EGX last traded Wednesday (Thursday was a holiday,
+  // its week ends Thursday); New York traded Thursday and Friday since.
+  setSystemTime(new Date("2026-10-10T21:40:00Z"));
+  try {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "COMI.CA", currency: "EGP", listingExchangeName: "EGX" }),
+        getPriceHistoryWithMetadata: async () => ({
+          resolution: "1d",
+          points: [{ date: new Date("2026-10-07"), open: 125.16, high: 125.9, low: 124.14, close: 124.65, volume: 3345837 }],
+        }),
+      }),
+    });
+    await history.execute(["COMI.CA", "--range", "1D"], cli.context);
+    const [{ result }] = cli.printed;
+    expect(result.warnings).toEqual(["Asked 1D, got daily bars from 2026-10-07"]);
+    expect(result.freshness).toMatchObject({ status: "not-a-feed" });
+  } finally {
+    setSystemTime();
+  }
 });

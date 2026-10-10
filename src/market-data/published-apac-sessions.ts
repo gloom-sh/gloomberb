@@ -1,4 +1,4 @@
-// Published full-day closures (weekend dates omitted) for Asia-Pacific venues,
+// Published full-day closures (weekend dates omitted) for Asia-Pacific venues and EGX,
 // not a holiday-rule engine. A year a venue has not published is unknown, not
 // open: every weekday of it reads as a session. Half-day sessions (HKEX and
 // SGX eves, ASX's 14:10 closes) are not modelled. Checked 2026-10-09:
@@ -10,6 +10,9 @@
 // SGX closes on Singapore's gazetted public holidays, one on a Sunday moving to the Monday:
 //   https://www.sgx.com/stock-exchange/trading and https://www.mom.gov.sg/employment-practices/public-holidays
 // ASX: https://www.asx.com.au/markets/market-resources/trading-hours-calendar/cash-market-trading-hours/trading-calendar
+// EGX closes on Egypt's public holidays, often moved to the Thursday of their
+// week (Armed Forces Day, Tuesday 6 Oct 2026, to Thursday 8 Oct, by the
+// exchange's statement of 5 Oct). Its week is Sunday to Thursday.
 const KRX_CLOSURES: Record<number, readonly string[]> = {
   2026: [
     "01-01", "02-16", "02-17", "02-18", "03-02", "05-01", "05-05", "05-25", "06-03",
@@ -51,6 +54,12 @@ export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, rea
   ASX: {
     2026: ["01-01", "01-26", "04-03", "04-06", "06-08", "12-25", "12-28"],
     2027: ["01-01", "01-26", "03-26", "03-29", "06-14", "12-27", "12-28"],
+  },
+  EGX: {
+    2026: [
+      "01-01", "01-07", "01-29", "03-19", "03-22", "03-23", "04-12", "04-13", "05-07",
+      "05-26", "05-27", "05-28", "05-31", "06-18", "07-02", "07-23", "08-27", "10-08",
+    ],
   },
 };
 

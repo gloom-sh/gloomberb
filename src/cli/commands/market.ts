@@ -646,6 +646,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...barHistoryFreshness(intraday ? null : barResolutionFromDates(data.map((row) => row.date))),
       observedKey: "date",
       oldest: null,
+      // Bars stop arriving on the listing's own trading days, not New York's.
+      cadenceExchange: quote?.listingExchangeName || exchange || undefined,
     });
     const notes = [...historyNotes(range, interval, data[0]?.date), historyFlagNote(data) ?? []].flat();
     const priceColumns: CliResultColumn[] = [
