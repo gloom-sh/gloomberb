@@ -27,7 +27,7 @@ export const optionsScenarioModule: PluginModule = {
   paneTemplates: [createTickerSurfacePaneTemplate({
     id: "options-scenario-pane", paneId: "options-scenario", label: "Options Scenario",
     description: "Build multi-leg positions and compare scenario P&L, payoff and aggregate Greeks.",
-    keywords: ["osa", "options", "scenario", "payoff", "strategy", "greeks", "hedge", "hedging", "collar", "protective put"],
+    keywords: ["osa", "options", "scenario", "payoff", "strategy", "greeks", "hedge", "hedging", "collar", "protective put", "put spread"],
     shortcut: "OSA", publicShare: true,
     settings: (symbol, _context, options) => ({ symbol, ...Object.fromEntries(scenarioSettingKeys
       .filter((key) => options?.values?.[key] != null).map((key) => [key, options!.values![key]])) }),

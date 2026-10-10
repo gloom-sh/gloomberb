@@ -8,6 +8,9 @@ import { thirteenFHeadless } from "../../plugins/builtin/thirteenf/headless";
 import { volSurfaceHeadless } from "../../plugins/builtin/vol-surface/headless";
 import { paneSchemas as tickerSchemas } from "../../plugins/builtin/ticker-detail/headless-schema";
 import type { HeadlessPaneDefinition } from "../../types/headless";
+import { getLoadablePlugins } from "../../plugins/catalog";
+import { createDefaultConfig } from "../../types/config";
+import type { MarketContext } from "../types";
 import { parseCliGlobalArgs } from "../options";
 import {
   capabilityPluginState,
@@ -15,7 +18,8 @@ import {
   isDataPaneForDomFallback,
   normalizeCapabilityOptions,
 } from "./capabilities";
-import { filterPaneCatalogEntries, renderPaneCatalogReport, type PaneCatalogEntry } from "./catalog";
+import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport, type PaneCatalogEntry } from "./catalog";
+import { createPaneCatalog } from "./discovery";
 import { parsePaneFunctionArgs } from "./options";
 
 const dummyPane = {
@@ -233,6 +237,19 @@ describe("pane catalog search", () => {
     expect(order.slice(0, 2)).toEqual(["PERP", "CCC"]);
     expect(order.slice(2, 4).sort()).toEqual(["AAA", "BBB"]);
     expect(order[4]).toBe("ZZZ");
+  });
+
+  test("hedging searches put OSA first among the built-in functions", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const registry = await createPaneCatalog(context, getLoadablePlugins());
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      for (const query of ["collar", "hedge", "hedging", "protective put", "put spread"]) {
+        expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("OSA");
+      }
+    } finally {
+      registry.destroy();
+    }
   });
 
   test("an alias opens its function even when other functions contain the same letters", () => {
