@@ -139,10 +139,12 @@ describe("composeBuiltinPlugin", () => {
       }));
 
       const render = (component: (props: never) => unknown, paneId: string) => renderToStaticMarkup(
-        createElement(AppContext, { value: createStaticAppStore(state) },
-          createElement(PaneInstanceProvider, { paneId }, createElement(component as (props: PaneProps) => null, {
+        createElement(AppContext, { value: createStaticAppStore(state) }, createElement(PaneInstanceProvider, {
+          paneId,
+          children: createElement(component as (props: PaneProps) => null, {
             paneId, paneType: paneId.split(":")[0]!, focused: true, width: 80, height: 20,
-          }))),
+          }),
+        })),
       );
       expect(render(registry.panes.get("moved")!.component, "moved:main")).toBe("curve/spread/bp");
       expect(render(registry.tickerResearchTabs.get("moved-tab")!.component, "ticker-detail:main")).toBe("legacy");
