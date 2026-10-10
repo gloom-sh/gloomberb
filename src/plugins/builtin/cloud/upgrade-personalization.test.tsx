@@ -9,6 +9,8 @@ import { setAppVisible } from "../../../state/app/activity";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestTicker } from "../../../test-support/ticker";
 import { createDefaultConfig } from "../../../types/config";
+import { currentTelemetryConfig, reportTelemetryConfig } from "../../../telemetry/live-config";
+import { resetUsageCountsForTests } from "../../../telemetry/usage-counts";
 import { Text } from "../../../ui";
 import { proStepRealtimeTitle } from "./upgrade-dialog";
 import { useUpgradePersonalization } from "./upgrade-personalization";
@@ -17,8 +19,16 @@ const tui = createOpenTuiTestHarness({ width: 80, height: 20 });
 const originalExposure = apiClient.recordExperimentExposure;
 let originalNavigator: PropertyDescriptor | undefined;
 let originalTarget = getCurrentPluginTarget();
+let originalTelemetry: ReturnType<typeof currentTelemetryConfig>;
+const optOutEnv = ["GLOOMBERB_NO_TELEMETRY", "DO_NOT_TRACK"] as const;
+let originalOptOutEnv: Array<string | undefined>;
 
 beforeEach(() => {
+  originalTelemetry = currentTelemetryConfig(undefined);
+  originalOptOutEnv = optOutEnv.map((key) => process.env[key]);
+  for (const key of optOutEnv) delete process.env[key];
+  resetUsageCountsForTests();
+  reportTelemetryConfig({ usage: true });
   originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
   originalTarget = getCurrentPluginTarget();
   Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
@@ -51,6 +61,13 @@ async function render({ shown = true, held = true } = {}) {
 }
 
 afterEach(() => {
+  resetUsageCountsForTests();
+  reportTelemetryConfig(originalTelemetry?.telemetry);
+  optOutEnv.forEach((key, index) => {
+    const value = originalOptOutEnv[index];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  });
   apiClient.recordExperimentExposure = originalExposure;
   setCurrentPluginTarget(originalTarget);
   if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
@@ -62,7 +79,7 @@ afterEach(() => {
   });
 });
 
-test("hidden, signed-out and seed-only viewers keep generic copy without exposure", async () => {
+test("hidden, signed-out, seed-only and opted-out viewers keep generic copy without exposure", async () => {
   let requests = 0;
   apiClient.recordExperimentExposure = async () => {
     requests++;
@@ -75,6 +92,13 @@ test("hidden, signed-out and seed-only viewers keep generic copy without exposur
   await render({ shown: false });
   await render({ held: false });
   act(() => setAppVisible(false));
+  await render();
+  expect(tui.frame()).toContain("Real-time market data");
+  expect(requests).toBe(0);
+  act(() => {
+    reportTelemetryConfig({ usage: false });
+    setAppVisible(true);
+  });
   await render();
   expect(tui.frame()).toContain("Real-time market data");
   expect(requests).toBe(0);

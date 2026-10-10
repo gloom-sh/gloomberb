@@ -4,7 +4,7 @@
 
 # Gloomberb
 
-**Open-source finance terminal.**
+**Open-source finance terminal. Keyboard-driven and extensible.**
 
 Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 
@@ -143,7 +143,7 @@ One Bun and React codebase runs the OpenTUI terminal app, Electrobun desktop app
 
 As of 10 October 2026, the suite contains 6,956 test cases across 1,088 test files.
 
-Six [CI workflows](.github/workflows) cover verification, Windows builds, terminal performance, pane pointer interactions, Homebrew packaging and releases. Pull requests run typechecks, unused-code checks, tests, builds and plugin compatibility checks; see [Contributing](CONTRIBUTING.md#checks). Eight releases were published from 1 to 9 October 2026; see the [release history](https://github.com/gloom-sh/gloomberb/releases).
+Six [CI workflows](.github/workflows) cover verification, Windows builds, terminal performance, pane pointer interactions, Homebrew packaging and releases. Pull requests run typechecks, unused-code checks, tests, builds and plugin compatibility checks; see [Contributing](CONTRIBUTING.md#checks).
 
 AI coding tools are used, and every change goes through review and the test suite.
 
