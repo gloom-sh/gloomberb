@@ -10,6 +10,7 @@ import {
   type DataTableKeyEvent,
 } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import type { IssuerListingParams } from "../../../api-client/paths";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { colors, priceColor } from "../../../theme/colors";
@@ -55,10 +56,13 @@ export function BeneficialOwnersView({
   fundMatches,
   onCycleView,
   onRefreshHolders,
+  listing,
 }: {
   focused: boolean;
   width: number;
   symbol: string | null;
+  /** The listing's venue and company, for a listing outside the US. */
+  listing?: IssuerListingParams;
   holderRows: readonly HolderRow[];
   fundMatches: ReadonlyMap<string, Holder13FMatch>;
   onCycleView: () => void;
@@ -75,11 +79,11 @@ export function BeneficialOwnersView({
 
   // A session change retries a request the sign-in wall was shown for.
   const loader = useMemo(
-    () => symbol ? (force: boolean) => loadBeneficialOwners(symbol, force) : null,
-    [symbol, session.requestKey],
+    () => symbol ? (force: boolean) => loadBeneficialOwners(symbol, force, listing) : null,
+    [symbol, listing, session.requestKey],
   );
   const resource = useAsyncResource(loader, {
-    initialData: () => symbol ? cachedBeneficialOwners(symbol) : null,
+    initialData: () => symbol ? cachedBeneficialOwners(symbol, listing) : null,
     clearOnError: (error) => error instanceof Error && isCloudSessionRequired(error.message),
   });
   useAutoRefresh(resource.updatedAt, resource.load);

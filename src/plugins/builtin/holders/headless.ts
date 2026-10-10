@@ -35,6 +35,7 @@ const CHANGE_COLUMN_KEYS = new Set(["changeShares", "changePercent"]);
 const BASIS_COLUMN_KEY = "shareBasis";
 import type { BeneficialOwnersPayload } from "../../../api-client/beneficial-owners";
 import { fetchBeneficialOwners, type BeneficialOwnersRequest } from "./beneficial-client";
+import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import type { BeneficialColumnId } from "./beneficial-model";
 import {
   BENEFICIAL_REPORT_COLUMNS,
@@ -136,7 +137,11 @@ export interface HoldersHeadlessDependencies {
 
 const defaultDependencies: HoldersHeadlessDependencies = {
   loadSnapshot: (symbol, _args, ctx) => loadHolderSnapshot(ctx.marketData, symbol),
-  loadBeneficialOwners: (symbol, request, ctx) => fetchBeneficialOwners(symbol, request, {
+  // A listing abroad names its venue and company, so it never reads a US namesake's owners.
+  loadBeneficialOwners: async (symbol, request, ctx) => fetchBeneficialOwners(symbol, {
+    ...request,
+    listing: await resolveHeadlessIssuerListing(ctx, symbol),
+  }, {
     client: ctx.apiClient,
     signal: ctx.signal,
   }),

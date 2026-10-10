@@ -7,6 +7,7 @@ import { isUsListingExchange, normalizeSymbol, parsePublicTickerKey, publicTicke
 import { nonUsSecListingVenue } from "../utils/sec";
 import type { HistoryRetention } from "../sources/history-retention";
 import type { CloudBeneficialOwnersParams } from "./beneficial-owners";
+import type { RevenueBreakdownView } from "./revenue-breakdown";
 
 export type CloudHistoryParams = {
   interval?: string;
@@ -360,32 +361,59 @@ export function cloudEarningsTranscriptPath(id: string): string {
 }
 
 /**
+ * An issuer read's path: a US listing or a bare symbol keeps its US ticker
+ * and sends nothing else; a listing abroad sends its bare symbol with its
+ * venue and company (listingAbroad).
+ */
+function issuerPath(base: string, ticker: string, listing: IssuerListingParams = {}, suffix = ""): string {
+  const abroad = listingAbroad(ticker, listing.exchange, listing.name);
+  const search = new URLSearchParams();
+  setListingAbroad(search, abroad);
+  return appendQuery(`${base}/${encodeURIComponent(abroad?.symbol ?? normalizeIssuerResearchTicker(ticker))}${suffix}`, search);
+}
+
+/**
  * RISK, EXEC and EK are Pro: these reads need a verified Pro account. The same
  * risk factors and pay are open under /public for the gloom.sh pages.
  */
-export function cloudProxyStatementsPath(ticker: string): string {
-  return `/cloud/proxies/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`;
+export function cloudProxyStatementsPath(ticker: string, listing?: IssuerListingParams): string {
+  return issuerPath("/cloud/proxies", ticker, listing);
 }
 
-export function cloudFilingEventsPath(ticker: string, limit?: number): string {
+export function cloudFilingEventsPath(ticker: string, limit?: number, listing: IssuerListingParams = {}): string {
+  const abroad = listingAbroad(ticker, listing.exchange, listing.name);
   const search = new URLSearchParams();
+  setListingAbroad(search, abroad);
   if (limit != null) search.set("limit", String(limit));
-  return appendQuery(
-    `/cloud/events/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`,
-    search,
-  );
+  return appendQuery(`/cloud/events/${encodeURIComponent(abroad?.symbol ?? normalizeIssuerResearchTicker(ticker))}`, search);
 }
 
-export function cloudRiskReportsPath(ticker: string): string {
-  return `/cloud/risks/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}`;
+export function cloudRiskReportsPath(ticker: string, listing?: IssuerListingParams): string {
+  return issuerPath("/cloud/risks", ticker, listing);
 }
 
-export function cloudRiskReportPath(ticker: string, year: number): string {
-  return `/cloud/risks/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/${year}`;
+export function cloudRiskReportPath(ticker: string, year: number, listing?: IssuerListingParams): string {
+  return issuerPath("/cloud/risks", ticker, listing, `/${year}`);
 }
 
-export function cloudProxyStatementPath(ticker: string, year: number): string {
-  return `/cloud/proxies/${encodeURIComponent(normalizeIssuerResearchTicker(ticker))}/${year}`;
+export function cloudProxyStatementPath(ticker: string, year: number, listing?: IssuerListingParams): string {
+  return issuerPath("/cloud/proxies", ticker, listing, `/${year}`);
+}
+
+/** The principal maturity schedule; a US symbol goes as given, as it always has. */
+export function cloudDebtMaturitiesPath(symbol: string, listing: IssuerListingParams = {}): string {
+  const abroad = listingAbroad(symbol, listing.exchange, listing.name);
+  const search = new URLSearchParams({ symbol: abroad?.symbol ?? symbol });
+  setListingAbroad(search, abroad);
+  return appendQuery("/cloud/debt-maturities", search);
+}
+
+export function cloudRevenueBreakdownPath(symbol: string, view?: RevenueBreakdownView, listing: IssuerListingParams = {}): string {
+  const abroad = listingAbroad(symbol, listing.exchange, listing.name);
+  const search = new URLSearchParams({ symbol: abroad?.symbol ?? symbol });
+  setListingAbroad(search, abroad);
+  if (view) search.set("view", view);
+  return appendQuery("/cloud/revenue-breakdown", search);
 }
 
 /**
@@ -406,7 +434,9 @@ export function cloudSecFilingsPath(params: CloudSecFilingsParams): string {
 
 /** Schedule 13D and 13G reports about the issuer behind `ticker`. */
 export function cloudSecBeneficialOwnersPath(params: CloudBeneficialOwnersParams): string {
-  const search = new URLSearchParams({ ticker: normalizeIssuerResearchTicker(params.ticker) });
+  const abroad = listingAbroad(params.ticker, params.exchange, params.name);
+  const search = new URLSearchParams({ ticker: abroad?.symbol ?? normalizeIssuerResearchTicker(params.ticker) });
+  setListingAbroad(search, abroad);
   if (params.form) search.set("form", params.form);
   if (params.history) search.set("history", "1");
   if (params.limit != null) search.set("limit", String(params.limit));

@@ -4,7 +4,9 @@ import {
   type CloudProxyStatementPayload,
 } from "../../../api-client";
 import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
+import type { IssuerListingParams } from "../../../api-client/paths";
 import type { PluginPersistence } from "../../../types/plugin";
+import { secListingKey } from "../../../utils/sec";
 
 /**
  * Executive compensation comes from Gloom Cloud's open proxy-statement
@@ -101,21 +103,30 @@ function loadCached<T>(
   return request.promise;
 }
 
+interface ProxyLoadOptions {
+  force?: boolean;
+  /** The listing's venue and company, for a listing outside the US. */
+  listing?: IssuerListingParams;
+}
+
 export async function loadProxyStatements(
   ticker: string,
-  options?: { force?: boolean },
+  options?: ProxyLoadOptions,
 ): Promise<ProxyResult<CloudProxyStatementListPayload>> {
-  const key = ticker.toUpperCase();
+  const symbol = ticker.toUpperCase();
+  // SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
+  const key = secListingKey(symbol, options?.listing?.exchange);
   return loadCached(LIST_KIND, key, activeListFetches, LIST_CACHE_POLICY, options?.force ?? false,
-    () => apiClient.getProxyStatements(key));
+    () => apiClient.getProxyStatements(symbol, options?.listing));
 }
 
 export async function loadProxyStatement(
   ticker: string,
   year: number,
-  options?: { force?: boolean },
+  options?: ProxyLoadOptions,
 ): Promise<ProxyResult<CloudProxyStatementPayload>> {
-  const key = `${ticker.toUpperCase()}:${year}`;
+  const symbol = ticker.toUpperCase();
+  const key = `${secListingKey(symbol, options?.listing?.exchange)}:${year}`;
   return loadCached(STATEMENT_KIND, key, activeStatementFetches, STATEMENT_CACHE_POLICY, options?.force ?? false,
-    () => apiClient.getProxyStatement(ticker.toUpperCase(), year));
+    () => apiClient.getProxyStatement(symbol, year, options?.listing));
 }

@@ -67,10 +67,12 @@ import {
   type CloudJobsPostingsParams,
   type IssuerListingParams,
   cloudProxyStatementPath,
+  cloudDebtMaturitiesPath,
   cloudFilingEventsPath,
   cloudRiskReportPath,
   cloudRiskReportsPath,
   cloudProxyStatementsPath,
+  cloudRevenueBreakdownPath,
   cloudExchangeRatePath,
   cloudSec13FPath,
   cloudSecBeneficialOwnersPath,
@@ -627,14 +629,12 @@ export class CloudDataApi {
     return this.request<MoneyMarketsPayload>("/cloud/econ/money-markets", { signal: AbortSignal.timeout(45_000) });
   }
 
-  async getCloudDebtMaturities(symbol: string): Promise<DebtMaturitiesPayload> {
-    const params = new URLSearchParams({ symbol });
-    return this.request<DebtMaturitiesPayload>(`/cloud/debt-maturities?${params}`, { signal: AbortSignal.timeout(45_000) });
+  async getCloudDebtMaturities(symbol: string, listing?: IssuerListingParams): Promise<DebtMaturitiesPayload> {
+    return this.request<DebtMaturitiesPayload>(cloudDebtMaturitiesPath(symbol, listing), { signal: AbortSignal.timeout(45_000) });
   }
 
-  async getCloudRevenueBreakdown(symbol: string, view?: RevenueBreakdownView): Promise<RevenueBreakdownPayload> {
-    const params = new URLSearchParams({ symbol, ...(view ? { view } : {}) });
-    return this.request<RevenueBreakdownPayload>(`/cloud/revenue-breakdown?${params}`, { signal: AbortSignal.timeout(30_000) });
+  async getCloudRevenueBreakdown(symbol: string, view?: RevenueBreakdownView, listing?: IssuerListingParams): Promise<RevenueBreakdownPayload> {
+    return this.request<RevenueBreakdownPayload>(cloudRevenueBreakdownPath(symbol, view, listing), { signal: AbortSignal.timeout(30_000) });
   }
 
   async getCloudMnaDeals(params: MnaDealsParams = {}, options?: { signal?: AbortSignal }): Promise<MnaDealsPayload> {
@@ -764,44 +764,49 @@ export class CloudDataApi {
     );
   }
 
+  // A listing outside the US also sends its venue and company (listingAbroad).
   async getProxyStatements(
     ticker: string,
+    listing?: IssuerListingParams,
   ): Promise<CloudProxyStatementListPayload> {
     return this.request<CloudProxyStatementListPayload>(
-      cloudProxyStatementsPath(ticker),
+      cloudProxyStatementsPath(ticker, listing),
     );
   }
 
   async getProxyStatement(
     ticker: string,
     year: number,
+    listing?: IssuerListingParams,
   ): Promise<CloudProxyStatementPayload> {
     return this.request<CloudProxyStatementPayload>(
-      cloudProxyStatementPath(ticker, year),
+      cloudProxyStatementPath(ticker, year, listing),
     );
   }
 
   async getFilingEvents(
     ticker: string,
     limit?: number,
+    listing?: IssuerListingParams,
   ): Promise<{ ticker: string; events: CloudFilingEventPayload[] }> {
     return this.request<{ ticker: string; events: CloudFilingEventPayload[] }>(
-      cloudFilingEventsPath(ticker, limit),
+      cloudFilingEventsPath(ticker, limit, listing),
     );
   }
 
-  async getRiskReports(ticker: string): Promise<CloudRiskReportListPayload> {
+  async getRiskReports(ticker: string, listing?: IssuerListingParams): Promise<CloudRiskReportListPayload> {
     return this.request<CloudRiskReportListPayload>(
-      cloudRiskReportsPath(ticker),
+      cloudRiskReportsPath(ticker, listing),
     );
   }
 
   async getRiskReport(
     ticker: string,
     year: number,
+    listing?: IssuerListingParams,
   ): Promise<CloudRiskReportPayload> {
     return this.request<CloudRiskReportPayload>(
-      cloudRiskReportPath(ticker, year),
+      cloudRiskReportPath(ticker, year, listing),
     );
   }
 

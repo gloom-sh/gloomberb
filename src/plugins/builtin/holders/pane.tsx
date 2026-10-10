@@ -43,6 +43,7 @@ import {
 import { loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import { BeneficialOwnersView } from "./beneficial-view";
+import { useIssuerListing } from "../shared/ticker-request";
 import type { HolderColumn, HolderColumnId, HolderRow, SortPreference, ViewMode } from "./types";
 import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
 import { useSampledValue, useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
@@ -65,6 +66,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const fundMatchAbortRef = useRef<AbortController | null>(null);
 
   const exchange = ticker?.metadata.exchange ?? "";
+  const issuerListing = useIssuerListing(ticker);
   const loadHolders = useMemo(() => symbol ? async (forceRefresh: boolean) => {
     if (!dataProvider) throw new Error("Holder data unavailable");
     return loadHolderData(dataProvider, symbol, exchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
@@ -337,6 +339,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           focused={focused}
           width={width}
           symbol={symbol ?? null}
+          listing={issuerListing}
           holderRows={rows}
           fundMatches={fundMatches}
           onCycleView={toggleView}

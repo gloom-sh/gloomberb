@@ -44,3 +44,18 @@ test("a refused session asks for sign-in and a missing ticker says the filings a
   await expect(fetchBeneficialOwners("ZZZZ", {}, { client: failing(404) }))
     .rejects.toThrow("13D/13G filings are not available for ZZZZ.");
 });
+
+test("a listing abroad sends its venue and company, and a 404 for it is no reports rather than a failure", async () => {
+  const { client, requests } = pagedClient([{ ticker: "SAN", owners: [], hasMore: false, nextOffset: null }]);
+  await fetchBeneficialOwners("SAN", { listing: { exchange: "EPA", name: "Sanofi" } }, { client });
+  expect(requests[0]).toMatchObject({ ticker: "SAN", exchange: "EPA", name: "Sanofi" });
+
+  const missing = { getCloudSecBeneficialOwners: async () => { throw new ApiRequestError("Unknown ticker AI:EPA", 404); } };
+  await expect(fetchBeneficialOwners("AI:EPA", { history: true }, { client: missing }))
+    .resolves.toMatchObject({ owners: [], filings: [], hasMore: false, coverage: null });
+  await expect(fetchBeneficialOwners("AI", { listing: { exchange: "XPAR" } }, { client: missing }))
+    .resolves.toMatchObject({ owners: [] });
+  // A US listing the server does not know is still unavailable, not empty.
+  await expect(fetchBeneficialOwners("AI", { listing: { exchange: "NYSE" } }, { client: missing }))
+    .rejects.toThrow("13D/13G filings are not available for AI.");
+});

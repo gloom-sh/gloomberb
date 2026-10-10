@@ -115,6 +115,16 @@ export function nonUsSecListingVenue(ticker: string, exchange?: string): string 
 }
 
 /**
+ * The key an issuer read is cached and deduplicated under: the ticker as given
+ * for a US listing or a symbol with no venue, SYMBOL:VENUE for a listing
+ * elsewhere, so SAN in Paris and SAN in New York never share an entry.
+ */
+export function secListingKey(ticker: string, exchange?: string): string {
+  const venue = nonUsSecListingVenue(ticker, exchange);
+  return venue ? `${parsePublicTickerKey(ticker).symbol}:${venue}` : normalize(ticker);
+}
+
+/**
  * The item codes in EDGAR's `items` field ("2.02,9.01"). EDGAR fills the same
  * field with other values for some forms, such as the order dates of a CT
  * ORDER ("20250123,20250123"); those are not items and are dropped.

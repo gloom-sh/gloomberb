@@ -1,5 +1,5 @@
 import { useCallback, useMemo, type ReactNode } from "react";
-import { listingIdentity } from "../shared/ticker-request";
+import { listingIdentity, useIssuerListing } from "../shared/ticker-request";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import {
   useAsyncResource,
@@ -275,13 +275,14 @@ function HistoryDetail({
 export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   const { ticker } = usePaneTickerIdentity();
   const symbol = listingIdentity(ticker?.metadata.ticker)?.symbol ?? null;
+  const listing = useIssuerListing(ticker);
   const session = useResearchCloudSession();
   const loader = useCallback(
-    (force: boolean) => loadDebtMaturities(symbol!, force),
-    [symbol, session.requestKey],
+    (force: boolean) => loadDebtMaturities(symbol!, listing, force),
+    [symbol, listing, session.requestKey],
   );
   const resource = useAsyncResource(symbol ? loader : null, {
-    initialData: () => (symbol ? cachedDebtMaturities(symbol) : null),
+    initialData: () => (symbol ? cachedDebtMaturities(symbol, listing) : null),
     clearOnError: isAccessDenied,
   });
   const [initialTab] = usePaneSettingValue("tab", "maturities");

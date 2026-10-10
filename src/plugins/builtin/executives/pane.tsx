@@ -26,9 +26,10 @@ import {
   useUiCapabilities,
 } from "../../../ui";
 import { isPermanentClientError } from "../../../api-client/errors";
+import type { IssuerListingParams } from "../../../api-client/paths";
 import { useFilingYearReader } from "../shared/filing-year-reader";
 import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
-import { useBoundTicker } from "../shared/ticker-request";
+import { useBoundTicker, useIssuerListing } from "../shared/ticker-request";
 import { SplitBar } from "../../../components/ui/split-bar";
 import { loadProxyStatement, loadProxyStatements } from "./data";
 import {
@@ -249,27 +250,35 @@ export function ExecutivesPane({
   nested?: boolean;
 }) {
   const { wall, guard } = useProFeatureWall(EXEC_WALL, { width, height });
-  const { symbol } = useBoundTicker();
+  const { symbol, ticker: boundTicker } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
+  const listing = useIssuerListing(boundTicker);
   if (wall) return wall;
   if (!ticker) return <EmptyState title="Pick a ticker to see its executives." />;
-  return <ExecutiveResearch key={ticker} ticker={ticker} focused={focused} width={width} nested={nested} guard={guard} />;
+  return <ExecutiveResearch key={ticker} ticker={ticker} listing={listing} focused={focused} width={width} nested={nested} guard={guard} />;
 }
 
 export function ExecutivesResearchTab(props: { focused: boolean; width: number; height: number }) {
   return <ExecutivesPane {...props} nested />;
 }
 
-function ExecutiveResearch({ ticker, focused, width, nested, guard }: { ticker: string; focused: boolean; width: number; nested: boolean; guard: ReadGuard }) {
+function ExecutiveResearch({ ticker, listing, focused, width, nested, guard }: {
+  ticker: string;
+  listing: IssuerListingParams;
+  focused: boolean;
+  width: number;
+  nested: boolean;
+  guard: ReadGuard;
+}) {
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
   const [selectedYear, setYear] = usePaneStateValue<number | null>("proxyYear", null);
-  const loadYears = useCallback((force: boolean) => guard(loadProxyStatements(ticker, { force })), [guard, ticker]);
+  const loadYears = useCallback((force: boolean) => guard(loadProxyStatements(ticker, { force, listing })), [guard, listing, ticker]);
   const list = useAsyncResource(loadYears, { clearOnError: isPermanentClientError });
   const years = useMemo(() => (list.data?.data?.proxies ?? []).map((entry) => entry.proxyYear), [list.data]);
   const year = selectedYear !== null && years.includes(selectedYear)
     ? selectedYear : years[0] ?? null;
-  const loadStatement = useCallback((force: boolean) => guard(loadProxyStatement(ticker, year!, { force })), [guard, ticker, year]);
+  const loadStatement = useCallback((force: boolean) => guard(loadProxyStatement(ticker, year!, { force, listing })), [guard, listing, ticker, year]);
   const detail = useAsyncResource(year === null ? null : loadStatement, { clearOnError: isPermanentClientError });
   const statement = detail.data?.data ?? null;
   const loading = list.loading || detail.loading;

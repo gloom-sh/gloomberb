@@ -38,7 +38,7 @@ function run(year = "latest", refresh = false) {
       instance: { settings: {} },
       capability: { id: "risk-factors" },
     } as never,
-    { dataProvider: createTestDataProvider(), config: createDefaultConfig("/tmp/gloomberb-risk-headless-test") } as never,
+    { dataProvider: createTestDataProvider(), config: createDefaultConfig("/tmp/gloomberb-risk-headless-test"), store: { loadTicker: async () => null } } as never,
     "ACME",
   );
 }

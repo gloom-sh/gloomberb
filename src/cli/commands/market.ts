@@ -763,10 +763,14 @@ async function printBeneficialOwners(
   ctx: Parameters<CliCommandDef["execute"]>[1],
 ) {
   const { symbol, exchange } = listing.request;
+  // A listing outside the US sends its company to the lookup, which needs its quote first.
+  const quotePromise = loadListingQuote(market.dataProvider, listing);
+  const abroad = nonUsSecListingVenue(symbol, exchange) ? listingIdentity(listing, await quotePromise) : null;
+  const request = { form: beneficialRouteForm(form), history, listing: { exchange, name: abroad?.name ?? undefined } };
   const [payload, holders, quote] = await Promise.all([
-    loadForListing(listing, market, ctx, () => fetchBeneficialOwners(symbol, { form: beneficialRouteForm(form), history })),
+    loadForListing(listing, market, ctx, () => fetchBeneficialOwners(symbol, request)),
     market.dataProvider.getHolders?.(symbol, exchange).catch(() => null) ?? null,
-    loadListingQuote(market.dataProvider, listing),
+    quotePromise,
   ]);
   const identity = listingIdentity(listing, quote);
   const rows = buildBeneficialReportRows(payload, { history, holders });

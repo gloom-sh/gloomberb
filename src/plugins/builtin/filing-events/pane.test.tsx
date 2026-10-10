@@ -46,7 +46,7 @@ function Harness() {
     binding: { kind: "fixed", symbol },
   });
   const state = createInitialState(config);
-  state.tickers = new Map([[symbol, createTestTicker(symbol)]]);
+  state.tickers = new Map([[symbol, symbol === "SAN" ? createTestTicker("SAN", "Sanofi", { exchange: "EPA", currency: "EUR" }) : createTestTicker(symbol)]]);
   state.focusedPaneId = PANE_ID;
   const runtime = useMemo(() => createStatefulTestPluginRuntime(), []);
   const host = useRendererHost();
@@ -69,7 +69,7 @@ function transport(respond: (ticker: string) => Response | Promise<Response>) {
   setCloudApiFetchTransport((async (input: RequestInfo | URL) => {
     const url = new URL(String(input));
     if (!url.pathname.startsWith("/cloud/events/")) throw new Error(`Unexpected route ${url.pathname}`);
-    requests.push(url.pathname);
+    requests.push(`${url.pathname}${url.search}`);
     return respond(decodeURIComponent(url.pathname.split("/").at(-1)!));
   }) as typeof fetch);
 }
@@ -131,6 +131,20 @@ test("plain refresh retries an initial outage and loads current filings", async 
   await tui.emitKeypress({ name: "r", sequence: "r" });
   await tui.waitForFrameToContain("FIRST acquisition terms");
   expect(requests.length).toBe(count + 1);
+});
+
+test("a listing abroad asks for its own company's 8-Ks, and a 404 for it is no 8-Ks rather than a failure", async () => {
+  transport((ticker) => ticker === "SAN"
+    ? Response.json({ message: "Unknown ticker" }, { status: 404 })
+    : Response.json({ ticker, events: [event(ticker)] }));
+  await mount();
+  await select("SAN");
+  await tui.waitForFrameToContain("No 8-K on file for SAN");
+  expect(frame()).not.toContain("Could not load");
+  expect(requests.at(-1)).toBe("/cloud/events/SAN?exchange=EPA&name=Sanofi&limit=100");
+  // One request: the empty answer is the result, not a failure to retry.
+  expect(requests.filter((url) => url.startsWith("/cloud/events/SAN"))).toHaveLength(1);
+  expect(requests[0]).toBe("/cloud/events/FIRST?limit=100");
 });
 
 test("same-company refresh preserves selection and source during transient failure, then recovers", async () => {

@@ -7,7 +7,9 @@ import type {
   BeneficialOwnersPayload,
 } from "../../../api-client/beneficial-owners";
 import { ApiRequestError, isAccessDenied } from "../../../api-client/errors";
+import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { secListingKey } from "../../../utils/sec";
 import { finiteOrNull, recordOrNull } from "../../../utils/guards";
 import { cachedCloudResource, loadCloudResource, type CloudResource } from "../shared/cloud-resource";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
@@ -28,6 +30,8 @@ export interface BeneficialOwnersRequest {
   form?: BeneficialOwnersForm;
   /** Every report instead of the latest per filer. */
   history?: boolean;
+  /** The listing's venue and company, for a listing outside the US. */
+  listing?: IssuerListingParams;
 }
 
 type BeneficialOwnersClient = Pick<typeof apiClient, "getCloudSecBeneficialOwners">;
@@ -142,7 +146,7 @@ function describeFailure(error: unknown, ticker: string): unknown {
  */
 export async function fetchBeneficialOwners(
   ticker: string,
-  { form = "all", history = false }: BeneficialOwnersRequest = {},
+  { form = "all", history = false, listing }: BeneficialOwnersRequest = {},
   { client = apiClient, signal }: { client?: BeneficialOwnersClient; signal?: AbortSignal } = {},
 ): Promise<BeneficialOwnersPayload> {
   const symbol = ticker.trim().toUpperCase();
@@ -154,6 +158,8 @@ export async function fetchBeneficialOwners(
     for (;;) {
       const page = normalizeBeneficialOwnersPayload(await client.getCloudSecBeneficialOwners({
         ticker: symbol,
+        exchange: listing?.exchange,
+        name: listing?.name,
         form,
         history,
         limit: PAGE_SIZE,
@@ -178,8 +184,18 @@ export async function fetchBeneficialOwners(
       offset = nextOffset;
     }
   } catch (error) {
+    // A listing abroad whose company the SEC does not know has no reports.
+    const abroad = listingAbroad(symbol, listing?.exchange);
+    if (abroad && error instanceof ApiRequestError && error.status === 404) return noReports(symbol, history);
     throw describeFailure(error, symbol);
   }
+}
+
+function noReports(ticker: string, history: boolean): BeneficialOwnersPayload {
+  return {
+    ticker, cik: "", companyName: "", asOf: null, owners: [], ...(history ? { filings: [] } : {}),
+    hasMore: false, nextOffset: null, coverage: null,
+  };
 }
 
 /** Pages can overlap when a report lands between two requests. */
@@ -193,17 +209,23 @@ function dedupe(rows: BeneficialOwnerFiling[]): BeneficialOwnerFiling[] {
   });
 }
 
-const cacheKey = (ticker: string) => ticker.trim().toUpperCase();
+// SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
+const cacheKey = (ticker: string, listing?: IssuerListingParams) => secListingKey(ticker, listing?.exchange);
 
-export function cachedBeneficialOwners(ticker: string): CloudResource<BeneficialOwnersPayload> | null {
-  return cachedCloudResource(beneficialOwnersCache, cacheKey(ticker));
+export function cachedBeneficialOwners(ticker: string, listing?: IssuerListingParams): CloudResource<BeneficialOwnersPayload> | null {
+  return cachedCloudResource(beneficialOwnersCache, cacheKey(ticker, listing));
 }
 
 /** The pane's list: the latest report per filer, both kinds, cached on disk. */
-export async function loadBeneficialOwners(ticker: string, force = false): Promise<CloudResource<BeneficialOwnersPayload>> {
+export async function loadBeneficialOwners(
+  ticker: string,
+  force = false,
+  listing?: IssuerListingParams,
+): Promise<CloudResource<BeneficialOwnersPayload>> {
+  const key = cacheKey(ticker, listing);
   try {
-    return await loadCloudResource(beneficialOwnersCache, cacheKey(ticker), () => fetchBeneficialOwners(ticker), { force });
+    return await loadCloudResource(beneficialOwnersCache, key, () => fetchBeneficialOwners(ticker, { listing }), { force });
   } catch (error) {
-    throw describeFailure(error, cacheKey(ticker));
+    throw describeFailure(error, key);
   }
 }
