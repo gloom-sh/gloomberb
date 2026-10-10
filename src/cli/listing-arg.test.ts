@@ -15,6 +15,10 @@ test("SYM:EXCH and --exchange name the same listing through the exchange aliases
     expect(parseListingArg(raw, option)).toEqual({ symbol: "SAN", exchange: "EPA", key: "SAN:EPA" });
   }
   expect(parseListingArg("aapl")).toEqual({ symbol: "AAPL", exchange: "", key: "AAPL" });
+  // A currency pair's venue, by either name.
+  for (const [raw, option] of [["EURUSD:CCY", undefined], ["eurusd:fx", undefined], ["EURUSD", "FX"]] as const) {
+    expect(parseListingArg(raw, option)).toEqual({ symbol: "EURUSD", exchange: "CCY", key: "EURUSD:CCY" });
+  }
   expect(() => parseListingArg("SAN:EPA", "LON")).toThrow("SAN:EPA names exchange EPA, but --exchange names LSE.");
   // With several symbols, --exchange only fills in the ones without their own.
   expect(parseListingArg("SAN:EPA", "LSE", { ownExchangeWins: true }).key).toBe("SAN:EPA");
@@ -37,6 +41,8 @@ test("an exchange code the app does not know is refused unless the symbol trades
   const refused = await resolveCliListing("SAN:ZZZ", undefined, deps).catch((error: unknown) => error);
   expect(refused).toBeInstanceOf(ListingArgError);
   expect((refused as Error).message).toBe("Unknown exchange ZZZ for SAN. SAN trades on: NYSE, EPA, BVL.");
+  // The currency venue is one the app knows, whatever search lists for the bare pair.
+  expect((await resolveCliListing("EURUSD:FX", undefined, deps)).request).toEqual({ symbol: "EURUSD:CCY", exchange: "CCY" });
   // A venue only search knows is still the symbol's own listing; data requests go by its key.
   expect((await resolveCliListing("SAN", "BVL", deps)).request).toEqual({ symbol: "SAN:BVL", exchange: "BVL" });
 
