@@ -1,18 +1,17 @@
 import type { GloomPlugin } from "../types/plugin";
-import { tickerResearchPluginMeta } from "./builtin/builtin-plugin-meta";
-import { composeBuiltinPlugin } from "./builtin/plugin-module";
+import { withoutRendererOnlyModules } from "./builtin/plugin-module";
 import { getLoadablePlugins } from "./catalog";
 import { loadExternalPlugins, type LoadedExternalPlugin } from "./loader";
 
-const tickerResearchBackendPlugin = composeBuiltinPlugin({ ...tickerResearchPluginMeta, modules: [] });
-
+/**
+ * Every loadable plugin, in the same order and under the same ids as the
+ * renderer's, so toggles and state line up; built-ins leave out the modules
+ * they mark renderer-only.
+ */
 export function getDesktopBackendPlugins(
   externalPlugins: LoadedExternalPlugin[] = [],
 ): GloomPlugin[] {
-  return getLoadablePlugins(externalPlugins).map((plugin) => {
-    if (plugin.id === "ticker-research") return tickerResearchBackendPlugin;
-    return plugin;
-  });
+  return getLoadablePlugins(externalPlugins).map(withoutRendererOnlyModules);
 }
 
 export interface DesktopBackendPlugins {

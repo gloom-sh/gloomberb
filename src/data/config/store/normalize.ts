@@ -21,6 +21,7 @@ import { isLanguagePreference } from "../../../i18n/languages";
 import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
+import { decodeBuiltinDisabledPluginIds, encodeBuiltinDisabledPluginIds } from "../../../plugins/ownership";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
 import { debugLog } from "../../../utils/debug-log";
@@ -62,7 +63,10 @@ export function normalizeLoadedConfig(
       : entry
   ));
 
-  const disabledPlugins = sanitizeUniqueStringList(candidate.disabledPlugins ?? defaults.disabledPlugins);
+  // After the migrations, which read retired group ids as they were saved.
+  const disabledPlugins = decodeBuiltinDisabledPluginIds(
+    sanitizeUniqueStringList(candidate.disabledPlugins ?? defaults.disabledPlugins),
+  );
   const onboardingProgress = sanitizeOnboardingProgress(candidate.onboardingProgress);
   const onboardingComplete = onboardingProgress
     ? false
@@ -142,7 +146,8 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
     layouts,
     activeLayoutIndex,
     brokerInstances: sanitizeBrokerInstances(config.brokerInstances),
-    disabledPlugins: sanitizeUniqueStringList(config.disabledPlugins),
+    // Older apps read the retired group ids, so a group that is all off is saved as one.
+    disabledPlugins: encodeBuiltinDisabledPluginIds(sanitizeUniqueStringList(config.disabledPlugins)),
     seededPlugins: sanitizeUniqueStringList(config.seededPlugins),
     disabledSources: sanitizeUniqueStringList(config.disabledSources),
     pluginConfig: sanitizePluginConfig(config.pluginConfig),

@@ -104,6 +104,8 @@ export const portfolioPlugin = composeBuiltinPlugin({
 
 export const tickerResearchPlugin = composeBuiltinPlugin({
   ...tickerResearchPluginMeta,
+  // The desktop backend process runs none of these: Ticker Research is
+  // drawn in the renderer and keeps only its identity there.
   modules: [
     tickerDetailModule,
     chartComposerModule,
@@ -146,7 +148,7 @@ export const tickerResearchPlugin = composeBuiltinPlugin({
     executivesModule,
     riskFactorsModule,
     filingEventsModule,
-  ],
+  ].map((module) => ({ module, rendererOnly: true })),
 });
 
 export const brokerPlugin = composeBuiltinPlugin({

@@ -1,6 +1,7 @@
 import { join } from "path";
 import { VERSION } from "../../version";
 import { saveConfig } from "../../data/config/store";
+import { builtinPluginGroupMembers } from "../../plugins/ownership";
 import type { TelemetryConfig } from "../../types/config";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData } from "../context";
@@ -476,19 +477,27 @@ export function createSystemCliCommands(): CliCommandDef[] {
         }
         if (action === "enable" || action === "disable") {
           const id = requireArg(args[1], `Usage: gloomberb plugin ${action} <id>`, ctx);
-          const plugin = services.services.pluginRegistry.allPlugins.get(id);
-          if (!plugin) ctx.fail(`Plugin "${id}" is not available.`);
-          if (plugin?.toggleable !== true) ctx.fail(`Plugin "${id}" is part of the application and cannot be disabled.`);
+          // A retired id that now names a group of built-ins switches all of them.
+          const targetIds = builtinPluginGroupMembers(id) ?? [id];
+          for (const targetId of targetIds) {
+            const plugin = services.services.pluginRegistry.allPlugins.get(targetId);
+            if (!plugin) ctx.fail(`Plugin "${targetId}" is not available.`);
+            if (plugin?.toggleable !== true) ctx.fail(`Plugin "${targetId}" is part of the application and cannot be disabled.`);
+          }
           const disabled = new Set(services.config.disabledPlugins ?? []);
-          const before = disabled.has(id);
-          if (action === "enable") disabled.delete(id);
-          else disabled.add(id);
+          const isOff = () => targetIds.every((targetId) => disabled.has(targetId));
+          const isOn = () => targetIds.every((targetId) => !disabled.has(targetId));
+          const unchanged = action === "enable" ? isOn() : isOff();
+          for (const targetId of targetIds) {
+            if (action === "enable") disabled.delete(targetId);
+            else disabled.add(targetId);
+          }
           const nextConfig = { ...services.config, disabledPlugins: [...disabled] };
           if (!ctx.cliOptions.dryRun) await saveConfig(nextConfig);
-          ctx.printResult({ data: { changed: before !== disabled.has(id) && !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, id, enabled: !disabled.has(id) } }, {
+          ctx.printResult({ data: { changed: !unchanged && !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, id, enabled: isOn() } }, {
             text: (data) => {
               const state = data.enabled ? "on" : "off";
-              if (before === disabled.has(id)) return `${id} is already ${state}.`;
+              if (unchanged) return `${id} is already ${state}.`;
               return `Turned ${id} ${state}.${dryRunNote(data.dryRun)}`;
             },
           });
