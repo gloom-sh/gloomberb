@@ -89,6 +89,7 @@ export function normalizeLoadedConfig(
     disabledPlugins,
     seededPlugins: sanitizeUniqueStringList(candidate.seededPlugins),
     ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
+    ...(candidate.presentationMode === true ? { presentationMode: true } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
     theme: sanitizeTheme(candidate.theme, defaults.theme),

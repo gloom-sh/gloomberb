@@ -140,6 +140,18 @@ test("the star prompt's record and off switch survive a save and reload, and jun
   expect("starPrompt" in saved).toBe(false);
 });
 
+test("presentation mode survives a save and reload, and anything but true leaves it off", async () => {
+  const dataDir = await createTempConfigDir();
+  await writeConfigJson(dataDir, createSavedConfig({ presentationMode: true }));
+  const loaded = await loadConfig(dataDir);
+  expect(loaded.presentationMode).toBe(true);
+  await saveConfig(loaded);
+  expect((await loadConfig(dataDir)).presentationMode).toBe(true);
+
+  await writeConfigJson(dataDir, createSavedConfig({ presentationMode: "yes" }));
+  expect("presentationMode" in await loadConfig(dataDir)).toBe(false);
+});
+
 test("fresh installs skip plugin restoration across config reloads", async () => {
   const dataDir = await createTempConfigDir();
   const fresh = await loadConfig(dataDir);

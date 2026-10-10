@@ -13,6 +13,7 @@ import { blendHex, hoverBg } from "../../theme/colors";
 import { t, tf } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
 import { useAppDispatch, useAppSelector } from "../../state/app/context";
+import { useAppChromeShown } from "./presentation";
 import { useViewport } from "../../react/input";
 import {
   advertisedChord,
@@ -146,7 +147,7 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
   const { width: termWidth } = useViewport();
   const layouts = useAppSelector((state) => state.config.layouts);
   const activeLayoutIdx = useAppSelector((state) => state.config.activeLayoutIndex);
-  const statusBarVisible = useAppSelector((state) => state.statusBarVisible);
+  const statusBarVisible = useAppChromeShown().statusBar;
   const layout = useAppSelector((state) => state.config.layout);
   const { transientLayout } = useTransientLayout();
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);

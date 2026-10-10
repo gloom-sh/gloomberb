@@ -43,6 +43,7 @@ import {
   resolveExternalDockPreview,
 } from "./drag";
 import { resolveAppHeaderHeightCells } from "./chrome";
+import { useAppChromeShown } from "../presentation";
 import { useShellWindowMode } from "./window-mode";
 import { ShellNativeSurfaceSync } from "./native/surfaces";
 import { ShellWindowModeOverlays } from "./window-mode/overlays";
@@ -116,7 +117,6 @@ export function Shell({
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const stateRef = useAppStateRef();
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
-  const statusBarVisible = useAppSelector((state) => state.statusBarVisible);
   const rendererHost = useRendererHost();
   const { setTransientLayout } = useTransientLayout();
   const uiKind = useUiHost().kind;
@@ -128,8 +128,9 @@ export function Shell({
   const { width, height } = useViewport();
   const shellRef = useRef<BoxRenderable | null>(null);
 
-  const appHeaderHeight = resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx });
-  const contentHeight = Math.max(1, height - appHeaderHeight - (statusBarVisible ? 1 : 0));
+  const chrome = useAppChromeShown();
+  const appHeaderHeight = chrome.header ? resolveAppHeaderHeightCells({ titleBarOverlay, cellHeightPx }) : 0;
+  const contentHeight = Math.max(1, height - appHeaderHeight - (chrome.statusBar ? 1 : 0));
   pluginRegistry.bindHost({ getTermSize: () => ({ width, height: contentHeight }) });
 
   const layout = useAppSelector((state) => state.config.layout);

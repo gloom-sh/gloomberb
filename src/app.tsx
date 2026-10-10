@@ -12,6 +12,7 @@ import {
 import { bindAppActivity, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
+import { useAppChromeShown } from "./components/layout/presentation";
 import { useLinkedLayoutSync } from "./layout-marketplace/linked-sync";
 import { useTeamCollectionsSync } from "./plugins/builtin/cloud/team/collections-sync";
 import { Shell } from "./components/layout/shell";
@@ -401,6 +402,7 @@ function AppInner({
     }
   }, [focusedTickerSymbol]);
 
+  const chrome = useAppChromeShown();
   const keybindingHost = useUiHost().kind === "opentui" ? "terminal" : "desktop";
   const keybindings = useResolvedKeybindings(state.config.keybindings, keybindingHost);
   useAppGlobalShortcuts({
@@ -452,13 +454,15 @@ function AppInner({
         desktopWindowBridge={desktopWindowBridge}
       >
         <ThemedAppRoot>
-          <Header
-            onOpenHelp={() => {
-              recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
-              pluginRegistry.showPane("help");
-            }}
-            onRestartForUpdate={updatesEnabled && !isDetachedWindow ? restartToApplyUpdate : undefined}
-          />
+          {chrome.header && (
+            <Header
+              onOpenHelp={() => {
+                recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
+                pluginRegistry.showPane("help");
+              }}
+              onRestartForUpdate={updatesEnabled && !isDetachedWindow ? restartToApplyUpdate : undefined}
+            />
+          )}
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}

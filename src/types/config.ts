@@ -297,6 +297,11 @@ export interface AppConfig {
   keybindings?: KeybindingsConfig;
   telemetry?: TelemetryConfig;
   starPrompt?: StarPromptConfig;
+  /**
+   * Presentation mode: the panes fill the window, without the header or the
+   * status bar, for a screen that is shown rather than worked at. Absent is off.
+   */
+  presentationMode?: boolean;
 }
 
 export const TICKER_RESEARCH_PANE_ID = "ticker-research";

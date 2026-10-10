@@ -208,6 +208,13 @@ export const commands: Command[] = [
     },
   },
   {
+    id: "toggle-presentation-mode",
+    prefix: "",
+    label: "Toggle Presentation Mode",
+    description: "Let the panes fill the window, without the header or the status bar",
+    category: "Config",
+  },
+  {
     id: "toggle-value-flashing",
     prefix: "VF",
     label: "Toggle Value Flashing",
