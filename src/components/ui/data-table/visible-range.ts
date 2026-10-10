@@ -36,6 +36,8 @@ export function resolveDataTableScrollTop(
   let nextTop = currentTop;
   if (align === "center") {
     nextTop = targetIndex - Math.floor(visibleHeight / 2);
+  } else if (align === "start") {
+    nextTop = targetIndex;
   } else if (targetIndex < currentTop) {
     nextTop = targetIndex;
   } else if (targetIndex >= currentTop + visibleHeight) {

@@ -60,7 +60,8 @@ export interface DataTableSectionHeader {
   expanded?: boolean;
 }
 
-export type DataTableScrollAlign = "nearest" | "center";
+/** Where `scrollToIndex` puts its row: the nearest edge, the middle, or the top of the viewport. */
+export type DataTableScrollAlign = "nearest" | "center" | "start";
 
 interface DataTableRowState {
   selected: boolean;

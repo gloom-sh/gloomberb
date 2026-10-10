@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { Box } from "../../../ui";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -64,12 +65,15 @@ async function renderPane(width: number) {
   await tui.render(
     <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
       <PaneFooterProvider>
-        {() => (
-          <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />
+        {(footer) => (
+          <Box width={width} height={25} flexDirection="column">
+            <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />
+            <PaneFooterBar footer={footer} width={width} focused />
+          </Box>
         )}
       </PaneFooterProvider>
     </TestPaneProvider>,
-    { width, height: 24 },
+    { width, height: 25 },
   );
   await act(async () => {
     for (let index = 0; index < 6; index += 1) {
@@ -123,6 +127,29 @@ describe("EconCalendarPane", () => {
 
     expect(frame).toContain("Release 39 m/m");
     expect(frame).not.toContain("Release 0 m/m");
+    // Nothing is listed ahead, which the footer says rather than leaving a quiet week.
+    expect(frame).toMatch(/No events listed after \w{3} \w{3} \d+/);
+  });
+
+  // NOW a few rows down would leave Friday's last releases on top of a Saturday.
+  test("opens on what is still to come, never on earlier days", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const now = Date.now();
+    const release = (id: string, offsetHours: number) => ({
+      id, date: new Date(now + offsetHours * 3_600_000).toISOString(), time: "12:00", country: "US",
+      event: `Release ${id} m/m`, impact: "low", actual: null, forecast: "0.1%", prior: "0.1%",
+    });
+    persistence.seedResource("calendar", "global", [
+      ...Array.from({ length: 20 }, (_, i) => release(`past${i}`, -40 + i * 0.5)),
+      ...Array.from({ length: 10 }, (_, i) => release(`next${i}`, 30 + i * 24)),
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(110);
+
+    expect(frame).toContain("NOW");
+    expect(frame).toContain("Release next0 m/m");
+    expect(frame).not.toContain("Release past19 m/m");
+    expect(frame).not.toContain("No events listed after");
   });
 
   // Rows group by UTC day and print the UTC clock, as `gloomberb econ` does,

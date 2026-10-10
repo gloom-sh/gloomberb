@@ -83,17 +83,19 @@ describe("econ calendar filters", () => {
 });
 
 describe("calendar rows", () => {
-  const at = (id: string, day: number, hour: number): EconEvent => ({ ...makeEvent(id), date: new Date(2026, 8, day, hour) });
+  // Rows group by UTC day, so the times are UTC whatever zone the tests run in.
+  const utc = (day: number, hour: number) => new Date(Date.UTC(2026, 8, day, hour));
+  const at = (id: string, day: number, hour: number): EconEvent => ({ ...makeEvent(id), date: utc(day, hour) });
   const layout = (events: EconEvent[], now: Date) => calendarDisplayRows(events, now.getTime())
     .map((row) => row.kind === "event" ? row.event.id : row.kind === "now" ? "NOW" : row.label.split(" · ")[0]);
 
   test("reads forward in time with NOW under today's header before the next release", () => {
     const events = [at("mon-9", 28, 9), at("mon-16", 28, 16), at("tue-1", 29, 1)];
-    expect(layout(events, new Date(2026, 8, 28, 12))).toEqual(["TODAY", "mon-9", "NOW", "mon-16", "TOMORROW", "tue-1"]);
+    expect(layout(events, utc(28, 12))).toEqual(["TODAY", "mon-9", "NOW", "mon-16", "TOMORROW", "tue-1"]);
   });
 
   test("puts NOW above the next day's header when nothing is left today", () => {
     const events = [at("mon-9", 28, 9), at("mon-16", 28, 16), at("tue-1", 29, 1)];
-    expect(layout(events, new Date(2026, 8, 28, 20))).toEqual(["TODAY", "mon-9", "mon-16", "NOW", "TOMORROW", "tue-1"]);
+    expect(layout(events, utc(28, 20))).toEqual(["TODAY", "mon-9", "mon-16", "NOW", "TOMORROW", "tue-1"]);
   });
 });

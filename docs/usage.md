@@ -420,6 +420,8 @@ A symbol that no listing carries (a company name or a typo) ends in ``Not a tick
 
 `--limit <n>` keeps the first n rows as printed. On a series that runs oldest first, such as `history`, those are the oldest, so text output says `showing the oldest 2 of 252 rows; --tail 2 for the latest` under the table and `--json` carries `metadata.rows` (`shown`, `total`, `kept`). `--tail <n>` keeps the newest n rows of a dated series whichever way it runs (`history`, `fred` with either `--sort`, `econ`), in their printed order, and the last n of any other list. The two cannot be combined. `fn` reports take `--limit` and `--tail` as options of their own, and fail on one they do not have.
 
+`econ` lists the economic calendar from today (UTC) on, about two weeks ahead. `--from <yyyy-mm-dd>` starts it on another day, an earlier one included, and `--tail <n>` without `--from` keeps the last n events of the whole calendar, the past week's too. When the calendar stops less than a week past its first day, text output ends with `No events listed after <date>` (an empty result says the same), `--json` carries the last day listed as `metadata.listedThrough`, and the ECO pane says it in its footer.
+
 Headless chart text includes a Unit column when a series supplies one; values keep that unit's scale (for example, `2.7 %` versus `270 bp`). DVD text labels cash growth, CAGR and earnings payout as percentages, while their structured `value` fields remain fractional ratios (`0.03` means 3%).
 
 CLI text prints every time in UTC with the zone named (`2026-10-09 00:08 UTC`); a date alone stays a date. JSON keeps the raw ISO or epoch values.

@@ -63,7 +63,7 @@ export function impactIndicator(impact: EconImpact): { text: string; color: stri
 }
 
 /** The UTC day of an instant, so a release sits under the same day on every machine. */
-function dateKey(d: Date): string {
+export function dateKey(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
@@ -79,6 +79,11 @@ export function timeLabel(d: Date): string {
 /** The zone the calendar's times and days are in, for the column header. */
 export const CALENDAR_TIME_ZONE_LABEL = "UTC";
 
+/** "Fri Oct 9", the UTC day the calendar groups an instant under. */
+export function shortDayLabel(d: Date): string {
+  return `${DAY_NAMES[d.getUTCDay()]!} ${MONTH_NAMES[d.getUTCMonth()]!} ${d.getUTCDate()}`;
+}
+
 export function dayLabel(d: Date, today: Date): string {
   const dk = dateKey(d);
   const todayKey = dateKey(today);
@@ -86,15 +91,32 @@ export function dayLabel(d: Date, today: Date): string {
   const yesterday = dateKey(new Date(today.getTime() - dayMs));
   const tomorrow = dateKey(new Date(today.getTime() + dayMs));
 
-  const dayName = DAY_NAMES[d.getUTCDay()]!;
-  const monthName = MONTH_NAMES[d.getUTCMonth()]!;
-  const dateNum = d.getUTCDate();
-  const suffix = `${dayName} ${monthName} ${dateNum}`;
+  const suffix = shortDayLabel(d);
 
   if (dk === todayKey) return `TODAY · ${suffix}`;
   if (dk === tomorrow) return `TOMORROW · ${suffix}`;
   if (dk === yesterday) return `YESTERDAY · ${suffix}`;
   return suffix;
+}
+
+/**
+ * The calendar runs two weeks ahead. One that lists nothing a week past the
+ * start of the window (today, or a later first day asked for) stops short,
+ * as a feed that ends with its own week does, and says where it stops rather
+ * than reading as a quiet week.
+ */
+const MIN_DAYS_LISTED_AHEAD = 7;
+
+/**
+ * When the calendar stops short of a week past `windowStart`, the time of its
+ * last event; null when it reaches that far or lists nothing.
+ */
+export function shortCalendarEnd(events: readonly EconEvent[], windowStart: number): Date | null {
+  let last: Date | null = null;
+  for (const event of events) {
+    if (!last || event.date.getTime() > last.getTime()) last = event.date;
+  }
+  return last && last.getTime() < windowStart + MIN_DAYS_LISTED_AHEAD * 86_400_000 ? last : null;
 }
 
 /**
