@@ -1,4 +1,4 @@
-import { Box, Text } from "../ui";
+import { Box, Text, useUiHost } from "../ui";
 import { useState, useRef, useEffect } from "react";
 import { TextAttributes } from "../ui";
 import { type InputRenderable } from "../ui";
@@ -80,6 +80,7 @@ export function PriceSelectorDialog({
   quote,
   assetCategory,
 }: PromptContext<string> & PriceSelectorDialogProps) {
+  const desktop = useUiHost().kind === "desktop-web";
   const presets = buildPresets(quote);
   const [index, setIndex] = useState(0);
   const [mode, setMode] = useState<"list" | "input">(presets.length > 0 ? "list" : "input");
@@ -140,9 +141,17 @@ export function PriceSelectorDialog({
           ? "↑↓ or hover to choose · Enter/click select · Tab or ↓ for custom · Esc cancel"
           : "Type a price · Enter confirm · ↑ or Tab back to presets · Esc cancel"
       }
+      // The pointer picks a row or the field there, and the close button stands for Esc.
+      desktopFooter={{
+        keys: mode === "list"
+          ? [{ key: "↑↓", label: "choose" }, { key: "Enter", label: "select" }]
+          : [{ key: "Enter", label: "confirm" }, ...(presets.length > 0 ? [{ key: "Up", label: "presets" }] : [])],
+      }}
+      onClose={() => resolve("")}
     >
       <Box flexDirection="column">
-        <Text fg={colors.textDim}>{formatMarketContext(quote, assetCategory)}</Text>
+        {/* A phone wraps the quote line; the terminal keeps it on one row. */}
+        <Text fg={colors.textDim} {...(desktop ? { wrapText: true } : {})}>{formatMarketContext(quote, assetCategory)}</Text>
         <Box height={1} />
 
         {presets.length > 0 && (

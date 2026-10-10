@@ -1469,4 +1469,20 @@ export const ja: Record<string, string> = {
   "Picked": "選択済み",
   "Follow {count} companies": "{count} 社をフォロー",
   "Following {count} companies. Alerts and your Monday brief will cover them.": "{count} 社をフォローしました。アラートと月曜のブリーフで取り上げます。",
+
+  // ── Dialog keys on the desktop ───────────────────────────────
+  "newline": "改行",
+  "Denied in {seconds} s": "{seconds} 秒後に拒否",
+  "choose": "選ぶ",
+  "select": "決定",
+  "confirm": "確定",
+  "presets": "プリセット",
+  "add": "追加",
+  "source": "ソース",
+  "panel": "パネル",
+  "log scale": "対数目盛",
+  "use {value}": "{value} を使う",
+  "keep the default": "既定値のまま",
+  "continue": "続ける",
+  "new code": "新しいコード",
 };

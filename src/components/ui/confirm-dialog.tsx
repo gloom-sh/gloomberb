@@ -1,11 +1,12 @@
 import { useCallback, useRef, type ReactNode } from "react";
-import { Box, Text } from "../../ui";
+import { Box, Text, useUiHost } from "../../ui";
 import { colors } from "../../theme/colors";
 import { t, tf } from "../../i18n";
 import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../ui/dialog";
 import { isPlainKey } from "../../utils/keyboard";
 import { Button, type ButtonVariant } from "./button";
-import { DialogFrame } from "./frame";
+import { DialogActions } from "./dialog-actions";
+import { DialogFrame, fitDialogWidth } from "./frame";
 
 export interface ConfirmDialogProps extends PromptContext<boolean> {
   title: string;
@@ -14,7 +15,10 @@ export interface ConfirmDialogProps extends PromptContext<boolean> {
   cancelLabel?: string;
   confirmVariant?: ButtonVariant;
   width?: number;
-  /** The key-hint line under the buttons; an empty string leaves it out. */
+  /**
+   * The terminal's key-hint line under the buttons; an empty string leaves it
+   * out, and the keys off the desktop buttons too.
+   */
   footer?: string;
   /** A line under the body: the work the confirm started, or why it failed. */
   status?: ReactNode;
@@ -49,6 +53,7 @@ export function ConfirmDialog({
   formButtons = false,
   keyGraceMs = 0,
 }: ConfirmDialogProps) {
+  const desktop = useUiHost().kind === "desktop-web";
   const openedAt = useRef(Date.now());
   const confirm = useCallback(() => resolve(true), [resolve]);
   const cancel = useCallback(() => resolve(false), [resolve]);
@@ -81,15 +86,19 @@ export function ConfirmDialog({
     if (event.name === "tab") event.preventDefault();
   }, { allowEditable: true });
 
-  const confirmButton = <Button label={confirmLabel} variant={confirmVariant} disabled={busy} onPress={confirm} />;
-  const cancelButton = <Button label={cancelLabel} variant="secondary" disabled={busy} onPress={cancel} />;
+  // The desktop shows the keys on the buttons instead of a footer line; a
+  // confirm with no key line keeps its buttons plain there too.
+  const keys = footer !== "";
+  const confirmButton = <Button label={confirmLabel} variant={confirmVariant} disabled={busy} desktopShortcut={keys ? "Enter" : undefined} onPress={confirm} />;
+  const cancelButton = <Button label={cancelLabel} variant="secondary" disabled={busy} desktopShortcut={keys ? "Esc" : undefined} onPress={cancel} />;
   return (
     <DialogFrame
       title={title}
       footer={footer ?? tf("Enter {action} · Esc cancel", { action: t(confirmLabel).toLowerCase() })}
+      desktopFooter={null}
       onClose={onClose}
     >
-      <Box flexDirection="column" width={width}>
+      <Box flexDirection="column" {...(desktop ? { style: { width: fitDialogWidth(width) } } : { width })}>
         {renderBody(body)}
         {status && (
           <>
@@ -98,17 +107,10 @@ export function ConfirmDialog({
           </>
         )}
         <Box height={1} />
-        {formButtons ? (
-          <Box flexDirection="row" gap={1} justifyContent="flex-end">
-            {cancelButton}
-            {confirmButton}
-          </Box>
-        ) : (
-          <Box flexDirection="row" gap={1}>
-            {confirmButton}
-            {cancelButton}
-          </Box>
-        )}
+        <DialogActions alignEnd={formButtons}>
+          {formButtons ? cancelButton : confirmButton}
+          {formButtons ? confirmButton : cancelButton}
+        </DialogActions>
       </Box>
     </DialogFrame>
   );

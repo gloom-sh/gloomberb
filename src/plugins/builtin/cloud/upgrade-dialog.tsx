@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiClient, type CloudAccountPlan, type CloudPricing } from "../../../api-client";
 import { Button } from "../../../components/ui/button";
+import { DialogActions } from "../../../components/ui/dialog-actions";
 import { KeyValueRow } from "../../../components/ui/display";
 import { DialogFrame } from "../../../components/ui/frame";
 import { SegmentedControl } from "../../../components/ui/toggle";
@@ -210,7 +211,7 @@ function UpgradeDialog({
     : tf("Enter {action} · Esc not now", { action: copy.confirmLabel.toLowerCase() });
 
   return (
-    <DialogFrame title={copy.title} subtitle={copy.subtitle} footer={footer}>
+    <DialogFrame title={copy.title} subtitle={copy.subtitle} footer={footer} desktopFooter={null}>
       <Box flexDirection="column" width={width}>
         {copy.showPlan ? (
           <>
@@ -241,10 +242,10 @@ function UpgradeDialog({
             <Box height={1} />
           </>
         ) : null}
-        <Box flexDirection="row" gap={1}>
-          <Button label={copy.confirmLabel} variant="primary" disabled={!offer} onPress={confirm} />
-          <Button label="Not now" variant="secondary" onPress={dismiss} />
-        </Box>
+        <DialogActions>
+          <Button label={copy.confirmLabel} variant="primary" desktopShortcut="Enter" disabled={!offer} onPress={confirm} />
+          <Button label="Not now" variant="secondary" desktopShortcut="Esc" onPress={dismiss} />
+        </DialogActions>
       </Box>
     </DialogFrame>
   );

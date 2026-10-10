@@ -5,7 +5,7 @@ import { type PromptContext } from "../ui/dialog";
 import type { WizardStep } from "../types/plugin";
 import { colors } from "../theme/colors";
 import { DialogFrame, TextField } from "./ui";
-import { t } from "../i18n";
+import { t, tf } from "../i18n";
 
 export function PaneTemplateInputStep({
   resolve,
@@ -26,6 +26,14 @@ export function PaneTemplateInputStep({
         : step.required === false
           ? "Enter to keep the default"
           : "Enter to continue"}
+      desktopFooter={{
+        keys: [{
+          key: "Enter",
+          label: step.defaultValue
+            ? tf("use {value}", { value: step.defaultValue })
+            : step.required === false ? "keep the default" : "continue",
+        }],
+      }}
     >
       <Box flexDirection="column">
         {step.body?.map((line, index) => (

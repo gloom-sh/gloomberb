@@ -1469,4 +1469,20 @@ export const zhCN: Record<string, string> = {
   "Picked": "已选",
   "Follow {count} companies": "关注 {count} 家公司",
   "Following {count} companies. Alerts and your Monday brief will cover them.": "已关注 {count} 家公司。提醒和周一简报将涵盖它们。",
+
+  // ── Dialog keys on the desktop ───────────────────────────────
+  "newline": "换行",
+  "Denied in {seconds} s": "{seconds} 秒后拒绝",
+  "choose": "选择",
+  "select": "选定",
+  "confirm": "确认",
+  "presets": "预设",
+  "add": "添加",
+  "source": "来源",
+  "panel": "面板",
+  "log scale": "对数刻度",
+  "use {value}": "使用 {value}",
+  "keep the default": "保留默认值",
+  "continue": "继续",
+  "new code": "新代码",
 };

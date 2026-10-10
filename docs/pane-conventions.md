@@ -343,6 +343,11 @@ header, with the detail's height.
 - Destructive actions ask with `confirmDialog` (a `ConfirmDialog`) from a
   `variant="danger"` button or a footer hint, never a bare button that acts
   on first press.
+- A dialog's keys: the terminal names them in the `DialogFrame` footer line;
+  the desktop and the web put each on its button as a keycap
+  (`desktopShortcut`), put keys no button has and a note such as a deadline
+  beside the buttons (`DialogActions` `hints`), and draw no footer line
+  (`desktopFooter={null}`).
 - A form inside a stack detail follows the same rules; Back is the navigation
   Cancel and the footer goes empty while editing.
 

@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Box, Text, useUiHost } from "../../../../ui";
 import { Button } from "../../../../components/ui/button";
+import { DialogActions } from "../../../../components/ui/dialog-actions";
 import { DialogFrame } from "../../../../components/ui/frame";
 import { t, tf } from "../../../../i18n";
 import { RemoteUiScope } from "../../../../remote/semantic-tree";
@@ -23,6 +24,22 @@ function usePromptWidth(): { width: number | string; maxWidth?: number } {
 function useKeyGrace(graceMs: number): () => boolean {
   const openedAt = useRef(Date.now());
   return useCallback(() => Date.now() - openedAt.current >= graceMs, [graceMs]);
+}
+
+/**
+ * Whole seconds left of the answer window, counted from when the prompt
+ * opened (the engine starts its timer then). Only the desktop and the web
+ * count down; the terminal names the window once in its footer line.
+ */
+function useSecondsLeft(windowMs: number, live: boolean): number {
+  const [openedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(openedAt);
+  useEffect(() => {
+    if (!live) return;
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [live]);
+  return Math.max(0, Math.ceil((windowMs - (now - openedAt)) / 1_000));
 }
 
 function useCloseOnAbort(signal: AbortSignal, close: () => void) {
@@ -69,7 +86,11 @@ export function AssistantApprovalDialog({
 
   return (
     <RemoteUiScope scope={RELAY_PROMPT_SCOPE}>
-      <DialogFrame title={tf("{name} wants to control this terminal", { name: caller.name })} footer={t("S this session · A always · N or Esc deny")}>
+      <DialogFrame
+        title={tf("{name} wants to control this terminal", { name: caller.name })}
+        footer={t("S this session · A always · N or Esc deny")}
+        desktopFooter={null}
+      >
         <Box flexDirection="column" {...size}>
           <Text fg={colors.text} wrapText>
             {t("It connected through Gloom Cloud with Terminal control. It can read what is on screen, open and arrange panes and switch layouts.")}
@@ -79,11 +100,11 @@ export function AssistantApprovalDialog({
             {t("Orders, transfers, messages and plugin actions still ask you each time. Revoke it any time in Account Management, Agents.")}
           </Text>
           <Box height={1} />
-          <Box flexDirection="row" flexWrap="wrap" gap={1}>
-            <Button label={t("Allow for this session")} variant="primary" onPress={() => resolve("session")} />
-            <Button label={t("Always allow")} variant="secondary" onPress={() => resolve("always")} />
-            <Button label={t("Deny")} variant="secondary" onPress={deny} />
-          </Box>
+          <DialogActions wrap>
+            <Button label={t("Allow for this session")} variant="primary" desktopShortcut="s" onPress={() => resolve("session")} />
+            <Button label={t("Always allow")} variant="secondary" desktopShortcut="a" onPress={() => resolve("always")} />
+            <Button label={t("Deny")} variant="secondary" desktopShortcut="n" onPress={deny} />
+          </DialogActions>
         </Box>
       </DialogFrame>
     </RemoteUiScope>
@@ -103,6 +124,8 @@ export function CallConfirmationDialog({
 }: PromptContext<ConfirmationAnswer> & PromptProps & { summary: CallSummary }) {
   const colors = useThemeColors();
   const size = usePromptWidth();
+  const terminal = useUiHost().kind === "opentui";
+  const secondsLeft = useSecondsLeft(CONFIRM_WINDOW_MS, !terminal);
   const keysReady = useKeyGrace(keyGraceMs);
   const deny = useCallback(() => resolve("deny"), [resolve]);
   useCloseOnAbort(signal, deny);
@@ -122,6 +145,7 @@ export function CallConfirmationDialog({
       <DialogFrame
         title={tf("{name} asks to run an action", { name: caller.name })}
         footer={tf("Y allow · N or Esc deny · denied after {seconds} s", { seconds: Math.round(CONFIRM_WINDOW_MS / 1_000) })}
+        desktopFooter={null}
       >
         <Box flexDirection="column" {...size}>
           <Text fg={colors.textBright} wrapText>{summary.title}</Text>
@@ -135,10 +159,10 @@ export function CallConfirmationDialog({
             </Box>
           ))}
           <Box height={1} />
-          <Box flexDirection="row" flexWrap="wrap" gap={1}>
-            <Button label={t("Allow")} variant="primary" onPress={() => resolve("allow")} />
-            <Button label={t("Deny")} variant="secondary" onPress={deny} />
-          </Box>
+          <DialogActions wrap hints={{ note: tf("Denied in {seconds} s", { seconds: secondsLeft }) }}>
+            <Button label={t("Allow")} variant="primary" desktopShortcut="y" onPress={() => resolve("allow")} />
+            <Button label={t("Deny")} variant="secondary" desktopShortcut="n" onPress={deny} />
+          </DialogActions>
         </Box>
       </DialogFrame>
     </RemoteUiScope>
