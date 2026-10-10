@@ -85,11 +85,15 @@ export function withPluginStateNamespace<P>(
   stateId: string,
   component: (props: P) => ReactNode,
 ): (props: P) => ReactNode {
-  return (props) => (
+  const scoped = (props: P) => (
     <PluginStateNamespace stateId={stateId}>
       {createElement(component as (props: any) => ReactNode, props)}
     </PluginStateNamespace>
   );
+  // Names the namespace in React's tools, and to tests that check a moved
+  // module still reads the state it had.
+  scoped.displayName = `PluginStateNamespace(${stateId})`;
+  return scoped;
 }
 
 export function usePluginRenderContext(): PluginRenderContextValue {

@@ -823,14 +823,18 @@ describe("loadConfig", () => {
     const config = await loadConfig(dataDir);
 
     expect(config.disabledPlugins).toEqual([
-      "ticker-research",
-      // World indices went to Global Markets when Market Overview was split,
-      // so it no longer turns off the rest of Market Overview either.
+      // Each module went with its pane when Ticker Research and Market
+      // Overview were split, so it no longer turns off the rest of its old
+      // plugin either.
+      "options-volatility",
+      "filings",
+      "ownership",
       "global-markets",
       // Their own built-ins now, so a legacy id means the plugin of that name
       // rather than the built-in that used to contain it.
       "market-heatmap",
       "fear-greed",
+      "ticker-core",
       // The earnings calendar went to Earnings when Macro was split, while TV
       // left for its own repository, so turning it off still means all of Macro.
       "earnings",

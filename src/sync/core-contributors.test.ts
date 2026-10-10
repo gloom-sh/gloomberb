@@ -220,6 +220,30 @@ describe("core sync contributors", () => {
     expect(pull((await push(all)).filter((pluginId: string) => pluginId !== "macro"))).toEqual([]);
   });
 
+  test("Ticker Research round-trips through sync with apps from before it was split", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-ticker-research-test");
+    const pull = (disabledPlugins: string[]) => (
+      __syncContributorInternalsForTests.mergeConfigPayload(config, { disabledPlugins })?.disabledPlugins
+    );
+    const push = async (disabledPlugins: string[]) => (
+      (await coreConfigSyncContributor.collect({ state: createInitialState({ ...config, disabledPlugins }) }) as any).disabledPlugins
+    );
+    const all = ["ticker-core", "options-volatility", "ownership", "filings", "alt-data", "quant", "credit", "earnings"];
+    const allButCredit = all.filter((pluginId) => pluginId !== "credit");
+
+    // An older app turns Ticker Research off, or one of the modules it once had as plugins.
+    expect(pull(["ticker-research"])).toEqual(all);
+    expect(pull(["options", "holders", "sec"])).toEqual(["options-volatility", "ownership", "filings"]);
+    expect(pull(["macro", "ticker-research"])).toEqual(["rates-macro", "credit", "earnings", ...all.slice(0, 6)]);
+    expect(await push(all)).toEqual(["ticker-research"]);
+    expect(await push(["ownership"])).toEqual(["ownership"]);
+    // Credit & Bonds turned back on: the older app sees Ticker Research on, the rest stay off here.
+    expect(await push(allButCredit)).toEqual(allButCredit);
+    expect(pull(await push(allButCredit))).toEqual(allButCredit);
+    // And turning Ticker Research back on there brings all eight back.
+    expect(pull((await push([...all, "news"])).filter((pluginId: string) => pluginId !== "ticker-research"))).toEqual(["news"]);
+  });
+
   test("Market Overview round-trips through sync with apps from before it was split", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-sync-market-overview-test");
     const pull = (disabledPlugins: string[]) => (

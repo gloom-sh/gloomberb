@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import { normalizeConfigForSave, normalizeLoadedConfig } from "../data/config/store/normalize";
 import { CURRENT_CONFIG_VERSION, createDefaultConfig, createPaneInstance, normalizePaneId } from "../types/config";
 import { getLoadablePlugins } from "./catalog";
@@ -8,10 +8,8 @@ import {
   expandBuiltinPluginGroups,
   normalizeBuiltinDisabledPluginIds,
   retiredBuiltinModuleIds,
-  setBuiltinPluginGroupsForTests,
 } from "./ownership";
 
-afterEach(() => setBuiltinPluginGroupsForTests(null));
 
 /** `disabledPlugins` as the app holds it after loading a config.json that saved these. */
 function load(disabledPlugins: readonly string[], configVersion = CURRENT_CONFIG_VERSION): string[] {
@@ -26,6 +24,8 @@ function save(disabledPlugins: readonly string[]): string[] {
 
 const MACRO = ["rates-macro", "credit", "earnings"];
 const MARKET_OVERVIEW = ["global-markets", "screeners", "futures-commodities", "crypto", "alt-data", "quant"];
+const TICKER_RESEARCH = ["ticker-core", "options-volatility", "ownership", "filings", "alt-data", "quant", "credit", "earnings"];
+const without = (list: readonly string[], pluginId: string) => list.filter((entry) => entry !== pluginId);
 
 describe("retired plugins in disabledPlugins", () => {
   test.each([
@@ -46,6 +46,27 @@ describe("retired plugins in disabledPlugins", () => {
       resaved: ["market-overview"],
     },
     { name: "both groups off", saved: ["market-overview", "macro"], loaded: [...MARKET_OVERVIEW, ...MACRO], resaved: ["market-overview", "macro"] },
+    { name: "ticker-research alone turns off all eight", saved: ["ticker-research"], loaded: TICKER_RESEARCH, resaved: ["ticker-research"] },
+    {
+      name: "ticker-research and macro, which share two successors",
+      saved: ["macro", "ticker-research"],
+      loaded: ["rates-macro", "credit", "earnings", "ticker-core", "options-volatility", "ownership", "filings", "alt-data", "quant"],
+      resaved: ["macro", "ticker-research"],
+    },
+    { name: "one Ticker Research successor off stays itself", saved: ["ownership"], loaded: ["ownership"], resaved: ["ownership"] },
+    {
+      // Seven of eight, as after turning Credit & Bonds back on: the alias goes, the rest stay off.
+      name: "Credit & Bonds back on after ticker-research was off",
+      saved: without(TICKER_RESEARCH, "credit"),
+      loaded: without(TICKER_RESEARCH, "credit"),
+      resaved: without(TICKER_RESEARCH, "credit"),
+    },
+    {
+      name: "an older app turning Ticker Research off over one successor already off",
+      saved: ["ownership", "ticker-research"],
+      loaded: ["ownership", ...without(TICKER_RESEARCH, "ownership")],
+      resaved: ["ticker-research"],
+    },
   ])("$name", ({ saved, loaded, resaved }) => {
     expect(load(saved)).toEqual(loaded);
     expect(save(load(saved))).toEqual(resaved);
@@ -60,6 +81,13 @@ describe("retired plugins in disabledPlugins", () => {
     // The older app knows only the old ids, and drops one.
     expect(load(written.filter((pluginId) => pluginId !== "market-overview"))).toEqual([...MACRO, "news"]);
     expect(load(written.filter((pluginId) => pluginId !== "macro"))).toEqual([...MARKET_OVERVIEW, "news"]);
+
+    // Where groups share successors, dropping one old id leaves those on that
+    // the other still covers.
+    const all = save([...new Set([...MACRO, ...MARKET_OVERVIEW, ...TICKER_RESEARCH])]);
+    expect(all).toEqual(["macro", "ticker-research", "market-overview"]);
+    expect(load(without(all, "ticker-research")).sort()).toEqual([...new Set([...MACRO, ...MARKET_OVERVIEW])].sort());
+    expect(load(without(all, "macro")).sort()).toEqual([...new Set([...MARKET_OVERVIEW, ...TICKER_RESEARCH])].sort());
   });
 
   test("migrations read the old ids before they are expanded", () => {
@@ -90,58 +118,59 @@ describe("retired plugins in disabledPlugins", () => {
     }
   });
 
-  test("no plugin belongs to two groups", () => {
-    expect(new Set([...MACRO, ...MARKET_OVERVIEW]).size).toBe(MACRO.length + MARKET_OVERVIEW.length);
-    expect(load(["macro"]).some((pluginId) => MARKET_OVERVIEW.includes(pluginId))).toBe(false);
+  // Ticker Research shares Credit & Bonds and Earnings with Macro, and Alt
+  // Data and Quant with Market Overview: each holds modules from both.
+  test("groups share the successors that hold modules from both, and stay a pure function of the table", () => {
+    expect(TICKER_RESEARCH.filter((pluginId) => MACRO.includes(pluginId))).toEqual(["credit", "earnings"]);
+    expect(TICKER_RESEARCH.filter((pluginId) => MARKET_OVERVIEW.includes(pluginId))).toEqual(["alt-data", "quant"]);
+    expect(MACRO.filter((pluginId) => MARKET_OVERVIEW.includes(pluginId))).toEqual([]);
+    expect(load(["ticker-research"]).some((pluginId) => ["rates-macro", "global-markets"].includes(pluginId))).toBe(false);
+
+    for (const disabled of [
+      [],
+      ["credit"],
+      MACRO,
+      TICKER_RESEARCH,
+      [...MACRO, "ticker-core"],
+      ["earnings", "external-plugin", "credit", "rates-macro", "quant"],
+      without(TICKER_RESEARCH, "quant"),
+      [...new Set([...MARKET_OVERVIEW, ...TICKER_RESEARCH])],
+      [...new Set([...MACRO, ...MARKET_OVERVIEW, ...TICKER_RESEARCH, "news"])],
+    ]) {
+      const encoded = encodeBuiltinDisabledPluginIds(disabled);
+      expect(expandBuiltinPluginGroups(encoded).sort()).toEqual([...disabled].sort());
+      expect(encodeBuiltinDisabledPluginIds(expandBuiltinPluginGroups(encoded))).toEqual(encoded);
+    }
   });
 
   test("a saved workspace from before the splits loads as it was", () => {
-    const paneIds = ["econ-calendar", "cds", "earnings-calendar", "world-venue-map", "correlation", "attention"];
-    const instances = paneIds.map((paneId) => createPaneInstance(paneId, { instanceId: `${paneId}:main`, binding: { kind: "none" } }));
+    const paneIds = [
+      "ticker-research", "options", "holders", "sec", "credit-documents", "earnings-ripple", "supply-chain", "backtest",
+      "econ-calendar", "cds", "earnings-calendar", "world-venue-map", "correlation", "attention",
+    ];
+    const instances = paneIds.map((paneId) => createPaneInstance(paneId, {
+      instanceId: `${paneId}:main`,
+      binding: { kind: "fixed", symbol: "AAPL" },
+    }));
     const floating = instances.map((instance, index) => ({ instanceId: instance.instanceId, x: index, y: 0, width: 40, height: 10, zIndex: index }));
     const layout = { dockRoot: null, instances, floating, detached: [] };
     const paneState = {
+      "ticker-research:main": { activeTabId: "holders", pluginState: { "ticker-research": { chartRange: "5Y" } } },
+      "credit-documents:main": { pluginState: { "ticker-research": { "credit:tab": "covenants" } } },
+      "earnings-ripple:main": { pluginState: { "ticker-research": { tab: "suppliers" } } },
       "cds:main": { pluginState: { macro: { "cds:tenor": "10y" } } },
       "world-venue-map:main": { pluginState: { "market-overview": { layer: "ships" } } },
       "attention:main": { pluginState: { "market-overview": { "attention:tab": "countries" } } },
     };
-    const pluginConfig = { macro: { "yield-curve:forward": "1y" }, "market-overview": { "correlation:window": 60 } };
+    const pluginConfig = {
+      "ticker-research": { priceLevels: { AAPL: [200] } },
+      macro: { "yield-curve:forward": "1y" },
+      "market-overview": { "correlation:window": 60 },
+    };
     const saved = { ...createDefaultConfig("/gloom"), layout, layouts: [{ name: "Desk", layout, paneState }], pluginConfig };
     const { config } = normalizeLoadedConfig(saved, "/gloom");
     expect(config.layout.instances.map((instance) => instance.paneId)).toEqual(paneIds);
     expect(config.layouts[0]?.paneState).toEqual(paneState);
     expect(config.pluginConfig).toEqual(pluginConfig);
-  });
-});
-
-describe("overlapping groups", () => {
-  // Shaped like the planned Ticker Research split, which shares two successors with Macro.
-  const GROUPS = { macro: MACRO, "ticker-research": ["ticker-core", "options-volatility", "credit", "earnings"] };
-
-  test.each([
-    {
-      saved: ["ticker-research", "macro"],
-      loaded: ["ticker-core", "options-volatility", "credit", "earnings", "rates-macro"],
-      resaved: ["ticker-research", "macro"],
-    },
-    { saved: ["ticker-research"], loaded: ["ticker-core", "options-volatility", "credit", "earnings"], resaved: ["ticker-research"] },
-  ])("$saved round-trips", ({ saved, loaded, resaved }) => {
-    setBuiltinPluginGroupsForTests(GROUPS);
-    expect(load(saved)).toEqual(loaded);
-    expect(save(load(saved))).toEqual(resaved);
-  });
-
-  test("expanding what was encoded gives back the same switched-off plugins", () => {
-    setBuiltinPluginGroupsForTests(GROUPS);
-    for (const disabled of [
-      [],
-      ["credit"],
-      MACRO,
-      ["earnings", "external-plugin", "credit", "rates-macro"],
-      ["ticker-core", "options-volatility", "credit", "earnings", "rates-macro", "news"],
-      ["ticker-core", "options-volatility", "credit"],
-    ]) {
-      expect(expandBuiltinPluginGroups(encodeBuiltinDisabledPluginIds(disabled)).sort()).toEqual([...disabled].sort());
-    }
   });
 });

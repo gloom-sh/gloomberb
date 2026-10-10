@@ -18,8 +18,12 @@ import {
   quantPlugin,
   ratesMacroPlugin,
   screenersPlugin,
-  tickerResearchPlugin,
+  filingsPlugin,
+  optionsVolatilityPlugin,
+  ownershipPlugin,
+  tickerCorePlugin,
 } from "../builtin/composite-plugins";
+import { registeredStateNamespace } from "../test-fixture";
 import { resolveShellVisibleLayout } from "../../components/layout/shell/visible-layout";
 import { expandBuiltinPluginGroups } from "../ownership";
 import { composeBuiltinPlugin } from "../builtin/plugin-module";
@@ -242,7 +246,7 @@ describe("Market Overview's successors", () => {
     };
     const registry = createRegistry();
     registry.bindHost({ getConfig: () => ({ ...createDefaultConfig("/tmp/gloomberb-market-overview-split-test"), pluginConfig }) });
-    for (const plugin of [tickerResearchPlugin, globalMarketsPlugin, screenersPlugin, futuresCommoditiesPlugin, cryptoPlugin, altDataPlugin, quantPlugin]) {
+    for (const plugin of [tickerCorePlugin, globalMarketsPlugin, screenersPlugin, futuresCommoditiesPlugin, cryptoPlugin, altDataPlugin, quantPlugin]) {
       await registry.register(plugin);
     }
 
@@ -273,7 +277,90 @@ describe("Market Overview's successors", () => {
 
     // The template is Global Markets', the chart it opens Ticker Research's.
     expect(registry.getDisabledPaneTemplateOwner("chokepoint-chart-pane", ["global-markets"])).toEqual({ id: "global-markets", name: "Global Markets" });
-    expect(registry.getDisabledPaneTemplateOwner("chokepoint-chart-pane", ["ticker-research"])).toEqual({ id: "ticker-research", name: "Ticker Research" });
+    expect(registry.getDisabledPaneTemplateOwner("chokepoint-chart-pane", ["ticker-core"])).toEqual({ id: "ticker-core", name: "Ticker Research" });
+  });
+});
+
+describe("Ticker Research's successors", () => {
+  const successors = [
+    tickerCorePlugin, optionsVolatilityPlugin, ownershipPlugin, filingsPlugin,
+    creditPlugin, earningsPlugin, altDataPlugin, quantPlugin, ratesMacroPlugin, globalMarketsPlugin,
+  ];
+
+  // A module that moved into a plugin with another namespace reads its old
+  // state only through its override, so each moved module is checked next to
+  // a module that was already there.
+  test("every module reads the state it read before the split", async () => {
+    const registry = createRegistry();
+    for (const plugin of successors) await registry.register(plugin);
+    const pane = (paneId: string) => registeredStateNamespace(registry.panes.get(paneId)!.component);
+    const tab = (tabId: string) => registeredStateNamespace(registry.tickerResearchTabs.get(tabId)!.component);
+
+    expect({
+      "credit-documents": pane("credit-documents"),
+      "debt-maturities": pane("debt-maturities"),
+      cds: pane("cds"),
+      "earnings-ripple": pane("earnings-ripple"),
+      "earnings-calls": pane("earnings-calls"),
+      "earnings-calls tab": tab("earnings-calls"),
+      "supply-chain": pane("supply-chain"),
+      "hiring tab": tab("hiring-momentum"),
+      attention: pane("attention"),
+      backtest: pane("backtest"),
+      seasonality: pane("seasonality"),
+      correlation: pane("correlation"),
+      "ticker-research": pane("ticker-research"),
+      options: pane("options"),
+      "holders tab": tab("holders"),
+      sec: pane("sec"),
+    }).toEqual({
+      "credit-documents": "ticker-research",
+      "debt-maturities": "ticker-research",
+      cds: "macro",
+      "earnings-ripple": "ticker-research",
+      "earnings-calls": "macro",
+      "earnings-calls tab": "macro",
+      "supply-chain": "ticker-research",
+      "hiring tab": "ticker-research",
+      attention: "market-overview",
+      backtest: "ticker-research",
+      seasonality: "ticker-research",
+      correlation: "market-overview",
+      "ticker-research": "ticker-research",
+      options: "ticker-research",
+      "holders tab": "ticker-research",
+      sec: "ticker-research",
+    });
+  });
+
+  test("hide only their own panes, and name themselves where something of theirs would open hidden", async () => {
+    const registry = createRegistry();
+    for (const plugin of successors) await registry.register(plugin);
+    const paneIds = ["ticker-research", "options", "holders", "credit-documents", "cds", "earnings-ripple", "supply-chain", "backtest", "econ-calendar", "world-venue-map"];
+    const instances = paneIds.map((paneId) => createPaneInstance(paneId, { instanceId: `${paneId}:main`, binding: { kind: "fixed", symbol: "AAPL" } }));
+    const layout = {
+      dockRoot: null,
+      instances,
+      floating: instances.map((instance, index) => ({ instanceId: instance.instanceId, x: index, y: 0, width: 40, height: 10, zIndex: index })),
+      detached: [],
+    };
+    const visiblePanes = (disabled: readonly string[]) => {
+      const disabledPaneIds = new Set(disabled.flatMap((pluginId) => registry.getPluginPaneIds(pluginId)));
+      return resolveShellVisibleLayout(layout, disabledPaneIds, registry.panes).instances.map((instance) => instance.paneId);
+    };
+    // Credit & Bonds keeps CDS from Macro; Rates & Macro and Global Markets are in no Ticker Research group.
+    expect(visiblePanes(expandBuiltinPluginGroups(["ticker-research"]))).toEqual(["econ-calendar", "world-venue-map"]);
+    expect(visiblePanes(["ownership"])).toEqual(paneIds.filter((paneId) => paneId !== "holders"));
+
+    const off = (pluginId: string) => [pluginId];
+    // DES, Enter and Open in Ticker Research open this pane type.
+    expect(registry.getDisabledPaneOwner("ticker-research", off("ticker-core"))).toEqual({ id: "ticker-core", name: "Ticker Research" });
+    // The overview's Holders figure opens the tab, else the pane.
+    expect(registry.getDisabledTickerResearchTabOwner("holders", off("ownership"))).toEqual({ id: "ownership", name: "Ownership & Insiders" });
+    expect(registry.getDisabledPaneTemplateOwner("holders-pane", off("ownership"))).toEqual({ id: "ownership", name: "Ownership & Insiders" });
+    // The ripple's supplier links and G from any of them.
+    expect(registry.getDisabledPaneTemplateOwner("supply-chain-pane", off("alt-data"))).toEqual({ id: "alt-data", name: "Supply Chain & Alt Data" });
+    expect(registry.getDisabledPaneTemplateOwner("chart-composer-pane", off("ticker-core"))).toEqual({ id: "ticker-core", name: "Ticker Research" });
   });
 });
 
@@ -412,7 +499,7 @@ describe("PluginRegistry capabilities", () => {
 describe("PluginRegistry ticker research tabs", () => {
   test("tracks the owning plugin for registered ticker research tabs", async () => {
     const registry = createRegistry();
-    await registry.register(plugin("ticker-research", (ctx) => {
+    await registry.register(plugin("filings", (ctx) => {
       ctx.registerTickerResearchTab({
         id: "sec",
         name: "SEC",
@@ -421,9 +508,9 @@ describe("PluginRegistry ticker research tabs", () => {
       });
     }));
 
-    expect(registry.getTickerResearchTabPluginId("sec")).toBe("ticker-research");
+    expect(registry.getTickerResearchTabPluginId("sec")).toBe("filings");
 
-    registry.unregister("ticker-research");
+    registry.unregister("filings");
     expect(registry.getTickerResearchTabPluginId("sec")).toBeUndefined();
   });
 });

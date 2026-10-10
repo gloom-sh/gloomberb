@@ -97,16 +97,9 @@ const BUILTIN_PLUGIN_GROUPS: Readonly<Record<string, readonly string[]>> = {
   "ticker-research": ["ticker-core", "options-volatility", "ownership", "filings", "alt-data", "quant", "credit", "earnings"],
 };
 
-let pluginGroups = BUILTIN_PLUGIN_GROUPS;
-
-/** Pins the group table for a test; pass null to restore the real one. */
-export function setBuiltinPluginGroupsForTests(groups: Readonly<Record<string, readonly string[]>> | null): void {
-  pluginGroups = groups ?? BUILTIN_PLUGIN_GROUPS;
-}
-
 /** The built-ins a retired group id stands for, or null when the id is not a group. */
 export function builtinPluginGroupMembers(pluginId: string): readonly string[] | null {
-  return Object.prototype.hasOwnProperty.call(pluginGroups, pluginId) ? pluginGroups[pluginId]! : null;
+  return Object.prototype.hasOwnProperty.call(BUILTIN_PLUGIN_GROUPS, pluginId) ? BUILTIN_PLUGIN_GROUPS[pluginId]! : null;
 }
 
 /** The one built-in that cannot be disabled; its legacy module ids normalize to it. */
@@ -174,7 +167,7 @@ export function decodeBuiltinDisabledPluginIds(pluginIds: readonly string[]): st
  */
 export function encodeBuiltinDisabledPluginIds(pluginIds: readonly string[]): string[] {
   const disabled = new Set(pluginIds);
-  const fullyOff = Object.entries(pluginGroups)
+  const fullyOff = Object.entries(BUILTIN_PLUGIN_GROUPS)
     .filter(([, members]) => members.length > 0 && members.every((member) => disabled.has(member)));
   if (fullyOff.length === 0) return [...disabled];
   const groupAt = new Map<string, string[]>();
