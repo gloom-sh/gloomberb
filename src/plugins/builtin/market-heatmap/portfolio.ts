@@ -5,7 +5,7 @@ import type { ColumnConfig } from "../../../types/config";
 import type { TickerFinancials } from "../../../types/financials";
 import {
   getRegularSessionMoveDisplay,
-  getSessionMoveDisplay,
+  getTradedSessionMoveDisplay,
   type ActiveQuoteDisplay,
   type ExtendedSession,
 } from "../../../market-data/market/status";
@@ -227,7 +227,7 @@ export function buildPortfolioHeatmapAssets({
     // Colored like the market boards: an open extended session's move, else the regular session's.
     const display: (ActiveQuoteDisplay & { session?: ExtendedSession }) | null = regularSession
       ? getRegularSessionMoveDisplay(quote)
-      : getSessionMoveDisplay(quote);
+      : getTradedSessionMoveDisplay(quote);
     const price = display != null && Number.isFinite(display.price) ? display.price : null;
     const size = positiveNumber(getSortValue(sizeColumn, ticker, snapshot, context));
     const hasChange = display?.changePercent != null && Number.isFinite(display.changePercent);

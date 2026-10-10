@@ -326,13 +326,21 @@ export function getRegularSessionMoveDisplay(quote: Quote | null | undefined): A
 /**
  * The move a board of tiles colors by: the open pre-market or after-hours
  * session's, from the regular close, otherwise the day's regular session.
- * While a quote says nothing has traded in the open session yet
- * (extendedSessionPrint false), its extended figures are the close carried
- * forward, not a flat print, so the regular session stands.
  */
 export function getSessionMoveDisplay(
   quote: Quote | null | undefined,
 ): (ActiveQuoteDisplay & { session?: ExtendedSession }) | null {
-  const extended = quote?.extendedSessionPrint === false ? null : getOpenExtendedSessionDisplay(quote);
-  return extended ?? getRegularSessionDisplay(quote);
+  return getOpenExtendedSessionDisplay(quote) ?? getRegularSessionDisplay(quote);
+}
+
+/**
+ * getSessionMoveDisplay for a board that marks an extended move on each tile
+ * (the heat map): while a quote says nothing has traded in the open session
+ * yet (extendedSessionPrint false), its extended figures are the close
+ * carried forward, not a flat print, so the regular session stands.
+ */
+export function getTradedSessionMoveDisplay(
+  quote: Quote | null | undefined,
+): (ActiveQuoteDisplay & { session?: ExtendedSession }) | null {
+  return quote?.extendedSessionPrint === false ? getRegularSessionDisplay(quote) : getSessionMoveDisplay(quote);
 }

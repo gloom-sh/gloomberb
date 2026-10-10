@@ -5,7 +5,7 @@ import { buildQuoteKey, resolveEntryData } from "../selectors";
 import type { QueryEntry } from "../result-types";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { isFiniteNumber } from "../../utils/guards";
-import { getCompletedRegularSessionDisplay, getSessionMoveDisplay, type ExtendedSession } from "../market/status";
+import { getCompletedRegularSessionDisplay, getTradedSessionMoveDisplay, type ExtendedSession } from "../market/status";
 import { quoteTradingDay } from "./day-range";
 
 const STREAM_FRESHNESS_MS = 2 * 60_000;
@@ -31,8 +31,9 @@ export interface ScreenerQuoteRow {
 export interface ScreenerQuoteOverlayOptions {
   /**
    * While a pre-market or after-hours session is open, show its price and its
-   * move from the regular close, marked with `extendedSession`; otherwise the
-   * regular session's, which stops at the close. Without it a row shows the
+   * move from the regular close, marked with `extendedSession`; otherwise, or
+   * while the quote says nothing has traded in that session yet, the regular
+   * session's, which stops at the close. Without it a row shows the
    * live price against the previous close. A row that is a completed regular
    * session's close and move (`regularChangePercent`) keeps them outside the
    * regular session when its quote has neither an open extended print nor
@@ -151,7 +152,7 @@ function overlayQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): T {
 
 function overlaySessionQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): T {
   const overlaid = overlayQuote(row, quote);
-  const display = getSessionMoveDisplay(quote);
+  const display = getTradedSessionMoveDisplay(quote);
   if (!display || !isFiniteNumber(display.price)) return overlaid;
   if (
     !display.session
