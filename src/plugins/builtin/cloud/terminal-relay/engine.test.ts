@@ -51,7 +51,18 @@ function harness(options: {
           { id: "ui:1", role: "button", label: "Submit order", actions: ["press"] },
           { id: "ui:2", role: "table", label: "Data table", actions: ["scrollBy", "selectRow"] },
           { id: "ui:3", role: "button", label: "Always allow", actions: ["press"], metadata: { scope: "terminal-relay-prompt" } },
+          { id: "ui:4", role: "form-field", label: "Password", actions: ["setValue"], metadata: { fieldType: "password", value: "hunter2", summary: "hunter2" }, paneId: "brokers:main" },
+          { id: "ui:5", role: "input", actions: ["setValue"], metadata: { inputType: "password", value: "hunter2" }, paneId: "brokers:main" },
         ] };
+      }
+      if (request.type === "get" && request.resource.startsWith("app://pane-settings/")) {
+        return { ok: true, data: { paneId: "brokers:main", settings: { theme: "dark", apiKey: "k-123", nested: { refreshToken: "r-456" } } } };
+      }
+      if (request.type === "get" && request.resource.startsWith("app://pane-state/")) {
+        return { ok: true, data: { session: "regular", accessToken: "a-789", rows: 3 } };
+      }
+      if (request.type === "get" && request.resource === "app://panes") {
+        return { ok: true, data: [{ instanceId: "brokers:main", paneId: "brokers", settings: { secretKey: "s-000" } }] };
       }
       if (request.type === "get" && request.resource === "app://config") {
         return { ok: true, data: { theme: "amber", brokerInstances: [{ id: "b1", label: "Main", config: { host: "x", apiSecret: "s3cret" } }], plugin: { token: "t0ken" } } };
@@ -271,6 +282,39 @@ describe("terminal relay engine", () => {
     await settle();
     expect(h.results()[1]).toMatchObject({ ok: false, error: { code: "invalid_input" } });
     expect(h.confirmations).toHaveLength(0);
+  });
+
+  test("market data input cannot turn a read into another request type", async () => {
+    const h = harness();
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
+    h.call("c1", "market_data", { operation: "quote", symbol: "NVDA", type: "batch", requests: [{ type: "call", operation: "capability.invoke" }] });
+    h.call("c2", "market_data", { type: "call", operation: "capability.invoke", input: { capabilityId: "x", operationId: "send" } });
+    h.call("c3", "market_data", { operation: "quote", symbol: "NVDA" });
+    await settle();
+    expect(h.results().find((frame) => frame.id === "c1")).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+    expect(h.results().find((frame) => frame.id === "c2")).toMatchObject({ ok: false, error: { code: "invalid_input" } });
+    // Only the clean call reached the app, as a data read with exactly its fields.
+    expect(h.handled).toEqual([{ operation: "quote", symbol: "NVDA", type: "data" }]);
+  });
+
+  test("pane settings, pane state, panes and typed passwords leave the app redacted", async () => {
+    const h = harness();
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
+    h.call("c1", "get_resource", { resource: "app://pane-settings/brokers%3Amain" });
+    h.call("c2", "get_resource", { resource: "app://pane-state/brokers%3Amain" });
+    h.call("c3", "get_resource", { resource: "ui://tree" });
+    h.call("c4", "pane_content", { paneId: "brokers:main" });
+    await settle();
+    const items = (id: string) => (h.results().find((frame) => frame.id === id)!.data as { items: any[] }).items;
+    expect(items("c1")[0].settings).toEqual({ theme: "dark", apiKey: REDACTED, nested: { refreshToken: REDACTED } });
+    expect(items("c2")[0]).toEqual({ session: "regular", accessToken: REDACTED, rows: 3 });
+    const tree = items("c3");
+    expect(tree.find((node) => node.id === "ui:4").metadata).toEqual({ fieldType: "password", value: REDACTED, summary: REDACTED });
+    expect(tree.find((node) => node.id === "ui:5").metadata.value).toBe(REDACTED);
+    const content = h.results().find((frame) => frame.id === "c4")!.data as { pane: any; settings: any; items: any[] };
+    expect(content.pane.settings.secretKey).toBe(REDACTED);
+    expect(content.settings.apiKey).toBe(REDACTED);
+    expect(JSON.stringify(content.items)).not.toContain("hunter2");
   });
 
   test("a tool this app did not generate is refused", async () => {

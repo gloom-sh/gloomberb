@@ -1,18 +1,29 @@
 /**
- * Configuration holds broker passwords, API secrets and plugin tokens. A
- * remote assistant reads the same configuration the local remote API shows,
+ * Configuration holds broker passwords, API secrets and plugin tokens, and
+ * pane settings, pane state, layouts and the UI tree are free-form maps that
+ * can carry the same (a token a plugin keeps in its settings, a password
+ * typed into a form). Everything the relay sends back passes through here,
  * with every such value replaced, so a prompt-injected assistant cannot copy
  * a credential out of the terminal.
  */
-const SECRET_KEY = /(pass(word|phrase)?|secret|token|api[-_]?key|private[-_]?key|credential|cookie|session)/i;
+const SECRET_KEY = /(pass(word|phrase)?|secret|token|api[-_]?key|private[-_]?key|credential|cookie)/i;
+/** Fields of a form field or input that hold what was typed. */
+const TYPED_VALUE_KEYS = ["value", "summary", "defaultValue", "initialValue"];
 export const REDACTED = "[redacted]";
 
+function isPasswordField(record: Record<string, unknown>): boolean {
+  return record.fieldType === "password" || record.inputType === "password" || record.type === "password";
+}
+
 function redactSecrets(value: unknown, depth = 0): unknown {
-  if (depth > 24 || value === null || typeof value !== "object") return value;
+  if (depth > 32 || value === null || typeof value !== "object") return value;
   if (Array.isArray(value)) return value.map((entry) => redactSecrets(entry, depth + 1));
+  const record = value as Record<string, unknown>;
+  const password = isPasswordField(record);
   const result: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
-    if (SECRET_KEY.test(key) && entry !== null && entry !== undefined && entry !== "" && typeof entry !== "boolean") {
+  for (const [key, entry] of Object.entries(record)) {
+    const filled = entry !== null && entry !== undefined && entry !== "" && typeof entry !== "boolean";
+    if (filled && (SECRET_KEY.test(key) || (password && TYPED_VALUE_KEYS.includes(key)))) {
       result[key] = REDACTED;
     } else {
       result[key] = redactSecrets(entry, depth + 1);
@@ -46,7 +57,7 @@ export function redactConfig(config: unknown): unknown {
     : redacted;
 }
 
-/** Resources that carry configuration, redacted before they leave the app. */
+/** Resources that carry the whole configuration, before the general pass. */
 export function redactResource(resource: string, value: unknown): unknown {
   if (resource === "app://config") return redactConfig(value);
   if (resource === "app://snapshot" && value && typeof value === "object") {
@@ -54,4 +65,9 @@ export function redactResource(resource: string, value: unknown): unknown {
     return { ...snapshot, config: redactConfig(snapshot.config) };
   }
   return value;
+}
+
+/** The last step before any answer leaves the app: every free-form map, at any depth. */
+export function redactRelayResult<T>(result: T): T {
+  return redactSecrets(result) as T;
 }

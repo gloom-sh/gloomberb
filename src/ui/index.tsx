@@ -196,6 +196,8 @@ export const Input = forwardRef<any, ComponentProps<UiHost["Input"]>>((props, re
     },
     metadata: {
       ...remoteMetadataFromProps(rawProps),
+      // Lets a reader that must not see typed passwords (the Cloud relay) recognize one.
+      ...(rawProps.type === "password" ? { inputType: "password" } : {}),
       value: rawProps.value,
       placeholder: rawProps.placeholder,
       focused: rawProps.focused,

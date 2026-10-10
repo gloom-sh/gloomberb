@@ -4,6 +4,7 @@ import type {
   RemoteControlRequest,
   RemoteControlResponse,
   RemoteJsonPatchOperation,
+  RemoteMarketDataRequest,
   RemoteUiNodeSnapshot,
 } from "../../../../remote/types";
 import type { AssistantDecision, TerminalRelayGrants } from "./grants";
@@ -19,7 +20,7 @@ import {
   operationPolicy,
   patchPolicy,
 } from "./policy";
-import { REDACTED, redactConfig, redactResource } from "./redact";
+import { REDACTED, redactConfig, redactRelayResult, redactResource } from "./redact";
 import { keyArgumentLines, shortValue, type CallSummary } from "./summary";
 
 /**
@@ -115,6 +116,59 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function asItems(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [value];
+}
+
+const DATA_OPERATIONS = new Set<RemoteMarketDataRequest["operation"]>([
+  "search",
+  "quote",
+  "financials",
+  "secFilings",
+  "holders",
+  "analystResearch",
+  "corporateActions",
+  "earningsCalendar",
+]);
+const DATA_FIELDS = new Set(["operation", "query", "symbol", "exchange", "count", "symbols"]);
+
+/**
+ * A market data read built field by field from what the tool allows. Relay
+ * input is never spread into a request: a `type` or `requests` key in it must
+ * not turn a read into a call or a batch.
+ */
+function dataRequest(input: Record<string, unknown>): RemoteMarketDataRequest {
+  const unknown = Object.keys(input).filter((key) => !DATA_FIELDS.has(key));
+  if (unknown.length > 0) {
+    throw new RelayRefusal("invalid_input", `market_data takes only ${[...DATA_FIELDS].join(", ")}; got ${unknown.join(", ")}.`);
+  }
+  const operation = input.operation;
+  if (typeof operation !== "string" || !DATA_OPERATIONS.has(operation as RemoteMarketDataRequest["operation"])) {
+    throw new RelayRefusal("invalid_input", `operation must be one of ${[...DATA_OPERATIONS].join(", ")}.`);
+  }
+  const text = (key: string): string | undefined => {
+    const value = input[key];
+    if (value === undefined) return undefined;
+    if (typeof value !== "string") throw new RelayRefusal("invalid_input", `${key} must be a string.`);
+    return value;
+  };
+  const count = input.count;
+  if (count !== undefined && (typeof count !== "number" || !Number.isInteger(count) || count < 1)) {
+    throw new RelayRefusal("invalid_input", "count must be a positive integer.");
+  }
+  const symbols = input.symbols;
+  if (symbols !== undefined && (!Array.isArray(symbols) || symbols.some((symbol) => typeof symbol !== "string"))) {
+    throw new RelayRefusal("invalid_input", "symbols must be a list of strings.");
+  }
+  const fields = {
+    operation,
+    query: text("query"),
+    symbol: text("symbol"),
+    exchange: text("exchange"),
+    count: count as number | undefined,
+    symbols: symbols as string[] | undefined,
+  };
+  const defined = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+  // The type goes last, so nothing above can set it.
+  return { ...defined, type: "data" } as RemoteMarketDataRequest;
 }
 
 function containsRedacted(value: unknown): boolean {
@@ -266,7 +320,7 @@ export class TerminalRelayEngine {
       if (!this.isLive(call)) return;
       this.options.grants.markUsed(caller.id, this.now());
       this.options.onActivity?.({ type: "acted", caller, tool: data.tool, at: this.now() });
-      this.reply(call, { ok: true, data: fitResult({ asOf: new Date(this.now()).toISOString(), ...result }) });
+      this.reply(call, { ok: true, data: redactRelayResult(fitResult({ asOf: new Date(this.now()).toISOString(), ...result })) });
     } catch (error) {
       if (!this.isLive(call)) return;
       const refusal = error instanceof RelayRefusal
@@ -368,7 +422,7 @@ export class TerminalRelayEngine {
         return { request: { type: "get", resource }, binding, confirm: null };
       }
       case "data":
-        return { request: { type: "data", ...input } as RemoteControlRequest, binding, confirm: null };
+        return { request: dataRequest(input), binding, confirm: null };
       case "patch": {
         const resource = typeof input.resource === "string" ? input.resource : "";
         if (!Array.isArray(input.patch)) throw new RelayRefusal("invalid_input", "patch must be a JSON Patch array.");
