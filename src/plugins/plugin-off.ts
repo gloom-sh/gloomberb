@@ -34,17 +34,3 @@ export function notifyPluginOff(host: PluginOffNotifier, error: PluginOffError, 
     },
   });
 }
-
-/** Shows an error from opening a pane, with the "Turn on" button when a plugin being off was the cause. */
-export function notifyPaneOpenError(
-  host: PluginOffNotifier,
-  error: unknown,
-  fallback: AppNotificationRequest,
-  reopen?: () => void,
-): void {
-  if (error instanceof PluginOffError) {
-    notifyPluginOff(host, error, reopen);
-    return;
-  }
-  host.notify(error instanceof Error ? { ...fallback, body: error.message } : fallback);
-}
