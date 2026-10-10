@@ -54,6 +54,7 @@ import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isKnownNonUsListing } from "../../utils/sec";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
 import { failIfNotTraded, ListingArgError, listingIdentity, resolveCliListing, type CliListing } from "../listing-arg";
+import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
 import { cliFreshnessFooter } from "../result";
 import { providerMissReason } from "../../sources/provider-errors";
@@ -731,7 +732,10 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     } catch (error) {
       // A known exchange the symbol is not listed on: say where it is.
       await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });
-      failCommand(`Failed to fetch data for ${normalized}.`, error instanceof Error ? error.message : String(error));
+      const reason = error instanceof Error ? error.message : String(error);
+      // A symbol no listing carries is not a failed fetch, and the message already names it.
+      if (isNotATickerMessage(reason)) failCommand(reason);
+      failCommand(`Failed to fetch data for ${normalized}.`, reason);
     }
 
     const hasResearchData = financials && (

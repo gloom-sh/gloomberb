@@ -7,6 +7,8 @@ export interface CliGlobalOptions {
   limit?: number;
   /** `--tail <n>`: the newest n rows of a dated series, in their printed order. Never set with `limit`. */
   tail?: number;
+  /** `--width <n>`: fit tables to n columns. Unset, a terminal's own width fits them and piped output is not fitted. */
+  width?: number;
   refresh: boolean;
   dryRun: boolean;
   yes: boolean;
@@ -43,11 +45,35 @@ function parseRowCount(flag: "--limit" | "--tail", value: string | undefined): n
   return parsed;
 }
 
+/** Commands whose own `--width` is a size in pixels, so it is not the table width. */
+const PIXEL_WIDTH_COMMANDS = new Set(["shot", "screenshot"]);
+const MIN_TABLE_WIDTH = 20;
+
+function parseColumnCount(value: string | undefined): number {
+  const parsed = Number(value);
+  if (!value || !Number.isInteger(parsed) || parsed < MIN_TABLE_WIDTH) {
+    throw new Error(`--width must be a whole number of columns, ${MIN_TABLE_WIDTH} or more, such as --width 80.`);
+  }
+  return parsed;
+}
+
+/** The first word that is not an option or the value of one: the command the arguments are for. */
+function commandWord(rawArgs: readonly string[]): string | undefined {
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index]!;
+    if (arg === "--") return rawArgs[index + 1];
+    if (arg === "--limit" || arg === "--tail" || arg === "--width") index += 1;
+    else if (!arg.startsWith("-")) return arg;
+  }
+  return undefined;
+}
+
 export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
   const options: CliGlobalOptions = { ...DEFAULT_CLI_OPTIONS };
   const args: string[] = [];
   let help = false;
   let literalStart: number | null = null;
+  const ownsWidth = PIXEL_WIDTH_COMMANDS.has(commandWord(rawArgs)?.toLowerCase() ?? "");
 
   for (let index = 0; index < rawArgs.length; index += 1) {
     const arg = rawArgs[index]!;
@@ -94,6 +120,15 @@ export function parseCliGlobalArgs(rawArgs: string[]): ParsedCliArgs {
     }
     if (arg === "--yes" || arg === "-y") {
       options.yes = true;
+      continue;
+    }
+    if (!ownsWidth && arg === "--width") {
+      index += 1;
+      options.width = parseColumnCount(rawArgs[index]);
+      continue;
+    }
+    if (!ownsWidth && arg.startsWith("--width=")) {
+      options.width = parseColumnCount(arg.slice("--width=".length));
       continue;
     }
     if (arg === "--limit" || arg === "--tail") {

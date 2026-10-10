@@ -186,7 +186,7 @@ export class ProviderRouterFinancialRoutes {
       return quoteOnlyFinancials(merged);
     }
     if (!merged) {
-      throw noProviderError(`No provider available for ${ticker}`, misses);
+      throw noProviderError(`No provider available for ${ticker}`, misses, ticker);
     }
     return merged;
   }
@@ -232,7 +232,7 @@ export class ProviderRouterFinancialRoutes {
     // No source has a current quote: the last price one answered with, flagged
     // stale and dated by its own time, rather than none.
     if (misses.lastKnownQuote) return misses.lastKnownQuote;
-    throw noProviderError(`No quote provider available for ${ticker}`, misses);
+    throw noProviderError(`No quote provider available for ${ticker}`, misses, ticker);
   }
 
   private async getProviderReferenceQuote(

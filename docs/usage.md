@@ -412,7 +412,11 @@ News panes refresh every two minutes while the app is visible. A hidden browser 
 
 Running `gloomberb` with no arguments launches the terminal UI. Normal commands run through a headless CLI path; use `gloomberb launch-ui` when a script should explicitly open the UI.
 
-Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text output keeps every cell whole. Automation can opt into structured output with `--json`, `--csv`, or `--ndjson`. JSON output favors the richest fetched model available and includes display-column metadata when a command has table columns; CSV and NDJSON use the command's tabular row view. Common global flags include `--limit`, `--tail`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, and `--yes`.
+Human-readable output is the default: tables fit the terminal width, and a single result prints as aligned label and value lines. Piped text output keeps every cell whole. Automation can opt into structured output with `--json`, `--csv`, or `--ndjson`. JSON output favors the richest fetched model available and includes display-column metadata when a command has table columns; CSV and NDJSON use the command's tabular row view. Common global flags include `--limit`, `--tail`, `--width`, `--refresh`, `--quiet`, `--no-color`, `--dry-run`, and `--yes`.
+
+`--width <n>` fits text tables, help and notes to n columns, in a terminal or piped (`gloomberb quote AAPL TSLA NVDA MSFT --width 80`). A table gives up its least useful columns first, then cuts long text: `quote` drops Updated, Feed and Cur, in that order, and `compare` drops Cur, Volume and Day Range, before either cuts a Name short; an `fn` report cuts its long text columns. Times, ids and numbers stay whole, and a table that still cannot fit prints whole instead of losing figures. Without `--width` a terminal's own width applies and piped output is not fitted. `shot` is the one command with its own `--width`, in pixels.
+
+A symbol that no listing carries (a company name or a typo) ends in ``Not a ticker: APPLE. Try `gloomberb search Apple`.``, with your own spelling in the hint, on `quote`, `compare`, `history`, `ticker` and the `fn` reports. A timeout or outage keeps its own wording.
 
 `--limit <n>` keeps the first n rows as printed. On a series that runs oldest first, such as `history`, those are the oldest, so text output says `showing the oldest 2 of 252 rows; --tail 2 for the latest` under the table and `--json` carries `metadata.rows` (`shown`, `total`, `kept`). `--tail <n>` keeps the newest n rows of a dated series whichever way it runs (`history`, `fred` with either `--sort`, `econ`), in their printed order, and the last n of any other list. The two cannot be combined. `fn` reports take `--limit` and `--tail` as options of their own, and fail on one they do not have.
 
@@ -440,7 +444,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 |---------|-----|
 | `gloomberb` | Launch the terminal UI |
 | `gloomberb launch-ui` | Explicitly launch the terminal UI |
-| `gloomberb help` | Show all CLI commands, grouped |
+| `gloomberb help` | Show all CLI commands, grouped, under a short Start here list |
 | `gloomberb help <command>` / `<command> --help` | Show a command's usage, options, and examples |
 | `gloomberb api list\|get\|invoke\|subscribe` | Inspect and call plugin capabilities directly |
 | `gloomberb quote <symbols>` | Fetch current quotes |

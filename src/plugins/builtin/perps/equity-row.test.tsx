@@ -38,21 +38,37 @@ test("switching a saved bare symbol's listing hides cached and late issuer rows 
     </TestPaneProvider>;
   }
   await tui.render(<Harness />);
-  await tui.waitForFrameToContain("NET · XYZ perp");
+  await tui.waitForFrameToContain("NET · Perpetual futures");
   await act(async () => { select(london); });
   await tui.renderFrames(1);
-  expect(tui.frame()).not.toContain("NET · XYZ perp");
+  expect(tui.frame()).not.toContain("NET · Perpetual futures");
   await act(async () => { select(apple); });
   await tui.renderFrames(1);
-  expect(tui.frame()).not.toContain("NET · XYZ perp");
+  expect(tui.frame()).not.toContain("NET · Perpetual futures");
   // A late response for London is also intentionally wrong: both the resource
   // owner and the response identity must prevent it from reaching the screen.
   await act(async () => { pendingLondon.resolve(equityBoard(nyse)); pendingApple.resolve(equityBoard(apple)); });
-  await tui.waitForFrameToContain("AAPL · XYZ perp");
-  expect(tui.frame()).not.toContain("NET · XYZ perp");
+  await tui.waitForFrameToContain("AAPL · Perpetual futures");
+  expect(tui.frame()).not.toContain("NET · Perpetual futures");
   expect(requests).toEqual([
     "/cloud/perps/equity/NET?identity=listing&exchange=NYSE",
     "/cloud/perps/equity/NET?identity=listing&exchange=LSE",
     "/cloud/perps/equity/AAPL?identity=listing&exchange=NASDAQ",
   ]);
+});
+
+test("the stock's perpetual reads in plain words, with when it was read and the funding interval spelled out", async () => {
+  setCloudApiFetchTransport(async () => Response.json(equityBoard({ symbol: "AAPL", exchange: "NASDAQ" })));
+  const state = createInitialState(createTestPaneConfig("/home/vince/.cache/gloom-smoke/perps-row-wording/test", { paneId: "perps", instanceId: "test" }));
+  const runtime = createTestPluginRuntime();
+  const wide = createOpenTuiTestHarness({ width: 110, height: 4 });
+  await wide.render(<TestPaneProvider state={state} dispatch={() => {}} paneId="test" pluginId="market-overview" runtime={runtime}>
+    <PerpEquityRow symbol="AAPL" exchange="NASDAQ" instrumentType="STK" />
+  </TestPaneProvider>);
+  const frame = await wide.waitForFrameToContain("Perpetual futures (24/7 on-chain market)");
+  expect(frame).toContain("AAPL · Perpetual futures (24/7 on-chain market)");
+  expect(frame).toMatch(/Funding [+-]?[\d.]+% per 8 h/);
+  expect(frame).toMatch(/as of .*UTC/);
+  expect(frame).not.toContain("XYZ");
+  expect(frame).not.toContain("/ 8h");
 });

@@ -177,6 +177,24 @@ describe("CLI dispatch", () => {
     expect(stdout).toContain("ok:hello world");
   });
 
+  test("help opens with a Start here list of real commands", async () => {
+    process.env.HOME = await createTempHome("gloomberb-cli-help-home-");
+    const { stdout } = await captureConsole(() => dispatchCli(["help", "--width", "100"]));
+    const lines = stdout.split("\n");
+    const start = lines.indexOf("Start here");
+    expect(start).toBeGreaterThan(0);
+    expect(start).toBeLessThan(lines.indexOf("Usage"));
+    expect(stdout).toContain("--width <n>");
+    // Every example names a command that help knows, so none is a dead end.
+    const examples = lines.slice(start + 1, lines.indexOf("Usage")).filter((line) => line.trim().startsWith("gloomberb "));
+    expect(examples).toHaveLength(4);
+    for (const example of examples) {
+      const command = example.trim().split(/\s+/)[1]!;
+      const topic = await captureConsole(() => dispatchCli(["help", command]));
+      expect([command, topic.stderr]).toEqual([command, ""]);
+    }
+  });
+
   test("renders plugin command failures through structured output", async () => {
     process.env.HOME = await createTempHome("gloomberb-cli-registry-failure-home-");
     const { result, stderr, exitCode } = await captureConsole(() => dispatchCli(

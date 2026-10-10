@@ -148,7 +148,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
   const footerInfo = useMemo<PaneFooterSegment[]>(() => {
     if (!selected) return [];
     const info: PaneFooterSegment[] = [
-      { id: "as-of", parts: [{ text: `as of ${selected.latest.date}`, tone: "muted" }] },
+      { id: "as-of", parts: [{ text: `reading for ${selected.reading}`, tone: "muted" }] },
     ];
     // The cached first paint is being replaced; its age only counts once that load fails.
     const seeding = resource.loading && resource.updatedAt === null && !selected.refreshError;

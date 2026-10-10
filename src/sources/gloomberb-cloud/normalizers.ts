@@ -306,6 +306,9 @@ export function mapOptionsChain(
   };
 }
 
+/** The reason code Gloom Cloud gives an empty answer for a symbol no listing carries. */
+export const NOT_FOUND_REASON = "NOT_FOUND";
+
 export function isEmptyCloudStatus(
   status: CloudMarketResponse<unknown>["status"],
 ): boolean {
@@ -317,7 +320,7 @@ export function mapBatchError<T>(
   fallbackMessage: string,
 ): Error {
   if (isEmptyCloudStatus(item.status)) {
-    return createProviderMiss(item.reasonCode ?? fallbackMessage, item.message);
+    return createProviderMiss(item.reasonCode ?? fallbackMessage, item.message, { notFound: item.reasonCode === NOT_FOUND_REASON });
   }
   return new Error(item.reasonCode ?? fallbackMessage);
 }

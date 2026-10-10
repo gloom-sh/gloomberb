@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpCellText } from "./model";
+import { BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpCellText, perpDescription, readingTime } from "./model";
 import { longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
 
 test("paid funding normalizes each interval independently and stays separate from snapshots", () => {
@@ -80,4 +80,19 @@ test("a 100-column board and comparison keep the long share, which the annualise
   expect(dayChange(rows.slice(1))).toBeNull();
   // Older servers send no long/short array: an empty series, not a failure.
   expect(historyRows(perpHistory(), "long-short")).toEqual([]);
+});
+
+test("a contract is described in plain words, on-chain only where the venue is", () => {
+  expect(perpDescription({ venue: "hyperliquid" })).toBe("Perpetual futures (24/7 on-chain market)");
+  expect(perpDescription({ venue: "binance" })).toBe("Perpetual futures (24/7 Binance market)");
+  expect(perpDescription({ venue: "okx" })).toBe("Perpetual futures (24/7 OKX market)");
+});
+
+test("a reading is dated only when it is not from today, in UTC", () => {
+  const now = Date.parse("2026-10-10T15:00:00Z");
+  expect(readingTime("2026-10-10T13:30:05.649Z", now)).toBe("13:30 UTC");
+  // 23:50 UTC yesterday is still yesterday however the local zone cuts the day.
+  expect(readingTime("2026-10-09T23:50:00Z", now)).toBe("2026-10-09 23:50 UTC");
+  expect(readingTime(null, now)).toBeNull();
+  expect(readingTime("not a time", now)).toBeNull();
 });

@@ -18,7 +18,7 @@ import type {
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
-import { cliStyles, renderSection, renderStats, renderTable } from "../../utils/cli-output";
+import { cliStyles, renderSection, renderStats, renderTable, wrapToTerminal } from "../../utils/cli-output";
 import { humanizeCliKey } from "../result";
 import {
   exportEntriesTable,
@@ -382,6 +382,7 @@ function renderRows(
       header: humanizeCliKey(column.header),
       align: column.align,
       width: column.width,
+      shrink: column.shrink,
     })),
     rows.map((row) => columns.map((column) => {
       const value = row[column.key];
@@ -603,7 +604,7 @@ export function renderHeadlessPaneText(
   }
   if (result.notes?.length) lines.push("", ...renderMessages("Notes", result.notes));
   if (result.errors?.length) lines.push("", ...renderMessages("Errors", result.errors));
-  return [lines.join("\n").trimEnd(), "", cliStyles.muted(formatFreshnessLine(freshness))].join("\n");
+  return [lines.join("\n").trimEnd(), "", cliStyles.muted(wrapToTerminal(formatFreshnessLine(freshness)))].join("\n");
 }
 
 function resultRowCount(definition: HeadlessPaneDefinition, result: HeadlessPaneResult): number {

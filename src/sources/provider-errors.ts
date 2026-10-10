@@ -27,16 +27,19 @@ export class ProviderMissError extends Error {
   readonly [PROVIDER_MISS_BRAND] = true;
   /** Why the service has nothing, in its own words, when it said. */
   readonly reason?: string;
+  /** The service found no listing for the symbol: it is not a ticker, which differs from a ticker it has no data for. */
+  readonly notFound: boolean;
 
-  constructor(message = "Provider could not satisfy request", reason?: unknown) {
+  constructor(message = "Provider could not satisfy request", reason?: unknown, options: { notFound?: boolean } = {}) {
     super(message);
     this.name = "ProviderMissError";
     this.reason = cleanProviderReason(reason);
+    this.notFound = options.notFound === true;
   }
 }
 
-export function createProviderMiss(message?: string, reason?: unknown): ProviderMissError {
-  return new ProviderMissError(message, reason);
+export function createProviderMiss(message?: string, reason?: unknown, options?: { notFound?: boolean }): ProviderMissError {
+  return new ProviderMissError(message, reason, options);
 }
 
 function isProviderMiss(error: unknown): error is ProviderMissError {
@@ -52,19 +55,53 @@ export function providerMissReason(error: unknown): string | undefined {
 /** Collects the latest reason across the providers of one request. */
 export interface ProviderMissNote {
   reason?: string;
+  /** True while every provider that failed said it found no listing; one that failed another way (a timeout) clears it. */
+  notFound?: boolean;
 }
 
 export function noteProviderMiss(note: ProviderMissNote | undefined, error: unknown): void {
+  if (!note) return;
   const reason = providerMissReason(error);
-  if (note && reason) note.reason = reason;
+  if (reason) note.reason = reason;
+  note.notFound = note.notFound !== false && isProviderMiss(error) && error.notFound === true;
+}
+
+/** A provider answered with data the router could not use: whatever else is missing, the symbol exists. */
+export function noteProviderAnswer(note: ProviderMissNote | undefined): void {
+  if (note) note.notFound = false;
+}
+
+const NOT_A_TICKER = /^Not a ticker: (.+)\.$/;
+
+/** "Not a ticker: APPLE.", what a request for a symbol no listing carries ends in. */
+function notATickerMessage(symbol: string): string {
+  return `Not a ticker: ${symbol}.`;
+}
+
+/** The symbol of a "Not a ticker: APPLE." message, or null for any other text. */
+export function notATickerSymbol(message: string): string | null {
+  return NOT_A_TICKER.exec(message.split("\n")[0] ?? "")?.[1] ?? null;
+}
+
+/**
+ * Whether a message is the router's answer that no source serves a symbol: "No history provider
+ * available for 2222", or "Not a ticker: 2222." when the service found no listing for it.
+ * A timeout or any other failure is not.
+ */
+export function isNoProviderMessage(message: string): boolean {
+  return /\bprovider available for\b/i.test(message) || notATickerSymbol(message) !== null;
 }
 
 /**
  * The router's final error when no provider answered. A reason a provider gave
- * replaces the generic wording; without one the generic message stays.
+ * replaces the generic wording, and so does the service's answer that no
+ * listing exists for `symbol` ("Not a ticker"); a timeout or any other failure
+ * keeps the generic message.
  */
-export function noProviderError(message: string, note: ProviderMissNote | undefined): Error {
-  return note?.reason ? createProviderMiss(note.reason, note.reason) : new Error(message);
+export function noProviderError(message: string, note: ProviderMissNote | undefined, symbol?: string): Error {
+  if (note?.reason) return createProviderMiss(note.reason, note.reason);
+  if (note?.notFound === true && symbol) return createProviderMiss(notATickerMessage(symbol), undefined, { notFound: true });
+  return new Error(message);
 }
 
 export function shouldLogProviderError(error: unknown): boolean {

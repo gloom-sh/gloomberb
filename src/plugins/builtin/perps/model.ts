@@ -22,6 +22,16 @@ export const time = (s: string | null | undefined) => s ? `${s.slice(0, 10)} ${s
 /** A list row's observation, month to minute: the header names UTC and the footer the full as-of. */
 const observed = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)}` : "--";
 export const marketLabel = (row: PerpBoardRow) => row.dex && row.dex !== "default" ? `${row.baseAsset} · ${row.dex.toUpperCase()}` : row.baseAsset;
+/** What the contract is, in plain words: perpetual futures never expire and trade around the clock. */
+export const perpDescription = (row: Pick<PerpBoardRow, "venue">) =>
+  `Perpetual futures (24/7 ${row.venue === "hyperliquid" || row.venue === "dydx" ? "on-chain" : venueName(row.venue)} market)`;
+/** When the venue's figures were read, in UTC: the time alone for today, with the date for an older reading. */
+export function readingTime(observedAt: string | null | undefined, now = Date.now()): string | null {
+  const read = observedAt ? Date.parse(observedAt) : Number.NaN;
+  if (!Number.isFinite(read)) return null;
+  const iso = new Date(read).toISOString();
+  return `${iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10) ? "" : `${iso.slice(0, 10)} `}${iso.slice(11, 16)} UTC`;
+}
 export const fundingInterval = (row: Pick<PerpBoardRow, "fundingIntervalHours" | "fundingKind">) => row.fundingIntervalHours ? `${row.fundingIntervalHours}h${row.fundingKind === "last-paid" ? " paid" : row.fundingKind === "continuous" ? " continuous" : ""}` : "--";
 export const HISTORY_METRICS = ["funding", "oi", "premium", "price", "long-short"] as const;
 export type HistoryMetric = typeof HISTORY_METRICS[number];

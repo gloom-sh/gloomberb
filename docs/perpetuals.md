@@ -1,6 +1,6 @@
 # Perpetual markets
 
-`PERP` opens the Board. Its tabs are Board, Rankings, Compare, History and Evidence. A market or underlying opens that market's History: `PERP BTC`, `PERP TSLA`, or `PERP hyperliquid:xyz:TSLA`. Stock descriptions (`DES`) and quote cards (`QQ`, when tall enough) link their matching stock perpetuals, showing mark, premium versus the underlying last price, interval-labelled funding, USD open interest and premium versus oracle.
+`PERP` opens the Board. Its tabs are Board, Rankings, Compare, History and Evidence. A market or underlying opens that market's History: `PERP BTC`, `PERP TSLA`, or `PERP hyperliquid:xyz:TSLA`. Stock descriptions (`DES`) and quote cards (`QQ`, when tall enough) link their matching stock perpetuals, showing the contract in plain words (perpetual futures, trading around the clock, on-chain where the venue is), its mark, premium versus the underlying last price, funding per eight hours, USD open interest, premium versus oracle and when the venue's figures were read (UTC).
 
 Stock links follow the selected listing and only appear when its underlying identity is confirmed. The same ticker on another exchange may belong to another company. A linked cross-listing still uses the perpetual's own reference listing, currency and share units for its premium.
 

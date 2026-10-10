@@ -3,6 +3,7 @@ import { ApiRequestError } from "../api-client/errors";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
 import { serializeCliError, type CliErrorObject } from "./result";
 import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
+import { withSearchHints } from "./not-a-ticker";
 
 const USAGE_PREFIX = "Usage: ";
 /** The code of every error a command fails with: bad input, nothing found, an option it does not take. */
@@ -11,6 +12,8 @@ const CLI_ERROR_CODE = "cli_error";
 export interface CliErrorContext {
   /** The command that failed, used to point at its help. */
   command?: string;
+  /** What the user typed after the command, so a hint can repeat their own spelling of a symbol. */
+  args?: readonly string[];
 }
 
 class CliFailure extends Error {
@@ -99,10 +102,18 @@ function formatCliErrorText(error: CliErrorObject, context: CliErrorContext): st
   ].join("\n");
 }
 
+function hintedError(error: CliErrorObject, args: readonly string[]): CliErrorObject {
+  return {
+    ...error,
+    message: withSearchHints(error.message, args),
+    ...(typeof error.details === "string" ? { details: withSearchHints(error.details, args) } : {}),
+  };
+}
+
 export function printCliError(error: unknown, options: CliGlobalOptions, context: CliErrorContext = {}): void {
   if (options.quiet && options.format === "text") return;
   const errorObject = cliErrorObject(error);
   console.error(options.format === "text"
-    ? formatCliErrorText(errorObject, context)
+    ? formatCliErrorText(hintedError(errorObject, context.args ?? []), context)
     : serializeCliError(errorObject, options));
 }

@@ -83,3 +83,26 @@ test("a request for an exchange the symbol is not listed on ends in where it tra
   await expect(loadForListing(await listing("SAN"), deps, ctx, async () => { throw failed; })).rejects.toBe(failed);
   expect(searches).toBe(0);
 });
+
+test("a bare symbol the service has no listing for still names its other listings, whichever way the router words it", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const row = { providerId: "test", symbol: "2222", currency: "SAR", type: "Common Stock" };
+  const dataProvider = createTestDataProvider({
+    search: async () => [{ ...row, name: "Saudi Arabian Oil Co.", exchange: "TADAWUL" }, { ...row, name: "Kotobuki Spirits Co., Ltd.", exchange: "JPX" }],
+  });
+  const deps = { store, dataProvider };
+  const ctx = { fail: (message: string, details?: string): never => { throw new ListingArgError(message, details); } };
+  const bare = await resolveCliListing("2222", undefined, deps);
+  for (const wording of ["No history provider available for 2222", "Not a ticker: 2222."]) {
+    const failure = await loadForListing(bare, deps, ctx, async () => { throw new Error(wording); }, undefined, { command: "history", noun: "history" })
+      .catch((error) => error);
+    expect(failure).toBeInstanceOf(ListingArgError);
+    expect(failure.message).toContain("2222 resolved to");
+    expect(failure.details).toContain("gloomberb history 2222:");
+  }
+  // A timeout is not a missing listing: it surfaces as it was thrown.
+  const timeout = new Error("request timed out");
+  await expect(loadForListing(bare, deps, ctx, async () => { throw timeout; }, undefined, { command: "history", noun: "history" })).rejects.toBe(timeout);
+});

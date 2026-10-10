@@ -12,6 +12,7 @@ import {
   publicTickerKey,
 } from "../utils/exchanges";
 import { withMarketData } from "./scoped-context";
+import { isNoProviderMessage } from "../sources/provider-errors";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -164,9 +165,12 @@ export interface ListingDataRequest {
   noun: string;
 }
 
-/** The router's answer when no source serves a symbol: "No history provider available for 2222". */
+/**
+ * The router's answer when no source serves a symbol: "No history provider available for 2222",
+ * or "Not a ticker: 2222." when the service found no listing for it.
+ */
 export function isNoProviderError(error: unknown): boolean {
-  return /\bprovider available for\b/i.test(error instanceof Error ? error.message : String(error ?? ""));
+  return isNoProviderMessage(error instanceof Error ? error.message : String(error ?? ""));
 }
 
 const MAX_OTHER_LISTINGS = 5;

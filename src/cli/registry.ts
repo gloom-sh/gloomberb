@@ -149,6 +149,7 @@ export function createCliCommandContext(
   ownerId: string,
   registryOrPlugins: Pick<CliCommandRegistry, "plugins" | "externalPlugins"> | GloomPlugin[],
   cliOptions: CliGlobalOptions = DEFAULT_CLI_OPTIONS,
+  args: readonly string[] = [],
 ): CliCommandContext {
   const registry = Array.isArray(registryOrPlugins)
     ? { plugins: registryOrPlugins, externalPlugins: [] }
@@ -169,7 +170,7 @@ export function createCliCommandContext(
       renderStats,
       renderTable,
     },
-    printResult: (result, options) => printCliResult(result, cliOptions, options),
+    printResult: (result, options) => printCliResult(result, cliOptions, options, args),
     log: debugLog.createLogger(ownerId === "core" ? "cli" : ownerId),
   };
 }

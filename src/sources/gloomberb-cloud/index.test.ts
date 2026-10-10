@@ -164,6 +164,21 @@ describe("GloomberbCloudProvider", () => {
     expect(failure.message).toBe("UPSTREAM");
   });
 
+  test("only the NOT_FOUND reason code marks a miss as a symbol no listing carries", async () => {
+    const provider = new GloomberbCloudProvider();
+    const answer = (reasonCode: string, status: "empty" | "unsupported" = "empty") => ({ status, data: null, reasonCode });
+    for (const [reasonCode, notFound] of [["NOT_FOUND", true], ["NO_DATA", false], ["UNSUPPORTED_RANGE", false]] as const) {
+      const empty = answer(reasonCode);
+      apiClient.getCloudQuote = async () => empty;
+      apiClient.getCloudQuotesBatch = async () => ({ status: "partial", data: { items: [{ symbol: "APPLE", exchange: "", ...empty }] } });
+      const misses = [
+        await provider.getQuote("APPLE").catch((error) => error),
+        (await provider.getQuotesBatch([{ symbol: "APPLE" }]))[0]!.error,
+      ];
+      for (const miss of misses) expect([reasonCode, (miss as ProviderMissError).notFound]).toEqual([reasonCode, notFound]);
+    }
+  });
+
   test("uses host venue aliases at the cloud boundary without losing suffix or non-equity identity", async () => {
     const requests: Array<[string, string | undefined]> = [];
     apiClient.getCloudQuote = async (symbol, exchange) => {

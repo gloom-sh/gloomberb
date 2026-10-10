@@ -22,7 +22,7 @@ import {
 import { parsePaneFunctionArgs } from "./pane-functions/options";
 import { checkCliCommandOptions } from "./command-options";
 import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
-import { setCliColorEnabledOverride } from "../utils/cli-output";
+import { setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
 import { requireOneArg, takeOption } from "./commands/command-utils";
@@ -341,6 +341,7 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     return { kind: "handled" };
   }
   setCliColorEnabledOverride(parsed.options.color);
+  setCliWidthOverride(parsed.options.width ?? null);
   const command = parsed.args[0] ?? (parsed.help ? "help" : undefined);
   if (!command) {
     return { kind: "unhandled" };
@@ -361,11 +362,11 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
     const result = await target.command.execute(
       commandArgs,
-      createCliCommandContext(target.ownerId, registry, parsed.options),
+      createCliCommandContext(target.ownerId, registry, parsed.options, commandArgs),
     );
     return normalizeCliDispatchResult(result);
   } catch (error) {
-    printCliError(error, parsed.options, { command: resolved.command.name });
+    printCliError(error, parsed.options, { command: resolved.command.name, args: commandArgs });
     process.exitCode = 1;
     return { kind: "handled" };
   }

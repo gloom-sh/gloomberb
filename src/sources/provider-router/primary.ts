@@ -4,7 +4,7 @@ import type { MarketDataRequestContext } from "../../types/data-provider";
 import type { Quote, TickerFinancials } from "../../types/financials";
 import { normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
 import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
-import { noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
+import { noteProviderAnswer, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
 import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
 import {
   dropUnusableProviderQuote,
@@ -78,11 +78,11 @@ export class ProviderRouterPrimaryRoutes {
     for (const provider of this.options.providersInPriorityOrder()) {
       try {
         const rawValue = await provider.getTickerFinancials(ticker, exchange, context);
-        if (rawValue && !context?.instrument && !providerFinancialsMatchTarget(rawValue, ticker, exchange)) continue;
+        if (rawValue && !context?.instrument && !providerFinancialsMatchTarget(rawValue, ticker, exchange)) { noteProviderAnswer(misses); continue; }
         const resolvedValue = resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(rawValue));
-        if (resolvedValue && !context?.instrument && !providerFinancialsMatchTarget(resolvedValue, ticker, exchange)) continue;
+        if (resolvedValue && !context?.instrument && !providerFinancialsMatchTarget(resolvedValue, ticker, exchange)) { noteProviderAnswer(misses); continue; }
         let value = resolvedValue ? dropUnusableProviderQuote(resolvedValue, exchange, { recentAnswer: true }) : null;
-        if (!value) continue;
+        if (!value) { noteProviderAnswer(misses); continue; }
         const sourceKey = this.options.providerSourceKey(provider);
         if (context?.statementHistory === "extended" && !hasReusableExtendedHistory(value)) {
           const previous = selectCachedResource<TickerFinancials>(this.options.resources, "financials", entityKey, [variantKey], [sourceKey], true);
@@ -198,6 +198,7 @@ export class ProviderRouterPrimaryRoutes {
       try {
         const quote = await provider.getQuote(ticker, exchange, context);
         if (!isProviderQuoteUsableForCurrentSession(quote, exchange, ticker, { recentAnswer: true })) {
+          noteProviderAnswer(misses);
           const lastKnown = misses && lastKnownProviderQuote(quote, exchange, ticker);
           if (lastKnown && (misses.lastKnownQuote?.lastUpdated ?? -Infinity) < lastKnown.lastUpdated) {
             misses.lastKnownQuote = lastKnown;

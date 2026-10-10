@@ -7,12 +7,14 @@ import {
   statValueWidth,
   visibleLength,
   wrapText,
+  wrapToTerminal,
   type CliStatEntry,
   type CliTableColumn,
 } from "../utils/cli-output";
 import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
+import { withSearchHints } from "./not-a-ticker";
 import { renderReportCsv, renderReportNdjson, type CliReportTables } from "./report-tables";
 import { windowRows, type RowWindow, type RowWindowOptions } from "./row-window";
 
@@ -335,7 +337,7 @@ function overflowsTerminal<Row extends Record<string, unknown>>(rows: Row[]): bo
 
 /** The closing source, as-of and status line of a text result, for output printed without `printResult`. */
 export function cliFreshnessFooter(freshness: ReportFreshness): string {
-  return cliStyles.muted(formatFreshnessLine(freshness));
+  return cliStyles.muted(wrapToTerminal(formatFreshnessLine(freshness)));
 }
 
 export function serializeCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
@@ -411,9 +413,12 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   result: CliResult<T>,
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row> = {},
+  args: readonly string[] = [],
 ): void {
   if (options.quiet && options.format === "text") return;
-  const output = serializeCliResult(result, options, renderOptions);
+  // JSON keeps the router's own words; everything else is for a person, so a "Not a ticker" gets its hint.
+  const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args);
+  const output = hinted(serializeCliResult(result, options, renderOptions));
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
   if (output) process.stdout.write(`${output}\n`);
@@ -421,7 +426,7 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   // rows, so a warning goes to stderr, out of a file the rows are piped into.
   if (options.format !== "json" && !options.quiet) {
     for (const warning of result.warnings ?? []) {
-      console.error(`${cliStyles.warning("warning:")} ${warning}`);
+      console.error(`${cliStyles.warning("warning:")} ${hinted(warning)}`);
     }
   }
 }

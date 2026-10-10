@@ -49,10 +49,18 @@ function detailEntries(view: StatViewModel): HeadlessPaneEntry[] {
       value: view.low,
       formatted: `${format(view.low.value)} ${view.low.date}`,
     },
-    { label: "As of", value: view.latest.date },
+    // FRED dates a monthly reading at the month's first day; the text says which period it is.
+    { label: "Period", value: view.latest.date, formatted: view.reading },
     { label: "Source", value: `FRED ${view.stat.seriesId}` },
   ];
 }
+
+/** The window the %ile column counts over, in words. */
+const PERCENTILE_WINDOW: Record<StatRangeId, string> = {
+  "5Y": "the last 5 years",
+  "20Y": "the last 20 years",
+  ALL: "the full history",
+};
 
 export function projectStatsHeadlessBundle(
   bundle: StatsBundle,
@@ -86,7 +94,7 @@ export function projectStatsHeadlessBundle(
           align: "right" as const,
           format: (value: unknown) => formatNumber(Number(value), 0),
         },
-        { key: "asOf", header: "As of" },
+        { key: "asOf", header: "Period", format: (_value: unknown, row: Record<string, unknown>) => String(row.reading) },
       ],
       rows: categoryViews.map((view) => ({
         id: view.stat.id,
@@ -97,6 +105,7 @@ export function projectStatsHeadlessBundle(
         formattedPrevious: view.previous ? view.stat.formatValue(view.previous.value) : "-",
         percentile: view.percentile,
         asOf: view.latest.date,
+        reading: view.reading,
         stale: view.observationStale || view.cacheStale,
         fetchedAt: view.fetchedAt,
         cacheStale: view.cacheStale,
@@ -112,6 +121,7 @@ export function projectStatsHeadlessBundle(
       ...(selected ? [{ title: selected.stat.label, entries: detailEntries(selected) }] : []),
     ],
     errors: bundle.errors,
+    notes: [`%ile is the share of past readings at or below the latest one, over ${PERCENTILE_WINDOW[range]}.`],
     metadata: {
       fetchedAt: bundle.fetchedAt,
       fetchedAtComplete: bundle.fetchedAtComplete,

@@ -137,3 +137,31 @@ test.each([80, 120])("saved index selection prunes unavailable counts and source
   expect(frame).toContain(formatTime(times["^FTSE"]));
   expect(frame).not.toContain(formatTime(times["^GSPC"]));
 });
+
+test.each([
+  ["No quote provider available for DX-Y.NYB", true],
+  ["request timed out", false],
+])("a row with no quote because %j says why only when the feed lacks the index", async (failure, feedGap) => {
+  const provider = createTestDataProvider({ getQuotesBatch: async (targets: Array<{ symbol: string }>): Promise<QuoteBatchResult[]> => targets.map((target) => ({
+    target, quote: target.symbol === "DX-Y.NYB" ? null : {
+      symbol: target.symbol, price: PRICES[target.symbol]!, change: 12.5, changePercent: 0.42,
+      currency: "USD", marketState: "CLOSED" as const, lastUpdated: Date.parse("2026-09-11T20:46:00Z"),
+    },
+    ...(target.symbol === "DX-Y.NYB" ? { error: new Error(failure) } : {}),
+  })) });
+  const runtime = createTestPluginRuntime({ getMarketData: () => provider });
+  function GapHarness() {
+    const config = createTestPaneConfig("/tmp/gloomberb-wei-gap-test", {
+      paneId: "world-indices", instanceId: "world-indices", settings: { symbols: ["^GSPC", "^FTSE", "DX-Y.NYB"] },
+    });
+    return <TestPaneProvider state={createInitialState(config)} paneId="world-indices" runtime={runtime} pluginId="market-overview">
+      <WorldIndicesPane paneId="world-indices" paneType="world-indices" focused width={120} height={24} />
+    </TestPaneProvider>;
+  }
+  await act(async () => { await tui.render(<GapHarness />, { width: 120, height: 24 }); });
+  await settle();
+  const row = tui.frame().split("\n").find((line) => line.includes("DXY")) ?? "";
+  expect(row.includes("not available from the feed · US Dollar Index")).toBe(feedGap);
+  // The figures are blank, not a run of dashes, once the row says why.
+  if (feedGap) expect(row).not.toMatch(/[\u2014-]/);
+});

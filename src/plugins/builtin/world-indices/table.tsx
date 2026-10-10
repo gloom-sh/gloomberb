@@ -3,7 +3,8 @@ import { colors } from "../../../theme/colors";
 import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
-import { renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
+import { renderQuoteBoardCell, type BoardQuoteMap, type BoardQuoteState } from "../shared/use-quote-board";
+import { isFeedGap, NOT_IN_FEED } from "./client";
 import type {
   WorldIndexColumnId,
   WorldIndexTableRow,
@@ -66,6 +67,11 @@ const formatIndexPrice = (quote: Quote) => formatNumber(quote.price, 2);
 const formatIndexChange = (quote: Quote) =>
   `${quote.change >= 0 ? "+" : "-"}${formatNumber(Math.abs(quote.change), 2)}`;
 
+/** An index the feed has no quote for: not loading, and no figures to show. */
+function isUnavailableInFeed(state: BoardQuoteState | undefined): boolean {
+  return !!state && !state.quote && !state.loading && isFeedGap(state.error);
+}
+
 export function renderWorldIndexCell(
   row: WorldIndexTableRow,
   column: WorldIndexColumn,
@@ -75,6 +81,8 @@ export function renderWorldIndexCell(
   if (row.type === "header") return { text: "" };
 
   const { entry } = row;
+  // The figures are blank and the name cell says why, ahead of the name so a narrow pane clips the name, not the reason.
+  const unavailable = isUnavailableInFeed(quotes.get(entry.symbol));
   switch (column.id) {
     case "symbol":
       return {
@@ -83,8 +91,11 @@ export function renderWorldIndexCell(
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: entry.name };
+      return unavailable
+        ? { text: `${NOT_IN_FEED} · ${entry.name}`, color: colors.textDim }
+        : { text: entry.name };
     default:
+      if (unavailable) return { text: "" };
       return renderQuoteBoardCell(column.id, quotes.get(entry.symbol), {
         sessionText: options?.sessionText,
         formatPrice: formatIndexPrice,

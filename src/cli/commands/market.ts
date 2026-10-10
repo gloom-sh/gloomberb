@@ -100,6 +100,7 @@ import {
   type ListingIdentity,
 } from "../listing-arg";
 import { providerMissReason } from "../../sources/provider-errors";
+import { isNotATickerMessage } from "../not-a-ticker";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
@@ -164,22 +165,27 @@ function listingMetadata(identity: ListingIdentity) {
   return { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name };
 }
 
+// Fitted to a narrow width, the columns marked optional go first (higher dropPriority first), then Name is cut short.
+// What a user types or reads the price by stays whole.
 const QUOTE_LEAD_COLUMNS = [
-  { key: "symbol", header: "Symbol" },
+  { key: "symbol", header: "Symbol", shrink: false },
   { key: "name", header: "Name" },
   {
     key: "price",
     header: "Last",
     align: "right" as const,
     format: (value: unknown, row: QuoteRow) => (
-      row.error && !value ? cliStyles.danger("unavailable") : String(value ?? "")
+      row.error && !value
+        // A typo is not an outage: say what is wrong with the symbol itself.
+        ? isNotATickerMessage(row.error) ? cliStyles.warning("not a ticker") : cliStyles.danger("unavailable")
+        : String(value ?? "")
     ),
   },
   { key: "changePercent", header: "Chg%", align: "right" as const, format: formatChangePercentCell },
   // Text drops a column no row fills, so a table without an extended print stays as narrow as before.
   extendedColumn("PRE"),
   extendedColumn("POST"),
-  { key: "session", header: "Session" },
+  { key: "session", header: "Session", shrink: false },
 ];
 
 type QuoteRow = ReturnType<typeof quoteRows>[number];
@@ -207,11 +213,11 @@ function roundedPercent(value: number | undefined): number | null {
 function quoteColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS,
-    { key: "currency", header: "Cur" },
+    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 1 },
     // Whether the price is real-time or delayed: a feed state, not where it came from.
-    { key: "source", header: "Feed", format: (value: unknown) => value === "live" || value === "delayed" ? value : "" },
+    { key: "source", header: "Feed", shrink: false, optional: true, dropPriority: 2, format: (value: unknown) => value === "live" || value === "delayed" ? value : "" },
     // In a narrow terminal the closing line's as-of stands in for each row's.
-    { key: "updatedAt", header: "Updated", optional: true },
+    { key: "updatedAt", header: "Updated", shrink: false, optional: true, dropPriority: 3 },
   ];
 }
 
@@ -222,7 +228,7 @@ function compareColumns() {
     // A narrow terminal drops these before it cuts the names short.
     { key: "dayRange", header: "Day Range", align: "right" as const, optional: true, dropPriority: 1 },
     { key: "volume", header: "Volume", align: "right" as const, format: formatCountCell, optional: true, dropPriority: 2 },
-    { key: "currency", header: "Cur" },
+    { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 3 },
   ];
 }
 

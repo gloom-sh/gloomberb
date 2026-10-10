@@ -49,6 +49,10 @@ export async function buildFunctionReport(
   const startedAt = performance.now();
   const source = resolvePaneFunctionReportSource(resolved);
   if (!source) {
+    // HELP is what a newcomer tries first: send them to the command guide and the function list.
+    if (resolved.pane.id === "help") {
+      throw new Error("HELP is an in-app pane, so it has no report. For the commands run `gloomberb help`; for the functions run `gloomberb catalog`.");
+    }
     throw new Error(`${resolved.token} is an interactive pane and does not expose a data report.`);
   }
 

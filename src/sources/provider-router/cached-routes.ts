@@ -18,6 +18,8 @@ interface Route {
   variants: string[];
   request: (provider: DataProvider, force: boolean) => Promise<unknown> | undefined;
   error: string;
+  /** The symbol the request is for, so an answer that no listing exists can name it. */
+  symbol?: string;
   rank?: (value: any, fetchedAt?: number) => number;
   acceptCached?: (value: any) => boolean;
   decode?: (value: any) => unknown;
@@ -135,7 +137,7 @@ export class ProviderRouterCachedRoutes {
           const policy = resolveCachePolicy(undefined, route.policy);
           return { value: route.empty(), fetchedAt, staleAt: fetchedAt + policy.staleMs, expiresAt: fetchedAt + policy.expireMs, source: "" };
         }
-        throw noProviderError(route.error, misses);
+        throw noProviderError(route.error, misses, route.symbol);
       },
     });
     this.queries.set(key, query);
@@ -177,8 +179,8 @@ export class ProviderRouterCachedRoutes {
       && !hasBrokerContext(instrumentContext) && !instrumentContext?.instrument) {
       exchange = publicListingExchange(ticker, exchange);
     }
-    const tickerRoute = (kind: string, policy: ProviderRouterCachePolicyKey): Pick<Route, "kind" | "policy" | "entityKey" | "variants"> => ({
-      kind, policy, entityKey: this.deps.getEntityKey(ticker, instrumentContext?.instrument),
+    const tickerRoute = (kind: string, policy: ProviderRouterCachePolicyKey): Pick<Route, "kind" | "policy" | "entityKey" | "variants" | "symbol"> => ({
+      kind, policy, symbol: ticker, entityKey: this.deps.getEntityKey(ticker, instrumentContext?.instrument),
       variants: this.deps.getTickerVariantCandidates(exchange),
     });
     switch (method) {

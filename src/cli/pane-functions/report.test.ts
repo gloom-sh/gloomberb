@@ -105,3 +105,16 @@ test("chart composer reports accept capability-backed series", async () => {
   });
   expect(report.text).toContain("Prediction");
 });
+
+test("HELP has no report and sends a newcomer to the command guide and the function catalog", async () => {
+  const resolved = (id: string) => ({
+    token: id, pane: { id, name: id }, template: undefined, instance: {}, capability: { id, reportReadiness: "none" },
+  }) as unknown as ResolvedPaneFunction;
+  const context = { config: createDefaultConfig("/tmp/gloomberb-help-report-test"), dataProvider: createTestDataProvider() } as unknown as MarketContext;
+  const message = (id: string) => buildFunctionReport(resolved(id), context, "").catch((error: Error) => error.message);
+  const help = await message("help");
+  expect(help).toContain("`gloomberb help`");
+  expect(help).toContain("`gloomberb catalog`");
+  // Another interactive pane keeps the plain statement.
+  expect(await message("chat")).toBe("chat is an interactive pane and does not expose a data report.");
+});

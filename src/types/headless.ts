@@ -90,6 +90,8 @@ export interface HeadlessPaneColumn {
   header: string;
   align?: "left" | "right" | "center";
   width?: number;
+  /** False keeps the column whole when the text table is fitted to a narrow width, so a time or an id is never cut. */
+  shrink?: boolean;
   description?: string;
   format?: (value: unknown, row: HeadlessPaneRow) => string;
 }

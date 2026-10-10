@@ -1,6 +1,7 @@
 import { isCryptoInstrumentType } from "../../tickers/search/ranking";
 import type { Quote } from "../../types/financials";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
+import { isNotATickerMessage } from "../not-a-ticker";
 
 /** Where a crypto pair that will not load can still be read. `fn CRYP` takes no argument. */
 export const CRYPTO_BOARD_HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";
@@ -67,7 +68,10 @@ export function quoteNotes(results: QuoteNoteResult[], options: { exchange?: str
     if (!symbols.includes(result.target.symbol)) failures.set(reason, [...symbols, result.target.symbol]);
   }
   const notes = [...failures].map(([reason, symbols]) => (
-    `${symbols.join(", ")}: ${reason}${symbols.some(isCryptoPairSymbol) ? `${/[.!?]$/.test(reason) ? "" : "."} ${CRYPTO_BOARD_HINT}` : ""}`
+    // "Not a ticker: APPLE." already names its symbol.
+    isNotATickerMessage(reason)
+      ? reason
+      : `${symbols.join(", ")}: ${reason}${symbols.some(isCryptoPairSymbol) ? `${/[.!?]$/.test(reason) ? "" : "."} ${CRYPTO_BOARD_HINT}` : ""}`
   ));
   if (!options.exchange) {
     for (const result of results) {

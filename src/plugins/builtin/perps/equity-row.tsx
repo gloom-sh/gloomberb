@@ -6,7 +6,7 @@ import { useAsyncResource, useAutoRefresh, usePluginAppActions } from "../../../
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { perpEquityIdentity } from "./equity-identity";
 import { loadPerpsEquity } from "./client";
-import { compact, marketLabel, percent, price } from "./model";
+import { compact, percent, perpDescription, price, readingTime } from "./model";
 
 /** A failed optional market comparison never blocks a stock's quote. */
 export function PerpEquityRow({ symbol, exchange, instrumentType, maxRows = 3 }: { symbol: string; exchange?: string; instrumentType?: string; maxRows?: number }) {
@@ -23,8 +23,11 @@ export function PerpEquityRow({ symbol, exchange, instrumentType, maxRows = 3 }:
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   const rows = resource.data?.payload.rows.filter((row) => !row.delisted) ?? [];
   if (!enabled || !rows.length) return null;
-  return <>{rows.slice(0, maxRows).map((row) => <ActionRow key={row.marketId} height={2}
-    // Funding reads per 8h here as it does in PERP, whatever interval the venue pays on.
-    label={`${marketLabel(row)} perp  ${price(row.markPrice)} ${row.quoteCurrency}  ${percent(row.underlyingPremium, 2)} vs last${row.stale || resource.data?.stale ? " · stale" : ""}\nFunding ${percent(row.fundingRate8h, 4)} / 8h · OI ${compact(row.openInterestUsd)} USD · oracle ${percent(row.premium, 2)}`}
-    onPress={() => createPaneFromTemplate("perps-pane", { arg: row.marketId })} />)}</>;
+  return <>{rows.slice(0, maxRows).map((row) => {
+    const read = readingTime(row.observedAt);
+    return <ActionRow key={row.marketId} height={2}
+      // Funding reads per 8h here as it does in PERP, whatever interval the venue pays on.
+      label={`${row.baseAsset} · ${perpDescription(row)}  ${price(row.markPrice)} ${row.quoteCurrency}  ${percent(row.underlyingPremium, 2)} vs last${row.stale || resource.data?.stale ? " · stale" : ""}\nFunding ${percent(row.fundingRate8h, 4)} per 8 h · OI ${compact(row.openInterestUsd)} USD · oracle ${percent(row.premium, 2)}${read ? ` · as of ${read}` : ""}`}
+      onPress={() => createPaneFromTemplate("perps-pane", { arg: row.marketId })} />;
+  })}</>;
 }

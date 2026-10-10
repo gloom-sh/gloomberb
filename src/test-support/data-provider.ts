@@ -21,6 +21,22 @@ export function createTestDataProvider(overrides: Partial<DataProvider> = {}): D
   };
 }
 
+/**
+ * A source that answers every request the way Gloom Cloud answers a symbol no listing carries:
+ * an empty status with the reason code NOT_FOUND.
+ */
+export function createNotFoundProvider(overrides: Partial<DataProvider> = {}): DataProvider {
+  const miss = () => Promise.reject(createProviderMiss("NOT_FOUND", undefined, { notFound: true }));
+  return createTestDataProvider({
+    id: "not-found",
+    priority: 100,
+    getQuote: miss,
+    getTickerFinancials: miss,
+    getPriceHistory: miss,
+    ...overrides,
+  });
+}
+
 export function createTestQuote(overrides: Partial<Quote> = {}): Quote {
   return {
     symbol: "AAPL",

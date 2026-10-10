@@ -57,6 +57,7 @@ import {
   formatCloudDateTime,
   isEmptyCloudStatus,
   mapBatchError,
+  NOT_FOUND_REASON,
   mapCloudFinancials,
   mapOptionsChain,
   mapPricePoint,
@@ -330,7 +331,7 @@ function unwrapRequiredCloudResponse<T>(response: CloudMarketResponse<T>, messag
     return response.data;
   }
   if (isEmptyCloudStatus(response.status)) {
-    throw createProviderMiss(response.reasonCode ?? message, response.message);
+    throw createProviderMiss(response.reasonCode ?? message, response.message, { notFound: response.reasonCode === NOT_FOUND_REASON });
   }
   throw new Error(response.reasonCode ?? message);
 }

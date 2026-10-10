@@ -23,7 +23,7 @@ import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
 import { calendarHistoryFetchState, calendarHistoryLastBarDate, dropLeadingPlaceholderBars, getPricePointTimestamp, hasUsablePriceHistory, preservePriceHistoryGaps, isPriceHistoryStaleForCurrentWindow, normalizePriceHistory, priceHistoryIntervalMs, type CalendarHistoryFetchState } from "../../utils/price-history";
-import { shouldLogProviderError } from "../provider-errors";
+import { noProviderError, noteProviderAnswer, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
 import { HistoryCoverageError } from "../history-coverage";
 import {
   buildVariantKey,
@@ -66,6 +66,8 @@ interface HistoryAttempts {
   outcomes: Map<string, HistorySourceOutcome>;
   candidates: Map<string, HistoryRecoveryCandidate>;
   pending: Set<string>;
+  /** Whether every provider that failed said it found no listing for the symbol. */
+  misses: ProviderMissNote;
   coverageError?: HistoryCoverageError;
   retention?: HistoryRetention;
 }
@@ -105,6 +107,7 @@ function candidateForRequest(request: HistoryRequestDescriptor, sourceKey: strin
 
 function recordHistoryError(attempts: HistoryAttempts | undefined, request: HistoryRequestDescriptor, sourceKey: string, error: unknown): void {
   if (!attempts) return;
+  noteProviderMiss(attempts.misses, error);
   if (error instanceof InvalidHistoryResultError) {
     recordHistoryOutcome(attempts, sourceKey, "malformed");
   } else if (isHistoryRetentionError(error)) {
@@ -623,7 +626,7 @@ export class ProviderRouterHistoryRoutes {
     const onUnavailable = (sourceKey: string, value: PriceHistoryResult) => {
       if (value.points.length && !hasUsablePriceHistory(value.points)) supersededCacheSources.add(sourceKey);
     };
-    const attempts: HistoryAttempts = { outcomes: new Map(), candidates: new Map(), pending: new Set() };
+    const attempts: HistoryAttempts = { outcomes: new Map(), candidates: new Map(), pending: new Set(), misses: {} };
     const brokerResult = await withBrokerTimeout(this.fetchBrokerHistory(request, brokerCandidates, onUnavailable, attempts));
     for (const sourceKey of [...attempts.pending]) recordHistoryOutcome(attempts, sourceKey, "timeout");
     if (brokerResult && hasUsablePriceHistory(brokerResult.value.points)) return withReportedGaps(brokerResult.value);
@@ -662,7 +665,9 @@ export class ProviderRouterHistoryRoutes {
       // A source answered a coin's history but it stops short of the present: say so, not that nothing answered.
       const behind = isRoundTheClockCoin(target.symbol, target.exchange || request.target.exchange)
         && [...attempts.outcomes.values()].some((outcome) => outcome.outcome === "stale");
-      throw new Error(behind ? `Latest history for ${target.symbol} is behind` : request.missingProviderError);
+      if (behind) throw new Error(`Latest history for ${target.symbol} is behind`);
+      // The service has no listing for the symbol: say it is not a ticker, not that no source answered.
+      throw noProviderError(request.missingProviderError, { notFound: attempts.misses.notFound }, request.target.symbol);
     }
     return withReportedGaps(providerResult?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) });
   }
@@ -739,6 +744,7 @@ export class ProviderRouterHistoryRoutes {
       attempts?.pending.add(sourceKey);
       try {
         const fetched = await request.fetchProvider(provider);
+        noteProviderAnswer(attempts?.misses);
         if (fetched === null) { recordHistoryOutcome(attempts, sourceKey, "empty"); return null; }
         if (!Array.isArray(fetched.points)) { recordHistoryOutcome(attempts, sourceKey, "malformed"); return null; }
         const value = normalizeRequestResult({ ...fetched, sourceKey }, request);
