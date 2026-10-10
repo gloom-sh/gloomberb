@@ -8,8 +8,10 @@ import {
   canonicalExchange,
   exchangeLabel,
   isKnownExchangeCode,
+  isUsListingExchange,
   parsePublicTickerKey,
   publicTickerKey,
+  resolveExchangeTimeZone,
 } from "../utils/exchanges";
 import { withMarketData } from "./scoped-context";
 import { isNoProviderMessage } from "../sources/provider-errors";
@@ -278,14 +280,17 @@ export type BareListingQuote =
   | ({ kind: "missing" } & OtherListingsMessage);
 
 /**
- * The quote for a bare symbol no source quoted. A bare request names no venue,
- * so the data service looks only for a home listing the symbol may not have,
- * while search knows where it trades: each listing is asked again by its own
- * key (SXR8:XETRA), as a named one is. The listing the symbol resolved to goes
- * first, then the others together, and the first in search order with a quote
- * is the answer. When none has one, the `otherListingsMessage` failure. Null
- * when the symbol named its exchange (a named venue never switches) or search
- * knows no listing of it. It searches, so ask only after a request failed.
+ * The quote for a bare symbol no source quoted. The data service reads a
+ * symbol with no US listing on its home listing abroad (`bareListingNote`),
+ * so this is left for one it reads on none, as a code several companies list
+ * (2222 is Kotobuki Spirits in Tokyo and Saudi Aramco in Riyadh), and for a
+ * home listing with no quote. Search knows where the symbol trades: each
+ * listing is asked again by its own key (2222:JPX), as a named one is. The
+ * listing the symbol resolved to goes first, then the others together, and
+ * the first in search order with a quote is the answer. When none has one,
+ * the `otherListingsMessage` failure. Null when the symbol named its exchange
+ * (a named venue never switches) or search knows no listing of it. It
+ * searches, so ask only after a request failed.
  */
 export async function quoteBareListing(
   listing: CliListing,
@@ -327,6 +332,26 @@ export async function quoteBareListing(
     quote: quotes[found]!,
     note: `${listing.symbol} -> ${answer.exchange}${aside ? ` (${aside})` : ""}`,
   };
+}
+
+// The zones of the US exchanges; a venue in another is abroad.
+const US_TIME_ZONES = new Set(["America/New_York", "America/Chicago"]);
+
+/**
+ * "SXR8 -> XETRA" for a bare symbol the data service read on its home listing
+ * abroad, as it reads a symbol with no US listing whose listings belong to one
+ * company or fund: a row that shows the symbol as typed says which listing it
+ * is. Null for a named or saved venue, and for a venue the app does not place
+ * outside the US (a US exchange, OTC, a futures exchange).
+ */
+export function bareListingNote(
+  listing: Pick<CliListing, "symbol" | "request">,
+  quote: Pick<Quote, "listingExchangeName" | "exchangeName"> | null | undefined,
+): string | null {
+  if (listing.request.exchange || !quote || !/^[A-Z0-9]{1,10}$/.test(listing.symbol)) return null;
+  const venue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  const zone = resolveExchangeTimeZone(venue);
+  return zone && !US_TIME_ZONES.has(zone) && !isUsListingExchange(venue) ? `${listing.symbol} -> ${venue}` : null;
 }
 
 /**

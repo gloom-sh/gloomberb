@@ -90,6 +90,7 @@ import {
   SEC_FILINGS,
 } from "../../plugins/builtin/shared/report-freshness";
 import {
+  bareListingNote,
   EXCHANGE_OPTION,
   isNoProviderError,
   listingHeading,
@@ -521,10 +522,11 @@ interface QuoteAnswer {
 
 /**
  * One symbol's row of `quote` and `compare`. A listing on an exchange its symbol
- * is not listed on says so. A bare symbol no source quotes is quoted on its
- * listings (`quoteBareListing`), else names them; a bare index root (VIX) also
- * names its index (^VIX). Venues are only looked up for a symbol with no quote,
- * so a request that succeeds costs no search.
+ * is not listed on says so. A bare symbol the data service read on its home
+ * listing abroad names that venue (SXR8 -> XETRA). One no source quotes is
+ * quoted on its listings (`quoteBareListing`), else names them; a bare index
+ * root (VIX) also names its index (^VIX). Venues are only looked up for a
+ * symbol with no quote, so a request that succeeds costs no search.
  */
 async function answerQuote(
   result: QuoteBatchResult,
@@ -537,7 +539,7 @@ async function answerQuote(
   // A bare root that quoted something else, such as MOVE (Corvex), points at the index too.
   const also = (quote: Quote) => root && quote.instrumentType?.trim().toUpperCase() !== "INDEX"
     ? [indexRootAlsoLine(root, request.command)] : [];
-  if (result.quote) return { result, listing, notes: also(result.quote) };
+  if (result.quote) return { result, listing, notes: [bareListingNote(listing, result.quote) ?? [], also(result.quote)].flat() };
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };

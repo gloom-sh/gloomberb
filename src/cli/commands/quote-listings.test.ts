@@ -70,6 +70,27 @@ test("a bare symbol with no quote is asked on the venue it resolved to, then its
   expect(quotedBare.searches()).toBe(0);
 });
 
+test("a bare symbol the service read on its home listing abroad names the venue, without a search", async () => {
+  const listed = (symbol: string, exchangeName: string, currency = "USD") => createTestQuote({ symbol, exchangeName, listingExchangeName: exchangeName, currency });
+  const source = venueSource("SXR8", ["XETRA", "BUD"], {
+    SXR8: listed("SXR8", "XETRA", "EUR"),
+    "SXR8:XETRA": listed("SXR8", "XETRA", "EUR"),
+    AAPL: listed("AAPL", "NASDAQ"),
+    TCEHY: listed("TCEHY", "OTC MARKETS OTCPK"),
+    CL1: listed("CL1", "NY MERCANTILE"),
+    "^GDAXI": listed("^GDAXI", "XETRA", "EUR"),
+  });
+
+  const bare = await runQuote(["SXR8"], source);
+  expect(bare.rows.map((row) => row.target.symbol)).toEqual(["SXR8"]);
+  expect(bare.warnings).toEqual(["SXR8 -> XETRA"]);
+  expect(source.searches()).toBe(0);
+  // A named venue, a US or OTC listing, a futures venue and an index say nothing more.
+  for (const symbol of ["SXR8:XETRA", "AAPL", "TCEHY", "CL1", "^GDAXI"]) {
+    expect((await runQuote([symbol], source)).warnings).toEqual([]);
+  }
+});
+
 test("a bare index root points at its ^ index, whether it found nothing or another instrument", async () => {
   const none = await runQuote(["VIX"], venueSource("VIX", [], {}));
   expect(none.failure?.details).toContain("gloomberb quote ^VIX");
