@@ -63,3 +63,25 @@ test("Tadawul and Qatar trade Sunday to Thursday, DFM Monday to Friday", () => {
   expect(iso(nextRegularSessionOpen("TADAWUL", at("2026-10-10T09:00:00Z"))?.open)).toBe("2026-10-11T07:00:00.000Z");
   expect(iso(nextRegularSessionOpen("DFM", at("2026-10-10T08:00:00Z"))?.open)).toBe("2026-10-12T06:00:00.000Z");
 });
+
+test("Boursa Kuwait trades Sunday to Thursday and closes with its auction", () => {
+  // Kuwait is UTC+3. Continuous trading opens 09:00; the close is the end of
+  // the closing auction, 13:10 (10:10 UTC).
+  // [now, in session, latest close]
+  const rows: Array<[string, boolean, string]> = [
+    // Friday and Saturday are off, on Thursday's session.
+    ["2026-10-09T09:00:00Z", false, "2026-10-08T10:10:00.000Z"],
+    ["2026-10-10T09:00:00Z", false, "2026-10-08T10:10:00.000Z"],
+    // Sunday a minute before the open, then at 11:00 Kuwait.
+    ["2026-10-11T05:59:00Z", false, "2026-10-08T10:10:00.000Z"],
+    ["2026-10-11T08:00:00Z", true, "2026-10-08T10:10:00.000Z"],
+    // A Tuesday session through the closing auction.
+    ["2026-10-06T10:09:00Z", true, "2026-10-05T10:10:00.000Z"],
+    ["2026-10-06T10:10:00Z", false, "2026-10-06T10:10:00.000Z"],
+  ];
+  for (const [now, inSession, close] of rows) {
+    expect(isRegularSessionTime("KUWAIT", at(now)), now).toBe(inSession);
+    expect(iso(latestRegularSessionClose("KUWAIT", at(now))?.close), now).toBe(close);
+  }
+  expect(iso(nextRegularSessionOpen("KUWAIT", at("2026-10-10T09:00:00Z"))?.open)).toBe("2026-10-11T06:00:00.000Z");
+});
