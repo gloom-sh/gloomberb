@@ -415,6 +415,10 @@ export interface CommandResultDef {
   label: string;
   detail?: string;
   category?: string;
+  /** Short tag drawn left of the label, as on a search provider's row. Six characters at most. */
+  badge?: string;
+  /** Drawn muted after the label, e.g. a person's full name after their @username. */
+  name?: string;
   right?: string;
   keywords?: string[];
   current?: boolean;
@@ -440,6 +444,8 @@ export interface CommandBarResultDef {
   category?: string;
   /** Short tag drawn left of the label, e.g. a document type. Six characters at most. */
   badge?: string;
+  /** Drawn muted after the label, e.g. a person's full name after their @username. */
+  name?: string;
   right?: string;
   keywords?: string[];
   disabled?: boolean;
@@ -457,15 +463,29 @@ export interface CommandBarSearchProvider {
   category: string;
   /** Sort position of the section. Higher sinks. Navigation sections are negative; use a positive value to sit below them. */
   priority?: number;
-  /** Skip provide() below this length. Default 3. */
+  /** Skip the provider below this length. Default 3. */
   minQueryLength?: number;
-  /** Default 300. */
+  /** Default 300. Ignored by `match`. */
   debounceMs?: number;
+  /**
+   * Codes (`CHAT`) after which the provider is still asked, typed alone or
+   * with text after them, with the whole query. Every other provider stays
+   * quiet once a code claims the text.
+   */
+  shortcuts?: readonly string[];
   provide(
     query: string,
     context: CommandBarSearchContext,
     signal: AbortSignal,
   ): Promise<CommandBarResultDef[]>;
+  /**
+   * Rows from what the app already holds in memory. When set, the bar calls
+   * this instead of `provide`, as it renders and on every keystroke, so it
+   * must be cheap: no request, no waiting. Its rows are ranked with the bar's
+   * own matches as they are typed and sit under Suggested in the empty bar.
+   * Keep `provide` answering the same rows for older versions of the app.
+   */
+  match?(query: string, context: CommandBarSearchContext): CommandBarResultDef[];
 }
 
 interface CliHelpColumn {

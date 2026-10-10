@@ -136,7 +136,7 @@ function makePluginRegistry(hasPaneSettings: (paneId: string) => boolean = () =>
     ]),
     commandBarSearchProviders: new Map<string, any>(),
     getCommandBarSearchProviderPluginId: () => undefined,
-    getEnabledTickerActions() { return [...this.tickerActions.values()]; },
+    getEnabledTickerActions(this: PluginRegistry) { return [...this.tickerActions.values()]; },
     tickerActions: new Map<string, any>([
       ["pin", {
         id: "pin",

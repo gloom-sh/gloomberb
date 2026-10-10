@@ -374,12 +374,15 @@ export function CommandBar({
   const closeAfterProviderResult = useCallback(() => {
     closeAfterRun({ revertThemePreview: false });
   }, [closeAfterRun]);
-  const { providerResultItems, providerSearching } = useCommandBarSearchProviders({
+  const { providerResultItems, providerMatchItems, providerSearching } = useCommandBarSearchProviders({
     providers: searchProviders,
     query: rootQuery,
+    // A colon is the venue list.
+    enabled: !currentRoute && !listingChoice,
     // A resolved prefix means the user is running a command, so free-text
-    // providers neither ask the network nor add rows. A colon is the venue list.
-    enabled: !currentRoute && rootShortcutIntent.kind === "none" && !listingChoice,
+    // providers neither ask the network nor add rows, unless they asked to
+    // answer after that code.
+    claimedShortcut: rootShortcutIntent.kind === "none" ? null : rootShortcutIntent.prefix,
     context: searchProviderContext,
     onExecuted: closeAfterProviderResult,
   });
@@ -428,6 +431,7 @@ export function CommandBar({
     pluginCommandResultItems,
     pluginInstallItem,
     providerResultItems,
+    providerMatchItems,
     providerCategoryPriorities,
     providerSearching,
     readTickerSearchCache,

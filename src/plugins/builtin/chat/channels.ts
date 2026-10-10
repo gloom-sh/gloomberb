@@ -3,9 +3,10 @@ import type { ChatChannel, ChatChannelState } from "../../../api-client";
 import type { AppConfig } from "../../../types/config";
 import { t } from "../../../i18n";
 import { chatController } from "./controller";
-import { formatChannelLabel } from "./channel-labels";
 import { describeConversationStartError, knownConversationRefusal } from "./direct-messages";
 import { buildChatUserByUsername } from "./content/user-map";
+import { chatConversationRow, chatNewDmRow, openChatConversation, openChatNewDm } from "./command-bar";
+import { buildChatConversations, selectChatConversations } from "./conversations";
 
 export const DEFAULT_CHAT_CHANNEL_ID = "everyone";
 export const LAST_VISITED_CHAT_CHANNEL_KEY = "lastChatChannelId";
@@ -40,20 +41,6 @@ export function getPreferredChatOpenChannelId(
     return kind === "direct" || kind === "group";
   });
   return normalizeChannelId(unreadConversation?.channelId ?? unreadStates[0]?.channelId ?? getLastVisitedChatChannelId(config));
-}
-
-function conversationDetail(channel: ChatChannel): string {
-  if (channel.kind === "direct") {
-    const displayName = channel.dmUser?.displayName?.trim();
-    const username = channel.dmUser?.username?.trim();
-    return [displayName && username ? displayName : null, t("Direct message")].filter(Boolean).join(" - ");
-  }
-  const members = (channel.members ?? [])
-    .map((member) => member.username ? `@${member.username}` : member.displayName)
-    .filter(Boolean)
-    .slice(0, 4);
-  const suffix = (channel.members?.length ?? 0) > members.length ? ` +${(channel.members?.length ?? 0) - members.length}` : "";
-  return members.length > 0 ? `${t("Group chat")} - ${members.join(", ")}${suffix}` : t("Group chat");
 }
 
 export function parseDmUsernames(value: string): string[] {
@@ -106,18 +93,40 @@ export async function openDmTargetFromCommand(ctx: GloomPluginContext, usernames
   } catch (error) {
     throw new Error(describeConversationStartError(error, usernames, userByUsername));
   }
-  openChatChannelFromCommand(ctx, channel.id);
+  openChatConversation(ctx, channel.id);
 }
 
+/**
+ * `DM` in the command bar. Bare, it lists your DMs and groups, unread first,
+ * then the latest, and ends with New DM, which opens the Chat pane's dialog.
+ * With names after it, the conversations those names find come first, then
+ * the row that starts or opens a DM with exactly what was typed.
+ */
 export function buildDmCommandResults(ctx: GloomPluginContext, arg: string): CommandResultDef[] {
+  const list = chatController.listConversations();
+  const conversations = list
+    ? buildChatConversations(list.states, list.userId)
+      .filter((conversation) => conversation.kind === "direct" || conversation.kind === "group")
+    : [];
+  const open = (channelId: string) => openChatConversation(ctx, channelId);
+  const category = "Chat";
   const trimmed = arg.trim();
   if (trimmed) {
     const usernames = parseDmUsernames(trimmed);
     const valid = hasOnlyDmUsernameArgs(trimmed) && usernames.length > 0;
+    const found = selectChatConversations(conversations, { kind: "search", text: trimmed });
+    const rows: CommandResultDef[] = found.map((conversation) => ({
+      ...chatConversationRow(conversation, open),
+      category,
+    }));
+    // The DM you already share is the row above; a second one would open it too.
+    const alreadyShared = usernames.length === 1
+      && found.some((conversation) => conversation.kind === "direct" && conversation.username === usernames[0]);
+    if (alreadyShared) return rows;
     const label = usernames.length <= 1
       ? `DM ${usernames[0] ? `@${usernames[0]}` : trimmed}`
       : `Group ${usernames.map((username) => `@${username}`).join(", ")}`;
-    return [{
+    return [...rows, {
       id: `start:${valid ? usernames.join(",") : trimmed}`,
       label,
       detail: valid
@@ -125,40 +134,29 @@ export function buildDmCommandResults(ctx: GloomPluginContext, arg: string): Com
           ? t("Start or open direct message")
           : t("Start group chat")
         : t("Use @username, or multiple usernames for a group chat"),
-      category: t("Chat"),
-      right: "DM",
+      category,
+      // No tag: it starts a conversation, so it must not read as one.
+      right: "",
       disabled: !valid,
       execute: () => openDmTargetFromCommand(ctx, usernames),
     }];
   }
 
-  const conversations = chatController.getSnapshot().channels
-    .filter((channel) => channel.kind === "direct" || channel.kind === "group");
-  if (conversations.length === 0) {
+  if (!list) {
     return [{
       id: "empty",
       label: t("No DMs yet"),
       detail: t("Type DM @username to start one"),
-      category: t("Chat"),
+      category,
       right: "DM",
       disabled: true,
       execute: () => {},
     }];
   }
 
-  return conversations.map((channel) => ({
-    id: `channel:${channel.id}`,
-    label: formatChannelLabel(channel, channel.id),
-    detail: conversationDetail(channel),
-    category: t("Conversations"),
-    right: channel.kind === "group" ? t("Group") : t("DM"),
-    keywords: [
-      channel.name,
-      channel.dmUser?.username ?? "",
-      ...(channel.members ?? []).map((member) => member.username ?? member.displayName),
-    ],
-    execute: () => openChatChannelFromCommand(ctx, channel.id),
-  }));
+  const listed = selectChatConversations(conversations, { kind: "listing" })
+    .map((conversation) => ({ ...chatConversationRow(conversation, open), category }));
+  return [...listed, { ...chatNewDmRow(() => openChatNewDm(ctx)), category }];
 }
 
 /**

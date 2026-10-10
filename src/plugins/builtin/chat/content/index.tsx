@@ -41,6 +41,7 @@ import { DesktopChatDropOverlay, DesktopChatDropTarget } from "../attachments/de
 import { uploadFromTransferFile, type TransferFile } from "../attachments/transfer";
 import { readChatImageFiles } from "../attachments/files";
 import { NewDmDialog } from "./new-dm-dialog";
+import { takeChatPaneRequest, usePendingChatPaneRequest } from "../pane-requests";
 import {
   describeConversationStartError,
   directMessageAction,
@@ -565,6 +566,17 @@ export function ChatContent({
     closeProfilePopover();
     if (canSend) focusComposer();
   }, [canSend, closeNewDmDialog, closeProfilePopover, expandDirectSection, focusComposer, selectSidebarChannel, setSidebarFocused]);
+
+  // Asked for from outside the pane (the command bar): once this pane has the
+  // keyboard on that conversation, the composer takes it, or New DM opens.
+  const pendingPaneRequest = usePendingChatPaneRequest();
+  useEffect(() => {
+    if (!pendingPaneRequest || !focused || commandBarOpen) return;
+    const request = takeChatPaneRequest(channelId);
+    if (!request || !canSend) return;
+    if (request.action === "new-dm") openNewDmDialog();
+    else showConversation(channelId);
+  }, [canSend, channelId, commandBarOpen, focused, openNewDmDialog, pendingPaneRequest, showConversation]);
 
   const openConversationFromDialog = useCallback(async (usernames: string[]) => {
     const channel = usernames.length === 1

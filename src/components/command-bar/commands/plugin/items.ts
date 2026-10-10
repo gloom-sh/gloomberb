@@ -156,8 +156,10 @@ export function buildPluginCommandResultItem(options: {
     detail: options.result.detail ?? options.command.description ?? "",
     category,
     kind: "command",
+    badge: options.result.badge,
+    name: options.result.name,
     right: (options.result.right ?? options.command.shortcut?.trim()) || undefined,
-    searchText: `${options.result.label} ${options.result.detail || ""} ${(options.result.keywords ?? []).join(" ")} ${options.command.label} ${options.command.description || ""} ${(options.command.keywords ?? []).join(" ")}`,
+    searchText: `${options.result.label} ${options.result.detail || ""} ${options.result.name || ""} ${(options.result.keywords ?? []).join(" ")} ${options.command.label} ${options.command.description || ""} ${(options.command.keywords ?? []).join(" ")}`,
     disabled: options.result.disabled,
     current: options.result.current,
     action: async () => {

@@ -10,12 +10,32 @@ import {
   openDmTargetFromCommand,
   parseDmUsernames,
 } from "./channels";
+import { CHAT_REUSE_PANE_VALUE, createChatSearchProvider } from "./command-bar";
 import { chatController } from "./controller";
+import { buildChatConversations, selectChatConversations } from "./conversations";
+import { pickChatPaneToReuse } from "./pane-state";
 import { ChatPane } from "./pane";
 import { chatSidebarStore } from "./sidebar-store";
 import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
+
+/**
+ * `CHAT general` or `CHAT #help` by id; failing that, `CHAT gen` or `CHAT alice`
+ * opens the conversation the command bar lists first for that text.
+ */
+async function resolveTypedChannelId(rawArg: string): Promise<string> {
+  try {
+    return await chatController.resolveRequiredChannelId(normalizeShortcutChannelId(rawArg));
+  } catch (error) {
+    const list = chatController.listConversations();
+    const [best] = list
+      ? selectChatConversations(buildChatConversations(list.states, list.userId), { kind: "search", text: rawArg })
+      : [];
+    if (best) return best.channelId;
+    throw error;
+  }
+}
 
 export const chatModule: PluginModule = {
   panes: [{
@@ -47,21 +67,38 @@ export const chatModule: PluginModule = {
     keywords: ["new", "chat", "pane", "message"],
     shortcut: { prefix: "CHAT", argPlaceholder: "channel", argKind: "text" },
     createInstance: async (context, options) => {
+      const reuse = options?.values?.[CHAT_REUSE_PANE_VALUE] === "1";
+      const rawArg = options?.arg?.trim() ?? "";
+      // The command bar's New DM keeps the open pane on its conversation.
+      if (reuse && !rawArg) {
+        const open = pickChatPaneToReuse(context.layout, context.focusedPaneId, null);
+        if (open) return { placement: "floating", instanceId: open.instanceId };
+      }
       // `CHAT MD` or `CHAT "Macro Desk"` opens that team's #general. A raw
       // channel id (team ids are mixed case) is kept as typed.
-      const rawArg = options?.arg?.trim() ?? "";
       const team = rawArg ? teamStore.findTeam(rawArg) : null;
       const channelId = team
         ? teamChannelId(team.id)
         : rawArg && chatController.getChannels().some((entry) => entry.id === rawArg)
         ? rawArg
         : rawArg
-        ? await chatController.resolveRequiredChannelId(normalizeShortcutChannelId(rawArg))
+        ? await resolveTypedChannelId(rawArg)
         : await chatController.resolvePreferredChannelId(
           getPreferredChatOpenChannelId(context.config, chatController.getSnapshot()),
         );
       const channel = chatController.getChannels().find((entry) => entry.id === channelId);
       const targetMessageId = options?.values?.messageId?.trim() || null;
+      // A conversation picked in the command bar goes to the Chat pane that is
+      // open, which switches to it, rather than to a pane of its own.
+      const open = reuse ? pickChatPaneToReuse(context.layout, context.focusedPaneId, channelId) : null;
+      if (open) {
+        return {
+          placement: "floating",
+          instanceId: open.instanceId,
+          title: formatChatPaneTitle(channel, channelId),
+          settings: { channelId },
+        };
+      }
       return {
         placement: "floating",
         // One pane per channel: re-opening the same channel focuses the pane
@@ -93,6 +130,7 @@ export const chatModule: PluginModule = {
     "status:widget": () => <ChatStatusWidget />,
   },
   setup(ctx) {
+    ctx.registerCommandBarSearchProvider(createChatSearchProvider(ctx));
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatController.setNotifier(ctx.notify, (channelId, messageId) => {

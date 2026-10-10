@@ -568,7 +568,26 @@ setup(ctx) {
 }
 ```
 
-The command bar debounces each provider separately, aborts the request through `signal` as soon as the query moves on, and memoizes answers for as long as the bar is open. Provider rows are added below what the command bar already resolved, so a slow, failing, or empty provider never disturbs the local matches — return an empty array rather than an error row. Rows are capped at two extra lines and truncated to the panel width, and `emphasis` is styled by the theme, so never put markup in `text`.
+The command bar debounces each provider separately, aborts the request through `signal` as soon as the query moves on, and memoizes answers for as long as the bar is open. Provider rows are added below what the command bar already resolved, so a slow, failing, or empty provider never disturbs the local matches: return an empty array rather than an error row. Rows are capped at two extra lines and truncated to the panel width, and `emphasis` is styled by the theme, so never put markup in `text`. `badge` is a short tag left of the label (six characters at most) and `name` is drawn muted after it, such as a person's full name after their @username.
+
+Once a code claims the text (`CHAT gen`, `SEC AAPL`), providers stay quiet. A provider that has more to say after a code lists it in `shortcuts` and is then asked with the whole text; its rows sit below the code's own.
+
+When the rows come from what the plugin already holds in memory, such as the chat's own conversations, answer with `match` as well:
+
+```typescript
+ctx.registerCommandBarSearchProvider({
+  id: "my-plugin:boards",
+  category: "Boards",
+  minQueryLength: 0,
+  match: (query) => findBoards(query).map(toRow),
+  // Older versions of the app only know provide.
+  provide: async (query) => findBoards(query).map(toRow),
+});
+```
+
+The bar calls `match` instead of `provide`, as it renders and on every keystroke, so its rows land with the text that found them: no debounce, no Searching row, no memo. Keep it cheap: no request and nothing awaited. Its rows are ranked as one block among the bar's own matches, at the place of the block's best row and in the order `match` gave, and with `minQueryLength: 0` the empty bar shows them under Suggested, so return only a few there.
+
+Rows a command builds with `buildResults` take the same `badge` and `name`.
 
 The returned function withdraws the provider; otherwise it is removed with the plugin.
 

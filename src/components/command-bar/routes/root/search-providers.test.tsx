@@ -8,32 +8,42 @@ import { toProviderResultItem, useCommandBarSearchProviders } from "./search-pro
 const tui = createOpenTuiTestHarness();
 let setHarnessQuery: ((query: string) => void) | null = null;
 let latestItems: ResultItem[] = [];
+let latestMatchItems: ResultItem[] = [];
 let latestSearching = false;
+const harnessContext = { activeTicker: null, activeCollectionId: null };
 
 function ProvidersHarness({
   providers,
   initialQuery,
+  claimedShortcut,
 }: {
   providers: CommandBarSearchProvider[];
   initialQuery: string;
+  claimedShortcut?: string | null;
 }) {
   const [query, setQuery] = useState(initialQuery);
   setHarnessQuery = setQuery;
-  const { providerResultItems, providerSearching } = useCommandBarSearchProviders({
+  const { providerResultItems, providerMatchItems, providerSearching } = useCommandBarSearchProviders({
     providers,
     query,
     enabled: true,
-    context: { activeTicker: null, activeCollectionId: null },
+    claimedShortcut,
+    context: harnessContext,
     onExecuted: () => {},
   });
   latestItems = providerResultItems;
+  latestMatchItems = providerMatchItems;
   latestSearching = providerSearching;
   return <text>{String(providerResultItems.length)}</text>;
 }
 
-async function renderHarness(providers: CommandBarSearchProvider[], initialQuery = ""): Promise<void> {
+async function renderHarness(
+  providers: CommandBarSearchProvider[],
+  initialQuery = "",
+  claimedShortcut: string | null = null,
+): Promise<void> {
   await tui.render(
-    <ProvidersHarness providers={providers} initialQuery={initialQuery} />,
+    <ProvidersHarness providers={providers} initialQuery={initialQuery} claimedShortcut={claimedShortcut} />,
     { width: 20, height: 1 },
   );
   await act(async () => {
@@ -62,6 +72,7 @@ function makeResult(id: string): CommandBarResultDef {
 afterEach(() => {
   setHarnessQuery = null;
   latestItems = [];
+  latestMatchItems = [];
   latestSearching = false;
 });
 
@@ -170,6 +181,75 @@ describe("command bar search providers", () => {
     await settle();
 
     expect(latestItems.map((item) => item.category)).toEqual(["early", "late"]);
+  });
+});
+
+describe("providers that answer from memory", () => {
+  test("land with the keystroke, never as a search, and never through provide", async () => {
+    let provided = 0;
+    const provider: CommandBarSearchProvider = {
+      id: "chat",
+      category: "Chat",
+      minQueryLength: 0,
+      async provide() {
+        provided += 1;
+        return [];
+      },
+      match: (query) => [makeResult(query ? `match:${query}` : "recent")],
+    };
+
+    await renderHarness([provider], "");
+    expect(latestMatchItems.map((item) => item.label)).toEqual(["recent"]);
+    await typeQuery("gen");
+    expect(latestMatchItems.map((item) => item.label)).toEqual(["match:gen"]);
+    expect(latestSearching).toBe(false);
+    expect(latestItems).toEqual([]);
+    expect(provided).toBe(0);
+  });
+
+  test("a provider that throws adds nothing", async () => {
+    const provider: CommandBarSearchProvider = {
+      id: "chat",
+      category: "Chat",
+      minQueryLength: 0,
+      provide: async () => [],
+      match: () => {
+        throw new Error("state not loaded");
+      },
+    };
+
+    await renderHarness([provider], "gen");
+    expect(latestMatchItems).toEqual([]);
+  });
+
+  test("once a code claims the text, only providers that asked to follow it answer, with the whole text", async () => {
+    const asked: string[] = [];
+    const follows: CommandBarSearchProvider = {
+      id: "chat",
+      category: "Chat",
+      minQueryLength: 0,
+      shortcuts: ["chat"],
+      provide: async () => [],
+      match: (query) => {
+        asked.push(query);
+        return [makeResult(query)];
+      },
+    };
+    const quiet: CommandBarSearchProvider = {
+      id: "docs",
+      category: "Documents",
+      debounceMs: 0,
+      async provide(query) {
+        asked.push(`docs:${query}`);
+        return [makeResult(query)];
+      },
+    };
+
+    await renderHarness([follows, quiet], "chat gen", "CHAT");
+    await settle();
+    expect(latestMatchItems.map((item) => item.label)).toEqual(["chat gen"]);
+    expect(latestItems).toEqual([]);
+    expect(asked).toEqual(["chat gen"]);
   });
 });
 
