@@ -5,7 +5,8 @@
  * host with the desktop app's own UI and renderer hosts, over a fixed layout
  * of stand-in panes. Nothing here fetches: the Electrobun backend is the CLI
  * screenshot stub, and the native window bridge is a recorder the page
- * script sets up before this runs (see page.ts).
+ * script sets up before this runs (see page.ts). The window caption buttons
+ * would go to the Bun process, so their actions are recorded here instead.
  *
  * The scenario comes from the query string: `?scenario=docked`, `floating`,
  * `detached` (a popped-out window; `&platform=win32` adds Windows caption
@@ -25,6 +26,7 @@ import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../src/theme/font-scale";
 import { cloneLayout, createDefaultConfig, type DockLayoutNode, type LayoutConfig } from "../../src/types/config";
 import type { DesktopWindowBridge } from "../../src/types/desktop-window";
 import type { PaneProps } from "../../src/types/plugin";
+import type { RendererHost } from "../../src/ui/host";
 import { Box, Text } from "../../src/ui";
 
 declare global {
@@ -33,6 +35,8 @@ declare global {
       ready: boolean;
       cell: { width: number; height: number };
       registry: PluginRegistry;
+      /** Caption button actions (minimize, toggle-maximize, close), in order. */
+      windowControls: string[];
     };
   }
 }
@@ -205,12 +209,16 @@ function Ready() {
   return null;
 }
 
-window.__paneChrome = { ready: false, cell: { width: WEB_CELL_WIDTH, height: WEB_CELL_HEIGHT }, registry: paneRegistry };
+window.__paneChrome = { ready: false, cell: { width: WEB_CELL_WIDTH, height: WEB_CELL_HEIGHT }, registry: paneRegistry, windowControls: [] };
+const rendererHost: RendererHost = {
+  ...webRendererHost,
+  controlWindow: (action) => { window.__paneChrome.windowControls.push(action); },
+};
 
 const root = document.getElementById("root")!;
 root.tabIndex = -1;
 createRoot(root).render(
-  <DomHostProviders ui={createWebUiHost(platform)} renderer={webRendererHost}>
+  <DomHostProviders ui={createWebUiHost(platform)} renderer={rendererHost}>
     <AppProvider config={config()} desktopBridge={scenario === "detached" ? detachedBridge : undefined}>
       {scenario === "detached"
         ? <DetachedPaneShell pluginRegistry={paneRegistry} desktopWindowBridge={detachedBridge} />

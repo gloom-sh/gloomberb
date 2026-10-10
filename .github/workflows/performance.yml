@@ -43,3 +43,55 @@ jobs:
       # Fails when browsing more tickers keeps growing the live heap.
       - name: Check memory levels off while browsing tickers
         run: bun run benchmark:tui:memory
+
+  # The pane drag budget only means something for pane chrome changes: the
+  # pull_request paths of the Pane chrome workflow, or this workflow.
+  pane-drag-scope:
+    name: Pane drag scope
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.scope.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      - id: scope
+        name: Check whether the change touches pane chrome
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          bun run scripts/pane-chrome/scope.ts FETCH_HEAD .github/workflows/performance.yml
+
+  pane-drag-budget:
+    name: Pane drag frame budget
+    needs: pane-drag-scope
+    if: needs.pane-drag-scope.outputs.relevant == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: chrome
+        name: Read the pinned Chrome version
+        run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
+          key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Check out the base branch next to the PR
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          git worktree add ../base FETCH_HEAD
+          cd ../base && bun install --frozen-lockfile
+
+      # Fails when dragging a docked or floating pane clearly costs the main
+      # thread more per frame, or renders React more, than on the base branch;
+      # the table lands in the job summary either way.
+      - name: Compare a pane drag's frame budget with the base branch
+        run: bun run benchmark:pane-drag:compare --base ../base

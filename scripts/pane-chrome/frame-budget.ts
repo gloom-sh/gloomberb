@@ -9,9 +9,13 @@ import { serveFixturePage, type FixturePage } from "./page";
  * docked and a floating pane across a dense layout (fixture.tsx, `perf`) for
  * 1.5 s with real pointer input at 60 moves a second, and reads what the page's
  * main thread spent (Performance.getMetrics, in thread time), the React commits
- * and the frames drawn. Base and this checkout take turns, so a runner that
- * slows down mid-job slows both, and the gate is a ratio of the medians:
- * absolute numbers mean little on a shared runner with no GPU.
+ * and the animation frames the page ran. Base and this checkout take turns, so
+ * a runner that slows down mid-job slows both, and the gate is a ratio of the
+ * medians: absolute numbers mean little on a shared runner with no GPU.
+ *
+ * Frames are requestAnimationFrame callbacks in headless Chrome, not frames a
+ * GPU presented. Missed frames are estimated against a fixed 60 Hz display:
+ * an interval that rounds to n frame slots missed n - 1 of them.
  *
  *   bun run benchmark:pane-drag:compare --base <checkout> [--runs 5] [--head <checkout>]
  *
@@ -20,13 +24,14 @@ import { serveFixturePage, type FixturePage } from "./page";
 
 const VIEWPORT = { width: 1400, height: 900 };
 const DRAG_MS = 1_500;
-const MOVE_INTERVAL_MS = 1_000 / 60;
-// Calibrated on main with identical code on both sides: the medians of five
-// runs differed by at most 1.06x quiet and 1.17x on a 12-core host at load 35,
-// and React commits by at most 3. The drag that re-rendered on every move
-// (v0.16.1) costs 5 to 7 times as much per frame with 10 times the commits,
-// and a slide written to the inline style instead of an animation (a whole-page
-// relayering every frame) twice as much.
+/** One frame slot of the 60 Hz display the drag is paced and judged against. */
+const FRAME_MS = 1_000 / 60;
+// Calibrated on main (ac27f2d6a) with identical code on both sides: the
+// medians of five runs differed by at most 1.06x quiet and 1.17x on a 12-core
+// host at load 35, and React commits by at most 3. The drag that re-rendered
+// on every move (v0.16.1) costs 5 to 7 times as much per frame with 10 times
+// the commits, and a slide written to the inline style instead of an animation
+// (a whole-page relayering every frame) twice as much.
 const MAX_FRAME_RATIO = 1.5;
 const MIN_FRAME_DELTA_MS = 0.4;
 const MAX_COMMIT_RATIO = 1.5;
@@ -44,14 +49,17 @@ window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
 `;
 
 interface DragSample {
-  /** Main-thread time (script, style, layout, paint and the rest) per frame drawn, ms. */
+  /** Main-thread time (script, style, layout, paint and the rest) per animation frame, ms. */
   mainMsPerFrame: number;
   scriptMsPerFrame: number;
   styleLayoutMsPerFrame: number;
   commits: number;
+  /** Animation frames the page ran during the drag. */
   frames: number;
-  /** Frames that took longer than 1.5 display frames. */
-  droppedFrames: number;
+  /** Estimated 60 Hz frame slots with no animation frame. */
+  missedFrames: number;
+  /** Intervals between animation frames longer than 1.5 slots, however long. */
+  longIntervals: number;
 }
 
 interface Scenario {
@@ -106,7 +114,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     if (t >= 1) break;
     const at = scenario.path(start, t);
     await mouse(cdp, "mouseMoved", at.x, at.y, true);
-    const wait = began + move * MOVE_INTERVAL_MS - performance.now();
+    const wait = began + move * FRAME_MS - performance.now();
     if (wait > 0) await sleep(wait);
   }
   const after = await metrics(cdp);
@@ -121,7 +129,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     styleLayoutMsPerFrame: (ms("RecalcStyleDuration") + ms("LayoutDuration")) / drawn,
     commits: recorded.commits,
     frames: recorded.frameTimes.length,
-    droppedFrames: recorded.frameTimes.filter((time) => time > 1.5 * (1000 / 60)).length,
+    missedFrames: recorded.frameTimes.reduce((missed, time) => missed + Math.max(0, Math.round(time / FRAME_MS) - 1), 0),
+    longIntervals: recorded.frameTimes.filter((time) => time > 1.5 * FRAME_MS).length,
   };
 }
 
@@ -182,7 +191,7 @@ function judge(samples: Record<"base" | "head", Array<Record<string, DragSample>
   const lines = [
     "### Pane drag frame budget",
     "",
-    `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU.`,
+    `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display.`,
     "",
     "| | main | this PR |",
     "|---|---|---|",
@@ -197,8 +206,9 @@ function judge(samples: Record<"base" | "head", Array<Record<string, DragSample>
     row("script per frame", "scriptMsPerFrame", " ms");
     row("style and layout per frame", "styleLayoutMsPerFrame", " ms");
     row("React commits", "commits");
-    row("frames drawn", "frames");
-    row("dropped frames", "droppedFrames");
+    row("animation frames", "frames");
+    row("missed frames (est., 60 Hz)", "missedFrames");
+    row("intervals over 1.5 frames", "longIntervals");
     const frame = { base: pick("base", "mainMsPerFrame"), head: pick("head", "mainMsPerFrame") };
     if (frame.head > frame.base * MAX_FRAME_RATIO && frame.head - frame.base >= MIN_FRAME_DELTA_MS) {
       problems.push(`${name}: main thread per frame went from ${round(frame.base)} to ${round(frame.head)} ms (limit: +${Math.round((MAX_FRAME_RATIO - 1) * 100)}% and +${MIN_FRAME_DELTA_MS} ms).`);

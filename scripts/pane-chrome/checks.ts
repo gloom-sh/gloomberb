@@ -142,6 +142,7 @@ async function titleBarMovesWindow(cdp: Cdp, part: string, label: string): Promi
 }
 
 const PRESS_POINTS = [["grip", "grip"], ["title", "title"], ["empty bar", "empty"]] as const;
+const CAPTION_BUTTONS = [["minimize", "minimize"], ["maximize", "toggle-maximize"], ["close", "close"]] as const;
 
 const steps: Step[] = [
   ...PRESS_POINTS.map(([label, part]): Step => ({
@@ -276,16 +277,21 @@ const steps: Step[] = [
       if (await evaluate<number>(cdp, "__check.windowMoves()") > 0) fail("the pane menu button asked the window to move");
     },
   },
-  {
-    name: "popped-out window (Windows): caption buttons do not move the window",
+  // Each caption button on a fresh window: it does its own job, never the window move.
+  ...CAPTION_BUTTONS.map(([label, action]): Step => ({
+    name: `popped-out window (Windows): the ${label} button does not move the window`,
     scenario: "detached&platform=win32",
     async run(cdp) {
-      const button = await evaluate<Rect | null>(cdp, `__check.rect(document.querySelector("[data-gloom-role=window-control][data-window-control-action=minimize]"))`)
-        ?? fail("no minimize button");
+      const actions = await evaluate<string[]>(cdp, `[...document.querySelectorAll("[data-gloom-role=window-control]")].map((button) => button.dataset.windowControlAction)`);
+      if (actions.join() !== CAPTION_BUTTONS.map(([, value]) => value).join()) fail("the caption buttons changed; give each one a step", actions);
+      const button = await evaluate<Rect | null>(cdp, `__check.rect(document.querySelector("[data-gloom-role=window-control][data-window-control-action=${action}]"))`)
+        ?? fail(`no ${label} button`);
       await drag(cdp, center(button), [{ x: button.x - 60, y: button.y + 40 }], 6);
-      if (await evaluate<number>(cdp, "__check.windowMoves()") > 0) fail("the minimize button asked the window to move");
+      const asked = await evaluate<string[]>(cdp, "window.__paneChrome.windowControls");
+      if (asked.join() !== action) fail(`pressing ${label} did not ask for ${action} alone`, asked);
+      if (await evaluate<number>(cdp, "__check.windowMoves()") > 0) fail(`the ${label} button asked the window to move`);
     },
-  },
+  })),
 ];
 
 async function openScenario(cdp: Cdp, page: FixturePage, scenario: string): Promise<void> {

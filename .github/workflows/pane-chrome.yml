@@ -3,6 +3,8 @@ name: Pane chrome
 # Moves panes with real pointer input in headless Chrome (scripts/pane-chrome).
 # Only for changes that can break pane chrome: the shell and pane headers,
 # the dock, the DOM renderer, the desktop view, and these checks themselves.
+# The pane drag frame budget is in the Performance workflow and runs for the
+# same pull_request paths (scripts/pane-chrome/scope.ts reads them from here).
 on:
   pull_request:
     branches:
@@ -72,34 +74,3 @@ jobs:
           name: pane-chrome-failures
           path: ~/.cache/gloomberb-pane-chrome/failures
           if-no-files-found: ignore
-
-  drag-frame-budget:
-    name: Drag frame budget
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-bun
-
-      - id: chrome
-        name: Read the pinned Chrome version
-        run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
-          key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
-
-      - name: Check out the base branch next to the PR
-        run: |
-          git fetch --depth=1 origin "${{ github.base_ref }}"
-          git worktree add ../base FETCH_HEAD
-          cd ../base && bun install --frozen-lockfile
-
-      # Fails when dragging a docked or floating pane clearly costs the main
-      # thread more per frame, or renders React more, than on the base branch;
-      # the table lands in the job summary either way.
-      - name: Compare a pane drag's frame budget with the base branch
-        run: bun run benchmark:pane-drag:compare --base ../base
