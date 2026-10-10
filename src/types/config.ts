@@ -59,6 +59,30 @@ export interface PanePlacementMemory {
   detached?: DetachedPlacementMemory;
 }
 
+/**
+ * A ticker link Move to New Layout had to cut: the pane followed another one
+ * that stayed behind (or left with the moved pane) and was pinned on `symbol`.
+ * Move Back links it again while it is still pinned there.
+ */
+export interface PaneMovedLink {
+  instanceId: string;
+  sourceInstanceId: string;
+  symbol: string;
+  /** The title before the pin renamed it ("OPX" for "OPX NVDA"), when it did. */
+  title?: string;
+}
+
+/** Where Move to New Layout took a pane from, so Move Back can return it. */
+export interface PaneMovedFrom {
+  /** `SavedLayout.id` of the layout it left. */
+  layoutId: string;
+  /** Set when it was docked there: its place in the tree and its share of the split. */
+  docked?: DockedPlacementMemory & { ratio?: number };
+  /** Set when it was floating there. */
+  floating?: FloatingPlacementMemory;
+  links?: PaneMovedLink[];
+}
+
 export interface PaneInstanceConfig {
   instanceId: string;
   paneId: string;
@@ -69,6 +93,8 @@ export interface PaneInstanceConfig {
   placementMemory?: PanePlacementMemory;
   /** Pinned by the user: the keyboard close shortcuts leave this pane alone. */
   locked?: boolean;
+  /** Set by Move to New Layout and cleared by Move Back; never published. */
+  movedFrom?: PaneMovedFrom;
 }
 
 interface DockPaneNode {
@@ -582,6 +608,17 @@ export function clonePlacementMemory(memory: PanePlacementMemory | undefined): P
   };
 }
 
+function clonePaneMovedFrom(movedFrom: PaneMovedFrom): PaneMovedFrom {
+  return {
+    layoutId: movedFrom.layoutId,
+    ...(movedFrom.docked ? {
+      docked: { ...movedFrom.docked, ...(movedFrom.docked.path ? { path: [...movedFrom.docked.path] } : {}) },
+    } : {}),
+    ...(movedFrom.floating ? { floating: { ...movedFrom.floating } } : {}),
+    ...(movedFrom.links ? { links: movedFrom.links.map((link) => ({ ...link })) } : {}),
+  };
+}
+
 function cloneUnknownValue<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((entry) => cloneUnknownValue(entry)) as T;
@@ -816,6 +853,7 @@ export function normalizePaneLayout(
       params: instance.params ? { ...instance.params } : undefined,
       settings: clonePaneSettings(instance.settings),
       placementMemory: clonePlacementMemory(instance.placementMemory),
+      ...(instance.movedFrom ? { movedFrom: clonePaneMovedFrom(instance.movedFrom) } : {}),
     })),
     floating: nextLayout.floating
       .filter((entry) => (
@@ -838,6 +876,7 @@ export function cloneLayout(layout: LayoutConfig): LayoutConfig {
       params: instance.params ? { ...instance.params } : undefined,
       settings: clonePaneSettings(instance.settings),
       placementMemory: clonePlacementMemory(instance.placementMemory),
+      ...(instance.movedFrom ? { movedFrom: clonePaneMovedFrom(instance.movedFrom) } : {}),
     })),
     floating: layout.floating.map((entry) => ({ ...entry })),
     detached: detached.map((entry) => ({ ...entry })),

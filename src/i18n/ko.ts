@@ -227,6 +227,8 @@ export const ko: Record<string, string> = {
   "Remove Pane": "패널 제거",
   "Float Pane": "패널 띄우기",
   "Dock Pane": "패널 도킹",
+  "Move to New Layout": "새 레이아웃으로 이동",
+  "Move Back to {layout}": "{layout}(으)로 되돌리기",
   "Settings": "설정",
   "Copy Screenshot": "스크린샷 복사",
   "Share Pane": "창 공유",

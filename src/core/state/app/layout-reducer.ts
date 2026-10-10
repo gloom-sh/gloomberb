@@ -1,4 +1,5 @@
-import { cloneLayout, createBlankLayout, type SavedLayout } from "../../../types/config";
+import { cloneLayout, createBlankLayout, getPlacedPaneInstanceIds, type SavedLayout } from "../../../types/config";
+import { movePaneBack, movePaneToOwnLayout, paneMoveBackTarget } from "../../../layout/pane-layout-move";
 import {
   clonePaneStateMap,
   cloneSavedLayout,
@@ -6,11 +7,12 @@ import {
   moveHistoryIndex,
   movedIndex,
   removeHistoryIndex,
+  resolveTickerForPane,
   setHistoryForIndex,
   syncConfigActiveLayoutState,
   withFocusedPane,
 } from "./layout";
-import type { AppAction, AppState } from "./types";
+import type { AppAction, AppState, PaneRuntimeState } from "./types";
 
 const MAX_LAYOUT_HISTORY = 50;
 
@@ -293,7 +295,8 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
         state.paneState,
         state.focusedPaneId,
       );
-      const source = currentConfig.layouts[action.index]!;
+      const { id: _id, ...source } = currentConfig.layouts[action.index]!;
+      // A copy is a layout of its own: sharing the id would send Move Back to either.
       const duplicate: SavedLayout = {
         ...cloneSavedLayout(source),
         name: `${source.name} Copy`,
@@ -310,6 +313,89 @@ export function reduceLayoutAction(state: AppState, action: AppAction): AppState
       }, {
         paneState: duplicate.paneState ? clonePaneStateMap(duplicate.paneState) : {},
         focusedPaneId: duplicate.focusedPaneId ?? state.focusedPaneId,
+      });
+    }
+
+    case "MOVE_PANE_TO_NEW_LAYOUT": {
+      const resolveSymbol = (instanceId: string) => resolveTickerForPane(state, instanceId);
+      const currentConfig = syncConfigActiveLayoutState(state.config, state.paneState, state.focusedPaneId);
+      const sourceIndex = currentConfig.activeLayoutIndex;
+      const sourceEntry = currentConfig.layouts[sourceIndex]!;
+      const sourceLayoutId = sourceEntry.id ?? action.sourceLayoutId;
+      const move = movePaneToOwnLayout(state.config.layout, action.paneId, sourceLayoutId, resolveSymbol);
+      if (!move) return state;
+
+      const { [action.paneId]: savedPaneState, ...sourcePaneState } = sourceEntry.paneState ?? {};
+      // The live object, so the pane's state keeps its identity across the move.
+      const livePaneState = (state.paneState[action.paneId] ?? savedPaneState) as PaneRuntimeState | undefined;
+      const movedPaneState: Record<string, PaneRuntimeState> = livePaneState ? { [action.paneId]: livePaneState } : {};
+      const previous = state.previousFocusedPaneId;
+      const sourceFocus = previous && getPlacedPaneInstanceIds(move.source).includes(previous) ? previous : null;
+      const layouts: SavedLayout[] = currentConfig.layouts.map((entry, index) => (
+        index === sourceIndex
+          ? { ...entry, id: sourceLayoutId, layout: move.source, paneState: sourcePaneState, focusedPaneId: sourceFocus }
+          : entry
+      ));
+      layouts.push({
+        name: availableLayoutName(action.name, layouts),
+        layout: move.target,
+        paneState: movedPaneState,
+        focusedPaneId: action.paneId,
+      });
+      return withFocusedPane({
+        ...state,
+        layoutHistory: setHistoryForIndex(state.layoutHistory, layouts.length - 1, { past: [], future: [] }),
+      }, {
+        ...currentConfig,
+        layout: cloneLayout(move.target),
+        layouts,
+        activeLayoutIndex: layouts.length - 1,
+      }, {
+        paneState: movedPaneState,
+        focusedPaneId: action.paneId,
+      });
+    }
+
+    case "MOVE_PANE_BACK": {
+      const target = paneMoveBackTarget(state.config, action.paneId);
+      if (!target) return state;
+      const resolveSymbol = (instanceId: string) => resolveTickerForPane(state, instanceId);
+      const currentConfig = syncConfigActiveLayoutState(state.config, state.paneState, state.focusedPaneId);
+      const activeIndex = currentConfig.activeLayoutIndex;
+      const activeEntry = currentConfig.layouts[activeIndex]!;
+      const targetEntry = currentConfig.layouts[target.index]!;
+      const move = movePaneBack(state.config.layout, targetEntry.layout, action.paneId, target.original, resolveSymbol);
+      if (!move) return state;
+
+      const { [action.paneId]: savedPaneState, ...activePaneState } = activeEntry.paneState ?? {};
+      const livePaneState = (state.paneState[action.paneId] ?? savedPaneState) as PaneRuntimeState | undefined;
+      const { [action.paneId]: _stale, ...targetPaneState } = targetEntry.paneState ?? {};
+      if (livePaneState) targetPaneState[action.paneId] = livePaneState;
+      let layouts: SavedLayout[] = currentConfig.layouts.map((entry, index) => {
+        if (index === target.index) return { ...entry, layout: move.target, paneState: targetPaneState, focusedPaneId: action.paneId };
+        if (index === activeIndex) return { ...entry, layout: move.source, paneState: activePaneState, focusedPaneId: null };
+        return entry;
+      });
+      // A layout the pane leaves empty was only there for it, unless a team layout is linked to it.
+      let layoutHistory = state.layoutHistory;
+      let nextIndex = target.index;
+      if (getPlacedPaneInstanceIds(move.source).length === 0 && !activeEntry.origin) {
+        layouts = layouts.filter((_, index) => index !== activeIndex);
+        layoutHistory = removeHistoryIndex(layoutHistory, activeIndex);
+        if (activeIndex < target.index) nextIndex -= 1;
+      }
+      const next = layouts[nextIndex]!;
+      return withFocusedPane({ ...state, layoutHistory }, {
+        ...currentConfig,
+        layout: cloneLayout(next.layout),
+        layouts,
+        activeLayoutIndex: nextIndex,
+      }, {
+        paneState: {
+          ...clonePaneStateMap(targetPaneState),
+          ...(livePaneState ? { [action.paneId]: livePaneState } : {}),
+        },
+        focusedPaneId: action.paneId,
       });
     }
 

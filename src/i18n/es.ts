@@ -228,6 +228,8 @@ export const es: Record<string, string> = {
   "Remove Pane": "Quitar panel",
   "Float Pane": "Flotar panel",
   "Dock Pane": "Anclar panel",
+  "Move to New Layout": "Mover a un diseño nuevo",
+  "Move Back to {layout}": "Devolver a {layout}",
   "Settings": "Ajustes",
   "Copy Screenshot": "Copiar captura",
   "Share Pane": "Compartir panel",

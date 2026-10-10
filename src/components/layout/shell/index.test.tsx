@@ -297,6 +297,96 @@ describe("Shell", () => {
     expect(frame).not.toContain("Layout Actions");
   });
 
+  test("offers Move to New Layout with its shortcut for docked and floating panes, not for a layout's only pane", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-new-layout-menu-test");
+    const mainPane = requireLayoutInstance(config, "portfolio-list:main");
+    const detailPane = requireLayoutInstance(config, "ticker-detail:main");
+    const docked: LayoutConfig = {
+      dockRoot: {
+        kind: "split",
+        axis: "horizontal",
+        ratio: 0.5,
+        first: { kind: "pane", instanceId: mainPane.instanceId },
+        second: { kind: "pane", instanceId: detailPane.instanceId },
+      },
+      instances: [{ ...mainPane }, { ...detailPane }],
+      floating: [],
+      detached: [],
+    };
+    await renderShell(createShellStateWithLayout(config, docked, mainPane.instanceId), { width: 100, height: 30 });
+    let frame = await openPaneMenu();
+    expect(frame).toMatch(/Move to New Layout +Ctrl\+Shift\+N/);
+
+    await renderShell(
+      createShellStateWithLayout(config, floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 0, y: 0 }]), "ticker-detail:main"),
+      { width: 100, height: 30 },
+    );
+    frame = await openPaneMenu();
+    expect(frame).toContain("Dock Pane");
+    expect(frame).toContain("Move to New Layout");
+
+    await renderShell(createShellStateWithLayout(config, singleDockedPaneLayout(config)), { width: 60, height: 30 });
+    frame = await openPaneMenu();
+    expect(frame).toContain("Float Pane");
+    expect(frame).not.toContain("Move to New Layout");
+  });
+
+  test("the new layout shortcut moves the focused pane to a layout of its own and back", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-new-layout-shortcut-test");
+    const mainPane = requireLayoutInstance(config, "portfolio-list:main");
+    const detailPane = requireLayoutInstance(config, "ticker-detail:main");
+    const docked: LayoutConfig = {
+      dockRoot: {
+        kind: "split",
+        axis: "horizontal",
+        ratio: 0.4,
+        first: { kind: "pane", instanceId: mainPane.instanceId },
+        second: { kind: "pane", instanceId: detailPane.instanceId },
+      },
+      instances: [{ ...mainPane }, { ...detailPane }],
+      floating: [],
+      detached: [],
+    };
+    const notices: string[] = [];
+    // Local state that only survives if the pane is moved rather than mounted again.
+    let mounts = 0;
+    const PortfolioBody = () => {
+      const [mount] = useState(() => ++mounts);
+      return <text>{`Portfolio Body ${mount}`}</text>;
+    };
+    const registry = createShellPluginRegistry({ portfolioListComponent: PortfolioBody });
+    registry.notify = (notification) => { notices.push(notification.body); };
+    const controls: {
+      dispatch?: (action: ShellTestAction) => void;
+      state?: ReturnType<typeof createInitialState>;
+      transientLayout: TransientLayoutState | null;
+    } = { transientLayout: null };
+    await tui.render(
+      <ShellTransientHarness
+        initialState={createShellStateWithLayout(config, docked, mainPane.instanceId)}
+        registry={registry}
+        controls={controls}
+      />,
+      { width: 100, height: 18 },
+    );
+
+    await emitKeypress({ name: "n", ctrl: true, shift: true });
+    expect(controls.state?.config.layouts.map((entry) => entry.name)).toEqual(["Default", "Main Portfolio"]);
+    expect(controls.state?.config.layout.dockRoot).toEqual({ kind: "pane", instanceId: mainPane.instanceId });
+    expect(tui.frame()).not.toContain("Ticker Research Body");
+    expect(tui.frame()).toContain("Portfolio Body 1");
+    expect(notices).toEqual(["Moved to a layout of its own. Ctrl+Shift+N moves it back."]);
+
+    await emitKeypress({ name: "n", ctrl: true, shift: true });
+    expect(controls.state?.config.layouts.map((entry) => entry.name)).toEqual(["Default"]);
+    expect(controls.state?.config.layout.dockRoot).toEqual(docked.dockRoot);
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).toContain("Ticker Research Body");
+    expect(mounts).toBe(1);
+  });
+
   test("resolves pane management shortcuts", () => {
     const base = { ctrl: false, meta: true, super: true, shift: true, alt: false };
     expect(resolvePaneManagementShortcut({ ...base, name: ",", key: ",", shift: false })).toBe("settings");
@@ -312,7 +402,8 @@ describe("Shell", () => {
     expect(resolvePaneManagementShortcut({ ...base, name: "g", key: "g" })).toBe("gridlock-all");
     expect(resolvePaneManagementShortcut({ ...base, name: "m", key: "m" })).toBe("window-mode");
     expect(resolvePaneManagementShortcut({ ...base, name: "r", key: "r" })).toBe("window-resize-mode");
-    expect(resolvePaneManagementShortcut({ ...base, name: "n", key: "n" })).toBeNull();
+    expect(resolvePaneManagementShortcut({ ...base, name: "n", key: "n" })).toBe("new-layout");
+    expect(resolvePaneManagementShortcut({ ...base, name: "j", key: "j" })).toBeNull();
     expect(resolvePaneManagementShortcut({ ...base, name: "d", key: "d", alt: true })).toBeNull();
     expect(resolvePaneManagementShortcut({ ...base, name: "d", key: "d", meta: false, super: false })).toBeNull();
   });

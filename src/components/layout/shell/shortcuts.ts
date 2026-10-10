@@ -12,6 +12,7 @@ export type PaneManagementShortcut =
   | "menu"
   | "settings"
   | "toggle-fullscreen"
+  | "new-layout"
   | "toggle-floating"
   | "pop-out"
   | "copy-screenshot"
@@ -28,6 +29,7 @@ const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManage
   "pane-menu": "menu",
   "pane-settings": "settings",
   "pane-fullscreen": "toggle-fullscreen",
+  "pane-new-layout": "new-layout",
   "pane-float": "toggle-floating",
   "pane-pop-out": "pop-out",
   "pane-screenshot": "copy-screenshot",
@@ -42,7 +44,7 @@ const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManage
 };
 
 export type PaneManagementAccelerators = Record<
-  "menu" | "settings" | "fullscreen" | "toggleFloating" | "popOut" | "copyScreenshot" | "exportCsv" | "share" | "close"
+  "menu" | "settings" | "fullscreen" | "newLayout" | "toggleFloating" | "popOut" | "copyScreenshot" | "exportCsv" | "share" | "close"
   | "closeAllFloating" | "layoutGallery" | "gridlockAll" | "windowMode" | "windowResizeMode",
   string | undefined
 >;
@@ -53,6 +55,7 @@ export function paneManagementAccelerators(keybindings: ResolvedKeybindings): Pa
     menu: menuAcceleratorFor(keybindings, "pane-menu"),
     settings: menuAcceleratorFor(keybindings, "pane-settings"),
     fullscreen: menuAcceleratorFor(keybindings, "pane-fullscreen"),
+    newLayout: menuAcceleratorFor(keybindings, "pane-new-layout"),
     toggleFloating: menuAcceleratorFor(keybindings, "pane-float"),
     popOut: menuAcceleratorFor(keybindings, "pane-pop-out"),
     copyScreenshot: menuAcceleratorFor(keybindings, "pane-screenshot"),
@@ -98,7 +101,7 @@ export function inputCaptureAllowsPaneManagementShortcut(
   // A screenshot does not edit the field that captured input. Keep it available
   // from composers (ASKG, chat, etc.) on both desktop modifier layouts.
   if (shortcut === "copy-screenshot") return event.ctrl || event.meta || event.super === true;
-  if (shortcut === "toggle-fullscreen") return event.meta || event.super === true;
+  if (shortcut === "toggle-fullscreen" || shortcut === "new-layout") return event.meta || event.super === true;
   if (shortcut !== "close" && shortcut !== "close-all-floating") return false;
   return event.meta || event.super || event.targetEditable !== true;
 }

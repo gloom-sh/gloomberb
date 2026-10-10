@@ -172,6 +172,14 @@ export type AppAction =
   | { type: "DELETE_LAYOUT"; index: number }
   | { type: "RENAME_LAYOUT"; index: number; name: string }
   | { type: "DUPLICATE_LAYOUT"; index: number }
+  /**
+   * Moves a pane out of the active layout into a new layout of its own, named
+   * `name` (made unique), which becomes active. `sourceLayoutId` names the
+   * layout it left when that one has no id yet, so Move Back can find it.
+   */
+  | { type: "MOVE_PANE_TO_NEW_LAYOUT"; paneId: string; name: string; sourceLayoutId: string }
+  /** Returns a pane Move to New Layout moved to the layout it came from, which becomes active. */
+  | { type: "MOVE_PANE_BACK"; paneId: string }
   | { type: "FOCUS_PANE"; paneId: string }
   | { type: "FOCUS_NEXT"; paneOrder: string[] }
   | { type: "FOCUS_PREV"; paneOrder: string[] }

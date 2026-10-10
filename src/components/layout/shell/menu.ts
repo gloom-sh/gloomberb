@@ -15,7 +15,7 @@ import {
   type ShortcutDisplayMode,
 } from "../../../utils/shortcut-labels";
 import { PANE_MANAGEMENT_ACCELERATORS, type PaneManagementAccelerators } from "./shortcuts";
-import { t } from "../../../i18n";
+import { t, tf } from "../../../i18n";
 import { displayWidth } from "../../../utils/format";
 import { fireAndForget } from "../../../utils/fire-and-forget";
 
@@ -40,6 +40,14 @@ export interface PaneMenuQuickSetting {
   label: string;
   active: boolean;
   toggle: () => void;
+}
+
+/** Move to New Layout and Move Back as the pane menu offers them; either may be absent. */
+export interface PaneMenuLayoutMove {
+  /** Absent when the pane is alone in its layout. */
+  moveToNewLayout?: () => void;
+  /** Present when the pane was moved here from another layout. */
+  moveBack?: { layoutName: string; onSelect: () => void };
 }
 
 /**
@@ -93,6 +101,7 @@ export function menuForPane(
   quickSettings: PaneMenuQuickSetting[] = [],
   fullscreen?: { active: boolean; toggle: () => void },
   paneItems: ContextMenuItem[] = [],
+  layoutMove: PaneMenuLayoutMove = {},
 ): ContextMenuItem[] {
   const baseActions: ContextMenuItem[] = [...paneItems];
   if (baseActions.length > 0) baseActions.push(contextMenuDivider("pane:own-actions-divider"));
@@ -144,6 +153,24 @@ export function menuForPane(
       label: fullscreen.active ? "Exit Fullscreen" : "Fullscreen",
       accelerator: accelerators.fullscreen,
       onSelect: fullscreen.toggle,
+    });
+  }
+
+  if (layoutMove.moveToNewLayout) {
+    baseActions.push({
+      id: "move-to-new-layout",
+      label: "Move to New Layout",
+      accelerator: accelerators.newLayout,
+      onSelect: layoutMove.moveToNewLayout,
+    });
+  }
+  if (layoutMove.moveBack) {
+    baseActions.push({
+      id: "move-back",
+      label: tf("Move Back to {layout}", { layout: layoutMove.moveBack.layoutName }),
+      // The shortcut moves a pane back only when it is alone, where Move to New Layout is not offered.
+      accelerator: layoutMove.moveToNewLayout ? undefined : accelerators.newLayout,
+      onSelect: layoutMove.moveBack.onSelect,
     });
   }
 

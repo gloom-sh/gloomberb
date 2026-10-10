@@ -66,6 +66,7 @@ import { FormModalHost } from "../../form-modal";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { DataProvider } from "../../../types/data-provider";
 import { useShellPaneActions } from "./pane/actions";
+import { useShellPaneLayoutMoves } from "./pane/new-layout";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import { useTransientLayout } from "../transient-layout";
 import {
@@ -373,6 +374,32 @@ export function Shell({
     [focusedPaneId, togglePaneFullscreen],
   );
   useEffect(() => pluginRegistry.bindHost({ togglePaneFullscreen }), [pluginRegistry, togglePaneFullscreen]);
+  // A pane leaving its layout leaves fullscreen with it, so the focus layout never points at it.
+  const leaveTransientFocusForPane = useCallback((paneId: string) => {
+    if (transientFocusLayoutStateRef.current?.paneId === paneId) setTransientFocusLayout(null);
+  }, [setTransientFocusLayout]);
+  const {
+    movePaneBack,
+    movePaneToNewLayout,
+    paneLayoutMoveMenu,
+    togglePaneNewLayout,
+  } = useShellPaneLayoutMoves({
+    closePaneMenu,
+    dispatch,
+    keybindings,
+    leavePane: leaveTransientFocusForPane,
+    pluginRegistry,
+    shortcutDisplayMode,
+    stateRef,
+  });
+  const toggleFocusedPaneNewLayout = useCallback(
+    () => togglePaneNewLayout(focusedPaneId),
+    [focusedPaneId, togglePaneNewLayout],
+  );
+  useEffect(
+    () => pluginRegistry.bindHost({ movePaneBack, movePaneToNewLayout }),
+    [movePaneBack, movePaneToNewLayout, pluginRegistry],
+  );
   const activateTransientFocusLayout = useCallback(() => {
     const current = transientFocusLayoutStateRef.current;
     if (!current) return;
@@ -551,6 +578,7 @@ export function Shell({
     startWindowMode,
     toggleFocusedPaneFullscreen,
     toggleFocusedPaneFloating,
+    toggleFocusedPaneNewLayout,
   });
 
   const openPaneMenu = useCallback((
@@ -617,6 +645,7 @@ export function Shell({
         toggle: () => { togglePaneFullscreen(paneId); },
       },
       paneFooterMenuItems(getPaneFooter(paneId)),
+      paneLayoutMoveMenu(paneId),
     );
     const showKitMenu = () => {
       const pluginItems = pluginRegistry.getContextMenuItems?.(context) ?? [];
@@ -658,7 +687,7 @@ export function Shell({
     void showContextMenu(context, items, event).then((shown) => {
       if (!shown) showKitMenu();
     });
-  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneSettings, paneAccelerators, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
   openPaneMenuRef.current = openPaneMenu;
 
   // The open pane menu owns the keyboard, ahead of any pane however late it

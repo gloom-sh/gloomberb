@@ -28,6 +28,7 @@ export function TestShellPaneKeys(options: Partial<ShellPaneKeyOptions> & { focu
     startWindowMode: () => {},
     toggleFocusedPaneFullscreen: none,
     toggleFocusedPaneFloating: none,
+    toggleFocusedPaneNewLayout: none,
     ...options,
   });
   return null;

@@ -4,7 +4,10 @@ import {
   getDockedPaneIds,
   removePane,
 } from "../../../layout/pane-manager";
+import { paneMoveBackTarget, paneNewLayoutBlock } from "../../../layout/pane-layout-move";
+import { resolveTickerForPane } from "../../../state/app/context";
 import { findPaneInstance } from "../../../types/config";
+import { tf } from "../../../i18n";
 import type { ResultItem } from "../list/model";
 import type { LayoutItemsContext } from "./types";
 import { WINDOW_MODE_COMMAND_OPTIONS } from "./window-mode";
@@ -20,6 +23,7 @@ export function buildFocusedPaneLayoutItems({
   persistLayoutChange,
   pluginRegistry,
   pushRoute,
+  state,
 }: LayoutItemsContext): ResultItem[] {
   const focusedPane = focusedPaneId ? findPaneInstance(currentLayout, focusedPaneId) : null;
   const focusedPaneDef = focusedPane ? pluginRegistry.panes.get(focusedPane.paneId) : null;
@@ -37,6 +41,12 @@ export function buildFocusedPaneLayoutItems({
 
   const dockedPaneIds = getDockedPaneIds(currentLayout);
   const focusedFloating = currentLayout.floating.find((entry) => entry.instanceId === focusedPane.instanceId);
+  const newLayoutBlock = paneNewLayoutBlock(
+    currentLayout,
+    focusedPane.instanceId,
+    (instanceId) => resolveTickerForPane(state, instanceId),
+  );
+  const moveBack = paneMoveBackTarget(state.config, focusedPane.instanceId);
 
   return [
     {
@@ -65,6 +75,34 @@ export function buildFocusedPaneLayoutItems({
         pluginRegistry.togglePaneFullscreen(focusedPane.instanceId);
       },
     },
+    {
+      id: "layout-move-to-new-layout",
+      label: "Move to New Layout",
+      detail: newLayoutBlock === "only-pane"
+        ? "Already the only pane in this layout"
+        : "Give the focused pane a layout of its own that it fills",
+      searchText: "own layout tab fullscreen",
+      category: "Focused Pane",
+      kind: "action",
+      disabled: newLayoutBlock === "only-pane" || newLayoutBlock === "detached",
+      action: () => {
+        closeAll({ revertThemePreview: false });
+        pluginRegistry.movePaneToNewLayout(focusedPane.instanceId);
+      },
+    },
+    ...(moveBack ? [{
+      id: "layout-move-back",
+      label: tf("Move Back to {layout}", { layout: moveBack.name }),
+      detail: moveBack.original
+        ? "Return the focused pane to the layout it came from"
+        : "The layout it came from is gone, so it docks in this one instead",
+      category: "Focused Pane",
+      kind: "action" as const,
+      action: () => {
+        closeAll({ revertThemePreview: false });
+        pluginRegistry.movePaneBack(focusedPane.instanceId);
+      },
+    }] : []),
     ...WINDOW_MODE_COMMAND_OPTIONS.map((option) => ({
       id: `layout-window-mode:${option.mode}`,
       label: option.label,

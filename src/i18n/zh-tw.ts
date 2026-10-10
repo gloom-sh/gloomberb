@@ -229,6 +229,8 @@ export const zhTW: Record<string, string> = {
   "Remove Pane": "移除面板",
   "Float Pane": "浮動面板",
   "Dock Pane": "停靠面板",
+  "Move to New Layout": "移到新版面設定",
+  "Move Back to {layout}": "移回 {layout}",
   "Settings": "設定",
   "Copy Screenshot": "複製截圖",
   "Share Pane": "分享窗格",

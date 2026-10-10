@@ -22,6 +22,7 @@ export type CoreKeybindingActionId =
   | "close-floating-panes"
   | "pane-settings"
   | "pane-fullscreen"
+  | "pane-new-layout"
   | "pane-float"
   | "pane-pop-out"
   | "pane-screenshot"
@@ -52,6 +53,7 @@ export const PANE_ACTION_IDS = new Set<CoreKeybindingActionId>([
   "close-floating-panes",
   "pane-settings",
   "pane-fullscreen",
+  "pane-new-layout",
   "pane-float",
   "pane-pop-out",
   "pane-screenshot",
@@ -185,6 +187,14 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     category: "Pane Management",
     description: "Fill the window with the focused pane, or restore it.",
     defaults: ["CmdOrCtrl+Shift+F"],
+  },
+  {
+    id: "pane-new-layout",
+    category: "Pane Management",
+    description: "Move the focused pane to a new layout of its own, or back to the layout it came from.",
+    // N for new, and no app chord had it. Browsers keep Ctrl/Cmd+Shift+N for a
+    // private window, so on the web the pane menu and command bar carry it.
+    defaults: ["CmdOrCtrl+Shift+N"],
   },
   {
     id: "pane-float",

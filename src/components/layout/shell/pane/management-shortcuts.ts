@@ -33,6 +33,7 @@ interface ShellPaneManagementShortcutOptions {
   startWindowMode(paneId?: string, mode?: WindowEditMode): void;
   toggleFocusedPaneFullscreen(): boolean;
   toggleFocusedPaneFloating(): boolean;
+  toggleFocusedPaneNewLayout(): boolean;
 }
 
 export function useShellPaneManagementShortcuts({
@@ -54,6 +55,7 @@ export function useShellPaneManagementShortcuts({
   startWindowMode,
   toggleFocusedPaneFullscreen,
   toggleFocusedPaneFloating,
+  toggleFocusedPaneNewLayout,
 }: ShellPaneManagementShortcutOptions): void {
   const doubleEscapeCloseRef = useRef(createDoubleEscapeCloseState());
   const keybindings = useKeybindings();
@@ -152,6 +154,9 @@ export function useShellPaneManagementShortcuts({
         break;
       case "toggle-floating":
         handled = toggleFocusedPaneFloating();
+        break;
+      case "new-layout":
+        handled = toggleFocusedPaneNewLayout();
         break;
       case "pop-out":
         handled = popOutFocusedPane();

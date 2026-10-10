@@ -229,6 +229,8 @@ export const zhCN: Record<string, string> = {
   "Remove Pane": "移除面板",
   "Float Pane": "浮动面板",
   "Dock Pane": "停靠面板",
+  "Move to New Layout": "移到新布局",
+  "Move Back to {layout}": "移回 {layout}",
   "Settings": "设置",
   "Copy Screenshot": "复制截图",
   "Share Pane": "分享窗格",

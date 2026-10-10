@@ -229,6 +229,8 @@ export const ja: Record<string, string> = {
   "Remove Pane": "ペインを削除",
   "Float Pane": "ペインをフロート",
   "Dock Pane": "ペインをドッキング",
+  "Move to New Layout": "新しいレイアウトへ移動",
+  "Move Back to {layout}": "{layout} に戻す",
   "Settings": "設定",
   "Copy Screenshot": "スクリーンショットをコピー",
   "Share Pane": "ペインを共有",
