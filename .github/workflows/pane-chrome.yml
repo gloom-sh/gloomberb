@@ -1,0 +1,105 @@
+name: Pane chrome
+
+# Moves panes with real pointer input in headless Chrome (scripts/pane-chrome).
+# Only for changes that can break pane chrome: the shell and pane headers,
+# the dock, the DOM renderer, the desktop view, and these checks themselves.
+on:
+  pull_request:
+    branches:
+      - main
+    paths: &pane-chrome-paths
+      - "src/components/layout/**"
+      - "src/components/ui/tabs.tsx"
+      - "src/components/ui/icon.tsx"
+      - "src/components/ui/data-table/**"
+      - "src/components/data-table/**"
+      - "src/layout/**"
+      - "src/ui/**"
+      - "src/renderers/dom/**"
+      - "src/renderers/electrobun/view/**"
+      - "src/state/app/**"
+      - "src/core/state/app/**"
+      - "src/theme/font-scale.ts"
+      - "src/types/config.ts"
+      - "src/types/desktop-window.ts"
+      - "scripts/pane-chrome/**"
+      - "scripts/tui-benchmark-harness.ts"
+      - ".github/workflows/pane-chrome.yml"
+      - "package.json"
+      - "bun.lock"
+  push:
+    branches:
+      - main
+    paths: *pane-chrome-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pane-chrome-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pointer-checks:
+    name: Pointer checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: chrome
+        name: Read the pinned Chrome version
+        run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
+          key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+      # Fails when a pane stops moving from its grip, title or bare header bar
+      # (docked, tabbed, failed, floating, fullscreen, popped out), when tabs
+      # stop selecting or reordering or start moving their pane, or when the
+      # resize corner or a dock divider stops working. The summary names the step.
+      - name: Move panes with real pointer input
+        run: bun run check:pane-chrome
+
+      - name: Keep screenshots of failed steps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pane-chrome-failures
+          path: ~/.cache/gloomberb-pane-chrome/failures
+          if-no-files-found: ignore
+
+  drag-frame-budget:
+    name: Drag frame budget
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: chrome
+        name: Read the pinned Chrome version
+        run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
+          key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+      - name: Check out the base branch next to the PR
+        run: |
+          git fetch --depth=1 origin "${{ github.base_ref }}"
+          git worktree add ../base FETCH_HEAD
+          cd ../base && bun install --frozen-lockfile
+
+      # Fails when dragging a docked or floating pane clearly costs the main
+      # thread more per frame, or renders React more, than on the base branch;
+      # the table lands in the job summary either way.
+      - name: Compare a pane drag's frame budget with the base branch
+        run: bun run benchmark:pane-drag:compare --base ../base
