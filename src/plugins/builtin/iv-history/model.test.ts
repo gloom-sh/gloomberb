@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import type { IvHistoryPayload, IvPoint, IvScreenRow } from "./client";
-import { midrankPercentile, projectIvHistory, projectRichCheap, verdictFor } from "./model";
+import { statSource } from "./format";
+import { midrankPercentile, projectIvHistory, projectRichCheap, richCheapDates, verdictFor } from "./model";
 
 const DAY = 86_400_000;
 const sessions = (count: number, end = "2026-09-22") => {
@@ -49,9 +50,10 @@ describe("IV history against realized", () => {
     expect(model.hv[0]!.date.getTime()).toBeGreaterThanOrEqual(model.iv30[0]!.date.getTime());
     expect(stat("term").value!).toBeCloseTo(0.2 / 0.21);
   });
-  test("a newer live reading gets its own unranked row", () => {
-    expect(stat("iv30-live")).toMatchObject({ value: 0.22, date: "2026-09-23", method: "quote-mid", rank: null, percentile: null });
-    expect(model.stats.map((row) => row.id)).toEqual(["iv30", "iv30-live", "iv90", "hv", "spread", "term"]);
+  test("a newer quote reading gets its own unranked row, never called live", () => {
+    expect(stat("iv30-quote")).toMatchObject({ label: "IV 30d quote", value: 0.22, date: "2026-09-23", method: "quote-mid", rank: null, percentile: null });
+    expect(model.stats.map((row) => row.id)).toEqual(["iv30", "iv30-quote", "iv90", "hv", "spread", "term"]);
+    expect([stat("iv30-quote"), stat("hv"), stat("spread")].map((row) => statSource(row))).toEqual(["quote", "closes", "close"]);
   });
   test("a constant series ranks mid without a range", () => {
     expect(stat("spread").rank).toBeNull();
@@ -84,4 +86,17 @@ test("rich and cheap follow the IV percentile", () => {
   expect(projected).toMatchObject({ iv30: 0.32, rankDate: "2026-09-22", verdict: "rich", skew: 0.07 });
   expect(projected!.termSlope).toBeCloseTo(0.02);
   expect(projected!.ivHv).toBeCloseTo(1.28);
+});
+
+test("a queued symbol does not break a date every other row shares", () => {
+  const ready = (symbol: string, rankDate: string): IvScreenRow => ({
+    symbol, status: "ready", iv90: null, skew: null,
+    iv30: { value: 0.3, date: rankDate, method: "trade-close", rank: 70, percentile: 88, low: 0.2, high: 0.4, samples: 250, windowStart: "2025-09-22" },
+    latest: { date: "2026-09-23", method: "quote-mid", capturedAt: "", spot: 200, iv7: null, iv30: 0.32, iv60: null, iv90: 0.3, iv180: null, iv365: null },
+  });
+  const queued: IvScreenRow = { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null };
+  expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), queued, ready("B", "2026-09-22")])))
+    .toEqual({ reading: { date: "2026-09-23", method: "quote-mid" }, rank: "2026-09-22", rankApart: false, skewApart: false });
+  expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), ready("B", "2026-09-21")])))
+    .toMatchObject({ rank: null, rankApart: true });
 });

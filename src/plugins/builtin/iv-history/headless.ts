@@ -2,8 +2,8 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadRealizedVolatilities } from "./client";
-import { formatPoints, formatRank, formatStat, formatVol, verdictLabel } from "./format";
-import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, sharedReading, VCA_LIMIT, VCA_PRESETS } from "./model";
+import { formatPoints, formatRank, formatStat, formatVol, readingLabel, sharedDates, verdictLabel } from "./format";
+import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
@@ -58,7 +58,8 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
 
 export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
-  freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily" },
+  // Dated by the readings themselves; the response's own date is the day it was fetched.
+  freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily", observedKey: "date" },
   argument: { kind: "symbol-list", optional: true, maximum: VCA_LIMIT, description: "US option underlyings; defaults to index and sector ETFs." },
   options: [{ key: "preset", type: "enum", values: [{ value: "etfs" }, { value: "megacaps" }], defaultValue: "etfs", description: "Preset when no symbols are given" }],
   describe: "Volatility rich/cheap",
@@ -73,24 +74,28 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     ]);
     const rows = projectRichCheap(payload.rows, hv).sort((a, b) => (b.percentile ?? -1) - (a.percentile ?? -1));
     const queued = rows.filter((row) => row.status === "queued").map((row) => row.symbol);
-    const shared = sharedReading(rows);
+    const dates = richCheapDates(rows);
     const hasSkew = rows.some((row) => row.skew != null);
+    const dated = (value: unknown) => typeof value === "string" ? value : "--";
     return {
-      sections: [{ title: `Rich/cheap · ${universe.label}${shared ? ` · ${shared.date} ${shared.method === "quote-mid" ? "live" : "close"}` : ""}`, columns: [
+      sections: [{ title: ["Rich/cheap", universe.label, ...sharedDates(dates)].join(" · "), columns: [
         { key: "symbol", header: "Symbol" }, { key: "iv30", header: "IV30", format: percent },
-        ...(shared ? [] : [{ key: "date", header: "As of" }]),
+        ...(dates.reading ? [] : [{ key: "date", header: "As of", format: (value: unknown, row?: unknown) =>
+          typeof value === "string" ? readingLabel(value, (row as RichCheapRow).method) : "--" }]),
+        ...(dates.rankApart ? [{ key: "rankDate", header: "Rank as of", format: (value: unknown) => typeof value === "string" ? `${value} close` : "--" }] : []),
         { key: "rank", header: "IVR", format: (value: unknown) => formatRank(value as number | null) },
         { key: "percentile", header: "IVP", format: (value: unknown) => formatRank(value as number | null) },
         { key: "verdict", header: "Rich/Cheap", format: (value: unknown) => verdictLabel(value as never) },
         { key: "termSlope", header: "30-90", format: (value: unknown) => formatPoints(value as number | null) },
         ...(hasSkew ? [{ key: "skew", header: "25D skew", format: (value: unknown) => formatPoints(value as number | null) }] : []),
+        ...(hasSkew && dates.skewApart ? [{ key: "skewDate", header: "Skew as of", format: dated }] : []),
         { key: "hv", header: "HV20", format: percent },
         { key: "ivHv", header: "IV/HV", format: (value: unknown) => typeof value === "number" ? value.toFixed(2) : "--" },
       ], rows: rows.map((row) => ({ ...row })) }],
       complete: !queued.length && !universe.error, unavailableSymbols: queued,
       errors: [universe.error].filter((value): value is string => !!value),
       ...(queued.length ? { notes: [`Queued for backfill: ${queued.join(", ")}.`] } : {}),
-      metadata: { asOf: payload.asOf, presets: VCA_PRESETS, methodology: METHODOLOGY },
+      metadata: { presets: VCA_PRESETS, methodology: METHODOLOGY },
     };
   },
 };

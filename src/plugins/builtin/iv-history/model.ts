@@ -119,9 +119,9 @@ export function projectIvHistory(
     value: stats?.value ?? null, date: stats?.date ?? null, method: stats?.method ?? null, low: stats?.low ?? null, high: stats?.high ?? null,
     rank: stats?.rank ?? null, percentile: stats?.percentile ?? null, samples: stats?.samples ?? 0 });
   const stats: IvStatRow[] = [fromServer("iv30", "IV 30d ATM", payload.stats.iv30)];
-  // A newer same-day quote capture is shown on its own row: its rank would mix methods.
+  // A newer quote capture is shown on its own row: its rank would mix methods.
   if (latest?.method === "quote-mid" && latest.iv30 != null && (!payload.stats.iv30 || latest.date > payload.stats.iv30.date)) {
-    stats.push({ id: "iv30-live", label: "IV 30d live", unit: "vol", value: latest.iv30, date: latest.date, method: "quote-mid",
+    stats.push({ id: "iv30-quote", label: "IV 30d quote", unit: "vol", value: latest.iv30, date: latest.date, method: "quote-mid",
       low: null, high: null, rank: null, percentile: null, samples: 0 });
   }
   stats.push(fromServer("iv90", "IV 90d ATM", payload.stats.iv90),
@@ -152,21 +152,43 @@ export interface RichCheapRow {
   method: IvMethod | null;
   rank: number | null;
   percentile: number | null;
-  /** Session the rank belongs to (latest trade close). */
+  /** Trade close the rank is measured on: the newest trade-close session, which a newer quote reading can be ahead of. */
   rankDate: string | null;
   termSlope: number | null;
   skew: number | null;
+  /** Session of the quote capture the skew comes from. */
+  skewDate: string | null;
   hv: number | null;
   ivHv: number | null;
   verdict: RichCheap;
 }
 
-/** The one reading date every screened row shares, shown once instead of per row. */
-export function sharedReading(rows: readonly RichCheapRow[]): { date: string; method: IvMethod | null } | null {
-  const dated = rows.filter((row) => row.date);
-  const first = dated[0];
-  return first && dated.every((row) => row.date === first.date && row.method === first.method)
-    ? { date: first.date!, method: first.method } : null;
+/**
+ * The dates the screened rows agree on, so each is said once instead of per
+ * row. The reading (IV30, term slope, IV/HV) and the rank (IVR, IVP) are dated
+ * apart: a quote reading can be a session ahead of the trade close its rank
+ * is measured on. A group the rows disagree on gets its own column.
+ */
+export interface RichCheapDates {
+  reading: { date: string; method: IvMethod } | null;
+  /** The trade close every ranked row is ranked on. */
+  rank: string | null;
+  /** Ranked rows are ranked on different closes. */
+  rankApart: boolean;
+  /** Some skew comes from a different session than its row's reading. */
+  skewApart: boolean;
+}
+export function richCheapDates(rows: readonly RichCheapRow[]): RichCheapDates {
+  const read = rows.filter((row) => row.date && row.method);
+  const ranked = rows.filter((row) => row.rankDate);
+  const first = read[0], firstRanked = ranked[0];
+  return {
+    reading: first && read.every((row) => row.date === first.date && row.method === first.method)
+      ? { date: first.date!, method: first.method! } : null,
+    rank: firstRanked && ranked.every((row) => row.rankDate === firstRanked.rankDate) ? firstRanked.rankDate : null,
+    rankApart: !!firstRanked && ranked.some((row) => row.rankDate !== firstRanked.rankDate),
+    skewApart: rows.some((row) => row.skew != null && row.skewDate !== row.date),
+  };
 }
 
 /** Rich or cheap against the symbol's own year: IV30 percentile at or above 80, or at or below 20. */
@@ -185,7 +207,7 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
       symbol: row.symbol, status: row.status, iv30, date: latest?.date ?? null, method: latest?.method ?? null,
       rank: row.iv30?.rank ?? null, percentile, rankDate: row.iv30?.date ?? null,
       termSlope: iv30 != null && latest?.iv90 != null ? iv30 - latest.iv90 : null,
-      skew: row.skew?.skew ?? null, hv: realized,
+      skew: row.skew?.skew ?? null, skewDate: row.skew?.date ?? null, hv: realized,
       ivHv: iv30 != null && realized != null && realized > 0 ? iv30 / realized : null,
       verdict: verdictFor(percentile),
     };

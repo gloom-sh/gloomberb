@@ -8,21 +8,25 @@ import { Box } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
-import { formatPoints, formatRank, formatVol, shortDate, verdictLabel } from "./format";
-import { projectRichCheap, type RichCheapRow, sharedReading, type VcaPreset } from "./model";
+import { formatPoints, formatRank, formatVol, readingLabel, sharedDates, shortDate, verdictLabel } from "./format";
+import { projectRichCheap, type RichCheapRow, richCheapDates, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 
 type SortId = keyof RichCheapRow;
 const HV_WINDOW = 20;
+/** Pane borders and the footer's own padding. */
+const FOOTER_MARGIN = 6;
 const COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "Symbol", width: 8, align: "left" },
   { id: "iv30", label: "IV30", width: 7, align: "right" },
   { id: "date", label: "As of", width: 11, align: "right" },
+  { id: "rankDate", label: "Rank as of", width: 11, align: "right" },
   { id: "rank", label: "IVR", width: 5, align: "right" },
   { id: "percentile", label: "IVP", width: 5, align: "right" },
   { id: "verdict", label: "Rich/Cheap", width: 11, align: "left" },
   { id: "termSlope", label: "30-90", width: 7, align: "right" },
   { id: "skew", label: "25D skew", width: 9, align: "right" },
+  { id: "skewDate", label: "Skew as of", width: 11, align: "right" },
   { id: "hv", label: `HV${HV_WINDOW}`, width: 7, align: "right" },
   { id: "ivHv", label: "IV/HV", width: 6, align: "right" },
 ];
@@ -57,10 +61,17 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     const projected = projectRichCheap(resource.data?.rows ?? [], hv);
     return projected.sort((left, right) => compareSortValues(left[sort.columnId], right[sort.columnId], sort.direction));
   }, [resource.data, hv, sort]);
-  const shared = useMemo(() => sharedReading(rows), [rows]);
-  // A shared reading date moves to the footer, and a column no row fills is left out.
-  const columns = useMemo(() => COLUMNS.filter((column) => !(column.id === "date" && shared)
-    && !(column.id === "skew" && rows.every((row) => row.skew == null))), [rows, shared]);
+  const dates = useMemo(() => richCheapDates(rows), [rows]);
+  // A date every row shares moves to the footer; a column no row fills, or whose dates agree, is left out.
+  const columns = useMemo(() => COLUMNS.filter((column) => {
+    switch (column.id) {
+      case "date": return !dates.reading;
+      case "rankDate": return dates.rankApart;
+      case "skew": return rows.some((row) => row.skew != null);
+      case "skewDate": return dates.skewApart;
+      default: return true;
+    }
+  }), [rows, dates]);
   const [selected, setSelected] = useState<string | null>(null);
   const queued = rows.filter((row) => row.status === "queued").length;
   const uncovered = rows.filter((row) => row.status !== "queued" && row.iv30 == null).length;
@@ -70,11 +81,13 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     .filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "iv-screen-notices", notices, focused });
   const openHistory = (row: RichCheapRow) => createPaneFromTemplate("iv-history-pane", { symbol: row.symbol });
+  // The full wording gives way to the short form in a pane too narrow to show the rank date.
+  const fullDatesText = useMemo(() => sharedDates(dates).join(" · "), [dates]);
+  const datesText = fullDatesText.length + FOOTER_MARGIN > width ? sharedDates(dates, true).join(" · ") : fullDatesText;
   usePaneFooter("iv-screen", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
-    ...(shared ? [{ id: "date", parts: [{ text: readingLabel(shared.date, shared.method), tone: "muted" as const }] }]
-      : resource.data?.asOf ? [{ id: "date", parts: [{ text: resource.data.asOf, tone: "muted" as const }] }] : []),
-  ] }), [resource.loading, shared, resource.data?.asOf]);
+    ...(datesText ? [{ id: "dates", parts: [{ text: datesText, tone: "muted" as const }] }] : []),
+  ] }), [resource.loading, datesText]);
   const handleKey = (event: DataTableKeyEvent): boolean => {
     if (event.ctrl || event.alt || event.meta || event.name !== "r") return false;
     void resource.reload();
@@ -84,13 +97,15 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     switch (id) {
       case "symbol": return { text: row.symbol, color: colors.textBright };
       case "iv30": return { text: formatVol(row.iv30), color: colors.warning };
-      case "date": return { text: row.date ? readingLabel(row.date, row.method) : row.status === "queued" ? "queued" : "--",
+      case "date": return { text: row.date ? readingLabel(row.date, row.method, true) : row.status === "queued" ? "queued" : "--",
         color: colors.textDim };
+      case "rankDate": return { text: row.rankDate ? `${shortDate(row.rankDate)} close` : "--", color: colors.textDim };
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
       case "verdict": return { text: verdictLabel(row.verdict), color: row.verdict === "rich" ? colors.negative : row.verdict === "cheap" ? colors.positive : colors.textDim };
       case "termSlope": return { text: formatPoints(row.termSlope), color: row.termSlope != null && row.termSlope > 0 ? colors.negative : colors.text };
       case "skew": return { text: formatPoints(row.skew) };
+      case "skewDate": return { text: row.skewDate ? readingLabel(row.skewDate, "quote-mid", true) : "--", color: colors.textDim };
       case "hv": return { text: hv.has(row.symbol) ? formatVol(row.hv) : "...", color: colors.positive };
       case "ivHv": return { text: row.ivHv == null ? "--" : row.ivHv.toFixed(2) };
       default: return { text: "" };
@@ -111,15 +126,11 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
         onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id as SortId, { firstDirection: "desc" }))}
         selection={{ kind: "id", selectedId: selected ?? rows[0]?.symbol ?? "", getId: (row) => row.symbol, onChange: (id) => setSelected(id) }}
         onActivate={openHistory} onRootKeyDown={handleKey}
-        getExportMetadata={() => [["universe", universe.label], ["as of", resource.data?.asOf], ["IV", "30-day ATM, annualized"],
-          ["rank window", "prior 52 weeks of trade-close readings"], ["HV", `${HV_WINDOW}-session close-to-close`]]}
+        getExportMetadata={() => [["universe", universe.label], ["as of", fullDatesText || undefined],
+          ["IV", "30-day ATM, annualized"], ["rank window", "prior 52 weeks of trade-close readings"], ["HV", `${HV_WINDOW}-session close-to-close`]]}
         renderCell={(row, column) => cell(row, column.id)} />
     </PaneStatusBody>
   </Box>;
-}
-
-function readingLabel(date: string, method: RichCheapRow["method"]): string {
-  return `${shortDate(date)} ${method === "quote-mid" ? "live" : "close"}`;
 }
 
 export const VCA_SCOPE_OPTIONS = [
