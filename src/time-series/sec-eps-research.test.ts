@@ -34,7 +34,8 @@ test("SEC split correction survives cached statement merging, graph growth and J
   const series = extractFundamentalSeries(financials, { kind: "security", instrument: { symbol: "AAPL" }, fieldId: "fundamental.eps", period: "annual", timestampMode: "period-end" });
   const exported = JSON.parse(JSON.stringify(series));
   expect(exported[0]).toMatchObject({ value: 2.3025, observedAt: "2017-09-30T00:00:00.000Z", availableAt: "2020-10-30T00:00:00.000Z", provenance: { quality: "derived", secEpsBasis: { originalValue: 9.21, factor: 4 } } });
-  expect(graphRowsForFinancials(financials, "fundamental", "eps", "annual", "AAPL")[1]!.growth).toBeCloseTo(2.98 / 2.3025 - 1, 10);
+  // FY2018 keeps its original 11.91 on the split basis too, not the 10-K's rounded restatement.
+  expect(graphRowsForFinancials(financials, "fundamental", "eps", "annual", "AAPL")[1]!.growth).toBeCloseTo(2.9775 / 2.3025 - 1, 10);
 });
 
 test("unresolved EPS cannot return through cached fallback, inferred P/E or a multi-year growth gap", () => {

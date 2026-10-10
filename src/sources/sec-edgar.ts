@@ -39,6 +39,8 @@ type CompanyFactsEntry = {
   form?: string;
   filed?: string;
   frame?: string;
+  /** A fact reporting the same figure for this span carries SEC's calendar-quarter frame. */
+  framedQuarter?: boolean;
 };
 
 type CompanyFactsStatementField = {
@@ -398,6 +400,23 @@ function companyFactsEntries(payload: unknown, tag: string, units: string[]): Co
   return [];
 }
 
+/**
+ * SEC frames one fact per span, the latest filed: a 10-K's own fourth quarter
+ * is framed only on the next 10-K that repeats it. An earlier fact reporting
+ * the framed figure for that span is that quarter too, so it keeps its date.
+ */
+function withFramedQuarters(entries: CompanyFactsEntry[], sameFigure?: SameFigure): CompanyFactsEntry[] {
+  const span = (entry: CompanyFactsEntry) => `${entry.start}:${entry.end}`;
+  const framed = new Map<string, CompanyFactsEntry[]>();
+  for (const entry of entries) {
+    if (!entry.start || !/^CY\d{4}Q[1-4]$/.test(entry.frame ?? "")) continue;
+    framed.set(span(entry), [...framed.get(span(entry)) ?? [], entry]);
+  }
+  if (!framed.size) return entries;
+  return entries.map((entry) => entry.start && framed.get(span(entry))?.some((quarter) =>
+    Object.is(quarter.val, entry.val) || sameFigure?.(entry, quarter)) ? { ...entry, framedQuarter: true } : entry);
+}
+
 function secFormRank(form: string | undefined): number {
   const normalized = normalize(form);
   if (normalized === "10-K/A") return 4;
@@ -415,6 +434,7 @@ function companyFactsFiledRank(value: string | undefined): number {
 function shouldReplaceCompanyFact(
   candidate: CompanyFactsEntry,
   selected: CompanyFactsEntry | undefined,
+  repeats?: SameFigure,
 ): boolean {
   if (!selected) return true;
   const left = candidate;
@@ -433,11 +453,43 @@ function shouldReplaceCompanyFact(
     if (filedDiff < 0) return false;
     // Later comparative repeats do not move the original disclosure date.
     // A later value change is a restatement and replaces the selected fact.
-    return !Object.is(left.val, right.val);
+    return !Object.is(left.val, right.val) && !repeats?.(left, right);
   }
   const formDiff = secFormRank(left.form) - secFormRank(right.form);
   if (formDiff !== 0) return formDiff > 0;
   return String(left.frame ?? "").localeCompare(String(right.frame ?? "")) > 0;
+}
+
+/** Whether two facts for one span report the same figure under different values. */
+type SameFigure = (left: CompanyFactsEntry, right: CompanyFactsEntry) => boolean;
+
+/**
+ * A split re-expresses EPS on the new share count: two values are one figure
+ * when the share-basis evidence puts them on different bases and they agree
+ * on the current one within each filing's cent rounding.
+ */
+function splitEquivalent(resolveEps: ReturnType<typeof createSecEpsBasisResolver>): SameFigure {
+  return (left, right) => {
+    const [a, b] = [resolveEps(left), resolveEps(right)];
+    return a.basis?.status === "split-adjusted" && b.basis?.status === "split-adjusted" && a.basis.factor !== b.basis.factor
+      && a.value !== undefined && b.value !== undefined
+      && Math.abs(a.value - b.value) <= .005 / a.basis.factor! + .005 / b.basis.factor! + 1e-12;
+  };
+}
+
+/**
+ * A later split re-expression of the selected EPS, or a later repeat of one,
+ * is a comparative repeat and not a restatement. The original disclosure
+ * stays selected and dated; the resolver carries it to the current basis.
+ */
+function splitRepeats(sameFigure: SameFigure): SameFigure {
+  const repeated = new WeakMap<CompanyFactsEntry, Set<number>>();
+  return (candidate, selected) => {
+    if (repeated.get(selected)?.has(candidate.val!)) return true;
+    if (!sameFigure(candidate, selected)) return false;
+    repeated.set(selected, (repeated.get(selected) ?? new Set()).add(candidate.val!));
+    return true;
+  };
 }
 
 function compareCompanyFactsChronologically(
@@ -484,7 +536,7 @@ function isQuarterlyCompanyFact(entry: CompanyFactsEntry, periodType: "duration"
       || new Date(start).toISOString().slice(0, 10) !== entry.start
       || new Date(end).toISOString().slice(0, 10) !== entry.end) return false;
   }
-  if (/^CY\d{4}Q[1-4]$/.test(entry.frame ?? "")) return true;
+  if (/^CY\d{4}Q[1-4]$/.test(entry.frame ?? "") || entry.framedQuarter) return true;
   const form = normalize(entry.form);
   const fiscalPeriod = normalize(entry.fp ?? undefined);
   if ((form !== "10-Q" && form !== "10-Q/A") || !/^Q[1-3]$/.test(fiscalPeriod)) return false;
@@ -505,9 +557,10 @@ function setCompanyFactValue(
   field: keyof FinancialStatement,
   value: number,
   entry: CompanyFactsEntry,
+  repeats?: SameFigure,
 ): void {
   const selectionKey = `${date}:${String(field)}`;
-  if (!shouldReplaceCompanyFact(entry, selectedFacts.get(selectionKey))) return;
+  if (!shouldReplaceCompanyFact(entry, selectedFacts.get(selectionKey), repeats)) return;
   const row = rows.get(date) ?? { date, dateSource: "sec", currency: "USD" };
   (row as unknown as Record<string, unknown>)[field] = value;
   if (entry.filed) {
@@ -532,6 +585,7 @@ function fillCompanyFactsStatementRows(
   field: CompanyFactsStatementField,
   period: "annual" | "quarterly",
   annualPeriodEnds: ReadonlySet<string>,
+  repeats?: SameFigure,
 ): void {
   for (const entry of [...entries].sort(compareCompanyFactsChronologically)) {
     if (!entry.end || typeof entry.val !== "number") continue;
@@ -548,6 +602,7 @@ function fillCompanyFactsStatementRows(
       field.field,
       field.transform ? field.transform(entry.val) : entry.val,
       entry,
+      repeats,
     );
   }
 }
@@ -648,10 +703,14 @@ export function parseCompanyFactsFinancialStatements(payload: unknown): SecCompa
   const quarterlyRows = new Map<string, FinancialStatement>();
   const annualSelectedFacts = new Map<string, CompanyFactsEntry>();
   const quarterlySelectedFacts = new Map<string, CompanyFactsEntry>();
+  const resolveEps = createSecEpsBasisResolver(payload);
+  // Diluted EPS only: share counts are kept only on the current basis.
+  const sameEps = splitEquivalent(resolveEps);
   const fieldEntries = COMPANY_FACTS_STATEMENT_FIELDS.map((field) => ({
     field,
-    entries: withoutDifferentMeasureFallback(field, field.tags.flatMap((tag, tagPriority) => companyFactsEntries(payload, tag, field.units)
-      .map((entry) => ({ ...entry, tagPriority, concept: tag })))),
+    entries: withoutDifferentMeasureFallback(field, field.tags.flatMap((tag, tagPriority) => withFramedQuarters(
+      companyFactsEntries(payload, tag, field.units), field.field === "eps" ? sameEps : undefined,
+    ).map((entry) => ({ ...entry, tagPriority, concept: tag })))),
   }));
   // Balance-sheet facts have no duration. Anchor their dates to actual annual
   // periods, so quarterly comparative snapshots in a 10-K stay quarterly.
@@ -659,13 +718,14 @@ export function parseCompanyFactsFinancialStatements(payload: unknown): SecCompa
     ? entries.filter(isAnnualDurationFact).map((entry) => entry.end!)
     : []));
 
+  const epsRepeats = splitRepeats(sameEps);
   for (const { field, entries } of fieldEntries) {
     if (entries.length === 0) continue;
-    fillCompanyFactsStatementRows(annualRows, annualSelectedFacts, entries, field, "annual", annualPeriodEnds);
-    fillCompanyFactsStatementRows(quarterlyRows, quarterlySelectedFacts, entries, field, "quarterly", annualPeriodEnds);
+    const repeats = field.field === "eps" ? epsRepeats : undefined;
+    fillCompanyFactsStatementRows(annualRows, annualSelectedFacts, entries, field, "annual", annualPeriodEnds, repeats);
+    fillCompanyFactsStatementRows(quarterlyRows, quarterlySelectedFacts, entries, field, "quarterly", annualPeriodEnds, repeats);
   }
 
-  const resolveEps = createSecEpsBasisResolver(payload);
   const fourthQuarters = FOURTH_QUARTER_LINES.flatMap(({ fields, source }) => secFourthQuarters(fields, typeof source === "string"
     ? fieldEntries.find(({ field }) => field.field === source)?.entries ?? []
     : source.flatMap((tag, tagPriority) => companyFactsEntries(payload, tag, ["USD"]).map((entry) => ({ ...entry, tagPriority, concept: tag })))));

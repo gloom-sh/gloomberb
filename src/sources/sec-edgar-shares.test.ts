@@ -52,7 +52,9 @@ test("SEC native projection retains filed weighted-average shares and separates 
       WeightedAverageNumberOfDilutedSharesOutstanding: { units: { shares: eps.map((row) => ({ ...row, val: row.accn === splitAccn ? 20 : 5 })) } },
       WeightedAverageNumberOfSharesOutstandingBasic: { units: { shares: eps.map((row) => ({ ...row, val: row.accn === splitAccn ? 16 : 4 })) } },
     } } })
-    expect(result.annualStatements.find((row) => row.date === after.end)).toMatchObject({ eps: 2, basicShares: 16, dilutedShares: 20 })
+    // The split's 10-K re-expresses the year's EPS; the figure keeps its original filing.
+    expect(result.annualStatements.find((row) => row.date === after.end)).toMatchObject({ eps: 2, basicShares: 16, dilutedShares: 20,
+      epsBasis: { factor: 4, originalFiled: "2019-10-31" } })
     const scaledEps = result.annualStatements.find((row) => row.date === older.end)!
     expect(scaledEps.eps).toBe(1)
     expect(scaledEps.basicShares).toBeUndefined()
