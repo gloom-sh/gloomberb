@@ -1,6 +1,7 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { act } from "react";
 import { apiClient } from "../../../api-client";
+import { getCurrentPluginTarget, setCurrentPluginTarget } from "../../current-target";
 import type { ExperimentAnswer } from "../../../api-client/web-experiments";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { AppContext, createInitialState } from "../../../state/app/context";
@@ -14,12 +15,22 @@ import { useUpgradePersonalization } from "./upgrade-personalization";
 
 const tui = createOpenTuiTestHarness({ width: 80, height: 20 });
 const originalExposure = apiClient.recordExperimentExposure;
-let account = 0;
+let originalNavigator: PropertyDescriptor | undefined;
+let originalTarget = getCurrentPluginTarget();
+
+beforeEach(() => {
+  originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  originalTarget = getCurrentPluginTarget();
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+  setCurrentPluginTarget("tui");
+  setAppVisible(true);
+  apiClient.setSessionToken(null);
+});
 
 function signIn() {
   act(() => {
     apiClient.setSessionToken("personalization-test-session");
-    apiClient.restoreCachedUser({ id: `personalization-render-${++account}`, email: "test@example.com", emailVerified: true, plan: "free" });
+    apiClient.restoreCachedUser({ id: `personalization-render-${crypto.randomUUID()}`, email: "test@example.com", emailVerified: true, plan: "free" });
   });
 }
 
@@ -41,6 +52,9 @@ async function render({ shown = true, held = true } = {}) {
 
 afterEach(() => {
   apiClient.recordExperimentExposure = originalExposure;
+  setCurrentPluginTarget(originalTarget);
+  if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
+  else Reflect.deleteProperty(globalThis, "navigator");
   act(() => {
     apiClient.setSessionToken(null);
     apiClient.restoreCachedUser(null);
