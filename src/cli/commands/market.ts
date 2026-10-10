@@ -42,6 +42,7 @@ import {
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
+import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import { fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
 import {
   chainHasExpiry,
@@ -1119,7 +1120,15 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           cacheMode: refresh ? "refresh" : "default",
         }),
       };
-    }, undefined, { command: "options", noun: "options chain" });
+    }, undefined, { command: "options", noun: "options chain" }).catch((error: unknown) => {
+      if (!isOptionsUnavailableError(error)) throw error;
+      // A future or commodity with no chain of its own: name the listed fund whose options stand in.
+      const alternative = listedOptionsAlternative(listing.key);
+      return ctx.fail(optionsUnavailableTitle(listing.key), alternative
+        ? `Nearest listed alternative: ${alternative.symbol} (${alternative.name}), gloomberb options ${alternative.symbol}.`
+          + ` Strategy payoffs: gloomberb fn OSA ${alternative.symbol}`
+        : "Strategy payoffs on a listed underlying: gloomberb fn OSA <ticker>");
+    });
     const inputs = await inputsPromise;
     if (expirationDate != null && !chainHasExpiry(loaded, expirationDate)) {
       // An unlisted date comes back as an empty chain; its own list of expiries, else the default chain's, says what to pick.

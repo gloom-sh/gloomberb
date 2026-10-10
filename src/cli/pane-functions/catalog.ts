@@ -259,6 +259,11 @@ function paneCatalogSearchScore(entry: PaneCatalogEntry, query: string): number 
   ].filter((value): value is string => !!value).join(" ").toLowerCase();
 
   let score = searchable.includes(query.toLowerCase()) ? 12 : 0;
+  // A query that is one of the function's own keywords ("hedge" for OSA) beats one found inside a
+  // longer keyword ("hedge funds" for 13F).
+  const keywords = [entry.label, ...entry.keywords, ...entry.capability.aliases]
+    .filter((value): value is string => !!value).map((value) => value.toLowerCase().replace(/\s+/g, " "));
+  if (keywords.includes(terms.join(" "))) score += 4;
   let matchedTerms = 0;
   for (const term of terms) {
     const normalized = normalizeLookupToken(term);
