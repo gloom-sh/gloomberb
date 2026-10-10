@@ -40,7 +40,7 @@ async function mount(answer: (url: URL) => unknown | Promise<unknown>, selectedP
   function Harness() {
     const [state, setState] = useState(initial);
     const dispatch = (action: any) => { stateRef.current = appReducer(stateRef.current, action); setState(stateRef.current); };
-    const registry = { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} }, notify() {}, getTermSize: () => ({ width: 120, height: 40 }) } as any;
+    const registry = { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} }, notify() {}, getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null } as any;
     const runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: provider, tickerRepository: repo, dispatch, pluginRegistry: registry,
       buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: `research:${++sequence}` }),
       persistLayout: layout => dispatch({ type: "UPDATE_LAYOUT", layout }), activatePane() {}, focusVisiblePane() {} });

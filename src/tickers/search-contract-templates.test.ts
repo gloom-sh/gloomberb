@@ -31,7 +31,7 @@ test("selected futures and public listing survive actual templates, chart models
   });
   const templates = [...tickerDetailModule.paneTemplates!, ...chartComposerModule.paneTemplates!];
   const placed: PaneInstanceConfig[] = [];
-  const registry: any = { paneTemplates: new Map(templates.map(t => [t.id, t])), panes: new Map([...tickerDetailModule.panes!, ...chartComposerModule.panes!].map(p => [p.id, p])), getPaneTemplatePluginId() {}, events: { emit() {} } };
+  const registry: any = { paneTemplates: new Map(templates.map(t => [t.id, t])), panes: new Map([...tickerDetailModule.panes!, ...chartComposerModule.panes!].map(p => [p.id, p])), getPaneTemplatePluginId() {}, getDisabledPaneTemplateOwner: () => null, events: { emit() {} } };
   const deps = { dataProvider: provider, tickerRepository: repo, getState: () => state, dispatch: (action: any) => { state = appReducer(state, action); }, pluginRegistry: registry,
     buildPaneInstance: (id: string, options: any) => createPaneInstance(id, options), placePaneInstance: (pane: PaneInstanceConfig) => { placed.push(pane); state.config.layout.instances.push(pane); } };
   for (const result of futures) {

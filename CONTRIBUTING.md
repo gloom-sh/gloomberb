@@ -128,7 +128,7 @@ Basic UI must use the shared kit: actions, selectable and expandable rows, field
 
 ### Built-in plugins
 
-Only independently owned, registered product areas implement `GloomPlugin`. Larger built-ins may compose internal `PluginModule` objects for panes, commands, capabilities and lifecycle code, but those modules have no identity, toggle, version or persistence namespace of their own, and smaller built-ins declare their contributions directly. `PluginModule` is an internal organization tool, not a second plugin API: external plugins export one `GloomPlugin`.
+Only independently owned, registered product areas implement `GloomPlugin`. Larger built-ins may compose internal `PluginModule` objects for panes, commands, capabilities and lifecycle code, but those modules have no identity, toggle or version of their own, and smaller built-ins declare their contributions directly. A module persists under its plugin's state namespace, unless it moved from another plugin: its entry then keeps the namespace it had (`{ module, stateId }`), so its users keep their pane state, settings and caches. `PluginModule` is an internal organization tool, not a second plugin API: external plugins export one `GloomPlugin`.
 
 ## Pull requests
 
