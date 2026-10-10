@@ -232,7 +232,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["EQS"],
   },
   OMON: {
-    summary: "Calls and puts by expiry with bid, ask, spread, volume, open interest, implied volatility, Greeks and extrinsic per year. "
+    summary: "Calls and puts by expiry with bid, ask, spread, volume, open interest, implied volatility, Greeks, extrinsic per year and a put's cost as a percent of spot. "
       + "The Strikes filter lists every strike, a count either side of the money, or a delta band such as .70 to .90 for deep in-the-money LEAPS.",
     usage: ["OMON NVDA", "gloomberb fn OMON NVDA --expiration 2028-01-21"],
     keys: [key("c", "alc"), key("a", "dd to OSA"), key("s", "urface")],
@@ -262,8 +262,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["OVME", "OVML"],
   },
   OSA: {
-    summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise.",
-    usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15"],
+    summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise. "
+      + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve.",
+    usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15",
+      "gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m"],
     keys: [key("a", "dd leg"), key("c", "hain"), key("d", "ate"), key("v", "ol shift")],
     data: OPTIONS,
     bloomberg: ["OSA"],

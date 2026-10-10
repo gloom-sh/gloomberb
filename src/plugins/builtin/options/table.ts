@@ -5,7 +5,7 @@ import { blendHex, colors } from "../../../theme/colors";
 import { blendForContrast, blendForSeparation, contrastRatio } from "../../../theme/color-utils";
 import { formatCompact } from "../../../utils/format";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
-import { formatCarryPercent } from "./carry";
+import { formatCarryPercent, formatCostOfSpot } from "./carry";
 import type {
   OptionColumn,
   OptionFieldId,
@@ -21,6 +21,8 @@ type OptionFieldDef = {
   header: string;
   width: number;
   description: string;
+  /** Drawn on the put side of the strike only; the call side leaves it out. */
+  putOnly?: true;
 };
 
 const OPTION_TEXT_MIN_CONTRAST = 4.5;
@@ -54,6 +56,14 @@ export const OPTION_FIELD_DEFS: OptionFieldDef[] = [
     width: 7,
     description: "Time value (midpoint less intrinsic) as a percent of spot, divided by years to expiry: the yearly cost of holding the contract instead of the stock.",
   },
+  {
+    id: "costOfSpot",
+    label: "Cost % of spot",
+    header: "COST%",
+    width: 8,
+    description: "Put side only. The put's midpoint as a percent of the underlying's price: what a protective put costs per share it covers.",
+    putOnly: true,
+  },
 ];
 
 export const DEFAULT_OPTION_FIELD_IDS: OptionFieldId[] = ["bid", "ask", "last", "iv", "delta", "volume", "openInterest"];
@@ -73,8 +83,9 @@ const OPTION_FIELDS_BY_TOKEN = new Map(OPTION_FIELD_DEFS.flatMap((field) => [
 
 /**
  * `fn OMON --columns bid,ask,spread,extrinsicPerYear`: the fields mirrored
- * around the strike, in order, as the pane setting stores them. An unknown
- * field fails, naming the ones there are.
+ * around the strike, in order, as the pane setting stores them (a put-only
+ * field such as costOfSpot sits on the put side alone). An unknown field
+ * fails, naming the ones there are.
  */
 export function normalizeOptionColumnsOption(raw: string): string {
   const tokens = raw.split(/[\s,]+/).filter(Boolean);
@@ -116,7 +127,7 @@ function sideColumn(side: OptionSide, field: OptionFieldId): Omit<OptionColumn, 
 export function createOptionColumns(fieldIds: readonly OptionFieldId[]): Array<Omit<OptionColumn, "headerColor">> {
   const fields = resolveOptionFieldIds(fieldIds);
   return [
-    ...fields.map((field) => sideColumn("call", field)),
+    ...fields.filter((field) => !OPTION_FIELDS_BY_ID.get(field)!.putOnly).map((field) => sideColumn("call", field)),
     { id: "strike", field: "strike", side: null, label: "STRIKE", width: 9, align: "right" },
     ...[...fields].reverse().map((field) => sideColumn("put", field)),
   ];
@@ -201,7 +212,8 @@ function optionColumnRole(column: Pick<OptionColumn, "field" | "side">): OptionC
   if (column.field === "strike") return "strike";
   if (column.field === "iv") return "iv";
   if (column.field === "volume" || column.field === "openInterest") return "activity";
-  if (column.field === "bid" || column.field === "ask" || column.field === "spread" || column.field === "extrinsicPerYear") return "price";
+  if (column.field === "bid" || column.field === "ask" || column.field === "spread" || column.field === "extrinsicPerYear"
+    || column.field === "costOfSpot") return "price";
   return column.side ?? "strike";
 }
 
@@ -312,6 +324,8 @@ function formatOptionContractCell(
       return formatGreek(greeks?.rhoPerPoint);
     case "extrinsicPerYear":
       return formatCarryPercent(column.side === "call" ? row.callExtrinsicPerYear : row.putExtrinsicPerYear);
+    case "costOfSpot":
+      return column.side === "put" ? formatCostOfSpot(row.putCostOfSpot) : "\u2014";
     case "strike":
       return formatStrikeLabel(contract.strike);
   }

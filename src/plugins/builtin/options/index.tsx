@@ -56,7 +56,7 @@ function optionsSettings(settings: Record<string, unknown>): PaneSettingsDef {
       {
         key: "optionColumnIds",
         label: "Columns",
-        description: "Choose and order the fields mirrored around the strike.",
+        description: "Choose and order the fields mirrored around the strike. Cost % of spot shows on the put side only.",
         type: "ordered-multi-select",
         options: OPTION_FIELD_DEFS.map((field) => ({
           value: field.id,
@@ -118,7 +118,8 @@ export const optionsModule: PluginModule = {
         settingKey: "optionColumnIds",
         type: "string",
         placeholder: "fields",
-        description: `Fields mirrored around the strike, in order, as the Columns setting picks them: ${OPTION_FIELD_DEFS.map((field) => field.id).join(", ")}`,
+        description: `Fields mirrored around the strike, in order, as the Columns setting picks them: ${OPTION_FIELD_DEFS.map((field) => field.id).join(", ")}. `
+          + "costOfSpot (the put's midpoint as a percent of spot) shows on the put side only",
         example: "--columns bid,ask,spread,delta,openInterest,extrinsicPerYear",
         normalize: normalizeOptionColumnsOption,
       }],

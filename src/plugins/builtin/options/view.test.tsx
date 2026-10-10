@@ -192,6 +192,26 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
+test("reads a put's cost as a percent of spot from its quote midpoint, on the put side alone", async () => {
+  const chain = makeChain([700, 780], 780);
+  chain.puts = chain.puts.map((put) => put.strike === 700 ? { ...put, bid: 5.48, ask: 5.51 }
+    : { ...put, bid: 0, ask: 0.05 });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => chain })));
+  await act(async () => {
+    await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={778.57}
+      settings={{ optionColumnIds: ["bid", "ask", "costOfSpot"] }} />, { width: 124, height: 12 });
+  });
+  await renderSettled();
+
+  const lines = tui.frame().split("\n");
+  const header = lines.find((line) => line.includes("STRIKE"))!;
+  expect(header).toContain("P COST%");
+  expect(header).not.toContain("C COST%");
+  expect(lines.find((line) => /\b700\b/.test(line))).toContain("0.706%");
+  // A one-sided put quote has no midpoint, so no cost.
+  expect(lines.find((line) => /\b780\b/.test(line))).not.toMatch(/\d%/);
+});
+
 test("lists only the strikes in the saved window, and the query bar says a window narrows the chain", async () => {
   const strikes = Array.from({ length: 25 }, (_, index) => 50 + index * 5);
   setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({

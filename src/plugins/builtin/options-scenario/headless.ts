@@ -9,11 +9,15 @@ import {
   type ScenarioMarketSnapshot,
 } from "./client";
 import { buildScenario, currencyLabel, parseLegs, scenarioValueUnit } from "./model";
+import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget } from "./hedge";
 
 // Float noise at a flat origin or a breakeven prints as 0.00, not -0.00.
 const money = (value: unknown) => typeof value === "number" ? (Math.abs(value) < 0.005 ? 0 : value).toFixed(2) : "--";
 const percent = (value: unknown) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--";
 const supplied = (value: unknown) => value != null && value !== "";
+// A seeded entry is a quote midpoint, often to the half cent (5.495), so it keeps up to four decimals.
+const premium = (value: unknown) => typeof value === "number"
+  ? value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 4, useGrouping: false }) : "--";
 /** Entry prices and spot are quoted per share of the underlying. */
 const PRICE_UNIT = "per share";
 /** The Valuation entries, in model order, with the unit each is in. */
@@ -26,12 +30,17 @@ const VALUATION_LABELS: Record<string, (currency: string) => string> = {
 export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
   describe: (args) => `OSA ${args.symbols[0] ?? ""}`,
+  description: "A typed or chain-seeded options position valued across spot, date and volatility: its legs, value and Greeks, expiry risk and a "
+    + "scenario P&L grid. With --nav and --budget-bps, how many contracts a hedge budget buys, the premium spent, the notional protected and "
+    + "coverage of an equity sleeve.",
   discovery: { screenshotReadiness: "ready", limitations: ["European scenario values do not model early assignment or exercise."] },
   options: [
     { key: "tab", type: "enum", values: ["payoff", "grid", "legs"].map((value) => ({ value })), defaultValue: "payoff",
       description: "Initial view", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
     { key: "legs", type: "string", description: "Semicolon-separated side,strike,YYYY-MM-DD,signed quantity,entry price per share,IV percent[,multiplier]" },
-    { key: "strategy", type: "enum", values: [{ value: "vertical" }, { value: "straddle" }], description: "Build an explicit example from current two-sided chain quotes" },
+    { key: "strategy", type: "enum", values: [{ value: "vertical" }, { value: "straddle" }, { value: "put" }],
+      description: "Build a position from current two-sided chain quotes: a call vertical, a straddle, or one long put (a protective put)" },
+    { key: "strike", type: "string", description: "The --strategy strike: the put, the vertical's long call or the straddle. Nearest the money when omitted" },
     { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--strategy vertical --expiration 2027-01-15",
       description: `Chain expiry for --strategy, as ${OPTION_EXPIRATION_FORMAT}`, normalize: (value) => expirationOptionSeconds(value) },
     { key: "spot", type: "string", description: "Underlying price override, per share" },
@@ -42,10 +51,16 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "date", type: "string", description: "Scenario date: UTC ISO or YYYY-MM-DD" },
     { key: "volShift", aliases: ["vol-shift"], type: "string", defaultValue: "0", description: "Parallel volatility shift, percentage points" },
     { key: "spotRange", aliases: ["spot-range"], type: "string", defaultValue: "30", description: "Spot grid range above and below current spot, percent" },
+    { key: "nav", type: "string", description: "Portfolio NAV for a hedge budget, such as 100m, 2.5bn, 250k, 1,000,000 or $100m. Needs --budget-bps" },
+    { key: "budgetBps", aliases: ["budget-bps"], type: "string", example: "--strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50",
+      description: "Hedge budget in basis points of --nav (50 is 0.5%): the report says how many of the position it buys, the premium, and the notional protected" },
+    { key: "sleeve", aliases: ["equity-sleeve"], type: "string", description: "Equity sleeve the hedge protects, for coverage = notional / sleeve. Same amount forms as --nav" },
   ],
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
     const settings: Record<string, unknown> = { ...ctx.settings, ...args.options, symbol };
+    // Bad hedge inputs fail before any market request.
+    hedgeInputsFromSettings(settings);
     const suppliedInputs = !!settings.legs && ["spot", "rate", "dividendYield"].every((key) => settings[key] != null && settings[key] !== "");
     let market: ScenarioMarketSnapshot;
     if (suppliedInputs) {
@@ -64,6 +79,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     const position = scenarioPositionFromSettings(settings, market);
     const controls = position ? scenarioControlsFromSettings(settings, position) : null;
     const scenario = position && controls ? buildScenario(position, controls) : null;
+    const hedge = scenarioHedgeBudget(settings, position, market);
     // A typed rate or yield stands in for the source that could not supply one.
     const marketWarnings = market.warnings.filter((warning) => !(supplied(settings.dividendYield) && warning.startsWith("Dividend yield unavailable"))
       && !(supplied(settings.rate) && warning.startsWith("Treasury")));
@@ -86,7 +102,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: scenario ? [
         { title: "Position", columns: [
           { key: "side", header: "Side" }, { key: "strike", header: "Strike" }, { key: "expiry", header: "Expiry" },
-          { key: "quantity", header: "Contracts" }, { key: "price", header: "Entry/share", format: money },
+          { key: "quantity", header: "Contracts" }, { key: "price", header: "Entry/share", format: premium },
           { key: "volatility", header: "IV", format: (value) => typeof value === "number" ? `${(value * 100).toFixed(2)}%` : "--" },
           ...(midVolatility ? [{ key: "volatilityFrom", header: "IV from" }] : []),
           { key: "multiplier", header: "Multiplier" },
@@ -100,6 +116,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "dividendYield", label: "Dividend yield", value: position!.dividendYield, formatted: percent(position!.dividendYield) },
           { key: "currency", label: "Currency", value: position!.currency, formatted: currency! },
         ] },
+        ...(hedge ? [{ title: "Hedge budget", entries: hedgeReportEntries(hedge) }] : []),
         { title: `Valuation (${per})`, entries: Object.entries(scenario.valuation).map(([key, value]) => ({ key,
           label: VALUATION_LABELS[key]?.(currency!) ?? key, value, formatted: money(value) })) },
         { title: `Expiry risk (${per})`, entries: [
@@ -118,7 +135,7 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
       ] : [],
       complete: scenario != null && errors.length === 0,
       unavailableSymbols: scenario ? [] : [symbol], errors,
-      metadata: { scenario, position, controls, market, inputSource: suppliedInputs ? "user" : "market",
+      metadata: { scenario, position, controls, market, ...(hedge ? { hedge } : {}), inputSource: suppliedInputs ? "user" : "market",
         unit: position?.currency || "currency unspecified",
         // Leg entry prices and spot are per share; value, P&L, risk, Greeks in currency and the grid are for valueUnit.
         ...(position ? { units: { currency: position.currency, price: PRICE_UNIT, value: valueUnit } } : {}),

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { formatCarryPercent, optionCarry, optionSpreadPercent } from "./carry";
+import { formatCarryPercent, formatCostOfSpot, optionCarry, optionCostOfSpot, optionSpreadPercent } from "./carry";
+import { createOptionColumns } from "./table";
 
 // 2028-01-21; valued from 2026-10-09 16:00 New York, 469 days and the hour daylight saving gives back before its close.
 const EXPIRATION = Date.UTC(2028, 0, 21) / 1000;
@@ -53,4 +54,16 @@ test("optionSpreadPercent is the width over the midpoint, and only for a two-sid
 
 test("formatCarryPercent keeps one decimal where it reads and drops it past 100%", () => {
   expect([0.0421, -0.003, 1.234, null].map(formatCarryPercent)).toEqual(["4.2%", "-0.3%", "123%", "—"]);
+});
+
+test("cost of spot is the put's midpoint over spot, to three significant digits, and only for a two-sided quote", () => {
+  // SPY's 700 put for January 2027, 5.48/5.51, against a 778.57 underlying.
+  expect(formatCostOfSpot(optionCostOfSpot({ bid: 5.48, ask: 5.51 }, 778.57))).toBe("0.706%");
+  expect([0.0123, 0.123456, 0.09996, 0.0000123, 0.000001, 0, null].map(formatCostOfSpot))
+    .toEqual(["1.23%", "12.3%", "10.0%", "0.00123%", "<0.001%", "0%", "\u2014"]);
+  for (const [bid, ask] of [[0, 0.05], [1, 0], [2, 1.5]] as const) expect(optionCostOfSpot({ bid, ask }, 778.57)).toBeNull();
+  expect(optionCostOfSpot({ bid: 5.48, ask: 5.51 }, undefined)).toBeNull();
+  // It sits on the put side of the strike alone; the call side keeps its own columns.
+  expect(createOptionColumns(["bid", "costOfSpot", "ask"]).map((column) => column.label))
+    .toEqual(["C BID", "C ASK", "STRIKE", "P ASK", "P COST%", "P BID"]);
 });

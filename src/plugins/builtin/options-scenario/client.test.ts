@@ -9,6 +9,7 @@ import { daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../shared
 import { optionsScenarioHeadless } from "./headless";
 import { parseOptionExpiration } from "../../../utils/option-expiry";
 import { buildScenario, optionExpirationClose } from "./model";
+import { scenarioHedgeBudget } from "./hedge";
 
 const now = Date.UTC(2026, 8, 22, 14);
 const expiration = Date.UTC(2026, 11, 18) / 1000;
@@ -307,6 +308,11 @@ describe("scenario headless inputs", () => {
         expect(whatIf.legs.map((leg) => leg.volatility)).toEqual(position.legs.map((leg) => leg.volatility));
         if (strategy === "vertical" && print === 100.25) expect(buildScenario(whatIf).valuation.pnl).toBeGreaterThan(cost * 0.15);
       }
+      // A protective put seeds the same way, and a hedge budget reads its notional at the print, not the implied spot.
+      const put = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "put" }, market)!;
+      expect(put.legs.map((leg) => [leg.side, leg.strike, leg.quantity, leg.volatilitySource])).toEqual([["put", 100, 1, "mid"]]);
+      expect(Math.abs(buildScenario(put).valuation.pnl)).toBeLessThan(1e-6);
+      expect(scenarioHedgeBudget({ nav: "1m", budgetBps: "100" }, put, market)!.spot).toBe(print);
     }
     // Headless output names the last print beside the origin, and leaves it out for a typed spot.
     setSystemTime(printAt);

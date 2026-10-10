@@ -69,7 +69,7 @@ import type { IvStats } from "../iv-history/client";
 import { useIvRank } from "../iv-history/rank";
 import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/live-session";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
-import { optionCarry } from "./carry";
+import { optionCarry, optionCostOfSpot } from "./carry";
 import {
   ALL_STRIKES,
   STRIKE_WINDOW_PRESETS,
@@ -510,6 +510,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       putGreeks: volatilities ? calculateOptionGreeks(put, "put", spot, dividendYield, volatilities) : undefined,
       callExtrinsicPerYear: call && volatilities ? optionCarry(call, "call", spot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
       putExtrinsicPerYear: put && volatilities ? optionCarry(put, "put", spot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
+      putCostOfSpot: put ? optionCostOfSpot(put, spot) : null,
       isPositionStrike: !!parsed && strike === parsed.strike,
     };
   }), [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes, volatilities]);

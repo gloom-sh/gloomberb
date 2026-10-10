@@ -15,7 +15,8 @@ export type OptionFieldId =
   | "iv"
   | "volume"
   | "openInterest"
-  | "extrinsicPerYear";
+  | "extrinsicPerYear"
+  | "costOfSpot";
 
 type OptionColumnId = "strike" | `${OptionSide}${Capitalize<OptionFieldId>}`;
 
@@ -36,6 +37,8 @@ export interface OptionTableRow {
   /** Time value as a share of spot per year (see `carry.ts`); null when it cannot be read. */
   callExtrinsicPerYear?: number | null;
   putExtrinsicPerYear?: number | null;
+  /** The put's midpoint as a share of spot (see `carry.ts`); null without a two-sided quote or a current spot. */
+  putCostOfSpot?: number | null;
   isPositionStrike: boolean;
 }
 

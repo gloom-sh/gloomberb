@@ -54,6 +54,39 @@ export function optionSpreadPercent(contract: Pick<OptionContract, "bid" | "ask"
   return spread.kind === "two-sided" ? spread.percentOfMid : null;
 }
 
+/**
+ * What a contract costs against the stock it covers: the midpoint of a
+ * two-sided quote over spot, so a protective put's premium reads as a share of
+ * the position it protects (a 5.495 put on a 778.57 underlying is 0.706%).
+ * Null without a two-sided quote or a current spot, never a zero.
+ */
+export function optionCostOfSpot(
+  contract: Pick<OptionContract, "bid" | "ask">,
+  spot: number | null | undefined,
+): number | null {
+  const mid = optionMid(contract);
+  return mid == null || !positive(spot) ? null : mid / spot;
+}
+
+/** Below this a cost of spot reads as a bound: the digits would outrun the column. */
+const MIN_COST_OF_SPOT_PERCENT = 0.001;
+
+/**
+ * A fraction as a percent to three significant digits: 0.00706 reads 0.706%,
+ * 0.0123 reads 1.23%, 0.123 reads 12.3%. Under a thousandth of a percent it
+ * reads <0.001%, so a far out-of-the-money quote stays inside the column.
+ */
+export function formatCostOfSpot(value: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value) || value < 0) return "\u2014";
+  const percent = value * 100;
+  if (percent === 0) return "0%";
+  if (percent < MIN_COST_OF_SPOT_PERCENT) return `<${MIN_COST_OF_SPOT_PERCENT}%`;
+  // Rounded first, so 9.996 reads 10.0% rather than 10.00%.
+  const rounded = Number(percent.toPrecision(3));
+  const decimals = Math.max(0, 2 - Math.floor(Math.log10(rounded)));
+  return `${rounded.toFixed(decimals)}%`;
+}
+
 /** A fraction as a percent: one decimal under 100% (0.0421 reads 4.2%), whole percents above. */
 export function formatCarryPercent(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return "—";

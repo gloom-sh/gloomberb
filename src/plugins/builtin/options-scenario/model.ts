@@ -20,6 +20,12 @@ export interface ScenarioLeg {
   volatility: number;
   /** "mid" when the IV was solved from the quote midpoint rather than taken from the provider. */
   volatilitySource?: "mid";
+  /**
+   * "mid" when a strategy seed entered the leg at the midpoint of the chain
+   * contract its id names; a hedge budget then buys it at the ask. Saving the
+   * leg from the editor drops it: the price is then as typed.
+   */
+  priceSource?: "mid";
   multiplier: number;
 }
 
