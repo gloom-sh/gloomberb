@@ -20,7 +20,7 @@ export interface SeriesLineCue {
 }
 
 /** The plain line every single-line chart keeps. */
-export const SOLID_LINE_THICKNESS = 1.5;
+const SOLID_LINE_THICKNESS = 1.5;
 
 /**
  * Dash lengths allow for the stroke's round ends, which eat about its width
@@ -36,7 +36,7 @@ const LINE_CUES: readonly SeriesLineCue[] = [
 
 const LINE_STYLES = new Set<SeriesStyle>(["line", "step", "area", "band"]);
 
-export function isLineCueStyle(style: SeriesStyle): boolean {
+function isLineCueStyle(style: SeriesStyle): boolean {
   return LINE_STYLES.has(style);
 }
 

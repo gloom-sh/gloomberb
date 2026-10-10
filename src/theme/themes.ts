@@ -737,7 +737,7 @@ export function getTheme(id: string): Theme {
   return themes[id] ?? themes[DEFAULT_THEME]!;
 }
 
-export type ThemeTrait = "colorblind-safe" | "high-contrast";
+type ThemeTrait = "colorblind-safe" | "high-contrast";
 
 const THEME_TRAITS: Readonly<Record<string, readonly ThemeTrait[]>> = {
   colorblind: ["colorblind-safe"],

@@ -11,7 +11,7 @@ export function describeThemeId(id: string): string {
 }
 
 /** Every id with its name, from the registry, for an error that has to say what would have worked. */
-export function themeChoicesText(): string {
+function themeChoicesText(): string {
   const choices = listThemes().map(({ id, name }) => `${id} (${name})`).join(", ");
   return `Themes: ${choices}. gloomberb config themes lists them with notes.`;
 }
