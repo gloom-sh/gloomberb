@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
+  AUCTION_MAX_PAGES,
   buildAuctionsUrl,
   fetchAuctionPages,
   normalizeAuction,
@@ -41,6 +42,22 @@ describe("normalizeAuction", () => {
       totalAccepted: 52_623_557_100,
       offeringAmount: 42_000_000_000,
     });
+  });
+
+  test("reads the direct takedown and the bill discount rates the rate column does not show", () => {
+    // 2026-10-07 10-Year reopening and 2026-10-08 4-Week bill, as the live endpoint returned them.
+    const note = normalizeAuction({
+      ...LIVE_NOTE_ROW, cusip: "91282CRF0", security_term: "9-Year 10-Month", auction_date: "2026-10-07",
+      high_yield: "5.3000", avg_med_yield: "5.255000", direct_bidder_accepted: "6618200000",
+      high_discnt_rate: "null", avg_med_discnt_rate: "null",
+    });
+    expect(note).toMatchObject({ directAccepted: 6_618_200_000, highDiscountRate: null, avgMedDiscountRate: null });
+    const bill = normalizeAuction({
+      security_type: "Bill", security_term: "4-Week", auction_date: "2026-10-08", cusip: "912797VW4",
+      high_investment_rate: "4.048000", avg_med_investment_rate: "null",
+      high_discnt_rate: "3.980000", avg_med_discnt_rate: "3.910000", direct_bidder_accepted: "6277750000",
+    });
+    expect(bill).toMatchObject({ highDiscountRate: 3.98, avgMedDiscountRate: 3.91, directAccepted: 6_277_750_000 });
   });
 
   test("turns the API's literal \"null\" strings into null, not NaN", () => {
@@ -167,6 +184,23 @@ describe("fetchAuctionPages", () => {
       calls += 1;
       return page([row("10-Year", "2026-08-12")], 1);
     });
+    expect(calls).toBe(1);
+  });
+
+  test("walks every page a ten-year window needs and stops at the bound", async () => {
+    const walked: number[] = [];
+    const auctions = await fetchAuctionPages(async (pageNumber) => {
+      walked.push(pageNumber);
+      return page([row("10-Year", `2026-08-${String(pageNumber).padStart(2, "0")}`)], AUCTION_MAX_PAGES);
+    });
+    expect(walked).toHaveLength(AUCTION_MAX_PAGES);
+    expect(auctions).toHaveLength(AUCTION_MAX_PAGES);
+
+    let calls = 0;
+    await expect(fetchAuctionPages(async () => {
+      calls += 1;
+      return page([row("10-Year", "2026-08-12")], AUCTION_MAX_PAGES + 1);
+    })).rejects.toThrow("page limit");
     expect(calls).toBe(1);
   });
 

@@ -913,8 +913,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CRD"],
   },
   AUCT: {
-    summary: "Bill, note, bond and TIPS auction results: high rate, bid-to-cover, indirect share and size, with the auctions announced next.",
-    usage: ["AUCT", "AUCT 10-year"],
+    summary: "Bill, note, bond and TIPS auction results: high rate, stop-out versus average, bid-to-cover, indirect, direct and dealer takedown and size, with the auctions announced next. Searchable by benchmark (10Y) or CUSIP; history reaches back 10 years.",
+    usage: ["AUCT", "AUCT 10Y", "AUCT 91282CRF0"],
     keys: [SEARCH, key("f", "ilter"), OPEN],
     data: same("Daily, after each auction"),
     bloomberg: ["AUCT"],

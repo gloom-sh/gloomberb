@@ -19,18 +19,27 @@ const FIELDS = [
   "bid_to_cover_ratio",
   "comp_accepted",
   "indirect_bidder_accepted",
+  "direct_bidder_accepted",
   "primary_dealer_accepted",
   "total_accepted",
   "offering_amt",
   "inflation_index_security",
   "floating_rate",
   "high_discnt_margin",
+  "high_discnt_rate",
+  "avg_med_discnt_rate",
 ].join(",");
 
 export const AUCTION_HISTORY_DAYS = 120;
-const PAGE_SIZE = 300;
-/** 120 days is ~150 auctions, one page; the bound only exists so bad metadata cannot loop. */
-const MAX_PAGES = 5;
+/**
+ * The feed holds roughly 400 auctions a year, so the default 120 days is one
+ * page and the longest window (10 years, ~4,000 auctions) is four. One large
+ * page costs about the same as a small one, so fewer, larger pages keep a
+ * ten-year walk to a few seconds inside the throttle.
+ */
+const AUCTION_PAGE_SIZE = 1000;
+/** Three times the longest window's pages; the bound only exists so bad metadata cannot loop. */
+export const AUCTION_MAX_PAGES = 12;
 
 const TREASURY_FETCH = createThrottledFetch({
   requestsPerMinute: 20,
@@ -49,8 +58,10 @@ export function buildAuctionsUrl(sinceDays: number, now = Date.now(), page = 1):
   const params = [
     `fields=${FIELDS}`,
     `filter=auction_date:gte:${isoDateDaysAgo(sinceDays, now)}`,
-    "sort=-auction_date",
-    `page%5Bsize%5D=${PAGE_SIZE}`,
+    // The CUSIP breaks ties inside a date, so a page boundary that falls in the
+    // middle of a day's auctions cannot repeat or skip one on the next page.
+    "sort=-auction_date,-cusip",
+    `page%5Bsize%5D=${AUCTION_PAGE_SIZE}`,
     `page%5Bnumber%5D=${page}`,
   ];
   return `${BASE_URL}?${params.join("&")}`;
@@ -95,6 +106,8 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
     securityTerm: securityTerm || "—",
     auctionDate,
     highInvestmentRate: toNumber(record.high_investment_rate),
+    highDiscountRate: toNumber(record.high_discnt_rate),
+    avgMedDiscountRate: toNumber(record.avg_med_discnt_rate),
     highDiscountMargin: toNumber(record.high_discnt_margin),
     highYield: toNumber(record.high_yield),
     avgMedYield: toNumber(record.avg_med_yield),
@@ -104,6 +117,7 @@ export function normalizeAuction(raw: unknown): TreasuryAuction | null {
     bidToCoverRatio: toNumber(record.bid_to_cover_ratio),
     competitiveAccepted: toNumber(record.comp_accepted),
     indirectAccepted: toNumber(record.indirect_bidder_accepted),
+    directAccepted: toNumber(record.direct_bidder_accepted),
     primaryDealerAccepted: toNumber(record.primary_dealer_accepted),
     totalAccepted: toNumber(record.total_accepted),
     offeringAmount: toNumber(record.offering_amt),
@@ -136,15 +150,15 @@ export async function fetchAuctionPages(
   const seen = new Set<string>();
   let pages = 1;
 
-  for (let page = 1; page <= Math.min(pages, MAX_PAGES); page += 1) {
+  for (let page = 1; page <= Math.min(pages, AUCTION_MAX_PAGES); page += 1) {
     const body = await loadPage(page);
     const declaredPages = totalPages(body, page);
     if (page === 1) pages = declaredPages;
     else if (declaredPages !== pages) {
       throw new Error(`Treasury auction page count changed on page ${page}`);
     }
-    if (pages > MAX_PAGES) {
-      throw new Error(`Treasury auction history exceeds the ${MAX_PAGES}-page limit`);
+    if (pages > AUCTION_MAX_PAGES) {
+      throw new Error(`Treasury auction history exceeds the ${AUCTION_MAX_PAGES}-page limit`);
     }
     const data = (body as { data?: unknown } | null)?.data;
     if (!Array.isArray(data)) {

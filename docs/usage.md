@@ -253,7 +253,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `CBR` / `ECFC` / `CBRT` | G20 central bank policy rates, last observed moves and one-year history |
 | `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` and CME crypto (`CTM BTC`, which adds each contract's premium to spot and annualised basis) |
 | `COT [code or root]` / `CFTC [code or root]` | CFTC positioning extremes, weekly changes and historical percentiles, including CME crypto (`COT BTC`) |
-| `AUCT` | Treasury auction results: auction rate, bid-to-cover, indirect share, and size |
+| `AUCT [search]` | Treasury auction results: auction rate, stop-out versus average, bid-to-cover, indirect, direct and dealer takedown, and size. Search by type, benchmark (`AUCT 10Y` finds the 10-year note and its reopenings), term, CUSIP or date; windows reach back 10 years (`--historyDays 3650`) |
 | `VIX` | VIX 9D through 1Y cash-tenor curve, FRED history and 3M/30D ratio |
 | `VOLS` | Cross-asset volatility indices, daily changes and one-year percentiles |
 | `CRD` | Credit spreads |

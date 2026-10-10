@@ -228,9 +228,31 @@ Incomplete filing coverage and unreconciled amendments appear in the pane’s wa
 
 AUCT dates are auction dates, not issue or maturity dates. Term sorting uses every component of the published term, including reopening months; nominal day equivalents only order those labels and do not calculate remaining maturity or settlement cash flows. Unavailable metrics and unrecognized terms sort after known values in either direction. A published zero remains zero.
 
-The rate column currently exposes bill investment rates and note/bond/TIPS high yields in percentage points. Bill investment rates differ from bill discount rates; TIPS yields are real yields. FRN auction discount margins, fixed spreads, and issue/maturity dates are not currently loaded, so AUCT does not provide an FRN coupon or a settlement cash-flow forecast. Treasury distinguishes these fields in its [auction overview](https://treasurydirect.gov/auctions/) and [FRN description](https://treasurydirect.gov/marketable-securities/floating-rate-notes/). Prices are quoted per $100 principal. Indirect percentage is accepted indirect dollars divided by total accepted dollars, not the share of competitive awards alone.
+The rate column currently exposes bill investment rates and note/bond/TIPS high yields in percentage points. Bill investment rates differ from bill discount rates; TIPS yields are real yields. FRN auction discount margins, fixed spreads, and issue/maturity dates are not currently loaded, so AUCT does not provide an FRN coupon or a settlement cash-flow forecast. Treasury distinguishes these fields in its [auction overview](https://treasurydirect.gov/auctions/) and [FRN description](https://treasurydirect.gov/marketable-securities/floating-rate-notes/). Prices are quoted per $100 principal.
 
-All response pages must declare the same positive integer page count and load successfully before the board replaces cached history. Missing, invalid, or changing page counts, malformed or missing pages, invalid records, or more than five declared pages fail the refresh; the last validated board retains its original retrieval time and the active failure appears in the footer and headless errors. A headless report with a failed refresh is incomplete even when retained rows remain usable. A successful refresh clears that failure. Previously cached boards are invalidated once because their pagination completeness cannot be established. This cache validation does not certify that the provider reported every auction or support future rate forecasts.
+### Search
+
+The search takes a security type (bill, note, bond, TIPS, FRN, CMB), a benchmark, a term, a CUSIP or a date (`YYYY-MM-DD`, or the start of one).
+
+- A benchmark is `10Y`, `10yr`, `10-year` or `10 year`, and likewise `2Y`, `3Y`, `5Y`, `7Y`, `20Y`, `30Y`, or a bill such as `13W` and `52 week`. A reopening belongs to the benchmark it was auctioned as. Treasury reopens a security with the term it has left, a month or two after the new issue, so any term with a year part rounds up to the next whole year: 9-Year 10-Month is the 10Y, 29-Year 10-Month the 30Y, 19-Year 11-Month the 20Y. The literal term text still matches too, so `9-year` finds the same reopening.
+- TIPS and FRNs stay out of a benchmark search, so `10Y` lists the 10-year notes and not the 10-year TIPS, and `2Y` the 2-year notes and not the FRN that reopens as 1-Year 10-Month. Name the type to include them: `10Y TIPS`, `tips 10-year`, `frn 2Y`.
+- A CUSIP matches whole or in part, in any case, from four characters (`91282CRF0`, `82crf`). A reopening repeats the CUSIP of the issue it reopens, so a CUSIP lists the new issue and every reopening.
+
+### History windows
+
+The default window is 120 days. `--historyDays` and the pane's History window setting take 30, 90, 120, 365 (1 year), 1825 (5 years) or 3650 (10 years); the feed itself reaches back to 1979, so the cap is Gloom's. A window is requested from Fiscal Data in pages of 1,000 auctions (about 400 auctions a year, four pages for ten years) and cached on its own for an hour, so a ten-year window loads in a few seconds the first time. When a window is shorter than the longest, the headless report names the next one (`Older auctions: use --historyDays 365`), and an empty search names the window it looked in.
+
+### Bidders and stop-out
+
+Indirect, direct and dealer are each accepted dollars divided by competitive accepted dollars, which leaves out noncompetitive, FIMA and SOMA add-on awards. The three add up to 100% of competitive accepted. Indirect includes customers bidding through a direct submitter. Nothing is shown as a share when a leg or competitive accepted is missing, or competitive accepted is zero.
+
+Stop-out vs average (the `VS AVG` column, in basis points) is the high yield minus the average/median yield Treasury publishes for the same auction. Today's single-price auctions publish the amount-weighted median accepted bid. For bills it is the high discount rate minus the average/median discount rate, which is how bills are bid. FRNs and auctions missing either leg show no value.
+
+This is not a tail. A tail is the stop-out against the 1 pm when-issued yield, and Fiscal Data does not carry when-issued yields, so AUCT cannot show one. Stop-out vs average says how far the last accepted bids cleared above where most of the auction priced. `catalog tail` and `catalog stop-out` find AUCT.
+
+### Refresh integrity
+
+All response pages must declare the same positive integer page count and load successfully before the board replaces cached history. Missing, invalid, or changing page counts, malformed or missing pages, invalid records, or more than twelve declared pages fail the refresh; the last validated board retains its original retrieval time and the active failure appears in the footer and headless errors. A headless report with a failed refresh is incomplete even when retained rows remain usable. A successful refresh clears that failure. Previously cached boards are invalidated when a release adds fields to them, so a cached board never lacks a column the pane shows. This cache validation does not certify that the provider reported every auction or support future rate forecasts.
 
 ## Treasury curve
 

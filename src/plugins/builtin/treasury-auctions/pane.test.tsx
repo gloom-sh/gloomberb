@@ -10,28 +10,8 @@ import {
   resetTreasuryAuctionsPersistence,
 } from "./cache";
 import { TreasuryAuctionsPane } from "./pane";
+import { auction } from "./test-fixture";
 import type { TreasuryAuction } from "./types";
-
-function auction(overrides: Partial<TreasuryAuction> & { secType: string; securityTerm: string }): TreasuryAuction {
-  return {
-    id: `${overrides.secType}|${overrides.auctionDate ?? "2026-08-12"}|${overrides.securityTerm}`,
-    cusip: null,
-    auctionDate: "2026-08-12",
-    highInvestmentRate: null,
-    highYield: null,
-    avgMedYield: null,
-    highPrice: null,
-    lowPrice: null,
-    avgMedPrice: null,
-    bidToCoverRatio: null,
-    competitiveAccepted: null,
-    indirectAccepted: null,
-    primaryDealerAccepted: null,
-    totalAccepted: null,
-    offeringAmount: null,
-    ...overrides,
-  };
-}
 
 const AUCTIONS: TreasuryAuction[] = [
   auction({
@@ -55,9 +35,11 @@ const AUCTIONS: TreasuryAuction[] = [
     securityTerm: "10-Year",
     auctionDate: "2026-08-12",
     highYield: 4.683,
+    avgMedYield: 4.63,
     bidToCoverRatio: 2.53,
     competitiveAccepted: 41_821_613_600,
     indirectAccepted: 32_087_936_000,
+    directAccepted: 6_135_867_600,
     primaryDealerAccepted: 3_597_810_000,
     totalAccepted: 52_623_557_100,
   }),
@@ -133,6 +115,10 @@ describe("TreasuryAuctionsPane", () => {
     expect(frame).toContain("2.86");
     // Indirect share is derived, not reported.
     expect(frame).toContain("60.0%");
+    // The 10-Year stops out 5.3bp above its median; direct and dealer shares sit beside indirect.
+    expect(frame).toContain("5.3bp");
+    expect(frame).toContain("14.7%");
+    expect(frame).toContain("8.6%");
     // The 20-Year is announced but unpublished: every metric cell reads the
     // same placeholder the reported-but-missing cells use.
     expect(frame).toContain("20-Year");

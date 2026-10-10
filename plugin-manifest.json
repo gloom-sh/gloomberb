@@ -330,7 +330,7 @@
           {
             "code": "AUCT",
             "name": "Treasury Auctions",
-            "description": "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: auction rate, bid-to-cover, indirect share, and size."
+            "description": "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: rate, stop-out versus average, bid-to-cover, indirect, direct and dealer takedown, and size. Search by benchmark (10Y) or CUSIP."
           },
           {
             "code": "YAS",

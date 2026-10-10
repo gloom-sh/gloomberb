@@ -28,11 +28,16 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadTreasuryAuctions } from "./cache";
 import {
   AUCTION_FILTERS,
+  AUCTION_SEARCH_FIELDS,
   AUCTION_SORT_COLUMN_IDS,
   DEFAULT_AUCTION_SORT,
+  auctionDatesShowYear,
   auctionHistoryDays,
+  auctionHistoryPhrase,
   auctionSize,
   buildAuctionColumns,
+  dealerPct,
+  directPct,
   firstAuctionSortDirection,
   formatAuctionRate,
   indirectPct,
@@ -40,6 +45,7 @@ import {
   nextFilter,
   rateLabel,
   rateValue,
+  stopOutVsAverageBp,
   visibleAuctions,
   type AuctionColumn,
   type AuctionColumnId,
@@ -63,6 +69,11 @@ function formatPct(value: number | null): string {
   return value == null ? "—" : `${value.toFixed(1)}%`;
 }
 
+/** The stop-out against the average reads in basis points, like an FRN margin. */
+function formatBp(value: number | null): string {
+  return value == null ? "—" : `${value.toFixed(1)}bp`;
+}
+
 function formatMoney(value: number | null): string {
   return value == null ? "—" : `$${formatCompact(value)}`;
 }
@@ -84,19 +95,14 @@ function secTypeColor(secType: string, selected: boolean): string {
   }
 }
 
-// Stable table adapters so memoized rows survive pane re-renders.
+// Stable table adapter so memoized rows survive pane re-renders.
 const auctionKey = (auction: TreasuryAuction) => auction.id;
-const renderAuctionRow = (
-  auction: TreasuryAuction,
-  column: AuctionColumn,
-  _index: number,
-  rowState: { selected: boolean },
-) => renderAuctionCell(auction, column, rowState);
 
 function renderAuctionCell(
   auction: TreasuryAuction,
   column: AuctionColumn,
   rowState: { selected: boolean },
+  showYear: boolean,
 ): DataTableCell {
   const selected = rowState.selected ? colors.selectedText : undefined;
   const dimmed = selected ?? colors.textDim;
@@ -106,7 +112,7 @@ function renderAuctionCell(
       // Announced auctions have no results yet; every metric cell reads "—",
       // so the date carries the distinction instead of a second placeholder.
       return {
-        text: formatShortDate(auction.auctionDate, { year: false, utc: true, fallback: "\u2014" }),
+        text: showYear ? auction.auctionDate : formatShortDate(auction.auctionDate, { year: false, utc: true, fallback: "\u2014" }),
         color: rowState.selected ? colors.selectedText : isPendingAuction(auction) ? colors.textBright : colors.textDim,
       };
     case "type":
@@ -119,10 +125,16 @@ function renderAuctionCell(
       return { text: auction.securityTerm, color: selected ?? colors.text };
     case "rate":
       return { text: formatAuctionRate(auction, rateValue(auction), "—"), color: selected ?? colors.textBright };
+    case "stopOut":
+      return { text: formatBp(stopOutVsAverageBp(auction)), color: selected ?? colors.text };
     case "btc":
       return { text: formatRatio(auction.bidToCoverRatio), color: selected ?? colors.text };
     case "indirect":
       return { text: formatPct(indirectPct(auction)), color: selected ?? colors.text };
+    case "direct":
+      return { text: formatPct(directPct(auction)), color: selected ?? colors.text };
+    case "dealer":
+      return { text: formatPct(dealerPct(auction)), color: selected ?? colors.text };
     case "size":
       return { text: formatMoney(auctionSize(auction)), color: dimmed };
   }
@@ -140,11 +152,15 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
         <Box flexDirection="row" height={1} gap={2}>
           <Text fg={colors.textDim}>{formatShortDate(auction.auctionDate, { utc: true, fallback: "\u2014" })}</Text>
           {isPendingAuction(auction) && <Text fg={colors.textDim}>results pending</Text>}
+          {auction.cusip && <Text fg={colors.textDim}>{auction.cusip}</Text>}
         </Box>
         <Box height={1} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label={rateLabel(auction)} value={formatAuctionRate(auction, rateValue(auction), "—")} />
         {auction.avgMedYield != null && (
           <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Median yield" value={formatRate(auction.avgMedYield)} />
+        )}
+        {stopOutVsAverageBp(auction) != null && (
+          <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Stop-out vs average" value={formatBp(stopOutVsAverageBp(auction))} />
         )}
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Bid-to-cover" value={formatRatio(auction.bidToCoverRatio)} />
         <Box height={1} />
@@ -156,6 +172,7 @@ function TreasuryAuctionDetail({ auction, width }: { auction: TreasuryAuction; w
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Total accepted" value={formatMoney(auction.totalAccepted)} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Competitive" value={share(auction.competitiveAccepted, auction.totalAccepted)} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Indirect" value={share(auction.indirectAccepted, auction.competitiveAccepted)} />
+        <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Direct" value={share(auction.directAccepted, auction.competitiveAccepted)} />
         <KeyValueRow labelWidth={22} width={Math.max(1, width - 2)} emphasis={false} label="Primary dealer" value={share(auction.primaryDealerAccepted, auction.competitiveAccepted)} />
       </Box>
     </ScrollBox>
@@ -252,7 +269,14 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
     return handlePaneKey(event);
   }, [focusSearch, handlePaneKey]);
 
-  const columns = useMemo(() => buildAuctionColumns(), []);
+  const showYear = auctionDatesShowYear(historyDays);
+  const columns = useMemo(() => buildAuctionColumns(showYear), [showYear]);
+  const renderAuctionRow = useCallback((
+    auction: TreasuryAuction,
+    column: AuctionColumn,
+    _index: number,
+    rowState: { selected: boolean },
+  ) => renderAuctionCell(auction, column, rowState, showYear), [showYear]);
 
   usePaneFooter(TREASURY_AUCTIONS_PANE_ID, () => {
     const info = loadingErrorFooterInfo(loading, error);
@@ -335,7 +359,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
             search={{
               value: searchQuery,
               onChange: setSearchQuery,
-              placeholder: "type, term, or date",
+              placeholder: "type, 10Y, CUSIP, or date",
               focused: focused && !detailOpen,
               ...searchProps,
             }}
@@ -365,7 +389,7 @@ export function TreasuryAuctionsPane({ focused, width, height }: PaneProps) {
         getItemKey={auctionKey}
         renderCell={renderAuctionRow}
         emptyStateTitle={searchQuery.trim() ? "No matching auctions." : "No recent auctions."}
-        emptyStateHint={searchQuery.trim() ? "Clear search." : undefined}
+        emptyStateHint={`${searchQuery.trim() ? "Searched" : "Showing"} ${auctionHistoryPhrase(historyDays)}; older auctions are in the History window setting. Search by ${AUCTION_SEARCH_FIELDS}.`}
       />
     </Box>
   );
