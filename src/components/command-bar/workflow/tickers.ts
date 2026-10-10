@@ -46,7 +46,8 @@ function getTickerSearchContext(state: AppState, collectionId: string | null) {
   };
 }
 
-async function materializeResolvedTicker(
+/** Saves a provider listing as a ticker record, as the command bar does before a collection command. */
+export async function materializeResolvedTicker(
   resolvedTicker: NonNullable<Awaited<ReturnType<typeof resolveTickerSearch>>>,
   deps: SharedWorkflowDeps,
 ): Promise<ResolvedTickerInput> {

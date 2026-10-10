@@ -19,7 +19,8 @@ describe("remote operation schema", () => {
       expect(operation.title.length).toBeGreaterThan(0);
       expect(operation.inputSchema.type).toBe("object");
       const mappedTier = writeTierForSideEffectLevel(operation.sideEffectLevel);
-      if (operation.id === "layout.delete") {
+      // Local writes that change the person's own data ask each time.
+      if (["layout.delete", "watchlist.add", "watchlist.remove"].includes(operation.id)) {
         expect(operation.sideEffectLevel).toBe("local-write");
         expect(operation.writeTier).toBe("user-data");
       } else {

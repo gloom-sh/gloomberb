@@ -1,4 +1,4 @@
-import { useCallback, type ReactNode } from "react";
+import { useCallback, useRef, type ReactNode } from "react";
 import { Box, Text } from "../../ui";
 import { colors } from "../../theme/colors";
 import { t, tf } from "../../i18n";
@@ -27,6 +27,11 @@ export interface ConfirmDialogProps extends PromptContext<boolean> {
    * action, at the right. By default the action comes first, at the left.
    */
   formButtons?: boolean;
+  /**
+   * How long after opening Enter and `y` do not confirm, for a confirm that
+   * opens on its own while the person may be typing. Esc and `n` always answer.
+   */
+  keyGraceMs?: number;
 }
 
 export function ConfirmDialog({
@@ -42,7 +47,9 @@ export function ConfirmDialog({
   busy = false,
   onClose,
   formButtons = false,
+  keyGraceMs = 0,
 }: ConfirmDialogProps) {
+  const openedAt = useRef(Date.now());
   const confirm = useCallback(() => resolve(true), [resolve]);
   const cancel = useCallback(() => resolve(false), [resolve]);
 
@@ -61,6 +68,7 @@ export function ConfirmDialog({
     }
     if (event.name === "enter" || event.name === "return" || isPlainKey(event, "y")) {
       event.preventDefault();
+      if (Date.now() - openedAt.current < keyGraceMs) return;
       confirm();
       return;
     }

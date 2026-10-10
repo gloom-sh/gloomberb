@@ -67,15 +67,37 @@ export interface ASKGToolExecutorDependencies {
 interface ASKGToolExecutionOptions {
   signal?: AbortSignal;
   confirmed?: boolean;
+  /** The confirmKey of the preview the person approved, so the app does not ask again. */
+  confirmedChange?: string;
 }
+
+/**
+ * What a call needing approval will change, from the operation's own dry run:
+ * the list and listing it resolved rather than the arguments as sent.
+ */
+export type ASKGToolPreview =
+  | { kind: "change"; summary: string; confirmKey: string }
+  /**
+   * Nothing would change (already on the list), so there is nothing to
+   * approve. The operation checks again when it runs and asks in the app
+   * itself if that is no longer so.
+   */
+  | { kind: "no-change" }
+  /** The app refuses the call as asked. */
+  | { kind: "refusal"; message: string };
 
 export interface ASKGToolExecutor {
   execute(
     call: ASKGToolCallEvent,
     options?: ASKGToolExecutionOptions,
   ): Promise<ToolResultPayload>;
+  /** Null when the call has no dry run that says more than its arguments. */
+  preview?(call: ASKGToolCallEvent, signal?: AbortSignal): Promise<ASKGToolPreview | null>;
   undo(token: string, signal?: AbortSignal): Promise<AppliedUndo>;
 }
+
+/** A dry run answers from local state and at most one search. */
+const PREVIEW_TIMEOUT_MS = 3_000;
 
 interface ExecutionValue {
   status: ToolResultStatus;
@@ -375,7 +397,10 @@ export function createASKGToolExecutor(
           }
         }
 
-        const response = await dependencies.remoteHandler(remoteRequestForTool(binding, call.args));
+        const response = await dependencies.remoteHandler(remoteRequestForTool(binding, call.args), {
+          signal,
+          ...(options.confirmed && options.confirmedChange ? { confirmed: options.confirmedChange } : {}),
+        });
         if (!response.ok) {
           return {
             status: "error",
@@ -413,8 +438,32 @@ export function createASKGToolExecutor(
     }
   };
 
+  const preview = async (call: ASKGToolCallEvent, signal?: AbortSignal): Promise<ASKGToolPreview | null> => {
+    const manifest = manifests.get(call.name);
+    if (!manifest || manifest.source !== "remote-op" || manifest.confirm !== "always") return null;
+    const binding = resolveRemoteToolBinding(call.name);
+    if (binding?.kind !== "operation") return null;
+    try {
+      const response = await runWithDeadline(
+        () => dependencies.remoteHandler({ type: "call", operation: binding.operation, input: call.args, dryRun: true, include: [] }),
+        PREVIEW_TIMEOUT_MS,
+        signal,
+      );
+      if (!response.ok) return { kind: "refusal", message: response.error.message };
+      const data = response.data as { summary?: unknown; confirmKey?: unknown; changes?: unknown } | null;
+      if (typeof data?.summary !== "string" || typeof data.confirmKey !== "string") return null;
+      return data.changes === false
+        ? { kind: "no-change" }
+        : { kind: "change", summary: data.summary, confirmKey: data.confirmKey };
+    } catch {
+      // The person still approves the call as the server described it.
+      return null;
+    }
+  };
+
   return {
     execute,
+    preview,
     undo: (token, signal) => undoManager.undo(token, signal),
   };
 }

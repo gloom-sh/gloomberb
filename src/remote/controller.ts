@@ -22,6 +22,8 @@ import type { DesktopWindowBridge } from "../types/desktop-window";
 import { applyJsonPatch } from "./json-patch";
 import { revisionFor } from "./revision";
 import type {
+  RemoteCallContext,
+  RemoteChangePrompt,
   RemoteControlRequest,
   RemoteControlResponse,
   RemoteJsonPatchOperation,
@@ -51,6 +53,14 @@ import { createRemoteResources } from "./resources";
 import { dismissTopmostDialog, isDialogOpen as isAnyDialogOpen } from "../ui/dialog-stack";
 import { asRecord } from "../utils/guards";
 import { runAutomated } from "../telemetry/usage-counts";
+import {
+  applyWatchlistChange,
+  declinedWatchlistResult,
+  describeWatchlistPlan,
+  planWatchlistChange,
+  unchangedWatchlistResult,
+  watchlistChangePrompt,
+} from "./watchlist";
 
 interface AppRemoteControllerOptions {
   dispatch: Dispatch<AppAction>;
@@ -63,7 +73,15 @@ interface AppRemoteControllerOptions {
   isDialogOpen?: () => boolean;
   /** Closes the dialog on top as Esc would; false when none is open. */
   closeTopmostDialog?: () => boolean;
+  /**
+   * Asks the person in the app to approve a change to their data; false when
+   * they decline or `signal` aborts. Without it such operations refuse.
+   */
+  confirmChange?: (prompt: RemoteChangePrompt, signal?: AbortSignal) => Promise<boolean>;
 }
+
+/** Operations whose dry run resolves what they would change instead of echoing the input. */
+const PLANNED_OPERATIONS = new Set(["watchlist.add", "watchlist.remove"]);
 
 // A command with a wizard closes the bar and opens its form, so every call says whether one is open.
 const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar", "form"];
@@ -97,6 +115,7 @@ export function createAppRemoteController({
   afterMutation = () => {},
   isDialogOpen = isAnyDialogOpen,
   closeTopmostDialog = dismissTopmostDialog,
+  confirmChange,
 }: AppRemoteControllerOptions) {
   const { buildIncludedState, getResource, patchTarget } = createRemoteResources({
     dispatch,
@@ -264,9 +283,46 @@ export function createAppRemoteController({
     return getAfterMutationSummary({ invokedNode: node, result });
   };
 
+  const workflowDeps = () => ({
+    dataProvider: pluginRegistry.marketData,
+    tickerRepository: pluginRegistry.tickerRepository,
+    pluginRegistry,
+    dispatch,
+    getState,
+  });
+
+  /**
+   * Adds or removes one ticker on a personal watchlist, after the person
+   * approves that exact change in the app. A caller that already showed them
+   * the dry run's summary and got a yes passes its confirmKey instead.
+   */
+  const changeWatchlist = async (
+    operation: string,
+    input: Record<string, unknown>,
+    dryRun: boolean | undefined,
+    context: RemoteCallContext,
+  ): Promise<unknown> => {
+    const action = operation === "watchlist.add" ? "add" : "remove";
+    const plan = await planWatchlistChange(action, {
+      symbol: stringInput(input, "symbol"),
+      exchange: optionalString(input, "exchange"),
+      watchlist: optionalString(input, "watchlist"),
+    }, workflowDeps());
+    if (dryRun) return describeWatchlistPlan(plan);
+    if (!plan.changes) return unchangedWatchlistResult(plan);
+    if (context.confirmed !== plan.confirmKey) {
+      if (!confirmChange) throw new Error("This window cannot ask for confirmation, so nothing changed.");
+      if (!await confirmChange(watchlistChangePrompt(plan), context.signal)) return declinedWatchlistResult(plan);
+    }
+    return runAutomated(() => applyWatchlistChange(plan, workflowDeps()));
+  };
+
   // What remote control opens is automation, not the user opening a function.
-  const call = (operation: string, rawInput: unknown, dryRun?: boolean): Promise<unknown> => (
-    runAutomated(() => callOperation(operation, rawInput, dryRun))
+  // A watchlist change waits on the person, so only its write is automated.
+  const call = (operation: string, rawInput: unknown, dryRun: boolean | undefined, context: RemoteCallContext): Promise<unknown> => (
+    PLANNED_OPERATIONS.has(operation)
+      ? changeWatchlist(operation, asRecord(rawInput), dryRun, context)
+      : runAutomated(() => callOperation(operation, rawInput, dryRun))
   );
 
   const callOperation = async (operation: string, rawInput: unknown, dryRun?: boolean): Promise<unknown> => {
@@ -499,7 +555,8 @@ export function createAppRemoteController({
     }
   };
 
-  const handle = async (request: RemoteControlRequest): Promise<RemoteControlResponse> => {
+  /** `context` comes from in-process callers only; the local endpoint never passes one. */
+  const handle = async (request: RemoteControlRequest, context: RemoteCallContext = {}): Promise<RemoteControlResponse> => {
     try {
       switch (request.type) {
         case "help":
@@ -513,7 +570,7 @@ export function createAppRemoteController({
         case "data":
           return ok(await queryMarketData(request));
         case "call": {
-          const data = await call(request.operation, request.input, request.dryRun);
+          const data = await call(request.operation, request.input, request.dryRun, context);
           return ok(data, undefined, buildIncludedState(request.include, request.dryRun ? [] : DEFAULT_MUTATION_INCLUDE));
         }
         case "patch": {

@@ -134,7 +134,8 @@ export type ASKGAction =
   | { type: "feedback"; turnId: string; feedback: ASKGTurnFeedback | null }
   | { type: "feedback-unavailable" }
   | { type: "event"; event: ASKGSseEvent }
-  | { type: "tool-awaiting-confirmation"; toolCallId: string }
+  /** `preview` is what the app resolved the call to, in place of the server's account of its arguments. */
+  | { type: "tool-awaiting-confirmation"; toolCallId: string; preview?: string }
   | { type: "tool-running"; toolCallId: string }
   | { type: "tool-result"; payload: ToolResultPayload }
   | { type: "tool-expanded"; toolCallId: string; expanded: boolean }
@@ -195,7 +196,8 @@ function rowFromToolCall(event: ASKGToolCallEvent): ASKGToolRow {
     args: event.args,
     writeTier: event.writeTier,
     origin: "client",
-    status: requiresLocalConfirmation(event) ? "awaiting-confirmation" : "pending",
+    // A call that needs approval waits here until the app has looked at what it would change.
+    status: "pending",
     requiresConfirmation: requiresLocalConfirmation(event),
     ...(event.preview !== undefined && event.preview !== null ? { preview: event.preview } : {}),
     expanded: false,
@@ -425,6 +427,7 @@ export function askgReducer(
       return patchToolRow(state, action.toolCallId, (row) => ({
         ...row,
         status: "awaiting-confirmation",
+        ...(action.preview !== undefined ? { preview: action.preview } : {}),
       }));
     case "tool-running":
       return patchToolRow(state, action.toolCallId, (row) => ({ ...row, status: "running" }));

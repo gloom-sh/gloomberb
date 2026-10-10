@@ -49,6 +49,21 @@ function objectSchema(
 }
 
 const paneIdInput = objectSchema({ paneId: requiredStringSchema }, ["paneId"]);
+const watchlistChangeInput = objectSchema({
+  symbol: { type: "string", minLength: 1, maxLength: 32, description: "Ticker symbol, such as MSFT." },
+  exchange: {
+    type: "string",
+    minLength: 1,
+    maxLength: 16,
+    description: "Listing exchange, for a symbol that trades in several places, such as NASDAQ or LSE.",
+  },
+  watchlist: {
+    type: "string",
+    minLength: 1,
+    maxLength: 120,
+    description: "Watchlist id or name from app://config. Without it, the default watchlist: the first personal one.",
+  },
+}, ["symbol"]);
 
 export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op(
@@ -181,6 +196,24 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
     "{ tabId: string, paneId?: string }",
     "local-write",
     objectSchema({ tabId: requiredStringSchema, paneId: stringSchema }, ["tabId"]),
+  ),
+  op(
+    "watchlist.add",
+    "Add a ticker to one of the person's own watchlists. The app asks them first, naming the list, ticker and exchange. "
+      + "The result says what changed: added, already on the list, or declined. Team watchlists and portfolios are refused.",
+    "{ symbol: string, exchange?: string, watchlist?: string }",
+    "local-write",
+    watchlistChangeInput,
+    "user-data",
+  ),
+  op(
+    "watchlist.remove",
+    "Remove a ticker from one of the person's own watchlists. The app asks them first, naming the list, ticker and exchange. "
+      + "The result says what changed: removed, not on the list, or declined. Team watchlists and portfolios are refused.",
+    "{ symbol: string, exchange?: string, watchlist?: string }",
+    "local-write",
+    watchlistChangeInput,
+    "user-data",
   ),
   op(
     "layout.switch",
@@ -386,6 +419,7 @@ export const REMOTE_AGENT_HELP = {
     "While a dialog is open (form.open or form.otherDialogOpen), app.openCommandBar and app.search fail; close a form or confirm with { role: 'form', action: 'cancel' }, and any dialog on top with app.closeDialog.",
     "A form with covered: true has another dialog over it, such as a listing picker or a sign-in; its controls wait until that one is answered or closed with app.closeDialog.",
     "Pane settings open in their own dialog, not as command-bar rows; change one with pane.setSetting, read them from app://pane-settings/{paneId}, and close the dialog with app.closeDialog.",
+    "watchlist.add and watchlist.remove wait while the person answers a confirmation in the app and return what changed; with dryRun they return what would change without asking.",
     "Use ui.invokeMatching only after checking app-level operations; it is intentionally generic and depends on visible semantic controls.",
   ],
 };

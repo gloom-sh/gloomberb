@@ -1,13 +1,16 @@
-import { createContext, useContext, useEffect, useMemo } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import type { Dispatch, ReactNode } from "react";
 import type { PluginRegistry } from "../plugins/registry";
 import type { AppAction, AppState } from "../state/app/context";
 import type { DesktopWindowBridge } from "../types/desktop-window";
+import { useOptionalDialog } from "../ui/dialog";
+import { confirmRemoteChange } from "./confirm-change";
 import { createAppRemoteController } from "./controller";
 import { useRemoteUiRegistry } from "./semantic-tree";
-import type { RemoteControlRequest, RemoteControlResponse } from "./types";
+import type { RemoteCallContext, RemoteControlRequest, RemoteControlResponse } from "./types";
 
-export type RemoteControlHandler = (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
+/** `context` is for callers inside this process; the local endpoint sends requests alone. */
+export type RemoteControlHandler = (request: RemoteControlRequest, context?: RemoteCallContext) => Promise<RemoteControlResponse>;
 
 const RemoteControlHandlerContext = createContext<RemoteControlHandler | null>(null);
 
@@ -48,12 +51,21 @@ export function RemoteControlHost({
   desktopWindowBridge,
 }: RemoteControlHostProps) {
   const uiRegistry = useRemoteUiRegistry();
+  // Read at call time, so a new dialog host never restarts the server.
+  const dialog = useOptionalDialog();
+  const dialogRef = useRef(dialog);
+  dialogRef.current = dialog;
   const controller = useMemo(() => createAppRemoteController({
     dispatch,
     getState,
     pluginRegistry,
     uiRegistry,
     desktopWindowBridge,
+    confirmChange: async (prompt, signal) => {
+      const host = dialogRef.current;
+      if (!host) throw new Error("This window cannot ask for confirmation, so nothing changed.");
+      return confirmRemoteChange(host, prompt, signal);
+    },
     afterMutation: async () => {
       await Promise.resolve();
       await new Promise((resolve) => {

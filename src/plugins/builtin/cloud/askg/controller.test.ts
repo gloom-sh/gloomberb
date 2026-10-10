@@ -356,6 +356,67 @@ describe("ASKGSessionController", () => {
     await harness.streamed;
   });
 
+  test("asks about the change the app resolved, and the app does not ask again", async () => {
+    const executed: Array<{ confirmed?: boolean; confirmedChange?: string }> = [];
+    const executor: ASKGToolExecutor = {
+      async preview() {
+        return { kind: "change", summary: "Add MSFT (NASDAQ) to Tech", confirmKey: "add|tech|MSFT" };
+      },
+      async execute(call, options) {
+        executed.push({ confirmed: options?.confirmed, confirmedChange: options?.confirmedChange });
+        return { turnId: call.turnId, toolCallId: call.toolCallId, status: "ok", truncated: false, elapsedMs: 1 };
+      },
+      async undo() {
+        return { status: "ok", elapsedMs: 1 };
+      },
+    };
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    harness.emit(toolCallEvent(1, WRITE_TOOL));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ preview: "Add MSFT (NASDAQ) to Tech" });
+
+    harness.controller.resolveConfirmation("call-1", true);
+    await settle();
+    expect(executed).toEqual([{ confirmed: true, confirmedChange: "add|tech|MSFT" }]);
+
+    harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
+  test("answers a refused or no-op change without asking", async () => {
+    const answers = [{ kind: "refusal", message: "Refused: \"Desk\" is a team watchlist." }, { kind: "no-change" }] as const;
+    const executed: Array<boolean | undefined> = [];
+    let next = 0;
+    const executor: ASKGToolExecutor = {
+      async preview() {
+        return answers[next++] ?? null;
+      },
+      async execute(call, options) {
+        executed.push(options?.confirmed);
+        return { turnId: call.turnId, toolCallId: call.toolCallId, status: "ok", truncated: false, elapsedMs: 1 };
+      },
+      async undo() {
+        return { status: "ok", elapsedMs: 1 };
+      },
+    };
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    harness.emit(toolCallEvent(1, WRITE_TOOL));
+    harness.emit(toolCallEvent(2, WRITE_TOOL));
+    await settle();
+
+    expect(pendingConfirmation(harness.controller.getState())).toBeNull();
+    expect(harness.posted.map(({ toolCallId, status }) => [toolCallId, status])).toEqual([["call-1", "error"], ["call-2", "ok"]]);
+    expect(harness.posted[0]?.note).toContain("team watchlist");
+    expect(executed).toEqual([true]);
+
+    harness.emit({ seq: 3, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
   test("shows a result the server refused as too late as a timed out tool", async () => {
     const { executor } = executorReturning({ rowCount: 2 });
     const harness = createHarness({ script: [], executor, toolResultOutcome: "too-late" });
