@@ -632,12 +632,23 @@ Gloomberb includes English, Spanish, Simplified Chinese, Traditional Chinese, Ja
 
 ## Market and macro plugins
 
-Macro and Market Overview are split into smaller plugins you can switch separately in `PL`, with the same panes, shortcuts, settings and saved state:
+Ticker Research, Market Overview and Macro are split into smaller plugins you can switch separately in `PL`, with the same panes, shortcuts, settings and saved state:
 
-- Macro became Rates & Macro (ECO, ECST, CPI, GC, WIRP, BTMM, CBR, VIX, VOLS, VAL), Credit & Bonds (CDS, CDX, SOVR, CRD, AUCT, YAS) and Earnings (ERN, EVTS, CALLS).
-- Market Overview became Global Markets (WEI, MAP, CHOKE, BI, THEM, FXC, RRG), Screeners & Movers (EQS, MOST, HILO, FLOW), Futures & Commodities (FUT, CTM, COT, DOE, NGS), Crypto & Perps (CRYP, PERP), Alt Data (ATTN and the Gloom Trending pane, GPU, POWER) and Quant (CORR, GR).
+- Ticker Research, the research pane and its core: DES, FA, QQ, HP, RETURN, the G charts, CAT, ANR, DIAG, EVT, RV, EE, EM, GUID, KPIS, GUIDE, SEG, DVD, RDCF, PEB, EXEC and TAS.
+- Options & Volatility: OMON, OPX, GEX, OVME, OSA, OVDV, HVG, HVT, HIVG and VCA.
+- Ownership & Insiders: HDS, 13F, INS, SI, SIW, SIV and the Congress tab.
+- Filings & Events: SEC, ETF, RISK, EK, CATL, LITI, MA and DIST.
+- Credit & Bonds: CDS, CDX, SOVR, CRD, AUCT, YAS, CRDOC, COVN and DDIS.
+- Earnings: ERN, EVTS, CALLS and RIPL.
+- Supply Chain & Alt Data: SPLC, EXPO, AWARDS, HIRE, APPS, JOBS, BUZZ, ATTN and the Gloom Trending pane, GPU and POWER.
+- Quant: CORR, GR, BT, SEAS and MDAY.
+- Rates & Macro: ECO, ECST, CPI, GC, WIRP, BTMM, CBR, VIX, VOLS and VAL.
+- Global Markets: WEI, MAP, CHOKE, BI, THEM, FXC and RRG.
+- Screeners & Movers: EQS, MOST, HILO and FLOW.
+- Futures & Commodities: FUT, CTM, COT, DOE and NGS.
+- Crypto & Perps: CRYP and PERP.
 
-If Macro or Market Overview was switched off, all of its successors start off, and `gloomberb plugin disable macro` or `gloomberb plugin enable market-overview` switches them together. An older Gloomberb signed in to the same account shows the old plugin off only while all of its successors are off.
+A tab in the research pane belongs to the plugin of its function, so switching off Ownership & Insiders removes the Holders, 13F, Insider, Short Interest and Congress tabs. If Ticker Research, Market Overview or Macro was switched off, all of its successors start off; Credit & Bonds and Earnings hold functions from both Ticker Research and Macro, and Supply Chain & Alt Data and Quant from both Ticker Research and Market Overview, so either one switched off turns them off. `gloomberb plugin disable ticker-research` (or `macro`, `market-overview`) switches all of its successors together. An older Gloomberb signed in to the same account shows the old plugin off only while all of its successors are off.
 
 Polls lives in its own repository rather than inside the app. It reads one third-party site directly, so the plugin can ship a fix the day that site changes instead of waiting for an app release.
 
