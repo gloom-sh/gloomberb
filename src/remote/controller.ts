@@ -30,6 +30,7 @@ import type {
 } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
 import { commandBarResultsFromNodes, isCommandBarInputNode } from "./command-bar";
+import { findCommandBarResult, findMatchingUiNode } from "./matching";
 import { REMOTE_AGENT_HELP, remoteControlSchema } from "./schema";
 import {
   fail,
@@ -48,7 +49,6 @@ import {
 } from "./layout-helpers";
 import { createRemoteResources } from "./resources";
 import { dismissTopmostDialog, isDialogOpen as isAnyDialogOpen } from "../ui/dialog-stack";
-import { findFormNode } from "./form";
 import { asRecord } from "../utils/guards";
 import { runAutomated } from "../telemetry/usage-counts";
 
@@ -247,20 +247,7 @@ export function createAppRemoteController({
   };
 
   const activateCommandBarResult = async (input: Record<string, unknown>): Promise<unknown> => {
-    const nodeId = optionalString(input, "nodeId");
-    const index = optionalNumber(input, "index");
-    const itemId = optionalString(input, "itemId");
-    const label = optionalString(input, "label");
-    const results = commandBarResultsFromNodes(uiRegistry?.snapshot() ?? []);
-    const result = nodeId
-      ? results.find((entry) => entry.nodeId === nodeId)
-      : itemId
-        ? results.find((entry) => entry.itemId === itemId)
-        : label
-          ? results.find((entry) => entry.label === label)
-      : typeof index === "number"
-        ? results.find((entry) => entry.index === index)
-        : results.find((entry) => entry.selected) ?? results[0];
+    const result = findCommandBarResult(commandBarResultsFromNodes(uiRegistry?.snapshot() ?? []), input);
     if (!result) throw new Error("No matching command-bar result is visible.");
     if (!result.actions.includes("activate")) {
       throw new Error(`Command-bar result "${result.nodeId}" does not expose activate.`);
@@ -270,45 +257,8 @@ export function createAppRemoteController({
   };
 
   const invokeMatchingUiNode = async (input: Record<string, unknown>): Promise<unknown> => {
-    const role = optionalString(input, "role");
-    const label = optionalString(input, "label");
-    const contains = optionalString(input, "contains");
-    const index = optionalNumber(input, "index");
     const action = optionalString(input, "action") ?? "press";
-    const metadataFilter = asRecord(input.metadata);
-    const nodes = uiRegistry?.snapshot() ?? [];
-    // A dialog over the form (a listing picker, a sign-in) keeps its controls
-    // out of reach, as it does from the mouse.
-    const formCovered = findFormNode(nodes)?.metadata?.covered === true;
-    const candidates = nodes.filter((node) => {
-      if (formCovered && node.metadata?.scope === "form") return false;
-      if (role && node.role !== role) return false;
-      if (label && node.label !== label && node.metadata?.item && typeof node.metadata.item === "object") {
-        const item = node.metadata.item as Record<string, unknown>;
-        if (item.label !== label && item.id !== label) return false;
-      } else if (label && node.label !== label) {
-        return false;
-      }
-      if (contains) {
-        const haystack = [
-          node.label,
-          node.role,
-          JSON.stringify(node.metadata ?? {}),
-        ].filter((entry): entry is string => typeof entry === "string").join(" ").toLowerCase();
-        if (!haystack.includes(contains.toLowerCase())) return false;
-      }
-      for (const [key, value] of Object.entries(metadataFilter)) {
-        if (node.metadata?.[key] !== value) return false;
-      }
-      if (!node.actions.includes(action)) return false;
-      if (node.disabled) return false;
-      return true;
-    });
-    // An open form or confirm covers every pane, so its own controls come
-    // first: its Cancel, not a pane's Cancel behind it.
-    const inForm = candidates.filter((node) => node.metadata?.scope === "form");
-    const matches = inForm.length > 0 ? inForm : candidates;
-    const node = typeof index === "number" ? matches[index] : matches[0];
+    const node = findMatchingUiNode(uiRegistry?.snapshot() ?? [], input);
     if (!node) throw new Error("No matching semantic UI node is visible.");
     const result = await uiRegistry?.invoke(node.id, action, input.input);
     return getAfterMutationSummary({ invokedNode: node, result });

@@ -1,3 +1,4 @@
+import { hostname } from "os";
 import { getGloomberbDirs } from "../../data/config/home";
 import { existsSync, mkdirSync } from "fs";
 import { App } from "../../app";
@@ -56,6 +57,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
   const appLog = debugLog.createLogger("app");
   appLog.info("Gloomberb starting");
   const remoteControlAdapter: RemoteControlAdapter = {
+    terminalDevice: { kind: "tui", name: hostname() },
     startServer: ({ dataDir, handle }) => {
       let closed = false;
       const serverPromise: Promise<RemoteControlServer> = startRemoteControlServer({

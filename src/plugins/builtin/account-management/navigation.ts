@@ -1,6 +1,6 @@
 import { createPaneRequestChannel } from "../shared/pane-request";
 
-export type AccountManagementTab = "profile" | "emails" | "calendar" | "pro" | "teams" | "advanced";
+export type AccountManagementTab = "profile" | "emails" | "calendar" | "pro" | "teams" | "agents" | "advanced";
 
 const tabRequests = createPaneRequestChannel<AccountManagementTab>();
 

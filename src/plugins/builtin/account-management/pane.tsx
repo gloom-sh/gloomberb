@@ -37,6 +37,7 @@ import { SignInWall } from "../cloud/auth-actions";
 import { loadUpgradeOffer } from "../cloud/upgrade-dialog";
 import { openMcpConnectDialog } from "../cloud/mcp-connect/dialog";
 import { TeamsAccountTab } from "../cloud/team/acm-tab";
+import { AgentsAccountTab } from "../cloud/terminal-relay/acm-tab";
 import {
   CheckboxRow,
   FieldRow,
@@ -90,6 +91,7 @@ const ACCOUNT_TAB_DEFS: Array<{ label: string; value: AccountManagementTab }> = 
   { label: "Calendar", value: "calendar" },
   { label: "Pro", value: "pro" },
   { label: "Teams", value: "teams" },
+  { label: "Agents", value: "agents" },
   { label: "Advanced", value: "advanced" },
 ];
 
@@ -117,6 +119,8 @@ const ACCOUNT_TAB_FIELD_ORDER: Record<AccountManagementTab, AccountFieldKey[]> =
   pro: ["upgradeAction"],
   // The Teams tab owns its own keyboard handling (a list, not form fields).
   teams: [],
+  // Remote assistants allowed to drive this terminal; a list with its own footer.
+  agents: [],
   advanced: ["assistantsAction", "passwordAction", "deleteAccountAction"],
 };
 
@@ -714,8 +718,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
   useAccountManagementFooter({
     busy,
-    // The Calendar tab saves nothing and shows its own status.
-    enabled: activeTab !== "calendar",
+    // The Calendar and Agents tabs save nothing and show their own status.
+    enabled: activeTab !== "calendar" && activeTab !== "agents",
     hasSession,
     message,
     saveProfile,
@@ -728,7 +732,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     draftRef,
     fieldOrder,
     // Behind the sign-in wall the fields are not there, and Enter is the wall's.
-    focused: focused && activeTab !== "teams" && activeTab !== "calendar" && (hasSession || apiClient.isSignedIn()),
+    focused: focused && activeTab !== "teams" && activeTab !== "calendar" && activeTab !== "agents" && (hasSession || apiClient.isSignedIn()),
     openAssistants,
     openPasswordDialog,
     openPortfolioDialog: openPortfolioPicker,
@@ -936,6 +940,9 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
           {activeTab === "teams" ? (
             <TeamsAccountTab focused={focused} width={contentWidth} />
+          ) : null}
+          {activeTab === "agents" ? (
+            <AgentsAccountTab focused={focused} width={contentWidth} />
           ) : null}
           {activeTab === "advanced" ? (
             <>

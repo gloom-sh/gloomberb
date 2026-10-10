@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync } from "fs";
-import { homedir } from "os";
+import { homedir, hostname } from "os";
 import { getGloomberbDirs } from "../../../../data/config/home";
 import type { AppServices } from "../../../../core/app-services";
 import { restoreExtractedPlugins } from "../../../../cli/restore-plugins";
@@ -81,6 +81,7 @@ function buildInitializationPayload(
     savedResources: loadSavedResources(services, config),
     capabilityManifests: desktopRendererCapabilityManifests(services.pluginRegistry.capabilities),
     desktopPlatform: process.platform,
+    hostName: hostname(),
     windowKind: windowTarget.kind,
     paneId: windowTarget.paneId,
     telemetry: {

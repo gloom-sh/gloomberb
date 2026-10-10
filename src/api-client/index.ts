@@ -674,6 +674,10 @@ class GloomApiClient {
   subscribeTeamUpdates = this.teams.subscribeTeamUpdates.bind(this.teams);
   subscribeTeamNotifications = this.teams.subscribeTeamNotifications.bind(this.teams);
   subscribeCloudEvent = this.teams.subscribeCloudEvent.bind(this.teams);
+  /** The Cloud socket's own lifecycle and frames, for protocols layered on it (the terminal relay). */
+  subscribeSocketConnection = this.socket.subscribeConnection.bind(this.socket);
+  sendSocketFrame = this.socket.sendFrame.bind(this.socket);
+  socketServerOffers = this.socket.serverOffers.bind(this.socket);
   listCloudNotes = this.notes.listNotes.bind(this.notes);
   getCloudNote = this.notes.getNote.bind(this.notes);
   putCloudNote = this.notes.putNote.bind(this.notes);

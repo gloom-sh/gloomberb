@@ -23,6 +23,8 @@ export interface ElectrobunBackendInit {
   savedResources?: CachedResourceRecord[];
   capabilityManifests: CapabilityManifest[];
   desktopPlatform: string;
+  /** The machine name, which a remote assistant sees this desktop app under. */
+  hostName?: string;
   windowKind: "main" | "detached";
   paneId?: string;
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */

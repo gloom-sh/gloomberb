@@ -3,6 +3,7 @@ import { useAppLanguage } from "../../../i18n/react";
 import { isPerfTraceEnabled, recordPerfSample } from "../../../utils/perf-marks";
 import { PaneInViewProvider } from "../../../state/app/activity";
 import { PaneInstanceProvider } from "../../../state/app/context";
+import { RemoteUiPaneScope } from "../../../remote/semantic-tree";
 import { useThemeColors } from "../../../theme/theme-context";
 import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
 import type { PaneDef } from "../../../types/plugin";
@@ -91,21 +92,23 @@ export const PaneContent = memo(function PaneContent({
 
   return (
     <PaneInstanceProvider paneId={paneId}>
-      <PaneInViewProvider value={inView}>
-        <PaneKeyboardScrollController paneId={paneId} focused={focused} />
-        <Box
-          flexDirection="column"
-          {...(pinned
-            ? { width, height, flexGrow: 0, flexShrink: 0 }
-            : { flexGrow: 1, flexShrink: 1, flexBasis: 0 })}
-          minWidth={0}
-          minHeight={0}
-          overflow="hidden"
-          data-gloom-role="pane-content"
-        >
-          {body}
-        </Box>
-      </PaneInViewProvider>
+      <RemoteUiPaneScope paneId={paneId}>
+        <PaneInViewProvider value={inView}>
+          <PaneKeyboardScrollController paneId={paneId} focused={focused} />
+          <Box
+            flexDirection="column"
+            {...(pinned
+              ? { width, height, flexGrow: 0, flexShrink: 0 }
+              : { flexGrow: 1, flexShrink: 1, flexBasis: 0 })}
+            minWidth={0}
+            minHeight={0}
+            overflow="hidden"
+            data-gloom-role="pane-content"
+          >
+            {body}
+          </Box>
+        </PaneInViewProvider>
+      </RemoteUiPaneScope>
     </PaneInstanceProvider>
   );
 });

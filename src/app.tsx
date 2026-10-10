@@ -20,6 +20,7 @@ import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
 import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
+import { TerminalRelayHost } from "./plugins/builtin/cloud/terminal-relay/host";
 import { SignInGate } from "./components/sign-in-gate";
 import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
@@ -476,6 +477,7 @@ function AppInner({
             />
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
+          <TerminalRelayHost device={remoteControlAdapter?.terminalDevice} />
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard
               pluginRegistry={pluginRegistry}

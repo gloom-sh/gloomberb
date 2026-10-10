@@ -210,7 +210,10 @@ async function boot() {
   });
 
   const remoteControlAdapter = init.windowKind === "main"
-    ? { registerHandler: setElectrobunRemoteRequestHandler }
+    ? {
+      registerHandler: setElectrobunRemoteRequestHandler,
+      terminalDevice: { kind: "desktop" as const, name: init.hostName?.trim() || "Gloom desktop" },
+    }
     : undefined;
   measurePerfAsync("startup.electrobun.root-render", async () => {
     root.render(

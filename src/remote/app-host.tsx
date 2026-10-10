@@ -23,6 +23,11 @@ export function useRemoteControlHandler(): RemoteControlHandler | null {
 export interface RemoteControlAdapter {
   startServer?(options: { dataDir: string; handle: RemoteControlHandler }): void | (() => void | Promise<void>);
   registerHandler?(handler: RemoteControlHandler | null): void | (() => void);
+  /**
+   * Set where a remote assistant may drive this app through Gloom Cloud: what
+   * kind of app it is and the machine name it shows under.
+   */
+  terminalDevice?: { kind: "desktop" | "tui"; name: string };
 }
 
 interface RemoteControlHostProps {

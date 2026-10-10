@@ -172,6 +172,8 @@ export interface RemoteControlSchema {
 export interface RemoteUiNodeSnapshot {
   id: string;
   role: string;
+  /** The pane instance the node is drawn in; absent outside panes. */
+  paneId?: string;
   label?: string;
   disabled?: boolean;
   actions: string[];
