@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { act } from "react";
-import { apiClient } from "../../../../api-client";
+import { apiClient, setCloudApiFetchTransport } from "../../../../api-client";
 import { ApiRequestError } from "../../../../api-client/errors";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
+import { installTestWebSocket, type TestWebSocket } from "../../../../test-support/cloud-api";
 import { blockExternalNetwork } from "../../../../test-support/network-guard";
 import { Text, useRendererHost } from "../../../../ui";
 import { AuthDialogHost } from "../auth-dialog";
@@ -26,6 +27,9 @@ const original = {
 let copied: string[] = [];
 let opened: string[] = [];
 let keyRequests: Array<{ name: string; scope: string }> = [];
+let cloudRequestsInFlight = 0;
+let cloudSockets: TestWebSocket[] = [];
+let guardWebSocket: typeof WebSocket = globalThis.WebSocket;
 
 beforeEach(() => {
   process.env.GLOOMBERB_API_URL = API_URL;
@@ -35,9 +39,37 @@ beforeEach(() => {
   apiClient.recordResearchActivity = (async () => {}) as typeof apiClient.recordResearchActivity;
   apiClient.getCloudPricing = (async () => { throw new Error("offline"); }) as typeof apiClient.getCloudPricing;
   apiClient.getCloudAccountPlan = (async () => { throw new Error("offline"); }) as typeof apiClient.getCloudAccountPlan;
+  // Signing in wakes whatever follows the account in this process, such as
+  // the team and thesis stores another test file left started: they fetch
+  // through the client and keep the Cloud socket open. Both are answered
+  // here, in-process; the network guard still blocks everything else.
+  guardWebSocket = globalThis.WebSocket;
+  cloudSockets = installTestWebSocket(0);
+  setCloudApiFetchTransport(async () => {
+    cloudRequestsInFlight += 1;
+    try {
+      return Response.json({ message: "Not served in this test." }, { status: 404 });
+    } finally {
+      cloudRequestsInFlight -= 1;
+    }
+  });
 });
 
-afterEach(() => {
+afterEach(async () => {
+  // The harness has unmounted the dialog by now. Sign out first, then let any
+  // refresh the sign-in started reach the stand-in transport and finish
+  // before the real one comes back.
+  apiClient.setSessionToken(null);
+  apiClient.restoreCachedUser(null);
+  for (let tick = 0; tick < 20 && (tick < 3 || cloudRequestsInFlight > 0); tick += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  expect(cloudRequestsInFlight).toBe(0);
+  // Signed out, the client closes the socket and schedules no reconnect.
+  expect(cloudSockets.filter((socket) => socket.readyState !== 3)).toEqual([]);
+  expect(cloudSockets.every((socket) => new URL(socket.url).pathname === "/cloud/ws")).toBe(true);
+  globalThis.WebSocket = guardWebSocket;
+  setCloudApiFetchTransport(null);
   if (original.apiUrl === undefined) delete process.env.GLOOMBERB_API_URL;
   else process.env.GLOOMBERB_API_URL = original.apiUrl;
   Object.assign(apiClient, {
@@ -46,8 +78,6 @@ afterEach(() => {
     getCloudPricing: original.getCloudPricing,
     getCloudAccountPlan: original.getCloudAccountPlan,
   });
-  apiClient.setSessionToken(null);
-  apiClient.restoreCachedUser(null);
 });
 
 function signIn(plan: "free" | "pro"): void {
