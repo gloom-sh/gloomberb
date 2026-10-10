@@ -71,6 +71,9 @@ async function boot(): Promise<void> {
     if (document.visibilityState === "hidden") void flushPendingPersistence();
   });
   installBrowserFetchTransports();
+  // Read the saved Usage switch before any research activity or attribution.
+  const config = await loadConfig(BROWSER_DATA_DIR);
+  loadedConfig = config;
   initializeBrowserResearchActivity();
   installFocusScopeRelease();
   installDomMarketDataFrames();
@@ -84,8 +87,6 @@ async function boot(): Promise<void> {
   recordResearchActivity("workspace_opened");
   // Nothing was restored on a first visit, only the starter workspace shown.
   if (!hasSavedBrowserConfig()) recordRestoredFunctions([]);
-  const config = await loadConfig(BROWSER_DATA_DIR);
-  loadedConfig = config;
   applyLanguageFromConfig(config);
   const externalPlugins = await bundledPlugins;
   const deepLinkBridge = createBrowserDeepLinkBridge();

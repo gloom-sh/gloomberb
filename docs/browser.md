@@ -2,12 +2,12 @@
 
 [Back to README](../README.md) · [User guide](usage.md)
 
-Open [term.gloom.sh](https://term.gloom.sh) and sign in with a free Gloom Cloud account. The browser app uses the same DOM renderer and layout as the desktop app, with a reviewed browser plugin catalog.
+Open [term.gloom.sh](https://term.gloom.sh) without an account to start with a six-pane research workspace. The browser app uses the same DOM renderer and layout as the desktop app, with a bundled browser plugin catalog.
 
 ## Accounts and data
 
-- A Gloom Cloud session is required to open the workspace.
-- Free accounts receive rate-limited, 15-minute-delayed Gloom Cloud market data. Pro accounts receive realtime data.
+- The workspace opens without signing in. Some panes, including filings and insider transactions, require a free, verified Gloom Cloud account; others require Pro.
+- Free access has rate limits, equity and options quotes delayed by 15 minutes, and news delayed by 12 hours. Pro provides real-time data and more datasets.
 - Chat is read-only until the account's email is verified.
 - Configuration, tickers, layouts, session state, and plugin state are stored in the browser.
 - A share link opens the hosted terminal on the shared pane, in the state the sender was looking at: a chart keeps its drawings and zoom, a news pane its open story, a filings pane its open document. Opening one requires no account; panes served by Gloom Cloud (SEC filings, insider transactions) ask the receiver to sign in. Creating a share requires a verified Gloom Cloud account.
