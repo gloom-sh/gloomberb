@@ -1131,3 +1131,9 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   outline: 2px solid var(--gloom-border-focused);
   outline-offset: 1px;
 }
+
+/* Keycaps on buttons and in dialog hints are for a keyboard; a touch screen
+   has none to press them with. A note beside them (a deadline) stays. */
+@media (hover: none) and (pointer: coarse) {
+  .gloom-keycap, .gloom-key-hint { display: none !important; }
+}

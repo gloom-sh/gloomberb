@@ -28,6 +28,11 @@ export interface ButtonProps {
   disabled?: boolean;
   active?: boolean;
   shortcut?: string;
+  /**
+   * The key that presses it, as a keycap on the desktop and the web only: for
+   * a dialog button whose key the terminal names in the footer line instead.
+   */
+  desktopShortcut?: string;
   /** Tooltip, when it should say more than the label. */
   title?: string;
   width?: number;
@@ -86,6 +91,7 @@ export function Button({
   disabled = false,
   active = false,
   shortcut,
+  desktopShortcut,
   width,
   height,
   compact = false,
@@ -120,7 +126,7 @@ export function Button({
         variant={variant}
         disabled={disabled}
         active={active}
-        shortcut={shortcut}
+        shortcut={shortcut ?? desktopShortcut}
         title={title}
         width={width}
         height={height}

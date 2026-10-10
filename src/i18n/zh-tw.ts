@@ -1471,4 +1471,20 @@ export const zhTW: Record<string, string> = {
   "Picked": "已選",
   "Follow {count} companies": "關注 {count} 家公司",
   "Following {count} companies. Alerts and your Monday brief will cover them.": "已關注 {count} 家公司。提醒和週一簡報將涵蓋它們。",
+
+  // ── Dialog keys on the desktop ───────────────────────────────
+  "newline": "換行",
+  "Denied in {seconds} s": "{seconds} 秒後拒絕",
+  "choose": "選擇",
+  "select": "選定",
+  "confirm": "確認",
+  "presets": "預設",
+  "add": "新增",
+  "source": "來源",
+  "panel": "面板",
+  "log scale": "對數刻度",
+  "use {value}": "使用 {value}",
+  "keep the default": "保留預設值",
+  "continue": "繼續",
+  "new code": "新代碼",
 };

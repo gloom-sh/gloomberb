@@ -27,7 +27,7 @@ import {
   setPortfolioCash,
   setPortfolioTargetWeight,
 } from "../mutations";
-import { renderCollectionOverview, showCollection } from "./render";
+import { listingLabel, renderCollectionOverview, showCollection } from "./render";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
 import {
   CASH_SYMBOL,
@@ -439,7 +439,15 @@ async function showTargetsCommand(name: string, ctx: CliCommandContext) {
       console.log("");
       console.log(renderTable(
         [{ header: "Ticker" }, { header: "Name" }, { header: "Target", align: "right" }],
-        rows.map((row) => [row.symbol, row.listed ? row.name ?? "" : cliStyles.muted("not in this portfolio"), formatAllocationWeight(row.targetWeight)]),
+        // A saved row reads as its listing (SAN:NYSE); a target whose row is not saved keeps its key.
+        rows.map((row) => {
+          const saved = row.symbol === CASH_SYMBOL ? undefined : bySymbol.get(row.symbol);
+          return [
+            saved ? listingLabel(saved) : row.symbol,
+            row.listed ? row.name ?? "" : cliStyles.muted("not in this portfolio"),
+            formatAllocationWeight(row.targetWeight),
+          ];
+        }),
       ));
       const note = targetSumNote(config, portfolio.id, tickers);
       if (note) console.log(note);

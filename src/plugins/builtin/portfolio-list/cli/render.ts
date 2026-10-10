@@ -1,4 +1,5 @@
 import { createBaseConverter } from "../../../../cli/base-converter";
+import { savedListingName } from "../../../../cli/listing-arg";
 import { withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import {
@@ -344,6 +345,16 @@ function signed(text: string, value: number | null | undefined): string {
 
 const NOT_AVAILABLE = "n/a";
 
+/**
+ * What a table row calls a listing: SAN:EPA or SAN:NYSE, as the add, remove and
+ * target messages name it, not the key it is stored under (SAN, SAN:XNYS),
+ * which leaves two listings of one symbol looking alike. JSON and CSV keep the
+ * stored key in `symbol`.
+ */
+export function listingLabel(ticker: TickerRecord): string {
+  return savedListingName(ticker).key;
+}
+
 /** One cell per extended column: the print and its move from the close, as `quote` prints it, or blank. */
 function extendedCells(
   sessions: readonly ExtendedSession[],
@@ -509,14 +520,14 @@ async function showCollectionWithMarketData(
         : undefined;
       const symbolUnits = allocationBySymbol.get(ticker.metadata.ticker)?.units ?? 0;
       if (!position || !metrics) {
-        return [ticker.metadata.ticker, ...quoteCells, "—", "—", "—",
+        return [listingLabel(ticker), ...quoteCells, "—", "—", "—",
           ...allocationCells(figures, { unpriced: false, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }), "—"];
       }
       const positionCurrency = metrics.positionCurrency;
       const marketValue = row.marketValue as number | null;
       const unpriced = marketValue == null;
       return [
-        ticker.metadata.ticker,
+        listingLabel(ticker),
         ...quoteCells,
         formatMarketQuantity(metrics.totalShares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency }),
         formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }),
@@ -566,9 +577,12 @@ async function showCollectionWithMarketData(
     ));
     console.log("");
     const notes: string[] = [];
+    // The notes name the rows as the table does.
+    const labels = new Map(filtered.map((ticker) => [ticker.metadata.ticker, listingLabel(ticker)]));
+    const named = (symbols: Iterable<string>) => [...symbols].map((symbol) => labels.get(symbol) ?? symbol).join(", ");
     if (allocation.unpriced.length > 0) {
       const count = allocation.unpriced.length;
-      notes.push(cliStyles.warning(`Total and weights exclude ${count} unpriced holding${count === 1 ? "" : "s"}: ${allocation.unpriced.join(", ")}.`));
+      notes.push(cliStyles.warning(`Total and weights exclude ${count} unpriced holding${count === 1 ? "" : "s"}: ${named(allocation.unpriced)}.`));
     }
     if (cashExport?.source === "broker") notes.push(cliStyles.muted("Cash is the broker account's balance as of its last sync."));
     if (matchedPortfolio.brokerInstanceId && !account) notes.push(cliStyles.warning(BROKER_ACCOUNT_MISSING_NOTE));
@@ -579,9 +593,9 @@ async function showCollectionWithMarketData(
     }
     const targetNote = describeTargetSum(allocation.targetSum);
     if (targetNote) notes.push(cliStyles.muted(targetNote));
-    if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${[...brokerPnlSymbols].join(", ")} is the broker's last snapshot.`));
-    if (unavailableCost.size > 0) notes.push(cliStyles.muted(`Cost unavailable for ${[...unavailableCost].join(", ")}.`));
-    if (unavailablePnl.size > 0) notes.push(cliStyles.muted(`P&L unavailable for ${[...unavailablePnl].join(", ")}.`));
+    if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
+    if (unavailableCost.size > 0) notes.push(cliStyles.muted(`Cost unavailable for ${named(unavailableCost)}.`));
+    if (unavailablePnl.size > 0) notes.push(cliStyles.muted(`P&L unavailable for ${named(unavailablePnl)}.`));
     for (const note of notes) console.log(note);
   } else {
     const rows: string[][] = [];
@@ -599,7 +613,7 @@ async function showCollectionWithMarketData(
         : "—";
 
       rows.push([
-        ticker.metadata.ticker,
+        listingLabel(ticker),
         exchangeShortName(quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || "—",
         priceText,
         changeText,

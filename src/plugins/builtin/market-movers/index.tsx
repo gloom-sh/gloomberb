@@ -34,6 +34,7 @@ import {
   type MarketMoverColumn,
   type MarketMoverRow,
   type MarketMoverSortPreference,
+  type MoverQuote,
   type ScreenerTabId,
   type TabId,
 } from "./model";
@@ -58,7 +59,7 @@ import {
 /** Stable identity: a fresh literal here would reload the board every render. */
 const NO_SAVED_SELECTION: string[] = [];
 const SESSION_CHECK_MS = 30_000;
-const NO_QUOTES: ScreenerQuote[] = [];
+const NO_QUOTES: MoverQuote[] = [];
 const moverKey = (row: Pick<ScreenerQuote, "symbol" | "exchange">) => publicTickerKey(row.symbol, row.exchange);
 
 /** What is trading in New York, re-read every half minute so the pane follows 04:00, 09:30 and 16:00. */
@@ -154,7 +155,7 @@ function ScreenerMoversBody({ activeTab, focused, width, summaryQuotes, liveStre
 }) {
   const dataProvider = useAssetData();
   const { pinTicker } = usePluginTickerActions();
-  const [quotes, setQuotes] = useState<ScreenerQuote[]>([]);
+  const [quotes, setQuotes] = useState<MoverQuote[]>([]);
   const [loadedTab, setLoadedTab] = useState<TabId | null>(null);
   const visibleQuotes = loadedTab === activeTab ? quotes : NO_QUOTES;
   // The first load starts before the effect runs; an empty board is not "no data".

@@ -78,14 +78,15 @@ export function SeriesEditorDialog({ dialogId, resolve, initialSpec }: SeriesEdi
   while (navigationKeys.length > 0 && [...navigationKeys, ...seriesKeys].join(" · ").length > tuiContentWidth) {
     navigationKeys.pop();
   }
-  const footer = isDesktop
-    ? seriesKeys.join(" · ") || undefined
-    : [...navigationKeys, ...seriesKeys].join(" · ");
 
   return (
     <DialogFrame
       title="Chart Series"
-      footer={footer}
+      footer={[...navigationKeys, ...seriesKeys].join(" · ")}
+      // The desktop's fields take the pointer and arrows like any form.
+      desktopFooter={selected
+        ? { keys: [{ key: "E", label: "source" }, { key: "P", label: "panel" }, { key: "L", label: "log scale" }] }
+        : null}
     >
       <Box
         flexDirection="column"

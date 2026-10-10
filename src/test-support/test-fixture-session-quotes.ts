@@ -42,3 +42,13 @@ export function sessionQuotes(symbol = "XLK", overrides: Partial<Quote> = {}) {
     } as Quote,
   };
 }
+
+const MOVER_SESSION_KEYS = [
+  "marketState", "changeSessionDate", "regularClose", "regularCloseSessionDate", "regularChange", "regularChangePercent",
+  "preMarketPrice", "preMarketChange", "preMarketChangePercent", "postMarketPrice", "postMarketChange", "postMarketChangePercent",
+] as const;
+
+/** A quote's sessions as Gloom Cloud sends them beside a movers row's live print. */
+export function moverSessionPayload(quote: Quote): Partial<Pick<Quote, (typeof MOVER_SESSION_KEYS)[number]>> {
+  return Object.fromEntries(MOVER_SESSION_KEYS.flatMap((key) => quote[key] === undefined ? [] : [[key, quote[key]]]));
+}

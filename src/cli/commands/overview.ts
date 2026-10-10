@@ -10,7 +10,7 @@ import {
   rankScreenerQuotes,
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
-import { formatMoverPrice, moverReferencePrice } from "../../plugins/builtin/market-movers/model";
+import { formatMoverPrice, moverReferencePrice, moverRegularSession } from "../../plugins/builtin/market-movers/model";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../market-data/market/status";
 import {
   COUNTRY_CYCLE,
@@ -163,13 +163,25 @@ async function runMoverCommand(args: string[], ctx: Parameters<CliCommandDef["ex
   }
 
   const screener = await fetchScreenerResult(category, limit, undefined, { forceRefresh: ctx.cliOptions.refresh });
-  const rows = rankScreenerQuotes(category, screener.data);
+  // Ranked by the live print, as the list is; then Last and Chg% are the regular
+  // session, as `ticker` reads it, and a pre-market or after-hours print is its own column.
+  const rows = rankScreenerQuotes(category, screener.data).map((quote) => {
+    const { extended, ...row } = moverRegularSession(quote);
+    return {
+      ...row,
+      extendedSession: extended?.session ?? null,
+      extendedPrice: extended?.price ?? null,
+      extendedChange: extended?.change ?? null,
+      extendedChangePercent: extended?.changePercent ?? null,
+    };
+  });
   // A screener snapshot, as the MOST report reads it: delayed, each row dated by its own last price.
   ctx.printResult({ data: rows, freshness: rowsFreshness(rows, { status: "delayed" }, { stale: screener.stale === true }) }, {
     columns: [
       ...MOVER_COLUMNS.slice(0, 4),
+      ...EXTENDED_COLUMNS,
       { key: "volume", header: "Volume", align: "right", value: (row) => formatCompact(Number(row.volume)) },
-      { key: "marketCap", header: "Mkt Cap", align: "right", value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
+      { ...MARKET_CAP_CELL, value: (row) => row.marketCap == null ? "" : formatCompact(Number(row.marketCap)) },
     ],
   });
 }

@@ -1469,4 +1469,20 @@ export const ko: Record<string, string> = {
   "Picked": "선택됨",
   "Follow {count} companies": "{count}개 기업 팔로우",
   "Following {count} companies. Alerts and your Monday brief will cover them.": "{count}개 기업을 팔로우합니다. 알림과 월요일 브리핑에서 다룹니다.",
+
+  // ── Dialog keys on the desktop ───────────────────────────────
+  "newline": "줄바꿈",
+  "Denied in {seconds} s": "{seconds}초 후 거부",
+  "choose": "고르기",
+  "select": "선택",
+  "confirm": "확인",
+  "presets": "프리셋",
+  "add": "추가",
+  "source": "출처",
+  "panel": "패널",
+  "log scale": "로그 스케일",
+  "use {value}": "{value} 사용",
+  "keep the default": "기본값 유지",
+  "continue": "계속",
+  "new code": "새 코드",
 };

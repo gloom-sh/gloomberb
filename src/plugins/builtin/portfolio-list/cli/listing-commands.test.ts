@@ -1,13 +1,15 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
 import { AppPersistence } from "../../../../data/app-persistence";
 import { TickerRepository } from "../../../../data/ticker-repository";
 import { createTestCliContext } from "../../../../test-support/cli-context";
+import { createTestDataProvider, createTestQuote } from "../../../../test-support/data-provider";
 import { createTestTicker } from "../../../../test-support/ticker";
 import { loadConfig, saveConfig } from "../../../../data/config/store";
 import { createDefaultConfig } from "../../../../types/config";
+import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import { portfolioCliCommand } from "./portfolio-command";
 import { watchlistCliCommand } from "./watchlist-command";
 
@@ -15,6 +17,7 @@ const persistences: AppPersistence[] = [];
 const dataDirs: string[] = [];
 
 afterEach(async () => {
+  setCliColorEnabledOverride(null);
   for (const persistence of persistences.splice(0)) persistence.close();
   await Promise.all(dataDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
@@ -93,4 +96,48 @@ test("target and position commands change the row of the listing --exchange or S
   // A bare symbol still means the row saved under that key.
   expect((await exec("target", "clear", "main", "SAN")).text).toContain('Cleared the target for SAN:EPA (Sanofi) in "Main".');
   expect(await targets()).toEqual({});
+});
+
+test("portfolio show, target show and watchlist show label two listings of one symbol SAN:NYSE and SAN:EPA, not by stored key", async () => {
+  const run = await savedSan();
+  // Both rows are held, so the table lists them under the key each is stored with: SAN and SAN:XNYS.
+  for (const symbol of ["SAN", "SAN:XNYS"]) {
+    const record = (await run.store.loadTicker(symbol))!;
+    await run.store.saveTicker({ metadata: { ...record.metadata, positions: [{ portfolio: "main", shares: 5, avgCost: 10, currency: record.metadata.currency, broker: "manual" }] } });
+  }
+  const config = await loadConfig(run.dataDir);
+  const market = {
+    config: { ...config, portfolios: [{ ...config.portfolios[0]!, targetWeights: { SAN: 10, "SAN:XNYS": 20 } }] },
+    store: run.store,
+    // New York's line has no quote, so the notes under the table name it too.
+    dataProvider: createTestDataProvider({ getQuote: async (symbol) => {
+      if (symbol === "SAN:XNYS") throw new Error("No quote");
+      return createTestQuote({ symbol, price: 12, currency: "EUR" });
+    } }),
+  };
+  setCliColorEnabledOverride(false);
+  const output = async (command: typeof portfolioCliCommand, args: string[]) => {
+    const lines: string[] = [];
+    const logger = spyOn(console, "log").mockImplementation((...parts) => { lines.push(parts.join(" ")); });
+    try { await command.execute(args, createTestCliContext(market).context); } finally { logger.mockRestore(); }
+    return lines.join("\n").split("\n");
+  };
+  const firstCells = (lines: string[]) => lines.filter((line) => /^SAN/.test(line)).map((line) => line.split(/\s+/)[0]);
+
+  const shown = await output(portfolioCliCommand, ["show", "main"]);
+  expect(firstCells(shown)).toEqual(["SAN:EPA", "SAN:NYSE"]);
+  expect(shown).toContain("P&L unavailable for SAN:NYSE.");
+  const targets = await output(portfolioCliCommand, ["target", "show", "main"]);
+  expect(firstCells(targets)).toEqual(["SAN:EPA", "SAN:NYSE"]);
+  expect(targets.join("\n")).toMatch(/SAN:EPA +Sanofi +10\.0%/);
+  expect(targets.join("\n")).toMatch(/SAN:NYSE +Banco Santander +20\.0%/);
+  expect(firstCells(await output(watchlistCliCommand, ["show", "growth"]))).toEqual(["SAN:EPA", "SAN:NYSE"]);
+
+  // Scripts keep reading the stored key.
+  const json = createTestCliContext(market, { format: "json" });
+  await portfolioCliCommand.execute(["show", "main"], json.context);
+  expect((json.printed[0]!.result.data as { symbol: string }[]).map((row) => row.symbol)).toEqual(["SAN", "SAN:XNYS"]);
+  const targetJson = createTestCliContext(market, { format: "json" });
+  await portfolioCliCommand.execute(["target", "show", "main"], targetJson.context);
+  expect((targetJson.printed[0]!.result.data as { symbol: string }[]).map((row) => row.symbol)).toEqual(["SAN", "SAN:XNYS"]);
 });

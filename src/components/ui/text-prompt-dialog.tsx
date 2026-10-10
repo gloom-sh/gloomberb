@@ -4,8 +4,9 @@ import { t } from "../../i18n";
 import { useDialogKeyboard, type PromptContext } from "../../ui/dialog";
 import { useThemeColors } from "../../theme/theme-context";
 import { Button } from "./button";
+import { DialogActions } from "./dialog-actions";
 import { FRAMED_TEXTAREA_DESKTOP_STYLE, TextField } from "./fields";
-import { DialogFrame } from "./frame";
+import { DialogFrame, fitDialogWidth } from "./frame";
 
 export interface TextPromptDialogProps extends PromptContext<string> {
   title: string;
@@ -24,6 +25,7 @@ export interface TextPromptDialogProps extends PromptContext<string> {
   /** Empty is an answer (clearing a value) rather than nothing to save. */
   allowEmpty?: boolean;
   width?: number;
+  /** The terminal's key line; the desktop shows the keys on the buttons. */
   footer?: string;
 }
 
@@ -80,10 +82,10 @@ export function TextPromptDialog({
 
   const shownPlaceholder = placeholder ? t(placeholder) : "";
   return (
-    <DialogFrame title={title} footer={footer}>
-      <Box flexDirection="column" width={width}>
+    <DialogFrame title={title} footer={footer} desktopFooter={null}>
+      <Box flexDirection="column" {...(nativePaneChrome ? { style: { width: fitDialogWidth(width) } } : { width })}>
         {body?.map((line, index) => (
-          <Text key={index} fg={colors.textDim} wrapText width={width}>{line ? t(line) : " "}</Text>
+          <Text key={index} fg={colors.textDim} wrapText width={nativePaneChrome ? undefined : width}>{line ? t(line) : " "}</Text>
         ))}
         {body && body.length > 0 && <Box height={1} />}
         {multiline ? (
@@ -116,17 +118,17 @@ export function TextPromptDialog({
             value={value}
             placeholder={shownPlaceholder}
             focused
-            width={width}
+            width={nativePaneChrome ? undefined : width}
             onChange={setValue}
             onSubmit={submit}
           />
         )}
         <Box height={1} />
-        <Box flexDirection="row" gap={1}>
+        <DialogActions hints={multiline ? { keys: [{ key: "Shift+Enter", label: "newline" }] } : undefined}>
           {/* A textarea is read when it submits, so its button stays live. */}
-          <Button label={confirmLabel} variant="primary" disabled={!multiline && !allowEmpty && !value.trim()} onPress={() => submit(current())} />
-          <Button label="Cancel" variant="secondary" onPress={dismiss} />
-        </Box>
+          <Button label={confirmLabel} variant="primary" desktopShortcut="Enter" disabled={!multiline && !allowEmpty && !value.trim()} onPress={() => submit(current())} />
+          <Button label="Cancel" variant="secondary" desktopShortcut="Esc" onPress={dismiss} />
+        </DialogActions>
       </Box>
     </DialogFrame>
   );

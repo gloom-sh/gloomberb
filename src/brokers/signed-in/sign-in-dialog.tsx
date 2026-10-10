@@ -13,7 +13,8 @@ import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { useViewport } from "../../react/input";
 import { colors } from "../../theme/colors";
-import { Box, Text, TextAttributes } from "../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
+import { DialogHints } from "../../components/ui/dialog-actions";
 import { useDialog, useDialogKeyboard, type DialogApi, type PromptContext } from "../../ui/dialog";
 import { isPlainKey } from "../../utils/keyboard";
 import { DeviceSignInDialog } from "../../plugins/builtin/cloud/device-signin-dialog";
@@ -115,6 +116,7 @@ function BrokerSignInDialog({
   renew,
 }: PromptContext<BrokerSignInOutcome> & { broker: SignedInBroker; write: boolean; renew: boolean }) {
   useAppLanguage();
+  const { nativePaneChrome } = useUiCapabilities();
   const { height: termHeight } = useViewport();
   // Close after a beat so "Connected" is visible; enter skips the wait. Signed
   // out closes at once, for the host to sign in to Gloom.
@@ -162,9 +164,13 @@ function BrokerSignInDialog({
         </>
       )}
       <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textMuted}>{t("r for a new code · esc to cancel")}</Text>
-      </Box>
+      {nativePaneChrome ? (
+        <DialogHints keys={[{ key: "r", label: "new code" }, { key: "Esc", label: "cancel" }]} />
+      ) : (
+        <Box height={1}>
+          <Text fg={colors.textMuted}>{t("r for a new code · esc to cancel")}</Text>
+        </Box>
+      )}
     </Box>
   );
 }

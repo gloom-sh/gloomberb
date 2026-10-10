@@ -1475,4 +1475,20 @@ export const es: Record<string, string> = {
   "Picked": "Elegida",
   "Follow {count} companies": "Seguir {count} empresas",
   "Following {count} companies. Alerts and your Monday brief will cover them.": "Sigues {count} empresas. Las alertas y tu resumen del lunes las cubrirán.",
+
+  // ── Dialog keys on the desktop ───────────────────────────────
+  "newline": "nueva línea",
+  "Denied in {seconds} s": "Se deniega en {seconds} s",
+  "choose": "elegir",
+  "select": "seleccionar",
+  "confirm": "confirmar",
+  "presets": "preajustes",
+  "add": "añadir",
+  "source": "fuente",
+  "panel": "panel",
+  "log scale": "escala log.",
+  "use {value}": "usar {value}",
+  "keep the default": "dejar el valor por defecto",
+  "continue": "continuar",
+  "new code": "nuevo código",
 };

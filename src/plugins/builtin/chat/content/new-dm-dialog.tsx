@@ -267,9 +267,11 @@ export function NewDmDialog({
   const startButton = (
     <Button
       label={submitting ? t("Starting") : t("Start")}
-      width={submitting ? 10 : START_BUTTON_WIDTH}
+      // The terminal keeps its column fixed; the desktop sizes to the label and its key.
+      width={nativePaneChrome ? undefined : submitting ? 10 : START_BUTTON_WIDTH}
       variant="primary"
       disabled={!canSubmit}
+      desktopShortcut="Enter"
       stopPropagation
       onPress={() => { void submit(); }}
     />
@@ -362,7 +364,13 @@ export function NewDmDialog({
             pointerEvents: "auto",
           }}
         >
-          <DialogFrame title="New DM" onClose={onCancel} footer={footer} shrinkable>
+          <DialogFrame
+            title="New DM"
+            onClose={onCancel}
+            footer={footer}
+            desktopFooter={items.length > 0 ? { keys: [{ key: "Tab", label: "add" }] } : null}
+            shrinkable
+          >
             <Box flexDirection="column" flexShrink={1} minHeight={0} style={{ gap: 6 }}>
               {field}
               <Text fg={selectedUsernames.length > 0 ? colors.textMuted : colors.textDim} style={ELLIPSIS_STYLE}>
