@@ -517,7 +517,8 @@ export function renderQuoteBoardCell(
     case "time":
       return {
         text: formatQuoteTime(quote?.lastUpdated),
-        value: quote?.lastUpdated ? new Date(quote.lastUpdated).toISOString().replace(".000Z", "Z") : null,
+        // A Date, so the export writes it whole and a rendered-view report dates the board by its quotes.
+        value: quote?.lastUpdated ? new Date(quote.lastUpdated) : null,
         color: colors.textDim,
       };
   }
