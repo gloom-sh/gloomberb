@@ -22,7 +22,7 @@ import {
   type StatItem,
 } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
-import { isUsEquityTicker } from "../../../utils/sec";
+import { mayBeUsEquityTicker } from "../../../utils/sec";
 import { formatCompact } from "../../../utils/format";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { formatShortDate } from "../../../utils/datetime-format";
@@ -130,7 +130,7 @@ function InsiderView({ width, height, focused }: { width: number; height: number
     [setOpenItemIdState],
   );
   const [sort, setSort] = useState<StackSortPreference<InsiderColumnId>>({ columnId: "date", direction: "desc" });
-  const eligibleTicker = isUsEquityTicker(ticker);
+  const eligibleTicker = mayBeUsEquityTicker(ticker);
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);
 
   const filingsEntry = useSecFilingsQuery(
@@ -458,7 +458,7 @@ export const insiderModule: PluginModule = {
         description: "Insider transaction activity for the selected ticker.",
         keywords: ["insider", "form 4", "ownership", "transactions", "ins"],
         shortcut: "INS",
-        canCreate: (_context, options) => !options?.ticker || isUsEquityTicker(options.ticker),
+        canCreate: (_context, options) => !options?.ticker || mayBeUsEquityTicker(options.ticker),
       }),
       headless: insiderHeadless,
     },
@@ -471,7 +471,7 @@ export const insiderModule: PluginModule = {
       order: 47,
       component: InsiderView,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => isUsEquityTicker(ticker),
+      isVisible: ({ ticker }) => mayBeUsEquityTicker(ticker),
     });
   },
 };

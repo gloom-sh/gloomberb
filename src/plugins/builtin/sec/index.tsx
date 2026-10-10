@@ -10,7 +10,7 @@ import { useDebouncedPluginPaneState } from "../../runtime";
 import { usePaneSettingValue } from "../../../state/app/context";
 import type { ScrollBoxRenderable } from "../../../ui";
 import { EmptyState, FeedDataTableStackView, Spinner, StatGrid, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type StatItem } from "../../../components";
-import { isUsEquityOrFundTicker, isUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
+import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
@@ -241,7 +241,7 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
   // ticker. The fund filings view (ETF) lists other forms, so it leaves it.
   useSecFilingFocusRequest(forms ? null : ticker?.metadata.ticker, setOpenItemId);
   // A form list is the fund filings view (ETF), which US-listed funds open too.
-  const eligibleTicker = forms ? isUsEquityOrFundTicker(ticker) : isUsEquityTicker(ticker);
+  const eligibleTicker = forms ? mayBeUsEquityOrFundTicker(ticker) : mayBeUsEquityTicker(ticker);
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);
   const filingsEntry = useSecFilingsQuery(
     instrument && eligibleTicker
@@ -449,7 +449,7 @@ export const secModule: PluginModule = {
         keywords: ["sec", "filings", "10-k", "10-q", "8-k"],
         shortcut: "SEC",
         shortcutAliases: ["CF"],
-        canCreate: (_context, options) => !options?.ticker || isUsEquityTicker(options.ticker),
+        canCreate: (_context, options) => !options?.ticker || mayBeUsEquityTicker(options.ticker),
       }),
       headless: secHeadless,
     },
@@ -462,7 +462,7 @@ export const secModule: PluginModule = {
         keywords: ["etf", "fund", "n-1a", "485bpos", "497", "n-csr", "n-cen", "n-port", "prospectus"],
         shortcut: "ETF",
         viewKey: "etf",
-        canCreate: (_context, options) => !options?.ticker || isUsEquityOrFundTicker(options.ticker),
+        canCreate: (_context, options) => !options?.ticker || mayBeUsEquityOrFundTicker(options.ticker),
         settings: () => ({ forms: ETF_FORMS_SETTING }),
       }),
       headless: createSecHeadless(undefined, {
@@ -481,7 +481,7 @@ export const secModule: PluginModule = {
       order: 45,
       component: SecView,
       instruments: ["equity"],
-      isVisible: ({ ticker }) => isUsEquityTicker(ticker),
+      isVisible: ({ ticker }) => mayBeUsEquityTicker(ticker),
     });
   },
   dispose() {

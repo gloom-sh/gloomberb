@@ -72,6 +72,10 @@ const scenarios: Scenario[] = [
   { label: "AAPL equity", ticker: createTestTicker("AAPL"), financials: quoted("EQUITY"), kind: "equity", visible: usEquity },
   { label: "BRK.B share class", ticker: createTestTicker("BRK.B", "Berkshire", { exchange: "NYSE" }), financials: quoted("EQUITY"), kind: "equity", visible: usEquity },
   { label: "7203.T foreign equity", ticker: createTestTicker("7203.T", "Toyota", { exchange: "JPX", currency: "JPY" }), financials: quoted("EQUITY"), kind: "equity", visible: foreignEquity },
+  // A symbol whose quote never loaded has no venue or currency: unknown is not foreign.
+  { label: "US equity with no quote and no venue", ticker: createTestTicker("CRBG", "Corebridge", { exchange: "", currency: "" }), kind: "equity", visible: usEquity },
+  // Tweets go by the saved venue alone.
+  { label: "7203.T with no quote and no venue", ticker: createTestTicker("7203.T", "Toyota", { exchange: "", currency: "" }), kind: "equity", visible: [...foreignEquity, "ticker-tweets"] },
   { label: "BTC-USD crypto", ticker: createTestTicker("BTC-USD", "Bitcoin", { exchange: "CCC" }), financials: quoted("CRYPTOCURRENCY"), kind: "crypto", visible: common },
   { label: "^GSPC index before quote", ticker: createTestTicker("^GSPC", "S&P 500", { exchange: "SNP" }), kind: "index", visible: withOptions },
   { label: "ES=F future before quote", ticker: createTestTicker("ES=F", "S&P future", { exchange: "CME" }), kind: "future", visible: withOptions },
