@@ -61,6 +61,7 @@ function textOf(value: unknown): string | undefined {
 const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" },
   { key: "name", header: "Name" },
+  { key: "exchange", header: "Exchange" },
   { key: "shares", header: "Qty", align: "right", format: quantity },
   { key: "avgCost", header: "Avg Cost", align: "right", format: unitMoney("positionCurrency"), description: "Per unit, in the position's currency." },
   { key: "price", header: "Last", align: "right", format: unitMoney("priceCurrency"), description: "In the quote's currency." },
@@ -288,7 +289,7 @@ async function watchlistHoldings(
 export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   description:
-    "Positions held in a portfolio, broker or manual: symbol, shares, average cost, last price, market value, unrealized P&L and weight of the total with cash, largest first, then the cash line and totals. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
+    "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L and weight of the total with cash, largest first, then the cash line and totals. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
   discovery: {
     dataRequirements: ["Local portfolios, watchlists and synced broker positions; current quotes"],
     limitations: ["Unrealized P&L on current positions; excludes realized trades, distributions and cash flows"],
