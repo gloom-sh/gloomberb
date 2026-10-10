@@ -57,6 +57,7 @@ function withoutSessionState(quote: Quote): Quote {
   delete fallback.postMarketPrice;
   delete fallback.postMarketChange;
   delete fallback.postMarketChangePercent;
+  delete fallback.extendedSessionPrint;
   return fallback;
 }
 

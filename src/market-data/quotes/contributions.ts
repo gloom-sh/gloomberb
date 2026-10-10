@@ -124,6 +124,7 @@ export function finalizeSessionFields(
       postMarketPrice: undefined,
       postMarketChange: undefined,
       postMarketChangePercent: undefined,
+      extendedSessionPrint: undefined,
     };
   }
 
@@ -192,6 +193,8 @@ export function mergeQuoteContribution(
       postMarketChangePercent: next.postMarketChangePercent,
     } : {}),
     priceBasis: next.priceBasis,
+    // Said of this observation's price; a tick that does not say leaves it unknown.
+    extendedSessionPrint: next.extendedSessionPrint,
     regularClose: next.regularClose,
     regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
     regularChange: next.regularClose != null ? next.regularChange : undefined,

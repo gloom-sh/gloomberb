@@ -63,6 +63,13 @@ export interface MarketHeatmapResult {
   session?: "REGULAR" | "PRE" | "POST" | "CLOSED" | null;
   /** The completed regular session every stored tile describes outside the regular session, as a New York date; null while it trades. */
   regularSessionDate?: string | null;
+  /**
+   * When that session closed, in epoch milliseconds: its real close from the
+   * exchange calendar, so an early close reads 13:00 New York. Null while a
+   * session trades and when the snapshot names no session; an older server
+   * leaves it out.
+   */
+  regularSessionClosedAt?: number | null;
   assets: MarketHeatmapAsset[];
 }
 

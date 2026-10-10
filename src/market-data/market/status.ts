@@ -332,3 +332,15 @@ export function getSessionMoveDisplay(
 ): (ActiveQuoteDisplay & { session?: ExtendedSession }) | null {
   return getOpenExtendedSessionDisplay(quote) ?? getRegularSessionDisplay(quote);
 }
+
+/**
+ * getSessionMoveDisplay for a board that marks an extended move on each tile
+ * (the heat map): while a quote says nothing has traded in the open session
+ * yet (extendedSessionPrint false), its extended figures are the close
+ * carried forward, not a flat print, so the regular session stands.
+ */
+export function getTradedSessionMoveDisplay(
+  quote: Quote | null | undefined,
+): (ActiveQuoteDisplay & { session?: ExtendedSession }) | null {
+  return quote?.extendedSessionPrint === false ? getRegularSessionDisplay(quote) : getSessionMoveDisplay(quote);
+}

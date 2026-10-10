@@ -177,6 +177,27 @@ describe("a heat map board outside the regular session", () => {
     const open: Quote = { ...overnight, marketState: "REGULAR", price: 161, change: 1, changePercent: 0.6 };
     expect(overlayScreenerQuoteEntries(rows, entriesFor([open]), { extendedSessions: true })[0]).toMatchObject({ price: 161, changePercent: 0.6, regularChangePercent: null });
   });
+
+  test("after hours a name whose quote says nothing has traded since the close is unmarked at its close and move; a real flat print is marked", () => {
+    // NVDA closed at 230.48 and its after-hours fields carry that close forward.
+    const atClose: Quote = { symbol: "NVDA", currency: "USD", listingExchangeName: "NASDAQ", marketState: "POST", price: 230.48, change: -6.99,
+      changePercent: -2.9435, previousClose: 237.47, regularClose: 230.48, regularCloseSessionDate: "2026-10-08", regularChange: -6.99,
+      regularChangePercent: -2.9435, changeSessionDate: "2026-10-08", lastUpdated: Date.parse("2026-10-08T23:00:00Z"),
+      postMarketPrice: 230.48, postMarketChange: 0, postMarketChangePercent: 0 };
+    const [, quiet] = overlay([{ ...atClose, extendedSessionPrint: false }]);
+    expect(quiet).toMatchObject({ price: 230.48, change: -6.99, changePercent: -2.9435 });
+    expect(quiet!.extendedSession).toBeUndefined();
+    // A trade after hours at exactly the close is a flat after-hours move.
+    expect(overlay([{ ...atClose, extendedSessionPrint: true }])[1]).toMatchObject({ price: 230.48, changePercent: 0, extendedSession: "POST" });
+    // A server that does not say keeps the flat after-hours move it always showed.
+    expect(overlay([atClose])[1]).toMatchObject({ changePercent: 0, extendedSession: "POST" });
+    // The same in the pre-market: no pre-market trade leaves the last session's close and move.
+    const preMarket: Quote = { ...atClose, marketState: "PRE", changeSessionDate: "2026-10-09", previousClose: 230.48, change: 0, changePercent: 0,
+      lastUpdated: Date.parse("2026-10-09T12:00:00Z"), postMarketPrice: undefined, postMarketChange: undefined, postMarketChangePercent: undefined,
+      preMarketPrice: 230.48, preMarketChange: 0, preMarketChangePercent: 0 };
+    expect(overlay([{ ...preMarket, extendedSessionPrint: false }])[1]).toMatchObject({ price: 230.48, changePercent: -2.9435, extendedSession: undefined });
+    expect(overlay([{ ...preMarket, extendedSessionPrint: true }])[1]).toMatchObject({ changePercent: 0, extendedSession: "PRE" });
+  });
 });
 
 describe("a board read by its regular session alone", () => {

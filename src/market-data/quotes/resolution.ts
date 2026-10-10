@@ -523,6 +523,8 @@ export function resolveCanonicalQuote(
     postMarketPrice: resolved.postMarketPrice as Quote["postMarketPrice"],
     postMarketChange: resolved.postMarketChange as Quote["postMarketChange"],
     postMarketChangePercent: resolved.postMarketChangePercent as Quote["postMarketChangePercent"],
+    // Said of the price, so it comes with it.
+    extendedSessionPrint: priceProvider?.extendedSessionPrint,
     bid: resolved.bid as Quote["bid"],
     ask: resolved.ask as Quote["ask"],
     bidSize: resolved.bidSize as Quote["bidSize"],
