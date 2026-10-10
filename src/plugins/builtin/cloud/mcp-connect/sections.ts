@@ -18,6 +18,8 @@ export interface McpConnectSectionProps {
   width: number;
   /** The dialog's keyboard scope, for `useDialogKeyboard`. */
   dialogId?: string;
+  /** Closes the dialog, for a section that sends the person somewhere else. */
+  dismiss?: () => void;
 }
 
 export interface McpConnectSection {

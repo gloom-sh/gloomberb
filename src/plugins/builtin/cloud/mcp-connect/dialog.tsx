@@ -299,7 +299,7 @@ function McpConnectDialog({
         {sections.map((section) => (
           <Box key={section.id} flexDirection="column">
             {nativePaneChrome ? <Divider width={width} /> : null}
-            <section.Component width={width} dialogId={dialogId} />
+            <section.Component width={width} dialogId={dialogId} dismiss={dismiss} />
           </Box>
         ))}
 
