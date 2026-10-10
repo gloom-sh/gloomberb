@@ -76,3 +76,23 @@ test("quote, compare and QQ headline the regular session and give the extended p
   expect(renderHeadlessPaneText(quoteComparisonHeadless, board, args(["AAPL", "MSFT"]), "Quote Monitor")).toMatch(/AAPL .*\$336\.64 .*-1\.11% .*— +\$336\.08 -0\.17%/);
   expect("columns" in await quoteComparisonHeadless.load(args(["7203.T"]), ctx)).toBe(false);
 });
+
+test("quote marks each stale row in its Feed cell, as many as the closing line counts", async () => {
+  const cli = createTestCliContext({ config, dataProvider: {
+    getQuotesBatch: async () => [
+      { ...closed, stale: true, dataSource: "delayed" as const },
+      { ...afterHours, symbol: "LIT", dataSource: "delayed" as const, lastUpdated: Date.now() - 60_000 },
+    ].map((quote) => ({ target: { symbol: quote.symbol, exchange: "" }, quote })),
+  } });
+  await marketDataCliCommands.find((command) => command.name === "quote")!.execute(["7203.T", "LIT"], cli.context);
+  const [{ result, options }] = cli.printed as [PrintedCliResult];
+  const text = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "text" }, options);
+  const lines = text.split("\n");
+  expect(lines.find((line) => line.startsWith("7203.T"))).toMatch(/\bstale\b/);
+  // Whatever the clock makes of the other row, the cells and the count agree.
+  const marked = lines.filter((line) => /^\S+ .*\bstale\b/.test(line) && !line.startsWith("Source:")).length;
+  const counted = Number(/(\d+) of 2 stale/.exec(text)?.[1] ?? (/\bstale\b/.test(lines.at(-1) ?? "") ? 2 : 0));
+  expect(marked).toBe(counted);
+  // JSON keeps the quote as sent.
+  expect((result.data as Array<{ quote: Quote }>)[0]!.quote.dataSource).toBe("delayed");
+});

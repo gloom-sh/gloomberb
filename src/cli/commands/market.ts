@@ -41,6 +41,7 @@ import {
   targetUpside,
 } from "../../plugins/builtin/research/analyst-model";
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
+import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
 import {
   chainHasExpiry,
@@ -219,8 +220,16 @@ function quoteColumns() {
   return [
     ...QUOTE_LEAD_COLUMNS,
     { key: "currency", header: "Cur", shrink: false, optional: true, dropPriority: 1 },
-    // Whether the price is real-time or delayed: a feed state, not where it came from.
-    { key: "source", header: "Feed", shrink: false, optional: true, dropPriority: 2, format: (value: unknown) => value === "live" || value === "delayed" ? value : "" },
+    // Whether the price is real-time, delayed or stale: a feed state, not where it came from. A stale
+    // row says so here, so the closing line's "N of M stale" always points at rows the table marks.
+    {
+      key: "feed",
+      header: "Feed",
+      shrink: false,
+      optional: true,
+      dropPriority: 2,
+      format: (value: unknown) => value === "stale" ? cliStyles.warning(value) : String(value ?? ""),
+    },
     // In a narrow terminal the closing line's as-of stands in for each row's.
     { key: "updatedAt", header: "Updated", shrink: false, optional: true, dropPriority: 3 },
   ];
@@ -242,7 +251,14 @@ function errorMessage(error: unknown): string | null {
   return error instanceof Error ? error.message : String(error);
 }
 
-function quoteRows(results: QuoteCliRecord[]) {
+/** What the Feed cell says: stale wins over the feed's own live or delayed, as the closing line counts it. */
+function quoteFeedState(quote: QuoteCliRecord["quote"], now: number): "stale" | "live" | "delayed" | "" {
+  if (!quote) return "";
+  if (isQuoteStaleForCurrentSession(quote, now)) return "stale";
+  return quote.dataSource === "live" || quote.dataSource === "delayed" ? quote.dataSource : "";
+}
+
+function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
   return results.map((result) => {
     const quote = result.quote;
     // Last and Chg% are the regular session, as `ticker` and the quote monitor read it; a
@@ -286,6 +302,7 @@ function quoteRows(results: QuoteCliRecord[]) {
       currency: quote?.currency ?? "",
       providerId: quote?.providerId ?? "",
       source: quote?.dataSource ?? quote?.providerId ?? "",
+      feed: quoteFeedState(quote, now),
       updatedAt: quote?.lastUpdated ? new Date(quote.lastUpdated).toISOString() : "",
       error: result.error ?? "",
     };
