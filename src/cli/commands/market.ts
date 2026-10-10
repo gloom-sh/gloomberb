@@ -7,6 +7,7 @@ import type {
   CorporateActionsData,
   HolderData,
   OptionsChain,
+  Quote,
   TickerFinancials,
 } from "../../types/financials";
 import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
@@ -96,11 +97,13 @@ import {
   loadForListing,
   loadListingQuote,
   notTradedMessage,
-  otherListingsMessage,
+  quoteBareListing,
   requireCliListing,
   type CliListing,
+  type ListingDataRequest,
   type ListingIdentity,
 } from "../listing-arg";
+import { indexRootAlsoLine, indexRootFor, indexRootTryLine } from "../index-roots";
 import { providerMissReason } from "../../sources/provider-errors";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
@@ -453,30 +456,25 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const targets: QuoteSubscriptionTarget[] = listings.map((listing) => ({ symbol: listing.request.symbol, exchange: listing.request.exchange }));
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
-    // A listing with no quote on an exchange its symbol is not listed on says so, and a bare
-    // symbol no source quotes names its other listings; venues are only looked up for those.
     const request = { command: commandName, noun: "quote" };
-    const unquoted = await Promise.all(results.map(async (result, index) => {
-      if (result.quote) return null;
-      const listing = listingOf(result, index);
-      const notTraded = await notTradedMessage(listing, market);
-      if (notTraded) return { message: notTraded, details: undefined, oneLine: notTraded };
-      const other = isNoProviderError(result.error) ? await otherListingsMessage(listing, market, request) : null;
-      return other && { ...other, oneLine: `${other.message} Other listings: ${other.others.join(", ")}.` };
-    }));
-    if (listings.length === 1 && unquoted[0]) ctx.fail(unquoted[0].message, unquoted[0].details);
-    const notTraded = unquoted.map((entry) => entry?.oneLine ?? null);
+    const answers = await Promise.all(results.map((result, index) => answerQuote(result, listingOf(result, index), market, request, ctx.cliOptions.refresh)));
+    const failed = answers[0]?.failure;
+    if (listings.length === 1 && failed) ctx.fail(failed.message, failed.details);
     // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
-    const data = results.map((result, index) => ({
+    const data = answers.map(({ result, listing, failure }) => ({
       target: result.target,
-      listing: listingMetadata(listingIdentity(listingOf(result, index), result.quote)),
+      listing: listingMetadata(listingIdentity(listing, result.quote)),
       // The figures the table shows, beside the quote as the source sent it.
       ...getQuoteSessionFields(result.quote),
       quote: result.quote,
-      error: notTraded[index] ?? errorMessage(result.error),
+      error: failure?.oneLine ?? errorMessage(result.error),
     }));
-    // Text mode shows only "unavailable" in the cell; the JSON rows already carry each reason.
-    const notes = ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [];
+    const notes = [
+      // Which listing a bare symbol was read as, and the index a bare root is not, are in no row.
+      ...answers.flatMap((answer) => answer.notes),
+      // Text mode shows only "unavailable" in the cell; the JSON rows already carry each reason.
+      ...ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [],
+    ];
     ctx.printResult({
       data,
       warnings: notes.length > 0 ? notes : undefined,
@@ -486,6 +484,57 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       columns: commandName === "compare" ? compareColumns() : quoteColumns(),
     });
   });
+}
+
+interface QuoteAnswer {
+  result: QuoteBatchResult;
+  /** The listing the row is: the one asked for, or the venue a bare symbol was quoted on. */
+  listing: CliListing;
+  /** Why there is no quote, when there is more to say than the source's own error. */
+  failure?: { message: string; details?: string; oneLine: string };
+  notes: string[];
+}
+
+/**
+ * One symbol's row of `quote` and `compare`. A listing on an exchange its symbol
+ * is not listed on says so. A bare symbol no source quotes is quoted on its
+ * listings (`quoteBareListing`), else names them; a bare index root (VIX) also
+ * names its index (^VIX). Venues are only looked up for a symbol with no quote,
+ * so a request that succeeds costs no search.
+ */
+async function answerQuote(
+  result: QuoteBatchResult,
+  listing: CliListing,
+  market: MarketContext,
+  request: ListingDataRequest,
+  refresh: boolean,
+): Promise<QuoteAnswer> {
+  const root = listing.exchange ? null : indexRootFor(listing.symbol);
+  // A bare root that quoted something else, such as MOVE (Corvex), points at the index too.
+  const also = (quote: Quote) => root && quote.instrumentType?.trim().toUpperCase() !== "INDEX"
+    ? [indexRootAlsoLine(root, request.command)] : [];
+  if (result.quote) return { result, listing, notes: also(result.quote) };
+  const notTraded = await notTradedMessage(listing, market);
+  if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
+  if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
+  const other = await quoteBareListing(listing, market, request, { refresh });
+  if (other?.kind === "quoted") {
+    return {
+      result: { target: other.listing.request, quote: other.quote },
+      listing: other.listing,
+      notes: [other.note, ...also(other.quote)],
+    };
+  }
+  const indexLine = root ? indexRootTryLine(root, request.command) : null;
+  if (!other && !indexLine) return { result, listing, notes: [] };
+  const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;
+  const details = [other?.details, indexLine].filter(Boolean).join("\n");
+  const oneLine = [
+    message,
+    other ? `Other listings: ${other.others.join(", ")}.` : "",
+    indexLine ?? "",
+  ].filter(Boolean).join(" ");
+  return { result, listing, failure: { message, details, oneLine }, notes: [] };
 }
 
 /** A crypto pair that will not load points at the crypto board. Structured formats keep the error as thrown. */

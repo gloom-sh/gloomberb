@@ -13,6 +13,7 @@ import { initMarketData, withMarketData } from "../context";
 import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext } from "../../types/plugin";
+import { indexRootFor, indexRootTryLine } from "../index-roots";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
@@ -78,6 +79,16 @@ function searchCandidateRows(candidates: TickerSearchCandidate[]) {
   }));
 }
 
+/**
+ * "^VIX  Cboe Volatility Index (try: gloomberb quote ^VIX)" for a bare index root, whose
+ * search finds funds named after the index but not the index, unless it does list it.
+ */
+function indexRootNote(query: string, candidates: TickerSearchCandidate[]): string | null {
+  const root = indexRootFor(query);
+  if (!root || candidates.some((candidate) => candidate.label.toUpperCase() === root.symbol)) return null;
+  return indexRootTryLine(root);
+}
+
 export function buildSearchReport({
   query,
   candidates,
@@ -86,6 +97,8 @@ export function buildSearchReport({
   candidates: TickerSearchCandidate[];
 }): string {
   const lines = [renderSection(`Search: ${query}`)];
+  const indexNote = indexRootNote(query, candidates);
+  if (indexNote) lines.push("", indexNote);
 
   if (candidates.length === 0) {
     lines.push(cliStyles.muted("No matches found."));
@@ -144,7 +157,12 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     });
 
     if (dependencies.printResult) {
-      dependencies.printResult({ data: searchCandidateRows(candidates), metadata: { query: trimmedQuery } }, {
+      const indexNote = indexRootNote(trimmedQuery, candidates);
+      dependencies.printResult({
+        data: searchCandidateRows(candidates),
+        metadata: { query: trimmedQuery },
+        warnings: indexNote ? [indexNote] : undefined,
+      }, {
         columns: [
           { key: "category", header: "Category" },
           { key: "symbol", header: "Symbol" },

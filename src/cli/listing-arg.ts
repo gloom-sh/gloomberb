@@ -171,27 +171,42 @@ export function isNoProviderError(error: unknown): boolean {
 
 const MAX_OTHER_LISTINGS = 5;
 
-/**
- * For a bare symbol whose request found no source: the listing it went to and
- * the symbol's other listings, each with the command that asks for it, such
- * as "2222 resolved to Kotobuki Spirits Co., Ltd. (JPX), which has no
- * history." and "2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb history
- * 2222:TADAWUL)". Null when the symbol named its exchange or has no other
- * listing. It searches, so ask only after a request failed.
- */
-export async function otherListingsMessage(
-  listing: Pick<CliListing, "symbol" | "exchange"> & Partial<Pick<CliListing, "saved">>,
-  deps: ListingDeps,
-  request: ListingDataRequest,
-): Promise<{ message: string; details: string; others: string[] } | null> {
+type BareListing = Pick<CliListing, "symbol" | "exchange"> & Partial<Pick<CliListing, "saved">>;
+
+/** Where a bare symbol went and where else it trades, in the order they are tried and named. */
+interface BareListingVenues {
+  /** Canonical code of the venue the symbol went to. */
+  exchange: string;
+  /** That venue as search lists it; null for a saved venue search no longer lists. */
+  resolved: ListingVenue | null;
+  /** The symbol's other venues, in search order. */
+  others: ListingVenue[];
+}
+
+/** A bare symbol goes to its saved listing, else to the one search lists first. Null when it named its exchange. */
+async function bareListingVenues(listing: BareListing, deps: ListingDeps): Promise<BareListingVenues | null> {
   if (listing.exchange) return null;
   const venues = await listingVenues(listing.symbol, deps).catch(() => []);
-  // A bare symbol goes to its saved listing, else to the one search lists first.
   const savedExchange = canonicalExchange(listing.saved?.metadata.exchange);
-  const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : venues[0]);
-  const others = venues.filter((venue) => venue !== resolved && venue.exchange !== savedExchange);
-  if (others.length === 0 || (!resolved && !savedExchange)) return null;
+  const resolved = venues.find((venue) => venue.exchange === savedExchange) ?? (savedExchange ? null : venues[0] ?? null);
   const exchange = resolved?.exchange ?? savedExchange;
+  if (!exchange) return null;
+  return { exchange, resolved, others: venues.filter((venue) => venue !== resolved && venue.exchange !== savedExchange) };
+}
+
+interface OtherListingsMessage {
+  message: string;
+  details: string;
+  /** SAN:EPA, for each other listing. */
+  others: string[];
+}
+
+function describeOtherListings(
+  listing: BareListing,
+  { exchange, resolved, others }: BareListingVenues,
+  request: ListingDataRequest,
+): OtherListingsMessage | null {
+  if (others.length === 0) return null;
   const name = resolved?.name || listing.saved?.metadata.name?.trim() || "";
   const [command, ...options] = request.command.split(" ");
   const retry = (key: string) => ["gloomberb", command, key, ...options].join(" ");
@@ -204,6 +219,109 @@ export async function otherListingsMessage(
     message: `${listing.symbol} resolved to ${name ? `${name} (${exchange})` : exchange}, which has no ${request.noun}.`,
     details: lines.length === 1 ? `Other listings: ${lines[0]}` : ["Other listings:", ...lines.map((line) => `  ${line}`)].join("\n"),
     others: others.map((venue) => `${listing.symbol}:${venue.exchange}`),
+  };
+}
+
+/**
+ * For a bare symbol whose request found no source: the listing it went to and
+ * the symbol's other listings, each with the command that asks for it, such
+ * as "2222 resolved to Kotobuki Spirits Co., Ltd. (JPX), which has no
+ * history." and "2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb history
+ * 2222:TADAWUL)". Null when the symbol named its exchange or has no other
+ * listing. It searches, so ask only after a request failed.
+ */
+async function otherListingsMessage(
+  listing: BareListing,
+  deps: ListingDeps,
+  request: ListingDataRequest,
+): Promise<OtherListingsMessage | null> {
+  const venues = await bareListingVenues(listing, deps);
+  return venues && describeOtherListings(listing, venues, request);
+}
+
+/** The listing on one venue, as `SYM:EXCH` names it. */
+function namedListing(listing: CliListing, exchange: string): CliListing {
+  const key = `${listing.symbol}:${exchange}`;
+  const saved = canonicalExchange(listing.saved?.metadata.exchange) === exchange ? listing.saved : null;
+  return { symbol: listing.symbol, exchange, key, saved, request: { symbol: key, exchange } };
+}
+
+async function quoteListings(
+  dataProvider: DataProvider,
+  listings: readonly CliListing[],
+  refresh: boolean,
+): Promise<Array<Quote | null>> {
+  if (listings.length === 0) return [];
+  const targets = listings.map((listing) => listing.request);
+  if (dataProvider.getQuotesBatch) {
+    const results = await dataProvider.getQuotesBatch(targets, { forceRefresh: refresh }).catch(() => []);
+    return targets.map((target, index) => (results.find((result) => result.target === target) ?? results[index])?.quote ?? null);
+  }
+  return Promise.all(targets.map((target) => dataProvider.getQuote(target.symbol, target.exchange, {
+    cacheMode: refresh ? "refresh" : "default",
+  }).catch(() => null)));
+}
+
+export type BareListingQuote =
+  | {
+    kind: "quoted";
+    /** The listing that has a quote: SXR8:XETRA. */
+    listing: CliListing;
+    quote: Quote;
+    /** "SXR8 -> XETRA (other listings: BUD, MUNICH)". */
+    note: string;
+  }
+  | ({ kind: "missing" } & OtherListingsMessage);
+
+/**
+ * The quote for a bare symbol no source quoted. A bare request names no venue,
+ * so the data service looks only for a home listing the symbol may not have,
+ * while search knows where it trades: each listing is asked again by its own
+ * key (SXR8:XETRA), as a named one is. The listing the symbol resolved to goes
+ * first, then the others together, and the first in search order with a quote
+ * is the answer. When none has one, the `otherListingsMessage` failure. Null
+ * when the symbol named its exchange (a named venue never switches) or search
+ * knows no listing of it. It searches, so ask only after a request failed.
+ */
+export async function quoteBareListing(
+  listing: CliListing,
+  deps: ListingDeps,
+  request: ListingDataRequest,
+  { refresh = false }: { refresh?: boolean } = {},
+): Promise<BareListingQuote | null> {
+  const venues = await bareListingVenues(listing, deps);
+  if (!venues) return null;
+  const first = [namedListing(listing, venues.exchange)];
+  const rest = venues.others.map((venue) => namedListing(listing, venue.exchange));
+  let tried = first;
+  let quotes = await quoteListings(deps.dataProvider, first, refresh);
+  if (!quotes[0] && rest.length > 0) {
+    tried = [...first, ...rest];
+    quotes = [...quotes, ...await quoteListings(deps.dataProvider, rest, refresh)];
+  }
+  const found = quotes.findIndex(Boolean);
+  if (found < 0) {
+    const other = describeOtherListings(listing, venues, request);
+    return other && { kind: "missing", ...other };
+  }
+  const answer = tried[found]!;
+  const without = tried.slice(0, found).map((entry) => entry.exchange);
+  // Listings not asked, or asked and quoted, are still there to name.
+  const others = [...first, ...rest]
+    .filter((entry, index) => entry !== answer && (index >= tried.length || quotes[index]))
+    .map((entry) => entry.exchange);
+  const more = others.length - MAX_OTHER_LISTINGS;
+  const aside = [
+    without.length > 0 ? `no quote on ${without.join(", ")}` : "",
+    others.length > 0
+      ? `other listings: ${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloomberb search ${listing.symbol}` : ""}`
+      : "",
+  ].filter(Boolean).join("; ");
+  return {
+    kind: "quoted",
+    listing: answer,
+    quote: quotes[found]!,
+    note: `${listing.symbol} -> ${answer.exchange}${aside ? ` (${aside})` : ""}`,
   };
 }
 
