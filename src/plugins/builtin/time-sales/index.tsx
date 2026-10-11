@@ -11,7 +11,8 @@ export const timeSalesModule: PluginModule = {
       description: "Trade prints, observed VWAP and large prints.", keywords: ["tape", "trades", "sales", "prints", "tas"],
       shortcut: "TAS", viewKey: "TAS", settings: () => ({ tab: "trades" }) }), headless: timeSalesHeadless },
     { ...createTickerSurfacePaneTemplate({ id: "time-sales-qr", paneId: "time-sales", label: "Quote Recap",
-      description: "NBBO history: bid and ask with sizes, venues and spread.", keywords: ["nbbo", "quotes", "bid", "ask", "recap", "qr"],
+      description: "NBBO history: bid and ask with sizes, venues and spread.",
+      keywords: ["nbbo", "quotes", "bid", "ask", "recap", "qr", "trades", "tick", "ticks", "tick data", "second", "seconds", "intraday", "milliseconds"],
       shortcut: "QR", viewKey: "QR", settings: () => ({ tab: "quotes" }) }), headless: timeSalesHeadless },
   ],
 };

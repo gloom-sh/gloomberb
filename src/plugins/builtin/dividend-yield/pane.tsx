@@ -77,7 +77,9 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
   return [
     { id: "ttm-yield", label: short ? "TTM yld" : "TTM yield", value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0) },
-    { id: "forward-yield", label: short ? "Fwd yld" : "Fwd yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0) },
+    // Dated by the distribution it annualizes; docs/research-data.md says how it is built.
+    { id: "forward-yield", label: short ? "Fwd yld" : "Fwd yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0),
+      ...(metrics.forwardYield != null && metrics.forwardRateAsOf ? { detail: `as of ${metrics.forwardRateAsOf}` } : {}) },
     { id: "ttm-rate", label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency) },
     { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
     { id: "growth-1y", label: short ? "1Y chg" : "1Y growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },

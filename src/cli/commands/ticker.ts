@@ -66,6 +66,7 @@ import { providerMissReason } from "../../sources/provider-errors";
 import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../report-tables";
 import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
+import { forwardDividendBasis } from "../../utils/forward-dividend";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -316,6 +317,14 @@ function percentFigure(fraction: number | null | undefined, format: (value: numb
   return fraction != null ? { text: format(fraction), value: fraction * 100, unit: "%" } : { text: "—" };
 }
 
+/** A forward yield says what it annualizes and when, as DVD does; any other yield is the figure alone. */
+function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
+  const figure = percentFigure(fundamentals?.dividendYield, formatFractionPercentCell);
+  return fundamentals?.dividendYieldBasis === "forward" && fundamentals.dividendYield != null
+    ? { ...figure, text: `${figure.text} (${forwardDividendBasis(fundamentals.exDividendDate)})` }
+    : figure;
+}
+
 function multipleFigure(value: ReturnType<typeof priceEarningsOnEarnings> | number | undefined): MetricFigure {
   const text = formatPriceEarnings(value, 2);
   return { text, value: typeof value === "number" && Number.isFinite(value) && value > 0 ? value : text === "N/M" ? text : null };
@@ -343,7 +352,7 @@ function fundamentalsMetrics(
     { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true) },
     {
       label: `Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`,
-      ...percentFigure(fundamentals?.dividendYield, formatFractionPercentCell),
+      ...forwardYieldFigure(fundamentals),
     },
     { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, reportingCurrency) },
     { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, reportingCurrency) },

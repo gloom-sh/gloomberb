@@ -149,6 +149,8 @@ export function buildDividendMetrics(
     ? trailingCashAt(eligible, now)
     : options.summaryRatesComparable !== false ? quoteFields?.trailingAnnualDividendRate ?? null : null;
   const forwardRate = options.summaryRatesComparable !== false ? quoteFields?.forwardAnnualDividendRate ?? null : null;
+  const forwardRateAsOf = forwardRate != null && /^\d{4}-\d{2}-\d{2}$/.test(quoteFields?.forwardRateAsOf ?? "")
+    ? quoteFields!.forwardRateAsOf! : null;
   const growth1Y = options.historyAvailable !== false ? computeGrowth(eligible, 1, now) : null;
   const growth3Y = options.historyAvailable !== false ? computeGrowth(eligible, 3, now) : null;
 
@@ -170,6 +172,7 @@ export function buildDividendMetrics(
     forwardYield: null,
     trailingRate,
     forwardRate,
+    forwardRateAsOf,
     payoutRatio: quoteFields?.payoutRatio ?? null,
     growth1Y,
     growth3Y,

@@ -201,10 +201,13 @@ function securityTemplate({
   argKind,
   minimumSymbols,
   build,
+  keywords = [],
 }: {
   id: Parameters<typeof chartHeadless>[0];
   prefix: "GP" | "GIP" | "CMP" | "GF" | "GE";
   aliases?: readonly string[];
+  /** Searches beyond the label that should find it. */
+  keywords?: readonly string[];
   label: string;
   description: string;
   /** What the report returns, when the description is about drawing the chart. */
@@ -219,7 +222,7 @@ function securityTemplate({
     headless: { ...chartHeadless(id), ...(returns ? { description: returns } : {}) },
     label,
     description,
-    keywords: ["chart", "graph", prefix.toLowerCase(), ...label.toLowerCase().split(" ")],
+    keywords: ["chart", "graph", prefix.toLowerCase(), ...label.toLowerCase().split(" "), ...keywords],
     shortcut: {
       prefix,
       ...(aliases ? { aliases } : {}),
@@ -374,6 +377,8 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     label: "Intraday Price Graph",
     description: "Open an intraday price chart for one or five sessions.",
     returns: "Intraday price bars for one ticker over the last one or five sessions. Returns the data; it does not open or show a chart.",
+    // The finest bars there are; tick and second searches land here and on QR.
+    keywords: ["1 minute", "minute bars", "1m", "tick", "ticks", "second", "seconds", "trades"],
     argKind: "ticker",
     minimumSymbols: 1,
     build: (symbols) => buildIntradayPriceChartPreset(symbols[0]!),

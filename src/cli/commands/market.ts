@@ -124,6 +124,7 @@ import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { splitSymbolArgs } from "../symbol-args";
+import { subMinuteDataMessage } from "../known-gaps";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
@@ -675,6 +676,20 @@ const HISTORY_USAGE = "history <symbol> [--range <range>]";
 const HISTORY_ALL_RANGE = `ALL gives the full history the source has, up to ${historyAllRangeYears()} years`;
 /** Options people reach for to ask for dates, which history answers with a range. */
 const DATE_WINDOW_OPTIONS = new Set(["--from", "--to", "--start", "--end", "--since", "--until", "--date", "--start-date", "--end-date"]);
+/** Options people reach for to pick a bar size, which history derives from the range. */
+const BAR_SIZE_OPTIONS = new Set(["--interval", "--resolution", "--bar", "--bars", "--bar-size", "--granularity", "--timeframe", "--frequency", "--freq", "--tick", "--ticks"]);
+
+/** The symbol `history` was given: the first word that is not an option or the value after one. */
+function historySymbolArg(args: readonly string[]): string | undefined {
+  return args.find((arg, index) => !arg.startsWith("-")
+    && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("=")));
+}
+
+function historyOptionHint(flag: string, args: readonly string[]): string | null {
+  if (DATE_WINDOW_OPTIONS.has(flag)) return `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`;
+  if (BAR_SIZE_OPTIONS.has(flag)) return `history serves each --range in one bar size. ${subMinuteDataMessage(historySymbolArg(args))}`;
+  return null;
+}
 
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
@@ -1610,9 +1625,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }],
       examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history ZAR=X --tail 5", "history AAPL --range 5Y --csv > aapl.csv"],
     },
-    unknownOptionHint: (flag) => DATE_WINDOW_OPTIONS.has(flag)
-      ? `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`
-      : null,
+    unknownOptionHint: historyOptionHint,
     execute: runHistory,
   },
   {

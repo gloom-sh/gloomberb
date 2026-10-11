@@ -13,6 +13,7 @@ const fixture: DividendData = {
     forwardYield: 0.0052,
     trailingRate: 1,
     forwardRate: 1.04,
+    forwardRateAsOf: "2026-08-10",
     payoutRatio: 0.14,
     growth1Y: 0.04,
     growth3Y: 0.03,

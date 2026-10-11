@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { CdxBoardIndex, CdxBoardPayload } from "../../../api-client/credit-boards";
-import type { HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessRowsResult } from "../../../types/plugin";
+import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { renderReportCsv } from "../../../cli/report-tables";
@@ -24,8 +24,9 @@ const payload: CdxBoardPayload = {
 
 test("CDX levels and moves are numbers with their unit beside them: text draws them as the board does, CSV names each unit", async () => {
   const context = { apiClient: { getCloudCdxBoard: async () => payload } } as unknown as HeadlessPaneContext;
-  const result = await cdxHeadless.load(args, context) as HeadlessRowsResult;
-  expect(result.rows.map(({ name, level, unit, change1D, change1W, changeUnit }) => ({ name, level, unit, change1D, change1W, changeUnit }))).toEqual([
+  const result = await cdxHeadless.load(args, context) as HeadlessBundleResult;
+  const rows = (result.sections[0] as { rows: HeadlessPaneRow[] }).rows;
+  expect(rows.map(({ name, level, unit, change1D, change1W, changeUnit }) => ({ name, level, unit, change1D, change1W, changeUnit }))).toEqual([
     { name: "CDX IG", level: 58.3, unit: "bp", change1D: -0.73, change1W: -1.41, changeUnit: "bp" },
     { name: "CDX HY", level: 106.695, unit: "price", change1D: 0.174, change1W: 0.17, changeUnit: "pts" },
   ]);
@@ -43,4 +44,17 @@ test("CDX levels and moves are numbers with their unit beside them: text draws t
   ]);
   expect(csv).toContain("# Publisher: DTCC Public Price Dissemination");
   expect(csv).toContain("# Observation date: 2026-10-09");
+});
+
+test("a named index adds its daily levels newest first, which do not date the board", async () => {
+  const hy = payload.indexes[1]!;
+  const history = { ...payload, indexes: [payload.indexes[0]!, { ...hy, points: [{ ...hy.points[0]!, date: "2026-08-03" }, ...hy.points] }] };
+  const context = { apiClient: { getCloudCdxBoard: async () => history } } as unknown as HeadlessPaneContext;
+  const named = { ...args, rawArgument: "cdx hy", argument: "cdx hy" };
+  const result = await cdxHeadless.load(named, context) as HeadlessBundleResult;
+  expect(result.sections.map((section) => "rows" in section ? section.rows?.length : 0)).toEqual([1, 3]);
+  expect((result.sections[1] as { rows: HeadlessPaneRow[] }).rows.map((row) => row.day)).toEqual(["2026-10-09", "2026-10-08", "2026-08-03"]);
+  const freshness = deriveHeadlessFreshness(cdxHeadless, result);
+  expect([freshness.asOf, freshness.oldest]).toEqual(["2026-10-09", undefined]);
+  await expect(cdxHeadless.load({ ...args, rawArgument: "itraxx", argument: "itraxx" }, context)).rejects.toThrow("Use one of: IG, HY.");
 });

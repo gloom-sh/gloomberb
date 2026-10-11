@@ -34,6 +34,10 @@ The 1D, 1W and 1M moves are measured on one contract. In the weeks after a roll,
 
 The chart and the 1Y percentile follow the contract that was on the run each day, so the line steps at each roll by the difference between the two contracts (about 6bp for CDX IG and 38bp for Crossover on the Sep 2026 roll). The percentile is the midrank of the latest level among the year's daily levels, of the price for HY and EM.
 
+## History export
+
+`gloomberb fn CDX XOVER` adds an index's daily levels, newest first, under the board: the date, the level, the prints behind it and the contract on the run that day. Name an index by its code (IG, HY, EM, MAIN, XOVER) or name. `--days` reaches back up to 1,100 days, as far as DTCC's files go, and `--csv --section 2` writes the history alone.
+
 ## Sovereigns and currencies
 
 DTCC reports a sovereign by a reference bond, often under a generic description, so the country is read from the bond's CUSIP issuer prefix, its Markit RED entity code, its LEI or, failing those, the full sovereign name. A table of about thirty sovereigns maps them; state-owned companies filed under the sovereign category (Petrobras, Aramco, Bancolombia) stay out, and rows whose identifiers name different countries are dropped.

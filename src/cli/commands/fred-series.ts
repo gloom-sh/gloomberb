@@ -1,3 +1,4 @@
+import { ICE_SPREAD_SERIES } from "../../time-series/ice-credit";
 import { toBasisPoints } from "../../utils/basis-points";
 import { parseReportTime } from "../../utils/utc-time";
 
@@ -10,7 +11,7 @@ export const DEFAULT_FRED_START = "2021-01-01";
  */
 const SPREAD_SERIES: ReadonlySet<string> = new Set([
   "T10Y2Y", "T10Y3M",
-  "BAMLC0A0CM", "BAMLC0A1CAAA", "BAMLC0A2CAA", "BAMLC0A3CA", "BAMLC0A4CBBB", "BAMLH0A0HYM2",
+  ...ICE_SPREAD_SERIES.map((series) => series.seriesId),
 ]);
 
 export function isSpreadSeries(seriesId: string): boolean {

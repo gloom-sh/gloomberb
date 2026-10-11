@@ -1,20 +1,28 @@
 import type { CloudFredSeriesPayload } from "../../../api-client";
 import { historyStatistics } from "../../../components/chart/curve/model";
+import { ICE_SPREAD_SERIES, type IceCreditSeries } from "../../../time-series/ice-credit";
 
-export const CREDIT_SERIES = [
-  { seriesId: "BAMLC0A0CM", label: "US IG" },
-  { seriesId: "BAMLC0A1CAAA", label: "AAA" },
-  { seriesId: "BAMLC0A2CAA", label: "AA" },
-  { seriesId: "BAMLC0A3CA", label: "A" },
-  { seriesId: "BAMLC0A4CBBB", label: "BBB" },
-  { seriesId: "BAMLH0A0HYM2", label: "US HY" },
-] as const;
+export type CreditSeriesDefinition = Pick<IceCreditSeries, "seriesId" | "label" | "region">;
 
-export type CreditSeriesId = typeof CREDIT_SERIES[number]["seriesId"];
+/** US investment grade and high yield by rating, then euro high yield. */
+export const CREDIT_SERIES: readonly CreditSeriesDefinition[] = ICE_SPREAD_SERIES
+  .map(({ seriesId, label, region }) => ({ seriesId, label, region }));
+
+const CREDIT_REGIONS = ["all", "us", "euro"] as const;
+type CreditRegion = typeof CREDIT_REGIONS[number];
+
+export function creditRegion(value: unknown): CreditRegion {
+  return CREDIT_REGIONS.includes(value as CreditRegion) ? value as CreditRegion : "all";
+}
+
+export function creditSeriesIn(region: CreditRegion): readonly CreditSeriesDefinition[] {
+  return region === "all" ? CREDIT_SERIES : CREDIT_SERIES.filter((series) => series.region === region);
+}
 
 export interface CreditConditionRow {
-  seriesId: CreditSeriesId;
+  seriesId: string;
   label: string;
+  region: IceCreditSeries["region"];
   title: string;
   units: string;
   frequency: string;
@@ -37,7 +45,7 @@ function roundTenth(value: number): number {
 }
 
 export function normalizeCreditSeries(
-  definition: typeof CREDIT_SERIES[number],
+  definition: CreditSeriesDefinition,
   payload: CloudFredSeriesPayload,
   stale = false,
 ): CreditConditionRow {
