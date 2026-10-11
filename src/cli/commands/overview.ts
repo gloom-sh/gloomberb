@@ -44,6 +44,7 @@ import {
   fredExportValue,
   fredHistoryNotes,
   fredPublicationTime,
+  fredValueHeader,
   fredValueKey,
   isSpreadSeries,
   laggingSeriesNote,
@@ -420,7 +421,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       { key: "date", header: "Date" },
       isSpreadSeries(seriesId)
         ? { key: valueKey, header: "Value (bp)", align: "right", format: basisPointsCell }
-        : { key: valueKey, header: data.info?.units ? `Value (${data.info.units})` : "Value", align: "right" },
+        : { key: valueKey, header: fredValueHeader(data.info), align: "right" },
     ],
   });
 }

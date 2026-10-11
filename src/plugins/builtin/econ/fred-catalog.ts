@@ -78,6 +78,14 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
     ],
   },
   {
+    group: "Defense & fiscal",
+    rows: [
+      ["FDEFX", "National defense spending (annual rate)", "billion USD", "quarterly", ["defense", "military", "DoD", "budget", "government spending", "GDP"]],
+      ["ADEFNO", "New orders for defense capital goods", "million USD", "monthly", ["defense", "military", "DoD", "orders", "manufacturing"]],
+      ["MTSO133FMS", "Federal outlays (Monthly Treasury Statement)", "million USD", "monthly", ["budget", "government spending", "fiscal", "deficit", "Treasury"]],
+    ],
+  },
+  {
     group: "Inflation",
     rows: [
       ["CPIAUCSL", "CPI, all items", "index", "monthly", ["CPI", "headline", "seasonally adjusted"]],

@@ -48,6 +48,7 @@ const GROUP_ORDER = [
   "Rates",
   "Credit",
   "Economy",
+  "Defense & fiscal",
   "Inflation",
   "FX",
   "Energy",

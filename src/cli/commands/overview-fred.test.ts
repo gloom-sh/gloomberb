@@ -145,6 +145,23 @@ test("a monthly series is dated by its month, and a lagging one carries its note
   expect(result.freshness).toMatchObject({ asOf: "2026-08-01", periodicity: "monthly" });
 });
 
+test("a quarterly flow at a seasonally adjusted annual rate says so in its value header, and exports under its units", async () => {
+  serveSeries(() => ({
+    observations: [{ date: "2026-04-01", value: 1152.4 }, { date: "2026-01-01", value: 1131.9 }],
+    info: { id: "FDEFX", units: "Billions of Dollars", frequency: "Quarterly", seasonalAdjustment: "Seasonally Adjusted Annual Rate", observationStart: "1947-01-01" },
+  }));
+  const { result, text } = await runFred(["FDEFX"]);
+  expect(text.split("\n")[0]).toBe("Date        Value (Billions of Dollars, annual rate)");
+  expect(text.split("\n").at(-1)).toBe("Source: FRED \u00b7 Q2 2026 (quarterly) \u00b7 not a live feed (published statistics)");
+  expect(result.data[0]).toEqual({ date: "2026-04-01", value_billions_of_dollars: 1152.4 });
+  // A monthly total that is not annualized keeps FRED's units alone.
+  serveSeries(() => ({
+    observations: [{ date: "2026-08-01", value: 653210 }],
+    info: { id: "MTSO133FMS", units: "Millions of Dollars", frequency: "Monthly", seasonalAdjustment: "Not Seasonally Adjusted" },
+  }));
+  expect((await runFred(["MTSO133FMS"])).text.split("\n")[0]).toBe("Date        Value (Millions of Dollars)");
+});
+
 test("yield-curve reads each tenor's move against the previous observation, not calendar yesterday", async () => {
   // Monday's reading against Friday's; the 30Y has only one observation to read.
   const history: Record<string, Array<{ date: string; value: number }>> = {

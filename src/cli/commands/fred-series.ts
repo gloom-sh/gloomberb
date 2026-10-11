@@ -33,6 +33,18 @@ export function fredValueKey(seriesId: string, units: string | null | undefined)
   return `value_${slug || "unit_unknown"}`;
 }
 
+/**
+ * The value column's header: FRED's units, and "annual rate" when a monthly or
+ * quarterly flow is stated at a seasonally adjusted annual rate (GDP, FDEFX),
+ * so a quarter's 1,100 billion does not read as spent in that quarter.
+ */
+export function fredValueHeader(info: { units?: string | null; seasonalAdjustment?: string | null } | null | undefined): string {
+  const units = info?.units?.trim();
+  if (!units) return "Value";
+  const annualRate = /annual rate/i.test(info?.seasonalAdjustment ?? "") && !/annual rate/i.test(units);
+  return `Value (${units}${annualRate ? ", annual rate" : ""})`;
+}
+
 /** An observation in the unit it exports in: a spread's percentage points as basis points (3.15 is 315), anything else as FRED gives it. */
 export function fredExportValue(seriesId: string, value: number | null): number | null {
   if (value == null || !Number.isFinite(value)) return null;
