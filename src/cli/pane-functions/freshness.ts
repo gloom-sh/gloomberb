@@ -789,10 +789,13 @@ export function paneStatusLineVariants(freshness: ReportFreshness): string[] {
  * that fits its width. Quotes and other reports leave out their source: the
  * date and the delay stay to the last; the market part shortens, then the
  * reader's local time, the oldest observation and the stale total go, then
- * the market part. A dataset reads `Source: Gloom Cloud · observed Sun 4 Oct · lag 6d`
- * and gives up its oldest observation, the stale total, then its source.
+ * the market part. With `source`, the line starts as `fn` ends,
+ * `Source: CFTC · Tue 6 Oct 2026 · not a live feed (weekly report)`, shortens
+ * the same way and gives up its source last. A dataset reads
+ * `Source: Gloom Cloud · observed Sun 4 Oct · lag 6d` and gives up its oldest
+ * observation, the stale total, then its source.
  */
-export function statusLineVariants(freshness: ReportFreshness): string[] {
+export function statusLineVariants(freshness: ReportFreshness, { source = false }: { source?: boolean } = {}): string[] {
   if (datesObservation(freshness)) {
     const { asOf, lagDays } = freshness;
     const datasetDetails: DatasetLineDetail[] = [
@@ -817,7 +820,43 @@ export function statusLineVariants(freshness: ReportFreshness): string[] {
   const variants: StatusLineDetail[] = freshness.sources?.length
     ? [{}, ...details.map((detail) => ({ ...detail, date: "none" as const })), { ...shortest, date: "none", note: "none" }]
     : freshness.note ? [...details, { ...shortest, note: "none" }] : details;
-  return [...new Set(variants.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
+  const lines = [...new Set(variants.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
+  // A line that dates each source names them already.
+  if (!source || freshness.sources?.length) return lines;
+  const sourced = [...new Set(variants.map((detail) => [`Source: ${freshness.source}`, ...statusLineParts(freshness, detail)].join(" · ")))];
+  const floor = sourced.at(-1)!.length;
+  return [...sourced, ...lines.filter((line) => line.length < floor)];
+}
+
+/** A capture's status line: the facts it states (its `freshness` in JSON) and its text, longest first. */
+export interface CaptureStatusLine {
+  freshness: ReportFreshness;
+  variants: string[];
+}
+
+/**
+ * What a capture's status line says about its data, from the first that applies:
+ * - a dataset's report (CHOKE's transits, HIRE's postings): its source, newest observation and lag;
+ * - a pane that dates its own view (PERP's venues, FXC's rates, the news wire's delay): what it publishes;
+ * - quotes on screen, when the pane does not say what its data is: their session, delay and market;
+ * - the pane's report, when it says how current its data is: the line `fn` ends with, source first;
+ * - otherwise what the rendered view carries, which may be nothing.
+ */
+export function captureStatusLine({ report, selfDated, quoted, rendered }: {
+  /** The pane's own report, loaded for the capture: what `fn` would say. */
+  report?: ReportFreshness;
+  /** Whether the rendered pane published how current its view is. */
+  selfDated: boolean;
+  /** The quotes the capture shows, read when the pane does not say what its data is. */
+  quoted?: ReportFreshness;
+  rendered: () => ReportFreshness;
+}): CaptureStatusLine {
+  const plain = (freshness: ReportFreshness): CaptureStatusLine => ({ freshness, variants: statusLineVariants(freshness) });
+  if (report && datesObservation(report)) return plain(report);
+  if (selfDated) return plain(rendered());
+  if (quoted) return plain(quoted);
+  if (report && report.status !== "unreported") return { freshness: report, variants: statusLineVariants(report, { source: true }) };
+  return plain(rendered());
 }
 
 /**

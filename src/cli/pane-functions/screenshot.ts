@@ -96,7 +96,7 @@ import {
   withShotSeasonalityHistory,
 } from "./data";
 import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
-import { datesPaneData, deriveHeadlessFreshness, deriveRenderedFreshness, statusLineVariants, type ReportFreshness } from "./freshness";
+import { captureStatusLine, datesPaneData, deriveHeadlessFreshness, deriveRenderedFreshness, type CaptureStatusLine, type ReportFreshness } from "./freshness";
 import { quotesFreshness } from "../freshness";
 import {
   financialRatioRenderMismatches,
@@ -756,20 +756,22 @@ function recordBridgedQuotes(bridge: DesktopPaneShotBridge): { bridge: DesktopPa
 }
 
 /**
- * How current a capture's data is. A pane that says what its data is (its
- * declared status, or a feed it publishes, such as OMON's chain or the news
- * wire's delay) is taken at its word; otherwise the quotes it shows date it,
- * with their delay and where their markets stand; otherwise what the
- * rendered view carries, which may be nothing.
+ * How current a capture's data is (`captureStatusLine`). A pane that dates its
+ * view itself (the news wire's delay, FXC's rates) is taken at its word, and a
+ * pane that declares a status is never dated by the quotes it shows; otherwise
+ * those quotes date it, with their delay and where their markets stand. Then
+ * the pane's report, as `fn` ends; then what the rendered view carries.
  */
 function shotFreshness(
   resolved: Pick<ResolvedPaneFunction, "pane">,
   payload: Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">,
   render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "footerText" | "rows">,
   bridgedQuotes: readonly Quote[],
+  report: ReportFreshness | undefined,
   now = Date.now(),
-): ReportFreshness {
-  const declared = { ...resolved.pane.reportFreshness, ...renderedReportFreshness(render.semanticUi ?? []) };
+): CaptureStatusLine {
+  const published = renderedReportFreshness(render.semanticUi ?? []);
+  const declared = { ...resolved.pane.reportFreshness, ...published };
   const quotes = [
     ...payload.financials.map(([, financials]) => financials.quote),
     ...(payload.instrumentFinancials ?? []).map(({ financials }) => financials.quote),
@@ -780,29 +782,32 @@ function shotFreshness(
   const quoted = declared.status || observed.length > 0
     ? undefined
     : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now);
-  return quoted ?? deriveRenderedFreshness(declared, {
-    footerText: render.footerText ?? "",
-    cellTimes: render.rows.flatMap((row) => row.cells.flatMap((cell) => (cell.instant ? [cell.instant] : []))),
-    observed,
-  }, now);
+  return captureStatusLine({
+    report,
+    selfDated: Object.keys(published).length > 0 || observed.length > 0,
+    quoted,
+    rendered: () => deriveRenderedFreshness(declared, {
+      footerText: render.footerText ?? "",
+      cellTimes: render.rows.flatMap((row) => row.cells.flatMap((cell) => (cell.instant ? [cell.instant] : []))),
+      observed,
+    }, now),
+  });
 }
 
 /**
- * A dataset pane's capture is dated as its `fn` report is, from the same
- * loader: CHOKE's transits, HIRE's postings, GPU's prices. Panes that declare
- * a dataset load it for this; a chart always loads it to draw. Undefined when
- * the report is not a dataset's (a price chart, GPU's equities) or did not load.
+ * A capture's data dated as its `fn` report dates it, from the same loader:
+ * COT's weekly report, CHOKE's transits, GPU's prices. Undefined for a pane
+ * without a report, or when it did not load.
  */
-async function datasetShotFreshness(
-  resolved: Pick<ResolvedPaneFunction, "pane" | "headless">,
+async function reportShotFreshness(
+  resolved: Pick<ResolvedPaneFunction, "headless">,
   loadModel: () => Promise<LoadedHeadlessPaneModel>,
   now = Date.now(),
 ): Promise<ReportFreshness | undefined> {
-  if (resolved.headless?.freshness?.dataset !== true && resolved.pane.id !== CHART_COMPOSER_PANE_ID) return undefined;
+  if (!resolved.headless) return undefined;
   try {
     const loaded = await loadModel();
-    const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result, now);
-    return freshness.lagDays != null ? freshness : undefined;
+    return deriveHeadlessFreshness(loaded.definition, loaded.result, now);
   } catch {
     return undefined;
   }
@@ -864,16 +869,17 @@ export async function renderDesktopShot({
       loadModel,
     );
     if (statusLine && captureImage) payload.statusLine = true;
-    // Loads while the page renders; a dataset's line does not wait on its quotes.
-    const dataset = payload.statusLine ? datasetShotFreshness(resolved, loadModel) : undefined;
+    // Loads while the page renders.
+    const report = payload.statusLine ? reportShotFreshness(resolved, loadModel) : undefined;
     const recorded = recordBridgedQuotes(createDesktopShotBridge(context));
     const shotPayload = payload;
     render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy, {
       captureImage,
       bridge: recorded.bridge,
       statusLine: async (rendered) => {
-        freshness = await dataset ?? shotFreshness(resolved, shotPayload, rendered, recorded.quotes);
-        return { variants: statusLineVariants(freshness), observed: datesPaneData(freshness) };
+        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, await report);
+        freshness = line.freshness;
+        return { variants: line.variants, observed: datesPaneData(line.freshness) };
       },
     });
   } finally {
