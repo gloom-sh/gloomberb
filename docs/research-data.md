@@ -105,6 +105,15 @@ The Weekdays tab reads daily bars instead: every session of the last five years,
 - **Foreign-currency EPS.** A dollar-priced listing whose EPS is reported in another currency (TSM in Taiwan dollars, ASML in euros, BABA in yuan) has its EPS converted to dollars at the pair's completed daily FX close on or before each date: a week's bar date for the band, the publication date for each row of the table, and the latest completed close for today's P/E. The table keeps the EPS as reported, beside the close it was converted at. The trailing sum is converted at one close, not each quarter at its own, and per-share figures are taken as the statements give them: no ADR ratio is applied. YoY growth is in the reporting currency.
 - **Not computed.** EPS in another currency when the price is not in dollars (no FX cross is taken), when the pair has no daily closes, or when its latest close is more than a week old: the pane says why instead. A week before the first FX close has no P/E. Pence prices against pound statements are scaled without an FX rate.
 
+## Index and ETF members
+
+`MEMB <fund>` lists an ETF's holdings with each holding's return, so an index move can be read name by name. It shows the fund's holdings, not licensed index weights. IVV stands for the S&P 500 (a request for SPX or SPY opens it), IJH for the S&P 400, IJR for the S&P 600, IWM for the Russell 2000 and IWB for the Russell 1000. Any other fund, the Nasdaq-100 included, is not covered.
+
+- **Holdings.** Weights come from the fund issuer's published daily holdings file, and the header gives that file's date. A weight is a share of the whole fund, so cash and positions the file leaves out are not rescaled away. Only equity lines are listed; swaps, warrants and other derivatives are left out and counted in a notice. A line without a ticker keeps its name, shares and weight but has no price and does not open.
+- **Returns.** 1D, 1W, 1M and YTD come from the app's 15-minute delayed quotes. Quotes fill the largest holdings first, so a big fund is priced only in part: the footer reads `1D 164/504 · 81.9% wt`, the holdings with a fresh 1D return and their share of the fund. A holding with no fresh quote shows a dash and is not counted.
+- **Movers.** A holding's contribution is its fund weight times its 1D return, in percentage points. Contributors and Detractors rank the ten largest each way among the priced holdings. Their sum covers only those holdings and is never rescaled for the missing ones; when it differs from the fund's own 1D move by more than 0.15 pp, the pane says by how much.
+- **Changes.** Index additions and removals with their effective dates and reasons, for the S&P 500, 400 and 600; the 500 also has its earlier history. The Russell funds have none.
+
 ## Macro-day reaction
 
 `MDAY <ticker>` compares how a US listing moves on the days of the main US releases with how it moves on any other day. It answers "does this name care about CPI day?"
