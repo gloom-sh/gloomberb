@@ -20,26 +20,34 @@ const BRIDGE_RECORDER = `
 
 export interface FixturePage {
   url: URL;
+  /** True when this is the checkout's own fixture, not the one in this tree (see `ownFixtureFallback`). */
+  ownFixture: boolean;
   /** Requests the page made for anything but its own files; the fixture should make none. */
   strayRequests: string[];
   close(): Promise<void>;
 }
 
+const FIXTURE_PATH = "scripts/pane-chrome/fixture.tsx";
+
+/** A build failure with what the bundler said (Bun throws "Bundle failed" and keeps the messages in `errors`). */
+function describeFailure(error: unknown): string {
+  if (error instanceof AggregateError) return [error.message, ...error.errors.map((detail) => String(detail?.message ?? detail))].join("\n");
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
- * Builds the fixture page from the sources of `root` (this checkout or a base
- * branch next to it) into `outdir` and serves it on a local port.
+ * Bundles `fixture` into `outdir` with the build of `root`, against its own
+ * sources and node_modules. The fixture imports `../../src`, so one from
+ * another tree is copied to the same place in `root` for the build.
  */
-export async function serveFixturePage(root: string, outdir: string): Promise<FixturePage> {
-  root = resolve(root);
+async function buildFixture(root: string, fixture: string, outdir: string): Promise<void> {
   await rm(outdir, { recursive: true, force: true });
   await mkdir(outdir, { recursive: true });
-  // The fixture imports `../../src`, so another checkout builds it from the
-  // same place in its own tree, against its own sources and node_modules.
-  const ownTree = resolve(import.meta.dir, "../..") === root;
-  const entrypoint = ownTree ? FIXTURE : join(root, "scripts/pane-chrome/.fixture-build.tsx");
-  if (!ownTree) {
+  const inPlace = resolve(dirname(fixture)) === join(root, dirname(FIXTURE_PATH));
+  const entrypoint = inPlace ? fixture : join(root, dirname(FIXTURE_PATH), ".fixture-build.tsx");
+  if (!inPlace) {
     await mkdir(dirname(entrypoint), { recursive: true });
-    await copyFile(FIXTURE, entrypoint);
+    await copyFile(fixture, entrypoint);
   }
   // The build reads the view and DOM renderer folders from the working directory.
   const cwd = process.cwd();
@@ -60,7 +68,36 @@ export async function serveFixturePage(root: string, outdir: string): Promise<Fi
     });
   } finally {
     process.chdir(cwd);
-    if (!ownTree) await rm(entrypoint, { force: true });
+    if (!inPlace) await rm(entrypoint, { force: true });
+  }
+}
+
+/**
+ * Builds the fixture page from the sources of `root` (this checkout or a base
+ * branch next to it) into `outdir` and serves it on a local port.
+ *
+ * The fixture of this tree is built against `root`, so two checkouts draw the
+ * same panes. When that fails (a change that adds source the fixture imports
+ * leaves a base branch without it), `ownFixtureFallback` builds `root` from the
+ * fixture it has itself instead, and the page says so in `ownFixture`.
+ */
+export async function serveFixturePage(root: string, outdir: string, { ownFixtureFallback = false } = {}): Promise<FixturePage> {
+  root = resolve(root);
+  let ownFixture = false;
+  try {
+    await buildFixture(root, FIXTURE, outdir);
+  } catch (error) {
+    const failure = describeFailure(error);
+    const own = join(root, FIXTURE_PATH);
+    if (!ownFixtureFallback || own === FIXTURE) throw error;
+    if (!await Bun.file(own).exists()) throw new Error(`${failure}\n${root} has no ${FIXTURE_PATH} to build its page from instead.`);
+    console.error(`The fixture of this checkout does not build against ${root}; building it from its own ${FIXTURE_PATH}.\n${failure}`);
+    try {
+      await buildFixture(root, own, outdir);
+    } catch (ownError) {
+      throw new Error(`The pane chrome fixture builds neither from this checkout nor from ${root}.\nThis checkout's fixture: ${failure}\nIts own fixture: ${describeFailure(ownError)}`);
+    }
+    ownFixture = true;
   }
 
   const strayRequests: string[] = [];
@@ -77,6 +114,7 @@ export async function serveFixturePage(root: string, outdir: string): Promise<Fi
   });
   return {
     url: new URL(`http://127.0.0.1:${server.port}/`),
+    ownFixture,
     strayRequests,
     async close() {
       server.stop(true);

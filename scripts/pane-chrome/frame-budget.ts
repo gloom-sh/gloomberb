@@ -298,7 +298,14 @@ async function runSide(page: FixturePage, label: string, scenarios: Scenario[]):
     await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_PROBES });
     await browser.cdp.send("Performance.enable", { timeDomain: "threadTicks" });
     const samples: Record<string, DragSample> = {};
-    for (const scenario of scenarios) samples[scenario.name] = await measureDrag(browser.cdp, page, scenario);
+    for (const scenario of scenarios) {
+      try {
+        samples[scenario.name] = await measureDrag(browser.cdp, page, scenario);
+      } catch (error) {
+        // Say which side: a base measured with its own fixture may lack a layout this one has.
+        throw new Error(`${label}, ${scenario.name}: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
     return samples;
   } finally {
     await browser.close();
@@ -316,7 +323,8 @@ async function main(): Promise<void> {
   const scenarios = SCENARIOS.filter((scenario) => !only || scenario.name.includes(only));
   if (scenarios.length === 0) throw new Error(`No scenario matches "${only}"`);
   const sides = {
-    base: await serveFixturePage(resolve(baseRoot), cacheDir("build", `budget-base-${process.pid}`)),
+    // A base without the source this PR's fixture imports is measured with its own fixture.
+    base: await serveFixturePage(resolve(baseRoot), cacheDir("build", `budget-base-${process.pid}`), { ownFixtureFallback: true }),
     head: await serveFixturePage(resolve(takeOption(args, "--head") ?? join(import.meta.dir, "../..")), cacheDir("build", `budget-head-${process.pid}`)),
   };
   const samples: Record<keyof typeof sides, Array<Record<string, DragSample>>> = { base: [], head: [] };
@@ -332,7 +340,7 @@ async function main(): Promise<void> {
           console.error(`${side} ${samples[side].length}: ${Object.entries(result).map(([name, sample]) => `${name} ${round(sample.mainMsPerFrame)} ms/frame, ${sample.commits} commits${sample.frameLagPx !== undefined ? `, ${round(sample.frameLagPx, 1)} px behind` : ""}`).join("; ")}`);
         }
       }
-      verdict = judge(scenarios, samples);
+      verdict = judge(scenarios, samples, sides.base.ownFixture);
       if (verdict.problems.length === 0 || attempt === 2) break;
       console.error("Over budget; measuring again.");
     }
@@ -347,14 +355,15 @@ async function main(): Promise<void> {
   if (verdict.problems.length > 0) process.exitCode = 1;
 }
 
-function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Record<string, DragSample>>>): { lines: string[]; problems: string[] } {
+function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Record<string, DragSample>>>, baseOwnFixture: boolean): { lines: string[]; problems: string[] } {
   const runs = samples.head.length;
   const lines = [
     "### Pane drag and resize frame budget",
     "",
     `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Jump on release: how far the frame's and the content's edge moved when the pointer let go where it rested.`,
     "",
-    "| | main | this PR |",
+    ...(baseOwnFixture ? ["Main was measured with its own fixture: this PR changed the fixture, and the new one needs source main does not have. The stand-in panes may differ between the two columns.", ""] : []),
+    `| | main${baseOwnFixture ? " (own fixture)" : ""} | this PR |`,
     "|---|---|---|",
   ];
   const problems: string[] = [];
