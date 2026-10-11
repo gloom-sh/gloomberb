@@ -425,6 +425,15 @@ matching print, or how many of its contracts are being watched. **History** list
 delivered to your phone over the last 90 days; `r` refreshes it. The phone's
 notification settings have one switch for these market and research alerts.
 
+`v` (view, also in the footer and the pane menu) opens what the selected row
+follows, the same way on **Prices**, **Events** and **History**: a rule on a
+security opens its `DES` (the one already open, if any), a perpetual rule
+`PERP` on its market, an earnings date `ERN` for the company, a CPI or FOMC
+alert `CPI` or `WIRP`, a catalyst rule `CATL` (on its company when it names
+one), a Congress rule `CG`, a 13F rule `13F` on the fund, a news keyword with
+no symbol `SRCH` on the keyword, options flow on your lists `FLOW`, and
+breaking news with no symbol `FIRST`.
+
 ### Alerts before earnings, CPI and FOMC
 
 To watch a position through a scheduled event, alert a number of days before

@@ -30,6 +30,7 @@ import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { newYorkToday } from "../earnings/board-model";
 import { readScheduledRule, rearmScheduledAlert, scheduledAlertStatus } from "./scheduled";
 import { checkScheduledEventAlertsNow } from "./scheduled-check";
+import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } from "./targets";
 
 /** Earnings and macro event rules name the event day they wait for; the rest name what they follow. */
 function ruleTarget(rule: EventAlertRule): string {
@@ -83,6 +84,8 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
   const selectedRule = items[Math.min(selected, Math.max(0, items.length - 1))];
   const today = newYorkToday();
   const selectedFired = !!selectedRule && ruleState(selectedRule, today) === "Alerted";
+  const openTarget = useOpenAlertTarget();
+  const selectedTarget = useMemo(() => selectedRule ? alertTarget(eventRuleSubject(selectedRule)) : null, [selectedRule]);
   // Research rules keep a dated observation in the Cloud; show its value and percentile.
   const access = usePlanAccess();
   const session = useResearchCloudSession();
@@ -162,6 +165,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       ],
       hints: [
         { id: "add", key: "a", label: "dd event", onPress: add, disabled: !!error },
+        ...alertViewHints(selectedTarget, openTarget),
         {
           id: "toggle",
           key: "p",
@@ -181,7 +185,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
           : []),
       ],
     }),
-    [status, error, selectedRule, selectedFired, add, toggle, rearm, remove],
+    [status, error, selectedRule, selectedFired, selectedTarget, add, toggle, rearm, remove, openTarget],
   );
   return (
     <DataTableView<EventAlertRule, DataTableColumn>

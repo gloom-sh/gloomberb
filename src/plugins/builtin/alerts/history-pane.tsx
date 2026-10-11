@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableView,
   PaneStatusBody,
@@ -17,6 +17,7 @@ import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { alertKindLabel, fetchAlertHistory, type AlertHistoryItem } from "./history";
 import { relativeTime } from "./format";
+import { alertTarget, alertViewHints, deliveredAlertSubject, useOpenAlertTarget } from "./targets";
 
 const stamp = (value: string) => value.slice(0, 16).replace("T", " ");
 const itemId = (item: AlertHistoryItem) => item.id;
@@ -38,6 +39,9 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
   const loadingMore = history.loadingMore;
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loadMoreOnScroll = useTableLoadMore(scrollRef, history.hasMore && !loadingMore, history.loadMore);
+  const selectedItem = items[Math.min(selected, Math.max(0, items.length - 1))];
+  const selectedTarget = useMemo(() => selectedItem ? alertTarget(deliveredAlertSubject(selectedItem)) : null, [selectedItem]);
+  const openTarget = useOpenAlertTarget();
 
   const columns: DataTableColumn[] = [
     { id: "time", label: "Sent (UTC)", width: 16, align: "left" },
@@ -62,8 +66,9 @@ export function AlertHistoryPane({ focused, width, height }: PaneProps) {
             },
           ]
         : [],
+      hints: alertViewHints(selectedTarget, openTarget),
     }),
-    [data, loadingMore],
+    [data, loadingMore, selectedTarget, openTarget],
   );
   if (!access.signedIn)
     return <SignInWall placement="alerts-history-signin" action="see delivered alerts" needsVerification={session.needsVerification} />;

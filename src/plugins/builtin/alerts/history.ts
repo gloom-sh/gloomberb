@@ -8,6 +8,8 @@ export interface AlertHistoryItem {
   title: string;
   body: string;
   deliveredAt: string;
+  /** What the notification carried: the symbol, market or fund it is about. */
+  data?: Record<string, unknown>;
 }
 /** Latest source observation behind one research rule, with its percentile context. */
 export interface AlertRuleState {
