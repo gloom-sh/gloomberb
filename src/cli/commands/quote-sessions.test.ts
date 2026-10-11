@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
-import type { Quote } from "../../types/financials";
+import type { Quote, TickerFinancials } from "../../types/financials";
 import type { HeadlessPaneContext } from "../../types/headless";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
@@ -9,6 +9,7 @@ import { serializeCliResult } from "../result";
 import { renderHeadlessPaneText } from "../pane-functions/headless";
 import { quoteComparisonHeadless } from "../../plugins/builtin/ticker-detail/headless";
 import { marketDataCliCommands } from "./market";
+import { buildTickerReport } from "./ticker";
 
 const config = createDefaultConfig("/tmp/gloom-quote-sessions-test");
 
@@ -95,4 +96,19 @@ test("quote marks each stale row in its Feed cell, as many as the closing line c
   expect(marked).toBe(counted);
   // JSON keeps the quote as sent.
   expect((result.data as Array<{ quote: Quote }>)[0]!.quote.dataSource).toBe("delayed");
+});
+
+test("ticker dates the bid and ask of a closed market as its last quote and leaves an open book alone", async () => {
+  const book = { ...afterHours, bid: 202, ask: 208.74, bidSize: 100, askSize: 1400 };
+  const report = (quote: Quote) => buildTickerReport({
+    symbol: quote.symbol,
+    tickerFile: null,
+    financials: { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] } as unknown as TickerFinancials,
+    config,
+    toBase: async (value) => value,
+  });
+  expect(await report(book)).toContain("Bid / Ask  $202.00 x 100 / $208.74 x 1,400  (last quote, Fri 9 Oct)");
+  expect(await report({ ...book, marketState: "REGULAR" })).toMatch(/Bid \/ Ask +\$202\.00 x 100 \/ \$208\.74 x 1,400\n/);
+  // Without a quoted book there is nothing to date.
+  expect(await report({ ...book, bid: undefined, ask: undefined })).not.toContain("last quote");
 });

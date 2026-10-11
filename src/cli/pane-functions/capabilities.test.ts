@@ -18,7 +18,13 @@ import {
   isDataPaneForDomFallback,
   normalizeCapabilityOptions,
 } from "./capabilities";
-import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport, type PaneCatalogEntry } from "./catalog";
+import {
+  buildPaneCatalogEntries,
+  filterPaneCatalogEntries,
+  renderPaneCatalogReport,
+  selectPaneCatalogMatches,
+  type PaneCatalogEntry,
+} from "./catalog";
 import { createPaneCatalog } from "./discovery";
 import { parsePaneFunctionArgs } from "./options";
 
@@ -264,6 +270,83 @@ describe("pane catalog search", () => {
     } finally {
       registry.destroy();
     }
+  });
+
+  test("a word found only in a flag's description is no match; a flag's own name, or every word together, is", () => {
+    const entry = (token: string, description: string, keys: Array<[string, string]>) => ({
+      token,
+      label: token,
+      description,
+      paneId: token.toLowerCase(),
+      paneName: token,
+      shortcut: token,
+      aliases: [],
+      keywords: [],
+      defaultSettings: {},
+      capability: {
+        ...capabilityFor(`${token.toLowerCase()}-pane`),
+        options: keys.map(([key, text]) => ({ key, type: "string" as const, description: text })),
+      },
+    });
+    const osa = entry("OSA", "Build positions and compare scenario P&L.", [
+      ["budgetBps", "Hedge budget in basis points of --nav."],
+      ["expiration", "Chain expiry for --strategy."],
+    ]);
+    // "budget" is OSA's hedge budget flag, not a function about budgets.
+    expect(filterPaneCatalogEntries([osa], "budget")).toEqual([]);
+    expect(filterPaneCatalogEntries([osa], "expiration").map(({ token }) => token)).toEqual(["OSA"]);
+    expect(filterPaneCatalogEntries([osa], "hedge budget").map(({ token }) => token)).toEqual(["OSA"]);
+  });
+
+  test("a query word starts a word, and joining words do not count", () => {
+    const entry = (token: string, description: string) => ({
+      token,
+      label: token,
+      description,
+      paneId: token.toLowerCase(),
+      paneName: token,
+      shortcut: token,
+      aliases: [],
+      keywords: [],
+      defaultSettings: {},
+      capability: capabilityFor(`${token.toLowerCase()}-pane`),
+    });
+    // "date" is in "update" and "to" in "stock"; neither is a date or a word.
+    const entries = [
+      entry("AAA", "Year to date returns by sector."),
+      entry("BBB", "Update a stock quote."),
+      entry("CCC", "Dated filings of each year."),
+    ];
+    expect(filterPaneCatalogEntries(entries, "year to date").map(({ token }) => token)).toEqual(["AAA", "CCC"]);
+    expect(filterPaneCatalogEntries(entries, "date").map(({ token }) => token)).toEqual(["AAA", "CCC"]);
+  });
+
+  test("a multi-word query lists the functions that carry every word, or the few closest, with the rest counted", () => {
+    const entry = (token: string, description: string) => ({
+      token,
+      label: token,
+      description,
+      paneId: token.toLowerCase(),
+      paneName: token,
+      shortcut: token,
+      aliases: [],
+      keywords: [],
+      defaultSettings: {},
+      capability: capabilityFor(`${token.toLowerCase()}-pane`),
+    });
+    const select = (entries: PaneCatalogEntry[], query: string, limit = 25) =>
+      selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, limit);
+
+    const some = ["AAA", "BBB", "CCC", "DDD", "EEE", "FFF", "GGG"].map((token) => entry(token, "Price history by year."));
+    const complete = entry("ZZZ", "Price history by year to date.");
+    const loose = select(some, "price date");
+    // None has both words: the five closest, the rest left to a sharper query.
+    expect(loose).toMatchObject({ loose: true, hidden: 2 });
+    expect(loose.shown).toHaveLength(5);
+    expect(select([...some, complete], "year to date").shown.map(({ token }) => token)).toEqual(["ZZZ"]);
+    // --all lists every match.
+    expect(select(some, "price date", Number.POSITIVE_INFINITY)).toMatchObject({ hidden: 0, loose: false });
+    expect(select(some, "price date", Number.POSITIVE_INFINITY).shown).toHaveLength(7);
   });
 
   test("an alias opens its function even when other functions contain the same letters", () => {

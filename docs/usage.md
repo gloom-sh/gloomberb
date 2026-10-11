@@ -524,8 +524,8 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb help <command>` / `<command> --help` | Show a command's usage, options, and examples |
 | `gloomberb api list\|get\|invoke\|subscribe` | Inspect and call plugin capabilities directly |
 | `gloomberb quote <symbols>` | Fetch current quotes |
-| `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols |
-| `gloomberb ticker <symbol>` | Show quote, ownership, and financials |
+| `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols (a sector word such as `defense` lists the large US-listed funds that track it first, then the companies named for it) |
+| `gloomberb ticker <symbol>` | Show quote, ownership, and financials (with the market closed, Bid / Ask is the session's last quote and says so, with its day) |
 | `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
 | `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`news` also takes text: `news "european gas"`, a single word no listing answers to, or a futures board code such as `news TTF`, lists the stories that mention it, the best matches newest first, while a real ticker such as `news AAPL` lists its own news; `13f` is the holders list without insiders; `fn 13F` has 13F filings; `holders --form 13d\|13g\|all` lists 13D/13G beneficial owners; `filings --form <form>` keeps one form) |
 | `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market-wide data |
@@ -566,7 +566,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 
 ### Glossary
 
-`gloomberb catalog glossary` lists the rates, auction, energy and perpetual-futures terms the AUCT, GC, BTMM, WIRP, FUT and PERP functions show, under the function that shows each; `gloomberb catalog glossary stop-out` or `gloomberb catalog explain B/C` prints what one means in a sentence or two, found by its name, its abbreviation or another name for it. A plain `gloomberb catalog <query>` names the terms it matches under the functions. `gloomberb fn AUCT --explain` follows the report with the meaning of each term it shows; `--json` lists them as `data.glossary` (`term`, `short`, `definition`), and `--csv` and `--ndjson` keep the rows only.
+`gloomberb catalog glossary` lists the rates, auction, energy and perpetual-futures terms the AUCT, GC, BTMM, WIRP, FUT and PERP functions show, under the function that shows each; `gloomberb catalog glossary stop-out` or `gloomberb catalog explain B/C` prints what one means in a sentence or two, found by its name, its abbreviation or another name for it. A plain `gloomberb catalog <query>` names the terms it matches under the functions. A multi-word query lists the functions that carry every word in their name or description, or the few closest when none does, and counts the rest (`--all` lists every match); a word found only in a function's flag descriptions is no match. A topic no function covers, such as `catalog "defense budget"`, says so and names the nearest functions. `gloomberb fn AUCT --explain` follows the report with the meaning of each term it shows; `--json` lists them as `data.glossary` (`term`, `short`, `definition`), and `--csv` and `--ndjson` keep the rows only.
 
 `gloomberb config set telemetry.crashReports false` turns off automatic crash reports, and `gloomberb config set telemetry.usage false` turns off anonymous usage counts and the command bar search log; see [Crash reports and usage counts](telemetry.md) for what each contains.
 

@@ -20,6 +20,7 @@ import {
   normalizeSearchText,
   normalizeTickerSymbol,
   rankTickerSearchItems,
+  themeQueryWord,
 } from "./ranking";
 import type {
   ResolvedTickerSearch,
@@ -233,6 +234,7 @@ export async function searchTickerCandidates({
     query,
     searchContext,
     onPartial ? (results) => onPartial(assemble(results)) : undefined,
+    true,
   ));
 }
 
@@ -466,6 +468,8 @@ async function searchProviderResults(
   rawQuery: string,
   searchContext?: SearchRequestContext,
   onPartial?: (results: InstrumentSearchResult[]) => void,
+  /** Also look for the funds of a sector word, for a list of matches rather than one resolved symbol. */
+  withThemeFunds = false,
 ): Promise<InstrumentSearchResult[]> {
   // "ES FUT" looks up ES, and ES=F as well: the catalogue answers a bare root
   // with stocks only. The ranking keeps the futures.
@@ -548,6 +552,23 @@ async function searchProviderResults(
       } catch {
         // An unverified symbol stays unresolved; never substitute a fuzzy equity.
       }
+    }
+  }
+
+  // A sector word ("defense", which the server answers with rows tagged with it) lists its small companies by
+  // name; the server orders "defense ETF" by size, which a name search does not. Those funds lead the list.
+  const theme = withThemeFunds && !assetClass ? themeQueryWord([...byKey.values()], query) : null;
+  if (theme) {
+    try {
+      const { onPartial: _ignored, ...context } = searchContext ?? {};
+      const funds = await dataProvider.search(`${query.trim()} ETF`, context);
+      const named = [...byKey];
+      byKey.clear();
+      add(funds);
+      // A row both found keeps the funds' place and the name search's richer version of it (its theme).
+      for (const [key, result] of named) byKey.set(key, result);
+    } catch {
+      // The funds are an addition: the name results stand without them.
     }
   }
 

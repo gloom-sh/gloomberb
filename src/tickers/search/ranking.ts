@@ -4,7 +4,7 @@ import type {
 } from "./types";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { currencyPairCode } from "../../utils/currency-pair";
-import { canonicalExchange, exchangeCodeVenues, parsePublicTickerKey, typedExchangeCode } from "../../utils/exchanges";
+import { canonicalExchange, exchangeCodeVenues, isUsListingExchange, parsePublicTickerKey, typedExchangeCode } from "../../utils/exchanges";
 import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
 import { futuresContractByCode } from "../../market-data/futures-board";
 
@@ -178,6 +178,9 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   const query = assetClass?.symbolQuery ?? rawQuery;
   const intent = analyzeSearchQuery(query);
   if (!intent.normalizedQuery) return items;
+  // A sector word ("defense") is answered by the funds that track it before the small companies whose names
+  // contain it; the server's own order of those funds is the best signal of their size.
+  const themeWord = themeQueryWord(items, query);
 
   const ranked = (assetClass
     ? items.filter((item) => assetClassKeeps(assetClass.code, instrumentClassCode({
@@ -244,6 +247,7 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
           ? getIssuerGroupKey(item.detail)
           : null,
         explicitIntentScore,
+        themeFund: themeWord != null && isThemeFund(item, themeWord) ? 1 : 0,
         normalizedSymbol: normalizeSearchText(item.symbol || item.label),
         symbolMatchRank: scoreSymbolMatchRank(intent, item),
         nameOnly: companyMatchRank > 0 && labelScore + aliasScore <= 0
@@ -252,6 +256,16 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
         score: textScore + priorityScore + (textScore > 0 && saved ? SAVED_MATCH_BONUS : 0),
       };
     });
+
+  // A company named exactly as the word is what was asked for ("tesla"), whatever else a theme tags.
+  const namedCompany = ranked.some((entry) => entry.companyMatchRank === 3 && entry.item.instrumentClass === "equity");
+  // The first few funds in the server's order lead; the others list as funds always have.
+  const leadingFunds = new Set<string>();
+  for (const entry of ranked.filter(({ themeFund }) => themeFund).sort(byProviderRank)) {
+    const symbol = normalizeTickerSymbol(entry.item.symbol || entry.item.label);
+    if (!namedCompany && leadingFunds.size < LEADING_THEME_FUNDS) leadingFunds.add(symbol);
+    if (!leadingFunds.has(symbol)) entry.themeFund = 0;
+  }
 
   // A saved symbol replaces its own source listing, not every exchange using it.
   const matchedLocalListings = new Set(
@@ -355,14 +369,21 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
   }
 
   filtered.sort((a, b) => {
-    // Precedence is exact symbol, explicit query hints, whole-word company
-    // relevance, issuer relevance, provider order within that issuer, partial
+    // Precedence is exact symbol, explicit query hints, a sector word's funds
+    // in the server's order, whole-word company relevance, issuer relevance, provider order within that issuer, partial
     // symbol, saved relevance, then stable source order.
     const aExactSymbolRank = a.symbolMatchRank >= 2 ? a.symbolMatchRank : 0;
     const bExactSymbolRank = b.symbolMatchRank >= 2 ? b.symbolMatchRank : 0;
     if (bExactSymbolRank !== aExactSymbolRank) return bExactSymbolRank - aExactSymbolRank;
     if (hasExplicitHint && b.explicitIntentScore !== a.explicitIntentScore) {
       return b.explicitIntentScore - a.explicitIntentScore;
+    }
+    if (b.themeFund !== a.themeFund) return b.themeFund - a.themeFund;
+    if (a.themeFund) {
+      const aProviderRank = a.item.providerRank ?? Number.POSITIVE_INFINITY;
+      const bProviderRank = b.item.providerRank ?? Number.POSITIVE_INFINITY;
+      if (aProviderRank !== bProviderRank) return aProviderRank - bProviderRank;
+      return compareFallbackEntries(a, b);
     }
     if (b.companyRank !== a.companyRank) {
       return b.companyRank - a.companyRank;
@@ -547,6 +568,39 @@ export function answersOnlyByKeyword(
   return terms.length > 0 && !terms.every((term) => words.some((word) => word.startsWith(term)));
 }
 
+/**
+ * The query when it is one word the server sent rows with as a theme ("defense": a row `searchKeywords` carries
+ * it), so it names a sector rather than a company. Null for any other query, and for one that says what it
+ * wants (an exchange or "ETF" beside the word).
+ */
+export function themeQueryWord(
+  items: ReadonlyArray<Pick<TickerSearchRankableItem, "searchKeywords">>,
+  query: string,
+): string | null {
+  const intent = analyzeSearchQuery(query);
+  const word = intent.normalizedQuery;
+  if (!word || word.includes(" ") || intent.exchangeHints.length > 0 || intent.assetPreference != null) return null;
+  return items.some((item) => item.searchKeywords?.some((keyword) => normalizeSearchText(keyword) === word)) ? word : null;
+}
+
+/** How many sector funds lead a sector word's list: the rest of the list is the companies named for it. */
+const LEADING_THEME_FUNDS = 5;
+
+/**
+ * A fund that tracks the theme (sent with it, or named for it) on a US exchange, where the large sector funds
+ * list; the same fund's lines in Mexico City or Buenos Aires and the Korean and Chinese funds follow the names.
+ */
+function isThemeFund(
+  item: Pick<TickerSearchRankableItem, "detail"> & Partial<TickerSearchRankableItem>,
+  word: string,
+): boolean {
+  if (item.instrumentClass !== "fund") return false;
+  const venue = item.exchangeLabel === "SMART" ? item.primaryExchangeLabel : item.exchangeLabel || item.primaryExchangeLabel;
+  if (!isUsListingExchange(canonicalExchange(venue))) return false;
+  if (item.searchKeywords?.some((keyword) => normalizeSearchText(keyword) === word)) return true;
+  return normalizeSearchText(item.detail.split("|")[0] || "").split(" ").some((part) => part.startsWith(word));
+}
+
 function maxScoreForQueries(
   queries: string[],
   value: string,
@@ -709,6 +763,10 @@ function promoteMuchMorePopularCompanies(entries: Array<{
       entry.companyRank = 4;
     }
   }
+}
+
+function byProviderRank(a: { item: Partial<TickerSearchRankableItem>; index: number }, b: typeof a): number {
+  return (a.item.providerRank ?? Number.POSITIVE_INFINITY) - (b.item.providerRank ?? Number.POSITIVE_INFINITY) || a.index - b.index;
 }
 
 function isMixedCode(label: string): boolean {

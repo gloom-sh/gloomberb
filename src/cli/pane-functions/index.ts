@@ -6,6 +6,7 @@ import { cliStyles, renderStats, type CliStatEntry } from "../../utils/cli-outpu
 import {
   filterPaneCatalogEntries,
   renderPaneCatalogReport,
+  selectPaneCatalogMatches,
   type PaneFunctionCatalog,
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
@@ -24,7 +25,7 @@ import {
 import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceNotes } from "../listing-arg";
-import { knownGapMessage } from "../known-gaps";
+import { knownGapMessage, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
 import {
@@ -228,15 +229,20 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const botSafeEntries = effectiveParsed.botSafeOnly
           ? entries.filter((entry) => entry.capability.botSafe)
           : entries;
-        const filtered = filterPaneCatalogEntries(botSafeEntries, parsed.query);
+        // A topic no function covers is answered by its pointer, not by the loose matches its words find.
+        const pointer = topicPointer(parsed.query);
+        const filtered = pointer ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
         // A search also finds the terms it names; text only, the JSON stays a list of functions.
         const glossary = lookupGlossary(parsed.query);
         // Data no source carries yet is said once: in the text, else as the envelope's warning.
         const gap = knownGapMessage(parsed.query);
         // The data catalog series the query names, which `fn G` charts.
         const series = findCatalogSeries(ctx.plugins, parsed.query);
+        const listed = pointer
+          ? pointer.codes.flatMap((code) => entries.filter((entry) => entry.token === code))
+          : selectPaneCatalogMatches(filtered, parsed.query, effectiveParsed.limit).shown;
         ctx.printResult({
-          data: filtered.slice(0, effectiveParsed.limit),
+          data: listed,
           ...series.length ? { metadata: { series } } : {},
           ...gap && ctx.cliOptions.format !== "text" ? { warnings: [gap] } : {},
         }, {

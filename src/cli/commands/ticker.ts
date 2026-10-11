@@ -11,7 +11,7 @@ import {
   formatPercent,
   formatPercentRaw,
 } from "../../utils/format";
-import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, formatMarketChangeWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "../../market-data/market/format";
+import { formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, formatMarketChangeWithCurrency, quoteFormatOptions, withCurrencyMinorDigits, type MarketFormatOptions } from "../../market-data/market/format";
 import {
   cliStyles,
   cliTerminalWidth,
@@ -32,7 +32,8 @@ import {
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms } from "../../market-data/futures-contract";
 import type { AppConfig } from "../../types/config";
-import type { FinancialStatement, TickerFinancials } from "../../types/financials";
+import type { FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import { quoteTradingDay } from "../../market-data/quotes/day-range";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
 import type { SecFilingItem } from "../../types/data-provider";
@@ -73,6 +74,10 @@ const SEC_FILING_LIMIT = 5;
 // Prose such as a company description stays readable on wide terminals.
 const MAX_PROSE_WIDTH = 100;
 const METADATA_SEPARATOR = "  ·  ";
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+/** The states the header reads as CLOSED: the venue is between sessions, so nobody is quoting. */
+const CLOSED_MARKET_STATES = new Set<string>(["CLOSED", "PREPRE", "POSTPOST"]);
 
 interface TickerCommandDependencies {
   /** `--exchange`: the listing, for a symbol that trades in several places. */
@@ -107,6 +112,20 @@ function appendMetricSection(lines: string[], title: string, metrics: Array<[str
   if (lines.length > 0) lines.push("");
   lines.push(renderSection(title));
   lines.push(renderStats(populated));
+}
+
+/**
+ * A closed market's bid and ask are the last quote of its session, not an open book (ITA's $202.00 against
+ * $208.74 around a $206.65 close): say so, with the day the quote is from.
+ */
+function bidAskText(quote: Quote, options: MarketFormatOptions): string {
+  const text = formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, options);
+  if (text === "—" || !quote.marketState || !CLOSED_MARKET_STATES.has(quote.marketState)) return text;
+  const day = quoteTradingDay(quote);
+  const date = day ? new Date(`${day}T00:00:00Z`) : null;
+  const label = date && Number.isFinite(date.getTime())
+    ? `, ${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}` : "";
+  return `${text}  ${cliStyles.muted(`(last quote${label})`)}`;
 }
 
 function wrapProse(text: string): string {
@@ -616,7 +635,7 @@ export async function buildTickerReport({
       ["52W Range", quote.low52w != null || quote.high52w != null
         ? formatPriceRange(quote.low52w, quote.high52w, quote.currency, quoteOptions)
         : "—"],
-      ["Bid / Ask", formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, quoteOptions)],
+      ["Bid / Ask", bidAskText(quote, quoteOptions)],
       // A perpetual's price comes with no volume; its 0 means not reported, not no trades.
       ["Volume", quote.volume != null && !(quote.volume === 0 && isCryptoVenuePerpetual(quote.instrumentType, quote.name))
         ? formatNumber(quote.volume, 0) : "—"],

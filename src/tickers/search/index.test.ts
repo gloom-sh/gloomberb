@@ -771,12 +771,54 @@ describe("ticker-search utilities", () => {
 
     test("a company sent with a theme answers to it after the names, as related; older servers' rows are dropped", () => {
       expect(build("lithium", rows)).toEqual([
-        "LAC:Primary Listing", "LIT:Funds & Derivatives", "ALB:Related", "SQM:Related",
+        "LIT:Funds & Derivatives", "LAC:Primary Listing", "ALB:Related", "SQM:Related",
       ]);
       expect(build("lithium etf", rows)).toEqual(["LIT:Funds & Derivatives"]);
       expect(build("lithium", rows.map(({ searchKeywords: _keywords, ...row }) => row))).toEqual([
         "LAC:Primary Listing", "LIT:Funds & Derivatives",
       ]);
+    });
+
+    test("a sector word lists its funds, in the server's order, before the small companies named for it", async () => {
+      // /market/search?q=defense and q=defense ETF, recorded 2026-10-11: the name search lists a TSXV explorer
+      // and OTC names first and tags a few funds last; the ETF search lists the large ones by size.
+      const defense = { searchKeywords: ["defense"] };
+      const names = [
+        makeSearchResult("DEFN", "Defense Metals Corp.", { exchange: "TSXV", type: "Common Stock" }),
+        makeSearchResult("DTII", "Defense Technologies International Corp.", { exchange: "OTC", type: "Common Stock" }),
+        makeSearchResult("KTOS", "Kratos Defense & Security Solutions, Inc.", { exchange: "NASDAQ", type: "Common Stock" }),
+        makeSearchResult("PPA", "Invesco Aerospace & Defense ETF", { exchange: "ARCA", type: "ETF", ...defense }),
+        makeSearchResult("LMT", "Lockheed Martin Corporation", { exchange: "NYSE", type: "EQUITY", ...defense }),
+      ];
+      const funds = [
+        ...["ITA", "XAR", "PPA", "EUAD", "MISL", "NATO"].map((symbol) => makeSearchResult(symbol, `${symbol} Aerospace & Defense ETF`, { exchange: "ARCA", type: "ETF" })),
+        makeSearchResult("512710", "FG CSI Aerospace & Defense ETF", { exchange: "SSE", type: "ETF" }),
+        makeSearchResult("ITA", "iShares U.S. Aerospace & Defense ETF", { exchange: "BMV", type: "ETF" }),
+      ];
+      const calls: string[] = [];
+      const dataProvider = createTestDataProvider({
+        id: "test",
+        search: async (query) => { calls.push(query); return query === "defense" ? names : query === "defense ETF" ? funds : []; },
+      });
+      const listed = await searchTickerCandidates({ query: "defense", tickers: new Map(), dataProvider, totalLimit: 10 });
+      // Five US-listed funds in the server's order lead; the sixth and other venues' lines follow the names.
+      expect(listed.slice(0, 7).map((item) => `${item.symbol}:${item.exchangeLabel}`)).toEqual([
+        "ITA:ARCA", "XAR:ARCA", "PPA:ARCA", "EUAD:ARCA", "MISL:ARCA", "DEFN:TSXV", "DTII:OTC",
+      ]);
+      expect(calls.filter((call) => call.endsWith(" ETF"))).toEqual(["defense ETF"]);
+      // A word no row is tagged with is a name: no second search.
+      calls.length = 0;
+      await searchTickerCandidates({ query: "kratos", tickers: new Map(), dataProvider, totalLimit: 10 });
+      expect(calls.some((call) => call.endsWith(" ETF"))).toBe(false);
+    });
+
+    test("an exact name or symbol still leads a sector word's funds", () => {
+      const fund = makeSearchResult("TSLY", "YieldMax TSLA Option Income Strategy ETF", { exchange: "ARCA", type: "ETF", searchKeywords: ["tesla"] });
+      expect(build("tesla", [fund, makeSearchResult("TSLA", "Tesla, Inc.", { searchKeywords: ["tesla"] })]))
+        .toEqual(["TSLA:Primary Listing", "TSLY:Funds & Derivatives"]);
+      const gold = makeSearchResult("GOLD", "Gold.com Inc.", { exchange: "NYSE", type: "Common Stock" });
+      const physical = makeSearchResult("PHAU", "WisdomTree Physical Gold ETC", { exchange: "LSE", type: "ETF", searchKeywords: ["gold"] });
+      expect(build("gold", [physical, gold])[0]).toBe("GOLD:Primary Listing");
     });
 
     test("several words match on all of them in any order, never on some", () => {

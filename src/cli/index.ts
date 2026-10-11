@@ -130,7 +130,7 @@ function createCoreCliCommands(
         group: CLI_COMMAND_GROUPS.functions,
         usage: ["catalog [query] [--all] [--bot-safe]", "catalog glossary [term]", "catalog explain <term>"],
         options: [
-          { flags: "--all", description: "List every match instead of the first 25" },
+          { flags: "--all", description: "List every match, not just the best ones" },
           { flags: "--bot-safe, --botsafe", description: "Only functions with a verified unattended report" },
         ],
         sections: [{

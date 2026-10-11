@@ -1,7 +1,11 @@
 import { expect, test } from "bun:test";
-import { knownGapMessage } from "./known-gaps";
+import { getLoadablePlugins } from "../plugins/catalog";
+import { createDefaultConfig } from "../types/config";
+import { knownGapMessage, topicPointer } from "./known-gaps";
+import type { MarketContext } from "./types";
 import { buildSearchReport } from "./commands/search";
-import { renderPaneCatalogReport } from "./pane-functions/catalog";
+import { buildPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
+import { createPaneCatalog } from "./pane-functions/discovery";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
 import { lookupGlossary } from "./glossary";
 
@@ -16,5 +20,29 @@ test("data a name search cannot find is pointed to, with its proxies, by search 
   const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["EUA"]), lookupGlossary("EUA"), knownGapMessage("EUA"));
   expect(catalog).toContain(gap);
   expect(catalog).toContain("EU Allowance");
+  expect(catalog).not.toContain("No functions match");
+});
+
+test("a topic no function covers is answered with the nearest functions, wherever its words sit in the query", async () => {
+  const pointer = topicPointer("defense budget")!;
+  expect(pointer.message).toStartWith("defense budget: not in the terminal yet; closest: AWARDS (");
+  for (const query of ["Defense spending", "DoD", "us DoD-budget 2027", "military budget"]) expect(topicPointer(query)).toEqual(pointer);
+  // One of its words is not the topic: "budget" alone is OSA's flag, "defense" the defense stocks.
+  for (const query of ["budget", "defense", "defense stocks", "budget airline"]) expect(topicPointer(query)).toBeNull();
+  expect(knownGapMessage("defense budget")).toBe(pointer.message);
+
+  // Every function it names exists, so the pointer cannot rot when one is renamed.
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const tokens = (await buildPaneCatalogEntries(registry, context)).map((entry) => entry.token);
+    for (const code of pointer.codes) expect(tokens, code).toContain(code);
+  } finally {
+    registry.destroy();
+  }
+
+  // The catalog leads with the note and lists no loose matches beneath it.
+  const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["defense budget"]), lookupGlossary("defense budget"), pointer.message);
+  expect(catalog).toContain("defense budget: not in the terminal yet");
   expect(catalog).not.toContain("No functions match");
 });
