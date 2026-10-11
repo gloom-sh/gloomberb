@@ -5,7 +5,7 @@ import { earningsCallsHeadless } from "./headless";
 
 
 const description =
-  "Earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, every transcribed call; with a ticker, that company's calls.";
+  "Pro earnings call transcripts with speaker attribution, analyst Q&A, and extracted guidance. Alone, every transcribed call; with a ticker, that company's calls.";
 
 function explicitSymbol(options?: { arg?: string; symbol?: string | null }): string | null {
   const symbol = (options?.symbol ?? options?.arg ?? "").trim().toUpperCase();

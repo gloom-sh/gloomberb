@@ -1,11 +1,13 @@
 import { expect, test } from "bun:test";
 import type { AwardFilter, AwardsPayload } from "../../../api-client/awards";
-import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { renderReportCsv } from "../../../cli/report-tables";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { HeadlessPaneContext } from "../../../types/headless";
 import { awardsHeadless } from "./headless";
-import { awardRow, awardsPayload } from "./test-fixture";
+import { awardHistory, awardRow, awardsPayload } from "./test-fixture";
 
 const source = (name: string, coverageStart: string | null, records: number): AwardsPayload["sources"][number] => ({ source: name, enabled: true,
   lastAttemptAt: null, lastOkAt: null, nextPollAt: null, failures: 0, lastError: null, cursor: null, coverageStart, coverageEnd: null, coverageComplete: false, records, requestsToday: 0 });
@@ -57,4 +59,20 @@ test("with no ticker the preview is the latest awards, and an award date after t
   const dated = await awardsHeadless.load(createTestHeadlessArgs({ options: { tab: "feed" } }), ctx);
   // A future period start is a schedule, not an award date.
   expect(dated.notes).toEqual(["1 award date is after today, as the source published it."]);
+});
+
+test("cohort amounts print compact as the pane draws them, while exports keep the source's exact decimals", async () => {
+  const payload = awardsPayload({ history: [awardHistory({ month: "2026-10-01", cumulativeObligatedAmount: "2087053990255.52" })] });
+  const args = createTestHeadlessArgs({ rawArgument: "TEST", argument: "TEST", symbols: ["TEST"], options: { tab: "company" } });
+  const result = await awardsHeadless.load(args, createTestHeadlessContext({
+    apiClient: { getCloudAwards: async () => payload } as unknown as HeadlessPaneContext["apiClient"],
+  }));
+  const freshness = deriveHeadlessFreshness(awardsHeadless, result);
+  const text = renderHeadlessPaneText(awardsHeadless, result, args, "AWARDS", freshness);
+  expect(text).toContain("2.09T");
+  expect(text).toContain("100.00M");
+  expect(text).not.toContain("2087053990255");
+  const csv = renderReportCsv(headlessReportTables(awardsHeadless, result, args, "AWARDS", freshness, { complete: true, unavailableSymbols: [] }));
+  expect(csv).toContain("2087053990255.52");
+  expect(csv).toContain("100000000.05");
 });

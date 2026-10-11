@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { CloudDataApi } from "../../../api-client/data";
 import { DEFAULT_GRAPH_OPTIONS, type GraphEvidence, type GraphPayload } from "../../../api-client/supply-chain-graph";
 import { capabilityPaneSettings, getPaneFunctionCapability, normalizeCapabilityOptions } from "../../../cli/pane-functions/capabilities";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { HeadlessPaneContext, PaneDef } from "../../../types/plugin";
 import { graphOptions, validateGraph } from "./graph-client";
@@ -153,9 +155,14 @@ test("headless reports keep original evidence and unconverted native units with 
     quoteGloss: "NVIDIA INTERNATIONAL: JPY 228,273 million, 20.2% of revenue.", jurisdiction: "JP", entityScope: "entity", sectionRef: "販売実績" });
   const context = createTestHeadlessContext();
   context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [row] }) };
-  const result = await supplyChainHeadless.load(createTestHeadlessArgs({ symbols: ["6857.T"] }), context);
+  const args = createTestHeadlessArgs({ symbols: ["6857.T"] });
+  const result = await supplyChainHeadless.load(args, context);
   expect(result.sections[0]?.rows?.[0]).toMatchObject({ nativeAmount: 228_273, nativeCurrency: "JPY", nativeScale: 1_000_000, usd: null,
     quote: row.quote, quoteLanguage: "ja", quoteGloss: row.quoteGloss, quoteGlossKind: "machine_translation", jurisdiction: "JP", entityScope: "entity", sectionRef: "販売実績", filingUrl: row.filingUrl });
+  // The text prints the amount in its disclosed currency and scale, as the pane does, never a bare number.
+  const text = renderHeadlessPaneText(supplyChainHeadless, result, args, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
+  expect(text).toContain("228,273 JPY million");
+  expect(text).not.toContain(row.quote!);
 });
 
 test("graph boundaries preserve global filing scale and provenance and reject uninterpretable native amounts", async () => {

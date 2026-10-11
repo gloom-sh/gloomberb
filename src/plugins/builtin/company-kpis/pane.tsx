@@ -18,15 +18,12 @@ import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyColumns, dimensionLabel, directionLabel, directionTone, guideGroupKey, guidanceSeries, fiscalLabel,
-  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, rangeText, seriesLabel, unitLabel, unitSuffix, valueText, companyPreviewNote,
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, dimensionLabel, directionLabel, directionTone, guideGroupKey, guidanceSeries, fiscalLabel,
+  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, seriesLabel, unitLabel, valueText, companyPreviewNote,
   type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { PricePoint } from "../../../types/financials";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
-
-/** Columns that say nothing while every row is the company's consolidated, as-reported figure. */
-const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
 
 /** A locked placeholder, or with `note` the line above them saying what free shows and what Pro adds. */
 type Item = { id: string; row: CompanyRow } | { id: string; row: null; note?: string };
@@ -207,12 +204,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
       const change = observationChange(row as KpiObservation, observations);
       return { text: changeText(change), value: change.value, color: toneColor(changeTone(row as KpiObservation, change.value), colors) };
     }
-    const text = column.id === "metric" ? row.metric.name : column.id === "period" ? fiscalLabel(row) : column.id === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
-      : column.id === "unit" ? unitLabel(row)
-      : column.id === "basis" ? basisLabel(row.basis) : column.id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
-      : column.id === "issued" ? guide?.issuedDate ?? "--" : column.id === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : "--"
-      : column.id === "outcome" ? guide ? outcomeLabel(guide) : "--" : column.id === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
-      : column.id === "confidence" ? `${Math.round(row.confidence * 100)}%` : column.id === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
+    const text = companyCellText(row, column.id, observations);
     return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : {}),
       color: column.id === "metric" ? colors.textBright : column.id === "value" || column.id === "actual" ? colors.textBright
         : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text

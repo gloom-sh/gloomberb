@@ -3,7 +3,7 @@ import type {
   HeadlessPaneContext,
   HeadlessPaneDefinition,
 } from "../../../types/plugin";
-import { ApiRequestError } from "../../../api-client/errors";
+import { cloudAccountNeed, cloudDeniedStatus, type CloudDeniedStatus } from "../shared/cloud-denied";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { fetchJobs, fetchJobsMovers, type JobsCloudClient, type JobsCompanyState } from "./client";
 import {
@@ -20,14 +20,12 @@ import {
  * reads the same careers systems, and is named only when it answers for this
  * company.
  */
-async function jobsDeniedMessage(symbol: string | undefined, status: 401 | 402 | 403, client: Pick<HeadlessPaneContext["apiClient"], "getCloudHiring">): Promise<string> {
-  const need = status === 401 ? "sign-in" : status === 403 ? "a verified email" : "Gloom Pro";
+async function jobsDeniedMessage(symbol: string | undefined, status: CloudDeniedStatus, client: Pick<HeadlessPaneContext["apiClient"], "getCloudHiring">): Promise<string> {
+  const need = cloudAccountNeed(status);
   const preview = await client.getCloudHiring(symbol, { limit: 1 })
     .then((payload) => !!payload && (symbol ? "symbol" in payload : "companies" in payload), () => false);
   return `JOBS needs ${need}${preview ? `; HIRE${symbol ? ` ${symbol}` : ""} is free to preview` : ""}.`;
 }
-
-const DENIED = new Set([401, 402, 403]);
 
 function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: "denied" }>, roleLimit: number): HeadlessBundleResult {
   if (state.kind === "pending") {
@@ -199,8 +197,8 @@ export const jobsHeadless: HeadlessPaneDefinition<"bundle"> = {
       return companyBundle(symbol, state, limit);
     }
     const payload = await fetchJobsMovers(ctx.apiClient as JobsCloudClient).catch(async (error: unknown) => {
-      const status = error instanceof ApiRequestError ? error.status ?? 0 : 0;
-      if (DENIED.has(status)) throw new Error(await jobsDeniedMessage(undefined, status as 401 | 402 | 403, ctx.apiClient));
+      const status = cloudDeniedStatus(error);
+      if (status) throw new Error(await jobsDeniedMessage(undefined, status, ctx.apiClient));
       throw error;
     });
     const rows = buildMoverRows(payload.movers).slice(0, Math.max(limit, 15)).map((row) => ({

@@ -30,7 +30,7 @@ export const rangeText = (row: KpiGuidance, withUnit = true) => row.status === "
   : row.low !== null ? `${row.hedge === "greater_than" ? ">" : "≥"} ${valueText(row, row.low, withUnit)}`
   : row.high !== null ? `${row.hedge === "less_than" ? "<" : "≤"} ${valueText(row, row.high, withUnit)}` : row.rangeText;
 /** The unit a value cell carries after its number; percent, bp and x are already in the number. */
-export function unitSuffix(row: Pick<CompanyRow, "unit" | "currency" | "dimensions">): string {
+function unitSuffix(row: Pick<CompanyRow, "unit" | "currency" | "dimensions">): string {
   if (row.unit === "currency") return row.currency ? ` ${row.currency}` : "";
   if (row.unit === "currency_per_share") return ` ${row.currency ?? ""}/sh`.replace(" /", " ");
   if (row.unit === "currency_per_unit" || row.unit === "volume") return ` ${unitLabel(row)}`;
@@ -104,6 +104,19 @@ export function guidanceSeries(rows: KpiGuidance[], selected: KpiGuidance | unde
   const actual = selected.actual;
   if (actual && series.length) series.push(staticSeries(timeline.map((row) => scalarPoint(new Date(row.issuedDate), actual.value)), { id: "actual", label: "Later actual", color: colors.actual, calendarSpaced: true }));
   return series;
+}
+/** Columns that say nothing while every row is the company's consolidated, as-reported figure. */
+export const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
+/** The text of a table cell as the pane draws it; the report prints the same words. */
+export function companyCellText(row: CompanyRow, column: string, observations: KpiObservation[]): string {
+  const guide = isGuidance(row) ? row : null;
+  if (column === "change") return guide ? directionLabel(guide.direction) : changeText(observationChange(row as KpiObservation, observations));
+  return column === "metric" ? row.metric.name : column === "period" ? fiscalLabel(row) : column === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
+    : column === "unit" ? unitLabel(row)
+    : column === "basis" ? basisLabel(row.basis) : column === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
+    : column === "issued" ? guide?.issuedDate ?? "--" : column === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : "--"
+    : column === "outcome" ? guide ? outcomeLabel(guide) : "--" : column === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
+    : column === "confidence" ? `${Math.round(row.confidence * 100)}%` : column === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
 }
 export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false): DataTableColumn[] {
   const columns: DataTableColumn[] = [
