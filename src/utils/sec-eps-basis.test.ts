@@ -44,9 +44,49 @@ describe("SEC EPS share-basis evidence", () => {
     const oldRepeat = { ...repeated, accn: earlier.accn, filed: earlier.filed };
     const fixture = payload([oldRepeat, repeated, before, after]);
     expect(createSecEpsBasisResolver(fixture)(oldRepeat).basis?.factor).toBe(4);
-    fixture.facts["us-gaap"].WeightedAverageNumberOfDilutedSharesOutstanding.units.shares[0]!.val += 1;
+    // Counts at exact share precision must be equal; a count in thousands only
+    // has to agree once the exact one is rounded to thousands.
+    const counts = fixture.facts["us-gaap"].WeightedAverageNumberOfDilutedSharesOutstanding.units.shares;
+    counts[0]!.val = 5_000_109_001;
+    expect(createSecEpsBasisResolver(fixture)(oldRepeat)).toMatchObject({ basis: { status: "split-adjusted", factor: 4, originalValue: 9.21 } });
+    counts[1]!.val = 5_000_109_002;
     expect(createSecEpsBasisResolver(fixture)(oldRepeat)).toMatchObject({ basis: { status: "unresolved" } });
     expect(createSecEpsBasisResolver(fixture)(oldRepeat).value).toBeUndefined();
+    counts[1]!.val = 5_000_109_001;
+    expect(createSecEpsBasisResolver(fixture)(oldRepeat).basis?.factor).toBe(4);
+  });
+
+  test("links share counts that differ only by the coarser filing's rounding", () => {
+    // Tesla, abridged: the FY2018 10-K gives diluted shares and income in thousands, the FY2019 10-K repeats FY2018
+    // in millions, and the FY2020 10-K restates FY2019 by the 2020 5:1 split.
+    const [fy18, fy19, fy20] = ["0001564590-19-003165", "0001564590-20-004475", "0001564590-21-004599"];
+    const y18 = { start: "2018-01-01", end: "2018-12-31", form: "10-K" }, y19 = { start: "2019-01-01", end: "2019-12-31", form: "10-K" };
+    const eps = [
+      { ...y18, accn: fy18, filed: "2019-02-19", val: -5.72 }, { ...y18, accn: fy19, filed: "2020-02-13", val: -5.72 },
+      { ...y19, accn: fy19, filed: "2020-02-13", val: -4.92 }, { ...y19, accn: fy20, filed: "2021-02-08", val: -.98 },
+    ];
+    const income = [-976_091_000, -976_000_000, -862_000_000, -862_000_000].map((val, i) => ({ ...eps[i]!, val }));
+    const split = { end: "2020-08-10", val: 5, accn: fy20, filed: "2021-02-08", form: "10-K" };
+    const resolve = (thousands: number, millions = [171_000_000, 177_000_000], splits = [split]) => createSecEpsBasisResolver(
+      facts(eps, splits, income, [thousands, ...millions, 887_000_000].map((val, i) => ({ ...eps[i]!, val }))))(eps[0]!);
+    expect(resolve(170_525_000)).toMatchObject({ availableAt: "2021-02-08", basis: {
+      status: "split-adjusted", factor: 5, originalValue: -5.72, originalFiled: "2019-02-19",
+    } });
+    expect(resolve(170_525_000).value).toBeCloseTo(-1.144, 10);
+    // Rounded to millions, 170.4 million is 170 million, not 171.
+    expect(resolve(170_400_000).value).toBeUndefined();
+    // A difference larger than the unit is a different count.
+    expect(resolve(169_525_000)).toMatchObject({ basis: { status: "unresolved" } });
+    expect(resolve(169_525_000).value).toBeUndefined();
+    // The unit is the filing's: 170 million in a filing that also reports 177 million is rounded to millions.
+    expect(resolve(170_525_000, [170_000_000, 177_000_000]).value).toBeUndefined();
+    expect(resolve(170_025_000, [170_000_000, 177_000_000]).value).toBeCloseTo(-1.144, 10);
+    // A filing reporting only 170 and 180 million rounds to ten millions, where a disclosed 5% stock dividend
+    // could hide.
+    expect(resolve(170_525_000, [170_000_000, 180_000_000]).value).toBeCloseTo(-1.144, 10);
+    const dividend = { end: "2010-01-04", val: 1.05, accn: "0001564590-10-000001", filed: "2010-02-01", form: "10-K" };
+    expect(resolve(170_525_000, [170_000_000, 180_000_000], [split, dividend]).value).toBeUndefined();
+    expect(resolve(170_525_000, [171_000_000, 177_000_000], [split, dividend]).value).toBeCloseTo(-1.144, 10);
   });
 
   test("does not double-adjust an already restated pre-effective filing", () => {

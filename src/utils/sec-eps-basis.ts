@@ -98,7 +98,8 @@ function splitEvents(proofs: Proof[]): SplitEvent[] {
 /**
  * Share bases belong to source accessions, not filing dates. A split edge needs
  * an explicit SEC split fact and unchanged same-period income with inverse EPS
- * restatement. Repeated EPS AND diluted shares connect otherwise equal bases;
+ * restatement. Repeated EPS AND diluted shares (at the coarser filing's
+ * rounding) connect otherwise equal bases;
  * where a filing tags no diluted shares, repeated EPS AND income do, if no
  * disclosed split could leave that EPS unchanged at cent rounding.
  * No price jump, ticker exception, or chronological assumption establishes one.
@@ -131,23 +132,30 @@ export function createSecEpsBasisResolver(payload: unknown): (fact: Fact) => { v
     graph.set(after, [...graph.get(after) ?? [], { node: before, factor: ratio, evidence }]);
     graph.set(before, [...graph.get(before) ?? [], { node: after, factor: 1 / ratio, evidence }]);
   };
-  const identical = new Map<string, Row>();
   const periods = new Map<string, Row[]>();
   for (const row of eps.values()) {
     const period = `${row.start}:${row.end}`;
     periods.set(period, [...periods.get(period) ?? [], row]);
-    const denominator = shares.get(key(row))?.val;
-    if (!row.val || !denominator || denominator <= 0) continue;
-    const identity = `${period}:${row.val}:${denominator}`;
-    const prior = identical.get(identity);
-    if (prior && prior.accn !== row.accn) connect(prior.accn, row.accn, 1);
-    else identical.set(identity, row);
   }
+  const ratios = [...new Set(splits.map((split) => split.val!))];
+  // A filing rounds its share counts to one unit, the largest power of ten
+  // dividing every diluted count it reports (Tesla gave thousands until 2019
+  // and millions after). Two counts are one basis when the finer one, rounded
+  // to the coarser filing's unit, gives the coarser one, and every disclosed
+  // split would move a count by more than that unit. Counts at exact share
+  // precision must be equal.
+  const unit = new Map<string, number>();
+  for (const row of entries(payload, "WeightedAverageNumberOfDilutedSharesOutstanding", "shares")) {
+    let power = 1;
+    while (row.val! > 0 && row.val! % (power * 10) === 0) power *= 10;
+    unit.set(row.accn!, Math.min(unit.get(row.accn!) ?? power, power));
+  }
+  const sameShares = (a: number, b: number, coarser: number) => a === b || coarser > 1 && Math.abs(a - b) * 2 <= coarser
+    && ratios.every((ratio) => Math.abs(a - a / ratio) > coarser && Math.abs(a - a * ratio) > coarser);
   // Not every filer tags diluted shares (Alphabet before 2024). Where a filing
   // tags none for the period, a repeated EPS and net income connect instead,
   // when no disclosed split ratio could leave that EPS unchanged at cent
   // rounding. Diluted shares that differ still keep the bases apart.
-  const ratios = [...new Set(splits.map((split) => split.val!))];
   const telling = (value: number) => ratios.every((ratio) => Math.abs(value - value / ratio) > .005 + .005 / ratio
     && Math.abs(value - value * ratio) > .005 + .005 * ratio);
   const tagged = new Set(entries(payload, "WeightedAverageNumberOfDilutedSharesOutstanding", "shares").map(key));
@@ -155,8 +163,13 @@ export function createSecEpsBasisResolver(payload: unknown): (fact: Fact) => { v
     for (let i = 0; i < rows.length; i++) {
       for (let j = i + 1; j < rows.length; j++) {
         const [a, b] = [rows[i]!, rows[j]!];
-        if (a.accn === b.accn || a.val !== b.val || !a.val || !telling(a.val)) continue;
-        if (tagged.has(key(a)) && tagged.has(key(b))) continue;
+        if (a.accn === b.accn || a.val !== b.val || !a.val) continue;
+        const [sharesA, sharesB] = [shares.get(key(a))?.val, shares.get(key(b))?.val];
+        if (sharesA && sharesB && sharesA > 0 && sharesB > 0) {
+          if (sameShares(sharesA, sharesB, Math.max(unit.get(a.accn) ?? 1, unit.get(b.accn) ?? 1))) connect(a.accn, b.accn, 1);
+          continue;
+        }
+        if (!telling(a.val) || tagged.has(key(a)) && tagged.has(key(b))) continue;
         const repeated = income.get(key(a))?.val;
         if (repeated !== undefined && repeated !== 0 && repeated === income.get(key(b))?.val) connect(a.accn, b.accn, 1);
       }
