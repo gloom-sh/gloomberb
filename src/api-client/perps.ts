@@ -147,6 +147,14 @@ export interface PerpBoardPayload {
   access: "pro" | "preview"; sources?: unknown[];
 }
 export interface PerpEquityListing { symbol: string; exchange: string }
+/**
+ * The batch lookup a watchlist or portfolio makes: one entry per requested listing, in its order, with the contract
+ * the single equity lookup would list first, or none. `listing` is null when the server cannot read the listing.
+ */
+export interface PerpEquitiesPayload {
+  status: string; asOf: string | null; access: "pro" | "preview"; locked: number;
+  results: { listing: PerpEquityListing | null; market: PerpBoardRow | null }[];
+}
 export interface PerpHistoryPayload {
   status: string; marketId: string; rows: PerpHistoryPoint[]; funding: PerpFunding[]; candles: PerpCandle[];
   /** Absent from servers older than the long/short series: read as empty. */

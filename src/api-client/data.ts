@@ -5,7 +5,8 @@ import type { CatalystResponse, CatalystDetail, CatalystFilters, CatalystStatus,
 import type { KpisPayload, GuidancePayload, KpiQueryOptions } from "./company-kpis";
 import { companyDisclosurePath } from "./company-kpis";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory } from "./power";
-import type { PerpBoardPayload, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery, PerpMarketPayload } from "./perps";
+import type { PerpBoardPayload, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpRankingsPayload, PerpBoardQuery, PerpHistoryQuery,
+  PerpMarketPayload } from "./perps";
 import type { ExposureRequest, ExposurePayload, ExposureScenario } from "./exposure";
 import type { SupplyChainPayload, SupplyOptions } from "./supply-chain";
 import { supplyGraphQuery, type GraphOptions, type GraphPayload } from "./supply-chain-graph";
@@ -517,6 +518,9 @@ export class CloudDataApi {
   async getCloudPerpsEquity(symbol: string, exchange?: string): Promise<PerpBoardPayload> {
     const query = exchange === undefined ? "" : `?${new URLSearchParams({ identity: "listing", exchange })}`;
     return this.request(`/cloud/perps/equity/${encodeURIComponent(symbol)}${query}`);
+  }
+  async getCloudPerpsEquities(listings: readonly PerpEquityListing[]): Promise<PerpEquitiesPayload> {
+    return this.request("/cloud/perps/equities", { method: "POST", body: JSON.stringify({ listings }) });
   }
   async getCloudPerpsMarket(marketId: string): Promise<PerpMarketPayload> { return this.request(`/cloud/perps/market?${new URLSearchParams({ marketId })}`); }
 

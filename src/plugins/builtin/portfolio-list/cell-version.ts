@@ -22,6 +22,7 @@ const FX_COLUMN_IDS = new Set([
 const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"]);
 const SUPPLEMENTAL_COLUMN_IDS = new Set(["target", "target_pct", "rating", "ex_div", "next_earn"]);
 const DAY_CLOCK_COLUMN_IDS = new Set(["held", "ex_div", "next_earn"]);
+export const PERPETUAL_COLUMN_IDS: ReadonlySet<string> = new Set(["perp_premium", "perp_funding"]);
 
 const exchangeRateVersions = new WeakMap<ReadonlyMap<string, number>, string>();
 
@@ -55,6 +56,7 @@ export function columnContextVersion(columnId: string, ctx: ColumnContext): stri
   if (ALLOCATION_COLUMN_IDS.has(columnId)) version += `|${ctx.portfolioTotalMarketValue ?? 0}`;
   if (ALLOCATION_COLUMN_IDS.has(columnId) || columnId === "target_weight") version += `|${targetsVersion(ctx.portfolioTargets)}`;
   if (SUPPLEMENTAL_COLUMN_IDS.has(columnId)) version += `|${ctx.supplementalVersion ?? 0}`;
+  if (PERPETUAL_COLUMN_IDS.has(columnId)) version += `|${ctx.perpetualsVersion ?? 0}`;
   if (columnId === "latency") version += `|${ctx.now}`;
   if (DAY_CLOCK_COLUMN_IDS.has(columnId)) version += `|${Math.floor(ctx.now / DAY_MS)}`;
   return version;
