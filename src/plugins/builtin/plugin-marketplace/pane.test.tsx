@@ -7,9 +7,9 @@ import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-ru
 import type { AppNotificationRequest } from "../../../types/plugin";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import { applyPluginToggles } from "../../ownership";
-import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
+import { PLUGIN_MARKETPLACE_PANE_ID } from "../../marketplace/ids";
 import { PluginMarketplacePane } from "./pane";
-import { PACK_PLUGIN_IDS } from "./packs";
+import { PACK_PLUGIN_IDS } from "../../marketplace/packs";
 import { setMarketplaceHost, type MarketplaceHost } from "./store";
 
 const tui = createOpenTuiTestHarness();

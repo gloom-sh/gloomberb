@@ -48,7 +48,7 @@ import {
   STARTER_PACKS,
   type PackChange,
   type StarterPack,
-} from "./packs";
+} from "../../marketplace/packs";
 import {
   buildRows,
   collectCategories,
@@ -73,7 +73,7 @@ import {
 import { activateInstall, activateInstalledPlugin } from "./activation";
 import { getMarketplaceHost, getPluginManager, type MarketplaceHost } from "./store";
 
-import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
+import { PLUGIN_MARKETPLACE_PANE_ID } from "../../marketplace/ids";
 
 type Column = DataTableColumn & { id: "name" | "tagline" | "panes" | "functions" | "pro" | "status" };
 

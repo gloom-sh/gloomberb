@@ -4,7 +4,7 @@ import { runsExternalPlugins } from "../../current-target";
 import { BUILTIN_EDITORIAL } from "../../builtin-editorial";
 import { builtinPluginGroupMembers } from "../../ownership";
 import type { FunctionAccess } from "../../../cli/pane-functions/function-help";
-import { PACK_PLUGIN_IDS } from "./packs";
+import { PACK_PLUGIN_IDS } from "../../marketplace/packs";
 
 type PluginTier = "official" | "verified" | "community";
 

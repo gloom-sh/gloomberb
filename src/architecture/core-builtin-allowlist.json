@@ -5,7 +5,7 @@
   "src/app/pane-runtime/plugin-bindings.ts": ["broker-manager","layout-manager","plugin-marketplace"],
   "src/app/runtime/broker-import.ts": ["portfolio-list"],
   "src/app/runtime/desktop-deeplink.ts": ["account-management","chat","cloud"],
-  "src/app/runtime/startup.ts": ["chat","plugin-marketplace"],
+  "src/app/runtime/startup.ts": ["chat"],
   "src/cli/commands/market.ts": ["holders","insider","research","sec"],
   "src/cli/commands/options-chain.ts": ["options","options-calculator"],
   "src/cli/commands/options-leaps.ts": ["options","vol-surface"],
