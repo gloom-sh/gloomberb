@@ -1,6 +1,7 @@
 import type { StatItem } from "../../../components";
 import type { OptionsChain } from "../../../types/financials";
 import type { HeadlessPaneEntry } from "../../../types/headless";
+import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { formatCompact } from "../../../utils/format";
 import { UNKNOWN_CURRENCY, type ScenarioPosition } from "./model";
 
@@ -82,7 +83,7 @@ export function parseHedgeAmount(value: unknown, flag: string): number {
 function parseBudgetBps(value: unknown): number {
   const text = typeof value === "number" ? String(value) : typeof value === "string" ? value.trim() : "";
   const bps = /^-?(?:\d+(?:\.\d+)?|\.\d+)$/.test(text) ? Number(text) : Number.NaN;
-  if (!Number.isFinite(bps)) throw new Error(`--budget-bps must be a number of basis points, such as 50 for 0.5% of NAV; got "${text}".`);
+  if (!Number.isFinite(bps)) throw new Error(numberErrorMessage(`--budget-bps must be a number of basis points, such as 50 for 0.5% of NAV; got "${text}".`, text));
   if (!(bps > 0)) throw new Error("--budget-bps must be greater than zero.");
   if (bps > 10_000) throw new Error("--budget-bps must be at most 10,000 (all of NAV).");
   return bps;

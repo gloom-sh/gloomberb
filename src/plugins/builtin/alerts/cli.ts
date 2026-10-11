@@ -7,6 +7,7 @@ import { saveConfig } from "../../../data/config/store";
 import type { AppConfig } from "../../../types/config";
 import type { CliCommandDef } from "../../../types/plugin";
 import { cliStyles } from "../../../utils/cli-output";
+import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
 import { createAlert, deserializeAlerts, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY } from "./constants";
@@ -83,7 +84,7 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
   if (days !== undefined) throw new Error("--days is for earnings and CPI or FOMC alerts, not price alerts.");
   if (third === undefined) throw new Error(ADD_USAGE);
   const price = Number(third);
-  if (!Number.isFinite(price)) throw new Error("Alert price must be a finite number.");
+  if (!Number.isFinite(price)) throw new Error(numberErrorMessage("Alert price must be a finite number.", third));
   return { kind: "price", symbol: first, condition, price };
 }
 

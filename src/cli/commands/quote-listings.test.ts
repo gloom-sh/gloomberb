@@ -190,3 +190,24 @@ test("a bare symbol several companies list names, in one line, the company it wa
   expect((await runQuote(["CAR:ASX"], source)).warnings).toEqual([]);
   expect(source.searches()).toBe(searched);
 });
+
+test("a pasted list is one row per symbol, in order, however it is separated, for quote and compare alike", async () => {
+  const asked: string[][] = [];
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => {
+      asked.push(targets.map((target) => target.symbol));
+      return targets.map((target) => ({ target, quote: createTestQuote({ symbol: target.symbol }) }));
+    },
+  });
+  const pasted = [["jnk\nEMB\nBRK.B, bf-b "], ["JNK EMB", "brk.b,BF-B"], ["jnk\temb\r\nbrk.b bf-b"], ["jnk,emb", "$brk.b\n", " bf-b "]];
+  for (const name of ["quote", "compare"]) {
+    for (const args of pasted) {
+      asked.length = 0;
+      const cli = createTestCliContext({ dataProvider });
+      await marketDataCliCommands.find((command) => command.name === name)!.execute(args, cli.context);
+      const rows = (cli.printed[0] as PrintedCliResult).result.data as Array<{ target: QuoteSubscriptionTarget }>;
+      expect(rows.map((row) => row.target.symbol)).toEqual(["JNK", "EMB", "BRK.B", "BF-B"]);
+      expect(asked).toEqual([["JNK", "EMB", "BRK.B", "BF-B"]]);
+    }
+  }
+});

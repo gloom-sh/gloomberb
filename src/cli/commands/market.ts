@@ -123,6 +123,7 @@ import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListi
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage } from "../not-a-ticker";
+import { splitSymbolArgs } from "../symbol-args";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
@@ -194,11 +195,9 @@ function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined
   return value && VALID_NEWS_FEEDS.has(value as NewsFeed) ? value as NewsQuery["feed"] : undefined;
 }
 
+/** The symbols of a command's arguments, one each however they were separated: spaces, commas or pasted lines. */
 function normalizeSymbols(args: string[]): string[] {
-  return args
-    .flatMap((arg) => arg.split(","))
-    .map((symbol) => symbol.trim().toUpperCase())
-    .filter(Boolean);
+  return splitSymbolArgs(args).map((symbol) => symbol.toUpperCase());
 }
 
 /** What JSON metadata says about the listing a command resolved. */

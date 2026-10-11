@@ -16,6 +16,16 @@ test("incomplete numeric drafts cannot silently become zero or exponential input
   expect(() => bondDraftFromOptions({ endOfMonth: "false" })).toThrow("boolean");
 });
 
+test("a number typed with a decimal comma is told to use a dot", () => {
+  expect(() => calculateBond({ ...draft, coupon: "4,5" })).toThrow("Coupon must be a number; use a dot: 4.5");
+  expect(() => calculateBond({ ...draft, quote: " -0,25 " })).toThrow("Yield must be a number; use a dot: -0.25");
+  expect(() => calculateBond({ ...draft, mode: "price", quote: "99,5" })).toThrow("Clean price must be a number; use a dot: 99.5");
+  // Anything else keeps the plain message, and a comma between thousands is not a decimal one.
+  for (const coupon of ["4,5,6", "1,234", "4,", "abc", "4,5%"]) {
+    expect(() => calculateBond({ ...draft, coupon })).toThrow(/^Coupon must be a number$/);
+  }
+});
+
 test("price mode and shock scenarios preserve cash-flow terms and use dirty capital for return", () => {
   const fromYield = calculateBond(draft);
   const fromPrice = calculateBond({ ...draft, mode: "price", quote: String(fromYield.analytics.cleanPrice) });
