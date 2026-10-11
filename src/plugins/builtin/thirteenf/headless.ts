@@ -13,9 +13,19 @@ import {
   compareCrowding,
   crowdingForTicker,
   cutText,
-  periodText,
+  filedPeriodText,
+  filingDayText,
+  filingLagDays,
+  isOptionType,
+  isStaleFiling,
+  markedPositionType,
+  OPTION_ROWS_NOTE,
+  staleFilingText,
+  staleFundsText,
   summarizeTickerHoldings,
+  THIRTEENF_LIMITS,
   THIRTEENF_MAX_LIMIT,
+  THIRTEENF_OPTIONS_NOTE,
 } from "./report-notes";
 import {
   loadBrowserRows,
@@ -31,9 +41,9 @@ import {
   buildTimelineRows,
   inferBrowserTabFromQuery,
   hasComparable13FQuarter,
-  THIRTEENF_OPTIONS_NOTE,
   isCikQuery,
   positionType,
+  quartersBehindLatest,
   sortBrowserRows,
   sortHoldingRows,
   sortTimelineRows,
@@ -87,9 +97,16 @@ const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   },
 ];
 
+/** What a 13F position report notes after its table: the filing's limits, and what the option marker means when option rows are shown. */
+function positionNotes(rows: readonly { type?: unknown }[]): string[] {
+  return [THIRTEENF_LIMITS, ...(rows.some((row) => isOptionType(row.type)) ? [OPTION_ROWS_NOTE] : [])];
+}
+
+const TYPE_COLUMN: HeadlessPaneColumn = { key: "type", header: "Type", textFormat: markedPositionType };
+
 const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "ticker", header: "Ticker" },
-  { key: "type", header: "Type" },
+  TYPE_COLUMN,
   { key: "issuer", header: "Issuer" },
   {
     key: "value",
@@ -245,6 +262,7 @@ export function createThirteenFHeadless(
   return {
     shape: "rows",
     freshness: { ...SEC_FILINGS, basis: "13F filings", observedKey: "filedAsOfDate" },
+    discovery: { limitations: [THIRTEENF_LIMITS] },
     argument: {
       kind: "free-text",
       placeholder: "fund, ticker, or CIK",
@@ -336,9 +354,11 @@ export function createThirteenFHeadless(
         const { rows, ...metadata } = holdings;
         const offset = Number(args.options.offset ?? 0);
         const summary = summarizeTickerHoldings({ ...metadata, offset, limit, loaded: rows });
+        const shown = rows.slice(0, limit).map(row => ({ ...row }));
         return {
-          columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, { key: "type", header: "Type" }, { key: "value", header: "Value (USD)", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }],
-          rows: rows.slice(0, limit).map(row => ({ ...row })),
+          columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, TYPE_COLUMN, { key: "value", header: "Value (USD)", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }],
+          rows: shown,
+          notes: positionNotes(shown),
           metadata: {
             ...metadata,
             view,
@@ -391,6 +411,9 @@ export function createThirteenFHeadless(
           DEFAULT_HOLDING_SORT,
         );
         const previousPeriod = detail.previousForm?.periodOfReport ?? null;
+        const comparable = hasComparable13FQuarter(detail);
+        const filed = detail.latestForm?.filedAsOfDate || null;
+        const quartersBehind = quartersBehindLatest(latestPeriod);
         const cut = cutText(all.length, limit, "positions, exits included");
         const rows = all
           .slice(0, limit)
@@ -403,22 +426,31 @@ export function createThirteenFHeadless(
           columns: HOLDING_COLUMNS,
           rows,
           ...(detail.warnings?.length ? { errors: detail.warnings } : {}),
-          // Positions as of the quarter they report; the rows carry no filing date.
-          ...(latestPeriod ? { freshness: { asOf: latestPeriod } } : {}),
+          notes: positionNotes(rows),
+          // Dated by the filing that made the positions public, with the quarter they report beside it.
+          ...(latestPeriod ? { freshness: {
+            asOf: filed ?? latestPeriod,
+            basis: `13F filing for the quarter ended ${filingDayText(latestPeriod)}`,
+          } } : {}),
           metadata: {
             view,
             cik: detail.cik,
             fund: detail.name,
             latestPeriod,
+            latestFiled: filed,
+            filingLagDays: filingLagDays(latestPeriod, filed),
+            quartersBehind,
             previousPeriod,
             shown: rows.length,
             total: all.length,
             truncated: all.length > limit,
             notices: [
-              [`CIK ${detail.cik}`, periodText(latestPeriod, hasComparable13FQuarter(detail) ? previousPeriod : null), AS_FILED_VALUE].filter(Boolean).join(" | "),
+              [`CIK ${detail.cik}`, filedPeriodText(latestPeriod, filed, comparable ? previousPeriod : null)].filter(Boolean).join(" | "),
+              AS_FILED_VALUE,
+              ...(isStaleFiling(quartersBehind) ? [staleFilingText(quartersBehind)] : []),
               ...(cut ? [`${cut[0]!.toUpperCase()}${cut.slice(1)}`] : []),
             ],
-            comparisonAvailable: hasComparable13FQuarter(detail),
+            comparisonAvailable: comparable,
             currentFilings: detail.latestReport?.filings.map((form) => form.accessionNumber) ?? [],
             previousFilings: detail.previousReport?.filings.map((form) => form.accessionNumber) ?? [],
             currentReportedValue: detail.latestReport?.complete ? detail.latestReport.tableValueTotal : null,
@@ -432,11 +464,18 @@ export function createThirteenFHeadless(
       const tab = browserTab(view === "ticker-holdings" ? requestedView : view, query);
       const result = await dependencies.loadBrowser(tab, query, limit, args, ctx);
       const more = result.hasMore || result.rows.length > limit;
+      const browserRows = sortBrowserRows(result.rows, browserSortFor(DEFAULT_BROWSER_SORT, tab)).slice(0, limit);
+      // A search finds managers that stopped filing; say which, since the Period column alone reads like any other.
+      const stale = tab === "funds"
+        ? browserRows.flatMap((row) => {
+          const quarters = quartersBehindLatest(row.periodOfReport);
+          return isStaleFiling(quarters) ? [{ name: row.name, quarters }] : [];
+        })
+        : [];
       return {
         columns: result.rows[0]?.priorReturns?.length ? [...BROWSER_COLUMNS.filter(column => !["filedAsOfDate", "tableEntryTotal"].includes(column.key)), ...result.rows[0].priorReturns.map((point, index) => ({ key: `return${index + 1}`, header: point.quarter, align: "right" as const, format: (value: unknown) => formatRawPercentMaybe(typeof value === "number" ? value : null) }))]
           : tab === "performance" ? BROWSER_COLUMNS : BROWSER_COLUMNS.filter(column => column.key !== "estQuarterReturn"),
-        rows: sortBrowserRows(result.rows, browserSortFor(DEFAULT_BROWSER_SORT, tab))
-          .slice(0, limit)
+        rows: browserRows
           .map((row) => ({ ...row, ...Object.fromEntries((row.priorReturns ?? []).map((point, index) => [`return${index + 1}`, point.value])) })),
         ...(result.warning ? { errors: [result.warning] } : {}),
         metadata: {
@@ -447,9 +486,10 @@ export function createThirteenFHeadless(
           hasMore: result.hasMore ?? false,
           shown: Math.min(result.rows.length, limit),
           truncated: more,
-          notices: more
-            ? [[`Showing the first ${Math.min(result.rows.length, limit)}`, limit < THIRTEENF_MAX_LIMIT ? `more: --limit ${THIRTEENF_MAX_LIMIT}` : ""].filter(Boolean).join(" | ")]
-            : [],
+          notices: [
+            ...(more ? [[`Showing the first ${Math.min(result.rows.length, limit)}`, limit < THIRTEENF_MAX_LIMIT ? `more: --limit ${THIRTEENF_MAX_LIMIT}` : ""].filter(Boolean).join(" | ")] : []),
+            ...(stale.length ? [staleFundsText(stale)] : []),
+          ],
         },
       };
     },

@@ -12,11 +12,101 @@ export const THIRTEENF_MAX_LIMIT = 200;
 
 export const AS_FILED_VALUE = "Value (USD) as reported at period end, not today's price";
 
+/** What a 13F filing leaves out and how late it arrives; the text reports' note and the catalog's limitation. */
+export const THIRTEENF_LIMITS = "Long US-listed equity positions only: shorts, cash and most foreign stocks are absent. Filed up to 45 days after quarter end.";
+
+/** The value basis of option rows, for exports. */
+export const THIRTEENF_OPTIONS_NOTE = "CALL/PUT rows: Value and Shares are the underlying stock's (notional), not the option premium.";
+
+/** The marker the text reports put on an option row's type, explained by `OPTION_ROWS_NOTE`. */
+const OPTION_MARK = "*";
+export const OPTION_ROWS_NOTE = `${OPTION_MARK} ${THIRTEENF_OPTIONS_NOTE}`;
+
+export function isOptionType(type: unknown): boolean {
+  const text = typeof type === "string" ? type.trim().toUpperCase() : "";
+  return text === "CALL" || text === "PUT";
+}
+
+/** A position type as the text report prints it: `CALL*` for an option, which `OPTION_ROWS_NOTE` explains. */
+export function markedPositionType(type: unknown): string {
+  const text = typeof type === "string" && type ? type : "--";
+  return isOptionType(type) ? `${text}${OPTION_MARK}` : text;
+}
+
 const count = (value: number) => value.toLocaleString("en-US");
 
-export function periodText(period: string | null | undefined, previousPeriod?: string | null): string {
+function periodText(period: string | null | undefined, previousPeriod?: string | null): string {
   if (!period) return "";
   return previousPeriod ? `Period ${period} vs ${previousPeriod}` : `Period ${period}`;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+const DAY_MS = 86_400_000;
+
+function calendarDay(date: string | null | undefined): Date | null {
+  if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const day = new Date(`${date}T00:00:00Z`);
+  return Number.isFinite(day.getTime()) ? day : null;
+}
+
+/** "30 Jun 2026", or "30 Jun" in `omitYear`. */
+export function filingDayText(date: string, omitYear?: number): string {
+  const day = calendarDay(date);
+  if (!day) return date;
+  const text = `${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}`;
+  return day.getUTCFullYear() === omitYear ? text : `${text} ${day.getUTCFullYear()}`;
+}
+
+/** Whole days from a quarter end to the filing, or null when either date is unreadable. */
+export function filingLagDays(period: string | null | undefined, filed: string | null | undefined): number | null {
+  const end = calendarDay(period);
+  const day = calendarDay(filed);
+  return end && day ? Math.round((day.getTime() - end.getTime()) / DAY_MS) : null;
+}
+
+/**
+ * "Period 30 Jun · filed 14 Aug 2026 (45 days after quarter end) | QoQ vs 31 Mar":
+ * when the positions date from and when they became public. A date in the
+ * filing's year leaves its year out.
+ */
+export function filedPeriodText(
+  period: string | null | undefined,
+  filed: string | null | undefined,
+  previousPeriod?: string | null,
+): string {
+  if (!period) return "";
+  const filedDay = calendarDay(filed);
+  if (!filed || !filedDay) return periodText(period, previousPeriod);
+  const year = filedDay.getUTCFullYear();
+  const lag = filingLagDays(period, filed);
+  const after = lag != null && lag >= 0 ? ` (${count(lag)} ${lag === 1 ? "day" : "days"} after quarter end)` : "";
+  return [
+    `Period ${filingDayText(period, year)} · filed ${filingDayText(filed)}${after}`,
+    previousPeriod ? `QoQ vs ${filingDayText(previousPeriod, year)}` : "",
+  ].filter(Boolean).join(" | ");
+}
+
+/** A filer this many quarters behind the reporting cycle has missed a filing, not just filed late. */
+export function isStaleFiling(quartersBehind: number | null | undefined): quartersBehind is number {
+  return quartersBehind != null && quartersBehind > 1;
+}
+
+export function quartersOldText(quarters: number): string {
+  return `${count(quarters)} quarters old`;
+}
+
+const NOTHING_LATER = "nothing filed for a later quarter";
+
+export function staleFilingText(quarters: number): string {
+  return `Latest filing is ${quartersOldText(quarters)}; ${NOTHING_LATER}`;
+}
+
+/** The funds in a list whose latest filing is stale, the first few by name. */
+export function staleFundsText(funds: readonly { name: string; quarters: number }[], shown = 3): string {
+  if (funds.length === 0) return "";
+  if (funds.length === 1) return `${funds[0]!.name}: latest filing is ${quartersOldText(funds[0]!.quarters)}; ${NOTHING_LATER}`;
+  const named = funds.slice(0, shown).map((fund) => `${fund.name} (${quartersOldText(fund.quarters)})`).join(", ");
+  return `Latest filing 2+ quarters old: ${named}${funds.length > shown ? ` and ${count(funds.length - shown)} more` : ""}`;
 }
 
 /** "showing 50 of 374" from the start of the list, "showing 51-100 of 374" past it. */

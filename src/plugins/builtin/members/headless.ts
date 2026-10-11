@@ -1,6 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchChanges, fetchFunds, fetchMembers } from "./client";
-import { canonicalFund, changeReason, decimal, DEFAULT_SORT, memberRows, percent } from "./model";
+import { canonicalFund, changeReason, coverageText, decimal, DEFAULT_SORT, holdingsCaveats, holdingsSourceText, memberRows, percent } from "./model";
 const columns: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" }, { key: "name", header: "Name" },
   { key: "weight", header: "Weight %", align: "right", format: (value) => value == null ? "--" : decimal(Number(value) * 100) },
@@ -30,6 +30,11 @@ export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
     return { freshness: { status: data.stale ? "stale" : "delayed", delayMinutes: 15, ignoreStaleFlags: true }, rows, columns: movers ? [...columns.slice(0, 3), { key: "contribution", header: "Contrib. pp", align: "right", format: (value) => percent(value as number | null, "", 3) }] : columns,
       complete: !data.stale && data.aggregate.fresh1D === data.aggregate.total,
       unavailableSymbols: data.members.flatMap((row) => row.symbol && row.changePercent === null ? [row.symbol] : []),
-      metadata: { fund: data.fund, asOf: data.asOf, snapshotAsOf: data.snapshotAsOf, aggregate: data.aggregate, stale: data.stale } };
+      metadata: { fund: data.fund, asOf: data.asOf, snapshotAsOf: data.snapshotAsOf, aggregate: data.aggregate, stale: data.stale, notices: [
+        holdingsSourceText(input, data),
+        // The pane's coverage figure, and once what the table's dashes mean instead of leaving them bare.
+        [coverageText(data.aggregate), data.aggregate.fresh1D < data.aggregate.total ? "1D -- means no fresh delayed quote; those holdings are not counted" : ""].filter(Boolean).join(" | "),
+        ...holdingsCaveats(data, movers),
+      ] } };
   },
 };

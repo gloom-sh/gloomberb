@@ -13,7 +13,7 @@ import { nextHeaderSort, type SortPreference } from "../../../utils/sort-values"
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
 import { useMembersMenu, type MemberList } from "../shared/members-menu";
 import { cachedChanges, cachedFunds, cachedMembers, loadChanges, loadFunds, loadMembers } from "./client";
-import { canonicalFund, changeColumns, changeLabel, changeReason, coveredFund, decimal, DEFAULT_SORT, isTab, memberColumns, memberRows, membersTitle, notCoveredMessage, percent, TABS, type MembersTab } from "./model";
+import { canonicalFund, changeColumns, changeLabel, changeReason, coverageText, coveredFund, decimal, DEFAULT_SORT, holdingsCaveats, isTab, memberColumns, memberRows, membersTitle, notCoveredMessage, percent, TABS, type MembersTab } from "./model";
 
 type ViewProps = Pick<PaneProps, "width" | "height" | "focused"> & { fund: string; active: boolean };
 const rowKey = (row: SectionedRow<FundMember>) => row.key;
@@ -47,7 +47,7 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
     const date = dates.length === 1 ? dates[0] : dates.length ? `${dates[0]} to ${dates.at(-1)}` : data.fundDailyAsOf?.slice(0, 10);
     const partial = data.aggregate.fresh1D < data.aggregate.total;
     return [
-      { id: "coverage", parts: [{ text: `${partial && width >= 60 ? "Partial " : ""}1D ${data.aggregate.fresh1D}/${data.aggregate.total} · ${decimal(data.aggregate.coveredWeight * 100, 1)}% wt`, tone: partial ? "warning" : "muted" }] },
+      { id: "coverage", parts: [{ text: coverageText(data.aggregate, width < 60), tone: partial ? "warning" : "muted" }] },
       { id: "quote-date", title: `${date ?? "Quote date unavailable"} · 15m delayed · holdings ${data.asOf}`,
         parts: [{ text: data.quotesUnavailable ? "returns unavailable" : width < 60 && dates.length === 1 ? `${date!.slice(5)} delayed` : `${date ? `${date} · ` : ""}15m delayed`, tone: "muted" }] },
       ...(width >= 60 ? [{ id: "holdings-date", parts: [{ text: `holdings ${data.asOf}`, tone: "muted" as const }] }] : []),
@@ -57,11 +57,8 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
     stale: !!data && (data.stale || resource.data!.stale || !!resource.error), info });
   usePaneNoticeFooter({ registrationId: "members:notices", focused, notices: [
     ...(resource.error || resource.data?.refreshError ? [resource.error ?? resource.data!.refreshError!] : []),
-    ...(data?.quotesUnavailable ? ["Member returns and current prices are unavailable. Dated holdings remain available."] : []),
     ...(data && data.aggregate.fresh1D < data.aggregate.total ? [`Fresh 1D: ${data.aggregate.fresh1D}/${data.aggregate.total} holdings, ${decimal(data.aggregate.coveredWeight * 100, 1)}% of whole-fund weight. Missing returns are excluded.`] : []),
-    ...(movers && data && data.aggregate.fundReturn === null ? ["Fund 1D is unavailable; the difference cannot be calculated."] : []),
-    ...(movers && data?.aggregate.withinTolerance === false ? [`The covered contribution sum differs from the fund by ${percent(data.aggregate.residual, " pp")}.`] : []),
-    ...(data?.excludedDerivatives ? [`${data.excludedDerivatives} derivative positions are excluded from these share holdings.`] : []),
+    ...(data ? holdingsCaveats(data, movers) : []),
   ] });
   const renderCell = useCallback((item: SectionedRow<FundMember>, column: DataTableColumn): DataTableCell => {
     if (!isSectionedItemRow(item)) return { text: "" };

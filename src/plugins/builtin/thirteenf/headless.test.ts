@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createThirteenFHeadless } from "./headless";
+import { AS_FILED_VALUE, OPTION_ROWS_NOTE, THIRTEENF_LIMITS } from "./report-notes";
 import type { FundDetailData } from "./types";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
@@ -84,6 +86,30 @@ describe("13F headless model", () => {
       action: "exit", previousShares: 632890, sharesChange: -632890,
       shares: null, value: null, estimatedPnl: null,
     });
+  });
+
+  test("dates holdings by their filing, flags a fund that stopped filing and marks option rows in text only", async () => {
+    const latest = { ...detail.forms[0]!, periodOfReport: "2020-09-30", filedAsOfDate: "2020-11-03" };
+    const previous = { ...detail.forms[1]!, periodOfReport: "2020-06-30", filedAsOfDate: "2020-08-14" };
+    const put = { ...detail.latestHoldings[0]!, cusip: "69608A108", ticker: "PLTR", putCall: "Put", value: 900, shares: 5 };
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows: [] }),
+      loadDetail: async () => ({ ...detail, forms: [latest, previous], latestForm: latest, previousForm: previous,
+        latestHoldings: [...detail.latestHoldings, put] }),
+    });
+    const result = await headless.load(args("holdings"), createTestHeadlessContext());
+    expect(result.metadata?.notices).toEqual([
+      "CIK 0001067983 | Period 30 Sep · filed 3 Nov 2020 (34 days after quarter end) | QoQ vs 30 Jun",
+      AS_FILED_VALUE,
+      expect.stringMatching(/^Latest filing is \d+ quarters old; nothing filed for a later quarter$/),
+    ]);
+    expect(result.notes).toEqual([THIRTEENF_LIMITS, OPTION_ROWS_NOTE]);
+    expect(result.freshness).toMatchObject({ asOf: "2020-11-03", basis: "13F filing for the quarter ended 30 Sep 2020" });
+    expect(result.rows.find((row) => row.ticker === "PLTR")?.type).toBe("PUT");
+    const text = renderHeadlessPaneText(headless, result, args("holdings"), "13F");
+    expect(text).toMatch(/PLTR\s+PUT\*\s/);
+    expect(text).toMatch(/AAPL\s+COM\s/);
+    expect(text).toContain("not a live feed (13F filing for the quarter ended 30 Sep 2020)");
   });
 
   test("requires an unambiguous manager even when the requested output has only one row", async () => {

@@ -1,4 +1,4 @@
-import type { FundChange, FundMember, MemberFundsPayload } from "../../../api-client/members";
+import type { FundChange, FundMember, FundMembersPayload, MemberFundsPayload } from "../../../api-client/members";
 import type { DataTableColumn } from "../../../components";
 import { buildSectionedRows, type SectionedRow } from "../../../components/data-table/sections";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -7,14 +7,42 @@ export type MembersTab = "members" | "movers" | "changes";
 export const TABS = [{ value: "members", label: "Members" }, { value: "movers", label: "Movers" }, { value: "changes", label: "Changes" }];
 export const isTab = (value: unknown): value is MembersTab => TABS.some((tab) => tab.value === value);
 const COVERED = [{ ticker: "IVV", name: "S&P 500" }, { ticker: "IJH", name: "S&P 400" }, { ticker: "IJR", name: "S&P 600" }, { ticker: "IWM", name: "Russell 2000" }, { ticker: "IWB", name: "Russell 1000" }];
-export function canonicalFund(input: string) { const symbol = input.split(":")[0]!.trim().toUpperCase(); return ["SPX", "SPY", "^GSPC"].includes(symbol) ? "IVV" : symbol; }
+/** Symbols the app reads as a covered fund before asking the server, which knows its own aliases too. */
+const LOCAL_ALIASES: Record<string, string> = { SPX: "IVV", SPY: "IVV", "^GSPC": "IVV" };
+const requestedSymbol = (input: string) => input.split(":")[0]!.trim().toUpperCase();
+export function canonicalFund(input: string) { const symbol = requestedSymbol(input); return LOCAL_ALIASES[symbol] ?? symbol; }
 /** The covered fund the user asked for, by ticker or by an alias such as SPX, or undefined when it is not covered. */
 export function coveredFund(funds: MemberFundsPayload["funds"], input: string) {
   const symbol = canonicalFund(input);
   return funds.find((fund) => fund.ticker === symbol || fund.aliases.some((alias) => alias.toUpperCase() === symbol));
 }
+/** Every symbol that opens this fund: the server's aliases and the app's own. */
+function fundAliases(fund: MemberFundsPayload["funds"][number]) {
+  const local = Object.entries(LOCAL_ALIASES).flatMap(([alias, ticker]) => ticker === fund.ticker ? [alias] : []);
+  return [...new Set([...fund.aliases.map((alias) => alias.toUpperCase()), ...local])].filter((alias) => alias !== fund.ticker);
+}
 export function notCoveredMessage(input: string, funds: MemberFundsPayload["funds"]) {
-  return `${input.split(":")[0]!.trim().toUpperCase()} is not a covered fund. Covered: ${funds.map((fund) => fund.ticker).join(", ")}.`;
+  const covered = funds.map((fund) => { const aliases = fundAliases(fund); return aliases.length ? `${fund.ticker} (${aliases.join(", ")})` : fund.ticker; });
+  return `${requestedSymbol(input)} is not a covered fund. Covered: ${covered.join(", ")}.`;
+}
+/** "Partial 1D 334/504 · 91.5% wt": how many holdings have a fresh 1D return, and their share of the fund. */
+export function coverageText(aggregate: FundMembersPayload["aggregate"], short = false) {
+  const partial = aggregate.fresh1D < aggregate.total;
+  return `${partial && !short ? "Partial " : ""}1D ${aggregate.fresh1D}/${aggregate.total} · ${decimal(aggregate.coveredWeight * 100, 1)}% wt`;
+}
+/** "S&P 500, IVV holdings as of 2026-10-08 (for SPY)": the holdings file the members come from. */
+export function holdingsSourceText(input: string, data: Pick<FundMembersPayload, "fund" | "asOf">) {
+  const requested = requestedSymbol(input);
+  return `${data.fund.name}, ${data.fund.ticker} holdings as of ${data.asOf.slice(0, 10)}${requested && requested !== data.fund.ticker ? ` (for ${requested})` : ""}`;
+}
+/** Caveats about a fund's holdings and returns, shared by the pane's notices and the text report. */
+export function holdingsCaveats(data: FundMembersPayload, movers: boolean) {
+  return [
+    ...(data.quotesUnavailable ? ["Member returns and current prices are unavailable. Dated holdings remain available."] : []),
+    ...(movers && data.aggregate.fundReturn === null ? ["Fund 1D is unavailable; the difference cannot be calculated."] : []),
+    ...(movers && data.aggregate.withinTolerance === false ? [`The covered contribution sum differs from the fund by ${percent(data.aggregate.residual, " pp")}.`] : []),
+    ...(data.excludedDerivatives ? [`${data.excludedDerivatives} derivative positions are excluded from these share holdings.`] : []),
+  ];
 }
 export function membersTitle(input: string) {
   const requested = input.split(":")[0]!.trim().toUpperCase();

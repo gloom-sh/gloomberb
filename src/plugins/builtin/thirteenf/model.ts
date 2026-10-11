@@ -26,7 +26,6 @@ import type {
 
 export const THIRTEENF_PANE_ID = "thirteenf-funds";
 export const THIRTEENF_TEMPLATE_ID = "thirteenf-funds-pane";
-export const THIRTEENF_OPTIONS_NOTE = "Option values and shares refer to the underlying; 13F % is share of reported value.";
 
 export const FUND_DETAIL_TABS: Array<{ label: string; value: ThirteenFDetailTab }> = [
   { label: "Holdings", value: "holdings" },
@@ -94,6 +93,45 @@ export function latestLikely13FQuarter(now = new Date()): string {
     if (end.getTime() + 50 * 86_400_000 <= now.getTime()) return normalizeQuarterDate(end);
   }
   return "";
+}
+
+function quarterIndex(period: string): number | null {
+  const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(period) ?? /^(\d{4})Q([1-4])$/.exec(period);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const part = Number(match[2]);
+  return year * 4 + (period.includes("Q") ? part - 1 : Math.floor((part - 1) / 3));
+}
+
+/**
+ * How many quarters a fund's latest report period trails the latest quarter
+ * filers have had time to report (`latestLikely13FQuarter`); 0 when it is
+ * current or ahead, null without a readable period.
+ */
+export function quartersBehindLatest(period: string | null | undefined, now = new Date()): number | null {
+  const latest = quarterIndex(latestLikely13FQuarter(now));
+  const own = period ? quarterIndex(period) : null;
+  return latest == null || own == null ? null : Math.max(0, latest - own);
+}
+
+/**
+ * The fund search lists a manager once for each name it has filed under
+ * ("PERSHING SQUARE HOLDCO, L.P." and "PERSHING SQUARE INC." share a CIK).
+ * One row per CIK: a renamed manager takes the name on its latest loaded
+ * filing, else the longest of its names.
+ */
+export function oneFundPerCik(
+  funds: readonly ThirteenFFund[],
+  reports?: ReadonlyMap<string, ThirteenFPeriodReport>,
+): ThirteenFFund[] {
+  const byCik = new Map<string, ThirteenFFund[]>();
+  for (const fund of funds) byCik.set(fund.cik, [...(byCik.get(fund.cik) ?? []), fund]);
+  return [...byCik.values()].map((names) => {
+    if (names.length === 1) return names[0]!;
+    const filed = reports?.get(names[0]!.cik)?.filings.at(-1)?.companyName;
+    const longest = names.reduce((best, fund) => (fund.name.length > best.name.length ? fund : best));
+    return { ...longest, name: filed || longest.name };
+  });
 }
 
 export function buildBrowserRows(options: {

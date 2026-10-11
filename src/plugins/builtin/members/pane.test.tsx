@@ -61,7 +61,7 @@ test("partial holdings keep number columns aligned, open tickers and lazily load
 test("a fund outside the server's covered list says which funds are covered", async () => {
   setCloudApiFetchTransport(async (input) => new URL(String(input)).pathname.endsWith("/members") ? Response.json(covered) : Response.json({ error: "Covered funds" }, { status: 404 }));
   await mountMembers("IBIT");
-  const frame = await tui.waitForFrameToContain("IBIT is not a covered fund. Covered: IVV, IJH, IJR, IWM, IWB.");
+  const frame = await tui.waitForFrameToContain("IBIT is not a covered fund. Covered: IVV (SPY, SPX, ^GSPC), IJH, IJR, IWM, IWB.");
   expect(frame).not.toContain("not available on this server");
 });
 test("Movers has no members menu, and a search narrows what the menu opens", async () => {

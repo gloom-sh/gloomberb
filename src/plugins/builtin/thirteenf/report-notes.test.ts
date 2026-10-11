@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { summarizeTickerHoldings } from "./report-notes";
+import { filedPeriodText, summarizeTickerHoldings } from "./report-notes";
 
 const row = (cik: string, value: number | null = 100, action: "held" | "exit" = "held") => ({ cik, value, action });
 const quarter = { period: "2026-06-30", previousPeriod: "2026-03-31", holderCount: 3, newCount: 1, exitCount: 1 };
@@ -36,5 +36,18 @@ describe("13F ticker holdings summary", () => {
       "Period 2026-06-30 | 60 holders | Value (USD) as reported at period end, not today's price",
       "Showing 26-50 of 60 funds; the 25 shown hold $2.5k | more: --offset 50 or --limit 200",
     ]);
+  });
+});
+
+describe("13F filing dates", () => {
+  test("say when the positions date from, when they were filed and the lag between", () => {
+    expect(filedPeriodText("2026-06-30", "2026-08-14", "2026-03-31"))
+      .toBe("Period 30 Jun · filed 14 Aug 2026 (45 days after quarter end) | QoQ vs 31 Mar");
+    // A Q4 report is filed the next year, so the period keeps its own.
+    expect(filedPeriodText("2025-12-31", "2026-02-17", "2025-09-30"))
+      .toBe("Period 31 Dec 2025 · filed 17 Feb 2026 (48 days after quarter end) | QoQ vs 30 Sep 2025");
+    expect(filedPeriodText("2026-03-31", "2026-05-15", "2025-12-31"))
+      .toBe("Period 31 Mar · filed 15 May 2026 (45 days after quarter end) | QoQ vs 31 Dec 2025");
+    expect(filedPeriodText("2026-06-30", null)).toBe("Period 2026-06-30");
   });
 });

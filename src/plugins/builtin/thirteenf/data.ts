@@ -14,6 +14,7 @@ import { isoDateDaysAgo, isoDateToday, isoDateYearsAgo } from "../../../utils/ca
 import {
   buildBrowserRows,
   latestLikely13FQuarter,
+  oneFundPerCik,
   buildPeriodReports,
   dedupeLatestForms,
 } from "./model";
@@ -192,7 +193,8 @@ async function loadBrowserPage(
       nextOffset: offset + 1,
     };
   }
-  const funds = await searchThirteenFFunds(trimmed, browserLimit, signal, pageApiOptions);
+  const found = await searchThirteenFFunds(trimmed, browserLimit, signal, pageApiOptions);
+  const funds = oneFundPerCik(found);
   const [{ reports, warning }, topFunds] = await Promise.all([
     loadReportsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), { from, to, signal, ...apiOptions }),
     listTopThirteenFFunds(quarter, browserLimit, signal, apiOptions).catch(() => []),
@@ -203,15 +205,15 @@ async function loadBrowserPage(
     .filter((fund): fund is ThirteenFTopFund => !!fund);
   return {
     rows: buildBrowserRows({
-      funds,
+      funds: oneFundPerCik(found, reports),
       topFunds: matchedTopFunds,
       reports,
       source: "funds",
     }),
     quarter,
     warning,
-    hasMore: funds.length >= browserLimit,
-    nextOffset: offset + funds.length,
+    hasMore: found.length >= browserLimit,
+    nextOffset: offset + found.length,
   };
 }
 
