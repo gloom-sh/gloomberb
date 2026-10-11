@@ -426,6 +426,35 @@ const steps: Step[] = [
     },
   },
   {
+    // A chart that is its pane's root fills the pane, a fraction of a cell past
+    // its columns and rows: the pointer is read back into them, so the
+    // crosshair stays under it down to the plot's bottom edge.
+    name: "chart: the crosshair sits under the pointer across the plot",
+    scenario: "resize",
+    async run(cdp) {
+      const plot = await evaluate<Rect | null>(cdp, `__check.rect(__check.pane("chart:dock")?.querySelector("[data-gloom-role=composite-chart-panel]"))`)
+        ?? fail("chart:dock has no plot");
+      // Short of the empty offset after the last observation, where the line stays on it.
+      for (const at of [
+        { x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 },
+        { x: plot.x + plot.width * 0.5, y: plot.y + plot.height * 0.5 },
+      ]) {
+        await mouse(cdp, "mouseMoved", at.x, at.y, false);
+        const crosshair = `(() => {
+          const pane = __check.pane("chart:dock");
+          const x = pane?.querySelector("[data-gloom-role=chart-crosshair-x]")?.getBoundingClientRect();
+          const y = pane?.querySelector("[data-gloom-role=chart-crosshair-y]")?.getBoundingClientRect();
+          return x && y ? { x: Math.round(x.x + x.width / 2), y: Math.round(y.y + y.height / 2) } : null;
+        })()`;
+        // The vertical line snaps to the nearest observation; the horizontal one is the pointer's.
+        const under = `(() => { const lines = ${crosshair}; return lines && Math.abs(lines.x - ${at.x}) <= 4 && Math.abs(lines.y - ${at.y}) <= 2; })()`;
+        if (!await waitFor(cdp, under)) {
+          fail("the crosshair is not under the pointer", { pointer: { x: Math.round(at.x), y: Math.round(at.y) }, crosshair: await evaluate(cdp, crosshair) });
+        }
+      }
+    },
+  },
+  {
     name: "idle: a pane with two tables renders nothing while nothing moves",
     scenario: "resize",
     async run(cdp) {

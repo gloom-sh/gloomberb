@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities, type BoxRenderable } from "../../ui";
 import { useLiveStretch } from "../../ui/live-stretch";
+import { PANE_FILL } from "../../ui/pane-fill";
 import { blendHex } from "../../theme/colors";
 import {
   heatmapColorDistance,
@@ -535,6 +536,7 @@ function DomHeatTreemap<T>({
   const other = scene.other;
   // Tiles sit at percentages of the map, so while a resize has the pane ahead
   // of this size the map takes the size it will have and they follow by CSS.
+  // As a pane's root (PANE_FILL) the map is the pane's box by CSS instead.
   const rootRef = useRef<BoxRenderable | null>(null);
   useLiveStretch(rootRef, width, height);
 
@@ -544,6 +546,7 @@ function DomHeatTreemap<T>({
       width={width}
       height={height}
       style={{ position: "relative", backgroundColor: colors.bg, overflow: "hidden" }}
+      {...PANE_FILL}
     >
       <Box
         ref={chartRef}

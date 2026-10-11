@@ -189,6 +189,7 @@ function ChartCrosshair({
   return (
     <>
       <div
+        data-gloom-role="chart-crosshair-x"
         style={{
           position: "absolute",
           top: 0,
@@ -205,6 +206,7 @@ function ChartCrosshair({
       {clampedY === null ? null : (
         <>
           <div
+            data-gloom-role="chart-crosshair-y"
             style={{
               position: "absolute",
               left: 0,

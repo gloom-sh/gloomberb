@@ -136,6 +136,18 @@ export interface BoxRenderable {
    * so it costs no layout or repaint; a size lays out the box's own subtree.
    */
   setLiveFrame?: (frame: LiveBoxFrame | null) => void;
+  /**
+   * Desktop only: calls `listener` with the box's size in cells each time the
+   * browser lays it out at a new one (a ResizeObserver, after layout and
+   * before paint). Returns the unsubscribe.
+   */
+  observeSize?: (listener: (size: { width: number; height: number }) => void) => () => void;
+  /**
+   * Desktop only: whether CSS sizes this box to its pane's whole content box
+   * (`PANE_FILL` on a pane's root, ui/pane-fill.ts), so it follows every
+   * frame of a resize on its own.
+   */
+  fillsPane?: () => boolean;
   [key: string]: unknown;
 }
 

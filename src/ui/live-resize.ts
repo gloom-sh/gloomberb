@@ -32,6 +32,18 @@ export function onLiveResizeEnd(listener: () => void): () => void {
   return () => { endListeners.delete(listener); };
 }
 
+const catchUpListeners = new Set<() => void>();
+
+/**
+ * Called with every catch-up of a resize (`createCatchUp`), in the same task,
+ * so what the listener renders lands in the catch-up's own commit rather than
+ * in one of its own.
+ */
+export function onLiveCatchUp(listener: () => void): () => void {
+  catchUpListeners.add(listener);
+  return () => { catchUpListeners.delete(listener); };
+}
+
 /**
  * How long content laid out on the cell grid waits, at most, to render at the
  * size a resize has reached. A frame follows every pointer move; drawing a
@@ -58,6 +70,7 @@ export function createCatchUp(catchUp: () => void, intervalMs = LIVE_RESIZE_CATC
       timer = setTimeout(() => {
         timer = null;
         catchUp();
+        for (const listener of [...catchUpListeners]) listener();
       }, intervalMs);
     },
     cancel() {

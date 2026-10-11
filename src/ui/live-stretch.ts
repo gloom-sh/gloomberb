@@ -80,7 +80,9 @@ function sameFrame(a: LiveBoxFrame | null, b: LiveBoxFrame | null): boolean {
  * When the content renders at the new size the box draws as laid out again,
  * and when the resize ends it is handed back in the commit that lays the pane
  * out. Nothing renders per move. The terminal redraws its cells on every move
- * and has no frame to follow.
+ * and has no frame to follow. A surface that is its pane's root and takes the
+ * pane's whole box (`PANE_FILL`) is sized by CSS instead, and this leaves it
+ * alone; the prediction is for surfaces placed inside a pane's own layout.
  */
 export function useLiveStretch(box: RefObject<BoxRenderable | null>, width: number, height: number): void {
   const pane = useContext(LivePaneFrameContext);
@@ -93,7 +95,9 @@ export function useLiveStretch(box: RefObject<BoxRenderable | null>, width: numb
     // what was drawn, so the first follow draws whatever the element holds.
     let redraw = drawn.current !== null;
     const follow = () => {
-      const live = pane.live();
+      // A pane's root that CSS sizes to the pane (pane-fill.ts) follows the
+      // frame on its own, to the pixel: nothing to predict.
+      const live = box.current?.fillsPane?.() ? null : pane.live();
       let next: LiveBoxFrame | null = null;
       if (live) {
         const { rendered } = pane;

@@ -248,6 +248,14 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   min-height: 0;
   max-height: 100%;
 }
+/* A surface that takes its pane's whole box (src/ui/pane-fill.ts), as the
+   pane's root, is the content box's size whatever cells it was given: it
+   follows every frame of a resize, and at rest fills the last fraction of a
+   cell the cells leave. */
+[data-gloom-role="pane-content"] > [data-gloom-pane-fill]:only-child {
+  width: 100% !important;
+  height: 100% !important;
+}
 /* The same chrome row as the pane header, query bar and table header. */
 [data-gloom-role="pane-footer"] {
   flex: 0 0 var(--chrome-h);

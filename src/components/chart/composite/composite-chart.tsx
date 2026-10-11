@@ -10,6 +10,7 @@ import { CompositeLegend } from "./legend";
 import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
 import { AsciiText, Box, ChartSurface, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { useLiveStretch } from "../../../ui/live-stretch";
+import { PANE_FILL } from "../../../ui/pane-fill";
 import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { useThemeColors, useThemeId } from "../../../theme/theme-context";
 import { themedSeriesColor, themeSeriesColors } from "../../../theme/series-colors";
@@ -63,8 +64,9 @@ const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
 /**
  * Desktop: the rows below the plot span the chart's box and their labels the
  * width the gutters leave, so when a resize draws the box at a new size
- * between renders (`useLiveStretch`) they follow it by CSS; at rest they are
- * the size the cells give them.
+ * between renders (`useLiveStretch`), or the chart is its pane's root and CSS
+ * sizes it to the pane (`PANE_FILL`), they follow it by CSS. Otherwise they
+ * are the size the cells give them.
  */
 const DESKTOP_FULL_ROW = { width: "100%" } as const;
 const DESKTOP_PLOT_COLUMN = { flex: "1 1 0px", width: "auto", minWidth: 0 } as const;
@@ -428,7 +430,8 @@ function ThemedCompositeChart({
 
   // While a resize has the pane ahead of this size, the chart's box takes
   // the size it will render at, the plot takes what the gutters leave, and
-  // its bitmap stretches with it until the chart renders at that size.
+  // its bitmap stretches with it until the chart renders at that size. As a
+  // pane's root (PANE_FILL) the box is the pane's by CSS instead.
   const rootRef = useRef<BoxRenderable | null>(null);
   useLiveStretch(rootRef, totalWidth, totalHeight);
   // Overlays over the plot keep the gutters around it rather than its size.
@@ -445,6 +448,7 @@ function ThemedCompositeChart({
         width={totalWidth}
         height={totalHeight}
         overflow="hidden"
+        {...PANE_FILL}
         data-gloom-role="composite-chart"
       >
         {legendRows > 0 && legendAccessory ? (
@@ -537,6 +541,7 @@ function ThemedCompositeChart({
       overflow="hidden"
       // The tool overlay anchors here; without it the desktop pins it to the page.
       position="relative"
+      {...PANE_FILL}
       data-gloom-role="composite-chart"
     >
       {showLegend ? (

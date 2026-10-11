@@ -22,6 +22,7 @@ import {
 } from "./mouse";
 import { hideDragShield, showDragShield } from "./drag-shield";
 import { applyLiveFrame } from "./live-frame";
+import { fillsPane, observeCellSize } from "./size-observer";
 import { cleanDomProps, commonStyle } from "./style";
 
 /** Farther than this from the pointer, in px, a predicted point is noise. */
@@ -88,6 +89,8 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       handle.setLiveFrame = (frame) => {
         if (elementRef.current) applyLiveFrame(elementRef.current, frame, propsRef.current);
       };
+      handle.observeSize = (listener) => (elementRef.current ? observeCellSize(elementRef.current, listener) : () => {});
+      handle.fillsPane = () => (elementRef.current ? fillsPane(elementRef.current) : false);
       return handle as unknown as HTMLDivElement;
     }, []);
 

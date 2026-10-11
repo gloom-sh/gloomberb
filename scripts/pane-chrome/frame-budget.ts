@@ -53,6 +53,8 @@ const MIN_COMMIT_DELTA = 10;
 const MAX_FRAME_LAG_PX = 24;
 /** The release lays a resize out where the pointer left it: within a cell (at the default size) of the frame, and the content, it drew. */
 const MAX_RELEASE_JUMP_PX = 8;
+/** At rest a chart's bitmap is drawn at the pixels its plot has; under this, the scale is the whole-pixel rounding of a fractional plot. */
+const MAX_REST_STRETCH_PCT = 0.25;
 
 /** Counts React commits through the DevTools hook React looks for when it loads, and keeps where the pointer is. */
 const PAGE_PROBES = `
@@ -91,6 +93,10 @@ interface DragSample {
   releaseJumpPx?: number;
   /** Resizes: how far the content's edge moved when the pointer let go, px. */
   contentReleaseJumpPx?: number;
+  /** Charts: how far CSS scaled the canvas's bitmap from 1:1 during the drag, %, 95th percentile. */
+  bitmapStretchPct?: number;
+  /** Charts: the same once the pane is at rest after the release, %: 0 is drawn sharp. */
+  restStretchPct?: number;
 }
 
 interface Scenario {
@@ -108,6 +114,8 @@ interface Scenario {
    * moves).
    */
   track?: { frame: string; content: string; anchor?: string };
+  /** Charts: the canvas whose bitmap scale (its CSS width against its pixels) says whether it is drawn 1:1. */
+  canvas?: string;
 }
 
 const partCenter = (selector: string) => `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + Math.min(r.width / 2, 16), y: r.y + r.height / 2 }; })()`;
@@ -126,13 +134,17 @@ const TOP_DIVIDER = `(() => {
 })()`;
 
 /** A floating pane's corner, dragged out, in past where it started and out again, as the chart and table resizes do. */
-const cornerResize = (name: string, float: string, paneId: string, content: string): Scenario => ({
+const cornerResize = (name: string, float: string, paneId: string, content: string, canvas?: string): Scenario => ({
   name,
   fixture: `resize&float=${float}`,
   grab: (cdp) => evaluate(cdp, middleOf(`${pane(paneId)} [data-gloom-role=resize-handle]`)),
   path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 220, y: start.y + Math.sin(t * Math.PI * 2) * 90 }),
   track: { frame: rightOf(pane(paneId)), content: rightOf(`${pane(paneId)} ${content}`) },
+  canvas,
 });
+
+/** How far, in %, CSS scales the canvas's bitmap from 1:1: its laid-out width against its pixels. */
+const stretchOf = (selector: string) => `(() => { const canvas = document.querySelector(${JSON.stringify(selector)}); if (!canvas || !canvas.width) return 0; return Math.abs(canvas.getBoundingClientRect().width * devicePixelRatio / canvas.width - 1) * 100; })()`;
 
 const SCENARIOS: Scenario[] = [
   {
@@ -161,7 +173,7 @@ const SCENARIOS: Scenario[] = [
   },
   // The canvas a chart draws on the cell grid, which catches up with a
   // resize a few times a second and is stretched with the frame in between.
-  cornerResize("chart resize", "chart", "chart:float", "canvas"),
+  cornerResize("chart resize", "chart", "chart:float", "canvas", `${pane("chart:float")} canvas`),
   // Tiles placed in percentages of a map laid out on the cell grid.
   cornerResize("heat map resize", "heat", "heat:float", "[data-gloom-role=heat-treemap]"),
   // A chart of a fixed height in a column of text: it follows the width only.
@@ -188,6 +200,7 @@ const SCENARIOS: Scenario[] = [
       content: rightOf(`${pane("chart:dock")} canvas`),
       anchor: rightOf(pane("chart:dock")),
     },
+    canvas: `${pane("chart:dock")} canvas`,
   },
   {
     name: "table column drag",
@@ -229,7 +242,9 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   await evaluate(cdp, `(() => {
     window.__frameTimes = [];
     window.__lag = [];
+    window.__stretch = [];
     window.__commits = 0;
+    const stretch = ${scenario.canvas ? `() => ${stretchOf(scenario.canvas)}` : "null"};
     const track = ${scenario.track ? `{ frame: () => ${scenario.track.frame}, content: () => ${scenario.track.content}, anchor: ${scenario.track.anchor ? `() => ${scenario.track.anchor}` : "null"} }` : "null"};
     const origin = track && { frame: track.frame() - ${start.x}, content: track.content() - (track.anchor ? track.anchor() : ${start.x}) };
     let last = performance.now();
@@ -243,6 +258,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
           if (!window.__recording) return;
           const anchor = track.anchor ? track.anchor() : pointer;
           window.__lag.push([Math.abs(track.frame() - pointer - origin.frame), Math.abs(track.content() - anchor - origin.content)]);
+          if (stretch) window.__stretch.push(stretch());
         }, 0);
       }
       if (window.__recording) requestAnimationFrame(tick);
@@ -261,7 +277,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   }
   const after = await metrics(cdp);
   const elapsed = performance.now() - began;
-  const recorded = await evaluate<{ frameTimes: number[]; commits: number; lag: Array<[number, number]> }>(cdp, "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), commits: window.__commits, lag: window.__lag.slice(1) }; })()");
+  const recorded = await evaluate<{ frameTimes: number[]; commits: number; lag: Array<[number, number]>; stretch: number[] }>(cdp, "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), commits: window.__commits, lag: window.__lag.slice(1), stretch: window.__stretch.slice(1) }; })()");
   // The pointer comes to rest where the drag ends, and lets go there.
   const end = scenario.path(start, 1);
   await mouse(cdp, "mouseMoved", end.x, end.y, true);
@@ -271,6 +287,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   await mouse(cdp, "mouseReleased", end.x, end.y, false);
   await frames(cdp, 3);
   const released = await evaluate<[number, number]>(cdp, edges);
+  // At rest: what renders a frame or two after the release has.
+  const restStretch = scenario.canvas ? (await frames(cdp, 6), await evaluate<number>(cdp, stretchOf(scenario.canvas))) : 0;
   const drawn = Math.max(1, recorded.frameTimes.length);
   const ms = (name: string) => (after[name]! - before[name]!) * 1000;
   return {
@@ -288,6 +306,10 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
       contentLagPx: percentile(recorded.lag.map(([, content]) => content), 0.95),
       releaseJumpPx: Math.abs(released[0] - held[0]),
       contentReleaseJumpPx: Math.abs(released[1] - held[1]),
+    } : {}),
+    ...(scenario.canvas ? {
+      bitmapStretchPct: percentile(recorded.stretch, 0.95),
+      restStretchPct: restStretch,
     } : {}),
   };
 }
@@ -368,7 +390,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
   ];
   const problems: string[] = [];
   const notes: string[] = [];
-  for (const { name, track } of scenarios) {
+  for (const { name, track, canvas } of scenarios) {
     const pick = (side: "base" | "head", key: keyof DragSample) => median(samples[side].map((sample) => sample[name]![key] ?? 0));
     const row = (label: string, key: keyof DragSample, unit = "") => {
       lines.push(`| ${name}: ${label} | ${round(pick("base", key))}${unit} | ${round(pick("head", key))}${unit} |`);
@@ -386,6 +408,14 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
       row("content behind the pointer", "contentLagPx", " px");
       row("frame jump on release", "releaseJumpPx", " px");
       row("content jump on release", "contentReleaseJumpPx", " px");
+    }
+    if (canvas) {
+      row("chart bitmap scaled by CSS (p95)", "bitmapStretchPct", "%");
+      row("chart bitmap scaled at rest", "restStretchPct", "%");
+      const restStretch = pick("head", "restStretchPct");
+      if (restStretch > MAX_REST_STRETCH_PCT) {
+        problems.push(`${name}: at rest the chart's bitmap is scaled ${round(restStretch, 2)}% by CSS, so it is not drawn sharp (limit: ${MAX_REST_STRETCH_PCT}%).`);
+      }
     }
     const frameLag = { base: pick("base", "frameLagPx"), head: pick("head", "frameLagPx") };
     if (track && frameLag.head > MAX_FRAME_LAG_PX) {
