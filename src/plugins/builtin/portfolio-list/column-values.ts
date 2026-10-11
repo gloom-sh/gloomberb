@@ -344,7 +344,9 @@ export function getColumnValue(
     case "exchange":
       return {
         text: compactText(
-          quote?.listingExchangeName
+          // A row saved as 247540:KRX shows KOSDAQ, the board its quote is read on.
+          quote?.tradingExchangeName
+          || quote?.listingExchangeName
           || quote?.exchangeName
           || quote?.routingExchangeName
           || ticker.metadata.exchange,
@@ -576,7 +578,8 @@ export function getSortValue(
     case "asset_type":
       return ticker.metadata.assetCategory ?? null;
     case "exchange":
-      return quote?.listingExchangeName
+      return quote?.tradingExchangeName
+        ?? quote?.listingExchangeName
         ?? quote?.exchangeName
         ?? quote?.routingExchangeName
         ?? ticker.metadata.exchange

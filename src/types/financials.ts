@@ -90,6 +90,12 @@ export interface Quote extends DepositaryReceiptFacts {
   fullExchangeName?: string;
   listingExchangeName?: string;
   listingExchangeFullName?: string;
+  /**
+   * The board whose line priced the quote, when Gloom Cloud read another one
+   * than the listing asked for: a KOSDAQ code saved as 247540:KRX is quoted
+   * from KOSDAQ and still named KRX in the listing fields (quoteTradingExchange).
+   */
+  tradingExchangeName?: string;
   routingExchangeName?: string;
   routingExchangeFullName?: string;
   marketState?: MarketState;

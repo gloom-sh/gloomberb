@@ -97,6 +97,7 @@ import {
 } from "../../plugins/builtin/shared/report-freshness";
 import {
   bareListingNote,
+  tradingBoardNote,
   EXCHANGE_OPTION,
   futuresTryLine,
   isNoProviderError,
@@ -657,7 +658,9 @@ async function answerQuote(
     // "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
     const choice = venues ? await listingChoiceNotes(listing, market, result.quote, venues) : listingReadNotes(listing);
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
-    return { result, listing, notes: [...choice, venue ?? [], also(result.quote)].flat() };
+    // A row saved as 247540:KRX is quoted from KOSDAQ, the board it trades on.
+    const board = tradingBoardNote(listing, result.quote);
+    return { result, listing, notes: [...choice, venue ?? [], board ?? [], also(result.quote)].flat() };
   }
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };

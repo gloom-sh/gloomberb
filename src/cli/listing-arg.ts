@@ -637,6 +637,21 @@ export function bareListingNote(
 }
 
 /**
+ * "Read 247540:KRX on KOSDAQ, where 247540 trades." for a listing Gloom Cloud
+ * quoted from the board its symbol trades on rather than the one asked for: a
+ * KOSDAQ code saved on KRX before search listed it on KOSDAQ. Null when the
+ * quote is the listing's own line.
+ */
+export function tradingBoardNote(
+  listing: Pick<CliListing, "symbol" | "request">,
+  quote: Pick<Quote, "tradingExchangeName" | "listingExchangeName" | "exchangeName"> | null | undefined,
+): string | null {
+  const board = canonicalExchange(quote?.tradingExchangeName);
+  const asked = canonicalExchange(listing.request.exchange || quote?.listingExchangeName || quote?.exchangeName);
+  return board && asked && board !== asked ? `Read ${listing.symbol}:${asked} on ${board}, where ${listing.symbol} trades.` : null;
+}
+
+/**
  * A data request for the listings a command named. When it throws, or `isMiss`
  * calls what it returned empty, and a listing's exchange is one its symbol does
  * not trade on, the command ends in that message instead of the request's own

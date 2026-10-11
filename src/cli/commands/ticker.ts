@@ -488,7 +488,8 @@ function listingVenueLabel(
   tickerFile: TickerRecord | null,
 ): string {
   const exchangeName = quote?.exchangeName ?? financials.quoteMetadata?.listingExchangeName ?? tickerFile?.metadata.exchange;
-  const venue = canonicalExchange(listingExchange || quote?.listingExchangeName || exchangeName);
+  // A KOSDAQ code saved on KRX is reported from KOSDAQ, where its quote is read.
+  const venue = canonicalExchange(quote?.tradingExchangeName || listingExchange || quote?.listingExchangeName || exchangeName);
   return isKnownExchangeCode(venue) ? exchangeLabel(venue) : exchangeShortName(exchangeName, quote?.fullExchangeName);
 }
 

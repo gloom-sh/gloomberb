@@ -1,4 +1,5 @@
 import type { DataProvider } from "../types/data-provider";
+import { quoteTradingExchange } from "../market-data/quotes/metadata";
 import type { TickerRecord } from "../types/ticker";
 import { AmbiguousContractError, AmbiguousTickerError, LISTING_SEARCH_LIMIT, listingChoiceQuery, resolveTickerSearch } from "./search";
 import {
@@ -70,8 +71,8 @@ export async function quotedOnVenue(listing: { symbol: string; exchange: string 
   if (isUsListingExchange(listing.exchange)) return false;
   try {
     const quote = await dataProvider.getQuote(`${listing.symbol}:${listing.exchange}`, listing.exchange);
-    return Number.isFinite(quote.price) && quote.price !== 0
-      && canonicalExchange(quote.listingExchangeName || quote.exchangeName) === listing.exchange;
+    // A KOSDAQ code asked for on KRX is answered as KRX from its KOSDAQ line: it trades on KOSDAQ only.
+    return Number.isFinite(quote.price) && quote.price !== 0 && quoteTradingExchange(quote) === listing.exchange;
   } catch {
     return false;
   }

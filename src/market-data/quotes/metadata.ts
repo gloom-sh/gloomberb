@@ -18,6 +18,15 @@ export function quoteMetadataFromQuote(quote: Quote): QuoteMetadata {
   };
 }
 
+/**
+ * The venue a quote's price comes from: the board Gloom Cloud read it on
+ * (247540:KRX on KOSDAQ), else its listing. The listing fields keep the venue
+ * asked for, which is what a quote's identity is checked against.
+ */
+export function quoteTradingExchange(quote: Pick<Quote, "tradingExchangeName" | "listingExchangeName" | "exchangeName">): string {
+  return canonicalExchange(quote.tradingExchangeName || quote.listingExchangeName || quote.exchangeName);
+}
+
 /** Keep known fields and their source when optional enrichment is incomplete. */
 export function mergeQuoteMetadata(known: QuoteMetadata | null | undefined, loaded: QuoteMetadata | null | undefined): QuoteMetadata | undefined {
   if (!known) return loaded ?? undefined;

@@ -737,7 +737,7 @@ async function valueWatchlistRows({
     const cap = liveMarketCapitalization(quote, snapshot?.fundamentals) ?? liveMarketCapitalization(snapshot?.quote, snapshot?.fundamentals);
     const marketCap = cap ? known(await toBase(cap.value, cap.currency)) : null;
     const kind = resolveTickerInstrumentKind(ticker, { quote: quote ?? snapshot?.quote });
-    const venue = exchangeShortName(quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || null;
+    const venue = exchangeShortName(quote?.tradingExchangeName || quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || null;
     values.push({
       ticker, quote, headline, extended, kind, venue, marketCap,
       row: {

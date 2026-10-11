@@ -195,6 +195,8 @@ export function mergeQuoteContribution(
     priceBasis: next.priceBasis,
     // Said of this observation's price; a tick that does not say leaves it unknown.
     extendedSessionPrint: next.extendedSessionPrint,
+    // The board this observation was read on; one read on the listing's own line names none.
+    tradingExchangeName: next.tradingExchangeName,
     regularClose: next.regularClose,
     regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
     regularChange: next.regularClose != null ? next.regularChange : undefined,

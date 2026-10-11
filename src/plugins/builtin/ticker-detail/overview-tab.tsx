@@ -113,7 +113,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   const industry = ticker.metadata.industry ?? profile?.industry;
   const description = profile?.description?.trim();
   const listingVenue = exchangeShortName(
-    quote?.listingExchangeName ?? quote?.exchangeName,
+    quote?.tradingExchangeName ?? quote?.listingExchangeName ?? quote?.exchangeName,
     quote?.listingExchangeFullName ?? quote?.fullExchangeName,
   );
   const routingVenue = exchangeShortName(quote?.routingExchangeName, quote?.routingExchangeFullName);

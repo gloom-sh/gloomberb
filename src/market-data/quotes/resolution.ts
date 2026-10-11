@@ -405,6 +405,8 @@ export function resolveCanonicalQuote(
   // not declare units for another provider's price or supply incompatible anchors.
   assignField(resolved, provenance, "priceBasis", priceProvider);
   assignField(resolved, provenance, "priceObservation", priceProvider);
+  // The board whose line gave that price, when the source read another than the listing asked for.
+  assignField(resolved, provenance, "tradingExchangeName", priceProvider);
   const isNav = priceProvider?.priceObservation === "nav";
   if (isNav) {
     sessionCandidates = priceProvider ? [priceProvider] : [];
@@ -513,6 +515,7 @@ export function resolveCanonicalQuote(
     fullExchangeName: resolved.fullExchangeName as Quote["fullExchangeName"],
     listingExchangeName: resolved.listingExchangeName as Quote["listingExchangeName"],
     listingExchangeFullName: resolved.listingExchangeFullName as Quote["listingExchangeFullName"],
+    tradingExchangeName: resolved.tradingExchangeName as Quote["tradingExchangeName"],
     routingExchangeName: resolved.routingExchangeName as Quote["routingExchangeName"],
     routingExchangeFullName: resolved.routingExchangeFullName as Quote["routingExchangeFullName"],
     marketState: resolved.marketState as Quote["marketState"],

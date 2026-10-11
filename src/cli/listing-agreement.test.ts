@@ -18,6 +18,7 @@ import { researchEntryFromSearch } from "../renderers/browser/research-entry";
 import { resolveTickerOpenTarget } from "../tickers/open-target";
 import { settleTypedListingKey } from "../tickers/listing-venues";
 import { tokenizeInlineContent } from "../utils/inline-content-tokenizer";
+import { createTestTicker } from "../test-support/ticker";
 
 // Where each symbol trades, as search lists it. 7203 also trades in Riyadh as another company.
 const LISTED: Record<string, Array<[exchange: string, name: string]>> = {
@@ -50,10 +51,16 @@ const LISTINGS: Array<[typed: string, key: string, readAs: boolean]> = [
 ];
 
 let requested: string[] = [];
+/** Symbols search leaves out, so a shared code is read from the listing's own quotes. */
+const UNSEARCHED = new Set<string>();
 
 function listingQuote(symbol: string, exchange: string) {
   const [bare, venue = exchange] = symbol.split(":");
-  const listing = LISTED[bare!]?.find(([listed]) => listed === canonicalExchange(venue || LISTED[bare!]?.[0]?.[0]));
+  const asked = canonicalExchange(venue || LISTED[bare!]?.[0]?.[0]);
+  const listing = LISTED[bare!]?.find(([listed]) => listed === asked);
+  // Gloom Cloud quotes a KOSDAQ code asked for on KRX from KOSDAQ, answered as KRX with the board it read.
+  const board = !listing && asked === "KRX" ? LISTED[bare!]?.find(([listed]) => listed === "KOSDAQ") : undefined;
+  if (board) return createTestQuote({ symbol: bare!, name: board[1], currency: "KRW", listingExchangeName: "KRX", tradingExchangeName: "KOSDAQ" });
   if (!listing) throw new Error(`No quote for ${symbol}`);
   return createTestQuote({ symbol: bare!, name: listing[1], currency: "USD", listingExchangeName: listing[0] });
 }
@@ -61,6 +68,7 @@ function listingQuote(symbol: string, exchange: string) {
 const dataProvider = createTestDataProvider({
   search: async (query) => query === "Sanofi"
     ? [{ providerId: "test", symbol: "SNY", name: "Sanofi ADR", exchange: "NASDAQ", type: "ADR", currency: "USD" }]
+    : UNSEARCHED.has(query.toUpperCase()) ? []
     : (LISTED[query.toUpperCase()] ?? []).map(([exchange, name]) => ({
       providerId: "test", symbol: query.toUpperCase(), name, exchange, type: "Common Stock", currency: "USD",
     })),
@@ -173,6 +181,35 @@ test("every command, fn function, the command bar, links and chat read a listing
       expect(await read(typed), `${reader} ${typed}`).toBe(key);
     }
   }
+});
+
+test("a code search leaves out is read from the listing's own quotes, not from a board Gloom Cloud answered for it", async () => {
+  // Gloom Cloud answers 247540:KRX from KOSDAQ under the KRX name: that is no KRX line.
+  UNSEARCHED.add("247540");
+  try {
+    for (const [reader, read] of Object.entries(READERS)) {
+      const reading = await read("247540:KRX");
+      expect(reading.listing, reader).toBe("247540:KOSDAQ");
+      expect(reading.warnings.filter((warning) => warning.startsWith("Read ")), reader)
+        .toEqual([expect.stringMatching(/^Read 247540:KRX as 247540:KOSDAQ: /)]);
+    }
+    expect(canonicalTickerKey(await settleTypedListingKey("247540:KRX", market))).toBe("247540:KOSDAQ");
+  } finally {
+    UNSEARCHED.delete("247540");
+  }
+});
+
+test("a row saved as 247540:KRX keeps its key, takes Gloom Cloud's KOSDAQ quote and says which board it read", async () => {
+  // Saved before search listed EcoPro BM on KOSDAQ.
+  const saved = createTestTicker("247540", "EcoPro BM Co., Ltd.", { exchange: "KRX", currency: "KRW" });
+  const store = { loadTicker: async (key: string) => key === "247540" ? saved : null, loadAllTickers: async () => [saved] };
+  requested = [];
+  const run = createTestCliContext({ dataProvider, store });
+  await marketDataCliCommands.find((command) => command.name === "quote")!.execute(["247540"], run.context);
+  const { data, warnings } = run.printed[0]!.result;
+  expect(data[0].target).toEqual({ symbol: "247540", exchange: "KRX" });
+  expect(data[0].quote).toMatchObject({ listingExchangeName: "KRX", tradingExchangeName: "KOSDAQ" });
+  expect(warnings).toEqual(["Read 247540:KRX on KOSDAQ, where 247540 trades."]);
 });
 
 test("a code that names two venues a symbol trades on both of asks which", async () => {

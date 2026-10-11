@@ -616,6 +616,25 @@ test("whether the open session has printed travels with the price it describes, 
   expect(normalizeQuoteContribution({ ...base, marketState: "CLOSED" })!.extendedSessionPrint).toBeUndefined();
 });
 
+test("the board Gloom Cloud read a saved listing on travels with the price it gave, into a pane's quote", () => {
+  // Thursday 8 Oct 2026 after the Seoul close: a row saved as 247540:KRX, quoted from KOSDAQ and named KRX.
+  const now = Date.parse("2026-10-08T08:00:00Z");
+  const base = { symbol: "247540", providerId: "gloomberb-cloud", dataSource: "delayed" as const, marketState: "CLOSED" as const,
+    price: 128_800, currency: "KRW", previousClose: 124_500, change: 4_300, changePercent: 3.45,
+    listingExchangeName: "KRX", exchangeName: "KRX", lastUpdated: Date.parse("2026-10-08T06:30:00Z"), stale: false };
+  const read = resolveTickerFinancialsQuoteState(null, { ...base, tradingExchangeName: "KOSDAQ" })!;
+  expect(read.quote).toMatchObject({ price: 128_800, listingExchangeName: "KRX", tradingExchangeName: "KOSDAQ" });
+  // An answer from the KRX line itself (the service could not read the board list) names no board.
+  const krxLine = resolveTickerFinancialsQuoteState(read, { ...base, price: 128_900, lastUpdated: now })!;
+  expect(krxLine.quote).toMatchObject({ price: 128_900, listingExchangeName: "KRX" });
+  expect(krxLine.quote?.tradingExchangeName).toBeUndefined();
+  // A broker's price for the same row was not read on that board.
+  const broker = { symbol: "247540", providerId: "ibkr", dataSource: "live" as const, price: 129_000, currency: "KRW",
+    change: 4_500, changePercent: 3.6, lastUpdated: now, listingExchangeName: "KRX" };
+  expect(resolveCanonicalQuote({ cloud: normalizeQuoteContribution({ ...base, tradingExchangeName: "KOSDAQ" })!, ibkr: broker }, now).quote)
+    .toMatchObject({ price: 129_000, tradingExchangeName: undefined });
+});
+
 test("a different price provider cannot inherit a closing-price anchor", () => {
   const now = Date.parse("2026-09-10T20:30:00Z");
   const result = resolveCanonicalQuote({
