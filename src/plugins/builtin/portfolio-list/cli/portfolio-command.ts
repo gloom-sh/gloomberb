@@ -2,7 +2,7 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
-import { takeOption } from "../../../../cli/commands/command-utils";
+import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, loadSavedListing, parseListingArg, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
@@ -37,6 +37,10 @@ import {
   parseTargetWeight,
 } from "../allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
+import { findThirteenFFund } from "../../thirteenf/headless";
+import { loadBrowserRows, loadFundDetail } from "../../thirteenf/data";
+import { importSource, notionalPositions, rankThirteenFLines, type ThirteenFImportLine } from "./import-13f";
+import { importedFromText } from "../imported-from";
 import {
   failPortfolioCommand,
   isCashArgument,
@@ -50,6 +54,10 @@ import {
 
 const CASH_USAGE = "Usage: gloomberb portfolio cash set <portfolio> <amount> [currency] | portfolio cash clear <portfolio>";
 const TARGET_USAGE = "Usage: gloomberb portfolio target set <portfolio> <symbol|CASH> <weight%> | target clear <portfolio> [symbol] | target show <portfolio>";
+const IMPORT_USAGE = "Usage: gloomberb portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]";
+const IMPORT_DEFAULT_TOP = 10;
+const IMPORT_MAX_TOP = 100;
+const IMPORT_DEFAULT_NOTIONAL = 100_000;
 
 async function listCollections(ctx: CliCommandContext) {
   await withConfigData(ctx, async ({ config, store }) => {
@@ -457,6 +465,146 @@ async function showTargetsCommand(name: string, ctx: CliCommandContext) {
   });
 }
 
+interface ThirteenFImportOptions {
+  query: string;
+  top: number;
+  name: string | undefined;
+  notional: number;
+  replace: boolean;
+}
+
+/** An import option's value; a flag given without one fails rather than reading as left out. */
+function takeImportValue(args: string[], flag: string, ctx: CliCommandContext): string | undefined {
+  if (!args.some((arg) => arg === flag || arg.startsWith(`${flag}=`))) return undefined;
+  const value = takeOption(args, flag)?.trim();
+  if (!value || value.startsWith("--")) ctx.fail(`${flag} needs a value.`, IMPORT_USAGE);
+  return value;
+}
+
+function parseImportOptions(args: string[], ctx: CliCommandContext): ThirteenFImportOptions {
+  const query = takeImportValue(args, "--13f", ctx);
+  const top = takeImportValue(args, "--top", ctx);
+  const name = takeImportValue(args, "--name", ctx);
+  const notional = takeImportValue(args, "--notional", ctx);
+  const replace = takeFlag(args, "--replace");
+  if (!query) ctx.fail("portfolio import needs a manager: --13f <CIK|fund name>.", IMPORT_USAGE);
+  if (args.length > 0) {
+    ctx.fail(`portfolio import takes its manager and portfolio as options; got ${args.join(" ")}.`, `Quote a name with spaces, as in --13f "Berkshire Hathaway".\n${IMPORT_USAGE}`);
+  }
+  const count = top == null ? IMPORT_DEFAULT_TOP : Number(top);
+  if (!Number.isInteger(count) || count < 1 || count > IMPORT_MAX_TOP) ctx.fail(`--top must be a whole number from 1 to ${IMPORT_MAX_TOP}.`);
+  const amount = notional == null ? IMPORT_DEFAULT_NOTIONAL : Number(notional.replace(/[,_]/g, ""));
+  if (!Number.isFinite(amount) || amount <= 0) ctx.fail("--notional must be an amount above zero, such as --notional 250000.");
+  return { query, top: count, name: name || undefined, notional: amount, replace };
+}
+
+/**
+ * A manual portfolio from a manager's latest 13F: its largest common-stock
+ * lines that resolve to a listing, weighted by reported value, as a notional
+ * the user can see. An existing portfolio of that name is filled only when it
+ * is empty, or replaced with --replace; never overwritten silently.
+ */
+async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliCommandContext) {
+  await withMarketData(ctx, async ({ config, store, dataProvider }) => {
+    try {
+      const fund = (await findThirteenFFund(options.query, (query, limit) => loadBrowserRows("funds", query, undefined, { limit })))!;
+      const detail = await loadFundDetail(fund.cik, fund.name);
+      const source = importSource(detail);
+      if (!source) throw new PortfolioCliError(`No 13F holdings report found for ${detail.name} (CIK ${detail.cik}).`);
+      const name = options.name ?? `${detail.name} 13F`;
+      const existing = config.portfolios.find((entry) => [entry.id, entry.name].some((value) => value.toLowerCase() === name.toLowerCase()));
+      if (existing && !isManualPortfolio(existing)) {
+        throw new PortfolioCliError(`Portfolio "${existing.name}" is broker-managed and cannot be imported into.`, "Name another with --name.");
+      }
+      const members = existing ? (await store.loadAllTickers()).filter((ticker) => ticker.metadata.portfolios.includes(existing.id)) : [];
+      if (existing && members.length > 0 && !options.replace) {
+        throw new PortfolioCliError(
+          `Portfolio "${existing.name}" already exists with ${members.length} ticker${members.length === 1 ? "" : "s"}.`,
+          `Add --replace to replace them with this 13F, or --name to import into a new portfolio.\n${IMPORT_USAGE}`,
+        );
+      }
+
+      // The largest lines first; a line that cannot be a position, or whose ticker does not resolve, gives way to the next.
+      const picked: Array<{ line: ThirteenFImportLine; ticker: TickerRecord }> = [];
+      const skipped: Array<{ label: string; reason: string }> = [];
+      for (const line of rankThirteenFLines(detail)) {
+        if (picked.length >= options.top) break;
+        const label = line.ticker || line.issuer;
+        if (line.skip) { skipped.push({ label, reason: line.skip }); continue; }
+        try {
+          const ticker = await resolveTickerForCli(line.ticker, store, dataProvider);
+          const same = picked.find((entry) => entry.ticker.metadata.ticker === ticker.metadata.ticker);
+          if (same) { skipped.push({ label, reason: `same listing as ${same.line.ticker}` }); continue; }
+          picked.push({ line, ticker });
+        } catch (error) {
+          skipped.push({ label, reason: `ticker did not resolve (${error instanceof Error ? error.message : String(error)})` });
+        }
+      }
+      if (picked.length === 0) {
+        throw new PortfolioCliError(`None of ${detail.name}'s 13F lines could be imported.`, skipped.map((entry) => `${entry.label}: ${entry.reason}`).join("\n"));
+      }
+      const filingValue = detail.latestReport ? (detail.latestReport.complete ? detail.latestReport.tableValueTotal : null) : detail.latestForm?.tableValueTotal ?? null;
+      const positions = notionalPositions(picked.map((entry) => entry.line), options.notional, filingValue);
+
+      let nextConfig = config;
+      let portfolio: Portfolio;
+      if (existing) {
+        portfolio = existing;
+        for (const member of members) {
+          const removed = removeTickerFromPortfolio(member, existing.id);
+          if (removed.changed) await store.saveTicker(removed.ticker);
+        }
+        nextConfig = clearPortfolioTargetWeights(nextConfig, existing.id).config;
+      } else {
+        const created = createManualPortfolio(nextConfig, name, "USD");
+        nextConfig = created.config;
+        portfolio = created.portfolio;
+      }
+      for (const [index, position] of positions.entries()) {
+        const resolved = picked[index]!.ticker;
+        // Reread: replacing the old positions may have saved this listing since it resolved.
+        const ticker = await store.loadTicker(resolved.metadata.ticker) ?? resolved;
+        const result = setManualPortfolioPosition(ticker, portfolio.id, { shares: position.shares, avgCost: position.avgCost, currency: "USD" });
+        await store.saveTicker(result.ticker);
+      }
+      nextConfig = adoptFirstPositionCurrency(nextConfig, portfolio.id, "USD") ?? nextConfig;
+      nextConfig = { ...nextConfig, portfolios: nextConfig.portfolios.map((entry) => entry.id === portfolio.id ? { ...entry, importedFrom: source } : entry) };
+      await saveConfig(nextConfig);
+
+      const importedShare = filingValue ? picked.reduce((sum, entry) => sum + entry.line.value, 0) / filingValue : null;
+      const action = !existing ? "created" : members.length > 0 ? "replaced" : "filled";
+      const lines = positions.map((position, index) => ({ ...position, ...listingFields(savedListingName(picked[index]!.ticker)) }));
+      ctx.printResult({
+        data: {
+          changed: true, action, portfolio: portfolio.name, portfolioId: portfolio.id, importedFrom: source,
+          notional: options.notional, currency: "USD", importedShareOfFiling: importedShare,
+          removedTickers: members.length, positions: lines, skipped,
+        },
+      }, {
+        text: () => [
+          cliStyles.success(`${action === "created" ? "Created portfolio" : action === "replaced" ? `Replaced the ${members.length} ticker${members.length === 1 ? "" : "s"} in` : "Filled the empty portfolio"} "${portfolio.name}" with the top ${positions.length} positions of ${detail.name}'s 13F (CIK ${detail.cik}).`),
+          importedFromText({ importedFrom: source }),
+          `Shares are a ${formatAllocationMoney(options.notional, "USD", { whole: true })} notional at the filing's quarter-end prices${importedShare != null ? `; these lines are ${formatAllocationWeight(importedShare * 100)} of its reported value` : ""}.`,
+          "",
+          renderTable(
+            [{ header: "Ticker" }, { header: "Name" }, { header: "Weight", align: "right" }, { header: "13F %", align: "right" }, { header: "Shares", align: "right" }, { header: "Cost", align: "right" }],
+            lines.map((line) => [line.listing, line.name ?? line.issuer, formatAllocationWeight(line.weight * 100), formatAllocationWeight(line.filingWeight == null ? null : line.filingWeight * 100), formatMarketQuantity(line.shares), formatMarketCostWithCurrency(line.avgCost, "USD")]),
+          ),
+          ...(skipped.length ? ["", cliStyles.warning(`Skipped: ${skipped.map((entry) => `${entry.label} (${entry.reason})`).join("; ")}`)] : []),
+          renderStats([["ID", portfolio.id]]),
+        ].filter((line) => line != null).join("\n"),
+      });
+    } catch (error) {
+      failPortfolioCommand(ctx, error, `Failed to import the 13F of "${options.query}".`);
+    }
+  });
+}
+
+const IMPORT_FLAGS = new Set(["--13f", "--top", "--name", "--notional", "--replace"]);
+
+/** Actions that change a portfolio: none of them previews, so --dry-run would change it anyway. */
+const MUTATING_ACTIONS = new Set(["create", "delete", "rm", "add", "remove", "position", "cash", "import"]);
+
 export const portfolioCliCommand: CliCommandDef = {
   name: "portfolio",
   description: "Show holdings, value, weights and P&L; manage manual portfolios, cash and targets",
@@ -475,8 +623,16 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio target set <portfolio> <symbol|CASH> <weight%>",
       "portfolio target clear <portfolio> [symbol|CASH]",
       "portfolio target show <portfolio>",
+      "portfolio import --13f <CIK|fund name> [--top N] [--name <portfolio>] [--notional <amount>] [--replace]",
     ],
-    options: [EXCHANGE_OPTION],
+    options: [
+      EXCHANGE_OPTION,
+      { flags: "--13f <CIK|name>", description: "portfolio import: the 13F manager whose latest filing to import" },
+      { flags: "--top <n>", description: `portfolio import: how many of its largest common-stock lines (default ${IMPORT_DEFAULT_TOP}, at most ${IMPORT_MAX_TOP})` },
+      { flags: "--name <portfolio>", description: "portfolio import: the portfolio to create or fill (default: the manager's name and 13F)" },
+      { flags: "--notional <amount>", description: "portfolio import: the USD total the shares add up to at the filing's prices (default 100,000)" },
+      { flags: "--replace", description: "portfolio import: replace the positions of an existing portfolio of that name" },
+    ],
     examples: [
       "portfolio show Research",
       "portfolio add Research ASML",
@@ -486,12 +642,23 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio target set Research ASML 12.5%",
       "portfolio target set Research CASH 10",
       "portfolio show Research --csv",
+      "portfolio import --13f 0001067983 --top 10",
     ],
   },
   execute: async (rawArgs, ctx) => {
     const args = [...rawArgs];
-    const exchange = takeOption(args, "--exchange");
     const action = args[0];
+    if (action === "import") {
+      if (ctx.cliOptions.dryRun) ctx.fail("portfolio import has no --dry-run; it creates or fills the portfolio when it runs.");
+      await importThirteenFCommand(parseImportOptions(args.slice(1), ctx), ctx);
+      return;
+    }
+    const exchange = takeOption(args, "--exchange");
+    // The import's options are declared for the command; on another action one would become part of a name or symbol.
+    const importOnly = args.find((arg) => IMPORT_FLAGS.has(arg.split("=")[0]!));
+    if (importOnly) ctx.fail(`${importOnly.split("=")[0]} is an option of portfolio import, not portfolio ${action}.`, IMPORT_USAGE);
+    const mutating = MUTATING_ACTIONS.has(action ?? "") || ((action === "target" || action === "targets") && (args[1] === "set" || args[1] === "clear"));
+    if (ctx.cliOptions.dryRun && mutating) ctx.fail(`portfolio ${action} has no --dry-run; it changes the portfolio when it runs.`);
 
     if (!action || action === "list") {
       await listCollections(ctx);

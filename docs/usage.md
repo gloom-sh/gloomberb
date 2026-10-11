@@ -11,6 +11,7 @@
 - [CLI commands and output formats](#cli)
 - [Plugins pane](#plugins-pane)
 - [Portfolio currency](#portfolio-currency)
+- [Importing a manager's 13F as a portfolio](#importing-a-managers-13f-as-a-portfolio)
 - [Cash, target weights and rebalancing](#cash-target-weights-and-rebalancing)
 - [Broker position sync](#broker-position-sync)
 - [Gloom Cloud sign-in](#gloom-cloud-sign-in)
@@ -181,7 +182,9 @@ The ticker research `13F` tab shows fund positions for the ticker, reported valu
 
 `HDS` has three tabs: Table and Chart show the 13F institutional holders (on a home line abroad such as `BHP:LSE`, values are in the currency the report names and a row held as US depositary receipts carries an `ADR` badge), and 13D/G shows who disclosed more than 5% of the class on Schedule 13D (activists) or 13G (passive holders) in the last four years, one row per filer: the form of its latest report, the percent of class that report gives, the change in points against its previous report, shares, event and filing dates, and its latest 13F move in the ticker (NEW, the share change, EXIT, or a dash when unknown). The latest report is the filer's latest disclosure, not its position today. A stake reported under 5% keeps its percentage, marked `<5%` where the column has room, and sorts after the 5% holders with reports of zero, marked `EXIT`. Enter opens the filing in the SEC pane and `o` opens it on EDGAR. CLI equivalents: `gloomberb holders CAR --form all` (`13d` or `13g` for one kind, `--history` for every report instead of the latest per filer) and `gloomberb fn HDS CAR --form all --json`; `gloomberb filings CAR --form 13G` lists the filings themselves.
 
-In a 13F fund detail, open Overlap, search a second fund by name or CIK, and select it to compare shared positions and weights. Back returns to the fund picker. The Performance list includes three prior-quarter estimates when available. Headless crowding accepts `--rank=new`, `--rank=exits`, `--rank=increases` or `--rank=decreases`. CLI overlap: `gloomberb fn 13F 0001067983 --view=overlap --compare=0001037389 --json`.
+In a 13F fund detail, open Overlap, search a second fund by name or CIK, and select it to compare shared positions and weights. Back returns to the fund picker. The Performance list includes three prior-quarter estimates when available. Headless crowding accepts `--rank=new`, `--rank=exits`, `--rank=increases` or `--rank=decreases`. CLI overlap: `gloomberb fn 13F 0001067983 --compare=0001037389 --json` (`--compare` implies `--view=overlap`, and says so).
+
+`--compare` also takes an ETF ticker: `gloomberb fn 13F 0001067983 --compare SPY` compares the manager's latest 13F with the ETF's holdings file, the one `fn MEMB SPY` shows, and prints the overlap, the active share, the quarter compared with its filing date, the holdings file's date, and the manager's positions the ETF does not hold, largest first. A word that reads as a ticker (up to five letters, with an optional class such as `BRK.B`) is an ETF when MEMB covers it, otherwise a manager only by its exact name; it is never matched to a manager by part of a name, so `SPY` is not Spyglass Capital. MEMB covers IVV (also read for SPY and SPX), IJH, IJR, IWM and IWB; any other ticker, such as `VTV`, fails with that list. A CIK or a longer name is a manager lookup as before, and the report says which was used. `--view=overlap` without `--compare` asks for it; `--compare` with another view fails, and `--rank` or `--offset` with a view that does not use them is named as ignored.
 
 ### Chart Composer
 
@@ -625,6 +628,21 @@ A portfolio's header totals and its COST, MKT VAL, DAY, P&L and MCAP columns are
 
 A broker portfolio's header leads with `Net Liq`, the account's equity, then `Gross`, the market value of its positions, and `Cash`, which is negative while the account borrows on margin. `Lev` (gross over Net Liq) appears once the account is levered, and the day's percentage is a return on the equity. The broker's last account snapshot is kept across restarts in the terminal, desktop and web apps, and the footer gives its sync time. Until there is one, `Net Liq` and `Cash` read `—`, because the positions alone are not what the account is worth, and when the broker's last call failed (a sign-in that lapsed, say) the footer says why. `PORT` shows the same figures and `KELLY` bets the same equity.
 
+## Importing a manager's 13F as a portfolio
+
+`gloomberb portfolio import --13f <CIK|fund name>` makes a manual portfolio from a manager's latest 13F, to follow it in `PF` and `PORT`:
+
+```bash
+gloomberb portfolio import --13f 0001067983 --top 10                 # "BERKSHIRE HATHAWAY INC 13F"
+gloomberb portfolio import --13f 0001067983 --name "Buffett 25" --top 25 --notional 250000
+gloomberb portfolio import --13f 0001067983 --top 10 --replace       # refill the portfolio of that name
+```
+
+- It takes the `--top` largest common-stock lines by reported value (10 when left out, at most 100) whose ticker resolves to a listing. Options, principal amounts and CUSIPs without a ticker are skipped, and the command lists each with the reason; the next line takes its place.
+- Weights are each line's reported value over the imported lines' total. Shares are a notional, `--notional` dollars in total (100,000 when left out), at the price the filing implies (reported value over shares), which is each position's cost. They are the manager's weights, not your holdings, and the output, `portfolio show` and `fn PF` say so with the quarter and filing date.
+- The portfolio is named after the manager unless `--name` says otherwise. An existing portfolio of that name is filled only when it holds nothing; one that holds tickers needs `--replace`, which removes them and their targets first. A broker portfolio is never imported into.
+- The filing date is kept on the portfolio, so `fn PORT <id> --since filed` can measure from it.
+
 ## Cash, target weights and rebalancing
 
 A portfolio can hold cash beside its positions and a target weight for each holding. `PF` and `gloomberb portfolio show` then show how far each holding is from its target and the trade that would bring it back.
@@ -830,18 +848,19 @@ metrics, dated trails, rank sample counts and data limitations.
 
 `PORT` opens portfolio market risk; `MARS` is its alias. Add a local portfolio ID to select it, for example `PORT main`. Views cover Risk, Factors, Holdings, Correlation, Stress, Performance, Attribution and Greeks. Enter opens a metric's evidence and history; Escape returns. Click portfolio tabs or press `p` to switch portfolios. Press `i` to import local account evidence from the clipboard, and `r` to refresh Cloud observations. Tables support sorting and CSV export.
 
-Use pane settings for independent index-percent, 10Y-basis-point and VIX-point stress shifts. Existing saved Analytics panes keep Overview until their View setting changes to Risk depth. Performance, Brinson attribution and imported option Greeks use the versioned local JSON schema in [research data](research-data.md#local-account-evidence); the pane does not derive account cashflows from current holdings. Evidence remains private and must match the portfolio ID and currency.
+The return rows and tracking error are measured against SPY, which the benchmark row names: `60D benchmark return (SPY)`. They cover the trailing 60 sessions; for a portfolio made with `portfolio import --13f`, the pane's **Risk window** setting or `--since filed` measures them from the 13F's filing date instead (a portfolio without one keeps the trailing 60 and says so). Use pane settings for independent index-percent, 10Y-basis-point and VIX-point stress shifts. Existing saved Analytics panes keep Overview until their View setting changes to Risk depth. Performance, Brinson attribution and imported option Greeks use the versioned local JSON schema in [research data](research-data.md#local-account-evidence); the pane does not derive account cashflows from current holdings. Evidence remains private and must match the portfolio ID and currency.
 
 ```sh
 gloomberb fn PORT main --json
 gloomberb fn MARS main --view factors --json
 gloomberb fn PORT main --view stress --equity-shift -15 --rate-shift 100 --vol-shift 10
+gloomberb fn PORT berkshire-hathaway-inc-13f --view risk --since filed
 gloomberb shot PORT main --width 1100 --height 620 --output portfolio-risk.png
 ```
 
 Risk, Factors, Correlation and Stress model the equity holdings with daily history, up to the 150 largest by value. A listing quoted in another currency is converted to USD at daily FX closes, and the footer counts those holdings. When some holdings are left out (foreign listings without daily FX closes, shorts, options, crypto, holdings without a quote or history), the footer says how much of the account the estimates cover and `!` lists each holding left out and why (`fn PORT` prints the same under Notes); below half of the account's market value the views say so instead of estimating. See [research data](research-data.md#portfolio-risk-depth-port-mars) for the method.
 
-`--evidence` accepts the same JSON text as the clipboard import. Account-return and attribution examples in the methodology are illustrative inputs, not sample market data. A report includes raw values, source dates, percentile coverage, holdings, factor regressions and warnings; screenshots freeze that same local model.
+`fn PORT` prints every view, or the one `--view` names. A stress shift given with another view, or `--since` with a view other than risk, is named as not applying rather than dropped without a word. `--evidence` accepts the same JSON text as the clipboard import. Account-return and attribution examples in the methodology are illustrative inputs, not sample market data. A report includes raw values, source dates, percentile coverage, holdings, factor regressions and warnings; screenshots freeze that same local model.
 
 ## Equity criteria screener
 

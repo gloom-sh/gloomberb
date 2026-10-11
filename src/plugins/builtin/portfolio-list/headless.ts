@@ -31,6 +31,7 @@ import {
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
 import { quoteFreshnessFields } from "../shared/report-freshness";
+import { importedFromText } from "./imported-from";
 
 const DEFAULT_ROW_LIMIT = 50;
 const MAX_ROW_LIMIT = 200;
@@ -254,7 +255,9 @@ async function portfolioHoldings(
   const broker = !!(target.portfolio.brokerId || target.portfolio.brokerInstanceId);
   const showTargets = allocation.targetSum != null;
   const targetNote = describeTargetSum(allocation.targetSum);
+  const imported = importedFromText(target.portfolio);
   const notices = [
+    ...(imported ? [imported] : []),
     ...(rows.length > limit
       ? [`${rows.length - limit} more position${rows.length - limit === 1 ? "" : "s"} not shown; totals include every position.`]
       : []),
@@ -275,6 +278,7 @@ async function portfolioHoldings(
       : {}),
     metadata: {
       collection: { kind: "portfolio", id: target.id, name: target.name, broker },
+      ...(target.portfolio.importedFrom ? { importedFrom: target.portfolio.importedFrom } : {}),
       currency,
       positions: rows.length,
       totals: {

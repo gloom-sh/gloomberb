@@ -186,28 +186,24 @@ const percentile = (
   };
 };
 
-export function rollingBasketRisk(
-  sample: readonly RiskSamplePoint[],
-  window = RISK_WINDOW,
-): RiskStatistic[] {
-  if (!Number.isInteger(window) || window < 60)
-    throw new Error("Risk window must contain at least 60 daily sessions");
-  const definitions = [
+/** The return and risk statistics of a basket against its benchmark, over one window of paired sessions. */
+function basketRiskDefinitions(benchmark: string) {
+  return [
     {
       id: "return",
-      label: `${window}D basket return`,
+      name: "basket return",
       value: (rows: RiskSamplePoint[]) =>
         100 * compoundReturns(rows.map((row) => row.value)),
     },
     {
       id: "benchmark",
-      label: `${window}D benchmark return`,
+      name: `benchmark return (${benchmark})`,
       value: (rows: RiskSamplePoint[]) =>
         100 * compoundReturns(rows.map((row) => row.benchmark)),
     },
     {
       id: "active",
-      label: `${window}D active return`,
+      name: "active return",
       value: (rows: RiskSamplePoint[]) =>
         100 *
         (compoundReturns(rows.map((row) => row.value)) -
@@ -215,36 +211,56 @@ export function rollingBasketRisk(
     },
     {
       id: "volatility",
-      label: `${window}D annualized volatility`,
-      value: (rows: RiskSamplePoint[]) =>
-        100 * sampleVolatility(rows.map((row) => row.value))!,
+      name: "annualized volatility",
+      value: (rows: RiskSamplePoint[]) => {
+        const volatility = sampleVolatility(rows.map((row) => row.value));
+        return volatility == null ? null : 100 * volatility;
+      },
     },
     {
       id: "drawdown",
-      label: `${window}D max drawdown`,
+      name: "max drawdown",
       value: (rows: RiskSamplePoint[]) =>
         100 * Math.min(0, ...drawdownPath(rows.map((row) => row.value))),
     },
     {
       id: "var",
-      label: `1D VaR 95% (${window}D)`,
-      value: (rows: RiskSamplePoint[]) =>
-        100 * historicalTail(rows.map((row) => row.value))!.var,
+      name: "1D VaR 95%",
+      value: (rows: RiskSamplePoint[]) => {
+        const tail = historicalTail(rows.map((row) => row.value));
+        return tail == null ? null : 100 * tail.var;
+      },
     },
     {
       id: "es",
-      label: `1D expected shortfall (${window}D)`,
-      value: (rows: RiskSamplePoint[]) =>
-        100 * historicalTail(rows.map((row) => row.value))!.expectedShortfall,
+      name: "1D expected shortfall",
+      value: (rows: RiskSamplePoint[]) => {
+        const tail = historicalTail(rows.map((row) => row.value));
+        return tail == null ? null : 100 * tail.expectedShortfall;
+      },
     },
     {
       id: "tracking",
-      label: `${window}D tracking error`,
-      value: (rows: RiskSamplePoint[]) =>
-        100 * sampleVolatility(rows.map((row) => row.value - row.benchmark))!,
+      name: "tracking error",
+      value: (rows: RiskSamplePoint[]) => {
+        const volatility = sampleVolatility(rows.map((row) => row.value - row.benchmark));
+        return volatility == null ? null : 100 * volatility;
+      },
     },
   ];
-  return definitions.map((definition) => {
+}
+const TAIL_IDS = new Set(["var", "es"]);
+const finiteOrNull = (value: number | null) =>
+  value != null && Number.isFinite(value) ? value : null;
+
+export function rollingBasketRisk(
+  sample: readonly RiskSamplePoint[],
+  window = RISK_WINDOW,
+  benchmark = "SPY",
+): RiskStatistic[] {
+  if (!Number.isInteger(window) || window < 60)
+    throw new Error("Risk window must contain at least 60 daily sessions");
+  return basketRiskDefinitions(benchmark).map((definition) => {
     const history = sample.map((point, index) => {
       const rows = sample.slice(index - window + 1, index + 1);
       const contiguous =
@@ -252,10 +268,9 @@ export function rollingBasketRisk(
         rows.every(
           (row, i) => i === 0 || row.startDateKey === rows[i - 1]!.dateKey,
         );
-      const value = contiguous ? definition.value(rows) : null;
       return {
         date: point.dateKey,
-        value: value != null && Number.isFinite(value) ? value : null,
+        value: contiguous ? finiteOrNull(definition.value(rows)) : null,
       };
     });
     const latest = history.at(-1),
@@ -263,7 +278,9 @@ export function rollingBasketRisk(
       asOf = latest?.date ?? null;
     return {
       id: definition.id,
-      label: definition.label,
+      label: TAIL_IDS.has(definition.id)
+        ? `${definition.name} (${window}D)`
+        : `${window}D ${definition.name}`,
       value,
       unit: "%" as const,
       asOf,
@@ -271,6 +288,53 @@ export function rollingBasketRisk(
         value == null ? null : (sample.at(-window)?.startDateKey ?? null),
       samples: value == null ? 0 : window,
       rank: percentile(history, value, asOf),
+      history,
+    };
+  });
+}
+
+/**
+ * The same statistics over every paired session since `since` (a 13F filing
+ * date), measured from the last close on or before it: the trailing
+ * contiguous run of sessions that end after that day. Each row's history is
+ * the statistic as of each session in the run; there is no rolling sample to
+ * rank it against, so it has no percentile. VaR and expected shortfall need
+ * 60 sessions.
+ */
+export function sinceBasketRisk(
+  sample: readonly RiskSamplePoint[],
+  since: string,
+  benchmark = "SPY",
+): RiskStatistic[] {
+  let first = sample.length;
+  while (
+    first > 0 &&
+    sample[first - 1]!.dateKey > since &&
+    (first === sample.length || sample[first]!.startDateKey === sample[first - 1]!.dateKey)
+  )
+    first -= 1;
+  const rows = sample.slice(first);
+  const start = rows[0]?.startDateKey ?? since;
+  const capitalized = (text: string) => `${text[0]!.toUpperCase()}${text.slice(1)}`;
+  return basketRiskDefinitions(benchmark).map((definition) => {
+    const history = rows.map((point, index) => ({
+      date: point.dateKey,
+      value: finiteOrNull(definition.value(rows.slice(0, index + 1))),
+    }));
+    const value = history.at(-1)?.value ?? null,
+      asOf = rows.at(-1)?.dateKey ?? null;
+    return {
+      id: definition.id,
+      label: TAIL_IDS.has(definition.id)
+        ? `${definition.name} (since ${start})`
+        : `${capitalized(definition.name)} since ${start}`,
+      value,
+      unit: "%" as const,
+      asOf,
+      startDate: rows.length ? start : null,
+      // The sessions in the window, also when too few for a value (a tail estimate needs 60).
+      samples: rows.length,
+      rank: { ...historyStatistics([], value, { asOf: asOf ?? since }), percentile: null, rank: null },
       history,
     };
   });

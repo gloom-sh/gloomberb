@@ -120,3 +120,34 @@ test("the report and its compact form state what the basket covers and why each 
     setSystemTime();
   }
 });
+
+test("--since filed measures the risk rows from a 13F import's filing date, and says so when the portfolio has none", async () => {
+  setSystemTime(now);
+  try {
+    const tickers = brokerFixtureTickers();
+    const imported = { ...BROKER_PORTFOLIO, importedFrom: { kind: "13f" as const, cik: "0001067983", name: "Fund", period: "2026-06-30", filed: "2026-08-14" } };
+    const context = (portfolio: typeof BROKER_PORTFOLIO) => ({
+      config: { ...createDefaultConfig("/unused/risk-headless"), portfolios: [portfolio] },
+      signal: new AbortController().signal,
+      apiClient: brokerRiskClient(now),
+      resolvePortfolio: async () => ({ portfolio, tickers }),
+    } as unknown as HeadlessPaneContext);
+    const args = { rawArgument: BROKER_PORTFOLIO.id, argument: BROKER_PORTFOLIO.id, symbols: [], options: { view: "risk", since: "filed" } };
+
+    const since = await portfolioRiskHeadless.load(args, context(imported));
+    expect(since.sections.map((section) => section.title)).toEqual(["risk"]);
+    const labels = since.sections[0]!.rows!.map((row) => row.label);
+    expect(labels).toContain("Basket return since 2026-08-14");
+    expect(labels).toContain("Benchmark return (SPY) since 2026-08-14");
+    // Sessions from the 14 August close to the last completed one, 21 September.
+    expect(since.metadata).toMatchObject({ benchmark: "SPY", window: { kind: "since-filed", filed: "2026-08-14", start: "2026-08-14", sessions: 25 } });
+    expect(since.metadata?.notices).toEqual(["Risk rows since the 13F filing on 2026-08-14, against SPY"]);
+
+    const fallback = await portfolioRiskHeadless.load(args, context(BROKER_PORTFOLIO));
+    expect(fallback.sections[0]!.rows!.map((row) => row.label)).toContain("60D benchmark return (SPY)");
+    expect(fallback.metadata?.notices).toEqual([`"Broker account" was not imported from a 13F, so it has no filing date; the risk rows cover the trailing 60 sessions.`]);
+    expect(fallback.notes?.some((note) => note.includes("not imported from a 13F"))).toBe(false);
+  } finally {
+    setSystemTime();
+  }
+});

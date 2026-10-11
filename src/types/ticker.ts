@@ -66,6 +66,20 @@ export interface Portfolio {
    * ticker symbol; `CASH` is the cash line.
    */
   targetWeights?: Record<string, number>;
+  /** Where the positions were imported from, such as a manager's 13F; they are not the user's own holdings. */
+  importedFrom?: PortfolioImportSource;
+}
+
+/** A manager's 13F filing a portfolio was imported from (`portfolio import --13f`). */
+export interface PortfolioImportSource {
+  kind: "13f";
+  /** The manager's SEC CIK and name as filed. */
+  cik: string;
+  name: string;
+  /** The quarter end the filing reports, YYYY-MM-DD. */
+  period: string;
+  /** The day it was filed, YYYY-MM-DD: `PORT --since filed` measures from that day's close. */
+  filed: string;
 }
 
 export interface PortfolioCash {

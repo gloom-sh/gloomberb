@@ -48,6 +48,7 @@ import {
   type PortfolioAllocation,
 } from "../allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
+import { importedFromText } from "../imported-from";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
 function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { currency?: string }, assetCategory?: string) {
@@ -415,6 +416,8 @@ async function showCollectionWithMarketData(
   if (!structured) {
     console.log(cliStyles.bold(displayName + (isPortfolio ? ` (${currency})` : "")));
     console.log(cliStyles.muted(`${filtered.length} ticker${filtered.length === 1 ? "" : "s"}`));
+    const imported = matchedPortfolio ? importedFromText(matchedPortfolio) : null;
+    if (imported) console.log(cliStyles.muted(imported));
     console.log("");
   }
 
@@ -483,6 +486,7 @@ async function showCollectionWithMarketData(
         unavailableSymbols: [...new Set([...unavailablePnl, ...unavailableCost, ...unavailableMarketValue])],
         unavailableCostSymbols: [...unavailableCost], brokerPnlSymbols: [...brokerPnlSymbols],
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
+        ...(matchedPortfolio.importedFrom ? { importedFrom: matchedPortfolio.importedFrom } : {}),
       }, freshness }, { rows: (data) => [...(data as Record<string, unknown>[]), ...extraRows] });
       return;
     }

@@ -107,6 +107,7 @@ function sanitizePortfolio(portfolio: Portfolio): Portfolio {
     // them would erase them on this device.
     ...(portfolio.cash ? { cash: { ...portfolio.cash } } : {}),
     ...(portfolio.targetWeights ? { targetWeights: { ...portfolio.targetWeights } } : {}),
+    ...(portfolio.importedFrom ? { importedFrom: { ...portfolio.importedFrom } } : {}),
   };
 }
 

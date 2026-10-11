@@ -349,10 +349,14 @@ function sanitizePortfolios(value: unknown, fallback: Portfolio[]): Portfolio[] 
     .map(sanitizePortfolioAllocation);
 }
 
-/** Cash and target weights the portfolio commands write; anything else is dropped. */
+/** Cash, target weights and the import source the portfolio commands write; a malformed one is dropped. */
 function sanitizePortfolioAllocation(entry: Portfolio): Portfolio {
-  const { cash, targetWeights, ...portfolio } = entry;
+  const { cash, targetWeights, importedFrom, ...portfolio } = entry;
   const next: Portfolio = { ...portfolio };
+  if (isRecord(importedFrom) && importedFrom.kind === "13f"
+    && [importedFrom.cik, importedFrom.name, importedFrom.period, importedFrom.filed].every((value) => typeof value === "string" && value)) {
+    next.importedFrom = { kind: "13f", cik: importedFrom.cik, name: importedFrom.name, period: importedFrom.period, filed: importedFrom.filed };
+  }
   if (isRecord(cash) && typeof cash.amount === "number" && Number.isFinite(cash.amount)
     && typeof cash.currency === "string" && /^[A-Z]{3}$/.test(cash.currency)) {
     next.cash = { amount: cash.amount, currency: cash.currency };

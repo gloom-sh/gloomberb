@@ -17,6 +17,7 @@ import {
   regressReturns,
   rollingBasketRisk,
   rollingBeta,
+  sinceBasketRisk,
   subtractReturns,
 } from "./risk-math";
 import {
@@ -130,6 +131,22 @@ export interface RiskShifts {
   rates: number;
   volatility: number;
 }
+/** The benchmark the basket's returns, active return and tracking error are measured against. */
+const RISK_BENCHMARK = "SPY";
+
+/**
+ * The window the risk rows cover: the trailing 60 sessions, or, with `since:
+ * "filed"`, every session since the filing date of a portfolio imported from
+ * a 13F.
+ */
+export interface RiskWindowRequest {
+  since?: "filed";
+}
+
+/** Why a portfolio asked for risk since its filing shows the trailing window instead. */
+export const sinceFallbackNote = (portfolio: Pick<Portfolio, "name">) =>
+  `"${portfolio.name}" was not imported from a 13F, so it has no filing date; the risk rows cover the trailing 60 sessions.`;
+
 const DEFAULT_RISK_SHIFTS: RiskShifts = {
   equity: -10,
   rates: 100,
@@ -293,6 +310,7 @@ export function buildPortfolioRisk(
   market: RiskMarketSnapshot,
   evidence: PortfolioRiskEvidence | null = null,
   shifts: RiskShifts = DEFAULT_RISK_SHIFTS,
+  window: RiskWindowRequest = {},
 ) {
   if (
     ![shifts.equity, shifts.rates, shifts.volatility].every(Number.isFinite) ||
@@ -475,9 +493,15 @@ export function buildPortfolioRisk(
     );
     return (instrument && byId.get(riskInstrumentId(instrument))?.returns) || [];
   };
-  const benchmark = proxy("SPY"),
+  const benchmark = proxy(RISK_BENCHMARK),
     sample = pairedReturns(basket, benchmark);
-  const metrics = rollingBasketRisk(sample);
+  // Since the filing only for a portfolio that has one; any other keeps the trailing window and says why.
+  const filed = window.since === "filed" ? portfolio.importedFrom?.filed ?? null : null;
+  if (window.since === "filed" && !filed)
+    notes.push(sinceFallbackNote(portfolio));
+  const metrics = filed
+    ? sinceBasketRisk(sample, filed, RISK_BENCHMARK)
+    : rollingBasketRisk(sample, undefined, RISK_BENCHMARK);
   const factors = [
     { id: "market", label: "Market (SPY)", series: benchmark },
     {
@@ -552,7 +576,9 @@ export function buildPortfolioRisk(
       if (factor.samples === 0)
         warnings.push(`${factor.label}: no matched factor history`);
   if (sufficient && metrics.every((row) => row.value == null))
-    warnings.push("Fewer than 60 consecutive matched completed daily returns.");
+    warnings.push(filed
+      ? `No completed session since the 13F filing on ${filed} yet.`
+      : "Fewer than 60 consecutive matched completed daily returns.");
   const performance = evidence?.performance
     ? calculateAccountPerformance(evidence.performance)
     : null;
@@ -578,7 +604,7 @@ export function buildPortfolioRisk(
         ...row,
         percentile: row.rank.percentile,
         // The method (price returns at fixed current weights) is in docs; the footer keeps room for coverage.
-        detail: `${row.samples} sessions`,
+        detail: filed && row.value == null && TAIL_ROW_IDS.has(row.id) ? `${row.samples} sessions; needs 60` : `${row.samples} sessions`,
         ...(tail
           ? { amount: (row.value! / 100) * coverage.coveredValue, amountCurrency: coverage.currency, amountBase: coverage.coveredValue }
           : {}),
@@ -775,6 +801,10 @@ export function buildPortfolioRisk(
     warnings: [...new Set(warnings)],
     notes,
     fetchedAt: market.fetchedAt,
+    benchmark: RISK_BENCHMARK,
+    window: filed
+      ? { kind: "since-filed" as const, filed, start: metrics[0]?.startDate ?? null, sessions: metrics[0]?.samples ?? 0 }
+      : { kind: "trailing" as const, sessions: 60 },
   };
 }
 export type PortfolioRiskModel = ReturnType<typeof buildPortfolioRisk>;

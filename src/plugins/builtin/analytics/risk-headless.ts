@@ -14,6 +14,7 @@ import {
   riskEvidence,
   riskPercentile,
   riskValue,
+  sinceFallbackNote,
   type PortfolioRiskModel,
   type RiskCoverage,
   type RiskDisplayRow,
@@ -132,9 +133,16 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       key: "view",
       type: "enum",
       settingKey: "riskView",
-      defaultValue: "risk",
+      // No default: left out, the report prints every view.
       values: RISK_VIEWS.map((value) => ({ value })),
-      description: "Portfolio risk view.",
+      description: "One portfolio risk view; every view when left out.",
+    },
+    {
+      key: "since",
+      type: "enum",
+      settingKey: "riskSince",
+      values: [{ value: "filed" }],
+      description: "Risk rows since the 13F filing date of a portfolio made with portfolio import --13f, instead of the trailing 60 sessions.",
     },
     {
       key: "evidence",
@@ -146,28 +154,25 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       key: "equity-shift",
       type: "integer",
       settingKey: "equityShift",
-      defaultValue: -10,
       minimum: -99,
       maximum: 100,
-      description: "Independent index shock in percent.",
+      description: "Independent index shock in percent (-10 when left out).",
     },
     {
       key: "rate-shift",
       type: "integer",
       settingKey: "rateShift",
-      defaultValue: 100,
       minimum: -500,
       maximum: 500,
-      description: "Independent 10Y yield shock in basis points.",
+      description: "Independent 10Y yield shock in basis points (100 when left out).",
     },
     {
       key: "vol-shift",
       type: "integer",
       settingKey: "volShift",
-      defaultValue: 10,
       minimum: -50,
       maximum: 100,
-      description: "Independent VIX shock in index points.",
+      description: "Independent VIX shock in index points (10 when left out).",
     },
   ],
   describe: (args) =>
@@ -193,7 +198,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       throw new Error(
         "Imported evidence belongs to a different portfolio or currency",
       );
-    const view = String(args.options.view ?? "risk");
+    const requestedView = isRiskView(args.options.view) ? args.options.view : null;
+    const view: string = requestedView ?? "risk";
     const localOnly =
       ["performance", "attribution", "greeks"].includes(view) &&
       evidence != null;
@@ -228,7 +234,17 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         rates: Number(args.options["rate-shift"] ?? 100),
         volatility: Number(args.options["vol-shift"] ?? 10),
       },
+      args.options.since === "filed" ? { since: "filed" } : {},
     );
+    // Options for views the report does not print are named, not dropped silently; the fallback from --since opens the report.
+    const fallback = sinceFallbackNote(local.portfolio);
+    const shifted = ["equity-shift", "rate-shift", "vol-shift"].filter((key) => args.options[key] != null);
+    const notices = [
+      ...(model.window.kind === "since-filed" ? [`Risk rows since the 13F filing on ${model.window.filed}, against ${model.benchmark}`] : []),
+      ...(args.options.since === "filed" && model.window.kind !== "since-filed" ? [fallback] : []),
+      ...(requestedView && requestedView !== "stress" && shifted.length ? [`${shifted.map((key) => `--${key}`).join(", ")} change${shifted.length === 1 ? "s" : ""} the stress view only, not --view ${requestedView}`] : []),
+      ...(requestedView && args.options.since != null && requestedView !== "risk" ? [`--since changes the risk view only, not --view ${requestedView}`] : []),
+    ];
     // A basket view is complete only when the basket covers every holding.
     const covered = model.coverage.leftOut.length === 0;
     const complete =
@@ -248,13 +264,13 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     return {
       complete,
       errors: [...(shortfall ? [shortfall] : []), ...model.warnings],
-      notes: [...riskCoverageNotices(model.coverage), ...model.notes],
-      sections: RISK_VIEWS.map((view) => ({
+      notes: [...riskCoverageNotices(model.coverage), ...model.notes.filter((note) => note !== fallback)],
+      sections: (requestedView ? [requestedView] : RISK_VIEWS).map((view) => ({
         title: view,
         columns: RISK_COLUMNS,
         rows: model.rows[view].map(displayRow),
       })),
-      metadata: { coverage: coverageSummary(model.coverage), model },
+      metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window, notices },
     };
   },
   compact(result, args) {
@@ -280,6 +296,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
           currency: model.portfolio.currency,
         },
         view,
+        benchmark: model.benchmark,
+        window: model.window,
         ...(basketView && model.coverage
           ? { coverage: coverageSummary(model.coverage, COMPACT_LEFT_OUT_LIMIT) }
           : {}),
