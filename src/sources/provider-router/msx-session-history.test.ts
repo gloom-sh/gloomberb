@@ -50,7 +50,7 @@ const ROWS: Array<[string, string, string, string, boolean]> = [
   ["Sunday in session, today's bars so far", "2026-10-11T11:30", "2026-10-11", "11:10", true],
   ["Sunday in session, bars that stopped at 10:30", "2026-10-11T12:00", "2026-10-11", "10:30", false],
   ["Tuesday after the close", "2026-10-06T16:00", "2026-10-06", "14:55", true],
-  ["Tuesday after the close, a copy that stopped at noon", "2026-10-06T16:00", "2026-10-06", "12:00", false],
+  ["Tuesday after the close, a thin listing's fresh copy ending at noon", "2026-10-06T16:00", "2026-10-06", "12:00", true],
 ];
 
 test.each(["BKMB.OM", "BKMB:MSX"])("%s one-day history is current through its week", async (symbol) => {

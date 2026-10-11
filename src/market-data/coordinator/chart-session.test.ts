@@ -118,15 +118,16 @@ test("pending failures cannot retain a loading seed after its next session becom
   expect(failed.history).toBeUndefined();
 });
 
-test("source contracts never cross instrument scope and a sessionless source is read on the venue calendar", async () => {
+test("source contracts never cross instrument scope and a sessionless copy the router answers is shown", async () => {
   setSystemTime(preopen);
   // No session record: bars reaching the last close answer the pre-market, without claiming a session.
   const unproven = coordinator(async () => result(undefined, { session: undefined, sourceKey: "provider:extended" }));
   const sessionless = await unproven.loadChart(request);
   expect(sessionless.data).toHaveLength(1);
   expect(sessionless.history?.session).toBeUndefined();
+  // The router answers a copy short of the last close only when a refetch failed: shown, not an empty chart.
   const earlyCopy = coordinator(async () => result("2026-09-21T15:00:00Z", { session: undefined, sourceKey: "provider:extended" }));
-  expect((await earlyCopy.loadChart(request)).data).toBeNull();
+  expect((await earlyCopy.loadChart(request)).data).toHaveLength(1);
   const mismatch = coordinator(async () => result(undefined, { session: proof({ symbol: "MSFT" }) }));
   expect((await mismatch.loadChart(request)).data).toBeNull();
   let release: (value: PriceHistoryResult) => void = () => {};

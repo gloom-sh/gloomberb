@@ -6,12 +6,13 @@ import type { PriceHistoryResult } from "../../types/price-history";
 import { fallbackProvider } from "../../test-support/data-provider";
 import { AssetDataRouter } from "./index";
 
-// One-day history saved in the middle of a session and read once that session
-// is over, the way the CLI asks: no exchange, the venue read off the symbol.
-// Five-minute bars as Gloom Cloud serves them, in UTC. An intraday copy
-// expires two days after it is saved, so Friday's copies are read over the
-// weekend: by Monday morning every venue's Friday copy has expired and is
-// fetched again anyway.
+// One-day history saved earlier and read later, the way the CLI asks: no
+// exchange, the venue read off the symbol. Five-minute bars as Gloom Cloud
+// serves them, in UTC. A copy that holds the venue's latest session answers
+// from the cache; one that does not is refetched, on weeknights, in the US
+// pre-market, on weekends and on holidays alike, and still answers when the
+// source is down. An intraday copy expires two days after it is saved, so
+// Friday's copies are not read on Monday.
 
 const MIN = 60_000;
 
@@ -25,58 +26,86 @@ function bars(first: string, last: string, close = 100): PricePoint[] {
 }
 
 interface Row {
-  what: string;
   symbol: string;
-  /** The bars of a copy saved mid-session, and when it was saved. */
-  partial: { savedAt: string; points: PricePoint[] };
-  /** The whole session as the source serves it after the close. */
-  full: PricePoint[];
-  readAt: string[];
+  /** First bar, last bar and when the copy was saved. */
+  saved: [string, string, string];
+  readAt: string;
+  /** Behind: the bars the source has at `readAt`, which the refetch answers. Current: answered from the cache. */
+  later?: [string, string];
 }
 
-const ROWS: Row[] = [
-  {
-    // 09:30 to 16:00 New York. Saved at 10:00, as in the report: three bars.
-    what: "US, Friday's copy on the weekend",
-    symbol: "AAPL",
-    partial: { savedAt: "2026-10-09T14:00:00Z", points: bars("2026-10-09T13:30:00Z", "2026-10-09T13:40:00Z") },
-    full: bars("2026-10-09T13:30:00Z", "2026-10-09T19:55:00Z"),
-    readAt: ["2026-10-10T18:30:00Z", "2026-10-11T12:00:00Z"],
-  },
-  {
-    // 09:30 to 16:10 Hong Kong, with the pre-opening session's bars from 09:15. Saved at 11:30.
-    what: "HKEX, Friday's copy on the weekend",
-    symbol: "0700.HK",
-    partial: { savedAt: "2026-10-09T03:30:00Z", points: bars("2026-10-09T01:15:00Z", "2026-10-09T03:10:00Z") },
-    full: bars("2026-10-09T01:15:00Z", "2026-10-09T08:05:00Z"),
-    readAt: ["2026-10-10T12:00:00Z", "2026-10-11T00:30:00Z"],
-  },
-  {
-    // National Day, Thursday 1 October, is a published closure: Wednesday's session stays the latest.
-    what: "HKEX, Wednesday's copy on Thursday's holiday",
-    symbol: "0700.HK",
-    partial: { savedAt: "2026-09-30T03:30:00Z", points: bars("2026-09-30T01:15:00Z", "2026-09-30T03:10:00Z") },
-    full: bars("2026-09-30T01:15:00Z", "2026-09-30T08:05:00Z"),
-    readAt: ["2026-10-01T06:00:00Z"],
-  },
-  {
-    // Tel Aviv closes early on Fridays: 09:59 to 13:29 for the last bar. Saved at 11:30.
-    what: "TASE, Friday's copy on the weekend",
-    symbol: "LUMI.TA",
-    partial: { savedAt: "2026-10-09T08:30:00Z", points: bars("2026-10-09T06:59:00Z", "2026-10-09T08:09:00Z") },
-    full: bars("2026-10-09T06:59:00Z", "2026-10-09T10:29:00Z"),
-    readAt: ["2026-10-10T12:00:00Z", "2026-10-11T05:00:00Z"],
-  },
-  {
-    // The FX week closes Friday 17:00 New York (21:00 UTC); the source's day
-    // ends at London midnight. Saved Friday at noon UTC: the latest 288 bars.
-    what: "FX, Friday's copy on the weekend",
-    symbol: "EURUSD=X",
-    partial: { savedAt: "2026-10-09T12:00:00Z", points: bars("2026-10-08T12:00:00Z", "2026-10-09T11:55:00Z") },
-    full: bars("2026-10-08T23:00:00Z", "2026-10-09T22:55:00Z"),
-    readAt: ["2026-10-10T18:30:00Z", "2026-10-11T10:00:00Z"],
-  },
-];
+// Sessions in UTC in October 2026: New York 13:30 to 20:00, London 07:00 to
+// 15:40 with the closing auction, Hong Kong 01:30 to 08:10 with bars from the
+// 01:15 pre-opening, Tel Aviv 06:59 to 14:30 (Friday to 10:50), the FX week
+// Sunday 21:00 to Friday 21:00. Thanksgiving week New York is 14:30 to 21:00.
+const US_THU = ["2026-10-08T13:30:00Z", "2026-10-08T19:55:00Z"] as const;
+const LSE_THU = ["2026-10-08T07:00:00Z", "2026-10-08T15:25:00Z"] as const;
+const HK_THU = ["2026-10-08T01:15:00Z", "2026-10-08T08:05:00Z"] as const;
+const TASE_THU = ["2026-10-08T06:59:00Z", "2026-10-08T14:09:00Z"] as const;
+
+const ROWS: Record<string, Row> = {
+  "US weeknight, a copy saved at 10:00": { symbol: "AAPL", saved: [US_THU[0], "2026-10-08T13:55:00Z", "2026-10-08T14:00:00Z"],
+    readAt: "2026-10-08T23:00:00Z", later: [...US_THU] },
+  "US weeknight, the whole session": { symbol: "AAPL", saved: [...US_THU, "2026-10-08T20:40:00Z"], readAt: "2026-10-08T23:00:00Z" },
+  "US pre-market, yesterday's copy saved at 10:00": { symbol: "AAPL", saved: [US_THU[0], "2026-10-08T13:55:00Z", "2026-10-08T14:00:00Z"],
+    readAt: "2026-10-09T11:00:00Z", later: [...US_THU] },
+  "US pre-market, yesterday's whole session": { symbol: "AAPL", saved: [...US_THU, "2026-10-08T20:40:00Z"], readAt: "2026-10-09T11:00:00Z" },
+  "US next session at noon, yesterday's whole session": { symbol: "AAPL", saved: [...US_THU, "2026-10-08T20:40:00Z"],
+    readAt: "2026-10-09T16:00:00Z", later: ["2026-10-09T13:30:00Z", "2026-10-09T15:40:00Z"] },
+  "US weekend, Friday's copy saved at 10:00": { symbol: "AAPL", saved: ["2026-10-09T13:30:00Z", "2026-10-09T13:40:00Z", "2026-10-09T14:00:00Z"],
+    readAt: "2026-10-10T18:30:00Z", later: ["2026-10-09T13:30:00Z", "2026-10-09T19:55:00Z"] },
+  "US weekend, Friday's whole session": { symbol: "AAPL", saved: ["2026-10-09T13:30:00Z", "2026-10-09T19:55:00Z", "2026-10-09T20:40:00Z"],
+    readAt: "2026-10-10T18:30:00Z" },
+  "US Thanksgiving, Wednesday's copy saved at 10:00": { symbol: "AAPL", saved: ["2026-11-25T14:30:00Z", "2026-11-25T14:55:00Z", "2026-11-25T15:00:00Z"],
+    readAt: "2026-11-26T18:00:00Z", later: ["2026-11-25T14:30:00Z", "2026-11-25T20:55:00Z"] },
+  "US Thanksgiving, Wednesday's whole session": { symbol: "AAPL", saved: ["2026-11-25T14:30:00Z", "2026-11-25T20:55:00Z", "2026-11-25T21:40:00Z"],
+    readAt: "2026-11-26T18:00:00Z" },
+  // Black Friday closes at 13:00 New York (18:00 UTC); saved ten minutes later.
+  "US early close, the whole session": { symbol: "AAPL", saved: ["2026-11-27T14:30:00Z", "2026-11-27T17:55:00Z", "2026-11-27T18:10:00Z"],
+    readAt: "2026-11-28T15:00:00Z" },
+  "LSE weeknight, a copy saved at 10:00": { symbol: "VOD.L", saved: [LSE_THU[0], "2026-10-08T08:55:00Z", "2026-10-08T09:00:00Z"],
+    readAt: "2026-10-08T19:00:00Z", later: [...LSE_THU] },
+  "LSE before the next open, yesterday's whole session": { symbol: "VOD.L", saved: [...LSE_THU, "2026-10-08T16:30:00Z"], readAt: "2026-10-09T06:00:00Z" },
+  // 11:00 London, 18.5 hours after the last bar.
+  "LSE next session at 11:00, yesterday's whole session": { symbol: "VOD.L", saved: [...LSE_THU, "2026-10-08T16:30:00Z"],
+    readAt: "2026-10-09T10:00:00Z", later: ["2026-10-09T07:00:00Z", "2026-10-09T09:40:00Z"] },
+  "LSE weekend, Friday's copy saved at 10:00": { symbol: "VOD.L", saved: ["2026-10-09T07:00:00Z", "2026-10-09T08:55:00Z", "2026-10-09T09:00:00Z"],
+    readAt: "2026-10-10T12:00:00Z", later: ["2026-10-09T07:00:00Z", "2026-10-09T15:25:00Z"] },
+  "HKEX weeknight, a copy saved at 11:30": { symbol: "0700.HK", saved: [HK_THU[0], "2026-10-08T03:10:00Z", "2026-10-08T03:30:00Z"],
+    readAt: "2026-10-08T14:00:00Z", later: [...HK_THU] },
+  "HKEX before the next open, yesterday's whole session": { symbol: "0700.HK", saved: [...HK_THU, "2026-10-08T09:00:00Z"], readAt: "2026-10-09T00:30:00Z" },
+  "HKEX next session at 11:00, yesterday's whole session": { symbol: "0700.HK", saved: [...HK_THU, "2026-10-08T09:00:00Z"],
+    readAt: "2026-10-09T03:00:00Z", later: ["2026-10-09T01:15:00Z", "2026-10-09T02:40:00Z"] },
+  "HKEX weekend, Friday's copy saved at 11:30": { symbol: "0700.HK", saved: ["2026-10-09T01:15:00Z", "2026-10-09T03:10:00Z", "2026-10-09T03:30:00Z"],
+    readAt: "2026-10-11T00:30:00Z", later: ["2026-10-09T01:15:00Z", "2026-10-09T08:05:00Z"] },
+  "HKEX weekend, Friday's whole session": { symbol: "0700.HK", saved: ["2026-10-09T01:15:00Z", "2026-10-09T08:05:00Z", "2026-10-09T09:00:00Z"],
+    readAt: "2026-10-11T00:30:00Z" },
+  // National Day, Thursday 1 October, is a published closure: Wednesday's session stays the latest.
+  "HKEX National Day, Wednesday's copy saved at 11:30": { symbol: "0700.HK",
+    saved: ["2026-09-30T01:15:00Z", "2026-09-30T03:10:00Z", "2026-09-30T03:30:00Z"], readAt: "2026-10-01T06:00:00Z",
+    later: ["2026-09-30T01:15:00Z", "2026-09-30T08:05:00Z"] },
+  "HKEX National Day, Wednesday's whole session": { symbol: "0700.HK", saved: ["2026-09-30T01:15:00Z", "2026-09-30T08:05:00Z", "2026-09-30T09:00:00Z"],
+    readAt: "2026-10-01T06:00:00Z" },
+  "TASE weeknight, a copy saved at 11:30": { symbol: "LUMI.TA", saved: [TASE_THU[0], "2026-10-08T08:09:00Z", "2026-10-08T08:30:00Z"],
+    readAt: "2026-10-08T17:00:00Z", later: [...TASE_THU] },
+  "TASE next session at noon, yesterday's whole session": { symbol: "LUMI.TA", saved: [...TASE_THU, "2026-10-08T15:00:00Z"],
+    readAt: "2026-10-09T09:00:00Z", later: ["2026-10-09T06:59:00Z", "2026-10-09T08:39:00Z"] },
+  "TASE weekend, Friday's copy saved at 11:30": { symbol: "LUMI.TA", saved: ["2026-10-09T06:59:00Z", "2026-10-09T08:09:00Z", "2026-10-09T08:30:00Z"],
+    readAt: "2026-10-10T12:00:00Z", later: ["2026-10-09T06:59:00Z", "2026-10-09T10:29:00Z"] },
+  // Saved at 13:40 Tel Aviv, before Friday's 13:50 close: the 13:29 bar is the last.
+  "TASE weekend, Friday's session saved before its early close": { symbol: "LUMI.TA",
+    saved: ["2026-10-09T06:59:00Z", "2026-10-09T10:29:00Z", "2026-10-09T10:40:00Z"], readAt: "2026-10-10T12:00:00Z" },
+  // A pair is read on the FX week, not as a US listing: it trades through the New York evening.
+  "FX weeknight, a copy saved at the New York close": { symbol: "EURUSD=X",
+    saved: ["2026-10-07T20:05:00Z", "2026-10-08T20:00:00Z", "2026-10-08T20:05:00Z"], readAt: "2026-10-08T23:00:00Z",
+    later: ["2026-10-07T23:00:00Z", "2026-10-08T22:50:00Z"] },
+  "FX weekend, Friday's copy saved at noon": { symbol: "EURUSD=X", saved: ["2026-10-08T12:00:00Z", "2026-10-09T11:55:00Z", "2026-10-09T12:00:00Z"],
+    readAt: "2026-10-10T18:30:00Z", later: ["2026-10-08T23:00:00Z", "2026-10-09T22:55:00Z"] },
+  "FX weekend, the whole week to its close": { symbol: "EURUSD=X", saved: ["2026-10-08T23:00:00Z", "2026-10-09T22:55:00Z", "2026-10-10T10:00:00Z"],
+    readAt: "2026-10-11T20:00:00Z" },
+  "FX Monday morning, last week to its close": { symbol: "EURUSD=X", saved: ["2026-10-08T23:00:00Z", "2026-10-09T22:55:00Z", "2026-10-10T10:00:00Z"],
+    readAt: "2026-10-12T08:00:00Z", later: ["2026-10-11T21:00:00Z", "2026-10-12T07:50:00Z"] },
+};
 
 function source(answer: () => PricePoint[], calls: string[]): DataProvider {
   return {
@@ -105,64 +134,70 @@ async function readAfterSaving(symbol: string, savedAt: string, points: PricePoi
   } finally { store.close(); }
 }
 
-/** First bar, last bar and count. */
-function span(points: PricePoint[]): [string | undefined, string | undefined, number] {
+/** First bar, last bar, count and the last close (100 saved, 999 refetched). */
+function span(points: PricePoint[]): [string | undefined, string | undefined, number, number | undefined] {
   const iso = (point: PricePoint | undefined) => point && new Date(point.date).toISOString();
-  return [iso(points[0]), iso(points.at(-1)), points.length];
+  return [iso(points[0]), iso(points.at(-1)), points.length, points.at(-1)?.close];
 }
 
 afterEach(() => { setSystemTime(); });
 
-test.each(ROWS.map((row) => [row.what, row] as const))(
-  "%s: a copy saved mid-session is refetched once the session is over, and still answers offline",
-  async (what, { symbol, partial, full, readAt }) => {
-    for (const at of readAt) {
-      const refetched = await readAfterSaving(symbol, partial.savedAt, partial.points, at, () => full);
-      expect(span(refetched.served), `${what} at ${at}`).toEqual(span(full));
-      expect(refetched.calls, `${what} at ${at}`).toHaveLength(2);
-      const offline = await readAfterSaving(symbol, partial.savedAt, partial.points, at, () => { throw new Error("offline"); });
-      expect(span(offline.served), `${what} offline at ${at}`).toEqual(span(partial.points));
-    }
-  },
-);
+test.each(Object.entries(ROWS))("%s", async (what, { symbol, saved: [first, last, savedAt], readAt, later }) => {
+  const copy = bars(first, last);
+  const fresh = later ? bars(...later, 999) : bars(first, last, 999);
+  const online = await readAfterSaving(symbol, savedAt, copy, readAt, () => fresh);
+  if (later) {
+    expect(span(online.served), "refetched").toEqual(span(fresh));
+    expect(online.calls, "refetched").toHaveLength(2);
+  } else {
+    expect(span(online.served), "from the cache").toEqual(span(copy));
+  }
+  // Offline, or with the source failing, the saved copy answers rather than nothing.
+  const offline = await readAfterSaving(symbol, savedAt, copy, readAt, () => { throw new Error("offline"); });
+  expect(span(offline.served), `${what}, offline`).toEqual(span(copy));
+});
 
-test("complete copies of a closed session answer from the cache", async () => {
-  const marker = () => bars("2026-10-09T13:30:00Z", "2026-10-09T19:55:00Z", 999);
-  const rows: Array<[string, string, string, PricePoint[], string]> = [
-    // [what, symbol, saved at, bars, read at]
-    ["US, saved after the close", "AAPL", "2026-10-09T20:40:00Z", bars("2026-10-09T13:30:00Z", "2026-10-09T19:55:00Z"), "2026-10-10T18:30:00Z"],
-    // Black Friday closes at 13:00 New York (18:00 UTC); saved ten minutes later.
-    ["US early close", "AAPL", "2026-11-27T18:10:00Z", bars("2026-11-27T14:30:00Z", "2026-11-27T17:55:00Z"), "2026-11-28T15:00:00Z"],
-    ["HKEX", "0700.HK", "2026-10-09T09:00:00Z", bars("2026-10-09T01:15:00Z", "2026-10-09T08:05:00Z"), "2026-10-11T00:30:00Z"],
-    // Saved at 13:40 Tel Aviv, before Friday's 13:50 close: the 13:29 bar is the last.
-    ["TASE Friday, saved before the close", "LUMI.TA", "2026-10-09T10:40:00Z", bars("2026-10-09T06:59:00Z", "2026-10-09T10:29:00Z"), "2026-10-10T12:00:00Z"],
-    ["FX, saved after the week closed", "EURUSD=X", "2026-10-10T01:00:00Z", bars("2026-10-08T23:00:00Z", "2026-10-09T22:55:00Z"), "2026-10-11T20:00:00Z"],
-  ];
-  for (const [what, symbol, savedAt, points, readAt] of rows) {
-    const { served } = await readAfterSaving(symbol, savedAt, points, readAt, marker);
-    expect(span(served), what).toEqual(span(points));
-    expect(served.at(-1)?.close, what).toBe(100);
+test("a thin listing's copy is refetched once after the close, on a weeknight as on a weekend", async () => {
+  // Saved at 11:15 New York; the listing did not trade after 11:00.
+  for (const [day, readAt] of [["2026-10-08", "2026-10-08T21:00:00Z"], ["2026-10-09", "2026-10-10T18:30:00Z"]] as const) {
+    const calls: string[] = [];
+    const thin = bars(`${day}T13:30:00Z`, `${day}T15:00:00Z`);
+    let answer = () => thin;
+    const store = new AppPersistence(":memory:");
+    const router = new AssetDataRouter(source(() => answer(), calls), [], store.resources);
+    const lastClose = async () => (await router.getPriceHistoryWithMetadata("CODA", "", "1D")).points.at(-1)?.close;
+    try {
+      setSystemTime(new Date(`${day}T15:15:00Z`));
+      expect(await lastClose()).toBe(100);
+      // After the close the copy predates it, so the source is asked again and
+      // answers the same bars. That copy now stands for the session.
+      setSystemTime(new Date(readAt));
+      expect(await lastClose(), readAt).toBe(100);
+      expect(calls, readAt).toHaveLength(2);
+      answer = () => bars(`${day}T13:30:00Z`, `${day}T15:00:00Z`, 999);
+      setSystemTime(new Date(Date.parse(readAt) + 10 * MIN));
+      expect(await lastClose(), readAt).toBe(100);
+    } finally { store.close(); }
   }
 });
 
-test("a thin listing's copy is refetched once after the close, not on every request", async () => {
+test("a copy the source cannot replace answers without asking again until the next re-check", async () => {
+  // HKEX, Friday's copy saved at 11:30 and read on Saturday while the source is down.
   const calls: string[] = [];
-  const thin = bars("2026-10-09T13:30:00Z", "2026-10-09T15:00:00Z");
-  let answer = () => thin;
   const store = new AppPersistence(":memory:");
+  let answer = () => bars("2026-10-09T01:15:00Z", "2026-10-09T03:10:00Z");
   const router = new AssetDataRouter(source(() => answer(), calls), [], store.resources);
-  const lastClose = async () => (await router.getPriceHistoryWithMetadata("CODA", "", "1D")).points.at(-1)?.close;
+  const read = async (at: string) => {
+    setSystemTime(new Date(at));
+    return (await router.getPriceHistoryWithMetadata("0700.HK", "", "1D")).points.length;
+  };
   try {
-    setSystemTime(new Date("2026-10-09T15:15:00Z"));
-    expect(await lastClose()).toBe(100);
-    // Saturday: the copy predates the close, so the source is asked again and
-    // answers the same bars. That copy now stands for the session.
-    setSystemTime(new Date("2026-10-10T18:30:00Z"));
-    expect(await lastClose()).toBe(100);
+    await read("2026-10-09T03:30:00Z");
+    answer = () => { throw new Error("offline"); };
+    for (const at of ["2026-10-10T12:00:00Z", "2026-10-10T12:01:00Z", "2026-10-10T12:04:00Z"]) expect(await read(at), at).toBe(24);
     expect(calls).toHaveLength(2);
-    answer = () => bars("2026-10-09T13:30:00Z", "2026-10-09T15:00:00Z", 999);
-    setSystemTime(new Date("2026-10-10T18:40:00Z"));
-    expect(await lastClose()).toBe(100);
+    expect(await read("2026-10-10T12:06:00Z")).toBe(24);
+    expect(calls).toHaveLength(3);
   } finally { store.close(); }
 });
 

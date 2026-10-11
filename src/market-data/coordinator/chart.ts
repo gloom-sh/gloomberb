@@ -45,8 +45,14 @@ function isIntradayChartRequest(request: ChartRequest, history?: QueryEntry<Pric
   return request.bufferRange === "1D" || request.bufferRange === "1W" || request.bufferRange === "1M" || request.bufferRange === "3M";
 }
 
+/**
+ * Held bars that still answer for the current window. `fetchedAt` is when
+ * they arrived: a copy received once its session had settled holds it however
+ * early its last bar, as the router judged it.
+ */
 export function normalizeFreshChartData(
   points: PricePoint[] | null | undefined, request: ChartRequest, history?: QueryEntry<PricePoint[]>["history"],
+  fetchedAt?: number | null,
 ): PricePoint[] {
   const normalized = normalizePriceHistory(points ?? []);
   const target = publicListingTarget(request.instrument.symbol, request.instrument.exchange);
@@ -58,7 +64,7 @@ export function normalizeFreshChartData(
   if (
     isIntradayChartRequest(request, history)
     && isPriceHistoryStaleForCurrentWindow(normalized, Date.now(), { symbol: target.symbol, exchange: target.exchange,
-      intervalMs: interval ? priceHistoryIntervalMs(interval) : undefined, session })
+      intervalMs: interval ? priceHistoryIntervalMs(interval) : undefined, session, fetchedAt: fetchedAt ?? undefined })
   ) {
     return [];
   }
@@ -67,7 +73,7 @@ export function normalizeFreshChartData(
 
 /** A request can cross a session/bar boundary while its upstream call is pending. */
 export function freshChartFallback(entry: QueryEntry<PricePoint[]>, request: ChartRequest): QueryEntry<PricePoint[]> {
-  const data = normalizeFreshChartData(entry.lastGoodData, request, entry.history);
+  const data = normalizeFreshChartData(entry.lastGoodData, request, entry.history, entry.fetchedAt);
   return data.length ? { ...entry, lastGoodData: data }
     : { ...entry, data: null, lastGoodData: null, history: undefined };
 }
@@ -105,7 +111,7 @@ function findChartSeedEntry({
     if (candidateKey === key) continue;
     if (!isSeedableChartRequest(request, candidateRequest)) continue;
     const entry = getEntry(candidateKey);
-    const data = normalizeFreshChartData(resolveEntryData(entry), request, entry.history);
+    const data = normalizeFreshChartData(resolveEntryData(entry), request, entry.history, entry.fetchedAt);
     if (!data?.length) continue;
     const score = getTimeRangeIndex(candidateRequest.bufferRange);
     if (!best || score > best.score) {
@@ -125,7 +131,7 @@ export function createChartLoadingEntry({
 }: ChartSeedLookupArgs & {
   current: QueryEntry<PricePoint[]>;
 }): QueryEntry<PricePoint[]> {
-  const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history);
+  const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history, current.fetchedAt);
   if (currentData.length) {
     return loadingEntry<PricePoint[]>({
       ...current,

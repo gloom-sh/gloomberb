@@ -29,18 +29,28 @@ export function isFxMarketOpen(time: number): boolean {
   return true;
 }
 
-/** The latest close of the FX week, Friday 17:00 New York, at or before `time`. */
-export function latestFxWeekClose(time: number): number | null {
+/** The latest 17:00 New York on `weekday` (0 is Sunday) at or before `time`. */
+function latestNewYorkFivePm(time: number, weekday: number): number | null {
   if (!Number.isFinite(time)) return null;
   const { year, month, day } = zonedDateTimeParts(time, NEW_YORK);
   const today = Date.UTC(year, month - 1, day);
   for (let offset = 0; offset <= 7; offset += 1) {
     const date = new Date(today - offset * DAY_MS);
-    if (date.getUTCDay() !== 5) continue;
-    const close = zonedWallClockToUtcMs(NEW_YORK, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), 17, 0, 0);
-    if (close <= time) return close;
+    if (date.getUTCDay() !== weekday) continue;
+    const at = zonedWallClockToUtcMs(NEW_YORK, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), 17, 0, 0);
+    if (at <= time) return at;
   }
   return null;
+}
+
+/** The latest close of the FX week, Friday 17:00 New York, at or before `time`. */
+export function latestFxWeekClose(time: number): number | null {
+  return latestNewYorkFivePm(time, 5);
+}
+
+/** The latest open of the FX week, Sunday 17:00 New York, at or before `time`. */
+export function latestFxWeekOpen(time: number): number | null {
+  return latestNewYorkFivePm(time, 0);
 }
 
 /**

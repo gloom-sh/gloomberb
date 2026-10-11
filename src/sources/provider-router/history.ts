@@ -56,7 +56,8 @@ interface HistoryRequestDescriptor {
   context?: MarketDataRequestContext;
   cachePolicyKey: PriceHistoryCachePolicyKey;
   missingProviderError?: string;
-  isCachedValueStale(value: PriceHistoryResult): boolean;
+  /** `fetchedAt` is when the cached copy was fetched. */
+  isCachedValueStale(value: PriceHistoryResult, fetchedAt: number): boolean;
   isFetchedValueStale(value: PriceHistoryResult): boolean;
   fetchBroker(candidate: BrokerCandidate): Promise<PricePoint[] | null>;
   fetchProvider(provider: DataProvider): Promise<PriceHistoryResult | null>;
@@ -249,9 +250,11 @@ function normalizeRequestResult(value: PriceHistoryResult, request: HistoryReque
   };
 }
 
-function resultIsStale(value: PriceHistoryResult, symbol: string, exchange: string, intervalMs?: number | null): boolean {
+/** A copy fetched at `fetchedAt`, now for a source's answer. */
+function resultIsStale(value: PriceHistoryResult, symbol: string, exchange: string, fetchedAt: number, intervalMs?: number | null): boolean {
   return isPriceHistoryStaleForCurrentWindow(value.points, Date.now(), {
     symbol, exchange, intervalMs: intervalMs ?? (value.resolution ? priceHistoryIntervalMs(value.resolution) : undefined), session: value.session,
+    fetchedAt,
   });
 }
 
@@ -351,8 +354,8 @@ export class ProviderRouterHistoryRoutes {
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No history provider available for ${ticker}`,
-      isCachedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange),
-      isFetchedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange),
+      isCachedValueStale: (value, fetchedAt) => intraday && resultIsStale(value, ticker, exchange, fetchedAt),
+      isFetchedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange, Date.now()),
       fetchBroker: async (candidate) => candidate.broker.getPriceHistory
         ? candidate.broker.getPriceHistory(
           ticker,
@@ -408,8 +411,8 @@ export class ProviderRouterHistoryRoutes {
       context,
       cachePolicyKey: intraday ? "priceHistoryIntraday" : "priceHistoryDaily",
       missingProviderError: `No resolution-aware history provider available for ${ticker}`,
-      isCachedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange, intervalMs),
-      isFetchedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange, intervalMs),
+      isCachedValueStale: (value, fetchedAt) => intraday && resultIsStale(value, ticker, exchange, fetchedAt, intervalMs),
+      isFetchedValueStale: (value) => intraday && resultIsStale(value, ticker, exchange, Date.now(), intervalMs),
       fetchBroker: async (candidate) => candidate.broker.getPriceHistoryForResolution
         ? candidate.broker.getPriceHistoryForResolution(
           ticker,
@@ -523,10 +526,10 @@ export class ProviderRouterHistoryRoutes {
       interval: barSize,
       context,
       cachePolicyKey: intervalMs != null && intervalMs >= 24 * 60 * 60 * 1000 ? "priceHistoryDaily" : "priceHistoryIntraday",
-      isCachedValueStale: (value) => currentWindowAtLookup
-        && resultIsStale(value, ticker, exchange, intervalMs),
+      isCachedValueStale: (value, fetchedAt) => currentWindowAtLookup
+        && resultIsStale(value, ticker, exchange, fetchedAt, intervalMs),
       isFetchedValueStale: (value) => isCurrentHistoryWindow(endDate)
-        && resultIsStale(value, ticker, exchange, intervalMs),
+        && resultIsStale(value, ticker, exchange, Date.now(), intervalMs),
       fetchBroker: async (candidate) => candidate.broker.getDetailedPriceHistory
         ? candidate.broker.getDetailedPriceHistory(
           ticker,
@@ -604,7 +607,7 @@ export class ProviderRouterHistoryRoutes {
     const withReportedGaps = (value: PriceHistoryResult) => historyCoverage(request).merge(value, reportedGaps);
     const clip = (value: PriceHistoryResult) => request.requestedRange
       ? clipHistoryToRange(value, request.requestedRange, request.target.exchange) : value;
-    const cachedHistoryStale = request.isCachedValueStale(cachedValue);
+    const cachedHistoryStale = request.isCachedValueStale(cachedValue, cached?.fetchedAt ?? Number.NEGATIVE_INFINITY);
     const forceRefresh = request.context?.cacheMode === "refresh";
     // A recent re-check, even a failed, empty or rejected one, defers the next
     // one; it does not make the copy current. A broader copy only tells what
@@ -613,8 +616,10 @@ export class ProviderRouterHistoryRoutes {
       request.exactCacheVariantKeys.includes(cached.variantKey) ? cached.fetchedAt : Number.NEGATIVE_INFINITY)) : "current";
     const cachedBeforeClose = servedState === "unsettled" || servedState === "recheck";
     if (cachedBeforeClose) this.markCalendarChecked(request, now);
-    const usableCached = hasUsablePriceHistory(cachedValue.points) && cached && !cached.expired && !cachedHistoryStale
-      && !cachedBeforeClose;
+    // A copy that a re-check since the close could not replace answers until
+    // the next one is due, though it does not hold the whole session.
+    const usableCached = hasUsablePriceHistory(cachedValue.points) && cached && !cached.expired
+      && (!cachedHistoryStale || servedState === "pending") && !cachedBeforeClose;
     // A copy behind or before the latest session is re-checked on the paced
     // schedule above, not on its short TTL: the source is likely to answer
     // the same. A short-lived process (the CLI) closes its store before a
@@ -651,12 +656,16 @@ export class ProviderRouterHistoryRoutes {
     if (providerResult && hasUsablePriceHistory(providerResult.value.points)) return withReportedGaps(providerResult.value);
     if (providerResult) reportedGaps.push(providerResult.value);
     // A failed refetch falls back in the same order the cache hit used, so a
-    // failing request answers what the next request will.
-    const fallbackValue = ranked
+    // failing request answers what the next request will: a current copy
+    // first, else a saved copy short of the latest session, which beats an
+    // empty chart. Intraday copies expire two days after they are saved. A
+    // coin never closes, so its old copy is not shown: the miss says why.
+    const coin = isRoundTheClockCoin(target.symbol, target.exchange || request.target.exchange);
+    const fallbackRecords = ranked
       .map((entry) => entry.record)
-      .filter((record) => !supersededCacheSources.has(record.sourceKey))
-      .map((record) => record.value)
-      .find((value) => !request.isCachedValueStale(value));
+      .filter((record) => !supersededCacheSources.has(record.sourceKey));
+    const fallbackValue = (fallbackRecords.find((record) => !request.isCachedValueStale(record.value, record.fetchedAt))
+      ?? (coin ? undefined : fallbackRecords[0]))?.value;
     if (fallbackValue) {
       return request.requestedRange
         ? clip(withReportedGaps(fallbackValue))
@@ -673,8 +682,7 @@ export class ProviderRouterHistoryRoutes {
     }
     if (!providerResult && request.missingProviderError && !reportedGaps.some((value) => value.points.length > 0)) {
       // A source answered a coin's history but it stops short of the present: say so, not that nothing answered.
-      const behind = isRoundTheClockCoin(target.symbol, target.exchange || request.target.exchange)
-        && [...attempts.outcomes.values()].some((outcome) => outcome.outcome === "stale");
+      const behind = coin && [...attempts.outcomes.values()].some((outcome) => outcome.outcome === "stale");
       if (behind) throw new Error(`Latest history for ${target.symbol} is behind`);
       // A reason the service gave ("ADX listings have daily bars only.") says why; one that has no
       // listing for the symbol says it is not a ticker; otherwise no source answered.

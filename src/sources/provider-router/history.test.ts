@@ -47,8 +47,10 @@ describe("AssetDataRouter chart history", () => {
       }
       expect(calls).toEqual({ generic: 1, resolution: 1, detailed: 2 });
       await expect(router.getPriceHistoryForResolution("QQQ", "NASDAQ", "1M", "1m")).rejects.toThrow("No resolution-aware history provider");
+      // A day later the source still answers the same bars, which are behind
+      // Friday's session: the saved copy answers rather than nothing.
       Date.now = () => Date.parse("2026-09-11T19:39:09Z");
-      await expect(router.getPriceHistoryForResolution("QQQ", "NASDAQ", "1M", "15m")).rejects.toThrow("No resolution-aware history provider");
+      expect(JSON.stringify(await router.getPriceHistoryForResolution("QQQ", "NASDAQ", "1M", "15m"))).toBe(JSON.stringify(intraday));
     } finally {
       persistence.close();
       Date.now = originalNow;

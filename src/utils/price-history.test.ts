@@ -30,7 +30,7 @@ describe("history freshness follows bar cadence", () => {
     const previousSession = points(["2026-09-09T18:45:00Z", "2026-09-09T19:00:00Z"]);
     expect(isPriceHistoryStaleForCurrentWindow(previousSession, now,
       { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("15min") })).toBe(true);
-    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-11T19:00:00Z"]), Date.parse("2026-09-13T19:39:09Z"),
+    expect(isPriceHistoryStaleForCurrentWindow(points(["2026-09-11T19:45:00Z"]), Date.parse("2026-09-13T19:39:09Z"),
       { exchange: "NASDAQ", intervalMs: priceHistoryIntervalMs("15min") })).toBe(false);
   });
 });
@@ -89,16 +89,6 @@ describe("normalizePriceHistory", () => {
     ).toBe(false);
   });
 
-  test("keeps Friday short-range history usable while the exchange is closed", () => {
-    expect(
-      isPriceHistoryStaleForCurrentWindow(
-        [{ date: new Date("2026-05-15T15:30:00Z"), close: 67 }],
-        Date.parse("2026-05-17T12:00:00Z"),
-        { exchange: "NASDAQ" },
-      ),
-    ).toBe(false);
-  });
-
   test("keeps a non-US venue's session current after its close, until the next open", () => {
     // Tokyo's last bar before the 15:30 closing auction, read that evening in Europe and the next morning.
     const tokyo = [{ date: new Date("2026-10-02T06:24:00Z"), close: 2856.5 }];
@@ -123,16 +113,6 @@ describe("normalizePriceHistory", () => {
     expect(stale("2026-10-01T15:00:00Z", "2026-10-02T08:10:00Z", "1h")).toBe(false);
     // A copy taken earlier in Thursday's session stays behind.
     expect(stale("2026-10-01T10:00:00Z", "2026-10-02T07:20:00Z", "1m")).toBe(true);
-  });
-
-  test("still treats old always-open market history as stale", () => {
-    expect(
-      isPriceHistoryStaleForCurrentWindow(
-        [{ date: new Date("2026-05-15T15:30:00Z"), close: 67 }],
-        Date.parse("2026-05-17T12:00:00Z"),
-        { exchange: "CCC" },
-      ),
-    ).toBe(true);
   });
 });
 

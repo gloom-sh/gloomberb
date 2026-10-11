@@ -35,7 +35,7 @@ const ROWS: Record<Venue, Row[]> = {
     ["Sunday in session, today's bars so far", "2026-10-11T12:00", "2026-10-11", "11:40", true],
     ["Sunday in session, bars that stopped at 10:30", "2026-10-11T12:00", "2026-10-11", "10:30", false],
     ["Tuesday after the close", "2026-10-06T16:00", "2026-10-06", null, true],
-    ["Tuesday after the close, a copy that stopped at noon", "2026-10-06T16:00", "2026-10-06", "12:00", false],
+    ["Tuesday after the close, a thin listing's fresh copy ending at noon", "2026-10-06T16:00", "2026-10-06", "12:00", true],
   ],
   QE: [
     ["Friday, Thursday's session", "2026-10-09T12:00", "2026-10-08", null, true],
@@ -45,7 +45,7 @@ const ROWS: Record<Venue, Row[]> = {
     ["Sunday in session, today's bars so far", "2026-10-11T11:00", "2026-10-11", "10:40", true],
     ["Sunday in session, bars that stopped at 10:00", "2026-10-11T11:30", "2026-10-11", "10:00", false],
     ["Tuesday after the close", "2026-10-06T14:00", "2026-10-06", null, true],
-    ["Tuesday after the close, a copy that stopped at 11:00", "2026-10-06T14:00", "2026-10-06", "11:00", false],
+    ["Tuesday after the close, a thin listing's fresh copy ending at 11:00", "2026-10-06T14:00", "2026-10-06", "11:00", true],
   ],
   DFM: [
     ["Saturday, Friday's session", "2026-10-10T12:00", "2026-10-09", null, true],
@@ -57,7 +57,7 @@ const ROWS: Record<Venue, Row[]> = {
     ["Sunday, closed, Friday's session", "2026-10-11T12:00", "2026-10-09", null, true],
     ["Monday before the open, Friday's session", "2026-10-12T09:00", "2026-10-09", null, true],
     ["Tuesday after the close", "2026-10-06T16:00", "2026-10-06", null, true],
-    ["Tuesday after the close, a copy that stopped at noon", "2026-10-06T16:00", "2026-10-06", "12:00", false],
+    ["Tuesday after the close, a thin listing's fresh copy ending at noon", "2026-10-06T16:00", "2026-10-06", "12:00", true],
   ],
   KUWAIT: [
     ["Friday, Thursday's session", "2026-10-09T12:00", "2026-10-08", null, true],
@@ -68,7 +68,7 @@ const ROWS: Record<Venue, Row[]> = {
     ["Sunday in session, bars that stopped at 10:00", "2026-10-11T11:30", "2026-10-11", "10:00", false],
     ["Tuesday in the closing auction, bars through 12:40", "2026-10-06T13:05", "2026-10-06", null, true],
     ["Tuesday after the close", "2026-10-06T14:00", "2026-10-06", null, true],
-    ["Tuesday after the close, a copy that stopped at 11:00", "2026-10-06T14:00", "2026-10-06", "11:00", false],
+    ["Tuesday after the close, a thin listing's fresh copy ending at 11:00", "2026-10-06T14:00", "2026-10-06", "11:00", true],
   ],
 };
 
