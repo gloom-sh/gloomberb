@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import type { QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
+import { createTestTicker } from "../../test-support/ticker";
 import { buildSearchReport } from "./search";
 import { marketDataCliCommands } from "./market";
 
@@ -141,4 +142,21 @@ test("a bare index root points at its ^ index, whether it found nothing or anoth
 
   expect(buildSearchReport({ query: "vix", candidates: [] })).toContain("gloomberb quote ^VIX");
   expect(buildSearchReport({ query: "AAPL", candidates: [] })).not.toContain("^");
+});
+
+test("a quote that stopped years ago says since when, keeps its last price, and takes the saved name when it has none", async () => {
+  const lastTrade = Date.parse("2022-10-27T23:59:59.953Z");
+  const twitter = createTestQuote({ symbol: "TWTR", price: 53.86, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true });
+  const behind = createTestQuote({ symbol: "AAPL", lastUpdated: Date.now() - 10 * 24 * 60 * 60_000, stale: true });
+  const source = venueSource("TWTR", [], { TWTR: twitter, AAPL: behind });
+  const saved = createTestTicker("TWTR", "Twitter, Inc.", { exchange: "NYSE" });
+  const cli = createTestCliContext({
+    dataProvider: source.dataProvider,
+    store: { loadTicker: async (symbol: string) => symbol === "TWTR" ? saved : null, loadAllTickers: async () => [saved] },
+  });
+  await quoteCommand.execute(["TWTR", "AAPL"], cli.context);
+  const printed = cli.printed[0]!;
+  expect(printed.result.warnings).toEqual(["TWTR (Twitter, Inc.): no longer trading since 2022-10-27 (last price $53.86)"]);
+  const rows = printed.options!.rows!(printed.result.data) as Array<{ symbol: string; name: string; price: string }>;
+  expect(rows[0]).toMatchObject({ symbol: "TWTR", name: "Twitter, Inc.", price: "$53.86" });
 });

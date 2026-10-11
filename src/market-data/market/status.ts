@@ -116,7 +116,7 @@ export function exchangeShortName(exchangeName?: string, fullExchangeName?: stri
   const map: Record<string, string> = {
     NMS: "NASDAQ", NGM: "NASDAQ", NCM: "NASDAQ", NAS: "NASDAQ",
     NYQ: "NYSE", NYS: "NYSE",
-    PCX: "ARCA", NYSEArca: "ARCA", "NYSE Arca": "ARCA", ASE: "AMEX",
+    PCX: "ARCA", NYSEArca: "ARCA", "NYSE Arca": "ARCA", ASE: "AMEX", BTS: "BATS",
     HKG: "HKEX",
     TYO: "TYO",
     LSE: "LSE",

@@ -15,6 +15,10 @@ import {
 } from "../utils/exchanges";
 import { withMarketData } from "./scoped-context";
 import { isNoProviderMessage } from "../sources/provider-errors";
+import { dashedCoinPair } from "../utils/crypto-pair";
+import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
+import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../market-data/market/format";
+import { zonedDateKey } from "../utils/zoned-date-time";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -54,7 +58,9 @@ export function parseListingArg(
   let typed = raw.trim().replace(/^\$/, "").toUpperCase();
   // `SAN:` asks which listing; with --exchange it has its answer.
   if (option && typed.endsWith(":")) typed = typed.slice(0, -1);
-  const parsed = parsePublicTickerKey(typed);
+  const venueKey = parsePublicTickerKey(typed);
+  // BTC/USD, as crypto venues write a pair, is the coin's own BTC-USD.
+  const parsed = { ...venueKey, symbol: dashedCoinPair(venueKey.symbol) ?? venueKey.symbol };
   if (parsed.exchange && option && parsed.exchange !== option && !ownExchangeWins) {
     throw new ListingArgError(
       `${typed} names exchange ${parsed.exchange}, but --exchange names ${option}.`,
@@ -165,6 +171,11 @@ export interface ListingDataRequest {
   command: string;
   /** What the listing has none of: "history", "a quote". */
   noun: string;
+  /**
+   * The retry for one listing, when the key does not go right after the
+   * command (`gloomberb watchlist add Growth SAN:EPA`); null names the listings alone.
+   */
+  retry?: ((key: string) => string) | null;
 }
 
 /**
@@ -248,10 +259,10 @@ function describeOtherListings(
   if (others.length === 0) return null;
   const name = resolved?.name || listing.saved?.metadata.name?.trim() || "";
   const [command, ...options] = request.command.split(" ");
-  const retry = (key: string) => ["gloomberb", command, key, ...options].join(" ");
+  const retry = request.retry === undefined ? (key: string) => ["gloomberb", command, key, ...options].join(" ") : request.retry;
   const lines = others.slice(0, MAX_OTHER_LISTINGS).map((venue) => {
     const key = `${listing.symbol}:${venue.exchange}`;
-    return `${key}${venue.name ? ` ${venue.name}` : ""} (try: ${retry(key)})`;
+    return `${key}${venue.name ? ` ${venue.name}` : ""}${retry ? ` (try: ${retry(key)})` : ""}`;
   });
   if (others.length > MAX_OTHER_LISTINGS) lines.push(`and ${others.length - MAX_OTHER_LISTINGS} more: gloomberb search ${listing.symbol}`);
   const heading = choose ? "Listings" : "Other listings";
@@ -364,19 +375,49 @@ export async function quoteBareListing(
   const others = [...first, ...rest]
     .filter((entry, index) => entry !== answer && (index >= tried.length || quotes[index]))
     .map((entry) => entry.exchange);
-  const more = others.length - MAX_OTHER_LISTINGS;
-  const aside = [
-    without.length > 0 ? `no quote on ${without.join(", ")}` : "",
-    others.length > 0
-      ? `other listings: ${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloomberb search ${listing.symbol}` : ""}`
-      : "",
-  ].filter(Boolean).join("; ");
   return {
     kind: "quoted",
     listing: answer,
     quote: quotes[found]!,
-    note: `${listing.symbol} -> ${answer.exchange}${aside ? ` (${aside})` : ""}`,
+    note: chosenListingNote(listing.symbol, answer.exchange, others, without),
   };
+}
+
+/**
+ * "IEO -> BATS (other listings: IEX, BMV)": the venue a bare symbol went to,
+ * the venues it was not quoted on, and the ones it also trades on.
+ */
+export function chosenListingNote(symbol: string, exchange: string, others: readonly string[], without: readonly string[] = []): string {
+  const more = others.length - MAX_OTHER_LISTINGS;
+  const aside = [
+    without.length > 0 ? `no quote on ${without.join(", ")}` : "",
+    others.length > 0
+      ? `other listings: ${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloomberb search ${symbol}` : ""}`
+      : "",
+  ].filter(Boolean).join("; ");
+  return `${symbol} -> ${exchange}${aside ? ` (${aside})` : ""}`;
+}
+
+// A quote this much older than now, and stale, is a listing that stopped trading, not a quiet day.
+const ENDED_AFTER_MS = 183 * 24 * 60 * 60_000;
+
+/**
+ * The exchange-local date a listing last traded, when its quote is stale and
+ * that was over half a year ago (TWTR's 2022-10-27); null for anything newer.
+ */
+function endedTradingDate(quote: Quote, now = Date.now()): string | null {
+  const last = Math.max(...[quote.lastTradeTime, quote.lastUpdated].filter((time): time is number => Number.isFinite(time)));
+  if (!(last > 0) || now - last < ENDED_AFTER_MS || !isQuoteStaleForCurrentSession(quote, now)) return null;
+  const zone = resolveExchangeTimeZone(quote.listingExchangeName || quote.exchangeName) ?? "UTC";
+  return zonedDateKey(last, zone);
+}
+
+/** "TWTR: no longer trading since 2022-10-27 (last price $53.86)", for a quote that stopped long ago. */
+export function noLongerTradingNote(label: string, quote: Quote, now = Date.now()): string | null {
+  const date = endedTradingDate(quote, now);
+  if (!date) return null;
+  const price = formatMarketPriceWithCurrency(quote.price, quote.currency, quoteFormatOptions(quote));
+  return `${label}: no longer trading since ${date} (last price ${price})`;
 }
 
 // The zones of the US exchanges; a venue in another is abroad.

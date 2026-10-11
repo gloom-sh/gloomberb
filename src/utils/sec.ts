@@ -9,8 +9,7 @@ const US_EQUITY_EXCHANGES = new Set([
   "IEX",
   "OTC",
   "PINK",
-  // Listing codes for Cboe BZX and the OTC Markets tiers.
-  "BTS",
+  // Listing codes for the OTC Markets tiers.
   "PNK",
   "OQB",
   "OQX",

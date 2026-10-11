@@ -102,6 +102,7 @@ import {
   listingVenues,
   loadForListing,
   loadListingQuote,
+  noLongerTradingNote,
   notTradedMessage,
   quoteBareListing,
   requireCliListing,
@@ -150,6 +151,8 @@ const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker
 
 type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   error: string | null;
+  /** The listing the row is, named from its saved ticker when the quote names nothing. */
+  listing?: { name: string | null };
   /** A futures row's contract, terms and latest confirmed settlement, as `ticker` reads them. */
   futuresContract?: FuturesContractTermsPayload;
 };
@@ -307,7 +310,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     );
     return {
       symbol: result.target.symbol,
-      name: quote?.name ?? "",
+      name: quote?.name || result.listing?.name || "",
       price: price(display?.price),
       rawPrice: display?.price ?? null,
       priceBasis: quote?.priceBasis ?? null,
@@ -528,9 +531,14 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       error: failure?.oneLine ?? errorMessage(result.error),
       ...yieldIndexFields(result),
     }));
+    const now = Date.now();
     const notes = [
       // Which listing a bare symbol was read as, and the index a bare root is not, are in no row.
       ...answers.flatMap((answer) => answer.notes),
+      // A row that stopped trading long ago reads as a quote that is merely stale.
+      ...data.flatMap((row) => row.quote
+        ? noLongerTradingNote(`${row.target.symbol}${row.listing.name ? ` (${row.listing.name})` : ""}`, row.quote, now) ?? []
+        : []),
       // Text mode shows only "unavailable" in the cell; the JSON rows already carry each reason.
       ...ctx.cliOptions.format === "text" ? quoteNotes(data, { exchange }) : [],
     ];

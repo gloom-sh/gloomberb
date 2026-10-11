@@ -123,6 +123,26 @@ describe("ticker-search utilities", () => {
     }
   });
 
+  test("a bare symbol's quote on a US exchange is its one US listing, whichever venue the feed labels it with", async () => {
+    // /market/search?q=ET and the bare quotes, captured 2026-10-11: the feed labels ET's NYSE line
+    // NYSE American, and Cboe BZX funds BTS.
+    const quote = (listingExchangeName: string) => ({ symbol: "ET", listingExchangeName, currency: "USD", price: 20.41, lastUpdated: 1, change: 0, changePercent: 0 });
+    const resolve = (results: InstrumentSearchResult[], listingExchangeName: string) => resolveTickerSearch({ query: "ET", activeTicker: null,
+      tickers: new Map(), dataProvider: createTestDataProvider({ search: async () => results, getQuote: async () => quote(listingExchangeName) }) });
+    const energyTransfer = [makeSearchResult("ET", "Energy Transfer LP", { exchange: "NYSE", currency: "USD" }),
+      makeSearchResult("ET", "Energy Transfer LP", { exchange: "IEX", currency: "USD" }),
+      makeSearchResult("ET", "Evertz Technologies Ltd.", { exchange: "TSX", currency: "CAD" })];
+    expect(await resolve(energyTransfer, "AMEX"))
+      .toMatchObject({ kind: "provider", result: { exchange: "NYSE" }, otherListings: ["ET:IEX", "ET:XTSE"] });
+    expect(await resolve([makeSearchResult("ET", "Fund", { exchange: "BATS", currency: "USD" }),
+      makeSearchResult("ET", "Fund", { exchange: "IEX", currency: "USD" })], "BTS"))
+      .toMatchObject({ result: { exchange: "BATS" }, otherListings: ["ET:IEX"] });
+    // A US quote is no evidence for a listing abroad, nor between two US lines search disagrees on.
+    await expect(resolve(energyTransfer.slice(1), "NYSE")).rejects.toBeInstanceOf(AmbiguousTickerError);
+    await expect(resolve([...energyTransfer, makeSearchResult("ET", "Energy Transfer LP", { exchange: "ARCA", currency: "USD" })], "AMEX"))
+      .rejects.toBeInstanceOf(AmbiguousTickerError);
+  });
+
   test("explicit venues and saved identities bypass default quote disambiguation", async () => {
     const results = [makeSearchResult("VOD", "Vodacom", { exchange: "JSE", currency: "ZAR" }),
       makeSearchResult("VOD", "Vodafone", { exchange: "LSE", currency: "GBP" }),

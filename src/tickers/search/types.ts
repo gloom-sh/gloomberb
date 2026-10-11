@@ -38,7 +38,13 @@ export interface TickerSearchCandidate extends TickerSearchRankableItem {
 
 export type ResolvedTickerSearch =
   | { kind: "local"; symbol: string; ticker: TickerRecord }
-  | { kind: "provider"; symbol: string; result: InstrumentSearchResult };
+  | {
+    kind: "provider";
+    symbol: string;
+    result: InstrumentSearchResult;
+    /** A bare symbol's other listings (SYM:EXCH) when its quote chose one of several. */
+    otherListings?: string[];
+  };
 
 export interface TickerOpenTarget {
   symbol: string;

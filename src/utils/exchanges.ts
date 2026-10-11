@@ -20,8 +20,9 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   ARCA: "ARCA",
   ARCX: "ARCA",
   BATS: "BATS",
-  // Cboe's US equities listing venue (BZX); quotes label it "CBOE US".
+  // Cboe's US equities listing venue (BZX); quotes label it "CBOE US" or BTS.
   "CBOE US": "BATS",
+  BTS: "BATS",
   TYO: "JPX",
   TSE: "TSX",
   TSEJ: "JPX",

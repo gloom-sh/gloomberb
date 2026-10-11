@@ -1,7 +1,7 @@
 import type { SearchRequestContext, DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
@@ -40,9 +40,14 @@ export {
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
 
+const MAX_NAMED_LISTINGS = 6;
+
 export class AmbiguousTickerError extends Error {
   constructor(readonly query: string, readonly listings: readonly string[], readonly listingNames: Readonly<Record<string, string>> = {}) {
-    super(`Multiple listings match ${query}. Choose an exchange in search or use ${listings.slice(0, 3).join(", ")}.`);
+    // Every listing is a choice: a list cut short could leave out the one meant.
+    const more = listings.length - MAX_NAMED_LISTINGS;
+    const named = `${listings.slice(0, MAX_NAMED_LISTINGS).join(", ")}${more > 0 ? ` or one of ${more} more in search` : ""}`;
+    super(`Multiple listings match ${query}. Choose an exchange in search or use ${named}.`);
     this.name = "AmbiguousTickerError";
   }
 }
@@ -360,14 +365,14 @@ async function resolveTickerSymbol(
       const currency = resolveCurrencyUnit(quote.currency).currency;
       if (exchange && currency && Number.isFinite(quote.price) && quote.price !== 0
         && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0) {
-        verified = matches.filter((item) => {
+        const sameSecurity = matches.filter((item) => {
           const result = item.result!;
           const candidateCurrency = resolveCurrencyUnit(result.currency).currency;
-          return canonicalExchange(listingExchange(result)) === exchange
-            && (!candidateCurrency || candidateCurrency === currency)
+          return (!candidateCurrency || candidateCurrency === currency)
             && findExactTickerSearchMatch([{ label: quote.symbol, right: exchange, instrumentType: quote.instrumentType }], item.symbol)
             && (!isCryptoInstrumentType(result.type) || quote.price > 0);
-        }).map((item) => ({ ...item, result: { ...item.result!, currency } }));
+        });
+        verified = quotedListings(sameSecurity, exchange).map((item) => ({ ...item, result: { ...item.result!, currency } }));
       }
     } catch {
       // An unavailable quote cannot establish the default listing.
@@ -376,6 +381,8 @@ async function resolveTickerSymbol(
       throw ambiguity(symbol);
     }
     exactMatch = verified[0]!;
+    const chosen = publicTickerKey(exactMatch.symbol, listingExchange(exactMatch.result!));
+    return { kind: "provider", symbol: exactMatch.symbol, result: exactMatch.result!, otherListings: [...listings].filter((key) => key !== chosen) };
   }
 
   return {
@@ -383,6 +390,19 @@ async function resolveTickerSymbol(
     symbol: exactMatch.symbol,
     result: exactMatch.result!,
   };
+}
+
+/**
+ * The listings a bare symbol's own quote is on: those on the venue it names.
+ * The US exchanges share one symbol namespace, so a quote on any of them is
+ * the symbol's one US listing, whichever venue the feed labels it with (ET's
+ * NYSE line comes back as NYSE American).
+ */
+function quotedListings(items: TickerSearchCandidate[], exchange: string): TickerSearchCandidate[] {
+  const venue = (item: TickerSearchCandidate) => canonicalExchange(listingExchange(item.result!));
+  const named = items.filter((item) => venue(item) === exchange);
+  if (named.length > 0 || !isUsListingExchange(exchange)) return named;
+  return items.filter((item) => isUsListingExchange(venue(item)));
 }
 
 function listingExchange(result: InstrumentSearchResult): string {

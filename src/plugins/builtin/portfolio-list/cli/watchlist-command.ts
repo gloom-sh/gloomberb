@@ -2,9 +2,9 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers, findWatchlist } from "../../../../cli/helpers";
 import { slugifyName } from "../../../../utils/slugify";
-import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
+import { resolveCliTicker } from "../../../../cli/ticker-resolution";
 import { takeOption } from "../../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, loadSavedListing, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
+import { EXCHANGE_OPTION, ListingArgError, loadSavedListing, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
 import {
   cliStyles,
   renderSection,
@@ -64,20 +64,27 @@ async function addTickerToWatchlistCommand(watchlistName: string, symbol: string
     if (!watchlist) ctx.fail(`Watchlist "${watchlistName}" was not found.`);
 
     try {
-      const ticker = await resolveTickerForCli(symbol, store, dataProvider, exchange);
+      // A bare symbol is stored on the listing `quote` reads it as, and the notes say which.
+      const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
+        retry: (key) => `gloomberb watchlist add ${watchlist.name} ${key}`,
+      });
       const result = addTickerToWatchlist(ticker, watchlist.id);
       // Name the listing that was stored: SAN:EPA is not the SAN that a bare SAN means.
       const saved = savedListingName(ticker);
       const data = { changed: result.changed, ...listingFields(saved), watchlist: watchlist.name };
+      const warnings = notes.length > 0 ? notes : undefined;
       if (!result.changed) {
-        ctx.printResult({ data }, { text: () => cliStyles.warning(`${saved.label} is already in "${watchlist.name}".`) });
+        ctx.printResult({ data, warnings }, { text: () => cliStyles.warning(`${saved.label} is already in "${watchlist.name}".`) });
         return;
       }
 
       await store.saveTicker(result.ticker);
-      ctx.printResult({ data }, { text: () => cliStyles.success(`Added ${saved.label} to "${watchlist.name}".`) });
+      ctx.printResult({ data, warnings }, { text: () => cliStyles.success(`Added ${saved.label} to "${watchlist.name}".`) });
     } catch (error) {
-      ctx.fail(error instanceof Error ? error.message : `Failed to add ${symbol} to "${watchlist.name}".`);
+      ctx.fail(
+        error instanceof Error ? error.message : `Failed to add ${symbol} to "${watchlist.name}".`,
+        error instanceof ListingArgError ? error.details : undefined,
+      );
     }
   });
 }
