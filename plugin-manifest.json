@@ -74,6 +74,11 @@
             "access": "preview"
           },
           {
+            "code": "EPWR",
+            "name": "European Power Prices",
+            "description": "Day-ahead power prices for 32 European markets, EUR/MWh: the latest delivery day, 7- and 30-day averages, a year ago and the 52-week range, with each market's daily history."
+          },
+          {
             "code": "SPLC",
             "name": "Supply Chain",
             "description": "Pro global supply chain evidence from filings, company announcements, calls and news, with trust tiers, original quotes, native units, four-hop graphs, ranked paths and a free preview.",
