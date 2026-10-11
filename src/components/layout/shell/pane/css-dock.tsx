@@ -47,7 +47,7 @@ export function anchoredPaneStyle(instanceId: string) {
   } as const;
 }
 
-/** The divider strip, centred on the boundary: as `dividerSize` in the shell's precise dock geometry. */
+/** The divider strip, centered on the boundary: as `dividerSize` in the shell's precise dock geometry. */
 const DIVIDER_PX = { horizontal: "var(--cell-w)", vertical: "min(var(--cell-h), 8px)" } as const;
 
 /**
