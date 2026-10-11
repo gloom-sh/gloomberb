@@ -253,8 +253,18 @@ export const chartSeriesCatalogOutputSchema: CapabilitySchema<ChartSeriesCatalog
 export const chartSeriesResolveRequestSchema: CapabilitySchema<ChartSeriesResolveRequest> = { parse: resolveRequest };
 export const chartSeriesResolveOutputSchema: CapabilitySchema<ResolvedSeries> = { parse: resolvedOutput };
 
+/**
+ * Set on the capabilities registered series resolve through. The composer
+ * searches those series in the series registry, so capability search skips them.
+ */
+export const REGISTERED_SERIES_SOURCE_ID = "registered-series";
+
 export function chartSeriesCapabilityManifests(invoker: CapabilityInvoker) {
   return invoker.capabilityManifests(CHART_SERIES_CAPABILITY_KIND);
+}
+
+function searchableChartSeriesManifests(invoker: CapabilityInvoker) {
+  return chartSeriesCapabilityManifests(invoker).filter((manifest) => manifest.sourceId !== REGISTERED_SERIES_SOURCE_ID);
 }
 
 export async function searchChartSeriesCapabilities(
@@ -263,7 +273,7 @@ export async function searchChartSeriesCapabilities(
   limit = 8,
   signal?: AbortSignal,
 ): Promise<Array<ChartSeriesCatalogItem & { capabilityId: string; capabilityName: string }>> {
-  const manifests = chartSeriesCapabilityManifests(invoker);
+  const manifests = searchableChartSeriesManifests(invoker);
   const results = await Promise.allSettled(manifests.map(async (manifest) => {
     const items = await invoker.invokeCapability<ChartSeriesCatalogItem[]>(
       manifest.id,

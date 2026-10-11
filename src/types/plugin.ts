@@ -34,6 +34,7 @@ import type { PluginEvents } from "../plugins/event-bus";
 import type { PluginLogger } from "../utils/debug-log";
 import type { BrokerAdapter } from "./broker";
 import type { PluginCapability } from "../capabilities";
+import type { SeriesDefinition } from "../series/types";
 import type { CliGlobalOptions } from "../cli/options";
 import type { CliResult, CliResultRenderOptions } from "../cli/result";
 import type { ContextMenuContext, ContextMenuItem } from "./context-menu";
@@ -806,6 +807,12 @@ export interface GloomPluginContext {
   registerShortcut(shortcut: KeyboardShortcut): void;
   registerTickerAction(action: TickerAction): void;
   registerContextMenuProvider(provider: ContextMenuProviderDef): void;
+  /**
+   * Adds a series to the data catalog and the chart composer, at any time
+   * after setup starts (after loading a list, say). Throws when the definition
+   * is invalid or its id is taken; the returned function removes it again.
+   */
+  registerSeries(series: SeriesDefinition): () => void;
   registerSyncContributor(contributor: SyncContributor): () => void;
   registerSyncTransport(transport: SyncTransport): () => void;
   watchNewsQuery?(
@@ -943,6 +950,12 @@ export interface GloomPlugin {
   paneTemplates?: PaneTemplateDef[];
   broker?: BrokerAdapter;
   capabilities?: PluginCapability[];
+  /**
+   * Series the plugin adds to the data catalog, chartable against any other
+   * catalog entry. A definition that fails validation is skipped and logged;
+   * `ctx.registerSeries` adds series later and throws instead.
+   */
+  series?: readonly SeriesDefinition[];
   slots?: Partial<{
     [K in keyof GloomSlots]: (props: GloomSlots[K]) => ReactNode;
   }>;

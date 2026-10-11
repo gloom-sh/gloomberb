@@ -1,5 +1,6 @@
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
+import { SINGLE_NAME_CDS_SERIES } from "./series";
 import { CDS_PANE_ID } from "./model";
 import { CdsPane } from "./pane";
 import { cdsHeadless } from "./headless";
@@ -12,6 +13,7 @@ function explicitSymbol(options?: PaneTemplateCreateOptions): string | null {
 }
 
 export const cdsModule: PluginModule = {
+  series: SINGLE_NAME_CDS_SERIES,
   panes: [{
     id: CDS_PANE_ID,
     name: "Single-Name CDS",

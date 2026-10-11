@@ -1,8 +1,10 @@
 import type { PluginModule } from "../plugin-module";
+import { PERP_SERIES } from "./series";
 import { perpsCache, perpsHistoryCache, perpsMarketCache, perpsRankingsCache } from "./client";
 import { perpsHeadless } from "./headless";
 import { PerpsPane } from "./pane";
 export const perpsModule: PluginModule = {
+  series: PERP_SERIES,
   panes: [{ id: "perps", name: "Perpetuals", icon: "P", component: PerpsPane, defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 138, height: 34 }, tableExport: true, headless: perpsHeadless }],
   paneTemplates: [{ id: "perps-pane", paneId: "perps", label: "Perpetuals", description: "Perpetual funding, open interest and premiums by market and venue, with rankings, a venue comparison and Pro history.",

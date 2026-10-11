@@ -20,6 +20,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
+import { CREDIT_SPREAD_SERIES } from "./series";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { getCachedCreditConditions, loadCreditConditions } from "./client";
 import { creditConditionsHeadless } from "./headless";
@@ -137,6 +138,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
 }
 
 export const creditConditionsModule: PluginModule = {
+  series: CREDIT_SPREAD_SERIES,
   panes: [{
     id: "credit-conditions",
     name: "Credit Spreads",

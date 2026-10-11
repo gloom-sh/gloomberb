@@ -1,4 +1,5 @@
 import type { PluginModule } from "../plugin-module";
+import { SHORT_INTEREST_SERIES } from "./series";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   attachShortInterestHealth,
@@ -18,6 +19,7 @@ import { isKnownNonUsListing } from "../../../utils/sec";
 let disposeConnection: (() => void) | null = null;
 
 export const shortInterestModule: PluginModule = {
+  series: SHORT_INTEREST_SERIES,
   setup(ctx) {
     attachShortInterestHealth(ctx.connectionHealth);
     disposeConnection = ctx.connectionHealth.registerSource({

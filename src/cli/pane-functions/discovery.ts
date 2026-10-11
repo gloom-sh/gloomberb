@@ -90,6 +90,7 @@ function buildDiscoveryContext({
     registerShortcut: () => {},
     registerTickerAction: () => {},
     registerContextMenuProvider: () => {},
+    registerSeries: () => () => {},
     registerSyncContributor: () => () => {},
     registerSyncTransport: () => () => {},
     watchNewsQuery: () => () => {},

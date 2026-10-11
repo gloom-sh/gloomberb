@@ -17,6 +17,7 @@ import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
 import type { EconEvent } from "./types";
+import { FRED_CATALOG_SERIES } from "./fred-catalog";
 import { EconDetailView } from "./detail-view";
 import {
   COUNTRY_CYCLE,
@@ -405,6 +406,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 }
 
 export const economicCalendarModule: PluginModule = {
+  series: FRED_CATALOG_SERIES,
   panes: [{
     id: "econ-calendar",
     reportFreshness: { status: "not-a-feed", basis: "calendar" },

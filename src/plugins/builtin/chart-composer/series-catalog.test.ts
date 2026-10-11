@@ -4,6 +4,9 @@ import {
   buildCapabilitySeriesSuggestions,
   buildSeriesCatalogSuggestions,
 } from "./series-catalog";
+import { seriesCatalogEntry } from "../../../series/registry";
+import { FUTURES_SERIES } from "../futures/series";
+import { TREASURY_SERIES } from "../yield-curve/series";
 
 const AAPL = { symbol: "AAPL", exchange: "NASDAQ", name: "Apple Inc." };
 
@@ -72,8 +75,20 @@ describe("chart composer series catalog", () => {
     });
   });
 
-  test("suggests futures contracts and Treasury maturities from the board catalogs", () => {
-    expect(buildSeriesCatalogSuggestions("e-mini s&p", AAPL)[0]).toMatchObject({
+  test("suggests registered catalog series by name, and fills a ticker series in for the chart's ticker", () => {
+    const registered = [
+      ...[...FUTURES_SERIES, ...TREASURY_SERIES].map((definition) => seriesCatalogEntry({ definition, pluginId: "builtin" })),
+      seriesCatalogEntry({ pluginId: "invented", definition: {
+        id: "invented:widget-orders", name: "Widget orders", unit: "count", frequency: "weekly", group: "Economy",
+        load: () => [],
+      } }),
+      seriesCatalogEntry({ pluginId: "invented", definition: {
+        id: "invented:lending", name: "Securities lending fee", unit: "%", frequency: "daily", group: "Positioning",
+        input: "ticker", load: () => [],
+      } }),
+    ];
+    const suggest = (query: string) => buildSeriesCatalogSuggestions(query, AAPL, [], 8, registered);
+    expect(suggest("e-mini s&p")[0]).toMatchObject({
       label: "FUT:ES · E-Mini S&P 500",
       expression: {
         kind: "security",
@@ -81,13 +96,24 @@ describe("chart composer series catalog", () => {
         fieldId: "market.ohlcv",
       },
     });
-    expect(buildSeriesCatalogSuggestions("UST:10Y", AAPL)[0]).toMatchObject({
+    // The typed expression leads, and its catalog entry is not listed twice.
+    const treasury = suggest("UST:10Y");
+    expect(treasury[0]).toMatchObject({
       label: "10Y Treasury Yield",
       expression: {
         kind: "economic",
         provider: "fred",
         seriesId: "DGS10",
       },
+    });
+    expect(treasury.filter((entry) => entry.id === "fred:DGS10")).toHaveLength(1);
+    expect(suggest("widget orders")[0]).toMatchObject({
+      label: "Widget orders",
+      expression: { kind: "capability", capabilityId: "invented", seriesId: "widget-orders" },
+    });
+    expect(suggest("MSFT lending fee")[0]).toMatchObject({
+      label: "MSFT · Securities lending fee",
+      expression: { kind: "capability", capabilityId: "invented", seriesId: "lending/MSFT" },
     });
   });
 

@@ -5,6 +5,7 @@ import { cdxBoardCache, sovrBoardCache } from "./client";
 import { cdxHeadless, sovrHeadless } from "./headless";
 import { CDX_PANE_ID } from "./model";
 import { CreditBoardsPane } from "./pane";
+import { CREDIT_BOARD_SERIES } from "./series";
 
 /** One board. A later command retargets this instance; a fresh id would open a second window. */
 function openCreditBoard(context: PaneTemplateContext, tab: "index" | "sovereign"): PaneTemplateInstanceConfig {
@@ -16,6 +17,7 @@ function openCreditBoard(context: PaneTemplateContext, tab: "index" | "sovereign
 }
 
 export const creditBoardsModule: PluginModule = {
+  series: CREDIT_BOARD_SERIES,
   panes: [
     {
       id: CDX_PANE_ID,

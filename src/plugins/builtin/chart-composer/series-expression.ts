@@ -16,6 +16,7 @@ import {
   isValidChartSeriesId,
 } from "../../../capabilities/chart-series";
 import { FUTURES_CONTRACTS } from "../futures/contracts";
+import { getSharedRegistry } from "../../registry";
 import { TREASURY_MATURITIES } from "../yield-curve/treasury-data";
 
 export const CHART_FIELD_IDS = {
@@ -189,10 +190,17 @@ export function formatSeriesExpression(series: ChartSeriesSpec): string {
   return `${publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange)}:${series.source.fieldId}`;
 }
 
+/** A registered catalog series' name, with the ticker it was charted for. */
+export function registeredSeriesName(source: { capabilityId: string; seriesId: string }): string | null {
+  const found = getSharedRegistry()?.series?.findLoaded(source.capabilityId, source.seriesId);
+  if (!found) return null;
+  return found.ticker ? `${found.ticker} ${found.series.definition.name}` : found.series.definition.name;
+}
+
 export function chartSeriesLabel(series: ChartSeriesSpec): string {
   if (series.label?.trim()) return series.label.trim();
   if (series.source.kind === "economic") return `FRED ${series.source.seriesId}`;
-  if (series.source.kind === "capability") return series.source.seriesId;
+  if (series.source.kind === "capability") return registeredSeriesName(series.source) ?? series.source.seriesId;
   const generic = getTimeSeriesField(series.source.fieldId)?.unitGroup === "price"
     ? futuresGenericListing(series.source.instrument.symbol, series.source.instrument.exchange) : null;
   if (generic) return futuresGenericCaption(generic);

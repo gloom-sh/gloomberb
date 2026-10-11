@@ -179,11 +179,26 @@ In a 13F fund detail, open Overlap, search a second fund by name or CIK, and sel
 
 ### Chart Composer
 
-`G`, `GP`, `GIP`, `CMP`, `GF`, and `GE` all open the same chart composer with different starting presets. `CAT` opens a searchable catalog of those chartable series so you can graph one without typing the expression; its SOURCE column names the provider a plain market request reaches first (Gloom Cloud in the app, a broker where one is registered), while FRED, treasury and valuation rows name their own source. A custom expression can mix unrelated data sources on one synchronized timeline:
+`G`, `GP`, `GIP`, `CMP`, `GF`, and `GE` all open the same chart composer with different starting presets. `CAT` opens the data catalog: every series a chart can draw, so you can graph one without typing the expression. Its tabs group the series (securities and options fields, crypto, futures, rates and government bonds, credit spreads and CDS, economic data, inflation, FX, energy inventories, volatility, Fear & Greed, positioning such as COT and short interest, valuation, alternative data, and your own files), and each row gives the unit, how often the series updates, the official publisher for public data, and the expression to type. Search matches every word across those columns; typing a ticker such as `AAPL` fills in every series that takes one (its price and fields, implied volatility, short interest, CDS spread). `g` charts the selected row, asking for a ticker first when the series needs one. The composer's Series search finds the same entries, so any of them can be drawn against any other. A custom expression can mix unrelated data sources on one synchronized timeline:
 
 ```text
 G AAPL:price, MSFT:revenue, FRED:CPIAUCSL
 ```
+
+#### Your own series
+
+Put a CSV file in the `series` folder of your data folder (`~/.gloomberb/series`, or wherever `gloomberb version` says the data directory is) and it appears in the catalog's **Your series** tab the next time the catalog opens, chartable against anything else. The first column is the date (`2024-03-01`, `2024-03`, `2024` or an ISO date and time), each further column is a series, and an optional header row names them. Lines starting with `#` above the data set what the catalog shows:
+
+```text
+# name: Shipping index
+# unit: index
+# frequency: weekly
+date,value
+2024-01-05,1234.5
+2024-01-12,1251
+```
+
+Without them the file name names the series, the unit is a plain number and the frequency is read off the dates. `unit` takes the same values plugin series use (`%`, `bp`, `index`, `USD`, `billion USD`, `thousand barrels/day` and so on). Commas, semicolons and tabs all work as separators, and an empty or `.` cell is a missing value. Each chart reads the file again, so an edit shows on the next load. Files are read by the terminal and by the desktop app; the web app has no file access.
 
 Open **Series** to add, remove, reorder, or hide series and choose each series' field, chart style, transform, axis, panel, period, and panel scale. Price data supports candles, OHLC, HLC, line, and area; scalar data supports its compatible line, area, step, column, and point modes. Panels can use independent left/right axes and linear or logarithmic scales.
 

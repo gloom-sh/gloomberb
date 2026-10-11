@@ -57,6 +57,7 @@ import { socialMentionsModule } from "./social-mentions";
 import { timeSalesModule } from "./time-sales";
 import { estimateRevisionsModule } from "./estimate-revisions";
 import { chartComposerModule } from "./chart-composer";
+import { userSeriesModule } from "./chart-composer/user-series";
 import { congressResearchModule } from "./congress-trades";
 import { dividendYieldModule } from "./dividend-yield";
 import { executivesModule } from "./executives";
@@ -121,18 +122,22 @@ const tickerResearchModule = (module: PluginModule) => ({ module, stateId: "tick
 export const tickerCorePlugin = composeBuiltinPlugin({
   ...tickerCorePluginMeta,
   modules: [
-    tickerDetailModule,
-    chartComposerModule,
-    researchModule,
-    estimateRevisionsModule,
-    companyKpisModule,
-    revenueBreakdownModule,
-    dividendYieldModule,
-    reverseDcfModule,
-    peBandModule,
-    executivesModule,
-    timeSalesModule,
-  ].map(rendererOnly),
+    ...[
+      tickerDetailModule,
+      chartComposerModule,
+      researchModule,
+      estimateRevisionsModule,
+      companyKpisModule,
+      revenueBreakdownModule,
+      dividendYieldModule,
+      reverseDcfModule,
+      peBandModule,
+      executivesModule,
+      timeSalesModule,
+    ].map(rendererOnly),
+    // Reads the profile's series folder, so it runs where the disk is: the desktop backend too.
+    userSeriesModule,
+  ],
 });
 
 export const optionsVolatilityPlugin = composeBuiltinPlugin({

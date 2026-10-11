@@ -10,6 +10,14 @@ import {
   connectionHealth as sharedConnectionHealth,
   type ConnectionHealthRegistry,
 } from "../../core/connection-health";
+import { chartSeriesResolveRequestSchema } from "../../capabilities/chart-series";
+import {
+  registeredSeriesCapability,
+  resolveRegisteredSeries,
+  seriesCatalogCapability,
+} from "../../series/capability";
+import { SeriesRegistry } from "../../series/registry";
+import type { SeriesDefinition } from "../../series/types";
 import { cloudSyncController } from "../../sync/controller";
 import type {
   RegisteredSyncContributor,
@@ -83,6 +91,9 @@ interface PluginRegistryOptions {
 
 export type { WindowEditMode } from "./host-actions";
 
+/** The owner the series catalog capability is registered under; no plugin can switch it off. */
+const SERIES_CATALOG_OWNER = "gloomberb";
+
 /** A switched-off plugin, named for a "Turn on" offer. */
 export interface DisabledPluginOwner {
   id: string;
@@ -112,6 +123,9 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   readonly events: EventBus;
   readonly capabilities: CapabilityRegistry;
+  /** Every series plugins registered here: what the data catalog lists. */
+  readonly series: SeriesRegistry;
+  private readonly seriesNamespaceCapabilities = new Map<string, () => void>();
   readonly connectionHealth: ConnectionHealthRegistry;
   readonly marketData: DataProvider;
   readonly tickerRepository: AppTickerRepositoryPort;
@@ -136,11 +150,21 @@ export class PluginRegistry implements PluginRuntimeAccess {
     operationId: string,
     payload: unknown,
     options: { signal?: AbortSignal } = {},
-  ): Promise<T> => (
-    this.remoteCapabilityInvoke
+  ): Promise<T> => {
+    // A series registered in this process loads here, the desktop view
+    // included: its loaders fetch the way the panes that plot it do.
+    if (operationId === "resolve" && this.series.namespaceOwner(capabilityId)) {
+      const local = this.resolveLocalSeries(capabilityId, payload, options.signal);
+      if (local) return local as Promise<T>;
+    }
+    return this.remoteCapabilityInvoke
       ? this.remoteCapabilityInvoke<T>(capabilityId, operationId, payload, options)
-      : this.capabilities.invoke<T>(capabilityId, operationId, payload, { renderer: true, signal: options.signal })
-  );
+      : this.capabilities.invoke<T>(capabilityId, operationId, payload, { renderer: true, signal: options.signal });
+  };
+  /** True where capabilities run in another process (the desktop view), so a catalog asks that process too. */
+  get usesRemoteCapabilities(): boolean {
+    return !!this.remoteCapabilityInvoke;
+  }
   getBrokerAdapter = (brokerType: string) => this.contributions.brokersMap.get(brokerType) ?? null;
   listBrokerAdapters = () => [...this.contributions.brokersMap.values()];
 
@@ -186,6 +210,54 @@ export class PluginRegistry implements PluginRuntimeAccess {
       },
       connectionHealth: this.connectionHealth,
     });
+    this.series = new SeriesRegistry({
+      pluginHosts: (pluginId) => this.plugins.get(pluginId)?.hosts,
+      onNamespaceChange: (namespace, pluginId) => this.updateSeriesNamespace(namespace, pluginId),
+    });
+    if (this.enableCapabilityHandlers) {
+      this.capabilities.register(SERIES_CATALOG_OWNER, seriesCatalogCapability(this.series));
+    }
+  }
+
+  private resolveLocalSeries(namespace: string, payload: unknown, signal?: AbortSignal) {
+    const request = chartSeriesResolveRequestSchema.parse(payload);
+    const found = this.series.findLoaded(namespace, request.seriesId);
+    if (!found) return null;
+    if (this.getConfig().disabledPlugins.includes(found.series.pluginId)) {
+      const name = this.plugins.get(found.series.pluginId)?.name ?? found.series.pluginId;
+      return Promise.reject(new Error(`Turn on ${name} to chart ${found.series.definition.name}.`));
+    }
+    return resolveRegisteredSeries(this.series, namespace, request.seriesId, request.viewport, signal)
+      .then((resolved) => {
+        if (!resolved) throw new Error(`No series ${namespace}:${request.seriesId} is registered.`);
+        return resolved;
+      });
+  }
+
+  /** Gives a namespace with loaded series its chart-series capability, for automation and other processes. */
+  private updateSeriesNamespace(namespace: string, pluginId: string | null): void {
+    this.seriesNamespaceCapabilities.get(namespace)?.();
+    this.seriesNamespaceCapabilities.delete(namespace);
+    if (!pluginId || !this.enableCapabilityHandlers) return;
+    try {
+      this.seriesNamespaceCapabilities.set(namespace, this.capabilities.register(
+        pluginId,
+        registeredSeriesCapability(this.series, namespace),
+      ));
+    } catch (error) {
+      // A capability of the same id already answers there; the series still resolve in this process.
+      this.registryLog.warn("Series namespace has no capability", {
+        namespace,
+        pluginId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private registerSeriesForPlugin(pluginId: string, series: SeriesDefinition, items: PluginItems): () => void {
+    const dispose = this.series.register(pluginId, series);
+    items.capabilityDisposers.push(dispose);
+    return dispose;
   }
 
   /**
@@ -526,6 +598,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       registerShortcut: (shortcut) => contributions.registerShortcut(pluginId, shortcut),
       registerTickerAction: (action) => contributions.registerTickerAction(pluginId, action),
       registerContextMenuProvider: (provider) => contributions.registerContextMenuProvider(pluginId, provider),
+      registerSeries: (series) => this.registerSeriesForPlugin(pluginId, series, items),
       registerSyncContributor: (contributor) => {
         const dispose = this.registerSyncContributorForPlugin(pluginId, contributor);
         items.eventDisposers.push(dispose);
@@ -612,6 +685,18 @@ export class PluginRegistry implements PluginRuntimeAccess {
       if (this.enableCapabilityHandlers && plugin.capabilities) {
         for (const capability of plugin.capabilities) {
           this.registerCapabilityForPlugin(plugin.id, capability, items);
+        }
+      }
+
+      for (const series of plugin.series ?? []) {
+        try {
+          this.registerSeriesForPlugin(plugin.id, series, items);
+        } catch (error) {
+          // One bad entry in a long list leaves the plugin's other series and panes working.
+          this.registryLog.error("Series skipped", {
+            pluginId: plugin.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
 

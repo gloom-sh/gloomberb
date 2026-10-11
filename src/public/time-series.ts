@@ -38,3 +38,20 @@ export type {
   SecuritySeriesSource, SeriesAxis, SeriesDataShape, SeriesInterpolation, SeriesPeriod, SeriesStyle,
   SeriesTimestampMode, SeriesTransform, TimeSeriesFieldDefinition, TimeSeriesPoint,
 } from "../time-series/types";
+
+// Series a plugin adds to the data catalog, chartable against any other
+// catalog entry: `series` on the plugin, or `ctx.registerSeries` from setup.
+// PLUGINS.md ("Data catalog series") shows both, and series from a file.
+export {
+  defineSeries, describeSeriesUnits, isValidSeriesUnit, SERIES_FREQUENCIES, validateSeriesDefinition,
+} from "../series/validate";
+export {
+  inferSeriesFrequency, parseSeriesCsv,
+} from "../series/csv";
+export type {
+  ParsedSeriesCsv, SeriesCsvColumn, SeriesCsvMetadata,
+} from "../series/csv";
+export type {
+  ExpressionSeriesDefinition, LoadedSeriesDefinition, SeriesDefinition, SeriesDrawStyle, SeriesFrequency,
+  SeriesInput, SeriesLoadOutput, SeriesLoadRequest, SeriesLoadResult, SeriesPoint,
+} from "../series/types";

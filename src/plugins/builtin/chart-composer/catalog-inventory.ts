@@ -1,136 +1,158 @@
-import { fredSeriesUrl } from "../../../sources/gloomberb-cloud/fred-series";
 import { resolveAssetDisplayKind } from "../../../market-data/market/format";
 import {
   getTimeSeriesField,
-  isMarketFieldId,
   listTimeSeriesFields,
 } from "../../../time-series/field-catalog";
+import type { SeriesCatalogEntry, SeriesFrequency, SeriesInput } from "../../../series/types";
 import { parseOptionSymbol } from "../../../utils/options";
-import { listFredCatalogSeries } from "../econ/fred-series-map";
-import {
-  FUTURES_CONTRACTS,
-  FUTURES_SECTOR_LABELS,
-} from "../futures/contracts";
-import { INDICATORS as VALUATION_INDICATORS } from "../market-valuation/indicators";
-import { MARKET_VALUATION_CAPABILITY_ID } from "../market-valuation/chart-series";
-import { TREASURY_MATURITIES } from "../yield-curve/treasury-data";
-import { fieldCategory, type SeriesCatalogInstrument } from "./series-catalog";
+import type { SeriesCatalogInstrument } from "./series-catalog";
 
 export const CHART_COMPOSER_TEMPLATE_ID = "chart-composer-pane";
 export const DATA_CATALOG_PANE_ID = "data-catalog";
 export const DATA_CATALOG_TEMPLATE_ID = "data-catalog-pane";
 
-type CatalogSourceId =
-  | "security"
-  | "option"
-  | "crypto"
-  | "fred"
-  | "futures"
-  | "treasury"
-  | "valuation";
-
-export type CatalogFilterId =
-  | "all"
-  | "securities"
-  | "options"
-  | "crypto"
-  | "fred"
-  | "futures"
-  | "valuation";
+/** "all", or a catalog group such as "Credit". */
+export type CatalogFilterId = string;
 
 export interface CatalogSeriesRow {
   id: string;
   label: string;
+  group: string;
+  unit: string;
+  frequency: SeriesFrequency;
   /**
-   * The official publisher (FRED for economic and Treasury series), blank for
-   * market data: the catalog says what a series is, never which vendor serves it.
+   * The official publisher for public data (FRED, the BLS), blank for market
+   * data: the catalog says what a series is, never which vendor serves it.
    */
   publisher: string;
-  sourceId: CatalogSourceId;
-  kind: string;
+  /** What the EXPRESSION column shows: `TICKER` where a symbol goes. */
   expression: string;
+  /** The registered expression, `{ticker}` where a symbol goes. */
+  template: string;
   url?: string;
+  /** Asks for a symbol before charting. */
+  input?: SeriesInput;
+  /** The plugin that registered the series. */
+  pluginId: string;
   searchText: string;
-  needsTicker?: boolean;
-  fieldToken?: string;
+  /** Position in the default order: by group, then by name. */
+  order: number;
 }
 
-export const CATALOG_FILTERS: ReadonlyArray<{ id: CatalogFilterId; label: string }> = [
-  { id: "all", label: "All" },
-  { id: "securities", label: "Securities" },
-  { id: "options", label: "Options" },
-  { id: "crypto", label: "Crypto" },
-  { id: "fred", label: "FRED" },
-  { id: "futures", label: "Futures" },
-  { id: "valuation", label: "Valuation" },
+/** The order catalog tabs and the default sort follow; other groups come after, by name. */
+const GROUP_ORDER = [
+  "Securities",
+  "Options",
+  "Crypto",
+  "Futures",
+  "Rates",
+  "Credit",
+  "Economy",
+  "Inflation",
+  "FX",
+  "Energy",
+  "Volatility",
+  "Sentiment",
+  "Positioning",
+  "Valuation",
+  "Alternative data",
+  "Your series",
+] as const;
+const OTHER_GROUP = "Other";
+const GROUP_RANK = new Map<string, number>(GROUP_ORDER.map((group, index) => [group, index]));
+const FREQUENCY_ORDER: readonly SeriesFrequency[] = [
+  "intraday", "daily", "weekly", "monthly", "quarterly", "annual", "irregular",
 ];
+const TICKER_PLACEHOLDER = "{ticker}";
+const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
 
-const FILTER_SOURCES: Record<CatalogFilterId, ReadonlySet<CatalogSourceId> | null> = {
-  all: null,
-  securities: new Set(["security"]),
-  options: new Set(["option"]),
-  crypto: new Set(["crypto"]),
-  fred: new Set(["fred", "treasury"]),
-  futures: new Set(["futures"]),
-  valuation: new Set(["valuation"]),
+/** Tabs saved before the catalog was grouped, mapped onto the groups that replaced them. */
+const LEGACY_FILTERS: Readonly<Record<string, string>> = {
+  securities: "Securities",
+  options: "Options",
+  crypto: "Crypto",
+  fred: "Economy",
+  futures: "Futures",
+  valuation: "Valuation",
 };
 
-const CRYPTO_CATALOG: ReadonlyArray<{ symbol: string; name: string }> = [
-  { symbol: "BTC-USD", name: "Bitcoin" },
-  { symbol: "ETH-USD", name: "Ethereum" },
-  { symbol: "SOL-USD", name: "Solana" },
-  { symbol: "XRP-USD", name: "XRP" },
-  { symbol: "BNB-USD", name: "BNB" },
-  { symbol: "DOGE-USD", name: "Dogecoin" },
-  { symbol: "ADA-USD", name: "Cardano" },
-  { symbol: "AVAX-USD", name: "Avalanche" },
-  { symbol: "LINK-USD", name: "Chainlink" },
-  { symbol: "DOT-USD", name: "Polkadot" },
-  { symbol: "LTC-USD", name: "Litecoin" },
-  { symbol: "UNI-USD", name: "Uniswap" },
-  { symbol: "ATOM-USD", name: "Cosmos" },
-  { symbol: "NEAR-USD", name: "NEAR" },
-  { symbol: "APT-USD", name: "Aptos" },
-  { symbol: "SUI-USD", name: "Sui" },
-  { symbol: "TON-USD", name: "Toncoin" },
-  { symbol: "SHIB-USD", name: "Shiba Inu" },
-];
+function groupRank(group: string): number {
+  return GROUP_RANK.get(group) ?? GROUP_ORDER.length;
+}
+
+export function frequencyRank(frequency: SeriesFrequency): number {
+  return FREQUENCY_ORDER.indexOf(frequency);
+}
+
+export function compareCatalogGroups(left: string, right: string): number {
+  return groupRank(left) - groupRank(right) || collator.compare(left, right);
+}
+
+export function compareCatalogText(left: string, right: string): number {
+  return collator.compare(left, right);
+}
+
+function displayExpression(template: string): string {
+  return template.replaceAll(TICKER_PLACEHOLDER, "TICKER");
+}
+
+function rowFromEntry(entry: SeriesCatalogEntry): Omit<CatalogSeriesRow, "order"> {
+  const group = entry.group?.trim() || OTHER_GROUP;
+  const publisher = entry.publisher ?? "";
+  const expression = displayExpression(entry.expression);
+  return {
+    id: entry.id,
+    label: entry.name,
+    group,
+    unit: entry.unit,
+    frequency: entry.frequency,
+    publisher,
+    expression,
+    template: entry.expression,
+    ...(entry.url ? { url: entry.url } : {}),
+    ...(entry.input ? { input: entry.input } : {}),
+    pluginId: entry.pluginId,
+    searchText: [
+      entry.name, publisher, group, entry.unit, entry.frequency, expression, entry.id,
+      entry.description, ...(entry.tags ?? []),
+    ].filter(Boolean).join(" ").toLowerCase(),
+  };
+}
+
+const rowsByEntries = new WeakMap<readonly SeriesCatalogEntry[], readonly CatalogSeriesRow[]>();
+
+/**
+ * The catalog's rows in their default order (group, then name), computed once
+ * per registry snapshot so typing in the search only filters.
+ */
+export function catalogRowsFromEntries(entries: readonly SeriesCatalogEntry[]): readonly CatalogSeriesRow[] {
+  const cached = rowsByEntries.get(entries);
+  if (cached) return cached;
+  const rows = entries.map(rowFromEntry).sort((left, right) => (
+    compareCatalogGroups(left.group, right.group)
+    || collator.compare(left.label, right.label)
+    || (left.id < right.id ? -1 : left.id > right.id ? 1 : 0)
+  )).map((row, order): CatalogSeriesRow => ({ ...row, order }));
+  rowsByEntries.set(entries, rows);
+  return rows;
+}
+
+/** All, then each group the rows hold, in catalog order. */
+export function catalogTabs(rows: readonly CatalogSeriesRow[]): Array<{ id: CatalogFilterId; label: string }> {
+  const groups = [...new Set(rows.map((row) => row.group))].sort(compareCatalogGroups);
+  return [{ id: "all", label: "All" }, ...groups.map((group) => ({ id: group, label: group }))];
+}
+
+/** A saved tab the catalog still has, else All. */
+export function normalizeCatalogFilter(saved: string | null | undefined, rows: readonly CatalogSeriesRow[]): CatalogFilterId {
+  if (!saved || saved === "all") return "all";
+  const group = LEGACY_FILTERS[saved] ?? saved;
+  return rows.some((row) => row.group === group) ? group : "all";
+}
 
 function isOptionInstrument(instrument: SeriesCatalogInstrument): boolean {
   const category = instrument.assetCategory?.trim().toUpperCase();
   return category === "OPT" || parseOptionSymbol(instrument.symbol) != null;
-}
-
-function chartFieldToken(fieldId: string): string {
-  if (fieldId === "market.ohlcv") return "price";
-  return fieldId.split(".").at(-1) ?? fieldId;
-}
-
-function row(entry: {
-  id: string;
-  label: string;
-  publisher?: string;
-  sourceId: CatalogSourceId;
-  kind: string;
-  expression: string;
-  url?: string;
-  searchExtra?: string;
-  needsTicker?: boolean;
-  fieldToken?: string;
-}): CatalogSeriesRow {
-  const { searchExtra, publisher = "", ...fields } = entry;
-  return {
-    ...fields,
-    publisher,
-    searchText: [
-      entry.label,
-      publisher,
-      entry.kind,
-      entry.expression,
-      entry.sourceId,
-      searchExtra,
-    ].filter(Boolean).join(" ").toLowerCase(),
-  };
 }
 
 function isCatalogCryptoInstrument(instrument: SeriesCatalogInstrument): boolean {
@@ -139,6 +161,11 @@ function isCatalogCryptoInstrument(instrument: SeriesCatalogInstrument): boolean
   if (exchange === "CCC") return true;
   if (resolveAssetDisplayKind({ assetCategory: instrument.assetCategory }) === "crypto") return true;
   return /^[A-Z0-9]{2,10}[-/]USD$/i.test(instrument.symbol.trim());
+}
+
+function instrumentInput(instrument: SeriesCatalogInstrument): SeriesInput {
+  if (isCatalogCryptoInstrument(instrument)) return "crypto";
+  return isOptionInstrument(instrument) ? "option" : "ticker";
 }
 
 const COMPACT_OCC_RE = /^([A-Z]{1,6})(\d{6}[CP]\d{8})$/;
@@ -160,8 +187,16 @@ function compactOccSymbol(value: string): string | null {
 function catalogTickerFromInput(value: string): string | null {
   const option = compactOccSymbol(value);
   if (option) return option;
-  const symbol = value.trim().toUpperCase();
-  return /^[A-Z0-9^][A-Z0-9.^_/-]{0,31}$/.test(symbol) ? symbol : null;
+  const symbol = value.trim().toUpperCase().replace("/", "-");
+  return /^[A-Z0-9^][A-Z0-9.^_=-]{0,31}$/.test(symbol) ? symbol : null;
+}
+
+/** The template with the symbol in place; a loaded series' symbol is URL-encoded, like its id. */
+function fillTemplate(template: string, symbol: string): string {
+  return template.replaceAll(
+    TICKER_PLACEHOLDER,
+    template.startsWith("CAP:") ? encodeURIComponent(symbol) : symbol,
+  );
 }
 
 function isCatalogFieldNameQuery(query: string): boolean {
@@ -194,173 +229,55 @@ export function catalogInstrumentMatchesQuery(
   return (instrument.name ?? "").toLowerCase().includes(needle);
 }
 
+/**
+ * Each series that asks for a symbol, filled in for each instrument it fits:
+ * a stock gets the ticker series, an option contract the option series, a
+ * crypto pair the crypto series. Typing AAPL lists AAPL · Close next to AAPL's
+ * short interest.
+ */
 export function catalogRowsForResolvedInstruments(
+  rows: readonly CatalogSeriesRow[],
   instruments: readonly SeriesCatalogInstrument[],
 ): CatalogSeriesRow[] {
-  const fields = listTimeSeriesFields();
-  const marketFields = fields.filter((field) => isMarketFieldId(field.id));
-  return instruments.flatMap((instrument) => {
-    if (isCatalogCryptoInstrument(instrument)) {
-      return [cryptoPairRow(catalogSecuritySymbol(instrument), instrument.name)];
-    }
-    if (isOptionInstrument(instrument)) {
-      const symbol = compactOccSymbol(instrument.symbol)
-        ?? catalogTickerFromInput(instrument.symbol);
-      if (!symbol) return [];
-      return marketFields.map((field) => {
-        const token = chartFieldToken(field.id);
-        return row({
-          id: `option:${symbol}:${field.id}`,
-          label: `${symbol} · ${field.label}`,
-          sourceId: "option",
-          kind: "Options",
-          expression: `${symbol}:${token}`,
-          searchExtra: [instrument.name, "option", field.shortLabel].filter(Boolean).join(" "),
-        });
-      });
-    }
+  const templates = rows.filter((row) => row.input);
+  return instruments.flatMap((instrument, index) => {
     const symbol = catalogTickerFromInput(instrument.symbol);
     if (!symbol) return [];
-    return fields.map((field) => {
-      const token = chartFieldToken(field.id);
-      return row({
-        id: `ticker:${symbol}:${field.id}`,
-        label: `${symbol} · ${field.label}`,
-        sourceId: "security",
-        kind: fieldCategory(field),
-        expression: `${symbol}:${token}`,
-        searchExtra: [instrument.name, field.shortLabel].filter(Boolean).join(" "),
-      });
+    const input = instrumentInput(instrument);
+    return templates.filter((row) => row.input === input).map((row): CatalogSeriesRow => {
+      const expression = fillTemplate(row.template, symbol);
+      return {
+        ...row,
+        id: `${row.id}@${symbol}`,
+        label: `${symbol} · ${row.label}`,
+        expression,
+        template: expression,
+        input: undefined,
+        // Right after the series it fills in, instruments in the order given.
+        order: row.order + (index + 1) / (instruments.length + 1),
+        searchText: `${symbol.toLowerCase()} ${(instrument.name ?? "").toLowerCase()} ${row.searchText} ${expression.toLowerCase()}`,
+      };
     });
   });
+}
+
+/** The crypto series of the pairs on the user's lists, which the catalog shows without a search. */
+export function catalogRowsForListedCrypto(
+  rows: readonly CatalogSeriesRow[],
+  instruments: readonly SeriesCatalogInstrument[],
+): CatalogSeriesRow[] {
+  return catalogRowsForResolvedInstruments(rows, instruments.filter(isCatalogCryptoInstrument));
 }
 
 export function catalogExpressionForRow(entry: CatalogSeriesRow, ticker?: string): string | null {
-  if (!entry.needsTicker) return entry.expression;
+  if (!entry.input) return entry.template;
   const symbol = ticker ? catalogTickerFromInput(ticker) : null;
-  if (!symbol || !entry.fieldToken) return null;
-  return `${symbol}:${entry.fieldToken}`;
+  return symbol ? fillTemplate(entry.template, symbol) : null;
 }
 
-function catalogSecuritySymbol(instrument: SeriesCatalogInstrument): string {
-  return instrument.symbol.trim();
-}
-
-function securityFieldRows(): CatalogSeriesRow[] {
-  return listTimeSeriesFields().map((field) => {
-    const token = chartFieldToken(field.id);
-    return row({
-      id: `field:${field.id}`,
-      label: field.label,
-      sourceId: "security",
-      kind: fieldCategory(field),
-      expression: `TICKER:${token}`,
-      needsTicker: true,
-      fieldToken: token,
-      searchExtra: field.shortLabel,
-    });
-  });
-}
-
-function optionFieldRows(): CatalogSeriesRow[] {
-  return listTimeSeriesFields().flatMap((field) => {
-    if (!isMarketFieldId(field.id)) return [];
-    const token = chartFieldToken(field.id);
-    return [row({
-      id: `option:${field.id}`,
-      label: field.label,
-      sourceId: "option",
-      kind: "Options",
-      expression: `TICKER:${token}`,
-      needsTicker: true,
-      fieldToken: token,
-      searchExtra: `option ${field.shortLabel}`,
-    })];
-  });
-}
-
-function cryptoPairRow(symbol: string, name?: string): CatalogSeriesRow {
-  return row({
-    id: `crypto:${symbol.toUpperCase()}`,
-    label: name ? `${symbol} · ${name}` : symbol,
-    sourceId: "crypto",
-    kind: "Crypto",
-    expression: `${symbol}:price`,
-    searchExtra: name,
-  });
-}
-
-function cryptoRows(instruments: readonly SeriesCatalogInstrument[]): CatalogSeriesRow[] {
-  const seen = new Set<string>();
-  const rows: CatalogSeriesRow[] = [];
-  const add = (symbol: string, name?: string) => {
-    const key = symbol.trim().toUpperCase().replace("/", "-");
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    rows.push(cryptoPairRow(key, name));
-  };
-  for (const instrument of instruments) {
-    if (!isCatalogCryptoInstrument(instrument)) continue;
-    add(catalogSecuritySymbol(instrument), instrument.name);
-  }
-  for (const entry of CRYPTO_CATALOG) add(entry.symbol, entry.name);
-  return rows;
-}
-
-let staticInventory: readonly CatalogSeriesRow[] | null = null;
-
-function staticCatalogInventory(): readonly CatalogSeriesRow[] {
-  staticInventory ??= buildStaticCatalogInventory();
-  return staticInventory;
-}
-
-const buildStaticCatalogInventory = (): readonly CatalogSeriesRow[] => [
-  ...securityFieldRows(),
-  ...optionFieldRows(),
-  ...listFredCatalogSeries().map((entry) => row({
-    id: `fred:${entry.seriesId}`,
-    label: entry.label,
-    publisher: "FRED",
-    sourceId: "fred",
-    kind: "Economic",
-    expression: `FRED:${entry.seriesId}`,
-    url: fredSeriesUrl(entry.seriesId),
-  })),
-  ...TREASURY_MATURITIES.map((entry) => row({
-    id: `ust:${entry.maturity}`,
-    label: `${entry.maturity} Treasury Yield`,
-    publisher: "FRED",
-    sourceId: "treasury",
-    kind: "Treasury",
-    expression: `UST:${entry.maturity}`,
-    url: fredSeriesUrl(entry.seriesId),
-  })),
-  ...VALUATION_INDICATORS.map((entry) => row({
-    id: `valuation:${entry.id}`,
-    label: entry.label,
-    sourceId: "valuation",
-    kind: "Valuation",
-    expression: `CAP:${MARKET_VALUATION_CAPABILITY_ID}:${entry.id}`,
-  })),
-  ...FUTURES_CONTRACTS.map((entry) => row({
-    id: `fut:${entry.code}`,
-    label: `${entry.name} (${entry.code})`,
-    sourceId: "futures",
-    kind: FUTURES_SECTOR_LABELS[entry.sector],
-    expression: `FUT:${entry.code}`,
-  })),
-];
-
-export function listStaticCatalogInventory(
-  instruments: readonly SeriesCatalogInstrument[] = [],
-): CatalogSeriesRow[] {
-  return [...staticCatalogInventory(), ...cryptoRows(instruments)];
-}
-
-function matchesCatalogQuery(entry: CatalogSeriesRow, query: string): boolean {
-  const normalized = query.trim().toLowerCase();
-  if (!normalized) return true;
-  return normalized.split(/\s+/).every((token) => entry.searchText.includes(token));
+function matchesCatalogQuery(entry: CatalogSeriesRow, tokens: readonly string[]): boolean {
+  for (const token of tokens) if (!entry.searchText.includes(token)) return false;
+  return true;
 }
 
 export function filterCatalogRows(
@@ -368,11 +285,31 @@ export function filterCatalogRows(
   filter: CatalogFilterId,
   query: string,
 ): CatalogSeriesRow[] {
-  const sources = FILTER_SOURCES[filter];
+  const tokens = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const group = filter === "all" ? null : filter;
   return rows.filter((entry) => (
-    (sources ? sources.has(entry.sourceId) : true)
-    && matchesCatalogQuery(entry, query)
+    (group === null || entry.group === group)
+    && matchesCatalogQuery(entry, tokens)
   ));
+}
+
+/**
+ * The registered rows with the filled-in ones slotted after the series they
+ * fill in, one row per chart: a registered row (Bitcoin) wins over the same
+ * chart filled in for a listed pair (BTC-USD · Price).
+ */
+export function mergeCatalogRows(
+  rows: readonly CatalogSeriesRow[],
+  filled: readonly CatalogSeriesRow[],
+): readonly CatalogSeriesRow[] {
+  if (filled.length === 0) return rows;
+  const charted = new Set(rows.flatMap((row) => row.input ? [] : [row.template]));
+  const added = filled.filter((row) => {
+    if (charted.has(row.template)) return false;
+    charted.add(row.template);
+    return true;
+  });
+  return [...rows, ...added].sort((left, right) => left.order - right.order);
 }
 
 export function catalogEmptyCopy(

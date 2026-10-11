@@ -75,52 +75,6 @@ export function resolveFredMapping(eventTitle: string, country: string): FredMap
   return null;
 }
 
-const SERIES_LABELS: Record<string, string> = {
-  CPIAUCSL: "Consumer price index · seasonally adjusted",
-  CPIAUCNS: "Consumer price index · not seasonally adjusted",
-  CPILFESL: "Core consumer price index · seasonally adjusted",
-  CPILFENS: "Core consumer price index · not seasonally adjusted",
-  PPIFIS: "Producer price index · final demand",
-  GDPC1: "Real gross domestic product",
-  PAYEMS: "Total nonfarm payroll employment",
-  DFEDTARU: "Federal funds target range · upper limit",
-};
-
-const FRED_CATALOG_SERIES: ReadonlyArray<{ seriesId: string; label: string }> = (() => {
-  const labels = new Map<string, string>();
-  for (const [key, mapping] of Object.entries(SERIES_MAP)) {
-    const existing = labels.get(mapping.seriesId);
-    if (existing == null || key.length < existing.length) {
-      labels.set(mapping.seriesId, key);
-    }
-  }
-  return [...labels.entries()].map(([seriesId, key]) => ({
-    seriesId,
-    label: SERIES_LABELS[seriesId] ?? key.replace(/\b\w/g, (char) => char.toUpperCase()),
-  }));
-})();
-
-/**
- * Macro series the catalog should offer that are not economic-calendar releases, so
- * they have no natural home in SERIES_MAP above.
- */
-const EXTRA_CATALOG_SERIES: ReadonlyArray<{ seriesId: string; label: string }> = [
-  { seriesId: "M2SL", label: "M2 Money Stock" },
-  { seriesId: "WCOILWTICO", label: "WTI crude oil spot price · weekly" },
-  { seriesId: "NATURALGAS", label: "Natural gas consumption · monthly" },
-  { seriesId: "DFII10", label: "10Y TIPS Real Yield" },
-  { seriesId: "NCBEILQ027S", label: "Corporate Equities, Z.1" },
-  { seriesId: "TNWMVBSNNCB", label: "Corporate Net Worth, Z.1" },
-];
-
-export function listFredCatalogSeries(): ReadonlyArray<{ seriesId: string; label: string }> {
-  const known = new Set(FRED_CATALOG_SERIES.map((entry) => entry.seriesId));
-  return [
-    ...FRED_CATALOG_SERIES,
-    ...EXTRA_CATALOG_SERIES.filter((entry) => !known.has(entry.seriesId)),
-  ];
-}
-
 export function projectFredHistory(observations: readonly DatedObservation[], mapping: FredMapping) {
   return applyTransform(observations, mapping.displayMode);
 }

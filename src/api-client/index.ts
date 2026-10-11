@@ -816,6 +816,7 @@ class GloomApiClient {
   getCloudTape = this.data.getCloudTape.bind(this.data);
   getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
   getCloudCurve = this.data.getCloudCurve.bind(this.data);
+  getCloudCurveHistory = this.data.getCloudCurveHistory.bind(this.data);
   getCloudWorldCurves = this.data.getCloudWorldCurves.bind(this.data);
   getCloudCds = this.data.getCloudCds.bind(this.data);
   getCloudCdsHistory = this.data.getCloudCdsHistory.bind(this.data);

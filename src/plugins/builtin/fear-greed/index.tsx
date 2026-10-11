@@ -7,6 +7,7 @@ import {
 } from "./cache";
 import { FearGreedPane } from "./pane";
 import { fearGreedHeadless } from "./headless";
+import { FEAR_GREED_SERIES } from "./series";
 
 export const fearGreedPlugin: GloomPlugin = {
   id: "fear-greed",
@@ -28,6 +29,9 @@ export const fearGreedPlugin: GloomPlugin = {
   dispose() {
     resetFearGreedPersistence();
   },
+
+  // The index and its seven readings, chartable against anything else.
+  series: FEAR_GREED_SERIES,
 
   panes: [
     {

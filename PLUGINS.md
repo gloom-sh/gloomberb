@@ -476,6 +476,7 @@ The `setup()` function receives a context object with these capabilities:
 | `ctx.registerPaneTemplate(template)` | Add a reusable pane template (see [Pane templates](#pane-templates)) |
 | `ctx.registerBroker(broker)` | Add a broker integration |
 | `ctx.registerCapability(capability)` | Add an asset-data, news, or plugin-service capability |
+| `ctx.registerSeries(series)` | Add a series to the data catalog (see [Data catalog series](#data-catalog-series)); returns a function that removes it |
 | `ctx.registerShortcut(shortcut)` | Add a global keyboard shortcut |
 | `ctx.registerTickerAction(action)` | Add a per-ticker action (shown via `a` key) |
 | `ctx.registerContextMenuProvider(provider)` | Add renderer-neutral context menu items |
@@ -733,7 +734,7 @@ Plugins contribute data and services through capabilities. A capability declares
 
 - `asset-data` for quotes, financials, search, FX, price history, options, filings, holders, analyst research, corporate actions, earnings calendars, article summaries, and quote streams.
 - `news` for ticker and global news feeds.
-- `chart-series` for searchable provider-owned time series that resolve into normal chart data.
+- `chart-series` for searchable provider-owned time series that resolve into normal chart data. To put a series in the data catalog, register it as a [data catalog series](#data-catalog-series) instead; the registry gives it a `chart-series` capability of its own. A raw `chartSeriesProvider` is for an index too large to list, such as the map's place series, whose entries are found by search.
 - `plugin-service` for narrow renderer-safe service escape hatches.
 
 Capability operations can also include CLI manifest metadata. This is what makes the operation understandable to automation without plugin-specific documentation:
@@ -787,6 +788,60 @@ export const myPlugin: GloomPlugin = {
   },
 };
 ```
+
+### Data catalog series
+
+Everything the data catalog (`CAT`) lists, and the chart composer's series search finds, is a registered series: one definition per line that can be charted. Register yours and it can be drawn next to any built-in series, a FRED rate or a ticker's price.
+
+```typescript
+import type { GloomPlugin } from "gloomberb/types/plugin";
+import { defineSeries } from "gloomberb/time-series";
+import { httpFetch } from "gloomberb/utils";
+
+export default {
+  id: "shipping",
+  name: "Shipping",
+  version: "1.0.0",
+  hosts: ["api.example.com"],
+  series: [
+    defineSeries({
+      id: "shipping:container-rate",
+      name: "Container freight rate",
+      unit: "USD",
+      frequency: "weekly",
+      group: "Alternative data",
+      tags: ["freight", "containers"],
+      async load({ start, signal }) {
+        const response = await httpFetch(`https://api.example.com/rates?from=${start?.toISOString().slice(0, 10) ?? ""}`, { signal });
+        const rows: Array<{ day: string; usd: number }> = await response.json();
+        return rows.map((row) => ({ date: row.day, value: row.usd }));
+      },
+    }),
+  ],
+} satisfies GloomPlugin;
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | `namespace:name`, unique in the app. The namespace is lower case and belongs to the plugin that registers its first loaded series; it charts as `CAP:namespace:name`. |
+| `name` | What the catalog and the chart legend show. |
+| `unit` | `%`, `bp`, `x`, `ratio`, `index`, `score` or `points`; a quantity (`count`, `shares`, `contracts`, `people`, `barrels`, ...) or a currency code, optionally after `thousand`, `million`, `billion` or `trillion`; or a currency per unit (`USD/barrel`). `describeSeriesUnits()` lists them all. Series in the same unit share a chart axis. |
+| `frequency` | `intraday`, `daily`, `weekly`, `monthly`, `quarterly`, `annual` or `irregular`. |
+| `group`, `tags`, `description` | The catalog tab the series is listed under, extra search words, and one sentence for search and automation. |
+| `publisher`, `url` | The official body publishing public data (a statistics agency, a central bank, a regulator) and its page for the series. |
+| `input` | `ticker`, `option` or `crypto`: the series is one per symbol. The catalog asks for the symbol, typing a ticker in the catalog fills it in, and `load` receives it as `ticker`. |
+| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning }`. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
+| `refreshMs` | For a series that moves during the day: how often a chart showing it loads it again, at least 60000. |
+| `style` | `line` (the default), `area`, `step`, `columns` or `points`. |
+| `expression` | Instead of `load`: a series the composer already draws, such as `FRED:UNRATE`, `FUT:CL` or `{ticker}:close`. Use it to list curated existing series. |
+
+A definition is checked when it registers: a malformed id, an unknown unit or frequency, both or neither of `load` and `expression`, or a label that names a host or one of the services in the plugin's `hosts` (a catalog says what the data is, not who serves it) is refused. A bad entry in `series` is skipped and logged, so the plugin's other series and panes still load; `ctx.registerSeries` throws instead. `defineSeries` runs the same checks where the definition is written.
+
+`ctx.registerSeries` adds series after setup has started, for a list the plugin loads first or a folder it watches; it returns a function that removes the series again, and a plugin's series leave with it when it is switched off or removed.
+
+On the desktop, `load` runs where the series was registered. Static `series` are registered in both the view and the Bun process, so a loader that uses `httpFetch` works anywhere. A loader that reads files has to run in the Bun process: register it from the Bun entry's `setup()` (see [Plugins with a native half](#plugins-with-a-native-half)); the view lists it from there and charts it through the Bun process.
+
+To chart a CSV file without writing a plugin, drop it in the profile's `series` folder; the [user guide](docs/usage.md#your-own-series) describes the format. A plugin reading its own files can use the same parser: `parseSeriesCsv(text)` from `gloomberb/time-series` returns the metadata lines and one column of points per value column, and `inferSeriesFrequency(points)` reads a frequency off the dates.
 
 ### Plugin persistence and resume state
 

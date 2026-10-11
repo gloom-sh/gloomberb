@@ -7,7 +7,7 @@ import { buildCustomChartPreset } from "../chart-composer/presets";
 import { formatGeoSeriesExpression } from "../chart-composer/series-expression";
 import type { PluginModule } from "../plugin-module";
 import { cloudGeoRequest } from "./client";
-import { chokepointSeriesFor, chokepointSeriesIds, createGeoChartSeriesCapability, KEY_CHOKEPOINTS } from "./geo-series";
+import { chokepointSeriesFor, chokepointSeriesIds, CHOKEPOINT_SERIES, createGeoChartSeriesCapability, KEY_CHOKEPOINTS } from "./geo-series";
 import { mapHeadless } from "./headless";
 import { buildMapSettingsDef, groupTitle, MAP_PRESET_OPTIONS, parseMapPreset } from "./layers";
 import { WORLD_VENUE_MAP_PANE_ID, WorldVenueMapPane } from "./pane";
@@ -87,4 +87,5 @@ export const worldVenueMapModule: PluginModule = {
     chokepointTemplate,
   ],
   capabilities: [createGeoChartSeriesCapability()],
+  series: CHOKEPOINT_SERIES,
 };

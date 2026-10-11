@@ -27,7 +27,7 @@ import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
 import type { MoneyMarketsPayload } from "./money-markets";
-import type { CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
+import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves } from "./yield-curves";
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./beneficial-owners";
@@ -606,6 +606,15 @@ export class CloudDataApi {
   async getCloudCurve(curve: CloudCurveId, date?: string | null): Promise<CloudCurveView> {
     const query = date ? `?${new URLSearchParams({ date })}` : "";
     return this.request<CloudCurveView>(`/cloud/econ/curves/${encodeURIComponent(curve)}${query}`, { signal: AbortSignal.timeout(30_000) });
+  }
+
+  /** One tenor of a curve from `from` (all stored sessions without one), oldest first. */
+  async getCloudCurveHistory(curve: CloudCurveId, tenor: string, from?: string | null): Promise<CloudCurveHistory> {
+    const query = new URLSearchParams({ tenor, ...(from ? { from } : {}) });
+    return this.request<CloudCurveHistory>(
+      `/cloud/econ/curves/${encodeURIComponent(curve)}/history?${query}`,
+      { signal: AbortSignal.timeout(30_000) },
+    );
   }
 
   /** Each market's latest curve and the session before, each on its own date. */

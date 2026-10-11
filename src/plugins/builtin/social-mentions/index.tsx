@@ -1,4 +1,5 @@
 import type { PluginModule } from "../plugin-module";
+import { SOCIAL_MENTION_SERIES } from "./series";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { socialMentionPostsCache, socialMentionsCache } from "./client";
 import { socialMentionsHeadless } from "./headless";
@@ -9,6 +10,7 @@ const socialMentionsSettings = [
     options: [{ value: "1y", label: "1 year" }, { value: "5y", label: "5 years" }, { value: "max", label: "Since 2012" }] },
 ];
 export const socialMentionsModule: PluginModule = {
+  series: SOCIAL_MENTION_SERIES,
   panes: [{ id: "social-mentions", name: "Social Mentions", icon: "B", component: SocialMentionsPane,
     defaultPosition: "right", tickerFollower: true, defaultMode: "floating", defaultFloatingSize: { width: 96, height: 30 },
     tableExport: true, headless: socialMentionsHeadless, settings: { title: "Social Mentions", fields: socialMentionsSettings } }],

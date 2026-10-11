@@ -1,6 +1,6 @@
 import type { PluginModule } from "../plugin-module";
 import { valuationCache } from "./cache";
-import { createValuationChartSeriesCapability } from "./chart-series";
+import { valuationSeriesDefinitions } from "./chart-series";
 import { INDICATORS, resolveIndicatorArg } from "./indicators";
 import { marketValuationHeadless } from "./headless";
 import { MarketValuationPane } from "./pane";
@@ -35,8 +35,8 @@ const KEYWORDS = [...new Set([
 ])];
 
 export const marketValuationModule: PluginModule = {
-  // Exposes each ratio as a chartable series, so G can overlay them on anything else.
-  capabilities: [createValuationChartSeriesCapability()],
+  // Each ratio is a catalog series, so G can overlay them on anything else.
+  series: valuationSeriesDefinitions(),
   panes: [{
     id: MARKET_VALUATION_PANE_ID,
     name: "Market Valuation",

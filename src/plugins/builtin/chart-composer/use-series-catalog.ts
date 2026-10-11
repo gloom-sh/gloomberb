@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   buildTickerSearchCandidates,
   searchTickerCandidates,
@@ -6,6 +6,8 @@ import {
 import { useOptionalAppSelector } from "../../../state/app/context";
 import type { TickerRecord } from "../../../types/ticker";
 import { searchChartSeriesCapabilities } from "../../../capabilities";
+import { SERIES_CATALOG_CAPABILITY_ID } from "../../../series/capability";
+import type { SeriesCatalogEntry } from "../../../series/types";
 import { getSharedRegistry } from "../../registry";
 import {
   analyzeSeriesSearchQuery,
@@ -17,6 +19,9 @@ import {
 
 const EMPTY_TICKERS: ReadonlyMap<string, TickerRecord> = new Map();
 const EMPTY_RECENT: readonly string[] = [];
+const EMPTY_PLUGINS: readonly string[] = [];
+const EMPTY_ENTRIES: readonly SeriesCatalogEntry[] = [];
+const NO_SUBSCRIPTION = () => () => {};
 const MAX_SERIES_SUGGESTIONS = 8;
 const DEFAULT_CATALOG_INSTRUMENTS: readonly SeriesCatalogInstrument[] = [
   { symbol: "AAPL", exchange: "NASDAQ", name: "Apple Inc." },
@@ -70,6 +75,56 @@ function candidateToInstrument(candidate: {
     ...(name ? { name } : {}),
     ...(assetCategory ? { assetCategory } : {}),
   };
+}
+
+/**
+ * Every registered series of the plugins that are switched on. On the
+ * desktop, series only the Bun process has (files in the profile's series
+ * folder) are asked for once and listed after the rest; elsewhere, sources
+ * that change while the app runs catch up when the catalog opens.
+ */
+export function useRegisteredSeries(): readonly SeriesCatalogEntry[] {
+  const registry = getSharedRegistry();
+  const series = registry?.series;
+  const version = useSyncExternalStore(
+    series ? series.subscribe.bind(series) : NO_SUBSCRIPTION,
+    () => series?.getVersion() ?? 0,
+    () => 0,
+  );
+  const disabledPlugins = useOptionalAppSelector((state) => state.config.disabledPlugins, EMPTY_PLUGINS);
+  const [remote, setRemote] = useState<readonly SeriesCatalogEntry[] | null>(null);
+
+  useEffect(() => {
+    if (!registry || !series) return;
+    if (!registry.usesRemoteCapabilities) {
+      void series.refresh();
+      return;
+    }
+    let cancelled = false;
+    void registry.invokeCapability<{ entries: SeriesCatalogEntry[] }>(SERIES_CATALOG_CAPABILITY_ID, "list", {})
+      .then((result) => {
+        if (!cancelled && Array.isArray(result?.entries)) setRemote(result.entries);
+      })
+      .catch(() => {
+        // The view's own series still list; only the Bun process's extras are missing.
+      });
+    return () => { cancelled = true; };
+  }, [registry, series]);
+
+  return useMemo(() => {
+    const local = series?.catalog() ?? EMPTY_ENTRIES;
+    let entries = local;
+    if (remote?.length) {
+      const known = new Set(local.map((entry) => entry.id));
+      const extra = remote.filter((entry) => !known.has(entry.id));
+      if (extra.length) entries = [...local, ...extra];
+    }
+    if (disabledPlugins.length === 0) return entries;
+    const disabled = new Set(disabledPlugins);
+    return entries.some((entry) => disabled.has(entry.pluginId))
+      ? entries.filter((entry) => !disabled.has(entry.pluginId))
+      : entries;
+  }, [disabledPlugins, remote, series, version]);
 }
 
 export function useCatalogUniverse(query: string): {
@@ -193,6 +248,7 @@ export function useSeriesCatalogSuggestions({
   enabled: boolean;
 }): SeriesCatalogSearchResult {
   const tickers = useOptionalAppSelector((state) => state.tickers, EMPTY_TICKERS);
+  const registered = useRegisteredSeries();
   const analysis = useMemo(() => analyzeSeriesSearchQuery(query), [query]);
   const [providerSearch, setProviderSearch] = useState<{
     query: string;
@@ -298,11 +354,11 @@ export function useSeriesCatalogSuggestions({
   // and they arrive well before plugin catalogs (which can take seconds), so
   // late plugin results append below instead of pushing the list around.
   const suggestions = useMemo(() => {
-    const builtIn = buildSeriesCatalogSuggestions(query, defaultInstrument, instruments);
+    const builtIn = buildSeriesCatalogSuggestions(query, defaultInstrument, instruments, MAX_SERIES_SUGGESTIONS, registered);
     const provider = providerSearch.query === query.trim() ? providerSearch.suggestions : [];
     return [...builtIn, ...provider.filter((entry) => !builtIn.some((candidate) => candidate.id === entry.id))]
       .slice(0, MAX_SERIES_SUGGESTIONS);
-  }, [defaultInstrument, instruments, providerSearch, query]);
+  }, [defaultInstrument, instruments, providerSearch, query, registered]);
 
   return {
     suggestions,

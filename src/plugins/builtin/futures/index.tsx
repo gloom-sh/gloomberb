@@ -22,6 +22,7 @@ import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
+import { FUTURES_SERIES } from "./series";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import {
   boardErrorMessage,
@@ -288,6 +289,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
 }
 
 export const futuresModule: PluginModule = {
+  series: FUTURES_SERIES,
   panes: [
     {
       id: FUTURES_PANE_ID,

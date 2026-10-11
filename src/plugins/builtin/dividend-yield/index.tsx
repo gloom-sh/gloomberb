@@ -1,4 +1,5 @@
 import type { PluginModule } from "../plugin-module";
+import { DIVIDEND_SERIES } from "./series";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   attachDividendYieldHealth,
@@ -19,6 +20,7 @@ function createDividendYieldModule({
 } = {}): PluginModule {
   let disposeConnection: (() => void) | null = null;
   return {
+    series: DIVIDEND_SERIES,
     setup(ctx) {
       if (marketConnection) {
         attachDividendYieldHealth(ctx.connectionHealth);

@@ -2,8 +2,10 @@ import type { PluginModule } from "../plugin-module";
 import { moneyMarketsCache } from "./client";
 import { moneyMarketsHeadless } from "./headless";
 import { MoneyMarketsPane } from "./pane";
+import { MONEY_MARKET_SERIES } from "./series";
 
 export const moneyMarketsModule: PluginModule = {
+  series: MONEY_MARKET_SERIES,
   panes: [{ id: "money-markets", name: "Money Markets", icon: "$", component: MoneyMarketsPane,
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 88, height: 28 },
     tableExport: true, headless: moneyMarketsHeadless,

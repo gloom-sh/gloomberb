@@ -1301,9 +1301,7 @@
           "volatility-term-structure",
           "yield-curve"
         ],
-        "capabilities": [
-          "market-valuation"
-        ],
+        "capabilities": [],
         "broker": false,
         "shortcuts": [
           {
@@ -1542,7 +1540,7 @@
           {
             "code": "CAT",
             "name": "Data Catalog",
-            "description": "Browse and search the series Custom Chart already knows: securities, options, crypto, FRED, treasuries, and futures."
+            "description": "Browse and search every series a chart can draw: securities, rates, credit, economic data, volatility, sentiment, positioning and your own files."
           },
           {
             "code": "GP",

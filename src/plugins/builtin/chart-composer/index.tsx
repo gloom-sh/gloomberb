@@ -13,6 +13,8 @@ import type { ChartSpec } from "../../../time-series/types";
 import { isPriceOnlyMarketFieldId } from "../../../time-series/field-catalog";
 import { ChartComposerPane, ChartComposerResearchTab } from "./pane";
 import { DataCatalogPane } from "./data-catalog-pane";
+import { listFieldSeries } from "./field-series";
+import { registeredSeriesName } from "./series-expression";
 import {
   CHART_COMPOSER_TEMPLATE_ID,
   DATA_CATALOG_PANE_ID,
@@ -104,7 +106,7 @@ function chartTitle(spec: ChartSpec, prefix = "G"): string {
       ? tickerInstrumentLabel(publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange), series.source.instrument.instrument)
       : series.source.kind === "economic"
         ? `FRED:${series.source.seriesId}`
-        : series.label?.trim() || series.source.seriesId
+        : series.label?.trim() || registeredSeriesName(series.source) || series.source.seriesId
   ));
   if (labels.length === 0) return "Custom Chart";
   const remaining = spec.series.length - labels.length;
@@ -319,7 +321,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     id: DATA_CATALOG_TEMPLATE_ID,
     paneId: DATA_CATALOG_PANE_ID,
     label: "Data Catalog",
-    description: "Browse and search the series Custom Chart already knows: securities, options, crypto, FRED, treasuries, and futures.",
+    description: "Browse and search every series a chart can draw: securities, rates, credit, economic data, volatility, sentiment, positioning and your own files.",
     keywords: [
       "catalog",
       "series",
@@ -331,6 +333,9 @@ const chartComposerTemplates: PaneTemplateDef[] = [
       "crypto",
       "options",
       "option",
+      "credit",
+      "sentiment",
+      "positioning",
     ],
     shortcut: { prefix: "CAT", argPlaceholder: "query", argKind: "text", argOptional: true },
     canCreate: () => true,
@@ -424,6 +429,8 @@ function chartShowsOneSecurity(pane: PaneInstanceConfig): boolean {
 }
 
 export const chartComposerModule: PluginModule = {
+  // Every ticker field, asking for the ticker when charted.
+  series: listFieldSeries(),
   panes: [{
     id: CHART_COMPOSER_PANE_ID,
     name: "Chart",

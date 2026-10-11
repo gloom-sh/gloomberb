@@ -15,6 +15,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
 import type { PluginModule } from "../plugin-module";
+import { GOVERNMENT_BOND_SERIES, TREASURY_SERIES } from "./series";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { formatPercentileRank } from "../../../utils/format";
@@ -438,6 +439,7 @@ function WorldTab({ onOpen, focused, width, height }: {
 }
 
 export const yieldCurveModule: PluginModule = {
+  series: [...TREASURY_SERIES, ...GOVERNMENT_BOND_SERIES],
   panes: [{
     id: "yield-curve",
     name: "Yield Curves",

@@ -2,8 +2,10 @@ import type { PluginModule } from "../plugin-module";
 import { centralBankRatesCache } from "./client";
 import { centralBankRatesHeadless } from "./headless";
 import { CentralBankRatesPane } from "./pane";
+import { CENTRAL_BANK_SERIES } from "./series";
 
 export const centralBankRatesModule: PluginModule = {
+  series: CENTRAL_BANK_SERIES,
   panes: [{ id: "central-bank-rates", name: "Central Bank Rates", icon: "%", component: CentralBankRatesPane,
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 108, height: 25 },
     tableExport: true, headless: centralBankRatesHeadless }],

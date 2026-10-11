@@ -1,5 +1,6 @@
 import { publicTickerBindingSymbol } from "../../../tickers/selection";
 import type { PluginModule } from "../plugin-module";
+import { JOBS_SERIES } from "./series";
 import { resetJobsCache } from "./client";
 import { jobsHeadless } from "./headless";
 import { JOBS_PANE_ID, JobsPane, JobsResearchTab } from "./pane";
@@ -14,6 +15,7 @@ function explicitSymbol(options?: { arg?: string; symbol?: string | null }): str
 }
 
 export const jobsModule: PluginModule = {
+  series: JOBS_SERIES,
   setup(ctx) {
     ctx.registerTickerResearchTab({
       id: "jobs",

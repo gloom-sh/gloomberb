@@ -102,6 +102,11 @@ export interface ChartResolveSources {
   liveSince?: number;
   /** Capture the resolved inputs, including the calculation buffer, for an export. */
   onSecurityData?: (series: ChartSeriesSpec, data: TickerFinancials, includesHistory: boolean) => void;
+  /**
+   * How often, in milliseconds, a plugin-owned series is loaded again while
+   * it is charted; nothing for a series that keeps what it loaded.
+   */
+  capabilityRefreshMs?: (source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>) => number | undefined;
   /** Provider-neutral boundary for plugin-owned chart series. */
   resolveCapabilitySeries?: (
     source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>,

@@ -46,6 +46,7 @@ const HANDLED_MODULE_KEYS = [
   "panes",
   "paneTemplates",
   "capabilities",
+  "series",
   "slots",
 ] as const satisfies readonly (keyof PluginModule)[];
 
@@ -140,6 +141,7 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
   const panes = modules.flatMap((module) => module.panes ?? []);
   const paneTemplates = modules.flatMap((module) => module.paneTemplates ?? []);
   const capabilities = modules.flatMap((module) => module.capabilities ?? []);
+  const series = modules.flatMap((module) => module.series ?? []);
   const slots = composeSlots(modules);
   let startedModules: PluginModule[] = [];
 
@@ -149,6 +151,7 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
     ...(panes.length > 0 ? { panes } : {}),
     ...(paneTemplates.length > 0 ? { paneTemplates } : {}),
     ...(capabilities.length > 0 ? { capabilities } : {}),
+    ...(series.length > 0 ? { series } : {}),
     ...(slots ? { slots } : {}),
 
     async setup(ctx: GloomPluginContext) {
