@@ -429,7 +429,7 @@ function renderBundle(
     ...(index > 0 ? [""] : []),
     renderSection(section.title),
     "rows" in section && section.rows
-      ? renderRows(section.rows, section.columns, definition.columns, section.empty)
+      ? renderRows(section.textRows ?? section.rows, section.textColumns ?? section.columns, definition.columns, section.empty)
       : renderEntries(section.entries),
   ]);
 }

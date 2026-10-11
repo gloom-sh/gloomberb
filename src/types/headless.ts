@@ -277,6 +277,15 @@ export type HeadlessBundleSection =
     rows: HeadlessPaneRow[];
     /** What the report says when `rows` is empty, in place of "No data.": why there are none, and what to run instead. */
     empty?: string;
+    /**
+     * The table the text report prints in place of `columns`, when the pane
+     * shows other columns than the exported records carry: its cells formatted
+     * and cut to fit a terminal, with ids and raw evidence left out. CSV,
+     * NDJSON and JSON keep `columns` and `rows`.
+     */
+    textColumns?: HeadlessPaneColumn[];
+    /** The rows `textColumns` read, when the pane's rows are not the records (one per holding and scenario shock); `rows` when absent. */
+    textRows?: HeadlessPaneRow[];
     entries?: never;
   }
   | {
@@ -284,6 +293,8 @@ export type HeadlessBundleSection =
     entries: HeadlessPaneEntry[];
     columns?: never;
     rows?: never;
+    textColumns?: never;
+    textRows?: never;
   };
 
 export interface HeadlessBundleResult extends HeadlessPaneResultBase {

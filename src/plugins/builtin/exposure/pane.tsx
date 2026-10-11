@@ -18,9 +18,9 @@ import { ExposurePathDiagram, ExposureRanges } from "./charts";
 import { fetchExposure, fetchScenarios, validateExposure } from "./client";
 import { ExposureEditor, type ExposureInputs } from "./editor";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
-import { basisLabel, DEFAULT_SCENARIO, fraction, parseCustomScenario, parseHoldings, pathRows, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
+import { basisLabel, DEFAULT_SCENARIO, exposureCellText, fraction, parseCustomScenario, parseHoldings, pathRows, portfolioRows, rangeText, tableRows, TABS, type ExposureRow } from "./model";
 import { useExposureEvidence } from "./evidence";
-import { driverRows, driverUnits, driverValue } from "./drivers";
+import { driverRows, driverScope, driverUnits, driverValue } from "./drivers";
 
 function EvidenceItem({ item }: { item: ExposureEvidence }) {
   const colors = useThemeColors();
@@ -132,7 +132,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   usePaneRefreshKey(() => void resource.reload(), { focused: focused && !editing });
   const rawRows = useMemo(() => !data ? [] : tab === "drivers" ? driverRows(data) : tab === "paths" ? pathRows(data) : tab === "portfolio" ? portfolioRows(data, view) : tableRows(data), [data, tab, view]);
   const rows = useMemo(() => [...rawRows].sort((a, b) => {
-    const get = (r: ExposureRow) => sort.column === "value" ? r.driver?.value ?? r.driver?.range?.high ?? -Infinity : sort.column === "units" ? r.driver ? driverUnits(r.driver) : "" : sort.column === "scope" ? Object.values(r.driver?.dimensions ?? {}).join(" · ") : sort.column === "classification" ? r.classification : sort.column === "label" ? r.label : sort.column === "period" ? r.period ?? "" : sort.column === "exposure" ? r.exposure?.high ?? -Infinity : sort.column === "impact" ? r.impact?.low ?? -Infinity : sort.column === "weight" ? r.weight ?? -Infinity : sort.column === "basis" ? r.basis ?? "" : r.symbol;
+    const get = (r: ExposureRow) => sort.column === "value" ? r.driver?.value ?? r.driver?.range?.high ?? -Infinity : sort.column === "units" ? r.driver ? driverUnits(r.driver) : "" : sort.column === "scope" ? r.driver ? driverScope(r.driver) : "" : sort.column === "classification" ? r.classification : sort.column === "label" ? r.label : sort.column === "period" ? r.period ?? "" : sort.column === "exposure" ? r.exposure?.high ?? -Infinity : sort.column === "impact" ? r.impact?.low ?? -Infinity : sort.column === "weight" ? r.weight ?? -Infinity : sort.column === "basis" ? r.basis ?? "" : r.symbol;
     const av = get(a), bv = get(b); const delta = typeof av === "number" && typeof bv === "number" ? av - bv : String(av).localeCompare(String(bv));
     return (sort.direction === "asc" ? delta : -delta) || a.id.localeCompare(b.id);
   }), [rawRows, sort]);
@@ -192,17 +192,17 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       case "symbol": return row.symbol.includes(",") ? { text: row.symbol, color: colors.textBright } : listingCell(row.symbol, colors, state.selected);
       case "value": return { text: row.driver ? driverValue(row.driver) : "--", value: row.driver?.value ?? null, color: colors.textBright };
       case "units": return { text: row.driver ? driverUnits(row.driver) : "", color: colors.textDim };
-      case "scope": return { text: Object.values(row.driver?.dimensions ?? {}).join(" · "), color: colors.textDim };
-      case "label": return { text: row.label, color: unknown ? colors.textDim : colors.text };
-      case "basis": return row.basis ? { text: humanLabel(basisLabel(row.basis)), color: colors.textDim } : missingCell(colors);
-      case "exposure": return row.exposure ? { text: rangeText(row.exposure), value: row.exposure.high, color: colors.textBright } : { text: "Unknown", value: null, color: colors.textMuted };
+      case "scope": return { text: row.driver ? driverScope(row.driver) : "", color: colors.textDim };
+      case "label": return { text: exposureCellText(row, "label"), color: unknown ? colors.textDim : colors.text };
+      case "basis": return row.basis ? { text: exposureCellText(row, "basis"), color: colors.textDim } : missingCell(colors);
+      case "exposure": return row.exposure ? { text: exposureCellText(row, "exposure"), value: row.exposure.high, color: colors.textBright } : { text: exposureCellText(row, "exposure"), value: null, color: colors.textMuted };
       // Disclosed figures stand out; estimates read plainly, and the word says which is which.
-      case "classification": return { text: `${humanLabel(row.classification)}${row.incomplete && !unknown ? " · partial" : ""}`,
+      case "classification": return { text: exposureCellText(row, "classification"),
         color: row.classification === "disclosed" ? colors.borderFocused : unknown ? colors.textMuted : colors.textDim, keepColorWhenSelected: row.classification === "disclosed" };
-      case "impact": return !row.impact ? missingCell(colors) : { text: rangeText(row.impact), value: row.impact.low,
+      case "impact": return !row.impact ? missingCell(colors) : { text: exposureCellText(row, "impact"), value: row.impact.low,
         color: row.concentration ? colors.text : row.impact.high < 0 ? colors.negative : row.impact.low > 0 ? colors.positive : colors.text };
-      case "period": return row.period ? { text: row.period, color: colors.textDim } : missingCell(colors);
-      default: return { text: fraction(row.weight ?? 0), value: row.weight === null ? null : row.weight * 100, color: colors.text };
+      case "period": return row.period ? { text: exposureCellText(row, "period"), color: colors.textDim } : missingCell(colors);
+      default: return { text: exposureCellText(row, "weight"), value: row.weight === null ? null : row.weight * 100, color: colors.text };
     }
   };
   const lockedRows = data?.access === "preview" ? Math.min(3, data.lockedHoldings) : 0;

@@ -1,4 +1,5 @@
 import type { ExposureBasis, ExposureComponent, ExposureExtensionObservation, ExposureHolding, ExposurePayload, ExposureRange, ExposureScenario } from "../../../api-client/exposure";
+import { humanLabel } from "../shared/research-cells";
 
 export const TABS = [{ value: "table", label: "Table" }, { value: "drivers", label: "Drivers" }, { value: "paths", label: "Paths" }, { value: "portfolio", label: "Portfolio" }];
 export const DEFAULT_SCENARIO: ExposureScenario = { id: "taiwan-disruption", label: "Taiwan disruption", shocks: [{ id: "taiwan", kind: "country", target: "TW", changePct: -100 }] };
@@ -61,11 +62,30 @@ export interface ExposureRow {
   exposure: ExposureRange | null; impact: ExposureRange | null; weight: number | null;
   classification: string; incomplete: boolean; concentration?: boolean; components: ExposureComponent[]; unknowns: string[];
 }
-function shockLabel(data: ExposurePayload, id: string): string {
-  const shock = data.scenario.shocks.find(s => s.id === id);
-  if (!shock) return id;
+/** A table cell's text as the pane draws it; `fn EXPO` prints the same words. */
+export function exposureCellText(row: ExposureRow, column: "label" | "basis" | "exposure" | "classification" | "impact" | "period" | "weight"): string {
+  switch (column) {
+    case "label": return row.label;
+    case "basis": return row.basis ? humanLabel(basisLabel(row.basis)) : "--";
+    case "exposure": return row.exposure ? rangeText(row.exposure) : "Unknown";
+    // What the number rests on, in words: disclosed by the company, estimated by a chain, or not visible.
+    case "classification": return `${humanLabel(row.classification)}${row.incomplete && row.classification !== "unknown" ? " · partial" : ""}`;
+    case "impact": return row.impact ? rangeText(row.impact) : "--";
+    case "period": return row.period ?? "--";
+    case "weight": return fraction(row.weight ?? 0);
+  }
+}
+function shockText(shock: ExposureScenario["shocks"][number]): string {
   const change = shock.changeBps ?? shock.changePct;
   return `${shock.target}${change == null ? "" : ` ${change > 0 ? "+" : ""}${change}${shock.kind === "rate" ? "bp" : "%"}`}`;
+}
+function shockLabel(data: ExposurePayload, id: string): string {
+  const shock = data.scenario.shocks.find(s => s.id === id);
+  return shock ? shockText(shock) : id;
+}
+/** The scenario as the pane's scenario picker names it, with its one shock when it has one: Taiwan disruption (TW -100%). */
+export function scenarioTitle(scenario: ExposureScenario): string {
+  return `${scenario.label}${scenario.shocks.length === 1 ? ` (${shockText(scenario.shocks[0]!)})` : ""}`;
 }
 export function tableRows(data: ExposurePayload): ExposureRow[] {
   return data.holdings.flatMap<ExposureRow>(holding => [
