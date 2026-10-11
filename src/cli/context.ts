@@ -1,6 +1,7 @@
 import { join } from "path";
-import { existsSync } from "fs";
-import { getDataDir, loadConfig } from "../data/config/store";
+import { existsSync, readFileSync } from "fs";
+import { getDataDir, initDataDir, loadConfig } from "../data/config/store";
+import { getGloomberbDirs } from "../data/config/home";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { AssetDataRouter } from "../sources/provider-router";
@@ -60,13 +61,45 @@ export async function loadCliConfigIfAvailable(): Promise<AppConfig | null> {
   return loadConfig(dataDir);
 }
 
-export async function initConfigData(): Promise<ConfigContext> {
-  const dataDir = await getDataDir();
-  if (!dataDir || !existsSync(dataDir)) {
-    fail("No data directory configured.", "Run gloomberb once to initialize your local data.");
+function isUnreadableConfig(configFile: string): boolean {
+  try {
+    JSON.parse(readFileSync(configFile, "utf-8"));
+    return false;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code !== "ENOENT";
   }
+}
 
-  const config = await loadConfig(dataDir);
+/** The data folder this profile uses, whether or not anything has created it yet. Never writes. */
+export async function resolveCliDataDir(): Promise<string> {
+  return await getDataDir() ?? getGloomberbDirs().data;
+}
+
+/**
+ * The data folder and config a command works with. The first command on a new
+ * profile creates them with the same `initDataDir` a first launch of the
+ * terminal or desktop app runs, so the CLI works before the app was ever
+ * opened. That config leaves onboarding unfinished, so the app's first launch
+ * still walks through it.
+ *
+ * A config.json that is there but does not parse would be replaced with
+ * defaults by that, so the command fails instead and leaves it for the user.
+ */
+async function openCliDataDir(): Promise<{ dataDir: string; config: AppConfig; created: boolean }> {
+  const recorded = await getDataDir();
+  if (recorded && existsSync(recorded)) {
+    return { dataDir: recorded, config: await loadConfig(recorded), created: false };
+  }
+  const { configFile, data } = getGloomberbDirs();
+  if (!recorded && isUnreadableConfig(configFile)) {
+    fail(`Could not read ${configFile}.`, "Fix the file or move it aside; the next command creates a fresh one.");
+  }
+  const dataDir = recorded ?? data;
+  return { dataDir, config: await initDataDir(dataDir), created: true };
+}
+
+export async function initConfigData(): Promise<ConfigContext> {
+  const { dataDir, config } = await openCliDataDir();
   const persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
   const store = new TickerRepository(persistence.tickers);
   return { config, persistence, store, dataDir };
@@ -89,12 +122,7 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
 }
 
 export async function initCliServices(options: CliServicesOptions = {}) {
-  const dataDir = await getDataDir();
-  if (!dataDir || !existsSync(dataDir)) {
-    fail("No data directory configured.", "Run gloomberb once to initialize your local data.");
-  }
-
-  const config = await loadConfig(dataDir);
+  const { dataDir, config, created } = await openCliDataDir();
   const services = createAppServices({
     config,
     plugins: getLoadablePlugins(options.externalPlugins ?? []),
@@ -106,6 +134,7 @@ export async function initCliServices(options: CliServicesOptions = {}) {
   return {
     config,
     dataDir,
+    createdDataDir: created,
     services,
     dataProvider: services.providerRouter,
     persistence: services.persistence,

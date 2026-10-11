@@ -23,6 +23,8 @@ export type MarketContext = ConfigContext & {
 export type CliServicesContext = {
   config: AppConfig;
   dataDir: string;
+  /** This command created the data folder: the profile had never been used. */
+  createdDataDir?: boolean;
   services: AppServices;
   dataProvider: AssetDataRouter;
   persistence: AppPersistence;

@@ -5,7 +5,7 @@ import { builtinPluginGroupMembers } from "../../plugins/ownership";
 import type { AppConfig, TelemetryConfig } from "../../types/config";
 import { canonicalTimeZone } from "../../utils/utc-time";
 import type { CliCommandDef } from "../../types/plugin";
-import { withCliServices, withConfigData } from "../context";
+import { resolveCliDataDir, withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { dryRunNote, formatBytes, formatStatusCell } from "../helpers";
 import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
@@ -147,9 +147,11 @@ export function createSystemCliCommands(): CliCommandDef[] {
     description: "Print the version, runtime, and data folder",
     help: { group: CLI_COMMAND_GROUPS.app, usage: ["version"] },
     execute: async (_args, ctx) => {
+      // Where the data lives, or will once a command or the app first runs:
+      // printing the version never creates the folder.
       let dataDir: string | null = null;
       try {
-        dataDir = await withConfigData(ctx, ({ dataDir: configuredDataDir }) => configuredDataDir);
+        dataDir = await resolveCliDataDir();
       } catch {
         dataDir = null;
       }
@@ -173,7 +175,11 @@ export function createSystemCliCommands(): CliCommandDef[] {
       const checks: Array<{ check: string; status: string; detail: string }> = [];
       try {
         await withCliServices(ctx, async (services) => {
-          checks.push({ check: "config", status: "ok", detail: services.dataDir });
+          checks.push({
+            check: "config",
+            status: "ok",
+            detail: services.createdDataDir ? `${services.dataDir} (created now)` : services.dataDir,
+          });
           checks.push({ check: "database", status: "ok", detail: join(services.dataDir, ".gloomberb-cache.db") });
           checks.push({ check: "plugins", status: "ok", detail: String(services.services.pluginRegistry.allPlugins.size) });
           checks.push({ check: "capabilities", status: "ok", detail: String(services.services.pluginRegistry.capabilities.manifests().length) });
