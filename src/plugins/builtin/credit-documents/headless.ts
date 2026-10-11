@@ -9,8 +9,8 @@ export const creditHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: SEC_FILINGS,
   argument: { kind: "ticker", description: "Issuer ticker, including exchange-qualified global symbols.", placeholder: "ticker" },
   discovery: { aliases: ["CRDOC"], dataRequirements: ["Gloom Cloud credit-document evidence"], limitations: [
-    "Pro dataset; free accounts see a limited preview", "SEC credit documents with global issuer identifiers; other jurisdictions depend on connected sources",
-    "Undisclosed terms remain unavailable", "Headroom requires exact covenant definitions and supported reported financials", "Amounts retain their native currency",
+    "Pro dataset; free accounts see a limited preview.", "SEC credit documents with global issuer identifiers; other jurisdictions depend on connected sources.",
+    "Undisclosed terms remain unavailable.", "Headroom requires exact covenant definitions and supported reported financials.", "Amounts retain their native currency.",
   ] },
   options: [
     { key: "tab", type: "enum", settingKey: "tab", defaultValue: "capital", values: CREDIT_TABS.map(({ value }) => ({ value })), description: "Capital structure, covenants, maturity wall or global risk screen." },

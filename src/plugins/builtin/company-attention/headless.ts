@@ -38,8 +38,8 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       ] : []),
     ],
     discovery: { aliases: [kind === "hiring" ? "HIRE" : "APPS"], dataRequirements: ["Gloom Cloud account"], limitations: kind === "hiring"
-      ? ["Pro: full weekly history and evidence; free preview", "Observed requisitions, not headcount or confirmed office openings", "History begins with retained captures; incomplete snapshots cannot imply hiring freezes"]
-      : ["Pro: full chart history and evidence; free preview", "Public top charts are an observed subset, not downloads or revenue", "Grossing feeds are unavailable; written reviews are distinct from ratings", "Mappings use evidenced ownership; unmapped apps stay visible"] },
+      ? ["Pro: full weekly history and evidence; free preview.", "Observed requisitions, not headcount or confirmed office openings.", "History begins with retained captures; incomplete snapshots cannot imply hiring freezes."]
+      : ["Pro: full chart history and evidence; free preview.", "Public top charts are an observed subset, not downloads or revenue.", "Grossing feeds are unavailable; written reviews are distinct from ratings.", "Mappings use evidenced ownership; unmapped apps stay visible."] },
     describe: (args) => `${kind === "hiring" ? "Hiring momentum" : "App attention"}${args.symbols[0] ? ` | ${args.symbols[0]}` : ""}`,
     async load(args, ctx) {
       if (kind === "apps" && typeof args.options.appId === "string" && args.options.appId) {

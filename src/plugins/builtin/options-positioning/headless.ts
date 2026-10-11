@@ -33,9 +33,9 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     screenshotReadiness: "live-dom",
     dataRequirements: ["Cloud listed open interest", "Option chains"],
     limitations: [
-      "Open interest is as of the prior session's close",
-      "Dealer gamma assumes dealers are long every call and short every put",
-      "NDX and RUT index options are not covered; use QQQ and IWM",
+      "Open interest is as of the prior session's close.",
+      "Dealer gamma assumes dealers are long every call and short every put.",
+      "NDX and RUT index options are not covered; use QQQ and IWM.",
     ],
   },
   options: [

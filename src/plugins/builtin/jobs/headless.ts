@@ -187,7 +187,7 @@ export const jobsHeadless: HeadlessPaneDefinition<"bundle"> = {
   // No aliases: the template's keywords stay the catalog's search terms.
   discovery: {
     dataRequirements: ["Gloom Cloud Pro account"],
-    limitations: ["Pro only; HIRE <ticker> previews a company's hiring for free"],
+    limitations: ["Pro only; HIRE <ticker> previews a company's hiring for free."],
   },
   describe: (args) => (args.symbols[0] ? `Hiring | ${args.symbols[0]}` : "Hiring | coverage"),
   async load(args, ctx): Promise<HeadlessBundleResult> {

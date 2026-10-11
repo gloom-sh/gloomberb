@@ -1,5 +1,6 @@
 import captured from "./markets.fixture.json";
-import type { PerpBoardPayload, PerpBoardRow, PerpEquityListing, PerpHistoryPayload, PerpLongShortPoint, PerpLongShortRatio, PerpRankingsPayload } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardRow, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpLongShortPoint, PerpLongShortRatio,
+  PerpRankingsPayload } from "../../../api-client/perps";
 /** Public API capture: 2026-10-03, prices and interval units kept verbatim. */
 export const perpRow = (patch: Partial<PerpBoardRow> = {}): PerpBoardRow => ({ ...captured[0] as PerpBoardRow, ...patch });
 export const perpBoard = (patch: Partial<PerpBoardPayload> = {}): PerpBoardPayload => ({ status: "ok", asOf: captured[0]!.observedAt, rows: captured as PerpBoardRow[], total: captured.length, locked: 0, access: "pro", ...patch });
@@ -10,6 +11,13 @@ export function equityBoard(listing: PerpEquityListing, patch: Partial<PerpBoard
   return perpBoard({ listing, total: 1, rows: [perpRow({ marketId: `hyperliquid:xyz:${listing.symbol}`, dex: "xyz",
     symbol: listing.symbol, baseAsset: listing.symbol, assetClass: "stocks", underlyingSymbol: listing.symbol,
     equityMatch: { listing, underlying: listing, basis: "listing" } })], ...patch });
+}
+
+/** A list's batch answer: each listing's contract (as `equityBoard` builds it) where `hasPerp` says so, none elsewhere. */
+export function equitiesPayload(listings: readonly PerpEquityListing[], hasPerp: (listing: PerpEquityListing) => boolean,
+  market: Partial<PerpBoardRow> = {}): PerpEquitiesPayload {
+  return { status: "ok", asOf: perpRow().observedAt, access: "pro", locked: 0, results: listings.map((listing) => ({ listing,
+    market: hasPerp(listing) ? { ...equityBoard(listing).rows[0]!, ...market } : null })) };
 }
 
 /** The captured BTC contract as another venue lists it: same base asset, the venue's own identity and symbol. */

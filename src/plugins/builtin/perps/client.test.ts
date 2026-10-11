@@ -2,9 +2,9 @@ import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { PerpMarketPayload } from "../../../api-client/perps";
-import { cachedPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpSelection, loadPerpSelection, loadPerpsBoard, loadPerpsEquity, loadPerpsHistoryForRange, perpsCache, perpsMarketCache, perpsHistoryCache,
-  validatePerpsBoard, validatePerpsHistory, validatePerpsRankings } from "./client";
-import { equityBoard, longShort, longShortPoint, okxLongShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
+import { cachedPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpSelection, loadPerpSelection, loadPerpsBoard, loadPerpsEquities, loadPerpsEquity, loadPerpsHistoryForRange,
+  perpsCache, perpsListCache, perpsMarketCache, perpsHistoryCache, validatePerpsBoard, validatePerpsEquities, validatePerpsHistory, validatePerpsRankings } from "./client";
+import { equitiesPayload, equityBoard, longShort, longShortPoint, okxLongShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 const market = (patch: Partial<PerpMarketPayload> = {}): PerpMarketPayload => ({ ...perpBoard({ rows: [perpRow()] }), evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals", ...patch });
 
 test("boundary refuses invalid intervals, non-finite funding, wrong market and duplicate identities while retaining null baselines", () => {
@@ -170,6 +170,37 @@ test("equity caches separate listings and accounts from legacy rows, and validat
     request.mockResolvedValue({ ...data, listing: london });
     await expect(loadPerpsEquity(london, "account-a:pro", true)).rejects.toThrow("another listing");
   } finally { request.mockRestore(); perpsCache.reset(); }
+});
+
+test("a list's perpetuals take one request per hundred listings, cached per list and account, with each contract proven for its row", async () => {
+  perpsListCache.reset();
+  const listings = Array.from({ length: 230 }, (_, index) => ({ symbol: `S${index}`, exchange: "NASDAQ" }));
+  const pages: number[] = [];
+  const request = spyOn(apiClient, "getCloudPerpsEquities").mockImplementation(async (page) => {
+    pages.push(page.length);
+    return equitiesPayload(page, (listing) => listing.symbol === "S7" || listing.symbol === "S150");
+  });
+  try {
+    const first = await loadPerpsEquities(listings, "account-a:pro");
+    expect(pages).toEqual([100, 100, 30]);
+    expect(first.payload.results.map((result) => result.market?.marketId ?? null).filter(Boolean)).toEqual(["hyperliquid:xyz:S7", "hyperliquid:xyz:S150"]);
+    // Within a minute the same list reads its cache; a 30-row list is one request.
+    await loadPerpsEquities(listings, "account-a:pro");
+    await loadPerpsEquities(listings.slice(0, 30), "account-a:pro");
+    expect(pages).toEqual([100, 100, 30, 30]);
+    request.mockRejectedValue(new ApiRequestError("Gateway unavailable", 502));
+    expect(await loadPerpsEquities(listings, "account-a:pro", true)).toMatchObject({ payload: first.payload, stale: true });
+    request.mockRejectedValue(new ApiRequestError("Session expired", 401));
+    await expect(loadPerpsEquities(listings, "account-a:pro", true)).rejects.toThrow("Session expired");
+  } finally { request.mockRestore(); perpsListCache.reset(); }
+  // Answers follow the request's order, and a contract counts only with its proof for that row's listing.
+  const [apple, cloudflare] = [{ symbol: "AAPL", exchange: "NASDAQ" }, { symbol: "NET", exchange: "NYSE" }];
+  const answer = equitiesPayload([apple, cloudflare], () => true);
+  expect(validatePerpsEquities(answer, [apple, cloudflare]).results).toHaveLength(2);
+  expect(() => validatePerpsEquities(answer, [cloudflare, apple])).toThrow("another listing");
+  expect(() => validatePerpsEquities(answer, [apple])).toThrow("another listing");
+  expect(() => validatePerpsEquities({ ...answer, results: [answer.results[0]!, { listing: cloudflare, market: answer.results[0]!.market }] }, [apple, cloudflare])).toThrow("another listing");
+  expect(validatePerpsEquities(equitiesPayload([apple, cloudflare], () => false), [apple, cloudflare]).results.every((result) => !result.market)).toBe(true);
 });
 
 test("rankings may repeat a market across lists but not within one, and a comparison holds only its base asset", async () => {

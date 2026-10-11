@@ -14,6 +14,10 @@ test("the search hint repeats the user's own spelling, one hint per symbol", () 
   expect(withSearchHints("Not a ticker: FOO.\nNot a ticker: BAR:NYSE.", ["Foo,$Bar:NYSE"]))
     .toBe("Not a ticker: FOO. Try `gloomberb search Foo`.\nNot a ticker: BAR:NYSE. Try `gloomberb search Bar`.");
   expect(withSearchHints("Not a ticker: APPLE INC.", ["Apple Inc"])).toBe("Not a ticker: APPLE INC. Try `gloomberb search \"Apple Inc\"`.");
+  // A pasted list splits on spaces and lines as the commands split it, so each symbol names what was typed for it.
+  expect(withSearchHints("Not a ticker: FOO.\nNot a ticker: BAR.\nNot a ticker: BAZ.", ["Foo\nbar", "$Baz zzz"]))
+    .toBe("Not a ticker: FOO. Try `gloomberb search Foo`.\nNot a ticker: BAR. Try `gloomberb search bar`.\nNot a ticker: BAZ. Try `gloomberb search Baz`.");
+  expect(withSearchHints("Not a ticker: APPLE.", ["AAPL Apple"])).toBe("Not a ticker: APPLE. Try `gloomberb search Apple`.");
   // No argument names it (a function's own default): the symbol as the router wrote it. A dotted symbol keeps its dot.
   expect(withSearchHints("apple-ohlcv: Not a ticker: BRK.B.", [])).toBe("apple-ohlcv: Not a ticker: BRK.B. Try `gloomberb search BRK.B`.");
   // Styled lines, and text that already carries the hint or none of this, come through intact.

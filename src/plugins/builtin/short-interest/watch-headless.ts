@@ -19,8 +19,8 @@ export const shortWatchHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["SIW"],
     screenshotReadiness: "live-dom",
     dataRequirements: ["FINRA short interest settlements", "Float", "Daily closes"],
-    limitations: ["Percent of float uses the current float against the settlement's shares short",
-      "Crowded is a fixed threshold, not a squeeze forecast"],
+    limitations: ["Percent of float uses the current float against the settlement's shares short.",
+      "Crowded is a fixed threshold, not a squeeze forecast."],
   },
   columns: [
     { key: "symbol", header: "Symbol" },

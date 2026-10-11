@@ -31,10 +31,10 @@ export const gpuHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", freshness: { dataset: true }, argument: { kind: "free-text", optional: true, placeholder: "GPU", description: "GPU model, such as H100, h-100 or B200." },
   options: [{ key: "tab", type: "enum", values: GPU_TABS.map(({ value }) => ({ value })), defaultValue: "board", description: "Board, sourced history, dated changes or related equities." }],
   discovery: { aliases: ["GPU"], dataRequirements: ["GPU rental price observations"],
-    limitations: ["List prices, provider-declared spot and asks are distinct bases",
-      "Hyperscaler and Neocloud rows are list indexes: the median of the providers' list prices linked over time, so a provider joining or leaving causes no jump; sample.rawMedian is the raw median of today's providers and can differ slightly",
-      "1D/7D/30D need sufficient observation history; unavailable changes remain null",
-      "Free preview: three board rows, or the latest rows of the GPU asked for; Pro unlocks every provider, the moves and the history"] },
+    limitations: ["List prices, provider-declared spot and asks are distinct bases.",
+      "Hyperscaler and Neocloud rows are list indexes: the median of the providers' list prices linked over time, so a provider joining or leaving causes no jump; sample.rawMedian is the raw median of today's providers and can differ slightly.",
+      "1D/7D/30D need sufficient observation history; unavailable changes remain null.",
+      "Free preview: three board rows, or the latest rows of the GPU asked for; Pro unlocks every provider, the moves and the history."] },
   describe: "GPU rental prices in USD per GPU-hour",
   async load(args, ctx) {
     const argument = (Array.isArray(args.argument) ? args.argument.join(" ") : args.argument) ?? "";

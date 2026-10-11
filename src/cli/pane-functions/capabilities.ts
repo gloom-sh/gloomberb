@@ -179,7 +179,8 @@ function normalizeOptionValue(option: PaneFunctionOptionDef, rawValue: string | 
 export function normalizeCapabilityOptions(
   capability: PaneFunctionCapability,
   options: Record<string, string | true>,
-  settings: { strict?: boolean } = {},
+  /** `code` is what the user types for the function (`CDX`), which an error names; the capability id stands in when there is none. */
+  settings: { strict?: boolean; code?: string } = {},
 ): NormalizedPaneFunctionOptions {
   if (!capability.botSafe) {
     // A rendered view takes any pane setting; the options it declares are checked.
@@ -202,7 +203,7 @@ export function normalizeCapabilityOptions(
       }
       const supported = capability.options.map(({ key }) => `--${key}`).join(", ");
       throw new Error(
-        `${capability.id} does not support --${rawKey}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
+        `${settings.code ?? capability.id} does not support --${rawKey}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
       );
     }
     normalized[option.key] = normalizeOptionValue(option, rawValue);

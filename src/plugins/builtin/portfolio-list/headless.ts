@@ -352,7 +352,7 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
     "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L and weight of the total with cash, largest first, then the cash line and totals. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
   discovery: {
     dataRequirements: ["Local portfolios, watchlists and synced broker positions; current quotes"],
-    limitations: ["Unrealized P&L on current positions; excludes realized trades, distributions and cash flows"],
+    limitations: ["Unrealized P&L on current positions; excludes realized trades, distributions and cash flows."],
   },
   argument: {
     kind: "free-text",

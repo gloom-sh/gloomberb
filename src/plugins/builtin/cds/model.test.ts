@@ -7,6 +7,7 @@ import {
   resolveIssuerQuery,
   spreadChartPoints,
   spreadFigures,
+  spreadSummary,
   spreadToBasisPoints,
   summarizeIssuers,
   tradesForIssuer,
@@ -226,6 +227,14 @@ describe("issuer aliases", () => {
     expect(boeing.issuer).toBe("The Boeing Company");
   });
 
+  test("reads DTCC's `;` as the comma it stands for, in the name shown and the name matched", () => {
+    const amazon = summarizeIssuers(normalizeCdsTrades(["Amazon.com;Inc.", "AMAZON.COM INC", "Amazon.com, Inc."].map((issuerName, index) => (
+      payload({ disseminationId: `a${index}`, issuerName })
+    ))));
+    expect(amazon.map((row) => [row.issuer, row.trades])).toEqual([["Amazon.com, Inc.", 3]]);
+    expect(normalizeCdsTrades([payload({ issuerName: "CCO Holdings;LLC" })])[0]!.issuer).toBe("CCO Holdings, LLC");
+  });
+
   test("drills down on the key so aliases open together", () => {
     expect(tradesForIssuer(aliasTrades, "oracle").map((row) => row.issuer)).toEqual(ORACLE);
     expect(tradesForIssuer(aliasTrades, "boeing").map((row) => row.issuer)).toEqual(BOEING);
@@ -240,6 +249,9 @@ describe("resolveIssuerQuery", () => {
     // Untracked: the loader expands this through instrument search.
     expect(resolveIssuerQuery("orcl", null)).toBe("ORCL");
     expect(resolveIssuerQuery(null, null)).toBeNull();
+    // Charter's CDS trades as CCO Holdings: the tracked name would match nothing, so the loader maps the symbol.
+    const charter = { metadata: { ticker: "CHTR", name: "Charter Communications, Inc." } } as never;
+    expect(resolveIssuerQuery("CHTR", charter)).toBe("CHTR");
   });
 });
 
@@ -264,6 +276,10 @@ describe("5Y spread chart", () => {
 
   test("sums up the latest level, its month, and the charted range", () => {
     expect(spreadFigures([])).toEqual([]);
+    // What a report carries: the move to a tenth of a basis point, the figures in whole ones.
+    expect(spreadSummary([level("2026-08-24", 222.2), level("2026-09-25", 234.9)])).toEqual({
+      spreadBp: 234.9, date: "2026-09-25", change1mBp: 12.7, range: { lowBp: 222.2, highBp: 234.9, since: "2026-08-24" },
+    });
     expect(spreadFigures([
       level("2026-07-24", 214.6),
       level("2026-08-24", 222),

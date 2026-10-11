@@ -32,7 +32,7 @@ export const cotHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [{ key: "report", type: "enum", values: [{ value: "legacy" }, { value: "disaggregated" }], defaultValue: "legacy", description: "CFTC report family." },
     { key: "traderClass", type: "enum", values: ["noncommercial", "commercial", "producer", "swap", "managed-money", "other-reportable", "nonreportable"].map((value) => ({ value })), description: "Trader class for the extremes board; defaults by report family." },
     { key: "scope", type: "enum", values: COT_SCOPES.map(({ value }) => ({ value })), defaultValue: "major", description: "Markets on the extremes board, as in the pane." }],
-  discovery: { aliases: ["COT", "CFTC"], dataRequirements: ["Gloom Cloud CFTC history"], limitations: ["Futures-only positions aggregate all maturities", "Legacy and disaggregated classes differ", "Observation date is not publication date", "Some markets have short or suppressed histories"] },
+  discovery: { aliases: ["COT", "CFTC"], dataRequirements: ["Gloom Cloud CFTC history"], limitations: ["Futures-only positions aggregate all maturities.", "Legacy and disaggregated classes differ.", "Observation date is not publication date.", "Some markets have short or suppressed histories."] },
   describe: "CFTC positioning",
   async load(args, ctx) {
     const family = args.options.report === "disaggregated" ? "disaggregated" : "legacy";

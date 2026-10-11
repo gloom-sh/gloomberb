@@ -12,7 +12,7 @@ export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
   argument: { kind: "free-text", optional: true, placeholder: "theme", description: "Theme name or keyword, such as nuclear; omit for all themes." },
   options: [],
   discovery: { aliases: ["THEM"], dataRequirements: ["Gloom Cloud stored equity snapshot"],
-    limitations: ["Updated every 15 minutes for Free and Pro", "Equal-weight price returns; missing observations reduce coverage", "Below half coverage a period is unavailable"] },
+    limitations: ["Updated every 15 minutes for Free and Pro.", "Equal-weight price returns; missing observations reduce coverage.", "Below half coverage a period is unavailable."] },
   describe: (args) => args.rawArgument ? `Thematic baskets | ${args.rawArgument}` : "Thematic baskets",
   async load(args, context) {
     const board = await fetchThemes(context.apiClient);

@@ -122,10 +122,10 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Explicit local evidence for account returns and attribution",
     ],
     limitations: [
-      `Fixed-current-weight USD equity basket over the holdings that qualify, largest ${RISK_HISTORY_LIMIT} by value; foreign listings convert to USD at daily FX closes; metadata.coverage states the covered share of market value and each holding left out`,
-      "No account performance inferred",
-      "ETF price-return factor proxies",
-      "Historical percentiles need 20 rolling samples",
+      `Fixed-current-weight USD equity basket over the holdings that qualify, largest ${RISK_HISTORY_LIMIT} by value; foreign listings convert to USD at daily FX closes; metadata.coverage states the covered share of market value and each holding left out.`,
+      "No account performance inferred.",
+      "ETF price-return factor proxies.",
+      "Historical percentiles need 20 rolling samples.",
     ],
   },
   options: [

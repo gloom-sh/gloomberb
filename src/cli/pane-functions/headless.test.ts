@@ -466,6 +466,10 @@ describe("fn --csv", () => {
       "2026-10-08,\"tenor: 2Y, bid: 4.1\"",
       "",
       "# Source: SEC EDGAR · Thu 8 Oct 2026 · not a live feed (filed data)",
+      "# Publisher: not published",
+      "# Observation date: 2026-10-08",
+      "# Publication time: not published",
+      "# Retrieval time: 2026-10-10T12:00:00.000Z",
       "# incomplete: 19 of 20 available",
       "# error: ^KS11: No quote provider available for ^KS11",
       "# note: Showing world indices.",
@@ -479,7 +483,9 @@ describe("fn --csv", () => {
 
   test("a report over several symbols is one table with its symbol column; missing symbols close it", async () => {
     const report = await reportOf({
-      shape: "rows", argument: { kind: "tickers" }, options: [], freshness: { ...FILED, observedKey: "date" },
+      shape: "rows", argument: { kind: "tickers" }, options: [],
+      // A publisher and publication time the data states reach the closing lines.
+      freshness: { ...FILED, observedKey: "date", publisher: "U.S. Securities and Exchange Commission", publishedAt: "2026-10-02T16:05:00-04:00" },
       columns: [
         { key: "symbol", header: "Symbol" },
         { key: "date", header: "Date", format: (value) => String(value).slice(0, 10) },
@@ -499,6 +505,10 @@ describe("fn --csv", () => {
       "SBK.JO,2026-10-01,1838873",
       "",
       "# Source: SEC EDGAR · Thu 1 Oct 2026 00:00 UTC · not a live feed (filed data)",
+      "# Publisher: U.S. Securities and Exchange Commission",
+      "# Observation date: 2026-10-01T00:00:00.000Z",
+      "# Publication time: 2026-10-02T20:05:00.000Z",
+      "# Retrieval time: 2026-10-10T12:00:00.000Z",
       "# incomplete: no data for XYZ",
     ]);
   });
@@ -542,6 +552,10 @@ describe("fn --csv", () => {
       "\"Markets open, \"\"calm\"\"\",SPY; QQQ",
       "",
       "# Source: SEC EDGAR · Thu 8 Oct 2026 19:59 UTC · not a live feed (filed data)",
+      "# Publisher: not published",
+      "# Observation date: 2026-10-08T19:59:00.000Z",
+      "# Publication time: not published",
+      "# Retrieval time: 2026-10-10T12:00:00.000Z",
     ]);
   });
 

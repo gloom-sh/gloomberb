@@ -84,7 +84,7 @@ async function runFred(args: string[]) {
   const cli = createTestCliContext();
   await fred.execute(args, cli.context);
   const { result, options } = cli.printed[0]!;
-  return { result, text: serializeCliResult(result, DEFAULT_CLI_OPTIONS, options) };
+  return { result, options, text: serializeCliResult(result, DEFAULT_CLI_OPTIONS, options) };
 }
 
 const T10Y2Y_INFO = { id: "T10Y2Y", units: "Percent", frequency: "Daily", observationStart: "1976-06-01" };
@@ -103,11 +103,17 @@ test("--start takes a year or a month as the first day of it, and a series that 
   }
 });
 
-test("a spread prints in basis points under a bp header; JSON keeps FRED's percentage points", async () => {
-  serveSeries(() => ({ observations: [{ date: "2026-10-09", value: 0.44 }, { date: "2026-10-08", value: -0.125 }], info: T10Y2Y_INFO }));
-  const { result, text } = await runFred(["T10Y2Y"]);
+test("a spread prints and exports in basis points, as value_bp, and the CSV ends with FRED's publication time", async () => {
+  serveSeries(() => ({
+    observations: [{ date: "2026-10-09", value: 0.44 }, { date: "2026-10-08", value: -0.125 }],
+    info: { ...T10Y2Y_INFO, lastUpdated: "2026-10-09 16:02:11-05", observationEnd: "2026-10-09" },
+  }));
+  const { result, text, options } = await runFred(["T10Y2Y"]);
   expect(text.split("\n").slice(0, 4)).toEqual(["Date        Value (bp)", "\u2500".repeat(10) + "  " + "\u2500".repeat(10), "2026-10-09          44", "2026-10-08       -12.5"]);
-  expect(result.data).toEqual([{ date: "2026-10-09", value: 0.44 }, { date: "2026-10-08", value: -0.125 }]);
+  expect(result.data).toEqual([{ date: "2026-10-09", value_bp: 44 }, { date: "2026-10-08", value_bp: -12.5 }]);
+  const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+  expect(csv.slice(0, 3)).toEqual(["date,value_bp", "2026-10-09,44", "2026-10-08,-12.5"]);
+  expect(csv).toContain("# Publication time: 2026-10-09T21:02:11.000Z");
   // The default start says it is one.
   expect(text).toContain("Showing from 2021-01-01; earlier: --start YYYY-MM-DD (series begins 1976-06-01).");
 });
@@ -120,7 +126,7 @@ test("nothing on or after --start names the latest observation", async () => {
   const { result, text } = await runFred(["DGS10", "--start", "2026-10-11"]);
   expect(text.split("\n")[0]).toBe("Latest observation: 2026-10-09 (5.24). Nothing on or after 2026-10-11.");
   expect(queries[1]!.get("limit")).toBe("1");
-  expect(result.metadata).toMatchObject({ latestObservation: { date: "2026-10-09", value: 5.24 } });
+  expect(result.metadata).toMatchObject({ latestObservation: { date: "2026-10-09", value_pct: 5.24 } });
   // A series with no data at all, or a failed second look, keeps the plain answer.
   serveSeries(() => ({ observations: [] }));
   expect((await runFred(["DGS10", "--start", "2026-10-11"])).text.split("\n")[0]).toBe("No results.");

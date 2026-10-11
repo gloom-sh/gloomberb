@@ -927,7 +927,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["BTMM"],
   },
   CDS: {
-    summary: "Single-name corporate CDS trades and 5Y spread history from DTCC public dissemination, by issuer with trade count and spread.",
+    summary: "Single-name corporate CDS from DTCC public dissemination. CDS alone lists the issuers traded in the last 5 days with trade count, last trade and 5Y spread, to rank them by; with a ticker or issuer, its 5Y spread (level, date, 1M change, range) and its trades.",
     usage: ["CDS", "CDS F"],
     keys: [OPEN, STEP],
     data: same("Delayed, as trades are disseminated"),

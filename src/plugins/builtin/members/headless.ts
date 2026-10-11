@@ -11,7 +11,7 @@ const columns: HeadlessPaneColumn[] = [
 export const membersHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows", argument: { kind: "ticker", optional: true, placeholder: "fund", description: "Covered fund or index alias; omit for the fund list." },
   options: [{ key: "tab", type: "enum", values: [{ value: "members" }, { value: "movers" }, { value: "changes" }], defaultValue: "members", description: "Members, movers or changes." }],
-  discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates", "Partial delayed member return coverage", "Nasdaq-100 is not covered"] },
+  discovery: { aliases: ["MEMB", "MRR", "IMOV"], limitations: ["ETF holdings, with file dates.", "Partial delayed member return coverage.", "Nasdaq-100 is not covered."] },
   describe: (args) => args.rawArgument ? `MEMB ${args.rawArgument}` : "Index and ETF members",
   async load(args, context) {
     const input = args.symbols[0] ?? args.rawArgument ?? "";

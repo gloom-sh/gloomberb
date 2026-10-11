@@ -10,6 +10,8 @@ import {
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import type { NormalizedPaneFunctionOptions } from "./capabilities";
 import type { CliListing } from "../listing-arg";
+import { splitSymbolArgs } from "../symbol-args";
+import { numberErrorMessage } from "../../utils/decimal-comma";
 
 const DEFAULT_SHOT_WIDTH = 1280;
 const DEFAULT_SHOT_HEIGHT = 720;
@@ -245,8 +247,9 @@ const RESERVED_OPTION_KEYS = new Set([
 
 function parseScale(value: string): number {
   const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed < 0.5 || parsed > 4) {
-    throw new Error(`--scale must be a number between 0.5 and 4, got "${value}".`);
+  // parseFloat reads "2,5" as 2, so a comma is refused before it can pass.
+  if (value.includes(",") || !Number.isFinite(parsed) || parsed < 0.5 || parsed > 4) {
+    throw new Error(numberErrorMessage(`--scale must be a number between 0.5 and 4, got "${value}".`, value));
   }
   return parsed;
 }
@@ -287,10 +290,8 @@ export function buildCreateOptions(
     try {
       createOptions.symbols = parseTickerListInput(raw);
     } catch {
-      createOptions.symbols = raw
-        .split(",")
-        .map((entry) => cleanTickerInput(entry))
-        .filter(Boolean);
+      // Past the list limit, every symbol stays: a pasted list splits as `quote` splits it.
+      createOptions.symbols = splitSymbolArgs([raw]).map(cleanTickerInput);
     }
   }
 

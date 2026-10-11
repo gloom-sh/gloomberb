@@ -15,7 +15,8 @@ import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
 import { withSearchHints } from "./not-a-ticker";
-import { renderReportCsv, renderReportNdjson, type CliReportTables } from "./report-tables";
+import { renderReportCsv, renderReportNdjson, withCsvFooter, type CliReportTables } from "./report-tables";
+import { exportSource, exportSourceLines, type ExportSource } from "./export-source";
 import { windowRows, type RowWindow, type RowWindowOptions } from "./row-window";
 
 export interface CliResult<T = unknown> {
@@ -25,10 +26,17 @@ export interface CliResult<T = unknown> {
   /**
    * Source, as-of and status of market data, as every `fn` report states them
    * (docs/usage.md#how-current-a-report-is): the last line of the text output
-   * and `metadata.freshness` in JSON. CSV and NDJSON stay rows only, unless
-   * the command passes `tables`, whose footer carries it.
+   * and `metadata.freshness` in JSON. Exports cite it too (`exportSource`):
+   * CSV ends with it as `#` lines, or `tables` footer does, and JSON carries
+   * it as `source`. NDJSON stays rows only.
    */
   freshness?: ReportFreshness;
+  /**
+   * What exports cite (CSV's closing `#` lines, JSON's `source`) when the text
+   * does not end with `freshness`: an `fn` report states its own, and
+   * `fear-greed` prints its row alone.
+   */
+  exportFreshness?: ReportFreshness;
 }
 
 export interface CliErrorObject {
@@ -82,8 +90,10 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   tables?: CliReportTables;
 }
 
-interface CliResultJsonEnvelope<T> extends Omit<CliResult<T>, "freshness"> {
+interface CliResultJsonEnvelope<T> extends Omit<CliResult<T>, "freshness" | "exportFreshness"> {
   ok: true;
+  /** Where the data comes from, as CSV's closing `#` lines say it. */
+  source?: ExportSource;
   columns?: Array<Pick<CliResultColumn, "key" | "header" | "align" | "width">>;
 }
 
@@ -349,7 +359,8 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row> = {},
 ): string {
-  const { freshness, ...rest } = result;
+  const { freshness, exportFreshness, ...rest } = result;
+  const cited = freshness ?? exportFreshness;
   if (options.format === "json") {
     const columns = serializeColumns(renderOptions.columns);
     const window = Array.isArray(result.data) ? windowed(result.data as unknown[], options, renderOptions) : null;
@@ -359,11 +370,12 @@ export function serializeCliResult<T, Row extends Record<string, unknown> = Reco
       ...rest,
       ...(freshness || cut ? { metadata: { ...rest.metadata, ...(freshness ? { freshness } : {}), ...(cut ? { rows: cut } : {}) } } : {}),
       data: window ? window.rows as T : result.data,
+      ...(cited ? { source: exportSource(cited) } : {}),
       ...(columns?.length ? { columns } : {}),
     };
     return JSON.stringify(envelope, null, 2);
   }
-  const body = serializeCliRows(rest, options, renderOptions);
+  const body = serializeCliRows(rest, options, renderOptions, cited);
   if (options.format !== "text" || !freshness) return body;
   return body ? `${body}\n\n${cliFreshnessFooter(freshness)}` : cliFreshnessFooter(freshness);
 }
@@ -372,6 +384,7 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   result: CliResult<T>,
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row>,
+  cited?: ReportFreshness,
 ): string {
   if (renderOptions.tables && options.format === "csv") return renderReportCsv(renderOptions.tables);
   if (renderOptions.tables && options.format === "ndjson") return renderReportNdjson(renderOptions.tables);
@@ -381,7 +394,8 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
     return rows.map((row) => JSON.stringify(row)).join("\n");
   }
   if (options.format === "csv") {
-    return renderCsv(rows as Row[], renderOptions.columns);
+    const csv = renderCsv(rows as Row[], renderOptions.columns);
+    return cited ? withCsvFooter(csv, exportSourceLines(cited)) : csv;
   }
   if (renderOptions.text) {
     return renderOptions.text(result.data);

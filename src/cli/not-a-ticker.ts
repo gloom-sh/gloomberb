@@ -1,16 +1,23 @@
 import { notATickerSymbol } from "../sources/provider-errors";
+import { splitSymbolArgs } from "./symbol-args";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
 const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb search)/g;
 
-/** The symbol as the user typed it on the command line (`Apple`), not as the router saw it (`APPLE`). */
+/**
+ * The symbol as the user typed it on the command line (`Apple`), not as the router saw it (`APPLE`).
+ * A symbol list splits as the commands split it; a command that takes one name (`Apple Inc`) is
+ * matched as the whole argument first, so the hint searches for the name.
+ */
 function typedSymbol(symbol: string, args: readonly string[]): string {
   const wanted = symbol.toUpperCase();
   for (const arg of args) {
-    for (const part of arg.split(",")) {
-      const typed = part.trim().replace(/^\$/, "");
-      if (typed.toUpperCase() === wanted) return typed;
-    }
+    const whole = arg.trim().replace(/^\$/, "");
+    if (/\s/.test(whole) && whole.toUpperCase() === wanted) return whole;
+  }
+  for (const part of splitSymbolArgs(args)) {
+    const typed = part.replace(/^\$/, "");
+    if (typed.toUpperCase() === wanted) return typed;
   }
   return symbol;
 }

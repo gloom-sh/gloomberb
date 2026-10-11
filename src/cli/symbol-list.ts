@@ -1,5 +1,6 @@
 import { readFile } from "fs/promises";
 import { fstatSync } from "fs";
+import { splitSymbolArgs } from "./symbol-args";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
@@ -8,11 +9,6 @@ const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code"
 const SYMBOL_TOKEN = /^\$?[\p{L}\p{N}^][\p{L}\p{N}.:\-^=/&]{0,23}$/u;
 /** A plain number: a price, a weight or a share count in a spreadsheet's other columns. */
 const NUMBER_CELL = /^[+-]?(?:\d{1,3}(?:,\d{3})+|\d*)(?:\.\d+)?%?$/;
-
-/** Symbols given as arguments, each of which may hold several split by commas, semicolons, spaces or newlines. */
-export function splitSymbolArgs(args: readonly string[]): string[] {
-  return args.flatMap((arg) => arg.replace(/^\uFEFF/, "").split(/[\s,;]+/)).filter(Boolean);
-}
 
 function headerKey(cell: string): string {
   return cell.toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");

@@ -3,13 +3,13 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { PerpBoardRow } from "../../../api-client/perps";
 import { ActionRow, usePaneLinkMenuEntry } from "../../../components";
-import { tf } from "../../../i18n";
 import { displayWidth } from "../../../utils/format";
-import { useAsyncResource, useAutoRefresh, usePluginAppActions } from "../../../public/react";
+import { useAsyncResource, useAutoRefresh } from "../../../public/react";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { perpEquityIdentity } from "./equity-identity";
 import { loadPerpsEquity } from "./client";
-import { compact, percent, perpDescription, price, readingTime, venueLabel } from "./model";
+import { compact, percent, perpDescription, price, readingTime } from "./model";
+import { openPerpLabel, useOpenPerpMarket } from "./open-market";
 
 /** A failed optional market comparison never blocks a stock's quote. */
 export function PerpEquityRow({ symbol, exchange, instrumentType, maxRows = 3, width }: {
@@ -41,9 +41,9 @@ function fitParts(parts: string[], separator: string, width: number | undefined)
 
 /** One contract on the stock: a click, or its entry in the pane menu, opens PERP on that market. */
 function PerpRow({ row, stale, width }: { row: PerpBoardRow; stale: boolean; width?: number }) {
-  const { createPaneFromTemplate } = usePluginAppActions();
-  const open = () => createPaneFromTemplate("perps-pane", { arg: row.marketId });
-  usePaneLinkMenuEntry(`function:perps-pane:${row.marketId}`, tf("Open {label}", { label: `PERP ${row.baseAsset} · ${venueLabel(row)}` }), open);
+  const openMarket = useOpenPerpMarket();
+  const open = () => openMarket(row.marketId);
+  usePaneLinkMenuEntry(`function:perps-pane:${row.marketId}`, openPerpLabel(row), open);
   const read = readingTime(row.observedAt);
   const figures = [`${price(row.markPrice)} ${row.quoteCurrency}`, `${percent(row.underlyingPremium, 2)} vs last${row.stale || stale ? " · stale" : ""}`];
   const named = [`${row.baseAsset} · ${perpDescription(row)}`, ...figures].join("  ");

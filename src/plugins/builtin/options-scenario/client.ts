@@ -5,6 +5,7 @@ import type { QueryEntry } from "../../../market-data/result-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { OptionsChain, Quote, TickerFinancials } from "../../../types/financials";
 import { canonicalExchange, parsePublicTickerKey } from "../../../utils/exchanges";
+import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { expiryIsoDate, findListedExpiry, missingExpiryText } from "../../../utils/option-expiry";
 import { surfaceTreasuryRate } from "../vol-surface/model";
 import { daysToExpiryFrom, extractImpliedForward, optionMid, solveImpliedVolatility } from "../shared/volatility";
@@ -159,7 +160,7 @@ function numericSetting(settings: Record<string, unknown>, key: string): number 
   if (!supplied(value)) return undefined;
   if ((typeof value !== "string" && typeof value !== "number")
     || (typeof value === "string" && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim()))
-    || !Number.isFinite(Number(value))) throw new Error(`${key} must be a finite number`);
+    || !Number.isFinite(Number(value))) throw new Error(numberErrorMessage(`${key} must be a finite number`, value));
   return Number(value);
 }
 

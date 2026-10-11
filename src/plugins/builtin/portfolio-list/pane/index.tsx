@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   confirmDialog,
   usePaneFooter,
+  usePaneMenuItems,
   usePaneNoticeFooter,
   usePaneTabs,
   type DataTableKeyEvent,
@@ -83,6 +84,9 @@ import {
 } from "./data";
 import { usePortfolioPaneStreaming } from "./streaming";
 import { usePortfolioSupplementalData } from "./supplemental";
+import { PERPETUAL_COLUMN_IDS } from "../cell-version";
+import { useListPerpetuals } from "../../perps/list-perpetuals";
+import { openPerpLabel, useOpenPerpMarket } from "../../perps/open-market";
 import { useLiveStreamingSetting } from "../../../../state/hooks/live-streaming";
 import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 import { useThrottledMemo } from "../use-throttled-memo";
@@ -182,6 +186,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     [currentPortfolio, isPortfolioTab, paneSettings.columnIds],
   );
   const supplementalData = usePortfolioSupplementalData(tickers, columns, appActive);
+  // One lookup for the whole list, only while a perpetual column is on screen.
+  const showsPerpetuals = viewMode === "table" && columns.some((column) => PERPETUAL_COLUMN_IDS.has(column.id));
+  const perpetuals = useListPerpetuals(tickers, showsPerpetuals);
+  const openPerpMarket = useOpenPerpMarket();
   const visibleWarmupRequirements = useMemo(
     () => resolveVisibleWarmupRequirements(columns),
     [columns],
@@ -260,10 +268,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     analystResearch: supplementalData.analystResearch,
     corporateActions: supplementalData.corporateActions,
     earningsEvents: supplementalData.earningsEvents,
+    perpetuals: perpetuals.markets,
+    perpetualsVersion: perpetuals.version,
   }), [
     activeCollectionId,
     exchangeRates,
     isPortfolioTab,
+    perpetuals,
     portfolioTargets,
     portfolioTotalMarketValue,
     supplementalData,
@@ -555,10 +566,18 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     }
   }, [appStateRef, dialog, dispatch, notify, removalCollection, selectedTicker, setCursorSymbol]);
 
+  // The cursor row's perpetual, for the keyboard: the pane menu opens what clicking its cell opens.
+  const cursorPerpetual = showsPerpetuals && cursorSymbol ? perpetuals.markets.get(cursorSymbol) ?? null : null;
+  usePaneMenuItems("portfolio-list-perpetual", () => cursorPerpetual
+    ? [{ id: "open-perpetual", label: openPerpLabel(cursorPerpetual), onSelect: () => openPerpMarket(cursorPerpetual.marketId) }]
+    : null, [cursorPerpetual, openPerpMarket]);
+
   usePaneFooter("portfolio-list", () => ({
-    info: fxStatusText && !fxWarning
-      ? [...summaryFooterInfo, { id: "fx", parts: [{ text: `FX ${fxStatusText}`, tone: "muted" as const }] }]
-      : summaryFooterInfo,
+    info: [
+      ...summaryFooterInfo,
+      ...(fxStatusText && !fxWarning ? [{ id: "fx", parts: [{ text: `FX ${fxStatusText}`, tone: "muted" as const }] }] : []),
+      ...(showsPerpetuals && perpetuals.stale ? [{ id: "perpetuals", parts: [{ text: "perpetuals stale", tone: "warning" as const }] }] : []),
+    ],
     hints: [
       ...(removalCollection
         ? [{
@@ -594,11 +613,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     fxStatusText,
     fxWarning,
     isPortfolioTab,
+    perpetuals.stale,
     removalCollection,
     removeSelectedTicker,
     selectedTicker,
     setCashDrawerExpanded,
     showCashDrawer,
+    showsPerpetuals,
     summaryFooterInfo,
     toggleViewMode,
     viewMode,
@@ -679,6 +700,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
           resetScrollKey={activeCollectionId}
           onRowActivate={handleRowActivate}
           onAddTicker={showQuickAdd ? requestQuickAdd : undefined}
+          onOpenPerpetual={showsPerpetuals ? openPerpMarket : undefined}
           rootHeight={contentHeight}
         />
       ) : (

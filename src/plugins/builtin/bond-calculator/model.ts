@@ -1,3 +1,4 @@
+import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { priceBond, solveBondYield, treasurySpread, type BondTerms, type TreasuryBenchmarkPoint } from "./math";
 
 export interface BondDraft {
@@ -20,7 +21,7 @@ export function defaultBondDraft(now = new Date()): BondDraft {
 }
 
 function inputNumber(value: string, label: string): number {
-  if (!value.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim())) throw new Error(`${label} must be a number`);
+  if (!value.trim() || !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(value.trim())) throw new Error(numberErrorMessage(`${label} must be a number`, value));
   const number = Number(value);
   if (!Number.isFinite(number)) throw new Error(`${label} must be finite`);
   return number;
