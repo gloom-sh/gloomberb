@@ -19,6 +19,8 @@ import {
 } from "../plugins/builtin/custom-view";
 import { findPaneInstance, getPlacedPaneInstanceIds, type PaneInstanceConfig, resolvePaneInstance } from "../types/config";
 import type { DesktopWindowBridge } from "../types/desktop-window";
+import { settleTypedListingKey } from "../tickers/listing-venues";
+import { isSharedExchangeCode, parsePublicTickerKey, typedExchangeCode } from "../utils/exchanges";
 import { applyJsonPatch } from "./json-patch";
 import { revisionFor } from "./revision";
 import type {
@@ -143,8 +145,26 @@ export function createAppRemoteController({
     return mutationSummary(getState(), extra);
   };
 
-  const queryMarketData = async (request: RemoteMarketDataRequest): Promise<unknown> => {
+  /**
+   * The listing a request names, a code that names several venues (7203:TSE,
+   * or 7203 with exchange TSE) read as the one its symbol trades on, as every
+   * command reads it.
+   */
+  const settledListing = async (rawSymbol: string, rawExchange: string | undefined) => {
+    const symbol = normalizedMarketDataSymbol(rawSymbol);
+    const exchange = normalizedOptionalExchange(rawExchange);
+    const typed = exchange && isSharedExchangeCode(exchange) && !parsePublicTickerKey(symbol).exchange ? `${symbol}:${exchange}` : symbol;
+    if (!isSharedExchangeCode(typedExchangeCode(typed))) return { symbol, exchange };
+    const settled = (await settleTypedListingKey(typed, {
+      store: pluginRegistry.tickerRepository,
+      dataProvider: pluginRegistry.marketData,
+    })).toUpperCase();
+    return settled === typed ? { symbol, exchange } : { symbol: settled, exchange: parsePublicTickerKey(settled).exchange };
+  };
+
+  const queryMarketData = async (named: RemoteMarketDataRequest): Promise<unknown> => {
     const marketData = pluginRegistry.marketData;
+    const request = "symbol" in named ? { ...named, ...await settledListing(named.symbol, named.exchange) } : named;
     switch (request.operation) {
       case "search":
         return (await marketData.search(requiredMarketDataText(request.query, "query")))

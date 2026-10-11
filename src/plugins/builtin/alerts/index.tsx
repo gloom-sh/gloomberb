@@ -14,6 +14,7 @@ import {
 import { isResearchAlertKind, MAX_LEAD_DAYS } from "./research-rules";
 import { EVENT_ALERTS_KEY, EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, readEventAlerts } from "./events";
 import { formatMarketPrice } from "../../../market-data/market/format";
+import { settleTypedListingKey } from "../../../tickers/listing-venues";
 import type { Quote } from "../../../types/financials";
 import type { GloomPlugin } from "../../../types/plugin";
 import {
@@ -161,11 +162,13 @@ export const alertsPlugin: GloomPlugin = {
       async execute(values) {
         const input = parseAlertCommandValues(values);
         if (!input) throw new Error("Use a symbol, condition, and target price.");
+        // 7203:TSE, typed or from a link, is the venue its symbol trades on, as `alerts add` reads it.
+        const symbol = (await settleTypedListingKey(input.symbol, { store: ctx.tickerRepository, dataProvider: ctx.marketData })).toUpperCase();
 
-        const quote = await resolveAlertQuote(ctx.marketData, input.symbol);
+        const quote = await resolveAlertQuote(ctx.marketData, symbol);
 
         const alert = {
-          ...createAlert(quote.symbol || input.symbol, input.condition, input.price),
+          ...createAlert(quote.symbol || symbol, input.condition, input.price),
           ...quoteAlertFields(quote),
         };
         const existing = loadAlerts(ctx);

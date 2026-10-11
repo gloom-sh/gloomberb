@@ -17,6 +17,7 @@ import { getShare } from "../../shares/api";
 import { openPaneShare } from "../../shares/pane";
 import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { materializeMarketplaceLayout } from "../../shares/portable-layout";
+import { settleTypedListingKey } from "../../tickers/listing-venues";
 
 type CloudDeepLinkRoute = {
   kind: "cloud-alerts" | "cloud-emails" | "cloud-roundup" | "cloud-success" | "cloud-teams";
@@ -475,11 +476,15 @@ function handleOpenNews(
       notifyError(pluginRegistry, "Ticker news is unavailable.");
       return;
     }
-    void pluginRegistry.createPaneFromTemplateAsync("ticker-news-pane", { symbol: action.symbol }).then(() => {
-      notifySuccess(pluginRegistry, action.message);
-    }).catch((error) => {
-      notifyError(pluginRegistry, error instanceof Error ? error.message : "Failed to open ticker news.");
-    });
+    // A link's 7203:TSE is the venue its symbol trades on; ticker and alert links settle it where they open.
+    void settleTypedListingKey(action.symbol, { store: pluginRegistry.tickerRepository, dataProvider: pluginRegistry.marketData })
+      .then((symbol) => pluginRegistry.createPaneFromTemplateAsync("ticker-news-pane", { symbol: symbol.toUpperCase() }))
+      .then(() => {
+        notifySuccess(pluginRegistry, action.message);
+      })
+      .catch((error) => {
+        notifyError(pluginRegistry, error instanceof Error ? error.message : "Failed to open ticker news.");
+      });
     return;
   }
 
