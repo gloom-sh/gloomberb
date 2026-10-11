@@ -325,7 +325,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
           )}
         </Box>
 
-        {perpetuals}
+        {perpetuals && <PaneLinkMenu>{perpetuals}</PaneLinkMenu>}
 
         {(hasDayRange || yearRange) && quote && (
           <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={contentWidth}>

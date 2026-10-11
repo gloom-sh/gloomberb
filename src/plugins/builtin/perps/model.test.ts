@@ -1,7 +1,8 @@
 import { expect, test } from "bun:test";
-import { BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpCellText, perpDescription, readingTime } from "./model";
+import { BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpCellText, perpDescription, readingTime,
+  underlyingTicker } from "./model";
 import { fundingNote } from "./freshness";
-import { longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
+import { equityBoard, longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
 
 test("paid funding normalizes each interval independently and stays separate from snapshots", () => {
   const time = "2026-10-03T01:00:00Z";
@@ -110,4 +111,16 @@ test("funding reads as a current estimate with when it pays, naming venues only 
   expect(fundingNote([venueRow("deribit", { fundingKind: "continuous" }), venueRow("binance", { nextFundingAt: eight })], now))
     .toBe("funding = current estimate (Binance), pays 08:00 UTC; accrues continuously (Deribit)");
   expect(fundingNote([perpRow({ fundingRate: null, fundingRate8h: null })], now)).toBeNull();
+});
+
+test("a market opens the security it tracks on the listing its premium is read against, and crypto or an unlisted stock opens none", () => {
+  const quote = (symbol: string, listingExchange: string) => ({ symbol, listingExchange, price: 1, currency: "USD", asOf: "2026-10-11T12:00:00Z", marketState: "CLOSED", sourceUrl: "https://api.gloom.sh" });
+  // The listing the server matched wins over the reference quote's.
+  expect(underlyingTicker({ ...equityBoard({ symbol: "NET", exchange: "LSE" }).rows[0]!, underlying: quote("NET", "NYSE") })).toBe("NET:XLON");
+  // A US listing goes by its symbol, the key the stock's own DES is open under.
+  expect(underlyingTicker(equityBoard({ symbol: "AAPL", exchange: "NASDAQ" }).rows[0]!)).toBe("AAPL");
+  // A reference quote for another symbol lends it no listing.
+  expect(underlyingTicker(perpRow({ underlyingSymbol: "SHEL", underlying: quote("SHELL", "LSE") }))).toBe("SHEL");
+  expect(underlyingTicker(perpRow())).toBeNull();
+  expect(underlyingTicker(perpRow({ marketId: "hyperliquid:xyz:SKHX", assetClass: "stocks", underlyingSymbol: null }))).toBeNull();
 });

@@ -3,6 +3,7 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { formatCompact } from "../../../utils/format";
+import { isUsListingExchange, publicTickerKey } from "../../../utils/exchanges";
 import type { ThemeColors } from "../../../theme/colors";
 export const PERP_TABS = ["board", "rankings", "compare", "history", "evidence"] as const;
 export type PerpTab = typeof PERP_TABS[number];
@@ -21,6 +22,18 @@ export const compact = (n: number | null | undefined) => n == null ? "--" : form
 export const time = (s: string | null | undefined) => s ? `${s.slice(0, 10)} ${s.slice(11, 16)} UTC` : "--";
 /** A list row's observation, month to minute: the header names UTC and the footer the full as-of. */
 const observed = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)}` : "--";
+/**
+ * The listed security a market tracks, as DES, FA and G take it: a US listing by its symbol, the key a stock is
+ * saved and opened under, and a listing abroad with its venue (`NET:XLON`), so they open the security the premium
+ * is measured against. Null for crypto, indices, commodities and any market without one.
+ */
+export function underlyingTicker(row: Pick<PerpBoardRow, "underlyingSymbol" | "underlying" | "equityMatch">): string | null {
+  const symbol = row.underlyingSymbol?.trim().toUpperCase();
+  if (!symbol) return null;
+  const listing = row.equityMatch?.underlying.symbol.toUpperCase() === symbol ? row.equityMatch.underlying.exchange
+    : row.underlying?.symbol.toUpperCase() === symbol ? row.underlying.listingExchange : undefined;
+  return !listing || isUsListingExchange(listing) ? symbol : publicTickerKey(symbol, listing);
+}
 export const marketLabel = (row: PerpBoardRow) => row.dex && row.dex !== "default" ? `${row.baseAsset} · ${row.dex.toUpperCase()}` : row.baseAsset;
 /** What the contract is, in plain words: perpetual futures never expire and trade around the clock. */
 export const perpDescription = (row: Pick<PerpBoardRow, "venue">) =>

@@ -8,7 +8,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import type { ChartRequest, InstrumentRef } from "../../../../market-data/request-types";
 import { instrumentFromTicker, quoteSubscriptionTargetFromTicker } from "../../../../market-data/request-types";
 import { getSharedMarketDataCoordinator } from "../../../../market-data/coordinator";
-import { buildChartKey, buildQuoteKey } from "../../../../market-data/selectors";
+import { buildChartKey, buildQuoteKey, resolveEntryData } from "../../../../market-data/selectors";
 import { DEFAULT_LIVE_CHART_REFRESH_INTERVAL_MS, useChartQueries } from "../../../../market-data/hooks";
 import { useAppSelector, usePaneInstance, usePaneTicker } from "../../../../state/app/context";
 import { useLiveQuoteEntries } from "../../../../state/hooks/quote-streaming";
@@ -229,6 +229,16 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
   const contentHeight = Math.max(3, height);
   const cardHeight = Math.max(nativePaneChrome ? 4 : 3, Math.floor(contentHeight / rows.length));
   const cardWidth = Math.max(1, Math.floor(contentWidth / columns));
+  // The stock's perpetual, under a card with room for it. A saved ticker often has no asset class, so the quote
+  // says whether it is a stock, as it does in DES.
+  const perpetuals = (entry: BoardEntry) => {
+    if (cardHeight < 8) return undefined;
+    const financials = financialsBySymbol.get(entry.symbol);
+    const quote = (entry.quoteKey ? resolveEntryData(quoteEntries.get(entry.quoteKey)) : null) ?? financials?.quote;
+    // Inside the card's padding: a cell each side here, about three on the desktop.
+    return <PerpEquityRow maxRows={1} symbol={entry.symbol} exchange={entry.ticker?.metadata.exchange} width={cardWidth - (nativePaneChrome ? 3 : 2)}
+      instrumentType={quote?.instrumentType ?? financials?.quoteMetadata?.instrumentType ?? entry.ticker?.metadata.assetCategory} />;
+  };
 
   if (nativePaneChrome) {
     const desktopColumns = gridColumns;
@@ -264,7 +274,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
             selected={showCursor && index === cursorIndex}
             onSelect={setCursorSymbol}
             onOpen={openTicker}
-            perpetuals={cardHeight >= 8 ? <PerpEquityRow maxRows={1} symbol={entry.symbol} exchange={entry.ticker?.metadata.exchange} instrumentType={entry.ticker?.metadata.assetCategory} /> : undefined}
+            perpetuals={perpetuals(entry)}
           />
         ))}
       </Box>
@@ -299,7 +309,7 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
               selected={showCursor && rowIndex * columns + columnIndex === cursorIndex}
               onSelect={setCursorSymbol}
               onOpen={openTicker}
-              perpetuals={cardHeight >= 8 ? <PerpEquityRow maxRows={1} symbol={entry.symbol} exchange={entry.ticker?.metadata.exchange} instrumentType={entry.ticker?.metadata.assetCategory} /> : undefined}
+              perpetuals={perpetuals(entry)}
             />
           ))}
         </Box>
