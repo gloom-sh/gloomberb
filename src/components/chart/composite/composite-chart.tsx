@@ -10,6 +10,7 @@ import { CompositeLegend } from "./legend";
 import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
 import { AsciiText, Box, ChartSurface, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { useLiveStretch } from "../../../ui/live-stretch";
+import { cssLayoutMode } from "../../../ui/css-layout";
 import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { useThemeColors, useThemeId } from "../../../theme/theme-context";
 import { themedSeriesColor, themeSeriesColors } from "../../../theme/series-colors";
@@ -68,6 +69,8 @@ const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
  */
 const DESKTOP_FULL_ROW = { width: "100%" } as const;
 const DESKTOP_PLOT_COLUMN = { flex: "1 1 0px", width: "auto", minWidth: 0 } as const;
+const FILL_PARENT = { width: "100%", height: "100%" } as const;
+const NO_BOX = { current: null };
 
 /** Default-palette series in the theme's own palette, where it has one; the same list otherwise. */
 function useThemedSeriesList(list: ResolvedSeries[], themeId: string): ResolvedSeries[];
@@ -123,6 +126,7 @@ function ThemedCompositeChart({
   isSeriesToggleable,
   timePick,
   levels,
+  fill = false,
 }: CompositeChartProps) {
   const activeThemeColors = useThemeColors();
   const { cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1, fractionalViewport = false } = useUiCapabilities();
@@ -430,7 +434,10 @@ function ThemedCompositeChart({
   // the size it will render at, the plot takes what the gutters leave, and
   // its bitmap stretches with it until the chart renders at that size.
   const rootRef = useRef<BoxRenderable | null>(null);
-  useLiveStretch(rootRef, totalWidth, totalHeight);
+  // CSS layout spike: a chart whose box is its parent's fills it by CSS, and
+  // needs no stretching to a predicted size.
+  const fillStyle = fill && isDesktopWeb && cssLayoutMode() !== null ? { style: FILL_PARENT } : null;
+  useLiveStretch(fillStyle ? NO_BOX : rootRef, totalWidth, totalHeight);
   // Overlays over the plot keep the gutters around it rather than its size.
   const plotInsetStyle = isDesktopWeb
     ? { width: "auto", height: "auto", right: `calc(${rightPadding} * var(--cell-w))`, bottom: `calc(${timeAxisRows + xMarkerRows} * var(--cell-h))` }
@@ -445,6 +452,7 @@ function ThemedCompositeChart({
         width={totalWidth}
         height={totalHeight}
         overflow="hidden"
+        {...fillStyle}
         data-gloom-role="composite-chart"
       >
         {legendRows > 0 && legendAccessory ? (
@@ -537,6 +545,7 @@ function ThemedCompositeChart({
       overflow="hidden"
       // The tool overlay anchors here; without it the desktop pins it to the page.
       position="relative"
+      {...fillStyle}
       data-gloom-role="composite-chart"
     >
       {showLegend ? (

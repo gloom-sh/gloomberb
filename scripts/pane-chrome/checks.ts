@@ -11,10 +11,12 @@ import { serveFixturePage, type FixturePage } from "./page";
  * header has broken this way before: v0.16.1 shipped panes that only moved
  * from the grip and the title (#1478).
  *
- *   bun run check:pane-chrome [--only <text>] [--repeat <n>] [--root <checkout>]
+ *   bun run check:pane-chrome [--only <text>] [--repeat <n>] [--root <checkout>] [--params <query>]
  *
  * `--root` builds the fixture from another checkout's sources, to show a check
- * fails on a known-broken commit. A failure saves a screenshot under the cache
+ * fails on a known-broken commit. `--params` adds a query string to every
+ * fixture page, such as `layout=css` for the CSS layout spike
+ * (src/ui/css-layout.ts). A failure saves a screenshot under the cache
  * folder (`PANE_CHROME_CACHE`, default ~/.cache/gloomberb-pane-chrome).
  */
 
@@ -517,9 +519,9 @@ const steps: Step[] = [
   })),
 ];
 
-async function openScenario(cdp: Cdp, page: FixturePage, scenario: string): Promise<void> {
+async function openScenario(cdp: Cdp, page: FixturePage, scenario: string, params: string): Promise<void> {
   const loaded = cdp.once("Page.loadEventFired");
-  await cdp.send("Page.navigate", { url: new URL(`?scenario=${scenario}`, page.url).href });
+  await cdp.send("Page.navigate", { url: new URL(`?scenario=${scenario}${params ? `&${params}` : ""}`, page.url).href });
   await loaded;
   if (!await waitFor(cdp, "window.__paneChrome?.ready === true", 15_000)) {
     fail(`the ${scenario} fixture did not render`, await evaluate(cdp, "document.body.innerText.slice(0, 400)"));
@@ -531,6 +533,7 @@ async function main(): Promise<void> {
   const only = takeOption(args, "--only");
   const repeat = positiveInteger(takeOption(args, "--repeat"), 1, "--repeat");
   const root = resolve(takeOption(args, "--root") ?? join(import.meta.dir, "../.."));
+  const params = takeOption(args, "--params") ?? "";
   const selected = steps.filter((step) => !only || step.name.includes(only));
   if (selected.length === 0) throw new Error(`No step matches "${only}"`);
 
@@ -545,7 +548,7 @@ async function main(): Promise<void> {
       for (const step of selected) {
         const started = performance.now();
         try {
-          await openScenario(cdp, page, step.scenario);
+          await openScenario(cdp, page, step.scenario, params);
           await step.run(cdp);
           passes.set(step.name, (passes.get(step.name) ?? 0) + 1);
           console.log(`ok   ${step.name} (${Math.round(performance.now() - started)} ms)`);

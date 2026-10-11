@@ -14,13 +14,15 @@
  * (chart panes for the copy screenshot check) or `resize` (a news table, a
  * chart, and a table in a sidebar beside a second table, docked, with a news
  * table floating over them; `&float=chart`, `&float=heat` or `&float=fear`
- * floats a chart, a heat map or the Fear & Greed pane instead).
+ * floats a chart, a heat map or the Fear & Greed pane instead, and `&float=g`
+ * a chart under a query bar laid out as the G chart pane lays it out).
  */
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CompositeChart } from "../../src/components/chart/composite";
 import { StaticChartSurface } from "../../src/components/chart/static/chart-surface";
 import { DataTableView } from "../../src/components/data-table/view";
+import { QueryBar } from "../../src/components/ui/query-bar";
 import { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface } from "../../src/components/metric-treemap/heat-surface";
 import type { MetricTreemapItem } from "../../src/components/metric-treemap/layout";
 import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
@@ -282,6 +284,36 @@ function ChartPane({ focused, width, height }: PaneProps) {
   return <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={width} height={height} focused={focused} />;
 }
 
+const RANGE_FILTER_OPTIONS = ["1M", "3M", "1Y", "5Y"].map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
+
+/**
+ * The G chart pane's layout over the same invented closes: a query bar, then
+ * the chart in the rest of the pane at the pane's cells less the bar's row.
+ * Under the CSS layout spike the chart fills that box (`fill`), unless the
+ * page has `migrate=0`, which leaves it as the G pane has it.
+ */
+function ChartUnderBarPane({ focused, width, height }: PaneProps) {
+  const [range, setRange] = useState("1Y");
+  return (
+    <Box flexDirection="column" width={width} height={height}>
+      <QueryBar
+        width={width}
+        filters={[{ id: "range", label: "Range", inline: true, value: range, options: RANGE_FILTER_OPTIONS, onChange: setRange }]}
+      />
+      <Box flexGrow={1} minHeight={4}>
+        <CompositeChart
+          series={CHART_SERIES}
+          panels={CHART_PANELS}
+          width={Math.max(1, width)}
+          height={Math.max(4, height - 1)}
+          focused={focused}
+          fill={params.get("migrate") !== "0"}
+        />
+      </Box>
+    </Box>
+  );
+}
+
 /**
  * A table in a resizable sidebar, like the venue map's list, beside a second
  * table that takes the rest of the pane. The second one's box sizes to its
@@ -338,6 +370,7 @@ const PANES = {
   charts: { name: "Charts", component: ChartsPane },
   news: { name: "Top News", component: NewsPane },
   chart: { name: "Chart", component: ChartPane },
+  "chart-bar": { name: "G chart", component: ChartUnderBarPane },
   sidebar: { name: "Sidebar", component: SidebarPane },
   heat: { name: "Heat map", component: HeatPane },
 };
@@ -419,11 +452,11 @@ function perfLayout(): LayoutConfig {
   };
 }
 
-const FLOATING_RESIZE: Record<string, string> = { chart: "chart", heat: "heat", fear: "fear-greed" };
+const FLOATING_RESIZE: Record<string, string> = { chart: "chart", heat: "heat", fear: "fear-greed", g: "chart-bar" };
 
 /**
  * news:dock | chart:dock over sidebar:dock | table:dock, with news:float (or
- * chart:float, heat:float, fear-greed:float) over the middle.
+ * chart:float, heat:float, fear-greed:float, chart-bar:float) over the middle.
  */
 function resizeLayout(): LayoutConfig {
   const floating = `${FLOATING_RESIZE[params.get("float") ?? ""] ?? "news"}:float`;

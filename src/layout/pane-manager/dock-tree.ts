@@ -7,6 +7,9 @@ import type {
 const MIN_PANE_WIDTH = 20;
 const MIN_DOCKED_HEIGHT = 5;
 
+/** The fewest cells a split leaves either side, by its axis (the CSS layout spike lays splits out with the same). */
+export const DOCK_SPLIT_MIN_CELLS = { horizontal: MIN_PANE_WIDTH, vertical: MIN_DOCKED_HEIGHT } as const;
+
 export interface DockTarget {
   relativeTo: string;
   position: "left" | "right" | "above" | "below";

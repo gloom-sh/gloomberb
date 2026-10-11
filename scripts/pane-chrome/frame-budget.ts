@@ -22,10 +22,12 @@ import { serveFixturePage, type FixturePage } from "./page";
  * GPU presented. Missed frames are estimated against a fixed 60 Hz display:
  * an interval that rounds to n frame slots missed n - 1 of them.
  *
- *   bun run benchmark:pane-drag:compare --base <checkout> [--runs 5] [--head <checkout>] [--only <text>]
+ *   bun run benchmark:pane-drag:compare --base <checkout> [--runs 5] [--head <checkout>] [--only <text>] [--head-params <query>]
  *
  * `--head` measures another checkout in place of this one; `--only` keeps the
- * scenarios whose name contains the text.
+ * scenarios whose name contains the text. `--head-params` adds a query string
+ * to this side's fixture page only, such as `layout=css` for the CSS layout
+ * spike (src/ui/css-layout.ts); a base that does not know it ignores it.
  */
 
 const VIEWPORT = { width: 1400, height: 900 };
@@ -91,6 +93,10 @@ interface DragSample {
   releaseJumpPx?: number;
   /** Resizes: how far the content's edge moved when the pointer let go, px. */
   contentReleaseJumpPx?: number;
+  /** Charts: how far the canvas bitmap was scaled from 1:1 by CSS during the drag, %, 95th percentile (0 is drawn crisp). */
+  bitmapStretchPct?: number;
+  /** Charts: the same once the pointer let go and the pane came to rest, %. */
+  restStretchPct?: number;
 }
 
 interface Scenario {
@@ -108,6 +114,8 @@ interface Scenario {
    * moves).
    */
   track?: { frame: string; content: string; anchor?: string };
+  /** Charts: the canvas whose bitmap scale (its CSS width against its pixels) says whether it is drawn crisp. */
+  canvas?: string;
 }
 
 const partCenter = (selector: string) => `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + Math.min(r.width / 2, 16), y: r.y + r.height / 2 }; })()`;
@@ -126,13 +134,17 @@ const TOP_DIVIDER = `(() => {
 })()`;
 
 /** A floating pane's corner, dragged out, in past where it started and out again, as the chart and table resizes do. */
-const cornerResize = (name: string, float: string, paneId: string, content: string): Scenario => ({
+const cornerResize = (name: string, float: string, paneId: string, content: string, canvas?: string): Scenario => ({
   name,
   fixture: `resize&float=${float}`,
   grab: (cdp) => evaluate(cdp, middleOf(`${pane(paneId)} [data-gloom-role=resize-handle]`)),
   path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 220, y: start.y + Math.sin(t * Math.PI * 2) * 90 }),
   track: { frame: rightOf(pane(paneId)), content: rightOf(`${pane(paneId)} ${content}`) },
+  canvas,
 });
+
+/** How far, in %, the canvas's bitmap is scaled from 1:1 by its CSS width: 0 when it is drawn at the size it shows. */
+const stretchOf = (selector: string) => `(() => { const canvas = document.querySelector(${JSON.stringify(selector)}); if (!canvas || !canvas.width) return 0; return Math.abs(canvas.getBoundingClientRect().width * devicePixelRatio / canvas.width - 1) * 100; })()`;
 
 const SCENARIOS: Scenario[] = [
   {
@@ -161,11 +173,13 @@ const SCENARIOS: Scenario[] = [
   },
   // The canvas a chart draws on the cell grid, which catches up with a
   // resize a few times a second and is stretched with the frame in between.
-  cornerResize("chart resize", "chart", "chart:float", "canvas"),
+  cornerResize("chart resize", "chart", "chart:float", "canvas", `${pane("chart:float")} canvas`),
   // Tiles placed in percentages of a map laid out on the cell grid.
   cornerResize("heat map resize", "heat", "heat:float", "[data-gloom-role=heat-treemap]"),
   // A chart of a fixed height in a column of text: it follows the width only.
   cornerResize("fear and greed resize", "fear", "fear-greed:float", "[data-gloom-role=composite-chart]"),
+  // The G chart pane's layout: a chart under a query bar, given the pane's cells less a row.
+  cornerResize("chart under a query bar resize", "g", "chart-bar:float", "canvas", `${pane("chart-bar:float")} canvas`),
   {
     name: "dock divider drag",
     fixture: "resize",
@@ -188,6 +202,7 @@ const SCENARIOS: Scenario[] = [
       content: rightOf(`${pane("chart:dock")} canvas`),
       anchor: rightOf(pane("chart:dock")),
     },
+    canvas: `${pane("chart:dock")} canvas`,
   },
   {
     name: "table column drag",
@@ -215,9 +230,9 @@ function percentile(values: readonly number[], fraction: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(fraction * sorted.length))]!;
 }
 
-async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Promise<DragSample> {
+async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario, params: string): Promise<DragSample> {
   const loaded = cdp.once("Page.loadEventFired");
-  await cdp.send("Page.navigate", { url: new URL(`?scenario=${scenario.fixture}`, page.url).href });
+  await cdp.send("Page.navigate", { url: new URL(`?scenario=${scenario.fixture}${params ? `&${params}` : ""}`, page.url).href });
   await loaded;
   if (!await waitFor(cdp, "window.__paneChrome?.ready === true", 15_000)) throw new Error(`the ${scenario.fixture} fixture did not render`);
   await frames(cdp, 10);
@@ -229,7 +244,9 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   await evaluate(cdp, `(() => {
     window.__frameTimes = [];
     window.__lag = [];
+    window.__stretch = [];
     window.__commits = 0;
+    const stretch = ${scenario.canvas ? `() => ${stretchOf(scenario.canvas)}` : "null"};
     const track = ${scenario.track ? `{ frame: () => ${scenario.track.frame}, content: () => ${scenario.track.content}, anchor: ${scenario.track.anchor ? `() => ${scenario.track.anchor}` : "null"} }` : "null"};
     const origin = track && { frame: track.frame() - ${start.x}, content: track.content() - (track.anchor ? track.anchor() : ${start.x}) };
     let last = performance.now();
@@ -243,6 +260,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
           if (!window.__recording) return;
           const anchor = track.anchor ? track.anchor() : pointer;
           window.__lag.push([Math.abs(track.frame() - pointer - origin.frame), Math.abs(track.content() - anchor - origin.content)]);
+          if (stretch) window.__stretch.push(stretch());
         }, 0);
       }
       if (window.__recording) requestAnimationFrame(tick);
@@ -261,7 +279,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   }
   const after = await metrics(cdp);
   const elapsed = performance.now() - began;
-  const recorded = await evaluate<{ frameTimes: number[]; commits: number; lag: Array<[number, number]> }>(cdp, "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), commits: window.__commits, lag: window.__lag.slice(1) }; })()");
+  const recorded = await evaluate<{ frameTimes: number[]; commits: number; lag: Array<[number, number]>; stretch: number[] }>(cdp, "(() => { window.__recording = false; return { frameTimes: window.__frameTimes.slice(1), commits: window.__commits, lag: window.__lag.slice(1), stretch: window.__stretch.slice(1) }; })()");
   // The pointer comes to rest where the drag ends, and lets go there.
   const end = scenario.path(start, 1);
   await mouse(cdp, "mouseMoved", end.x, end.y, true);
@@ -271,6 +289,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   await mouse(cdp, "mouseReleased", end.x, end.y, false);
   await frames(cdp, 3);
   const released = await evaluate<[number, number]>(cdp, edges);
+  // At rest: anything that renders a frame or two after the release has.
+  const restStretch = scenario.canvas ? (await frames(cdp, 6), await evaluate<number>(cdp, stretchOf(scenario.canvas))) : 0;
   const drawn = Math.max(1, recorded.frameTimes.length);
   const ms = (name: string) => (after[name]! - before[name]!) * 1000;
   return {
@@ -289,10 +309,14 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
       releaseJumpPx: Math.abs(released[0] - held[0]),
       contentReleaseJumpPx: Math.abs(released[1] - held[1]),
     } : {}),
+    ...(scenario.canvas ? {
+      bitmapStretchPct: percentile(recorded.stretch, 0.95),
+      restStretchPct: restStretch,
+    } : {}),
   };
 }
 
-async function runSide(page: FixturePage, label: string, scenarios: Scenario[]): Promise<Record<string, DragSample>> {
+async function runSide(page: FixturePage, label: string, scenarios: Scenario[], params: string): Promise<Record<string, DragSample>> {
   const browser = await launchBrowser(`budget-${label}`, VIEWPORT.width, VIEWPORT.height);
   try {
     await browser.cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_PROBES });
@@ -300,7 +324,7 @@ async function runSide(page: FixturePage, label: string, scenarios: Scenario[]):
     const samples: Record<string, DragSample> = {};
     for (const scenario of scenarios) {
       try {
-        samples[scenario.name] = await measureDrag(browser.cdp, page, scenario);
+        samples[scenario.name] = await measureDrag(browser.cdp, page, scenario, params);
       } catch (error) {
         // Say which side: a base measured with its own fixture may lack a layout this one has.
         throw new Error(`${label}, ${scenario.name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -317,9 +341,10 @@ const round = (value: number, places = 2) => Math.round(value * 10 ** places) / 
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const baseRoot = takeOption(args, "--base");
-  if (!baseRoot) throw new Error("Usage: frame-budget.ts --base <checkout> [--runs 5] [--head <checkout>] [--only <text>]");
+  if (!baseRoot) throw new Error("Usage: frame-budget.ts --base <checkout> [--runs 5] [--head <checkout>] [--only <text>] [--head-params <query>]");
   const runs = positiveInteger(takeOption(args, "--runs"), 5, "--runs");
   const only = takeOption(args, "--only");
+  const headParams = takeOption(args, "--head-params") ?? "";
   const scenarios = SCENARIOS.filter((scenario) => !only || scenario.name.includes(only));
   if (scenarios.length === 0) throw new Error(`No scenario matches "${only}"`);
   const sides = {
@@ -335,12 +360,12 @@ async function main(): Promise<void> {
     for (let attempt = 1; ; attempt += 1) {
       for (let run = 1; run <= runs; run += 1) {
         for (const side of ["base", "head"] as const) {
-          const result = await runSide(sides[side], side, scenarios);
+          const result = await runSide(sides[side], side, scenarios, side === "head" ? headParams : "");
           samples[side].push(result);
           console.error(`${side} ${samples[side].length}: ${Object.entries(result).map(([name, sample]) => `${name} ${round(sample.mainMsPerFrame)} ms/frame, ${sample.commits} commits${sample.frameLagPx !== undefined ? `, ${round(sample.frameLagPx, 1)} px behind` : ""}`).join("; ")}`);
         }
       }
-      verdict = judge(scenarios, samples, sides.base.ownFixture);
+      verdict = judge(scenarios, samples, sides.base.ownFixture, headParams);
       if (verdict.problems.length === 0 || attempt === 2) break;
       console.error("Over budget; measuring again.");
     }
@@ -355,7 +380,7 @@ async function main(): Promise<void> {
   if (verdict.problems.length > 0) process.exitCode = 1;
 }
 
-function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Record<string, DragSample>>>, baseOwnFixture: boolean): { lines: string[]; problems: string[] } {
+function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Record<string, DragSample>>>, baseOwnFixture: boolean, headParams: string): { lines: string[]; problems: string[] } {
   const runs = samples.head.length;
   const lines = [
     "### Pane drag and resize frame budget",
@@ -363,12 +388,12 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
     `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Jump on release: how far the frame's and the content's edge moved when the pointer let go where it rested.`,
     "",
     ...(baseOwnFixture ? ["Main was measured with its own fixture: this PR changed the fixture, and the new one needs source main does not have. The stand-in panes may differ between the two columns.", ""] : []),
-    `| | main${baseOwnFixture ? " (own fixture)" : ""} | this PR |`,
+    `| | main${baseOwnFixture ? " (own fixture)" : ""} | this PR${headParams ? ` (\`${headParams}\`)` : ""} |`,
     "|---|---|---|",
   ];
   const problems: string[] = [];
   const notes: string[] = [];
-  for (const { name, track } of scenarios) {
+  for (const { name, track, canvas } of scenarios) {
     const pick = (side: "base" | "head", key: keyof DragSample) => median(samples[side].map((sample) => sample[name]![key] ?? 0));
     const row = (label: string, key: keyof DragSample, unit = "") => {
       lines.push(`| ${name}: ${label} | ${round(pick("base", key))}${unit} | ${round(pick("head", key))}${unit} |`);
@@ -386,6 +411,10 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
       row("content behind the pointer", "contentLagPx", " px");
       row("frame jump on release", "releaseJumpPx", " px");
       row("content jump on release", "contentReleaseJumpPx", " px");
+    }
+    if (canvas) {
+      row("chart bitmap scaled by CSS (p95)", "bitmapStretchPct", "%");
+      row("chart bitmap scaled at rest", "restStretchPct", "%");
     }
     const frameLag = { base: pick("base", "frameLagPx"), head: pick("head", "frameLagPx") };
     if (track && frameLag.head > MAX_FRAME_LAG_PX) {

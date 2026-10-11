@@ -11,6 +11,8 @@ import {
 import { colors as themeColors } from "../../../theme/colors";
 import { consumeChartMouseEvent, getGlobalMouseX, getLocalPlotPointer, type ChartMouseEvent } from "../core/pointer";
 import { useStaticChartBitmapSize } from "./bitmap";
+import { cssLayoutMode } from "../../../ui/css-layout";
+import { useMeasuredCells } from "../../../ui/measured-cells";
 import { PriceAxisLabels } from "./price-axis-labels";
 import { formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
 import {
@@ -196,7 +198,11 @@ export function CompositePanelSurface({
   // The plot is wider than the viewport by the reserved right offset. Gestures
   // read the pointer in plot space, so they convert through this.
   const plotSpanFactor = 1 + compositeRightOffsetRatio(scene.timeScale);
-  const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
+  // CSS layout spike (`ui/css-layout.ts`): the bitmap takes the size the
+  // browser lays the plot out at, so it is drawn 1:1 at rest and stretched by
+  // CSS only between redraws of a resize. Otherwise the plot's cells.
+  const plotSize = useMeasuredCells(plotRef, { width: plotWidth, height: panel.height }, isDesktopWeb && cssLayoutMode() !== null);
+  const bitmapSize = useStaticChartBitmapSize(plotSize.width, plotSize.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
   const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
   // The level line follows the pointer only. A keyboard or shared cursor knows

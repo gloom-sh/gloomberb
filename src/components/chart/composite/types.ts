@@ -272,4 +272,10 @@ export interface CompositeChartProps {
    * tool (Shift+H) adds, moves and deletes them by mouse and keyboard.
    */
   levels?: CompositeChartLevels | null;
+  /**
+   * CSS layout spike (`ui/css-layout.ts`), ignored otherwise: the chart's box
+   * is its parent's, so its root fills the parent by CSS and follows a resize
+   * before `width` and `height` catch up.
+   */
+  fill?: boolean;
 }

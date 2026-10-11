@@ -873,6 +873,7 @@ export function Shell({
 
       <ShellPaneLayers
         contentHeight={contentHeight}
+        dockRoot={activeLayout.dockRoot}
         dockDividerLayouts={dockDividerLayouts}
         dockLeafLayouts={dockLeafLayouts}
         focusedPaneId={focusedPaneId}

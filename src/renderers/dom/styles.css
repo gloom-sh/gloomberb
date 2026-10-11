@@ -248,6 +248,13 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   min-height: 0;
   max-height: 100%;
 }
+/* CSS layout spike (GLO-544, off unless switched on): a pane's root fills its
+   content box whatever cells it was given, so it follows the frame the browser
+   lays out before the cells catch up. */
+[data-gloom-role="pane-content"][data-gloom-fill="true"] > :only-child {
+  width: 100% !important;
+  height: 100% !important;
+}
 /* The same chrome row as the pane header, query bar and table header. */
 [data-gloom-role="pane-footer"] {
   flex: 0 0 var(--chrome-h);

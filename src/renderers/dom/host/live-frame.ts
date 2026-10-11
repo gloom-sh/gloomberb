@@ -35,6 +35,51 @@ function slide(element: HTMLElement, transform: string): void {
   else slides.set(element, element.animate(keyframes, { duration: 1e9, fill: "both" }));
 }
 
+const liveStyles = new WeakMap<HTMLElement, Set<string>>();
+
+/** `flexBasis` as the element's style declaration names it: `flex-basis`. */
+const cssName = (key: string) => (key.startsWith("--") ? key : key.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`));
+
+/**
+ * CSS layout spike (GLO-544): writes `style` on the element outside React,
+ * or with null puts back what React last rendered for every property written
+ * since. Custom properties (`--name`) are written as they are.
+ */
+export function applyLiveStyle(element: HTMLElement, style: Record<string, string> | null, props: Record<string, unknown>): void {
+  const written = liveStyles.get(element) ?? new Set<string>();
+  if (!style) {
+    if (written.size === 0) return;
+    const rendered = { ...commonStyle(props), ...(props.style as CSSProperties | undefined) } as Record<string, unknown>;
+    for (const key of written) element.style.setProperty(cssName(key), renderedValue(rendered[key]));
+    liveStyles.delete(element);
+    return;
+  }
+  for (const [key, value] of Object.entries(style)) {
+    element.style.setProperty(cssName(key), value);
+    written.add(key);
+  }
+  liveStyles.set(element, written);
+}
+
+/**
+ * CSS layout spike (GLO-544): the element's border box in cells each time the
+ * browser lays it out at a new size, from a ResizeObserver (after layout,
+ * before paint).
+ */
+export function observeCellSize(element: HTMLElement, listener: (size: { width: number; height: number }) => void): () => void {
+  if (typeof ResizeObserver === "undefined") return () => {};
+  const observer = new ResizeObserver((entries) => {
+    const entry = entries[entries.length - 1];
+    if (!entry) return;
+    const box = entry.borderBoxSize?.[0];
+    const width = box ? box.inlineSize : entry.contentRect.width;
+    const height = box ? box.blockSize : entry.contentRect.height;
+    listener({ width: width / WEB_CELL_WIDTH, height: height / WEB_CELL_HEIGHT });
+  });
+  observer.observe(element);
+  return () => observer.disconnect();
+}
+
 /**
  * Draws a box where a drag has it this frame by restyling its element,
  * outside React: an offset on its own compositor layer, with no layout or

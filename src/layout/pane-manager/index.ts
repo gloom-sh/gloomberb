@@ -5,6 +5,8 @@ export {
 } from "./floating";
 
 export {
+  clampRatio,
+  DOCK_SPLIT_MIN_CELLS,
   findDockLeaf,
   getDockDividerLayouts,
   getDockedPaneIds,

@@ -136,6 +136,18 @@ export interface BoxRenderable {
    * so it costs no layout or repaint; a size lays out the box's own subtree.
    */
   setLiveFrame?: (frame: LiveBoxFrame | null) => void;
+  /**
+   * Desktop only, for the CSS layout spike (`css-layout.ts`): writes CSS
+   * properties on the box's element outside React until called with null,
+   * which hands them back to what React last rendered.
+   */
+  setLiveStyle?: (style: Record<string, string> | null) => void;
+  /**
+   * Desktop only, for the CSS layout spike: calls `listener` with the box's
+   * size in cells whenever the browser lays it out at a new one
+   * (ResizeObserver). Returns the unsubscribe.
+   */
+  observeSize?: (listener: (size: { width: number; height: number }) => void) => () => void;
   [key: string]: unknown;
 }
 

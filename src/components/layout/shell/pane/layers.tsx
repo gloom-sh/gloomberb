@@ -1,5 +1,9 @@
 import { memo, useCallback, useMemo, useRef, type RefObject } from "react";
 import { Box, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
+import { cssLayoutMode } from "../../../../ui/css-layout";
+import { useMeasuredCells, useMeasuredPaneFrame } from "../../../../ui/measured-cells";
+import type { DockLayoutNode } from "../../../../types/config";
+import { anchoredPaneStyle, CSS_ANCHORS, CssDockTree } from "./css-dock";
 import { resolveOccludedPaneIds } from "../pane-occlusion";
 import type {
   DockDividerLayout,
@@ -30,6 +34,8 @@ interface VisibleFloatingPane {
 
 interface ShellPaneLayersProps {
   contentHeight: number;
+  /** The CSS layout spike (`ui/css-layout.ts`) draws the docked panes from the tree itself. */
+  dockRoot?: DockLayoutNode | null;
   dockDividerLayouts: DockDividerLayout[];
   dockLeafLayouts: DockLeafLayout[];
   focusedPaneId: string | null;
@@ -101,6 +107,8 @@ interface PaneLayerProps {
   movable: boolean;
   nativePaneChrome: boolean;
   nativeContextMenu: boolean;
+  /** The CSS layout spike is on: the browser sizes the frame and the content measures it. */
+  cssLayout: boolean;
   getPaneQuickSettings: (paneId: string) => PaneHeaderQuickSetting[];
   actions: PaneLayerActions;
 }
@@ -243,6 +251,101 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
   );
 });
 
+const FILL_SLOT = { width: "100%", height: "100%" } as const;
+
+/**
+ * CSS layout spike (`ui/css-layout.ts`): a docked pane on the box the browser
+ * lays out for it (`CssDockTree`), over its slot by anchor positioning or
+ * inside it. Nothing restyles it during a divider drag: its box follows the
+ * flex layout, the content box fills it and the content's root fills that
+ * (`fill`), and what the content renders for one size gets the size its box
+ * measures (`useMeasuredCells`). Fullscreen, it covers the shell's content
+ * area instead, as the same component, so it keeps its state. Its layout rect
+ * still names where it is to the drag and menu handlers.
+ */
+const CssDockedPaneLayer = memo(function CssDockedPaneLayer({
+  pane,
+  rect: layoutRect,
+  title,
+  focused,
+  windowModeSelected,
+  showActions,
+  inView,
+  fullscreen,
+  movable,
+  nativeContextMenu,
+  getPaneQuickSettings,
+  actions,
+}: PaneLayerProps) {
+  const paneId = pane.instance.instanceId;
+  const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
+  const boxRef = useRef<BoxRenderable | null>(null);
+  const size = useMeasuredCells(boxRef, layoutRect, true);
+  const liveFrame = useMeasuredPaneFrame(boxRef, size, true);
+  const { width: fullWidth, height: fullHeight } = layoutRect;
+  const placement = useMemo(() => (fullscreen
+    ? { position: "absolute", left: 0, top: 0, width: `calc(${fullWidth} * var(--cell-w))`, height: `calc(${fullHeight} * var(--cell-h))` } as const
+    : CSS_ANCHORS ? anchoredPaneStyle(paneId) : FILL_SLOT), [fullHeight, fullWidth, fullscreen, paneId]);
+  return (
+    <Box ref={boxRef} style={placement}>
+      <PaneFooterProvider>
+        {(footer) => {
+          const showFooter = hasPaneFooterContent(footer);
+          const bodyFrame = resolvePaneBodyFrame({
+            width: size.width,
+            height: size.height,
+            nativePaneChrome: true,
+            footerVisible: showFooter,
+            reserveFooter: false,
+          });
+          return (
+            <PaneWrapper
+              paneId={paneId}
+              title={title}
+              focused={focused}
+              width={size.width}
+              height={size.height}
+              stretch
+              locked={pane.instance.locked === true}
+              showActions={showActions}
+              quickSettings={quickSettings}
+              topRule={layoutRect.y > 0.01}
+              windowModeSelected={windowModeSelected}
+              footer={footer}
+              onMouseDownCapture={(event) => actions.paneMouseDown(paneId, event)}
+              onHeaderMouseMove={() => actions.hover(paneId)}
+              onHeaderMouseDown={movable ? (event) => actions.dockedDragStart(paneId, layoutRect, event) : undefined}
+              onHeaderMouseDrag={movable ? actions.drag : undefined}
+              onHeaderMouseDragEnd={movable ? actions.drag : undefined}
+              onHeaderContextMenu={nativeContextMenu ? (event) => actions.contextMenu(paneId, layoutRect, event) : undefined}
+              onActionMouseDown={(event) => actions.menu(paneId, layoutRect, event)}
+              onHelpMouseDown={() => actions.help(paneId)}
+              fullscreen={fullscreen}
+              onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
+            >
+              <PaneFooterKeys paneId={paneId} footer={footer} focused={focused} />
+              <LivePaneFrameContext.Provider value={liveFrame}>
+                <PaneContent
+                  component={pane.def.component}
+                  paneId={paneId}
+                  paneType={pane.instance.paneId}
+                  title={title}
+                  focused={focused}
+                  width={bodyFrame.width ?? 1}
+                  height={bodyFrame.height ?? 1}
+                  inView={inView}
+                  closePane={actions.close}
+                  fill
+                />
+              </LivePaneFrameContext.Provider>
+            </PaneWrapper>
+          );
+        }}
+      </PaneFooterProvider>
+    </Box>
+  );
+});
+
 const FloatingPaneFrame = memo(function FloatingPaneFrame({
   pane,
   rect,
@@ -256,6 +359,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   movable,
   nativePaneChrome,
   nativeContextMenu,
+  cssLayout,
   getPaneQuickSettings,
   actions,
   zIndex,
@@ -269,18 +373,37 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   const paneId = pane.instance.instanceId;
   const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
   const nativeMove = nativePaneChrome && movable;
+  // CSS layout spike: the content renders at the size its frame measures, not at a catch-up's.
+  const noFrame = useRef<BoxRenderable | null>(null);
+  const size = useMeasuredCells(frameRef ?? noFrame, rect, cssLayout && !!frameRef);
+  const measuredFrame = useMeasuredPaneFrame(frameRef ?? noFrame, size, cssLayout && !!frameRef);
   return (
     <PaneFooterProvider>
       {(footer) => {
         const showFooter = hasPaneFooterContent(footer);
         const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
         const bodyFrame = resolvePaneBodyFrame({
-          width: rect.width,
-          height: rect.height,
+          width: size.width,
+          height: size.height,
           nativePaneChrome,
           footerVisible: reserveFooter || showFooter,
           reserveFooter,
         });
+        const content = (
+          <PaneContent
+            component={pane.def.component}
+            paneId={paneId}
+            paneType={pane.instance.paneId}
+            title={title}
+            focused={focused}
+            width={bodyFrame.width ?? 1}
+            height={bodyFrame.height ?? 1}
+            inView={inView}
+            onClose={actions.close}
+            closePane={actions.close}
+            fill={cssLayout}
+          />
+        );
         return (
           <FloatingPaneWrapper
             paneId={paneId}
@@ -314,18 +437,11 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
             frameRef={frameRef}
           >
             <PaneFooterKeys paneId={paneId} footer={footer} focused={focused} />
-            <PaneContent
-              component={pane.def.component}
-              paneId={paneId}
-              paneType={pane.instance.paneId}
-              title={title}
-              focused={focused}
-              width={bodyFrame.width ?? 1}
-              height={bodyFrame.height ?? 1}
-              inView={inView}
-              onClose={actions.close}
-              closePane={actions.close}
-            />
+            {measuredFrame ? (
+              <LivePaneFrameContext.Provider value={measuredFrame}>
+                {content}
+              </LivePaneFrameContext.Provider>
+            ) : content}
           </FloatingPaneWrapper>
         );
       }}
@@ -463,11 +579,13 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
     return { width: at.width, height: at.height };
   } : null), [contentHeight, paneId, slide, width]);
   useLiveBoxFrame(live, frameRef, sizeOf);
-  const selectCatchUp = useMemo(() => (slide ? (geometry: LiveDragGeometry) => {
+  // The CSS layout spike measures the frame instead (`FloatingPaneFrame`).
+  const catchUp = slide && !frame.cssLayout;
+  const selectCatchUp = useMemo(() => (catchUp ? (geometry: LiveDragGeometry) => {
     if (geometry.paneResize?.paneId !== paneId || geometry.floating?.paneId !== paneId) return null;
     const resized = constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight);
     return sameRect(resized, rect) ? null : resized;
-  } : null), [contentHeight, paneId, rect, slide, width]);
+  } : null), [catchUp, contentHeight, paneId, rect, width]);
   const resizeRect = useLiveCatchUp(live, selectCatchUp);
   const preview = dragRect
     ? constrainFloatingRectToBounds(dragRect, width, contentHeight)
@@ -476,7 +594,7 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
     : resizeRect
       ? { ...rect, width: resizeRect.width, height: resizeRect.height }
       : rect;
-  const liveFrame = useLivePaneFrame(live, preview, sizeOf);
+  const liveFrame = useLivePaneFrame(live, preview, catchUp ? sizeOf : null);
   const content = (
     <LivePaneFrameContext.Provider value={liveFrame}>
       <FloatingPaneFrame
@@ -569,6 +687,7 @@ const DockDividerLayer = memo(function DockDividerLayer({
 
 export function ShellPaneLayers({
   contentHeight,
+  dockRoot = null,
   dockDividerLayouts,
   dockLeafLayouts,
   focusedPaneId,
@@ -623,6 +742,12 @@ export function ShellPaneLayers({
   const floatingDragActive = useLiveDrag(live, nativePaneChrome ? selectNoDrag : selectFloatingDragActive);
   const occludedPaneIds = nativePaneChrome || floatingDragActive ? EMPTY_OCCLUSION : coveredPaneIds;
   const fullscreenRect = useMemo(() => ({ x: 0, y: 0, width, height: contentHeight }), [contentHeight, width]);
+  // The CSS layout spike, off unless switched on (`ui/css-layout.ts`). Fullscreen keeps main's layers.
+  const cssLayout = nativePaneChrome && cssLayoutMode() !== null;
+  // Fullscreen keeps the panes where they are in the tree only with anchors; otherwise main's layers draw it.
+  const cssDock = cssLayout && dockRoot !== null && (CSS_ANCHORS || !transientFocusActive);
+  const leafRects = useMemo(() => new Map(dockLeafLayouts.map((leaf) => [leaf.instanceId, leaf.rect])), [dockLeafLayouts]);
+  const dividersByPath = useMemo(() => new Map(dockDividerLayouts.map((divider) => [pathKey(divider.path), divider])), [dockDividerLayouts]);
 
   const handlersRef = useRef({
     handleFloatingClose,
@@ -688,6 +813,7 @@ export function ShellPaneLayers({
       movable: !transientFocusActive,
       nativePaneChrome,
       nativeContextMenu,
+      cssLayout,
       getPaneQuickSettings,
       actions,
     };
@@ -695,7 +821,32 @@ export function ShellPaneLayers({
 
   return (
     <>
-      {dockLeafLayouts.map((leaf) => {
+      {cssDock && dockRoot && !transientFocusActive ? (
+        <CssDockTree
+          width={width}
+          height={contentHeight}
+          node={dockRoot}
+          live={live}
+          dividers={dividersByPath}
+          resizingPathKey={windowModeDockResizePathKey}
+          onDividerMouseDown={actions.dividerDragStart}
+          onDrag={actions.drag}
+          // With anchors the panes are flat siblings below; without, they render in their slots.
+          renderLeaf={CSS_ANCHORS ? null : (instanceId) => {
+            const pane = paneMap.get(instanceId);
+            const rect = leafRects.get(instanceId);
+            return pane && rect ? <CssDockedPaneLayer key={`dock:${instanceId}`} {...layerProps(pane, rect)} /> : null;
+          }}
+        />
+      ) : null}
+      {cssDock && CSS_ANCHORS ? dockLeafLayouts.map((leaf) => {
+        if (transientFocusActive && leaf.instanceId !== transientFocusPaneId) return null;
+        const pane = paneMap.get(leaf.instanceId);
+        return pane
+          ? <CssDockedPaneLayer key={`dock:${leaf.instanceId}`} {...layerProps(pane, transientFocusActive ? fullscreenRect : leaf.rect)} />
+          : null;
+      }) : null}
+      {cssDock ? null : dockLeafLayouts.map((leaf) => {
         if (transientFocusActive && leaf.instanceId !== transientFocusPaneId) return null;
         const pane = paneMap.get(leaf.instanceId);
         if (!pane) return null;
@@ -723,7 +874,7 @@ export function ShellPaneLayers({
         );
       })}
 
-      {!transientFocusActive && dockDividerLayouts.map((divider) => (
+      {!transientFocusActive && !cssDock && dockDividerLayouts.map((divider) => (
         <DockDividerLayer
           key={`divider:${divider.path.join(".")}`}
           divider={divider}

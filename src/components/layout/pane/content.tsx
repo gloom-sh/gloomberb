@@ -42,6 +42,12 @@ interface PaneContentProps {
   onClose?: (paneId: string) => void;
   /** Takes the pane out of its layout; the failure card offers it. Keep it stable: the content is memoized. */
   closePane?: (paneId: string) => void;
+  /**
+   * CSS layout spike (`ui/css-layout.ts`): the content's root fills this box
+   * by CSS whatever cells it asks for, so it follows a frame the browser
+   * sizes before `width` and `height` catch up.
+   */
+  fill?: boolean;
 }
 
 export const PaneContent = memo(function PaneContent({
@@ -55,6 +61,7 @@ export const PaneContent = memo(function PaneContent({
   inView = true,
   onClose,
   closePane,
+  fill = false,
 }: PaneContentProps) {
   // The pane reads text and colors while it renders, so either redraws it.
   const language = useAppLanguage();
@@ -98,6 +105,7 @@ export const PaneContent = memo(function PaneContent({
             minHeight={0}
             overflow="hidden"
             data-gloom-role="pane-content"
+            data-gloom-fill={fill ? "true" : undefined}
           >
             {body}
           </Box>
