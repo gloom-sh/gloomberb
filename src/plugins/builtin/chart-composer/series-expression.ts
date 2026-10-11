@@ -101,9 +101,9 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
     if (separator < 0) return null;
     const capabilityId = trimmed.slice(4, separator);
     const seriesId = trimmed.slice(separator + 1);
-    return isValidChartCapabilityId(capabilityId) && isValidChartSeriesId(seriesId)
-      ? { kind: "capability", capabilityId, seriesId }
-      : null;
+    if (!isValidChartCapabilityId(capabilityId) || !isValidChartSeriesId(seriesId)) return null;
+    const label = registeredSeriesName({ capabilityId, seriesId });
+    return { kind: "capability", capabilityId, seriesId, ...(label ? { label } : {}) };
   }
   if (parts[0]?.trim().toUpperCase() === "GEO") {
     const seriesId = trimmed.slice(trimmed.indexOf(":") + 1).trim();
@@ -113,9 +113,10 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
   }
   if (parts[0]?.trim().toUpperCase() === "FRED") {
     const seriesId = parts.length === 2 ? parts[1]?.trim().toUpperCase() ?? "" : "";
-    return /^[A-Z0-9._-]{1,80}$/.test(seriesId)
-      ? { kind: "economic", provider: "fred", seriesId }
-      : null;
+    if (!/^[A-Z0-9._-]{1,80}$/.test(seriesId)) return null;
+    // The catalog's name for a listed series, so the legend says what the catalog said.
+    const label = getSharedRegistry()?.series?.findByExpression(`FRED:${seriesId}`)?.definition.name;
+    return { kind: "economic", provider: "fred", seriesId, ...(label ? { label } : {}) };
   }
   if (parts.length === 2 && parts[0]?.trim().toUpperCase() === "FUT") {
     const code = parts[1]?.trim().toUpperCase();

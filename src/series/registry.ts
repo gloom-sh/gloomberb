@@ -78,6 +78,7 @@ export class SeriesRegistry {
   private readonly listeners = new Set<() => void>();
   private readonly refreshers = new Set<() => Promise<void> | void>();
   private snapshot: readonly RegisteredSeries[] | null = null;
+  private expressions: Map<string, RegisteredSeries> | null = null;
   private catalogSnapshot: readonly SeriesCatalogEntry[] | null = null;
   private version = 0;
 
@@ -140,6 +141,19 @@ export class SeriesRegistry {
     return { series, ...(ticker ? { ticker } : {}) };
   }
 
+  /** The series that charts as this exact expression (`FRED:UNRATE`), if one without an input does. */
+  findByExpression(expression: string): RegisteredSeries | undefined {
+    if (!this.expressions) {
+      this.expressions = new Map();
+      for (const series of this.entries.values()) {
+        if (series.definition.input) continue;
+        const key = seriesExpression(series.definition);
+        if (!this.expressions.has(key)) this.expressions.set(key, series);
+      }
+    }
+    return this.expressions.get(expression);
+  }
+
   /** In registration order. The array is shared until the next change. */
   list(): readonly RegisteredSeries[] {
     this.snapshot ??= [...this.entries.values()];
@@ -177,6 +191,7 @@ export class SeriesRegistry {
   private changed(): void {
     this.snapshot = null;
     this.catalogSnapshot = null;
+    this.expressions = null;
     this.version += 1;
     for (const listener of [...this.listeners]) listener();
   }
