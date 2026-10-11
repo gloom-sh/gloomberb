@@ -11,7 +11,7 @@ import {
 import { formatCompact, formatPercentRaw } from "../../../../utils/format";
 import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
-import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../position-metrics";
+import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../../portfolio/position-metrics";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
 import {
   EXTENDED_SESSION_LABELS,

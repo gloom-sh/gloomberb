@@ -39,7 +39,7 @@ import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
 import type { TickerRecord } from "../../types/ticker";
 import type { CliCommandContext } from "../../types/plugin";
-import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../plugins/builtin/portfolio-list/position-metrics";
+import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../portfolio/position-metrics";
 import { createBaseConverter } from "../base-converter";
 import { initMarketData, withMarketData } from "../context";
 import { fail } from "../errors";

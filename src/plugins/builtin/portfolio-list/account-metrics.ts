@@ -1,7 +1,7 @@
 import type { BrokerAccount } from "../../../types/trading";
 import { isTimestampStaleForExchangeSession } from "../../../market-data/market/freshness";
 import type { PortfolioSummaryTotals } from "./metrics";
-import { portfolioPnlPercent } from "./position-metrics";
+import { portfolioPnlPercent } from "../../../portfolio/position-metrics";
 import { isFiniteNumber } from "../../../utils/guards";
 
 export interface PortfolioAccountMetrics {

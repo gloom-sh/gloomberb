@@ -88,7 +88,7 @@ import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 import { useThrottledMemo } from "../use-throttled-memo";
 import { useColumnClock } from "../use-column-clock";
 import { liveMarketCapitalization } from "../live-valuation";
-import { hasUnknownOptionMultiplier } from "../position-metrics";
+import { hasUnknownOptionMultiplier } from "../../../../portfolio/position-metrics";
 import {
   allocationTotal,
   buildPortfolioAllocation,

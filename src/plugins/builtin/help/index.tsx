@@ -8,7 +8,7 @@ import { Box, ScrollBox, Text, useRendererHost, useUiHost } from "../../../ui";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
 import { apiClient, type CloudPricing } from "../../../api-client";
-import { trialDaysOf } from "../account-management/model";
+import { trialDaysOf } from "../../../account/billing";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { requestFeedbackDialog } from "../../../components/feedback-dialog";

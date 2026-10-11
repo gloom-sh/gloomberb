@@ -19,7 +19,7 @@ import {
   withCurrencyMinorDigits,
 } from "../../../../market-data/market/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
-import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../portfolio-list/position-metrics";
+import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { liveDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../portfolio-list/live-valuation";
 import { formatReportedMoney } from "../../../../utils/reported-money";
 import { fundamentalsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";

@@ -85,7 +85,8 @@ import {
   buildKellyHistoryItems,
   buildKellyResultItems,
 } from "./sections";
-import { getPortfolioPositionValue, resolveActivePortfolioId, resolveKellyBankroll } from "./portfolio";
+import { resolveActivePortfolioId, resolveKellyBankroll } from "./portfolio";
+import { getPortfolioPositionValue } from "../../../portfolio/position-value";
 import { useKellyCommonAssumptions } from "./state";
 
 export function KellySizerPane({ focused, width, height }: PaneProps) {

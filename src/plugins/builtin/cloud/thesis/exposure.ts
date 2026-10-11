@@ -4,7 +4,7 @@ import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-f
 import { useAppSelector, usePaneAppConfig } from "../../../../state/app/context";
 import { useLiveTickerFinancialsMap } from "../../../../state/hooks/live-ticker-financials";
 import type { TickerRecord } from "../../../../types/ticker";
-import { getPortfolioPositionValue } from "../../kelly-sizer/portfolio";
+import { getPortfolioPositionValue } from "../../../../portfolio/position-value";
 import { calculatePortfolioSummaryTotals } from "../../portfolio-list/metrics";
 import { buildTrackedCurrencies, getCollectionTickersFromConfig } from "../../portfolio-list/pane/data";
 import type { SymbolExposure } from "./model";

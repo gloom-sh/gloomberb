@@ -16,7 +16,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
-import { portfolioPnlLabel } from "./position-metrics";
+import { portfolioPnlLabel } from "../../../portfolio/position-metrics";
 import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
 
 export type { QuoteFlashDirection };

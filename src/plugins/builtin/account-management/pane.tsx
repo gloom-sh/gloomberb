@@ -52,15 +52,17 @@ import {
   computeCumulativeReturn,
   countPortfolioHoldings,
   emptyToNull,
-  formatCloudMonthlyPrice,
   formatPlan,
-  formatTrialEnd,
-  formatTrialOffer,
   portfolioOptionIds,
   profileToDraft,
   type AccountDraft,
   type AccountFieldKey,
 } from "./model";
+import {
+  formatCloudMonthlyPrice,
+  formatTrialEnd,
+  formatTrialOffer,
+} from "../../../account/billing";
 import { PasswordChangeDialog } from "./password-dialog";
 import { CalendarAccountTab } from "./calendar-tab";
 import { useAccountManagementFooter } from "./footer";

@@ -5,7 +5,7 @@ import { useShortcut, type KeyEventLike } from "../../react/input";
 import { matchKeybinding, matchesKeybindingAction, type ResolvedKeybindings } from "../../app/keybindings";
 import { isPlainKey } from "../../utils/keyboard";
 import { isCopyShortcut, isPasteShortcut } from "../../utils/selection-clipboard";
-import type { CloudBillingInterval } from "../../plugins/builtin/account-management/model";
+import type { CloudBillingInterval } from "../../account/billing";
 import type { usePlanAccess } from "../../api-client/plan-access";
 import type { ListViewItem } from "../ui";
 import type { PortfolioSub } from "./onboarding-steps";

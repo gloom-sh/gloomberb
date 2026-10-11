@@ -1,10 +1,10 @@
 import { expect, test } from "bun:test";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerPosition, TickerRecord } from "../../../types/ticker";
-import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "./position-metrics";
+import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../portfolio/position-metrics";
 import { calculatePortfolioSummaryTotals, getColumnValue, getSortValue } from "./metrics";
 import { buildPositionRows } from "../ticker-detail/overview/model";
-import { getPortfolioPositionValue } from "../kelly-sizer/portfolio";
+import { getPortfolioPositionValue } from "../../../portfolio/position-value";
 import { createTestTicker } from "../../../test-support/ticker";
 
 const position = (overrides: Partial<TickerPosition> = {}): TickerPosition => ({ portfolio: "main", broker: "controlled", shares: 1000,

@@ -49,7 +49,7 @@ import {
   portfolioPnlPercent,
   signedPositionDirection,
   type PortfolioPositionPnl,
-} from "./position-metrics";
+} from "../../../portfolio/position-metrics";
 import { isFiniteNumber } from "../../../utils/guards";
 import {
   allocationFigures,

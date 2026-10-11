@@ -5,7 +5,7 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import {
   getPortfolioPositionMetrics,
   resolvePortfolioMarketValue,
-} from "../portfolio-list/position-metrics";
+} from "../../../portfolio/position-metrics";
 import type { DatedReturn } from "./metrics";
 import {
   computeWeightedPortfolioReturns,

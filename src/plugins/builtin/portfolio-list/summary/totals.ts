@@ -14,7 +14,7 @@ import {
   resolvePortfolioPositionPnl,
   portfolioPnlPercent,
   type PortfolioPositionPnl,
-} from "../position-metrics";
+} from "../../../../portfolio/position-metrics";
 
 /** A position lot valued from a current quote, in the totals currency. */
 interface PricedPortfolioLot {

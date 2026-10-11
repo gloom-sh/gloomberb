@@ -8,7 +8,7 @@ import { tf } from "../../../i18n";
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord, Watchlist } from "../../../types/ticker";
 import { isUsListingExchange } from "../../../utils/exchanges";
-import { getPortfolioPositionValue } from "../kelly-sizer/portfolio";
+import { getPortfolioPositionValue } from "../../../portfolio/position-value";
 import { STARTER_SYMBOLS } from "./starter-symbols";
 
 const UPGRADE_TICKER_LIMIT = 3;

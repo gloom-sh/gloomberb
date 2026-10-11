@@ -1,9 +1,9 @@
-import type { TickerRecord } from "../../../types/ticker";
-import type { Quote } from "../../../types/financials";
-import type { PriceBasis } from "../../../types/instrument";
-import { resolvePriceBasis } from "../../../market-data/market/price-basis";
-import { getActiveQuoteDisplay, type ActiveQuoteDisplay } from "../../../market-data/market/status";
-import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import type { TickerRecord } from "../types/ticker";
+import type { Quote } from "../types/financials";
+import type { PriceBasis } from "../types/instrument";
+import { resolvePriceBasis } from "../market-data/market/price-basis";
+import { getActiveQuoteDisplay, type ActiveQuoteDisplay } from "../market-data/market/status";
+import { resolveCurrencyUnit } from "../utils/currency-units";
 
 export interface PortfolioPositionMetrics {
   positionCurrency: string;

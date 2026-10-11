@@ -21,7 +21,7 @@ import {
   formatTrialEnd,
   monthsFreeYearly,
   trialDaysOf,
-} from "../account-management/model";
+} from "../../../account/billing";
 import { useUpgradePersonalization } from "./upgrade-personalization";
 import { upgradeTickerList } from "./upgrade-tickers";
 

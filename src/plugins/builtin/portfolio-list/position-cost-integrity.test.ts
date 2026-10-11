@@ -6,7 +6,7 @@ import type { TickerFinancials } from "../../../types/financials";
 import { buildPositionRows } from "../ticker-detail/overview/model";
 import { buildSetPortfolioPositionWorkflow } from "./command-bar";
 import { setManualPortfolioPosition } from "./mutations";
-import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "./position-metrics";
+import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../portfolio/position-metrics";
 import { calculatePortfolioSummaryTotals, getColumnValue, getSortValue } from "./metrics";
 import { buildPortfolioSummarySegments } from "./summary";
 import { createTestTicker } from "../../../test-support/ticker";
