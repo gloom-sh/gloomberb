@@ -201,6 +201,13 @@ export interface HeadlessPaneFreshness {
    */
   dataset?: boolean;
   /**
+   * What a dataset's newest observation is, when its every line names it:
+   * `last trade` makes the `fn` footer, the pane footer and a screenshot read
+   * the same, `Source: DTCC · last trade 2026-10-09 · lag 2 days`, dated as
+   * the report's rows are, by ISO date.
+   */
+  observation?: string;
+  /**
    * Each source's own newest observation, for data drawn from several venues
    * polled apart (a perpetuals board). The line then dates every source and
    * says how old the oldest of them is (`Binance 02:15 · Bybit 02:24 UTC ·

@@ -58,6 +58,11 @@ export interface ReportFreshness {
    */
   lagDays?: number;
   /**
+   * What the newest observation is, for a dataset that names it (`last
+   * trade`): every line then reads `Source: DTCC · last trade 2026-10-09 · lag 2 days`.
+   */
+  observation?: string;
+  /**
    * Each source's own newest observation, in the order declared, when the data
    * comes from several sources polled apart: `asOf` is the newest of them.
    */
@@ -397,8 +402,10 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const periodicity = declared.periodicity && asOf?.dateOnly ? declared.periodicity : undefined;
   // Rows that are quotes (a feed, a venue's session) keep the market line, even on a dataset's pane.
   const quoted = signals.live || signals.delayed || signals.sessions.length > 0;
-  const lagDays = declared.dataset && asOf && !quoted && (status === "not-a-feed" || status === "stale")
+  // A dataset disseminated with a delay (DTCC's swap tape) lags its newest observation all the same.
+  const lagDays = declared.dataset && asOf && !quoted && (status === "not-a-feed" || status === "stale" || status === "delayed")
     ? datasetLagDays(asOf, periodicity, now) : null;
+  const observation = lagDays != null ? declared.observation?.trim() : undefined;
 
   const note = declared.note?.trim();
   return {
@@ -416,6 +423,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
     ...(lagDays != null ? { lagDays } : {}),
+    ...(observation ? { observation } : {}),
     ...(sources.length ? { sources: sources.map(({ source, time }) => ({ source, asOf: isoTime(time) })) } : {}),
     ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
     ...(note ? { note } : {}),
@@ -722,12 +730,27 @@ interface DatasetLineDetail {
   status?: "short";
 }
 
+/** `lag 2 days`, `lag 1 day`. */
+function lagText(days: number): string {
+  return `lag ${days} ${days === 1 ? "day" : "days"}`;
+}
+
 /**
  * A dataset's status line: its source, the newest observation's date (the
  * period, for monthly to annual data) and how many days it lags, then which
- * rows are stale, if any. No market part: a dataset has no session.
+ * rows are stale, if any. No market part: a dataset has no session. A
+ * dataset that names its observation reads as its rows do, by ISO date:
+ * `Source: DTCC · last trade 2026-10-09 · lag 2 days`.
  */
 function datasetLineParts(freshness: ReportFreshness, asOf: string, lagDays: number, detail: DatasetLineDetail = {}): string[] {
+  if (freshness.observation) {
+    return [
+      ...(detail.source === "none" ? [] : [`Source: ${freshness.source}`]),
+      `${freshness.observation} ${asOf.slice(0, 10)}`,
+      lagText(lagDays),
+      ...(freshness.status === "stale" ? ["stale"] : []),
+    ];
+  }
   const period = freshness.periodicity;
   const dated = (date: string) => (period ? periodText(date, period) : observedDayText(date, freshness.retrievedAt));
   const oldest = freshness.oldest && detail.oldest !== "none" ? ` (oldest ${dated(freshness.oldest)})` : "";
@@ -779,6 +802,8 @@ export function paneStatusLine(freshness: ReportFreshness): string {
  * then what the figures are.
  */
 export function paneStatusLineVariants(freshness: ReportFreshness): string[] {
+  // A dataset's line has no market or local time to leave out: it reads as its report and capture do.
+  if (datesObservation(freshness)) return statusLineVariants(freshness);
   const pane: StatusLineDetail = { local: "none", date: "none" };
   const details: StatusLineDetail[] = [pane, { ...pane, market: "short" }, { ...pane, market: "short", status: "short" }, { ...pane, market: "short", status: "short", note: "none" }];
   return [...new Set(details.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
@@ -867,6 +892,8 @@ export function captureStatusLine({ report, selfDated, quoted, rendered }: {
  * line alone: `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed`.
  */
 export function formatFreshnessLine(freshness: ReportFreshness): string {
+  // A dataset that names its observation ends `fn` as its pane and capture do.
+  if (freshness.observation && datesObservation(freshness)) return statusLineVariants(freshness)[0]!;
   const parts = statusLineParts(freshness);
   return (freshness.sources?.length ? parts : [`Source: ${freshness.source}`, ...parts]).join(" · ");
 }

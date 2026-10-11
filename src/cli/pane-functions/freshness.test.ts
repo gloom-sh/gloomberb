@@ -110,6 +110,27 @@ describe("report freshness", () => {
     expect(deriveHeadlessFreshness(rows({ status: "not-a-feed" }), { rows: [{ asOf: "2026-10-04" }] }, SAT).lagDays).toBeUndefined();
   });
 
+  test("a dataset that names its observation ends fn, the pane footer and a capture with one line", () => {
+    const SUN = Date.parse("2026-10-11T15:14:00Z");
+    // DTCC's swap tape: a delayed feed whose single names trade days apart, dated by the last trade.
+    const tape = { source: "DTCC", status: "delayed" as const, dataset: true, observation: "last trade", asOf: "2026-10-09T13:21:00Z", oldest: null };
+    const freshness = deriveHeadlessFreshness(rows(tape), { rows: [], metadata: { asOf: "2026-10-11T15:14:13Z" } }, SUN);
+    expect(freshness).toMatchObject({ status: "delayed", asOf: "2026-10-09T13:21:00.000Z", lagDays: 2, observation: "last trade" });
+    const one = "Source: DTCC \u00b7 last trade 2026-10-09 \u00b7 lag 2 days";
+    expect(formatFreshnessLine(freshness)).toBe(one);
+    expect(paneStatusLine(freshness)).toBe(one);
+    expect(statusLineVariants(freshness)).toEqual([one, "Last trade 2026-10-09 \u00b7 lag 2 days"]);
+    // The equity session of the ticker on screen does not date it.
+    const quoted = deriveHeadlessFreshness(rows(), { rows: [
+      { dataSource: "delayed", delayMinutes: 15, sessionExchange: "NYSE", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T20:00:00Z") },
+    ] }, SUN);
+    expect(captureStatusLine({ report: freshness, quoted, selfDated: false, rendered: () => quoted }).variants[0]).toBe(one);
+    // Without a name the dataset keeps its own line, and a delayed feed that is no dataset has no lag.
+    expect(formatStatusLine(deriveHeadlessFreshness(rows({ ...tape, observation: undefined }), { rows: [] }, SUN)))
+      .toBe("Source: DTCC \u00b7 observed Fri 9 Oct \u00b7 lag 2d");
+    expect(deriveHeadlessFreshness(rows({ ...tape, dataset: undefined }), { rows: [] }, SUN).lagDays).toBeUndefined();
+  });
+
   test("a capture states its report's freshness as fn ends, unless the pane or its quotes date the view", () => {
     const SUN = Date.parse("2026-10-11T06:17:00Z");
     const cot = deriveHeadlessFreshness(rows({ source: "CFTC", status: "not-a-feed", basis: "weekly report", maxAgeMinutes: 14 * 24 * 60 }),
