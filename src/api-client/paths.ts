@@ -576,6 +576,13 @@ export function cloudNewsPath(params: CloudNewsParams = {}): string {
   return appendQuery("/news", search);
 }
 
+/** Stories whose headline, summary or publisher matches the text, best match first; the service takes at most 100. */
+export function cloudNewsSearchPath(query: string, limit?: number): string {
+  const search = new URLSearchParams({ query });
+  if (limit != null) search.set("limit", String(limit));
+  return appendQuery("/news/search", search);
+}
+
 export function cloudTickerTweetsPath(params: CloudTickerTweetsParams): string {
   const search = new URLSearchParams({ ticker: params.ticker });
   if (params.limit != null) search.set("limit", String(params.limit));

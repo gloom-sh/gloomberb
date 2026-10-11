@@ -85,6 +85,7 @@ import {
   cloudMarketSearchPath,
   cloudMarketSymbolPath,
   cloudNewsPath,
+  cloudNewsSearchPath,
   cloudOptionsChainPath,
   cloudSavedSearchPath,
   cloudSavedSearchesPath,
@@ -938,6 +939,13 @@ export class CloudDataApi {
     params: CloudNewsParams = {},
   ): Promise<CloudNewsListResponse> {
     return this.request<CloudNewsListResponse>(cloudNewsPath(params));
+  }
+
+  async searchCloudNews(
+    query: string,
+    limit?: number,
+  ): Promise<CloudNewsListResponse> {
+    return this.request<CloudNewsListResponse>(cloudNewsSearchPath(query, limit));
   }
 
   async getCloudNewsStory(storyId: string): Promise<CloudNewsPayload> {

@@ -21,7 +21,7 @@ import {
 } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent, formatPercentRaw } from "../../utils/format";
 import { withCliServices, withMarketData } from "../context";
-import { isoDate, parsePositiveInt, rejectExtraArgs, requireOneArg, takeFlag, takeOption } from "./command-utils";
+import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import type { BuiltinCliCommandDef } from "../command-options";
 import { CLI_COMMAND_GROUPS, TABLE_SECTION_OPTION } from "../help";
 import {
@@ -45,7 +45,7 @@ import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshnes
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
 import { cliFuturesContract, futuresContractMetrics, fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
-import { futuresSettleText } from "../../market-data/futures-contract";
+import { futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
   chainWithModelFigures,
@@ -80,7 +80,9 @@ import {
   historyUnit,
 } from "../history-rows";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
+import { bareFuturesCode } from "../../market-data/futures-board";
 import { newsEmptyMessage } from "./news-hints";
+import { newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProblem, searchNewsStories } from "./news-search";
 import { formatUtcTime } from "../../utils/utc-time";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
@@ -826,16 +828,55 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   });
 }
 
+const NEWS_COLUMNS = [
+  // UTC with the zone named, as every CLI time prints, rather than the host zone unlabeled.
+  {
+    key: "publishedAt",
+    header: "Published",
+    format: (value: unknown) => typeof value === "string" ? formatUtcTime(value) : "",
+  },
+  { key: "source", header: "Source", maxWidth: 20 },
+  { key: "title", header: "Title" },
+  { key: "tickers", header: "Tickers", maxWidth: 16 },
+  { key: "url", header: "URL", optional: true },
+];
+
+/** Stories matching text, printed as a symbol's news is, under a line saying what they match. */
+async function printNewsSearch(
+  text: string,
+  articles: NewsArticle[],
+  { reason, empty }: { reason?: string; empty?: string },
+  ctx: Parameters<CliCommandDef["execute"]>[1],
+) {
+  ctx.printResult({
+    data: articles,
+    metadata: { ticker: null, search: text, feed: null },
+    freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
+  }, {
+    heading: newsSearchHeading(text, reason),
+    rows: newsRows,
+    columns: NEWS_COLUMNS,
+    empty: empty ?? `No stories match "${text}".`,
+  });
+}
+
 async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const feed = parseNewsFeed(takeOption(args, "--feed"));
   const exchangeOption = takeOption(args, "--exchange");
+  // Stories come newest first, so the newest n are the first n either way.
+  const limit = ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 20;
+  const text = newsSearchText(args);
+  if (text != null) {
+    if (exchangeOption || feed) ctx.fail(`${exchangeOption ? "--exchange" : "--feed"} goes with a symbol, not with text to search stories for.`, "Usage: gloomberb news <query>");
+    const problem = newsSearchTextProblem(text);
+    if (problem) ctx.fail(problem);
+    await printNewsSearch(text, await searchNewsStories(text, limit), {}, ctx);
+    return;
+  }
   if (exchangeOption && !args[0]) ctx.fail("--exchange needs a symbol: gloomberb news <symbol> --exchange <code>");
-  rejectExtraArgs(args, 1, { usage: "news [symbol] [--feed <feed>]", takes: "one symbol at most", advice: "Run it once per symbol." }, ctx);
   await withMarketData(ctx, async (market) => {
     const listing = args[0] ? await requireCliListing(args[0], exchangeOption, market, ctx) : null;
-    // Stories come newest first, so the newest n are the first n either way.
-    const limit = ctx.cliOptions.tail ?? ctx.cliOptions.limit ?? 20;
     const loadNews = () => market.dataProvider.getNews({
       feed: feed ?? (listing ? "ticker" : "latest"),
       // Still set for news plugins that read the deprecated scope.
@@ -849,10 +890,22 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       listing ? loadListingQuote(market.dataProvider, listing) : null,
     ]);
     const identity = listing ? listingIdentity(listing, quote) : null;
-    // A futures code or a symbol nothing answers to has no stories: say why, with a ticker to try.
-    const empty = listing && identity
-      ? newsEmptyMessage(listing.symbol, listingTitle(identity), quote, quote !== null || identity.name !== null)
+    const resolved = quote !== null || identity?.name != null;
+    // A bare word no listing answers to is text, and so is a futures board code (TTF), which resolves
+    // to its future: news is filed under company tickers, so the stories that mention the word are the news.
+    const word = listing && !listing.exchange && !feed && articles.length === 0 ? newsFallbackText(args[0]!) : null;
+    const futuresCode = !!word && !!bareFuturesCode(word) && isFuturesInstrument(listing!.symbol, quote?.instrumentType);
+    const reason = !resolved ? "no ticker by that name" : futuresCode ? "a futures code, not a ticker" : null;
+    const emptyMessage = (searched: boolean) => listing && identity
+      ? newsEmptyMessage(searched && word ? word : listing.symbol, listingTitle(identity), quote, resolved, searched)
       : undefined;
+    if (word && reason) {
+      // The lookup that found no ticker already answered; a search that fails leaves that answer.
+      const found = await searchNewsStories(word, limit).catch(() => []);
+      await printNewsSearch(word, found, { reason, empty: emptyMessage(true) }, ctx);
+      return;
+    }
+    const empty = emptyMessage(false);
     ctx.printResult({
       data: articles,
       metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null },
@@ -860,18 +913,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     }, {
       ...(identity ? { heading: listingHeading(identity) } : {}),
       rows: newsRows,
-      columns: [
-        // UTC with the zone named, as every CLI time prints, rather than the host zone unlabeled.
-        {
-          key: "publishedAt",
-          header: "Published",
-          format: (value) => typeof value === "string" ? formatUtcTime(value) : "",
-        },
-        { key: "source", header: "Source", maxWidth: 20 },
-        { key: "title", header: "Title" },
-        { key: "tickers", header: "Tickers", maxWidth: 16 },
-        { key: "url", header: "URL", optional: true },
-      ],
+      columns: NEWS_COLUMNS,
       ...(empty ? { empty } : {}),
     });
   });
@@ -1614,15 +1656,21 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
   },
   {
     name: "news",
-    description: "Fetch market headlines, or news for one symbol",
+    description: "Fetch market headlines, news for one symbol, or stories matching text",
     help: {
       group: CLI_COMMAND_GROUPS.companyData,
-      usage: ["news [symbol] [--feed <feed>]"],
+      usage: ["news [symbol] [--feed <feed>]", "news <query>"],
       options: [
         { flags: "--feed <feed>", description: "latest, top, or breaking for market news (default latest)" },
         EXCHANGE_OPTION,
       ],
-      examples: ["news", "news TSLA", "news SAN:EPA", "news --feed top --limit 10"],
+      sections: [{
+        title: "Text",
+        lines: [
+          "Several words, in quotes or not, search the stories that mention them. So does a single word of three letters or more that no listing answers to, and a futures board code such as TTF, a gas benchmark rather than a ticker. A real ticker always gives its own news. The best matches print newest first, 20 unless --limit says otherwise; a search takes neither --feed nor --exchange.",
+        ],
+      }],
+      examples: ["news", "news TSLA", "news SAN:EPA", "news TTF", "news \"european gas\"", "news --feed top --limit 10"],
     },
     execute: runNews,
   },

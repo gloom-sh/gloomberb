@@ -516,7 +516,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 | `gloomberb search <query>` / `provider-search <query>` | Search tickers and provider symbols |
 | `gloomberb ticker <symbol>` | Show quote, ownership, and financials |
 | `gloomberb history\|financials\|fundamentals\|options <symbol>` | Fetch research data |
-| `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`13f` is the holders list without insiders; `fn 13F` has 13F filings; `holders --form 13d\|13g\|all` lists 13D/13G beneficial owners; `filings --form <form>` keeps one form) |
+| `gloomberb news\|filings\|holders\|insider\|13f\|analyst\|events\|valuation <symbol>` | Fetch company research feeds (`news` also takes text: `news "european gas"`, a single word no listing answers to, or a futures board code such as `news TTF`, lists the stories that mention it, the best matches newest first, while a real ticker such as `news AAPL` lists its own news; `13f` is the holders list without insiders; `fn 13F` has 13F filings; `holders --form 13d\|13g\|all` lists 13D/13G beneficial owners; `filings --form <form>` keeps one form) |
 | `gloomberb movers\|indices\|sectors\|fx\|fear-greed\|earnings` | Fetch market-wide data |
 | `gloomberb econ\|fred\|yield-curve` | Fetch macro data |
 | `gloomberb compare\|correlation <symbols>` | Compare securities (`relationship` is an alias of `correlation`) |

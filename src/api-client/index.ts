@@ -845,6 +845,7 @@ class GloomApiClient {
   updateCloudSavedSearch = this.data.updateCloudSavedSearch.bind(this.data);
   deleteCloudSavedSearch = this.data.deleteCloudSavedSearch.bind(this.data);
   getCloudNews = this.data.getCloudNews.bind(this.data);
+  searchCloudNews = this.data.searchCloudNews.bind(this.data);
   getCloudNewsStory = this.data.getCloudNewsStory.bind(this.data);
   getCloudTickerTweets = this.data.getCloudTickerTweets.bind(this.data);
   searchCloudTweets = this.data.searchCloudTweets.bind(this.data);
