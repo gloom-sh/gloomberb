@@ -12,6 +12,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { humanLabel, listingCell, missingCell, shareCell, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
@@ -59,6 +60,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const host = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
@@ -128,7 +130,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
     ...(selected && !evidence && selected.details ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpenEvidence(selected.id) }] : []),
     ...(selected?.app && selectedSymbol && !symbol ? [{ id: "company", key: "c", label: "ompany", onPress: () => setOpenCompany(selectedSymbol) }] : []),
     ...(selectedSymbol ? [
-      { id: "description", key: "d", label: "es", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol: selectedSymbol }) },
+      { id: "description", key: "d", label: "es", onPress: () => openDescription(selectedSymbol) },
       { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: selectedSymbol }) },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: selectedSymbol }) },
       { id: "related", key: "a", label: kind === "hiring" ? "pps" : " hiring", title: kind === "hiring" ? "App attention" : "Hiring momentum", onPress: () => createPaneFromTemplate(kind === "hiring" ? "apps-pane" : "hiring-pane", { symbol: selectedSymbol }) },

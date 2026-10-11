@@ -19,6 +19,7 @@ import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities } from ".
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedSupplyChain, loadSupplyChain, SUPPLY_UNAVAILABLE, validateSupplyChain } from "./client";
@@ -143,6 +144,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
   const host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
@@ -200,7 +202,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     ...(current ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(current.filingUrl) }] : []),
     ...(!openRow && selected ? [{ id: "evidence", key: "e", label: "vidence", onPress: evidence }] : []),
     ...(selected?.counterparty.ticker ? [
-      { id: "description", key: "d", label: "es", onPress: () => navigate(selected, "new-ticker-detail-pane") },
+      { id: "description", key: "d", label: "es", onPress: () => openDescription(selected.counterparty.ticker!, selected.counterparty.exchange ?? undefined) },
       { id: "financials", key: "f", label: "a", onPress: () => navigate(selected, "financial-analysis-pane") },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: publicTickerKey(selected.counterparty.ticker!, selected.counterparty.exchange ?? undefined) }) },
       ...(getSharedRegistry()?.paneTemplates.has("buildout-pane") ? [{ id: "buildout", key: "t", label: "bo", onPress: () => createPaneFromTemplate("buildout-pane") }] : []),

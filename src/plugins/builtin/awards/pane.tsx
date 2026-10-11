@@ -16,6 +16,7 @@ import { publicTickerKey } from "../../../utils/exchanges";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { AwardDetail } from "./detail";
@@ -72,6 +73,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
   const openUpgrade = useCloudUpgradeAction("awards");
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const [initialTab] = usePaneSettingValue("tab", symbol ? "company" : "feed");
   const [savedTab, setTab] = usePluginPaneState<string>("awards:tab", initialTab);
   const tab = awardTab(savedTab);
@@ -157,7 +159,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     ...(current ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(current.sourceUrl) }] : []),
     ...(current && !openId ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpen(current.id) }] : []),
     ...(selectedEntity ? [
-      { id: "description", key: "d", label: "es", onPress: () => navigate("new-ticker-detail-pane") },
+      { id: "description", key: "d", label: "es", onPress: () => openDescription(selectedEntity.ticker, selectedEntity.exchange ?? undefined) },
       { id: "financials", key: "f", label: "a", onPress: () => navigate("financial-analysis-pane") },
       { id: "graph", key: "g", label: "raph", onPress: () => navigate("chart-composer-pane") },
       { id: "supply", key: "s", label: "plc", onPress: () => navigate("supply-chain-pane") },

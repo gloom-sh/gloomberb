@@ -128,8 +128,12 @@ export function useAppTickerOpenRuntime({
     let existing = options?.forceNewPane
       ? null
       : findFixedTickerPaneForSymbol(currentLayout, paneType, symbol, instrument);
-    if (!options?.forceNewPane && !existing && instrument === null && !target.ticker.metadata.broker_contracts?.length) {
-      existing = findFixedTickerPaneForSymbol(currentLayout, paneType, symbol);
+    // Without a broker route, the public listing and an unnamed route are the same security: a link that names
+    // neither still finds the DES the command bar opened on the public listing, and leaves its binding as it is.
+    let keepBinding = false;
+    if (!options?.forceNewPane && !existing && !instrument && !target.ticker.metadata.broker_contracts?.length) {
+      existing = findFixedTickerPaneForSymbol(currentLayout, paneType, symbol, instrument === null ? undefined : null);
+      keepBinding = !!existing && instrument === undefined;
     }
     if (!options?.forceNewPane && !existing && !instrument && (parsePublicTickerKey(symbol).exchange || tickerHasListingSuffix(symbol))) {
       existing = currentLayout.instances.find((instance) => {
@@ -145,7 +149,7 @@ export function useAppTickerOpenRuntime({
       // verified same listing, retaining its pane identity and its followers.
       const previousSymbol = existing.binding?.kind === "fixed" ? existing.binding.symbol : null;
       let nextLayout = currentLayout;
-      if (previousSymbol && (previousSymbol !== symbol || JSON.stringify(existing.binding) !== JSON.stringify(binding))) {
+      if (previousSymbol && (previousSymbol !== symbol || (!keepBinding && JSON.stringify(existing.binding) !== JSON.stringify(binding)))) {
         const existingId = existing.instanceId;
         nextLayout = { ...currentLayout, instances: currentLayout.instances.map((instance) => (
           instance.instanceId === existingId ? {

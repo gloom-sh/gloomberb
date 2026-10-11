@@ -13,6 +13,7 @@ import { getSharedRegistry } from "../../registry/shared";
 import { usePaneInstance } from "../../../state/app/context";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { fetchPowerTickerScopes, loadPowerBoard, loadPowerHistory, validatePowerBoard, validatePowerHistory } from "./client";
@@ -45,6 +46,7 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const upgrade = useCloudUpgradeAction("power");
   const [openingTab] = usePaneSettingValue("tab", "queue");
   const [savedTab, setTab] = usePluginPaneState("power:tab", openingTab);
@@ -133,7 +135,7 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const hints: PaneHint[] = [
     ...(sourceUrl ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(sourceUrl) }] : []),
     ...(tickerKey ? [
-      { id: "description", key: "d", label: "es", onPress: () => navigate("new-ticker-detail-pane") },
+      { id: "description", key: "d", label: "es", onPress: () => openDescription(tickerKey) },
       { id: "financials", key: "f", label: "a", onPress: () => navigate("financial-analysis-pane") },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: tickerKey }) },
       { id: "supply", key: "s", label: "plc", onPress: () => navigate("supply-chain-pane") },

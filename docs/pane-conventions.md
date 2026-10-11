@@ -167,6 +167,9 @@ back button or clicking Back pops it. Rules:
 - A detail the user reads and comes back from is the stack, not a dialog or
   a floating pane. A new pane (`pinTicker`, `createPaneFromTemplate`) is for
   something kept beside the list.
+- A row's DES (`d`, a menu entry, a linked ticker) opens through
+  `useOpenDescription` (`shared/open-description.ts`), which brings forward
+  the DES already open for that listing instead of opening a second one.
 
 **Long lists.** A paged or cursored source appends on scroll and never shows
 page numbers or a Load more button. An offset-paged source loads through

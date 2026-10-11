@@ -12,6 +12,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { useAttentionEvidence } from "./evidence";
@@ -87,6 +88,7 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const host = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "pro" : "preview"}`;
@@ -126,7 +128,7 @@ export function AttentionPane({ width, height, focused }: PaneProps) {
   usePaneRefreshKey(() => { void resource.reload(); if (detailMode) void detail.reload(); }, { focused });
   const hints: PaneHint[] = [
     ...(selected && !groupMode ? [
-      { id: "description", key: "d", label: "es", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol: selected.symbol }) },
+      { id: "description", key: "d", label: "es", onPress: () => openDescription(selected.symbol) },
       { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: selected.symbol }) },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: selected.symbol }) },
       { id: "news", key: "n", label: "ews", onPress: () => createPaneFromTemplate("ticker-news-pane", { symbol: selected.symbol }) },

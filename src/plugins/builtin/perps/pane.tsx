@@ -9,17 +9,17 @@ import { deriveHeadlessFreshness, paneStatusLineVariants } from "../../../cli/pa
 import { openFormModal } from "../../../components/form-modal";
 import { tf } from "../../../i18n";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePaneTitle, usePluginAppActions, usePluginPaneState, usePluginTickerActions } from "../../../public/react";
+import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePaneTitle, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useAgeClock } from "../../../react/auto-refresh";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { useThemeColors } from "../../../theme/theme-context";
-import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, useRendererHost, useUiCapabilities } from "../../../ui";
 import { getSharedRegistry } from "../../registry/shared";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useCommandValue } from "../shared/command-tab";
+import { useOpenDescription } from "../shared/open-description";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedPerpSelection, cachedPerpsBoard, cachedPerpsCompare, cachedPerpsRankings, loadPerpSelection, loadPerpsBoard, loadPerpsCompare,
@@ -56,12 +56,12 @@ type EvidenceField = [label: string, value: string, detail?: string, link?: KeyV
 function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data: PerpMarketPayload; width: number; height: number }) {
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const upgrade = useCloudUpgradeAction("perp");
-  const { pinTicker } = usePluginTickerActions();
+  const openDescription = useOpenDescription();
   const positioning = positioningFields(row);
   // The security the premium is measured against opens its DES, as the `d` key does.
   const security = underlyingTicker(row);
   const listed: EvidenceField[] = security && row.underlying ? [["Ticker", row.underlying.symbol, row.underlying.listingExchange,
-    { label: tf("Open {ticker}", { ticker: row.underlying.symbol }), onOpen: () => pinTicker(security, { floating: true, paneType: TICKER_RESEARCH_PANE_ID }) }]] : [];
+    { label: tf("Open {ticker}", { ticker: row.underlying.symbol }), onOpen: () => openDescription(security) }]] : [];
   // Grouped as a trader reads a contract; a stock reference only for a market that has one.
   const groups: Array<[string, EvidenceField[]]> = [
     ["Market", [["Venue", venueLabel(row)], ["Contract symbol", row.symbol], ["Observed", time(row.observedAt)], ["Source as of", time(row.sourceAsOf)],
@@ -356,7 +356,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "pro" : "preview"}`;
   const { createPaneFromTemplate, notify } = usePluginAppActions();
-  const { pinTicker } = usePluginTickerActions();
+  const openDescription = useOpenDescription();
   const upgrade = useCloudUpgradeAction("perp");
   const [openingMarket] = usePaneSettingValue("market", "");
   const [openingTabValue] = usePaneSettingValue("tab", openingTab(openingMarket));
@@ -408,7 +408,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
     } }] : []),
     ...(current && tab !== "evidence" ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => marketTab ? setTab("evidence") : openMarket(current, "evidence") }] : []),
     ...(current ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(current.sourceUrl) }] : []),
-    ...(underlying ? [{ id: "description", key: "d", label: "es", title: "Description (DES)", onPress: () => pinTicker(underlying, { floating: true, paneType: TICKER_RESEARCH_PANE_ID }) },
+    ...(underlying ? [{ id: "description", key: "d", label: "es", title: "Description (DES)", onPress: () => openDescription(underlying) },
       // A fund has no statements to analyse.
       ...(current?.assetClass === "stocks" ? [{ id: "financials", key: "f", label: "a", title: "Financial analysis (FA)", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: underlying }) }] : []),
       { id: "graph", key: "g", label: "raph", title: "Price chart (G)", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: underlying }) }] : []),

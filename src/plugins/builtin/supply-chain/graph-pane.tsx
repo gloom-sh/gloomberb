@@ -11,6 +11,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedGraph, graphOptions, loadGraph, validateGraph } from "./graph-client";
@@ -138,7 +139,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
   const selectedPath = paths.find(path => path.id === selectedPathId) ?? paths.find(path => path.nodeIds.at(-1) === selectedId) ?? (target ? initialPath : null) ?? null;
   const selected = (tab === "path" ? null : data?.nodes.find(node => node.id === selectedId)) ?? (selectedPath ? data?.nodes.find(node => node.id === selectedPath.nodeIds.at(-1)) : null) ?? null;
   const openPath = paths.find(path => path.id === openId) ?? (instance?.settings?.evidence && openId !== "closed" ? initialPath : null) ?? null;
-  const openUpgrade = useCloudUpgradeAction("splc"), { createPaneFromTemplate } = usePluginAppActions();
+  const openUpgrade = useCloudUpgradeAction("splc"), { createPaneFromTemplate } = usePluginAppActions(), openDescription = useOpenDescription();
   const recenter = (entity: SupplyEntity) => { setFocus(entityKey(entity)); setTarget(""); setTargetDraft(""); setSelected(null); setSelectedPath(null); setOpen(null); setCollapsed([]); };
   const applyTarget = (value: string) => { setTarget(value.trim()); setTargetDraft(value.trim()); setSelected(null); setSelectedPath(null); setOpen(null); setTargetActive(false); };
   const selectNode = (id: string) => { setSelected(id); setSelectedPath(null); };
@@ -149,7 +150,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     ...(tab === "graph" && !openPath && selected && selected.id !== data?.entity?.id ? [{ id: "target", key: "p", label: "aths to target", onPress: () => applyTarget(entityKey(selected)) },
       { id: "collapse", key: "c", label: collapsed.includes(selected.id) ? "expand" : "ollapse", onPress: () => setCollapsed(old => old.includes(selected.id) ? old.filter(id => id !== selected.id) : [...old, selected.id]) }] : []),
     ...(!openPath && selected?.ticker ? [
-      { id: "description", key: "d", label: "es", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol: entityKey(selected) }) },
+      { id: "description", key: "d", label: "es", onPress: () => openDescription(entityKey(selected)) },
       { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: entityKey(selected) }) },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: entityKey(selected) }) },
     ] : []),

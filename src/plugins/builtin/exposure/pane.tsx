@@ -10,6 +10,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { humanLabel, listingCell, missingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -79,6 +80,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
   const upgrade = useCloudUpgradeAction("expo");
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const [openingScenario] = usePaneSettingValue("scenario", "taiwan-disruption");
   const [customSetting] = usePaneSettingValue("customScenario", "");
   const [openingDepth] = usePaneSettingValue("depth", 2);
@@ -150,7 +152,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     ...(symbol ? [
       ...(activeRow?.driver ? [{ id: "dataset", key: "a", label: "ll disclosures", title: "Open company disclosures", onPress: () => createPaneFromTemplate(activeRow.driver!.kind === "kpi" ? "company-kpis-pane" : activeRow.driver!.kind === "guidance" ? "company-guidance-pane" : "credit-documents-pane", { symbol }) }] : []),
       { id: "supply", key: "c", label: "hain", title: "Supply chain", onPress: () => createPaneFromTemplate("supply-chain-pane", { symbol }) },
-      { id: "des", key: "d", label: "es", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol }) },
+      { id: "des", key: "d", label: "es", onPress: () => openDescription(symbol) },
       { id: "fa", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol }) },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: symbol }) },
     ] : []),

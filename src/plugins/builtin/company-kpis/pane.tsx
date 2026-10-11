@@ -13,6 +13,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
@@ -77,6 +78,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
@@ -165,10 +167,10 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
     ...(preview ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }] : []),
   ];
   usePaneMenuItems("company-disclosures:research", () => symbol ? [
-    { id: "description", label: "Description (DES)", onSelect: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol }) },
+    { id: "description", label: "Description (DES)", onSelect: () => openDescription(symbol) },
     { id: "financials", label: "Financial Analysis (FA)", onSelect: () => createPaneFromTemplate("financial-analysis-pane", { symbol }) },
     { id: "price-chart", label: "Price Chart (G)", onSelect: () => createPaneFromTemplate("chart-composer-pane", { arg: symbol }) },
-  ] : null, [symbol, createPaneFromTemplate]);
+  ] : null, [symbol, createPaneFromTemplate, openDescription]);
   usePaneStatusFooter({ registrationId: "company-kpis", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale,
     info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf.slice(0, 10)}`, tone: "muted" as const }] }] : [], hints });
   usePaneNoticeFooter({ registrationId: "company-kpis:notices", focused, notices: [resource.data?.refreshError,

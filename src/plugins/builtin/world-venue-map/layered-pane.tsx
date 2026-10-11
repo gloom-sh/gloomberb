@@ -41,6 +41,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { formatGeoSeriesExpression } from "../chart-composer/series-expression";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { ENTITY_PAGE_SIZE, loadEntityDetail, loadEntityPage, loadWorldVenues } from "./client";
 import { EntityDetail } from "./entity-detail";
 import { useWorldMapEvidence } from "./evidence";
@@ -170,6 +171,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const dark = relativeLuminance(colors.text) > relativeLuminance(colors.bg);
   const { nativePaneChrome } = useUiCapabilities();
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const visible = usePaneVisible();
   const { hasProAccess } = usePlanAccess();
   const upgrade = useCloudUpgradeAction("map-layers");
@@ -279,9 +281,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     });
   }, [setSelections, tableLayer.id]);
 
-  const openTicker = useCallback((link: GeoTickerLink) => {
-    createPaneFromTemplate("new-ticker-detail-pane", { symbol: tickerLinkKey(link) });
-  }, [createPaneFromTemplate]);
+  const openTicker = useCallback((link: GeoTickerLink) => openDescription(tickerLinkKey(link)), [openDescription]);
   const openSeries = useCallback((series: GeoSeriesInfo) => {
     createPaneFromTemplate("chart-composer-pane", { arg: formatGeoSeriesExpression(series.id) });
   }, [createPaneFromTemplate]);
