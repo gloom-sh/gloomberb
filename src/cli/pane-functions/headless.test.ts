@@ -357,13 +357,13 @@ test("headless text preserves applicable coverage notices once before the export
 });
 
 
-test("a report's caveats print as Notes, one per line, apart from the failures under Errors, and JSON carries both", async () => {
+test("a report's caveats print as Notes, what Pro unlocks under Pro, the failures under Errors, and JSON carries all three", async () => {
   const definition: HeadlessPaneDefinition<"rows"> = {
     shape: "rows", argument: { kind: "none" }, options: [], columns: [{ key: "value", header: "Value" }],
     load: () => ({
       rows: [{ value: 1 }], complete: false,
       notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],
-      errors: ["Treasury yield: Internal server error"],
+      errors: ["Treasury yield: Internal server error", "Full history requires Gloom Pro"],
     }),
   };
   const report = await buildHeadlessFunctionReport({
@@ -374,8 +374,10 @@ test("a report's caveats print as Notes, one per line, apart from the failures u
   expect(lines).toContain("  ETH-USD is excluded from the risk estimate.");
   expect(lines).toContain("  1 holding had no current quote; weighted at the latest completed close.");
   expect(lines).toContain("Errors: Treasury yield: Internal server error");
+  expect(lines).toContain("Pro: Full history requires Gloom Pro");
+  expect(report.tables.footer).toEqual(expect.arrayContaining(["pro: Full history requires Gloom Pro", "error: Treasury yield: Internal server error"]));
   expect(report.data).toMatchObject({
-    complete: false, errors: ["Treasury yield: Internal server error"],
+    complete: false, errors: ["Treasury yield: Internal server error", "Full history requires Gloom Pro"],
     notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],
   });
   // Notes alone leave a complete report complete.

@@ -9,6 +9,11 @@ export type PaneAccessGate = "pro" | "sign-in";
 const SIGN_IN_ERROR = /\bsign(?:ed)?[ -]?in\b|\bsignup\b|\bemail verification\b|\bverify your email\b/i;
 const PRO_ERROR = /\bGloom (?:Cloud )?Pro\b|\b(?:requires?|needs?) Pro\b|\bPro access\b/;
 
+/** A message that says what Gloom Pro would unlock, not what failed: reports print it under "Pro", apart from the errors. */
+export function isProLock(message: string): boolean {
+  return PRO_ERROR.test(message) && !SIGN_IN_ERROR.test(message);
+}
+
 function errorMessages(errors: unknown): string[] {
   return Array.isArray(errors) ? errors.filter((error): error is string => typeof error === "string") : [];
 }

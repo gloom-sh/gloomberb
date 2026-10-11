@@ -549,7 +549,7 @@ In short DVD panes, the summary scrolls separately so cash history stays visible
 
 ### Glossary
 
-`gloomberb catalog glossary` lists the rates and auction terms the AUCT, GC, BTMM and WIRP functions show, under the function that shows each; `gloomberb catalog glossary stop-out` or `gloomberb catalog explain B/C` prints what one means in a sentence or two, found by its name, its abbreviation or another name for it. A plain `gloomberb catalog <query>` names the terms it matches under the functions. `gloomberb fn AUCT --explain` follows the report with the meaning of each term it shows; `--json` lists them as `data.glossary` (`term`, `short`, `definition`), and `--csv` and `--ndjson` keep the rows only.
+`gloomberb catalog glossary` lists the rates, auction and perpetual-futures terms the AUCT, GC, BTMM, WIRP and PERP functions show, under the function that shows each; `gloomberb catalog glossary stop-out` or `gloomberb catalog explain B/C` prints what one means in a sentence or two, found by its name, its abbreviation or another name for it. A plain `gloomberb catalog <query>` names the terms it matches under the functions. `gloomberb fn AUCT --explain` follows the report with the meaning of each term it shows; `--json` lists them as `data.glossary` (`term`, `short`, `definition`), and `--csv` and `--ndjson` keep the rows only.
 
 `gloomberb config set telemetry.crashReports false` turns off automatic crash reports, and `gloomberb config set telemetry.usage false` turns off anonymous usage counts and the command bar search log; see [Crash reports and usage counts](telemetry.md) for what each contains.
 
@@ -584,7 +584,7 @@ The status is one of four:
 | Stale (`stale`) | The newest observation is older than its kind allows: a quote from an earlier session, a daily series more than a session behind, a release that missed its schedule. The line says how old, or how many rows are stale when only some are |
 | Not a live feed (`not-a-feed`) | Data that is not a feed: filings, fundamentals, calendars, published statistics, calculators, your own portfolio. Old data of this kind is not stale unless it missed a scheduled release |
 
-A report that loaded can still carry caveats: what it leaves out, what it assumes, how a value was marked. The text report prints them under `Notes:`, one per line, and keeps `Errors:` for what failed, such as a source that did not answer. `--json` carries both as `data.notes` and `data.errors`; a note never marks a report incomplete.
+A report that loaded can still carry caveats: what it leaves out, what it assumes, how a value was marked. The text report prints them under `Notes:`, one per line, and keeps `Errors:` for what failed, such as a source that did not answer. What Gloom Pro would unlock is not a failure: the text report prints it under `Pro:`, and a table the free view leaves empty says `Locked: Gloom Pro` in place of `No data.`. `--json` carries notes and errors as `data.notes` and `data.errors`, with the Pro lines among the errors; a note never marks a report incomplete.
 
 A rendered-view report (a pane without a structured report) names the pane's source; its status is the one the pane declares for its data or its own footer states, and otherwise reads "status not reported". `FXC` is dated by the rates its matrix draws: the newest pair's time, how far the feed is held back, how many rates are stale, and where the FX market stands.
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { incompleteReportGateMessage } from "./access-gate";
+import { incompleteReportGateMessage, isProLock } from "./access-gate";
 import type { DesktopPaneShotPayload } from "../desktop-pane-shot";
 import type { ResolvedPaneFunction } from "./resolver";
 import { shotUnusableReasonFor } from "./screenshot";
@@ -19,6 +19,13 @@ describe("a failed bot-safe report names the lock", () => {
   test("a sign-in wall wins over a Pro lock", () => {
     expect(incompleteReportGateMessage("SPLC", ["Full history requires Gloom Pro", "Sign in required"]))
       .toBe("SPLC is not bot-safe: it needs a Gloom Cloud sign-in. Full history requires Gloom Pro. Sign in required.");
+  });
+
+  test("only a Pro lock reads as one: a sign-in wall and a failure stay errors", () => {
+    expect(isProLock("2,501 more markets need Gloom Pro")).toBe(true);
+    expect(isProLock("Sign in for Gloom Pro")).toBe(false);
+    expect(isProLock("Pro forma figures are unavailable")).toBe(false);
+    expect(isProLock("Treasury yield: Internal server error")).toBe(false);
   });
 
   test("errors that are not a gate keep the generic message", () => {

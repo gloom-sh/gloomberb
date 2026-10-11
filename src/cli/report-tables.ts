@@ -381,12 +381,15 @@ export function reportFooterLines(input: {
   freshness?: ReportFreshness;
   /** `true`, or what is missing, such as "19 of 20 available". */
   incomplete?: boolean | string;
+  /** What Gloom Pro would unlock, which is not a failure. */
+  locked?: readonly string[];
   errors?: readonly string[];
   notes?: readonly string[];
 }): string[] {
   return [
     ...(input.freshness ? [formatFreshnessLine(input.freshness)] : []),
     ...(input.incomplete ? [typeof input.incomplete === "string" ? `incomplete: ${input.incomplete}` : "incomplete"] : []),
+    ...(input.locked ?? []).map((lock) => `pro: ${lock}`),
     ...(input.errors ?? []).map((error) => `error: ${error}`),
     ...(input.notes ?? []).map((note) => `note: ${note}`),
   ];

@@ -435,7 +435,7 @@ The four supported shapes cover the pane catalog:
 - `series`: `{ series: [{ id, label, points }], stats? }` for charts and derived statistics
 - `snapshot`: `{ asOf, items }` for a point-in-time view of a stream
 
-All shapes may include `errors`, `metadata`, and `unavailableSymbols`. Set `unavailableSymbols` for partially missing inputs even when another symbol returns data; otherwise a partial report can incorrectly appear complete. Set `symbols` when the loader expands an expression or adds an implicit peer. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
+All shapes may include `errors`, `metadata`, and `unavailableSymbols`. An error that names what Gloom Pro unlocks (`Full history requires Gloom Pro`) is a lock, not a failure: the text report prints it under `Pro:` and keeps `Errors:` for the rest, and a bundle section that is empty because of it sets `empty: "Locked: Gloom Pro"` in place of the default `No data.`. Set `unavailableSymbols` for partially missing inputs even when another symbol returns data; otherwise a partial report can incorrectly appear complete. Set `symbols` when the loader expands an expression or adds an implicit peer. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
 
 ### Report and screenshot models
 

@@ -68,6 +68,38 @@ test("symbol resolution prefers default crypto and xyz stocks, including individ
   expect(calls[0]).toBe(perpRow().marketId);
 });
 
+test("a Market column label resolves to the market it names and no free text reaches a market id", async () => {
+  const sp500 = perpRow({ marketId: "hyperliquid:xyz:SP500", dex: "xyz", baseAsset: "SP500", symbol: "xyz:SP500" });
+  const searches: unknown[] = [];
+  const ids: string[] = [];
+  const client = {
+    getCloudPerpsBoard: async (query: unknown) => { searches.push(query); return perpBoard({ rows: (query as { search: string }).search === "xyz:SP500" ? [sp500] : [] }); },
+    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ rows: id === sp500.marketId ? [sp500] : [] }); },
+  };
+  // The label the board prints and the identity typed by hand are one market.
+  for (const input of ["SP500 · XYZ", "SP500·XYZ", "xyz:SP500"]) expect((await fetchPerpSelection(input, client)).rows[0]!.marketId).toBe(sp500.marketId);
+  expect(searches).toEqual([{ search: "xyz:SP500" }, { search: "xyz:SP500" }, { search: "xyz:SP500" }]);
+  // Outside the board's preview, the builder dex names its own market; a label nothing carries, or free text, is no market and never a request.
+  ids.length = 0;
+  const preview = { ...client, getCloudPerpsBoard: async () => perpBoard({ access: "preview", rows: [], locked: 300 }) };
+  expect((await fetchPerpSelection("SP500 · XYZ", preview)).rows[0]!.marketId).toBe(sp500.marketId);
+  expect((await fetchPerpSelection("FOO · XYZ", preview)).rows).toEqual([]);
+  expect((await fetchPerpSelection("what is a perp", preview)).rows).toEqual([]);
+  expect(ids).toEqual(["hyperliquid:xyz:SP500", "hyperliquid:xyz:FOO"]);
+});
+
+test("a venue picks that venue's contract when the board lists it and otherwise keeps the usual one", async () => {
+  const rows = [venueRow("binance"), venueRow("bybit", { marketId: "bybit:BTCUSDT" })];
+  const ids: string[] = [];
+  const client = {
+    getCloudPerpsBoard: async () => perpBoard({ rows }),
+    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ rows: rows.filter((row) => row.marketId === id) }); },
+  };
+  expect((await fetchPerpSelection("BTC", client, "bybit")).rows[0]!.venue).toBe("bybit");
+  expect((await fetchPerpSelection("BTC", client, "hyperliquid")).rows[0]!.venue).toBe("binance");
+  expect((await fetchPerpSelection("BTC", client)).rows[0]!.venue).toBe("binance");
+});
+
 test("paid caches are isolated per account/plan and failures preserve data except access refusal", async () => {
   perpsMarketCache.reset();
   const data = market();

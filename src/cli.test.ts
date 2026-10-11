@@ -352,4 +352,10 @@ describe("CLI search helpers", () => {
     expect(report).toContain("Search: zzzz");
     expect(report).toContain("No matches found.");
   });
+
+  test("an empty search points at the catalog, which holds functions and terms rather than tickers", () => {
+    const report = buildSearchReport({ query: "bitcoin perpetual", candidates: [] });
+
+    expect(report).toContain('Try: gloomberb catalog "bitcoin perpetual"');
+  });
 });
