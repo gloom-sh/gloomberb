@@ -22,6 +22,29 @@ test("currency conversion never presents a missing or invalid FX leg as parity",
   }
 });
 
+describe("formatCurrency", () => {
+  test("shows the thousandth currencies to the mill, from below one unit up", () => {
+    expect(formatCurrency(1.366, "OMR")).toBe("OMR\u00a01.366");
+    expect(formatCurrency(0.462, "OMR")).toBe("OMR\u00a00.462");
+    expect(formatCurrency(1, "BHD")).toBe("BHD\u00a01.000");
+    expect(formatCurrency(0.315, "KWD")).toBe("KWD\u00a00.315");
+    expect(formatCurrency(12.5, "JOD")).toBe("JOD\u00a012.500");
+    expect(formatCurrency(-9.876, "TND")).toBe("-TND\u00a09.876");
+    expect(formatCurrency(1234567.891, "OMR")).toBe("OMR\u00a01,234,567.891");
+    expect(formatCurrency(1.366, "omr")).toBe("OMR\u00a01.366");
+    // An explicit count still wins, so a caller that wants whole units gets them.
+    expect(formatCurrency(1234.567, "OMR", 0)).toBe("OMR\u00a01,235");
+  });
+
+  test("leaves every other currency as it was", () => {
+    expect(formatCurrency(1.366, "USD")).toBe("$1.37");
+    expect(formatCurrency(1234.5, "EUR")).toBe("€1,234.50");
+    expect(formatCurrency(3025, "JPY")).toBe("¥3,025.00");
+    expect(formatCurrency(1.366, "USD", 6)).toBe("$1.366");
+    expect(formatCurrency(1.366, "IQD")).toBe("IQD\u00a01.37");
+  });
+});
+
 describe("normalizeTimestamp", () => {
   test("parses Twitter API timestamps", () => {
     expect(normalizeTimestamp("Wed Apr 29 03:20:20 +0000 2026")).toBe("2026-04-29T03:20:20.000Z");

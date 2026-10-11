@@ -1,7 +1,16 @@
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 const numberFormatters = new Map<number, Intl.NumberFormat>();
 
-function getCurrencyFormatter(currency: string, maximumFractionDigits = 2): Intl.NumberFormat {
+/** Currencies whose minor unit is a thousandth (ISO 4217 exponent 3): an Omani share is OMR 1.366, not OMR 1.37.
+ * IQD is left out on purpose: it has the exponent in ISO 4217 but trades in whole units. */
+const THREE_DECIMAL_CURRENCIES = new Set(["BHD", "JOD", "KWD", "LYD", "OMR", "TND"]);
+
+/** Decimals a price or amount in this currency is shown to: 3 for the thousandth currencies, 2 for everything else. */
+export function currencyPriceDigits(currency: string | undefined): 2 | 3 {
+  return currency != null && THREE_DECIMAL_CURRENCIES.has(currency.trim().toUpperCase()) ? 3 : 2;
+}
+
+function getCurrencyFormatter(currency: string, maximumFractionDigits: number = currencyPriceDigits(currency)): Intl.NumberFormat {
   const key = `${currency}:${maximumFractionDigits}`;
   let formatter = currencyFormatters.get(key);
   if (!formatter) {
@@ -9,7 +18,7 @@ function getCurrencyFormatter(currency: string, maximumFractionDigits = 2): Intl
       style: "currency",
       currency,
       // Whole units (0) drop the cents rather than throw.
-      minimumFractionDigits: Math.min(2, maximumFractionDigits),
+      minimumFractionDigits: Math.min(currencyPriceDigits(currency), maximumFractionDigits),
       maximumFractionDigits,
     });
     currencyFormatters.set(key, formatter);
@@ -30,7 +39,11 @@ function getNumberFormatter(decimals: number): Intl.NumberFormat {
 }
 
 /** Format a number as currency (e.g., $1,234.56) */
-export function formatCurrency(value: number | undefined, currency = "USD", maximumFractionDigits = 2): string {
+export function formatCurrency(
+  value: number | undefined,
+  currency = "USD",
+  maximumFractionDigits: number = currencyPriceDigits(currency),
+): string {
   if (value == null || !Number.isFinite(value)) return "—";
   return getCurrencyFormatter(currency, maximumFractionDigits).format(value);
 }

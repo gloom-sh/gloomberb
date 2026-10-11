@@ -28,7 +28,7 @@ import {
   formatAllocationWeight,
   formatTradeUnits,
 } from "./allocation";
-import { currencyMinorDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 
@@ -55,7 +55,7 @@ const tradeUnits = (value: unknown, row: HeadlessPaneRow) => (
 /** Money per unit at the currency's minor digits: $230.00, not 230. */
 const unitMoney = (currencyKey: string) => (value: unknown, row: HeadlessPaneRow) => (
   typeof value === "number"
-    ? formatMarketPrice(value, { assetCategory: textOf(row.assetCategory), minimumFractionDigits: Math.min(2, currencyMinorDigits(textOf(row[currencyKey]))) })
+    ? formatMarketPrice(value, { assetCategory: textOf(row.assetCategory), minimumFractionDigits: currencyPriceMinDigits(textOf(row[currencyKey])) })
     : formatNumber(undefined)
 );
 

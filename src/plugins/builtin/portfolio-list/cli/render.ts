@@ -9,7 +9,7 @@ import {
   renderTable,
 } from "../../../../utils/cli-output";
 import { formatCompact, formatPercentRaw } from "../../../../utils/format";
-import { currencyMinorDigits, formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../position-metrics";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
@@ -53,7 +53,7 @@ import { findCachedPortfolioAccount } from "../cached-account";
 function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { currency?: string }, assetCategory?: string) {
   const options = quoteFormatOptions(quote, assetCategory);
   return resolvePriceBasis(options.priceBasis, options.assetCategory) === "per-unit"
-    ? { ...options, minimumFractionDigits: Math.min(2, currencyMinorDigits(quote?.currency)) }
+    ? { ...options, minimumFractionDigits: currencyPriceMinDigits(quote?.currency) }
     : options;
 }
 

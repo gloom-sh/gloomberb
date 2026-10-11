@@ -10,7 +10,7 @@ import type {
   Quote,
   TickerFinancials,
 } from "../../types/financials";
-import { currencyMinorDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
 import {
   EXTENDED_SESSION_LABELS,
   getExtendedSessionDisplay,
@@ -297,7 +297,7 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
     // Points have no minor unit, so a yen-listed index still pads to two.
     const options = {
       ...quoteFormatOptions(quote),
-      minimumFractionDigits: indexPoints ? 2 : Math.min(2, currencyMinorDigits(quote?.currency)),
+      minimumFractionDigits: indexPoints ? 2 : currencyPriceMinDigits(quote?.currency),
     };
     const price = (value: number | undefined) => (
       quote && value != null
