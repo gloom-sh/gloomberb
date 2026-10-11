@@ -93,8 +93,16 @@ export interface ListingVenue {
 }
 
 /**
+ * Search rows a symbol's venues are read from. A keystroke's ten stop short of
+ * a symbol several companies use: CAR's ASX line is its eleventh.
+ */
+export const LISTING_SEARCH_LIMIT = 30;
+
+/**
  * The venues a symbol trades on and the company on each, from the same
- * listing picker the command bar opens for `SAN:`.
+ * listing picker the command bar opens for `SAN:`. This is the one venue list
+ * every command names; whether a venue it leaves out trades the symbol is the
+ * listing's own quote's to say (`notTradedMessage`).
  */
 export async function listingVenues(symbol: string, { store, dataProvider }: ListingDeps): Promise<ListingVenue[]> {
   const query = `${symbol}:`;
@@ -102,7 +110,9 @@ export async function listingVenues(symbol: string, { store, dataProvider }: Lis
   const tickers = new Map((await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const));
   let venues: ListingVenue[];
   try {
-    const resolved = await resolveTickerSearch({ query, activeTicker: null, tickers, dataProvider });
+    const resolved = await resolveTickerSearch({
+      query, activeTicker: null, tickers, dataProvider, searchContext: { limit: LISTING_SEARCH_LIMIT },
+    });
     const only = !resolved ? null
       : resolved.kind === "local" ? { exchange: resolved.ticker.metadata.exchange, name: resolved.ticker.metadata.name }
       : {
@@ -144,11 +154,30 @@ async function checkListingExchange(listing: ListingArg, deps: ListingDeps): Pro
 }
 
 /**
+ * Whether the listing's own quote prices it on a venue abroad, as `quote
+ * SYM:EXCH` reads it. Search can leave a venue out (CAR's ASX line); a quote
+ * there settles that it trades. The US exchanges share one symbol, so a quote
+ * named for any of them says only that the symbol has a US line: there,
+ * search's venues stand.
+ */
+async function quotedOnVenue(listing: Pick<ListingArg, "symbol" | "exchange">, { dataProvider }: ListingDeps): Promise<boolean> {
+  if (isUsListingExchange(listing.exchange)) return false;
+  try {
+    const quote = await dataProvider.getQuote(`${listing.symbol}:${listing.exchange}`, listing.exchange);
+    return Number.isFinite(quote.price) && quote.price !== 0
+      && canonicalExchange(quote.listingExchangeName || quote.exchangeName) === listing.exchange;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * "SAN does not trade on TSX. SAN trades on: NYSE, EPA." for a listing whose
  * exchange the symbol is not listed on, from the same picker `SAN:` opens.
- * Null when no exchange was named, when the symbol is listed there, or when its
- * venues cannot be found, so the request's own failure stands. It searches, so
- * ask only after a request came back empty.
+ * A venue the picker leaves out but the listing's quote prices (CAR:ASX) is
+ * traded, as `quote` says. Null when no exchange was named, when the symbol is
+ * listed there, or when its venues cannot be found, so the request's own
+ * failure stands. It searches, so ask only after a request came back empty.
  */
 export async function notTradedMessage(
   listing: Pick<ListingArg, "symbol" | "exchange">,
@@ -157,6 +186,7 @@ export async function notTradedMessage(
   if (!listing.exchange) return null;
   const venues = await listingVenues(listing.symbol, deps).catch(() => []);
   if (venues.length === 0 || venues.some((venue) => venue.exchange === listing.exchange)) return null;
+  if (await quotedOnVenue(listing, deps)) return null;
   return `${listing.symbol} does not trade on ${listing.exchange}.${tradesOn(listing.symbol, venues)}`;
 }
 
@@ -211,8 +241,10 @@ interface BareListingVenues {
 const NAME_NOISE = new Set([
   "co", "company", "corp", "corporation", "inc", "incorporated", "ltd", "limited", "llc", "lp", "plc", "sa", "ag", "nv", "se",
   "spa", "ab", "as", "asa", "oyj", "bv", "gmbh", "kgaa", "bhd", "berhad", "pcl", "the", "adr", "ads", "cedear", "cedears",
-  "sponsored", "unsponsored",
+  "sponsored", "unsponsored", "cdr", "cdi",
 ]);
+// Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
+const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares"]);
 
 /** A company's name for comparing its listings: "Kotobuki Spirits Co., Ltd." is "kotobuki spirits". */
 function companyKey(name: string): string {
@@ -227,7 +259,130 @@ function companyKey(name: string): string {
 
 /** Whether the venues' companies differ by name. A venue with no name is no other company. */
 function listsSeveralCompanies(venues: readonly ListingVenue[]): boolean {
-  return new Set(venues.map((venue) => companyKey(venue.name)).filter(Boolean)).size > 1;
+  return groupByCompany(venues, (venue) => venue.name).length > 1;
+}
+
+function companyWords(name: string | null | undefined): Set<string> {
+  return new Set(companyKey(name ?? "").split(" ").filter((word) => word && !SHARE_NOISE.has(word)));
+}
+
+/**
+ * Whether two names are one company's, however each venue spells it: one
+ * name's words are all in the other's, so "SPDR S&P 500 ETF Trust" is State
+ * Street's, "Coca-Cola Company CDR" Coca-Cola's, and "CAR Group" not Avis
+ * Budget Group. An empty name matches none.
+ */
+export function sameCompany(left: string | null | undefined, right: string | null | undefined): boolean {
+  const a = companyWords(left);
+  const b = companyWords(right);
+  if (a.size === 0 || b.size === 0) return false;
+  const [fewer, more] = a.size <= b.size ? [a, b] : [b, a];
+  return [...fewer].every((word) => more.has(word));
+}
+
+/** Items grouped by the company their names are, in the order each company first appears. Unnamed items are left out. */
+export function groupByCompany<T>(items: readonly T[], nameOf: (item: T) => string | null | undefined): T[][] {
+  const groups: T[][] = [];
+  for (const item of items) {
+    if (companyWords(nameOf(item)).size === 0) continue;
+    const group = groups.find((members) => members.some((member) => sameCompany(nameOf(member), nameOf(item))));
+    if (group) group.push(item);
+    else groups.push([item]);
+  }
+  return groups;
+}
+
+/** A company's name without its legal form, for sentences: "Avis Budget Group, Inc." is "Avis Budget Group". */
+function shortCompanyName(name: string): string {
+  const words = name.trim().split(/\s+/).filter(Boolean);
+  const legal = (word: string) => {
+    const plain = word.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+    // "Public Limited Company" is a legal form too, though "Public" alone can be a name.
+    return NAME_NOISE.has(plain) || SHARE_NOISE.has(plain) || (plain === "public" && words.length > 2);
+  };
+  while (words.length > 1 && legal(words[words.length - 1]!)) words.pop();
+  if (words.length > 1 && words[0]!.toLowerCase() === "the") words.shift();
+  return words.join(" ").replace(/[,;]+$/, "");
+}
+
+/** Every other company that lists the symbol once, at its first venue in search order. */
+function otherCompanies(venues: readonly ListingVenue[], company: string): ListingVenue[] {
+  return groupByCompany(venues, (venue) => venue.name)
+    .filter((group) => !group.some((venue) => sameCompany(venue.name, company)))
+    .map((group) => group[0]!);
+}
+
+/**
+ * "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)": the listing a bare
+ * symbol several companies list was read on, and where the others list it.
+ * Null when one company lists it, so a symbol that means one thing says
+ * nothing.
+ */
+export function listingChoiceNote(
+  symbol: string,
+  chosen: { exchange: string; name?: string | null },
+  venues: readonly ListingVenue[],
+): string | null {
+  if (!chosen.exchange || !listsSeveralCompanies(venues)) return null;
+  const chosenVenue = venues.find((venue) => venue.exchange === chosen.exchange);
+  const name = chosen.name?.trim() || chosenVenue?.name || "";
+  const others = otherCompanies(venues, chosenVenue?.name || name).map((venue) => venue.exchange)
+    .filter((exchange) => exchange !== chosen.exchange);
+  if (others.length === 0) return null;
+  const more = others.length - MAX_OTHER_LISTINGS;
+  const also = `${others.slice(0, MAX_OTHER_LISTINGS).join(", ")}${more > 0 ? ` and ${more} more: gloomberb search ${symbol}` : ""}`;
+  return `${symbol} = ${name ? `${shortCompanyName(name)}, ` : ""}${chosen.exchange} (also ${also})`;
+}
+
+// Quotes of these never name a company's listing, so they are never a choice between companies.
+const UNLISTED_TYPES = new Set(["FUTURE", "INDEX", "CURRENCY", "CRYPTOCURRENCY", "OPTION"]);
+
+/** Whether the data service chose the listing: a bare symbol, with no venue named and none saved. */
+function isBareListing(listing: Pick<CliListing, "exchange" | "saved">): boolean {
+  return !listing.exchange && !listing.saved;
+}
+
+/**
+ * The venues of a bare listing, started beside its data request so naming the
+ * choice costs no wait; null for a listing whose venue was named or saved.
+ */
+export function loadBareVenues(listing: Pick<CliListing, "symbol" | "exchange" | "saved">, deps: ListingDeps): Promise<ListingVenue[]> | null {
+  return isBareListing(listing) ? listingVenues(listing.symbol, deps).catch(() => []) : null;
+}
+
+/**
+ * `listingChoiceNote` for a listing a command resolved, from the quote it was
+ * read on: only a bare symbol went where the data service chose. A list, so a
+ * command can spread it into its warnings.
+ */
+export async function listingChoiceNotes(
+  listing: Pick<CliListing, "symbol" | "exchange" | "saved">,
+  deps: ListingDeps,
+  quote: Pick<Quote, "name" | "listingExchangeName" | "exchangeName" | "instrumentType"> | null | undefined,
+  /** The venues `loadBareVenues` already started; looked up here when not given. */
+  venues?: Promise<ListingVenue[]> | null,
+): Promise<string[]> {
+  if (!isBareListing(listing) || !quote || UNLISTED_TYPES.has(quote.instrumentType?.trim().toUpperCase() ?? "")) return [];
+  const exchange = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  if (!exchange) return [];
+  const listed = await (venues ?? loadBareVenues(listing, deps) ?? []);
+  const note = listingChoiceNote(listing.symbol, { exchange, name: quote.name }, listed);
+  return note ? [note] : [];
+}
+
+/**
+ * The same company's line on a US exchange, under the same symbol: SAN:MCE's
+ * New York receipt. Null when the US line is another company (SAN:EPA is
+ * Sanofi, SAN in New York is Banco Santander) or there is none.
+ */
+export async function usLineOfListing(
+  listing: Pick<ListingArg, "symbol" | "exchange">,
+  company: string | null | undefined,
+  deps: ListingDeps,
+): Promise<ListingVenue | null> {
+  if (!listing.exchange || isUsListingExchange(listing.exchange) || !company) return null;
+  const venues = await listingVenues(listing.symbol, deps).catch(() => []);
+  return venues.find((venue) => isUsListingExchange(venue.exchange) && sameCompany(venue.name, company)) ?? null;
 }
 
 /**
@@ -600,7 +755,7 @@ export function listingIdentity(
 }
 
 /** The listing's own quote, for its company name and venue; null when it has none. */
-export async function loadListingQuote(dataProvider: DataProvider, listing: CliListing): Promise<Quote | null> {
+export async function loadListingQuote(dataProvider: DataProvider, listing: Pick<CliListing, "request">): Promise<Quote | null> {
   try {
     return await dataProvider.getQuote(listing.request.symbol, listing.request.exchange);
   } catch {
@@ -617,6 +772,12 @@ export function listingHeading(identity: ListingIdentity): string {
 /** "Sanofi (EPA)", for sentences. */
 export function listingTitle(identity: ListingIdentity): string {
   const name = identity.name || identity.symbol;
+  return identity.exchange ? `${name} (${identity.exchange})` : name;
+}
+
+/** "CAR Group (ASX)": `listingTitle` without the legal form, for a sentence about the company. */
+export function listingShortTitle(identity: ListingIdentity): string {
+  const name = identity.name ? shortCompanyName(identity.name) : identity.symbol;
   return identity.exchange ? `${name} (${identity.exchange})` : name;
 }
 

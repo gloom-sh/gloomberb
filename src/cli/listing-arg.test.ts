@@ -2,7 +2,9 @@ import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { ListingArgError, loadForListing, parseListingArg, resolveCliListing } from "./listing-arg";
+import {
+  LISTING_SEARCH_LIMIT, ListingArgError, listingChoiceNote, listingVenues, loadForListing, notTradedMessage, parseListingArg, resolveCliListing,
+} from "./listing-arg";
 import { FUTURES_CONTRACTS } from "../market-data/futures-board";
 
 const persistences: AppPersistence[] = [];
@@ -164,4 +166,48 @@ test("listings of one company, however each venue spells its name, still go to t
   expect(failure.message).toBe("SAN resolved to Banco Santander, S.A. (NYSE), which has no history.");
   expect(failure.details).toContain("SAN:BVL BANCO SANTANDER SA Sponsored ADR (try: gloomberb history SAN:BVL --range 5Y)");
   expect(failure.details).toContain("SAN:XETRA (try: gloomberb history SAN:XETRA --range 5Y)");
+});
+
+// CAR as search listed it on 2026-10-11 in its first rows: Avis and Carrefour, but not CAR Group's ASX line.
+const CAR_ROWS = [
+  { providerId: "test", symbol: "CAR", name: "Carrefour SA", exchange: "XETRA", currency: "EUR", type: "Common Stock" },
+  { providerId: "test", symbol: "CAR", name: "Avis Budget Group Inc.", exchange: "NASDAQ", currency: "USD", type: "Common Stock" },
+  { providerId: "test", symbol: "CAR", name: "Avis Budget Group, Inc. CEDEAR", exchange: "BYMA", currency: "ARS", type: "Depositary Receipt" },
+];
+
+test("every command agrees with quote on where a symbol trades: a venue search leaves out trades it when its quote prices it there", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const limits: Array<number | undefined> = [];
+  const dataProvider = createTestDataProvider({
+    search: async (_query, context) => {
+      limits.push(context?.limit);
+      return CAR_ROWS;
+    },
+    // The listing's own quote, as `quote CAR:ASX` reads it.
+    getQuote: async (symbol, exchange) => {
+      if (symbol !== "CAR:ASX") throw new Error(`No quote for ${symbol}`);
+      return { symbol: "CAR.AX", name: "CAR Group Limited", price: 22.8, currency: "AUD", change: 0, changePercent: 0, lastUpdated: 1, listingExchangeName: exchange };
+    },
+  });
+  const deps = { store, dataProvider };
+  const ctx = { fail: (message: string): never => { throw new ListingArgError(message); } };
+
+  // An empty answer (CAR Group files nothing with the SEC) is not a venue CAR is missing from.
+  const asx = await resolveCliListing("CAR", "ASX", deps);
+  expect(await loadForListing(asx, deps, ctx, async () => [], (rows) => rows.length === 0)).toEqual([]);
+  expect(await notTradedMessage(asx, deps)).toBeNull();
+  // The venue list asks for every company's rows, not a keystroke's ten.
+  expect(limits.every((limit) => limit === LISTING_SEARCH_LIMIT)).toBe(true);
+  // Neither search nor a quote places CAR on TSX.
+  expect(await notTradedMessage(await resolveCliListing("CAR:TSX", undefined, deps), deps))
+    .toBe("CAR does not trade on TSX. CAR trades on: XETRA, NASDAQ, BYMA.");
+
+  // The one line naming which company a bare CAR went to, and the companies it did not.
+  const venues = await listingVenues("CAR", deps);
+  expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, [...venues, { exchange: "ASX", name: "CAR Group Limited" }]))
+    .toBe("CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)");
+  expect(listingChoiceNote("CAR", { exchange: "NASDAQ", name: "Avis Budget Group, Inc." }, venues.filter((venue) => venue.exchange !== "XETRA")))
+    .toBeNull();
 });

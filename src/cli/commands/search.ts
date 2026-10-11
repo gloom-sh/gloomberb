@@ -16,6 +16,8 @@ import type { CliCommandContext } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
 import { knownGapMessage } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
+import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
+import { groupByCompany, LISTING_SEARCH_LIMIT } from "../listing-arg";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
@@ -43,16 +45,62 @@ export async function searchCandidatesForCli({
     tickers.map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const),
   );
   try {
-    return await searchTickerCandidates({
+    const candidates = await searchTickerCandidates({
       query: trimmedQuery,
       tickers: localTickerMap,
       dataProvider,
       localLimit,
-      totalLimit,
+      // Every company's listing of a symbol several use (CAR's ASX line is past the first ten), cut after ordering.
+      totalLimit: Math.max(totalLimit, LISTING_SEARCH_LIMIT),
+      searchContext: { limit: LISTING_SEARCH_LIMIT },
     });
+    return (await withPrimaryListingFirst(trimmedQuery, candidates, dataProvider)).slice(0, totalLimit);
   } catch {
     return [];
   }
+}
+
+function candidateExchange(candidate: TickerSearchCandidate): string {
+  return canonicalExchange(candidate.result?.exchange === "SMART"
+    ? candidate.result.primaryExchange
+    : candidate.result?.exchange || candidate.result?.primaryExchange || candidate.ticker?.metadata.exchange || candidate.right);
+}
+
+/**
+ * For a bare symbol several companies list (CAR: Avis, Carrefour, CAR Group),
+ * the listing `quote CAR` reads goes first as the primary listing, then each
+ * other company's first listing, then the rest of their venues, so a short
+ * list still shows every company. A saved listing is the user's choice and
+ * stays where search put it. Any other query keeps search's order.
+ */
+async function withPrimaryListingFirst(
+  query: string,
+  candidates: TickerSearchCandidate[],
+  dataProvider: DataProvider,
+): Promise<TickerSearchCandidate[]> {
+  const symbol = query.toUpperCase();
+  if (!/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(symbol)) return candidates;
+  const exact = candidates.filter((candidate) => candidate.symbol.toUpperCase() === symbol);
+  if (exact.some((candidate) => candidate.kind === "ticker" || candidate.saved)) return candidates;
+  const listed = exact.filter((candidate) => candidate.kind === "search" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"));
+  const companies = groupByCompany(listed, resolveSearchName);
+  if (companies.length < 2) return candidates;
+  const quote = await dataProvider.getQuote(symbol, "").catch(() => null);
+  const quoted = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
+  if (!quoted) return candidates;
+  // The US exchanges share one symbol: a quote on any of them is the symbol's one US line.
+  const primary = listed.find((candidate) => candidateExchange(candidate) === quoted)
+    ?? (isUsListingExchange(quoted) ? listed.find((candidate) => isUsListingExchange(candidateExchange(candidate))) : undefined);
+  if (!primary) return candidates;
+  const firsts = companies.filter((group) => !group.includes(primary)).map((group) => group[0]!);
+  const ordered = [primary, ...firsts, ...listed.filter((candidate) => candidate !== primary && !firsts.includes(candidate))];
+  const at = candidates.indexOf(listed[0]!);
+  const rest = candidates.filter((candidate) => !listed.includes(candidate));
+  return [...rest.slice(0, at), ...ordered, ...rest.slice(at)].map((candidate) => (
+    candidate === primary ? { ...candidate, category: "Primary Listing" as const }
+      : listed.includes(candidate) || candidate.category === "Primary Listing" ? { ...candidate, category: "Other Listings" as const }
+      : candidate
+  ));
 }
 
 /** "Saved", or the broker a row came from; never the data service's internal id. */

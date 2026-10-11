@@ -15,6 +15,8 @@ import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import {
   chosenListingNote,
   ListingArgError,
+  listingChoiceNote,
+  listingVenues,
   noLongerTradingNote,
   notTradedMessage,
   quoteBareListing,
@@ -110,7 +112,11 @@ export async function resolveCliTicker(
   const named = created ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };
   const saved = savedListingName(named.ticker);
   const others = resolved.otherListings?.map((key) => parsePublicTickerKey(key).exchange ?? key) ?? [];
-  const venueNote = bareNote ?? (others.length > 0 && saved.exchange ? chosenListingNote(listing.symbol, saved.exchange, others) : null);
+  // Several companies' listings name the company it went to and theirs; one company's name its other venues.
+  const venueNote = bareNote ?? (others.length > 0 && saved.exchange
+    ? listingChoiceNote(listing.symbol, saved, await listingVenues(listing.symbol, deps).catch(() => []))
+      ?? chosenListingNote(listing.symbol, saved.exchange, others)
+    : null);
   const ended = named.quote ? noLongerTradingNote(saved.label, named.quote) : null;
   return { ticker: named.ticker, notes: [venueNote, ended].filter((note): note is string => !!note), ended };
 }

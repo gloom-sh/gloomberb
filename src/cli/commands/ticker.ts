@@ -56,7 +56,9 @@ import {
 import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isKnownNonUsListing } from "../../utils/sec";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
-import { failIfNotTraded, ListingArgError, listingIdentity, resolveCliListing, type CliListing } from "../listing-arg";
+import {
+  failIfNotTraded, ListingArgError, listingChoiceNotes, listingIdentity, loadBareVenues, resolveCliListing, type CliListing,
+} from "../listing-arg";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
 import { cliFreshnessFooter } from "../result";
@@ -484,6 +486,7 @@ export async function buildTickerReport({
   toBase,
   notes,
   quoteNote,
+  listingNote,
   recentNews = [],
   recentSecFilings = [],
   futuresContract = null,
@@ -500,6 +503,8 @@ export async function buildTickerReport({
   notes?: string;
   /** Why there is no quote, when a source said; "Quote unavailable." otherwise. */
   quoteNote?: string;
+  /** "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)", for a bare symbol several companies list. */
+  listingNote?: string;
   recentNews?: NewsArticle[];
   recentSecFilings?: SecFilingItem[];
 }): Promise<string> {
@@ -526,6 +531,7 @@ export async function buildTickerReport({
   if (summaryParts.length > 0) {
     lines.push(cliStyles.muted(summaryParts.join(METADATA_SEPARATOR)));
   }
+  if (listingNote) lines.push(cliStyles.muted(listingNote));
 
   const instrumentType = instrumentTypeLabel(quote?.instrumentType?.trim()
     || financials.quoteMetadata?.instrumentType?.trim()
@@ -782,6 +788,8 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const tickerFile = listing.saved;
     const { symbol: requestSymbol, exchange } = listing.request;
     const toBase = createBaseConverter(dataProvider, config.baseCurrency);
+    // A bare symbol's venues load beside its research, to name the company it was read as when several list it.
+    const venues = loadBareVenues(listing, { store, dataProvider });
 
     let financials: TickerFinancials | null = null;
     try {
@@ -843,10 +851,12 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // The quote is the feed in this report; without one, the fundamentals date it.
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
     const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
+    const [listingNote] = await listingChoiceNotes(listing, { store, dataProvider }, quote, venues);
     if (dependencies.printResult) {
+      const warnings = [listingNote, quoteNote].filter((note): note is string => !!note);
       dependencies.printResult({
         freshness,
-        warnings: quote ? undefined : [quoteNote!],
+        warnings: warnings.length > 0 ? warnings : undefined,
         data: buildTickerStructuredData({
           symbol: normalized,
           listing,
@@ -871,6 +881,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         toBase,
         notes,
         quoteNote,
+        listingNote,
         recentNews,
         recentSecFilings,
         futuresContract,

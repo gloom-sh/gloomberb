@@ -490,9 +490,9 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       stale: data.stale === true || response.stale === true };
   }
 
-  async search(query: string, _context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
+  async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
     return withCloudFallback(
-      () => apiClient.searchInstruments(query, 10),
+      () => apiClient.searchInstruments(query, context?.limit ?? 10),
       "Cloud search is unavailable",
     );
   }

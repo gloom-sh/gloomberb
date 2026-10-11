@@ -73,10 +73,10 @@ test("a bare symbol with no quote is asked on the venue it resolved to, then its
   expect(source.batches).toEqual([["CSPX:XETRA"]]);
   expect(named.rows.map((row) => [row.target.symbol, row.quote])).toEqual([["CSPX:XETRA", null]]);
 
-  // A request that succeeds pays for no search.
+  // A request that succeeds asks search only whether several companies list the bare symbol; one company says nothing.
   const quotedBare = venueSource("CSPX", ["XETRA"], { CSPX: quote });
-  await runQuote(["CSPX"], quotedBare);
-  expect(quotedBare.searches()).toBe(0);
+  expect((await runQuote(["CSPX"], quotedBare)).warnings).toEqual([]);
+  expect(quotedBare.batches).toEqual([["CSPX"]]);
 
   // With no quote anywhere, one company's listings name the venue it resolved to and the others to try.
   const unquoted = await runQuote(["CSPX"], venueSource("CSPX", ["XETRA", "LSE"], {}));
@@ -108,7 +108,7 @@ test("a code several companies list is never quoted on one of them: it asks for 
   expect((await runQuote(["2222:TADAWUL"], source)).rows.map((row) => [row.target.symbol, row.quote == null])).toEqual([["2222:TADAWUL", false]]);
 });
 
-test("a bare symbol the service read on its home listing abroad names the venue, without a search", async () => {
+test("a bare symbol the service read on its home listing abroad names the venue", async () => {
   const listed = (symbol: string, exchangeName: string, currency = "USD") => createTestQuote({ symbol, exchangeName, listingExchangeName: exchangeName, currency });
   const source = venueSource("SXR8", ["XETRA", "BUD"], {
     SXR8: listed("SXR8", "XETRA", "EUR"),
@@ -122,7 +122,6 @@ test("a bare symbol the service read on its home listing abroad names the venue,
   const bare = await runQuote(["SXR8"], source);
   expect(bare.rows.map((row) => row.target.symbol)).toEqual(["SXR8"]);
   expect(bare.warnings).toEqual(["SXR8 -> XETRA"]);
-  expect(source.searches()).toBe(0);
   // A named venue, a US or OTC listing, a futures venue and an index say nothing more.
   for (const symbol of ["SXR8:XETRA", "AAPL", "TCEHY", "CL1", "^GDAXI"]) {
     expect((await runQuote([symbol], source)).warnings).toEqual([]);
@@ -176,4 +175,18 @@ test("a quote that stopped years ago says since when, keeps its last price, and 
   expect(printed.result.warnings).toEqual(["TWTR (Twitter, Inc.): no longer trading since 2022-10-27 (last price $53.86)"]);
   const rows = printed.options!.rows!(printed.result.data) as Array<{ symbol: string; name: string; price: string }>;
   expect(rows[0]).toMatchObject({ symbol: "TWTR", name: "Twitter, Inc.", price: "$53.86" });
+});
+
+test("a bare symbol several companies list names, in one line, the company it was read as and where the others are", async () => {
+  const avis = createTestQuote({ symbol: "CAR", name: "Avis Budget Group, Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
+  const names = { XETRA: "Carrefour SA", NASDAQ: "Avis Budget Group Inc.", BYMA: "Avis Budget Group, Inc. CEDEAR", ASX: "CAR Group Limited" };
+  const source = venueSource("CAR", ["XETRA", "NASDAQ", "BYMA", "ASX"], { CAR: avis, "CAR:ASX": avis }, names);
+
+  const bare = await runQuote(["CAR"], source);
+  expect(bare.rows.map((row) => row.target.symbol)).toEqual(["CAR"]);
+  expect(bare.warnings).toEqual(["CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)"]);
+  // A named venue is the user's choice: nothing to say, and no search.
+  const searched = source.searches();
+  expect((await runQuote(["CAR:ASX"], source)).warnings).toEqual([]);
+  expect(source.searches()).toBe(searched);
 });

@@ -28,6 +28,7 @@ function buildSearchCacheKey(query: string, context?: SearchRequestContext): str
     context?.preferBroker ?? true,
     context?.brokerInstanceId ?? "",
     context?.brokerId ?? "",
+    context?.limit ?? null,
   ]);
 }
 

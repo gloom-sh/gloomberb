@@ -102,8 +102,12 @@ import {
   isNoProviderError,
   listingHeading,
   listingIdentity,
+  listingShortTitle,
   listingTitle,
   listingVenues,
+  listingChoiceNotes,
+  loadBareVenues,
+  type ListingVenue,
   loadForListing,
   loadListingQuote,
   noLongerTradingNote,
@@ -115,6 +119,7 @@ import {
   type ListingIdentity,
 } from "../listing-arg";
 import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
+import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage } from "../not-a-ticker";
@@ -491,6 +496,8 @@ function earningsRows(events: EarningsEvent[]) {
     symbol: event.symbol,
     name: event.name,
     date: isoDate(event.earningsDate).slice(0, 10),
+    // Whether the company announced the date or it is projected from past reports.
+    status: earningsDateLabel(event),
     timing: event.timing,
     epsEstimate: event.epsEstimate,
     epsActual: event.epsActual,
@@ -498,6 +505,9 @@ function earningsRows(events: EarningsEvent[]) {
     revenueActual: event.revenueActual,
   }));
 }
+
+/** Symbols at most whose venues a command looks up to name the company each bare one went to. */
+const MAX_CHOICE_LOOKUPS = 10;
 
 async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1], commandName: "quote" | "compare") {
   const args = [...rawArgs];
@@ -511,10 +521,17 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       symbol, exchange, market, ctx, { ownExchangeWins: symbols.length > 1 },
     )));
     const targets: QuoteSubscriptionTarget[] = listings.map((listing) => ({ symbol: listing.request.symbol, exchange: listing.request.exchange }));
+    // A bare symbol's venues load beside its quote, to name the company it was read as when several list it.
+    // Each costs a search, so a long list (a portfolio check, not a lookup) names none.
+    const venues = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
+      : listings.map((listing) => [listing, loadBareVenues(listing, market)] as const));
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
     const request = { command: commandName, noun: "quote" };
-    const answers = await Promise.all(results.map((result, index) => answerQuote(result, listingOf(result, index), market, request, ctx.cliOptions.refresh)));
+    const answers = await Promise.all(results.map((result, index) => {
+      const listing = listingOf(result, index);
+      return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null);
+    }));
     const failed = answers[0]?.failure;
     if (listings.length === 1 && failed) ctx.fail(failed.message, failed.details);
     // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table.
@@ -610,12 +627,18 @@ async function answerQuote(
   market: MarketContext,
   request: ListingDataRequest,
   refresh: boolean,
+  venues: Promise<ListingVenue[]> | null,
 ): Promise<QuoteAnswer> {
   const root = listing.exchange ? null : indexRootFor(listing.symbol);
   // A bare root that quoted something else, such as MOVE (Corvex), points at the index too.
   const also = (quote: Quote) => root && quote.instrumentType?.trim().toUpperCase() !== "INDEX"
     ? [indexRootAlsoLine(root, request.command)] : [];
-  if (result.quote) return { result, listing, notes: [bareListingNote(listing, result.quote) ?? [], also(result.quote)].flat() };
+  if (result.quote) {
+    // "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
+    const choice = venues ? await listingChoiceNotes(listing, market, result.quote, venues) : [];
+    const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
+    return { result, listing, notes: [...choice, venue ?? [], also(result.quote)].flat() };
+  }
   const notTraded = await notTradedMessage(listing, market);
   if (notTraded) return { result, listing, failure: { message: notTraded, oneLine: notTraded }, notes: [] };
   if (!isNoProviderError(result.error)) return { result, listing, notes: [] };
@@ -661,6 +684,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const raw = requireOneArg(args, HISTORY_USAGE, "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, requestedExchange, market, ctx);
+    const venues = loadBareVenues(listing, market);
     const { symbol, exchange } = listing.request;
     const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
     const load = () => market.dataProvider.getPriceHistoryWithMetadata
@@ -694,7 +718,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const gaps = historyGapNote(data, {
       listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
     });
-    const notes = [...historyNotes(range, interval, data[0]?.date), gaps ?? [], historyFlagNote(data) ?? []].flat();
+    const notes = [
+      ...await listingChoiceNotes(listing, market, quote, venues),
+      ...historyNotes(range, interval, data[0]?.date), gaps ?? [], historyFlagNote(data) ?? [],
+    ].flat();
     const priceColumns: CliResultColumn[] = [
       intraday
         ? { key: "date", header: "Time", format: (value) => typeof value === "string" ? formatUtcTime(value) : "" }
@@ -772,10 +799,12 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
   };
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const venues = loadBareVenues(listing, market);
     const financials = await loadForListing(listing, market, ctx, () => market.dataProvider.getTickerFinancials(
       listing.request.symbol, listing.request.exchange, { cacheMode: ctx.cliOptions.refresh ? "refresh" : "default" },
     ), undefined, { command: commandName, noun: commandName === "valuation" ? "valuation data" : commandName });
     const identity = listingIdentity(listing, financials.quote);
+    const choice = await listingChoiceNotes(listing, market, financials.quote, venues);
     const data: FinancialsCliData = {
       symbol: listing.key,
       exchange: identity.exchange,
@@ -788,6 +817,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: { ...data, fundamentals: exportedFundamentals(data.fundamentals) },
         freshness,
+        ...(choice.length > 0 ? { warnings: choice } : {}),
       }, {
         text: () => renderFundamentalsReport(data, view),
         ...(tabular ? { tables: selectTables(fundamentalsReportTables(data, view, freshness)) } : {}),
@@ -816,6 +846,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         profile: financials.profile,
       },
       freshness,
+      ...(choice.length > 0 ? { warnings: choice } : {}),
     }, {
       heading: listingHeading(identity),
       rows: () => rows,
@@ -923,6 +954,11 @@ const FILING_COLUMNS = [
   { key: "url", header: "URL", optional: true },
 ];
 
+/** "CAR Group (ASX) files no SEC reports.", for a listing abroad whose company the SEC has nothing from. */
+function noSecReportsMessage(identity: ListingIdentity): string {
+  return `${listingShortTitle(identity)} files no SEC reports.`;
+}
+
 /** The US listing the SEC files a symbol under, from the symbol's venues: NYSE for SAN's Banco Santander. */
 async function registrantUsExchange(market: MarketContext, symbol: string, registrantName: string): Promise<string | null> {
   const venues = (await listingVenues(symbol, market).catch(() => []))
@@ -939,6 +975,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const raw = requireOneArg(args, "filings <symbol> [--count <n>] [--form <form>]", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const venues = loadBareVenues(listing, market);
     const { symbol, exchange } = listing.request;
     // A listing outside the US sends its company to the lookup, which needs its quote first.
     const quotePromise = loadListingQuote(market.dataProvider, listing);
@@ -955,15 +992,20 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         quotePromise,
       ]);
       const resolved = identity ?? listingIdentity(listing, quote);
+      const choice = await listingChoiceNotes(listing, market, quote, venues);
       ctx.printResult({
         data: filings,
         metadata: { ...listingMetadata(resolved), ...(form ? { form } : {}) },
         freshness: rowsFreshness(filingRows(filings), { ...SEC_FILINGS, observedKey: "filingDate" }),
+        ...(choice.length > 0 ? { warnings: choice } : {}),
       }, {
         heading: listingHeading(resolved),
         rows: filingRows,
         columns: FILING_COLUMNS,
-        empty: form ? `No ${form} filings found for ${listingTitle(resolved)}.` : `No SEC filings found for ${listingTitle(resolved)}.`,
+        // A listing abroad is looked up by its company: none found means the company files nothing with the SEC.
+        empty: form ? `No ${form} filings found for ${listingTitle(resolved)}.`
+          : identity ? noSecReportsMessage(resolved)
+          : `No SEC filings found for ${listingTitle(resolved)}.`,
       });
     } catch (error) {
       if (!(error instanceof SecRegistrantMismatchError)) throw error;
@@ -1002,14 +1044,20 @@ async function loadForm4Insiders(market: MarketContext, listing: CliListing): Pr
  * Form 4 trades are pointed to only when the company has some; otherwise the
  * line says why there are none, in the words `fn INS` uses.
  */
-function insiderSummary(data: HolderData, ownerTypes: Set<string>, symbol: string, form4: Form4Insiders | null): string {
+function insiderSummary(
+  data: HolderData,
+  ownerTypes: Set<string>,
+  listing: Pick<CliListing, "key">,
+  form4: Form4Insiders | null,
+): string {
   const held = data.summary?.insidersPercentHeld;
   const share = held == null || !Number.isFinite(held)
     ? ""
     : `Insiders hold ${formatFractionPercentCell(held)} of shares outstanding.`;
   const listed = data.holders.some((holder) => ownerTypes.has(holder.ownerType));
+  // The listing as the command read it (CAR:ASX), not the source's spelling of it (CAR.AX), which fn does not take.
   const transactions = form4 === "available"
-    ? listed ? "" : `Form 4 transactions: gloomberb fn INS ${symbol}`
+    ? listed ? "" : `Form 4 transactions: gloomberb fn INS ${listing.key}`
     : form4 ? insiderEmptyNotice(form4 === "foreign-private-issuer") : "";
   return [share, transactions].filter(Boolean).join("\n");
 }
@@ -1068,6 +1116,8 @@ async function printBeneficialOwners(
     ],
     empty: beneficialListUnreadable(payload)
       ? `13D/13G filings for ${listingTitle(identity)} are listed but could not be read.`
+      // The SEC knows no company for a listing abroad that files there under no name of its own.
+      : abroad && !payload.cik ? noSecReportsMessage(identity)
       : `No 13D/13G filings in the last 4 years for ${listingTitle(identity)}.`,
   });
 }
@@ -1090,6 +1140,7 @@ async function runHolders(
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     if (form !== "13f") return printBeneficialOwners(listing, market, form, history, ctx);
     const insiderCommand = commandName === "insider" && ownerTypes != null;
+    const venues = loadBareVenues(listing, market);
     const [data, quote, form4] = await Promise.all([
       loadForListing(
         listing, market, ctx,
@@ -1101,6 +1152,7 @@ async function runHolders(
       insiderCommand ? loadForm4Insiders(market, listing) : null,
     ]);
     const identity = listingIdentity(listing, quote);
+    const choice = await listingChoiceNotes(listing, market, quote, venues);
     // A London line's values can be dollars from the 13F filings; the listing's currency is not their unit.
     const valueCurrency = holderValueCurrency(data, "USD")!;
     // The rows, their units and their order are HDS's, so `holders --csv` and `fn HDS --csv` agree.
@@ -1155,6 +1207,7 @@ async function runHolders(
         positionsBasis,
         ...(insiderCommand ? { form4Insiders: form4 } : {}),
       },
+      ...(choice.length > 0 ? { warnings: choice } : {}),
     }, {
       heading: `${listingHeading(identity)}${cliStyles.muted(facts.map((fact) => `  ·  ${fact}`).join(""))}`,
       columns,
@@ -1185,7 +1238,7 @@ async function runHolders(
       },
       summary: () => [
         [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? "", unvaluedNote ?? ""].filter(Boolean).join(" "),
-        insiderCommand ? insiderSummary(data, ownerTypes, listing.request.symbol, form4) : "",
+        insiderCommand ? insiderSummary(data, ownerTypes, listing, form4) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,
     });
@@ -1198,6 +1251,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   const raw = requireOneArg(args, "analyst <symbol>", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const venues = loadBareVenues(listing, market);
     const [data, quote] = await Promise.all([
       loadForListing(
         listing, market, ctx, () => market.dataProvider.getAnalystResearch(listing.request.symbol, listing.request.exchange),
@@ -1206,6 +1260,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       loadListingQuote(market.dataProvider, listing),
     ]);
     const identity = listingIdentity(listing, quote);
+    const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
       data,
       metadata: {
@@ -1217,6 +1272,7 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       freshness: rowsFreshness(analystRows(data), {
         ...REPORTED_DATA, basis: "analyst ratings", observedKey: "date", oldest: null,
       }, { stale: data.stale === true }),
+      ...(choice.length > 0 ? { warnings: choice } : {}),
     }, {
       heading: listingHeading(identity),
       rows: analystRows,
@@ -1238,6 +1294,7 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
   const raw = requireOneArg(args, "events <symbol>", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const venues = loadBareVenues(listing, market);
     const [data, quote] = await Promise.all([
       loadForListing(
         listing, market, ctx, () => market.dataProvider.getCorporateActions(listing.request.symbol, listing.request.exchange),
@@ -1246,12 +1303,14 @@ async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execu
       loadListingQuote(market.dataProvider, listing),
     ]);
     const identity = listingIdentity(listing, quote);
+    const choice = await listingChoiceNotes(listing, market, quote, venues);
     ctx.printResult({
       data,
       metadata: listingMetadata(identity),
       freshness: rowsFreshness(corporateActionRows(data), {
         ...REPORTED_DATA, basis: "corporate actions", observedKey: "date", oldest: null,
       }),
+      ...(choice.length > 0 ? { warnings: choice } : {}),
     }, {
       heading: listingHeading(identity),
       rows: corporateActionRows,
@@ -1299,6 +1358,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     const { symbol, exchange } = listing.request;
     const refresh = ctx.cliOptions.refresh;
+    const venues = loadBareVenues(listing, market);
     const quotePromise = loadListingQuote(market.dataProvider, listing);
     const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quotePromise, refresh);
     const { result, chain: loaded } = await loadForListing(listing, market, ctx, async () => {
@@ -1328,7 +1388,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       const miss = missingExpiryMessage(listing.key, expirationDate, listed);
       ctx.fail(miss.message, miss.details);
     }
-    const identity = listingIdentity(listing, await quotePromise);
+    const quote = await quotePromise;
+    const identity = listingIdentity(listing, quote);
     const chain = chainWithModelFigures(loaded, inputs);
     // A failed refresh falls back to the stored chain, which can be days old.
     const refreshWarning = result?.refreshError == null ? null
@@ -1338,7 +1399,10 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const modelWarning = inputs.spot == null && (chain.calls.length > 0 || chain.puts.length > 0)
       ? `IV and delta need a current ${listing.key} quote; those columns are blank`
       : null;
-    const warnings = [refreshWarning ?? sessionWarning, modelWarning].filter((warning): warning is string => warning != null);
+    const warnings = [
+      ...await listingChoiceNotes(listing, market, quote, venues),
+      ...[refreshWarning ?? sessionWarning, modelWarning].filter((warning): warning is string => warning != null),
+    ];
     // Dated by the chain's last trade; a chain that failed to refresh is the stored one, stale.
     const freshness = rowsFreshness([], { asOf: chain.asOf ?? null }, {
       ...(chain.dataSource ? { dataSource: chain.dataSource } : {}),
@@ -1446,24 +1510,54 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     const listings = await Promise.all(symbols.map((symbol) => requireCliListing(
       symbol, exchangeOption, services, ctx, { ownExchangeWins: symbols.length > 1 },
     )));
-    const events = await loadForListing(
-      listings, services, ctx,
-      () => services.dataProvider.getEarningsCalendar(listings.map((listing) => listing.key)),
-      (found) => found.length === 0,
-    );
+    const keys = listings.map((listing) => listing.key);
+    // Each bare symbol's venues cost a search, so a long list (a portfolio check, not a lookup) names none.
+    const venues = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
+      : listings.map((listing) => [listing, loadBareVenues(listing, services)] as const));
+    let events: EarningsEvent[];
+    try {
+      events = await loadForListing(
+        listings, services, ctx,
+        () => services.dataProvider.getEarningsCalendar(keys),
+        (found) => found.length === 0,
+      );
+    } catch (error) {
+      const failure = earningsCalendarFailure(error, keys);
+      if (failure) ctx.fail(failure);
+      throw error;
+    }
+    const eventOf = (listing: CliListing) => events.find((event) => event.symbol.toUpperCase() === listing.key.toUpperCase());
+    const [abroadNotes, choiceNotes] = await Promise.all([
+      // A listing abroad with no date of its own says so, with its US line's date when that line is the same company.
+      Promise.all(listings.filter((listing) => isListingAbroad(listing) && !eventOf(listing))
+        .map((listing) => noListingCalendarNote(listing, services))),
+      Promise.all(listings.map(async (listing) => {
+        const listed = venues.get(listing);
+        return listed ? earningsChoiceNote(listing, eventOf(listing), await listed) : null;
+      })),
+    ]);
+    const noCalendar = abroadNotes.join("\n");
+    // Text prints the listings without a calendar under the table; other formats carry them as warnings.
+    const warnings = [
+      ...choiceNotes.filter((note): note is string => !!note),
+      ...ctx.cliOptions.format === "text" ? [] : abroadNotes,
+    ];
     ctx.printResult({
       data: events,
       freshness: rowsFreshness(earningsRows(events), { status: "not-a-feed", basis: "calendar", observedKey: "date", oldest: null }),
+      ...(warnings.length > 0 ? { warnings } : {}),
     }, {
       rows: earningsRows,
       columns: [
         { key: "date", header: "Date" },
+        { key: "status", header: "Status" },
         { key: "symbol", header: "Symbol" },
         { key: "name", header: "Name" },
         { key: "timing", header: "Timing" },
         { key: "epsEstimate", header: "EPS Est", align: "right", format: formatEpsCell },
         { key: "epsActual", header: "EPS", align: "right", format: formatEpsCell },
       ],
+      ...(noCalendar ? { empty: noCalendar, footnote: noCalendar } : {}),
     });
   });
 }

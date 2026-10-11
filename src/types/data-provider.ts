@@ -139,6 +139,11 @@ export interface SearchRequestContext {
    */
   interactive?: boolean;
   /**
+   * Rows to ask a catalogue for. Every listing of a symbol several companies
+   * use (CAR: Avis, Carrefour, CAR Group) takes more than a keystroke's ten.
+   */
+  limit?: number;
+  /**
    * Called when a later source improves the result the search already returned,
    * typically a broker adding contract detail to a symbol the cloud found
    * first. Receives the full merged list, not a delta.
