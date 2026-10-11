@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
@@ -93,5 +93,57 @@ describe("VCA dates", () => {
     expect(cell("skew", 0)).toBe("+2.0");
     expect(result.notes).toEqual([...VCA_DEFINITIONS]);
     expect(result.notes?.[0]).toContain("25-delta put IV minus 25-delta call IV, in vol points; positive means puts are richer");
+  });
+});
+
+describe("VCA backfill states", () => {
+  afterEach(() => { setSystemTime(); });
+  const ready = row("AAPL", reading("2026-10-09", "trade-close", 0.3), "2026-10-09");
+  const pending = (symbol: string, coverageStatus: IvScreenRow["coverageStatus"], addedAt: string | null, backfilledThrough: string | null,
+    warnings: string[] = []): IvScreenRow => ({ symbol, status: coverageStatus === "unavailable" && !warnings.length ? "ready" : "queued",
+    coverageStatus, coverage: addedAt ? { source: "demand", addedAt, backfilledThrough } : null, warnings,
+    iv30: null, iv90: null, latest: null, skew: null });
+  const report = async (rows: IvScreenRow[]) => {
+    setSystemTime(new Date("2026-10-11T08:04:00Z"));
+    const { result } = await load(rows);
+    return { notes: result.notes!.filter((note) => !(VCA_DEFINITIONS as readonly string[]).includes(note)),
+      complete: result.complete, unavailableSymbols: result.unavailableSymbols };
+  };
+
+  test("a mixed list is incomplete only for history still to come, and says when each symbol was queued or reached", async () => {
+    expect(await report([
+      ready,
+      pending("ZZZZ", "queued", "2026-10-11T07:58:12Z", null),
+      pending("ABCD", "backfilling", "2026-10-11T07:31:00Z", "2025-03-14"),
+      pending("PFAI", "unavailable", "2026-10-11T04:09:51Z", "2026-10-09"),
+      pending("NEXE", "unavailable", "2026-10-11T00:45:22Z", "2026-10-09"),
+    ])).toEqual({
+      notes: [
+        "Queued for backfill: ZZZZ since 07:58 UTC; a first backfill usually takes under 10 minutes, try again after 08:08 UTC.",
+        "Backfilling: ABCD through 2025-03-14.",
+        "No options history: PFAI, NEXE.",
+      ],
+      complete: false,
+      unavailableSymbols: ["ZZZZ", "ABCD"],
+    });
+  });
+
+  test("symbols that finished without options leave the screen complete", async () => {
+    expect(await report([ready, pending("PFAI", "unavailable", "2026-10-11T04:09:51Z", "2026-10-09"),
+      pending("NEXE", "unavailable", "2026-10-11T00:45:22Z", "2026-10-09")]))
+      .toEqual({ notes: ["No options history: PFAI, NEXE."], complete: true, unavailableSymbols: [] });
+  });
+
+  test("a symbol demand coverage could not take is not final", async () => {
+    expect(await report([ready, pending("FULL", "unavailable", null, null, ["Coverage for new underlyings is full; try again later."])]))
+      .toEqual({ notes: ["Not queued: FULL. Coverage for new underlyings is full; try again later."], complete: false, unavailableSymbols: ["FULL"] });
+  });
+
+  test("an older server's queued symbol reads as before, retried from now", async () => {
+    const queued: IvScreenRow = { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null };
+    expect(await report([ready, queued])).toEqual({
+      notes: ["Queued for backfill: ZZZZ; a first backfill usually takes under 10 minutes, try again after 08:14 UTC."],
+      complete: false, unavailableSymbols: ["ZZZZ"],
+    });
   });
 });

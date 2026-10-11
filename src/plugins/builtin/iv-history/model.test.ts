@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import type { IvHistoryPayload, IvPoint, IvScreenRow } from "./client";
 import { statSource } from "./format";
-import { midrankPercentile, projectIvHistory, projectRichCheap, richCheapDates, verdictFor } from "./model";
+import { midrankPercentile, projectIvHistory, projectRichCheap, richCheapDates, screenCoverage, screenPaneNotices, verdictFor } from "./model";
 
 const DAY = 86_400_000;
 const sessions = (count: number, end = "2026-09-22") => {
@@ -63,11 +63,14 @@ describe("IV history against realized", () => {
     const queuedAt = Date.parse("2026-09-23T06:25:59Z");
     const queued = (now: number) => projectIvHistory(payload([], { status: "queued",
       coverage: { source: "demand", addedAt: "2026-09-23T06:25:59Z", backfilledThrough: null, since: null } }), [], { now }).warnings[0];
-    expect(queued(queuedAt + 60_000)).toBe("SPY implied volatility history is queued; "
+    expect(queued(queuedAt + 60_000)).toBe("SPY queued for backfill since 06:25 UTC; "
       + "a first backfill usually takes under 10 minutes, try again after 06:35 UTC.");
     // Past the usual wait there is no estimate left to give.
-    expect(queued(queuedAt + 30 * 60_000)).toContain("waiting since 06:25 UTC, longer than the usual 10 minutes");
-    expect(projectIvHistory(payload([], { status: "backfilling" }), prices(dates)).warnings[0]).toContain("backfilling");
+    expect(queued(queuedAt + 30 * 60_000)).toBe("SPY queued for backfill since 06:25 UTC; longer than the usual 10 minutes, try again shortly.");
+    expect(projectIvHistory(payload([], { status: "backfilling",
+      coverage: { source: "demand", addedAt: "", backfilledThrough: "2025-03-14", since: null } }), prices(dates)).warnings[0])
+      .toBe("SPY backfilling through 2025-03-14.");
+    expect(projectIvHistory(payload([], { status: "unavailable" }), prices(dates)).warnings[0]).toBe("No options history for SPY.");
   });
 });
 
@@ -145,4 +148,72 @@ test("a queued symbol does not break a date every other row shares", () => {
     .toEqual({ reading: { date: "2026-09-23", method: "quote-mid" }, rank: "2026-09-22", rankApart: false, skewApart: false });
   expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), ready("B", "2026-09-21")])))
     .toMatchObject({ rank: null, rankApart: true });
+});
+
+describe("VCA backfill states", () => {
+  const NOW = Date.parse("2026-10-11T08:04:00Z");
+  const reading = { date: "2026-10-09", method: "trade-close" as const, capturedAt: "", spot: 100, iv7: null, iv30: 0.3, iv60: null, iv90: 0.31,
+    iv180: null, iv365: null };
+  const ready: IvScreenRow = { symbol: "AAPL", status: "ready", coverageStatus: "ready", latest: reading, iv90: null, skew: null,
+    coverage: { source: "seed", addedAt: "2026-01-01T00:00:00Z", backfilledThrough: "2026-10-09" }, warnings: [],
+    iv30: { value: 0.3, date: "2026-10-09", method: "trade-close", rank: 70, percentile: 88, low: 0.2, high: 0.4, samples: 250, windowStart: "2025-10-09" } };
+  const pending = (symbol: string, coverageStatus: IvScreenRow["coverageStatus"], addedAt: string, backfilledThrough: string | null,
+    warnings: string[] = []): IvScreenRow => ({ symbol, status: coverageStatus === "unavailable" && !warnings.length ? "ready" : "queued",
+    coverageStatus, coverage: warnings.length ? null : { source: "demand", addedAt, backfilledThrough }, warnings,
+    iv30: null, iv90: null, latest: null, skew: null });
+  const rows = projectRichCheap([
+    ready,
+    pending("ZZZZ", "queued", "2026-10-11T07:58:12Z", null),
+    pending("YYYY", "queued", "2026-10-10T23:40:00Z", null),
+    pending("ABCD", "backfilling", "2026-10-11T07:31:00Z", "2025-03-14"),
+    pending("PFAI", "unavailable", "2026-10-11T04:09:51Z", "2026-10-09"),
+    pending("NEXE", "unavailable", "2026-10-11T00:45:22Z", "2026-10-09"),
+    pending("FULL", "unavailable", "", null, ["Coverage for new underlyings is full; try again later."]),
+  ]);
+
+  test("each state is dated, and only history still to come leaves the screen incomplete", () => {
+    expect(screenCoverage(rows, { now: NOW })).toEqual({
+      notes: [
+        // Ten minutes from the newest queued symbol; one queued on another day carries its date.
+        "Queued for backfill: ZZZZ since 07:58 UTC, YYYY since 2026-10-10 23:40 UTC; a first backfill usually takes under 10 minutes, try again after 08:08 UTC.",
+        "Backfilling: ABCD through 2025-03-14.",
+        "No options history: PFAI, NEXE.",
+        "Not queued: FULL. Coverage for new underlyings is full; try again later.",
+      ],
+      pending: ["ZZZZ", "YYYY", "ABCD", "FULL"],
+      missing: ["ZZZZ", "YYYY", "ABCD", "FULL"],
+    });
+    // Finished without options is final: nothing left to wait for.
+    expect(screenCoverage(rows.filter((row) => row.symbol === "AAPL" || row.symbol === "PFAI"), { now: NOW }))
+      .toEqual({ notes: ["No options history: PFAI."], pending: [], missing: [] });
+    // A backfill with readings so far is still incomplete, but not missing.
+    const partial = projectRichCheap([{ ...pending("ABCD", "backfilling", "", "2025-03-14"), latest: reading }]);
+    expect(screenCoverage(partial, { now: NOW })).toMatchObject({ pending: ["ABCD"], missing: [] });
+    // Past the usual wait it says so instead of a time.
+    expect(screenCoverage(rows.filter((row) => row.symbol === "YYYY"), { now: NOW }).notes)
+      .toEqual(["Queued for backfill: YYYY since 2026-10-10 23:40 UTC; longer than the usual 10 minutes, try again shortly."]);
+  });
+
+  test("the pane says the same without a time to come back at", () => {
+    expect(screenPaneNotices(rows, NOW).slice(0, 2)).toEqual([
+      "Queued for backfill: ZZZZ since 07:58 UTC, YYYY since 2026-10-10 23:40 UTC; a first backfill usually takes under 10 minutes.",
+      "Backfilling: ABCD through 2025-03-14.",
+    ]);
+    expect(screenPaneNotices(rows, NOW)).toHaveLength(4);
+  });
+
+  test("an older server's ready or queued reads as before in the pane", () => {
+    const old = projectRichCheap([
+      { symbol: "AAPL", status: "ready", iv30: ready.iv30, iv90: null, latest: reading, skew: null },
+      { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null },
+      // Finished without options: an older server calls it ready, with nothing stored.
+      { symbol: "PFAI", status: "ready", iv30: null, iv90: null, latest: null, skew: null },
+    ]);
+    expect(old.map((row) => [row.symbol, row.status, row.queuedAt, row.backfilledThrough])).toEqual([
+      ["AAPL", "ready", null, null], ["ZZZZ", "queued", null, null], ["PFAI", "ready", null, null]]);
+    expect(screenPaneNotices(old, NOW)).toEqual([
+      "Queued for backfill: ZZZZ; a first backfill usually takes under 10 minutes.",
+      "1 symbol has no stored implied volatility yet.",
+    ]);
+  });
 });

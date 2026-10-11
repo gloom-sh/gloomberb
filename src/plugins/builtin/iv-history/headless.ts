@@ -3,7 +3,7 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatStat, formatVol, readingLabel, sharedDates, VCA_DEFINITIONS, verdictLabel } from "./format";
-import { backfillRetryText, HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, VCA_LIMIT, VCA_PRESETS } from "./model";
+import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, screenCoverage, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
@@ -77,7 +77,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
       loadRealizedVolatilities(universe.instruments, 20, { signal: ctx.signal }, createHvDependencies(ctx.marketData)),
     ]);
     const rows = projectRichCheap(payload.rows, hv).sort((a, b) => (b.percentile ?? -1) - (a.percentile ?? -1));
-    const queued = rows.filter((row) => row.status === "queued").map((row) => row.symbol);
+    const coverage = screenCoverage(rows);
     const dates = richCheapDates(rows);
     const hasSkew = rows.some((row) => row.skew != null);
     const hasIv1y = rows.some((row) => row.iv1y != null), hasIv1yRank = rows.some((row) => row.iv1yPercentile != null);
@@ -99,9 +99,10 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         { key: "hv", header: "HV20", format: percent },
         { key: "ivHv", header: "IV/HV", format: (value: unknown) => typeof value === "number" ? value.toFixed(2) : "--" },
       ], rows: rows.map((row) => ({ ...row })) }],
-      complete: !queued.length && !universe.error, unavailableSymbols: queued,
+      // A symbol with no options history is final; only history still to come leaves the screen incomplete.
+      complete: !coverage.pending.length && !universe.error, unavailableSymbols: coverage.missing,
       errors: [universe.error].filter((value): value is string => !!value),
-      notes: [...queued.length ? [`Queued for backfill: ${queued.join(", ")}; ${backfillRetryText(null)}.`] : [], ...VCA_DEFINITIONS],
+      notes: [...coverage.notes, ...VCA_DEFINITIONS],
       metadata: { presets: VCA_PRESETS, methodology: METHODOLOGY },
     };
   },

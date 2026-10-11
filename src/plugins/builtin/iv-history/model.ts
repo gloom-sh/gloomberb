@@ -1,6 +1,6 @@
 import type { PricePoint } from "../../../types/financials";
 import { rollingRealizedVolatility } from "../shared/volatility";
-import type { IvHistoryPayload, IvMethod, IvPoint, IvScreenRow, IvStats } from "./client";
+import type { IvCoverageStatus, IvHistoryPayload, IvMethod, IvPoint, IvScreenRow, IvStats } from "./client";
 
 export const HV_WINDOWS = [20, 30] as const;
 export type HvWindow = (typeof HV_WINDOWS)[number];
@@ -31,8 +31,7 @@ const MIN_RANK_SAMPLES = 120;
  * queued it: nine in ten have history by then (docs/research-data.md).
  */
 const FIRST_BACKFILL_MINUTES = 10;
-/** For a view that checks again by itself, so it needs no time to come back at. */
-export const FIRST_BACKFILL_TEXT = `a first backfill usually takes under ${FIRST_BACKFILL_MINUTES} minutes`;
+const FIRST_BACKFILL_TEXT = `a first backfill usually takes under ${FIRST_BACKFILL_MINUTES} minutes`;
 
 /** "06:41 UTC" today, with the date on another day: "2026-10-09 06:41 UTC". */
 function utcClock(time: number, now: number): string {
@@ -41,19 +40,29 @@ function utcClock(time: number, now: number): string {
     ? `${iso.slice(11, 16)} UTC` : `${iso.slice(0, 16).replace("T", " ")} UTC`;
 }
 
+/** When a symbol was queued, or null when the answer does not say (older servers) or says a time still to come. */
+function queuedTime(queuedAt: string | null | undefined, now: number): number | null {
+  const time = queuedAt ? Date.parse(queuedAt) : Number.NaN;
+  return Number.isFinite(time) && time <= now ? time : null;
+}
+
 /**
- * When to look again for a queued symbol's history: "a first backfill usually
- * takes under 10 minutes, try again after 06:41 UTC", from when it was queued,
- * or from now when the answer does not say. One queued for longer than that is
- * running late, and says so rather than give a time it cannot know.
+ * When to look again for history queued at `from`: "a first backfill usually
+ * takes under 10 minutes, try again after 06:41 UTC". One queued for longer
+ * than that is running late, and says so rather than give a time it cannot
+ * know. A view that checks again by itself (`retry: false`) needs no time to
+ * come back at.
  */
-export function backfillRetryText(queuedAt: string | null | undefined, now = Date.now()): string {
-  const queued = queuedAt ? Date.parse(queuedAt) : Number.NaN;
-  const from = Number.isFinite(queued) && queued <= now ? queued : now;
+function firstBackfillText(from: number, now: number, retry: boolean): string {
   const retryAt = from + FIRST_BACKFILL_MINUTES * 60_000;
-  return retryAt > now
-    ? `${FIRST_BACKFILL_TEXT}, try again after ${utcClock(retryAt, now)}`
-    : `waiting since ${utcClock(from, now)}, longer than the usual ${FIRST_BACKFILL_MINUTES} minutes; try again shortly`;
+  if (retryAt <= now) return `longer than the usual ${FIRST_BACKFILL_MINUTES} minutes${retry ? ", try again shortly" : ""}`;
+  return retry ? `${FIRST_BACKFILL_TEXT}, try again after ${utcClock(retryAt, now)}` : FIRST_BACKFILL_TEXT;
+}
+
+/** "queued for backfill since 06:31 UTC; a first backfill usually takes under 10 minutes, try again after 06:41 UTC" */
+function queuedText(queuedAt: string | null | undefined, now: number): string {
+  const queued = queuedTime(queuedAt, now);
+  return `queued for backfill${queued == null ? "" : ` since ${utcClock(queued, now)}`}; ${firstBackfillText(queued ?? now, now, true)}`;
 }
 export interface IvHistoryModel {
   symbol: string;
@@ -168,11 +177,12 @@ export function projectIvHistory(
     seriesStat("spread", `IV 30d - HV ${window}`, "points", spreadAll, "trade-close"),
     seriesStat("term", "IV 30d / 90d", "ratio", termAll, "trade-close"));
 
-  if (payload.status === "queued") {
-    warnings.push(`${payload.symbol} implied volatility history is queued; ${backfillRetryText(payload.coverage?.addedAt, options.now)}.`);
-  }
-  else if (payload.status === "backfilling") warnings.push(`${payload.symbol} history is still backfilling (through ${payload.coverage?.backfilledThrough ?? "--"}).`);
-  else if (payload.status === "unavailable" && !payload.warnings.length) warnings.push(`No listed options history found for ${payload.symbol}.`);
+  // Worded as VCA words each symbol (screenCoverage).
+  if (payload.status === "queued") warnings.push(`${payload.symbol} ${queuedText(payload.coverage?.addedAt, options.now ?? Date.now())}.`);
+  else if (payload.status === "backfilling") {
+    const through = payload.coverage?.backfilledThrough;
+    warnings.push(`${payload.symbol} backfilling${through ? ` through ${through}` : ""}.`);
+  } else if (payload.status === "unavailable" && !payload.warnings.length) warnings.push(`No options history for ${payload.symbol}.`);
   if (!prices.length) warnings.push("Realized volatility unavailable: daily price history is missing.");
 
   const tradeIv365 = byMethod(payload.series, "trade-close", "iv365");
@@ -194,7 +204,14 @@ export function projectIvHistory(
 export type RichCheap = "rich" | "cheap" | "fair" | null;
 export interface RichCheapRow {
   symbol: string;
-  status: IvScreenRow["status"];
+  /** Where the symbol's history stands, as HIVG reads it; an older server says only ready or queued. */
+  status: IvCoverageStatus;
+  /** When the symbol was queued for backfill, when the server says. */
+  queuedAt: string | null;
+  /** The last session its backfill has reached. */
+  backfilledThrough: string | null;
+  /** Why an unavailable symbol is not covered yet (demand coverage is full): not final, unlike one with no options history. */
+  warning: string | null;
   iv30: number | null;
   date: string | null;
   method: IvMethod | null;
@@ -259,7 +276,9 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
     const realized = hv.get(row.symbol) ?? null;
     const percentile = row.iv30?.percentile ?? null;
     return {
-      symbol: row.symbol, status: row.status, iv30, date: latest?.date ?? null, method: latest?.method ?? null,
+      symbol: row.symbol, status: row.coverageStatus ?? row.status, queuedAt: row.coverage?.addedAt ?? null,
+      backfilledThrough: row.coverage?.backfilledThrough ?? null, warning: row.warnings?.[0] ?? null,
+      iv30, date: latest?.date ?? null, method: latest?.method ?? null,
       rank: row.iv30?.rank ?? null, percentile, rankDate: row.iv30?.date ?? null,
       termSlope: iv30 != null && latest?.iv90 != null ? iv30 - latest.iv90 : null,
       iv1y: latest?.iv365 ?? null,
@@ -269,6 +288,60 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
       verdict: verdictFor(percentile),
     };
   });
+}
+
+interface ScreenCoverage {
+  /** One line per state, each symbol dated: queued since when, backfilled through which session. */
+  notes: string[];
+  /** Symbols whose history is still to come or not covered yet: the screen is incomplete while there are any. */
+  pending: string[];
+  /** Those of them with no reading to show yet. */
+  missing: string[];
+}
+
+/**
+ * What VCA says about symbols without a full history, in the report's notes
+ * and the pane's notices. A queued symbol says since when and, with `retry`,
+ * when to look again: ten minutes after the newest of them was queued. One
+ * backfilling says how far it has got. One that finished with no options
+ * history is final and leaves the screen complete; one demand coverage could
+ * not take is not final. An older server says only ready or queued, without
+ * dates, so its queued symbols are counted from now as before.
+ */
+export function screenCoverage(rows: readonly RichCheapRow[], options: { now?: number; retry?: boolean } = {}): ScreenCoverage {
+  const now = options.now ?? Date.now();
+  const queued = rows.filter((row) => row.status === "queued");
+  const backfilling = rows.filter((row) => row.status === "backfilling");
+  const final = rows.filter((row) => row.status === "unavailable" && !row.warning);
+  const uncovered = rows.filter((row) => row.status === "unavailable" && row.warning);
+  const notes: string[] = [];
+  if (queued.length) {
+    const times = queued.map((row) => queuedTime(row.queuedAt, now));
+    const listed = queued.map((row, index) => times[index] == null ? row.symbol : `${row.symbol} since ${utcClock(times[index]!, now)}`);
+    const newest = Math.max(...times.map((time) => time ?? now));
+    notes.push(`Queued for backfill: ${listed.join(", ")}; ${firstBackfillText(newest, now, options.retry ?? true)}.`);
+  }
+  if (backfilling.length) {
+    notes.push(`Backfilling: ${backfilling.map((row) => row.backfilledThrough ? `${row.symbol} through ${row.backfilledThrough}` : row.symbol).join(", ")}.`);
+  }
+  if (final.length) notes.push(`No options history: ${final.map((row) => row.symbol).join(", ")}.`);
+  const reasons = new Map<string, string[]>();
+  for (const row of uncovered) reasons.set(row.warning!, [...(reasons.get(row.warning!) ?? []), row.symbol]);
+  for (const [reason, symbols] of reasons) notes.push(`Not queued: ${symbols.join(", ")}. ${reason}`);
+  const pending = [...queued, ...backfilling, ...uncovered];
+  return { notes, pending: pending.map((row) => row.symbol),
+    missing: pending.filter((row) => row.iv30 == null && row.date == null).map((row) => row.symbol) };
+}
+
+/**
+ * The VCA pane's notices: the report's wording without a time to come back
+ * at, since the pane checks again by itself, and a count of ready symbols with
+ * no IV30, which is how an older server reports one that found no options.
+ */
+export function screenPaneNotices(rows: readonly RichCheapRow[], now = Date.now()): string[] {
+  const empty = rows.filter((row) => row.status === "ready" && row.iv30 == null).length;
+  return [...screenCoverage(rows, { now, retry: false }).notes,
+    ...(empty ? [`${empty} symbol${empty === 1 ? " has" : "s have"} no stored implied volatility yet.`] : [])];
 }
 
 export const VCA_PRESETS = {

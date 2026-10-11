@@ -8,7 +8,7 @@ import type { PricePoint } from "../../../types/financials";
 import { realizedVolatility, realizedVolatilityCadenceIssue } from "../shared/volatility";
 
 export type IvMethod = "quote-mid" | "trade-close";
-type IvCoverageStatus = "ready" | "backfilling" | "queued" | "unavailable";
+export type IvCoverageStatus = "ready" | "backfilling" | "queued" | "unavailable";
 export interface IvPoint {
   sessionDate: string;
   method: IvMethod;
@@ -67,7 +67,14 @@ export interface IvHistoryPayload {
 }
 export interface IvScreenRow {
   symbol: string;
+  /** Has readings, or none yet. All an older server says; `coverageStatus` is exact. */
   status: "ready" | "queued";
+  /** Where the symbol's history stands, as in `IvHistoryPayload.status`. Absent from older servers. */
+  coverageStatus?: IvCoverageStatus;
+  /** When the symbol was queued and how far its backfill has got; null when it is not covered. */
+  coverage?: { source: "seed" | "demand"; addedAt: string; backfilledThrough: string | null } | null;
+  /** Why it is not covered yet, such as demand coverage being full. */
+  warnings?: string[];
   iv30: IvStats | null;
   iv90: IvStats | null;
   iv365?: IvStats | null;

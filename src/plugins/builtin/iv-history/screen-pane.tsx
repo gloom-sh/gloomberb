@@ -10,7 +10,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatVol, readingLabel, sharedDates, shortDate, VCA_DEFINITIONS, verdictLabel } from "./format";
-import { FIRST_BACKFILL_TEXT, projectRichCheap, type RichCheapRow, richCheapDates, type VcaPreset } from "./model";
+import { projectRichCheap, type RichCheapRow, richCheapDates, screenPaneNotices, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 
 type SortId = keyof RichCheapRow;
@@ -78,12 +78,8 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     }
   }), [rows, dates]);
   const [selected, setSelected] = useState<string | null>(null);
-  const queued = rows.filter((row) => row.status === "queued").length;
-  const uncovered = rows.filter((row) => row.status !== "queued" && row.iv30 == null).length;
-  const notices = [universe.error, resource.error,
-    ...(queued ? [`${queued} symbol${queued === 1 ? "" : "s"} queued for implied volatility history; ${FIRST_BACKFILL_TEXT}.`] : []),
-    ...(uncovered ? [`${uncovered} symbol${uncovered === 1 ? " has" : "s have"} no stored implied volatility yet.`] : [])]
-    .filter((value): value is string => !!value);
+  const coverageNotices = useMemo(() => screenPaneNotices(rows), [rows]);
+  const notices = [universe.error, resource.error, ...coverageNotices].filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "iv-screen-notices", notices, focused });
   const openHistory = (row: RichCheapRow) => createPaneFromTemplate("iv-history-pane", { symbol: row.symbol });
   // The full wording gives way to the short form in a pane too narrow to show the rank date.
@@ -102,8 +98,8 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     switch (id) {
       case "symbol": return { text: row.symbol, color: colors.textBright };
       case "iv30": return { text: formatVol(row.iv30), color: colors.warning };
-      case "date": return { text: row.date ? readingLabel(row.date, row.method, true) : row.status === "queued" ? "queued" : "--",
-        color: colors.textDim };
+      case "date": return { text: row.date ? readingLabel(row.date, row.method, true)
+        : row.status === "queued" || row.status === "backfilling" ? row.status : "--", color: colors.textDim };
       case "rankDate": return { text: row.rankDate ? `${shortDate(row.rankDate)} close` : "--", color: colors.textDim };
       case "rank": return { text: formatRank(row.rank) };
       case "percentile": return { text: formatRank(row.percentile) };
