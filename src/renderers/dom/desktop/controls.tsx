@@ -23,6 +23,7 @@ import type { SegmentedControlProps } from "../../../components/ui/toggle";
 import {
   CONTROL_RADIUS,
   buttonPalette,
+  buttonShadow,
   controlBorderColor,
   controlShadow,
   panelBorder,
@@ -95,7 +96,7 @@ export function WebButton({
         border: flush ? "none" : `1px solid ${palette.border}`,
         borderRadius: CONTROL_RADIUS,
         padding: flush ? 0 : compact ? "0 2px" : "0 8px",
-        boxShadow: variant === "plain" ? "none" : controlShadow(active, colors),
+        boxShadow: buttonShadow({ variant, active, disabled }, colors),
         cursor: disabled ? "default" : "pointer",
       }}
     >
