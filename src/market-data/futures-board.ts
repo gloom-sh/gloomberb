@@ -25,11 +25,10 @@ export interface FuturesContract {
   venue: "CME" | "CBT" | "NYM" | "CMX" | "NYB";
   /** Lists a contract for every calendar month. */
   everyMonth?: true;
-  /** False where the contract curve (CTM) does not cover the root yet. */
-  curve?: false;
   /**
    * What a price counts where the server sends no contract terms for the root:
-   * Dutch TTF gas quotes in euros per MWh, which a bare "EUR" does not say.
+   * Dutch TTF gas quotes in euros per MWh, which a bare "EUR" does not say, and
+   * live cattle in US cents per pound, where the server's "USX" does not.
    */
   unit?: string;
   /**
@@ -77,7 +76,7 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "GC=F", code: "GC", name: "Gold", sector: "metals", venue: "CMX", tick: 0.1 },
   { symbol: "SI=F", code: "SI", name: "Silver", sector: "metals", venue: "CMX", tick: 0.005 },
   { symbol: "HG=F", code: "HG", name: "Copper", sector: "metals", venue: "CMX", tick: 0.0005 },
-  { symbol: "ALI=F", code: "ALI", name: "Aluminum", sector: "metals", venue: "CMX", tick: 0.25, curve: false },
+  { symbol: "ALI=F", code: "ALI", name: "Aluminum", sector: "metals", venue: "CMX", tick: 0.25, unit: "USD / metric ton" },
   { symbol: "PL=F", code: "PL", name: "Platinum", sector: "metals", venue: "NYM", tick: 0.1 },
   { symbol: "PA=F", code: "PA", name: "Palladium", sector: "metals", venue: "NYM", tick: 0.1 },
 
@@ -85,20 +84,20 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   // dollars); a tick is in the quote's own units.
   { symbol: "ZC=F", code: "ZC", name: "Corn", sector: "agriculture", venue: "CBT", tick: 0.25 },
   { symbol: "ZS=F", code: "ZS", name: "Soybeans", sector: "agriculture", venue: "CBT", tick: 0.25 },
-  { symbol: "ZM=F", code: "ZM", name: "Soybean Meal", sector: "agriculture", venue: "CBT", tick: 0.1, curve: false },
-  { symbol: "ZL=F", code: "ZL", name: "Soybean Oil", sector: "agriculture", venue: "CBT", tick: 0.01, curve: false, bareCode: true },
+  { symbol: "ZM=F", code: "ZM", name: "Soybean Meal", sector: "agriculture", venue: "CBT", tick: 0.1 },
+  { symbol: "ZL=F", code: "ZL", name: "Soybean Oil", sector: "agriculture", venue: "CBT", tick: 0.01, bareCode: true },
   { symbol: "ZW=F", code: "ZW", name: "Chicago SRW Wheat", sector: "agriculture", venue: "CBT", tick: 0.25, bareCode: true },
-  { symbol: "KE=F", code: "KE", name: "KC HRW Wheat", sector: "agriculture", venue: "CBT", tick: 0.25, curve: false },
+  { symbol: "KE=F", code: "KE", name: "KC HRW Wheat", sector: "agriculture", venue: "CBT", tick: 0.25 },
   { symbol: "KC=F", code: "KC", name: "Coffee", sector: "agriculture", venue: "NYB", tick: 0.05 },
   { symbol: "SB=F", code: "SB", name: "Sugar #11", sector: "agriculture", venue: "NYB", tick: 0.01 },
   { symbol: "CC=F", code: "CC", name: "Cocoa", sector: "agriculture", venue: "NYB", tick: 1 },
   { symbol: "CT=F", code: "CT", name: "Cotton #2", sector: "agriculture", venue: "NYB", tick: 0.01, bareCode: true },
-  { symbol: "OJ=F", code: "OJ", name: "Orange Juice", sector: "agriculture", venue: "NYB", tick: 0.05, curve: false, bareCode: true },
-  { symbol: "LBR=F", code: "LBR", name: "Lumber", sector: "agriculture", venue: "CME", tick: 0.5, curve: false, bareCode: true },
+  { symbol: "OJ=F", code: "OJ", name: "Orange Juice", sector: "agriculture", venue: "NYB", tick: 0.05, unit: "US cents / lb", bareCode: true },
+  { symbol: "LBR=F", code: "LBR", name: "Lumber", sector: "agriculture", venue: "CME", tick: 0.5, unit: "USD / 1,000 board ft", bareCode: true },
 
   // Quoted in US cents per pound.
-  { symbol: "LE=F", code: "LE", name: "Live Cattle", sector: "livestock", venue: "CME", tick: 0.025, curve: false },
-  { symbol: "HE=F", code: "HE", name: "Lean Hogs", sector: "livestock", venue: "CME", tick: 0.025, curve: false },
+  { symbol: "LE=F", code: "LE", name: "Live Cattle", sector: "livestock", venue: "CME", tick: 0.025, unit: "US cents / lb" },
+  { symbol: "HE=F", code: "HE", name: "Lean Hogs", sector: "livestock", venue: "CME", tick: 0.025, unit: "US cents / lb" },
 
   { symbol: "6E=F", code: "6E", name: "Euro FX", sector: "currencies", venue: "CME", tick: 0.00005, bareCode: true },
   { symbol: "6J=F", code: "6J", name: "Japanese Yen", sector: "currencies", venue: "CME", tick: 0.0000005, bareCode: true },

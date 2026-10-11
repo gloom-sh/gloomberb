@@ -4,7 +4,7 @@ import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } fr
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, vsSpotPct } from "./model";
+import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, vsSpotPct } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -55,11 +55,7 @@ test("normalizes FUT aliases before cloud request and handles missing endpoints 
   await fetchFuturesCurve("cl=f", { getCloudFuturesCurve: async (root) => { requested.push(root); return payload(); } });
   expect(requested).toEqual(["CL"]);
   await expect(fetchFuturesCurve("BAD", { getCloudFuturesCurve: async () => { throw new Error("should not request"); } })).rejects.toThrow("No futures curve for BAD");
-  // Dutch TTF has a curve; a board root without one says so and where its front month is, and the generic answer names those roots.
   expect(normalizeCurveRoot("ttf=f")).toBe("TTF");
-  expect(unsupportedCurveRootMessage("zm")).toBe("No futures curve for ZM (Soybean Meal) yet: FUT quotes its front month, gloomberb quote ZM=F.");
-  const without = FUTURES_CONTRACTS.filter((row) => row.curve === false).map((row) => row.code);
-  expect(unsupportedCurveRootMessage("BAD")).toContain(`(all but ${without.join(", ")})`);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw new ApiRequestError("Not found", 404); } })).rejects.toThrow("not available yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw denied; } })).rejects.toBe(denied);
@@ -134,6 +130,41 @@ test("Dutch TTF gas is a curve root that reads in euros per MWh at its 0.001 tic
   { "1W": null, "1M": null }, "2026-10-11T00:00:00Z");
   expect(past.contracts[0]).toMatchObject({ currency: "EUR", quoteUnit: "EUR" });
   expect(curveUnitLabel(past)).toBe("EUR / MWh");
+});
+
+test("every FUT board root opens a curve, as a typed code or an =F symbol; the cursor keeps a security's code", async () => {
+  const requested: string[] = [];
+  for (const row of FUTURES_CONTRACTS) {
+    for (const typed of [row.code, row.code.toLowerCase(), row.symbol]) expect(normalizeCurveRoot(typed)).toBe(row.code);
+    expect(CURVE_ROOTS.some((root) => root.value === row.code)).toBe(true);
+    await fetchFuturesCurve(row.symbol, { getCloudFuturesCurve: async (root) => { requested.push(root); return { ...payload(), root }; } });
+  }
+  expect(requested).toEqual(FUTURES_CONTRACTS.map((row) => row.code));
+  // Zoom, KC wheat's, live cattle's, lean hogs' and aluminum's codes are listed securities too: under the cursor they open the
+  // curve only as the future's symbol, while a typed argument always means the future.
+  const securities = ["ZM", "KE", "LE", "HE", "ALI"];
+  for (const row of FUTURES_CONTRACTS) {
+    expect(curveRootForTicker(row.symbol)).toBe(row.code);
+    expect(curveRootForTicker(row.code.toLowerCase())).toBe(securities.includes(row.code) ? null : row.code);
+  }
+  // No bare-code row has a security answering to it, so those open from the cursor like ES always has.
+  expect(["ZL", "OJ", "LBR", "ZW", "TTF"].map(curveRootForTicker)).toEqual(["ZL", "OJ", "LBR", "ZW", "TTF"]);
+  const template = futuresCurveModule.paneTemplates![0]!;
+  const open = (arg: string | undefined, activeTicker: string | null) => template.createInstance!({ activeTicker } as never, { arg } as never);
+  expect(await open(undefined, "ZM")).toMatchObject({ title: "CTM ES", params: { root: "ES" } });
+  expect(await open("ZM", "ZM")).toMatchObject({ title: "CTM ZM", params: { root: "ZM" } });
+  expect(await open(undefined, "ZM=F")).toMatchObject({ title: "CTM ZM", params: { root: "ZM" } });
+  expect(await open(undefined, "ALI")).toMatchObject({ title: "CTM ES", params: { root: "ES" } });
+  expect(await open(undefined, "OJ")).toMatchObject({ title: "CTM OJ", params: { root: "OJ" } });
+});
+
+test("roots the server sends no terms for read their catalogue unit, each price at its tick", () => {
+  const curve = (root: string, quoteUnit: string) => ({ ...payload(), root, currency: quoteUnit, quoteUnit, spec: null });
+  expect([["ALI", "USD"], ["OJ", "USX"], ["LBR", "USD"], ["LE", "USX"], ["HE", "USX"]].map(([root, unit]) => curveUnitLabel(curve(root!, unit!))))
+    .toEqual(["USD / metric ton", "US cents / lb", "USD / 1,000 board ft", "US cents / lb", "US cents / lb"]);
+  // Soybean meal to a dime, live cattle and lean hogs to 0.025 cents, lumber to 50 cents.
+  expect([["ZM", 368.7], ["ZL", 67.72], ["KE", 719.25], ["OJ", 149.95], ["LE", 224.975], ["HE", 75.05], ["LBR", 533], ["ALI", 3172.5]]
+    .map(([root, price]) => curvePrice(price as number, root as string))).toEqual(["368.70", "67.72", "719.25", "149.95", "224.975", "75.050", "533.00", "3172.50"]);
 });
 
 test("a crypto root opens from a typed argument, a crypto ticker or a futures symbol, never from the equity under the cursor", async () => {

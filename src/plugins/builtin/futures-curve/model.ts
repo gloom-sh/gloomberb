@@ -3,7 +3,7 @@ import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/
 import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { FUTURES_CONTRACTS, futuresBoardContract, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
+import { FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
 import { formatPercentileRank } from "../../../utils/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { parseReportTime } from "../../../utils/utc-time";
@@ -21,7 +21,7 @@ const CRYPTO_CURVE_ROOTS: readonly { code: string; name: string; tick: number }[
 const rootLabel = (code: string, name: string) => name === code ? code : `${code} ${name}`;
 
 export const CURVE_ROOTS = [
-  ...FUTURES_CONTRACTS.filter((row) => row.curve !== false).map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
+  ...FUTURES_CONTRACTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
   { value: "VX", label: "VX VIX Futures" },
   ...CRYPTO_CURVE_ROOTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
 ];
@@ -34,33 +34,40 @@ export function normalizeCurveRoot(value: unknown): string | null {
   return CURVE_ROOTS.some((row) => row.value === root) ? root : null;
 }
 
-/**
- * What a root CTM does not list is told. A FUT root without a curve yet says
- * so and where its front month is; anything else gets the roots that work,
- * naming the board's roots CTM leaves out so the sentence stays true.
- */
+/** What a root CTM does not list is told: the roots that work, with the FUT board's, VIX and CME crypto named by group. */
 export function unsupportedCurveRootMessage(value: unknown): string {
   const typed = String(value).trim().toUpperCase().replace(/=F$/, "");
-  const board = futuresBoardContract(value);
-  if (board) return `No futures curve for ${board.code} (${board.name}) yet: FUT quotes its front month, gloomberb quote ${board.symbol}.`;
   const examples = ["ES", "CL", "GC", "ZN"].filter((root) => CURVE_ROOTS.some((row) => row.value === root));
-  const without = FUTURES_CONTRACTS.filter((row) => row.curve === false).map((row) => row.code);
-  const roots = without.length > 0 ? `the FUT board's roots (all but ${without.join(", ")})` : "the FUT board's roots";
-  return `No futures curve for ${typed || "that root"}: CTM covers ${roots}, VIX and CME crypto, such as ${examples.join(", ")}.`;
+  return `No futures curve for ${typed || "that root"}: CTM covers the FUT board's roots, VIX and CME crypto, such as ${examples.join(", ")}.`;
 }
+
+/**
+ * Board roots whose bare code opens their curve from the ticker under the
+ * cursor. Several are also listed securities (ES Eversource, NG NovaGold, PL
+ * Planet Labs), but they followed the cursor before the board was checked
+ * against listed securities and keep doing so. A root added after that (ZM is
+ * Zoom, KE, LE, HE and ALI are tickers too) follows the cursor only as its
+ * `=F` symbol or a code no security answers to (`bareCode`: ZL, OJ, LBR), the
+ * rule FUT and COT apply, so a new board row defaults to the security.
+ */
+const CURSOR_BARE_ROOTS: ReadonlySet<string> = new Set(["ES", "CL", "BZ", "NG", "RB", "HO", "GC", "SI", "HG", "PL", "PA", "ZC", "ZS", "KC", "SB", "CC"]);
 
 /**
  * The root for the ticker under the cursor, when CTM is opened without an
  * argument. The crypto roots are also US ticker symbols (Grayscale's mini
  * trusts are BTC and ETH), so a bare one is the equity's, never the future's:
  * only a futures symbol (BTC=F) or a coin pair (BTC-USD) names the crypto curve.
+ * A typed argument is different: `CTM ZM` is soybean meal even though ZM is also Zoom.
  */
 export function curveRootForTicker(ticker: unknown): string | null {
   if (typeof ticker !== "string") return null;
   const coin = cryptoPairCoin(ticker);
   if (coin) return CRYPTO_CURVE_ROOTS.some((row) => row.code === coin) ? coin : null;
   const root = normalizeCurveRoot(ticker);
-  return root && CRYPTO_CURVE_ROOTS.some((row) => row.code === root) && !isFuturesSymbol(ticker) ? null : root;
+  if (!root) return null;
+  if (CRYPTO_CURVE_ROOTS.some((row) => row.code === root)) return isFuturesSymbol(ticker) ? root : null;
+  const isBoardRoot = futuresContractByCode(root) != null;
+  return isBoardRoot && !CURSOR_BARE_ROOTS.has(root) ? futuresBoardContractForTicker(ticker)?.code ?? null : root;
 }
 
 /**

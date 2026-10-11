@@ -160,7 +160,7 @@ describe("buildAssistCommandInventory", () => {
     ]);
   });
 
-  test("sends every built-in fixed-value list whole", async () => {
+  test("sends a built-in fixed-value list whole, and leaves out one past the server cap", async () => {
     // A list past the server caps is left out of the request, and the
     // assistant is back to guessing the argument.
     const inventory = buildAssistCommandInventory({
@@ -181,7 +181,9 @@ describe("buildAssistCommandInventory", () => {
 
     const listed = inventory.filter((entry) => entry.arg?.options);
     expect(listed.map((entry) => entry.prefix)).toEqual(["TH", "LANG", "ECST", "VAL", "CTM", "COT"]);
-    expect(sent.filter((entry) => entry.arg?.options)).toEqual(listed);
+    // CTM lists every FUT board root, VIX and the CME crypto roots, past the cap, so its root stays a free-text argument.
+    expect(sent.filter((entry) => entry.arg?.options)).toEqual(listed.filter((entry) => entry.prefix !== "CTM"));
+    expect(sent.find((entry) => entry.prefix === "CTM")?.arg?.options).toBeUndefined();
   });
 
   test("caps the inventory at the server limit", () => {
