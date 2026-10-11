@@ -23,7 +23,7 @@ ticker are never asked and always see the generic copy.
 
 ## Which tickers
 
-`src/plugins/builtin/cloud/upgrade-tickers.ts` reads this device's portfolios
+`src/account/upgrade-tickers.ts` reads this device's portfolios
 and watchlists, and makes no quote request of its own:
 
 - Up to three holdings across every portfolio. Holdings the device can value

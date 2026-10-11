@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useReducer } from "react";
-import { apiClient } from "../../../api-client";
-import { usePlanAccess } from "../../../api-client/plan-access";
-import { exposeUpgradePersonalized, knownUpgradePersonalized } from "../../../api-client/research-activity";
-import { useOptionalAppSelector } from "../../../state/app/context";
-import { useAppVisible } from "../../../state/app/activity";
-import type { TickerFinancials } from "../../../types/financials";
-import type { TickerRecord, Watchlist } from "../../../types/ticker";
+import { apiClient } from "../api-client";
+import { usePlanAccess } from "../api-client/plan-access";
+import { exposeUpgradePersonalized, knownUpgradePersonalized } from "../api-client/research-activity";
+import { useOptionalAppSelector } from "../state/app/context";
+import { useAppVisible } from "../state/app/activity";
+import type { TickerFinancials } from "../types/financials";
+import type { TickerRecord, Watchlist } from "../types/ticker";
 import { selectUpgradeTickers } from "./upgrade-tickers";
 
 const NO_TICKERS = new Map<string, TickerRecord>();

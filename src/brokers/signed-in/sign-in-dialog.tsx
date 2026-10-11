@@ -17,7 +17,7 @@ import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { DialogHints } from "../../components/ui/dialog-actions";
 import { useDialog, useDialogKeyboard, type DialogApi, type PromptContext } from "../../ui/dialog";
 import { isPlainKey } from "../../utils/keyboard";
-import { DeviceSignInDialog } from "../../plugins/builtin/cloud/device-signin-dialog";
+import { DeviceSignInDialog } from "../../account/device-signin-dialog";
 import type { SignedInBroker } from "./client";
 import {
   BrokerSignInController,

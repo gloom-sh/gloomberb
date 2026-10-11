@@ -7,7 +7,7 @@ import {
   DeviceSignInPanel,
   isDeviceSignInRetryKey,
   useDeviceSignIn,
-} from "../../../plugins/builtin/cloud/device-signin-dialog";
+} from "../../../account/device-signin-dialog";
 
 /**
  * QR device sign-in inside the onboarding account step. The controller starts

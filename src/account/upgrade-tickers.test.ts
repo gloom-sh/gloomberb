@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { createTestFinancials, createTestQuote } from "../../../test-support/data-provider";
-import { createTestTicker } from "../../../test-support/ticker";
-import type { TickerFinancials } from "../../../types/financials";
-import type { TickerPosition, TickerRecord } from "../../../types/ticker";
+import { createTestFinancials, createTestQuote } from "../test-support/data-provider";
+import { createTestTicker } from "../test-support/ticker";
+import type { TickerFinancials } from "../types/financials";
+import type { TickerPosition, TickerRecord } from "../types/ticker";
 import { selectUpgradeTickers, upgradeTickerList } from "./upgrade-tickers";
 
 function lot(shares: number, overrides: Partial<TickerPosition> = {}): TickerPosition {

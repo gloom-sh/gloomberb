@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiClient, type AuthUser } from "../../../api-client";
-import { Button } from "../../../components/ui/button";
-import { useShortcut } from "../../../react/input";
-import { Box, Text } from "../../../ui";
-import { colors } from "../../../theme/colors";
-import { isPlainKey } from "../../../utils/keyboard";
+import { apiClient, type AuthUser } from "../api-client";
+import { Button } from "../components/ui/button";
+import { useShortcut } from "../react/input";
+import { Box, Text } from "../ui";
+import { colors } from "../theme/colors";
+import { isPlainKey } from "../utils/keyboard";
 
 /** Shared continuation after email signup in the terminal and browser. */
 export function CloudVerificationPanel({ onVerified, onContinueFree }: {

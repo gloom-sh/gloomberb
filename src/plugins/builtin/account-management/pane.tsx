@@ -34,7 +34,7 @@ import { FRAMED_TEXTAREA_DESKTOP_STYLE } from "../../../components/ui/fields";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
-import { loadUpgradeOffer } from "../cloud/upgrade-dialog";
+import { loadUpgradeOffer } from "../../../account/upgrade-dialog";
 import { openMcpConnectDialog } from "../cloud/mcp-connect/dialog";
 import { TeamsAccountTab } from "../cloud/team/acm-tab";
 import { AgentsAccountTab } from "../cloud/terminal-relay/acm-tab";

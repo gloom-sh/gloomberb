@@ -20,7 +20,7 @@ import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { formatCloudPrice, monthsFreeYearly } from "../../account/billing";
-import { proStepCopy, proStepRealtimeTitle } from "../../plugins/builtin/cloud/upgrade-dialog";
+import { proStepCopy, proStepRealtimeTitle } from "../../account/upgrade-dialog";
 import { Button, SegmentedControl, terminalButtonColumns } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import {

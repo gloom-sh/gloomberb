@@ -3,7 +3,7 @@ import { FIRST_RUN_WATCHLIST } from "../../../components/onboarding/first-run-wo
 import { DEFAULT_WATCHLIST_TICKERS } from "../../../state/app/bootstrap";
 import type { TickerRecord } from "../../../types/ticker";
 import { isNewAccount, needsCompanyPicks, planCompanyPicks } from "./company-picker";
-import { STARTER_SYMBOLS } from "./starter-symbols";
+import { STARTER_SYMBOLS } from "../../../tickers/starter-symbols";
 
 function ticker(symbol: string, lists: { watchlists?: string[]; portfolios?: string[] } = {}): TickerRecord {
   return {

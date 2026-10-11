@@ -3,7 +3,7 @@ import type { InputRenderable } from "../../../ui";
 import { AccountFormPanel } from "./form-panel";
 import { AccountQrPanel } from "./qr-panel";
 import { AccountSignedInPanel } from "./signed-in-panel";
-import type { AccountOutcome, AccountSub, AccountSubmitError } from "../../../plugins/builtin/cloud/auth-model";
+import type { AccountOutcome, AccountSub, AccountSubmitError } from "../../../account/auth-model";
 
 export interface AccountStepProps {
   sub: AccountSub;

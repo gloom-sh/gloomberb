@@ -6,8 +6,8 @@ import {
   type AccountOutcome,
   type AccountSub,
   type AccountSubmitError,
-} from "../../plugins/builtin/cloud/auth-model";
-import { useEmailAuthAttempt } from "../../plugins/builtin/cloud/email-auth-attempt";
+} from "../../account/auth-model";
+import { useEmailAuthAttempt } from "../../account/email-auth-attempt";
 
 const onboardingLog = debugLog.createLogger("onboarding");
 

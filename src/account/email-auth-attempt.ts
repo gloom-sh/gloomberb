@@ -5,8 +5,8 @@
  * attempt ignored. Each form keeps its own fields, layout and keys.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AuthUser } from "../../../api-client";
-import { t } from "../../../i18n";
+import type { AuthUser } from "../api-client";
+import { t } from "../i18n";
 import {
   advanceAccountField,
   classifyAccountError,

@@ -12,7 +12,7 @@ import { requestAccountManagementTab } from "../account-management/navigation";
 import { resolvePlanAccess, usePlanAccess, type PlanAccess } from "../../../api-client/plan-access";
 import { useViewport } from "../../../react/input";
 import { useOptionalDialog } from "../../../ui/dialog";
-import { promptCloudUpgrade } from "../cloud/upgrade-dialog";
+import { promptCloudUpgrade } from "../../../account/upgrade-dialog";
 
 const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
 

@@ -9,8 +9,8 @@ import {
   type AuthUser,
   type DeviceAuthStartResponse,
   type DeviceAuthTokenResponse,
-} from "../../../api-client";
-import { chatController } from "../chat/controller";
+} from "../api-client";
+import { accountSession as chatController } from "./session";
 
 export type DeviceSignInPhase =
   | "idle"

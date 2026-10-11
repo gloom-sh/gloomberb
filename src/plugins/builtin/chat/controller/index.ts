@@ -1,3 +1,4 @@
+import { registerAccountSession } from "../../../../account/session";
 import type {
   AppNotificationDelivery,
   AppNotificationRequest,
@@ -757,3 +758,4 @@ export class ChatController {
 }
 
 export const chatController = new ChatController();
+registerAccountSession(chatController);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { CloudPricing } from "../../../api-client";
+import type { CloudPricing } from "../api-client";
 import { proFeatureRows, proStepCopy, proStepRealtimeTitle, upgradeDialogCopy, type UpgradeOffer } from "./upgrade-dialog";
 
 const pricing: CloudPricing = {

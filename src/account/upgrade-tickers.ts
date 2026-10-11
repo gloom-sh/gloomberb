@@ -4,12 +4,12 @@
  * to watch, read from this device's portfolios and watchlists. They stay on
  * the device; nothing here is sent anywhere.
  */
-import { tf } from "../../../i18n";
-import type { TickerFinancials } from "../../../types/financials";
-import type { TickerRecord, Watchlist } from "../../../types/ticker";
-import { isUsListingExchange } from "../../../utils/exchanges";
-import { getPortfolioPositionValue } from "../../../portfolio/position-value";
-import { STARTER_SYMBOLS } from "./starter-symbols";
+import { tf } from "../i18n";
+import type { TickerFinancials } from "../types/financials";
+import type { TickerRecord, Watchlist } from "../types/ticker";
+import { isUsListingExchange } from "../utils/exchanges";
+import { getPortfolioPositionValue } from "../portfolio/position-value";
+import { STARTER_SYMBOLS } from "../tickers/starter-symbols";
 
 const UPGRADE_TICKER_LIMIT = 3;
 /** One to five letters and an optional class letter: BRK.B, never BTC-USD, ES=F, ^GSPC, SHOP.TO or 7203. */

@@ -3,7 +3,7 @@ import { Box, Text, TextAttributes, useUiCapabilities, type InputRenderable } fr
 import { colors } from "../../../theme/colors";
 import { t } from "../../../i18n";
 import { TextField } from "../../ui";
-import type { AccountMode, AccountSubmitError } from "../../../plugins/builtin/cloud/auth-model";
+import type { AccountMode, AccountSubmitError } from "../../../account/auth-model";
 import { ONBOARDING_DESKTOP } from "../onboarding-frame";
 
 function TuiFieldRow({

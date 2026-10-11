@@ -4,10 +4,10 @@
  * (validation, retry classification, username derivation) can be exercised
  * without rendering.
  */
-import { apiClient, type AuthUser } from "../../../api-client";
-import { identifyResearchUser } from "../../../api-client/research-activity";
-import { t } from "../../../i18n";
-import { chatController } from "../chat/controller";
+import { apiClient, type AuthUser } from "../api-client";
+import { identifyResearchUser } from "../api-client/research-activity";
+import { t } from "../i18n";
+import { accountSession as chatController } from "./session";
 
 /**
  * `signup` is the one email form that serves new and returning accounts (a

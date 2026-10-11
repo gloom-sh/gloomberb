@@ -44,7 +44,7 @@ import { useToastHost } from "../../../ui/toast";
 import { debugLog } from "../../../utils/debug-log";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { PluginRegistry } from "../../registry";
-import { STARTER_SYMBOLS } from "./starter-symbols";
+import { STARTER_SYMBOLS } from "../../../tickers/starter-symbols";
 
 const log = debugLog.createLogger("company-picker");
 

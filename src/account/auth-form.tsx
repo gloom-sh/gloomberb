@@ -5,15 +5,15 @@
  * `email-auth-attempt`, the non-React logic in `auth-model`.
  */
 import { useCallback, useRef, useState, type ReactNode } from "react";
-import { apiClient, type AuthUser } from "../../../api-client";
-import { matchesKeyChord, parseKeyChord } from "../../../app/keybindings";
-import { Button, Spinner, TextField } from "../../../components";
-import { t, tf } from "../../../i18n";
-import { useAppLanguage } from "../../../i18n/react";
-import { colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes, type InputRenderable } from "../../../ui";
-import { useDialogKeyboard } from "../../../ui/dialog";
-import { isPlainKey } from "../../../utils/keyboard";
+import { apiClient, type AuthUser } from "../api-client";
+import { matchesKeyChord, parseKeyChord } from "../app/keybindings";
+import { Button, Spinner, TextField } from "../components";
+import { t, tf } from "../i18n";
+import { useAppLanguage } from "../i18n/react";
+import { colors } from "../theme/colors";
+import { Box, Text, TextAttributes, type InputRenderable } from "../ui";
+import { useDialogKeyboard } from "../ui/dialog";
+import { isPlainKey } from "../utils/keyboard";
 import { validateAccountEmail, type AccountMode } from "./auth-model";
 import { useEmailAuthAttempt, type EmailAuthField } from "./email-auth-attempt";
 

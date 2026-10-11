@@ -6,16 +6,16 @@
  * and which owns the actual dialog.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { AuthUser } from "../../../api-client";
-import { t, tf } from "../../../i18n";
-import { useAppLanguage } from "../../../i18n/react";
-import { useViewport } from "../../../react/input";
-import { colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
-import { DialogHints } from "../../../components/ui/dialog-actions";
-import { SignInCodePanel } from "../../../components/sign-in-code-panel";
-import { useDialog, useDialogKeyboard, type PromptContext } from "../../../ui/dialog";
-import { isPlainKey, type KeyboardModifierEventLike } from "../../../utils/keyboard";
+import type { AuthUser } from "../api-client";
+import { t, tf } from "../i18n";
+import { useAppLanguage } from "../i18n/react";
+import { useViewport } from "../react/input";
+import { colors } from "../theme/colors";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../ui";
+import { DialogHints } from "../components/ui/dialog-actions";
+import { SignInCodePanel } from "../components/sign-in-code-panel";
+import { useDialog, useDialogKeyboard, type PromptContext } from "../ui/dialog";
+import { isPlainKey, type KeyboardModifierEventLike } from "../utils/keyboard";
 import { DeviceSignInController, type DeviceSignInSnapshot } from "./device-signin";
 
 /** How long the approval stays on screen before `onApproved` moves on. */

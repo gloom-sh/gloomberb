@@ -5,23 +5,23 @@
  * only then opens checkout.
  */
 import { useCallback, useEffect, useState } from "react";
-import { apiClient, type CloudAccountPlan, type CloudPricing } from "../../../api-client";
-import { Button } from "../../../components/ui/button";
-import { DialogActions } from "../../../components/ui/dialog-actions";
-import { KeyValueRow } from "../../../components/ui/display";
-import { DialogFrame } from "../../../components/ui/frame";
-import { SegmentedControl } from "../../../components/ui/toggle";
-import { t, tf } from "../../../i18n";
-import { useAppLanguage } from "../../../i18n/react";
-import { Box } from "../../../ui";
-import { type DialogApi, type PromptContext, useDialogKeyboard } from "../../../ui/dialog";
+import { apiClient, type CloudAccountPlan, type CloudPricing } from "../api-client";
+import { Button } from "../components/ui/button";
+import { DialogActions } from "../components/ui/dialog-actions";
+import { KeyValueRow } from "../components/ui/display";
+import { DialogFrame } from "../components/ui/frame";
+import { SegmentedControl } from "../components/ui/toggle";
+import { t, tf } from "../i18n";
+import { useAppLanguage } from "../i18n/react";
+import { Box } from "../ui";
+import { type DialogApi, type PromptContext, useDialogKeyboard } from "../ui/dialog";
 import {
   type CloudBillingInterval,
   formatCloudPrice,
   formatTrialEnd,
   monthsFreeYearly,
   trialDaysOf,
-} from "../../../account/billing";
+} from "./billing";
 import { useUpgradePersonalization } from "./upgrade-personalization";
 import { upgradeTickerList } from "./upgrade-tickers";
 

@@ -7,7 +7,7 @@ import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { t } from "../../../i18n";
-import { MIN_ACCOUNT_PASSWORD_LENGTH } from "../cloud/auth-model";
+import { MIN_ACCOUNT_PASSWORD_LENGTH } from "../../../account/auth-model";
 
 type PasswordDialogField = "current" | "new" | "confirm";
 

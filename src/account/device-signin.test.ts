@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { AuthUser, DeviceAuthStartResponse, DeviceAuthTokenResponse } from "../../../api-client";
+import type { AuthUser, DeviceAuthStartResponse, DeviceAuthTokenResponse } from "../api-client";
 import {
   DeviceSignInController,
   parseDeviceCodeExpiryMs,
