@@ -113,7 +113,7 @@ export const ipoCalendarHeadless: HeadlessPaneDefinition<"rows"> = {
   },
   discovery: {
     dataRequirements: ["Gloom Cloud IPO calendar, merged from each exchange's own listings"],
-    limitations: ["First-day return needs an offer price and the first session's close"],
+    limitations: ["First-day return needs an offer price and the first session's close."],
   },
   options: [
     {

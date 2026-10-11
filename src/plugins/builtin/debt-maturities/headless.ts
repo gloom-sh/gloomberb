@@ -16,11 +16,11 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["DDIS"],
     dataRequirements: ["Gloom Cloud SEC principal maturity schedules"],
     limitations: [
-      "Six relative fiscal maturity buckets; thereafter is open ended",
-      "Reported principal obligations, not carrying debt; scope can include short-term borrowing and hedges",
-      "Native currency; unsupported or missing facts remain null",
-      "No inferred weighted coupon or duration",
-      "Ten-year percentiles require five comparable annual observations",
+      "Six relative fiscal maturity buckets; thereafter is open ended.",
+      "Reported principal obligations, not carrying debt; scope can include short-term borrowing and hedges.",
+      "Native currency; unsupported or missing facts remain null.",
+      "No inferred weighted coupon or duration.",
+      "Ten-year percentiles require five comparable annual observations.",
     ],
   },
   options: [

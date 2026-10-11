@@ -700,7 +700,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
     const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
     const unit = historyUnit(listing.key, listed ?? quote);
-    const data = historyRows(points, resolution, unit.currency);
+    const data = historyRows(points, resolution, unit.currency, unit.unit);
     const interval = data[0]?.interval ?? null;
     const decimals = historyPriceDecimals(data, listing.saved?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
@@ -756,10 +756,11 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
       dateKey: "date",
       textColumns: [...priceColumns, flagColumn],
-      // Every exported row says its currency and bar size, so it survives head and concatenation.
+      // Every exported row says its currency, what a price is in and its bar size, so it survives head and concatenation.
       columns: [
         ...priceColumns,
         { key: "currency", header: "Currency" },
+        { key: "unit", header: "Unit" },
         { key: "interval", header: "Interval" },
         flagColumn,
       ],

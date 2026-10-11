@@ -338,6 +338,12 @@ function optionDescription(option: PaneFunctionOptionDef): string {
   return `${parts.join(". ")}.`;
 }
 
+/** A limitation as a sentence, so one does not run into the next: with a full stop unless it ends in one. */
+export function limitationSentence(text: string): string {
+  const trimmed = text.trim();
+  return !trimmed || /[.!?]["')\]]*$/.test(trimmed) ? trimmed : `${trimmed}.`;
+}
+
 function renderCatalogEntry(entry: PaneCatalogEntry): string {
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
   const capability = entry.capability;
@@ -360,7 +366,7 @@ function renderCatalogEntry(entry: PaneCatalogEntry): string {
   const keywords = capability.aliases.filter((keyword) => !mnemonics.has(keyword.toLowerCase()));
   if (keywords.length > 0) stats.push(["Keywords", keywords.join(", ")]);
   if (capability.dataRequirements.length > 0) stats.push(["Requires", capability.dataRequirements.join(", ")]);
-  if (capability.limitations.length > 0) stats.push(["Limitations", capability.limitations.join(" ")]);
+  if (capability.limitations.length > 0) stats.push(["Limitations", capability.limitations.map(limitationSentence).join(" ")]);
   lines.push(renderStats(stats));
 
   if (capability.options.length > 0) {

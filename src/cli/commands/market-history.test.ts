@@ -8,7 +8,7 @@ import { marketDataCliCommands } from "./market";
 
 const history = marketDataCliCommands.find((command) => command.name === "history")!;
 
-test("history CSV keeps the price columns first and every row says its currency, interval and flag", async () => {
+test("history CSV keeps the price columns first, every row says its currency, unit, interval and flag, and it ends with its source", async () => {
   const cli = createTestCliContext({
     config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
     dataProvider: createTestDataProvider({
@@ -24,11 +24,14 @@ test("history CSV keeps the price columns first and every row says its currency,
   }, { format: "csv" });
   await history.execute(["SBK.JO", "--range", "1Y"], cli.context);
   const [{ result, options }] = cli.printed;
-  expect(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n")).toEqual([
-    "Date,Open,High,Low,Close,Volume,Currency,Interval,Flag",
-    "2025-10-09,,,,,,ZAR,1d,low>open",
-    "2025-10-10,249,258.15,249,256,4093192,ZAR,1d,",
+  const lines = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+  expect(lines.slice(0, 4)).toEqual([
+    "Date,Open,High,Low,Close,Volume,Currency,Unit,Interval,Flag",
+    "2025-10-09,,,,,,ZAR,ZAR,1d,low>open",
+    "2025-10-10,249,258.15,249,256,4093192,ZAR,ZAR,1d,",
+    "",
   ]);
+  expect(lines.slice(4).map((line) => line.split(":")[0])).toEqual(["# Source", "# Publisher", "# Observation date", "# Publication time", "# Retrieval time"]);
   expect(result.warnings).toEqual(["1 of 2 bars has low above open or close in the source data; their prices are left blank"]);
   expect(result.metadata).toMatchObject({
     currency: "ZAR", unit: "ZAR", interval: "1d", requestedRange: "1Y", firstDate: "2025-10-09", lastDate: "2025-10-10", bars: 2,

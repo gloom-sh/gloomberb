@@ -115,7 +115,7 @@ describe("serializeCliResult", () => {
     expect(output).toBe('{"symbol":"AAPL"}\n{"symbol":"MSFT"}');
   });
 
-  test("ends text with the source line, puts it in JSON metadata and keeps CSV and NDJSON rows only", () => {
+  test("ends text with the source line, CSV with the export footer, cites it in JSON and keeps NDJSON rows only", () => {
     const freshness: ReportFreshness = {
       source: "Gloom Cloud", asOf: "2026-10-09T13:22:00.000Z", status: "delayed", delayMinutes: 15,
       retrievedAt: "2026-10-09T13:30:00.000Z",
@@ -125,9 +125,22 @@ describe("serializeCliResult", () => {
     const plain = (text: string) => text.replace(/\u001b\[[0-9;]*m/g, "");
     expect(plain(serializeCliResult(result, baseOptions)).split("\n").slice(-2)).toEqual(["", line]);
     expect(plain(serializeCliResult(result, baseOptions, { text: () => "Report" }))).toBe(`Report\n\n${line}`);
-    expect(JSON.parse(serializeCliResult(result, { ...baseOptions, format: "json" })).metadata).toEqual({ range: "1Y", freshness });
-    expect(serializeCliResult(result, { ...baseOptions, format: "csv" })).toBe("symbol\nAAPL");
+    const source = {
+      name: "Gloom Cloud", publisher: null, observationDate: "2026-10-09T13:22:00.000Z", publicationTime: null,
+      retrievalTime: "2026-10-09T13:30:00.000Z",
+    };
+    const json = JSON.parse(serializeCliResult(result, { ...baseOptions, format: "json" }));
+    expect(json.metadata).toEqual({ range: "1Y", freshness });
+    expect(json.source).toEqual(source);
+    expect(serializeCliResult(result, { ...baseOptions, format: "csv" }).split("\n")).toEqual([
+      "symbol", "AAPL", "", `# ${line}`, "# Publisher: not published", "# Observation date: 2026-10-09T13:22:00.000Z",
+      "# Publication time: not published", "# Retrieval time: 2026-10-09T13:30:00.000Z",
+    ]);
     expect(serializeCliResult(result, { ...baseOptions, format: "ndjson" })).toBe('{"symbol":"AAPL"}');
+    // Data that states its own freshness (an `fn` report) is cited in JSON without a second copy in metadata or text.
+    const cited = { data: { rows: [] }, exportFreshness: freshness };
+    expect(JSON.parse(serializeCliResult(cited, { ...baseOptions, format: "json" }))).toEqual({ ok: true, data: { rows: [] }, source });
+    expect(serializeCliResult(cited, baseOptions, { text: () => "Report" })).toBe("Report");
   });
 });
 

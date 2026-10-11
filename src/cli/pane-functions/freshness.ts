@@ -74,6 +74,10 @@ export interface ReportFreshness {
   oldestAgeMinutes?: number;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
+  /** Who published the figures, when the data names them. */
+  publisher?: string;
+  /** When the publisher released the data, an ISO instant in UTC or an ISO date, when the data states it. */
+  publishedAt?: string;
   /** When this report was built. */
   retrievedAt: string;
 }
@@ -408,6 +412,8 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const observation = lagDays != null ? declared.observation?.trim() : undefined;
 
   const note = declared.note?.trim();
+  const publisher = declared.publisher?.trim();
+  const publishedAt = parseReportTime(declared.publishedAt);
   return {
     source: declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
     asOf: asOf ? isoTime(asOf) : null,
@@ -427,6 +433,8 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(sources.length ? { sources: sources.map(({ source, time }) => ({ source, asOf: isoTime(time) })) } : {}),
     ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
     ...(note ? { note } : {}),
+    ...(publisher ? { publisher } : {}),
+    ...(publishedAt ? { publishedAt: isoTime(publishedAt) } : {}),
     retrievedAt: new Date(now).toISOString(),
   };
 }

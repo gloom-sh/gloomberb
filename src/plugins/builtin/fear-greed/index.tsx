@@ -1,4 +1,5 @@
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
+import { rowsFreshness } from "../../../cli/freshness";
 import type { GloomPlugin } from "../../../types/plugin";
 import {
   attachFearGreedPersistence,
@@ -66,17 +67,20 @@ export const fearGreedPlugin: GloomPlugin = {
       description: "Fetch CNN Fear & Greed gauge data",
       help: { group: CLI_COMMAND_GROUPS.markets },
       async execute(_args, ctx) {
-        const { data } = await loadFearGreed(ctx.cliOptions.refresh);
+        const { data, stale } = await loadFearGreed(ctx.cliOptions.refresh);
+        const rows = [{
+          score: data.overall.score,
+          rating: data.overall.rating,
+          updatedAt: data.overall.updatedAt?.toISOString() ?? "",
+          previousClose: data.overall.previousClose,
+          previousWeek: data.overall.previousWeek,
+          previousMonth: data.overall.previousMonth,
+          previousYear: data.overall.previousYear,
+        }];
         ctx.printResult({
-          data: [{
-            score: data.overall.score,
-            rating: data.overall.rating,
-            updatedAt: data.overall.updatedAt?.toISOString() ?? "",
-            previousClose: data.overall.previousClose,
-            previousWeek: data.overall.previousWeek,
-            previousMonth: data.overall.previousMonth,
-            previousYear: data.overall.previousYear,
-          }],
+          data: rows,
+          // Exports cite CNN's reading as `fn FNG` does; the text stays the row alone.
+          exportFreshness: rowsFreshness(rows, { source: "CNN", status: stale ? "stale" : "not-a-feed", basis: "published index" }),
           metadata: {
             indicators: data.indicators.map((indicator) => ({
               id: indicator.definition.id,

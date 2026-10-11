@@ -9,7 +9,7 @@ export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { status: "not-a-feed", basis: "company disclosures" },
   argument: { kind: "free-text", optional: true, placeholder: "AAPL=60% NVDA=40%", description: "Tickers, signed NAV weights, PORT:<id>, or WATCH:<id>. Unweighted lists and watchlists use equal weights." },
   discovery: { aliases: ["EXPO"], dataRequirements: ["Gloom Cloud geographic revenue, disclosed supply chains, KPIs, guidance and credit disclosures", "Portfolio NAV for local PORT weights"],
-    limitations: ["Pro: full holdings and up to four-hop paths; free: one holding, one hop", "Operating exposure estimates, never predicted stock returns", "Missing relationships and sensitivities remain unknown", "Basis and reporting period are kept separate"] },
+    limitations: ["Pro: full holdings and up to four-hop paths; free: one holding, one hop.", "Operating exposure estimates, never predicted stock returns.", "Missing relationships and sensitivities remain unknown.", "Basis and reporting period are kept separate."] },
   options: [
     { key: "scenario", type: "string", settingKey: "scenario", defaultValue: "taiwan-disruption", description: "Library scenario id, or use --custom." },
     { key: "custom", type: "string", settingKey: "customScenario", description: "JSON scenario with label and shocks; supports multiple shocks and explicit transmission assumptions." },

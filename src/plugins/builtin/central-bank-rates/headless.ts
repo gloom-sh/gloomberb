@@ -4,7 +4,7 @@ import { hasNoPolicyRate, policyBoardRow, policyNotices } from "./model";
 
 export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["CBR", "CBRT"], dataRequirements: ["Gloom Cloud central-bank-rates endpoint"],
-    limitations: ["Published policy observations with individual dates", "Policy instruments differ", "Only US meeting dates are maintained"] },
+    limitations: ["Published policy observations with individual dates.", "Policy instruments differ.", "Only US meeting dates are maintained."] },
   shape: "bundle", options: [], argument: { kind: "none" }, describe: "G20 central bank policy rates",
   freshness: { source: "Central banks and BIS", status: "not-a-feed", basis: "published policy rates" },
   async load(_args, ctx) {

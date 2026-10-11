@@ -46,6 +46,8 @@ export interface HistoryRow {
   volume: number | null;
   /** Currency code of the prices; null for index points or when no source says. */
   currency: string | null;
+  /** What one price is, as `historyUnit` names it: `USD`, `index points`, `ZAR per USD`; null when no source says. */
+  unit: string | null;
   /** Bar size, in the codes of `resolution`: 5m, 1h, 1d, 1wk, 1mo. */
   interval: ManualChartResolution | null;
   /** Each way the bar's prices contradict each other, such as `high<open`; null when they agree. */
@@ -116,6 +118,7 @@ export function historyRows(
   points: readonly PricePoint[],
   resolution: ManualChartResolution | null,
   currency: string | null = null,
+  unit: string | null = null,
 ): HistoryRow[] {
   const times = points.map(getPricePointTimestamp);
   const intraday = resolution ? isIntradayResolution(resolution) : looksIntraday(times);
@@ -134,6 +137,7 @@ export function historyRows(
       close: price(values.close),
       volume: values.volume,
       currency,
+      unit,
       interval,
       flag: flags.length > 0 ? flags.join(",") : null,
     };

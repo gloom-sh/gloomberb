@@ -36,9 +36,9 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["EQS"],
     dataRequirements: ["Gloom Cloud stored screener snapshot"],
     limitations: [
-      "Covered stored universe, not every listed equity",
-      "Ranks are cross-sectional and dates differ by field",
-      "Observed-subset insider activity cannot establish an absence",
+      "Covered stored universe, not every listed equity.",
+      "Ranks are cross-sectional and dates differ by field.",
+      "Observed-subset insider activity cannot establish an absence.",
     ],
   },
   async load(args, ctx) {

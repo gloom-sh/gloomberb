@@ -106,6 +106,13 @@ export interface HeadlessPaneColumn {
   /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */
   textFormat?: (value: unknown, row: HeadlessPaneRow) => string;
   /**
+   * The row field naming the unit of this column's number, for a column whose
+   * rows are quoted in different units (CDX spreads in `bp`, prices in
+   * `price`). Exports write the bare number and that unit: in the header when
+   * every row shares it, otherwise in a `<header> unit` column.
+   */
+  unitKey?: string;
+  /**
    * The text report prints the value on its own lines under the row instead
    * of in a column, for a footnote that belongs to that row; an empty value
    * prints nothing. Exports keep it as a column.
@@ -146,6 +153,14 @@ export interface HeadlessPaneFreshness {
    * "Local data" or "Your inputs". Never a data vendor or an internal provider id.
    */
   source?: string;
+  /**
+   * Who published the figures, as the data itself names them (FRED's series
+   * source, `DTCC Public Price Dissemination`). Exports cite it; left out,
+   * they say it was not published rather than guess.
+   */
+  publisher?: string;
+  /** When the publisher released the data, as the data states it. Exports cite it; left out, they say it was not published. */
+  publishedAt?: string | number | Date | null;
   /** Newest observation in the data. A `YYYY-MM-DD` string reads as a date without a time. */
   asOf?: string | number | Date | null;
   /** Oldest observation, mentioned when it is far older than `asOf`; `null` when the rows are a history. */

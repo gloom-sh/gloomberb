@@ -37,9 +37,9 @@ export const rotationHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["RRG", "GRR"],
     dataRequirements: ["Cloud daily history and listing currencies"],
     limitations: [
-      "Transparent 13-week strength and 4-week momentum, not proprietary JdK indices",
-      "Same-currency price returns; dividends are not reinvested",
-      "Completed weeks only",
+      "Transparent 13-week strength and 4-week momentum, not proprietary JdK indices.",
+      "Same-currency price returns; dividends are not reinvested.",
+      "Completed weeks only.",
     ],
   },
   async load(args, ctx) {

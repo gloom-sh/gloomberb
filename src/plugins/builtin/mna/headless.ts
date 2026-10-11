@@ -31,9 +31,9 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["MA"],
     dataRequirements: ["Gloom Cloud M&A deals read from news stories, press releases and SEC filings"],
     limitations: [
-      "Free accounts see deals 7 days after they were first reported",
-      "Spreads need live quotes and are drawn by the pane, not listed here",
-      "A private or non-US deal completes only when a story reports it",
+      "Free accounts see deals 7 days after they were first reported.",
+      "Spreads need live quotes and are drawn by the pane, not listed here.",
+      "A private or non-US deal completes only when a story reports it.",
     ],
   },
   options: [

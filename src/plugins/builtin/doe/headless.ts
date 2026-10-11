@@ -56,8 +56,8 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
     options: [{ key: "tab", type: "enum", values: [{ value: "all" }, ...DOE_TABS.map(({ value }) => ({ value }))], defaultValue: defaultTab,
       description: "Crude, products, gas storage, or all three." }],
     discovery: { aliases: ["DOE", "NGS"], dataRequirements: ["Gloom Cloud EIA weekly history"],
-      limitations: ["Weekly data, published Wednesday (petroleum) and Thursday (gas) at 10:30 ET, moved by holidays",
-        "Five-year ranges read earlier years on the same calendar day", "A range holds fewer than five years where a series is younger"] },
+      limitations: ["Weekly data, published Wednesday (petroleum) and Thursday (gas) at 10:30 ET, moved by holidays.",
+        "Five-year ranges read earlier years on the same calendar day.", "A range holds fewer than five years where a series is younger."] },
     describe: "EIA weekly petroleum and natural gas storage",
     async load(args) {
       const data = await fetchDoeBoard();
