@@ -300,7 +300,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     docs: "HVT",
   },
   SEAS: {
-    summary: "Does this name have a calendar? Monthly returns for each year, every month's average, median and share of up years, and each year's path laid over one January-to-December axis.",
+    summary: "Does this name have a calendar? Monthly returns for each year, every month's average, median and share of up years, each year's path laid over one January-to-December axis, and each weekday's and the turn of the month's average session over five years of daily closes.",
     usage: ["SEAS AAPL"],
     keys: [],
     data: DAILY_CLOSES,
@@ -913,8 +913,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CRD"],
   },
   AUCT: {
-    summary: "Bill, note, bond and TIPS auction results: high rate, bid-to-cover, indirect share and size, with the auctions announced next.",
-    usage: ["AUCT", "AUCT 10-year"],
+    summary: "Bill, note, bond and TIPS auction results: high rate, stop-out versus average, bid-to-cover, indirect, direct and dealer takedown and size, with the auctions announced next. Searchable by benchmark (10Y) or CUSIP; history reaches back 10 years.",
+    usage: ["AUCT", "AUCT 10Y", "AUCT 91282CRF0"],
     keys: [SEARCH, key("f", "ilter"), OPEN],
     data: same("Daily, after each auction"),
     bloomberg: ["AUCT"],
@@ -1051,7 +1051,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     docs: "PORT",
   },
   ALRT: {
-    summary: "Your price alerts with current price, distance to target and trigger state, plus market and filing event alerts.",
+    summary: "Your price alerts with current price, distance to target and trigger state, plus alerts days before earnings, CPI or FOMC and market and filing event alerts.",
     usage: ["ALRT"],
     keys: [key("a", "dd alert"), key("e", "dit"), key("d", "elete"), key("m", "re-arm")],
     data: QUOTES,

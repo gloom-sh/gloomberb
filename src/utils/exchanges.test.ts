@@ -11,7 +11,9 @@ import {
 
 describe("exchange metadata", () => {
   test("has a valid timezone for every canonical exchange", () => {
-    const canonicalExchanges = [...new Set(Object.values(CANONICAL_EXCHANGE_ALIASES))].sort();
+    // The currency venue keeps no session clock here: Gloom Cloud judges how current a pair is.
+    const canonicalExchanges = [...new Set(Object.values(CANONICAL_EXCHANGE_ALIASES))]
+      .filter((exchange) => exchange !== "CCY").sort();
     const missing = canonicalExchanges.filter((exchange) => !EXCHANGE_TIME_ZONES[exchange]);
 
     expect(missing).toEqual([]);

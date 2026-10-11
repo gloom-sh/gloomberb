@@ -149,13 +149,20 @@ describe("ASKG client manifest", () => {
       writeTier: "ui-write",
       confirm: "never",
       inputSchema: { required: ["body"] },
+      timeoutMs: 10_000,
     });
     expect(deleteLayout).toMatchObject({
       source: "remote-op",
       writeTier: "user-data",
       confirm: "always",
       inputSchema: { required: ["index"] },
+      // The person gets a minute to answer; the server holds the call that long.
+      timeoutMs: 60_000,
     });
+    // Every tool that asks first gets the minute, and nothing else does.
+    const remote = tools.filter(({ source }) => source === "remote-op");
+    expect(remote.filter(({ confirm }) => confirm === "always").every(({ timeoutMs }) => timeoutMs === 60_000)).toBe(true);
+    expect(remote.filter(({ confirm }) => confirm === "never").every(({ timeoutMs }) => timeoutMs === 10_000)).toBe(true);
   });
 
   test("hash is order-independent and changes with the surface", async () => {

@@ -1,12 +1,16 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import { marketDataCliCommands } from "./market";
 import { createTestCliContext } from "../../test-support/cli-context";
 import { describeFxRate, formatFxRate } from "../fx-pair";
+import { DEFAULT_CLI_OPTIONS } from "../options";
+import { serializeCliResult } from "../result";
+
+afterEach(() => setSystemTime());
 
 const fx = marketDataCliCommands.find((command) => command.name === "fx")!;
 
-type Leg = number | { rate: number; asOf: number; staleAt: number };
+type Leg = number | { rate: number; asOf: number; staleAt: number; delayMinutes?: number };
 
 function harness(baseCurrency: string, rates: Record<string, Leg>) {
   const config = createDefaultConfig("/tmp/gloom-fx-command-fixture");
@@ -22,10 +26,12 @@ function harness(baseCurrency: string, rates: Record<string, Leg>) {
       if (leg == null) throw new Error(`Missing ${currency}/USD`);
       return typeof leg === "number"
         ? { value: leg, fetchedAt: Date.now(), staleAt: Infinity, expiresAt: Infinity, source: "fx" }
-        : { value: leg.rate, asOf: leg.asOf, fetchedAt: Date.now(), staleAt: leg.staleAt, expiresAt: Infinity, source: "fx" };
+        : { value: leg.rate, asOf: leg.asOf, delayMinutes: leg.delayMinutes, fetchedAt: Date.now(), staleAt: leg.staleAt, expiresAt: Infinity, source: "fx" };
     } }) },
   });
-  return { context: cli.context, rows: () => cli.printed.map(({ result }) => result.data), requests, closed: cli.closeCount };
+  /** What a text and a JSON run print, closing line included. */
+  const output = (format: "text" | "json") => cli.printed.map(({ result, options }) => serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options));
+  return { context: cli.context, rows: () => cli.printed.map(({ result }) => result.data), output, requests, closed: cli.closeCount };
 }
 
 test("FX command converts both USD legs into the configured base currency", async () => {
@@ -88,6 +94,41 @@ test("a pair reads BASE/QUOTE as quote per base and crosses two non-USD codes th
   for (const bad of ["US/NGN", "USD/NGN/EUR", "USD/"]) {
     await expect(fx.execute([bad], harness("USD", rates).context)).rejects.toThrow(/not a currency/);
   }
+});
+
+test("a pair ends with the source line a quote does, dated and held back as its rates are", async () => {
+  const hour = 3_600_000;
+  // Saturday: the FX week is shut, so a quiet Saturday print reads as Friday's close.
+  setSystemTime(new Date("2026-10-10T18:45:00Z"));
+  const asOf = Date.parse("2026-10-10T03:09:15Z");
+  const weekend = harness("USD", { SAR: { rate: 0.2663, asOf, staleAt: Date.now() + hour, delayMinutes: 15 } });
+  await fx.execute(["USD/SAR"], weekend.context);
+  const line = "Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed";
+  // The line says the time and the state, so there is no separate "As of".
+  expect(weekend.output("text")[0]).toBe(`1 USD = 3.75516 SAR  (SAR/USD 0.2663)\n\n${line}`);
+  expect(JSON.parse(weekend.output("json")[0]!).metadata.freshness).toMatchObject({
+    source: "Gloom Cloud", asOf: "2026-10-10T03:09:15.000Z", status: "delayed", delayMinutes: 15, asOfClose: "2026-10-09", market: { state: "closed" },
+  });
+
+  // Wednesday: a cross is as old as its older leg and as delayed as its most delayed.
+  setSystemTime(new Date("2026-10-14T14:00:00Z"));
+  const now = Date.now();
+  const leg = (rate: number, minutesAgo: number, delayMinutes: number) => ({ rate, asOf: now - minutesAgo * 60_000, staleAt: now + hour, delayMinutes });
+  const cross = harness("EUR", { GBP: leg(1.5, 5, 15), EUR: leg(1.2, 25, 20) });
+  await fx.execute(["GBP"], cross.context);
+  expect(cross.output("text")[0]).toEndWith("Source: Gloom Cloud · Wed 14 Oct 2026 13:35 UTC · 20 min delayed · markets open");
+  // A real-time account's rates are live; a leg that missed its refresh makes the pair stale.
+  const live = harness("EUR", { GBP: leg(1.5, 5, 0), EUR: leg(1.2, 25, 0) });
+  await fx.execute(["GBP"], live.context);
+  expect(live.output("text")[0]).toEndWith("Source: Gloom Cloud · Wed 14 Oct 2026 13:35 UTC · live · markets open");
+  const stale = harness("EUR", { GBP: leg(1.5, 5, 15), EUR: { ...leg(1.2, 25, 15), staleAt: now - 1 } });
+  await fx.execute(["GBP"], stale.context);
+  expect(stale.output("text")[0]).toEndWith("Source: Gloom Cloud · Wed 14 Oct 2026 13:35 UTC · stale (25 min old) · markets open");
+  // A code priced in itself is no market data: nothing to cite.
+  const identity = harness("EUR", {});
+  await fx.execute(["EUR"], identity.context);
+  expect(identity.output("text")[0]).toBe("1 EUR = 1 EUR  (EUR/EUR 1)");
+  expect(JSON.parse(identity.output("json")[0]!).metadata).toBeUndefined();
 });
 
 test("the text line states both directions in figures that survive tiny and large rates", () => {

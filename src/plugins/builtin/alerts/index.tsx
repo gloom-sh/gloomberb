@@ -1,6 +1,17 @@
 import { startCatalystAlerts } from "./catalysts";
 import { RESEARCH_LABELS, researchWizardFields, createResearchAlert } from "./research-builder";
-import { isResearchAlertKind } from "./research-rules";
+import { newYorkToday } from "../earnings/board-model";
+import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
+import { scheduledEventSources } from "./scheduled-sources";
+import {
+  eventDateUnavailableMessage,
+  lookupScheduledDates,
+  noUpcomingEventMessage,
+  parseLeadDays,
+  readScheduledRule,
+  scheduledTargetKey,
+} from "./scheduled";
+import { isResearchAlertKind, MAX_LEAD_DAYS } from "./research-rules";
 import { EVENT_ALERTS_KEY, EVENT_ALERT_TEMPLATES, MAX_EVENT_ALERTS, createEventAlert, readEventAlerts } from "./events";
 import { formatMarketPrice } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
@@ -31,6 +42,7 @@ import { createAlertQuoteStream, readStreamedAlertQuote, type AlertQuoteStream }
 import type { AlertRule } from "./types";
 
 let catalystAlertsStop: (() => void) | null = null;
+let scheduledAlertsStop: (() => void) | null = null;
 let pollGeneration = 0;
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let alertStream: AlertQuoteStream | null = null;
@@ -54,6 +66,8 @@ export const alertsPlugin: GloomPlugin = {
     const generation = ++pollGeneration;
     catalystAlertsStop?.();
     catalystAlertsStop = startCatalystAlerts(ctx);
+    scheduledAlertsStop?.();
+    scheduledAlertsStop = startScheduledEventAlerts(ctx, scheduledEventSources(ctx.marketData));
     const notifyTriggered = (alert: AlertRule, price: number) => {
       ctx.notify({
         body: `${formatAlertDescription(alert)} triggered at ${price}`,
@@ -169,8 +183,8 @@ export const alertsPlugin: GloomPlugin = {
     ctx.registerCommand({
       id: "set-event-alert",
       label: "Add Event Alert",
-      description: "Create a filing, news, earnings or market alert",
-      keywords: ["alert", "event", "congress", "13f", "fund", "member", "follow"],
+      description: "Create an alert before earnings, CPI or FOMC, or for filings, news and market moves",
+      keywords: ["alert", "event", "congress", "13f", "fund", "member", "follow", "earnings", "cpi", "fomc", "days before"],
       category: "data",
       wizardLayout: "form",
       wizard: [
@@ -191,13 +205,28 @@ export const alertsPlugin: GloomPlugin = {
         })),
         ...researchWizardFields,
       ],
-      execute(values = {}) {
+      async execute(values = {}) {
         const event = values?.event || "congress-watched";
-        const result = readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) || "[]");
-        if (result.error) throw new Error(result.error);
-        if (result.rules.length >= MAX_EVENT_ALERTS)
+        const initial = readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) || "[]");
+        if (initial.error) throw new Error(initial.error);
+        if (initial.rules.length >= MAX_EVENT_ALERTS)
           throw new Error("Keep at most 40 event alerts.");
-        const rule = isResearchAlertKind(event) ? createResearchAlert(event, values) : createEventAlert(event, values?.[event] || "");
+        // Earnings and macro events alert before a date: one has to be known, or the rule would never go off.
+        const scheduled = event === "earnings_date" || event === "macro_event";
+        if (scheduled && parseLeadDays(values[`${event}:leadDays`]) == null)
+          throw new Error(`Days before must be a whole number from 1 to ${MAX_LEAD_DAYS}.`);
+        let rule = isResearchAlertKind(event) ? createResearchAlert(event, values) : createEventAlert(event, values?.[event] || "");
+        const target = scheduled ? readScheduledRule(rule)?.target : null;
+        if (target) {
+          const lookup = (await lookupScheduledDates([target], scheduledEventSources(ctx.marketData), newYorkToday()))
+            .get(scheduledTargetKey(target));
+          if (!lookup || "error" in lookup) throw new Error(eventDateUnavailableMessage(target, lookup?.error ?? "no answer"));
+          if (!lookup.date) throw new Error(noUpcomingEventMessage(target));
+          rule = { ...rule, eventDate: lookup.date };
+        }
+        // Read again: the lookup took a while and the rules may have changed meanwhile.
+        const result = scheduled ? readEventAlerts(ctx.configState.get<string>(EVENT_ALERTS_KEY) || "[]") : initial;
+        if (result.error) throw new Error(result.error);
         if (
           result.rules.some(
             (existing) =>
@@ -207,8 +236,9 @@ export const alertsPlugin: GloomPlugin = {
           )
         )
           throw new Error("This event is already followed.");
-        ctx.configState.set(EVENT_ALERTS_KEY, JSON.stringify([...result.rules, rule]));
+        await ctx.configState.set(EVENT_ALERTS_KEY, JSON.stringify([...result.rules, rule]));
         ctx.notify({ body: "Event alert saved.", type: "success" });
+        if (scheduled) checkScheduledEventAlertsNow();
       },
     });
 
@@ -321,6 +351,8 @@ export const alertsPlugin: GloomPlugin = {
   dispose() {
     catalystAlertsStop?.();
     catalystAlertsStop = null;
+    scheduledAlertsStop?.();
+    scheduledAlertsStop = null;
     pollGeneration += 1;
     alertStream?.dispose();
     alertStream = null;

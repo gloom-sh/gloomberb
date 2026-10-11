@@ -1,4 +1,14 @@
+import { canonicalExchange, parsePublicTickerKey } from "./exchanges";
+import { zonedDateTimeParts, zonedWallClockToUtcMs } from "./zoned-date-time";
+
 const HOUR_MS = 60 * 60_000;
+const DAY_MS = 24 * HOUR_MS;
+const NEW_YORK = "America/New_York";
+
+/** A spot currency pair: `=X` listing syntax (EURUSD=X, JPY=X) or the CCY venue. */
+export function isCurrencyPairListing(symbol: string | undefined, exchange: string | undefined): boolean {
+  return canonicalExchange(exchange) === "CCY" || (!!symbol && parsePublicTickerKey(symbol).symbol.endsWith("=X"));
+}
 
 const newYorkClock = new Intl.DateTimeFormat("en-US", {
   timeZone: "America/New_York",
@@ -17,6 +27,30 @@ export function isFxMarketOpen(time: number): boolean {
   if (weekday === "Sun") return hour >= 17;
   if (weekday === "Fri") return hour < 17;
   return true;
+}
+
+/** The latest close of the FX week, Friday 17:00 New York, at or before `time`. */
+export function latestFxWeekClose(time: number): number | null {
+  if (!Number.isFinite(time)) return null;
+  const { year, month, day } = zonedDateTimeParts(time, NEW_YORK);
+  const today = Date.UTC(year, month - 1, day);
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const date = new Date(today - offset * DAY_MS);
+    if (date.getUTCDay() !== 5) continue;
+    const close = zonedWallClockToUtcMs(NEW_YORK, date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate(), 17, 0, 0);
+    if (close <= time) return close;
+  }
+  return null;
+}
+
+/**
+ * When the closure the market is in began (Friday 17:00 New York time); null
+ * while it trades. That is `latestFxWeekClose` for every moment the week is
+ * shut, since a closure never lasts to the next Friday, daylight saving weeks
+ * included.
+ */
+export function currentFxClosureStart(time: number): number | null {
+  return isFxMarketOpen(time) ? null : latestFxWeekClose(time);
 }
 
 /**

@@ -1,9 +1,11 @@
 import type { GloomPlugin } from "../../../types/plugin";
-import { isResearchAlertKind, normalizeResearchRule, readResearchRule, RESEARCH_ALERT_FORMS, type ResearchAlertKind } from "./research-rules";
+import { DEFAULT_LEAD_DAYS, isResearchAlertKind, MACRO_ALERT_EVENTS, normalizeResearchRule, readResearchRule, RESEARCH_ALERT_FORMS, type MacroAlertEvent, type ResearchAlertKind } from "./research-rules";
 import type { EventAlertRule } from "./events";
 
+/** What a macro event is called in a rule, a list and a notification. */
+export const MACRO_EVENT_NAMES: Record<MacroAlertEvent, string> = { cpi: "CPI release", fomc: "FOMC decision" };
 export const RESEARCH_LABELS: Record<ResearchAlertKind, string> = {
-  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", options_flow: "Options flow",
+  perps_threshold: "Perpetual threshold", earnings_date: "Earnings date", macro_event: "Macro event", filing_type: "SEC filing", news_keyword: "News keyword", analyst_change: "Analyst change", fifty_two_week: "52-week range", unusual_volume: "Unusual volume", short_interest_change: "Short interest", insider_trade: "Insider trade", iv_spike: "IV spike", options_flow: "Options flow",
 };
 type Command = Parameters<Parameters<NonNullable<GloomPlugin["setup"]>>[0]["registerCommand"]>[0];
 type Field = NonNullable<Command["wizard"]>[number];
@@ -15,9 +17,11 @@ export const researchWizardFields: Field[] = Object.keys(RESEARCH_LABELS).flatMa
     { key: "direction", label: "Crossing", type: "select", defaultValue: "above", options: choices(["above", "below"]) },
     { key: "threshold", label: "Threshold (%)", type: "number", defaultValue: "0.1" },
   ] : kind === "iv_spike" ? [{key:"contract", label:"OCC contract", type:"text", placeholder:"AAPL261016C00300000", required:true}]
+    : kind === "macro_event" ? [{key:"event", label:"Release", type:"select", defaultValue:"cpi", options:MACRO_ALERT_EVENTS.map((value) => ({value, label:MACRO_EVENT_NAMES[value]}))}]
     : [{key:"symbol",label:kind === "news_keyword" ? "Symbol (optional)" : kind === "options_flow" ? "Symbol (blank: portfolio and watchlists)" : "Symbol",type:"text",placeholder:"AAPL", required:kind !== "news_keyword" && kind !== "options_flow"},
       {key:"exchange",label:"US exchange",type:"select",defaultValue:"US",options:choices(["US","NASDAQ","NYSE","ARCA","AMEX","BATS","OTC"])}];
-  if (kind === "earnings_date") fields.push({key:"leadDays",label:"Days before earnings",type:"number",defaultValue:"1"});
+  if (kind === "earnings_date") fields.push({key:"leadDays",label:"Days before earnings",type:"number",defaultValue:String(DEFAULT_LEAD_DAYS)});
+  if (kind === "macro_event") fields.push({key:"leadDays",label:"Days before",type:"number",defaultValue:String(DEFAULT_LEAD_DAYS)});
   if (kind === "filing_type") fields.push({key:"form",label:"Filing type",type:"select",defaultValue:"8-K",options:choices([...RESEARCH_ALERT_FORMS])});
   if (kind === "news_keyword") fields.push({key:"keyword",label:"Keyword or phrase",type:"text",required:true,placeholder:"buyback"});
   const directions: Partial<Record<ResearchAlertKind, string[]>> = {analyst_change:["any","upgrade","downgrade"],fifty_two_week:["high","low"],short_interest_change:["either","increase","decrease"],insider_trade:["either","buy","sell"],options_flow:["any","calls","puts"]};
@@ -65,6 +69,7 @@ export function researchAlertDescription(rule: EventAlertRule): string {
   switch(rule.kind) {
     case "perps_threshold": return `${config.marketId} · ${config.metric} ${config.direction} ${((config.threshold ?? 0) * 100).toFixed(3)}%`;
     case "earnings_date": return `${symbol} · ${config.leadDays}d before`;
+    case "macro_event": return `${MACRO_EVENT_NAMES[config.event as MacroAlertEvent] ?? config.event} · ${config.leadDays}d before`;
     case "filing_type": return `${symbol} · ${config.form}`;
     case "news_keyword": return `${symbol} · ${config.keyword}`;
     case "analyst_change": case "insider_trade": return `${symbol} · ${config.direction}`;

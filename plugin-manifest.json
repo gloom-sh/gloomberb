@@ -106,7 +106,7 @@
           {
             "code": "JOBS",
             "name": "Hiring",
-            "description": "Hiring read from the company's own careers system: open roles over time, by function and location, new roles, pay ranges. Alone, every covered company ranked.",
+            "description": "Pro hiring read from the company's own careers system: open roles over time, by function and location, new roles, pay ranges. Alone, every covered company ranked.",
             "access": "pro"
           },
           {
@@ -330,7 +330,7 @@
           {
             "code": "AUCT",
             "name": "Treasury Auctions",
-            "description": "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: auction rate, bid-to-cover, indirect share, and size."
+            "description": "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: rate, stop-out versus average, bid-to-cover, indirect, direct and dealer takedown, and size. Search by benchmark (10Y) or CUSIP."
           },
           {
             "code": "YAS",
@@ -1254,7 +1254,7 @@
           {
             "code": "SEAS",
             "name": "Seasonality",
-            "description": "Monthly returns by year, each month's average and hit rate, and every year's path on one calendar."
+            "description": "Monthly returns by year, each month's average and hit rate, every year's path on one calendar, and returns by weekday and turn of month."
           },
           {
             "code": "MDAY",

@@ -8,7 +8,8 @@ function getCurrencyFormatter(currency: string, maximumFractionDigits = 2): Intl
     formatter = new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
-      minimumFractionDigits: 2,
+      // Whole units (0) drop the cents rather than throw.
+      minimumFractionDigits: Math.min(2, maximumFractionDigits),
       maximumFractionDigits,
     });
     currencyFormatters.set(key, formatter);

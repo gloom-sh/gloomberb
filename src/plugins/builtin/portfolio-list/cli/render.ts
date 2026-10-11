@@ -1,4 +1,5 @@
 import { createBaseConverter } from "../../../../cli/base-converter";
+import { savedListingName } from "../../../../cli/listing-arg";
 import { withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import {
@@ -12,7 +13,16 @@ import { currencyMinorDigits, formatMarketCostWithCurrency, formatMarketPriceWit
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../position-metrics";
 import { resolvePortfolioTotalsCurrency } from "../summary/totals";
-import { exchangeShortName, getActiveQuoteDisplay } from "../../../../market-data/market/status";
+import {
+  EXTENDED_SESSION_LABELS,
+  exchangeShortName,
+  getActiveQuoteDisplay,
+  getExtendedSessionDisplay,
+  type ActiveQuoteDisplay,
+  type ExtendedSession,
+  type ExtendedSessionDisplay,
+} from "../../../../market-data/market/status";
+import { headlineQuoteDisplay } from "../column-values";
 import type { AppConfig } from "../../../../types/config";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { CliCommandContext } from "../../../../types/plugin";
@@ -45,6 +55,38 @@ function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { 
   return resolvePriceBasis(options.priceBasis, options.assetCategory) === "per-unit"
     ? { ...options, minimumFractionDigits: Math.min(2, currencyMinorDigits(quote?.currency)) }
     : options;
+}
+
+/**
+ * What a collection's Last and Chg show, as the PF and watchlist panes do: the
+ * traded price until the regular close, then that close and its move, with a
+ * pre-market or after-hours print beside them, measured from that close.
+ * Market value and P&L keep the live price.
+ */
+export function collectionQuoteHeadline(quote: CollectionQuote | undefined): {
+  headline: ActiveQuoteDisplay | null;
+  extended: ExtendedSessionDisplay | null;
+} {
+  const traded = getActiveQuoteDisplay(quote);
+  const headline = traded && Number.isFinite(traded.price) ? headlineQuoteDisplay(traded, quote) : null;
+  const extended = headline ? getExtendedSessionDisplay(quote) : null;
+  return { headline, extended: extended && Number.isFinite(extended.price) ? extended : null };
+}
+
+/** The extended print as export fields: all null without one. */
+export function extendedQuoteFields(extended: ExtendedSessionDisplay | null) {
+  return {
+    extendedSession: extended?.session ?? null,
+    extendedPrice: extended?.price ?? null,
+    extendedChange: extended?.change ?? null,
+    extendedChangePercent: extended?.changePercent ?? null,
+  };
+}
+
+/** The extended sessions among the rows' prints, in the order their columns go. */
+export function extendedSessionsOf(sessions: Iterable<ExtendedSession | null | undefined>): ExtendedSession[] {
+  const present = new Set(sessions);
+  return (["PRE", "POST"] as const).filter((session) => present.has(session));
 }
 
 export function renderCollectionOverview(config: AppConfig, tickers: TickerRecord[]): string {
@@ -143,7 +185,12 @@ export async function loadCollectionQuotes(
 interface PortfolioPositionValue {
   ticker: TickerRecord;
   quote: CollectionQuote | undefined;
+  /** The live print, which values the position. */
   activeQuote: ReturnType<typeof getActiveQuoteDisplay> | null;
+  /** Last and Chg as shown: the regular session's (collectionQuoteHeadline). */
+  headline: ActiveQuoteDisplay | null;
+  /** A pre-market or after-hours print, from the close in `headline`. */
+  extended: ExtendedSessionDisplay | null;
   /** Null for a ticker kept in the portfolio without an open position. */
   position: TickerPosition | null;
   metrics: ReturnType<typeof getPortfolioPositionMetrics> | null;
@@ -199,14 +246,15 @@ export async function valuePortfolioPositions({
     const positions = ticker.metadata.positions.filter((position) => position.portfolio === id && position.shares !== 0);
     const displayedQuote = getActiveQuoteDisplay(quote);
     const activeQuote = displayedQuote && Number.isFinite(displayedQuote.price) ? displayedQuote : null;
+    const { headline, extended } = collectionQuoteHeadline(quote);
 
     if (positions.length === 0) {
       const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
       const unitPrice = activeQuote ? known(await toBase(activeQuote.price, quoteCurrency)) : null;
       holdings.push({ symbol: ticker.metadata.ticker, held: false, marketValue: 0, units: 0, unitPrice });
-      values.push({ ticker, quote, activeQuote, position: null, metrics: null, pnl: null,
+      values.push({ ticker, quote, activeQuote, headline, extended, position: null, metrics: null, pnl: null,
         row: { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange, shares: null, avgCost: null,
-          positionCurrency: null, quotePrice: known(activeQuote?.price), quoteCurrency: quote?.currency ?? null,
+          positionCurrency: null, quotePrice: known(headline?.price), ...extendedQuoteFields(extended), quoteCurrency: quote?.currency ?? null,
           costBasis: null, marketValue: null, unrealizedPnl: null, baseCurrency: currency } });
       continue;
     }
@@ -238,11 +286,12 @@ export async function valuePortfolioPositions({
       holding.marketValue = holding.marketValue == null || marketValue == null ? null : holding.marketValue + marketValue;
       holding.units += metrics.totalShares;
       holding.unitPrice ??= valuationQuote ? known(await toBase(valuationQuote.price, quoteCurrency)) : null;
-      values.push({ ticker, quote, activeQuote, position, metrics, pnl,
+      values.push({ ticker, quote, activeQuote, headline, extended, position, metrics, pnl,
         row: { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange,
           shares: metrics.totalShares, avgCost: known(position.avgCost), positionCurrency,
           priceBasis: position.priceBasis ?? null, quantityUnit: metrics.priceBasis === "percent-of-par" ? "face" : null, quotePriceBasis: quote?.priceBasis ?? null,
-          quotePrice: known(activeQuote?.price), quoteCurrency, quoteAsOf: quote?.lastUpdated ?? null,
+          // Last as shown, the regular close after it; market value and P&L are at the live price.
+          quotePrice: known(headline?.price), ...extendedQuoteFields(extended), quoteCurrency, quoteAsOf: quote?.lastUpdated ?? null,
           costBasis: known(direction * costBasisBase), marketValue,
           unrealizedPnl: known(pnl), baseCurrency: currency, dateAcquired: position.dateAcquired ?? null,
           pnlBasis: selectedPnl.basis, brokerUnrealizedPnl: known(position.unrealizedPnl), brokerPnlCurrency: positionCurrency, brokerPnlAsOf: null } });
@@ -295,6 +344,28 @@ function signed(text: string, value: number | null | undefined): string {
 }
 
 const NOT_AVAILABLE = "n/a";
+
+/**
+ * What a table row calls a listing: SAN:EPA or SAN:NYSE, as the add, remove and
+ * target messages name it, not the key it is stored under (SAN, SAN:XNYS),
+ * which leaves two listings of one symbol looking alike. JSON and CSV keep the
+ * stored key in `symbol`.
+ */
+export function listingLabel(ticker: TickerRecord): string {
+  return savedListingName(ticker).key;
+}
+
+/** One cell per extended column: the print and its move from the close, as `quote` prints it, or blank. */
+function extendedCells(
+  sessions: readonly ExtendedSession[],
+  extended: ExtendedSessionDisplay | null,
+  quote: CollectionQuote | undefined,
+  assetCategory: string | undefined,
+): string[] {
+  return sessions.map((session) => extended?.session === session && quote
+    ? `${formatMarketPriceWithCurrency(extended.price, quote.currency, priceFormatOptions(quote, assetCategory))} ${colorBySign(formatPercentRaw(extended.changePercent), extended.change)}`
+    : "");
+}
 
 async function showCollectionWithMarketData(
   name: string,
@@ -436,27 +507,28 @@ async function showCollectionWithMarketData(
       return [weight, target, drift, trade, tradeValue];
     };
 
-    const rows: string[][] = valued.map(({ ticker, quote, activeQuote, position, metrics, pnl, row }, index) => {
-      const priceText = quote && activeQuote
-        ? colorBySign(formatMarketPriceWithCurrency(activeQuote.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), activeQuote.change)
+    const extendedSessions = extendedSessionsOf(valued.map(({ extended }) => extended?.session));
+    const rows: string[][] = valued.map(({ ticker, quote, headline, extended, position, metrics, pnl, row }, index) => {
+      const priceText = quote && headline
+        ? colorBySign(formatMarketPriceWithCurrency(headline.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), headline.change)
         : "—";
-      const changeText = activeQuote ? colorBySign(formatPercentRaw(activeQuote.changePercent), activeQuote.change) : "—";
+      const changeText = headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
+      const quoteCells = [priceText, changeText, ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory)];
       const exported = positionsExport[index]!;
       const figures = exported.weight != null || exported.targetWeight != null || exported.tradeValue != null
         ? { weight: exported.weight, targetWeight: exported.targetWeight, drift: exported.drift, tradeValue: exported.tradeValue, tradeUnits: exported.tradeShares }
         : undefined;
       const symbolUnits = allocationBySymbol.get(ticker.metadata.ticker)?.units ?? 0;
       if (!position || !metrics) {
-        return [ticker.metadata.ticker, priceText, changeText, "—", "—", "—",
+        return [listingLabel(ticker), ...quoteCells, "—", "—", "—",
           ...allocationCells(figures, { unpriced: false, units: symbolUnits, assetCategory: ticker.metadata.assetCategory }), "—"];
       }
       const positionCurrency = metrics.positionCurrency;
       const marketValue = row.marketValue as number | null;
       const unpriced = marketValue == null;
       return [
-        ticker.metadata.ticker,
-        priceText,
-        changeText,
+        listingLabel(ticker),
+        ...quoteCells,
         formatMarketQuantity(metrics.totalShares, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis, quantityCurrency: positionCurrency }),
         formatMarketCostWithCurrency(position.avgCost, positionCurrency, { assetCategory: ticker.metadata.assetCategory, multiplier: position.multiplier, priceBasis: metrics.priceBasis }),
         unpriced ? NOT_AVAILABLE : wholeMoney(marketValue),
@@ -466,12 +538,12 @@ async function showCollectionWithMarketData(
     });
     if (cashExport) {
       const label = cashExport.currency && cashExport.currency !== currency ? `${CASH_SYMBOL} ${cashExport.currency}` : CASH_SYMBOL;
-      rows.push([label, "", "", "", "", cashExport.value == null ? NOT_AVAILABLE : wholeMoney(cashExport.value),
+      rows.push([label, "", "", ...extendedSessions.map(() => ""), "", "", cashExport.value == null ? NOT_AVAILABLE : wholeMoney(cashExport.value),
         ...allocationCells(cashExport, { unpriced: cashExport.value == null }), ""]);
     }
     const total = allocation.total;
     rows.push([
-      cliStyles.bold("TOTAL"), "", "", "", "",
+      cliStyles.bold("TOTAL"), "", "", ...extendedSessions.map(() => ""), "", "",
       cliStyles.bold(wholeMoney(total)),
       total != null && total > 0 ? formatAllocationWeight(100) : "—",
       ...(showTargets ? [formatAllocationWeight(allocation.targetSum), "", "", ""] : []),
@@ -485,6 +557,8 @@ async function showCollectionWithMarketData(
         { header: "Ticker" },
         { header: "Last", align: "right", optional: true, dropPriority: 1 },
         { header: "Chg", align: "right", optional: true, dropPriority: 2 },
+        // Before Chg, after Avg Cost, which is right of it at the same priority.
+        ...extendedSessions.map((session) => ({ header: EXTENDED_SESSION_LABELS[session], align: "right" as const, optional: true, dropPriority: 3 })),
         { header: quantityHeader, align: "right" },
         { header: "Avg Cost", align: "right", optional: true, dropPriority: 3 },
         { header: "Value", align: "right" },
@@ -503,9 +577,12 @@ async function showCollectionWithMarketData(
     ));
     console.log("");
     const notes: string[] = [];
+    // The notes name the rows as the table does.
+    const labels = new Map(filtered.map((ticker) => [ticker.metadata.ticker, listingLabel(ticker)]));
+    const named = (symbols: Iterable<string>) => [...symbols].map((symbol) => labels.get(symbol) ?? symbol).join(", ");
     if (allocation.unpriced.length > 0) {
       const count = allocation.unpriced.length;
-      notes.push(cliStyles.warning(`Total and weights exclude ${count} unpriced holding${count === 1 ? "" : "s"}: ${allocation.unpriced.join(", ")}.`));
+      notes.push(cliStyles.warning(`Total and weights exclude ${count} unpriced holding${count === 1 ? "" : "s"}: ${named(allocation.unpriced)}.`));
     }
     if (cashExport?.source === "broker") notes.push(cliStyles.muted("Cash is the broker account's balance as of its last sync."));
     if (matchedPortfolio.brokerInstanceId && !account) notes.push(cliStyles.warning(BROKER_ACCOUNT_MISSING_NOTE));
@@ -516,27 +593,31 @@ async function showCollectionWithMarketData(
     }
     const targetNote = describeTargetSum(allocation.targetSum);
     if (targetNote) notes.push(cliStyles.muted(targetNote));
-    if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${[...brokerPnlSymbols].join(", ")} is the broker's last snapshot.`));
-    if (unavailableCost.size > 0) notes.push(cliStyles.muted(`Cost unavailable for ${[...unavailableCost].join(", ")}.`));
-    if (unavailablePnl.size > 0) notes.push(cliStyles.muted(`P&L unavailable for ${[...unavailablePnl].join(", ")}.`));
+    if (brokerPnlSymbols.size > 0) notes.push(cliStyles.muted(`P&L for ${named(brokerPnlSymbols)} is the broker's last snapshot.`));
+    if (unavailableCost.size > 0) notes.push(cliStyles.muted(`Cost unavailable for ${named(unavailableCost)}.`));
+    if (unavailablePnl.size > 0) notes.push(cliStyles.muted(`P&L unavailable for ${named(unavailablePnl)}.`));
     for (const note of notes) console.log(note);
   } else {
     const rows: string[][] = [];
+    const shown = new Map(filtered.map((ticker) => [ticker, collectionQuoteHeadline(quotes.get(ticker.metadata.ticker))]));
+    const extendedSessions = extendedSessionsOf([...shown.values()].map(({ extended }) => extended?.session));
     for (const ticker of filtered) {
       const quote = quotes.get(ticker.metadata.ticker);
-      const priceText = quote
-        ? colorBySign(formatMarketPriceWithCurrency(quote.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), quote.change)
+      const { headline, extended } = shown.get(ticker)!;
+      const priceText = quote && headline
+        ? colorBySign(formatMarketPriceWithCurrency(headline.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), headline.change)
         : "—";
-      const changeText = quote ? colorBySign(formatPercentRaw(quote.changePercent), quote.change) : "—";
+      const changeText = headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
       const marketCapText = quote?.marketCap != null
         ? `${formatCompact(await toBase(quote.marketCap, quote.currency || ticker.metadata.currency || currency))} ${currency}`
         : "—";
 
       rows.push([
-        ticker.metadata.ticker,
+        listingLabel(ticker),
         exchangeShortName(quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || "—",
         priceText,
         changeText,
+        ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory),
         marketCapText,
       ]);
     }
@@ -547,7 +628,9 @@ async function showCollectionWithMarketData(
         { header: "Exchange" },
         { header: "Last", align: "right" },
         { header: "Chg", align: "right" },
-        { header: "Mkt Cap", align: "right" },
+        ...extendedSessions.map((session) => ({ header: EXTENDED_SESSION_LABELS[session], align: "right" as const, optional: true, dropPriority: 1 })),
+        // A narrow terminal drops these first.
+        { header: "Mkt Cap", align: "right", optional: true, dropPriority: 2 },
       ],
       rows,
     ));

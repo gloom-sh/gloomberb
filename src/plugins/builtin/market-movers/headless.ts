@@ -10,14 +10,18 @@ import type {
   CloudSessionMoversSide,
 } from "../../../api-client/market-movers";
 import { loadMarketMoverTab, loadSessionMovers, type MarketMoverTabResult } from "./client";
-import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, moverReferencePrice, type MarketMoverRow, type ScreenerTabId, type TabId } from "./model";
+import { createRows, fiftyTwoWeekPositionPercent, formatMoverPrice, moverExtendedSessions, moverReferencePrice, type MarketMoverRow, type ScreenerTabId, type TabId } from "./model";
+import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
+import type { HeadlessPaneColumn } from "../../../types/headless";
 import { isSessionTab, resolveSide } from "./session";
 
-const COLUMNS = [
+const rowPrice = (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "", moverReferencePrice(row as unknown as MarketMoverRow));
+
+const COLUMNS: HeadlessPaneColumn[] = [
   { key: "rank", header: "Rank", align: "right" as const },
   { key: "symbol", header: "Symbol" },
   { key: "name", header: "Name" },
-  { key: "price", header: "Last", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatMoverPrice(typeof value === "number" ? value : null, typeof row.currency === "string" ? row.currency : "", moverReferencePrice(row as unknown as MarketMoverRow)) },
+  { key: "price", header: "Last", align: "right" as const, format: rowPrice },
   { key: "changePercent", header: "Change %", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatPercentRaw(Number(value)) },
   { key: "volume", header: "Volume", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatCompact(Number(value), { fixedDecimals: true }) },
   { key: "volumeRatio", header: "Vol / Avg", align: "right" as const, format: (value: unknown) => value == null ? "—" : formatNumber(Number(value), 1) },
@@ -30,6 +34,19 @@ const percent = (value: unknown) => value == null ? "—" : formatPercentRaw(Num
 const ratio = (value: unknown) => value == null ? "—" : `${formatNumber(Number(value), 1)}x`;
 const compact = (value: unknown) => value == null ? "—" : formatCompact(Number(value), { fixedDecimals: true });
 const CATALYST_LABEL: Record<string, string> = { halt: "Halt", filing: "8-K", news: "News" };
+
+/** The pre-market or after-hours print and its move from the regular close, for the rows that have one. */
+function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
+  return {
+    key: "extendedPrice",
+    header: EXTENDED_SESSION_LABELS[session],
+    align: "right",
+    format: (value, row) => row.extendedSession === session && typeof value === "number"
+      ? `${rowPrice(value, row)} ${percent(row.extendedChangePercent)}`
+      : "—",
+  };
+}
+
 const SESSION_VOLUME: Record<CloudSessionMoversCategory, string> = {
   premarket: "Pre-market volume",
   afterhours: "After-hours volume",
@@ -131,8 +148,15 @@ export function createMarketMoversHeadless(
         };
       }
       const result = await dependencies.load(args, tab, ctx.marketData);
-      const rows = createRows(result.quotes).map((row) => ({
+      const ranked = createRows(result.quotes);
+      // Last and Change % are the regular session; an extended print is a column of its own.
+      const extendedSessions = moverExtendedSessions(ranked);
+      const rows = ranked.map(({ extended, ...row }) => ({
         ...row,
+        extendedSession: extended?.session ?? null,
+        extendedPrice: extended?.price ?? null,
+        extendedChange: extended?.change ?? null,
+        extendedChangePercent: extended?.changePercent ?? null,
         rangePositionPercent: fiftyTwoWeekPositionPercent(
           row.price,
           row.fiftyTwoWeekLow,
@@ -140,6 +164,9 @@ export function createMarketMoversHeadless(
         ),
       }));
       return {
+        ...(extendedSessions.length > 0
+          ? { columns: [...COLUMNS.slice(0, 5), ...extendedSessions.map(extendedColumn), ...COLUMNS.slice(5)] }
+          : {}),
         rows,
         metadata: { list: tab, source: result.source, stale: result.stale },
       };

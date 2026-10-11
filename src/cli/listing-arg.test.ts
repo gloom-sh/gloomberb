@@ -15,6 +15,10 @@ test("SYM:EXCH and --exchange name the same listing through the exchange aliases
     expect(parseListingArg(raw, option)).toEqual({ symbol: "SAN", exchange: "EPA", key: "SAN:EPA" });
   }
   expect(parseListingArg("aapl")).toEqual({ symbol: "AAPL", exchange: "", key: "AAPL" });
+  // A currency pair's venue, by either name.
+  for (const [raw, option] of [["EURUSD:CCY", undefined], ["eurusd:fx", undefined], ["EURUSD", "FX"]] as const) {
+    expect(parseListingArg(raw, option)).toEqual({ symbol: "EURUSD", exchange: "CCY", key: "EURUSD:CCY" });
+  }
   expect(() => parseListingArg("SAN:EPA", "LON")).toThrow("SAN:EPA names exchange EPA, but --exchange names LSE.");
   // With several symbols, --exchange only fills in the ones without their own.
   expect(parseListingArg("SAN:EPA", "LSE", { ownExchangeWins: true }).key).toBe("SAN:EPA");
@@ -37,6 +41,8 @@ test("an exchange code the app does not know is refused unless the symbol trades
   const refused = await resolveCliListing("SAN:ZZZ", undefined, deps).catch((error: unknown) => error);
   expect(refused).toBeInstanceOf(ListingArgError);
   expect((refused as Error).message).toBe("Unknown exchange ZZZ for SAN. SAN trades on: NYSE, EPA, BVL.");
+  // The currency venue is one the app knows, whatever search lists for the bare pair.
+  expect((await resolveCliListing("EURUSD:FX", undefined, deps)).request).toEqual({ symbol: "EURUSD:CCY", exchange: "CCY" });
   // A venue only search knows is still the symbol's own listing; data requests go by its key.
   expect((await resolveCliListing("SAN", "BVL", deps)).request).toEqual({ symbol: "SAN:BVL", exchange: "BVL" });
 
@@ -84,25 +90,63 @@ test("a request for an exchange the symbol is not listed on ends in where it tra
   expect(searches).toBe(0);
 });
 
-test("a bare symbol the service has no listing for still names its other listings, whichever way the router words it", async () => {
+test("a bare code several companies list asks which, whichever way the router words it, and never says one of them has no data", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);
   const store = new TickerRepository(persistence.tickers);
   const row = { providerId: "test", symbol: "2222", currency: "SAR", type: "Common Stock" };
   const dataProvider = createTestDataProvider({
-    search: async () => [{ ...row, name: "Saudi Arabian Oil Co.", exchange: "TADAWUL" }, { ...row, name: "Kotobuki Spirits Co., Ltd.", exchange: "JPX" }],
+    search: async () => [{ ...row, name: "Kotobuki Spirits Co., Ltd.", exchange: "JPX" }, { ...row, name: "Saudi Arabian Oil Co.", exchange: "TADAWUL" }],
   });
   const deps = { store, dataProvider };
   const ctx = { fail: (message: string, details?: string): never => { throw new ListingArgError(message, details); } };
+  const request = { command: "history", noun: "history" };
   const bare = await resolveCliListing("2222", undefined, deps);
   for (const wording of ["No history provider available for 2222", "Not a ticker: 2222."]) {
-    const failure = await loadForListing(bare, deps, ctx, async () => { throw new Error(wording); }, undefined, { command: "history", noun: "history" })
-      .catch((error) => error);
+    const failure = await loadForListing(bare, deps, ctx, async () => { throw new Error(wording); }, undefined, request).catch((error) => error);
     expect(failure).toBeInstanceOf(ListingArgError);
-    expect(failure.message).toContain("2222 resolved to");
-    expect(failure.details).toContain("gloomberb history 2222:");
+    expect(failure.message).toBe("Choose an exchange for 2222.");
+    // Every venue is a choice, the first included.
+    expect(failure.details).toBe([
+      "Listings:",
+      "  2222:JPX Kotobuki Spirits Co., Ltd. (try: gloomberb history 2222:JPX)",
+      "  2222:TADAWUL Saudi Arabian Oil Co. (try: gloomberb history 2222:TADAWUL)",
+    ].join("\n"));
   }
   // A timeout is not a missing listing: it surfaces as it was thrown.
   const timeout = new Error("request timed out");
-  await expect(loadForListing(bare, deps, ctx, async () => { throw timeout; }, undefined, { command: "history", noun: "history" })).rejects.toBe(timeout);
+  await expect(loadForListing(bare, deps, ctx, async () => { throw timeout; }, undefined, request)).rejects.toBe(timeout);
+
+  // A symbol saved on a venue keeps going there: that venue is the one without data, the other its alternative.
+  await store.createTicker({
+    ticker: "2222", exchange: "TADAWUL", currency: "SAR", name: "Saudi Aramco", portfolios: [], watchlists: [], positions: [], custom: {}, tags: [],
+  });
+  const saved = await loadForListing(await resolveCliListing("2222", undefined, deps), deps, ctx, async () => { throw new Error("Not a ticker: 2222."); }, undefined, request)
+    .catch((error) => error);
+  expect(saved.message).toBe("2222 resolved to Saudi Arabian Oil Co. (TADAWUL), which has no history.");
+  expect(saved.details).toBe("Other listings: 2222:JPX Kotobuki Spirits Co., Ltd. (try: gloomberb history 2222:JPX)");
+});
+
+test("listings of one company, however each venue spells its name, still go to the first venue with the others as retries", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const row = { providerId: "test", symbol: "SAN", currency: "EUR", type: "Common Stock" };
+  const dataProvider = createTestDataProvider({
+    search: async () => [
+      { ...row, name: "Banco Santander, S.A.", exchange: "NYSE" },
+      { ...row, name: "BANCO SANTANDER SA Sponsored ADR", exchange: "BVL" },
+      // A venue that names no company is not another one.
+      { ...row, name: "", exchange: "XETRA" },
+    ],
+  });
+  const deps = { store, dataProvider };
+  const ctx = { fail: (message: string, details?: string): never => { throw new ListingArgError(message, details); } };
+  const failure = await loadForListing(
+    await resolveCliListing("SAN", undefined, deps), deps, ctx, async () => { throw new Error("No history provider available for SAN"); },
+    undefined, { command: "history --range 5Y", noun: "history" },
+  ).catch((error) => error);
+  expect(failure.message).toBe("SAN resolved to Banco Santander, S.A. (NYSE), which has no history.");
+  expect(failure.details).toContain("SAN:BVL BANCO SANTANDER SA Sponsored ADR (try: gloomberb history SAN:BVL --range 5Y)");
+  expect(failure.details).toContain("SAN:XETRA (try: gloomberb history SAN:XETRA --range 5Y)");
 });

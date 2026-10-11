@@ -7,22 +7,53 @@ import { fetchTreasuryAuctions } from "./client";
 import { loadTreasuryAuctions, type TreasuryAuctionsResult } from "./cache";
 import type { TreasuryAuction } from "./types";
 import {
+  AUCTION_HISTORY_WINDOWS,
+  AUCTION_SEARCH_FIELDS,
+  auctionHistoryLabel,
+  auctionHistoryPhrase,
   auctionSize,
+  dealerPct,
   DEFAULT_AUCTION_SORT,
+  directPct,
   formatAuctionRate,
   indirectPct,
+  nextAuctionHistoryWindow,
+  rateQualifier,
   rateValue,
+  stopOutVsAverageBp,
   visibleAuctions,
   type AuctionFilter,
 } from "./model";
+
+const formatPercent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(1)}%`;
+
+/** Why the stop-out column is not a tail; the docs page says the same at length. */
+const STOP_OUT_NOTE = "Stop-out vs avg is the high yield minus the average/median yield, in bp (bills: discount rates). "
+  + "A true tail, the stop-out against the 1 pm when-issued yield, needs the when-issued yield, which the source does not carry.";
+
+/** The rate as the table prints it; a TIPS or FRN row says what its number is (`2.653% real`, `4.0bp spread`). */
+const rateCell = (value: unknown, row: Record<string, unknown>) => {
+  const text = formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-");
+  const qualifier = value == null ? null : rateQualifier(row as unknown as TreasuryAuction);
+  return qualifier ? `${text} ${qualifier}` : text;
+};
 
 const COLUMNS = [
   { key: "auctionDate", header: "Date" },
   { key: "secType", header: "Type" },
   { key: "securityTerm", header: "Term" },
-  { key: "rate", header: "Rate", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-") },
+  {
+    key: "rate",
+    header: "Rate",
+    align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => formatAuctionRate(row as unknown as TreasuryAuction, value == null ? null : Number(value), "-"),
+    textFormat: rateCell,
+  },
+  { key: "stopOutVsAvgBp", header: "Stop-out vs avg (bp)", align: "right" as const, format: (value: unknown) => value == null ? "-" : Number(value).toFixed(1) },
   { key: "bidToCoverRatio", header: "B/C", align: "right" as const, format: (value: unknown) => value == null ? "-" : Number(value).toFixed(2) },
-  { key: "indirectPercent", header: "Indirect", align: "right" as const, format: (value: unknown) => value == null ? "-" : `${Number(value).toFixed(1)}%` },
+  { key: "indirectPercent", header: "Indirect", align: "right" as const, format: formatPercent },
+  { key: "directPercent", header: "Direct", align: "right" as const, format: formatPercent },
+  { key: "dealerPercent", header: "Dealer", align: "right" as const, format: formatPercent },
   { key: "size", header: "Size", align: "right" as const, format: (value: unknown) => value == null ? "-" : `$${formatCompact(Number(value))}` },
   { key: "cusip", header: "CUSIP" },
 ];
@@ -35,16 +66,23 @@ const defaultDependencies: TreasuryAuctionsHeadlessDependencies = {
   load: (_args, historyDays) => loadTreasuryAuctions(false, fetchTreasuryAuctions, historyDays),
 };
 
+/** An empty table says what was searched, in which window, and what the search understands. */
+function emptyNote(query: string, filter: AuctionFilter, historyDays: number): string {
+  const searched = query.trim() ? `match "${query.trim()}"` : "found";
+  const group = filter === "all" ? "" : ` in the ${filter} group`;
+  return `No auctions ${searched}${group} in ${auctionHistoryPhrase(historyDays)}. Search by ${AUCTION_SEARCH_FIELDS}.`;
+}
+
 function createTreasuryAuctionsHeadless(
   dependencies: TreasuryAuctionsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
-    freshness: { source: "US Treasury", status: "not-a-feed", basis: "auction results", observedKey: "auctionDate", oldest: null },
+    freshness: { source: "US Treasury", status: "not-a-feed", basis: "auction results", observedKey: "auctionDate", oldest: null, tradingDayMarket: "US" },
     argument: {
       kind: "free-text",
       placeholder: "search",
-      description: "Optional security type, term, or auction date filter.",
+      description: "Optional search: security type, benchmark (10Y), term, CUSIP, or auction date (YYYY-MM-DD).",
       optional: true,
     },
     options: [
@@ -52,9 +90,9 @@ function createTreasuryAuctionsHeadless(
         key: "historyDays",
         aliases: ["history"],
         settingKey: "historyDays",
-        description: "Auction history window in days.",
+        description: "Auction history window in days, up to 3650 (10 years).",
         type: "enum",
-        values: [{ value: "30" }, { value: "90" }, { value: "120" }, { value: "365" }],
+        values: AUCTION_HISTORY_WINDOWS.map((days) => ({ value: String(days) })),
         defaultValue: "120",
       },
       {
@@ -77,13 +115,25 @@ function createTreasuryAuctionsHeadless(
         query,
         sort: DEFAULT_AUCTION_SORT,
       });
+      const nextWindow = nextAuctionHistoryWindow(historyDays);
+      const notes = [
+        ...(auctions.length === 0 ? [emptyNote(query, filter, historyDays)] : []),
+        nextWindow
+          ? `Older auctions: use --historyDays ${nextWindow}.`
+          : `Auctions older than ${auctionHistoryLabel(historyDays)} are not loaded.`,
+        ...(auctions.length > 0 ? [STOP_OUT_NOTE] : []),
+      ];
       return {
         complete: !result.refreshError,
         errors: result.refreshError ? [result.refreshError] : [],
+        notes,
         rows: auctions.map((auction) => ({
           ...auction,
           rate: rateValue(auction),
+          stopOutVsAvgBp: stopOutVsAverageBp(auction),
           indirectPercent: indirectPct(auction),
+          directPercent: directPct(auction),
+          dealerPercent: dealerPct(auction),
           size: auctionSize(auction),
         })),
         metadata: {

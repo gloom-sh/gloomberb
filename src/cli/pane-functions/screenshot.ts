@@ -1,10 +1,11 @@
 import { fetchTape } from "../../plugins/builtin/time-sales/client";
+import { isOptionsUnavailableError } from "../../market-data/options-alternatives";
 import type { TapeCapture } from "../../plugins/builtin/time-sales/snapshot-client";
 import { apiClient } from "../../api-client";
 import { snapshotInstrumentKey, type SnapshotMarketData } from "../../market-data/snapshot-provider";
 import { toMarketDataContext } from "../../market-data/selectors";
 import type { ChartPaneModel } from "../../plugins/builtin/chart-composer/headless";
-import { loadResolvedHeadlessPaneModel } from "./headless";
+import { loadResolvedHeadlessPaneModel, type LoadedHeadlessPaneModel } from "./headless";
 import { dirname, resolve } from "path";
 import { mkdir } from "fs/promises";
 import type { PaneRuntimeState } from "../../core/state/app/state";
@@ -30,7 +31,7 @@ import {
   type DesktopPaneShotPayload,
   type DesktopPaneShotRenderResult,
 } from "../desktop-pane-shot";
-import { optionPaneState } from "./options";
+import { optionPaneState, SHOT_SIZE_LIMITS, type ShotSizeClamp } from "./options";
 import type { ResolvedPaneFunction } from "./resolver";
 import type { MarketContext } from "../types";
 import { capabilityPluginState } from "./capabilities";
@@ -94,8 +95,8 @@ import {
   withShotPriceHistory,
   withShotSeasonalityHistory,
 } from "./data";
-import { renderedReportFreshness, renderedReportNotices } from "./report-notices";
-import { deriveRenderedFreshness, statusLineVariants, type ReportFreshness } from "./freshness";
+import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
+import { deriveHeadlessFreshness, deriveRenderedFreshness, statusLineVariants, type ReportFreshness } from "./freshness";
 import { quotesFreshness } from "../freshness";
 import {
   financialRatioRenderMismatches,
@@ -450,6 +451,34 @@ export function defaultScreenshotPath(resolved: ResolvedPaneFunction, rawArg: st
   return resolve(process.cwd(), `gloomberb-${suffix}.png`);
 }
 
+/**
+ * The pixels of the PNG a `shot` of this size writes: the layout snapped to
+ * whole cells, drawn at the device scale factor (twice the layout size, as
+ * `--scale` trades cells for glyph size at the same output size).
+ */
+function shotImagePixels(widthPx: number, heightPx: number, scale = 1): { width: number; height: number } {
+  const device = DEFAULT_SHOT_DEVICE_SCALE_FACTOR * scale;
+  return {
+    width: Math.round(Math.max(1, Math.floor(widthPx / scale / DESKTOP_CELL_WIDTH_PX)) * DESKTOP_CELL_WIDTH_PX * device),
+    height: Math.round(Math.max(1, Math.floor(heightPx / scale / DESKTOP_CELL_HEIGHT_PX)) * DESKTOP_CELL_HEIGHT_PX * device),
+  };
+}
+
+/** What `shot` says when it drew another size than the one asked for, naming the PNG it wrote. */
+export function shotSizeWarnings(
+  clamped: readonly ShotSizeClamp[] | undefined,
+  size: { width: number; height: number; scale?: number },
+): string[] {
+  if (!clamped?.length) return [];
+  const pixels = shotImagePixels(size.width, size.height, size.scale);
+  return clamped.map(({ dimension, requested, used }) => {
+    const { min, max } = SHOT_SIZE_LIMITS[dimension];
+    const bound = requested < min ? `below the ${min} minimum` : `above the ${max} maximum`;
+    const drawn = dimension === "width" ? `${pixels.width} px wide` : `${pixels.height} px tall`;
+    return `--${dimension} ${requested} is ${bound}, so the capture used ${used} and the PNG is ${drawn}.`;
+  });
+}
+
 export async function buildDesktopShotPayload(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
@@ -460,6 +489,7 @@ export async function buildDesktopShotPayload(
   theme: string | null,
   scale: number,
   watermark: string | null,
+  loadModel: () => Promise<LoadedHeadlessPaneModel> = () => loadResolvedHeadlessPaneModel(resolved, context, rawArg),
 ): Promise<DesktopPaneShotPayload> {
   // The requested size is the output size. Scale shrinks the CSS viewport and
   // raises the device scale factor by the same factor, so a 1200px wide shot at
@@ -528,18 +558,17 @@ export async function buildDesktopShotPayload(
   let chartModel: ChartPaneModel | undefined;
   const evidenceHook = paneScreenshotEvidenceHook(resolved);
   if (evidenceHook?.prepare) {
-    const prepared = await evidenceHook.prepare({ resolved, context, settings: shotInstance.settings ?? {},
-      loadModel: () => loadResolvedHeadlessPaneModel(resolved, context, rawArg) });
+    const prepared = await evidenceHook.prepare({ resolved, context, settings: shotInstance.settings ?? {}, loadModel });
     shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, ...prepared.settings } };
     for (const [symbol, data] of prepared.financials ?? []) {
       financials.push([symbol, data]);
       tickers.push(await createFallbackTicker(symbol, data, context));
     }
   } else if (resolved.pane.id === "analytics") {
-    const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
+    const loaded = await loadModel();
     shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, analyticsView: "risk", riskSnapshot: loaded.result.metadata?.model ?? null } };
   } else if (resolved.pane.id === CHART_COMPOSER_PANE_ID) {
-    const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArg);
+    const loaded = await loadModel();
     chartModel = loaded.result as ChartPaneModel;
     shotInstance = { ...shotInstance, settings: { ...shotInstance.settings, chartSpec: chartModel.spec } };
     const authored = parseChartSpec(resolved.instance.settings?.chartSpec);
@@ -583,7 +612,9 @@ export async function buildDesktopShotPayload(
       ?? data.quote?.listingExchangeName
       ?? data.quote?.exchangeName
       ?? "";
-    const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day";
+    const fiveYearsDaily = resolved.pane.id === "realized-vol" || resolved.pane.id === "iv-history" || resolved.pane.id === "macro-day"
+      // KELLY's History tab reads monthly returns off five years of daily closes.
+      || resolved.pane.id === "kelly-sizer";
     if (fiveYearsDaily || resolved.pane.id === "iv-screen" || resolved.pane.id === "short-watch"
       || resolved.pane.id === "backtest" || resolved.pane.id === OPTIONS_PANE_ID) {
       // Generic 5Y snapshots can contain weekly bars. The snapshot provider
@@ -601,7 +632,7 @@ export async function buildDesktopShotPayload(
     } else if (shotRatioTab(resolved)?.key === "valuation") {
       data = await withShotPeriodEndHistory(context, entry.instrument, exchange, resolved, data);
     } else if (resolved.pane.id === "seasonality") {
-      data = await withShotSeasonalityHistory(context, entry.instrument, data);
+      data = await withShotSeasonalityHistory(context, entry.instrument, resolved, data);
     } else if (requestedRange && readsDailyReturns(resolved)) {
       data = await withShotDailyReturns(context, entry.instrument, exchange, requestedRange, data);
     } else if (requestedRange) {
@@ -624,9 +655,13 @@ export async function buildDesktopShotPayload(
       tapeSnapshots.push([entry.instrument.symbol, exchange, await fetchTape(entry.instrument.symbol, exchange)]);
     }
     if (includeOptionsChains && context.dataProvider.getOptionsChain) {
+      // A future with no chain of its own is the pane's to explain (the listed alternative), not a failed shot.
       const chain = await context.dataProvider.getOptionsChain(entry.instrument.symbol, exchange, undefined,
-        context.refresh ? { cacheMode: "refresh" } : undefined);
-      optionsChains.push([symbol, chain]);
+        context.refresh ? { cacheMode: "refresh" } : undefined).catch((error: unknown) => {
+        if (isOptionsUnavailableError(error)) return null;
+        throw error;
+      });
+      if (chain) optionsChains.push([symbol, chain]);
     }
   }
   layout.instances[0] = shotInstance;
@@ -740,11 +775,43 @@ function shotFreshness(
     ...(payload.instrumentFinancials ?? []).map(({ financials }) => financials.quote),
     ...bridgedQuotes,
   ];
-  const quoted = declared.status ? undefined : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now);
+  // A pane that publishes the observations behind its figures (FXC's rates) dates itself.
+  const observed = renderedReportObservations(render.semanticUi ?? []);
+  const quoted = declared.status || observed.length > 0
+    ? undefined
+    : quotesFreshness(quotes, declared.source ? { source: declared.source } : undefined, now);
   return quoted ?? deriveRenderedFreshness(declared, {
     footerText: render.footerText ?? "",
     cellTimes: render.rows.flatMap((row) => row.cells.flatMap((cell) => (cell.instant ? [cell.instant] : []))),
+    observed,
   }, now);
+}
+
+/**
+ * A dataset pane's capture is dated as its `fn` report is, from the same
+ * loader: CHOKE's transits, HIRE's postings, GPU's prices. Panes that declare
+ * a dataset load it for this; a chart always loads it to draw. Undefined when
+ * the report is not a dataset's (a price chart, GPU's equities) or did not load.
+ */
+async function datasetShotFreshness(
+  resolved: Pick<ResolvedPaneFunction, "pane" | "headless">,
+  loadModel: () => Promise<LoadedHeadlessPaneModel>,
+  now = Date.now(),
+): Promise<ReportFreshness | undefined> {
+  if (resolved.headless?.freshness?.dataset !== true && resolved.pane.id !== CHART_COMPOSER_PANE_ID) return undefined;
+  try {
+    const loaded = await loadModel();
+    const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result, now);
+    return freshness.lagDays != null ? freshness : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** One load of the pane's report per capture, shared by the payload and the status line. */
+function onceLoader(load: () => Promise<LoadedHeadlessPaneModel>): () => Promise<LoadedHeadlessPaneModel> {
+  let pending: Promise<LoadedHeadlessPaneModel> | undefined;
+  return () => (pending ??= load());
 }
 
 export async function renderDesktopShot({
@@ -783,6 +850,7 @@ export async function renderDesktopShot({
   let freshness: ReportFreshness | undefined;
   apiClient.setSessionToken(apiProxy.sessionToken);
   try {
+    const loadModel = onceLoader(() => loadResolvedHeadlessPaneModel(resolved, context, rawArg));
     payload = await buildDesktopShotPayload(
       resolved,
       context,
@@ -793,15 +861,18 @@ export async function renderDesktopShot({
       theme ?? null,
       scale ?? 1,
       watermark ?? null,
+      loadModel,
     );
     if (statusLine && captureImage) payload.statusLine = true;
+    // Loads while the page renders; a dataset's line does not wait on its quotes.
+    const dataset = payload.statusLine ? datasetShotFreshness(resolved, loadModel) : undefined;
     const recorded = recordBridgedQuotes(createDesktopShotBridge(context));
     const shotPayload = payload;
     render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy, {
       captureImage,
       bridge: recorded.bridge,
-      statusLine: (rendered) => {
-        freshness = shotFreshness(resolved, shotPayload, rendered, recorded.quotes);
+      statusLine: async (rendered) => {
+        freshness = await dataset ?? shotFreshness(resolved, shotPayload, rendered, recorded.quotes);
         return statusLineVariants(freshness);
       },
     });

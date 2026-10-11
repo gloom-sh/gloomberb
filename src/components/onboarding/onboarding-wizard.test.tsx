@@ -1118,6 +1118,24 @@ describe("OnboardingWizard", () => {
     await waitForFrame("Start 7-day free trial");
   });
 
+  test("the Pro step's buttons wrap under each other when the card is too narrow for both", async () => {
+    tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-pro-narrow-"));
+    await tui.render(<WizardHarness config={{
+      ...createDefaultConfig(tempDataDir),
+      onboardingProgress: { version: 1, stage: "upgrade", accountStatus: "signed-in" },
+    }} pluginRegistry={createPluginRegistry()} />, { width: 50, height: 24 });
+    await tui.setup().renderOnce();
+    const lines = (await waitForFrame("Start 7-day free trial")).split("\n");
+
+    const keepFree = lines.findIndex((line) => line.includes("Keep Free for now"));
+    const trial = lines.findIndex((line) => line.includes("Start 7-day free trial"));
+    expect(trial).toBe(keepFree + 1);
+    // Both still end inside the card's border, with the list above them intact.
+    expect(lines[keepFree]!.trimEnd().endsWith("│")).toBe(true);
+    expect(lines[trial]!.trimEnd().endsWith("│")).toBe(true);
+    expect(lines.some((line) => line.includes("Real-time market data"))).toBe(true);
+  });
+
   test("persists completion only from the ready step", async () => {
     tempDataDir = await mkdtemp(join(tmpdir(), "gloomberb-onboarding-complete-"));
     const pluginRegistry = createPluginRegistry();

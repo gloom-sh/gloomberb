@@ -563,6 +563,7 @@ export class MarketDataCoordinator {
         fetchedAt: result?.fetchedAt ?? null,
         responseSequence: result?.responseSequence,
         asOf: result?.asOf,
+        delayMinutes: result?.delayMinutes,
         staleAt: result?.staleAt ?? null,
         error: classified ?? (!loading && empty ? { reasonCode: "NO_DATA", message: "No data available" } : null),
         attempts: result ? [createAttempt(result.source, result.fetchedAt, error ? "fatal_error" : empty ? "empty" : "success", classified?.reasonCode, classified?.message)] : [],

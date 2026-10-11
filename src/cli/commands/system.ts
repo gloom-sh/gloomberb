@@ -2,7 +2,8 @@ import { join } from "path";
 import { VERSION } from "../../version";
 import { saveConfig } from "../../data/config/store";
 import { builtinPluginGroupMembers } from "../../plugins/ownership";
-import type { TelemetryConfig } from "../../types/config";
+import type { AppConfig, TelemetryConfig } from "../../types/config";
+import { canonicalTimeZone } from "../../utils/utc-time";
 import type { CliCommandDef } from "../../types/plugin";
 import { withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
@@ -10,6 +11,7 @@ import { dryRunNote, formatBytes, formatStatusCell } from "../helpers";
 import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
 import { getThemeIds } from "../../theme/themes";
 import { requireArg } from "./command-utils";
+import { fail } from "../errors";
 import { describeThemeId, requireThemeId, themeListNote, themeListRows, themeName } from "./themes";
 import {
   applyKeybindingCliSet,
@@ -27,6 +29,10 @@ const TELEMETRY_CONFIG_KEYS = {
 type TelemetryConfigKey = keyof typeof TELEMETRY_CONFIG_KEYS;
 /** The one-time GitHub star line in the terminal's status bar. */
 const STAR_PROMPT_CONFIG_KEY = "starPrompt.enabled";
+/** The zone CLI text shows local times in, beside UTC. */
+const TIMEZONE_CONFIG_KEY = "timezone";
+/** What `config set timezone` takes to go back to UTC alone. */
+const NO_TIMEZONE = "none";
 const EDITABLE_CONFIG_KEYS = [
   "baseCurrency",
   "refreshIntervalMinutes",
@@ -34,6 +40,7 @@ const EDITABLE_CONFIG_KEYS = [
   "valueFlashingEnabled",
   ...Object.keys(TELEMETRY_CONFIG_KEYS),
   STAR_PROMPT_CONFIG_KEY,
+  TIMEZONE_CONFIG_KEY,
 ];
 
 function isTelemetryConfigKey(key: string): key is TelemetryConfigKey {
@@ -44,11 +51,29 @@ function isBooleanConfigKey(key: string): boolean {
   return key === "valueFlashingEnabled" || key === STAR_PROMPT_CONFIG_KEY || isTelemetryConfigKey(key);
 }
 
+/** The canonical zone name `config set timezone` stores, or null to clear it; fails on a name that is not a zone. */
+function parseTimezoneSetting(value: string): string | null {
+  if (value.trim().toLowerCase() === NO_TIMEZONE) return null;
+  return canonicalTimeZone(value) ?? fail(
+    `"${value.trim()}" is not a time zone name.`,
+    `Use an IANA zone name, Region/City, such as Asia/Tokyo, or ${NO_TIMEZONE} for UTC alone.`,
+  );
+}
+
+function describeTimezone(value: unknown): string {
+  return typeof value === "string" && value ? value : "not set, times print in UTC alone";
+}
+
 function describeConfigValue(value: unknown): string {
   if (value == null) return "nothing";
   if (Array.isArray(value)) return value.length > 0 ? value.join(", ") : "nothing";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
+}
+
+function withTimezone(config: AppConfig, timezone: string | null): AppConfig {
+  const { timezone: _previous, ...rest } = config;
+  return timezone ? { ...rest, timezone } : rest;
 }
 
 function summarizeKeybindings(value: unknown): string {
@@ -187,6 +212,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "config set telemetry.crashReports false",
         "config set telemetry.usage false",
         "config set starPrompt.enabled false",
+        "config set timezone <Region/City>|none",
         "config get keybindings",
         "config set keybindings.actions.<action> <keys>|null|default",
         "config set keybindings.commands.<keys> <command>|null",
@@ -194,6 +220,11 @@ export function createSystemCliCommands(): CliCommandDef[] {
       sections: [{
         title: "Editable keys",
         lines: [`${EDITABLE_CONFIG_KEYS.join(", ")}, and keybindings.*`],
+      }, {
+        title: "Time zone",
+        lines: [
+          "Times print in UTC. timezone takes an IANA zone name such as Asia/Tokyo or America/New_York, and CLI text and function reports then show your local time beside every UTC time. Trading days keep their market's date. none goes back to UTC alone. JSON and CSV keep the raw values.",
+        ],
       }, {
         title: "Themes",
         lines: [
@@ -205,6 +236,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "config themes",
         "config set theme colorblind",
         "config set baseCurrency EUR",
+        "config set timezone Asia/Tokyo",
         "config get keybindings",
         "config set keybindings.actions.ticker-search \"Ctrl+T\"",
         "config set keybindings.commands.Alt+1 \"DES AAPL\"",
@@ -248,6 +280,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           "telemetry.usage": context.config.telemetry?.usage !== false,
           "telemetry.attention": context.config.telemetry?.attention === true,
           [STAR_PROMPT_CONFIG_KEY]: context.config.starPrompt?.enabled !== false,
+          [TIMEZONE_CONFIG_KEY]: context.config.timezone ?? null,
         };
 
         if (action === "list") {
@@ -257,6 +290,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
               header: key,
               ...(key === KEYBINDINGS_CONFIG_KEY ? { format: summarizeKeybindings } : {}),
               ...(key === "theme" ? { format: (value: unknown) => describeThemeId(String(value)) } : {}),
+              ...(key === TIMEZONE_CONFIG_KEY ? { format: describeTimezone } : {}),
             })),
           });
           return;
@@ -274,7 +308,8 @@ export function createSystemCliCommands(): CliCommandDef[] {
             return;
           }
           ctx.printResult({ data: { key, value: safeConfig[key] } }, {
-            text: (data) => key === KEYBINDINGS_CONFIG_KEY ? renderKeybindings(data.value) : describeConfigValue(data.value),
+            text: (data) => key === KEYBINDINGS_CONFIG_KEY ? renderKeybindings(data.value)
+              : key === TIMEZONE_CONFIG_KEY ? describeTimezone(data.value) : describeConfigValue(data.value),
           });
           return;
         }
@@ -309,7 +344,9 @@ export function createSystemCliCommands(): CliCommandDef[] {
           // A display name may come unquoted: config set theme White Phosphor.
           const parsedValue = key === "theme"
             ? requireThemeId(args.slice(2).join(" "))
-            : key === "refreshIntervalMinutes"
+            : key === TIMEZONE_CONFIG_KEY
+              ? parseTimezoneSetting(value)
+              : key === "refreshIntervalMinutes"
               ? Number(value)
               : isBooleanConfigKey(key)
                 ? value === "true"
@@ -318,7 +355,9 @@ export function createSystemCliCommands(): CliCommandDef[] {
             ? { ...context.config, telemetry: { ...context.config.telemetry, [TELEMETRY_CONFIG_KEYS[key]]: parsedValue as boolean } }
             : key === STAR_PROMPT_CONFIG_KEY
               ? { ...context.config, starPrompt: { ...context.config.starPrompt, enabled: parsedValue as boolean } }
-              : { ...context.config, [key]: parsedValue };
+              : key === TIMEZONE_CONFIG_KEY
+                ? withTimezone(context.config, parsedValue as string | null)
+                : { ...context.config, [key]: parsedValue };
           if (!ctx.cliOptions.dryRun) await saveConfig(nextConfig);
           ctx.printResult({
             data: {
@@ -329,7 +368,9 @@ export function createSystemCliCommands(): CliCommandDef[] {
               ...(key === "theme" ? { name: themeName(String(parsedValue)) } : {}),
             },
           }, {
-            text: (data) => `Set ${key} to ${key === "theme" ? describeThemeId(String(data.value)) : describeConfigValue(data.value)}.${dryRunNote(data.dryRun)}`,
+            text: (data) => key === TIMEZONE_CONFIG_KEY && data.value == null
+              ? `Cleared timezone: times print in UTC alone.${dryRunNote(data.dryRun)}`
+              : `Set ${key} to ${key === "theme" ? describeThemeId(String(data.value)) : describeConfigValue(data.value)}.${dryRunNote(data.dryRun)}`,
           });
           return;
         }

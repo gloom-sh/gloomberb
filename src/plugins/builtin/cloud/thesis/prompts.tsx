@@ -4,7 +4,8 @@ import type { DialogApi, PromptContext } from "../../../../ui/dialog";
 /**
  * The questions a thesis flow asks, on the same dialog pattern as the rest
  * of the app: a DialogFrame, kit buttons, and an `Enter save · Esc cancel`
- * footer. Every prompt resolves `undefined` when the person backs out.
+ * footer in the terminal (the desktop shows the keys on the buttons). Every
+ * prompt resolves `undefined` when the person backs out.
  */
 
 async function ask(dialog: DialogApi, props: Omit<TextPromptDialogProps, keyof PromptContext<string>>): Promise<string | undefined> {

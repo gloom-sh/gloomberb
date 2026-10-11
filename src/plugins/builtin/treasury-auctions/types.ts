@@ -20,8 +20,13 @@ export interface TreasuryAuction {
   highInvestmentRate: number | null;
   /** FRN high discount margin over the 13-week bill index, in percentage points. */
   highDiscountMargin?: number | null;
-  /** High yield, reported by Notes, Bonds, and TIPS. */
+  /** Bill high (stop-out) discount rate, in percentage points. */
+  highDiscountRate: number | null;
+  /** Bill average discount rate, in percentage points. */
+  avgMedDiscountRate: number | null;
+  /** High (stop-out) yield, reported by Notes, Bonds, and TIPS. */
   highYield: number | null;
+  /** Median yield for notes, bonds and TIPS, as Treasury publishes it. */
   avgMedYield: number | null;
   highPrice: number | null;
   lowPrice: number | null;
@@ -31,6 +36,8 @@ export interface TreasuryAuction {
   competitiveAccepted: number | null;
   /** Indirect bidder accepted dollars, including customers bidding through direct submitters. */
   indirectAccepted: number | null;
+  /** Direct bidder accepted dollars: investors bidding for their own account. */
+  directAccepted: number | null;
   /** Primary dealer accepted dollars. */
   primaryDealerAccepted: number | null;
   totalAccepted: number | null;
@@ -53,10 +60,13 @@ export interface TreasuryAuctionRaw {
   bid_to_cover_ratio?: string;
   comp_accepted?: string;
   indirect_bidder_accepted?: string;
+  direct_bidder_accepted?: string;
   primary_dealer_accepted?: string;
   total_accepted?: string;
   offering_amt?: string;
   inflation_index_security?: string;
   floating_rate?: string;
   high_discnt_margin?: string;
+  high_discnt_rate?: string;
+  avg_med_discnt_rate?: string;
 }

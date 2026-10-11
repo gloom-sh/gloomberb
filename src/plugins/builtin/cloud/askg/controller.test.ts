@@ -5,9 +5,9 @@ import type {
   ASKGToolResultOutcome,
   ASKGTransport,
 } from "../../../../api-client/askg";
-import { ASKGSessionController } from "./controller";
+import { ASKGSessionController, CONFIRMATION_CLOSE_MARGIN_MS } from "./controller";
 import type { ASKGToolExecutor } from "./executor";
-import { canRateTurn, pendingConfirmation } from "./model";
+import { canRateTurn, NOT_APPROVED_IN_TIME_NOTE, pendingConfirmation } from "./model";
 import type {
   ASKGFeedback,
   ASKGFeedbackRequest,
@@ -353,6 +353,139 @@ describe("ASKGSessionController", () => {
     expect(harness.posted[0]).toMatchObject({ status: "ok" });
 
     harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
+  test("closes a prompt the server gave up on, and a late approval runs nothing", async () => {
+    const { executor, calls } = executorReturning({});
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    harness.emit(toolCallEvent(1, WRITE_TOOL));
+    harness.emit(toolCallEvent(2, WRITE_TOOL));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ toolCallId: "call-1" });
+
+    // The server stopped waiting for call-1: its prompt closes, call-2 still asks.
+    harness.emit({
+      seq: 3,
+      type: "tool-executed",
+      turnId: "turn-1",
+      toolCallId: "call-1",
+      name: WRITE_TOOL.name,
+      source: "remote-op",
+      status: "timeout",
+      summary: { elapsedMs: 60_000, truncated: false, note: "The client did not answer within 60000ms." },
+    });
+    await settle();
+    expect(harness.controller.getState().turns[0]?.tools[0]).toMatchObject({
+      status: "timeout",
+      note: NOT_APPROVED_IN_TIME_NOTE,
+    });
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ toolCallId: "call-2" });
+    // A click that arrives anyway writes nothing and tells the server nothing.
+    harness.controller.resolveConfirmation("call-1", true);
+    await settle();
+    expect(calls).toHaveLength(0);
+    expect(harness.posted).toHaveLength(0);
+
+    // The turn ends with call-2 still open: it closes the same way.
+    harness.emit({ seq: 4, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+    expect(pendingConfirmation(harness.controller.getState())).toBeNull();
+    harness.controller.resolveConfirmation("call-2", true);
+    await settle();
+    expect(calls).toHaveLength(0);
+    expect(harness.posted).toHaveLength(0);
+  });
+
+  test("closes a prompt on its own before the server stops waiting", async () => {
+    const { executor, calls } = executorReturning({});
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    // The frame's window, not the manifest's minute: an older server waits 10 s.
+    harness.emit(toolCallEvent(1, { ...WRITE_TOOL, timeoutMs: CONFIRMATION_CLOSE_MARGIN_MS + 20 }));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ toolCallId: "call-1" });
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toBeNull();
+    // Gloom hears why at once, while it still waits for the call.
+    expect(harness.posted).toEqual([expect.objectContaining({
+      toolCallId: "call-1",
+      status: "timeout",
+      note: NOT_APPROVED_IN_TIME_NOTE,
+    })]);
+
+    harness.controller.resolveConfirmation("call-1", true);
+    await settle();
+    expect(calls).toHaveLength(0);
+    expect(harness.posted).toHaveLength(1);
+
+    harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
+  test("asks about the change the app resolved, and the app does not ask again", async () => {
+    const executed: Array<{ confirmed?: boolean; confirmedChange?: string }> = [];
+    const executor: ASKGToolExecutor = {
+      async preview() {
+        return { kind: "change", summary: "Add MSFT (NASDAQ) to Tech", confirmKey: "add|tech|MSFT" };
+      },
+      async execute(call, options) {
+        executed.push({ confirmed: options?.confirmed, confirmedChange: options?.confirmedChange });
+        return { turnId: call.turnId, toolCallId: call.toolCallId, status: "ok", truncated: false, elapsedMs: 1 };
+      },
+      async undo() {
+        return { status: "ok", elapsedMs: 1 };
+      },
+    };
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    harness.emit(toolCallEvent(1, WRITE_TOOL));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ preview: "Add MSFT (NASDAQ) to Tech" });
+
+    harness.controller.resolveConfirmation("call-1", true);
+    await settle();
+    expect(executed).toEqual([{ confirmed: true, confirmedChange: "add|tech|MSFT" }]);
+
+    harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
+  test("answers a refused or no-op change without asking", async () => {
+    const answers = [{ kind: "refusal", message: "Refused: \"Desk\" is a team watchlist." }, { kind: "no-change" }] as const;
+    const executed: Array<boolean | undefined> = [];
+    let next = 0;
+    const executor: ASKGToolExecutor = {
+      async preview() {
+        return answers[next++] ?? null;
+      },
+      async execute(call, options) {
+        executed.push(options?.confirmed);
+        return { turnId: call.turnId, toolCallId: call.toolCallId, status: "ok", truncated: false, elapsedMs: 1 };
+      },
+      async undo() {
+        return { status: "ok", elapsedMs: 1 };
+      },
+    };
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    harness.emit(toolCallEvent(1, WRITE_TOOL));
+    harness.emit(toolCallEvent(2, WRITE_TOOL));
+    await settle();
+
+    expect(pendingConfirmation(harness.controller.getState())).toBeNull();
+    expect(harness.posted.map(({ toolCallId, status }) => [toolCallId, status])).toEqual([["call-1", "error"], ["call-2", "ok"]]);
+    expect(harness.posted[0]?.note).toContain("team watchlist");
+    expect(executed).toEqual([true]);
+
+    harness.emit({ seq: 3, type: "done", turnId: "turn-1", reason: "complete" });
     await harness.streamed;
   });
 

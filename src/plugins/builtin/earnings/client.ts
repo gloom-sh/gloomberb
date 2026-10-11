@@ -91,7 +91,8 @@ export function cachedEarningsHistory(symbol: string) {
   return cachedCloudResource(historyCache, symbol, (payload) => validateEarningsHistory(payload, symbol));
 }
 
-export function loadEarningsHistory(symbol: string, force = false) {
-  return loadCloudResource(historyCache, symbol, () => fetchEarningsHistory(symbol),
+/** `limit` asks for more reports than the pane's default and is cached apart from it. */
+export function loadEarningsHistory(symbol: string, force = false, limit?: number) {
+  return loadCloudResource(historyCache, limit == null ? symbol : `${symbol}:${limit}`, () => fetchEarningsHistory(symbol, apiClient, limit),
     { force, validate: (payload) => validateEarningsHistory(payload, symbol) });
 }

@@ -90,7 +90,7 @@ test("keeps a cell under its own column when an earlier cell in the row is blank
     "2026-10-07T11:27:00.000Z,Deal,PSKY,M&A",
     "2026-10-02T14:00:00.000Z,Sanctions,,Regulatory",
     "",
-    "# Source: Gloom Cloud · Wed 7 Oct 11:27 UTC · not a live feed (published stories)",
+    "# Source: Gloom Cloud · Wed 7 Oct 2026 11:27 UTC · not a live feed (published stories)",
   ]);
 });
 
@@ -185,6 +185,41 @@ test("states the expiry a rendered OMON shows and dates the report by the chain 
   const report = buildDomPaneReportFromRender(resolved, screenshot);
   expect(report.text.split("\n").slice(0, 3)).toEqual(["Options", "", "Expiry 2028-01-21 (469d)"]);
   expect(report.data.metadata).toMatchObject({ expiry: { date: "2028-01-21", daysToExpiry: 469 } });
-  expect(formatFreshnessLine(report.data.freshness)).toBe("Source: Gloom Cloud · Fri 9 Oct 19:59 UTC · 15 min delayed");
+  expect(formatFreshnessLine(report.data.freshness)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 19:59 UTC · 15 min delayed");
   expect(renderReportCsv(report.tables)).toContain("# note: Expiry 2028-01-21 (469d)");
+});
+
+test("dates a rendered FXC by the observations behind its rates, in the report and in its JSON", () => {
+  const resolved = {
+    token: "FXC", label: "FX Cross Rates", options: {}, capability: { id: "fx-matrix-pane" }, pane: { id: "fx-matrix" },
+  } as unknown as ResolvedPaneFunction;
+  // Saturday 12:00 UTC (the clock above): Friday's close for the euro, a quiet tick on Saturday morning for the rand.
+  const observation = (currency: string, quoteTime: string) => ({
+    currency, quoteTime, dataSource: "delayed", stale: false, sessionExchange: "CCY", marketState: "CLOSED",
+  });
+  const screenshot = {
+    symbols: [],
+    render: {
+      visibleText: "",
+      // The pane's own footer states its rates' ages, not their feed.
+      footerText: "oldest rate 2026-10-09 21:29 UTC · fetched 5m ago",
+      rows: [{ tableIndex: 0, rowIndex: 0, selected: false, cells: [{ columnLabel: "EUR", text: "1.1206" }] }],
+      semanticUi: [{
+        id: "ui:1", role: "report-freshness", actions: [], metadata: {
+          observations: [observation("EUR", "2026-10-09T21:29:00.000Z"), observation("ZAR", "2026-10-10T04:21:11.000Z")],
+        },
+      }],
+      truncated: false, truncationReasons: [], loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [],
+      emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  } as unknown as PaneScreenshotResult;
+
+  const report = buildDomPaneReportFromRender(resolved, screenshot);
+  expect(formatFreshnessLine(report.data.freshness)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
+  expect(report.data.freshness).toMatchObject({ status: "delayed", asOf: "2026-10-10T04:21:11.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
+  expect(renderReportCsv(report.tables)).toContain("# Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
+
+  // A pane that publishes nothing is still not reported.
+  const bare = { ...screenshot, render: { ...screenshot.render, semanticUi: [] } } as unknown as PaneScreenshotResult;
+  expect(formatFreshnessLine(buildDomPaneReportFromRender(resolved, bare).data.freshness)).toContain("status not reported");
 });

@@ -13,10 +13,18 @@ import type { ListingArg } from "../listing-arg";
 
 const DEFAULT_SHOT_WIDTH = 1280;
 const DEFAULT_SHOT_HEIGHT = 720;
-const MAX_SHOT_WIDTH = 2400;
-const MIN_SHOT_WIDTH = 720;
-const MAX_SHOT_HEIGHT = 1800;
-const MIN_SHOT_HEIGHT = 360;
+/** The layout sizes `shot` takes, in CSS pixels; the PNG is drawn at twice that. */
+export const SHOT_SIZE_LIMITS = {
+  width: { min: 720, max: 2400 },
+  height: { min: 360, max: 1800 },
+} as const;
+
+/** A `--width` or `--height` outside its limits, and the size the capture used instead. */
+export interface ShotSizeClamp {
+  dimension: "width" | "height";
+  requested: number;
+  used: number;
+}
 const DEFAULT_CATALOG_LIMIT = 25;
 
 export interface ParsedPaneFunctionArgs {
@@ -34,6 +42,10 @@ export interface ParsedPaneFunctionArgs {
   watermark: string | null;
   /** A screenshot carries its dated status line in the pane footer; `--no-status` sets this false. */
   status?: boolean;
+  /** Sizes asked for outside the limits, so `shot` can say what it used instead. */
+  clamped?: ShotSizeClamp[];
+  /** `--explain`: follow a report with the meaning of the terms it shows. */
+  explain?: boolean;
   requireBotSafe: boolean;
   /** The listing a one-ticker function's argument named, once `applyListingArgument` has resolved it. */
   listing?: ListingArg;
@@ -79,7 +91,9 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
   let scale = 1;
   let watermark: string | null = null;
   let status = true;
+  let explain = false;
   let requireBotSafe = false;
+  const clamped: ShotSizeClamp[] = [];
 
   for (let index = 0; index < args.length; index += 1) {
     const token = args[index]!;
@@ -102,6 +116,10 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
       status = false;
       continue;
     }
+    if (normalizeOptionKey(key) === "explain" && inlineValue === undefined) {
+      explain = true;
+      continue;
+    }
     const next = args[index + 1];
     const nextValue = inlineValue === undefined && next && !next.startsWith("--") ? args[++index] : true;
     const value: string | true = inlineValue ?? nextValue ?? true;
@@ -110,16 +128,11 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
       requireBotSafe = value === true || String(value).toLowerCase() === "true";
     } else if (normalizedKey === "output" || normalizedKey === "out" || normalizedKey === "o") {
       outputPath = value === true ? null : value;
-    } else if (normalizedKey === "width" && value !== true) {
-      const parsedWidth = Number(value);
-      if (Number.isFinite(parsedWidth)) {
-        width = Math.max(MIN_SHOT_WIDTH, Math.min(MAX_SHOT_WIDTH, Math.round(parsedWidth)));
-      }
-    } else if (normalizedKey === "height" && value !== true) {
-      const parsedHeight = Number(value);
-      if (Number.isFinite(parsedHeight)) {
-        height = Math.max(MIN_SHOT_HEIGHT, Math.min(MAX_SHOT_HEIGHT, Math.round(parsedHeight)));
-      }
+    } else if ((normalizedKey === "width" || normalizedKey === "height") && value !== true) {
+      const size = parseShotSize(normalizedKey, value);
+      if (size.used !== size.requested) clamped.push(size);
+      if (normalizedKey === "width") width = size.used;
+      else height = size.used;
     } else if (normalizedKey === "theme" && value !== true) {
       theme = value.trim() || null;
     } else if (normalizedKey === "scale" && value !== true) {
@@ -141,7 +154,22 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
   // so a function without a tail option says so instead of ignoring it.
   if (globalOptions.limit != null) options.limit = String(globalOptions.limit);
   if (globalOptions.tail != null) options.tail = String(globalOptions.tail);
-  return { target, arg, options, outputPath, width, height, theme, scale, watermark, status, requireBotSafe };
+  return {
+    target, arg, options, outputPath, width, height, theme, scale, watermark, status, requireBotSafe,
+    ...(clamped.length > 0 ? { clamped } : {}),
+    ...(explain ? { explain } : {}),
+  };
+}
+
+/** A `--width` or `--height` in pixels, held to the limits `shot` can draw. */
+function parseShotSize(dimension: "width" | "height", value: string): ShotSizeClamp {
+  const { min, max } = SHOT_SIZE_LIMITS[dimension];
+  const requested = Number(value);
+  if (!value.trim() || !Number.isFinite(requested)) {
+    throw new Error(`--${dimension} takes a size in pixels from ${min} to ${max}, got "${value}".`);
+  }
+  const rounded = Math.round(requested);
+  return { dimension, requested: rounded, used: Math.max(min, Math.min(max, rounded)) };
 }
 
 export function parsePaneCatalogArgs(args: string[]): ParsedPaneCatalogArgs {

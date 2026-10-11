@@ -1,6 +1,7 @@
 import { commandBarResultsFromNodes } from "../../../../remote/command-bar";
 import { findCommandBarResult, findMatchingUiNode } from "../../../../remote/matching";
 import type {
+  RemoteCallContext,
   RemoteControlRequest,
   RemoteControlResponse,
   RemoteJsonPatchOperation,
@@ -67,7 +68,7 @@ export type RelayActivity =
   | { type: "revoked"; clientId: string };
 
 export interface TerminalRelayEngineOptions {
-  handle: (request: RemoteControlRequest) => Promise<RemoteControlResponse>;
+  handle: (request: RemoteControlRequest, context?: RemoteCallContext) => Promise<RemoteControlResponse>;
   /** Sends one frame on the socket the engine was last connected to. */
   send: (frame: Record<string, unknown>) => boolean;
   grants: Pick<TerminalRelayGrants, "decision" | "decide" | "forget" | "markUsed">;
@@ -104,6 +105,11 @@ interface PlannedCall {
   request: RemoteControlRequest | null;
   binding: TerminalRelayToolKind;
   confirm: CallSummary | null;
+  /**
+   * The operation's own key for the change `confirm` describes, from its dry
+   * run. Passed back once the person allows it, so the app does not ask twice.
+   */
+  confirmKey?: string;
   /** Re-reads the target right before running; false when it changed while the person decided. */
   stillSame?: () => Promise<boolean>;
   /** Refuses a semantic action aimed at the relay's own prompt. */
@@ -129,6 +135,8 @@ const DATA_OPERATIONS = new Set<RemoteMarketDataRequest["operation"]>([
   "earningsCalendar",
 ]);
 const DATA_FIELDS = new Set(["operation", "query", "symbol", "exchange", "count", "symbols"]);
+/** Operations whose dry run says what they would change, and that take a confirmed key. */
+const PLANNED_OPERATIONS = new Set(["watchlist.add", "watchlist.remove"]);
 
 /**
  * A market data read built field by field from what the tool allows. Relay
@@ -316,7 +324,7 @@ export class TerminalRelayEngine {
       }
       if (!this.isLive(call)) return;
 
-      const result = await this.execute(binding, plan, input);
+      const result = await this.execute(binding, plan, input, call);
       if (!this.isLive(call)) return;
       this.options.grants.markUsed(caller.id, this.now());
       this.options.onActivity?.({ type: "acted", caller, tool: data.tool, at: this.now() });
@@ -521,7 +529,36 @@ export class TerminalRelayEngine {
       };
     }
 
+    const planned = await this.plannedChange(operation, input);
+    if (planned) return { request, binding, ...planned };
     return { request, binding, confirm: await this.operationSummary(operation, input) };
+  }
+
+  /**
+   * An operation whose dry run resolves what it would change (watchlist.add
+   * names the list and the listing it found) is described by that, not by
+   * its arguments. A dry run the app refuses is the call's answer: nothing
+   * is asked and nothing runs.
+   */
+  private async plannedChange(
+    operation: string,
+    input: Record<string, unknown>,
+  ): Promise<Pick<PlannedCall, "confirm" | "confirmKey"> | null> {
+    if (!PLANNED_OPERATIONS.has(operation)) return null;
+    const response = await this.withBudget(this.options.handle({ type: "call", operation, input, dryRun: true, include: [] }));
+    if (!response.ok) throw new RelayRefusal("invalid_input", response.error.message);
+    const plan = isRecord(response.data) ? response.data : {};
+    if (typeof plan.summary !== "string" || typeof plan.confirmKey !== "string") return null;
+    // Nothing would change: the operation says so without asking, and asks in the app itself if that is no longer so.
+    if (plan.changes === false) return { confirm: null };
+    const lines = Array.isArray(plan.lines) ? plan.lines.filter(isRecord) : [];
+    return {
+      confirm: {
+        title: shortValue(plan.summary),
+        lines: lines.map((line) => ({ label: shortValue(line.label), value: shortValue(line.value) })),
+      },
+      confirmKey: plan.confirmKey,
+    };
   }
 
   private async operationSummary(operation: string, input: Record<string, unknown>): Promise<CallSummary> {
@@ -585,16 +622,33 @@ export class TerminalRelayEngine {
     }
   }
 
-  private async run(request: RemoteControlRequest): Promise<RemoteControlResponse & { ok: true }> {
-    const response = await this.withBudget(this.options.handle(request));
-    if (!response.ok) throw new RelayRefusal("app_error", response.error.message);
-    return response;
+  /**
+   * `confirmKey` is the change the person allowed. An operation that would
+   * now change something else asks in the app itself, and that question
+   * closes, unanswered, with the call or its budget.
+   */
+  private async run(request: RemoteControlRequest, call: LiveCall, confirmKey?: string): Promise<RemoteControlResponse & { ok: true }> {
+    const ended = new AbortController();
+    const end = () => ended.abort();
+    call.controller.signal.addEventListener("abort", end, { once: true });
+    try {
+      const response = await this.withBudget(this.options.handle(request, {
+        signal: ended.signal,
+        ...(confirmKey ? { confirmed: confirmKey } : {}),
+      }));
+      if (!response.ok) throw new RelayRefusal("app_error", response.error.message);
+      return response;
+    } finally {
+      call.controller.signal.removeEventListener("abort", end);
+      end();
+    }
   }
 
   private async execute(
     binding: TerminalRelayToolKind,
     plan: PlannedCall,
     input: Record<string, unknown>,
+    call: LiveCall,
   ): Promise<Record<string, unknown>> {
     if (binding.kind === "snapshot") return this.withBudget(this.snapshot());
     if (binding.kind === "pane-content") {
@@ -602,7 +656,7 @@ export class TerminalRelayEngine {
       if (!paneId) throw new RelayRefusal("invalid_input", "paneId is required.");
       return this.withBudget(this.paneContent(paneId));
     }
-    const response = await this.run(plan.request!);
+    const response = await this.run(plan.request!, call, plan.confirmKey);
     if (binding.kind === "resource") {
       const resource = (plan.request as { resource: string }).resource;
       return { resource, rev: response.rev ?? null, items: asItems(redactResource(resource, response.data)) };

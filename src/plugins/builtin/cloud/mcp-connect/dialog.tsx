@@ -247,6 +247,9 @@ function McpConnectDialog({
       subtitle={t("Gloom's research tools in Claude Code, Codex, Cursor or any MCP client.")}
       // Too narrow for the key line, which is a keyboard's business anyway (a phone).
       footer={narrow ? undefined : footer}
+      // The desktop's buttons show their keys, the client switch takes arrows
+      // like any segmented control, and the close button stands for Esc.
+      desktopFooter={null}
       onClose={dismiss}
     >
       <Box flexDirection="column" width={width} gap={1}>

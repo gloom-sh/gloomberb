@@ -4,13 +4,14 @@ import {
   type ASKGToolResultOutcome,
   type ASKGTransport,
 } from "../../../../api-client/askg";
-import type { ASKGToolExecutor } from "./executor";
+import { toolCallRemainingMs, type ASKGToolExecutor, type ASKGToolPreview } from "./executor";
 import {
   activeTurn,
   askgReducer,
   canRateTurn,
   EMPTY_ASKG_CONVERSATION,
   isTurnRunning,
+  NOT_APPROVED_IN_TIME_NOTE,
   requiresLocalConfirmation,
   type ASKGAction,
   type ASKGConversationState,
@@ -42,6 +43,18 @@ const MAX_HISTORY_TURNS = 8;
 const DEFAULT_TURN_WALL_CLOCK_MS = 120_000;
 /** Sessions are renegotiated a little before they expire. */
 const SESSION_EXPIRY_GRACE_MS = 5_000;
+/**
+ * A confirmation prompt closes this long before the server stops waiting for
+ * its call, so an approval still leaves time for the write and its result.
+ */
+export const CONFIRMATION_CLOSE_MARGIN_MS = 2_000;
+
+/**
+ * How a confirmation prompt ended. `expired` is this app's own deadline for
+ * the call; `abandoned` is the turn giving up on it (the call timed out on the
+ * server, the turn ended, was cancelled or lost its stream).
+ */
+type ConfirmationAnswer = "approved" | "declined" | "expired" | "abandoned";
 
 export interface ASKGControllerManifest {
   tools: ClientToolManifest[];
@@ -146,9 +159,7 @@ export class ASKGSessionController {
   private session: ASKGSessionStartResponse | null = null;
   private sessionRequest: Promise<ASKGSessionStartResponse> | null = null;
   private manifest: ASKGControllerManifest | null = null;
-  private readonly confirmations = new Map<string, (approved: boolean) => void>();
-  /** Calls whose turn ended while they were still waiting to be approved. */
-  private readonly abandonedCalls = new Set<string>();
+  private readonly confirmations = new Map<string, (answer: ConfirmationAnswer) => void>();
   private readonly toolTasks = new Set<Promise<void>>();
   private turnAbort: AbortController | null = null;
   /** Ratings of one answer go out in the order they were made. */
@@ -286,6 +297,8 @@ export class ASKGSessionController {
         signal: abort.signal,
         onEvent: (event) => this.handleEvent(event),
       });
+      // The stream is over, so no approval can reach this turn any more.
+      this.abandonPendingConfirmations();
       // Tool calls delivered late in the stream may still be running.
       await Promise.allSettled([...this.toolTasks]);
     } catch (error) {
@@ -350,6 +363,13 @@ export class ASKGSessionController {
       this.abandonPendingConfirmations();
       return;
     }
+    // The server reports a delegated call it gave up on (timed out, or its
+    // script ended) like one it got a result for. A prompt still open for it
+    // closes: an approval could no longer reach the turn.
+    if (event.type === "tool-executed") {
+      this.settleConfirmation(event.toolCallId, "abandoned");
+      return;
+    }
     if (event.type !== "tool-call") return;
     const task = this.runToolCall(event).finally(() => {
       this.toolTasks.delete(task);
@@ -384,12 +404,43 @@ export class ASKGSessionController {
 
     try {
       let confirmed = false;
+      let confirmedChange: string | undefined;
       if (requiresLocalConfirmation(call)) {
-        this.dispatch({ type: "tool-awaiting-confirmation", toolCallId: call.toolCallId });
-        confirmed = await new Promise<boolean>((resolve) => {
-          this.confirmations.set(call.toolCallId, resolve);
-        });
-        if (this.abandonedCalls.delete(call.toolCallId)) return;
+        const preview = await this.previewCall(call, signal);
+        // The turn ended or moved on while the app looked.
+        if (signal?.aborted || this.toolRowStatus(call.toolCallId) !== "pending") return;
+        if (preview?.kind === "refusal") {
+          await this.deliver(failure(preview.message));
+          return;
+        }
+        if (preview?.kind === "change") confirmedChange = preview.confirmKey;
+        // Nothing to approve: the operation re-checks and asks in the app itself if that changed.
+        if (preview?.kind === "no-change") {
+          confirmed = true;
+        } else {
+          this.dispatch({
+            type: "tool-awaiting-confirmation",
+            toolCallId: call.toolCallId,
+            ...(preview?.kind === "change" ? { preview: preview.summary } : {}),
+          });
+          const answer = await this.awaitConfirmation(
+            call.toolCallId,
+            startedAt + toolCallRemainingMs(call, startedAt),
+          );
+          if (answer === "abandoned") return;
+          if (answer === "expired") {
+            await this.deliver({
+              turnId: call.turnId,
+              toolCallId: call.toolCallId,
+              status: "timeout",
+              truncated: false,
+              elapsedMs: Math.max(0, this.now() - startedAt),
+              note: NOT_APPROVED_IN_TIME_NOTE,
+            });
+            return;
+          }
+          confirmed = answer === "approved";
+        }
         if (!confirmed) {
           await this.deliver({
             turnId: call.turnId,
@@ -413,6 +464,7 @@ export class ASKGSessionController {
       }
       const payload = await executor.execute(call, {
         confirmed: confirmed || !requiresLocalConfirmation(call),
+        ...(confirmedChange ? { confirmedChange } : {}),
         ...(signal ? { signal } : {}),
       });
       await this.deliver(payload);
@@ -423,6 +475,28 @@ export class ASKGSessionController {
     } finally {
       this.confirmations.delete(call.toolCallId);
     }
+  }
+
+  /**
+   * The operation's own account of a call that needs approval, when it has
+   * one. Null keeps the server's description.
+   */
+  private async previewCall(call: ASKGToolCallEvent, signal?: AbortSignal): Promise<ASKGToolPreview | null> {
+    try {
+      const manifest = this.manifest ?? await this.options.loadManifest();
+      this.manifest = manifest;
+      return await this.options.getExecutor(manifest)?.preview?.(call, signal) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private toolRowStatus(toolCallId: string): string | undefined {
+    for (const turn of this.state.turns) {
+      const row = turn.tools.find((entry) => entry.toolCallId === toolCallId);
+      if (row) return row.status;
+    }
+    return undefined;
   }
 
   /** Records a tool result locally, then posts it to the turn loop. */
@@ -444,25 +518,43 @@ export class ASKGSessionController {
     }
   }
 
-  /** Answers a `user-data` or `broker` confirmation prompt. */
-  resolveConfirmation(toolCallId: string, approved: boolean): void {
+  /**
+   * Waits for the person's answer to one call. The prompt closes on its own
+   * a little before the server stops waiting (`deadlineAt`, by this clock),
+   * so an approval always has time to land; an older server that waits less
+   * than the call declared says so in the frame, and is honoured the same way.
+   */
+  private awaitConfirmation(toolCallId: string, deadlineAt: number): Promise<ConfirmationAnswer> {
+    return new Promise<ConfirmationAnswer>((resolve) => {
+      const timer = setTimeout(
+        () => this.settleConfirmation(toolCallId, "expired"),
+        Math.max(0, deadlineAt - CONFIRMATION_CLOSE_MARGIN_MS - this.now()),
+      );
+      this.confirmations.set(toolCallId, (answer) => {
+        clearTimeout(timer);
+        resolve(answer);
+      });
+    });
+  }
+
+  /** Ends one prompt. Only the first answer counts; a later one does nothing. */
+  private settleConfirmation(toolCallId: string, answer: ConfirmationAnswer): void {
     const resolve = this.confirmations.get(toolCallId);
     if (!resolve) return;
     this.confirmations.delete(toolCallId);
-    resolve(approved);
+    resolve(answer);
   }
 
-  private rejectPendingConfirmations(): void {
-    for (const [toolCallId, resolve] of [...this.confirmations]) {
-      this.confirmations.delete(toolCallId);
-      resolve(false);
-    }
+  /** Answers a `user-data` or `broker` confirmation prompt. */
+  resolveConfirmation(toolCallId: string, approved: boolean): void {
+    this.settleConfirmation(toolCallId, approved ? "approved" : "declined");
   }
 
   /** Drops confirmations whose answer can no longer reach the turn. */
   private abandonPendingConfirmations(): void {
-    for (const toolCallId of this.confirmations.keys()) this.abandonedCalls.add(toolCallId);
-    this.rejectPendingConfirmations();
+    for (const toolCallId of [...this.confirmations.keys()]) {
+      this.settleConfirmation(toolCallId, "abandoned");
+    }
   }
 
   /**

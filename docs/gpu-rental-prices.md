@@ -1,6 +1,6 @@
 # GPU rental prices
 
-`GPU` opens GPU Rental Prices. `GPU H100` or `GPU B200` selects a GPU model. Board shows published rental rates, History charts dated observations, Changes records price, availability and list-index membership changes, and Equities shows related shares. Full data and history require Pro; free accounts receive a preview. The standard pane refresh reads the latest stored data; the footer shows its observation time, stale status and current failures.
+`GPU` opens GPU Rental Prices. `GPU H100` or `GPU B200` selects a GPU model; case, spaces, dashes and variant words do not matter (`GPU h-100` and `GPU H100 80GB SXM` both select H100, `GPU B2` selects B200), and a name that matches no GPU lists the ones that do. Board shows published rental rates, History charts dated observations, Changes records price, availability and list-index membership changes, and Equities shows related shares. Full data and history require Pro; free accounts receive a preview: three board rows, and for a GPU those rows leave out, that GPU's latest free rows with their 1D, 7D and 30D moves reading Pro. On Equities, a share whose list series is locked reads Pro, and a share whose series the board does not list names it (`No AWS H100 list`). The standard pane refresh reads the latest stored data; the footer shows its observation time, stale status and current failures.
 
 ## Reading the board
 

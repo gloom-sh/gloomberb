@@ -12,7 +12,7 @@ import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { loadGpuHistory } from "./client";
 import { GpuPriceLadder } from "./ladder";
 import {
-  gpuAvailability, gpuBoardSections, gpuChange, gpuChangeColor, gpuChangeWindows, gpuHeadline, gpuPrice, gpuPriceLadder, gpuShortSource, gpuSparklineSeries, gpuTime, gpuVariant,
+  gpuAvailability, gpuBoardSections, gpuChange, gpuChangeColor, gpuChangesLocked, gpuChangeWindows, gpuHeadline, gpuPrice, gpuPriceLadder, gpuShortSource, gpuSparklineSeries, gpuTime, gpuVariant,
   type GpuChangeKey,
 } from "./model";
 
@@ -23,10 +23,10 @@ const CHANGE_LABELS: Record<GpuChangeKey, string> = { change1d: "1D", change7d: 
 /** A line needs three observations; two are a step, not a trend. */
 const MIN_TREND_POINTS = 3;
 
-export function GpuModelQuery({ rows, model, setModel, width, allowAll = true }: {
-  rows: readonly GpuBoardRow[]; model: string; setModel: (value: string) => void; width: number; allowAll?: boolean;
+/** The GPU picker: the GPUs on the board, or on a free board every GPU, since each has its own free preview. */
+export function GpuModelQuery({ models, model, setModel, width, allowAll = true }: {
+  models: readonly string[]; model: string; setModel: (value: string) => void; width: number; allowAll?: boolean;
 }) {
-  const models = useMemo(() => [...new Set(rows.map((row) => row.gpuModel))].sort(), [rows]);
   return <QueryBar width={width} filters={[{ id: "gpu", label: "GPU", value: model, ...(allowAll ? { defaultValue: "" } : {}),
     options: [...(allowAll ? [{ value: "", label: "All GPUs" }] : []), ...models.map((value) => ({ value, label: value }))], onChange: setModel }]} />;
 }
@@ -79,9 +79,9 @@ function boardColumns(width: number, options: { windows: GpuChangeKey[]; trend: 
   ];
 }
 
-export function GpuBoard({ rows, asOf, model, setModel, selectedId, select, width, height, focused }: {
-  rows: GpuBoardRow[]; asOf: string | null; model: string; setModel: (value: string) => void; selectedId: string; select: (row: GpuBoardRow, open?: boolean) => void;
-  width: number; height: number; focused: boolean;
+export function GpuBoard({ rows, models, asOf, model, setModel, selectedId, select, emptyTitle, width, height, focused }: {
+  rows: GpuBoardRow[]; models: readonly string[]; asOf: string | null; model: string; setModel: (value: string) => void; selectedId: string; select: (row: GpuBoardRow, open?: boolean) => void;
+  emptyTitle: string; width: number; height: number; focused: boolean;
 }) {
   const colors = useThemeColors();
   const sections = useMemo(() => gpuBoardSections(rows, model), [rows, model]);
@@ -95,6 +95,8 @@ export function GpuBoard({ rows, asOf, model, setModel, selectedId, select, widt
   const medium = width >= 100;
   const asOfDay = asOf?.slice(0, 10) ?? null;
   const columns = boardColumns(width, { windows, trend, range: visible.some((row) => row.stats), availability: visible.some((row) => row.availability) });
+  // A free preview row's moves are Pro's; the cell says so, and the footer's upgrade hint unlocks them.
+  const lockedCell: DataTableCell = { text: "Pro", value: null, color: colors.textDim };
 
   const renderCell = (item: BoardRow, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (!isSectionedItemRow(item)) return EMPTY_TABLE_CELL;
@@ -121,8 +123,9 @@ export function GpuBoard({ rows, asOf, model, setModel, selectedId, select, widt
         if (!quartiles && stats.min === stats.max) return { text: "" };
         return { text: quartiles ? `${gpuPrice(stats.p25)}–${gpuPrice(stats.p75)}` : `${gpuPrice(stats.min)}–${gpuPrice(stats.max)}`, color: colors.textDim };
       }
-      case "unavailableChange": return { text: "-", value: null, color: colors.textMuted };
+      case "unavailableChange": return gpuChangesLocked(row) ? lockedCell : { text: "-", value: null, color: colors.textMuted };
       case "change1d": case "change7d": case "change30d": {
+        if (gpuChangesLocked(row)) return lockedCell;
         const value = row[column.id];
         return value == null ? { text: "-", value: null, color: colors.textMuted } : { text: gpuChange(value), value, color: gpuChangeColor(value, colors) };
       }
@@ -148,7 +151,7 @@ export function GpuBoard({ rows, asOf, model, setModel, selectedId, select, widt
     }
   };
 
-  const query = <GpuModelQuery rows={rows} model={model} setModel={setModel} width={width} />;
+  const query = <GpuModelQuery models={models} model={model} setModel={setModel} width={width} />;
   return <DataTableView<BoardRow> columns={columns} items={items} rootWidth={width} rootHeight={height} focused={focused}
     rootBefore={ladder.length ? <ChartTableHeader width={width} height={height} tableRows={items.length} tableColumns={columns} query={query}
       chart={{ maxRows: ladder.length + 1, minRows: Math.min(3, ladder.length + 1), strip: null,
@@ -159,5 +162,5 @@ export function GpuBoard({ rows, asOf, model, setModel, selectedId, select, widt
       onChange: (_id, row) => { if (row && isSectionedItemRow(row)) select(row.item); } }}
     isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}
     getItemKey={rowKey} onActivate={(row) => { if (isSectionedItemRow(row)) select(row.item, true); }} sortColumnId={null} sortDirection="asc"
-    selectedTextOverridesCellColor renderCell={renderCell} emptyStateTitle="No GPU rental prices match." />;
+    selectedTextOverridesCellColor renderCell={renderCell} emptyStateTitle={emptyTitle} />;
 }

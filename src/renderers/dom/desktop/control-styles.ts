@@ -25,10 +25,31 @@ export function controlBorderColor(focused = false, active = false, palette: The
   return panelBorder(palette);
 }
 
+function activeHalo(palette: ThemeColors): string {
+  return `0 0 0 1px ${blendHex(palette.bg, palette.borderFocused, 0.18)}`;
+}
+
 export function controlShadow(active = false, palette: ThemeColors = colors): string {
   return active
-    ? `0 0 0 1px ${blendHex(palette.bg, palette.borderFocused, 0.18)}, inset 0 1px 0 ${blendHex(palette.bg, palette.textBright, 0.06)}`
+    ? `${activeHalo(palette)}, inset 0 1px 0 ${blendHex(palette.bg, palette.textBright, 0.06)}`
     : `inset 0 1px 0 ${blendHex(palette.bg, palette.textBright, 0.04)}`;
+}
+
+/**
+ * A button's shadow. The top highlight of `controlShadow` is mixed from the page
+ * background, so it only belongs on a fill that sits near that background. On a
+ * solid fill (primary, danger, a selected button) it draws a dark rim on a light
+ * one and a pale rim on a saturated one, just inside the top edge, so a solid
+ * fill stays flat and a selected button keeps only its halo.
+ */
+export function buttonShadow(
+  props: Pick<ButtonProps, "variant" | "active" | "disabled">,
+  palette: ThemeColors = colors,
+): string {
+  if (props.variant === "plain") return "none";
+  if (props.disabled) return controlShadow(props.active, palette);
+  if (props.active) return activeHalo(palette);
+  return props.variant === "primary" || props.variant === "danger" ? "none" : controlShadow(false, palette);
 }
 
 export function buttonPalette(

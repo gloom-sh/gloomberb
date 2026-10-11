@@ -21,7 +21,7 @@ import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
 import { formatCloudPrice, monthsFreeYearly } from "../../plugins/builtin/account-management/model";
 import { proStepCopy, proStepRealtimeTitle } from "../../plugins/builtin/cloud/upgrade-dialog";
-import { Button, SegmentedControl } from "../ui";
+import { Button, SegmentedControl, terminalButtonColumns } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import {
   ONBOARDING_DESKTOP,
@@ -630,6 +630,10 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
       note: proNote,
       interval: !planAccess.hasProAccess,
       error: persistenceError,
+      actions: [
+        ...(planAccess.hasProAccess ? [] : [terminalButtonColumns({ label: "Keep Free for now", shortcut: KEEP_FREE_KEY })]),
+        terminalButtonColumns({ label: primaryLabel }),
+      ],
       descriptions: features.map((feature) => feature.description),
     });
     return (

@@ -9,28 +9,11 @@ import {
   resetTreasuryAuctionsPersistence,
   TREASURY_FISCAL_DATA_CONNECTION_ID,
 } from "./cache";
+import { auction } from "./test-fixture";
 import type { TreasuryAuction } from "./types";
 
 function auctionFixture(id: string): TreasuryAuction {
-  return {
-    id,
-    cusip: null,
-    secType: "Note",
-    securityTerm: "10-Year",
-    auctionDate: "2026-08-12",
-    highInvestmentRate: null,
-    highYield: 4.683,
-    avgMedYield: null,
-    highPrice: null,
-    lowPrice: null,
-    avgMedPrice: null,
-    bidToCoverRatio: 2.53,
-    competitiveAccepted: null,
-    indirectAccepted: null,
-    primaryDealerAccepted: null,
-    totalAccepted: null,
-    offeringAmount: null,
-  };
+  return auction({ id, secType: "Note", securityTerm: "10-Year", highYield: 4.683, bidToCoverRatio: 2.53 });
 }
 
 /** Minimal stand-in for the resource cache: one slot, explicit stale/expiry. */
@@ -85,7 +68,7 @@ describe("loadTreasuryAuctions", () => {
       sourceKey: "treasury-fiscal-data", schemaVersion: 2,
     });
     persistence.seedResource("treasury-auctions", "recent:30", [auctionFixture("current")], {
-      sourceKey: "treasury-fiscal-data", schemaVersion: 3,
+      sourceKey: "treasury-fiscal-data", schemaVersion: 4,
     });
     attachTreasuryAuctionsPersistence(persistence);
     let calls = 0;

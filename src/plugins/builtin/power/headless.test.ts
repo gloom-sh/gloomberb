@@ -41,3 +41,21 @@ test("history exports traverse pages and retain the published period and source 
   expect(result.sections[0]!.rows).toHaveLength(2);
   expect(result.sections[0]!.rows![0]).toMatchObject({ basis: "published", period: "2025", sourceUrls: ["https://example.org/queue.csv"] });
 });
+
+test("the report prints the pane's columns with the ticker map, and an empty ticker tab says where the ticker's records are", async () => {
+  const ctx = createTestHeadlessContext();
+  ctx.apiClient.getCloudPowerBoard = async () => powerBoard({ projects: [powerProject(), powerProject({ id: "test:queue-2", entities: [], capacityMw: 1234.56 })], total: 2 });
+  const queue = (await powerHeadless.load(createTestHeadlessArgs(), ctx)).sections[0]!;
+  expect(queue.columns!.map((column) => column.key)).not.toContain("metrics");
+  const cell = (key: string, index: number) => queue.columns!.find((column) => column.key === key)!.format!(queue.rows![index]![key], queue.rows![index]!);
+  expect([cell("ticker", 0), cell("ticker", 1), cell("capacityMw", 1)]).toEqual(["NEE", "unmapped", "1,234.6"]);
+  const asked: unknown[] = [];
+  ctx.apiClient.getCloudPowerBoard = async (query) => {
+    asked.push(query);
+    return powerBoard({ projects: [], exposure: [], total: query?.kind === "capacity" && query.sourceId === "us-eia860" ? 4 : 0 });
+  };
+  const utilities = (await powerHeadless.load(createTestHeadlessArgs({ argument: "VST", options: { tab: "utilities" } }), ctx)).sections[0]!;
+  expect("empty" in utilities && utilities.empty).toBe("No large-load requests or utility exposure map to VST. VST has 4 generation capacity records (--tab capacity).");
+  // Loads are what utilities sum, so they are not counted again.
+  expect(asked.filter((query) => (query as { kind?: string }).kind === "load")).toHaveLength(1);
+});

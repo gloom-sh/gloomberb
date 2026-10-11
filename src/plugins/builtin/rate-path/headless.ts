@@ -10,6 +10,14 @@ const bps = (value: unknown) => {
   const bp = finiteOrNull(value);
   return bp == null ? "--" : `${bp > 0 ? "+" : ""}${bp.toFixed(1)}bp`;
 };
+/** What a text report calls each current policy rate; JSON keeps the keys. */
+const POLICY_LABELS: Record<string, string> = {
+  effr: "Effective fed funds rate",
+  targetLower: "Target range lower",
+  targetUpper: "Target range upper",
+};
+const policyLabel = (value: unknown) => POLICY_LABELS[String(value)] ?? String(value);
+const yesNo = (value: unknown) => value === true ? "yes" : value === false ? "no" : "--";
 const timestamp = (value: unknown) => typeof value === "string" ? value.replace("T", " ").slice(0, 16) : "--";
 const probabilities = (value: unknown) => {
   const outcomes = Array.isArray(value) ? value as RateMeeting["probabilities"] : [];
@@ -24,7 +32,7 @@ const contractColumns: HeadlessPaneColumn[] = [
   { key: "percentile", header: "Pctl 1Y", align: "right", format: pctl },
   { key: "samples", header: "Samples", align: "right" },
   { key: "asOf", header: "As of UTC", format: timestamp },
-  { key: "status", header: "Status" }, { key: "stale", header: "Stale" },
+  { key: "status", header: "Status" }, { key: "stale", header: "Data stale", format: yesNo },
 ];
 
 export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -39,9 +47,9 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
     return {
       sections: [
         { title: "Current policy", columns: [
-          { key: "name", header: "Name" }, { key: "value", header: "Value", align: "right", format: rate },
+          { key: "name", header: "Name", format: policyLabel }, { key: "value", header: "Value", align: "right", format: rate },
           { key: "asOf", header: "As of" }, { key: "percentile", header: "Pctl 1Y", align: "right", format: pctl },
-          { key: "samples", header: "Samples", align: "right" }, { key: "source", header: "Source" }, { key: "stale", header: "Stale" },
+          { key: "samples", header: "Samples", align: "right" }, { key: "stale", header: "Data stale", format: yesNo },
         ], rows: Object.entries(data.current).map(([name, metric]) => ({ name, ...metric })) },
         { title: "FOMC meetings", columns: [
           { key: "date", header: "Date" },

@@ -434,12 +434,15 @@ export function OnboardingActions({ children, hint }: { children: ReactNode; hin
       </Box>
     );
   }
+  // A button that does not fit beside the one before it wraps under it: the
+  // card is narrower than the row in a long language or a narrow terminal.
   return (
     <Box
       flexDirection="row"
+      flexWrap="wrap"
       justifyContent="flex-start"
       alignItems="center"
-      gap={1}
+      columnGap={1}
     >
       {children}
     </Box>

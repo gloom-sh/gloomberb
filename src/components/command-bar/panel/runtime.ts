@@ -180,6 +180,8 @@ export function useCommandBarPanelRuntime({
   });
   listViewportRef.current = { rows: nativeListRows, lines: panelLayout.listBodyHeight };
 
+  const runShortcut = useCallback(() => activateListSelectionRef.current(), []);
+
   const handleThemeCommit = useCallback((themeId: string) => {
     const nextConfig = {
       ...stateRef.current.config,
@@ -215,6 +217,7 @@ export function useCommandBarPanelRuntime({
     queryDisplayWidth: panelLayout.queryDisplayWidth,
     rootGhostSuffix,
     rootShortcutFeedback,
+    onRunShortcut: runShortcut,
     selectedScrollRowIndex,
     termHeight,
     termWidth,

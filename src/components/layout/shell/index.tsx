@@ -1,4 +1,4 @@
-import { AsciiText, Box, Text, compactContextMenuItems, useContextMenu, useUiHost, type BoxRenderable } from "../../../ui";
+import { AsciiText, Box, compactContextMenuItems, useContextMenu, useUiHost, type BoxRenderable } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRendererHost, useUiCapabilities } from "../../../ui";
 import { useShortcut, useViewport } from "../../../react/input";
@@ -24,7 +24,6 @@ import {
   useAppStateRef,
 } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
-import { tf } from "../../../i18n";
 import { getPaneDisplayTitle } from "../pane/title";
 import type { PaneHeaderQuickSetting } from "../pane/header";
 import { getPaneFooter } from "../pane/footer";
@@ -49,6 +48,7 @@ import { ShellNativeSurfaceSync } from "./native/surfaces";
 import { ShellWindowModeOverlays } from "./window-mode/overlays";
 import { ShellPaneLayers } from "./pane/layers";
 import { paneMenuButtonAnchor, ShellActionMenuOverlay, type ActionMenuState } from "./action-menu-overlay";
+import { Button } from "../../ui/button";
 import { ShellDragOverlays } from "./drag/overlays";
 import {
   useShellDragRuntimeState,
@@ -123,6 +123,9 @@ export function Shell({
   const uiKind = useUiHost().kind;
   const shortcutDisplayMode = getShortcutDisplayMode(uiKind);
   const keybindings = useKeybindings();
+  const openCommandBar = useCallback(() => {
+    dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
+  }, [dispatch]);
   const paneAccelerators = useMemo(() => paneManagementAccelerators(keybindings), [keybindings]);
   const { nativePaneChrome = false, nativeContextMenu, precisePointer, publicSharing, titleBarOverlay, cellHeightPx } = useUiCapabilities();
   const { showContextMenu } = useContextMenu();
@@ -831,9 +834,13 @@ export function Shell({
         <Box flexDirection="column" alignItems="center">
           <AsciiText text="Gloomberb" font="wordmark" color={colors.textMuted} />
           <Box height={1} />
-          <Text fg={colors.textDim}>
-            {tf("{shortcut} to get started.", { shortcut: formatAdvertisedChord(keybindings, "command-bar", shortcutDisplayMode) })}
-          </Text>
+          {/* An empty layout starts at the command bar: a click opens it, the key is beside it. */}
+          <Button
+            label="Search or run a command"
+            shortcut={formatAdvertisedChord(keybindings, "command-bar", shortcutDisplayMode) || undefined}
+            onPress={openCommandBar}
+            stopPropagation
+          />
         </Box>
       </Box>
 

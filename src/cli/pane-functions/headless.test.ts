@@ -463,7 +463,7 @@ describe("fn --csv", () => {
       "Observed At,Detail",
       "2026-10-08,\"tenor: 2Y, bid: 4.1\"",
       "",
-      "# Source: SEC EDGAR · Thu 8 Oct · not a live feed (filed data)",
+      "# Source: SEC EDGAR · Thu 8 Oct 2026 · not a live feed (filed data)",
       "# incomplete: 19 of 20 available",
       "# error: ^KS11: No quote provider available for ^KS11",
       "# note: Showing world indices.",
@@ -496,7 +496,7 @@ describe("fn --csv", () => {
       "HP,2026-10-01,37614444",
       "SBK.JO,2026-10-01,1838873",
       "",
-      "# Source: SEC EDGAR · Thu 1 Oct 00:00 UTC · not a live feed (filed data)",
+      "# Source: SEC EDGAR · Thu 1 Oct 2026 00:00 UTC · not a live feed (filed data)",
       "# incomplete: no data for XYZ",
     ]);
   });
@@ -539,7 +539,7 @@ describe("fn --csv", () => {
       "Headline,Tickers",
       "\"Markets open, \"\"calm\"\"\",SPY; QQQ",
       "",
-      "# Source: SEC EDGAR · Thu 8 Oct 19:59 UTC · not a live feed (filed data)",
+      "# Source: SEC EDGAR · Thu 8 Oct 2026 19:59 UTC · not a live feed (filed data)",
     ]);
   });
 

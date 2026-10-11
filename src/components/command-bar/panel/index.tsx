@@ -53,6 +53,7 @@ export function CommandBarPanel({
   queryDisplayWidth,
   rootGhostSuffix,
   rootShortcutFeedback,
+  onRunShortcut,
   selectedScrollRowIndex,
   termHeight,
   termWidth,
@@ -183,9 +184,16 @@ export function CommandBarPanel({
                     </Text>
                   </>
                 ) : rootShortcutFeedback ? (
-                  <Text fg={palette.subtle}>
-                    {truncateToDisplayWidth(rootShortcutFeedback, queryDisplayWidth)}
-                  </Text>
+                  // Says what Enter runs, and a click on it runs the same.
+                  <Button
+                    label={rootShortcutFeedback}
+                    displayLabel={truncateToDisplayWidth(rootShortcutFeedback, queryDisplayWidth)}
+                    variant="plain"
+                    compact
+                    flush
+                    stopPropagation
+                    onPress={onRunShortcut}
+                  />
                 ) : null}
               </Box>
               <Box height={1} />

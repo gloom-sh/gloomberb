@@ -77,6 +77,8 @@ const TOOL_TITLES: Record<string, string> = {
   "hiring.momentum": "Hiring momentum",
   "apps.rank_history": "App rankings",
   "apps.attention": "App attention",
+  "watchlist.add": "Add to watchlist",
+  "watchlist.remove": "Remove from watchlist",
   [SCRIPT_TOOL_NAME]: "Script",
 };
 
@@ -319,6 +321,7 @@ function failureLine(row: ASKGToolRow): string {
   const note = row.note?.trim() ?? "";
   switch (row.status) {
     case "timeout":
+      if (/not approved in time/i.test(note)) return "Not approved in time";
       return /answered without it/i.test(note) ? "Took too long, so Gloom answered without it" : "Took too long to answer";
     case "cancelled":
       return "Stopped";

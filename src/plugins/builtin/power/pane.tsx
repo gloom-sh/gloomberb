@@ -2,25 +2,26 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { PowerBoard, PowerFilter, PowerHistory } from "../../../api-client/power";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
-import { ChartTableHeader, DataTableStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableCell, type PaneHint, type QueryBarFilter } from "../../../components";
+import { Button, ChartTableHeader, DataTableStackView, EmptyState, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableCell, type PaneHint, type QueryBarFilter } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
+import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { getSharedRegistry } from "../../registry/shared";
+import { usePaneInstance } from "../../../state/app/context";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { loadPowerBoard, loadPowerHistory, validatePowerBoard, validatePowerHistory } from "./client";
+import { fetchPowerTickerScopes, loadPowerBoard, loadPowerHistory, validatePowerBoard, validatePowerHistory } from "./client";
 import { usePowerEvidence } from "./evidence";
 import { POWER_SORT_COLUMNS, powerQuery } from "./query";
 import { PowerDetailView } from "./detail";
 import { blendHex } from "../../../theme/colors";
 import { missingCell, PartsBar, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
-import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, projectRows, titleCase, type PowerRow } from "./model";
+import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
 
 const rowId = (r: PowerRow) => r.id;
 const isRecord = (r: PowerRow) => !r.section;
@@ -58,7 +59,10 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const [fuel, setFuel] = usePluginPaneState("power:fuel", initialFuel);
   const [initialStatus] = usePaneSettingValue("status", "");
   const [status, setStatus] = usePluginPaneState("power:status", initialStatus);
-  const [symbol] = usePaneSettingValue("symbol", "");
+  // `POWER VST` opens with the ticker in the instance params; a saved setting still wins.
+  const params = usePaneInstance()?.params;
+  const [settingSymbol] = usePaneSettingValue("symbol", "");
+  const symbol = settingSymbol || params?.symbol || "";
   const [initialHistorical] = usePaneSettingValue("historical", false);
   const [historical, setHistorical] = usePluginPaneState("power:historical", initialHistorical);
   const [initialContext] = usePaneSettingValue("context", "capacity");
@@ -73,8 +77,9 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>(`power:selected:${tab}`, null);
   const [openId, setOpenId] = usePluginPaneState<string | null>(`power:open:${tab}`, null);
   const searchFocus = useQueryBarSearch();
-  const [snapshotSetting] = usePaneSettingValue<{ board: PowerBoard; history?: PowerHistory } | null>("powerSnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? { board: validatePowerBoard(snapshotSetting.board), history: snapshotSetting.history ? validatePowerHistory(snapshotSetting.history) : undefined } : null; } catch { return null; } }, [snapshotSetting]);
+  const [snapshotSetting] = usePaneSettingValue<{ board: PowerBoard; history?: PowerHistory; tickerScopes?: PowerTickerScope[] } | null>("powerSnapshot", null);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? { board: validatePowerBoard(snapshotSetting.board), history: snapshotSetting.history ? validatePowerHistory(snapshotSetting.history) : undefined,
+    tickerScopes: Array.isArray(snapshotSetting.tickerScopes) ? snapshotSetting.tickerScopes : null } : null; } catch { return null; } }, [snapshotSetting]);
   const projectTab = ["queue", "loads", "capacity"].includes(tab);
   const filter = useMemo(() => powerQuery({ tab, country, region, fuel, status, search, historical, context, loadClass, sourceId, from, to,
     sort: sort.column, direction: sort.direction }, symbol), [tab, country, region, fuel, status, search, historical, context, loadClass, sourceId, from, to, sort.column, sort.direction, symbol]);
@@ -106,6 +111,13 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   usePowerEvidence(board, historyData?.payload, tab, rows.map((row) => row.id), pages.loading || historyPages.loading || historyPages.hasMore);
   const locked = board ? tab === "history" ? historyData?.payload.locked ?? 0 : tab === "outcomes" ? board.locked.rates : tab === "utilities" ? board.locked.exposure : projectTab ? board.locked.projects : 0 : 0;
   const items = useMemo(() => [...rows, ...Array.from({ length: Math.min(3, locked) }, (_, i): PowerRow => ({ id: `locked:${i}`, label: "Pro", cells: {}, locked: true }))], [rows, locked]);
+  // A ticker with nothing on this tab says where its records are instead, and opens them; a narrower filter is the filters' doing.
+  const narrowed = !!(country || region || fuel || status || search || loadClass || historical || sourceId || from || to);
+  const tickerEmpty = !!board && !!symbol && !narrowed && tab !== "coverage" && !items.length && !pages.loading && !historyPages.loading;
+  const scopesLoader = useCallback(() => fetchPowerTickerScopes(symbol, tab, context), [symbol, tab, context]);
+  const scopes = useAsyncResource(tickerEmpty && !snapshot ? scopesLoader : null);
+  const tickerScopes = snapshot ? snapshot.tickerScopes : scopes.data;
+  const tickerMessage = tickerEmpty ? powerTickerEmpty(symbol, tab, context, tickerScopes ?? []) : null;
   const selected = rows.find((r) => r.id === selectedId && isRecord(r)) ?? rows.find(isRecord);
   const openRow = rows.find((r) => r.id === openId);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
@@ -174,6 +186,8 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
       { id: "operating", value: e.operatingMw, color: colors.positive }, { id: "approved", value: Math.max(0, e.approvedMw - e.operatingMw), color: blendHex(colors.bg, colors.borderFocused, 0.55) },
       { id: "requested", value: Math.max(0, e.requestedMw - Math.max(e.approvedMw, e.operatingMw)), color: blendHex(colors.bg, colors.textDim, 0.4) }]} /> }; }
     const value = row.cells[column.id];
+    // The ticker map: a record no listed company is mapped to says so.
+    if (column.id === "ticker" && value == null && (row.project || row.exposure)) return { text: UNMAPPED, color: colors.textMuted };
     if (value == null || value === "") return missingCell(colors);
     const text = typeof value === "number" ? /Rate$/.test(column.id) ? powerPercent(value) : powerNumber(value) : String(value);
     const numeric = typeof value === "number" && /Rate$/.test(column.id) ? value * 100 : value;
@@ -202,6 +216,11 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
           chart={tab === "history" ? { series, ...chartLink, formatValue: (n) => `${powerNumber(n)} MW`, loading: historyPages.loading || historyPages.hasMore && !historyPages.moreError,
             empty: series.length ? undefined : historyPages.moreError ? "Full history could not load. Refresh to retry." : historyData?.payload.access === "preview" ? "Full history is available with Pro." : "History is accumulating from recorded snapshots.", remoteKind: "power-history" } : null} />}
         emptyStateTitle={tab === "history" ? historyPages.error?.message ?? "No recorded history for these filters." : "No reported records match these filters."}
+        emptyContent={tickerMessage ? <Box paddingX={1} paddingY={1}>
+          <EmptyState title={tickerMessage.title} hint={tickerMessage.hint ?? undefined}
+            actions={tickerMessage.found.length ? tickerMessage.found.map((scope) => <Button key={`${scope.tab}:${scope.context}`} label={`Open ${scope.view}`}
+              onPress={() => { if (scope.tab === "capacity") setContext(scope.context); setTab(scope.tab); }} />) : undefined} />
+        </Box> : undefined}
         bodyAfter={locked && desktop ? <LockedOverlay rows={Math.min(3, locked)} text="Unlock full power data with Pro" onPress={upgrade} role="power-upgrade" /> : undefined}
       /> : null}
     </PaneStatusBody>

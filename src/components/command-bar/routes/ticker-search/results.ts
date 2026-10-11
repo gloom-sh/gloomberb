@@ -10,6 +10,7 @@ import {
   parseAssetClassQuery,
 } from "../../../../tickers/search/asset-classes";
 import type { ResultItem } from "../../list/model";
+import { currencyPairCode } from "../../../../utils/currency-pair";
 import { canonicalExchange, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
 import { compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
@@ -178,6 +179,12 @@ function venueMatchesSuffix(item: ResultItem, suffix: string): boolean {
   return aliased !== suffix && targets.some((value) => canonicalExchange(value) === aliased);
 }
 
+/** On the currency venue a pair's code is the pair: EURUSD's CCY row is EURUSD=X. */
+function isCurrencyVenuePair(item: ResultItem, symbol: string): boolean {
+  const pair = currencyPairCode(symbol, "CCY");
+  return pair != null && canonicalExchange(item.right) === "CCY" && currencyPairCode(item.label) === pair;
+}
+
 /**
  * The colon query's dropdown: one row per exact venue, in ranked order. A
  * typed exchange prefix keeps the rows it matches.
@@ -186,7 +193,7 @@ export function venueDropdownResults(symbol: string, items: ResultItem[], suffix
   const rows: ResultItem[] = [];
   for (const item of items) {
     if (item.kind !== "ticker" && item.kind !== "search") continue;
-    if (!isExactTickerResultMatch(item, symbol)) continue;
+    if (!isExactTickerResultMatch(item, symbol) && !isCurrencyVenuePair(item, symbol)) continue;
     if (!venueMatchesSuffix(item, suffix)) continue;
     rows.push(item.category === "Exact Match" ? item : { ...item, category: "Exact Match" });
   }

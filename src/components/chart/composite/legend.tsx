@@ -44,6 +44,45 @@ function axisPriceReference(scene: CompositeChartScene | null, series: ResolvedS
   return own;
 }
 
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** `Oct 4`, the axis's own wording, with the year when the chart ends in another. */
+function legendDateText(date: Date, endTime: number | undefined): string {
+  const text = `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  const endYear = endTime === undefined ? null : new Date(endTime).getUTCFullYear();
+  return endYear === null || endYear === date.getUTCFullYear() ? text : `${text} ${date.getUTCFullYear()}`;
+}
+
+/**
+ * A dataset's values arrive days late, so the legend dates them. Idle, one
+ * date leads the legend when it is every value's; otherwise, and under the
+ * cursor for a value older than the cursor's date, each carries its own.
+ */
+function legendValueDates(
+  series: readonly ResolvedSeries[],
+  scene: CompositeChartScene | null,
+  cursorValueById: ReadonlyMap<string, CompositeChartScene["cursorValues"][number]>,
+): { lead: string | null; own: ReadonlyMap<string, string> } {
+  const dates = new Map<string, Date>();
+  let valued = 0;
+  for (const entry of series) {
+    const cursorValue = cursorValueById.get(entry.id);
+    if (cursorValue?.value == null) continue;
+    valued += 1;
+    if (entry.observationKind === "dataset" && cursorValue.point) dates.set(entry.id, cursorValue.point.date);
+  }
+  const text = new Map([...dates].map(([id, date]) => [id, legendDateText(date, scene?.endTime)] as const));
+  const cursorDate = scene?.cursorDate;
+  if (cursorDate) {
+    const cursorDay = cursorDate.toISOString().slice(0, 10);
+    return { lead: null, own: new Map([...text].filter(([id]) => dates.get(id)!.toISOString().slice(0, 10) !== cursorDay)) };
+  }
+  const shared = new Set(text.values());
+  return text.size > 0 && text.size === valued && shared.size === 1
+    ? { lead: [...shared][0]!, own: new Map() }
+    : { lead: null, own: text };
+}
+
 const LISTED_TICKER_PATTERN = /(^|[\s(])([A-Z0-9^][A-Z0-9.^=/-]*):([A-Z0-9]{2,})(?=$|[\s),])/g;
 
 /** `Volume AAPL:XNAS Price` → `Volume AAPL Price`, for a legend name that must shorten. */
@@ -91,6 +130,7 @@ export function CompositeLegend({
   const cursorValueById = new Map(
     scene?.cursorValues.map((entry) => [entry.seriesId, entry] as const) ?? [],
   );
+  const valueDates = legendValueDates(series, scene, cursorValueById);
   const entries = series.map((entry) => {
     const cue = lineCues.get(entry.id) ?? null;
     const marker = cue ? `${cellPlot ? cue.glyph : cue.sample} ` : DOT_MARKER;
@@ -103,6 +143,7 @@ export function CompositeLegend({
         && Number.isFinite(entry.latestChangePercent)
       ? ` ${formatPercentRaw(entry.latestChangePercent)}`
       : "";
+    const ownDate = valueDates.own.get(entry.id);
     const valueText = entry.points.length === 0
       ? entry.hidden ? "" : "no data"
       : `${legendValue(
@@ -110,7 +151,7 @@ export function CompositeLegend({
         cursorValue?.value ?? null,
         formatValue,
         scene,
-      )}${changeText}`;
+      )}${ownDate ? ` ${ownDate}` : ""}${changeText}`;
     const fullText = [entry.label, valueText].filter(Boolean).join(" ");
     const details = formatCompositePointDetails(cursorValue?.point);
     const exactTotal = entry.unitGroup.split(":")[0] === "currency-total"
@@ -150,7 +191,8 @@ export function CompositeLegend({
   // One cell in from the pane border, so the first marker and the legend text
   // line up with the query bar and tables above and below the chart.
   const inset = width > 1 ? 1 : 0;
-  const innerWidth = Math.max(0, width - inset);
+  const leadWidth = valueDates.lead ? displayWidth(valueDates.lead) + 1 : 0;
+  const innerWidth = Math.max(0, width - inset - leadWidth);
   const resolvedAccessoryWidth = accessory
     ? Math.max(1, Math.min(innerWidth, Math.floor(accessoryWidth ?? 14)))
     : 0;
@@ -253,6 +295,11 @@ export function CompositeLegend({
       zIndex={accessory ? 40 : 20}
       data-gloom-role="composite-chart-legend"
     >
+      {valueDates.lead ? (
+        <Box width={leadWidth} height={1} flexShrink={0} data-gloom-role="composite-chart-legend-date">
+          <Text fg={themeColors.textMuted}>{valueDates.lead}</Text>
+        </Box>
+      ) : null}
       {seriesWidth > 0 ? (
         <ScrollBox
           ref={scrollRef}

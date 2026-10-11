@@ -11,6 +11,7 @@ import {
   riskCoverageShortfall,
   riskCoverageText,
   RISK_VIEWS,
+  riskEvidence,
   riskPercentile,
   riskValue,
   type PortfolioRiskModel,
@@ -39,7 +40,8 @@ function displayRow(row: RiskDisplayRow) {
     value: riskValue(row),
     percentile: riskPercentile(row),
     asOf: row.asOf?.slice(0, 10) ?? null,
-    detail: row.detail,
+    detail: riskEvidence(row),
+    ...(row.amount != null ? { amount: row.amount, currency: row.amountCurrency ?? null } : {}),
   };
 }
 

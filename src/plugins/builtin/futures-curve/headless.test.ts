@@ -70,6 +70,17 @@ describe("CTM report basis", () => {
     expect(missing.metadata.spot).toEqual({ symbol: "BTC-USD", price: null, asOf: null, status: "missing", reason: "no BTC-USD quote" });
   });
 
+  test("contract rows read in one field order for every root, at the root's tick precision", async () => {
+    const es = await run("ES");
+    const btc = await run("BTC");
+    expect(Object.keys(es.rows[0]!)).toEqual(Object.keys(btc.rows[0]!).filter((key) => key !== "vsSpotPct" && key !== "annualisedBasisPct"));
+    // A float-noise change reads at the tick: ES ticks in quarters.
+    const { ctx } = context();
+    const noisy = { ...ctx, apiClient: { getCloudFuturesCurve: async () => curve("ES", [{ ...contract("ES", "Z26", 30, 6600.000001), change: 12.249999 }]) } as never };
+    const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "ES", argument: "ES", symbols: [], options: {} }), noisy) as HeadlessBundleResult;
+    expect(result.sections[0]!.rows![0]).toMatchObject({ price: 6600, change: 12.25 });
+  });
+
   test("other roots and past dates add no basis fields and never read a spot", async () => {
     const es = await run("ES");
     expect(es.reads).toEqual([]);

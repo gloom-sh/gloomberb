@@ -56,6 +56,8 @@ import {
   riskCoverageShortfall,
   riskCoverageText,
   riskPercentile,
+  riskAmountBase,
+  riskEvidence,
   riskValue,
   RISK_VIEWS,
   type PortfolioRiskModel,
@@ -178,7 +180,7 @@ function RiskDetail({
       detail: row.asOf?.slice(0, 10) ?? "Source date unavailable",
     },
     ...(row.percentile != null ? [{ id: "percentile", label: "Pctl 1Y", value: riskPercentile(row) }] : []),
-    { id: "evidence", label: "Evidence", value: row.detail, wide: true },
+    { id: "evidence", label: "Evidence", value: riskEvidence(row), wide: true },
   ];
   const statRows = statGridRows(items, width);
   const points = (row.history ?? []).map((point, index) => ({
@@ -458,7 +460,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     : [
         ...(basketBody ? [] : [
           ...(asOfDate && sharedEvidence ? [sharedEvidence] : []),
-          model.portfolio.currency,
+          // The value the tail losses in money are taken on names the currency too.
+          rows.map(riskAmountBase).find(Boolean) ?? model.portfolio.currency,
           ...(asOfDate ? [asOfDate] : []),
           ...(EVIDENCE_VIEWS.has(view) && model.evidence ? [model.evidence.source] : []),
         ]),
@@ -576,7 +579,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       {
         id: "value",
         label: valueHeader,
-        width: sharedUnit || attributionParts ? Math.max(9, valueHeader.length) : 16,
+        // A tail loss reads in money beside its percent: 2.60% ($5,735).
+        width: sharedUnit || attributionParts ? Math.max(9, valueHeader.length) : rows.some((row) => row.amount != null) ? 18 : 16,
         align: "right",
       },
       ...(attributionParts
@@ -601,7 +605,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           ]
         : []),
     ],
-    [width, view, valueHeader, sharedUnit, attributionParts, sharedEvidence, showPercentile, sharedDate],
+    [width, view, valueHeader, sharedUnit, attributionParts, sharedEvidence, showPercentile, sharedDate, rows],
   );
   const selectView = (value: string) => {
     setView(value);

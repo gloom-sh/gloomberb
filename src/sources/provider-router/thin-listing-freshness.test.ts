@@ -206,6 +206,27 @@ describe("thinly traded listings through the router", () => {
     }
   });
 
+  test("every spelling of a pair, on the currency venue by any name, takes the service's answer", async () => {
+    clock.mockReturnValue(at("2026-10-10T01:30:00Z"));
+    const pair = (symbol: string) => quote(symbol, "CCY", "2026-10-09T21:29:00Z", { marketState: "CLOSED", instrumentType: "CURRENCY" });
+    for (const [code, answered] of [["EURUSD", "EURUSD=X"], ["GBPUSD", "GBPUSD=X"], ["USDJPY", "JPY=X"], ["EURGBP", "EURGBP=X"]]) {
+      const slash = `${code.slice(0, 3)}/${code.slice(3)}`;
+      // `quote EURUSD:FX` and a pair saved from search on PHYSICAL CURRENCY ask like these.
+      const spellings: Array<[string, string]> = [[code, "CCY"], [code, "FX"], [`${code}:FX`, ""], [`${code}=X`, "CCY"],
+        [`${code}=X`, ""], [slash, ""], [slash, "PHYSICAL CURRENCY"]];
+      for (const [symbol, exchange] of spellings) {
+        const { router } = source("gloomberb-cloud", pair(answered!));
+        const result = (await router.getQuotesBatch([{ symbol, exchange }]))[0]?.quote;
+        expect(result?.symbol ?? null, `${symbol} on ${exchange || "no venue"}`).toBe(answered!);
+      }
+    }
+    // Six bare letters are a pair only on the currency venue.
+    for (const exchange of ["", "LSE"]) {
+      const { router } = source("gloomberb-cloud", pair("EURUSD=X"));
+      expect((await router.getQuotesBatch([{ symbol: "EURUSD", exchange }]))[0]?.quote ?? null, exchange).toBeNull();
+    }
+  });
+
   test("another source's thin quote keeps the age bound, and is served as the last known price", async () => {
     const { router, state } = source("other", { ...zioc, providerId: "other" });
     // No source has a current quote: the answer comes back flagged stale, and is not kept.

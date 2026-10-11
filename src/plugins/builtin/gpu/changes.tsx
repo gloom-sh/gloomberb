@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import type { GpuBoardRow, GpuEvent } from "../../../api-client/gpu";
+import type { GpuEvent } from "../../../api-client/gpu";
 import {
   Badge, buildSectionedRows, DataTableView, EMPTY_TABLE_CELL, isSectionedItemRow, PaneStatusBody, renderSectionedRowHeader,
   usePaneNoticeFooter, usePaneStatusFooter, type DataTableCell, type DataTableColumn, type SectionedRow,
@@ -30,8 +30,8 @@ function changeColumns(width: number, allModels: boolean, availabilityWidth: num
 }
 
 /** Dated price moves, newest day first: provider, old to new, and the move as a chip coloured by its sign. */
-export function GpuChanges({ board, model, setModel, reloadBoard, width, height, focused }: {
-  board: GpuBoardRow[]; model: string; setModel: (value: string) => void; reloadBoard: () => void; width: number; height: number; focused: boolean;
+export function GpuChanges({ models, model, setModel, reloadBoard, width, height, focused }: {
+  models: readonly string[]; model: string; setModel: (value: string) => void; reloadBoard: () => void; width: number; height: number; focused: boolean;
 }) {
   const colors = useThemeColors();
   const loader = useCallback((force: boolean) => loadGpuEvents(model || undefined, force), [model]);
@@ -84,7 +84,7 @@ export function GpuChanges({ board, model, setModel, reloadBoard, width, height,
 
   return <PaneStatusBody loading={resource.loading && !resource.data} error={!resource.data ? resource.error : null} subject="GPU price changes">
     <DataTableView<ChangeRow> columns={columns} items={items} rootWidth={width} rootHeight={height} focused={focused}
-      rootBefore={<GpuModelQuery rows={board} model={model} setModel={setModel} width={width} />}
+      rootBefore={<GpuModelQuery models={models} model={model} setModel={setModel} width={width} />}
       selection={{ kind: "id", selectedId: selected && items.some((item) => item.key === selected) ? selected : firstId, getId: rowKey,
         onChange: (id) => setSelected(String(id)) }}
       isNavigable={isSectionedItemRow} renderSectionHeader={renderSectionedRowHeader}

@@ -3,6 +3,7 @@ import { scalarPoint, staticSeries } from "../../../components/chart/static/seri
 import type { HiringBoard, HiringPayload, HiringSummary } from "../../../api-client/hiring";
 import type { AppAttentionPayload, AppCompany } from "../../../api-client/app-attention";
 import { humanLabel } from "../shared/research-cells";
+import { formatNumber } from "../../../utils/format";
 
 export type AttentionKind = "hiring" | "apps";
 export type AttentionTab = "table" | "chart" | "mix" | "peers" | "evidence";
@@ -28,16 +29,33 @@ export interface AttentionModel {
   notices: string[];
   figures: StatItem[];
   sections: Record<AttentionTab, AttentionSection>;
-  chart: { label: string; unit: string; points: Array<{ date: string; value: number | null }> };
+  /** `since`: the first capture, so a chart still collecting says when it began. */
+  chart: { label: string; unit: string; points: Array<{ date: string; value: number | null }>; since?: string | null };
 }
 export const count = (value: number | null | undefined) => value == null ? "--" : value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+/** Decimals per column: percentages and scores to one place, ratings and z-scores to two, counts and remote shares whole. */
+const DECIMALS: Record<string, number> = { score: 1, remote: 0, share: 1, confidence: 0, velocity: 2, rating: 2, drift: 2, z: 2, change: 1 };
+export const SIGNED_COLUMNS = new Set(["net", "change", "velocity", "drift", "growth"]);
+/** A column's number as the pane and the text report print it. */
+export const attentionNumber = (columnId: string, value: number) =>
+  `${SIGNED_COLUMNS.has(columnId) && value > 0 ? "+" : ""}${formatNumber(value, DECIMALS[columnId] ?? 0)}`;
+/**
+ * A remote share with the roles it is measured on. Most postings never state a
+ * work mode, so the share counts only those that do: 100% of 5 is not 100% of
+ * a company's 300 roles. A capture that did not count them says "of known".
+ */
+export function remoteText(percentRemote: number | null | undefined, known: number | null | undefined): string | null {
+  if (percentRemote == null) return null;
+  return `${formatNumber(percentRemote, 0)}% of ${known == null ? "" : `${formatNumber(known, 0)} `}known`;
+}
 const signed = (value: number | null | undefined, decimals = 0) => value == null ? "--" : `${value > 0 ? "+" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: decimals })}`;
 const percent = (value: number | null | undefined) => value == null ? "--" : `${(value * 100).toFixed(1)}%`;
 const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
 const roleFamily = (value: string | null) => value === "data_ai" || value === "data ai" ? "Data / AI" : value ? humanLabel(value) : null;
-const COMPANY_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("open", "Open roles", 12, true), column("net", "Net / week", 12, true), column("remote", "Remote %", 10, true), column("z", "Z-score", 10, true), column("signal", "Signal", 12), column("date", "As of", 12)];
-const HISTORY_COLUMNS = [column("date", "Week", 12), column("open", "Open roles", 12, true), column("added", "Added", 9, true), column("removed", "Removed", 9, true), column("net", "Net", 9, true), column("change", "Change %", 11, true), column("remote", "Remote %", 10, true), column("coverage", "Capture", 13, false, true)];
-const companyRow = (row: HiringSummary): AttentionRow => ({ id: row.symbol, symbol: row.symbol, values: { symbol: row.symbol, name: row.name, open: row.latest?.openCount ?? null, net: row.latest?.netChange ?? null, remote: row.latest?.remoteShare == null ? null : row.latest.remoteShare * 100, z: row.zScore, signal: humanLabel(row.signal ?? row.status), date: row.latest?.observedAt.slice(0, 10) ?? null } });
+const COMPANY_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("open", "Open roles", 12, true), column("net", "Net / week", 12, true), column("remote", "Remote %", 17, true), column("z", "Z-score", 10, true), column("signal", "Signal", 12), column("date", "As of", 12)];
+const HISTORY_COLUMNS = [column("date", "Week", 12), column("open", "Open roles", 12, true), column("added", "Added", 9, true), column("removed", "Removed", 9, true), column("net", "Net", 9, true), column("change", "Change %", 11, true), column("remote", "Remote %", 17, true), column("coverage", "Capture", 13, false, true)];
+/** `remoteKnown` rides along for the remote cell; it is not a column of its own. */
+const companyRow = (row: HiringSummary): AttentionRow => ({ id: row.symbol, symbol: row.symbol, values: { symbol: row.symbol, name: row.name, open: row.latest?.openCount ?? null, net: row.latest?.netChange ?? null, remote: row.latest?.remoteShare == null ? null : row.latest.remoteShare * 100, remoteKnown: row.latest?.remoteKnown ?? null, z: row.zScore, signal: humanLabel(row.signal ?? row.status), date: row.latest?.observedAt.slice(0, 10) ?? null } });
 
 export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"): AttentionModel {
   const detail = "series" in data ? data : null;
@@ -57,18 +75,19 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     figures: latest ? [
       { label: "Open roles", value: count(latest.openCount) },
       ...(latest.netChange != null ? [{ label: "Net / week", value: signed(latest.netChange), tone: latest.netChange === 0 ? "muted" as const : latest.netChange > 0 ? "positive" as const : "negative" as const }] : []),
-      ...(latest.remoteShare != null ? [{ label: "Remote", value: percent(latest.remoteShare), detail: "known work modes" }] : []),
+      ...(latest.remoteShare != null ? [{ label: "Remote", value: `${formatNumber(latest.remoteShare * 100, 0)}%`,
+        detail: latest.remoteKnown == null ? "of known work modes" : `of ${count(latest.remoteKnown)} known` }] : []),
       ...(detail?.zScore != null ? [{ label: "Z-score", value: detail.zScore.toFixed(2), detail: detail.signal ? `hiring ${detail.signal}` : undefined,
         tone: detail.signal === "surge" ? "positive" as const : detail.signal === "freeze" ? "negative" as const : undefined }] : []),
     ] : [],
     sections: {
       table: { columns: COMPANY_COLUMNS, rows: companies.map(companyRow), empty: "Hiring observations are not available yet." },
-      chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, coverage: row.completeness }, details: [{ label: "Observed", value: row.observedAt }, { label: "Confidence", value: percent(row.confidence) }, { label: "Capture", value: row.kind }, { label: "Evergreen roles", value: count(row.evergreenCount) }] })), empty: data.preview ? "Full hiring history requires Pro." : "History is accumulating from the first capture." },
+      chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, remoteKnown: row.remoteKnown, coverage: row.completeness }, details: [{ label: "Observed", value: row.observedAt }, { label: "Confidence", value: percent(row.confidence) }, { label: "Capture", value: row.kind }, { label: "Evergreen roles", value: count(row.evergreenCount) }] })), empty: data.preview ? "Full hiring history requires Pro." : "History is accumulating from the first capture." },
       mix: { columns: [column("label", mixKey === "signals" ? "Signal" : "Group", 28, false, true), column("count", mixKey === "signals" ? "Value" : "Roles", 12, true), column("share", mixKey === "signals" ? "Confidence %" : "Share %", mixKey === "signals" ? 14 : 30, true), ...(mixKey === "signals" ? [column("date", "Observed", 12)] : [])], rows, empty: "No classified observations for this group yet." },
       peers: { columns: COMPANY_COLUMNS, rows: (detail?.peers ?? []).map(companyRow), empty: "No comparable mapped peers yet." },
       evidence: { columns: [column("title", "Role", 32, false, true), column("location", "Location", 24), column("function", "Function", 18), column("seniority", "Seniority", 13), column("date", "Observed", 12), column("confidence", "Confidence %", 13, true)], rows: (detail?.evidence ?? []).map((row): AttentionRow => ({ id: `${row.snapshotId}:${row.id}`, url: row.url ?? row.sourceUrl, values: { title: row.title, location: row.location, function: roleFamily(row.jobFunction), seniority: row.seniority ? humanLabel(row.seniority) : null, date: row.observedAt.slice(0, 10), confidence: row.confidence * 100 }, details: [{ label: "Posting title", value: row.title }, { label: "Location", value: row.location ?? "--" }, { label: "Country", value: row.country ?? "Unknown" }, { label: "Function", value: row.jobFunction ?? "Unclassified" }, { label: "Seniority", value: row.seniority ?? "Unclassified" }, { label: "Remote", value: row.remote === null ? "Unknown" : row.remote ? "Yes" : "No" }, { label: "Observed", value: row.observedAt }, { label: "Revision", value: String(row.revision) }, { label: "Confidence", value: percent(row.confidence) }, { label: "Reporting ticker", value: row.sourceTicker }] })), empty: "No primary posting evidence is available yet." },
     },
-    chart: { label: "Open roles", unit: "roles", points: history.map((point) => ({ date: point.week, value: point.openCount })) },
+    chart: { label: "Open roles", unit: "roles", points: history.map((point) => ({ date: point.week, value: point.openCount })), since: detail?.coverage.firstObservedAt ?? null },
   };
   if (detail) {
     model.sections.table = { ...model.sections.evidence, columns: model.sections.evidence.columns.filter((entry) => entry.id !== "confidence"), empty: "No current role evidence has been captured yet." };

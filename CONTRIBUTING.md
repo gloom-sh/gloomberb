@@ -151,6 +151,7 @@ Only independently owned, registered product areas implement `GloomPlugin`. Larg
 - Title it with a plain sentence saying what changes, such as "Pin the FX staleness test to a weekday".
 - In the description, say why, list the changes, and say what you verified: the checks you ran and, for anything visible, a screenshot from the terminal or the desktop app.
 - Keep user-visible behavior the same unless changing it is the point, and update `docs/` when it changes.
+- The README is a short front door: what it is, how to install it, how to start. Do not add function lists, feature guides, privacy detail or release notes to it. A new function goes in the website's function catalog, and explanations go in `docs/`.
 - Anything reachable from the `exports` in package.json is public API that external plugins depend on. Deprecate before removing or renaming it: mark it `@deprecated`, point at the replacement, and keep it working.
 
 ## Browser development

@@ -11,7 +11,53 @@ export const powerRegion = (value: string, sourceId?: string) => REGISTERS[sourc
 export const titleCase = (value: string) => value.replace(/(^|[ _-])\w/g, (match) => match.toUpperCase());
 export const powerNumber = (n: number | null | undefined) => n == null ? "--" : n.toLocaleString("en-US", { maximumFractionDigits: 1 });
 export const powerPercent = (n: number | null) => n == null ? "--" : `${(n * 100).toFixed(1)}%`;
-const tickerLabel = (row: { entities: PowerProject["entities"] }) => [...new Set(row.entities.flatMap((e) => e.tickers.map((t) => t.ticker)))].join(", ") || "--";
+/** The listed companies a record names, or null when its register names none: the ticker map. */
+export const tickerLabel = (row: { entities: PowerProject["entities"] }) => [...new Set(row.entities.flatMap((e) => e.tickers.map((t) => t.ticker)))].join(", ") || null;
+/** What the ticker column says for a record no listed company is mapped to. */
+export const UNMAPPED = "unmapped";
+
+/** Where else a ticker's records can sit: each tab, and the capacity tab's contexts, with what they list. */
+const POWER_TICKER_SCOPES = [
+  { tab: "queue", context: "capacity", label: "interconnection queue records", view: "Queue" },
+  { tab: "loads", context: "capacity", label: "large-load requests", view: "Loads" },
+  { tab: "capacity", context: "capacity", label: "generation capacity records", view: "Capacity" },
+  { tab: "capacity", context: "generation", label: "monthly generation records", view: "Generation" },
+  { tab: "capacity", context: "utility", label: "utility sales records", view: "Utility sales" },
+] as const satisfies readonly { tab: PowerTab; context: string; label: string; view: string }[];
+/** `total` is null for a scope that did not answer, which is no evidence either way. */
+export type PowerTickerScope = (typeof POWER_TICKER_SCOPES)[number] & { total: number | null };
+const sameScope = (scope: { tab: string; context: string }, tab: PowerTab, context: string) =>
+  scope.tab === tab && (tab !== "capacity" || scope.context === context)
+  // Utilities are the large loads summed by utility: a ticker with no loads has no exposure either.
+  || tab === "utilities" && scope.tab === "loads";
+/** The scopes to count a ticker's records in when the open tab has none of them. */
+export const powerTickerScopes = (tab: PowerTab, context: string) => POWER_TICKER_SCOPES.filter((scope) => !sameScope(scope, tab, context));
+
+/** What the open tab lists, for the sentence that says none of it maps to a ticker. */
+function powerTabRecords(tab: PowerTab, context: string): string {
+  if (tab === "capacity") return POWER_TICKER_SCOPES.find((scope) => scope.tab === "capacity" && scope.context === context)?.label ?? "capacity records";
+  return { queue: "interconnection queue records", history: "queue history records", outcomes: "queue outcomes", loads: "large-load requests",
+    utilities: "large-load requests or utility exposure", coverage: "records" }[tab];
+}
+
+/**
+ * Why a ticker's tab is empty, and where its records are instead: the title
+ * says what does not map to it, the hint where it has records, or, once every
+ * other tab has answered with none, that a name search is what is left.
+ */
+export function powerTickerEmpty(symbol: string, tab: PowerTab, context: string, scopes: readonly PowerTickerScope[]) {
+  const found = scopes.filter((scope): scope is PowerTickerScope & { total: number } => (scope.total ?? 0) > 0);
+  const answered = scopes.length > 0 && scopes.every((scope) => scope.total != null);
+  return {
+    title: `No ${powerTabRecords(tab, context)} map to ${symbol}.`,
+    found,
+    hint: found.length ? `${symbol} has ${found.map((scope) => `${powerNumber(scope.total)} ${scope.label}`).join(", ")}.`
+      : answered ? `No power records map to ${symbol}; search by the company's or a subsidiary's name instead.` : null,
+  };
+}
+/** The options that open a scope from the command line. */
+export const powerScopeOptions = (scope: { tab: string; context: string }) =>
+  scope.tab === "capacity" && scope.context !== "capacity" ? `--tab capacity --context ${scope.context}` : `--tab ${scope.tab}`;
 const historyKey = (p: PowerHistoryPoint) => JSON.stringify([p.sourceId, p.country, p.region, p.kind, p.fuel, p.status, p.historical, p.basis]);
 /** Annual benchmarks use their stated period. Current queues use when we observed them, never a proposed completion date. */
 export function historyDate(p: PowerHistoryPoint): Date {

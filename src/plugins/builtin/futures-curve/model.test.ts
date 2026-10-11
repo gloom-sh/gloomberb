@@ -4,7 +4,7 @@ import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } fr
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import { FUTURES_CONTRACTS } from "../futures/contracts";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, vsSpotPct } from "./model";
+import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpreadLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, vsSpotPct } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -54,7 +54,7 @@ test("normalizes FUT aliases before cloud request and handles missing endpoints 
   const requested: string[] = [];
   await fetchFuturesCurve("cl=f", { getCloudFuturesCurve: async (root) => { requested.push(root); return payload(); } });
   expect(requested).toEqual(["CL"]);
-  await expect(fetchFuturesCurve("BAD", { getCloudFuturesCurve: async () => { throw new Error("should not request"); } })).rejects.toThrow("Unsupported futures root");
+  await expect(fetchFuturesCurve("BAD", { getCloudFuturesCurve: async () => { throw new Error("should not request"); } })).rejects.toThrow("No futures curve for BAD");
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw new ApiRequestError("Not found", 404); } })).rejects.toThrow("not available yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw denied; } })).rejects.toBe(denied);
@@ -310,6 +310,32 @@ describe("past curves", () => {
       ["VX/H0", "2020-03-13", false], ["VX/J0", "2020-03-13", false], ["VX/K0", "2020-03-11", true], ["VX/M0", "2020-03-11", true],
     ]);
     expect(curve.slope).toMatchObject({ frontSymbol: "VX/H0", nextSymbol: "VX/J0", state: "backwardation" });
+  });
+
+  test("a past curve's settlements are only the rows the archive confirms, and its spread pairs settlements with settlements", () => {
+    // GC on Fri 9 Oct 2026, read the same evening: every row is that session's last trade (GCN27's 4324 under GCM27's 4327).
+    const gold = (rows: Array<[string, string, number, boolean]>) => payload("2026-10-09", rows.map(([symbol, expiration, price, settled]) =>
+      row(symbol, expiration, price, { tradeDate: "2026-10-09", asOf: "2026-10-09T04:00:00.000Z", settled })));
+    const evening = archivedFuturesCurve("GC", gold([["GCZ26.CMX", "2026-12-29", 4220.3, false], ["GCM27.CMX", "2027-06-28", 4327, false],
+      ["GCN27.CMX", "2027-07-28", 4324, false]]), { "1W": null, "1M": null }, "2026-10-10T16:00:00.000Z");
+    expect(evening.contracts.map((contract) => contract.settlement)).toEqual([null, null, null]);
+    expect(evening.settlementDate).toBeNull();
+    expect(curveSpreadLabel(evening.slope)).toBe("GCM27-GCZ26");
+    // The morning read confirms the settlements; one confirmed row beside last trades makes no spread at all.
+    const morning = archivedFuturesCurve("GC", gold([["GCZ26.CMX", "2026-12-29", 4216.3, true], ["GCM27.CMX", "2027-06-28", 4322.3, true],
+      ["GCN27.CMX", "2027-07-28", 4341.1, true]]), { "1W": null, "1M": null }, "2026-10-10T16:00:00.000Z");
+    expect(morning.contracts.map((contract) => contract.settlement)).toEqual([4216.3, 4322.3, 4341.1]);
+    expect(morning.settlementDate).toBe("2026-10-09");
+    expect(morning.slope.value).toBeCloseTo(106);
+    const mixed = archivedFuturesCurve("GC", gold([["GCZ26.CMX", "2026-12-29", 4216.3, true], ["GCM27.CMX", "2027-06-28", 4327, false],
+      ["GCN27.CMX", "2027-07-28", 4324, false]]), { "1W": null, "1M": null }, "2026-10-10T16:00:00.000Z");
+    expect(mixed.slope).toMatchObject({ frontSymbol: null, nextSymbol: null, value: null, state: "unavailable" });
+  });
+
+  test("the front spread is named by the contracts it subtracts, next less front", () => {
+    expect(curveSpreadLabel({ frontSymbol: "GCZ26.CMX", nextSymbol: "GCF27.CMX" })).toBe("GCF27-GCZ26");
+    expect(curveSpreadLabel({ frontSymbol: "VX/V6", nextSymbol: "VX/X6" })).toBe("VX/X6-VX/V6");
+    expect(curveSpreadLabel({ frontSymbol: null, nextSymbol: null })).toBe("M2-M1");
   });
 
   test("take a past date or latest, and refuse a future or malformed one", () => {

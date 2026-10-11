@@ -46,7 +46,10 @@ export function realizedVolHeadless(initialView: "graph" | "cone"): HeadlessPane
         estimator: ESTIMATOR_OPTIONS.find(({ value }) => value === args.options.estimator)?.value,
         windows, lookbackYears: Number(args.options.lookbackYears) === 2 ? 2 : 1 });
       const errors = [history.error, iv?.error].filter((value): value is string => !!value);
+      // The cone rows are as of the last daily bar, not of when the report ran.
+      const lastBar = model.asOf && Number.isFinite(model.asOf.getTime()) ? model.asOf.toISOString().slice(0, 10) : null;
       return {
+        freshness: { asOf: lastBar },
         sections: [
           { title: "Volatility cone", columns: [
             { key: "window", header: "Sessions" },

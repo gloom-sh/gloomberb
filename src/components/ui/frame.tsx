@@ -32,12 +32,45 @@ export function modalSurfaceStyle(colors: ThemeColors, options: ModalSurfaceOpti
   };
 }
 
+/** A key and what it does, drawn on the desktop and the web as a keycap and a word. */
+export interface DialogKeyHint {
+  /** As the terminal names it: "Enter", "Esc", "Shift+Enter", "Tab", "↑↓", "y". */
+  key: string;
+  /** What it does, short and lowercase; translated where it is drawn. */
+  label: string;
+}
+
+/**
+ * What a dialog's footer says on the desktop and the web. The buttons there
+ * carry their own keys, so this keeps only keys no button has and a quiet
+ * note, such as a deadline.
+ */
+export interface DialogDesktopFooter {
+  keys?: DialogKeyHint[];
+  /** After the keys; translated where it is drawn. */
+  note?: string;
+}
+
+/**
+ * Desktop and web: the width of a dialog body laid out `columns` cells wide,
+ * narrowed to fit a phone, where the fixed width would run past the edge.
+ */
+export function fitDialogWidth(columns: number): string {
+  return `min(calc(var(--cell-w) * ${columns}), calc(100vw - 80px))`;
+}
+
 export interface DialogFrameProps {
   title: string;
   /** Muted line under the title. */
   subtitle?: string;
   children: ReactNode;
+  /** The terminal's key line under the dialog. */
   footer?: string;
+  /**
+   * Desktop and web: what shows instead of `footer`; `null` shows nothing.
+   * Left out, `footer` shows there as one quiet line.
+   */
+  desktopFooter?: DialogDesktopFooter | null;
   showTitleDivider?: boolean;
   /** Adds a close button at the right of the title (desktop). Esc still closes every dialog. */
   onClose?: () => void;
@@ -48,14 +81,14 @@ export interface DialogFrameProps {
   shrinkable?: boolean;
 }
 
-export function DialogFrame({ title: rawTitle, subtitle, children, footer: rawFooter, showTitleDivider = false, onClose, shrinkable }: DialogFrameProps) {
+export function DialogFrame({ title: rawTitle, subtitle, children, footer: rawFooter, desktopFooter, showTitleDivider = false, onClose, shrinkable }: DialogFrameProps) {
   const title = t(rawTitle);
   const footer = rawFooter === undefined ? undefined : t(rawFooter);
   const colors = useThemeColors();
   const HostDialogFrame = useUiHost().DialogFrame as ComponentType<DialogFrameProps> | undefined;
   if (HostDialogFrame) {
     return (
-      <HostDialogFrame title={title} subtitle={subtitle} footer={footer} showTitleDivider={showTitleDivider} onClose={onClose} shrinkable={shrinkable}>
+      <HostDialogFrame title={title} subtitle={subtitle} footer={footer} desktopFooter={desktopFooter} showTitleDivider={showTitleDivider} onClose={onClose} shrinkable={shrinkable}>
         {children}
       </HostDialogFrame>
     );

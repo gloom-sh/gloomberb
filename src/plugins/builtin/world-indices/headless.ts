@@ -5,7 +5,7 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
-import { marketStateLabel } from "../../../market-data/market/status";
+import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import type { MarketState } from "../../../types/financials";
 import { loadWorldIndexQuotes, NOT_IN_FEED, type WorldIndexQuoteResult } from "./client";
 import {
@@ -60,6 +60,24 @@ const COLUMNS = [
   },
 ];
 
+/** A pre-market or after-hours print and its move from the regular close, for a row that has one. */
+function extendedColumn(session: ExtendedSession) {
+  return {
+    key: "extendedPrice",
+    header: EXTENDED_SESSION_LABELS[session],
+    align: "right" as const,
+    format: (value: unknown, row: Record<string, unknown>) => row.extendedSession === session && typeof value === "number"
+      ? `${formatNumber(value, 2)} ${formatPercentRaw(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : undefined)}`
+      : isGap(row) ? "" : "-",
+  };
+}
+
+/** The table's columns, with an extended column after Change % only where a row has such a print. */
+function sectionColumns(rows: readonly Record<string, unknown>[]) {
+  const sessions = (["PRE", "POST"] as const).filter((session) => rows.some((row) => row.extendedSession === session));
+  return sessions.length === 0 ? COLUMNS : [...COLUMNS.slice(0, 5), ...sessions.map(extendedColumn), ...COLUMNS.slice(5)];
+}
+
 function projectWorldIndicesHeadless(
   entries: readonly IndexEntry[],
   loaded: WorldIndexQuoteResult,
@@ -70,25 +88,25 @@ function projectWorldIndicesHeadless(
     sections: REGION_ORDER.flatMap((region) => {
       const regionEntries = grouped.get(region) ?? [];
       if (regionEntries.length === 0) return [];
-      return [{
-        title: REGION_LABELS[region],
-        columns: COLUMNS,
-        rows: regionEntries.map((entry) => {
-          const quote = loaded.quotes.get(entry.symbol);
-          return {
-            ...quoteFreshnessFields(quote),
-            ...entry,
-            price: quote?.price ?? null,
-            unit: "index points",
-            currency: quote?.currency ?? null,
-            change: quote?.change ?? null,
-            changePercent: quote?.changePercent ?? null,
-            marketState: quote?.marketState ?? null,
-            lastUpdated: quote?.lastUpdated ?? null,
-            ...(isGapEntry(entry) ? { unavailable: true } : {}),
-          };
-        }),
-      }];
+      const rows = regionEntries.map((entry) => {
+        const quote = loaded.quotes.get(entry.symbol);
+        // Last and Change are the regular session, as `ticker` reads them.
+        const { price, change, changePercent, ...extended } = getQuoteSessionFields(quote);
+        return {
+          ...quoteFreshnessFields(quote),
+          ...entry,
+          price,
+          unit: "index points",
+          currency: quote?.currency ?? null,
+          change,
+          changePercent,
+          ...extended,
+          marketState: quote?.marketState ?? null,
+          lastUpdated: quote?.lastUpdated ?? null,
+          ...(isGapEntry(entry) ? { unavailable: true } : {}),
+        };
+      });
+      return [{ title: REGION_LABELS[region], columns: sectionColumns(rows), rows }];
     }),
     errors: loaded.errors,
     // A symbol the feed lacks is a gap in the data, not a failure: its row says so, and the report is not whole.

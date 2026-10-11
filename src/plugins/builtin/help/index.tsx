@@ -267,11 +267,11 @@ function HelpPane({ focused, width, height }: PaneProps) {
               <SectionHeading title="How To Use Gloomberb" />
               <Box flexDirection="column">
                 <Text fg={colors.textDim}>{t("Gloomberb is command-bar first.")}</Text>
-                <Text fg={colors.textDim}>{t("Use the keyboard for speed, and the mouse for windows.")}</Text>
+                <Text fg={colors.textDim} wrapText>{t("Click anything to use it; the keys shown beside actions are shortcuts.")}</Text>
                 <Text fg={colors.textDim} wrapText>
                   {commandBarBadges[0]
-                    ? tf("Not sure of a code? Press {key} and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.", { key: commandBarBadges[0] })
-                    : t("Not sure of a code? Type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.")}
+                    ? tf("Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.", { key: commandBarBadges[0] })
+                    : t("Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.")}
                 </Text>
               </Box>
             </Box>

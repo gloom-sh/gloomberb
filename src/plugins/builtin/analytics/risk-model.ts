@@ -1,6 +1,6 @@
 import { portfolioOptionGreeks } from "./risk-options";
 import type { Portfolio, TickerRecord } from "../../../types/ticker";
-import { formatNumber } from "../../../utils/format";
+import { formatCurrency, formatNumber } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import {
   getPortfolioPositionMetrics,
@@ -97,7 +97,13 @@ export interface RiskDisplayRow {
   interaction?: number;
   /** Holdings rows only: why the holding is outside the covered basket. */
   leftOut?: string;
+  /** VaR and expected shortfall only: the loss `value` is on the covered basket's current value (`amountBase`), in `amountCurrency`. */
+  amount?: number;
+  amountCurrency?: string;
+  amountBase?: number;
 }
+/** The tail-loss rows, which also read in money on the covered basket. */
+const TAIL_ROW_IDS: ReadonlySet<string> = new Set(["var", "es"]);
 /**
  * Below half of market value the qualifying holdings are not most of the
  * account, so a basket estimate would mostly describe something other than it;
@@ -565,12 +571,19 @@ export function buildPortfolioRisk(
     : null;
   warnings.push(...(greeks?.warnings ?? []));
   const rows: Record<RiskView, RiskDisplayRow[]> = {
-    risk: metrics.map((row) => ({
-      ...row,
-      percentile: row.rank.percentile,
-      // The method (price returns at fixed current weights) is in docs; the footer keeps room for coverage.
-      detail: `${row.samples} sessions`,
-    })),
+    risk: metrics.map((row) => {
+      // VaR and expected shortfall are a one-day loss on the covered basket's current value, in the portfolio currency.
+      const tail = TAIL_ROW_IDS.has(row.id) && row.value != null && coverage.coveredValue > 0;
+      return {
+        ...row,
+        percentile: row.rank.percentile,
+        // The method (price returns at fixed current weights) is in docs; the footer keeps room for coverage.
+        detail: `${row.samples} sessions`,
+        ...(tail
+          ? { amount: (row.value! / 100) * coverage.coveredValue, amountCurrency: coverage.currency, amountBase: coverage.coveredValue }
+          : {}),
+      };
+    }),
     factors: factors.map((row) => ({
       ...row,
       percentile: row.rank.percentile,
@@ -770,6 +783,22 @@ export const riskValue = (row: RiskDisplayRow) =>
     ? "left out"
     : row.value == null
     ? "--"
-    : `${row.value.toFixed(2)}${row.unit === "%" ? "%" : ` ${row.unit}`}`;
+    : `${row.value.toFixed(2)}${row.unit === "%" ? "%" : ` ${row.unit}`}${riskAmount(row)}`;
+/** "220,476 USD basket": the value a tail loss in money is taken on, or null for a row without one. */
+export function riskAmountBase(row: Pick<RiskDisplayRow, "amountBase" | "amountCurrency">): string | null {
+  return row.amountBase != null && Number.isFinite(row.amountBase) && row.amountCurrency
+    ? `${formatNumber(row.amountBase, 0)} ${row.amountCurrency} basket`
+    : null;
+}
+/** A row's evidence with the basket a tail loss in money is taken on. */
+export function riskEvidence(row: RiskDisplayRow): string {
+  const base = riskAmountBase(row);
+  return base ? `${row.detail}; of ${base}` : row.detail;
+}
+/** " ($5,735)": a tail loss in money beside its percent. */
+function riskAmount(row: RiskDisplayRow): string {
+  if (row.amount == null || !Number.isFinite(row.amount) || !row.amountCurrency) return "";
+  return ` (${formatCurrency(row.amount, row.amountCurrency, 0)})`;
+}
 export const riskPercentile = (row: RiskDisplayRow) =>
   row.percentile == null ? "--" : String(Math.round(row.percentile));

@@ -1,8 +1,8 @@
 # Power and grid capacity
 
-`POWER` opens power interconnection and large-load research. `POWER NEE` narrows it to a listed developer or utility resolved by the entity directory. Exchange-qualified tickers retain their venue. POWER is a **Pro dataset**; free accounts receive up to three records per section with a locked remainder and limited history.
+`POWER` opens power interconnection and large-load research. `POWER NEE` narrows it to a listed developer or utility resolved by the entity directory. Exchange-qualified tickers retain their venue. When the open tab has no record mapped to the ticker, it says which tabs do and how many records each holds, with a button to open each. POWER is a **Pro dataset**; free accounts receive up to three records per section with a locked remainder and limited history.
 
-The Queue table explores public interconnection registers by country, grid region, fuel, status, project, developer and utility. Columns include reported MW, proposed in-service date, location and mapped tickers. Click a column heading to sort the full matching dataset. The figures follow the selected record’s register and region; overlapping registers are not summed into a national total. Additional records append as you scroll. A missing capacity is `--`; zero remains zero. Regional summaries and portions of connection applications can be separate records, so a record count is not necessarily a count of unique physical projects.
+The Queue table explores public interconnection registers by country, grid region, fuel, status, project, developer and utility. Columns include reported MW, proposed in-service date, location and mapped tickers; a record no listed company is mapped to reads `unmapped`. Click a column heading to sort the full matching dataset. The figures follow the selected record’s register and region; overlapping registers are not summed into a national total. Additional records append as you scroll. A missing capacity is `--`; zero remains zero. Regional summaries and portions of connection applications can be separate records, so a record count is not necessarily a count of unique physical projects.
 
 The tabs cover:
 

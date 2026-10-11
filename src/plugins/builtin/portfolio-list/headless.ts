@@ -9,12 +9,17 @@ import type {
 import type { TickerRecord } from "../../../types/ticker";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
+  collectionQuoteHeadline,
+  extendedQuoteFields,
+  extendedSessionsOf,
   findCollection,
+  listingLabel,
   loadCollectionQuotes,
   valuePortfolioAllocation,
   valuePortfolioPositions,
   type CollectionMatch,
 } from "./cli/render";
+import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
@@ -80,6 +85,26 @@ const TARGET_COLUMNS: HeadlessPaneColumn[] = [
   { key: "tradeValue", header: "Trade Value", align: "right", format: signedAmount, description: "The trade in the portfolio's currency." },
 ];
 
+/** The pre-market or after-hours print and its move from the regular close, for the rows that have one. */
+function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
+  return {
+    key: "extendedPrice",
+    header: EXTENDED_SESSION_LABELS[session],
+    align: "right",
+    format: (value, row) => row.extendedSession === session && typeof value === "number"
+      ? `${unitMoney("priceCurrency")(value, row)} ${percent(row.extendedChangePercent)}`
+      : formatNumber(undefined),
+    description: "Measured from the regular close in Last.",
+  };
+}
+
+/** `columns` with an extended column after Chg for each session a row has a print for. */
+function withExtendedColumns(columns: HeadlessPaneColumn[], sessions: readonly ExtendedSession[]): HeadlessPaneColumn[] {
+  if (sessions.length === 0) return columns;
+  const at = columns.findIndex((column) => column.key === "changePercent") + 1;
+  return [...columns.slice(0, at), ...sessions.map(extendedColumn), ...columns.slice(at)];
+}
+
 const WATCHLIST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" },
   { key: "name", header: "Name" },
@@ -88,6 +113,25 @@ const WATCHLIST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "priceCurrency", header: "Ccy" },
   { key: "changePercent", header: "Chg", align: "right", format: percent },
 ];
+
+/**
+ * `columns` with the text report's Ticker column naming each listing as
+ * `portfolio show` does (SAN:EPA, SAN:NYSE), not by the key it is stored under,
+ * which leaves two listings of one symbol looking alike. `textFormat` is text
+ * only: JSON and CSV keep the stored key in `symbol`, and the rows stay keyed
+ * by it.
+ */
+function withListingLabels(columns: HeadlessPaneColumn[], tickers: readonly TickerRecord[]): HeadlessPaneColumn[] {
+  const labels = new Map(tickers.map((ticker) => [ticker.metadata.ticker, listingLabel(ticker)]));
+  return columns.map((column) => column.key !== "symbol" ? column : {
+    ...column,
+    textFormat: (value, row) => {
+      // The cash line is not a listing, even when a ticker is called CASH; its row carries no exchange.
+      if (typeof value !== "string" || !("exchange" in row)) return textOf(value) ?? formatNumber(undefined);
+      return labels.get(value) ?? value;
+    },
+  });
+}
 
 function finite(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -155,8 +199,9 @@ async function portfolioHoldings(
   const gross = held.reduce((sum, entry) => sum + Math.abs(finite(entry.row.marketValue) ?? 0), 0);
   const sum = (key: string) => held.reduce((total, entry) => total + (finite(entry.row[key]) ?? 0), 0);
   const seen = new Set<string>();
+  const extendedSessions = extendedSessionsOf(held.map(({ extended }) => extended?.session));
   const rows = held
-    .map(({ ticker, activeQuote, row }) => {
+    .map(({ ticker, headline, extended, row }) => {
       const marketValue = finite(row.marketValue);
       // A ticker held in several lots carries its allocation on its first row.
       const figures = seen.has(ticker.metadata.ticker) ? undefined : allocationBySymbol.get(ticker.metadata.ticker);
@@ -171,9 +216,11 @@ async function portfolioHoldings(
         shares: finite(row.shares),
         avgCost: finite(row.avgCost),
         positionCurrency: row.positionCurrency ?? null,
+        // Last and Chg are the regular session; market value and P&L are at the live price.
         price: finite(row.quotePrice),
         priceCurrency: row.quoteCurrency ?? null,
-        changePercent: finite(activeQuote?.changePercent),
+        changePercent: finite(headline?.changePercent),
+        ...extendedQuoteFields(extended),
         marketValue,
         unrealizedPnl: finite(row.unrealizedPnl),
         weight: figures?.weight ?? null,
@@ -217,7 +264,10 @@ async function portfolioHoldings(
 
   return {
     freshness: { source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud" },
-    columns: showTargets ? [...POSITION_COLUMNS, ...TARGET_COLUMNS] : POSITION_COLUMNS,
+    columns: withListingLabels(
+      withExtendedColumns(showTargets ? [...POSITION_COLUMNS, ...TARGET_COLUMNS] : POSITION_COLUMNS, extendedSessions),
+      tickers,
+    ),
     rows: shown,
     complete: unavailable.length === 0,
     ...(unavailable.length
@@ -255,21 +305,27 @@ async function watchlistHoldings(
   ctx.signal.throwIfAborted();
   const rows = tickers.map((ticker) => {
     const quote = quotes.get(ticker.metadata.ticker);
+    // As the watchlist pane shows it: the regular session, then any extended print from its close.
+    const { headline, extended } = collectionQuoteHeadline(quote);
     return {
       ...quoteFreshnessFields(quote),
       updatedAt: quote?.lastUpdated ?? null,
       symbol: ticker.metadata.ticker,
       name: ticker.metadata.name ?? null,
       exchange: ticker.metadata.exchange || null,
-      price: finite(quote?.price),
+      price: finite(headline?.price ?? quote?.price),
       priceCurrency: quote?.currency ?? null,
-      changePercent: finite(quote?.changePercent),
+      changePercent: finite(headline ? headline.changePercent : quote?.changePercent),
+      ...extendedQuoteFields(extended),
     };
   });
   const shown = rows.slice(0, limit);
   return {
     freshness: { source: "Local watchlist and Gloom Cloud" },
-    columns: WATCHLIST_COLUMNS,
+    columns: withListingLabels(
+      withExtendedColumns(WATCHLIST_COLUMNS, extendedSessionsOf(shown.map((row) => row.extendedSession))),
+      tickers,
+    ),
     rows: shown,
     metadata: {
       collection: { kind: "watchlist", id: target.id, name: target.name },

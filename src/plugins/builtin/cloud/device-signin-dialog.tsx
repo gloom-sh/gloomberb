@@ -11,7 +11,8 @@ import { t, tf } from "../../../i18n";
 import { useAppLanguage } from "../../../i18n/react";
 import { useViewport } from "../../../react/input";
 import { colors } from "../../../theme/colors";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
+import { DialogHints } from "../../../components/ui/dialog-actions";
 import { SignInCodePanel } from "../../../components/sign-in-code-panel";
 import { useDialog, useDialogKeyboard, type PromptContext } from "../../../ui/dialog";
 import { isPlainKey, type KeyboardModifierEventLike } from "../../../utils/keyboard";
@@ -101,6 +102,7 @@ export function DeviceSignInPanel({
 
 export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser | undefined>) {
   useAppLanguage();
+  const { nativePaneChrome } = useUiCapabilities();
   const { height: termHeight } = useViewport();
   // Closes on approval after a beat so the confirmation is visible; enter skips the wait.
   const { snapshot, retry } = useDeviceSignIn({ onApproved: resolve });
@@ -127,9 +129,13 @@ export function DeviceSignInDialog({ resolve, dismiss }: PromptContext<AuthUser 
       {/* Border, padding, title, and footer take about ten rows around the panel. */}
       <DeviceSignInPanel snapshot={snapshot} height={Math.max(4, termHeight - 10)} />
       <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textMuted}>{t("r to refresh the code · esc to cancel")}</Text>
-      </Box>
+      {nativePaneChrome ? (
+        <DialogHints keys={[{ key: "r", label: "new code" }, { key: "Esc", label: "cancel" }]} />
+      ) : (
+        <Box height={1}>
+          <Text fg={colors.textMuted}>{t("r to refresh the code · esc to cancel")}</Text>
+        </Box>
+      )}
     </Box>
   );
 }

@@ -1,7 +1,9 @@
 import type {
   HeadlessBundleResult,
+  HeadlessPaneContext,
   HeadlessPaneDefinition,
 } from "../../../types/plugin";
+import { ApiRequestError } from "../../../api-client/errors";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { fetchJobs, fetchJobsMovers, type JobsCloudClient, type JobsCompanyState } from "./client";
 import {
@@ -13,8 +15,21 @@ import {
   functionLabel,
 } from "./model";
 
-function companyBundle(symbol: string, state: JobsCompanyState, roleLimit: number): HeadlessBundleResult {
-  if (state.kind === "denied") throw new Error(state.message);
+/**
+ * What a refused account needs, and the free preview to try instead: HIRE
+ * reads the same careers systems, and is named only when it answers for this
+ * company.
+ */
+async function jobsDeniedMessage(symbol: string | undefined, status: 401 | 402 | 403, client: Pick<HeadlessPaneContext["apiClient"], "getCloudHiring">): Promise<string> {
+  const need = status === 401 ? "sign-in" : status === 403 ? "a verified email" : "Gloom Pro";
+  const preview = await client.getCloudHiring(symbol, { limit: 1 })
+    .then((payload) => !!payload && (symbol ? "symbol" in payload : "companies" in payload), () => false);
+  return `JOBS needs ${need}${preview ? `; HIRE${symbol ? ` ${symbol}` : ""} is free to preview` : ""}.`;
+}
+
+const DENIED = new Set([401, 402, 403]);
+
+function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: "denied" }>, roleLimit: number): HeadlessBundleResult {
   if (state.kind === "pending") {
     return {
       sections: [{ title: "Hiring", entries: [{ label: "Status", value: "pending", formatted: state.message }] }],
@@ -169,15 +184,25 @@ export const jobsHeadless: HeadlessPaneDefinition<"bundle"> = {
       maximum: 200,
     },
   ],
+  // No aliases: the template's keywords stay the catalog's search terms.
+  discovery: {
+    dataRequirements: ["Gloom Cloud Pro account"],
+    limitations: ["Pro only; HIRE <ticker> previews a company's hiring for free"],
+  },
   describe: (args) => (args.symbols[0] ? `Hiring | ${args.symbols[0]}` : "Hiring | coverage"),
   async load(args, ctx): Promise<HeadlessBundleResult> {
     const limit = Number(args.options.roles);
     const symbol = args.symbols[0];
     if (symbol) {
       const state = await fetchJobs(symbol, { force: true, client: ctx.apiClient as JobsCloudClient });
+      if (state.kind === "denied") throw new Error(await jobsDeniedMessage(symbol, state.status, ctx.apiClient));
       return companyBundle(symbol, state, limit);
     }
-    const payload = await fetchJobsMovers(ctx.apiClient as JobsCloudClient);
+    const payload = await fetchJobsMovers(ctx.apiClient as JobsCloudClient).catch(async (error: unknown) => {
+      const status = error instanceof ApiRequestError ? error.status ?? 0 : 0;
+      if (DENIED.has(status)) throw new Error(await jobsDeniedMessage(undefined, status as 401 | 402 | 403, ctx.apiClient));
+      throw error;
+    });
     const rows = buildMoverRows(payload.movers).slice(0, Math.max(limit, 15)).map((row) => ({
       ticker: row.ticker,
       company: row.company,

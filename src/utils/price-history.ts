@@ -1,7 +1,8 @@
 import type { PricePoint, TickerFinancials } from "../types/financials";
 import { canonicalExchange, resolveExchangeTimeZone } from "./exchanges";
 import { isRoundTheClockCoin } from "./crypto-pair";
-import { hasPublishedSessionCalendar, isRegularSessionTime, isTimestampStaleForExchangeSession, latestRegularSessionClose, latestRegularSessionOpen, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { isCurrencyPairListing, latestFxWeekClose } from "./fx-market-hours";
+import { hasPublishedSessionCalendar, historySourceWeekendDays, isRegularSessionTime, isTimestampStaleForExchangeSession, latestRegularSessionClose, latestRegularSessionOpen, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { zonedDateTimeParts } from "./zoned-date-time";
 import { regularHistorySessionStaleness } from "../market-data/history-session";
 import type { HistorySession } from "../types/price-history";
@@ -27,6 +28,16 @@ interface PriceHistoryFreshnessOptions {
   symbol?: string;
   intervalMs?: number | null;
   session?: HistorySession;
+}
+
+/**
+ * How old the newest bar of a current copy may be. Completed bars are
+ * timestamped at their opening time, so before the next one is delivered the
+ * newest may be almost two intervals plus the feed delay old; finer bars keep
+ * a floor.
+ */
+function allowedBarLagMs(intervalMs: number | null): number {
+  return Math.max(MAX_SAME_SESSION_HISTORY_LAG_MS, intervalMs != null ? 2 * intervalMs + DELAYED_HISTORY_ALLOWANCE_MS : 0);
 }
 
 export function priceHistoryIntervalMs(interval: string): number | null {
@@ -204,23 +215,41 @@ export function isPriceHistoryStaleForCurrentWindow(
     if (regularStale !== null) return regularStale;
   }
   const age = now - latestTime;
-  // Completed bars are timestamped at their opening time. Before the next
-  // completed bar is delivered, the newest bar may be almost two intervals
-  // plus the feed delay old. Keep the existing tolerance for finer bars.
-  const allowedLag = Math.max(MAX_SAME_SESSION_HISTORY_LAG_MS,
-    intervalMs != null ? 2 * intervalMs + DELAYED_HISTORY_ALLOWANCE_MS : 0);
+  const allowedLag = allowedBarLagMs(intervalMs);
   if (age <= allowedLag) return false;
   const exchange = options.exchange || "NASDAQ";
+  if (!isBehindLatestSession(latestTime, now, exchange, allowedLag)) return false;
+  // A venue whose chart source files another week (DFM's Sunday to Thursday)
+  // may end on the last session that week has: current under either week.
+  // Bars of a day that week lacks (a DFM Friday) answer to the venue's own.
+  const sourceWeekendDays = historySourceWeekendDays(exchange);
+  const timeZone = sessionCalendarTimeZone(exchange);
+  const latestWeekday = timeZone ? zonedWeekday(latestTime, timeZone) : null;
+  if (!sourceWeekendDays || latestWeekday == null || sourceWeekendDays.includes(latestWeekday)) return true;
+  return isBehindLatestSession(latestTime, now, exchange, allowedLag, sourceWeekendDays);
+}
+
+/**
+ * Whether bars ending at `latestTime`, older than one bar's lag, are behind
+ * the venue's sessions; `weekendDays` replaces the venue's days off.
+ */
+function isBehindLatestSession(
+  latestTime: number,
+  now: number,
+  exchange: string,
+  allowedLag: number,
+  weekendDays?: readonly number[],
+): boolean {
   // Bars that reach the close of the venue's latest session stay current
   // once it has closed, so a closed market keeps its last session until the
   // next one opens. A copy taken earlier in that session is still behind.
   // Asked before the quote rule below, which reads any US bar dated before
   // today as behind from 04:00 ET: right for a last price, wrong for bars
   // waiting for the next session's first one.
-  const regularSession = isRegularSessionTime(exchange, now);
+  const regularSession = isRegularSessionTime(exchange, now, weekendDays);
   if (regularSession !== null) {
-    const open = latestRegularSessionOpen(exchange, now);
-    const close = latestRegularSessionClose(exchange, now)?.close;
+    const open = latestRegularSessionOpen(exchange, now, weekendDays);
+    const close = latestRegularSessionClose(exchange, now, weekendDays)?.close;
     if (open !== null && close !== undefined && latestTime >= close - allowedLag) {
       if (!regularSession && close > open && latestTime >= open) return false;
       // After the next open they answer until its first delayed bar is due.
@@ -229,13 +258,18 @@ export function isPriceHistoryStaleForCurrentWindow(
   }
   if (
     resolveExchangeTimeZone(exchange)
-    && isTimestampStaleForExchangeSession(latestTime, exchange, now)
+    && isTimestampStaleForExchangeSession(latestTime, exchange, now, undefined, weekendDays)
   ) {
     return true;
   }
   const hasExchangeSession = Boolean(resolveExchangeTimeZone(exchange));
-  if (age <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) return hasExchangeSession;
+  if (now - latestTime <= MAX_CURRENT_INTRADAY_HISTORY_LAG_MS) return hasExchangeSession;
   return !hasExchangeSession;
+}
+
+function zonedWeekday(time: number, timeZone: string): number {
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay();
 }
 
 // Sources finish the closing auction and late prints some minutes after the
@@ -311,6 +345,31 @@ function isBarBeforeSession(latestTime: number, session: string, intervalMs: num
 }
 
 /**
+ * An intraday copy fetched before the venue's latest session settled holds
+ * that session only as far as the fetch. Once the session is over, or the
+ * next has begun, a copy whose last bar stops short of the close by more than
+ * a current copy's bars may lag is refetched. A copy fetched after the
+ * session settled holds all of it, however early its last bar: a thin listing
+ * need not trade late. A currency pair's session is the FX week, which closes
+ * Friday 17:00 New York. Coins never close, and within the FX week neither do
+ * pairs: isPriceHistoryStaleForCurrentWindow holds those copies to the present.
+ */
+function intradayHistoryFetchState(
+  points: PricePoint[], fetchedAt: number, now: number, intervalMs: number, options: CalendarHistoryFetchOptions,
+): CalendarHistoryFetchState {
+  if (isRoundTheClockCoin(options.symbol, options.exchange)) return "current";
+  const settledBy = now - SESSION_BAR_SETTLE_MS;
+  // Bare symbols resolve to their US listing at the sources.
+  const close = isCurrencyPairListing(options.symbol, options.exchange) ? latestFxWeekClose(settledBy)
+    : latestRegularSessionClose(canonicalExchange(options.exchange) || "NYSE", settledBy)?.close ?? null;
+  if (close === null || fetchedAt >= close + SESSION_BAR_SETTLE_MS) return "current";
+  const latest = points.findLast(hasFiniteClose);
+  const latestTime = latest ? getPricePointTimestamp(latest) : Number.NaN;
+  if (!Number.isFinite(latestTime) || latestTime >= close - allowedBarLagMs(intervalMs)) return "current";
+  return unsettledState(close + SESSION_BAR_SETTLE_MS, options.checkedAt, now);
+}
+
+/**
  * A daily or coarser series changes at every close. A copy fetched before the
  * latest settled close is outdated whatever its cache TTL. A copy fetched
  * after it but without its bar is behind only where the venue's closures are
@@ -327,7 +386,8 @@ export function calendarHistoryFetchState(
   if (!Number.isFinite(fetchedAt) || !Number.isFinite(now) || fetchedAt >= now) return "current";
   const normalized = normalizePriceHistory(points);
   const intervalMs = options.intervalMs ?? inferredHistoryIntervalMs(normalized);
-  if (intervalMs == null || intervalMs < DAY_MS) return "current";
+  if (intervalMs == null) return "current";
+  if (intervalMs < DAY_MS) return intradayHistoryFetchState(normalized, fetchedAt, now, intervalMs, options);
   const exchange = canonicalExchange(options.exchange);
   if (isRoundTheClockCoin(options.symbol, options.exchange)) {
     return now - fetchedAt > CRYPTO_BAR_MAX_AGE_MS

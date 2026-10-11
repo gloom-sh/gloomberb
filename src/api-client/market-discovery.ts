@@ -1,4 +1,4 @@
-import type { CloudCorporateActionsPayload, CloudQuotePayload } from "./types";
+import type { CloudCorporateActionsPayload, CloudMoverSessionFields, CloudQuotePayload } from "./types";
 
 export interface ScreenerQuote {
   symbol: string;
@@ -19,6 +19,8 @@ export interface ScreenerQuote {
   lastUpdated?: number;
   /** Session-fixed, so the price column reads its decimals from it rather than from each tick. */
   previousClose?: number;
+  /** The quote's sessions beside the live print the list ranks by, when the server sends them. */
+  sessions?: CloudMoverSessionFields;
 }
 
 

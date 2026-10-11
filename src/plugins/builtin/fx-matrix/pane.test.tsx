@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import {
@@ -11,6 +11,9 @@ import { createDefaultConfig } from "../../../types/config";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { fxMatrixModule } from "./index";
 import { TestPaneProvider } from "../../../test-support/pane";
+import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
+import { renderedReportObservations } from "../../../cli/pane-functions/report-notices";
+import { deriveRenderedFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 
 const FxMatrixPane = fxMatrixModule.panes![0]!.component as (props: {
   paneId: string;
@@ -79,6 +82,7 @@ const tui = createOpenTuiTestHarness();
 
 afterEach(() => {
   setSharedMarketDataCoordinator(null);
+  setSystemTime();
 });
 
 describe("FxMatrixPane", () => {
@@ -105,5 +109,40 @@ describe("FxMatrixPane", () => {
     // Its own diagonal is the only 1.0000 in the row.
     expect(jpyRow!.match(/1\.0000/g)).toHaveLength(1);
     expect(jpyRow).toContain("—");
+  });
+
+  test("publishes what the rates it draws are, for a report to date them", async () => {
+    // Saturday 18:45 UTC: most pairs last traded Friday, the Canadian dollar ticked on Saturday.
+    setSystemTime(new Date("2026-10-10T18:45:00Z"));
+    const loaded = (rate: number, asOf: string): QueryEntry<number> => ({
+      ...readyEntry(rate), source: "gloom", fetchedAt: Date.parse("2026-10-10T18:40:00Z"),
+      asOf: Date.parse(asOf), staleAt: Date.parse("2026-10-11T22:00:00Z"),
+    });
+    const entries: Record<string, QueryEntry<number>> = {
+      EUR: loaded(1.12, "2026-10-09T21:29:00Z"), JPY: loaded(0.0063, "2026-10-09T20:59:00Z"),
+      CHF: loaded(1.2, "2026-10-10T04:21:11Z"), CAD: loaded(0.7, "2026-10-10T14:50:28Z"),
+      AUD: loaded(0.7, "2026-10-09T21:29:00Z"), NZD: loaded(0.56, "2026-10-09T21:29:00Z"),
+      // GBP has no rate at all: drawn as a dash, so not an observation.
+    };
+    setSharedMarketDataCoordinator({
+      subscribe: () => () => {}, subscribeKeys: () => () => {}, getVersion: () => 1,
+      getFxEntry: (currency: string) => entries[currency] ?? errorEntry(),
+      loadFxRate: async () => {}, subscribeQuotes: () => () => {}, getQuoteEntry: () => createIdleEntry(),
+    } as unknown as MarketDataCoordinator);
+    const registry = createRemoteUiRegistry();
+    await tui.render(<RemoteUiRegistryProvider registry={registry}><Harness /></RemoteUiRegistryProvider>, { width: 100, height: 14 });
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+
+    const observed = renderedReportObservations(registry.snapshot());
+    expect(observed.map((row) => row.currency)).toEqual(["EUR", "JPY", "CHF", "CAD", "AUD", "NZD"]);
+    expect(observed[0]).toEqual({
+      currency: "EUR", quoteTime: "2026-10-09T21:29:00.000Z", dataSource: "delayed", stale: false,
+      sessionExchange: "CCY", marketState: "CLOSED",
+    });
+    const freshness = deriveRenderedFreshness(undefined, { footerText: "", cellTimes: [], observed });
+    expect(formatFreshnessLine(freshness)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
   });
 });

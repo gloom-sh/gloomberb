@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, useUiCapabilities } from "../../../ui";
 import { useShortcut } from "../../../react/input";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { colors } from "../../../theme/colors";
 import {
   EmptyState,
@@ -17,7 +18,9 @@ import {
   type QueryBarFilter,
 } from "../../../components";
 import type { PaneProps } from "../../../types/plugin";
-import { useFxRatesMap } from "../../../market-data/hooks";
+import { useChartQueries, useFxRatesMap, useResolvedEntryValue } from "../../../market-data/hooks";
+import { buildChartKey } from "../../../market-data/selectors";
+import { clipPriceHistoryToRange } from "../../../time-series/history-window";
 import { useLiveTickerFinancials, useLiveTickerFinancialsMap } from "../../../state/hooks/live-ticker-financials";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { convertCurrency, formatCurrency } from "../../../utils/format";
@@ -27,6 +30,7 @@ import {
   getFocusedTickerSymbol,
   useAppSelector,
   usePaneInstance,
+  usePaneSettingValue,
   usePaneStateValue,
   usePaneAppConfig,
 } from "../../../state/app/context";
@@ -51,12 +55,20 @@ import {
 } from "./model";
 import {
   DEFAULT_KELLY_DRAFTS,
-  KELLY_MODES,
+  KELLY_PANE_MODES,
+  type KellyPaneMode,
   type KellySizerDraft,
   type KellySizerModeDrafts,
-  type KellySizingMode,
   type PredictionMarketKellyAssumptions,
 } from "./types";
+import {
+  clampKellyHistoryYears,
+  estimateKellyHistoryInputs,
+  KELLY_HISTORY_DEFAULT_YEARS,
+  KELLY_HISTORY_MIN_PERIODS,
+  kellyHistoryRange,
+  kellyHistoryRequest,
+} from "./history";
 import { KELLY_PANE_ID } from "./constants";
 import {
   buildKellyCurveXAxisLabels,
@@ -70,6 +82,7 @@ import type { StaticChartXMarker } from "../../../components/chart/static";
 import {
   KellyCurveSection,
   KellySensitivitySection,
+  buildKellyHistoryItems,
   buildKellyResultItems,
 } from "./sections";
 import { getPortfolioPositionValue, resolveActivePortfolioId, resolveKellyBankroll } from "./portfolio";
@@ -95,7 +108,13 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
   const { nativePaneChrome } = useUiCapabilities();
 
-  const [mode, setMode] = usePaneStateValue<KellySizingMode>("mode", "binary");
+  // A pane opened from a KELLY report (fn, shot) sizes from the ticker's own history, as the report does.
+  const [reportYears] = usePaneSettingValue<number | null>("historyYears", null);
+  const [reportBankroll] = usePaneSettingValue<number | null>("bankroll", null);
+  const [mode, setMode] = usePaneStateValue<KellyPaneMode>("mode", reportYears != null ? "history" : "binary");
+  const [historyYears, setHistoryYears] = usePaneStateValue<number>("historyYears", clampKellyHistoryYears(reportYears ?? KELLY_HISTORY_DEFAULT_YEARS));
+  // History reads inputs off the ticker's monthly returns and sizes them as a binary bet.
+  const sizingMode = mode === "history" ? "binary" : mode;
   // A narrow terminal bar has no room for the view switch beside the ticker,
   // price and account (plus the Side and Portfolio filters when shown), so
   // there `s` stays a footer hint.
@@ -105,7 +124,10 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const [drafts, setDrafts] = usePaneStateValue<KellySizerModeDrafts>("drafts", cloneKellyDrafts());
   const [showSensitivity, setShowSensitivity] = usePaneStateValue<boolean>("showSensitivity", false);
   const [selectedPortfolioId, setSelectedPortfolioId] = usePaneStateValue<string | null>("portfolioId", null);
-  const [bankrollOverride, setBankrollOverride] = usePaneStateValue<number | null>("bankrollOverride", null);
+  const [bankrollOverride, setBankrollOverride] = usePaneStateValue<number | null>(
+    "bankrollOverride",
+    typeof reportBankroll === "number" && reportBankroll > 0 ? reportBankroll : null,
+  );
   const [currentValueOverride, setCurrentValueOverride] = usePaneStateValue<number | null>("currentValueOverride", null);
   const [selectedFieldIndex, setSelectedFieldIndex] = useState(0);
   const [activeInputId, setActiveInputId] = useState<string | null>(null);
@@ -256,26 +278,57 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const bankroll = bankrollOverride ?? sourceBankroll;
   const currentValue = currentValueOverride ?? sourceCurrentValue;
   const price = positionFinancials?.quote?.price ?? null;
-  const rawActiveDraft = drafts[mode] ?? DEFAULT_KELLY_DRAFTS[mode];
-  const { commonAssumptions, updateCommon } = useKellyCommonAssumptions(rawActiveDraft);
-  const activeDraft = useMemo(
-    () => applyKellyCommonAssumptions(rawActiveDraft, commonAssumptions),
-    [commonAssumptions, rawActiveDraft],
+  // The same daily closes, through the same request, as the KELLY report reads.
+  const historyRequest = useMemo(
+    () => mode === "history" && ticker
+      ? kellyHistoryRequest({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange ?? "" }, historyYears)
+      : null,
+    [historyYears, mode, ticker?.metadata.exchange, ticker?.metadata.ticker],
   );
+  const historyEntries = useChartQueries(historyRequest ? [historyRequest] : []);
+  const historyEntry = historyRequest ? historyEntries.get(buildChartKey(historyRequest)) ?? null : null;
+  const historyPoints = useResolvedEntryValue(historyEntry);
+  const historyInputs = useMemo(
+    () => historyPoints
+      ? estimateKellyHistoryInputs(clipPriceHistoryToRange(historyPoints, kellyHistoryRange(historyYears)), historyYears)
+      : null,
+    [historyPoints, historyYears],
+  );
+  const rawActiveDraft = drafts[sizingMode] ?? DEFAULT_KELLY_DRAFTS[sizingMode];
+  const { commonAssumptions, updateCommon } = useKellyCommonAssumptions(rawActiveDraft);
+  const activeDraft = useMemo(() => {
+    const draft = applyKellyCommonAssumptions(rawActiveDraft, commonAssumptions);
+    if (mode !== "history") return draft;
+    // Until the history loads there is no edge to size.
+    return {
+      ...draft,
+      winProbability: historyInputs?.winProbability ?? 0,
+      upsideReturn: historyInputs?.upsideReturn ?? 0,
+      downsideReturn: historyInputs?.downsideReturn ?? 0,
+    };
+  }, [commonAssumptions, historyInputs, mode, rawActiveDraft]);
 
   const updateDraft = useCallback((patch: Partial<KellySizerDraft>) => {
     setDrafts((current) => ({
       ...cloneKellyDrafts(current),
-      [mode]: {
-        ...(current[mode] ?? DEFAULT_KELLY_DRAFTS[mode]),
+      [sizingMode]: {
+        ...(current[sizingMode] ?? DEFAULT_KELLY_DRAFTS[sizingMode]),
         ...patch,
       } as KellySizerDraft,
     }));
-  }, [mode, setDrafts]);
+  }, [sizingMode, setDrafts]);
 
-  const fields = useMemo(
-    () => buildModeFields({ mode, draft: activeDraft, updateDraft }),
-    [activeDraft, mode, updateDraft],
+  const fields = useMemo<GridField[]>(
+    () => mode === "history"
+      ? [{
+        id: "history:years",
+        label: "Years",
+        value: historyYears,
+        valueText: String(historyYears),
+        onValue: (value) => setHistoryYears(clampKellyHistoryYears(value)),
+      }]
+      : buildModeFields({ mode: sizingMode, draft: activeDraft, updateDraft }),
+    [activeDraft, historyYears, mode, setHistoryYears, sizingMode, updateDraft],
   );
   const commonFields = useMemo(
     () => buildCommonFields({ common: commonAssumptions, updateCommon }),
@@ -307,35 +360,35 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   const selectedField = gridFields[Math.min(selectedFieldIndex, Math.max(0, gridFields.length - 1))] ?? null;
   const result = useMemo(
     () => calculateKellySizing({
-      mode,
+      mode: sizingMode,
       draft: activeDraft,
       bankroll,
       currentValue,
       price,
     }),
-    [activeDraft, bankroll, currentValue, mode, price],
+    [activeDraft, bankroll, currentValue, price, sizingMode],
   );
-  const sensitivity = useMemo(() => buildSensitivityGrid(mode, activeDraft), [activeDraft, mode]);
+  const sensitivity = useMemo(() => buildSensitivityGrid(sizingMode, activeDraft), [activeDraft, sizingMode]);
   const curveMaxFraction = useMemo(
-    () => getKellyCurveMaxFraction(mode, activeDraft, [
+    () => getKellyCurveMaxFraction(sizingMode, activeDraft, [
       result.currentFraction,
       result.clippedFraction,
       result.fullKellyFraction,
     ]),
-    [activeDraft, mode, result.clippedFraction, result.currentFraction, result.fullKellyFraction],
+    [activeDraft, sizingMode, result.clippedFraction, result.currentFraction, result.fullKellyFraction],
   );
   const curvePoints = useMemo(
-    () => buildKellyCurvePoints(mode, activeDraft, curveMaxFraction),
-    [activeDraft, curveMaxFraction, mode],
+    () => buildKellyCurvePoints(sizingMode, activeDraft, curveMaxFraction),
+    [activeDraft, curveMaxFraction, sizingMode],
   );
   const curveXAxisLabels = useMemo(() => buildKellyCurveXAxisLabels(curveMaxFraction), [curveMaxFraction]);
   const currentGrowth = useMemo(
-    () => calculateExpectedLogGrowthAtFraction(mode, activeDraft, result.currentFraction),
-    [activeDraft, mode, result.currentFraction],
+    () => calculateExpectedLogGrowthAtFraction(sizingMode, activeDraft, result.currentFraction),
+    [activeDraft, sizingMode, result.currentFraction],
   );
   const targetGrowth = useMemo(
-    () => calculateExpectedLogGrowthAtFraction(mode, activeDraft, result.clippedFraction),
-    [activeDraft, mode, result.clippedFraction],
+    () => calculateExpectedLogGrowthAtFraction(sizingMode, activeDraft, result.clippedFraction),
+    [activeDraft, sizingMode, result.clippedFraction],
   );
   const curveMarkers = useMemo<StaticChartXMarker[]>(() => {
     if (!Number.isFinite(curveMaxFraction) || curveMaxFraction <= 0) return [];
@@ -406,8 +459,21 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
     }
   }, { enabled: focused });
 
+  // A report or shot of the History tab is as of the last daily close it read, not when it ran.
+  useRemoteUiNode(mode === "history" && historyInputs ? {
+    role: "report-freshness",
+    label: "History freshness",
+    getMetadata: () => ({ asOf: historyInputs.end }),
+  } : null);
+  // History mode says what it is waiting for, or why it has no inputs, before any sizing warning.
+  const historyStatus = mode !== "history" || historyInputs ? null
+    : historyEntry?.error ? { text: historyEntry.error.message, tone: "negative" as const }
+      : historyPoints ? { text: `under ${KELLY_HISTORY_MIN_PERIODS} monthly returns`, tone: "warning" as const }
+        : { text: "loading history", tone: "muted" as const };
   usePaneFooter(KELLY_PANE_ID, () => ({
-    info: bankroll <= 0 && ticker
+    info: historyStatus
+      ? [{ id: "history", parts: [historyStatus] }]
+      : bankroll <= 0 && ticker
       // Every size reads 0% until there is a bankroll; say so where status lives.
       ? [{ id: "bankroll", parts: [{ text: "no bankroll", tone: "warning" as const }] }]
       : result.warnings.length > 0
@@ -421,15 +487,15 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
       { id: "search", key: "/", label: "search", onPress: focusTickerSearch },
       ...(viewInBar ? [] : [{ id: "sensitivity", key: "s", label: showSensitivity ? "ensitivity off" : "ensitivity", onPress: toggleSensitivity }]),
     ],
-  }), [activeInputId, bankroll, editSelectedField, focusTickerSearch, result.clipReasons, result.warnings, selectedField?.id, selectedField?.label, showSensitivity, ticker, toggleSensitivity, viewInBar]);
+  }), [activeInputId, bankroll, editSelectedField, focusTickerSearch, historyStatus?.text, historyStatus?.tone, result.clipReasons, result.warnings, selectedField?.id, selectedField?.label, showSensitivity, ticker, toggleSensitivity, viewInBar]);
 
   const portfolioTabs = useMemo(
     () => config.portfolios.map((portfolio) => ({ label: portfolio.name, value: portfolio.id })),
     [config.portfolios],
   );
-  const modeTabs = useMemo(() => KELLY_MODES.map((entry) => ({ label: entry.label, value: entry.id })), []);
+  const modeTabs = useMemo(() => KELLY_PANE_MODES.map((entry) => ({ label: entry.label, value: entry.id })), []);
   const selectMode = (nextMode: string) => {
-    setMode(nextMode as KellySizingMode);
+    setMode(nextMode as KellyPaneMode);
     setSelectedFieldIndex(0);
     activateInput(null);
   };
@@ -442,14 +508,18 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   });
   const gridColumns = fieldGridColumns(width);
   const gridRows = fieldGridRows(gridFields, gridColumns);
-  const resultItems = buildKellyResultItems({
-    result,
-    baseCurrency: config.baseCurrency,
-    currentGrowth,
-    targetGrowth,
-    width,
-    columns: gridColumns,
-  });
+  const resultItems = [
+    // History's inputs lead: the window and the monthly figures the sizes come from.
+    ...(mode === "history" && historyInputs ? buildKellyHistoryItems(historyInputs) : []),
+    ...buildKellyResultItems({
+      result,
+      baseCurrency: config.baseCurrency,
+      currentGrowth,
+      targetGrowth,
+      width,
+      columns: gridColumns,
+    }),
+  ];
   const resultRows = statGridRows(resultItems, width, gridColumns);
   // Query bar, the mode strip when it is not in the title bar, inputs, results.
   const bodyRows = Math.max(0, height - 1 - tabRows - gridRows - resultRows);
