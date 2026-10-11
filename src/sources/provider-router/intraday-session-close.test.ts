@@ -129,8 +129,8 @@ async function readAfterSaving(symbol: string, savedAt: string, points: PricePoi
     await router.getPriceHistoryWithMetadata(symbol, "", "1D");
     answer = later;
     setSystemTime(new Date(readAt));
-    const served = await router.getPriceHistoryWithMetadata(symbol, "", "1D").then((value) => value.points, () => []);
-    return { served, calls };
+    const got = await router.getPriceHistoryWithMetadata(symbol, "", "1D").catch(() => null);
+    return { served: got?.points ?? [], behind: got?.savedCopyBehind === true, calls };
   } finally { store.close(); }
 }
 
@@ -152,9 +152,12 @@ test.each(Object.entries(ROWS))("%s", async (what, { symbol, saved: [first, last
   } else {
     expect(span(online.served), "from the cache").toEqual(span(copy));
   }
-  // Offline, or with the source failing, the saved copy answers rather than nothing.
+  expect(online.behind, "a current answer is not marked").toBe(false);
+  // Offline, or with the source failing, the saved copy answers rather than
+  // nothing, and says so when it stops short of the latest session.
   const offline = await readAfterSaving(symbol, savedAt, copy, readAt, () => { throw new Error("offline"); });
   expect(span(offline.served), `${what}, offline`).toEqual(span(copy));
+  expect(offline.behind, `${what}, offline: marked behind`).toBe(later !== undefined);
 });
 
 test("a thin listing's copy is refetched once after the close, on a weeknight as on a weekend", async () => {
@@ -165,18 +168,31 @@ test("a thin listing's copy is refetched once after the close, on a weeknight as
     let answer = () => thin;
     const store = new AppPersistence(":memory:");
     const router = new AssetDataRouter(source(() => answer(), calls), [], store.resources);
-    const lastClose = async () => (await router.getPriceHistoryWithMetadata("CODA", "", "1D")).points.at(-1)?.close;
+    const read = () => router.getPriceHistoryWithMetadata("CODA", "", "1D");
+    const lastClose = async () => (await read()).points.at(-1)?.close;
     try {
       setSystemTime(new Date(`${day}T15:15:00Z`));
       expect(await lastClose()).toBe(100);
       // After the close the copy predates it, so the source is asked again and
       // answers the same bars. That copy now stands for the session.
       setSystemTime(new Date(readAt));
-      expect(await lastClose(), readAt).toBe(100);
+      const answered = await read();
+      expect(answered.points.at(-1)?.close, readAt).toBe(100);
+      expect(answered.savedCopyBehind, readAt).toBeUndefined();
       expect(calls, readAt).toHaveLength(2);
       answer = () => bars(`${day}T13:30:00Z`, `${day}T15:00:00Z`, 999);
       setSystemTime(new Date(Date.parse(readAt) + 10 * MIN));
       expect(await lastClose(), readAt).toBe(100);
+      // A short-lived process refetches a copy past its TTL and falls back to it
+      // when the source fails: that complete copy is no behind copy.
+      router.setBackgroundRevalidation(false);
+      const before = calls.length;
+      answer = () => { throw new Error("offline"); };
+      setSystemTime(new Date(Date.parse(readAt) + 2 * 60 * MIN));
+      const fallback = await read();
+      expect(calls.length, readAt).toBeGreaterThan(before);
+      expect(fallback.points.length, readAt).toBe(thin.length);
+      expect(fallback.savedCopyBehind, readAt).toBeUndefined();
     } finally { store.close(); }
   }
 });
@@ -187,17 +203,41 @@ test("a copy the source cannot replace answers without asking again until the ne
   const store = new AppPersistence(":memory:");
   let answer = () => bars("2026-10-09T01:15:00Z", "2026-10-09T03:10:00Z");
   const router = new AssetDataRouter(source(() => answer(), calls), [], store.resources);
+  let behind: boolean | undefined;
   const read = async (at: string) => {
     setSystemTime(new Date(at));
-    return (await router.getPriceHistoryWithMetadata("0700.HK", "", "1D")).points.length;
+    const value = await router.getPriceHistoryWithMetadata("0700.HK", "", "1D");
+    behind = value.savedCopyBehind === true;
+    return value.points.length;
   };
   try {
     await read("2026-10-09T03:30:00Z");
+    expect(behind).toBe(false);
     answer = () => { throw new Error("offline"); };
-    for (const at of ["2026-10-10T12:00:00Z", "2026-10-10T12:01:00Z", "2026-10-10T12:04:00Z"]) expect(await read(at), at).toBe(24);
+    // The failed refetch, then the copy a re-check could not replace, answer marked.
+    for (const at of ["2026-10-10T12:00:00Z", "2026-10-10T12:01:00Z", "2026-10-10T12:04:00Z"]) {
+      expect(await read(at), at).toBe(24);
+      expect(behind, at).toBe(true);
+    }
     expect(calls).toHaveLength(2);
     expect(await read("2026-10-10T12:06:00Z")).toBe(24);
     expect(calls).toHaveLength(3);
+  } finally { store.close(); }
+});
+
+test("a source that answers bars still behind during the session leaves the saved copy marked", async () => {
+  // HKEX, saved at 11:30 and read at 14:00 in its session: the source has nothing newer.
+  const calls: string[] = [];
+  const store = new AppPersistence(":memory:");
+  const router = new AssetDataRouter(source(() => bars("2026-10-09T01:15:00Z", "2026-10-09T03:10:00Z"), calls), [], store.resources);
+  try {
+    setSystemTime(new Date("2026-10-09T03:30:00Z"));
+    await router.getPriceHistoryWithMetadata("0700.HK", "", "1D");
+    setSystemTime(new Date("2026-10-09T06:00:00Z"));
+    const answered = await router.getPriceHistoryWithMetadata("0700.HK", "", "1D");
+    expect(calls).toHaveLength(2);
+    expect(answered.points).toHaveLength(24);
+    expect(answered.savedCopyBehind).toBe(true);
   } finally { store.close(); }
 });
 

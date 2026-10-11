@@ -1686,11 +1686,13 @@ async function resolveChartSpecPass(
     const now = () => referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt);
     const currentWindow = () => !request.explicitWindow
       || (request.bounds.end !== null && now() - (request.bounds.end + 1) < 60 * 60_000);
-    const staleCurrent = (value: LoadedPriceHistory) => currentWindow() && !!value.session
-      && isPriceHistoryStaleForCurrentWindow(value.points, now(), {
+    // A copy with a session record is judged here; any other says so itself,
+    // when the router answered it from a saved copy short of the latest session.
+    const staleCurrent = (value: LoadedPriceHistory) => currentWindow() && (value.savedCopyBehind === true
+      || (!!value.session && isPriceHistoryStaleForCurrentWindow(value.points, now(), {
         symbol: source.instrument.symbol, exchange: source.instrument.exchange, session: value.session,
         ...(value.resolution ? { intervalMs: CHART_RESOLUTION_STEP_MS[value.resolution] } : {}),
-      });
+      })));
     // A copy behind the current session is fetched again at most every 30 s.
     // Until a fetch answers a current one, the saved copy is drawn with a
     // notice, as every other history path does, rather than an error.
@@ -2209,8 +2211,9 @@ export function reconcileChartTail(
     const refreshed = mergePriceHistoryWindows(loaded.points, points, tail.resolution);
     if (samePricePoints(refreshed, loaded.points)) return false;
     const acquisition = priceHistoryTailAcquisition(loaded, result);
+    // The merged bars are as current as the newer acquisition says.
     cache.priceHistoryByRequest.set(key, Promise.resolve({ ...loaded, points: refreshed,
-      session: acquisition.session, sourceKey: acquisition.sourceKey }));
+      session: acquisition.session, sourceKey: acquisition.sourceKey, savedCopyBehind: acquisition.savedCopyBehind }));
     if (accumulated) {
       const accumulatedAcquisition = priceHistoryTailAcquisition(accumulated, result);
       cache.accumulatedPriceHistory.set(tail.accumulationKey, { ...accumulated,

@@ -111,6 +111,34 @@ test("a behind 5-minute session copy is drawn with a notice while refetches fail
   expect(calls).toBe(3);
 });
 
+test("a saved copy the router calls behind draws one notice, with a session record or without, until a refetch answers a current copy", async () => {
+  setSystemTime(NOW);
+  const notice = "AAPL:XNAS: newer bars are unavailable; showing saved bars as of Sep 21 15:45 ET.";
+  const saved = time("2026-09-21T19:50:00Z");
+  let calls = 0, behind = true;
+  // The Cloud session record covers US 1- and 5-minute bars only: this copy has none.
+  const bare = provider(async () => {
+    calls++;
+    const { session: _record, ...copy } = result(saved);
+    return behind ? { ...copy, savedCopyBehind: true } : copy;
+  });
+  const cache = new ChartResolveCache(), spec = chart();
+  const notices = async (dataProvider = bare, from = cache) => (await resolveChartSpecData(spec, { dataProvider, now: new Date() }, from))
+    .warnings.filter(warning => warning === notice).length;
+  expect(await notices()).toBe(1);
+  // Price, volume and the study share the one attempt, and quote ticks in between do not refetch.
+  setSystemTime(NOW + 29_999);
+  expect(await notices()).toBe(1);
+  expect(calls).toBe(1);
+  behind = false;
+  setSystemTime(NOW + 30_000);
+  expect(await notices()).toBe(0);
+  expect(calls).toBe(2);
+  // A copy with a session record the chart also judges behind is still one notice.
+  setSystemTime(time("2026-09-22T14:00:00Z"));
+  expect(await notices(provider(async () => ({ ...result(saved), savedCopyBehind: true })), new ChartResolveCache())).toBe(1);
+});
+
 test("explicit historical windows retain their captured observations across later sessions", async () => {
   setSystemTime(NOW);
   let calls = 0;

@@ -244,7 +244,10 @@ function mergeRequestHistoryGaps(
 }
 
 function normalizeRequestResult(value: PriceHistoryResult, request: HistoryRequestDescriptor): PriceHistoryResult {
-  return { ...value, points: normalizeRequestHistory(value.points, request),
+  // Only this router says a copy is behind, when it answers: neither a source
+  // nor a stored copy can carry that verdict in.
+  const { savedCopyBehind: _behind, ...kept } = value;
+  return { ...kept, points: normalizeRequestHistory(value.points, request),
     // A public equity response cannot establish a broker contract's session.
     ...(request.context?.instrument ? { session: undefined } : {}),
   };
@@ -632,9 +635,11 @@ export class ProviderRouterHistoryRoutes {
       if (refreshDue) {
         scheduleRouterRevalidation(this.historyRefreshInFlight, request.identity.revalidationKey, () => this.refreshHistory(request));
       }
+      // Only a copy a re-check could not replace reaches here short of the latest session.
+      const answered = cachedHistoryStale ? { ...cachedValue, savedCopyBehind: true as const } : cachedValue;
       return exactHit || !request.requestedRange
-        ? withReportedGaps(cachedValue)
-        : clip(withReportedGaps(cachedValue));
+        ? withReportedGaps(answered)
+        : clip(withReportedGaps(answered));
     }
 
     const supersededCacheSources = new Set<string>();
@@ -664,9 +669,13 @@ export class ProviderRouterHistoryRoutes {
     const fallbackRecords = ranked
       .map((entry) => entry.record)
       .filter((record) => !supersededCacheSources.has(record.sourceKey));
-    const fallbackValue = (fallbackRecords.find((record) => !request.isCachedValueStale(record.value, record.fetchedAt))
-      ?? (coin ? undefined : fallbackRecords[0]))?.value;
-    if (fallbackValue) {
+    const fallbackRecord = fallbackRecords.find((record) => !request.isCachedValueStale(record.value, record.fetchedAt))
+      ?? (coin ? undefined : fallbackRecords[0]);
+    if (fallbackRecord) {
+      // A copy short of the latest session says so, so the chart can tell it
+      // from a current one: a thin listing's complete copy is not behind.
+      const fallbackValue = request.isCachedValueStale(fallbackRecord.value, fallbackRecord.fetchedAt)
+        ? { ...fallbackRecord.value, savedCopyBehind: true as const } : fallbackRecord.value;
       return request.requestedRange
         ? clip(withReportedGaps(fallbackValue))
         : withReportedGaps(fallbackValue);

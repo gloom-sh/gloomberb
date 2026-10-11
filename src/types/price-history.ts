@@ -28,4 +28,11 @@ export interface PriceHistoryResult {
   coverageStart?: string;
   /** The source served the pre-market and after-hours bars the request asked for. */
   extendedHours?: boolean;
+  /**
+   * The router answered an intraday request from a saved copy that stops short
+   * of the venue's latest session: a refetch failed, the app is offline or the
+   * source answered bars still behind. Never stored with a copy. Absent for a
+   * current copy, whatever its last bar, and for a source's own answer.
+   */
+  savedCopyBehind?: true;
 }
