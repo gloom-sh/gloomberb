@@ -4,7 +4,8 @@ import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
 import type { Quote } from "../types/financials";
 import { ListingArgError, savedListingName } from "./listing-arg";
-import { resolveCliTicker, resolveTickerForCli } from "./ticker-resolution";
+import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
+import { resolveCliTicker, resolveTickerForCli, resolveTickersForCli } from "./ticker-resolution";
 
 const persistences: AppPersistence[] = [];
 
@@ -102,4 +103,39 @@ test("a symbol search no longer lists says it stopped trading, and a venue it is
   for (const exchange of ["BATS", "IEX"]) {
     expect((await resolveCliTicker(`IEO:${exchange}`, store, dataProvider)).ticker.metadata.exchange).toBe(exchange);
   }
+});
+
+test("a symbol whose search the service refused is looked up again, never reported as not found", async () => {
+  const nvda = { providerId: "test", symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ", currency: "USD", type: "Common Stock" };
+  const lookUp = async (refusals: number) => {
+    const persistence = new AppPersistence(":memory:");
+    persistences.push(persistence);
+    let refused = 0;
+    const dataProvider = createTestDataProvider({
+      // Search reads a refused request as no match; connection health is what saw it fail.
+      search: async (query) => {
+        if (query !== "NVDA") return [];
+        if (refused < refusals) {
+          refused += 1;
+          connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+            operation: "GET /market/search", success: false, latencyMs: refused, error: new Error("Anonymous market rate limit exceeded"),
+          });
+          return [];
+        }
+        return [nvda];
+      },
+    });
+    const retries: number[] = [];
+    const results = await resolveTickersForCli(["NVDA", "XXXXX"], new TickerRepository(persistence.tickers), dataProvider, undefined, {
+      retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count),
+    });
+    return { retries, outcomes: results.map((result) => result.ticker?.metadata.ticker ?? result.error?.message) };
+  };
+
+  expect(await lookUp(0)).toEqual({ retries: [], outcomes: ["NVDA", 'No ticker match found for "XXXXX".'] });
+  expect(await lookUp(1)).toEqual({ retries: [2], outcomes: ["NVDA", 'No ticker match found for "XXXXX".'] });
+  // Still refused after the last wait: neither symbol is called not found.
+  const refusedThroughout = await lookUp(3);
+  expect(refusedThroughout.retries).toEqual([2, 2]);
+  expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
 });

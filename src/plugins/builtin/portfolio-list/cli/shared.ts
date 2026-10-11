@@ -26,6 +26,30 @@ export function listingFields(saved: Pick<SavedListingName, "key" | "symbol" | "
   return { listing: saved.key, symbol: saved.symbol, exchange: saved.exchange || null, name: saved.name };
 }
 
+function namesCollection(collection: { id: string; name: string }, text: string): boolean {
+  const normalized = text.trim().toLowerCase();
+  return !!normalized && (collection.id.toLowerCase() === normalized || collection.name.toLowerCase() === normalized);
+}
+
+/**
+ * The portfolio or watchlist the leading arguments name, and the arguments
+ * after it. The first argument is the name (quoted when it has spaces); an
+ * unquoted name with spaces still works, as the longest leading run of
+ * arguments that names a collection. Null when none does, so a symbol is never
+ * read as part of a name.
+ */
+export function takeCollectionName<T extends { id: string; name: string }>(
+  args: readonly string[],
+  collections: readonly T[],
+): { collection: T; rest: string[] } | null {
+  for (let length = args.length; length >= 1; length -= 1) {
+    const name = args.slice(0, length).join(" ");
+    const collection = collections.find((entry) => namesCollection(entry, name));
+    if (collection) return { collection, rest: args.slice(length) };
+  }
+  return null;
+}
+
 export function parseFiniteNumber(rawValue: string | undefined, label: string): number {
   const value = Number(rawValue);
   if (!rawValue?.trim() || !Number.isFinite(value)) {

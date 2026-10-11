@@ -1,7 +1,9 @@
 import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
-import type { TickerRepository } from "../data/ticker-repository";
+import type { AppTickerRepositoryPort } from "../core/app-service-ports";
+import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
+import { mapWithConcurrency } from "../utils/concurrency";
 import {
   AmbiguousContractError,
   AmbiguousTickerError,
@@ -25,7 +27,7 @@ import {
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
   symbol: string,
-  store: TickerRepository,
+  store: AppTickerRepositoryPort,
   dataProvider: DataProvider,
   exchange?: string,
 ): Promise<TickerRecord> {
@@ -39,11 +41,23 @@ export interface CliTicker {
    * ("IEO -> BATS (other listings: IEX, BMV)"), and a listing that stopped trading.
    */
   notes: string[];
+  /** Of those, the one saying the listing stopped trading; null while it trades. */
+  ended: string | null;
 }
 
 export interface CliTickerOptions {
   /** The command that takes one listing, for the choices a failure names: `gloomberb watchlist add Growth 2222:JPX`. */
   retry?: (key: string) => string;
+  /** `--exchange` only fills in the symbols that name no exchange of their own, as for a list of symbols. */
+  ownExchangeWins?: boolean;
+}
+
+/** Search found no listing for the symbol: the message says so, or why (no longer trading, not on that exchange). */
+export class TickerNotFoundError extends ListingArgError {
+  constructor(message: string) {
+    super(message);
+    this.name = "TickerNotFoundError";
+  }
 }
 
 /**
@@ -57,7 +71,7 @@ export interface CliTickerOptions {
  */
 export async function resolveCliTicker(
   symbol: string,
-  store: TickerRepository,
+  store: AppTickerRepositoryPort,
   dataProvider: DataProvider,
   exchange?: string,
   options: CliTickerOptions = {},
@@ -66,8 +80,8 @@ export async function resolveCliTicker(
     throw new Error("Ticker symbol is required.");
   }
   const deps: ListingDeps = { store, dataProvider };
-  const listing = await resolveCliListing(symbol, exchange, deps);
-  if (listing.saved) return { ticker: listing.saved, notes: [] };
+  const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins });
+  if (listing.saved) return { ticker: listing.saved, notes: [], ended: null };
 
   const localTickers = new Map(
     (await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const),
@@ -89,8 +103,8 @@ export async function resolveCliTicker(
     bareQuote = bare.quote;
   }
 
-  if (!resolved) throw new ListingArgError(await missingListingMessage(listing, deps));
-  if (resolved.kind === "local") return { ticker: resolved.ticker, notes: bareNote ? [bareNote] : [] };
+  if (!resolved) throw new TickerNotFoundError(await missingListingMessage(listing, deps));
+  if (resolved.kind === "local") return { ticker: resolved.ticker, notes: bareNote ? [bareNote] : [], ended: null };
 
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
   const named = created ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };
@@ -98,7 +112,7 @@ export async function resolveCliTicker(
   const others = resolved.otherListings?.map((key) => parsePublicTickerKey(key).exchange ?? key) ?? [];
   const venueNote = bareNote ?? (others.length > 0 && saved.exchange ? chosenListingNote(listing.symbol, saved.exchange, others) : null);
   const ended = named.quote ? noLongerTradingNote(saved.label, named.quote) : null;
-  return { ticker: named.ticker, notes: [venueNote, ended].filter((note): note is string => !!note) };
+  return { ticker: named.ticker, notes: [venueNote, ended].filter((note): note is string => !!note), ended };
 }
 
 /**
@@ -123,7 +137,7 @@ async function missingListingMessage(listing: CliListing, deps: ListingDeps): Pr
  */
 async function nameFromListingQuote(
   ticker: TickerRecord,
-  store: TickerRepository,
+  store: AppTickerRepositoryPort,
   dataProvider: DataProvider,
   known: Quote | null,
 ): Promise<{ ticker: TickerRecord; quote: Quote | null }> {
@@ -141,5 +155,102 @@ async function nameFromListingQuote(
   } catch {
     // Without a quote the catalogue name stands.
     return { ticker, quote: null };
+  }
+}
+
+export type CliTickerResolution =
+  | ({ input: string; error?: undefined } & CliTicker)
+  | { input: string; ticker?: undefined; error: Error };
+
+/** Symbols looked up at once. Each is a catalogue search and a quote, so this bounds the requests in flight. */
+const RESOLVE_CONCURRENCY = 8;
+/** Symbols looked up again at once after requests failed, gently, as the service may be limiting the rate. */
+const RETRY_CONCURRENCY = 4;
+/** The data service's market requests (search, quotes), as connection health names them. */
+const MARKET_OPERATION = /^(?:GET|POST) \/market\//;
+/**
+ * Waits before each new look at the symbols that failed while requests were
+ * failing. The first outlasts the five seconds the router keeps an empty
+ * search answer; the service's rate limit is a minute's window.
+ */
+const RETRY_WAITS_MS = [6_000, 15_000, 30_000];
+
+/**
+ * Counts the data service's market requests that fail while it watches. A
+ * lookup reads a refused search (rate limited, offline) as no match, and a
+ * refused quote as a listing it cannot settle, so a symbol looked up while
+ * one failed may be there after all.
+ */
+function watchFailedRequests(): { count: () => number; stop: () => void } {
+  const dispose = connectionHealth.hasSource(GLOOM_CLOUD_HTTP_CONNECTION_ID)
+    ? null
+    : connectionHealth.registerSource({ id: GLOOM_CLOUD_HTTP_CONNECTION_ID, name: "Gloom Cloud HTTP", kind: "api" });
+  const failures = new Set<string>();
+  const unsubscribe = connectionHealth.subscribe(() => {
+    const failure = connectionHealth.getSnapshot().sources.find((source) => source.id === GLOOM_CLOUD_HTTP_CONNECTION_ID)?.lastError;
+    if (failure && MARKET_OPERATION.test(failure.operation)) failures.add(`${failure.at}|${failure.latencyMs}|${failure.error ?? ""}`);
+  });
+  return { count: () => failures.size, stop: () => { unsubscribe(); dispose?.(); } };
+}
+
+function lookUpTickers(
+  symbols: readonly string[],
+  concurrency: number,
+  resolve: (symbol: string) => Promise<CliTicker>,
+): Promise<CliTickerResolution[]> {
+  return mapWithConcurrency(symbols, concurrency, async (input): Promise<CliTickerResolution> => {
+    try {
+      return { input, ...await resolve(input) };
+    } catch (error) {
+      return { input, error: error instanceof Error ? error : new Error(String(error)) };
+    }
+  });
+}
+
+/**
+ * `resolveCliTicker` for a list of symbols, several at a time; a symbol that
+ * fails gives its error without failing the rest. `--exchange` names the
+ * venue of the symbols that do not name their own. "Not found" means search
+ * found no listing: while the service refuses requests, the symbols that
+ * failed are looked up again after a pause, and any it still did not answer
+ * for say so.
+ */
+export async function resolveTickersForCli(
+  symbols: readonly string[],
+  store: AppTickerRepositoryPort,
+  dataProvider: DataProvider,
+  exchange?: string,
+  {
+    retry,
+    onRetry,
+    retryWaitsMs = RETRY_WAITS_MS,
+  }: Pick<CliTickerOptions, "retry"> & {
+    /** Told before each new look, with how many symbols and how long it waits first. */
+    onRetry?: (count: number, waitMs: number) => void;
+    retryWaitsMs?: readonly number[];
+  } = {},
+): Promise<CliTickerResolution[]> {
+  const resolve = (symbol: string) => resolveCliTicker(symbol, store, dataProvider, exchange, { retry, ownExchangeWins: true });
+  const failedRequests = watchFailedRequests();
+  try {
+    let lookups = await lookUpTickers(symbols, RESOLVE_CONCURRENCY, resolve);
+    let failing = failedRequests.count() > 0;
+    for (const waitMs of retryWaitsMs) {
+      const failed = lookups.filter((entry) => entry.error).map((entry) => entry.input);
+      if (!failing || failed.length === 0) break;
+      onRetry?.(failed.length, waitMs);
+      await new Promise((resolveWait) => setTimeout(resolveWait, waitMs));
+      const before = failedRequests.count();
+      const again = new Map((await lookUpTickers(failed, RETRY_CONCURRENCY, resolve)).map((entry) => [entry.input, entry] as const));
+      lookups = lookups.map((entry) => again.get(entry.input) ?? entry);
+      failing = failedRequests.count() > before;
+    }
+    if (!failing) return lookups;
+    // Still refused after the last wait: a failure may only be the refusal, so none is called not found.
+    return lookups.map((entry) => entry.error
+      ? { input: entry.input, error: new Error(`Could not look up ${entry.input}: Gloom Cloud did not answer. Try again in a minute.`) }
+      : entry);
+  } finally {
+    failedRequests.stop();
   }
 }

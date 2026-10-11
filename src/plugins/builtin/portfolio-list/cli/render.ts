@@ -28,6 +28,12 @@ import type { DataProvider } from "../../../../types/data-provider";
 import type { CliCommandContext } from "../../../../types/plugin";
 import type { MarketContext } from "../../../../cli/types";
 import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/ticker";
+import type { TickerFinancials } from "../../../../types/financials";
+import type { TickerInstrumentKind } from "../../../../types/instrument";
+import { resolveTickerInstrumentKind } from "../../../../tickers/instrument-kind";
+import { selectMarketCapitalization } from "../../../../utils/market-capitalization";
+import { chunked, mapWithConcurrency } from "../../../../utils/concurrency";
+import { liveMarketCapitalization } from "../live-valuation";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { toMarketDataContext } from "../../../../market-data/selectors";
 import { cliFreshnessFooter } from "../../../../cli/result";
@@ -82,6 +88,17 @@ export function extendedQuoteFields(extended: ExtendedSessionDisplay | null) {
     extendedChange: extended?.change ?? null,
     extendedChangePercent: extended?.changePercent ?? null,
   };
+}
+
+/** The listing a row is (SAN:EPA, as the Ticker column names it) and its company, as export fields. */
+function listingColumns(ticker: TickerRecord, quote: CollectionQuote | undefined) {
+  return { listing: listingLabel(ticker), name: savedListingName(ticker).name ?? quote?.name?.trim() ?? null };
+}
+
+/** The Chg column's move as export fields: from the close the headline price is measured against. */
+function quoteMoveColumns(headline: ActiveQuoteDisplay | null) {
+  const known = (value: number | undefined) => value != null && Number.isFinite(value) ? value : null;
+  return { quoteChange: known(headline?.change), quoteChangePercent: known(headline?.changePercent) };
 }
 
 /** The extended sessions among the rows' prints, in the order their columns go. */
@@ -254,9 +271,9 @@ export async function valuePortfolioPositions({
       const unitPrice = activeQuote ? known(await toBase(activeQuote.price, quoteCurrency)) : null;
       holdings.push({ symbol: ticker.metadata.ticker, held: false, marketValue: 0, units: 0, unitPrice });
       values.push({ ticker, quote, activeQuote, headline, extended, position: null, metrics: null, pnl: null,
-        row: { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange, shares: null, avgCost: null,
-          positionCurrency: null, quotePrice: known(headline?.price), ...extendedQuoteFields(extended), quoteCurrency: quote?.currency ?? null,
-          costBasis: null, marketValue: null, unrealizedPnl: null, baseCurrency: currency } });
+        row: { symbol: ticker.metadata.ticker, ...listingColumns(ticker, quote), exchange: ticker.metadata.exchange, shares: null, avgCost: null,
+          positionCurrency: null, quotePrice: known(headline?.price), ...quoteMoveColumns(headline), ...extendedQuoteFields(extended), quoteCurrency: quote?.currency ?? null,
+          volume: known(quote?.volume), costBasis: null, marketValue: null, unrealizedPnl: null, baseCurrency: currency } });
       continue;
     }
 
@@ -288,11 +305,12 @@ export async function valuePortfolioPositions({
       holding.units += metrics.totalShares;
       holding.unitPrice ??= valuationQuote ? known(await toBase(valuationQuote.price, quoteCurrency)) : null;
       values.push({ ticker, quote, activeQuote, headline, extended, position, metrics, pnl,
-        row: { symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange,
+        row: { symbol: ticker.metadata.ticker, ...listingColumns(ticker, quote), exchange: ticker.metadata.exchange,
           shares: metrics.totalShares, avgCost: known(position.avgCost), positionCurrency,
           priceBasis: position.priceBasis ?? null, quantityUnit: metrics.priceBasis === "percent-of-par" ? "face" : null, quotePriceBasis: quote?.priceBasis ?? null,
           // Last as shown, the regular close after it; market value and P&L are at the live price.
-          quotePrice: known(headline?.price), ...extendedQuoteFields(extended), quoteCurrency, quoteAsOf: quote?.lastUpdated ?? null,
+          quotePrice: known(headline?.price), ...quoteMoveColumns(headline), ...extendedQuoteFields(extended), quoteCurrency,
+          volume: known(quote?.volume), quoteAsOf: quote?.lastUpdated ?? null,
           costBasis: known(direction * costBasisBase), marketValue,
           unrealizedPnl: known(pnl), baseCurrency: currency, dateAcquired: position.dateAcquired ?? null,
           pnlBasis: selectedPnl.basis, brokerUnrealizedPnl: known(position.unrealizedPnl), brokerPnlCurrency: positionCurrency, brokerPnlAsOf: null } });
@@ -389,7 +407,7 @@ async function showCollectionWithMarketData(
   const isPortfolio = !!matchedPortfolio;
   const id = collection.id;
   const displayName = collection.name;
-  const structured = isPortfolio && ctx.cliOptions?.format != null && ctx.cliOptions.format !== "text";
+  const structured = ctx.cliOptions?.format != null && ctx.cliOptions.format !== "text";
   const filtered = tickers.filter((ticker) =>
     isPortfolio ? ticker.metadata.portfolios.includes(id) : ticker.metadata.watchlists.includes(id)
   );
@@ -602,29 +620,30 @@ async function showCollectionWithMarketData(
     if (unavailablePnl.size > 0) notes.push(cliStyles.muted(`P&L unavailable for ${named(unavailablePnl)}.`));
     for (const note of notes) console.log(note);
   } else {
-    const rows: string[][] = [];
-    const shown = new Map(filtered.map((ticker) => [ticker, collectionQuoteHeadline(quotes.get(ticker.metadata.ticker))]));
-    const extendedSessions = extendedSessionsOf([...shown.values()].map(({ extended }) => extended?.session));
-    for (const ticker of filtered) {
-      const quote = quotes.get(ticker.metadata.ticker);
-      const { headline, extended } = shown.get(ticker)!;
+    const watched = await valueWatchlistRows({ tickers: filtered, quotes, dataProvider, currency, toBase });
+    if (structured) {
+      ctx.printResult({
+        data: watched.map((entry) => entry.row),
+        metadata: { watchlistId: id, watchlistName: displayName, baseCurrency: currency },
+        freshness,
+      });
+      return;
+    }
+    const extendedSessions = extendedSessionsOf(watched.map(({ extended }) => extended?.session));
+    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap }) => {
       const priceText = quote && headline
         ? colorBySign(formatMarketPriceWithCurrency(headline.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), headline.change)
         : "—";
       const changeText = headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
-      const marketCapText = quote?.marketCap != null
-        ? `${formatCompact(await toBase(quote.marketCap, quote.currency || ticker.metadata.currency || currency))} ${currency}`
-        : "—";
-
-      rows.push([
+      return [
         listingLabel(ticker),
-        exchangeShortName(quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || "—",
+        venue ?? "—",
         priceText,
         changeText,
         ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory),
-        marketCapText,
-      ]);
-    }
+        marketCap == null ? "—" : `${formatCompact(marketCap)} ${currency}`,
+      ];
+    });
 
     console.log(renderTable(
       [
@@ -638,6 +657,138 @@ async function showCollectionWithMarketData(
       ],
       rows,
     ));
+    const notes = marketCapNotes(watched);
+    if (notes.length > 0) console.log(["", ...notes.map((note) => cliStyles.muted(note))].join("\n"));
   }
   if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
+}
+
+/** One watchlist row: the quote as the table shows it, the market cap in the base currency, and the `--json` and `--csv` row. */
+interface WatchlistRowValue {
+  ticker: TickerRecord;
+  quote: CollectionQuote | undefined;
+  headline: ActiveQuoteDisplay | null;
+  extended: ExtendedSessionDisplay | null;
+  kind: TickerInstrumentKind;
+  /** The Exchange column: the quote's venue, else the saved one. */
+  venue: string | null;
+  marketCap: number | null;
+  row: Record<string, unknown>;
+}
+
+/** Financials requested at once, the most the app asks for at a time. */
+const FINANCIALS_BATCH_SIZE = 64;
+/** Financials asked for one at a time, at most this many at once, from a source without batches. */
+const FINANCIALS_CONCURRENCY = 8;
+
+/**
+ * The financials of the listings whose quote carries no market cap, through
+ * the same batched request the watchlist pane makes. A lightweight quote, as
+ * US listings are served, leaves the capitalization to the fundamentals.
+ */
+async function loadMarketCapFinancials(
+  tickers: readonly TickerRecord[],
+  quotes: ReadonlyMap<string, CollectionQuote>,
+  dataProvider: Pick<DataProvider, "getTickerFinancials" | "getTickerFinancialsBatch">,
+): Promise<Map<string, TickerFinancials>> {
+  const needed = tickers.filter((ticker) => !selectMarketCapitalization(quotes.get(ticker.metadata.ticker), undefined));
+  const financials = new Map<string, TickerFinancials>();
+  if (needed.length === 0) return financials;
+  const targets = needed.map((ticker) => ({ symbol: ticker.metadata.ticker, exchange: ticker.metadata.exchange }));
+  if (dataProvider.getTickerFinancialsBatch) {
+    await Promise.all(chunked(targets, FINANCIALS_BATCH_SIZE).map(async (batch) => {
+      const results = await dataProvider.getTickerFinancialsBatch!(batch).catch(() => []);
+      batch.forEach((target, index) => {
+        const value = (results.find((result) => result.target === target) ?? results[index])?.financials;
+        if (value) financials.set(target.symbol, value);
+      });
+    }));
+    return financials;
+  }
+  await mapWithConcurrency(targets, FINANCIALS_CONCURRENCY, async (target) => {
+    const value = await dataProvider.getTickerFinancials(target.symbol, target.exchange).catch(() => null);
+    if (value) financials.set(target.symbol, value);
+  });
+  return financials;
+}
+
+/** Watchlist rows as `watchlist show` prints them, with the market cap the watchlist pane shows. */
+async function valueWatchlistRows({
+  tickers,
+  quotes,
+  dataProvider,
+  currency,
+  toBase,
+}: {
+  tickers: readonly TickerRecord[];
+  quotes: ReadonlyMap<string, CollectionQuote>;
+  dataProvider: Pick<DataProvider, "getTickerFinancials" | "getTickerFinancialsBatch">;
+  currency: string;
+  toBase: (value: number, fromCurrency: string) => Promise<number>;
+}): Promise<WatchlistRowValue[]> {
+  const financials = await loadMarketCapFinancials(tickers, quotes, dataProvider);
+  const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
+  const values: WatchlistRowValue[] = [];
+  for (const ticker of tickers) {
+    const symbol = ticker.metadata.ticker;
+    const quote = quotes.get(symbol);
+    const snapshot = financials.get(symbol);
+    const { headline, extended } = collectionQuoteHeadline(quote);
+    const cap = liveMarketCapitalization(quote, snapshot?.fundamentals) ?? liveMarketCapitalization(snapshot?.quote, snapshot?.fundamentals);
+    const marketCap = cap ? known(await toBase(cap.value, cap.currency)) : null;
+    const kind = resolveTickerInstrumentKind(ticker, { quote: quote ?? snapshot?.quote });
+    const venue = exchangeShortName(quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || null;
+    values.push({
+      ticker, quote, headline, extended, kind, venue, marketCap,
+      row: {
+        symbol,
+        ...listingColumns(ticker, quote),
+        exchange: venue,
+        kind,
+        currency: quote?.currency || ticker.metadata.currency || null,
+        price: known(headline?.price),
+        change: known(headline?.change),
+        changePercent: known(headline?.changePercent),
+        ...extendedQuoteFields(extended),
+        volume: known(quote?.volume),
+        marketCap,
+        marketCapCurrency: currency,
+        quoteAsOf: known(quote?.lastUpdated),
+      },
+    });
+  }
+  return values;
+}
+
+/** Kinds of listing that have no market cap at all, as a note names them. */
+const NO_MARKET_CAP: Partial<Record<TickerInstrumentKind, string>> = {
+  fund: "funds",
+  index: "indices",
+  currency: "currencies",
+  future: "futures",
+  option: "options",
+  bond: "bonds",
+};
+const NOTE_NAMES = 10;
+
+function namedList(labels: readonly string[]): string {
+  const more = labels.length - NOTE_NAMES;
+  return `${labels.slice(0, NOTE_NAMES).join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
+}
+
+/** Why a Mkt Cap cell is blank: funds and indices have none; a company or coin whose figure did not come is unavailable. */
+function marketCapNotes(rows: readonly WatchlistRowValue[]): string[] {
+  const blank = rows.filter((row) => row.marketCap == null);
+  const notes: string[] = [];
+  const byKind = new Map<string, string[]>();
+  for (const row of blank) {
+    const group = NO_MARKET_CAP[row.kind] ?? "";
+    byKind.set(group, [...byKind.get(group) ?? [], listingLabel(row.ticker)]);
+  }
+  for (const [group, labels] of byKind) {
+    if (group) notes.push(`No market cap for ${group}: ${namedList(labels)}.`);
+  }
+  const unavailable = byKind.get("");
+  if (unavailable?.length) notes.push(`Market cap unavailable for ${namedList(unavailable)}.`);
+  return notes;
 }
