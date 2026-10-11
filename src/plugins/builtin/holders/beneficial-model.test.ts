@@ -1,12 +1,15 @@
 import { expect, test } from "bun:test";
 import {
+  beneficialHolderName,
   buildBeneficialRows,
   DEFAULT_BENEFICIAL_SORT,
   disclosedStake,
   formatFilerName,
   formatPercentOfClass,
   formatPointChange,
+  formatStakeToday,
   sortBeneficialRows,
+  stakeToday,
   thirteenFAction,
 } from "./beneficial-model";
 import { beneficialCoverageNotices, beneficialListUnreadable } from "./beneficial-report";
@@ -113,4 +116,41 @@ test("filings that could not be read are a gap, not an empty list", () => {
   ]);
   expect(beneficialListUnreadable({ owners: [], coverage: { ...coverage, parsed: 0, unparsed: 12, unavailable: 12 } })).toBe(true);
   expect(beneficialListUnreadable({ owners: [], coverage: { from: "2022-10-09", filings: 0, parsed: 0, unparsed: 0 } })).toBe(false);
+});
+
+test("a filed percent is set against today's count only when the report's own base is out of date", () => {
+  // SRS's 13D on Avis: 17.43M shares filed as 45.0% of 38.74M; Avis has 35.26M today.
+  const srs = stakeToday({ shares: 17_430_882, percentOfClass: 45 }, 35_258_652);
+  expect(srs && formatStakeToday(srs)).toBe("about 49.4% on 35.26M sh today");
+  // Within the filed percent's rounding: 75,179 of 35.26M is 0.21%, filed as 0.2%.
+  expect(stakeToday({ shares: 75_179, percentOfClass: 0.2 }, 35_258_652)).toBeNull();
+  expect(stakeToday({ shares: 1_566_173, percentOfClass: 4.5 }, 35_258_652)).toBeNull();
+  // A base three times today's count is another class or unit, never this one.
+  expect(stakeToday({ shares: 1_000_000, percentOfClass: 10 }, 3_000_000)).toBeNull();
+  expect(stakeToday({ shares: 0, percentOfClass: 0 }, 35_258_652)).toBeNull();
+  expect(stakeToday({ shares: 17_430_882, percentOfClass: 45 }, null)).toBeNull();
+});
+
+test("a row is named by the reporting person whose stake it shows, in the filer's spelling when the cover shouts", () => {
+  // A text filing names the EDGAR filer; the cover's person is the holder.
+  expect(beneficialHolderName({
+    filerName: "VANGUARD GROUP INC", filerCik: "0000102909",
+    reportingPersons: [{ name: "The Vanguard Group", cik: "0000102909", percentOfClass: 4.46, shares: 1_592_037 }],
+  })).toBe("The Vanguard Group");
+  expect(beneficialHolderName({
+    filerName: "SRS Investment Management, LLC", filerCik: "0001503174",
+    reportingPersons: [
+      { name: "KARTHIK R. SARMA", cik: null, percentOfClass: 45, shares: 17_430_882 },
+      { name: "SRS INVESTMENT MANAGEMENT, LLC", cik: "0001503174", percentOfClass: 45, shares: 17_430_882 },
+    ],
+  })).toBe("SRS Investment Management, LLC");
+  // The largest stake leads a group; a report with no persons keeps the filer.
+  expect(beneficialHolderName({
+    filerName: "Jane Street Group, LLC", filerCik: "0001595888",
+    reportingPersons: [
+      { name: "Jane Street Capital, LLC", cik: null, percentOfClass: 0.2, shares: 72_800 },
+      { name: "JANE STREET GROUP, LLC", cik: null, percentOfClass: 0.2, shares: 75_179 },
+    ],
+  })).toBe("Jane Street Group, LLC");
+  expect(beneficialHolderName({ filerName: "Goldman Sachs Group Inc", filerCik: null, reportingPersons: [] })).toBe("Goldman Sachs Group Inc");
 });

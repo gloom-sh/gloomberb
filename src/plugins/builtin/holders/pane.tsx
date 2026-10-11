@@ -40,7 +40,7 @@ import {
   sortRows,
   VIEW_TABS,
 } from "./table-model";
-import { loadHolderData } from "./client";
+import { classSharesToday, loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import { BeneficialOwnersView } from "./beneficial-view";
 import { useIssuerListing } from "../shared/ticker-request";
@@ -84,6 +84,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   useTickerQuoteStream(ticker ? symbol : null, ticker, { surface: "detail", visible: false, weight: 30 });
   const liveMarketCap = holderStakeMarketCap(financials?.quote?.marketCap, financials?.quote?.currency, currency);
   const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
+  // Today's share count, which a 13D/13G report's own base is checked against.
+  const sharesOutstanding = classSharesToday(financials);
   const rows = useMemo(() => buildRows(data), [data]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
   // Change columns only when the source reports a change; otherwise they read "-" on every row.
@@ -342,6 +344,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           listing={issuerListing}
           holderRows={rows}
           fundMatches={fundMatches}
+          sharesOutstanding={sharesOutstanding}
           onCycleView={toggleView}
           onRefreshHolders={refresh}
         />

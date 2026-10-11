@@ -137,6 +137,7 @@ import {
 import { formatPercentHeld, holderStakeMarketCap, holderValueCurrency } from "../../plugins/builtin/holders/format";
 import { holderReportColumns, holderReportNotices, holderReportRows, holderReportUnits } from "../../plugins/builtin/holders/report-rows";
 import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
+import { classSharesToday } from "../../plugins/builtin/holders/client";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
 import {
   BENEFICIAL_REPORT_COLUMNS,
@@ -144,6 +145,7 @@ import {
   beneficialListComplete,
   beneficialListFacts,
   beneficialListUnreadable,
+  beneficialReportLegend,
   beneficialRouteForm,
   buildBeneficialReportRows,
   HOLDER_FORMS,
@@ -996,14 +998,18 @@ async function printBeneficialOwners(
   const quotePromise = loadListingQuote(market.dataProvider, listing);
   const abroad = nonUsSecListingVenue(symbol, exchange) ? listingIdentity(listing, await quotePromise) : null;
   const request = { form: beneficialRouteForm(form), history, listing: { exchange, name: abroad?.name ?? undefined } };
-  const [payload, holders, quote] = await Promise.all([
+  const [payload, holders, quote, financials] = await Promise.all([
     loadForListing(listing, market, ctx, () => fetchBeneficialOwners(symbol, request)),
     market.dataProvider.getHolders?.(symbol, exchange).catch(() => null) ?? null,
     quotePromise,
+    // Today's share count, which the filed percents are set against.
+    market.dataProvider.getTickerFinancials(symbol, exchange).catch(() => null),
   ]);
   const identity = listingIdentity(listing, quote);
-  const rows = buildBeneficialReportRows(payload, { history, holders });
+  const sharesOutstanding = classSharesToday(financials);
+  const rows = buildBeneficialReportRows(payload, { history, holders, sharesOutstanding });
   const notices = beneficialCoverageNotices(payload.coverage);
+  const legend = beneficialReportLegend(rows, sharesOutstanding);
   ctx.printResult({
     data: rows,
     ...(notices.length ? { warnings: notices } : {}),
@@ -1016,12 +1022,16 @@ async function printBeneficialOwners(
       asOf: payload.asOf,
       coverage: payload.coverage,
       complete: beneficialListComplete(payload),
+      sharesOutstanding,
     },
   }, {
     heading: `${listingHeading(identity)}${cliStyles.muted(beneficialListFacts(payload, form, rows.length, history).map((fact) => `  ·  ${fact}`).join(""))}`,
-    textColumns: BENEFICIAL_REPORT_COLUMNS,
+    // Text draws each column as the HDS report does; CSV and JSON keep the raw values.
+    textColumns: BENEFICIAL_REPORT_COLUMNS.map((column) => ({ ...column, format: column.textFormat ?? column.format })),
+    ...(legend ? { footnote: legend } : {}),
     columns: [
-      ...BENEFICIAL_REPORT_COLUMNS,
+      ...BENEFICIAL_REPORT_COLUMNS.map(({ key, header, align }) => ({ key, header, ...(align ? { align } : {}) })),
+      { key: "otherPersons", header: "Other persons" },
       { key: "status", header: "Status" },
       { key: "filerCik", header: "Filer CIK" },
       { key: "accessionNumber", header: "Accession" },

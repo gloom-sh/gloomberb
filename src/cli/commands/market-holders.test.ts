@@ -22,7 +22,13 @@ function harness() {
     const payload = carBeneficialOwnersPayload({ history: parsed.searchParams.get("history") === "1" });
     return new Response(JSON.stringify(payload), { headers: { "Content-Type": "application/json" } });
   });
-  const cli = createTestCliContext({ dataProvider: { getHolders: async () => HOLDER_DATA } });
+  const cli = createTestCliContext({
+    dataProvider: {
+      getHolders: async () => HOLDER_DATA,
+      // Fewer shares today than when the reports were filed.
+      getTickerFinancials: async () => ({ fundamentals: { sharesOutstanding: 32_000_000 } }),
+    },
+  });
   return { ...cli, requests };
 }
 
@@ -36,6 +42,14 @@ test("holders --form lists the beneficial owners, --history every report, and th
     ["Jane Street Group, LLC", "2026-05-11"], ["Pentwater Capital Management LP", "2026-05-07"],
   ]);
   expect(history.find((row) => row.filer === "Morgan Stanley")?.thirteenF).toBe("NEW");
+
+  // The percent stays as filed; the same shares over today's count sit beside it.
+  const srs = history.find((row) => row.filer === "SRS Investment Management, LLC")!;
+  expect([srs.percentOfClass, srs.percentToday, srs.otherPersons]).toEqual([49.3, 54.47, 2]);
+  expect(history.find((row) => row.status === "exited")?.percentToday).toBeNull();
+  expect(run.printed[0]!.options?.footnote).toBe(
+    "% Class is as filed; % Today is the same shares over 32M shares outstanding today. +N after a name: other reporting persons on the same report.",
+  );
 
   await holders.execute(["CAR"], run.context);
   expect(run.requests).toHaveLength(1);

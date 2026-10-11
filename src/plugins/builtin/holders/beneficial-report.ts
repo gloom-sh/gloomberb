@@ -5,6 +5,7 @@ import {
   buildBeneficialRows,
   DEFAULT_BENEFICIAL_SORT,
   formatClassPercent,
+  formatFilerName,
   formatOwnerShares,
   formatPointChange,
   stakeMarker,
@@ -13,6 +14,7 @@ import {
   type BeneficialSortPreference,
 } from "./beneficial-model";
 import { buildRows } from "./table-model";
+import { formatCompact } from "../../../utils/format";
 
 /** What `holders --form` lists: the 13F table, or the 13D/13G beneficial owners. */
 export type HolderForm = "13f" | "13d" | "13g" | "all";
@@ -27,9 +29,23 @@ export function beneficialRouteForm(form: Exclude<HolderForm, "13f">): Beneficia
   return form === "13d" ? "13D" : form === "13g" ? "13G" : "all";
 }
 
-/** Text columns for the 13D/13G rows; CSV and JSON keep the raw values. */
+const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
+
+/**
+ * Columns for the 13D/13G rows. `textFormat` is what text prints (`holders
+ * --form` and `fn HDS --form`); `fn HDS --csv` reads `format`, and `holders
+ * --csv` and JSON keep the raw values. `% Class` is as filed; `% Today` is
+ * the same shares over today's count, only where that count is no longer the
+ * report's base.
+ */
 export const BENEFICIAL_REPORT_COLUMNS = [
-  { key: "filer", header: "Filer", maxWidth: 32 },
+  {
+    key: "filer",
+    header: "Filer",
+    maxWidth: 32,
+    // `+N` counts the report's other reporting persons; a long name gives way before it does.
+    textFormat: (value: unknown, row: Record<string, unknown>) => formatFilerName(String(value ?? ""), num(row.otherPersons) ?? 0, 32),
+  },
   { key: "form", header: "Form" },
   {
     key: "percentOfClass",
@@ -40,6 +56,13 @@ export const BENEFICIAL_REPORT_COLUMNS = [
       if (typeof value !== "number") return marker || "-";
       return marker ? `${formatClassPercent(value)} ${marker}` : formatClassPercent(value);
     },
+  },
+  {
+    key: "percentToday",
+    header: "% Today",
+    align: "right" as const,
+    format: (value: unknown) => num(value) == null ? "" : `${num(value)!.toFixed(2)}%`,
+    textFormat: (value: unknown) => num(value) == null ? "" : `about ${formatClassPercent(num(value)!)}`,
   },
   {
     key: "changePoints",
@@ -57,6 +80,28 @@ export const BENEFICIAL_REPORT_COLUMNS = [
   { key: "filingDate", header: "Filed" },
   { key: "thirteenF", header: "13F", align: "right" as const, format: (value: unknown) => typeof value === "string" ? value : "-" },
 ];
+
+/** The 13D/13G columns these rows fill: `% Today` only when a report's base is no longer today's count. */
+export function beneficialReportColumns(rows: readonly BeneficialReportRow[]): typeof BENEFICIAL_REPORT_COLUMNS {
+  const today = rows.some((row) => row.percentToday != null);
+  return BENEFICIAL_REPORT_COLUMNS.filter((column) => today || column.key !== "percentToday");
+}
+
+/**
+ * The legend under the 13D/13G table, one line: the percent is as filed, what
+ * `% Today` divides by, and what `+N` after a name counts.
+ */
+export function beneficialReportLegend(
+  rows: readonly BeneficialReportRow[],
+  sharesOutstanding: number | null | undefined,
+): string | null {
+  if (rows.length === 0) return null;
+  const today = sharesOutstanding != null && rows.some((row) => row.percentToday != null)
+    ? `; % Today is the same shares over ${formatCompact(sharesOutstanding)} shares outstanding today`
+    : "";
+  const others = rows.some((row) => row.otherPersons > 0) ? " +N after a name: other reporting persons on the same report." : "";
+  return `% Class is as filed${today}.${others}`;
+}
 
 const filings = (count: number) => `${count} ${count === 1 ? "filing" : "filings"}`;
 
@@ -114,13 +159,20 @@ export function buildBeneficialReportRows(
     history = false,
     holders = null,
     sort = DEFAULT_BENEFICIAL_SORT,
-  }: { history?: boolean; holders?: HolderData | null; sort?: BeneficialSortPreference } = {},
+    sharesOutstanding = null,
+  }: {
+    history?: boolean;
+    holders?: HolderData | null;
+    sort?: BeneficialSortPreference;
+    /** Today's shares outstanding in the class's own unit, for `percentToday`. */
+    sharesOutstanding?: number | null;
+  } = {},
 ): BeneficialReportRow[] {
   const holderRows = buildRows(holders);
   if (history) {
     const filings = [...(payload.filings ?? payload.owners)]
       .sort((left, right) => right.filingDate.localeCompare(left.filingDate));
-    return buildBeneficialRows(filings, holderRows).map(beneficialReportRow);
+    return buildBeneficialRows(filings, holderRows, undefined, sharesOutstanding).map(beneficialReportRow);
   }
-  return sortBeneficialRows(buildBeneficialRows(payload.owners, holderRows), sort).map(beneficialReportRow);
+  return sortBeneficialRows(buildBeneficialRows(payload.owners, holderRows, undefined, sharesOutstanding), sort).map(beneficialReportRow);
 }

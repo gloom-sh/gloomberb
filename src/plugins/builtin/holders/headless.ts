@@ -12,10 +12,11 @@ import { fetchBeneficialOwners, type BeneficialOwnersRequest } from "./beneficia
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import type { BeneficialColumnId } from "./beneficial-model";
 import {
-  BENEFICIAL_REPORT_COLUMNS,
   beneficialCoverageNotices,
   beneficialListComplete,
   beneficialListFacts,
+  beneficialReportColumns,
+  beneficialReportLegend,
   beneficialRouteForm,
   buildBeneficialReportRows,
   HOLDER_FORMS,
@@ -44,6 +45,8 @@ const BENEFICIAL_SORT_COLUMNS: Record<string, BeneficialColumnId> = {
 interface HolderSnapshot {
   data: HolderData;
   marketCap?: number;
+  /** Today's shares outstanding, which a 13D/13G percent of class is set against. */
+  sharesOutstanding?: number | null;
 }
 
 export interface HoldersHeadlessDependencies {
@@ -143,6 +146,7 @@ export function createHoldersHeadless(
           // The 13F column is a join; the 13D/13G rows stand without it.
           dependencies.loadSnapshot(symbol, args, ctx).catch(() => null),
         ]);
+        const sharesOutstanding = snapshot?.sharesOutstanding ?? null;
         const rows = buildBeneficialReportRows(payload, {
           history,
           holders: snapshot?.data ?? null,
@@ -150,10 +154,12 @@ export function createHoldersHeadless(
             columnId: BENEFICIAL_SORT_COLUMNS[String(args.options.sort)] ?? "percentOfClass",
             direction: args.options.order === "asc" ? "asc" : "desc",
           },
+          sharesOutstanding,
         });
         const limited = rows.slice(0, Number(args.options.limit));
+        const legend = beneficialReportLegend(limited, sharesOutstanding);
         return {
-          columns: BENEFICIAL_REPORT_COLUMNS,
+          columns: beneficialReportColumns(limited),
           rows: limited,
           // Reports that could not be read this time are missing from the rows.
           complete: beneficialListComplete(payload),
@@ -166,8 +172,10 @@ export function createHoldersHeadless(
             history,
             asOf: payload.asOf,
             coverage: payload.coverage,
+            sharesOutstanding,
             notices: [
               [payload.companyName || symbol, ...beneficialListFacts(payload, form, rows.length, history)].join(" · "),
+              ...(legend ? [legend] : []),
               ...beneficialCoverageNotices(payload.coverage),
             ],
             returned: limited.length,
