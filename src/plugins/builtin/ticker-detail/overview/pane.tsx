@@ -16,7 +16,7 @@ import type { OverviewFunctionLink } from "./types";
 /** Registered by the chart composer, in the same plugin as this tab. */
 const CHART_TAB_ID = "chart";
 
-export function OverviewResearchTab({ width, focused }: TickerResearchTabProps) {
+export function OverviewResearchTab({ width, height, focused }: TickerResearchTabProps) {
   const { ticker, financials } = usePaneTicker();
   const dispatch = useAppDispatch();
   const paneId = useOptionalPaneInstanceId();
@@ -37,6 +37,7 @@ export function OverviewResearchTab({ width, focused }: TickerResearchTabProps) 
   return (
     <OverviewTab
       width={width}
+      height={height}
       focused={focused}
       ticker={ticker}
       financials={financials}

@@ -30,7 +30,7 @@ import {
   formatFractionPercentCell,
   formatPriceRange,
 } from "../helpers";
-import { cliStyles, colorBySign, renderStats } from "../../utils/cli-output";
+import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
   analystTargetCurrency,
@@ -43,7 +43,9 @@ import {
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
-import { fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
+import { cliFuturesContract, futuresContractMetrics, fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
+import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
+import { futuresSettleText } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
   chainWithModelFigures,
@@ -145,7 +147,11 @@ import {
 const VALID_RANGES = new Set<TimeRange>(TIME_RANGES);
 const VALID_NEWS_FEEDS = new Set<NewsFeed>(["latest", "top", "breaking", "ticker", "sector", "topic"]);
 
-type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & { error: string | null };
+type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
+  error: string | null;
+  /** A futures row's contract, terms and latest confirmed settlement, as `ticker` reads them. */
+  futuresContract?: FuturesContractTermsPayload;
+};
 type FinancialsCliData = TickerFinancials & {
   symbol: string;
   exchange: string;
@@ -506,13 +512,18 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const answers = await Promise.all(results.map((result, index) => answerQuote(result, listingOf(result, index), market, request, ctx.cliOptions.refresh)));
     const failed = answers[0]?.failure;
     if (listings.length === 1 && failed) ctx.fail(failed.message, failed.details);
+    // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table.
+    const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
+      ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
+      : null));
     // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
-    const data = answers.map(({ result, listing, failure }) => ({
+    const data = answers.map(({ result, listing, failure }, index) => ({
       target: result.target,
       listing: listingMetadata(listingIdentity(listing, result.quote)),
       // The figures the table shows, beside the quote as the source sent it.
       ...getQuoteSessionFields(result.quote),
       quote: result.quote,
+      ...contracts[index] ? { futuresContract: contracts[index] } : {},
       error: failure?.oneLine ?? errorMessage(result.error),
       ...yieldIndexFields(result),
     }));
@@ -531,10 +542,26 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       freshness: quotesFreshness(data.map((row) => row.quote)),
     }, {
       rows: quoteRows,
+      details: quoteFuturesContractText,
       columns,
       ...(yieldsOnly ? { textColumns: columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column) } : {}),
     });
   });
+}
+
+/**
+ * Under the table, each futures row's Settle line and Contract block, worded
+ * as `ticker` words them. Several symbols name theirs in the block's title.
+ */
+function quoteFuturesContractText(data: QuoteCliRecord[]): string {
+  return data.flatMap((row) => {
+    const terms = row.futuresContract;
+    if (!terms || !row.quote) return [];
+    const settle: [string, string] = ["Settle", futuresSettleText(terms, row.quote)];
+    const contract = futuresContractMetrics(terms, row.quote.symbol || row.target.symbol);
+    if (data.length > 1) return [`${renderSection(`${row.target.symbol} Contract`)}\n${renderStats([settle, ...contract])}`];
+    return [[renderStats([settle]), ...contract.length ? ["", renderSection("Contract"), renderStats(contract)] : []].join("\n")];
+  }).join("\n\n");
 }
 
 /**

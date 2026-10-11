@@ -1,4 +1,4 @@
-import type { FuturesContractSpec, FuturesCurveAsOfPayload, FuturesCurvePayload, FuturesContract } from "../../../api-client/futures-curve";
+import type { FuturesCurveAsOfPayload, FuturesCurvePayload, FuturesContract } from "../../../api-client/futures-curve";
 import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/model";
 import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
@@ -107,13 +107,6 @@ export function curveContractCode(symbol: string): string {
  */
 export function curveSpreadLabel(slope: Pick<FuturesCurvePayload["slope"], "frontSymbol" | "nextSymbol">): string {
   return slope.frontSymbol && slope.nextSymbol ? `${curveContractCode(slope.nextSymbol)}-${curveContractCode(slope.frontSymbol)}` : "M2-M1";
-}
-
-/** A tick in the root's precision and what it makes on one contract: "0.10 = $10.00", "0.015625 = $15.625". */
-export function curveTickText(spec: Pick<FuturesContractSpec, "tick" | "tickValue">): string {
-  const tick = spec.tick.toFixed(Math.max(2, tickDecimals(spec.tick)));
-  const value = spec.tickValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: Math.max(2, tickDecimals(spec.tickValue)) });
-  return `${tick} = $${value}`;
 }
 
 /**

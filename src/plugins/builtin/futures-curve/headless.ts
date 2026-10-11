@@ -1,8 +1,9 @@
 import type { FuturesContract, FuturesCurvePayload } from "../../../api-client/futures-curve";
+import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, contractBasis, curveAsOfDate, curveBasisPercent, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpreadLabel, curveTickText, curveTimestamp, curveUnitLabel, normalizeCurveRoot, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
+import { basisSpotSymbol, contractBasis, curveAsOfDate, curveBasisPercent, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpreadLabel, curveTimestamp, curveUnitLabel, normalizeCurveRoot, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
 
 /** The root a report shows when none is given. */
 const DEFAULT_ROOT = "ES";
@@ -56,17 +57,14 @@ function contractColumns(root: string, settlementDate: string | null, options: {
   ];
 }
 
-/** What one contract is: the terms a hedge is sized on, once rather than on every row. */
+/** What one contract is: the terms a hedge is sized on, once rather than on every row, worded as `ticker` words them. */
 function specEntries(data: FuturesCurvePayload): HeadlessPaneEntry[] {
   const spec = data.spec;
   if (!spec) return [];
-  return [
-    { key: "unit", label: "Unit", value: spec.unit },
-    { key: "size", label: "Contract size", value: spec.size },
-    { key: "tick", label: "Tick", value: spec.tick, formatted: curveTickText(spec) },
-    { key: "pointValue", label: "Point value", value: spec.pointValue, formatted: `$${spec.pointValue.toLocaleString("en-US")}` },
-    { key: "settlement", label: "Settlement", value: spec.settlement, formatted: spec.settlement === "cash" ? "cash settled" : "physical delivery" },
-  ];
+  return futuresSpecLines(spec).map((line) => {
+    const value = spec[line.key as keyof typeof spec];
+    return { key: line.key, label: line.label, value, ...line.value === String(value) ? {} : { formatted: line.value } };
+  });
 }
 
 export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {

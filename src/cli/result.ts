@@ -64,6 +64,8 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
   heading?: string;
   /** Text-mode line printed under the rows, such as where a listing stops. Not printed with no rows: say it in `empty`. */
   footnote?: string;
+  /** Text-mode block printed under the rows and footnote, for figures about a row that are not columns. */
+  details?: (data: T) => string;
   /**
    * The row key holding each row's date, which makes the rows a dated series:
    * `--tail` keeps the newest rows whichever way the series runs, and a
@@ -391,7 +393,8 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   }
   const table = renderTextRows(rows as Row[], result.data, renderOptions);
   const notes = [window.note, renderOptions.footnote].filter((note): note is string => !!note);
-  const body = [table, ...notes.map((note) => cliStyles.muted(note))].join("\n");
+  const details = renderOptions.details?.(result.data) ?? "";
+  const body = [table, ...notes.map((note) => cliStyles.muted(note)), ...details ? ["", details] : []].join("\n");
   return withHeading(summary ? `${summary}\n\n${body}` : body);
 }
 

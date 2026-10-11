@@ -7,6 +7,7 @@ import { FinancialAnalysisPane } from "./financials/pane";
 import { HistoricalPricesPane } from "./data-panes/historical-prices";
 import { ReturnsPane } from "./data-panes/returns-pane";
 import { TickerResearchPane } from "./pane";
+import { futuresContractCache } from "./overview/futures-contract";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless } from "./headless";
@@ -24,10 +25,12 @@ import {
 
 export const tickerDetailModule: PluginModule = {
   setup(ctx) {
+    futuresContractCache.attach(ctx.persistence);
     for (const tab of TICKER_RESEARCH_BUILTIN_TABS) {
       ctx.registerTickerResearchTab(tab);
     }
   },
+  dispose() { futuresContractCache.reset(); },
 
   panes: [
     {

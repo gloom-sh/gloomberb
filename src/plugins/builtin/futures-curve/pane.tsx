@@ -4,6 +4,7 @@ import { fitChartTableColumns } from "../../../components/chart-table";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { FuturesContract } from "../../../api-client/futures-curve";
+import { futuresTickText } from "../../../market-data/futures-contract";
 import { useAsyncResource, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
 import { usePaneInstance, usePaneTitle } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -16,7 +17,7 @@ import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { getCachedFuturesCurve, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpreadLabel, curveTickText, curveTimestamp, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges } from "./model";
+import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpreadLabel, curveTimestamp, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -146,7 +147,7 @@ function FuturesCurveView({ width, height, focused, root }: PaneProps & { root: 
     // Named by the contracts it subtracts: the front is the first month the market trades, not always the first row.
     { id: "spread", label: curveSpreadLabel(data.slope), value: data.slope.value == null ? "--" : curvePrice(data.slope.value, root),
       detail: [data.slope.state, curveRank(data.slope.percentile, data.slope.samples), slopeDate].filter(Boolean).join(" · ") },
-    ...data.spec ? [{ id: "contract", label: "Contract", value: data.spec.size, detail: `tick ${curveTickText(data.spec)}` }] : [],
+    ...data.spec ? [{ id: "contract", label: "Contract", value: data.spec.size, detail: `tick ${futuresTickText(data.spec)}` }] : [],
   ] : [];
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
   // The query bar takes one row below the tabs, and a refused date one more.
