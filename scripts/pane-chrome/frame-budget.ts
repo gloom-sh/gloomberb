@@ -177,7 +177,7 @@ const SCENARIOS: Scenario[] = [
   // Tiles placed in percentages of a map laid out on the cell grid.
   cornerResize("heat map resize", "heat", "heat:float", "[data-gloom-role=heat-treemap]"),
   // A chart of a fixed height in a column of text: it follows the width only.
-  cornerResize("fear and greed resize", "fear", "fear-greed:float", "[data-gloom-role=composite-chart]"),
+  cornerResize("fear and greed resize", "fear", "fear-greed:float", "[data-gloom-role=composite-chart]", `${pane("fear-greed:float")} [data-gloom-role=composite-chart] canvas`),
   {
     name: "dock divider drag",
     fixture: "resize",
