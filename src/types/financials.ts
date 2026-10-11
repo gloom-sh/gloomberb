@@ -302,6 +302,16 @@ export interface SplitAction {
   toFactor?: number;
 }
 
+/**
+ * How a reported EPS relates to the company's statements: `gaap` is the
+ * quarter's diluted EPS as the statements report it; `adjusted` is the
+ * consensus-basis figure, which leaves out items the statements include.
+ */
+export type EarningsEpsBasis = "gaap" | "adjusted";
+
+/** A report that is out, a date the company announced, or a date projected from its past reports. */
+export type EarningsDateStatus = "reported" | "confirmed" | "projected";
+
 export interface EarningsAction {
   date: string;
   dateType?: "announcement" | "fiscal-period-end";
@@ -311,6 +321,13 @@ export interface EarningsAction {
   epsActual?: number;
   difference?: number;
   surprisePercent?: number;
+  /** Fiscal quarter end month, YYYY-MM, when the report's quarter is known. */
+  fiscalPeriod?: string;
+  /** Analysts behind `epsEstimate`, when known. */
+  epsAnalysts?: number;
+  /** Null when the basis cannot be determined; absent from sources that do not say. */
+  epsBasis?: EarningsEpsBasis | null;
+  dateStatus?: EarningsDateStatus;
 }
 
 export interface CorporateActionsData {

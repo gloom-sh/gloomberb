@@ -211,7 +211,7 @@ export class ProviderRouterCachedRoutes {
         error: `No analyst research provider available for ${ticker}`,
       };
       case "getCorporateActions": return {
-        ...tickerRoute("corporateActions-v2", "corporateActions"), request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
+        ...tickerRoute("corporateActions-v3", "corporateActions"), request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
         rank: (data: CorporateActionsData) => !hasCorporateActionsValue(data) ? 0 : data.stale || Object.values(data.coverage ?? {}).includes("unavailable") ? 1 : 2,
         acceptCached: (data: CorporateActionsData) => !data.stale && !Object.values(data.coverage ?? {}).includes("unavailable"), throwLastError: true,
         error: `No corporate actions provider available for ${ticker}`,

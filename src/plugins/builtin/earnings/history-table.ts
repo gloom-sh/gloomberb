@@ -3,10 +3,11 @@ import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
 import { datedYear, epsText, fiscalMonth, impliedText, moneyText, signedPercent, TIMING_LABEL } from "./format";
+import { epsBasisShort } from "../shared/earnings-report";
 import type { HistoryRow } from "./history-model";
 
 type HistoryColumnId =
-  | "date" | "when" | "period" | "epsEstimate" | "epsActual" | "epsSurprise"
+  | "date" | "when" | "period" | "epsEstimate" | "analysts" | "epsActual" | "basis" | "epsSurprise"
   | "revenueEstimate" | "revenueActual" | "revenueSurprise" | "implied" | "move" | "ratio";
 
 export type HistoryColumn = DataTableColumn & { id: HistoryColumnId };
@@ -16,7 +17,9 @@ const ALL_COLUMNS: HistoryColumn[] = [
   { id: "when", label: "WHEN", width: 4, align: "left" },
   { id: "period", label: "QTR", width: 7, align: "left" },
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
+  { id: "analysts", label: "ESTS", width: 4, align: "right" },
   { id: "epsActual", label: "EPS ACT", width: 7, align: "right" },
+  { id: "basis", label: "BASIS", width: 5, align: "left" },
   { id: "epsSurprise", label: "EPS SURP", width: 8, align: "right" },
   { id: "revenueEstimate", label: "SALES EST", width: 9, align: "right" },
   { id: "revenueActual", label: "SALES ACT", width: 9, align: "right" },
@@ -27,7 +30,9 @@ const ALL_COLUMNS: HistoryColumn[] = [
 ];
 
 /** Dropped first when the pane is narrow: the table keeps dates, the two moves and EPS. */
-const DROP_ORDER: HistoryColumnId[] = ["period", "revenueSurprise", "ratio", "revenueEstimate", "when", "epsSurprise", "revenueActual", "epsEstimate"];
+const DROP_ORDER: HistoryColumnId[] = [
+  "period", "analysts", "revenueSurprise", "ratio", "revenueEstimate", "when", "basis", "epsSurprise", "revenueActual", "epsEstimate",
+];
 
 /** The sales columns and what fills them; a company with no revenue on record shows none of them. */
 const SALES_COLUMNS: Partial<Record<HistoryColumnId, (row: HistoryRow) => number | null>> = {
@@ -64,8 +69,14 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn): DataT
       return { text: fiscalMonth(row.fiscalPeriod), color: dim };
     case "epsEstimate":
       return { text: epsText(row.epsEstimate), color: dim };
+    case "analysts":
+      return { text: row.epsAnalysts == null ? "--" : String(row.epsAnalysts), color: dim };
     case "epsActual":
       return { text: epsText(row.epsActual), color: colors.text };
+    case "basis":
+      return row.epsActual == null
+        ? { text: "--", color: dim }
+        : { text: epsBasisShort(row.epsBasis), color: row.epsBasis ? colors.textMuted : dim };
     case "epsSurprise":
       return signed(row.epsSurprise);
     case "revenueEstimate":

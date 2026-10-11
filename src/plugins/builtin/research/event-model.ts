@@ -2,6 +2,7 @@ import type {
   AnalystEstimateRecord,
   AnalystResearchData,
   CorporateActionsData,
+  EarningsDateStatus,
   FinancialStatement,
   TickerFinancials,
 } from "../../../types/financials";
@@ -13,6 +14,14 @@ import {
   formatPercentRaw,
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
+import {
+  earningsDateStatus,
+  earningsEpsBasis,
+  epsBasisName,
+  epsSurprise,
+  inFiscalMonth,
+  type EpsBasisName,
+} from "../shared/earnings-report";
 
 export const CORPORATE_ACTION_COVERAGE = "Split-feed factors may include spinoff price adjustments. Merger terms, spinoff distributions, and security conversions are not covered.";
 
@@ -37,7 +46,11 @@ export interface EventRow {
   epsEstimate?: number;
   epsDifference?: number;
   surprisePercent?: number;
-  epsBasis?: "provider-unspecified";
+  /** A reported figure's basis; the same quarter is named the same way in ERN. */
+  epsBasis?: EpsBasisName;
+  /** Analysts behind `epsEstimate`, when known. */
+  epsAnalysts?: number;
+  dateStatus?: EarningsDateStatus;
   providerId?: string;
   fetchedAt?: string;
   /** Keep the supplied ranges and comparison inputs available in detail/export. */
@@ -83,9 +96,9 @@ function sortedQuarterlyStatements(
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** The quarter by the month it ends in, e.g. "Jun 2026". */
-function quarterLabel(statement: FinancialStatement | undefined): string {
-  const match = /^(\d{4})-(\d{2})/.exec(statement?.date ?? "");
+/** The quarter by the month it ends in, e.g. "Jun 2026", from a date or a YYYY-MM period. */
+function quarterLabel(date: string | undefined): string {
+  const match = /^(\d{4})-(\d{2})/.exec(date ?? "");
   const month = match ? MONTHS[Number(match[2]) - 1] : undefined;
   return match && month ? `${month} ${match[1]}` : "-";
 }
@@ -94,10 +107,14 @@ function statementForEarningsDate(
   quarterlyStatements: readonly FinancialStatement[],
   earning: CorporateActionsData["earnings"][number],
 ): FinancialStatement | undefined {
-  // Announcement proximity cannot establish which quarter a result describes.
-  // Vendor period aliases are usable only when the statement retains that identity.
-  if (earning.dateType !== "fiscal-period-end") return undefined;
-  const matches = quarterlyStatements.filter((statement) => statement.date === earning.date || statement.providerDate === earning.date);
+  // Announcement proximity cannot establish which quarter a result describes:
+  // only a stated fiscal quarter can. Vendor period aliases are usable only
+  // when the statement retains that identity.
+  const matches = earning.fiscalPeriod
+    ? quarterlyStatements.filter((statement) => inFiscalMonth(statement.date, earning.fiscalPeriod))
+    : earning.dateType === "fiscal-period-end"
+      ? quarterlyStatements.filter((statement) => statement.date === earning.date || statement.providerDate === earning.date)
+      : [];
   return matches.length === 1 ? matches[0] : undefined;
 }
 
@@ -156,13 +173,14 @@ function estimateValue(pair: EstimatePair): string {
 
 /**
  * The TTM row sits under the reported quarters, so its EPS sums those rows'
- * provider EPS (often adjusted) rather than statement GAAP EPS whenever the
- * four statement quarters each have a reported row.
+ * EPS (often adjusted) rather than statement GAAP EPS whenever the four
+ * statement quarters each have a reported row. Quarters with nothing to
+ * adjust read GAAP, so any adjusted quarter makes the sum adjusted.
  */
 function reportedTtmEps(
   latestFour: readonly FinancialStatement[],
   earnings: CorporateActionsData["earnings"],
-): { eps: number; currency?: string } | null {
+): { eps: number; currency?: string; basis: EpsBasisName } | null {
   if (latestFour.length < 4) return null;
   const reported = earnings.filter((earning) => earning.epsActual != null);
   const quarters = latestFour.map((statement) => {
@@ -172,8 +190,12 @@ function reportedTtmEps(
   if (quarters.some((earning) => earning == null)) return null;
   const currencies = new Set(quarters.map((earning) => earning!.currency));
   if (currencies.size !== 1) return null;
-  return { eps: quarters.reduce((sum, earning) => sum + earning!.epsActual!, 0), currency: quarters[0]!.currency };
+  const bases = quarters.map((earning) => epsBasisName(earningsEpsBasis(earning!.epsBasis)));
+  const basis = bases.includes("unknown") ? "unknown" : bases.includes("adjusted") ? "adjusted" : "GAAP";
+  return { eps: quarters.reduce((sum, earning) => sum + earning!.epsActual!, 0), currency: quarters[0]!.currency, basis };
 }
+
+const BASIS_TEXT: Record<EpsBasisName, string> = { GAAP: "GAAP", adjusted: "adj", unknown: "basis unknown" };
 
 function ttmRow(
   quarterlyStatements: readonly FinancialStatement[],
@@ -191,7 +213,8 @@ function ttmRow(
     status: "TTM",
     period: "4 qtrs",
     // Statement EPS is not the sum of the (often adjusted) rows above it.
-    detail: !reportedEps && ttm.eps != null ? "statement EPS" : "sum",
+    detail: !reportedEps && ttm.eps != null ? "statement EPS"
+      : reportedEps && reportedEps.basis !== "unknown" ? `${BASIS_TEXT[reportedEps.basis]} sum` : "sum",
     epsCurrency: reportedEps ? reportedEps.currency : ttm.currency ?? financialCurrency,
     revenueCurrency: ttm.currency ?? financialCurrency,
     annualEps: reportedEps ? reportedEps.eps : ttm.eps,
@@ -201,11 +224,17 @@ function ttmRow(
   };
 }
 
+/** A reported row names its basis and beat; a pending one whether its date is announced and its analysts. */
 function earningsDetail(earning: CorporateActionsData["earnings"][number]): string {
-  if (earning.epsActual == null) return "Pending";
+  if (earning.epsActual == null) {
+    const status = earningsDateStatus(earning.dateStatus);
+    const parts = [status === "reported" ? null : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null];
+    return parts.filter(Boolean).join(", ") || "Pending";
+  }
+  const basis = BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))];
   const detail = earning.difference == null
-    ? "Reported"
-    : `${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`;
+    ? basis
+    : `${basis}, ${earning.difference > 0 ? "+" : ""}${formatNumber(earning.difference, 2)} vs est`;
   return earning.dateType === "fiscal-period-end" ? `Period end; ${detail}` : detail;
 }
 
@@ -237,10 +266,19 @@ function reportedPeriodTimes(
   quarterlyStatements: readonly FinancialStatement[],
 ): number[] {
   return earnings
-    .filter((earning) => earning.epsActual != null && earning.dateType === "fiscal-period-end")
-    .flatMap((earning) => [earning.date, statementForEarningsDate(quarterlyStatements, earning)?.date])
+    .filter((earning) => earning.epsActual != null && (earning.dateType === "fiscal-period-end" || earning.fiscalPeriod))
+    .flatMap((earning) => [
+      earning.fiscalPeriod ? fiscalMonthEnd(earning.fiscalPeriod) : earning.date,
+      statementForEarningsDate(quarterlyStatements, earning)?.date,
+    ])
     .map((date) => Date.parse(date ?? ""))
     .filter(Number.isFinite);
+}
+
+/** The last day of a YYYY-MM fiscal quarter end month. */
+function fiscalMonthEnd(period: string): string | undefined {
+  const match = /^(\d{4})-(\d{2})$/.exec(period);
+  return match ? new Date(Date.UTC(Number(match[1]), Number(match[2]), 0)).toISOString().slice(0, 10) : undefined;
 }
 
 /**
@@ -283,12 +321,16 @@ export function buildEventRows(
   for (const [index, earning] of earnings.entries()) {
     // A pending announcement must never inherit the previous report's actuals.
     const statement = earning.epsActual == null ? undefined : statementForEarningsDate(quarterlyStatements, earning);
+    const surprise = epsSurprise(earning.epsActual, earning.epsEstimate);
+    const surprisePercent = earning.epsActual == null ? undefined
+      : surprise != null ? Math.round(surprise * 10_000) / 100 : earning.surprisePercent;
     rows.push({
       id: earningsIds[index]!,
-      date: statement?.date ?? earning.date,
+      // An announcement keeps its date beside ERN's; a period-end row moves to its statement's.
+      date: earning.dateType === "fiscal-period-end" ? statement?.date ?? earning.date : earning.date,
       dateType: earning.dateType,
       status: "Earnings",
-      period: statement ? quarterLabel(statement) : earning.time?.trim() || "-",
+      period: statement ? quarterLabel(statement.date) : earning.fiscalPeriod ? quarterLabel(earning.fiscalPeriod) : earning.time?.trim() || "-",
       detail: earningsDetail(earning),
       epsCurrency: earning.currency ?? (earning.epsActual == null ? feedCurrency : undefined),
       revenueCurrency: statement ? statement.currency ?? financials?.financialCurrency : undefined,
@@ -298,16 +340,18 @@ export function buildEventRows(
       epsActual: earning.epsActual,
       epsEstimate: earning.epsEstimate,
       epsDifference: earning.epsActual == null ? undefined : earning.difference,
-      surprisePercent: earning.epsActual == null ? undefined : earning.surprisePercent,
-      epsBasis: "provider-unspecified",
+      surprisePercent,
+      epsBasis: earning.epsActual == null ? undefined : epsBasisName(earningsEpsBasis(earning.epsBasis)),
+      epsAnalysts: earning.epsAnalysts,
+      dateStatus: earningsDateStatus(earning.dateStatus) ?? undefined,
       providerId: data?.providerId,
       fetchedAt: data?.fetchedAt,
       fiscalPeriodEnd: statement?.date,
       periodDateSource: statement?.dateSource,
       providerPeriodDate: earning.dateType === "fiscal-period-end" ? earning.date : undefined,
       dateEvidence: statement?.dateEvidence,
-      value: earning.epsActual != null && earning.surprisePercent != null ? formatPercentRaw(earning.surprisePercent) : "-",
-      tone: earning.epsActual == null || earning.surprisePercent == null ? "muted" : earning.surprisePercent >= 0 ? "positive" : "negative",
+      value: surprisePercent != null ? formatPercentRaw(surprisePercent) : "-",
+      tone: surprisePercent == null ? "muted" : surprisePercent >= 0 ? "positive" : "negative",
     });
   }
 

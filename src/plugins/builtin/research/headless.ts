@@ -12,6 +12,7 @@ import type {
 import { buildEventRows, eventSourceNotice, type EventRow } from "./event-model";
 import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
 import { REPORTED_DATA } from "../shared/report-freshness";
+import { EPS_BASIS_NOTE } from "../shared/earnings-report";
 
 export interface EarningsEstimateSources {
   actions: CorporateActionsData | null;
@@ -81,7 +82,7 @@ function projectEarningsEstimatesHeadless(
       returned: rows.length,
       truncated: rows.length < matching.length,
       coverageNote: notice?.text,
-      epsBasis: "Provider EPS and consensus may be adjusted; accounting basis is unspecified. TTM EPS sums the reported quarter rows when all four match a statement period; otherwise it comes from statements.",
+      epsBasis: `${EPS_BASIS_NOTE} TTM EPS sums the reported quarter rows when all four match a statement period; otherwise it is statement EPS.`,
       dateNote: "Fiscal period dates are not announcement dates. Revenue is attached only to an identified statement period.",
       unmatchedReportedPeriods,
     },

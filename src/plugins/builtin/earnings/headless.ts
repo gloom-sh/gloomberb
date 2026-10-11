@@ -13,6 +13,7 @@ import { fetchEarningsCalendar, fetchEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows } from "./history-model";
+import { EPS_BASIS_NOTE, epsBasisName } from "../shared/earnings-report";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -32,10 +33,13 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
 
 const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
+  { key: "dateStatus", header: "Status" },
   { key: "timing", header: "When" },
   { key: "fiscalPeriod", header: "Quarter" },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
+  { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
+  { key: "epsBasis", header: "Basis" },
   { key: "epsSurprise", header: "EPS surp", align: right, format: (value) => signedPercent(num(value)) },
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
   { key: "revenueActual", header: "Sales act", align: right, format: (value) => moneyText(num(value)) },
@@ -116,11 +120,14 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
   const rows = historyRows(payload, newYorkToday(), next).map((row) => ({
     date: row.date,
     upcoming: row.upcoming,
+    dateStatus: row.dateStatus,
     timing: row.timing ? TIMING_LABEL[row.timing] : null,
     timingExpected: row.expectedTiming,
     fiscalPeriod: row.fiscalPeriod,
     epsEstimate: row.epsEstimate,
+    epsAnalysts: row.epsAnalysts,
     epsActual: row.epsActual,
+    epsBasis: row.epsActual == null ? null : epsBasisName(row.epsBasis),
     epsSurprise: row.epsSurprise,
     revenueEstimate: row.revenueEstimate,
     revenueActual: row.revenueActual,
@@ -133,7 +140,10 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     columns: HISTORY_COLUMNS,
     rows,
     errors: history.status === "rejected" ? [String(history.reason instanceof Error ? history.reason.message : history.reason)] : undefined,
-    metadata: { symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null },
+    metadata: {
+      symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null,
+      epsBasis: EPS_BASIS_NOTE,
+    },
   };
 }
 
@@ -156,7 +166,7 @@ function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaul
   };
 }
 
-function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: EARNINGS_CALENDAR,

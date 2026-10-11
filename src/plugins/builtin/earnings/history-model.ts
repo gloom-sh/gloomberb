@@ -3,6 +3,8 @@ import type { StatItem } from "../../../components";
 import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import type { EarningsEvent } from "../../../types/data-provider";
+import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
+import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis } from "../shared/earnings-report";
 import { addDays, MIN_AVERAGE_REPORTS } from "./board-model";
 import { coherentEarningsValue } from "./estimate-basis";
 import { datedYear, impliedText, moveSize, shortDate, surprise, TIMING_LABEL } from "./format";
@@ -14,8 +16,14 @@ export interface HistoryRow {
   expectedTiming: boolean;
   fiscalPeriod: string | null;
   upcoming: boolean;
+  /** Whether the date is out, announced or projected; null when the source does not say. */
+  dateStatus: EarningsDateStatus | null;
   epsEstimate: number | null;
+  /** Analysts behind `epsEstimate`. */
+  epsAnalysts: number | null;
   epsActual: number | null;
+  /** Null when the reported figure's basis cannot be determined. */
+  epsBasis: EarningsEpsBasis | null;
   epsSurprise: number | null;
   revenueEstimate: number | null;
   revenueActual: number | null;
@@ -48,8 +56,11 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
       expectedTiming: report.timingSource === "history",
       fiscalPeriod: report.fiscalPeriod,
       upcoming: report.date >= today && move == null,
+      dateStatus: earningsDateStatus(report.dateStatus),
       epsEstimate: report.epsEstimate,
+      epsAnalysts: report.epsAnalysts,
       epsActual: report.epsActual,
+      epsBasis: earningsEpsBasis(report.epsBasis),
       epsSurprise: surprise(report.epsActual, report.epsEstimate),
       revenueEstimate: report.revenueEstimate,
       revenueActual: report.revenueActual,
@@ -72,8 +83,11 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
         expectedTiming: false,
         fiscalPeriod: null,
         upcoming: true,
+        dateStatus: dateStatusFromEstimateFlag(upcoming.isDateEstimate),
         epsEstimate: coherentEarningsValue(upcoming, "epsEstimate"),
+        epsAnalysts: coherentEarningsValue(upcoming, "epsAnalysts"),
         epsActual: null,
+        epsBasis: null,
         epsSurprise: null,
         revenueEstimate: coherentEarningsValue(upcoming, "revenueEstimate"),
         revenueActual: null,
@@ -112,7 +126,7 @@ export function historyFigures(rows: readonly HistoryRow[], today: string): Stat
       id: "next",
       label: "Next report",
       value: `${shortDate(next.date)}${next.timing ? ` ${TIMING_LABEL[next.timing]}` : ""}`,
-      detail: daysUntil(next.date, today),
+      detail: [next.dateStatus === "reported" ? null : next.dateStatus, daysUntil(next.date, today)].filter(Boolean).join(", "),
     });
     if (next.implied != null) {
       figures.push({

@@ -283,8 +283,11 @@ export function buildEventDetail({
   if (row.status !== "Earnings") return sections;
 
   const comparison: EventDetailBlock[] = [
-    detailRow("Actual", earningsInput(row.epsActual, row.epsCurrency)),
-    detailRow("Consensus", earningsInput(row.epsEstimate, row.epsCurrency)),
+    ...(row.dateStatus && row.dateStatus !== "reported" ? [detailRow("Report date", row.date, row.dateStatus)] : []),
+    detailRow("Actual", earningsInput(row.epsActual, row.epsCurrency),
+      row.epsBasis === "unknown" ? "basis unknown" : row.epsBasis),
+    detailRow("Consensus", earningsInput(row.epsEstimate, row.epsCurrency),
+      row.epsAnalysts != null ? `${row.epsAnalysts} analysts` : undefined),
   ];
   if (row.epsDifference != null) comparison.push(detailRow("Difference", earningsInput(row.epsDifference, row.epsCurrency)));
   if (row.surprisePercent != null) {

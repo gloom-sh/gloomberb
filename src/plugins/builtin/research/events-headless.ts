@@ -11,6 +11,7 @@ import type {
 import { buildEventRows, eventSourceNotice, CORPORATE_ACTION_COVERAGE } from "./event-model";
 import { EVENT_COLUMNS, loadEventSources } from "./event-sources";
 import { REPORTED_DATA } from "../shared/report-freshness";
+import { EPS_BASIS_NOTE } from "../shared/earnings-report";
 
 interface EventHeadlessData {
   actions: CorporateActionsData | null;
@@ -69,7 +70,7 @@ export function createEventsHeadless(
           .map((row) => ({ ...row })),
         errors: errors.length > 0 ? errors : undefined,
         metadata: { symbol, currency: data.currency, coverage: data.actions?.coverage,
-          coverageNote: CORPORATE_ACTION_COVERAGE,
+          coverageNote: CORPORATE_ACTION_COVERAGE, epsBasis: EPS_BASIS_NOTE,
           actionsFetchedAt: data.actions?.fetchedAt, estimatesFetchedAt: data.estimates?.fetchedAt,
           ...(notice ? { notice: notice.text } : {}),
         },
