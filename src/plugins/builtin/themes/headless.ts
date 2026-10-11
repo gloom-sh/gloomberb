@@ -31,7 +31,7 @@ function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
  * and reads stale, as it does while a session trades and from a server that
  * does not name the close. The snapshot's own time and age ride along.
  */
-export function boardObservation(payload: ThemesPayload | ThemeMembersPayload, now = Date.now()): {
+function boardObservation(payload: ThemesPayload | ThemeMembersPayload, now = Date.now()): {
   metadata: Record<string, unknown>;
   freshness: HeadlessPaneFreshness;
 } {
