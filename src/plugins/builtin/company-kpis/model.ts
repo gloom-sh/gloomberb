@@ -69,7 +69,7 @@ export function observationChange(row: KpiObservation, observations: KpiObservat
   return { value: (row.value - prior.value) / Math.abs(prior.value) * 100, unit: "%" };
 }
 export const changeText = (change: { value: number | null; unit: string }) => change.value === null ? "--" : `${change.value > 0 ? "+" : ""}${formatNumber(change.value, 2)}${change.unit}`;
-export const fiscalLabel = (row: CompanyRow) => row.period.fiscalYear === null ? row.period.label
+export const fiscalLabel = (row: Pick<CompanyRow, "period">) => row.period.fiscalYear === null ? row.period.label
   : row.period.kind === "year" ? `FY${row.period.fiscalYear}`
   : row.period.fiscalQuarter !== null ? `Q${row.period.fiscalQuarter} FY${row.period.fiscalYear}${row.period.kind === "ytd" ? " YTD" : ""}` : row.period.label;
 export const periodOrder = (row: CompanyRow) => row.period.fiscalYear !== null
