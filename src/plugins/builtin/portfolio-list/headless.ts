@@ -13,6 +13,7 @@ import {
   extendedQuoteFields,
   extendedSessionsOf,
   findCollection,
+  listingLabel,
   loadCollectionQuotes,
   valuePortfolioAllocation,
   valuePortfolioPositions,
@@ -112,6 +113,25 @@ const WATCHLIST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "priceCurrency", header: "Ccy" },
   { key: "changePercent", header: "Chg", align: "right", format: percent },
 ];
+
+/**
+ * `columns` with the text report's Ticker column naming each listing as
+ * `portfolio show` does (SAN:EPA, SAN:NYSE), not by the key it is stored under,
+ * which leaves two listings of one symbol looking alike. `textFormat` is text
+ * only: JSON and CSV keep the stored key in `symbol`, and the rows stay keyed
+ * by it.
+ */
+function withListingLabels(columns: HeadlessPaneColumn[], tickers: readonly TickerRecord[]): HeadlessPaneColumn[] {
+  const labels = new Map(tickers.map((ticker) => [ticker.metadata.ticker, listingLabel(ticker)]));
+  return columns.map((column) => column.key !== "symbol" ? column : {
+    ...column,
+    textFormat: (value, row) => {
+      // The cash line is not a listing, even when a ticker is called CASH; its row carries no exchange.
+      if (typeof value !== "string" || !("exchange" in row)) return textOf(value) ?? formatNumber(undefined);
+      return labels.get(value) ?? value;
+    },
+  });
+}
 
 function finite(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -244,7 +264,10 @@ async function portfolioHoldings(
 
   return {
     freshness: { source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud" },
-    columns: withExtendedColumns(showTargets ? [...POSITION_COLUMNS, ...TARGET_COLUMNS] : POSITION_COLUMNS, extendedSessions),
+    columns: withListingLabels(
+      withExtendedColumns(showTargets ? [...POSITION_COLUMNS, ...TARGET_COLUMNS] : POSITION_COLUMNS, extendedSessions),
+      tickers,
+    ),
     rows: shown,
     complete: unavailable.length === 0,
     ...(unavailable.length
@@ -299,7 +322,10 @@ async function watchlistHoldings(
   const shown = rows.slice(0, limit);
   return {
     freshness: { source: "Local watchlist and Gloom Cloud" },
-    columns: withExtendedColumns(WATCHLIST_COLUMNS, extendedSessionsOf(shown.map((row) => row.extendedSession))),
+    columns: withListingLabels(
+      withExtendedColumns(WATCHLIST_COLUMNS, extendedSessionsOf(shown.map((row) => row.extendedSession))),
+      tickers,
+    ),
     rows: shown,
     metadata: {
       collection: { kind: "watchlist", id: target.id, name: target.name },
