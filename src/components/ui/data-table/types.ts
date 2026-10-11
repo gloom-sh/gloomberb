@@ -58,6 +58,18 @@ export interface DataTableSectionHeader {
    * `onMouseDown` instead of `onActivate`.
    */
   expanded?: boolean;
+  /**
+   * A quiet control at the right end of the header that acts on the whole
+   * group, such as the preset its rows are set to. A header is not a stop for
+   * the cursor, so the pane gives the same action a key (a footer hint).
+   */
+  action?: {
+    /** What the control says, already translated: the group's current setting. */
+    label: string;
+    /** Desktop tooltip: what pressing it does. */
+    title?: string;
+    onPress: () => void;
+  };
 }
 
 /** Where `scrollToIndex` puts its row: the nearest edge, the middle, or the top of the viewport. */

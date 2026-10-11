@@ -1485,4 +1485,20 @@ export const ko: Record<string, string> = {
   "keep the default": "기본값 유지",
   "continue": "계속",
   "new code": "새 코드",
+
+  // ── Plugins pane: starter packs ─────────────────────────────
+  "Apply a starter pack": "스타터 팩 적용",
+  "{name} pack": "{name} 팩",
+  "Custom set": "사용자 지정 구성",
+  "{count} on": "{count}개 켜짐",
+  "{count} off": "{count}개 꺼짐",
+  "{count} back on": "{count}개 다시 켜짐",
+  "Turn off": "끄기",
+  "Turn on": "켜기",
+  "Keep": "유지",
+  "Panes are hidden, not closed. Undo brings them back.": "패널은 닫히지 않고 숨겨집니다. 실행 취소하면 다시 나타납니다.",
+  "Apply {name}?": "{name}을(를) 적용할까요?",
+  "{name} applied: {changes}.": "{name} 적용됨: {changes}.",
+  "{name} is already what you have on.": "이미 {name} 구성입니다.",
+  "Undo": "실행 취소",
 };

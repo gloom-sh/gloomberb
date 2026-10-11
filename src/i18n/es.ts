@@ -1491,4 +1491,20 @@ export const es: Record<string, string> = {
   "keep the default": "dejar el valor por defecto",
   "continue": "continuar",
   "new code": "nuevo código",
+
+  // ── Plugins pane: starter packs ─────────────────────────────
+  "Apply a starter pack": "Aplicar un paquete inicial",
+  "{name} pack": "Paquete {name}",
+  "Custom set": "Selección propia",
+  "{count} on": "{count} activados",
+  "{count} off": "{count} desactivados",
+  "{count} back on": "{count} reactivados",
+  "Turn off": "Desactivar",
+  "Turn on": "Activar",
+  "Keep": "Mantener",
+  "Panes are hidden, not closed. Undo brings them back.": "Los paneles se ocultan, no se cierran. Deshacer los recupera.",
+  "Apply {name}?": "¿Aplicar {name}?",
+  "{name} applied: {changes}.": "{name} aplicado: {changes}.",
+  "{name} is already what you have on.": "Ya tienes {name}.",
+  "Undo": "Deshacer",
 };

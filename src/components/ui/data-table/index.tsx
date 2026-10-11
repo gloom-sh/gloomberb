@@ -133,7 +133,7 @@ function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>)
     const selected = props.isSelected(item, index);
     const section = props.renderSectionHeader?.(item, index);
     const cells = section
-      ? [{ columnLabel: "Row", text: normalize(section.text) }]
+      ? [{ columnLabel: "Row", text: normalize(section.action ? `${section.text} ${section.action.label}` : section.text) }]
       : props.columns.map((column) => ({
         columnId: column.id,
         columnLabel: column.label,

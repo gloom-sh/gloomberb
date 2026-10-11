@@ -574,7 +574,7 @@ Open it with `PL` in the command bar. It lists the [built-in plugins](#built-in-
 
 The status reads `on`, `off`, `core` for Ticker Research, `update` when the registry has something newer, `needs setup` when a required setting is missing, `errors (n)` after failures this session, or `failed` when it did not load. Enter opens the detail: every function, Pro ones marked, and the panes.
 
-Starter packs at the top switch the research and markets built-ins to fit how you trade: Everything, Equity research, Options desk, Macro & rates, Credit & bonds, and Alt data & quant. Every pack keeps Ticker Research on and never touches other plugins. Panes of plugins a pack turns off are hidden, not closed, and Undo on the toast brings them back.
+Starter packs are built-in templates for the research and markets plugins: Everything, Equity research, Options desk, Macro & rates, Credit & bonds, and Alt data & quant. The Research and markets heading names the pack your plugins match, such as `Options desk pack`, or `Custom set` once you switch one by hand. Click it or press `a` to apply another. Each pack shows what it would switch from here (`8 off`, `1 on, 2 off`), and a confirmation names the plugins before anything changes. A pack keeps Ticker Research on and never touches other plugins. Panes of plugins it turns off are hidden, not closed; Undo on the toast brings them back.
 
 Plugin GitHub star counts are currently hidden. The marketplace keeps its curated ordering.
 
@@ -584,12 +584,11 @@ Plugin GitHub star counts are currently hidden. The marketplace keeps its curate
 | `g` | Get its update, or reload one that failed to load |
 | `x` | Remove it |
 | `e` | Switch it on or off; Ticker Research asks first |
-| `a` | Choose a starter pack |
+| `a` | Apply a starter pack |
 | `o` | See a built-in on gloom.sh, or open a plugin's page |
 | `s` | Open its setup form |
 | `p` | Open a pane it provides |
 | `d` | Open the debug log filtered to it |
-| `h` `l` or arrows | Move between category tabs |
 | `b` | Show or hide the built-in plugins |
 | `/` | Search |
 

@@ -1487,4 +1487,20 @@ export const zhTW: Record<string, string> = {
   "keep the default": "保留預設值",
   "continue": "繼續",
   "new code": "新代碼",
+
+  // ── Plugins pane: starter packs ─────────────────────────────
+  "Apply a starter pack": "套用入門套裝",
+  "{name} pack": "{name} 套裝",
+  "Custom set": "自訂組合",
+  "{count} on": "開啟 {count} 個",
+  "{count} off": "關閉 {count} 個",
+  "{count} back on": "重新開啟 {count} 個",
+  "Turn off": "關閉",
+  "Turn on": "開啟",
+  "Keep": "保留",
+  "Panes are hidden, not closed. Undo brings them back.": "面板只是隱藏，不會關閉。復原即可找回。",
+  "Apply {name}?": "套用 {name}？",
+  "{name} applied: {changes}.": "已套用 {name}：{changes}。",
+  "{name} is already what you have on.": "目前已經是 {name}。",
+  "Undo": "復原",
 };

@@ -1124,6 +1124,29 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 
 /* ===== Data table: sortable headers ===== */
 
+/* A section header's action (the preset a group is set to) is quiet text at
+   the right end of the header; the pointer brings out that it is a control. */
+[data-gloom-role="data-table-section-action"] {
+  margin-left: auto;
+  flex: none;
+  height: var(--cell-h);
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 400;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+[data-gloom-role="data-table-section-action"] svg { color: var(--gloom-text-muted); }
+[data-gloom-role="data-table-section-action"]:hover {
+  color: var(--gloom-text-bright) !important;
+  background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
+}
+
 /* A header that sorts brightens under the pointer; plain headers (no
    onHeaderClick) are not interactive and stay put. Tinted headers keep
    their colour. */

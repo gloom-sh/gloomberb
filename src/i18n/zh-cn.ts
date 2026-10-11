@@ -1487,4 +1487,20 @@ export const zhCN: Record<string, string> = {
   "keep the default": "保留默认值",
   "continue": "继续",
   "new code": "新代码",
+
+  // ── Plugins pane: starter packs ─────────────────────────────
+  "Apply a starter pack": "应用入门套装",
+  "{name} pack": "{name} 套装",
+  "Custom set": "自定义组合",
+  "{count} on": "开启 {count} 个",
+  "{count} off": "关闭 {count} 个",
+  "{count} back on": "重新开启 {count} 个",
+  "Turn off": "关闭",
+  "Turn on": "开启",
+  "Keep": "保留",
+  "Panes are hidden, not closed. Undo brings them back.": "面板只是隐藏，不会关闭。撤销即可恢复。",
+  "Apply {name}?": "应用 {name}？",
+  "{name} applied: {changes}.": "已应用 {name}：{changes}。",
+  "{name} is already what you have on.": "当前已经是 {name}。",
+  "Undo": "撤销",
 };

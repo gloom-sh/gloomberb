@@ -1487,4 +1487,20 @@ export const ja: Record<string, string> = {
   "keep the default": "既定値のまま",
   "continue": "続ける",
   "new code": "新しいコード",
+
+  // ── Plugins pane: starter packs ─────────────────────────────
+  "Apply a starter pack": "スターターパックを適用",
+  "{name} pack": "{name} パック",
+  "Custom set": "カスタム構成",
+  "{count} on": "{count} 件オン",
+  "{count} off": "{count} 件オフ",
+  "{count} back on": "{count} 件を再びオン",
+  "Turn off": "オフにする",
+  "Turn on": "オンにする",
+  "Keep": "維持",
+  "Panes are hidden, not closed. Undo brings them back.": "ペインは閉じずに非表示になります。元に戻すと再表示されます。",
+  "Apply {name}?": "{name} を適用しますか？",
+  "{name} applied: {changes}.": "{name} を適用しました：{changes}。",
+  "{name} is already what you have on.": "すでに {name} の構成です。",
+  "Undo": "元に戻す",
 };

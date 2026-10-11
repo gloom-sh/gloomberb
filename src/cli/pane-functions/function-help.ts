@@ -1224,9 +1224,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   PL: {
-    summary: "What Gloomberb is made of: switch built-ins on and off, one by one or with a starter pack, and install plugins from GitHub.",
+    summary: "What Gloomberb is made of: switch built-ins on and off, one by one or by applying a starter pack, and install plugins from GitHub.",
     usage: ["PL"],
-    keys: [key("e", "nable"), key("a", " packs"), key("i", "nstall"), SEARCH],
+    keys: [key("e", "nable"), key("a", "pply pack"), key("i", "nstall"), SEARCH],
     data: null,
     bloomberg: [],
   },
