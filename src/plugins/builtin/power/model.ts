@@ -2,7 +2,7 @@ import type { PowerAggregate, PowerBoard, PowerCoverage, PowerExposure, PowerHis
 import { staticSeries, type DataTableColumn } from "../../../components";
 
 export const POWER_TABS = [{ value: "queue", label: "Queue" }, { value: "history", label: "History" }, { value: "outcomes", label: "Outcomes" },
-  { value: "loads", label: "Loads" }, { value: "utilities", label: "Utilities" }, { value: "capacity", label: "Capacity" }, { value: "coverage", label: "Coverage" }] as const;
+  { value: "loads", label: "Loads" }, { value: "utilities", label: "Utilities" }, { value: "capacity", label: "Capacity" }, { value: "prices", label: "Prices" }, { value: "coverage", label: "Coverage" }] as const;
 export type PowerTab = typeof POWER_TABS[number]["value"];
 export const powerTab = (value: unknown): PowerTab => POWER_TABS.find((tab) => tab.value === value)?.value ?? "queue";
 const REGISTERS: Record<string, string> = { "neso-tec": "GB transmission", "neso-embedded": "GB embedded", "neso-interconnector": "GB interconnectors" };
@@ -62,7 +62,7 @@ export const powerTickerScopes = (tab: PowerTab, context: string) => POWER_TICKE
 function powerTabRecords(tab: PowerTab, context: string): string {
   if (tab === "capacity") return POWER_TICKER_SCOPES.find((scope) => scope.tab === "capacity" && scope.context === context)?.label ?? "capacity records";
   return { queue: "interconnection queue records", history: "queue history records", outcomes: "queue outcomes", loads: "large-load requests",
-    utilities: "large-load requests or utility exposure", coverage: "records" }[tab];
+    utilities: "large-load requests or utility exposure", prices: "records", coverage: "records" }[tab];
 }
 
 /**

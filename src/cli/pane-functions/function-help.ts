@@ -796,6 +796,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     access: "preview",
     bloomberg: [],
   },
+  EPWR: {
+    summary: "Day-ahead power prices for 32 European markets in EUR/MWh: each market's latest delivery day, the change on the day before, 7- and 30-day averages, a year ago and where the price sits in its 52-week range, with the selected market's year charted and its daily history from 2015. The Prices tab of POWER.",
+    usage: ["EPWR", "EPWR DE", "EPWR UK"],
+    keys: [key("o", "pen Ember"), key("g", "raph")],
+    data: same("Daily; each market as of its latest published delivery day, usually a few days back"),
+    bloomberg: [],
+    docs: "POWER",
+  },
   NGS: {
     summary: "Lower 48 working gas in storage and each region's, the week's injection or withdrawal against a year ago and the five-year average, charted over the year. The Gas Storage tab of DOE.",
     usage: ["NGS"],

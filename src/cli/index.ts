@@ -96,6 +96,7 @@ function createCoreCliCommands(
         await search(query, {
           initMarketData: ctx.initMarketData,
           fail: ctx.fail,
+          plugins: ctx.plugins,
           ...(ctx.cliOptions.format === "text" ? {} : { printResult: ctx.printResult }),
         });
       },

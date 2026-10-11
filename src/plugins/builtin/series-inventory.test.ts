@@ -12,7 +12,8 @@ const CHART_USE = /\b(?:CompositeChart|StaticChartSurface|CurveSurface|ScatterCh
 /** Folders that hold shared code rather than a module. */
 const NOT_MODULES = new Set(["shared"]);
 /** The public bodies built-in series may name as their publisher. */
-const PUBLISHERS = new Set(["FRED", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "ECB", "U.S. Treasury", "SEC"]);
+// Ember publishes open energy data under CC-BY-4.0, whose attribution the day-ahead series carry.
+const PUBLISHERS = new Set(["FRED", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "ECB", "U.S. Treasury", "SEC", "Ember"]);
 const SAMPLE_INPUTS = { ticker: "AAPL", option: "AAPL260618C00200000", crypto: "BTC-USD" } as const;
 
 function sourceFiles(dir: string): string[] {
