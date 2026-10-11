@@ -4,7 +4,7 @@ import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } fr
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
 import { FUTURES_CONTRACTS } from "../futures/contracts";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpreadLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, vsSpotPct } from "./model";
+import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, vsSpotPct } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -106,6 +106,29 @@ test("CME crypto roots are listed with prices at their tick, and FUT's board kee
   expect(curvePrice(110.1, "SOL")).toBe("110.10");
   expect(curvePrice(1.399, "XRP")).toBe("1.3990");
   expect(curveChangeText(-0.0935, "XRP")).toBe("-0.0935");
+});
+
+test("Dutch TTF gas is a curve root that reads in euros per MWh at its 0.001 tick", () => {
+  expect(["ttf", "TTF=F", " ttf "].map(normalizeCurveRoot)).toEqual(["TTF", "TTF", "TTF"]);
+  expect(["TTF", "TTF=F"].map(curveRootForTicker)).toEqual(["TTF", "TTF"]);
+  expect(CURVE_ROOTS.find((row) => row.value === "TTF")).toBeDefined();
+  expect(curvePrice(81.434, "TTF")).toBe("81.434");
+  expect(curvePrice(62.72, "TTF")).toBe("62.720");
+  expect(curveChangeText(2.5849999, "TTF")).toBe("+2.585");
+  expect(curveChangeText(-0.088, "TTF")).toBe("-0.088");
+  const ttf = { ...payload(), root: "TTF", currency: "EUR", quoteUnit: "EUR", spec: null };
+  // The server sends no contract terms for the euro contract, so the catalogue says what a price counts.
+  expect(curveUnitLabel(ttf)).toBe("EUR / MWh");
+  // A root with neither terms nor a catalogue unit reads its quote unit, and the server's terms win.
+  expect(curveUnitLabel({ ...payload(), spec: null })).toBe("USD");
+  expect(curveUnitLabel({ ...ttf, spec: { unit: "EUR / MWh", size: "1 MW", pointValue: 1, tick: 0.001, tickValue: 0.001, settlement: "cash" } })).toBe("EUR / MWh");
+  // A past TTF curve keeps the archive's euro rather than defaulting to dollars.
+  const past = archivedFuturesCurve("TTF", { root: "TTF", name: "Dutch TTF Natural Gas", date: "2026-10-02", asOf: "2026-10-02", currency: "EUR", quoteUnit: "EUR",
+    archiveStart: "2020-11-30", gaps: [], spec: null, contracts: [{ contract: "TTFX26", symbol: "TTFX26.NYM", label: "Nov 26", deliveryMonth: "2026-11", expiration: "2026-10-29",
+      tradeDate: "2026-10-02", price: 74.76, volume: 458, openInterest: 1449, asOf: "2026-10-02T04:00:00.000Z", stale: false, settled: true }] },
+  { "1W": null, "1M": null }, "2026-10-11T00:00:00Z");
+  expect(past.contracts[0]).toMatchObject({ currency: "EUR", quoteUnit: "EUR" });
+  expect(curveUnitLabel(past)).toBe("EUR / MWh");
 });
 
 test("a crypto root opens from a typed argument, a crypto ticker or a futures symbol, never from the equity under the cursor", async () => {

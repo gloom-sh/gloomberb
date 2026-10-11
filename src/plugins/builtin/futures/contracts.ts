@@ -27,6 +27,11 @@ export interface FuturesContract {
   everyMonth?: true;
   /** False where the contract curve (CTM) does not cover the root yet. */
   curve?: false;
+  /**
+   * What a price counts where the server sends no contract terms for the root:
+   * Dutch TTF gas quotes in euros per MWh, which a bare "EUR" does not say.
+   */
+  unit?: string;
 }
 
 /** 0.005 -> 3, 0.25 -> 2, 1 -> 0. Written for ticks, not general numbers. */
@@ -55,7 +60,7 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "BZ=F", code: "BZ", name: "Brent Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01 },
   { symbol: "NG=F", code: "NG", name: "Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001 },
   // Quoted in euros per MWh.
-  { symbol: "TTF=F", code: "TTF", name: "Dutch TTF Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, curve: false },
+  { symbol: "TTF=F", code: "TTF", name: "Dutch TTF Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, unit: "EUR / MWh" },
   { symbol: "RB=F", code: "RB", name: "RBOB Gasoline", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001 },
   { symbol: "HO=F", code: "HO", name: "Heating Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001 },
 

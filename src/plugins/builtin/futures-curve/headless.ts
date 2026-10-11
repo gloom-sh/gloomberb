@@ -3,7 +3,7 @@ import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, contractBasis, curveAsOfDate, curveBasisPercent, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpreadLabel, curveTimestamp, curveUnitLabel, normalizeCurveRoot, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
+import { basisSpotSymbol, catalogueCurveUnit, contractBasis, curveAsOfDate, curveBasisPercent, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpreadLabel, curveTimestamp, curveUnitLabel, normalizeCurveRoot, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
 
 /** The root a report shows when none is given. */
 const DEFAULT_ROOT = "ES";
@@ -60,7 +60,11 @@ function contractColumns(root: string, settlementDate: string | null, options: {
 /** What one contract is: the terms a hedge is sized on, once rather than on every row, worded as `ticker` words them. */
 function specEntries(data: FuturesCurvePayload): HeadlessPaneEntry[] {
   const spec = data.spec;
-  if (!spec) return [];
+  // A root without terms still says what its prices count: Dutch TTF gas is euros per MWh.
+  if (!spec) {
+    const unit = catalogueCurveUnit(data.root);
+    return unit ? [{ key: "unit", label: "Unit", value: unit }] : [];
+  }
   return futuresSpecLines(spec).map((line) => {
     const value = spec[line.key as keyof typeof spec];
     return { key: line.key, label: line.label, value, ...line.value === String(value) ? {} : { formatted: line.value } };
@@ -91,6 +95,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
     ]);
     const bases = spot ? data.contracts.map((row) => contractBasis(row, spot)) : [];
     const unit = curveUnitLabel(data);
+    const terms = specEntries(data);
     const notices = [...args.argument ? [] : [`Showing ${DEFAULT_ROOT}. Try fn CTM ${EXAMPLE_ROOT}.`],
       ...spot ? [spot.status === "ok" ? `Basis against ${curveSpotLabel(spot, root, now)}.` : `Basis blank: ${spot.reason}.`] : []];
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
@@ -108,7 +113,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
         { title: "Front spread", rows: [{ label: curveSpreadLabel(data.slope), ...data.slope, value: curveRoundedPrice(data.slope.value, root),
           annualizedRollYield: data.slope.annualizedRollYield == null ? null : Number(data.slope.annualizedRollYield.toFixed(2)),
           percentile: rank(data.slope.percentile), rollPercentile: rank(data.slope.rollPercentile) }] },
-        ...data.spec ? [{ title: "Contract terms", entries: specEntries(data) }] : [],
+        ...terms.length ? [{ title: "Contract terms", entries: terms }] : [],
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,

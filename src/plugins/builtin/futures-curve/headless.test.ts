@@ -41,6 +41,19 @@ async function run(root: string, ctxOptions: Parameters<typeof context>[0] = {},
   return { reads, result, rows: result.sections[0]!.rows as Array<Record<string, unknown>>, metadata: result.metadata as Record<string, unknown> };
 }
 
+describe("CTM report units", () => {
+  test("Dutch TTF gas reports euros per MWh on every row, in the metadata and as its one contract term", async () => {
+    const eur = { ...curve("TTF", [{ ...contract("TTF", "X26", 30, 81.434), currency: "EUR", quoteUnit: "EUR", change: 2.5849999 }]), currency: "EUR", quoteUnit: "EUR" };
+    const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({}), apiClient: { getCloudFuturesCurve: async () => eur } as never });
+    const result = await futuresCurveHeadless.load(createTestHeadlessArgs({ rawArgument: "TTF", argument: "TTF", symbols: [], options: {} }), ctx) as HeadlessBundleResult;
+    expect(result.sections[0]!.rows![0]).toMatchObject({ price: 81.434, change: 2.585, currency: "EUR", quoteUnit: "EUR / MWh" });
+    expect(result.sections.find((section) => section.title === "Contract terms")?.entries).toEqual([{ key: "unit", label: "Unit", value: "EUR / MWh" }]);
+    expect(result.metadata).toMatchObject({ currency: "EUR", quoteUnit: "EUR / MWh" });
+    // A root with neither server terms nor a catalogue unit adds no terms section.
+    expect((await run("ES")).result.sections.some((section) => section.title === "Contract terms")).toBe(false);
+  });
+});
+
 describe("CTM report basis", () => {
   test("each crypto contract carries its premium and annualised basis, and the metadata names the spot", async () => {
     const { reads, rows, metadata } = await run("BTC");

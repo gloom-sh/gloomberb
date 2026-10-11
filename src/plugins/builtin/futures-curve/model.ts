@@ -89,9 +89,17 @@ export function curveRoundedPrice(value: number | null | undefined, root: string
   return value == null || !Number.isFinite(value) ? null : Number(value.toFixed(curvePriceDecimals(root)));
 }
 
-/** What a price counts: the exchange's unit ("USD / troy oz") where the root's terms are known, else the quote unit. */
-export function curveUnitLabel(data: Pick<FuturesCurvePayload, "spec" | "quoteUnit" | "currency">): string | null {
-  return data.spec?.unit ?? data.quoteUnit ?? data.currency ?? null;
+/** The unit the catalogue gives a root whose contract terms the server does not send: "EUR / MWh" for Dutch TTF gas. */
+export function catalogueCurveUnit(root: string): string | null {
+  return FUTURES_CONTRACTS.find((row) => row.code === root)?.unit ?? null;
+}
+
+/**
+ * What a price counts: the exchange's unit ("USD / troy oz") where the root's
+ * terms are known, the catalogue's where they are not, else the quote unit.
+ */
+export function curveUnitLabel(data: Pick<FuturesCurvePayload, "root" | "spec" | "quoteUnit" | "currency">): string | null {
+  return data.spec?.unit ?? catalogueCurveUnit(data.root) ?? data.quoteUnit ?? data.currency ?? null;
 }
 
 /** A contract as traders write it: GCZ26.CMX is GCZ26; a VX symbol stays as Cboe lists it. */
