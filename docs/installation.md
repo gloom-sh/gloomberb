@@ -36,7 +36,12 @@ Install the desktop app:
 
 - [Download GloomberbSetup.exe for Windows](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe)
 
-The installer supports Windows 11 on x64 and ARM64. On ARM64, the desktop app and its bundled `gloomberb` terminal command use Windows' built-in x64 emulation.
+The installer is not code-signed yet, so Windows SmartScreen may stop it. Click **More info** on the "Windows protected your PC" screen, then **Run anyway**. To check the file first, compare `Get-FileHash` on it with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest).
+
+- **Terminal:** the installer adds `gloomberb` to your PATH, so open a new terminal window. PowerShell works.
+- **Charts:** Windows Terminal does not support Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.
+- **Data:** `%USERPROFILE%\.gloomberb`, which `gloomberb version` prints. `GLOOMBERB_HOME` moves it.
+- **Versions:** Windows 11 on x64 is the tested setup. Windows 10, and ARM PCs running the x64 build through Windows' built-in emulation, are untested.
 
 For a terminal-only setup on x64, install Bun and use the package:
 

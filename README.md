@@ -35,7 +35,7 @@ On **macOS (Apple Silicon)**:
 brew install --cask gloomberb
 ```
 
-On **Windows 11**, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe).
+On **Windows 11**, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe). It is not code-signed yet, so SmartScreen may ask you to click **More info**, then **Run anyway**.
 
 For the terminal on **macOS or Linux**:
 
@@ -51,7 +51,7 @@ With [Bun](https://bun.sh), on any supported OS:
 bun install -g gloomberb
 ```
 
-Then run `gloomberb`. For graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm.
+Then run `gloomberb`. For chart graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm. Windows Terminal draws charts as text; the desktop app draws them in full.
 
 ## Start
 
