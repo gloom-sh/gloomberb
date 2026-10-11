@@ -23,6 +23,7 @@ import {
   isStaleFiling,
   markedPositionType,
   OPTION_ROWS_NOTE,
+  restatedValuesText,
   staleFilingText,
   staleFundsText,
   summarizeTickerHoldings,
@@ -518,6 +519,8 @@ export function createThirteenFHeadless(
             .slice(0, limit)
             .map((row) => ({ ...row }));
           const cut = cutText(all.length, limit, "filings");
+          const shownFilings = new Set(rows.map((row) => row.accessionNumber));
+          const restated = restatedValuesText(detail.forms.filter((form) => shownFilings.has(form.accessionNumber)));
           return {
             columns: FILING_COLUMNS,
             rows,
@@ -530,7 +533,7 @@ export function createThirteenFHeadless(
               shown: rows.length,
               total: all.length,
               truncated: all.length > limit,
-              notices: [...flagNotices, [`CIK ${detail.cik}`, cut].filter(Boolean).join(" | ")],
+              notices: [...flagNotices, [`CIK ${detail.cik}`, cut].filter(Boolean).join(" | "), ...(restated ? [restated] : [])],
             },
           };
         }
@@ -543,6 +546,13 @@ export function createThirteenFHeadless(
         const filed = detail.latestForm?.filedAsOfDate || null;
         const quartersBehind = quartersBehindLatest(latestPeriod);
         const cut = cutText(all.length, limit, "positions, exits included");
+        // Values, weights and Est P&L read both compared quarters' filings.
+        const reportForms = (report: typeof detail.latestReport, form: typeof detail.latestForm) =>
+          report?.filings ?? (form ? [form] : []);
+        const restated = restatedValuesText([
+          ...reportForms(detail.latestReport, detail.latestForm),
+          ...(comparable ? reportForms(detail.previousReport, detail.previousForm) : []),
+        ]);
         const rows = all
           .slice(0, limit)
           .map((row) => ({
@@ -576,6 +586,7 @@ export function createThirteenFHeadless(
               ...flagNotices,
               [`CIK ${detail.cik}`, filedPeriodText(latestPeriod, filed, comparable ? previousPeriod : null)].filter(Boolean).join(" | "),
               AS_FILED_VALUE,
+              ...(restated ? [restated] : []),
               ...(isStaleFiling(quartersBehind) ? [staleFilingText(quartersBehind)] : []),
               ...(cut ? [`${cut[0]!.toUpperCase()}${cut.slice(1)}`] : []),
             ],

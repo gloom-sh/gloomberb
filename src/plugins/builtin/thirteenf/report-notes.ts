@@ -86,6 +86,18 @@ export function filedPeriodText(
   ].filter(Boolean).join(" | ");
 }
 
+/**
+ * The quarters whose filings Gloom Cloud restated to dollars, in its own words:
+ * "Values restated from thousands: 30 Jun 2026". Empty when none was.
+ */
+export function restatedValuesText(forms: readonly { periodOfReport: string; valueNote?: string }[]): string {
+  const noted = forms.filter((form) => form.valueNote);
+  if (noted.length === 0) return "";
+  const note = noted[0]!.valueNote!;
+  const periods = [...new Set(noted.map((form) => form.periodOfReport))].sort().reverse();
+  return `${note[0]!.toUpperCase()}${note.slice(1)}: ${periods.map((period) => filingDayText(period)).join(", ")}`;
+}
+
 /** A filer this many quarters behind the reporting cycle has missed a filing, not just filed late. */
 export function isStaleFiling(quartersBehind: number | null | undefined): quartersBehind is number {
   return quartersBehind != null && quartersBehind > 1;

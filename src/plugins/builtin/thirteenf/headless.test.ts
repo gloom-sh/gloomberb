@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { mapForm } from "./api";
 import { createThirteenFHeadless } from "./headless";
 import { AS_FILED_VALUE, OPTION_ROWS_NOTE, THIRTEENF_LIMITS } from "./report-notes";
 import type { FundDetailData } from "./types";
@@ -110,6 +111,21 @@ describe("13F headless model", () => {
     expect(text).toMatch(/PLTR\s+PUT\*\s/);
     expect(text).toMatch(/AAPL\s+COM\s/);
     expect(text).toContain("not a live feed (13F filing for the quarter ended 30 Sep 2020)");
+  });
+
+  test("says which quarters Gloom Cloud restated from thousands", async () => {
+    const latest = mapForm({
+      cik: detail.cik, accession_number: "0001536411-26-000006", period_of_report: "2026-06-30",
+      filed_as_of_date: "2026-08-14", submission_type: "13F-HR", table_value_total: 5_210_860_000,
+      value_note: "values restated from thousands",
+    })!;
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows: [] }),
+      loadDetail: async () => ({ ...detail, forms: [latest, detail.forms[1]!], latestForm: latest }),
+    });
+    const note = "Values restated from thousands: 30 Jun 2026";
+    expect((await headless.load(args("holdings"), createTestHeadlessContext())).metadata?.notices).toContain(note);
+    expect((await headless.load(args("filings"), createTestHeadlessContext())).metadata?.notices).toContain(note);
   });
 
   test("requires an unambiguous manager even when the requested output has only one row", async () => {

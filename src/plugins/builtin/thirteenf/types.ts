@@ -29,6 +29,8 @@ export interface ThirteenFFormSummary {
   tableEntryTotal: number | null;
   isAmendment: boolean;
   amendmentType?: string;
+  /** Set by Gloom Cloud when it restated the filing's values to dollars ("values restated from thousands"). */
+  valueNote?: string;
 }
 
 export interface ThirteenFHoldingRecord {
