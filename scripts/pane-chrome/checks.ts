@@ -31,6 +31,14 @@ interface Step {
 
 /** Page helpers, installed in every document before the app runs. */
 const PAGE_HELPERS = `
+// React commits, through the DevTools hook React looks for when it loads.
+window.__commits = 0;
+window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {
+  supportsFiber: true, isDisabled: false, renderers: new Map(),
+  inject() { return 1; },
+  onScheduleFiberRoot() {}, onCommitFiberUnmount() {}, onPostCommitFiberRoot() {}, checkDCE() {},
+  onCommitFiberRoot() { window.__commits += 1; },
+};
 window.__check = {
   pane(id) {
     return document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id="' + id + '"], [data-gloom-role=detached-pane-window][data-gloom-pane-id="' + id + '"]');
@@ -160,6 +168,40 @@ async function dragHolding(cdp: Cdp, from: Point, to: Point, check: () => Promis
     }
     await frames(cdp, 2);
     await check();
+  } finally {
+    await mouse(cdp, "mouseReleased", to.x, to.y, false);
+    await frames(cdp, 2);
+  }
+}
+
+/**
+ * Moves the pointer from `from` to `to` within a frame or two, well inside
+ * the interval at which a resize's content catches up, and checks, with the
+ * pointer still down, that what `content` selects in `paneId` keeps its gaps
+ * to the pane's right and bottom edges within a cell: drawn on the cell grid
+ * or not, it follows the frame between catch-ups, with no blank strip or
+ * cut-off edge.
+ */
+async function contentFollowsFrame(cdp: Cdp, paneId: string, content: string, from: Point, to: Point): Promise<void> {
+  const gaps = `(() => {
+    const pane = __check.paneRect(${JSON.stringify(paneId)});
+    const inner = __check.rect(__check.pane(${JSON.stringify(paneId)})?.querySelector(${JSON.stringify(content)}));
+    return pane && inner && { right: pane.x + pane.width - inner.x - inner.width, bottom: pane.y + pane.height - inner.y - inner.height };
+  })()`;
+  const before = await evaluate<{ right: number; bottom: number } | null>(cdp, gaps) ?? fail(`${paneId} has no ${content}`);
+  const cell = await evaluate<{ width: number; height: number }>(cdp, "window.__paneChrome.cell");
+  await mouse(cdp, "mouseMoved", from.x, from.y, false);
+  await mouse(cdp, "mousePressed", from.x, from.y, true);
+  await frames(cdp);
+  try {
+    // Past the drag threshold, then the rest of the way; the page applies both in one frame.
+    await mouse(cdp, "mouseMoved", from.x + Math.sign(to.x - from.x) * 6, from.y + Math.sign(to.y - from.y) * 6, true);
+    await mouse(cdp, "mouseMoved", to.x, to.y, true);
+    await frames(cdp, 2);
+    const during = await evaluate<{ right: number; bottom: number } | null>(cdp, gaps);
+    if (!during || Math.abs(during.right - before.right) > cell.width || Math.abs(during.bottom - before.bottom) > cell.height) {
+      fail(`mid-drag, ${content} did not follow ${paneId}'s frame`, { before, during });
+    }
   } finally {
     await mouse(cdp, "mouseReleased", to.x, to.y, false);
     await frames(cdp, 2);
@@ -361,6 +403,38 @@ const steps: Step[] = [
       if (!await waitFor(cdp, `(() => { const r = ${sidebar}; return r && Math.abs(r.width - ${before.width + by}) <= ${cell.width / 2 + 1}; })()`)) {
         fail("the release did not keep the sidebar's width", round(await evaluate<Rect | null>(cdp, sidebar)));
       }
+    },
+  },
+  ...([
+    ["chart", "chart", "chart:float", "canvas"],
+    ["heat map", "heat", "heat:float", "[data-gloom-role=heat-treemap]"],
+  ] as const).map(([label, float, paneId, content]): Step => ({
+    name: `floating ${label}: what it draws follows the corner between catch-ups`,
+    scenario: `resize&float=${float}`,
+    async run(cdp) {
+      const from = await pointOf(cdp, paneId, "resize");
+      await contentFollowsFrame(cdp, paneId, content, from, { x: from.x + 140, y: from.y + 54 });
+    },
+  })),
+  {
+    name: "dock divider: the chart beside it keeps to its pane's edge between catch-ups",
+    scenario: "resize",
+    async run(cdp) {
+      const news = await rectOf(cdp, "news:dock") ?? fail("news:dock missing");
+      const divider = await topDivider(cdp, "news:dock", news.y + 60);
+      await contentFollowsFrame(cdp, "chart:dock", "canvas", divider, { x: divider.x - 160, y: divider.y });
+    },
+  },
+  {
+    name: "idle: a pane with two tables renders nothing while nothing moves",
+    scenario: "resize",
+    async run(cdp) {
+      // The sidebar pane's second table sits in a box that sizes to its content.
+      await frames(cdp, 30);
+      const before = await evaluate<number>(cdp, "window.__commits");
+      await evaluate(cdp, "new Promise((done) => setTimeout(done, 1000))");
+      const commits = await evaluate<number>(cdp, "window.__commits") - before;
+      if (commits > 2) fail(`the page committed ${commits} times in a second with nothing moving`);
     },
   },
   {

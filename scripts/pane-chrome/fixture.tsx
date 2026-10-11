@@ -12,14 +12,17 @@
  * `detached` (a popped-out window; `&platform=win32` adds Windows caption
  * buttons), `perf` (a denser layout for the frame budget), `screenshot`
  * (chart panes for the copy screenshot check) or `resize` (a news table, a
- * chart, and a table in a sidebar, docked, with a news table floating over
- * them; `&float=chart` floats a chart instead).
+ * chart, and a table in a sidebar beside a second table, docked, with a news
+ * table floating over them; `&float=chart`, `&float=heat` or `&float=fear`
+ * floats a chart, a heat map or the Fear & Greed pane instead).
  */
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { CompositeChart } from "../../src/components/chart/composite";
 import { StaticChartSurface } from "../../src/components/chart/static/chart-surface";
 import { DataTableView } from "../../src/components/data-table/view";
+import { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface } from "../../src/components/metric-treemap/heat-surface";
+import type { MetricTreemapItem } from "../../src/components/metric-treemap/layout";
 import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
 import { DetachedPaneShell } from "../../src/components/layout/detached-pane-shell";
 import { usePaneTabs } from "../../src/components/layout/pane/pane-tabs";
@@ -36,7 +39,7 @@ import { cloneLayout, createDefaultConfig, type DockLayoutNode, type LayoutConfi
 import type { DesktopWindowBridge } from "../../src/types/desktop-window";
 import type { PaneProps } from "../../src/types/plugin";
 import type { RendererHost } from "../../src/ui/host";
-import { Box, Text } from "../../src/ui";
+import { Box, Text, useUiCapabilities } from "../../src/ui";
 import { FearGreedPane } from "../../src/plugins/builtin/fear-greed/pane";
 import { loadFearGreed } from "../../src/plugins/builtin/fear-greed/cache";
 import type { FearGreedData } from "../../src/plugins/builtin/fear-greed/data";
@@ -279,7 +282,12 @@ function ChartPane({ focused, width, height }: PaneProps) {
   return <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={width} height={height} focused={focused} />;
 }
 
-/** A table in a resizable sidebar beside the rest of the pane, like the venue map's list. */
+/**
+ * A table in a resizable sidebar, like the venue map's list, beside a second
+ * table that takes the rest of the pane. The second one's box sizes to its
+ * content, as a plugin's often does: a table whose width followed its own
+ * horizontal scrolling rendered there about 90 times a second, at rest.
+ */
 function SidebarPane({ paneId, focused, width, height }: PaneProps) {
   const [sidebarWidth, setSidebarWidth] = useState(Math.round(width * 0.45));
   const resize = useMemo(() => ({ min: 16, max: Math.max(17, Math.floor(width) - 16), onResize: setSidebarWidth }), [width]);
@@ -288,11 +296,37 @@ function SidebarPane({ paneId, focused, width, height }: PaneProps) {
       <PaneSidebar width={sidebarWidth} height={height} focused={focused} resize={resize}>
         <TablePane paneId={paneId} paneType="table" focused={focused} width={sidebarWidth} height={height} />
       </PaneSidebar>
-      <Box flexGrow={1} flexDirection="column" paddingX={1}>
-        <Text>{`Detail of ${paneId}`}</Text>
+      <Box flexGrow={1} flexDirection="column">
+        <TablePane paneId={`${paneId}:detail`} paneType="table" focused={focused} width={width - sidebarWidth} height={height} />
       </Box>
     </Box>
   );
+}
+
+const HEAT_GROUPS = ["Technology", "Financials", "Health Care", "Energy", "Industrials"];
+/** Invented tiles in five groups, with made-up moves: never real market data. */
+const HEAT_ITEMS: MetricTreemapItem<null>[] = Array.from({ length: 60 }, (_, index) => {
+  const move = Math.sin(index * 1.3) * 3.2;
+  return {
+    id: `tile-${index}`,
+    label: `T${index}`,
+    weight: 40 + ((index * 37) % 23) * 12,
+    colorValue: move,
+    primaryText: `${move >= 0 ? "+" : ""}${move.toFixed(2)}%`,
+    group: HEAT_GROUPS[index % HEAT_GROUPS.length],
+    data: null,
+  };
+});
+const ignoreTile = () => {};
+
+/** A heat map over invented tiles, laid out the way the market heat map lays out its board. */
+function HeatPane({ width, height }: PaneProps) {
+  const capabilities = useUiCapabilities();
+  const scene = useMemo(
+    () => buildHeatTreemapScene(HEAT_ITEMS, heatTreemapCanvas(width, height, capabilities)),
+    [capabilities, height, width],
+  );
+  return <HeatTreemapSurface scene={scene} items={HEAT_ITEMS} width={width} height={height} selectedId={null} onSelect={ignoreTile} />;
 }
 
 const PANES = {
@@ -305,6 +339,7 @@ const PANES = {
   news: { name: "Top News", component: NewsPane },
   chart: { name: "Chart", component: ChartPane },
   sidebar: { name: "Sidebar", component: SidebarPane },
+  heat: { name: "Heat map", component: HeatPane },
 };
 
 function registry(): PluginRegistry {
@@ -384,12 +419,14 @@ function perfLayout(): LayoutConfig {
   };
 }
 
+const FLOATING_RESIZE: Record<string, string> = { chart: "chart", heat: "heat", fear: "fear-greed" };
+
 /**
  * news:dock | chart:dock over sidebar:dock | table:dock, with news:float (or
- * chart:float) over the middle.
+ * chart:float, heat:float, fear-greed:float) over the middle.
  */
 function resizeLayout(): LayoutConfig {
-  const floating = params.get("float") === "chart" ? "chart:float" : "news:float";
+  const floating = `${FLOATING_RESIZE[params.get("float") ?? ""] ?? "news"}:float`;
   return {
     dockRoot: {
       kind: "split", axis: "vertical", ratio: 0.55,
@@ -452,7 +489,7 @@ window.__paneChrome = {
   },
 };
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
-if (scenario === "screenshot") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
+if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
 const rendererHost: RendererHost = {
   ...webRendererHost,
   controlWindow: (action) => { window.__paneChrome.windowControls.push(action); },

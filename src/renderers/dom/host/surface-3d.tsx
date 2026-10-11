@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type Ref } from "react";
-import type { Surface3DHostProps } from "../../../ui/host";
+import type { BoxRenderable, Surface3DHostProps } from "../../../ui/host";
+import { useLiveStretch } from "../../../ui/live-stretch";
 import {
   clampSurface3DCamera, DEFAULT_SURFACE3D_CAMERA, FLOOR, FLOOR_PROJECTION_ALPHA, hitTestSurface3D, projectSurface3D, surface3DBox, surface3DLayout, surface3DLighting,
   surface3DViewport, turbo, SURFACE3D_AMBIENT, SURFACE3D_DIFFUSE, SURFACE3D_SHININESS, SURFACE3D_SPECULAR,
@@ -284,6 +285,10 @@ function prefersReducedMotion(): boolean {
  * against uploaded buffers, and labels move by transform without re-rendering.
  */
 export function WebSurface3D(props: Surface3DHostProps) {
+  const boxRef = useRef<BoxRenderable | null>(null);
+  // While a resize has the pane ahead of this size, the box takes the size it
+  // will have and the drawing buffer follows it (below), crisp on every move.
+  useLiveStretch(boxRef, props.width, props.height);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const labelLayerRef = useRef<HTMLDivElement | null>(null);
@@ -629,7 +634,7 @@ export function WebSurface3D(props: Surface3DHostProps) {
     return `rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}) ${index * 10}%`;
   }).join(", ");
   return (
-    <WebBox width={props.width} height={props.height} data-gloom-role="surface-3d"
+    <WebBox ref={boxRef as Ref<HTMLDivElement>} width={props.width} height={props.height} data-gloom-role="surface-3d"
       style={{ position: "relative", overflow: "hidden", touchAction: "none", overscrollBehavior: "none" }}>
     <div
       ref={containerRef as Ref<HTMLDivElement>}

@@ -271,7 +271,9 @@ export function PaneSidebar({
           />
         )}
         {nativePaneChrome && resize && (
-          // A 1px line is too thin to grab, so the handle straddles it.
+          // A 1px line is too thin to grab, so the handle straddles it, above
+          // what sits beside the sidebar (a table's header and rows are
+          // positioned, and would take the half of it over them).
           <Box
             ref={dividerRef}
             position="absolute"
@@ -285,6 +287,7 @@ export function PaneSidebar({
               width: 1 + DESKTOP_RESIZE_HANDLE_PADDING_PX * 2,
               right: -DESKTOP_RESIZE_HANDLE_PADDING_PX,
               height: "100%",
+              zIndex: 3,
               cursor: "col-resize",
             }}
           />

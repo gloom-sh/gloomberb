@@ -8,15 +8,15 @@ import { serveFixturePage, type FixturePage } from "./page";
  * Frame budget of pane drags and resizes, against a base checkout. Each run
  * drags with real pointer input at 60 moves a second for 1.5 s: a docked and a
  * floating pane across a dense layout (fixture.tsx, `perf`), and, over the
- * `resize` layout, the corner of a floating news table and of a floating
- * chart, a dock divider between two panes, and the divider of a table in a
- * pane's sidebar. It reads what the page's main thread spent
- * (Performance.getMetrics, in thread time), the React commits and the
- * animation frames the page ran, and for a resize how far the frame's edge
- * and the content's edge fell behind the pointer. Base and this checkout take
- * turns, so a runner that slows down mid-job slows both, and the gate is a
- * ratio of the medians: absolute numbers mean little on a shared runner with
- * no GPU.
+ * `resize` layout, the corner of a floating news table, chart, heat map and
+ * Fear & Greed pane, a dock divider between a news table and a chart
+ * (measured on each side), and the divider of a table in a pane's sidebar. It
+ * reads what the page's main thread spent (Performance.getMetrics, in thread
+ * time), the React commits and the animation frames the page ran, and for a
+ * resize how far the frame's edge and the content's edge fell behind the
+ * pointer. Base and this checkout take turns, so a runner that slows down
+ * mid-job slows both, and the gate is a ratio of the medians: absolute
+ * numbers mean little on a shared runner with no GPU.
  *
  * Frames are requestAnimationFrame callbacks in headless Chrome, not frames a
  * GPU presented. Missed frames are estimated against a fixed 60 Hz display:
@@ -43,14 +43,15 @@ const MIN_FRAME_DELTA_MS = 0.4;
 const MAX_COMMIT_RATIO = 1.5;
 const MIN_COMMIT_DELTA = 10;
 /**
- * A resized frame stays this close to the pointer (px, 95th percentile),
- * three cells: one that waits for React to catch up is up to 100 ms of
- * pointer travel behind, and a divider that only moves its line while the
- * panes wait for the release a whole drag. Under that, a frame or two drawn
- * late on a busy runner stays inside the budget.
+ * A resized frame, and what it holds, stays this close to the pointer (px,
+ * 95th percentile), three cells: one that waits for React to catch up is up
+ * to 100 ms of pointer travel behind (a chart drawn on the cell grid was 90
+ * px), and a divider that only moves its line while the panes wait for the
+ * release a whole drag. Under that, a frame or two drawn late on a busy
+ * runner stays inside the budget.
  */
 const MAX_FRAME_LAG_PX = 24;
-/** The release lays a resize out where the pointer left it: within a cell (at the default size) of the frame it drew. */
+/** The release lays a resize out where the pointer left it: within a cell (at the default size) of the frame, and the content, it drew. */
 const MAX_RELEASE_JUMP_PX = 8;
 
 /** Counts React commits through the DevTools hook React looks for when it loads, and keeps where the pointer is. */
@@ -88,6 +89,8 @@ interface DragSample {
   contentLagPx?: number;
   /** Resizes: how far the frame's edge moved when the pointer let go where it stood, px. */
   releaseJumpPx?: number;
+  /** Resizes: how far the content's edge moved when the pointer let go, px. */
+  contentReleaseJumpPx?: number;
 }
 
 interface Scenario {
@@ -100,9 +103,11 @@ interface Scenario {
   /**
    * Resizes: page expressions for the x, in px, of the edge of the frame the
    * pointer drags and of the content inside it. Each is judged by how far it
-   * drifts from the pointer after the press.
+   * drifts from the pointer after the press; the content, from `anchor`
+   * instead when given (the far edge of a pane whose near edge the pointer
+   * moves).
    */
-  track?: { frame: string; content: string };
+  track?: { frame: string; content: string; anchor?: string };
 }
 
 const partCenter = (selector: string) => `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + Math.min(r.width / 2, 16), y: r.y + r.height / 2 }; })()`;
@@ -119,6 +124,15 @@ const TOP_DIVIDER = `(() => {
     .find((r) => Math.abs(r.x + r.width / 2 - edge.right) <= 6 && r.top <= y && r.bottom >= y);
   return { x: divider.x + divider.width / 2, y };
 })()`;
+
+/** A floating pane's corner, dragged out, in past where it started and out again, as the chart and table resizes do. */
+const cornerResize = (name: string, float: string, paneId: string, content: string): Scenario => ({
+  name,
+  fixture: `resize&float=${float}`,
+  grab: (cdp) => evaluate(cdp, middleOf(`${pane(paneId)} [data-gloom-role=resize-handle]`)),
+  path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 220, y: start.y + Math.sin(t * Math.PI * 2) * 90 }),
+  track: { frame: rightOf(pane(paneId)), content: rightOf(`${pane(paneId)} ${content}`) },
+});
 
 const SCENARIOS: Scenario[] = [
   {
@@ -145,16 +159,13 @@ const SCENARIOS: Scenario[] = [
       content: lastRightOf(`${pane("news:float")} [data-gloom-role=data-table-header-cell]`),
     },
   },
-  {
-    name: "chart resize",
-    fixture: "resize&float=chart",
-    grab: (cdp) => evaluate(cdp, middleOf(`${pane("chart:float")} [data-gloom-role=resize-handle]`)),
-    path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 220, y: start.y + Math.sin(t * Math.PI * 2) * 90 }),
-    track: {
-      frame: rightOf(pane("chart:float")),
-      content: rightOf(`${pane("chart:float")} canvas`),
-    },
-  },
+  // The canvas a chart draws on the cell grid, which catches up with a
+  // resize a few times a second and is stretched with the frame in between.
+  cornerResize("chart resize", "chart", "chart:float", "canvas"),
+  // Tiles placed in percentages of a map laid out on the cell grid.
+  cornerResize("heat map resize", "heat", "heat:float", "[data-gloom-role=heat-treemap]"),
+  // A chart of a fixed height in a column of text: it follows the width only.
+  cornerResize("fear and greed resize", "fear", "fear-greed:float", "[data-gloom-role=composite-chart]"),
   {
     name: "dock divider drag",
     fixture: "resize",
@@ -166,10 +177,25 @@ const SCENARIOS: Scenario[] = [
     },
   },
   {
+    // The same divider, from the chart's side: the pointer moves the chart
+    // pane's left edge, and its canvas keeps to the pane's right edge.
+    name: "dock divider beside a chart",
+    fixture: "resize",
+    grab: (cdp) => evaluate(cdp, TOP_DIVIDER),
+    path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 240, y: start.y }),
+    track: {
+      frame: `document.querySelector("${pane("chart:dock")}").getBoundingClientRect().left`,
+      content: rightOf(`${pane("chart:dock")} canvas`),
+      anchor: rightOf(pane("chart:dock")),
+    },
+  },
+  {
     name: "table column drag",
     fixture: "resize",
-    // The divider of the table in the sidebar pane: its grab strip straddles the sidebar's right edge.
-    grab: (cdp) => evaluate(cdp, `(() => { const r = document.querySelector("${pane("sidebar:dock")} [data-gloom-role=pane-sidebar]").getBoundingClientRect(); return { x: r.right, y: r.top + r.height / 2 }; })()`),
+    // The divider of the table in the sidebar pane: its grab strip straddles
+    // the sidebar's right edge. Pressed just inside it, where a base branch
+    // whose strip lies under the table beside it takes the press too.
+    grab: (cdp) => evaluate(cdp, `(() => { const r = document.querySelector("${pane("sidebar:dock")} [data-gloom-role=pane-sidebar]").getBoundingClientRect(); return { x: r.right - 1, y: r.top + r.height / 2 }; })()`),
     path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 110, y: start.y }),
     track: {
       frame: rightOf(`${pane("sidebar:dock")} [data-gloom-role=pane-sidebar]`),
@@ -204,8 +230,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     window.__frameTimes = [];
     window.__lag = [];
     window.__commits = 0;
-    const track = ${scenario.track ? `{ frame: () => ${scenario.track.frame}, content: () => ${scenario.track.content} }` : "null"};
-    const origin = track && { frame: track.frame() - ${start.x}, content: track.content() - ${start.x} };
+    const track = ${scenario.track ? `{ frame: () => ${scenario.track.frame}, content: () => ${scenario.track.content}, anchor: ${scenario.track.anchor ? `() => ${scenario.track.anchor}` : "null"} }` : "null"};
+    const origin = track && { frame: track.frame() - ${start.x}, content: track.content() - (track.anchor ? track.anchor() : ${start.x}) };
     let last = performance.now();
     window.__recording = true;
     const tick = (now) => {
@@ -215,7 +241,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
         const pointer = window.__pointerX;
         setTimeout(() => {
           if (!window.__recording) return;
-          window.__lag.push([Math.abs(track.frame() - pointer - origin.frame), Math.abs(track.content() - pointer - origin.content)]);
+          const anchor = track.anchor ? track.anchor() : pointer;
+          window.__lag.push([Math.abs(track.frame() - pointer - origin.frame), Math.abs(track.content() - anchor - origin.content)]);
         }, 0);
       }
       if (window.__recording) requestAnimationFrame(tick);
@@ -239,10 +266,11 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   const end = scenario.path(start, 1);
   await mouse(cdp, "mouseMoved", end.x, end.y, true);
   await frames(cdp, 2);
-  const held = scenario.track ? await evaluate<number>(cdp, scenario.track.frame) : 0;
+  const edges = scenario.track ? `[${scenario.track.frame}, ${scenario.track.content}]` : "[0, 0]";
+  const held = await evaluate<[number, number]>(cdp, edges);
   await mouse(cdp, "mouseReleased", end.x, end.y, false);
   await frames(cdp, 3);
-  const released = scenario.track ? await evaluate<number>(cdp, scenario.track.frame) : 0;
+  const released = await evaluate<[number, number]>(cdp, edges);
   const drawn = Math.max(1, recorded.frameTimes.length);
   const ms = (name: string) => (after[name]! - before[name]!) * 1000;
   return {
@@ -258,7 +286,8 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
     ...(scenario.track ? {
       frameLagPx: percentile(recorded.lag.map(([frame]) => frame), 0.95),
       contentLagPx: percentile(recorded.lag.map(([, content]) => content), 0.95),
-      releaseJumpPx: Math.abs(released - held),
+      releaseJumpPx: Math.abs(released[0] - held[0]),
+      contentReleaseJumpPx: Math.abs(released[1] - held[1]),
     } : {}),
   };
 }
@@ -323,7 +352,7 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
   const lines = [
     "### Pane drag and resize frame budget",
     "",
-    `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Jump on release: how far the frame's edge moved when the pointer let go where it rested.`,
+    `Middle value of ${runs} alternating runs per side, ${DRAG_MS / 1000} s drags at 60 moves a second, headless Chrome without a GPU. Frames are animation frames, not GPU-presented frames; missed frames are estimated against a 60 Hz display. Behind the pointer: how far the dragged edge of the frame, and of the content in it, was from where the pointer had it, in px (95th percentile). Jump on release: how far the frame's and the content's edge moved when the pointer let go where it rested.`,
     "",
     "| | main | this PR |",
     "|---|---|---|",
@@ -347,14 +376,21 @@ function judge(scenarios: Scenario[], samples: Record<"base" | "head", Array<Rec
       row("frame behind the pointer", "frameLagPx", " px");
       row("content behind the pointer", "contentLagPx", " px");
       row("frame jump on release", "releaseJumpPx", " px");
+      row("content jump on release", "contentReleaseJumpPx", " px");
     }
     const frameLag = { base: pick("base", "frameLagPx"), head: pick("head", "frameLagPx") };
     if (track && frameLag.head > MAX_FRAME_LAG_PX) {
       problems.push(`${name}: the frame fell ${round(frameLag.head, 1)} px behind the pointer (limit: ${MAX_FRAME_LAG_PX} px).`);
     }
-    const releaseJump = pick("head", "releaseJumpPx");
-    if (track && releaseJump > MAX_RELEASE_JUMP_PX) {
-      problems.push(`${name}: the frame jumped ${round(releaseJump, 1)} px when the pointer let go (limit: ${MAX_RELEASE_JUMP_PX} px).`);
+    const contentLag = pick("head", "contentLagPx");
+    if (track && contentLag > MAX_FRAME_LAG_PX) {
+      problems.push(`${name}: the content fell ${round(contentLag, 1)} px behind the pointer (limit: ${MAX_FRAME_LAG_PX} px).`);
+    }
+    for (const [what, key] of [["frame", "releaseJumpPx"], ["content", "contentReleaseJumpPx"]] as const) {
+      const releaseJump = pick("head", key);
+      if (track && releaseJump > MAX_RELEASE_JUMP_PX) {
+        problems.push(`${name}: the ${what} jumped ${round(releaseJump, 1)} px when the pointer let go (limit: ${MAX_RELEASE_JUMP_PX} px).`);
+      }
     }
     // A main branch whose frame did not follow the pointer did less work by
     // not resizing anything as it went, so its time and commits are no

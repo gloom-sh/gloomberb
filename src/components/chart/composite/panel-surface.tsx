@@ -122,6 +122,8 @@ interface CompositePanelSurfaceProps {
   onSelectLevel: (id: string | null) => void;
 }
 
+const DESKTOP_PLOT_STYLE = { flex: "1 1 0px", width: "auto", minWidth: 0, height: "auto", alignSelf: "stretch" } as const;
+
 export function CompositePanelSurface({
   panel,
   scene,
@@ -785,6 +787,10 @@ export function CompositePanelSurface({
       height={panel.height}
       width={plotWidth + leftAxisWidth + rightAxisWidth + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0))}
       position="relative"
+      // Desktop: spans the chart's box and takes its share of the height, so
+      // when a resize draws the box at a new size between renders the plot
+      // follows it by CSS. At rest, the size the cells give it.
+      style={isDesktopWeb ? { width: "100%", flex: `${panel.height} 1 calc(${panel.height} * var(--cell-h))`, height: "auto", minHeight: 0 } : undefined}
     >
       {measureReadout ? (
         <Box
@@ -832,6 +838,8 @@ export function CompositePanelSurface({
         ref={plotRef}
         width={plotWidth}
         height={panel.height}
+        // Desktop: the width the axes leave, and the row's height.
+        style={isDesktopWeb ? DESKTOP_PLOT_STYLE : undefined}
         flexDirection="column"
         bitmaps={bitmapLayers}
         crosshair={crosshair}

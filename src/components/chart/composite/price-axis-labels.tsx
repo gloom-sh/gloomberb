@@ -190,7 +190,9 @@ export function PriceAxisLabels({
       height={height}
       flexDirection="column"
       overflow="hidden"
-      style={usePixelOverlay || usePixelTicks ? { position: "relative" } : undefined}
+      // Labels placed in percentages follow the row's height as a resize
+      // draws the chart at a new size between renders.
+      style={usePixelOverlay || usePixelTicks ? { position: "relative", height: "auto", alignSelf: "stretch" } : undefined}
     >
       {Array.from({ length: height }, (_, row) => {
         const isCursorRow = !usePixelOverlay && cursorLabel !== null && cursorRow === row;

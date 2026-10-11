@@ -66,7 +66,7 @@ A pane that shows one ticker, such as a price chart (`GP`, `GIP`), `OMON`, `OPX`
 
 **Move to New Layout** (`Ctrl+Shift+N`, `Cmd+Shift+N` in the desktop app on macOS, also in the pane menu and the command bar) takes the focused pane, docked or floating, out of its layout into a new layout tab named after it, such as `Chart: NVDA`, where it fills the window, and switches to it. The pane moves as it is, with its ticker, tab, settings and lock. The layout it left closes the gap. A pane that followed a list keeps the ticker it showed, and panes that followed the moved one keep theirs. **Move Back to** and the layout's name in the pane menu, or the same shortcut while the pane is alone, returns it to its place in that layout, links it again and removes the layout it leaves empty; if that layout was deleted, it docks in the first other tab. A layout's only pane has nothing to move out of. In the browser, `Ctrl+Shift+N` opens a private window instead, so use the pane menu there.
 
-Drag the line between docked panes to resize them, and a floating pane's bottom-right corner to resize it; on the desktop and the web, any edge or corner of a floating pane works too. There the panes follow the pointer as you drag, and what they show catches up a few times a second and settles when you let go.
+Drag the line between docked panes to resize them, and a floating pane's bottom-right corner to resize it; on the desktop and the web, any edge or corner of a floating pane works too. There the panes and what they show follow the pointer as you drag: tables and heat maps lay out at the new size, and a chart stretches with its pane and redraws sharp a few times a second and when you let go.
 
 ### Docs inside the app
 

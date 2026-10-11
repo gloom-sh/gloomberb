@@ -10,6 +10,7 @@ import type {
 } from "../../../../layout/pane-manager";
 import { colors } from "../../../../theme/colors";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
+import { LivePaneFrameContext, type CellSize, type LivePaneFrame } from "../../../../ui/live-stretch";
 import { constrainFloatingRectToBounds, sameRect, type ResizeEdges } from "../drag";
 import { useLiveBoxFrame, useLiveCatchUp, useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
 import { pathKey } from "../../window-edit/mode";
@@ -114,11 +115,30 @@ function usePaneQuickSettings(getPaneQuickSettings: PaneLayerProps["getPaneQuick
 }
 
 /**
+ * Desktop: what a pane's content reads to follow a resize between catch-ups
+ * (`useLiveStretch`): the frame's size as the content rendered, and where the
+ * drag has it on each move. `sizeOf` must be stable while its inputs are.
+ */
+function useLivePaneFrame(
+  live: LiveDragStore,
+  rendered: LayoutBounds,
+  sizeOf: ((geometry: LiveDragGeometry) => CellSize | null) | null,
+): LivePaneFrame | null {
+  const { width, height } = rendered;
+  return useMemo(() => (sizeOf ? {
+    rendered: { width, height },
+    live: () => sizeOf(live.get()),
+    subscribe: live.subscribeMotion,
+  } : null), [height, live, sizeOf, width]);
+}
+
+/**
  * A docked pane at its layout rect. On the desktop a divider drag moves and
  * sizes it by restyling its box on every move (`useLiveBoxFrame`), so its
  * header, body and footer stretch with the split and nothing renders; its
  * content renders at the new size a few times a second (`useLiveCatchUp`),
- * and the release lays the split out once.
+ * charts and heat maps follow the frame in between (`useLiveStretch`), and
+ * the release lays the split out once.
  */
 const DockedPaneLayer = memo(function DockedPaneLayer({
   pane,
@@ -151,6 +171,10 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
     return at && !sameRect(at, layoutRect) ? at : null;
   } : null), [layoutRect, nativePaneChrome, paneId]);
   const rect = useLiveCatchUp(live, selectCatchUp) ?? layoutRect;
+  const sizeOf = useMemo(() => (nativePaneChrome
+    ? (geometry: LiveDragGeometry): CellSize | null => geometry.dock?.leaves.get(paneId) ?? null
+    : null), [nativePaneChrome, paneId]);
+  const liveFrame = useLivePaneFrame(live, rect, sizeOf);
   return (
     <Box
       ref={boxRef}
@@ -198,17 +222,19 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
               onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
             >
               <PaneFooterKeys paneId={paneId} footer={footer} focused={focused} />
-              <PaneContent
-                component={pane.def.component}
-                paneId={paneId}
-                paneType={pane.instance.paneId}
-                title={title}
-                focused={focused}
-                width={bodyFrame.width ?? 1}
-                height={bodyFrame.height ?? 1}
-                inView={inView}
-                closePane={actions.close}
-              />
+              <LivePaneFrameContext.Provider value={liveFrame}>
+                <PaneContent
+                  component={pane.def.component}
+                  paneId={paneId}
+                  paneType={pane.instance.paneId}
+                  title={title}
+                  focused={focused}
+                  width={bodyFrame.width ?? 1}
+                  height={bodyFrame.height ?? 1}
+                  inView={inView}
+                  closePane={actions.close}
+                />
+              </LivePaneFrameContext.Provider>
             </PaneWrapper>
           );
         }}
@@ -393,7 +419,8 @@ const FloatingResizeEdges = memo(function FloatingResizeEdges({
  * size the same way, on the same layer (moved too when a left or top edge
  * leads), and the header, body, footer and content stretch with it; what the
  * content lays out on the cell grid renders at the new size a few times a
- * second (`useLiveCatchUp`). Every terminal frame redraws it at the drag's
+ * second (`useLiveCatchUp`), and charts and heat maps follow the frame in
+ * between (`useLiveStretch`). Every terminal frame redraws it at the drag's
  * rect.
  */
 const FloatingPaneLayer = memo(function FloatingPaneLayer({
@@ -430,7 +457,7 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
   } : null), [contentHeight, paneId, rect.x, rect.y, slide, width]);
   useLiveBoxFrame(live, layerRef, frameOf);
   const frameRef = useRef<BoxRenderable | null>(null);
-  const sizeOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
+  const sizeOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): CellSize | null => {
     if (geometry.paneResize?.paneId !== paneId || geometry.floating?.paneId !== paneId) return null;
     const at = constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight);
     return { width: at.width, height: at.height };
@@ -449,13 +476,16 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
     : resizeRect
       ? { ...rect, width: resizeRect.width, height: resizeRect.height }
       : rect;
+  const liveFrame = useLivePaneFrame(live, preview, sizeOf);
   const content = (
-    <FloatingPaneFrame
-      {...frame}
-      rect={preview}
-      zIndex={zIndex}
-      frameRef={slide ? frameRef : undefined}
-    />
+    <LivePaneFrameContext.Provider value={liveFrame}>
+      <FloatingPaneFrame
+        {...frame}
+        rect={preview}
+        zIndex={zIndex}
+        frameRef={slide ? frameRef : undefined}
+      />
+    </LivePaneFrameContext.Provider>
   );
   if (!slide) return content;
   return (

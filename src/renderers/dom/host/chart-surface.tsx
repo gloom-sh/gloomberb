@@ -2,8 +2,8 @@
 import {
   forwardRef,
   memo,
-  useEffect,
   useId,
+  useLayoutEffect,
   useRef,
   type CSSProperties,
   type ReactNode,
@@ -20,7 +20,9 @@ import { WebBox } from "./box";
 const CanvasBitmap = memo(function CanvasBitmap({ bitmap }: { bitmap: BitmapSurface }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  useEffect(() => {
+  // In the commit: a new size clears the canvas, and a frame painted before
+  // the pixels land would show it blank.
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const context = canvas.getContext("2d");

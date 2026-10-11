@@ -8,7 +8,8 @@ import { type ChartToolSpan, CHART_DRAWING_COLORS, isDrawingTool, type ChartDraw
 import { ChartDrawingStore, NO_DRAWINGS } from "./drawing-store";
 import { CompositeLegend } from "./legend";
 import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
-import { AsciiText, Box, ChartSurface, Text, useUiCapabilities } from "../../../ui";
+import { AsciiText, Box, ChartSurface, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
+import { useLiveStretch } from "../../../ui/live-stretch";
 import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { useThemeColors, useThemeId } from "../../../theme/theme-context";
 import { themedSeriesColor, themeSeriesColors } from "../../../theme/series-colors";
@@ -58,6 +59,15 @@ function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number 
 }
 
 const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
+
+/**
+ * Desktop: the rows below the plot span the chart's box and their labels the
+ * width the gutters leave, so when a resize draws the box at a new size
+ * between renders (`useLiveStretch`) they follow it by CSS; at rest they are
+ * the size the cells give them.
+ */
+const DESKTOP_FULL_ROW = { width: "100%" } as const;
+const DESKTOP_PLOT_COLUMN = { flex: "1 1 0px", width: "auto", minWidth: 0 } as const;
 
 /** Default-palette series in the theme's own palette, where it has one; the same list otherwise. */
 function useThemedSeriesList(list: ResolvedSeries[], themeId: string): ResolvedSeries[];
@@ -416,10 +426,21 @@ function ThemedCompositeChart({
     ? buildCompositeViewportTimeAxisLayout(effectiveViewport, plotWidth)
     : null;
 
+  // While a resize has the pane ahead of this size, the chart's box takes
+  // the size it will render at, the plot takes what the gutters leave, and
+  // its bitmap stretches with it until the chart renders at that size.
+  const rootRef = useRef<BoxRenderable | null>(null);
+  useLiveStretch(rootRef, totalWidth, totalHeight);
+  // Overlays over the plot keep the gutters around it rather than its size.
+  const plotInsetStyle = isDesktopWeb
+    ? { width: "auto", height: "auto", right: `calc(${rightPadding} * var(--cell-w))`, bottom: `calc(${timeAxisRows + xMarkerRows} * var(--cell-h))` }
+    : undefined;
+
   if (!scene) {
     const emptyPlotHeight = Math.max(0, totalHeight - legendRows - timeAxisRows - xMarkerRows);
     return (
       <Box
+        ref={rootRef}
         flexDirection="column"
         width={totalWidth}
         height={totalHeight}
@@ -443,11 +464,17 @@ function ThemedCompositeChart({
           />
         ) : null}
         {emptyPlotHeight > 0 ? (
-          <Box flexDirection="row" width={totalWidth} height={emptyPlotHeight}>
+          <Box
+            flexDirection="row"
+            width={totalWidth}
+            height={emptyPlotHeight}
+            style={isDesktopWeb ? { width: "100%", flex: "1 1 0px", height: "auto", minHeight: 0 } : undefined}
+          >
             {leftPadding > 0 ? <Box width={leftPadding} /> : null}
             <ChartSurface
               width={plotWidth}
               height={emptyPlotHeight}
+              style={isDesktopWeb ? { ...DESKTOP_PLOT_COLUMN, height: "auto", alignSelf: "stretch" } : undefined}
               alignItems="center"
               justifyContent="center"
               onMouseScroll={interactive && navigable && navigationFrame ? handleEmptyMouseScroll : undefined}
@@ -462,7 +489,7 @@ function ThemedCompositeChart({
           </Box>
         ) : null}
         {emptyTimeAxisLayout ? (
-          <Box flexDirection="row" width={totalWidth} height={1}>
+          <Box flexDirection="row" width={totalWidth} height={1} style={isDesktopWeb ? DESKTOP_FULL_ROW : undefined}>
             {leftPadding > 0 ? <Box width={leftPadding} /> : null}
             <StaticXAxisLabels
               labels={[emptyTimeAxisLayout.text]}
@@ -503,6 +530,7 @@ function ThemedCompositeChart({
     : undefined;
   return (
     <Box
+      ref={rootRef}
       flexDirection="column"
       width={totalWidth}
       height={totalHeight}
@@ -605,6 +633,7 @@ function ThemedCompositeChart({
           zIndex={5}
           alignItems="center"
           justifyContent="center"
+          style={plotInsetStyle}
           data-gloom-role={CHART_WATERMARK_ROLE}
         >
           <AsciiText text="Gloomberb" font="wordmark" scale={watermarkScale} color={resolvedColors.textDim} />
@@ -618,7 +647,7 @@ function ThemedCompositeChart({
           width={plotWidth}
           height={plotHeight}
           zIndex={12}
-          style={isDesktopWeb ? { pointerEvents: "none" } : undefined}
+          style={isDesktopWeb ? { ...plotInsetStyle, pointerEvents: "none" } : undefined}
         >
           <StaticXMarkerOverlay
             markers={xMarkers}
@@ -629,7 +658,7 @@ function ThemedCompositeChart({
         </Box>
       ) : null}
       {timeAxisLayout ? (
-        <Box flexDirection="row" width={totalWidth} height={1}>
+        <Box flexDirection="row" width={totalWidth} height={1} style={isDesktopWeb ? DESKTOP_FULL_ROW : undefined}>
           {leftPadding > 0 ? <Box width={leftPadding} /> : null}
           <StaticXAxisLabels
             labels={xAxis?.ticks ? [] : xAxis?.labels ? [...xAxis.labels] : [timeAxisLayout.text]}
@@ -647,7 +676,7 @@ function ThemedCompositeChart({
         </Box>
       ) : null}
       {xMarkerRows > 0 ? (
-        <Box flexDirection="row" width={totalWidth} height={1}>
+        <Box flexDirection="row" width={totalWidth} height={1} style={isDesktopWeb ? DESKTOP_FULL_ROW : undefined}>
           {leftPadding > 0 ? <Box width={leftPadding} /> : null}
           <StaticXMarkerLabels
             markers={xMarkers}

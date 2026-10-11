@@ -3,8 +3,8 @@ name: Pane chrome
 # Moves panes with real pointer input in headless Chrome (scripts/pane-chrome),
 # and checks that a pane's Copy Screenshot image shows its charts.
 # Only for changes that can break pane chrome: the shell and pane headers,
-# the dock, the DOM renderer, the desktop view, the pane screenshot, and these
-# checks themselves.
+# the dock, the DOM renderer, the desktop view, the pane screenshot, the
+# charts and heat maps that follow a resize, and these checks themselves.
 # The pane drag frame budget is in the Performance workflow and runs for the
 # same pull_request paths (scripts/pane-chrome/scope.ts reads them from here).
 on:
@@ -13,6 +13,8 @@ on:
       - main
     paths: &pane-chrome-paths
       - "src/components/layout/**"
+      - "src/components/chart/composite/**"
+      - "src/components/metric-treemap/**"
       - "src/components/ui/tabs.tsx"
       - "src/components/ui/icon.tsx"
       - "src/components/ui/data-table/**"

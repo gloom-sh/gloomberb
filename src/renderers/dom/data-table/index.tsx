@@ -342,6 +342,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     minHeight: 0,
     backgroundColor: CSS_BG,
     overflow: "hidden",
+    // Its width comes from where it sits, never from its columns. When the
+    // columns overflow, the content is laid out at their full width; in a box
+    // that sizes to its content (a pane's side beside a sidebar), that widened
+    // the box until they fit, which turned the scrolling off and narrowed it
+    // again: a measure and a render every frame, at rest.
+    contain: "inline-size",
   };
   const bodyScrollerStyle: CSSProperties = {
     width: "100%",
