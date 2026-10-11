@@ -61,6 +61,7 @@ export function assetDataProvider(provider: AssetDataProvider): AssetDataCapabil
         if (!provider.getCorporateActions) throw new Error(`${provider.name} does not provide corporate actions.`);
         return provider.getCorporateActions(input.ticker, input.exchange, input.context);
       }, "query"),
+      getTickerChanges: op((input: any) => provider.getTickerChanges?.(input.symbol) ?? Promise.resolve(null), "query"),
       getEarningsCalendar: op((input: any) => {
         if (!provider.getEarningsCalendar) throw new Error(`${provider.name} does not provide earnings calendar.`);
         return provider.getEarningsCalendar(input.symbols ?? [], input.context);

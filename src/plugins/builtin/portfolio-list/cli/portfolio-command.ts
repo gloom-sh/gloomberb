@@ -1,7 +1,7 @@
 import { saveConfig } from "../../../../data/config/store";
 import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
-import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
+import { resolveCliTicker, resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
@@ -153,17 +153,21 @@ function cashRefusal(portfolio: Portfolio, exchange: string | undefined) {
 async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string, exchange: string | undefined, ctx: CliCommandContext, { store, dataProvider }: MarketContext) {
   try {
     rejectCashSymbol(symbol, exchange, portfolio.name);
-    const ticker = await resolveTickerForCli(symbol, store, dataProvider, exchange);
+    // A bare symbol is stored on the listing `quote` reads it as, and the notes say which, as `watchlist add` does.
+    const { ticker, notes, change } = await resolveCliTicker(symbol, store, dataProvider, exchange, {
+      retry: (key) => `gloomberb portfolio add ${portfolio.name} ${key}`,
+    });
     const result = addTickerToPortfolio(ticker, portfolio.id);
     // Name the listing that was stored: SAN:EPA is not the SAN that a bare SAN means.
     const saved = savedListingName(ticker);
-    const data = { changed: result.changed, ...listingFields(saved), portfolio: portfolio.name };
+    const data = { changed: result.changed, ...listingFields(saved), portfolio: portfolio.name, ...change ? { tickerChange: change } : {} };
+    const warnings = notes.length > 0 ? notes : undefined;
     if (!result.changed) {
-      ctx.printResult({ data }, { text: () => cliStyles.warning(`${saved.label} is already in "${portfolio.name}".`) });
+      ctx.printResult({ data, warnings }, { text: () => cliStyles.warning(`${saved.label} is already in "${portfolio.name}".`) });
       return;
     }
     await store.saveTicker(result.ticker);
-    ctx.printResult({ data }, { text: () => cliStyles.success(`Added ${saved.label} to "${portfolio.name}".`) });
+    ctx.printResult({ data, warnings }, { text: () => cliStyles.success(`Added ${saved.label} to "${portfolio.name}".`) });
   } catch (error) {
     failPortfolioCommand(ctx, error, `Failed to add ${symbol} to "${portfolio.name}".`);
   }

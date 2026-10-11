@@ -23,9 +23,17 @@ import {
   quoteBareListing,
   resolveCliListing,
   savedListingName,
+  tradingListing,
   type CliListing,
   type ListingDeps,
 } from "./listing-arg";
+import {
+  describeTickerChange,
+  startTickerChangeLookup,
+  type CurrentListing,
+  type TickerChange,
+  type TickerChangeLookup,
+} from "../tickers/ticker-changes";
 
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
@@ -46,6 +54,8 @@ export interface CliTicker {
   notes: string[];
   /** Of those, the one saying the listing stopped trading; null while it trades. */
   ended: string | null;
+  /** The symbol changed (FB became META); its note leads `notes`. */
+  change: TickerChange | null;
 }
 
 export interface CliTickerOptions {
@@ -53,6 +63,8 @@ export interface CliTickerOptions {
   retry?: (key: string) => string;
   /** `--exchange` only fills in the symbols that name no exchange of their own, as for a list of symbols. */
   ownExchangeWins?: boolean;
+  /** Look up whether the symbol changed (FB became META); a long list skips it. True by default. */
+  changes?: boolean;
 }
 
 /** Search found no listing for the symbol: the message says so, or why (no longer trading, not on that exchange). */
@@ -85,7 +97,12 @@ export async function resolveCliTicker(
   const deps: ListingDeps = { store, dataProvider };
   const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins });
   const read = listingReadNotes(listing);
-  if (listing.saved) return { ticker: listing.saved, notes: read, ended: null };
+  // Looked up beside the search, so saying FB is now META costs no wait.
+  const changes = options.changes === false ? null : startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);
+  // A saved listing names what lists there; the issuer that left, if it is that one, is its old line.
+  if (listing.saved) {
+    return withChange(listing, changes, { ticker: listing.saved, notes: read, ended: null }, { name: listing.saved.metadata.name });
+  }
 
   const localTickers = new Map(
     (await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const),
@@ -107,8 +124,16 @@ export async function resolveCliTicker(
     bareQuote = bare.quote;
   }
 
-  if (!resolved) throw new TickerNotFoundError(await missingListingMessage(listing, deps));
-  if (resolved.kind === "local") return { ticker: resolved.ticker, notes: [...read, ...bareNote ? [bareNote] : []], ended: null };
+  if (!resolved) {
+    const message = await missingListingMessage(listing, deps);
+    const change = describeTickerChange(listing.symbol, await changes?.settle() ?? null, null);
+    throw new TickerNotFoundError(change ? `${message} ${change.note}.` : message);
+  }
+  if (resolved.kind === "local") {
+    return withChange(listing, changes, { ticker: resolved.ticker, notes: [...read, ...bareNote ? [bareNote] : []], ended: null }, {
+      name: resolved.ticker.metadata.name,
+    });
+  }
 
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
   const named = created ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };
@@ -120,7 +145,24 @@ export async function resolveCliTicker(
       ?? chosenListingNote(listing.symbol, saved.exchange, others)
     : null);
   const ended = named.quote ? noLongerTradingNote(saved.label, named.quote) : null;
-  return { ticker: named.ticker, notes: [...read, venueNote, ended].filter((note): note is string => !!note), ended };
+  // Search listed it, so something trades there; its quote says whether that is the issuer that left.
+  const current = named.quote ? tradingListing(named.quote) : { name: named.ticker.metadata.name };
+  return withChange(listing, changes, {
+    ticker: named.ticker,
+    notes: [...read, venueNote, ended].filter((note): note is string => !!note),
+    ended,
+  }, current);
+}
+
+/** The resolution with the symbol's change, when it has one, leading its notes. */
+async function withChange(
+  listing: Pick<CliListing, "symbol">,
+  lookup: TickerChangeLookup | null,
+  resolved: Omit<CliTicker, "change">,
+  current: CurrentListing | null | undefined,
+): Promise<CliTicker> {
+  const change = describeTickerChange(listing.symbol, await lookup?.settle() ?? null, current);
+  return change ? { ...resolved, notes: [change.note, ...resolved.notes], change } : { ...resolved, change: null };
 }
 
 /**
@@ -172,6 +214,8 @@ export type CliTickerResolution =
 
 /** Symbols looked up at once. Each is a catalogue search and a quote, so this bounds the requests in flight. */
 const RESOLVE_CONCURRENCY = 8;
+/** Lists of at most this many symbols say which changed; a longer one is a portfolio, not a lookup. */
+const MAX_CHANGE_LOOKUPS = 10;
 /** Symbols looked up again at once after requests failed, gently, as the service may be limiting the rate. */
 const RETRY_CONCURRENCY = 4;
 /** The data service's market requests (search, quotes), as connection health names them. */
@@ -238,7 +282,8 @@ export async function resolveTickersForCli(
     retryWaitsMs?: readonly number[];
   } = {},
 ): Promise<CliTickerResolution[]> {
-  const resolve = (symbol: string) => resolveCliTicker(symbol, store, dataProvider, exchange, { retry, ownExchangeWins: true });
+  const changes = symbols.length <= MAX_CHANGE_LOOKUPS;
+  const resolve = (symbol: string) => resolveCliTicker(symbol, store, dataProvider, exchange, { retry, ownExchangeWins: true, changes });
   const failedRequests = watchFailedRequests();
   try {
     let lookups = await lookUpTickers(symbols, RESOLVE_CONCURRENCY, resolve);

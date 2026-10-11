@@ -114,6 +114,7 @@ import {
   notTradedMessage,
   quoteBareListing,
   requireCliListing,
+  tradingListing,
   type CliListing,
   type ListingDataRequest,
   type ListingIdentity,
@@ -126,6 +127,7 @@ import { isNotATickerMessage } from "../not-a-ticker";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
+import { describeTickerChange, startTickerChangeLookup, type TickerChange } from "../../tickers/ticker-changes";
 import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
@@ -177,6 +179,8 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   listing?: { name: string | null };
   /** A futures row's contract, terms and latest confirmed settlement, as `ticker` reads them. */
   futuresContract?: FuturesContractTermsPayload;
+  /** The symbol changed: its issuer moved to another symbol, or its holder had another before. */
+  tickerChange?: TickerChange;
 };
 type FinancialsCliData = TickerFinancials & {
   symbol: string;
@@ -525,15 +529,28 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // Each costs a search, so a long list (a portfolio check, not a lookup) names none.
     const venues = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
       : listings.map((listing) => [listing, loadBareVenues(listing, market)] as const));
+    // So is whether a symbol changed (FB is now META), for the same lists.
+    const changes = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
+      : listings.map((listing) => [listing, startTickerChangeLookup(market.dataProvider, listing.symbol, listing.exchange)] as const));
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
+    const asked = results.map(listingOf);
     const request = { command: commandName, noun: "quote" };
     const answers = await Promise.all(results.map((result, index) => {
-      const listing = listingOf(result, index);
+      const listing = asked[index]!;
       return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null);
     }));
+    const now = Date.now();
+    const tickerChanges = await Promise.all(answers.map(async ({ result }, index) => {
+      const listing = asked[index]!;
+      // A bare symbol read on a listing abroad (SXR8 -> XETRA) is not the US symbol the changes are of.
+      if (result.quote && bareListingNote(listing, result.quote)) return null;
+      return describeTickerChange(listing.symbol, await changes.get(listing)?.settle() ?? null, tradingListing(result.quote, now));
+    }));
     const failed = answers[0]?.failure;
-    if (listings.length === 1 && failed) ctx.fail(failed.message, failed.details);
+    if (listings.length === 1 && failed) {
+      ctx.fail(failed.message, [tickerChanges[0]?.note, failed.details].filter(Boolean).join("\n") || undefined);
+    }
     // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table.
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
@@ -548,9 +565,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       error: failure?.oneLine ?? errorMessage(result.error),
       ...yieldIndexFields(result),
+      ...tickerChanges[index] ? { tickerChange: tickerChanges[index] } : {},
     }));
-    const now = Date.now();
     const notes = [
+      // FB now lists another security; the company that was FB trades as META.
+      ...tickerChanges.flatMap((change) => change ? [change.note] : []),
       // Which listing a bare symbol was read as, and the index a bare root is not, are in no row.
       ...answers.flatMap((answer) => answer.notes),
       // A row that stopped trading long ago reads as a quote that is merely stale.

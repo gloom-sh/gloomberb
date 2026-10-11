@@ -408,8 +408,15 @@ export class CloudApiRequestTransport {
     // Crash reports, usage counts and command-search reports are background
     // traffic: a rate-limited, timed-out or missing one must not show up as a
     // Cloud outage in the connections pane. Nor must the map's probe for geo
-    // layers, which a server without them answers with 404.
-    if (path.startsWith("/telemetry/") || path === "/assist/searches" || path === "/cloud/geo/layers") return request();
+    // layers, which a server without them answers with 404, or a ticker
+    // change lookup: a note beside a quote, never one of the refused market
+    // requests a lookup of many symbols waits out and retries.
+    if (
+      path.startsWith("/telemetry/")
+      || path === "/assist/searches"
+      || path === "/cloud/geo/layers"
+      || path.startsWith("/market/ticker-changes?")
+    ) return request();
     return this.connectionHealth.track(
       GLOOM_CLOUD_HTTP_CONNECTION_ID,
       operation,

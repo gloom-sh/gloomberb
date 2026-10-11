@@ -20,6 +20,7 @@ import {
 } from "../helpers";
 import type { CommandBarRoute } from "../workflow/types";
 import { AmbiguousCollectionTickerError, resolveCollectionTicker } from "../workflow/collection-ticker";
+import { describeTickerChange, startTickerChangeLookup } from "../../../tickers/ticker-changes";
 
 type WorkflowDeps = Parameters<typeof resolveTickerInput>[3];
 
@@ -221,6 +222,7 @@ export async function executeCollectionCommandAction(options: {
       `${action === "add" ? "Added" : "Removed"} ${resolvedTicker.symbol} ${action === "add" ? "to" : "from"} "${targetName}".`,
       { type: "success" },
     );
+    if (action === "add") notifyTickerChange(deps.dataProvider, resolvedTicker.ticker, options.notify);
   } else {
     options.notify(
       action === "add"
@@ -230,4 +232,23 @@ export async function executeCollectionCommandAction(options: {
     );
   }
   options.closeAll({ revertThemePreview: false });
+}
+
+/** How long an added symbol's change lookup may take before its toast is dropped. */
+const CHANGE_TOAST_WAIT_MS = 3_000;
+
+/**
+ * The added symbol's change (FB is now META) as its own toast, as `watchlist
+ * add` prints it, once the lookup answers. Nothing waits on it.
+ */
+function notifyTickerChange(
+  dataProvider: WorkflowDeps["dataProvider"],
+  ticker: TickerRecord,
+  notify: (body: string, options?: { type?: "info" }) => void,
+): void {
+  const { ticker: symbol, exchange, name } = ticker.metadata;
+  void startTickerChangeLookup(dataProvider, symbol, exchange).settle(CHANGE_TOAST_WAIT_MS).then((payload) => {
+    const change = describeTickerChange(symbol, payload, { name });
+    if (change) notify(change.note, { type: "info" });
+  });
 }

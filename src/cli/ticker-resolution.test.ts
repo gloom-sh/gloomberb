@@ -2,7 +2,9 @@ import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
+import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
+import type { TickerChanges } from "../types/ticker-changes";
 import { ListingArgError, savedListingName } from "./listing-arg";
 import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
 import { resolveCliTicker, resolveTickerForCli, resolveTickersForCli } from "./ticker-resolution";
@@ -138,4 +140,46 @@ test("a symbol whose search the service refused is looked up again, never report
   const refusedThroughout = await lookUp(3);
   expect(refusedThroughout.retries).toEqual([2, 2]);
   expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
+});
+
+test("a symbol whose company moved says where it trades now, as watchlist and portfolio adds print it", async () => {
+  const fund = { providerId: "test", symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", exchange: "BATS", currency: "USD", type: "ETF" };
+  const changes: Record<string, TickerChanges> = {
+    FB: {
+      symbol: "FB",
+      moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [{ from: "FB", to: "META", date: "2022-06-09" }] },
+      formerly: null,
+      listedName: null,
+      changes: [{ from: "FB", to: "META", date: "2022-06-09" }],
+    },
+    TRCH: {
+      symbol: "TRCH",
+      moved: { symbol: "MMATQ", name: null, hops: [{ from: "TRCH", to: "MMAT", date: "2021-07-06" }, { from: "MMAT", to: "MMATQ", date: "2024-08-21" }] },
+      formerly: null,
+      listedName: null,
+      changes: [{ from: "TRCH", to: "MMAT", date: "2021-07-06" }],
+    },
+  };
+  const provider = (getTickerChanges: DataProvider["getTickerChanges"]) => createTestDataProvider({
+    search: async (query) => query === "FB" ? [fund] : [],
+    getQuote: async (symbol) => createTestQuote({ symbol, name: fund.name, listingExchangeName: "BATS", lastUpdated: Date.now() }),
+    getTickerChanges,
+  });
+  const online = provider(async (symbol) => changes[symbol] ?? null);
+
+  const fb = await resolveCliTicker("FB", tickerStore(), online);
+  expect(fb.notes).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"]);
+  expect(fb.change).toMatchObject({ kind: "moved", tradesAs: "META", listed: "ProShares S&P 500 Dynamic Daily Buffer ETF" });
+  // Nothing lists the old symbol any more: the failure says where it went.
+  expect((await failed(resolveCliTicker("TRCH", tickerStore(), online)))?.message)
+    .toBe('No ticker match found for "TRCH". TRCH changed to MMAT on 2021-07-06, then to MMATQ on 2024-08-21.');
+
+  // A symbol with no change, an offline service, or a long list adds nothing and fails nothing.
+  const offline = provider(async () => { throw new Error("fetch failed"); });
+  for (const dataProvider of [offline, provider(async () => null)]) {
+    expect(await resolveCliTicker("FB", tickerStore(), dataProvider)).toMatchObject({ notes: [], change: null });
+  }
+  const many = ["FB", ...Array.from({ length: 10 }, (_, index) => `ZZ${index}`)];
+  const [listed] = await resolveTickersForCli(many, tickerStore(), online, undefined, { retryWaitsMs: [] });
+  expect(listed).toMatchObject({ input: "FB", notes: [], change: null });
 });

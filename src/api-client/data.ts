@@ -23,6 +23,7 @@ import {
   type InsolvencyNoticesParams,
 } from "./distress";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
+import type { TickerChanges } from "../types/ticker-changes";
 import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -370,6 +371,17 @@ export class CloudDataApi {
       "/market/corporate-actions",
       symbol,
       exchange,
+    );
+  }
+
+  /** Where the issuer that held a US symbol trades now, or what the symbol's holder was called before. */
+  async getCloudTickerChanges(
+    symbol: string,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<CloudMarketResponse<TickerChanges>> {
+    return this.request<CloudMarketResponse<TickerChanges>>(
+      `/market/ticker-changes?${new URLSearchParams({ symbol: symbol.trim().toUpperCase() })}`,
+      options.signal ? { signal: options.signal } : undefined,
     );
   }
 
