@@ -429,6 +429,17 @@ function renderTextRows<T, Row extends Record<string, unknown>>(
     : renderTextTable(rows as Row[], columns);
 }
 
+/** Settles once the result `printCliResult` last wrote has left the process: a pipe can hold it back. */
+let stdoutWritten: Promise<void> = Promise.resolve();
+
+/**
+ * For a command that must exit before its event loop empties: exiting while
+ * a pipe still holds part of the output would cut it off.
+ */
+export function cliOutputWritten(): Promise<void> {
+  return stdoutWritten;
+}
+
 export function printCliResult<T, Row extends Record<string, unknown> = Record<string, unknown>>(
   result: CliResult<T>,
   options: CliGlobalOptions,
@@ -441,7 +452,9 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   const output = hinted(serializeCliResult(result, options, renderOptions));
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.
-  if (output) process.stdout.write(`${output}\n`);
+  if (output && !process.stdout.write(`${output}\n`)) {
+    stdoutWritten = new Promise((resolve) => process.stdout.once("drain", () => resolve()));
+  }
   // JSON carries warnings in its envelope. Text, CSV and NDJSON are only the
   // rows, so a warning goes to stderr, out of a file the rows are piped into.
   if (options.format !== "json" && !options.quiet) {

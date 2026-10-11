@@ -329,7 +329,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
           onChange: setShowForward }] : []),
       ]}
       // The session actually shown; a requested date the field already shows is not repeated.
-      meta={asOf && asOf !== requestedDate ? `as of ${asOf}` : undefined}
+      asOf={asOf && asOf !== requestedDate ? `as of ${asOf}` : undefined}
     />
   );
   // The query bar stays above the status body so the curve or date can change

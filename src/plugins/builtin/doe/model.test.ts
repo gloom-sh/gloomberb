@@ -1,7 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
 import type { DoeBoardPayload, DoeSeriesRow } from "../../../api-client/doe";
 import { ApiRequestError } from "../../../api-client/errors";
+import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
 import { DOE_NOT_AVAILABLE, fetchDoeBoard } from "./client";
+import { doeHeadless } from "./headless";
 import { doeHeaderLine, doeSeasonalSeries, doeSeriesOption, formatDoeChange, formatDoeVsFive, formatDoeVsYear } from "./model";
 
 /** Commercial crude as the board served it for the week ending 2026-09-25. */
@@ -51,6 +54,27 @@ describe("DOE board boundary", () => {
     ]) {
       await expect(fetchDoeBoard({ getCloudDoeBoard: async () => board({ series: [broken] }) })).rejects.toThrow("invalid EIA weekly board");
     }
+  });
+});
+
+describe("DOE report dates", () => {
+  afterEach(() => { (apiClient.getCloudDoeBoard as unknown as { mockRestore?: () => void }).mockRestore?.(); });
+
+  test("each tab is dated by its own release: Wednesday's petroleum for crude, Thursday's storage for gas", async () => {
+    const gas = { id: "gas" as const, weekEnding: "2026-10-02", releasedAt: "2026-10-08T14:30:00.000Z", releaseHoliday: null,
+      nextWeekEnding: "2026-10-09", nextReleaseAt: "2026-10-15T14:30:00.000Z", nextReleaseHoliday: null };
+    const petroleum = { ...board().reports[0]!, weekEnding: "2026-10-02", releasedAt: "2026-10-07T14:30:00.000Z", nextReleaseAt: "2026-10-14T14:30:00.000Z" };
+    spyOn(apiClient, "getCloudDoeBoard").mockResolvedValue(board({ reports: [petroleum, gas] }));
+    const dated = async (tab: string, argument = "") => {
+      const args = { symbols: [], argument: argument ? [argument] : [], rawArgument: argument, options: { tab } } as unknown as HeadlessPaneLoadArgs;
+      const { freshness } = await doeHeadless("all").load(args, {} as HeadlessPaneContext) as HeadlessBundleResult;
+      return [freshness?.asOf, freshness?.nextExpectedAt];
+    };
+    expect(await dated("crude")).toEqual([petroleum.releasedAt, petroleum.nextReleaseAt]);
+    expect(await dated("gas")).toEqual([gas.releasedAt, gas.nextReleaseAt]);
+    // A series is dated by its tab's release; all three tabs by the newest, due by the soonest.
+    expect(await dated("all", "crude-commercial")).toEqual([petroleum.releasedAt, petroleum.nextReleaseAt]);
+    expect(await dated("all")).toEqual([gas.releasedAt, petroleum.nextReleaseAt]);
   });
 });
 

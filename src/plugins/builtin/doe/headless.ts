@@ -61,10 +61,14 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
     describe: "EIA weekly petroleum and natural gas storage",
     async load(args) {
       const data = await fetchDoeBoard();
-      // EIA's weekly reports; once the next one is a day overdue the tables have missed it.
-      const freshness = { source: "EIA", status: "not-a-feed" as const, basis: "weekly release",
-        asOf: newestReportTime(data.reports.map((report) => report.releasedAt)),
-        nextExpectedAt: oldestReportTime(data.reports.map((report) => report.nextReleaseAt)) };
+      // Each tab is dated by its own EIA report (petroleum Wednesday, gas Thursday);
+      // once the next one is a day overdue the tables have missed it.
+      const freshness = (tabs: readonly DoeTab[]) => {
+        const reports = [...new Set(tabs.flatMap((tab) => doeReport(data, tab) ?? []))];
+        return { source: "EIA", status: "not-a-feed" as const, basis: "weekly release",
+          asOf: newestReportTime(reports.map((report) => report.releasedAt)),
+          nextExpectedAt: oldestReportTime(reports.map((report) => report.nextReleaseAt)) };
+      };
       const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
       if (argument) {
         const option = doeSeriesOption(argument);
@@ -80,7 +84,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
               rows: seasonalRows(row) },
           ],
           errors: data.gaps,
-          freshness,
+          freshness: freshness([row.tab]),
           metadata: { ...data, series: [row], complete: data.status === "available" },
         };
       }
@@ -92,7 +96,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
           rows: doeRows(data, tab).map(reportRow),
         })),
         errors: data.gaps,
-        freshness,
+        freshness: freshness(tabs),
         metadata: { ...data, complete: data.status === "available" },
       };
     },

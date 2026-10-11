@@ -150,13 +150,13 @@ export interface DesktopPaneShotRenderResult {
 
 /**
  * The status line variants for a capture, longest first, worked out from what
- * the pane rendered; null leaves the footer row empty. `observed` says the
- * line dates the data by its newest observation (a dataset's), so the pane's
- * own `as of` footer text is left out rather than repeat the date.
+ * the pane rendered; null leaves the footer row empty. `dates` says what the
+ * line dates (`CaptureStatusLine`): the pane's own data, whose `as of` text is
+ * then left out rather than repeat the date, or the quotes on screen.
  */
 interface ShotStatusLineVariants {
   variants: readonly string[];
-  observed?: boolean;
+  dates?: "data" | "quotes" | null;
 }
 type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => ShotStatusLineVariants | null | Promise<ShotStatusLineVariants | null>;
 
@@ -817,11 +817,11 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
 }
 
 /** Draws the first variant that fits the pane footer, and returns what it drew. */
-async function fitShotStatusLine(session: CdpSession, { variants, observed }: ShotStatusLineVariants): Promise<string | null> {
+async function fitShotStatusLine(session: CdpSession, { variants, dates }: ShotStatusLineVariants): Promise<string | null> {
   const result = await session.send("Runtime.evaluate", {
     expression: `(() => {
       const fit = window.__GLOOM_CLI_SHOT_FIT_STATUS__;
-      return fit ? fit(${JSON.stringify(variants)}, ${JSON.stringify({ observed: observed === true })}) : null;
+      return fit ? fit(${JSON.stringify(variants)}, ${JSON.stringify({ dates: dates ?? null })}) : null;
     })()`,
     awaitPromise: true,
     returnByValue: true,

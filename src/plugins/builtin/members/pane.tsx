@@ -48,9 +48,10 @@ function Holdings({ fund, tab, width, height, focused, active }: ViewProps & { t
     const partial = data.aggregate.fresh1D < data.aggregate.total;
     return [
       { id: "coverage", parts: [{ text: coverageText(data.aggregate, width < 60), tone: partial ? "warning" : "muted" }] },
-      { id: "quote-date", title: `${date ?? "Quote date unavailable"} · 15m delayed · holdings ${data.asOf}`,
+      // A capture's status line says the quotes' date and delay too; it does not say returns are unavailable.
+      { id: "quote-date", title: `${date ?? "Quote date unavailable"} · 15m delayed · holdings ${data.asOf}`, quoteStatus: !data.quotesUnavailable,
         parts: [{ text: data.quotesUnavailable ? "returns unavailable" : width < 60 && dates.length === 1 ? `${date!.slice(5)} delayed` : `${date ? `${date} · ` : ""}15m delayed`, tone: "muted" }] },
-      ...(width >= 60 ? [{ id: "holdings-date", parts: [{ text: `holdings ${data.asOf}`, tone: "muted" as const }] }] : []),
+      ...(width >= 60 ? [{ id: "holdings-date", asOf: true, parts: [{ text: `holdings ${data.asOf}`, tone: "muted" as const }] }] : []),
     ];
   }, [data, width]);
   usePaneStatusFooter({ registrationId: "members:status", loading: !!data && resource.loading,

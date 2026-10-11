@@ -96,7 +96,7 @@ import {
   withShotSeasonalityHistory,
 } from "./data";
 import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
-import { captureStatusLine, datesPaneData, deriveHeadlessFreshness, deriveRenderedFreshness, type CaptureStatusLine, type ReportFreshness } from "./freshness";
+import { captureStatusLine, deriveHeadlessFreshness, deriveRenderedFreshness, type CaptureStatusLine, type ReportFreshness } from "./freshness";
 import { quotesFreshness } from "../freshness";
 import {
   financialRatioRenderMismatches,
@@ -821,6 +821,26 @@ async function reportShotFreshness(
 /** How long a rendered capture waits for its report's freshness before dating itself without it. */
 const SHOT_REPORT_WAIT_MS = 20_000;
 
+/**
+ * The value of the report's `tab` option for the tab the capture shows, when
+ * it was asked for another: `DOE --tab all` draws Crude, so it is dated by
+ * Wednesday's petroleum report, not by Thursday's gas storage. Undefined when
+ * it shows the tab asked for.
+ */
+export function shownReportTab(
+  resolved: Pick<ResolvedPaneFunction, "headless" | "options">,
+  semanticUi: readonly RemoteUiNodeSnapshot[],
+): string | undefined {
+  const asked = resolved.options.tab;
+  const values = resolved.headless?.options?.find(({ key }) => key === "tab")?.values?.map(({ value }) => value) ?? [];
+  if (asked == null || values.length === 0) return undefined;
+  for (const node of semanticUi) {
+    const active = node.role === "tabs" ? node.metadata?.activeValue : undefined;
+    if (typeof active === "string" && values.includes(active)) return active === String(asked) ? undefined : active;
+  }
+  return undefined;
+}
+
 /** `pending`'s value, or undefined when it has not settled within `ms`; a later result is dropped. */
 function settledWithin<T>(pending: Promise<T>, ms: number): Promise<T | undefined> {
   let cancel = () => {};
@@ -851,6 +871,7 @@ export async function renderDesktopShot({
   fitRows = false,
   options,
   captureImage = true,
+  onStalledReport,
 }: {
   resolved: ResolvedPaneFunction;
   context: MarketContext;
@@ -867,6 +888,12 @@ export async function renderDesktopShot({
   fitRows?: boolean;
   options: Record<string, string | true>;
   captureImage?: boolean;
+  /**
+   * Called when the report behind the status line was still loading at the
+   * wait's end: the load was aborted, but a loader that ignores the signal
+   * may keep the process alive.
+   */
+  onStalledReport?: () => void;
 }): Promise<PaneScreenshotResult> {
   if (captureImage) await mkdir(dirname(outputPath), { recursive: true });
   const apiProxy = resolveDesktopShotApiProxy(context);
@@ -874,9 +901,22 @@ export async function renderDesktopShot({
   let payload: DesktopPaneShotPayload;
   let render: DesktopPaneShotRenderResult;
   let freshness: ReportFreshness | undefined;
+  // A report still loading when the status line stops waiting for it is
+  // aborted, and the caller told: a loader that ignores the signal goes on.
+  const reportLoads = new AbortController();
+  let loading = 0;
+  const loadReport = (target: ResolvedPaneFunction) => {
+    loading += 1;
+    return loadResolvedHeadlessPaneModel(target, context, rawArg, reportLoads.signal).finally(() => { loading -= 1; });
+  };
+  const abandonReports = () => {
+    if (loading === 0 || reportLoads.signal.aborted) return;
+    reportLoads.abort(new Error("The capture stopped waiting for its report."));
+    onStalledReport?.();
+  };
   apiClient.setSessionToken(apiProxy.sessionToken);
   try {
-    const loadModel = onceLoader(() => loadResolvedHeadlessPaneModel(resolved, context, rawArg));
+    const loadModel = onceLoader(() => loadReport(resolved));
     payload = await buildDesktopShotPayload(
       resolved,
       context,
@@ -899,13 +939,17 @@ export async function renderDesktopShot({
       captureImage,
       bridge: recorded.bridge,
       statusLine: async (rendered) => {
-        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, report && await settledWithin(report, SHOT_REPORT_WAIT_MS));
+        const tab = report && shownReportTab(resolved, rendered.semanticUi);
+        const shown = tab ? reportShotFreshness(resolved, () => loadReport({ ...resolved, options: { ...resolved.options, tab } })) : report;
+        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, shown && await settledWithin(shown, SHOT_REPORT_WAIT_MS));
+        abandonReports();
         freshness = line.freshness;
-        return { variants: line.variants, observed: datesPaneData(line.freshness) };
+        return { variants: line.variants, dates: line.dates };
       },
     });
   } finally {
     apiClient.setSessionToken(previousSessionToken);
+    abandonReports();
   }
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };

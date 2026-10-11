@@ -141,7 +141,8 @@ describe("report freshness", () => {
     ] }, SUN);
     const pick = (inputs: Partial<Parameters<typeof captureStatusLine>[0]>) => captureStatusLine({ selfDated: false, rendered: () => rendered, ...inputs });
     // The footer ends as `fn` does, then gives up the oldest observation, then its source.
-    expect(pick({ report: cot })).toEqual({ freshness: cot, variants: [
+    // It dates the pane's own data, so the pane's own `as of` goes.
+    expect(pick({ report: cot })).toEqual({ freshness: cot, dates: "data", variants: [
       "Source: CFTC \u00b7 Tue 6 Oct 2026 (oldest Tue 29 Sep 2026) \u00b7 not a live feed (weekly report)",
       "Source: CFTC \u00b7 Tue 6 Oct 2026 \u00b7 not a live feed (weekly report)",
       "Tue 6 Oct 2026 \u00b7 not a live feed (weekly report)",
@@ -149,9 +150,10 @@ describe("report freshness", () => {
     expect(pick({ report: cot }).variants[0]).toBe(formatFreshnessLine(cot));
     // Quotes on screen keep the market line; a pane that dates its own view keeps its word.
     expect(pick({ report: cot, quoted }).variants[0]).toBe("US trading day Fri 9 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed until Mon");
+    expect(pick({ report: cot, quoted }).dates).toBe("quotes");
     expect(pick({ report: cot, quoted, selfDated: true }).freshness).toBe(rendered);
     // A report that cannot tell falls back to the rendered view.
-    expect(pick({ report: rendered, quoted: undefined }).variants).toEqual(["Retrieved Sun 11 Oct 2026 06:17 UTC \u00b7 status not reported"]);
+    expect(pick({ report: rendered, quoted: undefined })).toEqual({ freshness: rendered, dates: null, variants: ["Retrieved Sun 11 Oct 2026 06:17 UTC \u00b7 status not reported"] });
     // A dataset's report dates it whatever else the capture shows.
     const dataset = deriveHeadlessFreshness(rows({ status: "not-a-feed", dataset: true }), { rows: [{ asOf: "2026-10-04" }] }, SUN);
     expect(pick({ report: dataset, quoted, selfDated: true }).variants[0]).toBe("Source: Gloom Cloud \u00b7 observed Sun 4 Oct \u00b7 lag 7d");

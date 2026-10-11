@@ -12,6 +12,7 @@ import { SelectButton, type SelectButtonOption, type SelectControl } from "./sel
 import { SegmentedControl } from "./toggle";
 import { Tabs } from "./tabs";
 import { useQueryBarKeys } from "./query-bar-keys";
+import { useCaptureDatesData } from "../layout/pane/capture-status";
 
 export interface QueryBarSearch {
   value: string;
@@ -121,6 +122,12 @@ export interface QueryBarProps {
   view?: QueryBarView<any>;
   /** Muted context at the right edge (the selected row's date). Not for status. */
   meta?: string;
+  /**
+   * The date the data is as of (`as of 2026-10-09`), shown where `meta` is
+   * when there is none. A `gloomberb shot` whose status line dates the data
+   * leaves it out, so the date is said once.
+   */
+  asOf?: string;
 }
 
 /** Beyond this many options a terminal strip scrolls instead of segmenting. */
@@ -217,8 +224,10 @@ export function useQueryBarSearch(): QueryBarSearchFocus {
  * same everywhere. The desktop draws soft chips with menus; the terminal keeps
  * text controls and the choice dialogs.
  */
-export function QueryBar({ width, search, filters = [], view, meta }: QueryBarProps) {
+export function QueryBar({ width, search, filters = [], view, meta: given, asOf }: QueryBarProps) {
   const ui = useUiHost();
+  const captureDatesData = useCaptureDatesData();
+  const meta = given ?? (captureDatesData ? undefined : asOf);
   const colors = useThemeColors();
   const HostQueryBar = ui.QueryBar as ComponentType<HostQueryBarProps> | undefined;
   const localInputRef = useRef<InputRenderable | null>(null);

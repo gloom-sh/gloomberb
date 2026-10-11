@@ -26,6 +26,7 @@ import { withPersistedCloudSession } from "./cloud-session";
 import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceNotes } from "../listing-arg";
 import { knownGapMessage } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
+import { cliOutputWritten } from "../result";
 import {
   GLOSSARY,
   glossaryRecord,
@@ -115,7 +116,22 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
   });
 }
 
+/** How long a capture's process may stay up after its output, for a report it stopped waiting for. */
+const STALLED_REPORT_EXIT_MS = 1_000;
+
 export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) {
+  let stalledReport = false;
+  try {
+    await capturePaneScreenshot(args, ctx, () => { stalledReport = true; });
+  } finally {
+    // The capture is written and dated without the report it stopped waiting
+    // for; a loader that ignores its abort must not hold the process open
+    // until it settles. Unref'd, so a process with nothing left exits first.
+    if (stalledReport) setTimeout(() => void cliOutputWritten().then(() => process.exit()), STALLED_REPORT_EXIT_MS).unref();
+  }
+}
+
+async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onStalledReport: () => void) {
   await runPaneCliCommand(ctx, async () => {
     await withPaneRuntime(ctx, args, async ({ parsed, context, resolved }) => {
       if (parsed.requireBotSafe && (
@@ -142,6 +158,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
         statusLine: parsed.status !== false,
         fitRows: parsed.heightGiven !== true,
         options: parsed.options,
+        onStalledReport,
       });
       if (parsed.requireBotSafe && !result.usable) {
         throw new Error(

@@ -1,6 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
-import { MARKET_HEATMAP_REQUEST_COUNT, MARKET_HEATMAP_UNIVERSES, fetchMarketHeatmap, type MarketHeatmapUniverseId } from "./data";
+import { MARKET_HEATMAP_REQUEST_COUNT, MARKET_HEATMAP_UNIVERSES, fetchMarketHeatmap, type MarketHeatmapBoard, type MarketHeatmapUniverseId } from "./data";
 import { heatmapMove, summarizeHeatmapGroups, type HeatmapGroupBy, type HeatmapGroupSummary } from "./model";
 
 /**
@@ -37,6 +37,20 @@ function noMoveNotice(symbols: readonly string[], names: number): string {
   const shown = symbols.slice(0, 8).join(", ");
   const rest = symbols.length > 8 ? ` and ${symbols.length - 8} more` : "";
   return `${symbols.length} of ${names} names have no move yet and count toward size only: ${shown}${rest}.`;
+}
+
+/**
+ * When the board's figures are from, and whose sessions they follow: outside
+ * the regular session the tiles are the completed session's, so the board is
+ * as of that session's close (its date, from a server that does not send the
+ * close), not when the snapshot was put together; while it trades, the
+ * snapshot time.
+ */
+function boardObservation(board: Pick<MarketHeatmapBoard, "fetchedAt" | "regularSessionDate" | "regularSessionClosedAt">) {
+  const closedAt = board.regularSessionDate ? board.regularSessionClosedAt : null;
+  const asOf = typeof closedAt === "number" && closedAt > 0 ? new Date(closedAt).toISOString()
+    : board.regularSessionDate || new Date(board.fetchedAt).toISOString();
+  return { asOf, sessionExchange: "NYSE" };
 }
 
 function projectRow(summary: HeatmapGroupSummary, groupBy: HeatmapGroupBy, whole = false) {
@@ -91,7 +105,8 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
     ],
   },
   // A board snapshot refreshed on a schedule, not a feed; the pane streams on top of it, the report does not.
-  freshness: { status: "delayed" },
+  // A completed session it names only by its date is a US trading day.
+  freshness: { status: "delayed", tradingDayMarket: "US" },
   describe: (args) => {
     const universe = MARKET_HEATMAP_UNIVERSES.find((entry) => entry.id === args.options.universe)?.label ?? "US Stocks";
     return args.options.universe === "us-etf" ? `Market Heatmap | ${universe}` : `Market Heatmap | ${universe} by ${String(args.options.group)}`;
@@ -117,7 +132,7 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
       metadata: {
         universe,
         groupBy: flat ? null : groupBy,
-        asOf: new Date(result.fetchedAt).toISOString(),
+        ...boardObservation(result),
         stale: result.stale === true,
         session: result.session ?? null,
         regularSessionDate: result.regularSessionDate ?? null,

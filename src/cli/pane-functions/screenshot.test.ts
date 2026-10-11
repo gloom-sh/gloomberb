@@ -14,6 +14,7 @@ import {
   shotExpectedText,
   shotSemanticRowCount,
   shotUnavailableSymbols,
+  shownReportTab,
   stripDesktopShotCredentials,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
@@ -656,6 +657,17 @@ describe("pane screenshot active-state verification", () => {
     expect(missingActiveTabSelections(queryBar("Cash Flow", "annual"), expected)).toEqual([]);
     expect(missingActiveTabSelections(queryBar("Income", "quarterly"), expected)).toEqual(expected);
   });
+});
+
+test("a capture's report is the one for the tab it shows, when another was asked for", () => {
+  const doe = { headless: { options: [{ key: "tab", values: ["all", "crude", "products", "gas"].map((value) => ({ value })) }] } } as never as ResolvedPaneFunction;
+  const shows = (active: string): RemoteUiNodeSnapshot[] => [{ id: "tabs", role: "tabs", actions: [], metadata: { activeValue: active } }];
+  // `DOE --tab all` draws Crude: dated by the petroleum report, not the newest of the three.
+  expect(shownReportTab({ ...doe, options: { tab: "all" } }, shows("crude"))).toBe("crude");
+  expect(shownReportTab({ ...doe, options: { tab: "gas" } }, shows("gas"))).toBeUndefined();
+  // A tab strip the report has no option for, or a report without a tab option, changes nothing.
+  expect(shownReportTab({ ...doe, options: { tab: "all" } }, shows("history"))).toBeUndefined();
+  expect(shownReportTab({ headless: { options: [] }, options: {} } as never, shows("crude"))).toBeUndefined();
 });
 
 describe("pane screenshot chart-data verification", () => {

@@ -71,12 +71,13 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(bodyHeight()).toBeCloseTo(withFooter);
 });
 
-test("a status line that dates the observation replaces the pane's own as-of, and keeps its other status", async () => {
+test("a status line replaces the pane's own text that says the same: its as-of for the pane's data, its quote date and delay for quotes", async () => {
   const ui = createDomUiHost();
   function Dated() {
     usePaneFooter("dated", () => ({
       info: [
         { id: "observed", asOf: true, parts: [{ text: "as of 2026-10-05" }] },
+        { id: "quotes", quoteStatus: true, parts: [{ text: "2026-10-09 · 15m delayed" }] },
         { id: "preview", parts: [{ text: "Pro preview", tone: "warning" }] },
       ],
     }), []);
@@ -91,13 +92,15 @@ test("a status line that dates the observation replaces the pane's own as-of, an
   </UiHostProvider>);
   const footer = () => root.querySelector('[data-gloom-role="pane-footer"]')?.textContent ?? "";
   expect(footer()).toContain("as of 2026-10-05");
+  expect(footer()).toContain("15m delayed");
 
-  // A market line leaves it alone: the as-of dates the pane's data, not the quotes.
-  await act(async () => { await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.(["Fri 9 Oct close"], { observed: false }); });
+  // A market line leaves the as-of alone: it dates the pane's data, not the quotes. The quotes' date and delay go.
+  await act(async () => { await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.(["Fri 9 Oct close · 15 min delayed"], { dates: "quotes" }); });
   expect(footer()).toContain("as of 2026-10-05");
+  expect(footer()).not.toContain("15m delayed");
   expect(footer()).toContain("Fri 9 Oct close");
 
-  await act(async () => { await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.(["Observed Mon 5 Oct · lag 5d"], { observed: true }); });
+  await act(async () => { await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.(["Observed Mon 5 Oct · lag 5d"], { dates: "data" }); });
   expect(footer()).not.toContain("as of");
   expect(footer()).toContain("Pro preview");
   expect(footer()).toContain("Observed Mon 5 Oct · lag 5d");

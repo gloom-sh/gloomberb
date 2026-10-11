@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { MarketHeatmapAsset } from "../../../api-client/market-discovery";
+import type { MarketHeatmapAsset, MarketHeatmapResult } from "../../../api-client/market-discovery";
+import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
 import { marketHeatmapHeadless } from "./headless";
 
@@ -16,9 +17,9 @@ function board(withoutMove: number, total: number): MarketHeatmapAsset[] {
   ));
 }
 
-async function load(assets: MarketHeatmapAsset[], stale = false) {
+async function load(assets: MarketHeatmapAsset[], stale = false, session: Partial<MarketHeatmapResult> = {}) {
   const apiClient = {
-    getMarketHeatmap: async () => ({ status: "success", stale, data: { universe: "us-equity", source: "gloom", fetchedAt: Date.UTC(2026, 9, 9, 12), assets } }),
+    getMarketHeatmap: async () => ({ status: "success", stale, data: { universe: "us-equity", source: "gloom", fetchedAt: Date.UTC(2026, 9, 9, 12), assets, ...session } }),
   };
   const args = { symbols: [], argument: [], rawArgument: "", options: { universe: "us-equity", group: "sector" } } as HeadlessPaneLoadArgs;
   return marketHeatmapHeadless.load(args, { signal: new AbortController().signal, apiClient, refresh: false } as unknown as HeadlessPaneContext);
@@ -38,6 +39,24 @@ describe("fn HM report", () => {
     const result = await load(board(30, 40));
     expect(result.complete).toBe(false);
     expect(result.unavailableSymbols).toHaveLength(30);
+  });
+
+  test("a completed session's board is dated by its close, not when the snapshot was put together", async () => {
+    const SUN = Date.UTC(2026, 9, 11, 6, 35);
+    const closed = await load(board(0, 40), false, {
+      fetchedAt: SUN - 60_000, session: "CLOSED", regularSessionDate: "2026-10-09", regularSessionClosedAt: Date.UTC(2026, 9, 9, 20),
+    });
+    expect(formatFreshnessLine(deriveHeadlessFreshness(marketHeatmapHeadless, closed, SUN)))
+      .toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · delayed · markets closed until Mon");
+    // An older server names the session without its close: the trading day still dates it.
+    const undated = await load(board(0, 40), false, { fetchedAt: SUN - 60_000, regularSessionDate: "2026-10-09" });
+    expect(formatFreshnessLine(deriveHeadlessFreshness(marketHeatmapHeadless, undated, SUN)))
+      .toBe("Source: Gloom Cloud · US trading day Fri 9 Oct 2026 · delayed · markets closed until Mon");
+    // While the session trades, the snapshot is as of when it was put together.
+    const MON = Date.UTC(2026, 9, 12, 15, 42);
+    const trading = await load(board(0, 40), false, { fetchedAt: MON - 60_000, session: "REGULAR", regularSessionDate: null });
+    expect(formatFreshnessLine(deriveHeadlessFreshness(marketHeatmapHeadless, trading, MON)))
+      .toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:41 UTC · delayed · markets open");
   });
 
   test("a stale snapshot is incomplete and says so", async () => {

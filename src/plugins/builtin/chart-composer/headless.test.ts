@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { chartHeadless, type ChartPaneModel } from "./headless";
+import { chartHeadless, economicChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -152,4 +152,24 @@ test("explicit financial periods replay available SEC history and expose actual 
   expect(windowed.complete).toBe(false);
   const explicitRange = applyChartComposerCapabilityOptions(spec, "fundamental-series", { ...options, rangePreset: "1Y" });
   expect(explicitRange.viewport.range).toBe("1Y");
+});
+
+test("an economic chart is dated by its observations' day, and by their period when every series shares one", () => {
+  const months = (count: number, last: string) => Array.from({ length: count }, (_, index) => {
+    const date = new Date(`${last}T00:00:00Z`);
+    date.setUTCMonth(date.getUTCMonth() - (count - 1 - index));
+    return { date: date.toISOString(), value: 300 + index };
+  });
+  const days = ["2026-10-07", "2026-10-08", "2026-10-09"].map((date) => ({ date: `${date}T00:00:00.000Z`, value: 4 }));
+  const fred = (...ids: string[]) => ({ series: ids.map((seriesId) => ({ source: { kind: "economic" as const, provider: "fred" as const, seriesId } })) }) as never;
+  const cpi = { id: "cpi", label: "CPI", points: [...months(24, "2026-08-01"), { date: "2026-09-01T00:00:00.000Z", value: null }] };
+  expect(economicChartDates([cpi], fred("CPIAUCSL"))).toEqual({ asOf: "2026-08-01", periodicity: "monthly" });
+  const gdp = { id: "gdp", label: "GDP", points: ["2025-04-01", "2025-07-01", "2025-10-01", "2026-01-01", "2026-04-01"].map((date) => ({ date, value: 1 })) };
+  expect(economicChartDates([gdp], fred("GDP"))).toEqual({ asOf: "2026-04-01", periodicity: "quarterly" });
+  // A daily series is dated by its day; series that end apart name the oldest, and mixed periods name none.
+  expect(economicChartDates([cpi, { id: "dgs10", label: "10Y", points: days }], fred("CPIAUCSL", "DGS10")))
+    .toEqual({ asOf: "2026-10-09", oldest: "2026-08-01" });
+  // An observation time, or any series that is not economic, keeps the chart's own dating.
+  expect(economicChartDates([{ id: "x", label: "x", points: [{ date: "2026-10-09T20:00:00.000Z", value: 1 }] }], fred("X"))).toEqual({});
+  expect(economicChartDates([cpi], { series: [{ source: { kind: "capability", capabilityId: "c", seriesId: "s" } }] } as never)).toEqual({});
 });

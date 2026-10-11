@@ -28,9 +28,15 @@ export interface PaneFooterSegment {
   /**
    * The segment only dates the pane's data (`as of 2026-10-05`). A `gloomberb
    * shot` whose status line already dates that data leaves it out, so the
-   * date is not said twice.
+   * date is not said twice, and gives it up before its status line is cut.
    */
   asOf?: boolean;
+  /**
+   * The segment only says how current the pane's quotes are (`2026-10-09 ·
+   * 15m delayed`), which a `gloomberb shot` status line says too: a shot whose
+   * line states its data's date and delay leaves it out.
+   */
+  quoteStatus?: boolean;
   /**
    * Shorter forms of `parts`, longest first. When the row is too narrow for
    * `parts` beside the hints, it shows the first that fits, or the last, and

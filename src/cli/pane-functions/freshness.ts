@@ -230,6 +230,8 @@ function collect(
     const time = observedKey ? null : observedTime(result.metadata, now)
       ?? (observations.units.length ? null : observedTime(result.metadata, now, UPDATE_KEYS));
     if (time) observations.extra.push(time);
+    // A board whose figures follow one venue's sessions (HM's) names it as a quote row does.
+    readSession(result.metadata, time, signals);
   }
   if (definition.shape === "snapshot" && !observedKey) {
     const time = parseReportTime((result as HeadlessSnapshotResult).asOf);
@@ -788,14 +790,6 @@ function datesObservation(freshness: ReportFreshness): freshness is ReportFreshn
 }
 
 /**
- * Whether the status line dates the data itself, so a capture leaves out the
- * pane's own `as of` segment: a dataset's line, or one that dates each source.
- */
-export function datesPaneData(freshness: ReportFreshness): boolean {
-  return datesObservation(freshness) || (freshness.sources?.length ?? 0) > 0;
-}
-
-/**
  * The status line a pane's footer shows, the one its report and capture end
  * with: without the reader's local time, and without the day when the data is
  * from the day it is read.
@@ -865,6 +859,13 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
 export interface CaptureStatusLine {
   freshness: ReportFreshness;
   variants: string[];
+  /**
+   * What the line dates: `data` when it comes from the pane's own report or
+   * the view the pane dates itself, so the pane's own `as of` text says it
+   * twice; `quotes` for the quotes on screen, which may not be what the pane's
+   * `as of` dates; null when it dates nothing it can name.
+   */
+  dates: "data" | "quotes" | null;
 }
 
 /**
@@ -884,12 +885,16 @@ export function captureStatusLine({ report, selfDated, quoted, rendered }: {
   quoted?: ReportFreshness;
   rendered: () => ReportFreshness;
 }): CaptureStatusLine {
-  const plain = (freshness: ReportFreshness): CaptureStatusLine => ({ freshness, variants: statusLineVariants(freshness) });
-  if (report && datesObservation(report)) return plain(report);
-  if (selfDated) return plain(rendered());
-  if (quoted) return plain(quoted);
-  if (report && report.status !== "unreported") return { freshness: report, variants: statusLineVariants(report, { source: true }) };
-  return plain(rendered());
+  const plain = (freshness: ReportFreshness, dates: CaptureStatusLine["dates"]): CaptureStatusLine => ({ freshness, variants: statusLineVariants(freshness), dates });
+  const dated = (freshness: ReportFreshness) => (freshness.asOf ? "data" as const : null);
+  if (report && datesObservation(report)) return plain(report, "data");
+  if (selfDated) {
+    const view = rendered();
+    return plain(view, dated(view));
+  }
+  if (quoted) return plain(quoted, "quotes");
+  if (report && report.status !== "unreported") return { freshness: report, variants: statusLineVariants(report, { source: true }), dates: dated(report) };
+  return plain(rendered(), null);
 }
 
 /**
