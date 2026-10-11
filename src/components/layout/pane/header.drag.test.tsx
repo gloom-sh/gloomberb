@@ -87,6 +87,7 @@ test("a press anywhere on the bar outside its controls drags the pane to the rel
         onHeaderMouseDrag={(event: { type: string }) => seen.push(event.type)}
         onHeaderMouseDragEnd={(event: { type: string }) => seen.push(event.type)}
         onActionMouseDown={() => seen.push("menu")}
+        onHelpMouseDown={() => seen.push("docs")}
       />
     </WebInputHostProvider></UiHostProvider>,
   );
@@ -111,7 +112,16 @@ test("a press anywhere on the bar outside its controls drags the pane to the rel
   seen.length = 0;
   await dragFrom(container.querySelector("[data-gloom-role='tab-button']") as HTMLElement);
   await dragFrom(container.querySelector("[data-gloom-role='pane-action'] button") as HTMLElement);
+  const docs = container.querySelector("[data-gloom-role='pane-help'] button") as HTMLButtonElement;
+  await dragFrom(docs);
   expect(seen).not.toContain("down");
+
+  // The ? is a button with a name, and a click asks for the pane's docs.
+  expect(docs.getAttribute("aria-label")).toBe("Docs for this pane");
+  await act(async () => {
+    docs.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true, button: 0 }));
+  });
+  expect(seen.filter((event) => event === "docs")).toEqual(["docs"]);
 });
 
 test("a floating pane still moves from its title", async () => {

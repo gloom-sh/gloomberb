@@ -73,7 +73,7 @@ export function WebText({ children, ...props }: TextProps) {
 
 export function WebSpan({ children, ...props }: TextProps) {
   return (
-    <span {...cleanDomProps(props)} style={{ ...textStyle(props), ...(props.style as CSSProperties | undefined) }}>
+    <span {...cleanDomProps(props)} {...mouseHandlers(props)} style={{ ...textStyle(props), ...(props.style as CSSProperties | undefined) }}>
       {children as ReactNode}
     </span>
   );

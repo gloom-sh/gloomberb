@@ -6,6 +6,7 @@ import { tokenizeTickerText } from "../tickers/tokenizer";
 import type { InlineTickerCatalogEntry } from "../state/hooks/inline-tickers";
 import { colors } from "../theme/colors";
 import { displayWidth } from "../utils/format";
+import { useUiCapabilities } from "../ui";
 
 export interface MarkdownTextProps {
   text: string;
@@ -13,6 +14,12 @@ export interface MarkdownTextProps {
   catalog?: Record<string, InlineTickerCatalogEntry>;
   textColor?: string;
   openTicker?: (symbol: string) => void;
+  /**
+   * Reads `[label](href)` as a link: the label drawn underlined, and on the
+   * desktop and the web a click hands `href` here. Without it a link stays
+   * the text it was written as.
+   */
+  onOpenLink?: (href: string) => void;
 }
 
 interface StyledSegment {
@@ -22,6 +29,8 @@ interface StyledSegment {
   dim?: boolean;
   code?: boolean;
   color?: string;
+  /** Where the segment links to, when links are read. */
+  link?: string;
 }
 
 interface ParsedLine {
@@ -33,24 +42,31 @@ interface ParsedLine {
 // A backslash escapes the punctuation markdown would read ("\\*" is a star), and
 // an italic span may hold a bold one ("*covers **96%** of value*").
 const INLINE_RE =
-  /(\\(?<escaped>[\\`*_~#>[\]()-])|\*\*(?<bold>[^*]+)\*\*|(?<!\*)\*(?!\*)(?<italic>(?:[^*]|\*\*[^*]+\*\*)+?)\*(?!\*)|`(?<code>[^`]+)`|~~(?<strike>[^~]+)~~)/g;
+  /(\\(?<escaped>[\\`*_~#>[\]()-])|\[(?<linkLabel>[^\]]+)\]\((?<linkHref>[^)\s]+)\)|\*\*(?<bold>[^*]+)\*\*|(?<!\*)\*(?!\*)(?<italic>(?:[^*]|\*\*[^*]+\*\*)+?)\*(?!\*)|`(?<code>[^`]+)`|~~(?<strike>[^~]+)~~)/g;
 
-function parseInlineMarkdown(text: string): StyledSegment[] {
+function parseInlineMarkdown(text: string, links = false): StyledSegment[] {
   const segments: StyledSegment[] = [];
   let cursor = 0;
 
   const pattern = new RegExp(INLINE_RE.source, "g");
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(text)) !== null) {
+    if (match.groups?.linkHref != null && !links) {
+      // Not reading links: the bracket is text, and what is inside it still styles.
+      pattern.lastIndex = match.index + 1;
+      continue;
+    }
     if (match.index > cursor) {
       segments.push({ text: text.slice(cursor, match.index) });
     }
     if (match.groups?.escaped != null) {
       segments.push({ text: match.groups.escaped });
+    } else if (match.groups?.linkHref != null) {
+      for (const inner of parseInlineMarkdown(match.groups.linkLabel ?? "", false)) segments.push({ ...inner, link: match.groups.linkHref });
     } else if (match.groups?.bold != null) {
       segments.push({ text: match.groups.bold, bold: true });
     } else if (match.groups?.italic != null) {
-      for (const inner of parseInlineMarkdown(match.groups.italic)) segments.push({ ...inner, italic: true });
+      for (const inner of parseInlineMarkdown(match.groups.italic, links)) segments.push({ ...inner, italic: true });
     } else if (match.groups?.code != null) {
       segments.push({ text: match.groups.code, code: true });
     } else if (match.groups?.strike != null) {
@@ -64,7 +80,7 @@ function parseInlineMarkdown(text: string): StyledSegment[] {
   return segments;
 }
 
-function parseLine(line: string): ParsedLine {
+function parseLine(line: string, links: boolean): ParsedLine {
   // Headings
   const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
   if (headingMatch) {
@@ -84,12 +100,12 @@ function parseLine(line: string): ParsedLine {
       indent,
       segments: [
         { text: `${marker} `, bold: true, color: colors.borderFocused },
-        ...parseInlineMarkdown(content),
+        ...parseInlineMarkdown(content, links),
       ],
     };
   }
 
-  return { segments: parseInlineMarkdown(line) };
+  return { segments: parseInlineMarkdown(line, links) };
 }
 
 type TableAlign = "left" | "center" | "right";
@@ -347,8 +363,8 @@ function layoutTableRows(
   return lines;
 }
 
-function headerCell(text: string): StyledSegment[] {
-  return parseInlineMarkdown(text).map((segment) => ({ ...segment, bold: true, color: colors.textDim }));
+function headerCell(text: string, links: boolean): StyledSegment[] {
+  return parseInlineMarkdown(text, links).map((segment) => ({ ...segment, bold: true, color: colors.textDim }));
 }
 
 /**
@@ -356,9 +372,9 @@ function headerCell(text: string): StyledSegment[] {
  * the columns gets one record per row instead: the first cell as a title, then
  * each other column as a labelled field.
  */
-function layoutMarkdownTable(table: MarkdownTable, lineWidth?: number): TableLine[] {
-  const header = table.header.map(headerCell);
-  const body = table.rows.map((row) => row.map((cell) => parseInlineMarkdown(cell)));
+function layoutMarkdownTable(table: MarkdownTable, lineWidth?: number, links = false): TableLine[] {
+  const header = table.header.map((cell) => headerCell(cell, links));
+  const body = table.rows.map((row) => row.map((cell) => parseInlineMarkdown(cell, links)));
   const align = table.header.map((_, column) => columnAlign(table, column));
   const widths = tableColumnWidths([header, ...body], lineWidth);
   if (widths) return layoutTableRows([header, ...body], widths, align);
@@ -396,7 +412,12 @@ function wrappedInlineTextStyle() {
   } as const;
 }
 
-function SegmentSpan({ segment, wrap = false }: { segment: StyledSegment; wrap?: boolean }) {
+function SegmentSpan({ segment, wrap = false, onOpenLink }: {
+  segment: StyledSegment;
+  wrap?: boolean;
+  onOpenLink?: (href: string) => void;
+}) {
+  const { nativePaneChrome } = useUiCapabilities();
   const wrapProps = wrap
     ? {
         wrapText: true,
@@ -411,12 +432,28 @@ function SegmentSpan({ segment, wrap = false }: { segment: StyledSegment; wrap?:
   const attrs =
     (segment.bold ? TextAttributes.BOLD : 0) |
     (segment.italic ? TextAttributes.ITALIC : 0) |
-    (segment.dim ? TextAttributes.DIM : 0);
+    (segment.dim ? TextAttributes.DIM : 0) |
+    (segment.link ? TextAttributes.UNDERLINE : 0);
+  const href = segment.link;
+  // The terminal cannot press part of a line; there the pane menu lists links.
+  const linkProps = href && onOpenLink && nativePaneChrome
+    ? {
+        role: "link",
+        style: { ...(wrap ? wrappedInlineTextStyle() : {}), cursor: "pointer" },
+        onMouseDown: (event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
+          if (event.button !== undefined && event.button !== 0) return;
+          event.preventDefault?.();
+          event.stopPropagation?.();
+          onOpenLink(href);
+        },
+      }
+    : {};
   return (
     <Span
-      fg={segment.color ?? undefined}
+      fg={segment.color ?? (href ? colors.textBright : undefined)}
       attributes={attrs || undefined}
       {...wrapProps}
+      {...linkProps}
     >
       {segment.text}
     </Span>
@@ -431,6 +468,7 @@ function MarkdownLine({
   openTicker,
   hoveredSymbol,
   onHover,
+  onOpenLink,
 }: {
   parsed: ParsedLine;
   lineWidth?: number;
@@ -439,6 +477,7 @@ function MarkdownLine({
   openTicker: (symbol: string) => void;
   hoveredSymbol: string | null;
   onHover: (symbol: string | null) => void;
+  onOpenLink?: (href: string) => void;
 }) {
   const indent = parsed.indent ?? 0;
   const indentStr = indent > 0 ? " ".repeat(indent) : "";
@@ -463,7 +502,7 @@ function MarkdownLine({
       <Text fg={textColor} {...textWrapProps}>
         {indentStr}
         {parsed.segments.map((segment, i) => (
-          <SegmentSpan key={i} segment={segment} wrap={shouldWrap} />
+          <SegmentSpan key={i} segment={segment} wrap={shouldWrap} onOpenLink={onOpenLink} />
         ))}
       </Text>
     );
@@ -487,7 +526,7 @@ function MarkdownLine({
                   ? { wrapText: true, wrapMode: "word", style: wrappedTextStyle() }
                   : {})}
               >
-                <SegmentSpan segment={{ ...segment, text: token.value }} wrap={shouldWrap} />
+                <SegmentSpan segment={{ ...segment, text: token.value }} wrap={shouldWrap} onOpenLink={onOpenLink} />
               </Text>
             );
           }
@@ -501,7 +540,7 @@ function MarkdownLine({
                   ? { wrapText: true, wrapMode: "word", style: wrappedTextStyle() }
                   : {})}
               >
-                <SegmentSpan segment={{ ...segment, text: token.value }} wrap={shouldWrap} />
+                <SegmentSpan segment={{ ...segment, text: token.value }} wrap={shouldWrap} onOpenLink={onOpenLink} />
               </Text>
             );
           }
@@ -528,7 +567,9 @@ export function MarkdownText({
   catalog = {},
   textColor = colors.text,
   openTicker = () => {},
+  onOpenLink,
 }: MarkdownTextProps) {
+  const links = onOpenLink !== undefined;
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const blocks = parseMarkdownBlocks(text);
 
@@ -538,10 +579,10 @@ export function MarkdownText({
         if (block.kind === "table") {
           return (
             <Box key={index} flexDirection="column">
-              {layoutMarkdownTable(block.table, lineWidth).map((line, lineIndex) => (
+              {layoutMarkdownTable(block.table, lineWidth, links).map((line, lineIndex) => (
                 <Text key={lineIndex} fg={textColor}>
                   {line.map((segment, segmentIndex) => (
-                    <SegmentSpan key={segmentIndex} segment={segment} />
+                    <SegmentSpan key={segmentIndex} segment={segment} onOpenLink={onOpenLink} />
                   ))}
                 </Text>
               ))}
@@ -552,7 +593,7 @@ export function MarkdownText({
         if (line.trim() === "") {
           return <Text key={index}>{" "}</Text>;
         }
-        const parsed = parseLine(line);
+        const parsed = parseLine(line, links);
         return (
           <MarkdownLine
             key={index}
@@ -563,6 +604,7 @@ export function MarkdownText({
             openTicker={openTicker}
             hoveredSymbol={hoveredSymbol}
             onHover={setHoveredSymbol}
+            onOpenLink={onOpenLink}
           />
         );
       })}

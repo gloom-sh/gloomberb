@@ -1301,6 +1301,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: null,
     bloomberg: ["HELP"],
   },
+  DOCS: {
+    summary: "The docs and Academy lessons, searchable, inside the app. The ? on a pane opens that pane's entry; Back returns to where you were.",
+    usage: ["DOCS", "DOCS OMON", "DOCS options chain"],
+    keys: [SEARCH, OPEN, key("o", "pen in browser")],
+    data: null,
+    bloomberg: [],
+  },
   FB: {
     summary: "A message and an optional screenshot, sent with scrubbed logs and app details; works signed out. FEEDBACK and BUG open it too.",
     usage: ["FB"],

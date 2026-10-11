@@ -40,6 +40,7 @@ interface ShellPaneLayersProps {
   handleNativePaneContextMenu: (paneId: string, rect: LayoutBounds, event: any) => void;
   handleNativePaneMouseDown: (paneId: string, event: any) => void;
   handlePaneAction: (paneId: string, rect: LayoutBounds, event: any) => void;
+  handlePaneHelp: (paneId: string) => void;
   hoveredPaneId: string | null;
   live: LiveDragStore;
   menuPaneId: string | null;
@@ -74,6 +75,8 @@ interface PaneLayerActions {
   drag: ShellMouseHandler;
   contextMenu: (paneId: string, rect: LayoutBounds, event: any) => void;
   menu: (paneId: string, rect: LayoutBounds, event: any) => void;
+  /** The `?`: the pane's entry in DOCS. */
+  help: (paneId: string) => void;
   closeMouseDown: (paneId: string, event: any) => void;
   /** Also the failure card's Close: keep it stable, the pane body is memoized on it. */
   close: (paneId: string) => void;
@@ -168,6 +171,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
               onHeaderMouseDragEnd={nativeMove ? actions.drag : undefined}
               onHeaderContextMenu={nativePaneChrome && nativeContextMenu ? (event) => actions.contextMenu(paneId, rect, event) : undefined}
               onActionMouseDown={(event) => actions.menu(paneId, rect, event)}
+              onHelpMouseDown={() => actions.help(paneId)}
               fullscreen={fullscreen}
               onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
             >
@@ -255,6 +259,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
             onHeaderMouseDragEnd={nativeMove ? actions.drag : undefined}
             onHeaderContextMenu={nativePaneChrome && nativeContextMenu ? (event) => actions.contextMenu(paneId, rect, event) : undefined}
             onActionMouseDown={(event) => actions.menu(paneId, rect, event)}
+            onHelpMouseDown={() => actions.help(paneId)}
             onCloseMouseDown={fullscreen ? undefined : (event) => actions.closeMouseDown(paneId, event)}
             onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
             fullscreen={fullscreen}
@@ -439,6 +444,7 @@ export function ShellPaneLayers({
   handleNativePaneContextMenu,
   handleNativePaneMouseDown,
   handlePaneAction,
+  handlePaneHelp,
   hoveredPaneId,
   live,
   menuPaneId,
@@ -489,6 +495,7 @@ export function ShellPaneLayers({
     handleNativePaneContextMenu,
     handleNativePaneMouseDown,
     handlePaneAction,
+    handlePaneHelp,
     setHoveredPaneIfChanged,
     startNativeDividerDrag,
     startNativeDockedDrag,
@@ -503,6 +510,7 @@ export function ShellPaneLayers({
     handleNativePaneContextMenu,
     handleNativePaneMouseDown,
     handlePaneAction,
+    handlePaneHelp,
     setHoveredPaneIfChanged,
     startNativeDividerDrag,
     startNativeDockedDrag,
@@ -519,6 +527,7 @@ export function ShellPaneLayers({
     drag: (event) => handlersRef.current.handleNativeDrag(event),
     contextMenu: (paneId, rect, event) => handlersRef.current.handleNativePaneContextMenu(paneId, rect, event),
     menu: (paneId, rect, event) => handlersRef.current.handlePaneAction(paneId, rect, event),
+    help: (paneId) => handlersRef.current.handlePaneHelp(paneId),
     closeMouseDown: (paneId, event) => handlersRef.current.handleFloatingCloseMouseDown(paneId, event),
     close: (paneId) => handlersRef.current.handleFloatingClose(paneId),
     restoreFullscreen: (event) => handlersRef.current.handleRestoreFullscreen(event),

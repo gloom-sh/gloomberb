@@ -62,6 +62,7 @@
     "desktop:build": "electrobun build",
     "desktop:release": "electrobun build --env=stable",
     "desktop:release:windows": "electrobun build --env=stable --targets=win-x64",
+    "docs:snapshot": "bun run scripts/update-docs-snapshot.ts",
     "plugins:manifest": "bun run scripts/generate-plugin-manifest.ts",
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
     "plugins:registry:check": "bun run scripts/check-registry-plugins.ts",

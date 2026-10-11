@@ -49,18 +49,21 @@ window.__check = {
   /** Where a press lands on a pane's header; null when that part is missing. */
   point(id, part) {
     if (part === "empty") return this.emptyBarPoint(id);
-    const element = part === "resize" ? this.part(id, "resize-handle") : part === "action" ? this.part(id, "pane-action")?.querySelector("button") : this.part(id, "pane-" + part);
+    const element = part === "resize" ? this.part(id, "resize-handle")
+      : part === "action" || part === "help" ? this.part(id, "pane-" + part)?.querySelector("button")
+      : this.part(id, "pane-" + part);
     const r = this.rect(element);
     return r && { x: r.x + Math.min(r.width / 2, 16), y: r.y + r.height / 2 };
   },
   /**
-   * Bare header bar: just left of the pane menu button, where no title, tab
-   * or button is. Throws when something else is under that point, so a layout
-   * change fails loudly instead of testing the wrong spot.
+   * Bare header bar: just left of the header's buttons (the docs ?, then the
+   * pane menu), where no title, tab or button is. Throws when something else
+   * is under that point, so a layout change fails loudly instead of testing
+   * the wrong spot.
    */
   emptyBarPoint(id) {
     const header = this.part(id, "pane-header");
-    const action = this.part(id, "pane-action");
+    const action = this.part(id, "pane-help") ?? this.part(id, "pane-action");
     if (!header || !action) return null;
     const h = header.getBoundingClientRect();
     const point = { x: action.getBoundingClientRect().left - 10, y: h.top + h.height / 2 };
@@ -174,6 +177,37 @@ const steps: Step[] = [
     run: (cdp) => fullscreenBar(cdp, part, label),
   })),
   {
+    name: "docked pane: the ? asks for its docs and leaves the pane in place",
+    scenario: "docked",
+    async run(cdp) {
+      const before = await rectOf(cdp, "tabs:a");
+      // The ? shows with the menu, on the focused or hovered pane.
+      await click(cdp, await pointOf(cdp, "tabs:a", "title"));
+      await click(cdp, await pointOf(cdp, "tabs:a", "help"));
+      const asked = await waitFor<string[] | null>(cdp, `window.__paneChrome.docs.length ? window.__paneChrome.docs : null`);
+      if (asked?.join() !== "tabs:a") fail("the ? did not ask for this pane's docs once", asked);
+      if (!near(before, await rectOf(cdp, "tabs:a"))) fail("pressing the ? moved the pane");
+    },
+  },
+  {
+    name: "floating pane: the ? asks for its docs and leaves the pane in place",
+    scenario: "floating",
+    async run(cdp) {
+      const before = await rectOf(cdp, "plain:float");
+      await click(cdp, await pointOf(cdp, "plain:float", "title"));
+      // A press that leaves the button is not a click: nothing opens and nothing moves.
+      const help = await pointOf(cdp, "plain:float", "help");
+      await drag(cdp, help, [{ x: help.x - 200, y: help.y + 150 }], 4);
+      const asked = await evaluate<string[]>(cdp, "window.__paneChrome.docs");
+      if (asked.length > 0) fail("a press dragged off the ? still asked for docs", asked);
+      if (!near(before, await rectOf(cdp, "plain:float"))) fail("dragging from the ? moved the pane");
+      await click(cdp, await pointOf(cdp, "plain:float", "help"));
+      if ((await waitFor<string[] | null>(cdp, `window.__paneChrome.docs.length ? window.__paneChrome.docs : null`))?.join() !== "plain:float") {
+        fail("the ? did not ask for this pane's docs");
+      }
+    },
+  },
+  {
     name: "tabs: a click selects the tab and leaves the pane in place",
     scenario: "docked",
     async run(cdp) {
@@ -266,6 +300,17 @@ const steps: Step[] = [
       await click(cdp, center(tab));
       if (!await waitFor(cdp, `__check.tab("tabs:a", "Third")?.getAttribute("aria-selected") === "true"`)) fail("clicking Third did not select it");
       if (await evaluate<number>(cdp, "__check.windowMoves()") > 0) fail("clicking a tab asked the window to move");
+    },
+  },
+  {
+    name: "popped-out window: the ? asks for the pane's docs without moving the window",
+    scenario: "detached",
+    async run(cdp) {
+      await click(cdp, await pointOf(cdp, "tabs:a", "help"));
+      if ((await waitFor<string[] | null>(cdp, `window.__paneChrome.docs.length ? window.__paneChrome.docs : null`))?.join() !== "tabs:a") {
+        fail("the ? did not ask for the pane's docs");
+      }
+      if (await evaluate<number>(cdp, "__check.windowMoves()") > 0) fail("the ? asked the window to move");
     },
   },
   {

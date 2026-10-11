@@ -28,6 +28,7 @@ interface PaneWrapperProps {
   onHeaderMouseDragEnd?: (event: any) => void;
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
+  onHelpMouseDown?: (event: any) => void;
   onRestoreMouseDown?: (event: any) => void;
   fullscreen?: boolean;
   footer?: CombinedPaneFooter | null;
@@ -54,6 +55,7 @@ export function PaneWrapper({
   onHeaderMouseDragEnd,
   onHeaderContextMenu,
   onActionMouseDown,
+  onHelpMouseDown,
   onRestoreMouseDown,
   fullscreen = false,
   footer,
@@ -111,6 +113,7 @@ export function PaneWrapper({
           onHeaderMouseDragEnd={onHeaderMouseDragEnd}
           onHeaderContextMenu={onHeaderContextMenu}
           onActionMouseDown={onActionMouseDown}
+          onHelpMouseDown={onHelpMouseDown}
           fullscreen={fullscreen}
           onRestoreMouseDown={onRestoreMouseDown}
         />

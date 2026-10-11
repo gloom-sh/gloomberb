@@ -145,6 +145,7 @@
         "panes": [
           "changelog",
           "connections",
+          "docs",
           "help",
           "layout-marketplace",
           "plugin-marketplace"
@@ -171,6 +172,11 @@
             "code": "CONN",
             "name": "Connections",
             "description": "Inspect live request and socket health."
+          },
+          {
+            "code": "DOCS",
+            "name": "Docs",
+            "description": "Read the docs and Academy lessons in the app: search them, or open a function's entry."
           }
         ]
       },

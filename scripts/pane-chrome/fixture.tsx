@@ -46,6 +46,8 @@ declare global {
       windowControls: string[];
       /** The pane's Copy Screenshot image, as a PNG data URL. */
       capturePane(paneId: string): Promise<string>;
+      /** Panes whose `?` asked for their docs, in order. */
+      docs: string[];
     };
   }
 }
@@ -214,6 +216,10 @@ function registry(): PluginRegistry {
     hidePane: () => {},
     openWindowMode: () => {},
     updateLayout: () => {},
+    // A pane's `?` opens its docs through this; the page only records which pane asked.
+    createPaneFromTemplate: (templateId: string, options?: { values?: Record<string, string> }) => {
+      if (templateId === "docs-pane" && options?.values?.pane) window.__paneChrome.docs.push(options.values.pane);
+    },
     // The shell binds its actions here as it mounts (togglePaneFullscreen among them).
     bindHost(actions: object) {
       Object.assign(this, actions);
@@ -298,6 +304,7 @@ window.__paneChrome = {
   cell: { width: WEB_CELL_WIDTH, height: WEB_CELL_HEIGHT },
   registry: paneRegistry,
   windowControls: [],
+  docs: [],
   capturePane: async (paneId) => `data:image/png;base64,${(await capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
 };
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.

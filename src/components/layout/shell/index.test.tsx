@@ -25,6 +25,7 @@ import {
   resolvePaneManagementShortcut,
 } from "./index";
 import { inputCaptureAllowsPaneManagementShortcut } from "./shortcuts";
+import { registerPaneDocsHandler } from "../../../docs/requests";
 
 const tui = createOpenTuiTestHarness();
 
@@ -109,7 +110,8 @@ function floatingOverDockLayout(
 
 /** Click the "..." header action on the first row and return the frame with the menu open. */
 async function openPaneMenu() {
-  const actionCol = tui.frame().split("\n")[0]?.indexOf("...");
+  // The last one: a title cut short ends in "..." too.
+  const actionCol = tui.frame().split("\n")[0]?.lastIndexOf("...");
   expect(actionCol).toBeGreaterThanOrEqual(0);
   await act(async () => {
     await tui.setup().mockMouse.click(actionCol! + 1, 1);
@@ -263,6 +265,37 @@ describe("Shell", () => {
     expect(frame).toContain("Ctrl+,");
     expect(frame).not.toContain("Layout Actions");
     expect(frame).not.toContain("CmdOrCtrl");
+  });
+
+  test("the ? beside the menu asks for the pane's docs, docked and floating, and the menu lists Docs", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const asked: string[] = [];
+    const unregister = registerPaneDocsHandler((paneId) => asked.push(paneId));
+    try {
+      const { actions } = await renderShell(createShellStateWithLayout(
+        config,
+        floatingOverDockLayout(config, [{ instanceId: "ticker-detail:float", x: 30, y: 4 }]),
+        "portfolio-list:main",
+      ), { width: 80, height: 16 });
+      // The focused pane draws its ?; the unfocused one keeps the place blank and still takes the press.
+      const docked = tui.frame().split("\n")[0]!.indexOf(" ? ");
+      expect(docked).toBeGreaterThan(0);
+      const click = async (x: number, row: number) => {
+        await act(async () => {
+          await tui.setup().mockMouse.click(x, row + 1);
+        });
+        await tui.setup().renderOnce();
+      };
+      await click(docked + 1, 0);
+      // A 30-wide floating pane: its corner x, then the menu, then the ? at columns 17 to 19.
+      await click(30 + 18, 4);
+      expect(asked).toEqual(["portfolio-list:main", "ticker-detail:float"]);
+      // Neither press started a move.
+      expect(findUpdateLayout(actions)).toBeUndefined();
+      expect(await openPaneMenu()).toContain("Docs");
+    } finally {
+      unregister();
+    }
   });
 
   test("shows a Pop Out action in the pane menu when a desktop bridge is available", async () => {

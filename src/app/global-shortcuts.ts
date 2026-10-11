@@ -13,6 +13,8 @@ import { getVisiblePaneCycleOrder } from "../components/layout/pane/cycle-order"
 import { requestFunctionHelp, useFunctionHelpHost } from "../plugins/builtin/help/function-card";
 import { buildRegistryHelpIndex, helpFunctionForPane } from "../plugins/builtin/help/function-index";
 import { recordFunctionOpen } from "../telemetry/usage-counts";
+import { DOCS_PANE_TEMPLATE_ID } from "../docs/content";
+import { registerPaneDocsHandler } from "../docs/requests";
 import { isMoveDownShortcut, isMoveUpShortcut } from "../components/command-bar/keyboard-handlers";
 import { pressStarPromptKey } from "./star-prompt/runtime";
 import {
@@ -120,6 +122,18 @@ export function useAppGlobalShortcuts({
       if (state.commandBarOpen) dispatch({ type: "SET_COMMAND_BAR", open: false });
     },
   });
+  const layoutRef = useRef(state.config.layout);
+  layoutRef.current = state.config.layout;
+  // A pane's `?`: its entry in DOCS, or its help card where no pane can open.
+  useEffect(() => registerPaneDocsHandler((paneId) => {
+    if (!isDetachedWindow) {
+      pluginRegistry.createPaneFromTemplate(DOCS_PANE_TEMPLATE_ID, { values: { pane: paneId } });
+      return;
+    }
+    const instance = findPaneInstance(layoutRef.current, paneId);
+    const fn = instance ? helpFunctionForPane(buildRegistryHelpIndex(pluginRegistry), pluginRegistry, instance) : null;
+    if (fn) requestFunctionHelp({ kind: "function", fn, inAppDocs: false });
+  }), [isDetachedWindow, pluginRegistry]);
 
   useShortcut((event) => {
     if (isCopyShortcut(event) && copyActiveSelection(nativeRenderer)) {
@@ -237,7 +251,7 @@ export function useAppGlobalShortcuts({
       recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
       const instance = state.focusedPaneId ? findPaneInstance(state.config.layout, state.focusedPaneId) : undefined;
       const fn = instance ? helpFunctionForPane(buildRegistryHelpIndex(pluginRegistry), pluginRegistry, instance) : null;
-      if (fn && requestFunctionHelp({ kind: "function", fn })) return;
+      if (fn && requestFunctionHelp({ kind: "function", fn, inAppDocs: !isDetachedWindow })) return;
       if (!isDetachedWindow) pluginRegistry.showPane("help");
       return;
     }
