@@ -248,7 +248,7 @@ function browserTab(view: HeadlessThirteenFView, query: string): ThirteenFBrowse
  * whose name matches exactly, else the only match. `search` lists funds by
  * name, as the 13F browser does.
  */
-export async function findThirteenFFund(
+async function findThirteenFFund(
   query: string,
   search: (query: string, limit: number) => Promise<BrowserLoadResult>,
   { exactOnly = false }: { exactOnly?: boolean } = {},

@@ -638,7 +638,7 @@ gloomberb portfolio import --13f 0001067983 --name "Buffett 25" --top 25 --notio
 gloomberb portfolio import --13f 0001067983 --top 10 --replace       # refill the portfolio of that name
 ```
 
-- It takes the `--top` largest common-stock lines by reported value (10 when left out, at most 100) whose ticker resolves to a listing. Options, principal amounts and CUSIPs without a ticker are skipped, and the command lists each with the reason; the next line takes its place.
+- It takes the `--top` largest common-stock lines by reported value (10 when left out, at most 100) whose ticker resolves to a listing. Options, principal amounts, preferred stock, warrants, rights, debt and CUSIPs without a ticker are skipped, and the command lists each with the reason; the next line takes its place.
 - Weights are each line's reported value over the imported lines' total. Shares are a notional, `--notional` dollars in total (100,000 when left out), at the price the filing implies (reported value over shares), which is each position's cost. They are the manager's weights, not your holdings, and the output, `portfolio show` and `fn PF` say so with the quarter and filing date.
 - The portfolio is named after the manager unless `--name` says otherwise. An existing portfolio of that name is filled only when it holds nothing; one that holds tickers needs `--replace`, which removes them and their targets first. A broker portfolio is never imported into.
 - The filing date is kept on the portfolio, so `fn PORT <id> --since filed` can measure from it.

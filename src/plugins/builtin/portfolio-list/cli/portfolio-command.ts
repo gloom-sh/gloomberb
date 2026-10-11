@@ -37,8 +37,7 @@ import {
   parseTargetWeight,
 } from "../allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
-import { findThirteenFFund } from "../../thirteenf/headless";
-import { loadBrowserRows, loadFundDetail } from "../../thirteenf/data";
+import { apiClient } from "../../../../api-client";
 import { importSource, notionalPositions, rankThirteenFLines, type ThirteenFImportLine } from "./import-13f";
 import { importedFromText } from "../imported-from";
 import {
@@ -58,6 +57,8 @@ const IMPORT_USAGE = "Usage: gloomberb portfolio import --13f <CIK|fund name> [-
 const IMPORT_DEFAULT_TOP = 10;
 const IMPORT_MAX_TOP = 100;
 const IMPORT_DEFAULT_NOTIONAL = 100_000;
+/** 13F lines read for an import: the largest, so skipped lines still leave enough for --top. */
+const IMPORT_13F_ROWS = 200;
 
 async function listCollections(ctx: CliCommandContext) {
   await withConfigData(ctx, async ({ config, store }) => {
@@ -505,12 +506,19 @@ function parseImportOptions(args: string[], ctx: CliCommandContext): ThirteenFIm
  * is empty, or replaced with --replace; never overwritten silently.
  */
 async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliCommandContext) {
+  // The manager's holdings as `fn 13F <manager>` reports them, through the 13F function of the plugins that are on.
+  const thirteenF = ctx.plugins.flatMap((plugin) => plugin.paneTemplates ?? []).find((template) => template.shortcut?.prefix === "13F")?.headless;
+  if (!thirteenF) ctx.fail("13F filings are not available: the Ownership & Insiders plugin is off.", "Turn it on with gloomberb plugin enable ownership.");
   await withMarketData(ctx, async ({ config, store, dataProvider }) => {
     try {
-      const fund = (await findThirteenFFund(options.query, (query, limit) => loadBrowserRows("funds", query, undefined, { limit })))!;
-      const detail = await loadFundDetail(fund.cik, fund.name);
-      const source = importSource(detail);
-      if (!source) throw new PortfolioCliError(`No 13F holdings report found for ${detail.name} (CIK ${detail.cik}).`);
+      const report = await thirteenF.load(
+        { rawArgument: options.query, argument: options.query, symbols: [], options: { view: "holdings", limit: IMPORT_13F_ROWS } },
+        { marketData: dataProvider, apiClient, config, signal: new AbortController().signal },
+      );
+      const source = importSource(report.metadata);
+      const rows = "rows" in report && Array.isArray(report.rows) ? report.rows : [];
+      if (!source) throw new PortfolioCliError(`No dated 13F holdings report found for "${options.query}".`);
+      const detail = { cik: source.cik, name: source.name };
       const name = options.name ?? `${detail.name} 13F`;
       const existing = config.portfolios.find((entry) => [entry.id, entry.name].some((value) => value.toLowerCase() === name.toLowerCase()));
       if (existing && !isManualPortfolio(existing)) {
@@ -527,7 +535,7 @@ async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliC
       // The largest lines first; a line that cannot be a position, or whose ticker does not resolve, gives way to the next.
       const picked: Array<{ line: ThirteenFImportLine; ticker: TickerRecord }> = [];
       const skipped: Array<{ label: string; reason: string }> = [];
-      for (const line of rankThirteenFLines(detail)) {
+      for (const line of rankThirteenFLines(rows)) {
         if (picked.length >= options.top) break;
         const label = line.ticker || line.issuer;
         if (line.skip) { skipped.push({ label, reason: line.skip }); continue; }
@@ -543,7 +551,8 @@ async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliC
       if (picked.length === 0) {
         throw new PortfolioCliError(`None of ${detail.name}'s 13F lines could be imported.`, skipped.map((entry) => `${entry.label}: ${entry.reason}`).join("\n"));
       }
-      const filingValue = detail.latestReport ? (detail.latestReport.complete ? detail.latestReport.tableValueTotal : null) : detail.latestForm?.tableValueTotal ?? null;
+      const reported = report.metadata?.currentReportedValue;
+      const filingValue = typeof reported === "number" && Number.isFinite(reported) ? reported : null;
       const positions = notionalPositions(picked.map((entry) => entry.line), options.notional, filingValue);
 
       let nextConfig = config;

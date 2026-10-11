@@ -1,27 +1,34 @@
 import { expect, test } from "bun:test";
-import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "../../thirteenf/types";
-import { notionalPositions, rankThirteenFLines } from "./import-13f";
+import { importSource, notionalPositions, rankThirteenFLines } from "./import-13f";
 
-const form: ThirteenFFormSummary = { url: "", accessionNumber: "q2", submissionType: "13F-HR", periodOfReport: "2026-06-30", filedAsOfDate: "2026-08-14", cik: "1", companyName: "Fund", tableValueTotal: 1_000, tableEntryTotal: 6, isAmendment: false };
-const line = (overrides: Partial<ThirteenFHoldingRecord>): ThirteenFHoldingRecord => ({ accessionNumber: "q2", cik: "1", cusip: "x", ticker: "X", issuer: "X Corp", titleOfClass: "COM", putCall: "", shareType: "SH", value: 0, shares: 0, investmentDiscretion: "SOLE", votingAuthoritySole: 0, votingAuthorityShared: 0, votingAuthorityNone: 0, ...overrides });
+// Rows as `fn 13F <manager>` reports them.
+const line = (overrides: Record<string, unknown>) => ({ cusip: "x", ticker: "X", issuer: "X Corp", titleOfClass: "COM", putCall: "", shareType: "SH", value: 0, shares: 0, action: "held", ...overrides });
 
 test("13F lines rank by reported value; options, principal amounts and untickered CUSIPs say why they are not positions", () => {
-  const detail: FundDetailData = { cik: "1", name: "Fund", forms: [form], latestForm: form, previousForm: null, previousHoldings: [], latestHoldings: [
+  expect(rankThirteenFLines([
     line({ cusip: "a", ticker: "AAA", value: 300, shares: 3 }),
     line({ cusip: "a", ticker: "AAA", putCall: "Call", value: 400, shares: 10 }),
     line({ cusip: "b", ticker: "", issuer: "Unmapped Inc", value: 200, shares: 4 }),
     line({ cusip: "n", ticker: "NOTE", shareType: "PRN", value: 150, shares: 150 }),
-    // Two CUSIPs the source maps to one ticker are one position.
+    line({ cusip: "p", ticker: "BRKRP", titleOfClass: "6.375 PREF SER A", value: 120, shares: 1 }),
+    line({ cusip: "w", ticker: "XYZWS", titleOfClass: "*W EXP 06/30/202", value: 110, shares: 1 }),
+    // Two CUSIPs the source maps to one ticker are one position; an exit holds nothing.
     line({ cusip: "c1", ticker: "CCC", value: 60, shares: 1 }),
     line({ cusip: "c2", ticker: "CCC", value: 40, shares: 1 }),
-  ] };
-  expect(rankThirteenFLines(detail).map(({ ticker, issuer, value, shares, skip }) => [ticker || issuer, value, shares, skip])).toEqual([
+    line({ cusip: "z", ticker: "ZZZ", value: null, shares: null, action: "exit" }),
+  ]).map(({ ticker, issuer, value, shares, skip }) => [ticker || issuer, value, shares, skip])).toEqual([
     ["AAA", 400, 10, "call option, not shares"],
     ["AAA", 300, 3, null],
     ["Unmapped Inc", 200, 4, "CUSIP b has no ticker"],
     ["NOTE", 150, 150, "principal amount, not shares"],
+    ["BRKRP", 120, 1, "preferred stock, not common stock"],
+    ["XYZWS", 110, 1, "warrant, not common stock"],
     ["CCC", 100, 2, null],
   ]);
+  expect(importSource({ cik: "0001067983", fund: "Fund", latestPeriod: "2026-06-30", latestFiled: "2026-08-14" }))
+    .toEqual({ kind: "13f", cik: "0001067983", name: "Fund", period: "2026-06-30", filed: "2026-08-14" });
+  // Without a filing date there is nothing for PORT --since filed to measure from.
+  expect(importSource({ cik: "0001067983", fund: "Fund", latestPeriod: "2026-06-30", latestFiled: null })).toBeNull();
 });
 
 test("imported weights come from reported value and the shares add up to the notional at the filing's prices", () => {
