@@ -6,6 +6,8 @@ import type { HolderData } from "../../types/financials";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { marketDataCliCommands } from "./market";
+import { createHoldersHeadless } from "../../plugins/builtin/holders/headless";
+import { createTestHeadlessContext } from "../../test-support/headless";
 
 const holders = marketDataCliCommands.find((command) => command.name === "holders")!;
 const HOLDER_DATA = { symbol: "CAR", holders: [{ ownerType: "institution", name: "Morgan Stanley", shares: 2_029_978, changeShares: 2_029_978 }] };
@@ -37,7 +39,7 @@ test("holders --form lists the beneficial owners, --history every report, and th
 
   await holders.execute(["CAR"], run.context);
   expect(run.requests).toHaveLength(1);
-  expect(run.printed[1]!.result.data).toBe(HOLDER_DATA);
+  expect((run.printed[1]!.result.data as Array<{ name: string }>).map((row) => row.name)).toEqual(["Morgan Stanley"]);
 });
 
 test("holders refuses an unknown form, and --history without a 13D/13G form", async () => {
@@ -69,4 +71,31 @@ test("holders on a home line label the values in their own currency and mark the
   expect(text).toMatch(/Paradigm Asset Management Company, LLC +2026-06-30 +66,100 +2\.72M +<0\.01%/);
   expect(text).toMatch(/Horizon Financial Services, LLC +2026-06-30 +120 +ADR +10k +<0\.01%/);
   expect(result.metadata).toMatchObject({ currency: "GBp", valueCurrency: "USD" });
+});
+
+test("holders writes HDS's rows: largest value first, percents in percent, and HDS's CSV columns", async () => {
+  // Gloom Cloud's SAN list, trimmed: the source orders by a two-decimal stake, which put Northern Trust above Chevy Chase.
+  const data: HolderData = {
+    symbol: "SAN", name: "Banco Santander, S.A.", currency: "USD", exchange: "NYSE", asOf: "2026-06-30",
+    valueCurrency: "USD", valueBasis: "latest_price",
+    holders: [
+      { ownerType: "institution", name: "Northern Trust Corporation", reportDate: "2026-06-30", shares: 12_968_275,
+        value: 174_942_026, percentHeld: 0.00090000004, changeShares: -403_588, changePercent: -0.030182 },
+      { ownerType: "institution", name: "Chevy Chase Trust Holdings, LLC", reportDate: "2026-06-30", shares: 14_003_466,
+        value: 188_906_753, percentHeld: 0.00090000004, changeShares: 187_825, changePercent: 0.013595 },
+    ],
+  };
+  const cli = createTestCliContext({ dataProvider: { getHolders: async () => data } });
+  await holders.execute(["SAN"], cli.context);
+  const { result, options } = cli.printed[0]!;
+  const hds = await createHoldersHeadless({ loadSnapshot: async () => ({ data }) }).load({
+    rawArgument: "SAN", argument: "SAN", symbols: ["SAN"], options: { sort: "value", order: "desc", limit: 25 },
+  }, createTestHeadlessContext());
+  expect(result.data).toEqual(hds.rows);
+  const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+  expect(csv.slice(0, 3)).toEqual([
+    "Holder,Type,Mkt value (USD),Amount,Chg,Chg%,Held (%),Period",
+    '"Chevy Chase Trust Holdings, LLC",institution,188906753,14003466,187825,1.3595,0.09,2026-06-30',
+    "Northern Trust Corporation,institution,174942026,12968275,-403588,-3.0182,0.09,2026-06-30",
+  ]);
 });

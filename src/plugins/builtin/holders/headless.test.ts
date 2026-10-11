@@ -4,6 +4,7 @@ import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { createHoldersHeadless } from "./headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 import { carBeneficialOwnersPayload } from "./test-fixture";
+import { exportRowsTable } from "../../../cli/report-tables";
 
 function args(overrides: Partial<HeadlessPaneLoadArgs["options"]> = {}): HeadlessPaneLoadArgs {
   return {
@@ -25,7 +26,7 @@ describe("holders headless model", () => {
           asOf: "2026-06-30",
           holders: [
             { ownerType: "institution", name: "Small Fund", value: 100, shares: 4, reportDate: "2026-06-30" },
-            { ownerType: "fund", name: "Large Fund", value: 300, shares: 8, changeShares: 2, reportDate: "2026-06-30" },
+            { ownerType: "fund", name: "Large Fund", value: 300, shares: 8, changeShares: 2, changePercent: 0.333333, reportDate: "2026-06-30" },
           ],
         },
       }),
@@ -38,8 +39,9 @@ describe("holders headless model", () => {
       value: 300,
       shares: 8,
       changeShares: 2,
-      changePercent: null,
-      percentHeld: 0.3,
+      // Percents in percent, as the CSV and the pane show them, never a fraction.
+      changePercent: 33.3333,
+      percentHeld: 30,
       reportDate: "2026-06-30",
       currency: "USD",
       shareBasis: null,
@@ -100,11 +102,18 @@ describe("holders headless with the service's units", () => {
     const result = await headless.load({ ...args(), rawArgument: "BHP:LSE", argument: "BHP:LSE", symbols: ["BHP:LSE"] }, createTestHeadlessContext());
     expect(result.columns?.map((column) => column.key)).toEqual(["name", "ownerType", "value", "shares", "shareBasis", "percentHeld", "reportDate"]);
     expect(result.columns?.find((column) => column.key === "value")?.header).toBe("Mkt value (USD)");
-    const text = (key: string, row: Record<string, unknown>) => result.columns!.find((column) => column.key === key)!.format!(row[key], row);
+    const text = (key: string, row: Record<string, unknown>) => {
+      const column = result.columns!.find((entry) => entry.key === key)!;
+      return (column.textFormat ?? column.format)!(row[key], row);
+    };
     expect(result.rows.map((row) => [text("value", row), text("shareBasis", row), text("percentHeld", row)])).toEqual([
       ["$2.72M", "", "<0.01%"],
       ["$10k", "ADR", "<0.01%"],
     ]);
+    // CSV: plain numbers under headers naming the unit, a stake too small for the text still a number.
+    const csv = exportRowsTable("Holders", result.columns!, result.rows);
+    expect(csv.columns).toEqual(["Holder", "Type", "Mkt value (USD)", "Amount", "Basis", "Held (%)", "Period"]);
+    expect(csv.rows[0]).toEqual(["Paradigm Asset Management Company, LLC", "institution", 2_720_167, 66_100, "", 0.00130042, "2026-06-30"]);
     expect(result.rows[1]).toMatchObject({ currency: "USD", shareBasis: "depositary_receipt" });
     expect(result.metadata).toMatchObject({ currency: "GBp", valueCurrency: "USD", isDepositaryReceipt: false, adrRatio: 2 });
     expect(result.metadata?.notices).toEqual([
