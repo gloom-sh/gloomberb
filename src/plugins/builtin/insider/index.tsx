@@ -22,7 +22,8 @@ import {
   type StatItem,
 } from "../../../components";
 import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
-import { mayBeUsEquityTicker } from "../../../utils/sec";
+import { mayBeSecEquityListing, mayBeUsEquityTicker, noSecReportsNotice, nonUsSecListingVenue } from "../../../utils/sec";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { formatCompact } from "../../../utils/format";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { formatShortDate } from "../../../utils/datetime-format";
@@ -131,7 +132,9 @@ function InsiderView({ width, height, focused }: { width: number; height: number
     [setOpenItemIdState],
   );
   const [sort, setSort] = useState<StackSortPreference<InsiderColumnId>>({ columnId: "date", direction: "desc" });
-  const eligibleTicker = mayBeUsEquityTicker(ticker);
+  const eligibleTicker = mayBeSecEquityListing(ticker);
+  // A listing abroad is looked up by its company; an empty list means it files nothing with the SEC.
+  const abroadVenue = ticker ? nonUsSecListingVenue(ticker.metadata.ticker, ticker.metadata.exchange) : null;
   const instrument = instrumentFromTicker(ticker, ticker?.metadata.ticker ?? null);
 
   const filingsEntry = useSecFilingsQuery(
@@ -366,7 +369,9 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   if (loading && allFilings.length === 0) return <Spinner label="Loading insider filings..." />;
   if (error && allFilings.length === 0) return <EmptyState title="Insider filings unavailable." message={error} />;
   if (noOwnFilings) {
-    return renderFilingNotice(insiderEmptyNotice(filesAsForeignPrivateIssuer(allFilings)), width);
+    return renderFilingNotice(abroadVenue && allFilings.length === 0
+      ? noSecReportsNotice({ symbol: parsePublicTickerKey(ticker.metadata.ticker).symbol, exchange: abroadVenue, name: ticker.metadata.name ?? null })
+      : insiderEmptyNotice(filesAsForeignPrivateIssuer(allFilings)), width);
   }
 
   // Until a filing is read there is nothing to say; after that the empty
@@ -470,7 +475,7 @@ export const insiderModule: PluginModule = {
         description: "Insider transaction activity for the selected ticker.",
         keywords: ["insider", "form 4", "ownership", "transactions", "ins"],
         shortcut: "INS",
-        canCreate: (_context, options) => !options?.ticker || mayBeUsEquityTicker(options.ticker),
+        canCreate: (_context, options) => !options?.ticker || mayBeSecEquityListing(options.ticker),
       }),
       headless: insiderHeadless,
     },

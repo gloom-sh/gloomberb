@@ -43,6 +43,13 @@ export { upsertTickerFromSearchResult } from "./upsert";
 
 const MAX_NAMED_LISTINGS = 6;
 
+/**
+ * Search rows a symbol's listings are read from, by the command bar's `SAN:`
+ * venue list and the CLI's venue list alike. A keystroke's ten stop short of a
+ * symbol several companies use: CAR's ASX line is its eleventh.
+ */
+export const LISTING_SEARCH_LIMIT = 30;
+
 export class AmbiguousTickerError extends Error {
   constructor(readonly query: string, readonly listings: readonly string[], readonly listingNames: Readonly<Record<string, string>> = {}) {
     // Every listing is a choice: a list cut short could leave out the one meant.

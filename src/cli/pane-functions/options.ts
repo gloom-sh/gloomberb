@@ -9,7 +9,7 @@ import {
 } from "../../plugins/builtin/ticker-detail/financials/ratios";
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import type { NormalizedPaneFunctionOptions } from "./capabilities";
-import type { ListingArg } from "../listing-arg";
+import type { CliListing } from "../listing-arg";
 
 const DEFAULT_SHOT_WIDTH = 1280;
 const DEFAULT_SHOT_HEIGHT = 720;
@@ -50,7 +50,7 @@ export interface ParsedPaneFunctionArgs {
   explain?: boolean;
   requireBotSafe: boolean;
   /** The listing a one-ticker function's argument named, once `applyListingArgument` has resolved it. */
-  listing?: ListingArg;
+  listing?: CliListing;
 }
 
 export interface ParsedPaneCatalogArgs {

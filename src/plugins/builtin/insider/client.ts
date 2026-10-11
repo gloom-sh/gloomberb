@@ -12,6 +12,8 @@ export interface InsiderFilingsLoad {
   parsed: ParsedInsiderFiling[];
   /** Every Form 4 listed was read, none is the company's own, and it reports as a foreign private issuer. */
   foreignPrivateIssuer: boolean;
+  /** The SEC lists no filing of any form for the company. */
+  noFilings: boolean;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -55,5 +57,5 @@ export async function loadParsedInsiderFilings(
     parsed.push(...entries);
     own += 1;
   }
-  return { parsed, foreignPrivateIssuer: own === 0 && filesAsForeignPrivateIssuer(filings) };
+  return { parsed, foreignPrivateIssuer: own === 0 && filesAsForeignPrivateIssuer(filings), noFilings: filings.length === 0 };
 }

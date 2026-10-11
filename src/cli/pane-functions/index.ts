@@ -22,7 +22,7 @@ import {
 } from "./catalog";
 import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
-import { loadForListing } from "../listing-arg";
+import { loadForListing, quotedListingChoiceNotes } from "../listing-arg";
 import { knownGapMessage } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import {
@@ -75,6 +75,9 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         throw new Error("--section picks one table of --csv or --ndjson output.");
       }
       if (resolved.tableSection === true) throw new Error("--section needs a section title or number.");
+      // A report's title names the function and the symbol, never the listing a bare one was read on,
+      // so it gets `quote`'s line for that. Looked up beside the report, so it costs no wait.
+      const choice = parsed.listing ? quotedListingChoiceNotes(parsed.listing, context) : null;
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       const report = await withPersistedCloudSession(
         context,
@@ -101,7 +104,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const data = glossary
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
-      ctx.printResult({ data }, {
+      const warnings = await choice ?? [];
+      ctx.printResult({ data, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });

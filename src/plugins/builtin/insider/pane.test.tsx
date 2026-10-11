@@ -74,18 +74,28 @@ test("narrow actual amendment detail retains corrected shares, explanation, stat
 
 // Venue and currency stay empty when an unsaved ticker's quote is unavailable,
 // as for a thin US listing after the close: unknown is not foreign.
-test("a ticker with no quote and no venue reads its filings; a listing abroad keeps the notice", async () => {
+test("a ticker with no quote and no venue reads its filings; a listing abroad with no venue keeps the notice", async () => {
   const notice = "Insider transactions are only shown for US equities.";
   expect(await mount(80, false, createTestTicker("CRBG", "CRBG", { exchange: "", currency: "" }))).toEqual(["CRBG"]);
   expect(tui.frame()).toMatch(/Anna B\. Smith\s+BUY/);
   expect(tui.frame()).not.toContain(notice);
-  for (const ticker of [
-    createTestTicker("VOD.L", "Vodafone", { exchange: "LSE", currency: "GBP" }),
-    createTestTicker("7203.T", "Toyota", { exchange: "", currency: "" }),
-  ]) {
-    expect(await mount(80, false, ticker), ticker.metadata.ticker).toEqual([]);
-    expect(tui.frame(), ticker.metadata.ticker).toContain(notice);
-  }
+  // The SEC lookup cannot place a listing abroad without its venue.
+  expect(await mount(80, false, createTestTicker("7203.T", "Toyota", { exchange: "", currency: "" }))).toEqual([]);
+  expect(tui.frame()).toContain(notice);
+});
+
+// A listing abroad is looked up by its company on its venue, as `filings CAR:ASX` and `fn INS CAR:ASX` read it.
+test("a listing abroad whose company files nothing with the SEC says so, as the CLI does", async () => {
+  const asked: Array<[string, string | undefined]> = [];
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getSecFilings: async (symbol, _count, exchange) => { asked.push([symbol, exchange]); return []; },
+  })));
+  const ticker = createTestTicker("CAR:ASX", "CAR Group Limited", { exchange: "ASX", currency: "AUD" });
+  await act(async () => { await tui.render(<Harness width={80} ticker={ticker} />, { width: 80, height: 30 }); });
+  await settle();
+  expect(asked.map(([, exchange]) => exchange)).toEqual(["ASX"]);
+  expect(tui.frame()).toContain("CAR Group (ASX) files no SEC reports.");
+  expect(insiderModule.paneTemplates![0]!.canCreate!({} as never, { ticker })).toBe(true);
 });
 
 test("owner filtering keeps explanation-only amendments and clears amendment status for independent owners", async () => {

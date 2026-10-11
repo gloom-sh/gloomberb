@@ -2,8 +2,9 @@ import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { CliCommandContext } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
-import { AmbiguousContractError, AmbiguousTickerError, listingChoiceQuery, resolveTickerSearch } from "../tickers/search";
+import { AmbiguousContractError, AmbiguousTickerError, LISTING_SEARCH_LIMIT, listingChoiceQuery, resolveTickerSearch } from "../tickers/search";
 import { cliStyles } from "../utils/cli-output";
+import { groupByCompany, sameCompany, shortCompanyName } from "../tickers/company-name";
 import {
   canonicalExchange,
   exchangeLabel,
@@ -91,12 +92,6 @@ export interface ListingVenue {
   exchange: string;
   name: string;
 }
-
-/**
- * Search rows a symbol's venues are read from. A keystroke's ten stop short of
- * a symbol several companies use: CAR's ASX line is its eleventh.
- */
-export const LISTING_SEARCH_LIMIT = 30;
 
 /**
  * The venues a symbol trades on and the company on each, from the same
@@ -237,72 +232,9 @@ interface BareListingVenues {
   choose: boolean;
 }
 
-// Words that differ between one company's listings: legal forms, and how a depositary receipt is named.
-const NAME_NOISE = new Set([
-  "co", "company", "corp", "corporation", "inc", "incorporated", "ltd", "limited", "llc", "lp", "plc", "sa", "ag", "nv", "se",
-  "spa", "ab", "as", "asa", "oyj", "bv", "gmbh", "kgaa", "bhd", "berhad", "pcl", "the", "adr", "ads", "cedear", "cedears",
-  "sponsored", "unsponsored", "cdr", "cdi",
-]);
-// Words a venue adds to the share it lists ("Microsoft Corporation Common Stock"), never part of whose it is.
-const SHARE_NOISE = new Set(["common", "ordinary", "stock", "shares"]);
-
-/** A company's name for comparing its listings: "Kotobuki Spirits Co., Ltd." is "kotobuki spirits". */
-function companyKey(name: string): string {
-  return name.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase()
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\b(?:(?:american|global) )?depositary (?:shares?|receipts?)\b/g, " ")
-    .replace(/\./g, "")
-    .split(/[^\p{L}\p{N}]+/u)
-    .filter((word) => word && !NAME_NOISE.has(word))
-    .join(" ");
-}
-
 /** Whether the venues' companies differ by name. A venue with no name is no other company. */
 function listsSeveralCompanies(venues: readonly ListingVenue[]): boolean {
   return groupByCompany(venues, (venue) => venue.name).length > 1;
-}
-
-function companyWords(name: string | null | undefined): Set<string> {
-  return new Set(companyKey(name ?? "").split(" ").filter((word) => word && !SHARE_NOISE.has(word)));
-}
-
-/**
- * Whether two names are one company's, however each venue spells it: one
- * name's words are all in the other's, so "SPDR S&P 500 ETF Trust" is State
- * Street's, "Coca-Cola Company CDR" Coca-Cola's, and "CAR Group" not Avis
- * Budget Group. An empty name matches none.
- */
-export function sameCompany(left: string | null | undefined, right: string | null | undefined): boolean {
-  const a = companyWords(left);
-  const b = companyWords(right);
-  if (a.size === 0 || b.size === 0) return false;
-  const [fewer, more] = a.size <= b.size ? [a, b] : [b, a];
-  return [...fewer].every((word) => more.has(word));
-}
-
-/** Items grouped by the company their names are, in the order each company first appears. Unnamed items are left out. */
-export function groupByCompany<T>(items: readonly T[], nameOf: (item: T) => string | null | undefined): T[][] {
-  const groups: T[][] = [];
-  for (const item of items) {
-    if (companyWords(nameOf(item)).size === 0) continue;
-    const group = groups.find((members) => members.some((member) => sameCompany(nameOf(member), nameOf(item))));
-    if (group) group.push(item);
-    else groups.push([item]);
-  }
-  return groups;
-}
-
-/** A company's name without its legal form, for sentences: "Avis Budget Group, Inc." is "Avis Budget Group". */
-function shortCompanyName(name: string): string {
-  const words = name.trim().split(/\s+/).filter(Boolean);
-  const legal = (word: string) => {
-    const plain = word.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
-    // "Public Limited Company" is a legal form too, though "Public" alone can be a name.
-    return NAME_NOISE.has(plain) || SHARE_NOISE.has(plain) || (plain === "public" && words.length > 2);
-  };
-  while (words.length > 1 && legal(words[words.length - 1]!)) words.pop();
-  if (words.length > 1 && words[0]!.toLowerCase() === "the") words.shift();
-  return words.join(" ").replace(/[,;]+$/, "");
 }
 
 /** Every other company that lists the symbol once, at its first venue in search order. */
@@ -368,6 +300,20 @@ export async function listingChoiceNotes(
   const listed = await (venues ?? loadBareVenues(listing, deps) ?? []);
   const note = listingChoiceNote(listing.symbol, { exchange, name: quote.name }, listed);
   return note ? [note] : [];
+}
+
+/**
+ * `listingChoiceNotes` for a command with no quote of its own to read the
+ * listing from (`fn`): it loads the listing's quote, and only for a bare
+ * symbol, so a named or saved listing costs nothing.
+ */
+export async function quotedListingChoiceNotes(
+  listing: Pick<CliListing, "symbol" | "exchange" | "saved" | "request">,
+  deps: ListingDeps,
+): Promise<string[]> {
+  const venues = loadBareVenues(listing, deps);
+  if (!venues) return [];
+  return listingChoiceNotes(listing, deps, await loadListingQuote(deps.dataProvider, listing), venues);
 }
 
 /**
@@ -772,12 +718,6 @@ export function listingHeading(identity: ListingIdentity): string {
 /** "Sanofi (EPA)", for sentences. */
 export function listingTitle(identity: ListingIdentity): string {
   const name = identity.name || identity.symbol;
-  return identity.exchange ? `${name} (${identity.exchange})` : name;
-}
-
-/** "CAR Group (ASX)": `listingTitle` without the legal form, for a sentence about the company. */
-export function listingShortTitle(identity: ListingIdentity): string {
-  const name = identity.name ? shortCompanyName(identity.name) : identity.symbol;
   return identity.exchange ? `${name} (${identity.exchange})` : name;
 }
 

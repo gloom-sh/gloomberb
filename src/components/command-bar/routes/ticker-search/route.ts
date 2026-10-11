@@ -2,9 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AppState } from "../../../../state/app/context";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { TickerSearchCandidate } from "../../../../tickers/search";
-import { searchTickerCandidates, symbolSearchQuery } from "../../../../tickers/search";
+import { LISTING_SEARCH_LIMIT, searchTickerCandidates, symbolSearchQuery } from "../../../../tickers/search";
 import {
-  COMMAND_BAR_TICKER_SEARCH_LIMIT,
   mergeTickerSearchResultItems,
   QUICK_LOOK_TICKER_SEARCH_OPTIONS,
 } from "./results";
@@ -97,10 +96,12 @@ export function useTickerSearchRouteResults(options: {
           searchContext: {
             preferBroker: true,
             interactive: true,
+            limit: LISTING_SEARCH_LIMIT,
             brokerId: brokerId ?? undefined,
             brokerInstanceId: brokerInstanceId ?? undefined,
           },
-          totalLimit: COMMAND_BAR_TICKER_SEARCH_LIMIT,
+          // The rows the CLI's search reads, so CAR Group on ASX (CAR's eleventh row) is offered too.
+          totalLimit: LISTING_SEARCH_LIMIT,
           ...QUICK_LOOK_TICKER_SEARCH_OPTIONS,
         });
         if (requestId !== searchRequestIdRef.current) return;

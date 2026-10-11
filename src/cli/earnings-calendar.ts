@@ -1,6 +1,7 @@
 import type { EarningsEvent } from "../types/data-provider";
 import { isUsListingExchange } from "../utils/exchanges";
-import { listingChoiceNote, loadListingQuote, sameCompany, usLineOfListing, type CliListing, type ListingDeps, type ListingVenue } from "./listing-arg";
+import { listingChoiceNote, loadListingQuote, usLineOfListing, type CliListing, type ListingDeps, type ListingVenue } from "./listing-arg";
+import { sameCompany } from "../tickers/company-name";
 
 const DAY_MS = 86_400_000;
 

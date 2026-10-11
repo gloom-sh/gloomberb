@@ -20,6 +20,9 @@ import {
 import { isAmendedInsiderFiling, relevantInsiderAmendments } from "./amendments";
 import { formatInsiderName } from "./display";
 import { SEC_FILINGS } from "../shared/report-freshness";
+import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
+import { noSecReportsNotice } from "../../../utils/sec";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
@@ -90,6 +93,17 @@ const defaultDependencies: InsiderHeadlessDependencies = {
   }),
 };
 
+/**
+ * "CAR Group (ASX) files no SEC reports." for a listing abroad the SEC lists
+ * nothing for, as `filings` says it; null for a US listing or a symbol with no
+ * venue, whose empty list is only no Form 4.
+ */
+async function noSecReportsEmpty(ctx: HeadlessPaneContext, key: string): Promise<string | null> {
+  const listing = await resolveHeadlessIssuerListing(ctx, key);
+  if (!listing.exchange) return null;
+  return noSecReportsNotice({ symbol: parsePublicTickerKey(key).symbol, exchange: listing.exchange, name: listing.name ?? null });
+}
+
 export function createInsiderHeadless(
   dependencies: InsiderHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
@@ -135,7 +149,9 @@ export function createInsiderHeadless(
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
       const limit = Number(args.options.limit);
-      const { parsed, foreignPrivateIssuer } = await dependencies.loadParsed(symbol, limit, args, ctx);
+      const { parsed, foreignPrivateIssuer, noFilings } = await dependencies.loadParsed(symbol, limit, args, ctx);
+      const empty = parsed.length > 0 ? null
+        : (noFilings ? await noSecReportsEmpty(ctx, symbol) : null) ?? insiderEmptyNotice(foreignPrivateIssuer);
       const name = String(args.options.name ?? "").trim().toLocaleLowerCase();
       const type = isInsiderTypeFilter(args.options.type) ? args.options.type : "all";
       const owned = name
@@ -155,7 +171,7 @@ export function createInsiderHeadless(
       return {
         rows,
         // Nothing at all: the company has no Form 4 of its own, which is the whole answer.
-        ...(parsed.length === 0 ? { empty: insiderEmptyNotice(foreignPrivateIssuer), unavailableSymbols: [] } : {}),
+        ...(empty ? { empty, unavailableSymbols: [] } : {}),
         errors: [
           ...incomplete.map((accessionNumber) => `${accessionNumber}: Form 4 transactions are unavailable or incomplete.`),
           ...amendments.map((scope) => `${scope.accessionNumber}: Form 4/A is unreconciled; affected transaction totals are unavailable.`),

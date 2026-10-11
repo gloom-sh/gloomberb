@@ -102,7 +102,6 @@ import {
   isNoProviderError,
   listingHeading,
   listingIdentity,
-  listingShortTitle,
   listingTitle,
   listingVenues,
   listingChoiceNotes,
@@ -126,7 +125,7 @@ import { isNotATickerMessage } from "../not-a-ticker";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
-import { nonUsSecListingVenue } from "../../utils/sec";
+import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
 import { crossRate, describeFxRate, isUsableRate, parseFxRequest } from "../fx-pair";
@@ -954,11 +953,6 @@ const FILING_COLUMNS = [
   { key: "url", header: "URL", optional: true },
 ];
 
-/** "CAR Group (ASX) files no SEC reports.", for a listing abroad whose company the SEC has nothing from. */
-function noSecReportsMessage(identity: ListingIdentity): string {
-  return `${listingShortTitle(identity)} files no SEC reports.`;
-}
-
 /** The US listing the SEC files a symbol under, from the symbol's venues: NYSE for SAN's Banco Santander. */
 async function registrantUsExchange(market: MarketContext, symbol: string, registrantName: string): Promise<string | null> {
   const venues = (await listingVenues(symbol, market).catch(() => []))
@@ -1004,7 +998,7 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         columns: FILING_COLUMNS,
         // A listing abroad is looked up by its company: none found means the company files nothing with the SEC.
         empty: form ? `No ${form} filings found for ${listingTitle(resolved)}.`
-          : identity ? noSecReportsMessage(resolved)
+          : identity ? noSecReportsNotice(resolved)
           : `No SEC filings found for ${listingTitle(resolved)}.`,
       });
     } catch (error) {
@@ -1023,16 +1017,22 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
-type Form4Insiders = "available" | "none" | "foreign-private-issuer";
+type Form4Insiders = "available" | "none" | "foreign-private-issuer" | "no-sec-reports";
 
-/** Whether the company has Form 4 filings of its own, read as `fn INS` reads them; null when they could not be read. */
+/**
+ * Whether the company has Form 4 filings of its own, read as `fn INS` reads
+ * them; null when they could not be read. A listing abroad the SEC lists
+ * nothing for files no SEC reports at all.
+ */
 async function loadForm4Insiders(market: MarketContext, listing: CliListing): Promise<Form4Insiders | null> {
   try {
-    const { parsed, foreignPrivateIssuer } = await loadParsedInsiderFilings(market.dataProvider, listing.request.symbol, {
+    const { parsed, foreignPrivateIssuer, noFilings } = await loadParsedInsiderFilings(market.dataProvider, listing.request.symbol, {
       limit: 1,
       exchange: listing.request.exchange,
     });
-    return parsed.length > 0 ? "available" : foreignPrivateIssuer ? "foreign-private-issuer" : "none";
+    if (parsed.length > 0) return "available";
+    if (noFilings && nonUsSecListingVenue(listing.request.symbol, listing.request.exchange)) return "no-sec-reports";
+    return foreignPrivateIssuer ? "foreign-private-issuer" : "none";
   } catch {
     return null;
   }
@@ -1048,6 +1048,7 @@ function insiderSummary(
   data: HolderData,
   ownerTypes: Set<string>,
   listing: Pick<CliListing, "key">,
+  identity: ListingIdentity,
   form4: Form4Insiders | null,
 ): string {
   const held = data.summary?.insidersPercentHeld;
@@ -1058,6 +1059,7 @@ function insiderSummary(
   // The listing as the command read it (CAR:ASX), not the source's spelling of it (CAR.AX), which fn does not take.
   const transactions = form4 === "available"
     ? listed ? "" : `Form 4 transactions: gloomberb fn INS ${listing.key}`
+    : form4 === "no-sec-reports" ? noSecReportsNotice(identity)
     : form4 ? insiderEmptyNotice(form4 === "foreign-private-issuer") : "";
   return [share, transactions].filter(Boolean).join("\n");
 }
@@ -1117,7 +1119,7 @@ async function printBeneficialOwners(
     empty: beneficialListUnreadable(payload)
       ? `13D/13G filings for ${listingTitle(identity)} are listed but could not be read.`
       // The SEC knows no company for a listing abroad that files there under no name of its own.
-      : abroad && !payload.cik ? noSecReportsMessage(identity)
+      : abroad && !payload.cik ? noSecReportsNotice(identity)
       : `No 13D/13G filings in the last 4 years for ${listingTitle(identity)}.`,
   });
 }
@@ -1238,7 +1240,7 @@ async function runHolders(
       },
       summary: () => [
         [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? "", unvaluedNote ?? ""].filter(Boolean).join(" "),
-        insiderCommand ? insiderSummary(data, ownerTypes, listing, form4) : "",
+        insiderCommand ? insiderSummary(data, ownerTypes, listing, identity, form4) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,
     });

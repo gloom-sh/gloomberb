@@ -43,7 +43,8 @@ describe("createFallbackTicker", () => {
   ] as const)("reads the listing from %s", async (_what, symbol, financials, exchange, currency, asks) => {
     const { context: market, asked } = context(async () => nyse);
     const ticker = await createFallbackTicker(symbol, financials, market);
-    expect(ticker.metadata).toMatchObject({ exchange, currency });
+    // Keyed as the pane is bound (SAN:EPA), or a pane that reads its saved ticker finds none.
+    expect(ticker.metadata).toMatchObject({ ticker: symbol, exchange, currency });
     expect(asked.length > 0).toBe(asks);
   });
 

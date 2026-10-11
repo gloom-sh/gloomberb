@@ -6,6 +6,7 @@ import {
 import type { DataProvider } from "../../types/data-provider";
 import type { TickerRecord } from "../../types/ticker";
 import {
+  LISTING_SEARCH_LIMIT,
   searchTickerCandidates,
   type TickerSearchCandidate,
 } from "../../tickers/search";
@@ -17,7 +18,7 @@ import { indexRootFor, indexRootTryLine } from "../index-roots";
 import { knownGapMessage } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
-import { groupByCompany, LISTING_SEARCH_LIMIT } from "../listing-arg";
+import { groupByCompany } from "../../tickers/company-name";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;

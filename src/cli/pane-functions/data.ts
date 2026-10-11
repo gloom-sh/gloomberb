@@ -181,7 +181,8 @@ export async function createFallbackTicker(symbol: string, financials: TickerFin
     : await context.dataProvider.getQuoteMetadata?.(instrument.symbol, "").catch(() => null) ?? known;
   return {
     metadata: {
-      ticker: instrument.symbol,
+      // A listing key stays the key the pane is bound to (CAR:ASX), as a saved listing abroad is keyed.
+      ticker: instrument.exchange ? symbol : instrument.symbol,
       exchange: instrument.exchange ?? listing?.listingExchangeName ?? "",
       currency: listing?.currency ?? "",
       name: quote?.name ?? instrument.symbol,

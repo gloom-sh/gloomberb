@@ -1,6 +1,7 @@
 import type { TickerRecord } from "../types/ticker";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
 import { canonicalExchange, parsePublicTickerKey, US_LISTING_EXCHANGES } from "./exchanges";
+import { shortListingTitle } from "../tickers/company-name";
 
 /** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
 const US_EQUITY_EXCHANGES = new Set([
@@ -51,18 +52,33 @@ export function mayBeUsEquityTicker(ticker: TickerRecord | null | undefined): bo
   return mayBeUsListingOfType(ticker, isEquityType);
 }
 
+/**
+ * `mayBeUsEquityTicker`, or an equity listed abroad on a venue its metadata
+ * names. The SEC lookup takes such a listing by its company, which either
+ * files there (Sanofi, a foreign private issuer) or files nothing
+ * (`noSecReportsNotice`); without the venue it cannot place the listing.
+ */
+export function mayBeSecEquityListing(ticker: TickerRecord | null | undefined): boolean {
+  if (mayBeUsEquityTicker(ticker)) return true;
+  return isTickerOfType(ticker, isEquityType) && nonUsSecListingVenue(ticker!.metadata.ticker, ticker!.metadata.exchange) != null;
+}
+
 /** The same for a view that also lists a US-listed fund's filings, which funds file with the SEC. */
 export function mayBeUsEquityOrFundTicker(ticker: TickerRecord | null | undefined): boolean {
   return mayBeUsListingOfType(ticker, (type) => isEquityType(type) || isFundType(type));
+}
+
+function isTickerOfType(ticker: TickerRecord | null | undefined, acceptsType: (type?: string) => boolean): boolean {
+  if (!ticker) return false;
+  const primaryContract = ticker.metadata.broker_contracts?.[0];
+  return acceptsType(primaryContract?.secType ?? ticker.metadata.assetCategory);
 }
 
 function mayBeUsListingOfType(
   ticker: TickerRecord | null | undefined,
   acceptsType: (type?: string) => boolean,
 ): boolean {
-  if (!ticker) return false;
-  const primaryContract = ticker.metadata.broker_contracts?.[0];
-  return acceptsType(primaryContract?.secType ?? ticker.metadata.assetCategory) && !isKnownNonUsListing(ticker);
+  return isTickerOfType(ticker, acceptsType) && !isKnownNonUsListing(ticker);
 }
 
 /**
@@ -106,6 +122,15 @@ export function nonUsSecListingVenue(ticker: string, exchange?: string): string 
   const venue = parsePublicTickerKey(ticker).exchange ?? canonicalExchange(exchange);
   if (!venue || ROUTING_EXCHANGES.has(venue) || isUsExchange(venue)) return null;
   return venue;
+}
+
+/**
+ * "CAR Group (ASX) files no SEC reports.": what the SEC functions (filings,
+ * holders --form, insider and INS, in the CLI and the pane) say for a listing
+ * abroad whose company the SEC has nothing from.
+ */
+export function noSecReportsNotice(listing: { symbol: string; exchange: string; name: string | null }): string {
+  return `${shortListingTitle(listing)} files no SEC reports.`;
 }
 
 /**

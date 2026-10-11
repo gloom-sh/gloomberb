@@ -16,13 +16,6 @@ import { compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "..
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
 
-/**
- * The command bar ranks a full page of symbol search (Cloud answers ten), so
- * a second security on the same symbol is still in hand when the root list
- * picks its exact rows.
- */
-export const COMMAND_BAR_TICKER_SEARCH_LIMIT = 10;
-
 export function buildTickerSearchCacheKey(
   query: string,
   brokerId?: string | null,

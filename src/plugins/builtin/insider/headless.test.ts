@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import type { SecFilingItem } from "../../../types/data-provider";
 import { loadParsedInsiderFilings } from "./client";
@@ -125,6 +125,20 @@ describe("insider client", () => {
     expect(history.metadata?.foreignPrivateIssuer).toBe(false);
   });
 
+  test("a listing abroad whose company files nothing with the SEC says so by name, as filings does", async () => {
+    const load = (symbol: string) => createInsiderHeadless().load({ ...args(), rawArgument: symbol, argument: symbol, symbols: [symbol] }, {
+      ...createTestHeadlessContext(),
+      marketData: createTestDataProvider({
+        getSecFilings: async () => [],
+        getSecFilingContent: async () => null,
+        getQuote: async (_symbol, exchange) => createTestQuote({ symbol: "CAR.AX", name: "CAR Group Limited", currency: "AUD", listingExchangeName: exchange }),
+      }),
+    });
+    expect((await load("CAR:ASX")).empty).toBe("CAR Group (ASX) files no SEC reports.");
+    // A US symbol the SEC lists nothing for has no Form 4, which is all the report knows.
+    expect((await load("ZZZZ")).empty).toBe("No Form 4 insider filings.");
+  });
+
   test("filing limit expands every transaction and reports failed content even with an owner filter", async () => {
     const tx = (shares: number) => `<nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>2026-08-20</value></transactionDate><transactionCoding><transactionCode>G</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${shares}</value></transactionShares></transactionAmounts></nonDerivativeTransaction>`;
     const provider = createTestDataProvider({
@@ -146,7 +160,7 @@ describe("insider headless model", () => {
     const headless = createInsiderHeadless({
       loadParsed: async (_symbol, limit) => {
         requestedLimits.push(limit);
-        return { parsed: parsed.slice(0, limit), foreignPrivateIssuer: false };
+        return { parsed: parsed.slice(0, limit), foreignPrivateIssuer: false, noFilings: false };
       },
     });
 

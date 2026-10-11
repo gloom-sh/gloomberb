@@ -4,8 +4,9 @@ import { createTestDataProvider, createTestQuote } from "../test-support/data-pr
 import { marketDataCliCommands } from "./commands/market";
 import { indexRootFor, indexRootTryLine } from "./index-roots";
 import {
-  futuresTryLine, ListingArgError, listingChoiceNote, parseListingArg, quoteBareListing, resolveCliListing, type ListingVenue,
+  futuresTryLine, ListingArgError, listingChoiceNote, parseListingArg, quoteBareListing, quotedListingChoiceNotes, resolveCliListing, type ListingVenue,
 } from "./listing-arg";
+import { createTestArticle } from "../test-support/news";
 import { DEFAULT_CLI_OPTIONS } from "./options";
 import { serializeCliResult } from "./result";
 
@@ -85,4 +86,26 @@ test("every command a hint suggests runs on the listing it names", async () => {
   const forms = /as (\S+) or (\S+) --exchange (\S+)\./.exec(conflict.details ?? "")!;
   expect((await resolveCliListing(forms[1]!, undefined, deps)).key).toBe("SAN:EPA");
   expect((await resolveCliListing(forms[2]!, forms[3], deps)).key).toBe("SAN:LSE");
+});
+
+// Decided per command (GLO-549): `fn` reports are titled by function and symbol, so a bare
+// symbol several companies list gets quote's line; `news` heads its table with the listing.
+test("a bare symbol several companies list is named once per report: fn by quote's line, news by its heading", async () => {
+  const provider = createTestDataProvider({
+    search: dataProvider.search,
+    getQuote: async (symbol, exchange) => symbol === "CAR" && !exchange
+      ? createTestQuote({ symbol: "CAR", name: "Avis Budget Group, Inc.", currency: "USD", listingExchangeName: "NASDAQ" })
+      : dataProvider.getQuote(symbol, exchange),
+    getNews: async () => [createTestArticle("avis", { title: "Avis results", tickers: ["CAR"] })],
+  });
+  const market = { ...deps, dataProvider: provider };
+  expect(await quotedListingChoiceNotes(await resolveCliListing("CAR", undefined, market), market))
+    .toEqual(["CAR = Avis Budget Group, NASDAQ (also XETRA)"]);
+  expect(await quotedListingChoiceNotes(await resolveCliListing("CAR:ASX", undefined, market), market)).toEqual([]);
+
+  const run = createTestCliContext({ dataProvider: provider });
+  await marketDataCliCommands.find((command) => command.name === "news")!.execute(["CAR"], run.context);
+  const printed = run.printed[0]!;
+  expect(printed.result.warnings).toBeUndefined();
+  expect(serializeCliResult(printed.result, DEFAULT_CLI_OPTIONS, printed.options).split("\n")[0]).toContain("Avis Budget Group, Inc.");
 });
