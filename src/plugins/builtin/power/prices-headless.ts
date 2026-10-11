@@ -50,15 +50,30 @@ function carbonSections(carbon: CarbonBoard): HeadlessBundleSection[] {
   ];
 }
 
-/** Markets and the auction publish days apart: the line names both sources, the newest day and the oldest. */
-function freshness(board: EuropePowerBoard | null, carbon: CarbonBoard | null): HeadlessBundleResult["freshness"] {
-  const dates = [...board?.rows.flatMap((row) => row.date ? [row.date] : []) ?? [], ...carbon?.row.date ? [carbon.row.date] : []].sort();
+/**
+ * The delivery day most markets have reached: the median market's latest
+ * day. A few markets publish ahead of the rest (Ireland the day before, most
+ * of the continent four days behind), so the freshest one would understate
+ * how far behind the board is.
+ */
+function typicalPowerDate(rows: readonly Pick<PowerPriceRow, "date">[]): string | null {
+  const dates = rows.flatMap((row) => row.date ? [row.date] : []).sort();
+  return dates[Math.floor((dates.length - 1) / 2)] ?? null;
+}
+
+/**
+ * One short line, the same in the report, the pane and a capture: the board
+ * is dated by the day most markets have reached and lags from it (`most
+ * markets 2026-10-07 · lag 4 days`); one market by its own delivery day; the
+ * EUA alone by its last auction.
+ */
+function freshness(board: EuropePowerBoard | null, carbon: CarbonBoard | null, market?: PowerPriceRow): HeadlessBundleResult["freshness"] {
+  const asOf = market ? market.date : board ? typicalPowerDate(board.rows) : carbon?.row.date ?? null;
   return {
     source: [board?.source.name, carbon?.source.name].filter(Boolean).join(", "),
-    asOf: dates.at(-1) ?? null, oldest: dates[0] ?? null,
+    asOf, oldest: null,
+    observation: market ? "delivery day" : board ? "most markets" : "last auction",
     status: "not-a-feed", observedKey: "date", basis: board ? "day-ahead auction" : "primary auction", dataset: true,
-    note: [board ? `power: daily averages in ${POWER_PRICE_UNIT}, ${board.source.licence}` : null,
-      carbon ? `carbon: auction clearing price in ${CARBON_PRICE_UNIT}` : null].filter(Boolean).join("; "),
   };
 }
 
@@ -89,7 +104,7 @@ export async function loadPowerPricesReport(argument: string | undefined, client
           columns: [{ key: "date", header: "Date", shrink: false }, { key: "price", header: POWER_PRICE_UNIT, align: "right", format: price }],
           rows: history.points.slice(-30).reverse().map((point) => ({ date: point.date, price: point.value })) },
       ],
-      notes, freshness: freshness(board, null),
+      notes, freshness: freshness(board, null, row),
       metadata: { market: board.market, unit: board.unit, source: board.source, publishedAt: board.publishedAt, row, series: `CAP:day-ahead:${market.code.toLowerCase()}` },
     };
   }

@@ -11,7 +11,8 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { PowerPane } from "./pane";
 import { carbonPriceCache, powerPriceHistoryCache, powerPricesCache } from "./prices-client";
-import { loadPowerPricesReport } from "./prices-headless";
+import { deriveHeadlessFreshness, formatStatusLine } from "../../../cli/pane-functions/freshness";
+import { loadPowerPricesReport, powerPricesHeadless } from "./prices-headless";
 
 const tui = createOpenTuiTestHarness();
 const caches = [powerPricesCache, powerPriceHistoryCache, carbonPriceCache];
@@ -119,11 +120,11 @@ test("the report names a market by code, name or alias and lists its last delive
     "Great Britain day-ahead power, EUR/MWh", "Great Britain, last 30 delivery days",
   ]);
   expect(report.sections[1]!.rows?.[0]).toEqual({ date: "2026-10-07", price: 191.14 });
-  expect(report.freshness).toMatchObject({ source: "Ember", asOf: "2026-10-08", status: "not-a-feed" });
+  expect(report.freshness).toMatchObject({ source: "Ember", asOf: "2026-10-08", observation: "delivery day", status: "not-a-feed" });
   await expect(loadPowerPricesReport("Atlantis")).rejects.toThrow("Use a market such as DE");
 });
 
-test("the report adds the EUA and its general-allowance auctions, dating each source, and EUA reports them alone", async () => {
+test("the report adds the EUA and its general-allowance auctions, dates the board by the day most markets have reached, and EUA reports alone", async () => {
   serve();
   const report = await loadPowerPricesReport(undefined);
   expect(report.sections.map((section) => section.title)).toEqual([
@@ -133,8 +134,10 @@ test("the report adds the EUA and its general-allowance auctions, dating each so
   expect(report.sections[2]!.rows?.map((row) => [row.date, row.status, row.price])).toEqual([
     ["2026-10-09", "successful", 86.11], ["2026-10-07", "cancelled", null],
   ]);
-  expect(report.freshness).toMatchObject({ source: "Ember, EEX", asOf: "2026-10-09", oldest: "2026-10-07" });
+  // Dated by the day most markets have reached, not the freshest market (Great Britain) or the EUA.
+  const line = (result: typeof report) => formatStatusLine(deriveHeadlessFreshness(powerPricesHeadless, result, Date.parse("2026-10-11T12:00:00Z")));
+  expect(line(report)).toBe("Source: Ember, EEX · most markets 2026-10-07 · lag 4 days");
   const alone = await loadPowerPricesReport("carbon");
   expect(alone.sections[0]!.rows?.[0]).toMatchObject({ market: "EU carbon allowance (EUA)", date: "2026-10-09", price: 86.11, change: 1.04 });
-  expect(alone.freshness).toMatchObject({ source: "EEX", asOf: "2026-10-09" });
+  expect(line(alone)).toBe("Source: EEX · last auction 2026-10-09 · lag 2 days");
 });
