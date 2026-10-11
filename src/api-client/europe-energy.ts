@@ -48,3 +48,59 @@ export interface EuropePowerHistory {
   /** Oldest first. */
   points: Array<{ date: string; value: number }>;
 }
+
+/** One EU ETS primary-market auction. Prices in EUR/tCO2, volumes in tCO2. */
+interface CarbonAuction {
+  date: string;
+  auction: string;
+  contract: string;
+  /** successful, cancelled. */
+  status: string;
+  /** EU (common platform), DE, PL, XI (Northern Ireland). */
+  zone: string | null;
+  /** Null when the auction did not clear. */
+  price: number | null;
+  minBid: number | null;
+  maxBid: number | null;
+  meanBid: number | null;
+  medianBid: number | null;
+  volume: number;
+  coverRatio: number | null;
+  bidders: number | null;
+  successfulBidders: number | null;
+  /** An aviation allowance (EUAA) auction, which is not the EUA price. */
+  aviation: boolean;
+}
+
+/** The EUA price as of its latest auction day: the day's cleared auctions, volume-weighted. */
+interface CarbonPriceRow extends Omit<PowerPriceRow, "code"> {
+  code: "EUA";
+  /** tCO2 auctioned that day, and in how many auctions. */
+  volume: number | null;
+  auctions: number | null;
+}
+
+export interface CarbonBoard {
+  generatedAt: string;
+  status: "available" | "unavailable";
+  /** The primary auction clearing price, not a futures settlement. */
+  market: "primary auction";
+  unit: "EUR/tCO2";
+  source: { name: string; url: string };
+  checkedAt: string | null;
+  publishedAt: string | null;
+  gaps: string[];
+  row: CarbonPriceRow;
+  /** Newest first. */
+  auctions: CarbonAuction[];
+}
+
+export interface CarbonHistory {
+  code: "EUA";
+  name: string;
+  market: "primary auction";
+  unit: "EUR/tCO2";
+  source: { name: string; url: string };
+  /** Each auction day's price, oldest first. */
+  points: Array<{ date: string; value: number }>;
+}

@@ -1,6 +1,6 @@
 import type { PowerPriceRow } from "../../../api-client/europe-energy";
 import type { SeriesDefinition } from "../../../series/types";
-import { fetchPowerPriceHistory } from "./prices-client";
+import { fetchCarbonHistory, fetchPowerPriceHistory } from "./prices-client";
 
 /**
  * The markets the server serves day-ahead prices for, by ISO 3166 alpha-2
@@ -38,6 +38,14 @@ export function powerPriceMarket(input: string | null | undefined): PowerPriceMa
   return POWER_PRICE_MARKETS.find((market) => market.code === code || market.name.toUpperCase() === key) ?? null;
 }
 
+export const CARBON_PRICE_UNIT = "EUR/tCO2";
+/** The Prices tab's selection when the band charts the carbon allowance instead of a market. */
+export const CARBON_SELECTION = "EUA";
+/** What `EPWR EUA` (or carbon, EU ETS, CO2) asks for: the carbon allowance instead of a market. */
+const CARBON_WORDS = new Set(["EUA", "EUAS", "CARBON", "EU CARBON", "EU ETS", "ETS", "CO2", "EU ALLOWANCE", "EU ALLOWANCES"]);
+export const isCarbonQuery = (input: string | null | undefined) =>
+  CARBON_WORDS.has(input?.trim().toUpperCase().replace(/[-\s]+/g, " ") ?? "");
+
 /** Germany is the benchmark market a trader reads first. */
 export const DEFAULT_PRICE_MARKET = "DE";
 
@@ -50,10 +58,6 @@ export function powerRangePosition(row: PowerPriceRow): number | null {
   if (row.price == null || row.low52w == null || row.high52w == null || row.high52w <= row.low52w) return null;
   return Math.round(((row.price - row.low52w) / (row.high52w - row.low52w)) * 100);
 }
-/** The newest delivery day on the board: markets publish a few days apart. */
-export const latestPowerDate = (rows: readonly PowerPriceRow[]) =>
-  rows.reduce<string | null>((latest, row) => row.date && (!latest || row.date > latest) ? row.date : latest, null);
-
 const DAY_AHEAD_PAGE_URL = "https://ember-energy.org/data/european-wholesale-electricity-price-data/";
 
 /** The benchmark markets a search lists first; the rest follow by name. */
@@ -77,3 +81,23 @@ export const DAY_AHEAD_SERIES: readonly SeriesDefinition[] = [...POWER_PRICE_MAR
     return history.points;
   },
 }));
+
+/**
+ * The EU carbon allowance price, as `CAP:carbon:eua`: each business day's
+ * primary auction clearing price, volume-weighted across that day's auctions.
+ */
+export const CARBON_SERIES: readonly SeriesDefinition[] = [{
+  id: "carbon:eua",
+  name: "EU carbon allowance (EUA) auction price",
+  unit: CARBON_PRICE_UNIT,
+  frequency: "daily",
+  group: "Energy",
+  tags: ["carbon", "EU carbon", "EUA", "EU ETS", "carbon price", "carbon allowance", "emission allowances", "emissions", "CO2", "Europe"],
+  description: "Clearing price of each business day's EU ETS primary auctions of general allowances, volume-weighted, in euros per tonne of CO2. An auction price, not a futures settlement.",
+  publisher: "EEX",
+  url: "https://www.eex.com/en/markets/environmental-markets/emissions-auctions",
+  load: async ({ start }) => {
+    const history = await fetchCarbonHistory(start?.toISOString().slice(0, 10));
+    return history.points;
+  },
+}];

@@ -269,7 +269,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "Million British thermal units, the unit US gas is priced in. A TTF price in EUR/MWh divided by 3.412 is EUR/MMBtu, comparable to NG once in dollars.",
   },
   {
-    term: "EUA", aliases: ["eu allowance", "eu allowances", "eu ets", "carbon allowance", "carbon allowances", "eu carbon"], functions: ["FUT"],
+    term: "EUA", aliases: ["eu allowance", "eu allowances", "eu ets", "carbon allowance", "carbon allowances", "eu carbon"], functions: ["EPWR"],
     definition: "EU Allowance: the right to emit one tonne of CO2 under the EU Emissions Trading System, priced in euros per tonne.",
   },
   {

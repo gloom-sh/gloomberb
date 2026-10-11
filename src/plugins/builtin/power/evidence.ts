@@ -1,12 +1,12 @@
-import type { EuropePowerBoard, EuropePowerHistory } from "../../../api-client/europe-energy";
+import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory } from "../../../api-client/europe-energy";
 import type { PowerBoard, PowerHistory } from "../../../api-client/power";
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
 import { fetchPowerBoard, fetchAllPowerHistory, fetchPowerTickerScopes, validatePowerBoard, validatePowerHistory } from "./client";
 import { otherRows, powerTab, projectRows } from "./model";
-import { fetchPowerPriceHistory, fetchPowerPrices, validatePowerPrices } from "./prices-client";
-import { DEFAULT_PRICE_MARKET, powerPriceMarket } from "./prices-model";
+import { fetchCarbonHistory, fetchCarbonPrice, fetchPowerPriceHistory, fetchPowerPrices, validateCarbonPrice, validatePowerPrices } from "./prices-client";
+import { DEFAULT_PRICE_MARKET, isCarbonQuery, powerPriceMarket } from "./prices-model";
 import { powerQuery } from "./query";
 interface PowerEvidence {
   kind: "power";
@@ -16,15 +16,19 @@ interface PowerEvidence {
   /** The grid board, on every tab but Prices. */
   board: PowerBoard | null;
   history: PowerHistory | null;
-  /** The day-ahead board, on the Prices tab. */
+  /** The day-ahead board and the EUA board, on the Prices tab. */
   prices?: EuropePowerBoard | null;
+  carbon?: CarbonBoard | null;
   tab: string;
   rowIds: string[];
 }
 /** What the Prices tab draws, frozen by `shot` so the capture and its check read the same days. */
 export interface PowerPricesSnapshot {
   board: EuropePowerBoard;
-  history: EuropePowerHistory | null;
+  /** The charted history: the selected market's, or the carbon allowance's for EPWR EUA. */
+  history: EuropePowerHistory | CarbonHistory | null;
+  /** Null when the server has no EUA price yet; the tab then shows the board alone. */
+  carbon: CarbonBoard | null;
 }
 export function usePowerEvidence(board: PowerBoard | undefined, history: PowerHistory | undefined, tab: string, rowIds: string[], loading: boolean) {
   useRemoteUiNode({ role: "chart-data", label: "Rendered power and grid observations", getMetadata: () => ({
@@ -32,10 +36,10 @@ export function usePowerEvidence(board: PowerBoard | undefined, history: PowerHi
     plottedValueCount: rowIds.length, board, history: history ?? null, tab, rowIds,
   }) });
 }
-export function usePowerPricesEvidence(prices: EuropePowerBoard | null, rowIds: string[], loading: boolean) {
-  useRemoteUiNode({ role: "chart-data", label: "Rendered day-ahead power prices", getMetadata: () => ({
+export function usePowerPricesEvidence(prices: EuropePowerBoard | null, carbon: CarbonBoard | null, rowIds: string[], loading: boolean) {
+  useRemoteUiNode({ role: "chart-data", label: "Rendered day-ahead power and carbon prices", getMetadata: () => ({
     kind: "power", version: 1, complete: !!prices && !loading, ready: !!prices && !loading,
-    plottedValueCount: rowIds.length, board: null, history: null, prices, tab: "prices", rowIds,
+    plottedValueCount: rowIds.length, board: null, history: null, prices, carbon, tab: "prices", rowIds,
   }) });
 }
 const instanceSettings = (payload: Parameters<PaneScreenshotEvidenceHook["mismatches"]>[1]["payload"]) =>
@@ -46,9 +50,13 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
     const tab = powerTab(settings.tab ?? resolved.options.tab);
     if (tab === "prices") {
       const board = await fetchPowerPrices();
-      const market = powerPriceMarket(resolved.createOptions?.arg)?.code ?? DEFAULT_PRICE_MARKET;
-      const history = board.rows.some((row) => row.code === market && row.date) ? await fetchPowerPriceHistory(market) : null;
-      return { settings: { powerPricesSnapshot: { board, history } satisfies PowerPricesSnapshot }, financials: [] };
+      // The carbon figures are captured when the server has them, and left out when it does not.
+      const carbon = await fetchCarbonPrice().catch(() => null);
+      const arg = resolved.createOptions?.arg;
+      const market = powerPriceMarket(arg)?.code ?? DEFAULT_PRICE_MARKET;
+      const history = isCarbonQuery(arg) && carbon?.row.date ? await fetchCarbonHistory()
+        : board.rows.some((row) => row.code === market && row.date) ? await fetchPowerPriceHistory(market) : null;
+      return { settings: { powerPricesSnapshot: { board, history, carbon } satisfies PowerPricesSnapshot }, financials: [] };
     }
     const symbol = resolved.createOptions?.symbol ?? resolved.createOptions?.arg;
     const filter = powerQuery({ ...settings, ...resolved.options, tab }, symbol);
@@ -68,6 +76,7 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
       if (tab === "prices") {
         if (!isRecord(value.prices)) return null;
         const prices = validatePowerPrices(value.prices as unknown as EuropePowerBoard);
+        if (value.carbon != null) validateCarbonPrice(value.carbon as unknown as CarbonBoard);
         if (value.rowIds.some((id) => !prices.rows.some((row) => row.code === id))) return null;
         return value as unknown as PowerEvidence;
       }
@@ -84,7 +93,8 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
     const errors: string[] = [];
     if (evidence.tab === "prices") {
       const snapshot = settings?.powerPricesSnapshot;
-      if (!isRecord(snapshot) || JSON.stringify(snapshot.board) !== JSON.stringify(evidence.prices)) errors.push("Power prices differ from the captured data.");
+      if (!isRecord(snapshot) || JSON.stringify(snapshot.board) !== JSON.stringify(evidence.prices)
+        || JSON.stringify(snapshot.carbon ?? null) !== JSON.stringify(evidence.carbon ?? null)) errors.push("Power prices differ from the captured data.");
     } else {
       const snapshot = settings?.powerSnapshot;
       if (!isRecord(snapshot) || JSON.stringify(snapshot.board) !== JSON.stringify(evidence.board)

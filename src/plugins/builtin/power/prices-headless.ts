@@ -1,17 +1,21 @@
 import { apiClient } from "../../../api-client";
-import type { EuropePowerBoard, PowerPriceRow } from "../../../api-client/europe-energy";
-import type { HeadlessBundleResult, HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchPowerPriceHistory, fetchPowerPrices } from "./prices-client";
-import { formatPowerChange, formatPowerPrice, latestPowerDate, POWER_PRICE_UNIT, powerPriceMarket, powerRangePosition } from "./prices-model";
+import type { CarbonBoard, EuropePowerBoard, PowerPriceRow } from "../../../api-client/europe-energy";
+import type { HeadlessBundleResult, HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
+import { fetchCarbonPrice, fetchPowerPriceHistory, fetchPowerPrices } from "./prices-client";
+import {
+  CARBON_PRICE_UNIT, formatPowerChange, formatPowerPrice, isCarbonQuery, POWER_PRICE_UNIT, powerPriceMarket, powerRangePosition,
+} from "./prices-model";
+
+type PricesClient = Pick<typeof apiClient, "getCloudEuropePower" | "getCloudEuropePowerHistory" | "getCloudEuropeCarbon">;
 
 const price = (value: unknown) => typeof value === "number" ? formatPowerPrice(value) : "--";
 const text = (value: unknown) => typeof value === "string" && value ? value : "--";
 
-/** The board's columns, in its words: prices in EUR/MWh to the cent, each row dated by its own delivery day. */
-const COLUMNS: HeadlessPaneColumn[] = [
-  { key: "market", header: "Market" },
+/** A board's columns, in its words: prices to the cent in the board's unit, each row dated by its own day. */
+const boardColumns = (unit: string, label = "Market"): HeadlessPaneColumn[] => [
+  { key: "market", header: label },
   { key: "date", header: "As of", format: text, shrink: false },
-  { key: "price", header: POWER_PRICE_UNIT, align: "right", format: price },
+  { key: "price", header: unit, align: "right", format: price },
   { key: "change", header: "1D", align: "right", format: (value) => typeof value === "number" ? formatPowerChange(value) : "--" },
   { key: "average7", header: "7D avg", align: "right", format: price },
   { key: "average30", header: "30D avg", align: "right", format: price },
@@ -20,33 +24,63 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "high52w", header: "52W high", align: "right", format: price },
   { key: "range", header: "In 1Y range", align: "right", format: (value) => typeof value === "number" ? `${value}%` : "--" },
 ];
+const COLUMNS = boardColumns(POWER_PRICE_UNIT);
+const AUCTION_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "date", header: "Date", shrink: false },
+  { key: "zone", header: "Zone", format: text },
+  { key: "status", header: "Status" },
+  { key: "price", header: CARBON_PRICE_UNIT, align: "right", format: price },
+  { key: "volume", header: "Volume tCO2", align: "right", format: (value) => typeof value === "number" ? value.toLocaleString("en-US") : "--" },
+  { key: "coverRatio", header: "Cover", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(2)}x` : "--" },
+  { key: "bidders", header: "Bidders", align: "right", format: (value) => typeof value === "number" ? String(value) : "--" },
+];
 
-function reportRow(row: PowerPriceRow) {
+function reportRow(row: Omit<PowerPriceRow, "code"> & { code: string }) {
   const { trail: _trail, name, ...figures } = row;
-  return { market: name, ...figures, range: powerRangePosition(row) };
+  return { market: name, ...figures, range: powerRangePosition(row as PowerPriceRow) };
 }
 
-/** Markets publish days apart: the line dates the newest and names the oldest. */
-function freshness(board: EuropePowerBoard): HeadlessBundleResult["freshness"] {
-  const dates = board.rows.flatMap((row) => row.date ? [row.date] : []).sort();
-  return { source: board.source.name, asOf: latestPowerDate(board.rows), oldest: dates[0] ?? null, status: "not-a-feed", observedKey: "date",
-    basis: "day-ahead auction", dataset: true, note: `daily averages in ${POWER_PRICE_UNIT}, ${board.source.licence}` };
+/** The EUA as of its latest auction day, then its latest general-allowance auctions. */
+function carbonSections(carbon: CarbonBoard): HeadlessBundleSection[] {
+  const { volume: _volume, auctions: _auctions, ...row } = carbon.row;
+  return [
+    { title: `EU carbon allowance (EUA) auction price, ${CARBON_PRICE_UNIT}`, columns: boardColumns(CARBON_PRICE_UNIT, "Allowance"), rows: [reportRow(row)] },
+    { title: "Latest EUA auctions", columns: AUCTION_COLUMNS,
+      rows: carbon.auctions.filter((auction) => !auction.aviation).map(({ aviation: _aviation, ...auction }) => ({ ...auction })) },
+  ];
 }
+
+/** Markets and the auction publish days apart: the line names both sources, the newest day and the oldest. */
+function freshness(board: EuropePowerBoard | null, carbon: CarbonBoard | null): HeadlessBundleResult["freshness"] {
+  const dates = [...board?.rows.flatMap((row) => row.date ? [row.date] : []) ?? [], ...carbon?.row.date ? [carbon.row.date] : []].sort();
+  return {
+    source: [board?.source.name, carbon?.source.name].filter(Boolean).join(", "),
+    asOf: dates.at(-1) ?? null, oldest: dates[0] ?? null,
+    status: "not-a-feed", observedKey: "date", basis: board ? "day-ahead auction" : "primary auction", dataset: true,
+    note: [board ? `power: daily averages in ${POWER_PRICE_UNIT}, ${board.source.licence}` : null,
+      carbon ? `carbon: auction clearing price in ${CARBON_PRICE_UNIT}` : null].filter(Boolean).join("; "),
+  };
+}
+
+const failure = (error: unknown) => error instanceof Error ? error.message : String(error);
 
 /**
- * Every market's latest day-ahead price, or one market's figures and its last
- * 30 delivery days when a market is named.
+ * Every market's latest day-ahead price and the EUA auction price; one
+ * market's figures and its last 30 delivery days when a market is named; the
+ * EUA and its latest auctions for EUA (or carbon).
  */
-export async function loadPowerPricesReport(
-  argument: string | undefined,
-  client: Pick<typeof apiClient, "getCloudEuropePower" | "getCloudEuropePowerHistory"> = apiClient,
-): Promise<HeadlessBundleResult> {
+export async function loadPowerPricesReport(argument: string | undefined, client: PricesClient = apiClient): Promise<HeadlessBundleResult> {
+  if (isCarbonQuery(argument)) {
+    const carbon = await fetchCarbonPrice(client);
+    return { sections: carbonSections(carbon), notes: [...carbon.gaps], freshness: freshness(null, carbon),
+      metadata: { market: carbon.market, unit: carbon.unit, source: carbon.source, publishedAt: carbon.publishedAt, series: "CAP:carbon:eua" } };
+  }
   const board = await fetchPowerPrices(client);
   const notes = [...board.gaps];
   if (argument?.trim()) {
     const market = powerPriceMarket(argument);
     const row = market ? board.rows.find((entry) => entry.code === market.code) : null;
-    if (!market || !row) throw new Error(`No day-ahead price for "${argument.trim()}". Use a market such as DE, FR, GB or Spain.`);
+    if (!market || !row) throw new Error(`No day-ahead price for "${argument.trim()}". Use a market such as DE, FR, GB or Spain, or EUA.`);
     const history = await fetchPowerPriceHistory(market.code, null, client);
     return {
       sections: [
@@ -55,26 +89,32 @@ export async function loadPowerPricesReport(
           columns: [{ key: "date", header: "Date", shrink: false }, { key: "price", header: POWER_PRICE_UNIT, align: "right", format: price }],
           rows: history.points.slice(-30).reverse().map((point) => ({ date: point.date, price: point.value })) },
       ],
-      notes, freshness: freshness(board),
+      notes, freshness: freshness(board, null),
       metadata: { market: board.market, unit: board.unit, source: board.source, publishedAt: board.publishedAt, row, series: `CAP:day-ahead:${market.code.toLowerCase()}` },
     };
   }
+  // The carbon allowance rides along; when it cannot load, the power board still reports and says so.
+  const carbon = await fetchCarbonPrice(client).catch((error: unknown) => failure(error));
   return {
-    sections: [{ title: `Day-ahead power, ${POWER_PRICE_UNIT}`, columns: COLUMNS, rows: board.rows.map(reportRow) }],
-    notes, freshness: freshness(board),
-    metadata: { market: board.market, unit: board.unit, source: board.source, publishedAt: board.publishedAt },
+    sections: [{ title: `Day-ahead power, ${POWER_PRICE_UNIT}`, columns: COLUMNS, rows: board.rows.map(reportRow) },
+      ...(typeof carbon === "string" ? [] : carbonSections(carbon))],
+    notes: [...notes, ...(typeof carbon === "string" ? [carbon] : carbon.gaps)],
+    freshness: freshness(board, typeof carbon === "string" ? null : carbon),
+    metadata: { market: board.market, unit: board.unit, source: board.source, publishedAt: board.publishedAt,
+      ...(typeof carbon === "string" ? {} : { carbon: { market: carbon.market, unit: carbon.unit, source: carbon.source, publishedAt: carbon.publishedAt } }) },
   };
 }
 
 export const powerPricesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
-  argument: { kind: "free-text", optional: true, placeholder: "market", description: "A market such as DE, FR, GB or Spain; omit for every market." },
+  argument: { kind: "free-text", optional: true, placeholder: "market", description: "A market such as DE, FR, GB or Spain, or EUA for the carbon auctions; omit for every market and the EUA." },
   options: [],
   freshness: { source: "Ember", status: "not-a-feed", basis: "day-ahead auction", dataset: true },
-  discovery: { aliases: ["EPWR"], dataRequirements: ["Gloom Cloud European power prices"],
+  discovery: { aliases: ["EPWR"], dataRequirements: ["Gloom Cloud European power and carbon prices"],
     limitations: ["Daily averages of the day-ahead auction, weighted by load, per country; not intraday or forward prices",
-      "Each market is dated by its own latest delivery day: continental markets usually trail by a few days"] },
-  describe: "European day-ahead power prices by country, EUR/MWh",
+      "Each market is dated by its own latest delivery day: continental markets usually trail by a few days",
+      "The EUA price is the primary auction clearing price on business days, volume-weighted across a day's auctions; not a futures settlement"] },
+  describe: "European day-ahead power prices by country (EUR/MWh) and the EU carbon allowance auction price (EUR/tCO2)",
   async load(args, ctx) {
     const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? undefined;
     return loadPowerPricesReport(argument, ctx.apiClient);

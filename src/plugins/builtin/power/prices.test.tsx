@@ -1,7 +1,7 @@
 import { act, useReducer } from "react";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
-import type { EuropePowerBoard, PowerPriceRow } from "../../../api-client/europe-energy";
+import type { CarbonBoard, EuropePowerBoard, PowerPriceRow } from "../../../api-client/europe-energy";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
@@ -10,11 +10,11 @@ import { MemoryPluginPersistence } from "../../../test-support/plugin-persistenc
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { PowerPane } from "./pane";
-import { powerPriceHistoryCache, powerPricesCache } from "./prices-client";
+import { carbonPriceCache, powerPriceHistoryCache, powerPricesCache } from "./prices-client";
 import { loadPowerPricesReport } from "./prices-headless";
 
 const tui = createOpenTuiTestHarness();
-const caches = [powerPricesCache, powerPriceHistoryCache];
+const caches = [powerPricesCache, powerPriceHistoryCache, carbonPriceCache];
 afterEach(() => { setCloudApiFetchTransport(null); for (const cache of caches) cache.reset(); });
 
 function priceRow(overrides: Partial<PowerPriceRow>): PowerPriceRow {
@@ -34,6 +34,19 @@ const board: EuropePowerBoard = {
       yearAgoDate: null, yearAgo: null, low52w: null, high52w: null, trail: [] }),
   ],
 };
+const auction = (date: string, name: string, zone: string, price: number | null, extra = {}) => ({
+  date, auction: name, contract: "T3PA", status: price == null ? "cancelled" : "successful", zone, price, minBid: null, maxBid: null,
+  meanBid: null, medianBid: null, volume: 1_548_000, coverRatio: 1.93, bidders: 22, successfulBidders: 16, aviation: false, ...extra,
+});
+const carbon: CarbonBoard = {
+  generatedAt: "2026-10-11T12:00:00.000Z", status: "available", market: "primary auction", unit: "EUR/tCO2",
+  source: { name: "EEX", url: "https://www.eex.com/en/markets/environmental-markets/emissions-auctions" },
+  checkedAt: "2026-10-11T11:00:00.000Z", publishedAt: "2026-10-09T09:02:01.000Z", gaps: [],
+  row: { ...priceRow({ name: "EU carbon allowance (EUA)", date: "2026-10-09", price: 86.11, previousDate: "2026-10-08", change: 1.04,
+    average30: 85.06, yearAgoDate: "2025-10-09", yearAgo: 77.95 }), code: "EUA", volume: 1_548_000, auctions: 1 },
+  auctions: [auction("2026-10-09", "Auction 4. Period DE", "DE", 86.11), auction("2026-10-08", "EUAA Auction CAP3 EU", "EU", 70, { aviation: true, contract: "EAA3" }),
+    auction("2026-10-07", "Auction 4. Period CAP3 EU", "EU", null, { coverRatio: 0.98 })],
+};
 const history = (code: string) => ({ code, name: code === "DE" ? "Germany" : code, market: "day-ahead", unit: "EUR/MWh", source: board.source,
   points: [{ date: "2026-10-05", value: 162.89 }, { date: "2026-10-06", value: 209.78 }, { date: "2026-10-07", value: 191.14 }] });
 
@@ -43,6 +56,9 @@ function serve() {
     const url = new URL(String(input));
     asked.push(url.pathname);
     const match = /\/power\/([A-Z]{2})\/history$/.exec(url.pathname);
+    if (url.pathname.endsWith("/carbon")) return Response.json(carbon);
+    if (url.pathname.endsWith("/carbon/history")) return Response.json({ code: "EUA", name: "EU carbon allowance (EUA)", market: "primary auction",
+      unit: "EUR/tCO2", source: carbon.source, points: [{ date: "2026-10-08", value: 85.07 }, { date: "2026-10-09", value: 86.11 }] });
     return Response.json(match ? history(match[1]!) : board);
   });
   return asked;
@@ -77,12 +93,23 @@ test("the Prices tab boards each market's day-ahead price as of its own day, cha
   expect(asked).not.toContain("/cloud/power/board");
   expect(asked).toContain("/cloud/europe-energy/power/DE/history");
   expect(await tui.waitForFrameToContain("Germany day-ahead")).toContain("[o]pen Ember");
+  // The EU carbon allowance sits in the figures above, in its own unit and dated by its auction.
+  const figures = await tui.waitForFrameToContain("EUA EUR/tCO2");
+  expect(figures).toContain("86.11");
+  expect(figures).toContain("2026-10-09");
   await tui.emitKeypress({ name: "g" });
-  expect(opened).toEqual([["chart-composer-pane", "CAP:day-ahead:de"]]);
+  // c charts the allowance above the board, from its own history; g then charts it in a custom chart.
+  await tui.emitKeypress({ name: "c" });
+  expect(await tui.waitForFrameToContain("EU carbon (EUA) auction")).toContain("EUR/tCO2");
+  expect(asked).toContain("/cloud/europe-energy/carbon/history");
+  await tui.emitKeypress({ name: "g" });
+  expect(opened).toEqual([["chart-composer-pane", "CAP:day-ahead:de"], ["chart-composer-pane", "CAP:carbon:eua"]]);
+  // Back on a market, Enter opens its history.
+  await tui.emitKeypress({ name: "down" });
+  await tui.waitForFrameToContain("day-ahead");
   await tui.emitKeypress({ name: "return" });
   const detail = await tui.waitForFrameToContain("52W range");
   expect(detail).toContain("-4.13 to 239.88");
-  expect(detail).toContain("vs 2026-10-06");
 });
 
 test("the report names a market by code, name or alias and lists its last delivery days", async () => {
@@ -94,4 +121,20 @@ test("the report names a market by code, name or alias and lists its last delive
   expect(report.sections[1]!.rows?.[0]).toEqual({ date: "2026-10-07", price: 191.14 });
   expect(report.freshness).toMatchObject({ source: "Ember", asOf: "2026-10-08", status: "not-a-feed" });
   await expect(loadPowerPricesReport("Atlantis")).rejects.toThrow("Use a market such as DE");
+});
+
+test("the report adds the EUA and its general-allowance auctions, dating each source, and EUA reports them alone", async () => {
+  serve();
+  const report = await loadPowerPricesReport(undefined);
+  expect(report.sections.map((section) => section.title)).toEqual([
+    "Day-ahead power, EUR/MWh", "EU carbon allowance (EUA) auction price, EUR/tCO2", "Latest EUA auctions",
+  ]);
+  // The aviation auction is not the EUA; the cancelled one is listed with no price.
+  expect(report.sections[2]!.rows?.map((row) => [row.date, row.status, row.price])).toEqual([
+    ["2026-10-09", "successful", 86.11], ["2026-10-07", "cancelled", null],
+  ]);
+  expect(report.freshness).toMatchObject({ source: "Ember, EEX", asOf: "2026-10-09", oldest: "2026-10-07" });
+  const alone = await loadPowerPricesReport("carbon");
+  expect(alone.sections[0]!.rows?.[0]).toMatchObject({ market: "EU carbon allowance (EUA)", date: "2026-10-09", price: 86.11, change: 1.04 });
+  expect(alone.freshness).toMatchObject({ source: "EEX", asOf: "2026-10-09" });
 });

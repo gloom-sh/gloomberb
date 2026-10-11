@@ -4,7 +4,7 @@ import { withoutQuietColumns } from "../shared/research-cells";
 import { fetchPowerBoard, fetchAllPowerHistory, fetchPowerTickerScopes } from "./client";
 import { powerQuery } from "./query";
 import { loadPowerPricesReport } from "./prices-headless";
-import { powerPriceMarket } from "./prices-model";
+import { isCarbonQuery, powerPriceMarket } from "./prices-model";
 import {
   COVERAGE_COLUMNS, EXPOSURE_COLUMNS, GENERATION_COLUMNS, HISTORY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, UTILITY_COLUMNS,
   historyRows, powerCoverageNote, powerLoadedSources, powerNumber, powerPercent, powerRegion, powerScopeOptions, powerTab, powerTickerEmpty, projectRows, tickerLabel, titleCase, UNMAPPED, type PowerTab,
@@ -62,7 +62,7 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const tab = powerTab(args.options.tab);
     const symbol = (Array.isArray(args.argument) ? args.argument.join(" ") : args.argument)?.trim();
     // Prices are their own board (EPWR); a typed market narrows it, a ticker does not apply.
-    if (tab === "prices") return loadPowerPricesReport(powerPriceMarket(symbol) ? symbol : undefined, ctx.apiClient);
+    if (tab === "prices") return loadPowerPricesReport(powerPriceMarket(symbol) || isCarbonQuery(symbol) ? symbol : undefined, ctx.apiClient);
     const filter = { ...powerQuery(args.options, symbol), limit: 500 };
     const board = await fetchPowerBoard(filter, ctx.apiClient);
     const projects = [...board.projects];

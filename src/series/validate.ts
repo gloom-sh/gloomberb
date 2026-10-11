@@ -21,7 +21,7 @@ const QUANTITY_UNITS = [
   "currency", "currency/share",
 ] as const;
 /** What a price is quoted per: `USD/barrel`, `USD/GPU-hour`. */
-const PER_UNITS = ["share", "barrel", "gallon", "MMBtu", "MWh", "ounce", "ton", "hour", "GPU-hour"] as const;
+const PER_UNITS = ["share", "barrel", "gallon", "MMBtu", "MWh", "ounce", "ton", "tCO2", "hour", "GPU-hour"] as const;
 const SCALES = ["thousand", "million", "billion", "trillion"] as const;
 
 const RATE_SET: ReadonlySet<string> = new Set(RATE_UNITS);
