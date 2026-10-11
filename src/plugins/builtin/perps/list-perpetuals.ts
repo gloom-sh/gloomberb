@@ -42,17 +42,17 @@ export function useListPerpetuals(tickers: readonly TickerRecord[], enabled: boo
   const plan = usePlanAccess();
   const accessKey = `${session.requestKey}:${plan.hasProAccess ? "pro" : "preview"}`;
   // The list's listings, sorted and unique, as one string: a reorder or a quote keeps the same request.
-  const requestKey = useMemo(() => enabled
-    ? [...new Set(tickers.flatMap((ticker) => {
+  const requestKey = useMemo(() => {
+    if (!enabled) return "";
+    const listings = new Map<string, PerpEquityListing>();
+    for (const ticker of tickers) {
       const listing = rowListing(ticker);
-      return listing ? [listingKey(listing)] : [];
-    }))].sort().join(",")
-    : "", [enabled, tickers]);
+      if (listing) listings.set(listingKey(listing), listing);
+    }
+    return listings.size ? JSON.stringify([...listings].sort(([a], [b]) => a.localeCompare(b)).map(([, listing]) => listing)) : "";
+  }, [enabled, tickers]);
   const loader = useCallback(async (force: boolean) => {
-    const listings = requestKey.split(",").map((key) => {
-      const [symbol, exchange] = key.split(":");
-      return { symbol: symbol!, exchange: exchange! };
-    });
+    const listings = JSON.parse(requestKey) as PerpEquityListing[];
     return { listings, ...(await loadPerpsEquities(listings, accessKey, force)) };
   }, [accessKey, requestKey]);
   // An added row waits for its own answer while the others keep theirs.
