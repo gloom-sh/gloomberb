@@ -81,6 +81,7 @@
     "benchmark:tui:compare": "bun run scripts/benchmark-tui-compare.ts",
     "benchmark:tui:memory": "bun run scripts/benchmark-tui-memory.ts",
     "check:pane-chrome": "bun run scripts/pane-chrome/checks.ts",
+    "check:pane-screenshot": "bun run scripts/pane-chrome/screenshot.ts",
     "benchmark:pane-drag:compare": "bun run scripts/pane-chrome/frame-budget.ts",
     "test:global-upgrade": "bun run scripts/smoke-global-upgrade.ts",
     "release": "./scripts/release.sh"
