@@ -1,5 +1,5 @@
 import type { SeriesDefinition } from "../../../series/types";
-import { FUTURES_CONTRACTS, FUTURES_SECTOR_LABELS } from "./contracts";
+import { FUTURES_CONTRACTS, FUTURES_SECTOR_LABELS } from "../../../market-data/futures-board";
 
 /** Each continuous front-month contract on the futures board, as `FUT:ES`. */
 export const FUTURES_SERIES: readonly SeriesDefinition[] = FUTURES_CONTRACTS.map((contract) => ({

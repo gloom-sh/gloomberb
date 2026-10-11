@@ -129,6 +129,23 @@ test("a bare symbol the service read on its home listing abroad names the venue,
   }
 });
 
+test("a futures board code quotes its future where no security uses it, and names the future where the security has no quote", async () => {
+  const ttf = venueSource("TTF", [], { "TTF=F": createTestQuote({ symbol: "TTF=F", currency: "EUR", instrumentType: "FUTURE" }) });
+  expect((await runQuote(["TTF"], ttf)).rows.map((row) => row.target.symbol)).toEqual(["TTF=F"]);
+  expect(ttf.batches).toEqual([["TTF=F"]]);
+
+  // GC is several companies' code: it still asks for an exchange, and the future is one more choice.
+  const names = { CSE: "Goldcana Resources Inc.", SET: "Global Connections Public Company Limited" };
+  const gc = await runQuote(["GC"], venueSource("GC", ["CSE", "SET"], {}, names));
+  expect(gc.failure?.message).toBe("Choose an exchange for GC.");
+  expect(gc.failure?.details).toContain("GC=F Gold future (try: gloomberb quote GC=F)");
+  // With no listing search knows, the future is still named.
+  expect((await runQuote(["ES"], venueSource("ES", [], {}))).failure?.details).toBe("ES=F E-Mini S&P 500 future (try: gloomberb quote ES=F)");
+  // A security that quotes keeps its code and says nothing of the future.
+  const nova = await runQuote(["NG"], venueSource("NG", ["AMEX"], { NG: createTestQuote({ symbol: "NG", name: "NovaGold Resources Inc." }) }));
+  expect([nova.rows.map((row) => row.target.symbol), nova.warnings]).toEqual([["NG"], []]);
+});
+
 test("a bare index root points at its ^ index, whether it found nothing or another instrument", async () => {
   const none = await runQuote(["VIX"], venueSource("VIX", [], {}));
   expect(none.failure?.details).toContain("gloomberb quote ^VIX");

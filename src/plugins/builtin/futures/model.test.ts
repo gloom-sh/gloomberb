@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import { cycleSortPreference } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import { getContractsBySector, type FuturesSector } from "./contracts";
+import { getContractsBySector, type FuturesSector } from "../../../market-data/futures-board";
 import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,

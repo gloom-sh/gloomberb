@@ -3,6 +3,7 @@ import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { createTestDataProvider } from "../test-support/data-provider";
 import { ListingArgError, loadForListing, parseListingArg, resolveCliListing } from "./listing-arg";
+import { FUTURES_CONTRACTS } from "../market-data/futures-board";
 
 const persistences: AppPersistence[] = [];
 
@@ -26,6 +27,16 @@ test("SYM:EXCH and --exchange name the same listing through the exchange aliases
   expect(() => parseListingArg("SAN:EPA", "LON")).toThrow("SAN:EPA names exchange EPA, but --exchange names LSE.");
   // With several symbols, --exchange only fills in the ones without their own.
   expect(parseListingArg("SAN:EPA", "LSE", { ownExchangeWins: true }).key).toBe("SAN:EPA");
+});
+
+test("a futures board code no security uses is its future; one a security keeps, or one with a venue, stays as typed", () => {
+  for (const row of FUTURES_CONTRACTS) {
+    expect(parseListingArg(row.code).key).toBe(row.bareCode ? row.symbol : row.code);
+    expect(parseListingArg(row.symbol.toLowerCase())).toEqual({ symbol: row.symbol, exchange: "", key: row.symbol });
+  }
+  expect(parseListingArg(" $ttf ")).toEqual({ symbol: "TTF=F", exchange: "", key: "TTF=F" });
+  expect(parseListingArg("NG").key).toBe("NG");
+  expect(parseListingArg("TTF", "LSE").key).toBe("TTF:LSE");
 });
 
 test("an exchange code the app does not know is refused unless the symbol trades there", async () => {

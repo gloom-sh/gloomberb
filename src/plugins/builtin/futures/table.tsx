@@ -4,7 +4,7 @@ import type { Quote } from "../../../types/financials";
 import { TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
-import { tickDecimals, type FuturesContract } from "./contracts";
+import { tickDecimals, type FuturesContract } from "../../../market-data/futures-board";
 import { FUTURES_RETURN_COLUMNS, futuresContractName, type FuturesColumnId, type FuturesTableRow } from "./model";
 import type { FrontReturnsMap } from "./use-front-returns";
 

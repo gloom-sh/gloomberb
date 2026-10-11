@@ -1,7 +1,7 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
 
 /**
- * Plain-words meanings of the rates, auction and perpetual-futures terms the
+ * Plain-words meanings of the rates, auction, energy and perpetual-futures terms the
  * functions show in their rows, headers and footers. `catalog glossary` lists them,
  * `catalog explain <term>` prints one and `fn <function> --explain` follows a
  * report with the ones it shows. Only terms a pane or report actually prints
@@ -249,6 +249,32 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Monthly-weighted", aliases: ["monthly-weighted method", "calendar weighting"], functions: ["WIRP"],
     shown: ["monthly-weighted"],
     definition: "A meeting's rate read from its own month's contract by weighting the days before and after it, when the next month holds another meeting.",
+  },
+  // Energy futures (FUT, CTM).
+  {
+    term: "TTF", aliases: ["title transfer facility", "dutch ttf", "dutch gas", "european gas", "eu gas"], functions: ["FUT", "CTM"],
+    shown: ["TTF", "Dutch TTF Gas"],
+    definition: "Title Transfer Facility, the Dutch gas hub whose price is Europe's gas benchmark. Its futures quote in euros per MWh.",
+  },
+  {
+    term: "Henry Hub", aliases: ["henry hub gas", "us gas", "nymex natural gas"], functions: ["FUT", "CTM"],
+    definition: "The Louisiana gas hub NYMEX natural gas (NG) delivers at, the US gas benchmark. It quotes in dollars per MMBtu.",
+  },
+  {
+    term: "MWh", aliases: ["megawatt-hour", "megawatt hour", "eur/mwh", "mwh vs mmbtu"], functions: ["FUT", "CTM"],
+    definition: "Megawatt-hour, the energy unit European gas and power are priced in. 1 MWh is about 3.412 MMBtu.",
+  },
+  {
+    term: "MMBtu", aliases: ["million btu", "million british thermal units", "usd/mmbtu", "mmbtu vs mwh"], functions: ["FUT", "CTM"],
+    definition: "Million British thermal units, the unit US gas is priced in. A TTF price in EUR/MWh divided by 3.412 is EUR/MMBtu, comparable to NG once in dollars.",
+  },
+  {
+    term: "EUA", aliases: ["eu allowance", "eu allowances", "eu ets", "carbon allowance", "carbon allowances", "eu carbon"], functions: ["FUT"],
+    definition: "EU Allowance: the right to emit one tonne of CO2 under the EU Emissions Trading System, priced in euros per tonne.",
+  },
+  {
+    term: "Front month", aliases: ["front-month", "front contract", "continuous contract", "front-month contract"], functions: ["FUT", "CTM"],
+    definition: "The nearest contract still trading. FUT quotes each root's front month by its continuous symbol (TTF=F), which rolls to the next contract as one expires.",
   },
   // Perpetual futures (PERP).
   {

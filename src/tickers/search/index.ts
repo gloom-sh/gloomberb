@@ -6,6 +6,7 @@ import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { assetClassMarketSymbol, parseAssetClassQuery } from "./asset-classes";
+import { bareFuturesCode, futuresContractByCode } from "../../market-data/futures-board";
 import { searchContractKey, searchInstrumentKey } from "./identity";
 import { tickerInstrumentLabel } from "../instrument-label";
 import {
@@ -296,7 +297,10 @@ export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promis
   if (!requested) return Promise.resolve(null);
   // `NET:` lists NET's venues instead of settling on one.
   const pickListing = isListingPickerQuery(requested);
-  const symbol = symbolSearchQuery(requested);
+  const typed = symbolSearchQuery(requested);
+  // A futures board code no security uses is its future (TTF is TTF=F), unless a saved ticker holds it.
+  const future = pickListing || options.tickers.has(typed) ? null : bareFuturesCode(typed);
+  const symbol = future?.symbol ?? typed;
   const literal = resolveTickerSymbol(symbol, options, pickListing ? requested : null);
   const alternatives = pickListing ? [] : dottedVenueQueries(symbol);
   // Most input has no venue code to retry: hand back the literal lookup
@@ -475,6 +479,10 @@ async function searchProviderResults(
   // number of spellings tried.
   const searchQueries = buildProviderSearchQueries(query);
   if (marketSymbol && !searchQueries.includes(marketSymbol)) searchQueries.push(marketSymbol);
+  // A futures board code also finds its future, which the catalogue files under
+  // the continuous symbol only: NG finds NovaGold and NG=F.
+  const boardFuture = assetClass ? null : futuresContractByCode(query)?.symbol;
+  if (boardFuture && !searchQueries.includes(boardFuture)) searchQueries.push(boardFuture);
   await Promise.all(searchQueries.map(async (searchQuery) => {
     try {
       const results = await dataProvider.search(searchQuery, {

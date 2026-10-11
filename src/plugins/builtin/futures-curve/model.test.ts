@@ -2,9 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { fetchFuturesCurve, validateFuturesCurve } from "./client";
-import { FUTURES_CONTRACTS } from "../futures/contracts";
+import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, vsSpotPct } from "./model";
+import { annualisedBasisPct, archivedFuturesCurve, basisSpotSymbol, contractBasis, CURVE_ROOTS, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractMonth, curvePrice, curveRank, curveRootForTicker, curveSpot, curveSpotLabel, curveSpreadLabel, curveUnitLabel, daysToExpiry, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, vsSpotPct } from "./model";
 import { futuresCurveModule } from "./index";
 
 const first: FuturesContract = { symbol: "CLX26.NYM", label: "Nov 2026", expiration: "2026-10-20",
@@ -55,6 +55,11 @@ test("normalizes FUT aliases before cloud request and handles missing endpoints 
   await fetchFuturesCurve("cl=f", { getCloudFuturesCurve: async (root) => { requested.push(root); return payload(); } });
   expect(requested).toEqual(["CL"]);
   await expect(fetchFuturesCurve("BAD", { getCloudFuturesCurve: async () => { throw new Error("should not request"); } })).rejects.toThrow("No futures curve for BAD");
+  // Dutch TTF has a curve; a board root without one says so and where its front month is, and the generic answer names those roots.
+  expect(normalizeCurveRoot("ttf=f")).toBe("TTF");
+  expect(unsupportedCurveRootMessage("zm")).toBe("No futures curve for ZM (Soybean Meal) yet: FUT quotes its front month, gloomberb quote ZM=F.");
+  const without = FUTURES_CONTRACTS.filter((row) => row.curve === false).map((row) => row.code);
+  expect(unsupportedCurveRootMessage("BAD")).toContain(`(all but ${without.join(", ")})`);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw new ApiRequestError("Not found", 404); } })).rejects.toThrow("not available yet");
   const denied = new ApiRequestError("Forbidden", 403);
   await expect(fetchFuturesCurve("CL", { getCloudFuturesCurve: async () => { throw denied; } })).rejects.toBe(denied);

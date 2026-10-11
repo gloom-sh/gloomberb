@@ -96,6 +96,7 @@ import {
 import {
   bareListingNote,
   EXCHANGE_OPTION,
+  futuresTryLine,
   isNoProviderError,
   listingHeading,
   listingIdentity,
@@ -600,7 +601,8 @@ interface QuoteAnswer {
  * listing abroad names that venue (SXR8 -> XETRA). One no source quotes is
  * quoted on its listings (`quoteBareListing`), else names them, or asks for an
  * exchange when several companies list it (2222); a bare index root (VIX) also
- * names its index (^VIX). Venues are only looked up for a
+ * names its index (^VIX), and a futures board code a security keeps (GC) its
+ * future (GC=F). Venues are only looked up for a
  * symbol with no quote, so a request that succeeds costs no search.
  */
 async function answerQuote(
@@ -626,14 +628,18 @@ async function answerQuote(
       notes: [other.note, ...also(other.quote)],
     };
   }
-  const indexLine = root ? indexRootTryLine(root, request.command) : null;
-  if (!other && !indexLine) return { result, listing, notes: [] };
+  // Other listings already name a futures board code's future (GC=F); with none, it is named here.
+  const tryLines = [
+    root ? indexRootTryLine(root, request.command) : null,
+    other || listing.exchange ? null : futuresTryLine(listing.symbol, request),
+  ].filter((line): line is string => !!line);
+  if (!other && tryLines.length === 0) return { result, listing, notes: [] };
   const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;
-  const details = [other?.details, indexLine].filter(Boolean).join("\n");
+  const details = [other?.details, ...tryLines].filter(Boolean).join("\n");
   const oneLine = [
     message,
     other ? `${other.heading}: ${other.listings.join(", ")}.` : "",
-    indexLine ?? "",
+    ...tryLines,
   ].filter(Boolean).join(" ");
   return { result, listing, failure: { message, details, oneLine }, notes: [] };
 }

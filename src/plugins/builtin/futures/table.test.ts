@@ -6,7 +6,7 @@ import {
   tickDecimals,
   type FuturesContract,
   type FuturesSector,
-} from "./contracts";
+} from "../../../market-data/futures-board";
 import type { FuturesColumnId, FuturesTableRow } from "./model";
 import {
   createFuturesColumns,

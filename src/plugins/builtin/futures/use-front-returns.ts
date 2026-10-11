@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint } from "../../../types/financials";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import type { FuturesContract } from "./contracts";
+import type { FuturesContract } from "../../../market-data/futures-board";
 import {
   frontContractCandidates,
   frontContractReturns,

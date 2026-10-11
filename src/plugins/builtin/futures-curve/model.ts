@@ -3,7 +3,7 @@ import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/
 import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
+import { FUTURES_CONTRACTS, futuresBoardContract, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
 import { formatPercentileRank } from "../../../utils/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { parseReportTime } from "../../../utils/utc-time";
@@ -34,10 +34,19 @@ export function normalizeCurveRoot(value: unknown): string | null {
   return CURVE_ROOTS.some((row) => row.value === root) ? root : null;
 }
 
-/** What a root nothing lists is told, with roots that work. */
+/**
+ * What a root CTM does not list is told. A FUT root without a curve yet says
+ * so and where its front month is; anything else gets the roots that work,
+ * naming the board's roots CTM leaves out so the sentence stays true.
+ */
 export function unsupportedCurveRootMessage(value: unknown): string {
+  const typed = String(value).trim().toUpperCase().replace(/=F$/, "");
+  const board = futuresBoardContract(value);
+  if (board) return `No futures curve for ${board.code} (${board.name}) yet: FUT quotes its front month, gloomberb quote ${board.symbol}.`;
   const examples = ["ES", "CL", "GC", "ZN"].filter((root) => CURVE_ROOTS.some((row) => row.value === root));
-  return `No futures curve for ${String(value).trim().toUpperCase().replace(/=F$/, "") || "that root"}: CTM covers the FUT board's roots, VIX and CME crypto, such as ${examples.join(", ")}.`;
+  const without = FUTURES_CONTRACTS.filter((row) => row.curve === false).map((row) => row.code);
+  const roots = without.length > 0 ? `the FUT board's roots (all but ${without.join(", ")})` : "the FUT board's roots";
+  return `No futures curve for ${typed || "that root"}: CTM covers ${roots}, VIX and CME crypto, such as ${examples.join(", ")}.`;
 }
 
 /**
@@ -67,7 +76,7 @@ function curvePriceDecimals(root: string): number {
   const rateTick = RATE_TICKS[root];
   if (rateTick != null) return tickDecimals(rateTick);
   if (root === "VX") return 4;
-  const tick = FUTURES_CONTRACTS.find((row) => row.code === root)?.tick ?? CRYPTO_CURVE_ROOTS.find((row) => row.code === root)?.tick;
+  const tick = futuresContractByCode(root)?.tick ?? CRYPTO_CURVE_ROOTS.find((row) => row.code === root)?.tick;
   return tick == null ? 5 : Math.max(2, tickDecimals(tick));
 }
 
@@ -91,7 +100,7 @@ export function curveRoundedPrice(value: number | null | undefined, root: string
 
 /** The unit the catalogue gives a root whose contract terms the server does not send: "EUR / MWh" for Dutch TTF gas. */
 export function catalogueCurveUnit(root: string): string | null {
-  return FUTURES_CONTRACTS.find((row) => row.code === root)?.unit ?? null;
+  return futuresContractByCode(root)?.unit ?? null;
 }
 
 /**

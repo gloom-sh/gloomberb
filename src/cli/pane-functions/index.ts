@@ -23,6 +23,7 @@ import {
 import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import { loadForListing } from "../listing-arg";
+import { knownGapMessage } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import {
   GLOSSARY,
@@ -206,8 +207,13 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const filtered = filterPaneCatalogEntries(botSafeEntries, parsed.query);
         // A search also finds the terms it names; text only, the JSON stays a list of functions.
         const glossary = lookupGlossary(parsed.query);
-        ctx.printResult({ data: filtered.slice(0, effectiveParsed.limit) }, {
-          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary),
+        // Data no source carries yet is said once: in the text, else as the envelope's warning.
+        const gap = knownGapMessage(parsed.query);
+        ctx.printResult({
+          data: filtered.slice(0, effectiveParsed.limit),
+          ...gap && ctx.cliOptions.format !== "text" ? { warnings: [gap] } : {},
+        }, {
+          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap),
         });
       } finally {
         registry.destroy();

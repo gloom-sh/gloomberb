@@ -37,9 +37,10 @@ import {
 import {
   FUTURES_CONTRACTS,
   FUTURES_SECTOR_LABELS,
+  futuresBoardContract,
   getContractsBySector,
   type FuturesSector,
-} from "./contracts";
+} from "../../../market-data/futures-board";
 import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,
@@ -78,7 +79,8 @@ function FuturesPane({ focused, width, height }: PaneProps) {
   const liveStreaming = useLiveStreamingSetting();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<FuturesSortPreference>(DEFAULT_FUTURES_SORT);
-  const [searchQuery, setSearchQuery] = useState("");
+  // `FUT TTF` opens the board searched for the contract it names.
+  const [searchQuery, setSearchQuery] = useState(() => paneInstance?.params?.query ?? "");
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const [collapsedSectors, setCollapsedSectors] = useState<ReadonlySet<FuturesSector>>(new Set());
   const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
@@ -358,11 +360,32 @@ export const futuresModule: PluginModule = {
         "lumber",
         "aluminum",
         "ttf",
+        "energy",
+        "natural gas",
+        "gas",
+        "lng",
+        "brent",
+        "wti",
+        "heating oil",
+        "gasoline",
         "treasuries",
         "contracts",
         "cme",
       ],
-      shortcut: { prefix: "FUT", aliases: ["GLCO"] },
+      shortcut: {
+        prefix: "FUT",
+        aliases: ["GLCO"],
+        argKind: "text",
+        argPlaceholder: "code or name",
+        argOptional: true,
+      },
+      // A board code or symbol searches for that contract alone (NG=F: a bare NG also matches Orange Juice); other text searches as typed.
+      createInstance: (_context, options) => {
+        const input = options?.arg?.trim();
+        if (!input) return {};
+        const query = futuresBoardContract(input)?.symbol ?? input;
+        return { title: `FUT ${input.toUpperCase()}`, params: { query } };
+      },
     },
   ],
 };

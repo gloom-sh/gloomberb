@@ -18,7 +18,7 @@ export const futuresCurveModule: PluginModule = {
   }],
   paneTemplates: [{ id: "futures-curve-pane", paneId: "futures-curve", label: "Futures Curve",
     description: "Listed futures contracts, historical curves, roll yield and open interest including VIX and CME crypto futures.",
-    keywords: ["ctm", "futures", "curve", "contango", "backwardation", "roll", "vix"],
+    keywords: ["ctm", "futures", "curve", "contango", "backwardation", "roll", "vix", "crude oil", "natural gas"],
     shortcut: { prefix: "CTM", aliases: ["CT"], argKind: "text", argPlaceholder: "root", argOptional: true,
       argOptions: () => CURVE_ROOTS },
     headless: futuresCurveHeadless,

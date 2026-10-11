@@ -19,6 +19,7 @@ import { dashedCoinPair } from "../utils/crypto-pair";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../market-data/market/format";
 import { zonedDateKey } from "../utils/zoned-date-time";
+import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-board";
 
 /** The `--exchange` option of every command that takes a ticker. */
 export const EXCHANGE_OPTION = {
@@ -47,7 +48,8 @@ export interface ListingArg {
  * an exchange go through the app's alias table, so `SAN:XPAR` is `SAN:EPA`.
  * A symbol's own exchange and `--exchange` that disagree are an error, unless
  * the command takes several symbols and `--exchange` only fills in the ones
- * without an exchange of their own.
+ * without an exchange of their own. A futures board code no listed security
+ * uses is its future: TTF is TTF=F, while NG stays NovaGold.
  */
 export function parseListingArg(
   raw: string,
@@ -68,7 +70,10 @@ export function parseListingArg(
     );
   }
   const exchange = parsed.exchange ?? option;
-  return { symbol: parsed.symbol, exchange, key: exchange ? `${parsed.symbol}:${exchange}` : parsed.symbol };
+  if (exchange) return { symbol: parsed.symbol, exchange, key: `${parsed.symbol}:${exchange}` };
+  // A futures board code no security uses is its future: TTF is TTF=F.
+  const symbol = bareFuturesCode(parsed.symbol)?.symbol ?? parsed.symbol;
+  return { symbol, exchange, key: symbol };
 }
 
 interface ListingStore {
@@ -251,20 +256,43 @@ interface OtherListingsMessage {
   listings: string[];
 }
 
+/**
+ * The command that asks again for another listing: `gloomberb history SAN:EPA
+ * --range 5Y` keeps the options. Null where the request names listings alone.
+ */
+function retryCommand(request: ListingDataRequest, key: string): string | null {
+  if (request.retry !== undefined) return request.retry?.(key) ?? null;
+  const [command, ...options] = request.command.split(" ");
+  return ["gloomberb", command, key, ...options].join(" ");
+}
+
+/**
+ * "GC=F Gold future (try: gloomberb quote GC=F)", under a bare futures board
+ * code a security keeps (GC, NG) when that security has no data: the future is
+ * the other thing the code names. Null for any other symbol.
+ */
+export function futuresTryLine(symbol: string, request: ListingDataRequest): string | null {
+  const future = futuresContractByCode(symbol);
+  if (!future) return null;
+  const retry = retryCommand(request, future.symbol);
+  return `${future.symbol} ${future.name} future${retry ? ` (try: ${retry})` : ""}`;
+}
+
 function describeOtherListings(
   listing: BareListing,
   { exchange, resolved, others, choose }: BareListingVenues,
   request: ListingDataRequest,
 ): OtherListingsMessage | null {
-  if (others.length === 0) return null;
+  const future = futuresTryLine(listing.symbol, request);
+  if (others.length === 0 && !future) return null;
   const name = resolved?.name || listing.saved?.metadata.name?.trim() || "";
-  const [command, ...options] = request.command.split(" ");
-  const retry = request.retry === undefined ? (key: string) => ["gloomberb", command, key, ...options].join(" ") : request.retry;
   const lines = others.slice(0, MAX_OTHER_LISTINGS).map((venue) => {
     const key = `${listing.symbol}:${venue.exchange}`;
-    return `${key}${venue.name ? ` ${venue.name}` : ""}${retry ? ` (try: ${retry(key)})` : ""}`;
+    const retry = retryCommand(request, key);
+    return `${key}${venue.name ? ` ${venue.name}` : ""}${retry ? ` (try: ${retry})` : ""}`;
   });
   if (others.length > MAX_OTHER_LISTINGS) lines.push(`and ${others.length - MAX_OTHER_LISTINGS} more: gloomberb search ${listing.symbol}`);
+  if (future) lines.push(future);
   const heading = choose ? "Listings" : "Other listings";
   return {
     // The symbol went to no venue, so none of them is said to lack the data.
@@ -273,7 +301,7 @@ function describeOtherListings(
       : `${listing.symbol} resolved to ${name ? `${name} (${exchange})` : exchange}, which has no ${request.noun}.`,
     details: lines.length === 1 ? `${heading}: ${lines[0]}` : [`${heading}:`, ...lines.map((line) => `  ${line}`)].join("\n"),
     heading,
-    listings: others.map((venue) => `${listing.symbol}:${venue.exchange}`),
+    listings: [...others.map((venue) => `${listing.symbol}:${venue.exchange}`), ...future ? [futuresContractByCode(listing.symbol)!.symbol] : []],
   };
 }
 

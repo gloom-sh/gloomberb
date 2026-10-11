@@ -1,4 +1,4 @@
-import { FUTURES_CONTRACTS, type FuturesContract, type FuturesSector } from "../../plugins/builtin/futures/contracts";
+import { futuresBoardContract, type FuturesContract, type FuturesSector } from "../../market-data/futures-board";
 import { isFuturesInstrument } from "../../market-data/futures-contract";
 import type { Quote } from "../../types/financials";
 
@@ -19,11 +19,6 @@ const SECTOR_COMPANIES: Partial<Record<FuturesSector, string>> = {
   livestock: "TSN",
 };
 
-function boardContract(symbol: string): FuturesContract | null {
-  const wanted = symbol.trim().toUpperCase();
-  return FUTURES_CONTRACTS.find((contract) => contract.code === wanted || contract.symbol === wanted) ?? null;
-}
-
 /** "try news LNG", or market headlines where no company follows the contract. */
 function contractSuggestion(contract: FuturesContract): string {
   const company = CONTRACT_COMPANIES[contract.code] ?? SECTOR_COMPANIES[contract.sector];
@@ -41,7 +36,7 @@ export function newsEmptyMessage(
   quote: Pick<Quote, "instrumentType"> | null,
   resolved: boolean,
 ): string {
-  const contract = boardContract(symbol);
+  const contract = futuresBoardContract(symbol);
   const typed = symbol.trim().toUpperCase();
   if (!resolved) {
     return contract

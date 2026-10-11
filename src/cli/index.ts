@@ -135,7 +135,7 @@ function createCoreCliCommands(
         sections: [{
           title: "Glossary",
           lines: [
-            "catalog glossary lists the rates, auction and perpetual-futures terms the functions show, such as bid-to-cover, SOFR or funding rate; with a term, or as catalog explain <term>, it prints what that term means. A search names the terms it matches too.",
+            "catalog glossary lists the rates, auction, energy and perpetual-futures terms the functions show, such as bid-to-cover, SOFR, TTF or funding rate; with a term, or as catalog explain <term>, it prints what that term means. A search names the terms it matches too.",
           ],
         }],
         examples: ["catalog", "catalog options", "catalog HP", "catalog glossary stop-out"],

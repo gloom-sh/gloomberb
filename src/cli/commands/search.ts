@@ -14,6 +14,7 @@ import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
+import { knownGapMessage } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 
 interface SearchCommandDependencies {
@@ -105,6 +106,17 @@ function catalogHint(query: string): string {
   return `Search finds tickers and company names. Try: gloomberb catalog "${query.replace(/"/g, "")}"`;
 }
 
+/**
+ * The notes beside the results: the index a bare root names, data the query
+ * asks for that no source carries yet, and for an empty search the catalog,
+ * unless a known gap already said where to look instead.
+ */
+function searchNotes(query: string, candidates: TickerSearchCandidate[]): string[] {
+  const gap = knownGapMessage(query);
+  return [indexRootNote(query, candidates), gap, candidates.length === 0 && !gap ? catalogHint(query) : null]
+    .filter((note): note is string => !!note);
+}
+
 export function buildSearchReport({
   query,
   candidates,
@@ -115,9 +127,11 @@ export function buildSearchReport({
   const lines = [renderSection(`Search: ${query}`)];
   const indexNote = indexRootNote(query, candidates);
   if (indexNote) lines.push("", indexNote);
+  const gap = knownGapMessage(query);
+  if (gap) lines.push("", gap);
 
   if (candidates.length === 0) {
-    lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
+    if (!gap) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
 
@@ -170,8 +184,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     });
 
     if (dependencies.printResult) {
-      const indexNote = indexRootNote(trimmedQuery, candidates);
-      const warnings = [...(indexNote ? [indexNote] : []), ...(candidates.length === 0 ? [catalogHint(trimmedQuery)] : [])];
+      const warnings = searchNotes(trimmedQuery, candidates);
       dependencies.printResult({
         data: searchCandidateRows(candidates),
         metadata: { query: trimmedQuery },

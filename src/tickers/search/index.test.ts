@@ -256,6 +256,24 @@ describe("ticker-search utilities", () => {
     expect(findExactTickerSearchMatch([{ label: "ES=F:CME" }], "ES=F:NYMEX")).toBeNull();
   });
 
+  test("a futures board code finds its future first where no security uses the code, and right after the security otherwise", async () => {
+    const asked: string[] = [];
+    const dataProvider = createTestDataProvider({
+      search: async (query) => {
+        asked.push(query);
+        if (query.endsWith("=F")) return [makeSearchResult(query, `${query} future`, { exchange: "NYM", type: "FUTURE" })];
+        if (query === "TTF") return [makeSearchResult("TTFL", "Trident Texofab Ltd.", { exchange: "BSE", type: "Common Stock" })];
+        return ["AMEX", "TSX", "NEO", "IEX"].map((exchange) => makeSearchResult("NG", "NovaGold Resources Inc.", { exchange, type: "Common Stock" }));
+      },
+    });
+    const search = (query: string) => searchTickerCandidates({ query, tickers: new Map(), dataProvider });
+    expect((await search("TTF")).map((item) => item.symbol)).toEqual(["TTF=F", "TTFL"]);
+    expect(asked).toEqual(expect.arrayContaining(["TTF", "TTF=F"]));
+    expect((await search("NG")).map((item) => `${item.symbol} ${item.result?.exchange}`).slice(0, 3)).toEqual(["NG AMEX", "NG=F NYM", "NG TSX"]);
+    // Typed alone, TTF opens the future.
+    expect(await resolveTickerSearch({ query: "ttf", activeTicker: null, tickers: new Map(), dataProvider })).toMatchObject({ kind: "provider", symbol: "TTF=F" });
+  });
+
   test("a trailing class code keeps that class and also asks for its market spelling", async () => {
     const asked: string[] = [];
     const dataProvider = createTestDataProvider({

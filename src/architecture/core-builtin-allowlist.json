@@ -8,7 +8,6 @@
   "src/app/runtime/startup.ts": ["chat","plugin-marketplace"],
   "src/brokers/signed-in/sign-in-dialog.tsx": ["cloud"],
   "src/cli/commands/market.ts": ["holders","research","sec"],
-  "src/cli/commands/news-hints.ts": ["futures"],
   "src/cli/commands/options-chain.ts": ["options","options-calculator"],
   "src/cli/commands/options-leaps.ts": ["options","vol-surface"],
   "src/cli/commands/overview.ts": ["correlation","econ","market-movers","sectors","world-indices"],

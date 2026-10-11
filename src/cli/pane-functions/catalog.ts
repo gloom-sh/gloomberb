@@ -396,10 +396,16 @@ function renderCatalogGlossary(glossary: GlossaryLookup, width: number): string 
   return [...defined, ...related].join("\n");
 }
 
+/**
+ * `catalog [query]`: one function in full, or the matches, with the glossary
+ * terms the query names. `gap` is the line for data no source carries yet
+ * (`knownGapMessage`): it leads, and stands in for "No functions match".
+ */
 export function renderPaneCatalogReport(
   entries: PaneCatalogEntry[],
   args: ParsedPaneCatalogArgs,
   glossary: GlossaryLookup = { exact: [], partial: [] },
+  gap: string | null = null,
 ): string {
   const query = args.query.trim().toLowerCase();
   const exact = query
@@ -410,12 +416,13 @@ export function renderPaneCatalogReport(
 
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
   const terms = renderCatalogGlossary(glossary, width);
-  const withTerms = (text: string) => terms ? `${text}\n\n${terms}` : text;
+  const withGap = (text: string) => [gap ? wrapText(gap, width).join("\n") : "", text].filter(Boolean).join("\n\n");
+  const withTerms = (text: string) => withGap(terms ? `${text}\n\n${terms}` : text);
   if (args.query && entries.length === 1) return withTerms(renderCatalogEntry(entries[0]!));
 
   const note = (text: string) => wrapText(text, width).map((line) => cliStyles.muted(line)).join("\n");
   if (entries.length === 0) {
-    if (glossary.exact.length > 0) return terms;
+    if (glossary.exact.length > 0 || gap) return withGap(terms);
     return withTerms(note(args.query
       ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`
       : "No functions are available."));

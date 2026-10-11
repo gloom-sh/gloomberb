@@ -15,7 +15,7 @@ import {
   isValidChartCapabilityId,
   isValidChartSeriesId,
 } from "../../../capabilities/chart-series";
-import { FUTURES_CONTRACTS } from "../futures/contracts";
+import { futuresContractByCode } from "../../../market-data/futures-board";
 import { getSharedRegistry } from "../../registry";
 import { TREASURY_MATURITIES } from "../yield-curve/treasury-data";
 
@@ -119,8 +119,7 @@ export function parseSeriesExpression(value: string): ParsedSeriesExpression | n
     return { kind: "economic", provider: "fred", seriesId, ...(label ? { label } : {}) };
   }
   if (parts.length === 2 && parts[0]?.trim().toUpperCase() === "FUT") {
-    const code = parts[1]?.trim().toUpperCase();
-    const contract = FUTURES_CONTRACTS.find((entry) => entry.code === code);
+    const contract = futuresContractByCode(parts[1]);
     return contract
       ? { kind: "security", symbol: contract.symbol, fieldId: CHART_FIELD_IDS.price, label: contract.name }
       : null;

@@ -6,6 +6,7 @@ import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-
 import { currencyPairCode } from "../../utils/currency-pair";
 import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
 import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
+import { futuresContractByCode } from "../../market-data/futures-board";
 
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
 const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
@@ -404,6 +405,16 @@ export function rankTickerSearchItems<T extends Pick<TickerSearchRankableItem, "
     ? deduped.findIndex((item) => parsePublicTickerKey(item.symbol || item.label).symbol === marketSymbol)
     : -1;
   if (marketIndex > 0) deduped.unshift(...deduped.splice(marketIndex, 1));
+  // A futures board code's future ranks with its code, not with the derivatives
+  // the word ranking puts last: first where no security uses the code (TTF),
+  // right after the security that keeps it otherwise (NovaGold, then NG=F).
+  const boardFuture = assetClass ? null : futuresContractByCode(query);
+  const futureIndex = boardFuture
+    ? deduped.findIndex((item) => normalizeTickerSymbol(item.symbol || item.label) === boardFuture.symbol)
+    : -1;
+  if (boardFuture && futureIndex >= 0) {
+    deduped.splice(boardFuture.bareCode ? 0 : Math.min(1, futureIndex), 0, ...deduped.splice(futureIndex, 1));
+  }
   return deduped;
 }
 
