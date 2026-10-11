@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { validateSeriesDefinition } from "../../../series/validate";
-import { userSeriesDefinitions } from "./user-series";
+import { seriesFromFile } from "./files";
+import { validateSeriesDefinition } from "./validate";
 
 describe("series files", () => {
   test("one value column is one series named by the file; the unit and frequency fall back sensibly", async () => {
     let text = "date,value\n2024-01-01,1\n2024-02-01,2\n2024-03-01,3\n";
-    const [series, ...rest] = userSeriesDefinitions("lemonade_sales.csv", text, async () => text);
+    const [series, ...rest] = seriesFromFile("lemonade_sales.csv", text, async () => text);
     expect(rest).toEqual([]);
     expect(series).toMatchObject({
       id: "user:lemonade_sales",
@@ -30,13 +30,13 @@ describe("series files", () => {
       "2024-01-05,1,40",
       "2024-01-12,2,42",
     ].join("\n");
-    const series = userSeriesDefinitions("Stand 2024.csv", text, async () => text);
+    const series = seriesFromFile("Stand 2024.csv", text, async () => text);
     expect(series.map((entry) => [entry.id, entry.name, entry.unit, entry.frequency, entry.group])).toEqual([
       ["user:stand-2024.sales", "Stand: Sales", "thousand USD", "weekly", "Side projects"],
       ["user:stand-2024.cups-count", "Stand: Cups (count)", "thousand USD", "weekly", "Side projects"],
     ]);
     for (const entry of series) expect(() => validateSeriesDefinition(entry)).not.toThrow();
     // An unknown unit is not a reason to drop the file.
-    expect(userSeriesDefinitions("x.csv", "# unit: furlongs\n2024-01-01,1", async () => "")[0]!.unit).toBe("number");
+    expect(seriesFromFile("x.csv", "# unit: furlongs\n2024-01-01,1", async () => "")[0]!.unit).toBe("number");
   });
 });

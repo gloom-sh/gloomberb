@@ -9,6 +9,7 @@ import type { PluginCapability } from "../capabilities";
 import type { AppConfig } from "../types/config";
 import type { GloomPlugin } from "../types/plugin";
 import { getLoadablePlugins } from "../plugins/catalog";
+import { standaloneSeriesInvoker } from "../series/standalone";
 import type { PluginRegistry } from "../plugins/registry";
 import type { LoadedExternalPlugin } from "../plugins/loader";
 import { fail } from "./errors";
@@ -83,7 +84,8 @@ export async function initMarketData(options: CliContextOptions = {}): Promise<M
   dataProvider.attachRegistry(registryAdapter as PluginRegistry);
   dataProvider.setConfigAccessor(() => context.config);
   dataProvider.setBackgroundRevalidation(false);
-  return { ...context, dataProvider };
+  const seriesCapabilities = standaloneSeriesInvoker(plugins, context.dataDir, context.config.disabledPlugins);
+  return { ...context, dataProvider, seriesCapabilities };
 }
 
 export async function initCliServices(options: CliServicesOptions = {}) {

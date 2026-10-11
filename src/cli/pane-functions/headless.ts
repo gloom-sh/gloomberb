@@ -162,7 +162,7 @@ async function loadHeadlessPaneModel(
  */
 export async function loadResolvedHeadlessPaneModel(
   resolved: ResolvedPaneFunction,
-  context: Pick<MarketContext, "config" | "store" | "refresh"> & Partial<Pick<MarketContext, "persistence">> & {
+  context: Pick<MarketContext, "config" | "store" | "refresh"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
     dataProvider: HeadlessPaneContext["marketData"];
   },
   rawArgument: string,
@@ -178,7 +178,7 @@ export async function loadResolvedHeadlessPaneModel(
     signal,
     ...(context.refresh ? { refresh: true } : {}),
     settings: resolved.instance.settings,
-    capabilities: getSharedRegistry() ?? undefined,
+    capabilities: getSharedRegistry() ?? context.seriesCapabilities,
     async resolvePortfolio(id) {
       const portfolio = context.config.portfolios.find(row => row.id === id);
       if (!portfolio) return null;

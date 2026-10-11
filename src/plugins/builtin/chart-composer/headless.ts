@@ -15,9 +15,6 @@ import type { HistorySession } from "../../../types/price-history";
 import type { TickerFinancials, PricePoint, Quote } from "../../../types/financials";
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
-import { resolveRegisteredSeries } from "../../../series/capability";
-import { SeriesRegistry } from "../../../series/registry";
-import { readUserSeriesFolder } from "./user-series";
 import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
@@ -50,45 +47,14 @@ export interface ChartPaneModel extends HeadlessSeriesResult {
  */
 function headlessCapabilityResolver(context: HeadlessPaneContext) {
   const registry = context.capabilities ? createChartSeriesResolver(context.capabilities) : null;
-  let standalone: Promise<SeriesRegistry> | null = null;
   return async (source: CapabilitySeriesSource, viewport: ChartViewportSpec, spec: ChartSeriesSpec) => {
     if (source.capabilityId === GEO_SERIES_CAPABILITY_ID) {
       const request = <T,>(path: string, init?: RequestInit) => context.apiClient.geo<T>(path, { ...init, signal: init?.signal ?? context.signal });
       return resolveGeoChartSeries(request, source.seriesId, viewport, context.signal);
     }
-    if (registry) return registry(source, viewport, spec);
-    // A report run without the plugin runtime still charts the catalog's series.
-    standalone ??= standaloneSeriesRegistry(context.config.dataDir);
-    const resolved = await resolveRegisteredSeries(await standalone, source.capabilityId, source.seriesId, viewport, context.signal);
-    if (!resolved) throw new Error(`Chart series capability "${source.capabilityId}" is unavailable. Enable its plugin or provider.`);
-    return resolved;
+    if (!registry) throw new Error(`Chart series capability "${source.capabilityId}" is unavailable. Enable its plugin or provider.`);
+    return registry(source, viewport, spec);
   };
-}
-
-/**
- * The series the built-in plugins declare, and the files in the profile's
- * series folder, for a report that runs no plugin setup.
- */
-async function standaloneSeriesRegistry(dataDir: string): Promise<SeriesRegistry> {
-  const { getLoadablePlugins } = await import("../../catalog");
-  const registry = new SeriesRegistry();
-  for (const plugin of getLoadablePlugins()) {
-    for (const definition of plugin.series ?? []) {
-      try {
-        registry.register(plugin.id, definition);
-      } catch {
-        // The app logs a bad definition when it registers; a report charts the rest.
-      }
-    }
-  }
-  for (const definition of await readUserSeriesFolder(dataDir)) {
-    try {
-      registry.register("user", definition);
-    } catch {
-      // Same as above.
-    }
-  }
-  return registry;
 }
 
 export async function loadChartPaneModel(
