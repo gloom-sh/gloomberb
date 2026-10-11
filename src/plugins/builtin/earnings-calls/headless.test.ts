@@ -3,6 +3,7 @@ import type {
   CloudEarningsCallPayload,
   CloudEarningsTranscriptPayload,
 } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import {
   createEarningsCallsHeadless,
@@ -134,6 +135,13 @@ describe("earnings calls headless", () => {
       }),
     ]);
     expect(result.metadata).toMatchObject({ availability: "pending", returned: 1 });
+  });
+
+  test("a free account is told there is no preview and what Pro adds, and a sign-in refusal stays as it is", async () => {
+    const refusing = (status: number, message: string) => createEarningsCallsHeadless({ ...dependencies(), loadCalls: async () => { throw new ApiRequestError(message, status); } });
+    await expect(refusing(402, "Pro plan required").load(callArgs({}), context)).rejects.toThrow(
+      "Free shows no earnings calls. Gloom Pro adds every call with its transcript, speaker turns and analyst Q&A.");
+    await expect(refusing(401, "Unauthorized").load(callArgs({}), context)).rejects.toThrow("Unauthorized");
   });
 });
 

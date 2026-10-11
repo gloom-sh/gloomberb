@@ -4,7 +4,7 @@ import { fetchSupplyChain } from "./client";
 import { evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, trustTier } from "./trust";
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
 import { exposureLabel, pathLabel } from "./graph-model";
-import { supplyRoleCounts } from "./model";
+import { lockedDisclosures, supplyPreviewNote, supplyRoleCounts } from "./model";
 
 const pathColumns = [
   { key: "route", header: "Route" }, { key: "hops", header: "Hops" },
@@ -92,7 +92,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     // The pane's figures, per tab: Table shows one direction, Flow both.
     const figures = (key: "counterparties" | "locked") => Object.fromEntries(([["says", ["says"]], ["names", ["names"]], ["flow", ["says", "names"]]] as const)
       .map(([scope, views]) => [scope, Object.fromEntries(supplyRoleCounts(data, views, options).filter((entry) => entry[key] > 0).map((entry) => [entry.role, entry[key]]))]));
-    return { complete: !data.truncated, errors: data.truncated ? ["Additional relationships need Gloom Pro"] : [],
+    return { complete: !data.truncated, errors: data.truncated ? [data.access === "preview" ? supplyPreviewNote(data, lockedDisclosures(data, ["says", "names"])) : "Additional relationships need Gloom Pro"] : [],
       sections: (["says", "names"] as const).flatMap((view) => [false, true].map((leads) => ({ title: `${view === "says" ? `${data.symbol} says` : `Names ${data.symbol}`}${leads ? " | Unconfirmed" : ""}`,
         rows: data[view].filter((row) => matchesSupplyOptions(row, options) && isUnconfirmed(row) === leads).map((row) => ({ counterparty: row.counterparty.name, ticker: row.counterparty.ticker, aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
           pct: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, fiscalYear: row.fiscalYear,

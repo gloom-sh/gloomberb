@@ -27,8 +27,8 @@ import { useSupplyEvidence } from "./evidence";
 import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
 import {
-  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, nativeValue, percentage, ROLE_COLORS, roleLabel,
-  shareParts, sortRows, supplyRoleCounts, type SupplySort,
+  cellText, counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyName, disclosedValue, lockedDisclosures, nativeValue, percentage, ROLE_COLORS, roleLabel,
+  shareParts, sortRows, supplyPreviewNote, supplyRoleCounts, type SupplySort,
 } from "./model";
 import { RowEvidence } from "./row-evidence";
 import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, TIER_OPTIONS } from "./trust";
@@ -180,7 +180,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
     : selectionRows.find((row) => row.id === selectedId) ?? (tab === "flow" ? allRows.find((row) => row.id === flowIds[0]) : rows[0]) ?? null;
   const openRow = allRows.find((row) => row.id === openId) ?? (openingEvidence && openId === null ? rows[0] : null) ?? null;
   useSupplyEvidence(graphTab ? null : data, tab, view, tab === "flow" ? flowIds : rows.map((row) => row.id), openRow?.id ?? null, options.tiers);
-  const locked = data?.truncated ? Math.max(0, Object.values(data.counts[view]).reduce((a, b) => a + b, 0) - data[view].length) : 0;
+  const locked = data?.truncated ? lockedDisclosures(data, [view]) : 0;
   const items = useMemo<SectionedRow<Item>[]>(() => buildSectionedRows<Item>([
     { label: "Relationships", items: rows.filter((row) => !isUnconfirmed(row)).map((row) => ({ kind: "edge", row })) },
     { label: "Unconfirmed", items: rows.filter(isUnconfirmed).map((row) => ({ kind: "edge", row })) },
@@ -303,8 +303,8 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
           items={items} focused={focused && !openRow} rootWidth={width} rootHeight={bodyHeight} rootBefore={header}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: (entry) => entry.key, onChange: (id) => setSelected(id) }} getItemKey={(entry) => entry.key}
           isNavigable={isSectionedItemRow}
-          // The placeholders stand for every locked disclosure; the header counts those, as the figures do.
-          renderSectionHeader={(entry) => entry.kind === "section" && entry.label === "Pro" ? { text: `Pro (${locked})` } : renderSectionedRowHeader(entry)}
+          // The placeholders stand for every locked disclosure; the header says what free shows and counts those, as the figures do.
+          renderSectionHeader={(entry) => entry.kind === "section" && entry.label === "Pro" ? { text: supplyPreviewNote(data, locked) } : renderSectionedRowHeader(entry)}
           onActivate={(entry) => { if (isSectionedItemRow(entry)) entry.item.kind === "edge" ? navigate(entry.item.row) : openUpgrade(); }}
           renderCell={renderCell} sortColumnId={sort.column} sortDirection={sort.direction}
           onHeaderClick={(column) => setSort((old) => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}

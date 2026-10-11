@@ -1,7 +1,25 @@
 import type { AwardFilter, AwardRow } from "../../../api-client/awards";
-import type { HeadlessBundleSection, HeadlessPaneDefinition } from "../../../types/headless";
+import { notATickerSymbol } from "../../../sources/provider-errors";
+import type { HeadlessBundleSection, HeadlessPaneContext, HeadlessPaneDefinition } from "../../../types/headless";
+import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
-import { AWARD_TABS } from "./model";
+import { AWARD_TABS, awardsPreviewNote, futureAwardDatesNote } from "./model";
+
+/**
+ * "Not a ticker: ZZZZQ." when no listing has the symbol, so a preview that
+ * cannot filter by ticker does not read the same for a typo as for a real
+ * company. Any other failure (a timeout) says nothing.
+ */
+async function notATicker(ticker: string, ctx: HeadlessPaneContext): Promise<string | null> {
+  try {
+    const { symbol, exchange } = await resolveHeadlessInstrument(ctx, ticker);
+    await ctx.marketData.getQuote(symbol, exchange);
+    return null;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return notATickerSymbol(message) ? message : null;
+  }
+}
 
 const awardRecord = (row: AwardRow) => ({ id: row.id, date: row.awardDate, dateBasis: row.dateBasis ?? "award", dataBasis: row.dataBasis ?? null,
   fieldAsOf: row.fieldAsOf ?? null, fieldSourceUrls: row.fieldSourceUrls ?? null, recipient: row.recipient.name, ticker: row.entity?.ticker ?? null,
@@ -41,6 +59,10 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const filter: AwardFilter = { ticker: args.rawArgument.trim().toUpperCase() || undefined, awardType: args.options.type as AwardFilter["awardType"], limit: Number(args.options.limit ?? 100) };
     for (const key of ["jurisdiction", "currency", "source", "agency", "sector", "parentId", "from", "to", "query", "cursor"] as const) if (args.options[key]) filter[key] = String(args.options[key]);
     const data = await fetchAwards(filter, ctx.apiClient, ctx.signal);
+    // A preview's rows are anyone's, and Pro's are empty either way, so only those two ask whether the ticker exists.
+    const missing = filter.ticker && (data.locked || !data.rows.length) ? await notATicker(filter.ticker, ctx) : null;
+    const lock = awardsPreviewNote(data, filter);
+    const futureDates = futureAwardDatesNote(data.rows, data.generatedAt);
     const sections: HeadlessBundleSection[] = [];
     const tab = String(args.options.tab ?? "feed");
     if (tab === "feed" || tab === "company" || tab === "all") sections.push({ title: "Awards", rows: data.rows.map(awardRecord) });
@@ -50,7 +72,10 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
       { title: "Sector totals", rows: data.sectors.map((row) => ({ ...row })) });
     if (tab === "events" || tab === "all") sections.push({ title: "Awards relative to annual revenue", rows: data.alerts.map(awardRecord) });
     return { complete: !data.locked && !data.nextCursor && data.status === "available" && !Object.values(data.truncated ?? {}).some(Boolean), sections,
-      errors: [...data.gaps, ...(data.locked ? ["Additional awards and history require Gloom Pro"] : [])],
-      metadata: { generatedAt: data.generatedAt, asOf: data.asOf, access: data.access, nextCursor: data.nextCursor, truncated: data.truncated, coverage: data.coverage, sources: data.sources, filters: filter } };
+      ...(futureDates ? { notes: [futureDates] } : {}),
+      errors: [...(missing ? [missing] : []), ...data.gaps, ...(lock ? [lock] : [])],
+      // A preview is the same latest awards whatever was asked, so the filters were requested, not applied.
+      metadata: { generatedAt: data.generatedAt, asOf: data.asOf, access: data.access, nextCursor: data.nextCursor, truncated: data.truncated, coverage: data.coverage, sources: data.sources,
+        filters: filter, filtersApplied: !data.locked } };
   },
 };

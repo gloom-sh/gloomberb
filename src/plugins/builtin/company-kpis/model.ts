@@ -3,6 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import type { CompositeChartXAxis } from "../../../components/chart/composite/types";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { freePreviewNote } from "../shared/free-preview";
 
 export type CompanyRow = KpiObservation | KpiGuidance;
 export const isGuidance = (row: CompanyRow): row is KpiGuidance => "issuedDate" in row;
@@ -121,4 +122,12 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
   const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "basis", "scope", "issued", "change"]
     : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;
   return order ? columns.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : columns;
+}
+
+/** The lock line of a free preview, in the same words in the pane and `fn KPIS` / `fn GUIDE`. */
+export function companyPreviewNote(data: Pick<KpisPayload, "lockedRows" | "totalRows" | "coverage">, guidance: boolean): string {
+  const count = (value: number) => value.toLocaleString("en-US");
+  const rows = `${count(data.totalRows)} ${guidance ? "guidance figures" : "KPI values"}`;
+  return freePreviewNote({ shows: data.lockedRows > 0 ? `${count(Math.max(0, data.totalRows - data.lockedRows))} of ${rows}` : rows,
+    adds: data.lockedRows > 0 ? `the other ${count(data.lockedRows)}` : null, historyFrom: data.coverage.firstPeriod });
 }

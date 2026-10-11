@@ -19,7 +19,8 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
 import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyColumns, dimensionLabel, directionLabel, directionTone, guideGroupKey, guidanceSeries, fiscalLabel,
-  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, rangeText, seriesLabel, unitLabel, unitSuffix, valueText, type CompanyRow } from "./model";
+  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, rangeText, seriesLabel, unitLabel, unitSuffix, valueText, companyPreviewNote,
+  type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { PricePoint } from "../../../types/financials";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
@@ -27,8 +28,10 @@ import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 /** Columns that say nothing while every row is the company's consolidated, as-reported figure. */
 const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
 
-type Item = { id: string; row: CompanyRow } | { id: string; row: null };
+/** A locked placeholder, or with `note` the line above them saying what free shows and what Pro adds. */
+type Item = { id: string; row: CompanyRow } | { id: string; row: null; note?: string };
 const getId = (item: Item) => item.id;
+const isNote = (item: Item) => "note" in item && !!item.note;
 function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRow; sourceId: string | null; onSource: (id: string) => void; width: number }) {
   const colors = useThemeColors();
   const evidence = row.evidence.find((entry) => entry.id === sourceId) ?? row.evidence[0]!;
@@ -134,7 +137,9 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const activeRow = openRow ?? selected;
   const preview = data?.access === "preview" && data.lockedRows > 0;
   const lockedCount = preview ? Math.min(3, data.lockedRows) : 0;
-  const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })), ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount]);
+  const previewNote = preview ? companyPreviewNote(data, mode === "guidance") : null;
+  const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })), ...(previewNote ? [{ id: "note:preview", row: null, note: previewNote }] : []),
+    ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount, previewNote]);
   // One trend per series beside its latest value, once a series has three comparable points.
   const trends = useMemo(() => {
     const map = new Map<string, PricePoint[]>();
@@ -185,6 +190,7 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
   const renderCell = (item: Item, column: (typeof columns)[number]): DataTableCell => {
     const row = item.row;
     if (!row) {
+      if (isNote(item)) return { text: "" };
       if (!desktop && column.id === "metric" && item.id === "locked:0") return { text: "Unlock with Pro", content: <UpgradeLabel text="Unlock with Pro" onPress={openUpgrade} />, onMouseDown: openUpgrade };
       return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === "metric" ? "Additional disclosure" : "Hidden"}</Text></Blurred> } : { text: "░░░░░", color: colors.textDim };
     }
@@ -219,7 +225,8 @@ function CompanyView({ symbol, exchange, name, mode, width, height, focused }: P
       empty={!data && resource.error === KPI_UNAVAILABLE} emptyTitle={KPI_UNAVAILABLE} subject="company disclosures">
       {data ? <DataTableStackView<Item> focused={focused} rootWidth={width} rootHeight={bodyHeight} columns={columns} items={items} getItemKey={getId}
         selection={{ kind: "id", selectedId: selected?.id ?? null, getId, onChange: setSelected }}
-        onActivate={(item) => item.row ? setOpen(item.row.id) : openUpgrade()} renderCell={renderCell} freezeFirstColumn selectedTextOverridesCellColor showHorizontalScrollbar
+        onActivate={(item) => item.row ? setOpen(item.row.id) : isNote(item) ? undefined : openUpgrade()} renderCell={renderCell}
+        isNavigable={(item) => !isNote(item)} renderSectionHeader={(item) => "note" in item && item.note ? { text: item.note } : null} freezeFirstColumn selectedTextOverridesCellColor showHorizontalScrollbar
         detailOpen={!!openRow} onBack={() => setOpen(null)} detailTitle={openRow ? `${openRow.metric.name} · ${fiscalLabel(openRow)}` : undefined}
         detailScrollRef={detailScrollRef} detailContent={openRow ? <DetailScrollBody ref={detailScrollRef} resetScrollKey={openRow.id}><DisclosureEvidence row={openRow} sourceId={sourceId} onSource={setSource} width={width} /></DetailScrollBody> : null}
         sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((previous) => ({ column, direction: previous.column === column && previous.direction === "desc" ? "asc" : "desc" }))}

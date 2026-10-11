@@ -8,12 +8,14 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessRowsResult,
 } from "../../../types/plugin";
+import { countOf, freePreviewNote } from "../shared/free-preview";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import {
   callStatusLabel,
   isPendingTranscript,
   loadEarningsCallsWithClient,
   loadTranscriptWithClient,
+  statusOf,
   type EarningsCallsResult,
 } from "./data";
 import {
@@ -65,6 +67,9 @@ const defaultDependencies: EarningsCallsHeadlessDependencies = {
   ),
   loadTranscript: (callId, context) => loadTranscriptWithClient(context.apiClient, callId),
 };
+
+/** The whole feature is Pro, so a free account's lock line says there is no preview rather than the server's bare "Pro plan required". */
+const CALLS_PRO_NOTE = freePreviewNote({ shows: countOf(0, "earnings call"), adds: "every call with its transcript, speaker turns and analyst Q&A" });
 
 function callRow(call: CloudEarningsCallPayload) {
   return {
@@ -266,7 +271,9 @@ export function createEarningsCallsHeadless(
     },
     async load(args, context) {
       const ticker = typeof args.argument === "string" ? args.argument : null;
-      const calls = await dependencies.loadCalls(ticker, 200, context);
+      const calls = await dependencies.loadCalls(ticker, 200, context).catch((error: unknown) => {
+        throw statusOf(error) === 402 ? new Error(CALLS_PRO_NOTE, { cause: error }) : error;
+      });
       if (!ticker || !readsTranscript(args)) {
         return projectEarningsCallsHeadless(calls, { ...args, options: { ...args.options, limit: args.options.limit ?? 50 } });
       }
