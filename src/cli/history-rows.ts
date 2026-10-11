@@ -8,6 +8,8 @@ import {
   RANGE_HISTORY_RESOLUTION,
   type ManualChartResolution,
 } from "../time-series/resolution";
+import { classifyInstrumentType } from "../tickers/instrument-kind";
+import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel } from "../utils/currency-units";
 import { getPricePointTimestamp } from "../utils/price-history";
@@ -259,6 +261,43 @@ export function historyNotes(
     }
   }
   return notes;
+}
+
+/** Gaps listed by date before the rest are only counted. */
+const LISTED_GAPS = 3;
+
+/**
+ * "No bar for 2026-10-10": the days a coin, which trades every day, has no
+ * daily bar for between its first and last bar. Days before the first bar are
+ * before the listing. A market that closes skips weekends and holidays, so its
+ * gaps say nothing and get no note.
+ */
+export function historyGapNote(
+  rows: readonly Pick<HistoryRow, "date" | "interval">[],
+  market: { listing: string; exchange?: string; instrumentType?: string },
+): string | null {
+  const everyDay = isRoundTheClockCoin(market.listing, market.exchange)
+    || classifyInstrumentType(market.instrumentType) === "crypto";
+  if (!everyDay || rows[0]?.interval !== "1d") return null;
+  const days = new Set(rows.map((row) => Date.parse(`${row.date.slice(0, 10)}T00:00:00Z`)).filter(Number.isFinite));
+  const sorted = [...days].sort((left, right) => left - right);
+  const gaps: Array<[number, number]> = [];
+  for (const [index, day] of sorted.slice(1).entries()) {
+    const previous = sorted[index]!;
+    if (day - previous > DAY_MS) gaps.push([previous + DAY_MS, day - DAY_MS]);
+  }
+  if (!gaps.length) return null;
+  const date = (time: number) => new Date(time).toISOString().slice(0, 10);
+  const length = (gaps: Array<[number, number]>) => gaps.reduce((count, [from, to]) => count + (to - from) / DAY_MS + 1, 0);
+  // The latest gaps by date, the rest as a count.
+  const shown = gaps.slice(-LISTED_GAPS);
+  const earlier = length(gaps) - length(shown);
+  const listed = [
+    ...earlier > 0 ? [`${earlier} earlier ${earlier === 1 ? "day" : "days"}`] : [],
+    ...shown.map(([from, to]) => from === to ? date(from) : `${date(from)} to ${date(to)}`),
+  ];
+  const list = listed.length > 1 ? `${listed.slice(0, -1).join(", ")} and ${listed.at(-1)}` : listed[0];
+  return `${length(gaps) === 1 ? "No bar" : "No bars"} for ${list}`;
 }
 
 /** "37 of 251 bars have high below open or close in the source data; ...", or null when every bar agrees. */

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { cleanFloat32Price, historyFlagNote, historyNotes, historyPriceDecimals, historyRows, historyUnit } from "./history-rows";
+import { cleanFloat32Price, historyFlagNote, historyGapNote, historyNotes, historyPriceDecimals, historyRows, historyUnit } from "./history-rows";
 import { pricePointValues } from "../utils/price-history-integrity";
 
 const daily = (bars: number[][]) => historyRows(bars.map(([open, high, low, close], index) => ({
@@ -63,6 +63,30 @@ describe("history rows", () => {
     const weekly = historyRows([0, 7, 14].map((day) => ({ date: new Date(Date.UTC(2026, 0, 5 + day)), close: 1 })), null);
     expect(weekly[0]!.interval).toBe("1wk");
     expect(historyNotes("6M", weekly[0]!.interval, weekly[0]!.date, now)).toContain("Asked 6M, got weekly bars from 2026-01-05");
+  });
+
+  test("a coin's day without a bar is named; a market's weekends and the days before a listing are not", () => {
+    const days = (first: string, last: string, skip: string[] = []) => {
+      const dates: Date[] = [];
+      for (let time = Date.parse(first); time <= Date.parse(last); time += 86_400_000) {
+        if (!skip.includes(new Date(time).toISOString().slice(0, 10))) dates.push(new Date(time));
+      }
+      return historyRows(dates.map((date) => ({ date, close: 1 })), "1d");
+    };
+    const btc = { listing: "BTC-USD", exchange: "CCC", instrumentType: "CRYPTOCURRENCY" };
+    // The coin's daily bars went from 9 Oct to 11 Oct; a coin listed mid-range starts late without a gap.
+    expect(historyGapNote(days("2026-09-11", "2026-10-11", ["2026-10-10"]), btc)).toBe("No bar for 2026-10-10");
+    expect(historyGapNote(days("2026-10-02", "2026-10-11"), { listing: "NEW-USD" })).toBeNull();
+    // A coin named by its listing type alone counts too; several gaps fold into one line.
+    expect(historyGapNote(
+      days("2026-08-01", "2026-10-11", ["2026-08-03", "2026-08-20", "2026-09-30", "2026-10-04", "2026-10-05", "2026-10-06", "2026-10-10"]),
+      { listing: "BTC-EUR", instrumentType: "CRYPTOCURRENCY" },
+    )).toBe("No bars for 2 earlier days, 2026-09-30, 2026-10-04 to 2026-10-06 and 2026-10-10");
+    // A stock's weekend, and a coin's weekly bars, are no gap.
+    const weekdays = days("2026-09-28", "2026-10-09", ["2026-10-03", "2026-10-04"]);
+    expect(historyGapNote(weekdays, { listing: "AAPL", exchange: "NASDAQ", instrumentType: "EQUITY" })).toBeNull();
+    const weekly = historyRows([0, 7, 21].map((day) => ({ date: new Date(Date.UTC(2026, 8, 7 + day)), close: 1 })), "1wk");
+    expect(historyGapNote(weekly, btc)).toBeNull();
   });
 
   test("prices are in the quote's currency, an FX pair's counter currency, or index points, and never a guessed one", () => {
