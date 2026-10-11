@@ -285,11 +285,12 @@ export function CdsPane({
 
   const trades = activity?.trades ?? NO_TRADES;
   const summaries = useMemo(() => (issuerQuery ? NO_ISSUERS : summarizeIssuers(trades)), [issuerQuery, trades]);
-  // Each listed issuer's latest 5Y level, read once its trades are in, so the list ranks by it as `fn CDS` does.
+  // Every listed issuer's latest 5Y level, one request beside the trades, so the list ranks by it as `fn CDS` does.
   const loadLevelsRef = useRef(loadLevels);
   loadLevelsRef.current = loadLevels;
-  const levelsRequest = useCallback(() => loadLevelsRef.current(summaries), [summaries]);
-  const levels = useAsyncResource(summaries.length ? levelsRequest : null, { keepPreviousData: true });
+  const levelsRequest = useCallback(() => loadLevelsRef.current(), []);
+  const levels = useAsyncResource(issuerQuery ? null : levelsRequest);
+  useAutoRefresh(levels.updatedAt, levels.load);
   const issuers = useMemo(
     () => (issuerQuery ? [] : sortIssuers(withSpreadLevels(summaries, levels.data), issuerSort)),
     [issuerQuery, issuerSort, levels.data, summaries],
@@ -320,7 +321,7 @@ export function CdsPane({
     focused,
     notices: [
       ...(historyIssuer && history.error && !history.data ? ["5Y spread history unavailable."] : []),
-      ...(!issuerQuery && levels.error && !levels.data ? ["5Y spreads unavailable."] : []),
+      ...(summaries.length && levels.error && !levels.data ? ["5Y spreads unavailable."] : []),
     ],
   });
 
@@ -346,6 +347,7 @@ export function CdsPane({
 
   usePaneRefreshKey(() => {
     load();
+    if (!issuerQuery) levels.load();
     if (historyIssuer) history.load();
   }, { focused });
 

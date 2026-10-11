@@ -13,6 +13,7 @@ import {
   type CdsActivity,
   type CdsFetch,
   type CdsHistoryFetch,
+  type CdsLevelsFetch,
   type CdsSpreadHistory,
   type InstrumentSearch,
 } from "./client";
@@ -192,6 +193,9 @@ export function createCdsHeadless(
     async load(args, ctx) {
       const issuer = typeof args.argument === "string" ? args.argument : null;
       const fetchHistory: CdsHistoryFetch = (params) => ctx.apiClient.getCloudCdsHistory(params);
+      const fetchLevels: CdsLevelsFetch = () => ctx.apiClient.getCloudCdsLevels();
+      // The list's levels are one request for every issuer, read beside its trades.
+      const levels = issuer?.trim() ? null : settled(loadLevels(fetchLevels));
       const activity = await dependencies.load(
         args,
         issuer,
@@ -203,8 +207,7 @@ export function createCdsHeadless(
         const history = activity.issuer ? await settled(loadHistory(activity.issuer, fetchHistory)) : null;
         return projectCdsHeadless({ activity, history });
       }
-      const levels = await settled(loadLevels(summarizeIssuers(activity.trades), fetchHistory));
-      return projectCdsHeadless({ activity, levels });
+      return projectCdsHeadless({ activity, levels: await levels });
     },
   };
 }

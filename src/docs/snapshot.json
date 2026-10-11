@@ -1185,8 +1185,8 @@
   {
    "code": "CDS",
    "name": "Single-name CDS",
-   "description": "Corporate CDS trades",
-   "detail": "Single-name corporate CDS trade activity, by issuer with trade count and spread.",
+   "description": "Corporate 5Y CDS and trades",
+   "detail": "Single-name corporate CDS. CDS alone lists the issuers traded in the last 5 days with trade count, last trade and 5Y spread, to rank them by; with a ticker or issuer, its 5Y spread (level, date, 1M change, range) and its trades.",
    "category": "macro",
    "arg": "F",
    "shot": "https://gloom.sh/screenshots/fn/CDS.png",

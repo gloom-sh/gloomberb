@@ -1,4 +1,4 @@
-import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../../api-client";
+import type { CloudCdsHistoryPointPayload, CloudCdsLevelPayload, CloudCdsTradePayload } from "../../../api-client";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import type { HeadlessPaneFreshness } from "../../../types/headless";
@@ -277,6 +277,26 @@ export function summarizeIssuers(trades: readonly CdsTrade[]): CdsIssuerSummary[
 
 /** The latest 5Y level and its date, by issuer key. */
 export type CdsSpreadLevels = ReadonlyMap<string, { spreadBp: number; date: string }>;
+
+/**
+ * The backend's levels under the key the list groups issuers by, so every
+ * spelling of a name finds its level. Where two names the backend keeps apart
+ * fold into one key ("Oracle Corporation", "Oracle Cop"), the spelling the
+ * list would show keeps it. Malformed entries are left out.
+ */
+export function spreadLevelsOf(levels: readonly CloudCdsLevelPayload[]): CdsSpreadLevels {
+  const byKey = new Map<string, { issuer: string; spreadBp: number; date: string }>();
+  for (const level of levels) {
+    if (typeof level.issuer !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(level.date) || !Number.isFinite(level.spreadBp)) continue;
+    const issuer = displayIssuerName(level.issuer);
+    if (!issuer) continue;
+    const key = issuerGroupKey(issuer);
+    const current = byKey.get(key);
+    if (current && preferredIssuerName(current.issuer, issuer) === current.issuer) continue;
+    byKey.set(key, { issuer, spreadBp: level.spreadBp, date: level.date });
+  }
+  return new Map([...byKey].map(([key, { spreadBp, date }]) => [key, { spreadBp, date }]));
+}
 
 /** Each issuer with the latest level of its 5Y line, where it has one, so the list ranks by it. */
 export function withSpreadLevels(rows: readonly CdsIssuerSummary[], levels: CdsSpreadLevels | null): CdsIssuerSummary[] {

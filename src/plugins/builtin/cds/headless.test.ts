@@ -6,7 +6,7 @@ import { renderReportCsv } from "../../../cli/report-tables";
 import type { HeadlessBundleResult, HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { cdsHeadless, createCdsHeadless } from "./headless";
 import type { CdsActivity, CdsSpreadHistory } from "./client";
-import { normalizeCdsTrades } from "./model";
+import { normalizeCdsTrades, sortIssuers, type CdsIssuerSummary } from "./model";
 
 /** Sunday 11 Oct 2026, two days after Ford's last trade. */
 const NOW = Date.parse("2026-10-11T15:14:00Z");
@@ -59,9 +59,9 @@ function args(argument: string | null): HeadlessPaneLoadArgs {
 
 const STATUS = { complete: true, unavailableSymbols: [] };
 
-async function report(argument: string | null, load: Parameters<typeof createCdsHeadless>[0]) {
+async function report(argument: string | null, load: Parameters<typeof createCdsHeadless>[0], apiClient: object = {}) {
   const definition = createCdsHeadless(load);
-  const result = await definition.load(args(argument), {} as HeadlessPaneContext) as HeadlessBundleResult;
+  const result = await definition.load(args(argument), { apiClient } as unknown as HeadlessPaneContext) as HeadlessBundleResult;
   const freshness = deriveHeadlessFreshness(definition, result, NOW);
   return {
     result,
@@ -114,8 +114,11 @@ describe("CDS report", () => {
     expect(text).toMatch(/1M change\s+\+13bp/);
   });
 
-  test("lists issuers with their 5Y level and its date, so they can be ranked by it", async () => {
-    const asked: string[] = [];
+  test("lists issuers with their 5Y level and its date from one request, however many are listed", async () => {
+    const requests = { levels: 0, history: 0 };
+    const listed = Array.from({ length: 40 }, (_, index) => (
+      tape(String(100 + index), "2026-10-06T12:00:00Z", { issuerName: `Issuer ${index} Holdings` })
+    ));
     const { result, text } = await report(null, {
       load: async () => ({
         ...FORD,
@@ -126,21 +129,58 @@ describe("CDS report", () => {
           tape("3", "2026-10-09T19:55:00Z", { issuerName: "Amazon.com;Inc." }),
           tape("4", "2026-10-08T12:00:00Z", { issuerName: "AMAZON.COM INC" }),
           tape("5", "2026-10-07T12:00:00Z", { issuerName: "Amazon.com;Inc." }),
+          ...listed,
         ]),
       }),
-      loadLevels: async (issuers) => {
-        asked.push(...issuers.map((row) => row.issuer));
-        return new Map([["amazon com", { spreadBp: 73, date: "2026-10-09" }]]);
+    }, {
+      getCloudCdsLevels: async () => {
+        requests.levels += 1;
+        return {
+          source: "DTCC PPD",
+          tenor: "5Y",
+          asOf: null,
+          levels: [
+            { issuer: "Amazon.com, Inc.", spreadBp: 73, date: "2026-10-09" },
+            { issuer: "Issuer 7 Holdings", spreadBp: 412.5, date: "2026-10-07" },
+          ],
+        };
+      },
+      getCloudCdsHistory: async () => {
+        requests.history += 1;
+        throw new Error("not for the list");
       },
     });
-    // DTCC's `;` is the comma it stands for, and every spelling is one issuer.
-    expect(asked).toEqual(["Ford Motor Company", "Amazon.com, Inc."]);
-    expect(result.sections[0]!.rows!.map((row) => [row.issuer, row.trades, row.spread5yBp, row.spread5yDate])).toEqual([
+    expect(requests).toEqual({ levels: 1, history: 0 });
+    const rows = result.sections[0]!.rows!;
+    // DTCC's `;` is the comma it stands for, every spelling is one issuer, and a name without a level has none.
+    expect(rows.slice(0, 2).map((row) => [row.issuer, row.trades, row.spread5yBp, row.spread5yDate])).toEqual([
       ["Amazon.com, Inc.", 3, 73, "2026-10-09"],
       ["Ford Motor Company", 2, null, null],
     ]);
+    expect(rows).toHaveLength(42);
+    // Ranked by level, names without one last.
+    expect(sortIssuers(rows as unknown as CdsIssuerSummary[], { columnId: "spread", direction: "desc" })
+      .slice(0, 3).map((row) => [row.issuer, row.spread5yBp])).toEqual([
+      ["Issuer 7 Holdings", 412.5],
+      ["Amazon.com, Inc.", 73],
+      ["Ford Motor Company", null],
+    ]);
     expect(text).toMatch(/Amazon\.com, Inc\.\s+3\s+2026-10-09 19:55\s+73bp\s+2026-10-09/);
     expect(text.trimEnd().split("\n").at(-1)).toBe("Source: DTCC · last trade 2026-10-09 · lag 2 days");
+  });
+
+  test("still lists the issuers, without levels, when the levels request fails", async () => {
+    const { result } = await report(null, {
+      load: async () => ({ ...FORD, query: null, issuer: null }),
+    }, {
+      getCloudCdsLevels: async () => {
+        throw new Error("offline");
+      },
+    });
+    expect(result.errors).toEqual(["5Y spreads unavailable."]);
+    expect(result.sections[0]!.rows!.map((row) => [row.issuer, row.trades, row.spread5yBp])).toEqual([
+      ["Ford Motor Company", 2, null],
+    ]);
   });
 
   test("a ticker whose CDS trades under another entity reads that entity, and an empty window says what was searched", async () => {

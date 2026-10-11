@@ -142,34 +142,29 @@ describe("loadCdsSpreadHistory", () => {
 });
 
 describe("loadCdsSpreadLevels", () => {
-  const line = (issuer: string, spreadBp: number) => ({
-    source: "DTCC PPD", issuer, tenor: "5Y", currency: "USD", asOf: null,
-    points: [{ date: "2026-10-09", spreadBp, prints: 3, reported: 0, maturity: "2031-12-20" }],
-  });
-
-  test("reads each listed issuer's latest level from a month of its line, leaving out names it cannot read", async () => {
-    const requested: unknown[] = [];
-    const levels = await loadCdsSpreadLevels([
-      { key: "ford motor", issuer: "Ford Motor Company" },
-      { key: "sr nt", issuer: "SR NT CONV" },
-      { key: "oracle", issuer: "Oracle Corporation" },
-    ], async (params) => {
-      requested.push(params);
-      if (params.issuer === "SR NT CONV") throw new Error("issuer must name a company");
-      return line(params.issuer, params.issuer === "Oracle Corporation" ? 205 : 157);
+  test("reads every issuer's level in one request and keys it as the list keys issuers", async () => {
+    let requests = 0;
+    const levels = await loadCdsSpreadLevels(async () => {
+      requests += 1;
+      return {
+        source: "DTCC PPD",
+        tenor: "5Y",
+        asOf: null,
+        levels: [
+          { issuer: "Amazon.com;Inc.", spreadBp: 73, date: "2026-10-09" },
+          { issuer: "Ford Motor Company", spreadBp: 157, date: "2026-10-09" },
+          // Two names the backend keeps apart fold into one row; the list's spelling keeps it.
+          { issuer: "ORACLE COP", spreadBp: 240, date: "2026-10-02" },
+          { issuer: "Oracle Corporation", spreadBp: 205, date: "2026-10-08" },
+          { issuer: "Broken Ltd", spreadBp: Number.NaN, date: "2026-10-09" },
+        ],
+      };
     });
-    expect(requested).toContainEqual({ issuer: "Ford Motor Company", days: 30 });
+    expect(requests).toBe(1);
     expect(Object.fromEntries(levels)).toEqual({
+      "amazon com": { spreadBp: 73, date: "2026-10-09" },
       "ford motor": { spreadBp: 157, date: "2026-10-09" },
-      oracle: { spreadBp: 205, date: "2026-10-09" },
+      oracle: { spreadBp: 205, date: "2026-10-08" },
     });
-  });
-
-  test("fails only when no name could be read, so an outage is not a list without levels", async () => {
-    const down = async () => {
-      throw new Error("offline");
-    };
-    await expect(loadCdsSpreadLevels([{ key: "oracle", issuer: "Oracle Corporation" }], down)).rejects.toThrow("offline");
-    expect((await loadCdsSpreadLevels([], down)).size).toBe(0);
   });
 });

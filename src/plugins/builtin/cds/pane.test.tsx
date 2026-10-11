@@ -85,7 +85,7 @@ async function settle() {
   }
 }
 
-// Each issuer's latest 5Y level, as the list reads them from the issuers' lines.
+// Each issuer's latest 5Y level, as the list reads them in one request.
 const LEVELS: CdsSpreadLevelsLoader = async () => new Map([
   ["oracle", { spreadBp: 235, date: "2026-08-25" }],
   ["ford motor", { spreadBp: 157, date: "2026-08-24" }],
@@ -145,12 +145,12 @@ async function renderPane(options: {
 
 describe("CdsPane", () => {
   test("lists issuers with their 5Y level, and dates the view by its last trade as fn and shot do", async () => {
-    const asked: string[][] = [];
+    let requests = 0;
     await renderPane({
       footer: true,
-      loadLevels: async (issuers) => {
-        asked.push(issuers.map((row) => row.issuer));
-        return LEVELS(issuers);
+      loadLevels: async () => {
+        requests += 1;
+        return LEVELS();
       },
     });
     const frame = tui.frame();
@@ -160,13 +160,28 @@ describe("CdsPane", () => {
     const ford = frame.indexOf("Ford Motor Company");
     expect(oracle).toBeGreaterThanOrEqual(0);
     expect(ford).toBeGreaterThan(oracle);
-    expect(asked).toEqual([["Oracle Corporation", "Ford Motor Company"]]);
+    // One request for the whole list.
+    expect(requests).toBe(1);
     expect(frame).toContain("5Y SPREAD");
     expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+235bp/);
     expect(frame).toMatch(/Ford Motor Company\s+1\s+2026-08-25 11:00\s+157bp/);
     // The last trade, never the fetch time, with its age in days.
     expect(frame).toMatch(/Source: DTCC · last trade 2026-08-25 · lag \d+ days/);
     expect(frame).not.toContain("as of");
+  });
+
+  test("still lists issuers, without their 5Y level, when the levels request fails", async () => {
+    await renderPane({
+      footer: true,
+      loadLevels: async () => {
+        throw new Error("offline");
+      },
+    });
+    const frame = tui.frame();
+    expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+--/);
+    expect(frame).toMatch(/Ford Motor Company\s+1\s+2026-08-25 11:00\s+--/);
+    // The failure is the footer's data warning, not an empty list.
+    expect(frame).toContain("⚠");
   });
 
   test("names the window and the entity a ticker became when it has no trades", async () => {

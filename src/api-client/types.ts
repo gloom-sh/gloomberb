@@ -538,6 +538,22 @@ export interface CloudCdsHistoryResponse {
   points: CloudCdsHistoryPointPayload[];
 }
 
+/** An issuer's latest 5Y level: the last point of its history over the last month. */
+export interface CloudCdsLevelPayload {
+  /** The reference entity as the history response names it. */
+  issuer: string;
+  spreadBp: number;
+  date: string;
+}
+
+export interface CloudCdsLevelsResponse {
+  source: string;
+  tenor: string;
+  asOf: string | null;
+  /** Every issuer traded in the last month whose 5Y line has a level in it. */
+  levels: CloudCdsLevelPayload[];
+}
+
 interface CloudShortInterestPointPayload {
   settlementDate: string;
   shortPercentFloat?: number | null;

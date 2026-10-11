@@ -2,17 +2,16 @@ import {
   apiClient,
   type CloudCdsHistoryPointPayload,
   type CloudCdsHistoryResponse,
+  type CloudCdsLevelsResponse,
   type CloudCdsResponse,
 } from "../../../api-client";
 import type { CloudCdsHistoryParams } from "../../../api-client/paths";
 import type { InstrumentSearchResult } from "../../../types/instrument";
-import { mapWithConcurrency } from "../../../utils/concurrency";
 import {
   cdsReferenceEntity,
   issuerNameOf,
   normalizeCdsTrades,
-  spreadSummary,
-  type CdsIssuerSummary,
+  spreadLevelsOf,
   type CdsSpreadLevels,
   type CdsTrade,
 } from "./model";
@@ -123,44 +122,25 @@ export type CdsHistoryFetch = (params: CloudCdsHistoryParams) => Promise<CloudCd
 export async function loadCdsSpreadHistory(
   issuer: string,
   fetchHistory: CdsHistoryFetch = (params) => apiClient.getCloudCdsHistory(params),
-  days = CDS_SPREAD_HISTORY_DAYS,
 ): Promise<CdsSpreadHistory> {
-  const response = await fetchHistory({ issuer, days });
+  const response = await fetchHistory({ issuer, days: CDS_SPREAD_HISTORY_DAYS });
   const points = (response.points ?? [])
     .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(point.spreadBp))
     .toSorted((left, right) => left.date.localeCompare(right.date));
   return { issuer: response.issuer, points };
 }
 
-/** The month of 5Y line a listed issuer's level is read from, the shortest the backend serves. */
-const CDS_LEVEL_DAYS = 30;
-const CDS_LEVEL_CONCURRENCY = 8;
-
-export type CdsSpreadLevelsLoader = (issuers: readonly Pick<CdsIssuerSummary, "key" | "issuer">[]) => Promise<CdsSpreadLevels>;
+export type CdsLevelsFetch = () => Promise<CloudCdsLevelsResponse>;
+export type CdsSpreadLevelsLoader = () => Promise<CdsSpreadLevels>;
 
 /**
- * The latest 5Y level of every listed issuer, from the same line the pane
- * charts, so the list can be ranked by it. A name with no level in the last
- * month is left out; it fails only when no name could be read at all.
+ * Every listed issuer's latest 5Y level, in one request: the last point of
+ * each name's line over the last month, the line the pane charts, so the list
+ * can be ranked by it. A name without one is not in the response.
  */
 export async function loadCdsSpreadLevels(
-  issuers: readonly Pick<CdsIssuerSummary, "key" | "issuer">[],
-  fetchHistory: CdsHistoryFetch = (params) => apiClient.getCloudCdsHistory(params),
+  fetchLevels: CdsLevelsFetch = () => apiClient.getCloudCdsLevels(),
 ): Promise<CdsSpreadLevels> {
-  const levels = new Map<string, { spreadBp: number; date: string }>();
-  let failed = 0;
-  let lastError: unknown = null;
-  await mapWithConcurrency(issuers, CDS_LEVEL_CONCURRENCY, async ({ key, issuer }) => {
-    try {
-      const summary = spreadSummary((await loadCdsSpreadHistory(issuer, fetchHistory, CDS_LEVEL_DAYS)).points);
-      if (summary) levels.set(key, { spreadBp: summary.spreadBp, date: summary.date });
-    } catch (error) {
-      failed += 1;
-      lastError = error;
-    }
-  });
-  if (issuers.length > 0 && failed === issuers.length) {
-    throw lastError instanceof Error ? lastError : new Error("5Y spreads unavailable.");
-  }
-  return levels;
+  const response = await fetchLevels();
+  return spreadLevelsOf(response.levels ?? []);
 }
