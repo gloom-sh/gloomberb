@@ -143,6 +143,14 @@ export interface TtmConversion {
   eps?: "report_date";
 }
 
+/** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */
+export interface TrailingPEConversion {
+  /** The currency of the trailing EPS. */
+  from: string;
+  /** Units of the quote's (major) currency per unit of `from`. */
+  rate: number;
+}
+
 export interface Fundamentals extends DepositaryReceiptFacts {
   /** Every share count here is on this basis, the basis of the listing's price and market cap; absent when unproven. */
   shareBasis?: ShareBasis;
@@ -151,10 +159,14 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   source?: "gloom";
   fetchedAt?: string;
   stale?: boolean;
-  /** Currency of the trailing revenue, income, cash flows and EPS; may differ from the listing and the statements. */
+  /** Currency of the trailing revenue, income, cash flows and EPS (EPS unless `epsCurrency` says otherwise); may differ from the listing and the statements. */
   financialCurrency?: string;
   /** Set when the trailing figures were converted from the reporting currency into `financialCurrency`. */
   ttmConversion?: TtmConversion;
+  /** Set when the trailing EPS is in another currency than `financialCurrency`: the listing's, converted from the reporting currency at each report date's rate. */
+  epsCurrency?: string;
+  /** Set when `trailingPE` divides the price by the trailing EPS converted from another currency. */
+  trailingPEConversion?: TrailingPEConversion;
   /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */
   marketCap?: number;
   marketCapCurrency?: string;

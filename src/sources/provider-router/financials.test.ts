@@ -255,6 +255,21 @@ test("a TTM conversion stays with the currency it describes, from a cached snaps
   expect(mergeFinancials(unlabelled, converted)?.fundamentals).not.toHaveProperty("ttmConversion");
 });
 
+test("an EPS currency stays with its block, and a P/E's EPS rate with that P/E", () => {
+  // CCU: CLP amounts, USD EPS. LIN on XETRA: a EUR P/E on USD EPS.
+  const ccu = createTestFinancials({ fundamentals: { financialCurrency: "CLP", epsCurrency: "USD", eps: 0.61, revenue: 2.91e12 } });
+  expect(mergeFinancials(createTestFinancials({ fundamentals: { beta: 0.26 } }), ccu)?.fundamentals)
+    .toMatchObject({ financialCurrency: "CLP", epsCurrency: "USD" });
+  const unlabelled = createTestFinancials({ fundamentals: { eps: 0.6, revenue: 2.9e12 } });
+  expect(mergeFinancials(unlabelled, ccu)?.fundamentals).not.toHaveProperty("epsCurrency");
+  const trailingPEConversion = { from: "USD", rate: 0.8924 };
+  const lin = createTestFinancials({ fundamentals: { financialCurrency: "USD", eps: 14.61, trailingPE: 33.16, trailingPEConversion } });
+  expect(mergeFinancials(createTestFinancials({ fundamentals: { beta: 0.9 } }), lin)?.fundamentals)
+    .toMatchObject({ trailingPE: 33.16, trailingPEConversion });
+  const repriced = createTestFinancials({ fundamentals: { financialCurrency: "USD", eps: 14.61, trailingPE: 30 } });
+  expect(mergeFinancials(repriced, lin)?.fundamentals).not.toHaveProperty("trailingPEConversion");
+});
+
 test("fallback reporting currency does not label unknown primary statement units", () => {
   const primary = createTestFinancials({ annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }] });
   const fallback = createTestFinancials({ financialCurrency: "TWD", annualStatements: [{ date: "2024-12-31", currency: "TWD", totalRevenue: 3000 }] });

@@ -1,6 +1,6 @@
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
-import { convertedPriceEarningsNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
+import { convertedPriceEarningsNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../utils/market-capitalization";
@@ -340,7 +340,7 @@ function fundamentalsMetrics(
     { label: "Forward P/E", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)) },
     { label: "PEG", ...multipleFigure(fundamentals?.pegRatio) },
     // The flows and EPS are one trailing-twelve-month block, the same twelve months for each line.
-    { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, reportingCurrency, true) },
+    { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true) },
     {
       label: `Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`,
       ...percentFigure(fundamentals?.dividendYield, formatFractionPercentCell),
@@ -372,17 +372,21 @@ function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, str
 const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)", "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)"]);
 
 /**
- * The unit notes under shown fundamentals: what a converted TTM block was converted from, and, beside a P/E on
- * that converted EPS, that it divides a spot price by EPS at report-date rates.
+ * The unit notes under shown fundamentals: what a converted TTM block was converted from, an EPS in another
+ * currency than the amounts beside it, and what a P/E on such an EPS divides.
  */
-function trailingConversionNotes(fundamentals: TickerFinancials["fundamentals"], metrics: readonly FundamentalsMetric[]): string[] {
+function trailingConversionNotes(
+  fundamentals: TickerFinancials["fundamentals"],
+  metrics: readonly FundamentalsMetric[],
+  quoteCurrency: string | undefined,
+): string[] {
   const shown = (label: string) => metrics.some((metric) => metric.label === label && metric.text !== "—");
-  const conversion = ttmConversionNote(fundamentals);
-  if (!conversion || ![...TRAILING_MONEY_METRICS].some(shown)) return [];
+  const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
+  const eps = shown("EPS (TTM)") ? epsConversionNote(fundamentals) : undefined;
   const priceEarnings = metrics.some((metric) => metric.label === "P/E (TTM)" && typeof metric.value === "number")
-    ? convertedPriceEarningsNote(fundamentals)
+    ? convertedPriceEarningsNote(fundamentals, quoteCurrency)
     : undefined;
-  return priceEarnings ? [conversion, priceEarnings] : [conversion];
+  return [conversion, eps, priceEarnings].filter((note): note is string => !!note);
 }
 
 const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
@@ -424,7 +428,7 @@ export function renderFundamentalsReport(
   const metrics = fundamentalsReportMetrics(financials, view);
   appendMetricSection(lines, view === "valuation" ? "Valuation" : "Fundamentals", metricLines(metrics));
   if (lines.length === before) lines.push("", cliStyles.muted(`No ${view} reported for ${financials.symbol}.`));
-  for (const note of trailingConversionNotes(financials.fundamentals, metrics)) lines.push(cliStyles.muted(note));
+  for (const note of trailingConversionNotes(financials.fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   if (view === "fundamentals") appendTextSection(lines, "Description", profile?.description);
   return lines.join("\n");
 }
@@ -460,7 +464,9 @@ export function fundamentalsReportTables(
     tables,
     footer: reportFooterLines({
       freshness,
-      notes: metrics.length === 0 ? [`No ${view} reported for ${financials.symbol}.`] : trailingConversionNotes(financials.fundamentals, metrics),
+      notes: metrics.length === 0
+        ? [`No ${view} reported for ${financials.symbol}.`]
+        : trailingConversionNotes(financials.fundamentals, metrics, financials.quote?.currency),
     }),
   };
 }
@@ -617,7 +623,7 @@ export async function buildTickerReport({
 
   const metrics = fundamentalsMetrics(quote, fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText });
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
-  for (const note of trailingConversionNotes(fundamentals, metrics)) lines.push(cliStyles.muted(note));
+  for (const note of trailingConversionNotes(fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
 
   if (capitalization?.provenance.kind === "fundamentals") {
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));

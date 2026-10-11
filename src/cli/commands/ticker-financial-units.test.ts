@@ -128,6 +128,30 @@ test("a converted TTM block prints in its own currency with what it was converte
   expect(madrid).not.toContain("converted");
 });
 
+test("an EPS in another currency than the TTM amounts, and a P/E converting its EPS, say so", async () => {
+  // CCU on NYSE as served on 2026-10-11: CLP amounts, EPS in USD at report-date rates.
+  const ccu: TickerFinancials = { quote: { ...quote, price: 10.91 }, financialCurrency: "CLP", priceHistory: [], quarterlyStatements: [],
+    annualStatements: [{ date: "2025-12-31", currency: "CLP", totalRevenue: 2.91e12, netIncome: 117.15e9, eps: 634.1 }],
+    fundamentals: { trailingPE: 17.885, eps: 0.61, revenue: 2.91e12, netIncome: 117.15e9, financialCurrency: "CLP", epsCurrency: "USD" },
+  };
+  const text = await report(ccu);
+  for (const line of ["EPS (TTM) $0.61", "Revenue (TTM) 2.91T CLP", "Net Income (TTM) 117.15B CLP",
+    "EPS (TTM) in USD, converted from CLP at report-date rates.", "P/E (TTM): spot price over EPS at report-date rates."]) expect(text).toContain(line);
+  // LIN on XETRA: USD figures, EPS included, and a EUR P/E on that EPS at the current rate.
+  const lin: TickerFinancials = { quote: { ...quote, price: 432.4, currency: "EUR" }, financialCurrency: "USD", priceHistory: [],
+    annualStatements: [], quarterlyStatements: [],
+    fundamentals: { trailingPE: 33.165, eps: 14.61, revenue: 33.99e9, netIncome: 6.9e9, financialCurrency: "USD",
+      trailingPEConversion: { from: "USD", rate: 0.8924 } },
+  };
+  const xetra = await report(lin);
+  for (const line of ["P/E (TTM) 33.17", "EPS (TTM) $14.61", "Revenue (TTM) 33.99B USD", "P/E (TTM): price over EPS converted at 1 USD = 0.8924 EUR."]) {
+    expect(xetra).toContain(line);
+  }
+  expect(xetra).not.toContain("report-date");
+  const valuation = renderFundamentalsReport({ ...lin, symbol: "LIN" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "");
+  expect(valuation).toContain("P/E (TTM): price over EPS converted at 1 USD = 0.8924 EUR.");
+});
+
 test("a pence-quoted range shares one decimal count, other ranges are unchanged", async () => {
   const pence = { ...quote, currency: "GBP", instrumentType: "EQUITY", providerPriceDivisor: 100, price: 35.32, low: 35.1, high: 35.4871, low52w: 25.5377, high52w: 37.585 };
   const london = await report({ quote: pence, annualStatements: [], quarterlyStatements: [], priceHistory: [] });

@@ -472,10 +472,17 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
     delete merged.financialCurrency;
   }
   if (merged) {
-    // A conversion describes the currency it came with, never one merged from elsewhere.
+    // A conversion, or an EPS currency apart from the amounts', describes the currency it came with, never one
+    // merged from elsewhere.
     const denominated = primary?.financialCurrency ? primary : merged.financialCurrency ? fallback : undefined;
     if (denominated?.ttmConversion) merged.ttmConversion = denominated.ttmConversion;
     else delete merged.ttmConversion;
+    if (denominated?.epsCurrency) merged.epsCurrency = denominated.epsCurrency;
+    else delete merged.epsCurrency;
+    // The rate a trailing P/E converted its EPS at pairs with that multiple.
+    const trailing = primary?.trailingPE != null ? primary : fallback;
+    if (trailing?.trailingPEConversion) merged.trailingPEConversion = trailing.trailingPEConversion;
+    else delete merged.trailingPEConversion;
   }
   return redactUnavailableFundamentals(merged);
 }
