@@ -9,6 +9,7 @@ import {
   type PaneFunctionCatalog,
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
+import { findCatalogSeries } from "../series-search";
 import {
   parsePaneCatalogArgs,
   parsePaneFunctionArgs,
@@ -215,11 +216,14 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const glossary = lookupGlossary(parsed.query);
         // Data no source carries yet is said once: in the text, else as the envelope's warning.
         const gap = knownGapMessage(parsed.query);
+        // The data catalog series the query names, which `fn G` charts.
+        const series = findCatalogSeries(ctx.plugins, parsed.query);
         ctx.printResult({
           data: filtered.slice(0, effectiveParsed.limit),
+          ...series.length ? { metadata: { series } } : {},
           ...gap && ctx.cliOptions.format !== "text" ? { warnings: [gap] } : {},
         }, {
-          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap),
+          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series),
         });
       } finally {
         registry.destroy();

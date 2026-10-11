@@ -70,6 +70,7 @@ export const SERIES_INVENTORY: readonly SeriesInventoryEntry[] = [
   { module: "gpu", chart: "GPU rental list index per model", series: ["gpu:*"] },
   { module: "gpu", chart: "GPU rental prices per provider listing", notInCatalog: "per-item", reason: "One provider listing each, listed by the server and changing without a release." },
   { module: "power", chart: "Interconnection queue capacity and project generation", notInCatalog: "per-item", reason: "Per project and per queue filter." },
+  { module: "power", chart: "European day-ahead power price by country", series: ["day-ahead:*"] },
   { module: "awards", chart: "A company's government award totals by period", series: ["awards:*"] },
   { module: "company-kpis", chart: "A company's reported operating metrics", notInCatalog: "per-item", reason: "Each company reports its own metrics, with no shared list to register." },
   { module: "estimate-revisions", chart: "Consensus estimate for one fiscal period over time", notInCatalog: "per-item", reason: "One fiscal period of one company." },

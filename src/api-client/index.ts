@@ -810,6 +810,8 @@ class GloomApiClient {
   getCloudPowerBoard = this.data.getCloudPowerBoard.bind(this.data);
   getCloudPowerHistory = this.data.getCloudPowerHistory.bind(this.data);
   getCloudPowerProject = this.data.getCloudPowerProject.bind(this.data);
+  getCloudEuropePower = this.data.getCloudEuropePower.bind(this.data);
+  getCloudEuropePowerHistory = this.data.getCloudEuropePowerHistory.bind(this.data);
   getCloudGpuBoard = this.data.getCloudGpuBoard.bind(this.data);
   getCloudGpuHistory = this.data.getCloudGpuHistory.bind(this.data);
   getCloudGpuEvents = this.data.getCloudGpuEvents.bind(this.data);

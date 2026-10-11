@@ -1,5 +1,6 @@
 import {
   cliStyles,
+  cliTerminalWidth,
   renderSection,
   renderTable,
 } from "../../utils/cli-output";
@@ -19,12 +20,19 @@ import { knownGapMessage } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { groupByCompany } from "../../tickers/company-name";
+import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
+import type { SeriesDefinition } from "../../series/types";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
   fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
+  /** Plugins whose data catalog series a query can name, listed before the tickers. */
+  plugins?: ReadonlyArray<{ series?: readonly SeriesDefinition[] }>;
 }
+
+/** Series a search lists before pointing at the catalog for the rest. */
+const SEARCH_SERIES_LIMIT = 3;
 
 export async function searchCandidatesForCli({
   query,
@@ -169,18 +177,26 @@ function searchNotes(query: string, candidates: TickerSearchCandidate[]): string
 export function buildSearchReport({
   query,
   candidates,
+  series = [],
 }: {
   query: string;
   candidates: TickerSearchCandidate[];
+  /** Data catalog series the query names: data, such as a price or a rate, that no ticker is. */
+  series?: readonly SeriesMatch[];
 }): string {
   const lines = [renderSection(`Search: ${query}`)];
   const indexNote = indexRootNote(query, candidates);
   if (indexNote) lines.push("", indexNote);
   const gap = knownGapMessage(query);
   if (gap) lines.push("", gap);
+  const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
+  // A query that names the data ("carbon", "day-ahead") lists its series first; words that happen to
+  // be in a series name ("apple") list them after the tickers.
+  const seriesFirst = series.some((match) => match.exact);
+  if (charted && (seriesFirst || candidates.length === 0)) lines.push("", charted);
 
   if (candidates.length === 0) {
-    if (!gap) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
+    if (!gap && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
 
@@ -212,6 +228,7 @@ export function buildSearchReport({
       ]),
     ));
   }
+  if (charted && !seriesFirst) lines.push("", charted);
 
   return lines.join("\n");
 }
@@ -232,11 +249,12 @@ export async function search(query: string, dependencies: SearchCommandDependenc
       dataProvider,
     });
 
+    const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");
     if (dependencies.printResult) {
       const warnings = searchNotes(trimmedQuery, candidates);
       dependencies.printResult({
         data: searchCandidateRows(candidates),
-        metadata: { query: trimmedQuery },
+        metadata: { query: trimmedQuery, ...(series.length ? { series } : {}) },
         warnings: warnings.length ? warnings : undefined,
       }, {
         columns: [
@@ -254,6 +272,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     console.log(buildSearchReport({
       query: trimmedQuery,
       candidates,
+      series,
     }));
   });
 }

@@ -775,7 +775,7 @@ Each built-in plugin can be switched on or off in `PL`. Ticker Research, Market 
 | Filings & Events | SEC, ETF, RISK, EK, CATL, LITI, MA, DIST |
 | Credit & Bonds | CDS, CDX, SOVR, CRD, AUCT, YAS, CRDOC, COVN, DDIS |
 | Earnings | ERN, EVTS, CALLS, RIPL |
-| Supply Chain & Alt Data | SPLC, EXPO, AWARDS, HIRE, APPS, JOBS, BUZZ, ATTN, the Gloom Trending pane, GPU, POWER |
+| Supply Chain & Alt Data | SPLC, EXPO, AWARDS, HIRE, APPS, JOBS, BUZZ, ATTN, the Gloom Trending pane, GPU, POWER, EPWR |
 | Quant | CORR, GR, BT, SEAS, MDAY |
 | Rates & Macro | ECO, ECST, CPI, GC, WIRP, BTMM, CBR, VIX, VOLS, VAL |
 | Global Markets | WEI, MAP, CHOKE, BI, THEM, FXC, RRG |

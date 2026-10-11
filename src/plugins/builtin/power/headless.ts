@@ -3,6 +3,8 @@ import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from
 import { withoutQuietColumns } from "../shared/research-cells";
 import { fetchPowerBoard, fetchAllPowerHistory, fetchPowerTickerScopes } from "./client";
 import { powerQuery } from "./query";
+import { loadPowerPricesReport } from "./prices-headless";
+import { powerPriceMarket } from "./prices-model";
 import {
   COVERAGE_COLUMNS, EXPOSURE_COLUMNS, GENERATION_COLUMNS, HISTORY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, UTILITY_COLUMNS,
   historyRows, powerCoverageNote, powerLoadedSources, powerNumber, powerPercent, powerRegion, powerScopeOptions, powerTab, powerTickerEmpty, projectRows, tickerLabel, titleCase, UNMAPPED, type PowerTab,
@@ -47,7 +49,7 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { source: "Grid operator queues and utility filings", status: "not-a-feed", basis: "published records", dataset: true },
   argument: { kind: "free-text", optional: true, placeholder: "ticker", description: "Optional listed developer or utility ticker, with exchange suffix where needed." },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "queue", values: POWER_TABS.map(({ value }) => ({ value })), description: "Queue, history, outcomes, large loads, utility exposure, capacity or coverage." },
+    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "queue", values: POWER_TABS.map(({ value }) => ({ value })), description: "Queue, history, outcomes, large loads, utility exposure, capacity, European day-ahead prices or coverage." },
     ...["country", "region", "fuel", "status", "search", "sourceId", "from", "to"].map((key) => ({ key, type: "string" as const, settingKey: key, description: `Filter by ${key}.` })),
     { key: "context", type: "enum", settingKey: "context", values: [{ value: "capacity" }, { value: "generation" }, { value: "utility" }], defaultValue: "capacity", description: "Generation capacity, monthly generation or utility context on the Capacity tab." },
     { key: "loadClass", aliases: ["load-class"], type: "enum", settingKey: "loadClass", values: [{ value: "datacenter" }], description: "Only loads explicitly classified as datacenters." },
@@ -59,6 +61,8 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const tab = powerTab(args.options.tab);
     const symbol = (Array.isArray(args.argument) ? args.argument.join(" ") : args.argument)?.trim();
+    // Prices are their own board (EPWR); a typed market narrows it, a ticker does not apply.
+    if (tab === "prices") return loadPowerPricesReport(powerPriceMarket(symbol) ? symbol : undefined, ctx.apiClient);
     const filter = { ...powerQuery(args.options, symbol), limit: 500 };
     const board = await fetchPowerBoard(filter, ctx.apiClient);
     const projects = [...board.projects];

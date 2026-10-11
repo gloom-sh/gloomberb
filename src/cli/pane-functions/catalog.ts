@@ -25,6 +25,7 @@ import {
   type CliStatEntry,
 } from "../../utils/cli-output";
 import { renderGlossaryEntries, type GlossaryLookup } from "../glossary";
+import { renderSeriesMatches, type SeriesMatch } from "../series-search";
 
 export interface PaneFunctionCatalog {
   panes: ReadonlyMap<string, PaneDef>;
@@ -402,16 +403,21 @@ function renderCatalogGlossary(glossary: GlossaryLookup, width: number): string 
   return [...defined, ...related].join("\n");
 }
 
+/** Series a catalog search lists before pointing at `shot CAT` for the rest. */
+const CATALOG_SERIES_LIMIT = 8;
+
 /**
- * `catalog [query]`: one function in full, or the matches, with the glossary
- * terms the query names. `gap` is the line for data no source carries yet
- * (`knownGapMessage`): it leads, and stands in for "No functions match".
+ * `catalog [query]`: one function in full, or the matches, with the data
+ * series and glossary terms the query names. `gap` is the line for data no
+ * source carries yet (`knownGapMessage`): it leads, and stands in for "No
+ * functions match".
  */
 export function renderPaneCatalogReport(
   entries: PaneCatalogEntry[],
   args: ParsedPaneCatalogArgs,
   glossary: GlossaryLookup = { exact: [], partial: [] },
   gap: string | null = null,
+  series: readonly SeriesMatch[] = [],
 ): string {
   const query = args.query.trim().toLowerCase();
   const exact = query
@@ -422,12 +428,14 @@ export function renderPaneCatalogReport(
 
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
   const terms = renderCatalogGlossary(glossary, width);
+  const charted = renderSeriesMatches(args.query.trim(), series, Number.isFinite(args.limit) ? CATALOG_SERIES_LIMIT : series.length, width);
   const withGap = (text: string) => [gap ? wrapText(gap, width).join("\n") : "", text].filter(Boolean).join("\n\n");
-  const withTerms = (text: string) => withGap(terms ? `${text}\n\n${terms}` : text);
+  const withTerms = (text: string) => withGap([text, charted, terms].filter(Boolean).join("\n\n"));
   if (args.query && entries.length === 1) return withTerms(renderCatalogEntry(entries[0]!));
 
   const note = (text: string) => wrapText(text, width).map((line) => cliStyles.muted(line)).join("\n");
   if (entries.length === 0) {
+    if (charted) return withGap([charted, terms].filter(Boolean).join("\n\n"));
     if (glossary.exact.length > 0 || gap) return withGap(terms);
     return withTerms(note(args.query
       ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`

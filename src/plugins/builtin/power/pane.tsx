@@ -20,6 +20,7 @@ import { fetchPowerTickerScopes, loadPowerBoard, loadPowerHistory, validatePower
 import { usePowerEvidence } from "./evidence";
 import { POWER_SORT_COLUMNS, powerQuery } from "./query";
 import { PowerDetailView } from "./detail";
+import { PowerPricesView } from "./prices";
 import { blendHex } from "../../../theme/colors";
 import { missingCell, PartsBar, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
 import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerCoverageNote, powerFigures, powerLoadedSources, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
@@ -38,7 +39,11 @@ const UTILITY_SORT: typeof DEFAULT_SORT = { column: "salesMwh", direction: "desc
 export function PowerPane(props: PaneProps) {
   const session = useResearchCloudSession();
   const access = usePlanAccess();
+  const [openingTab] = usePaneSettingValue("tab", "queue");
+  const [savedTab] = usePluginPaneState("power:tab", openingTab);
   const scope = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  // Prices are open data from another source: their own view, free and without the queue board.
+  if (powerTab(savedTab) === "prices") return <PowerPricesView {...props} />;
   return <PowerView key={scope} {...props} scope={scope} needsVerification={session.needsVerification} />;
 }
 function PowerView({ width, height, focused, scope, needsVerification }: PaneProps & { scope: string; needsVerification: boolean }) {
