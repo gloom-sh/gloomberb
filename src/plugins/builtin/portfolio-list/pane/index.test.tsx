@@ -27,6 +27,10 @@ import { portfolioListModule } from "..";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../../test-support/pane";
 import { AGE_CLOCK_MS } from "../use-column-clock";
 import { createTempDbPath, removeTempDbFiles } from "../../../../test-support/temp-db";
+import { apiClient } from "../../../../api-client";
+import type { PerpEquityListing } from "../../../../api-client/perps";
+import { perpsListCache } from "../../perps/client";
+import { equitiesPayload } from "../../perps/test-fixture";
 
 const TEST_PANE_ID = "portfolio-list:test";
 
@@ -422,6 +426,7 @@ afterEach(() => {
   removeTempDbFiles();
   quoteClock?.mockRestore();
   quoteClock = undefined;
+  perpsListCache.reset();
 });
 
 describe("PortfolioListPane cash and margin UI", () => {
@@ -1760,4 +1765,72 @@ describe("PortfolioListPane cash and margin UI", () => {
     expect(frame).toContain("46.7");
   });
 
+});
+
+describe("PortfolioListPane perpetual columns", () => {
+  test("a 30-stock watchlist asks for its perpetuals once, and a cell opens PERP on that market", async () => {
+    const symbols = Array.from({ length: 30 }, (_, index) => `S${String(index).padStart(2, "0")}`);
+    const config = createManualCollectionConfig("watchlist");
+    const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID)!;
+    instance.settings = { ...instance.settings, columnIds: ["ticker", "perp_premium", "perp_funding"] };
+    const requests: PerpEquityListing[][] = [];
+    const batch = spyOn(apiClient, "getCloudPerpsEquities").mockImplementation(async (listings) => {
+      requests.push([...listings]);
+      return equitiesPayload(listings, (listing) => listing.symbol === "S01", { underlyingPremium: 0.0123, fundingRate8h: -0.00015, stale: false });
+    });
+    const single = spyOn(apiClient, "getCloudPerpsEquity");
+    const opened: unknown[] = [];
+    try {
+      await tui.render(
+        <PortfolioHarness config={config} collectionId="watchlist" paneHeight={12}
+          stateMutator={(state) => {
+            state.tickers = new Map(symbols.map((symbol) => [symbol, makeTicker({
+              ticker: symbol, name: symbol, exchange: "NASDAQ", assetCategory: "STK", portfolios: [], positions: [], watchlists: ["watchlist"],
+            })]));
+            state.paneState[TEST_PANE_ID] = { ...state.paneState[TEST_PANE_ID], cursorSymbol: "S00" };
+          }}
+          runtime={createTestPluginRuntime({ createPaneFromTemplate: (templateId, options) => { opened.push([templateId, options]); } })} />,
+        { width: 100, height: 14 },
+      );
+      await tui.waitForFrameToContain("+1.23%");
+      const frame = tui.frame();
+      expect(frame).toContain("-0.0150%");
+      expect(frame.split("\n").find((line) => line.includes("S00"))).toContain("—");
+      // The rows' quotes moving in, and the cursor moving, keep the one request.
+      await act(async () => {
+        harnessDispatch!({ type: "SET_FINANCIALS", symbol: "S00", data: createTestFinancials({ quote: makeQuote({ symbol: "S00" }) }) });
+        tui.setup().mockInput.pressArrow("down");
+      });
+      await flushFrame();
+      expect(requests).toHaveLength(1);
+      expect(requests[0]!.map((listing) => listing.symbol)).toEqual(symbols);
+      expect(single).not.toHaveBeenCalled();
+
+      await tui.clickFrameText("+1.23%");
+      expect(opened).toEqual([["perps-pane", { arg: "hyperliquid:xyz:S01" }]]);
+      expect(harnessState?.paneState[TEST_PANE_ID]?.cursorSymbol).toBe("S01");
+    } finally {
+      batch.mockRestore();
+      single.mockRestore();
+    }
+  });
+
+  test("a list without stocks asks for nothing and shows a dash", async () => {
+    const config = createManualCollectionConfig("watchlist");
+    const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID)!;
+    instance.settings = { ...instance.settings, columnIds: ["ticker", "perp_premium"] };
+    const batch = spyOn(apiClient, "getCloudPerpsEquities");
+    try {
+      await tui.render(
+        <PortfolioHarness config={config} collectionId="watchlist" stateMutator={(state) => {
+          state.tickers = new Map([["SPY", makeTicker({ ticker: "SPY", name: "SPY", exchange: "ARCA", assetCategory: "ETF", portfolios: [], positions: [], watchlists: ["watchlist"] })]]);
+          state.paneState[TEST_PANE_ID] = { ...state.paneState[TEST_PANE_ID], cursorSymbol: "SPY" };
+        }} />,
+        { width: 100, height: 24 },
+      );
+      await flushFrame();
+      expect(tui.frame().split("\n").find((line) => line.includes("SPY"))).toContain("—");
+      expect(batch).not.toHaveBeenCalled();
+    } finally { batch.mockRestore(); }
+  });
 });

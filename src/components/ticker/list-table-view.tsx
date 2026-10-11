@@ -35,6 +35,11 @@ import { PaneStatusBody } from "../ui/status";
 export interface TickerTableCell {
   text: string;
   color?: string;
+  /**
+   * Makes the cell a link: a click selects the row and calls this instead of
+   * the row's own click. The pane gives the same action a key (its menu).
+   */
+  onPress?: () => void;
 }
 
 type ResolveTickerTableCell = (
@@ -264,6 +269,8 @@ export function TickerListTableView({
     resolveCellRef.current = { resolve: resolveCell, epoch: resolveCellRef.current.epoch + 1 };
   }
   const resolveEpoch = resolveCellRef.current.epoch;
+  const setCursorSymbolRef = useRef(setCursorSymbol);
+  setCursorSymbolRef.current = setCursorSymbol;
 
   const renderCell = useCallback((
     ticker: TickerRecord,
@@ -279,13 +286,21 @@ export function TickerListTableView({
       };
     }
 
-    const { text, color } = resolveCellRef.current.resolve(column, ticker, financials);
+    const { text, color, onPress } = resolveCellRef.current.resolve(column, ticker, financials);
     const shouldFlash = flashSymbolsRef.current.has(ticker.metadata.ticker)
       && flashesOnQuoteTick(column.id, financials?.quote);
     return {
       text,
       color: color || (rowState.selected ? colors.selectedText : undefined),
       attributes: shouldFlash ? TextAttributes.DIM : TextAttributes.NONE,
+      // Any other button falls through to the row, so a right click still opens its menu.
+      onMouseDown: onPress ? (event: TableMouseEvent) => {
+        if ((event.button ?? 0) !== 0) return;
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        setCursorSymbolRef.current(ticker.metadata.ticker);
+        onPress();
+      } : undefined,
     };
   }, []);
 

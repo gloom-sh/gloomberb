@@ -210,18 +210,21 @@ export async function resolvePaneFunction(
     args = { ...args, options: taken.options };
     tableSection = taken.tableSection;
   }
+  // What the user types for the function, which every error about it names.
+  const token = template?.shortcut?.prefix ?? template?.id ?? pane.id;
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
     strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
+    code: token,
   });
   const settings = {
     ...optionSettings(args.options),
     ...capabilityPaneSettings(capability, normalizedOptions),
   };
   if (args.requireBotSafe) {
-    validateTickerCardinality(capability, createOptions);
+    validateTickerCardinality(capability, createOptions, token);
   }
   const resolved: ResolvedPaneFunction = {
-    token: template?.shortcut?.prefix ?? template?.id ?? pane.id,
+    token,
     label: template?.label ?? pane.name,
     description: template?.description ?? `Open the ${pane.name} pane.`,
     shortcut: template?.shortcut?.prefix,
@@ -242,6 +245,7 @@ export async function resolvePaneFunction(
 function validateTickerCardinality(
   capability: PaneFunctionCapability,
   createOptions: PaneTemplateCreateOptions | undefined,
+  code: string,
 ): void {
   if (!capability.botSafe || capability.tickerCardinality === "none") return;
   const count = createOptions?.symbols?.length
@@ -262,5 +266,5 @@ function validateTickerCardinality(
       : capability.tickerCardinality === "two-or-more"
         ? "at least two tickers"
         : "one or two tickers";
-  throw new Error(`${capability.id} requires ${expectation}.`);
+  throw new Error(`${code} requires ${expectation}.`);
 }

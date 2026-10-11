@@ -54,7 +54,7 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "historical", type: "boolean", settingKey: "historical", defaultValue: false, description: "Use historical benchmark queues separately from direct observations." },
   ],
   discovery: { aliases: ["POWER"], dataRequirements: ["Gloom Cloud power queues and large-load disclosures"],
-    limitations: ["Pro dataset; free accounts see three rows per section and limited history", "Proposed projects are not committed supply; requests and approvals are distinct", "Coverage varies by jurisdiction; missing MW and unavailable sources remain explicit"] },
+    limitations: ["Pro dataset; free accounts see three rows per section and limited history.", "Proposed projects are not committed supply; requests and approvals are distinct.", "Coverage varies by jurisdiction; missing MW and unavailable sources remain explicit."] },
   describe: "Power queues, large loads and utility exposure (Pro)",
   async load(args, ctx) {
     const tab = powerTab(args.options.tab);

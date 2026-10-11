@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
-import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery, PerpLongShortPoint, PerpLongShortRatio, PerpMarketPayload,
-  PerpRankingsPayload } from "../../../api-client/perps";
+import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery, PerpLongShortPoint,
+  PerpLongShortRatio, PerpMarketPayload, PerpRankingsPayload } from "../../../api-client/perps";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 
@@ -81,21 +81,56 @@ export const loadPerpsRankings = (access: string, force = false) => loadCloudRes
 const compareKey = (baseAsset: string, access: string) => `compare:v1:${baseAsset.toUpperCase()}:${access}`;
 export const cachedPerpsCompare = (baseAsset: string, access: string) => cachedCloudResource(perpsCache, compareKey(baseAsset, access), (data) => validatePerpsCompare(data, baseAsset));
 export const loadPerpsCompare = (baseAsset: string, access: string, force = false) => loadCloudResource(perpsCache, compareKey(baseAsset, access), () => fetchPerpsCompare(baseAsset), { force, validate: (data) => validatePerpsCompare(data, baseAsset) });
+const sameListing = (value: PerpEquityListing | null | undefined, listing: PerpEquityListing) =>
+  value?.symbol === listing.symbol && value.exchange === listing.exchange;
+/** The server's proof that a stock contract belongs to the listing asked about. */
+const provesListing = (row: PerpBoardRow, listing: PerpEquityListing) => {
+  const match = row.equityMatch;
+  return sameListing(match?.listing, listing) && row.assetClass === "stocks" && !!match?.underlying.exchange
+    && match.underlying.symbol === row.underlyingSymbol
+    && (match.basis === "issuer" || match.basis === "listing" && sameListing(match.underlying, listing));
+};
 function validatePerpsEquity(data: PerpBoardPayload, listing: PerpEquityListing): PerpBoardPayload {
   validatePerpsBoard(data);
-  const same = (value: PerpEquityListing | null | undefined) => value?.symbol === listing.symbol && value.exchange === listing.exchange;
-  if (!same(data.listing) || !data.rows.every((row) => {
-    const match = row.equityMatch;
-    return same(match?.listing) && row.assetClass === "stocks" && !!match?.underlying.exchange
-      && match.underlying.symbol === row.underlyingSymbol
-      && (match.basis === "issuer" || match.basis === "listing" && same(match.underlying));
-  })) throw new Error("The server returned perpetuals for another listing");
+  if (!sameListing(data.listing, listing) || !data.rows.every((row) => provesListing(row, listing))) throw new Error("The server returned perpetuals for another listing");
   return data;
 }
 export const loadPerpsEquity = (listing: PerpEquityListing, access: string, force = false) => {
   const validate = (data: PerpBoardPayload) => validatePerpsEquity(data, listing);
   return loadCloudResource(perpsCache, `equity:v2:${listing.symbol}:${listing.exchange}:${access}`,
     async () => validate(await apiClient.getCloudPerpsEquity(listing.symbol, listing.exchange)), { force, validate });
+};
+
+/** The most listings the server looks up in one request; a longer list asks in pages of this size. */
+const PERP_EQUITIES_PAGE = 100;
+export const perpsListCache = createPluginCache<PerpEquitiesPayload>({ kind: "perps-equities", source: "gloom-cloud", schemaVersion: 1,
+  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
+/** One answer per listing asked about, in its order; a contract only with its proof for that listing. */
+export function validatePerpsEquities(data: PerpEquitiesPayload, listings: readonly PerpEquityListing[]): PerpEquitiesPayload {
+  if (!envelope(data) || !Array.isArray(data.results) || data.results.length !== listings.length
+    || !data.results.every((result, index) => !!result && (result.market === null
+      || sameListing(result.listing, listings[index]!) && validRow(result.market) && provesListing(result.market, listings[index]!))))
+    throw new Error("The server returned perpetuals for another listing");
+  return data;
+}
+async function fetchPerpsEquities(listings: readonly PerpEquityListing[], client: Pick<typeof apiClient, "getCloudPerpsEquities"> = apiClient): Promise<PerpEquitiesPayload> {
+  const pages: PerpEquityListing[][] = [];
+  for (let start = 0; start < listings.length; start += PERP_EQUITIES_PAGE) pages.push(listings.slice(start, start + PERP_EQUITIES_PAGE));
+  const answers = await Promise.all(pages.map(async (page) => validatePerpsEquities(await client.getCloudPerpsEquities(page), page)));
+  const [first] = answers;
+  if (!first) return { status: "ok", asOf: null, access: "preview", locked: 0, results: [] };
+  return { ...first, locked: answers.reduce((sum, answer) => sum + answer.locked, 0), results: answers.flatMap((answer) => answer.results) };
+}
+/**
+ * The perpetual of every listing in a watchlist or portfolio, from one request (one per hundred listings): the
+ * rows share one lookup instead of asking for each stock. `listings` come sorted and unique, so a list keeps its
+ * cache entry whatever its order; cached per account and plan like the other perps loaders, and a failed refresh
+ * keeps the last answer, marked stale.
+ */
+export const loadPerpsEquities = (listings: readonly PerpEquityListing[], access: string, force = false) => {
+  const validate = (data: PerpEquitiesPayload) => validatePerpsEquities(data, listings);
+  return loadCloudResource(perpsListCache, `equities:v1:${listings.map((listing) => `${listing.symbol}:${listing.exchange}`).join(",")}:${access}`,
+    () => fetchPerpsEquities(listings), { force, validate });
 };
 
 function validatePerpsMarket(data: PerpMarketPayload): PerpMarketPayload {

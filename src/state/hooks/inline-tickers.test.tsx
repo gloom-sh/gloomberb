@@ -11,7 +11,8 @@ import { InlineTickerBadge } from "../../components/ticker/badge";
 import { setSharedRegistryForTests, type PluginRegistry } from "../../plugins/registry";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createDefaultConfig } from "../../types/config";
-import { AppContext, createInitialState } from "../app/context";
+import { AppContext, appReducer, createInitialState, type AppAction, type AppState } from "../app/context";
+import { JsonTickerRepository } from "../../data/json-ticker-repository";
 import { createStaticAppStore } from "../../test-support/app-store";
 import { INLINE_TICKER_STREAM_WEIGHT, useInlineTickers } from "./inline-tickers";
 import { resetInlineTickerFailures } from "./inline-ticker-failures";
@@ -207,4 +208,51 @@ describe("useInlineTickers", () => {
     expect(await renderUntil("+3.5%")).toContain("AAPL +3.5%");
     expect(hostRenders).toBe(rendersBeforeTick);
   });
+
+  test("a chat message's $7203:TSE, $247540:KRX and $SAN:EURONEXT badge the listing each symbol trades on", async () => {
+    const listed: Record<string, Array<[exchange: string, name: string]>> = {
+      "7203": [["JPX", "Toyota Motor Corporation"]],
+      "247540": [["KOSDAQ", "EcoPro BM Co., Ltd."]],
+      SAN: [["NYSE", "Banco Santander, S.A."], ["EPA", "Sanofi"]],
+      RY: [["TSX", "Royal Bank of Canada"], ["NYSE", "Royal Bank of Canada"]],
+    };
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({
+        search: async (query) => (listed[query.split(":")[0]!.toUpperCase()] ?? []).map(([exchange, name]) => ({
+          providerId: "test", symbol: query.split(":")[0]!.toUpperCase(), name, exchange, currency: "USD", type: "EQUITY",
+        })),
+        getQuote: async () => { throw new Error("TSE read as Toronto"); },
+      }),
+      tickerRepository: new JsonTickerRepository(),
+      events: { emit() {} },
+      pinTicker: () => {},
+    } as unknown as PluginRegistry);
+    // A store that applies what the hook dispatches, as AppProvider does.
+    let state: AppState = createInitialState(createDefaultConfig("/tmp/gloomberb-inline-tickers-listing-test"));
+    const listeners = new Set<() => void>();
+    const store = {
+      dispatch: (action: AppAction) => {
+        state = appReducer(state, action);
+        for (const listener of listeners) listener();
+      },
+      getState: () => state,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => { listeners.delete(listener); };
+      },
+    };
+    const message = "Toyota $7203:TSE, EcoPro BM $247540:KRX, Sanofi $SAN:EURONEXT and RBC $RY:TSE.";
+    function ChatMessage() {
+      const { catalog } = useInlineTickers([message], { liveQuotes: false });
+      const read = ["7203:TSE", "247540:KRX", "SAN:EURONEXT", "RY:TSE"].map((tag) => catalog[tag]?.ticker?.metadata.ticker ?? "?");
+      return <text>{read.join(" ")}</text>;
+    }
+
+    await act(async () => {
+      await tui.render(<AppContext value={store}><ChatMessage /></AppContext>, { width: 60, height: 1 });
+    });
+
+    expect(await renderUntil("7203:JPX 247540:KOSDAQ SAN:EPA RY:TSX")).toContain("7203:JPX 247540:KOSDAQ SAN:EPA RY:TSX");
+  });
 });
+

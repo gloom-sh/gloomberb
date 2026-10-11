@@ -111,11 +111,11 @@ export function useAppTickerOpenRuntime({
     return true;
   }, [pluginRegistry, stateRef]);
 
-  const placePinnedTickerTarget = useCallback((target: TickerOpenTarget, options?: PinTickerOptions) => {
+  const placePinnedTickerTarget = useCallback((target: TickerOpenTarget, options?: PinTickerOptions, typed?: string) => {
     const paneType = normalizePaneId(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
     const paneDef = pluginRegistry.panes.get(paneType);
     if (!paneDef) return;
-    if (refuseWhileOwnerOff(target.symbol, options, () => placePinnedTickerTarget(target, options))) return;
+    if (refuseWhileOwnerOff(target.symbol, options, () => placePinnedTickerTarget(target, options, typed))) return;
 
     publishTickerOpenTarget(target);
     const symbol = target.symbol;
@@ -128,6 +128,12 @@ export function useAppTickerOpenRuntime({
     let existing = options?.forceNewPane
       ? null
       : findFixedTickerPaneForSymbol(currentLayout, paneType, symbol, instrument);
+    // A pane bound to the key as typed (the web terminal's first pane for ?ticker=7203:TSE) is the one the
+    // resolved listing (7203:JPX) settles.
+    const typedKey = typed?.trim().toUpperCase();
+    if (!options?.forceNewPane && !existing && typedKey && typedKey !== symbol) {
+      existing = findFixedTickerPaneForSymbol(currentLayout, paneType, typedKey, instrument);
+    }
     // Without a broker route, the public listing and an unnamed route are the same security: a link that names
     // neither still finds the DES the command bar opened on the public listing, and leaves its binding as it is.
     let keepBinding = false;
@@ -213,7 +219,7 @@ export function useAppTickerOpenRuntime({
       ? { symbol: selectedTicker.metadata.ticker, ticker: selectedTicker, created: false, instrument: options?.instrument, listing: options?.listing }
       : await resolveOpenTickerTarget(rawSymbol, options?.instrument === null);
     if (!target) return;
-    placePinnedTickerTarget(target, options);
+    placePinnedTickerTarget(target, options, rawSymbol);
     const action = attentionActionForPane(options?.paneType ?? TICKER_RESEARCH_PANE_ID);
     if (action && pluginRegistry.panes.has(options?.paneType ?? TICKER_RESEARCH_PANE_ID)) {
       recordAttention(publicTickerKey(target.symbol, target.listing?.exchange ?? target.ticker.metadata.exchange), action);

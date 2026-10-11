@@ -251,7 +251,7 @@ async function buildDeskPane(
     activeCollectionId: null,
   }, createOptions) ?? {};
   const capability = getPaneFunctionCapability(template, paneDef);
-  const options = normalizeCapabilityOptions(capability, { ...entry.options }, { strict: true });
+  const options = normalizeCapabilityOptions(capability, { ...entry.options }, { strict: true, code: template.shortcut?.prefix });
   const settings: Record<string, unknown> = { ...spec.settings, ...capabilityPaneSettings(capability, options) };
   const chartSpec = entry.studies?.length ? parseChartSpec(settings[CHART_SPEC_SETTING_KEY]) : null;
   if (chartSpec) {

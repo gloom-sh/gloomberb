@@ -132,6 +132,20 @@ describe("pane function capabilities", () => {
       tab: "cashflow",
     })).toThrow("price-comparison does not support --tab");
   });
+
+  test("an option a function does not take is refused by the code the user typed, not its pane or capability id", () => {
+    const comparison = capabilityFor("comparison-chart-pane");
+    expect(() => normalizeCapabilityOptions(comparison, { tab: "cashflow" }, { code: "COMP" }))
+      .toThrow("COMP does not support --tab. Supported options: --rangePreset, --axisMode, --chartResolution.");
+    // The intraday chart's capability id is not its template id, and neither is what anyone types.
+    const intraday = capabilityFor("graph-intraday-price-pane");
+    expect(intraday.id).toBe("intraday-price-chart");
+    expect(() => normalizeCapabilityOptions(intraday, { interval: "5m" }, { code: "GIP" }))
+      .toThrow("GIP does not support --interval.");
+    // A function with no options says so.
+    expect(() => normalizeCapabilityOptions({ ...intraday, options: [] }, { range: "1Y" }, { code: "CDX" }))
+      .toThrow("CDX does not support --range. It has no options.");
+  });
 });
 
 describe("pane catalog search", () => {

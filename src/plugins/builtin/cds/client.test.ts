@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudCdsResponse } from "../../../api-client";
 import type { InstrumentSearchResult } from "../../../types/instrument";
-import { loadCdsActivity, loadCdsSpreadHistory } from "./client";
+import { loadCdsActivity, loadCdsSpreadHistory, loadCdsSpreadLevels } from "./client";
 
 function result(symbol: string, name: string): InstrumentSearchResult {
   return { providerId: "gloomberb-cloud", symbol, name, exchange: "NYSE", type: "STK" };
@@ -39,6 +39,20 @@ describe("loadCdsActivity", () => {
     expect(calls.requested).toEqual(["Oracle Corporation"]);
     // The pane body reads this back, so ORCL must not survive resolution.
     expect(activity.issuer).toBe("Oracle Corporation");
+  });
+
+  test("asks for the issuer a listing stands for, not its share class", async () => {
+    // The tape names issuers: "alphabet class a common stock" matches no trade.
+    for (const [symbol, listing, issuer] of [
+      ["GOOGL", "Alphabet Inc. Class A Common Stock", "Alphabet Inc."],
+      ["MSFT", "Microsoft Corporation Common Stock", "Microsoft Corporation"],
+      ["TSM", "Taiwan Semiconductor Manufacturing Company Ltd. American Depositary Shares", "Taiwan Semiconductor Manufacturing Company Ltd."],
+      ["BRK.B", "Berkshire Hathaway Inc. Class B", "Berkshire Hathaway Inc."],
+    ] as const) {
+      const calls = spy([result(symbol, listing)]);
+      await loadCdsActivity(symbol, calls.fetchCds, calls.searchInstruments);
+      expect(calls.requested).toEqual([issuer]);
+    }
   });
 
   test("prefers the primary US common stock when exchanges reuse a ticker", async () => {
@@ -124,5 +138,38 @@ describe("loadCdsSpreadHistory", () => {
     expect(requested).toEqual([{ issuer: "Oracle Corporation", days: 730 }]);
     expect(history.issuer).toBe("Oracle Corporation");
     expect(history.points.map((point) => point.date)).toEqual(["2026-09-24", "2026-09-25"]);
+  });
+});
+
+describe("loadCdsSpreadLevels", () => {
+  const line = (issuer: string, spreadBp: number) => ({
+    source: "DTCC PPD", issuer, tenor: "5Y", currency: "USD", asOf: null,
+    points: [{ date: "2026-10-09", spreadBp, prints: 3, reported: 0, maturity: "2031-12-20" }],
+  });
+
+  test("reads each listed issuer's latest level from a month of its line, leaving out names it cannot read", async () => {
+    const requested: unknown[] = [];
+    const levels = await loadCdsSpreadLevels([
+      { key: "ford motor", issuer: "Ford Motor Company" },
+      { key: "sr nt", issuer: "SR NT CONV" },
+      { key: "oracle", issuer: "Oracle Corporation" },
+    ], async (params) => {
+      requested.push(params);
+      if (params.issuer === "SR NT CONV") throw new Error("issuer must name a company");
+      return line(params.issuer, params.issuer === "Oracle Corporation" ? 205 : 157);
+    });
+    expect(requested).toContainEqual({ issuer: "Ford Motor Company", days: 30 });
+    expect(Object.fromEntries(levels)).toEqual({
+      "ford motor": { spreadBp: 157, date: "2026-10-09" },
+      oracle: { spreadBp: 205, date: "2026-10-09" },
+    });
+  });
+
+  test("fails only when no name could be read, so an outage is not a list without levels", async () => {
+    const down = async () => {
+      throw new Error("offline");
+    };
+    await expect(loadCdsSpreadLevels([{ key: "oracle", issuer: "Oracle Corporation" }], down)).rejects.toThrow("offline");
+    expect((await loadCdsSpreadLevels([], down)).size).toBe(0);
   });
 });

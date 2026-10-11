@@ -104,8 +104,8 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "days", type: "enum", settingKey: "days", values: ["1", "7", "30", "90", "365"].map((value) => ({ value })), defaultValue: "7", description: "History lookback in days." },
     { key: "metric", type: "enum", settingKey: "metric", values: HISTORY_METRICS.map((value) => ({ value })), defaultValue: "funding", description: "Displayed history chart; JSON retains every series." },
   ],
-  discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Free accounts see a fixed preview of the board, rankings and comparisons, and latest values for one market", "Pro unlocks every market, full rankings and history", "Rankings list up to ten markets each", "Rates, premiums and changes are fractions in JSON", "Open-interest history begins at first collection", "Funding APR is a simple annualization, not a forecast",
-    "Long/short account shares: venue definitions differ; history begins at first collection"] },
+  discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Free accounts see a fixed preview of the board, rankings and comparisons, and latest values for one market.", "Pro unlocks every market, full rankings and history.", "Rankings list up to ten markets each.", "Rates, premiums and changes are fractions in JSON.", "Open-interest history begins at first collection.", "Funding APR is a simple annualization, not a forecast.",
+    "Long/short account shares: venue definitions differ; history begins at first collection."] },
   describe: (args) => TITLES[tabOf(args)],
   async load(args, ctx) {
     const requested = requestedOf(args);

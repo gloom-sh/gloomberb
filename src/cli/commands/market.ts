@@ -124,6 +124,7 @@ import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListi
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage } from "../not-a-ticker";
+import { splitSymbolArgs } from "../symbol-args";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
@@ -198,11 +199,9 @@ function parseNewsFeed(value: string | undefined): NewsQuery["feed"] | undefined
   return value && VALID_NEWS_FEEDS.has(value as NewsFeed) ? value as NewsQuery["feed"] : undefined;
 }
 
+/** The symbols of a command's arguments, one each however they were separated: spaces, commas or pasted lines. */
 function normalizeSymbols(args: string[]): string[] {
-  return args
-    .flatMap((arg) => arg.split(","))
-    .map((symbol) => symbol.trim().toUpperCase())
-    .filter(Boolean);
+  return splitSymbolArgs(args).map((symbol) => symbol.toUpperCase());
 }
 
 /** What JSON metadata says about the listing a command resolved. */
@@ -721,7 +720,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
     const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
     const unit = historyUnit(listing.key, listed ?? quote);
-    const data = historyRows(points, resolution, unit.currency);
+    const data = historyRows(points, resolution, unit.currency, unit.unit);
     const interval = data[0]?.interval ?? null;
     const decimals = historyPriceDecimals(data, listing.saved?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
@@ -777,10 +776,11 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
       dateKey: "date",
       textColumns: [...priceColumns, flagColumn],
-      // Every exported row says its currency and bar size, so it survives head and concatenation.
+      // Every exported row says its currency, what a price is in and its bar size, so it survives head and concatenation.
       columns: [
         ...priceColumns,
         { key: "currency", header: "Currency" },
+        { key: "unit", header: "Unit" },
         { key: "interval", header: "Interval" },
         flagColumn,
       ],

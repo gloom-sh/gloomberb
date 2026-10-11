@@ -105,7 +105,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
       const warnings = [...parsed.listingNotes ?? [], ...await choice ?? []];
-      ctx.printResult({ data, ...(warnings.length > 0 ? { warnings } : {}) }, {
+      // The report states its own freshness in its data and text; JSON cites it as `source` too.
+      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });

@@ -6,7 +6,7 @@ import type { ColumnConfig } from "../../../types/config";
 import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../../../types/financials";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
-import { priceColor } from "../../../theme/colors";
+import { colors, priceColor } from "../../../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../../../market-data/quotes/time";
 import { formatShortDate, parseDisplayDate, type ShortDateOptions } from "../../../utils/datetime-format";
 import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
@@ -79,6 +79,35 @@ export interface ColumnContext {
   analystResearch?: Map<string, AnalystResearchData | null>;
   corporateActions?: Map<string, CorporateActionsData | null>;
   earningsEvents?: Map<string, EarningsEvent | null>;
+  /** Each row's stock perpetual by ticker, null for none; a row is missing while its lookup loads. */
+  perpetuals?: ReadonlyMap<string, ListedPerpetual | null>;
+  /** Moves whenever `perpetuals` does. */
+  perpetualsVersion?: number;
+}
+
+/** A row's stock perpetual as PERP% and FUND 8H read it; rates are fractions. */
+interface ListedPerpetual {
+  marketId: string;
+  /** The mark over the stock's last price; null without a comparable reference. */
+  underlyingPremium: number | null;
+  /** Funding per eight hours, whatever interval the venue pays on. */
+  fundingRate8h: number | null;
+  /** The venue's latest reading is old. */
+  stale: boolean;
+}
+
+/** The two perpetual columns: what each reads from the row's contract. */
+const PERPETUAL_FIELDS = { perp_premium: "underlyingPremium", perp_funding: "fundingRate8h" } as const;
+
+/** A perpetual's rate in percent: two decimals for a premium, four for funding, as PERP shows them. */
+function formatPerpetualRate(value: number, decimals: number): string {
+  const fixed = Math.abs(value * 100).toFixed(decimals);
+  return `${/[1-9]/.test(fixed) ? (value > 0 ? "+" : "-") : ""}${fixed}%`;
+}
+
+function perpetualValue(columnId: keyof typeof PERPETUAL_FIELDS, symbol: string, ctx: ColumnContext): { pending: boolean; data: ListedPerpetual | null; value: number | null } {
+  const perp = mapData(ctx.perpetuals, symbol);
+  return { ...perp, value: perp.data?.[PERPETUAL_FIELDS[columnId]] ?? null };
 }
 
 /** Position and calendar dates as "Jan 5", read in UTC. */
@@ -133,7 +162,7 @@ function targetValue(data: AnalystResearchData | null | undefined): number | nul
   return target?.average ?? target?.median ?? target?.high ?? target?.low ?? null;
 }
 
-function mapData<T>(map: Map<string, T | null> | undefined, symbol: string): { pending: boolean; data: T | null } {
+function mapData<T>(map: ReadonlyMap<string, T | null> | undefined, symbol: string): { pending: boolean; data: T | null } {
   if (!map) return { pending: false, data: null };
   if (!map.has(symbol)) return { pending: true, data: null };
   return { pending: false, data: map.get(symbol) ?? null };
@@ -493,6 +522,17 @@ export function getColumnValue(
       if (result.pending) return { text: "…" };
       return { text: formatShortDate(result.date, MONTH_DAY) };
     }
+    case "perp_premium":
+    case "perp_funding": {
+      const perp = perpetualValue(col.id, ticker.metadata.ticker, ctx);
+      if (perp.pending) return { text: "…" };
+      if (perp.value == null) return { text: "—" };
+      // An old venue reading keeps its figure, dimmed, as PERP shows a stale market.
+      return {
+        text: formatPerpetualRate(perp.value, col.id === "perp_funding" ? 4 : 2),
+        color: perp.data?.stale ? colors.textDim : priceColor(perp.value),
+      };
+    }
     case "latency":
       return { text: formatQuoteAgeWithSource(quote, ctx.now, { seconds: true }) };
     case PRICE_SPARKLINE_COLUMN_ID:
@@ -651,6 +691,9 @@ export function getSortValue(
       const result = nextEarningsDate(ticker.metadata.ticker, ctx);
       return result.pending ? null : result.date?.getTime() ?? null;
     }
+    case "perp_premium":
+    case "perp_funding":
+      return perpetualValue(col.id, ticker.metadata.ticker, ctx).value;
     case "latency":
       return quote ? ctx.now - (resolveQuoteAgeTimestamp(quote, ctx.now) ?? ctx.now) : null;
     case PRICE_SPARKLINE_COLUMN_ID: {

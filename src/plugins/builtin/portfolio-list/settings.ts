@@ -47,6 +47,9 @@ const PORTFOLIO_COLUMN_DEFS: ColumnConfig[] = [
   { id: "rating", label: "RATING", width: 7, align: "right", format: "number" },
   { id: "ex_div", label: "EX-DIV", width: 7, align: "right" },
   { id: "next_earn", label: "ERN", width: 7, align: "right" },
+  // The stock's perpetual: its premium to the stock's last price and its funding per eight hours.
+  { id: "perp_premium", label: "PERP%", width: 7, align: "right", format: "percent" },
+  { id: "perp_funding", label: "FUND 8H", width: 8, align: "right", format: "percent" },
   { id: "side", label: "SIDE", width: 5, align: "left" },
   { id: "shares", label: "SHARES", width: 9, align: "right", format: "number" },
   { id: "avg_cost", label: "AVG COST", width: 10, align: "right", format: "currency" },
@@ -171,6 +174,8 @@ function withTargetColumns(columnIds: string[]): string[] {
 function describeColumnOption(column: ColumnConfig): string {
   if (column.id === PRICE_SPARKLINE_COLUMN_ID) return "One-month price sparkline.";
   if (TARGET_COLUMN_IDS.has(column.id)) return "Shown by default once the portfolio has target weights.";
+  if (column.id === "perp_premium") return "Premium of the stock's perpetual to its last price.";
+  if (column.id === "perp_funding") return "Funding of the stock's perpetual, per 8 hours.";
   return PORTFOLIO_ONLY_COLUMN_IDS.has(column.id)
     ? "Visible only when this pane is showing a portfolio."
     : "Visible for watchlists and portfolios.";

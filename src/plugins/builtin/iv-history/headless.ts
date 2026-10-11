@@ -15,8 +15,8 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { status: "not-a-feed", basis: "daily implied volatility", cadence: "daily", observedKey: "date", oldest: null },
   describe: (args) => `HIVG ${args.symbols[0] ?? ""}`,
   discovery: { aliases: ["HIVG"], screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
-    limitations: ["History starts February 2024 (daily option trade closes)", "Rank and percentile use trade-close readings only",
-      "IV1Y needs long-dated trades: it can start later, has gaps, and ranks from 60 prior sessions"] },
+    limitations: ["History starts February 2024 (daily option trade closes).", "Rank and percentile use trade-close readings only.",
+      "IV1Y needs long-dated trades: it can start later, has gaps, and ranks from 60 prior sessions."] },
   options: [
     { key: "lookback", type: "enum", values: [{ value: "1Y" }, { value: "2Y" }, { value: "ALL" }], defaultValue: "1Y", description: "Visible history" },
     { key: "hvWindow", type: "enum", values: HV_WINDOWS.map((window) => ({ value: String(window) })), defaultValue: "20", description: "Realized volatility window in sessions" },
@@ -70,7 +70,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [{ key: "preset", type: "enum", values: [{ value: "etfs" }, { value: "megacaps" }], defaultValue: "etfs", description: "Preset when no symbols are given" }],
   describe: "Volatility rich/cheap",
   discovery: { aliases: ["VCA"], screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
-    limitations: ["Rich and cheap are relative to each symbol's own 52 weeks, not a fair-value model"] },
+    limitations: ["Rich and cheap are relative to each symbol's own 52 weeks, not a fair-value model."] },
   async load(args, ctx) {
     const universe = args.symbols.length ? vcaUniverse("custom", args.symbols.join(","), null, [])
       : vcaUniverse(String(args.options.preset) === "megacaps" ? "megacaps" : "etfs", "", null, []);

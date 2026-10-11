@@ -37,5 +37,15 @@ test("--section picks a report table, unless the function has a section option o
   expect(transcript.options.section).toBe("qa");
   await expect(fn(["CALLS", "NVDA", "--section", "bogus"])).rejects.toThrow("Invalid --section value");
   // Screenshots have no tables to pick from.
-  await expect(fn(["WEI", "--section", "Europe"], false)).rejects.toThrow("does not support --section");
+  await expect(fn(["WEI", "--section", "Europe"], false)).rejects.toThrow("WEI does not support --section");
+});
+
+test("an option or argument a function refuses names the function code, never its template or pane id", async () => {
+  const refused = await fn(["WEI", "--range", "1Y"], false).catch((error: Error) => error.message);
+  expect(refused).toBe("WEI does not support --range. It has no options.");
+  expect(refused).not.toContain("world-indices");
+  const strict = await resolvePaneFunction(
+    registry, context, { ...parsePaneFunctionArgs(["CALLS"]), requireBotSafe: true }, { strictHeadlessOptions: true },
+  ).catch((error: Error) => error.message);
+  expect(strict).toBe("CALLS requires exactly one ticker.");
 });

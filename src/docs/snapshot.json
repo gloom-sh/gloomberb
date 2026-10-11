@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-10",
+ "updatedAt": "2026-10-11",
  "categories": [
   {
    "id": "research",
@@ -1656,14 +1656,14 @@
   {
    "slug": "getting-started",
    "title": "Install Gloomberb: Mac, Windows, Linux, TUI",
-   "lead": "Install the Gloomberb desktop app on Mac or Windows, or run it in any terminal with one curl command. Then update it and confirm it runs.",
+   "lead": "Install the Gloomberb desktop app on Mac or Windows, or run it in a terminal with one command. Then update it and confirm it runs.",
    "category": "Start here",
    "tags": [
     "install",
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-10-10",
+   "updatedAt": "2026-10-11",
    "blocks": [
     {
      "type": "heading",
@@ -1706,11 +1706,34 @@
     },
     {
      "type": "paragraph",
-     "text": "The [desktop installer](/download/desktop) includes the terminal command. Windows 11 x64; ARM runs the x64 build under emulation."
+     "text": "The [desktop installer](/download/desktop), about 280 MB, installs the app and the `gloomberb` command for your user, with no admin rights. It is not code-signed yet, so SmartScreen may stop it:"
+    },
+    {
+     "type": "list",
+     "items": [
+      "Run the installer.",
+      "If Windows says \"Windows protected your PC\", click **More info**.",
+      "Click **Run anyway**."
+     ],
+     "ordered": true
     },
     {
      "type": "paragraph",
-     "text": "Terminal only, on any platform with [Bun](https://bun.sh):"
+     "text": "To check the file first, compare `Get-FileHash` on it with the SHA-256 on the [release page](https://github.com/gloom-sh/gloomberb/releases/latest)."
+    },
+    {
+     "type": "list",
+     "items": [
+      "**Terminal:** the installer adds `gloomberb` to your PATH, so open a new terminal window. PowerShell works.",
+      "**Charts:** Windows Terminal has no Kitty graphics, so terminal charts draw as text. The desktop app draws them in full.",
+      "**Data:** `%USERPROFILE%\\.gloomberb`, printed by `gloomberb version`. `GLOOMBERB_HOME` moves it.",
+      "**Git and Bun:** Bun ships with the app. Git is needed only to install plugins.",
+      "**Versions:** Windows 11 x64. Windows 10 and ARM PCs (x64 emulation) are untested."
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Terminal only, with [Bun](https://bun.sh), in PowerShell:"
     },
     {
      "type": "code",
@@ -1740,7 +1763,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`gloomberb` opens the terminal UI. `doctor` checks config, the cache database, loaded plugins, and capabilities."
+     "text": "`gloomberb` opens the terminal UI. `version` prints the data folder, and `doctor` checks that config, the cache database, plugins, and capabilities load."
     },
     {
      "type": "heading",
@@ -5084,7 +5107,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Use it to operate the live desktop or TUI. Use the [CLI](/docs/cli-functions) for headless data, reports, and screenshots."
+     "text": "Use it to operate the live desktop or TUI, and to capture a pane of the desktop app as it looks right now (`pane.screenshot`). Use the [CLI](/docs/cli-functions) for headless data, reports, and screenshots of a function with no app open."
     },
     {
      "type": "table",
@@ -5203,6 +5226,14 @@
     {
      "type": "code",
      "code": "gloomberb remote get app://snapshot --app desktop --json\ngloomberb remote get app://pane-templates --app desktop --json\ngloomberb remote get ui://tree --app desktop --json"
+    },
+    {
+     "type": "paragraph",
+     "text": "To see a pane as drawn, `pane.screenshot` returns it as a PNG (base64 in `image.data`, with its pixel size), the focused pane when `paneId` is left out. Desktop only; the TUI has no pixels."
+    },
+    {
+     "type": "code",
+     "code": "gloomberb remote call pane.screenshot '{ \"paneId\": \"chart:main\" }' --app desktop --json"
     },
     {
      "type": "heading",
@@ -5823,6 +5854,10 @@
        "One pane's settings, state and drawn UI (`paneId`)"
       ],
       [
+       "`terminal.pane.screenshot`",
+       "One pane of the desktop app as a PNG image, as it looks on screen (`paneId?`, `width?`). A read: it runs once you approved the assistant, without asking each call. Up to 1600 px on the long side and 512 KB; the TUI answers `unsupported`"
+      ],
+      [
        "`terminal.get_resource`, `terminal.patch_resource`",
        "Any remote API resource; configuration arrives without credentials"
       ],
@@ -5847,7 +5882,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Each call returns text plus `structuredContent` with `status` (`ok`, `partial` when a limit removed rows, or `error`), `rowCount`, `truncated`, `asOf` and `data`. Results are capped at 256 KB. A failed source returns `status: \"error\"` with `data.error = { code, source, reason }`."
+     "text": "Each call returns text plus `structuredContent` with `status` (`ok`, `partial` when a limit removed rows, or `error`), `rowCount`, `truncated`, `asOf` and `data`. Results are capped at 256 KB. A failed source returns `status: \"error\"` with `data.error = { code, source, reason }`. `terminal.pane.screenshot` returns the same JSON as text plus an image block, and no `structuredContent`, since some clients read only that and would drop the image."
     },
     {
      "type": "paragraph",

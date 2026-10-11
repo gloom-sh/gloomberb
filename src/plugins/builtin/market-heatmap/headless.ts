@@ -86,8 +86,8 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["HM", "heatmap"],
     dataRequirements: ["Gloom Cloud market heatmap snapshot"],
     limitations: [
-      "The snapshot the pane starts from, refreshed about once a minute; the pane's live-streamed colors are not in the report",
-      "Moves are weighted by market cap (net assets for ETFs), not by the pane's square-root tile area",
+      "The snapshot the pane starts from, refreshed about once a minute; the pane's live-streamed colors are not in the report.",
+      "Moves are weighted by market cap (net assets for ETFs), not by the pane's square-root tile area.",
     ],
   },
   // A board snapshot refreshed on a schedule, not a feed; the pane streams on top of it, the report does not.

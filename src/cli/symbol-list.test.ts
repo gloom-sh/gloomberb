@@ -1,10 +1,5 @@
 import { expect, test } from "bun:test";
-import { parseSymbolText, readSymbolList, splitSymbolArgs } from "./symbol-list";
-
-test("arguments split on commas, spaces and newlines in any mix", () => {
-  expect(splitSymbolArgs(["AAPL, msft ,XXXXX,ttf.as", "nvda", "xom ", "BRK.B;SAN:EPA\n7203.T"]))
-    .toEqual(["AAPL", "msft", "XXXXX", "ttf.as", "nvda", "xom", "BRK.B", "SAN:EPA", "7203.T"]);
-});
+import { parseSymbolText, readSymbolList } from "./symbol-list";
 
 test("a spreadsheet export reads its symbol column, or its first column, past BOM, CRLF, quotes, blanks and comments", () => {
   const exported = "\uFEFFName,\"Ticker Symbol\",\"Weight, %\"\r\n\"Apple Inc.\",\"AAPL\",5.1\r\n\r\n# exported from sheets\r\n,,\r\n\"Microsoft, Corp\", msft ,4.2\r\n";

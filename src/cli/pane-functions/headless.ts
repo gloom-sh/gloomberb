@@ -46,6 +46,8 @@ interface SerializableHeadlessColumn {
   align?: "left" | "right" | "center";
   width?: number;
   description?: string;
+  /** The row field that names this column's unit. */
+  unitKey?: string;
 }
 
 export interface LoadedHeadlessPaneModel {
@@ -221,6 +223,7 @@ function serializableColumns(columns: HeadlessPaneColumn[]): SerializableHeadles
     ...(column.align ? { align: column.align } : {}),
     ...(column.width != null ? { width: column.width } : {}),
     ...(column.description ? { description: column.description } : {}),
+    ...(column.unitKey ? { unitKey: column.unitKey } : {}),
   }));
 }
 

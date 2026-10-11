@@ -391,6 +391,7 @@ function WebDataTableRowInner<
               boxSizing: "border-box",
               height: WEB_CELL_HEIGHT,
               overflow: "hidden",
+              cursor: cell.onMouseDown ? "pointer" : undefined,
               backgroundColor: cell.backgroundColor ?? rowBg,
               boxShadow: freezeFirstColumn && columnIndex === 0 ? `-${inlinePaddingPx(horizontalPadding)}px 0 0 ${cell.backgroundColor ?? rowBg}, ${columnGap * WEB_CELL_WIDTH}px 0 0 ${cell.backgroundColor ?? rowBg}` : undefined,
             }}

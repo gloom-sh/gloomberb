@@ -17,10 +17,10 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["SEG"],
     dataRequirements: ["Gloom Cloud revenue breakdowns from 10-Q and 10-K XBRL"],
     limitations: [
-      "US filers only; 20-F filers report no quarterly breakdown",
-      "Rows are the members that add up to reported revenue; subtotals are dropped",
-      "Fiscal quarters; Q4 is the fiscal year less nine months",
-      "Free accounts get the two largest rows",
+      "US filers only; 20-F filers report no quarterly breakdown.",
+      "Rows are the members that add up to reported revenue; subtotals are dropped.",
+      "Fiscal quarters; Q4 is the fiscal year less nine months.",
+      "Free accounts get the two largest rows.",
     ],
   },
   options: [

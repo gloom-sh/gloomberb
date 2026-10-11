@@ -1,6 +1,7 @@
 import type { CloudCdsHistoryPointPayload, CloudCdsTradePayload } from "../../../api-client";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { TimeSeriesPoint } from "../../../time-series/types";
+import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { TickerRecord } from "../../../types/ticker";
 import { formatCompact } from "../../../utils/format";
 import { compareSortValues, type SortPreference } from "../../../utils/sort-values";
@@ -45,7 +46,11 @@ export interface CdsIssuerSummary {
   issuer: string;
   trades: number;
   lastTradeAt: number;
+  /** The newest spread a trade reported, when any did. */
   latestSpreadBp: number | null;
+  /** The latest level of the issuer's 5Y line and its date, where it has one: what the list ranks by. */
+  spread5yBp: number | null;
+  spread5yDate: string | null;
 }
 
 /**
@@ -119,6 +124,32 @@ export function issuerGroupKey(name: string): string {
   return (meaningful.length > 0 ? meaningful : tokens).join(" ") || name.trim().toLowerCase();
 }
 
+/**
+ * DTCC writes a comma inside a field as `;` ("CCO Holdings;LLC",
+ * "Amazon.com;Inc."), so a name gets its comma back before it is shown,
+ * grouped or sent as a query.
+ */
+export function displayIssuerName(name: string): string {
+  return name.replace(/\s*;\s*/g, ", ").trim();
+}
+
+/**
+ * What a listing's name says about the security rather than the company:
+ * share class, stock or receipt type. The tape names issuers, never their
+ * shares, so "Alphabet Inc. Class A Common Stock" has to become "Alphabet Inc.".
+ */
+const SECURITY_SUFFIX = /[\s,-]+(?:(?:class|series)\s+[a-z0-9]{1,2}|common|ordinary|stock|shares?|(?:american\s+)?(?:depositary|depository)(?:\s+(?:shares?|receipts?))?|ads|adrs?)$/i;
+
+/** The issuer a listing's name stands for, as the tape would name it: its comma back, its share class gone. */
+export function issuerNameOf(name: string): string {
+  let current = displayIssuerName(name);
+  for (;;) {
+    const next = current.replace(SECURITY_SUFFIX, "").trim();
+    if (next === current || !next) return current;
+    current = next;
+  }
+}
+
 /** Mixed case reads as a real name; all-caps is the tape shouting. */
 function isMixedCase(name: string): boolean {
   return name !== name.toUpperCase();
@@ -177,9 +208,9 @@ function tapeTime(trade: CloudCdsTradePayload): number | null {
  */
 function issuerOf(trade: CloudCdsTradePayload): string | null {
   const reported = trade.issuerName?.trim();
-  if (reported) return reported;
+  if (reported) return displayIssuerName(reported);
   const underlier = trade.upiUnderlierName?.trim();
-  return underlier && identifiesIssuer(underlier) ? underlier : null;
+  return underlier && identifiesIssuer(underlier) ? displayIssuerName(underlier) : null;
 }
 
 export function normalizeCdsTrades(trades: readonly CloudCdsTradePayload[]): CdsTrade[] {
@@ -227,6 +258,8 @@ export function summarizeIssuers(trades: readonly CdsTrade[]): CdsIssuerSummary[
         trades: 1,
         lastTradeAt: trade.eventAt,
         latestSpreadBp: trade.spreadBp,
+        spread5yBp: null,
+        spread5yDate: null,
       });
       if (trade.spreadBp != null) spreadAt.set(trade.issuerKey, trade.eventAt);
       continue;
@@ -242,20 +275,110 @@ export function summarizeIssuers(trades: readonly CdsTrade[]): CdsIssuerSummary[
   return [...byIssuer.values()];
 }
 
+/** The latest 5Y level and its date, by issuer key. */
+export type CdsSpreadLevels = ReadonlyMap<string, { spreadBp: number; date: string }>;
+
+/** Each issuer with the latest level of its 5Y line, where it has one, so the list ranks by it. */
+export function withSpreadLevels(rows: readonly CdsIssuerSummary[], levels: CdsSpreadLevels | null): CdsIssuerSummary[] {
+  if (!levels?.size) return [...rows];
+  return rows.map((row) => {
+    const level = levels.get(row.key);
+    return level ? { ...row, spread5yBp: level.spreadBp, spread5yDate: level.date } : row;
+  });
+}
+
 export function tradesForIssuer(trades: readonly CdsTrade[], issuerKey: string): CdsTrade[] {
   return trades.filter((trade) => trade.issuerKey === issuerKey);
 }
 
 /**
+ * When the view was last traded: its newest print, or the last day its 5Y
+ * line has a level when no print is in the window. Null when neither is.
+ */
+export function lastTradeOf(
+  trades: readonly Pick<CdsTrade, "eventAt">[],
+  points: readonly Pick<CloudCdsHistoryPointPayload, "date">[] = [],
+): number | string | null {
+  const newest = trades.reduce<number | null>((latest, trade) => (latest == null || trade.eventAt > latest ? trade.eventAt : latest), null);
+  const lineDate = points.at(-1)?.date ?? null;
+  if (newest == null) return lineDate;
+  return lineDate && Date.parse(`${lineDate}T00:00:00Z`) > newest ? lineDate : newest;
+}
+
+/**
+ * How current a CDS view is, the same at the end of `fn`, in the pane footer
+ * and on a shot: dated by its last trade, never by when the tape was fetched,
+ * with how many days that trade is behind:
+ * `Source: DTCC · last trade 2026-10-09 · lag 2 days`.
+ */
+export function cdsFreshness(lastTrade: number | string | null): HeadlessPaneFreshness {
+  return {
+    source: "DTCC",
+    // Public dissemination of swap trades, held back by rule for some trades.
+    status: "delayed",
+    dataset: true,
+    observation: "last trade",
+    asOf: typeof lastTrade === "number" ? new Date(lastTrade).toISOString() : lastTrade,
+    // The rows are a history, whose first entry is not stale data.
+    oldest: null,
+  };
+}
+
+/**
+ * What an empty view says: the window searched and, for one name, the
+ * reference entity the query became, with what was typed when that differs.
+ */
+export function noTradesMessage({ query, issuer, days }: {
+  query: string | null;
+  issuer: string | null;
+  days: number;
+}): string {
+  const window = `in the last ${days} days`;
+  if (!query) return `No single-name CDS trades ${window}.`;
+  const name = issuer && issuer.toUpperCase() !== query.toUpperCase() ? `${issuer} (${query})` : issuer ?? query;
+  return `No CDS trades for ${name} ${window}.`;
+}
+
+/**
+ * Listed companies whose CDS references another entity than the one their
+ * shares trade as, usually the subsidiary or holding company that issues the
+ * debt. The tape never names the listed parent, so its name would match no
+ * trade. Every name here matches the entity's own spellings on the tape.
+ */
+const CDS_REFERENCE_ENTITIES: Readonly<Record<string, string>> = {
+  CHTR: "CCO Holdings, LLC",
+  GNW: "Genworth Holdings, Inc.",
+  HLT: "Hilton Domestic Operating Company Inc.",
+  HRB: "Block Financial LLC",
+  HTZ: "The Hertz Corporation",
+  IHRT: "iHeartCommunications, Inc.",
+  MPW: "MPT Operating Partnership, LP",
+  NCLH: "NCL Corporation Ltd.",
+  NXST: "Nexstar Media Inc.",
+  OMF: "OneMain Finance Corporation",
+  PARA: "Paramount Global",
+  PSKY: "Paramount Global",
+  SIRI: "Sirius XM Radio LLC",
+  TMUS: "T-Mobile USA, Inc.",
+};
+
+/** The reference entity a ticker's CDS trades under, when it is not the listed company. */
+export function cdsReferenceEntity(symbol: string): string | null {
+  return CDS_REFERENCE_ENTITIES[symbol.trim().toUpperCase()] ?? null;
+}
+
+/**
  * What the pane asks for. A tracked ticker already carries its company name; an
- * untracked one yields the bare symbol, which the loader expands through
- * instrument search before it reaches the backend.
+ * untracked one, or one whose CDS references another entity, yields the bare
+ * symbol, which the loader expands before it reaches the backend.
  */
 export function resolveIssuerQuery(
   symbol: string | null,
   ticker: TickerRecord | null,
 ): string | null {
-  return ticker?.metadata.name?.trim() || symbol?.trim().toUpperCase() || null;
+  const bare = symbol?.trim().toUpperCase() || null;
+  if (bare && cdsReferenceEntity(bare)) return bare;
+  return ticker?.metadata.name?.trim() || bare;
 }
 
 export function formatBp(value: number | null): string {
@@ -268,26 +391,29 @@ export function formatNotional(trade: Pick<CdsTrade, "notional" | "notionalCappe
   return `${formatCompact(trade.notional)}${trade.notionalCapped ? "+" : ""}`;
 }
 
+/**
+ * DTCC publishes the upfront without a direction, and who paid it is not
+ * public, so it is an absolute amount: never signed, and labelled `abs`
+ * where it is shown.
+ */
 export function formatUpfront(trade: Pick<CdsTrade, "upfront" | "upfrontCurrency">): string {
   if (trade.upfront == null) return "--";
-  const sign = trade.upfront > 0 ? "+" : "";
-  return `${sign}${formatCompact(trade.upfront)}${trade.upfrontCurrency ? ` ${trade.upfrontCurrency}` : ""}`;
+  return `${formatCompact(Math.abs(trade.upfront))}${trade.upfrontCurrency ? ` ${trade.upfrontCurrency}` : ""}`;
 }
 
-function pad(value: number): string {
-  return String(value).padStart(2, "0");
-}
-
-/** UTC, because DTCC disseminates in UTC and a guessed local zone misdates prints. */
+/**
+ * `2026-10-09 13:21`, in UTC: DTCC disseminates in UTC, a guessed local zone
+ * misdates prints, and `10/09` reads as 10 September to most of the world.
+ */
 export function formatEventTime(eventAt: number): string {
-  const date = new Date(eventAt);
-  return `${pad(date.getUTCMonth() + 1)}/${pad(date.getUTCDate())} ${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}`;
+  if (!Number.isFinite(eventAt)) return "--";
+  return new Date(eventAt).toISOString().slice(0, 16).replace("T", " ");
 }
 
 export function formatAsOf(asOf: string | null): string | null {
   if (!asOf) return null;
   const parsed = Date.parse(asOf);
-  return Number.isFinite(parsed) ? `${formatEventTime(parsed)}Z` : asOf;
+  return Number.isFinite(parsed) ? `${formatEventTime(parsed)} UTC` : asOf;
 }
 
 export function formatMaturity(maturity: string | null): string {
@@ -307,8 +433,8 @@ export function buildIssuerColumns(): IssuerColumn[] {
   return [
     { id: "issuer", label: "ISSUER", width: 16, align: "left", flexGrow: 1 },
     { id: "trades", label: "TRADES", width: 7, align: "right" },
-    { id: "last", label: "LAST UTC", width: 12, align: "left" },
-    { id: "spread", label: "SPREAD", width: 10, align: "right" },
+    { id: "last", label: "LAST UTC", width: 16, align: "left" },
+    { id: "spread", label: "5Y SPREAD", width: 10, align: "right" },
   ];
 }
 
@@ -321,7 +447,7 @@ function issuerSortValue(columnId: IssuerColumnId, row: CdsIssuerSummary): strin
     case "last":
       return row.lastTradeAt;
     case "spread":
-      return row.latestSpreadBp;
+      return row.spread5yBp;
   }
 }
 
@@ -357,15 +483,15 @@ export const TRADE_SORT_COLUMN_IDS: readonly TradeColumnId[] = [
 export const DEFAULT_TRADE_SORT: TradeSortPreference = { columnId: "time", direction: "desc" };
 
 export function buildTradeColumns(width: number): TradeColumn[] {
-  const maturityWidth = Math.max(10, Math.min(12, width - 55));
+  const maturityWidth = Math.max(10, Math.min(12, width - 59));
   return [
-    { id: "time", label: "TIME UTC", width: 12, align: "left" },
+    { id: "time", label: "TIME UTC", width: 16, align: "left" },
     { id: "maturity", label: "MATURITY", width: maturityWidth, align: "left" },
     { id: "notional", label: "NOTIONAL", width: 11, align: "right" },
     { id: "currency", label: "CCY", width: 5, align: "left" },
     { id: "coupon", label: "COUPON", width: 9, align: "right" },
     { id: "spread", label: "SPREAD", width: 10, align: "right" },
-    { id: "upfront", label: "UPFRONT", width: 13, align: "right" },
+    { id: "upfront", label: "ABS UPFRONT", width: 13, align: "right" },
   ];
 }
 
@@ -423,9 +549,25 @@ export function spreadChartPoints(points: readonly CloudCdsHistoryPointPayload[]
   return out;
 }
 
-function formatSpreadChange(value: number): string {
+/** The 1M move as the pane shows it: whole basis points, signed. */
+export function formatSpreadChange(value: number): string {
   const rounded = Math.round(value);
   return `${rounded > 0 ? "+" : ""}${rounded}bp`;
+}
+
+function dayTime(date: string): number {
+  return Date.parse(`${date}T00:00:00Z`);
+}
+
+/** The figures of an issuer's 5Y line, the ones the pane heads its chart with and a report carries. */
+export interface CdsSpreadSummary {
+  /** The latest level, bp, and the New York trade date it is from. */
+  spreadBp: number;
+  date: string;
+  /** The move over a month on the same contract; null across a roll or a gap. */
+  change1mBp: number | null;
+  /** Lowest and highest level since the first date charted; null with a single level. */
+  range: { lowBp: number; highBp: number; since: string } | null;
 }
 
 /**
@@ -434,24 +576,44 @@ function formatSpreadChange(value: number): string {
  * same contract, so neither a gap nor a roll to the next contract, which
  * trades wider, passes for a move.
  */
-export function spreadFigures(points: readonly CloudCdsHistoryPointPayload[]): StatItem[] {
+export function spreadSummary(points: readonly CloudCdsHistoryPointPayload[]): CdsSpreadSummary | null {
   const latest = points.at(-1);
-  if (!latest) return [];
-  const latestTime = Date.parse(`${latest.date}T00:00:00Z`);
+  if (!latest) return null;
+  const latestTime = dayTime(latest.date);
   const monthAgo = points.findLast((point) => {
     if (point.maturity !== latest.maturity) return false;
-    const age = latestTime - Date.parse(`${point.date}T00:00:00Z`);
+    const age = latestTime - dayTime(point.date);
     return age >= 30 * DAY_MS && age <= 45 * DAY_MS;
   });
   const levels = points.map((point) => point.spreadBp);
+  return {
+    spreadBp: latest.spreadBp,
+    date: latest.date,
+    // A tenth of a basis point is the line's own precision; the rest is float noise.
+    change1mBp: monthAgo ? Math.round((latest.spreadBp - monthAgo.spreadBp) * 10) / 10 : null,
+    range: points.length >= 2
+      ? { lowBp: Math.min(...levels), highBp: Math.max(...levels), since: points[0]!.date }
+      : null,
+  };
+}
+
+/** `129 to 276bp`: the low keeps the level's precision, so the level never falls outside it. */
+export function formatSpreadRange(range: NonNullable<CdsSpreadSummary["range"]>): string {
+  return `${formatBp(range.lowBp).slice(0, -2)} to ${formatBp(range.highBp)}`;
+}
+
+/** The pane's figures over its 5Y chart, from `spreadSummary`. */
+export function spreadFigures(points: readonly CloudCdsHistoryPointPayload[]): StatItem[] {
+  const summary = spreadSummary(points);
+  if (!summary) return [];
   return [
-    { id: "spread", label: "5Y spread", value: formatBp(latest.spreadBp), detail: latest.date },
-    ...(monthAgo ? [{ id: "change", label: "1M", value: formatSpreadChange(latest.spreadBp - monthAgo.spreadBp) }] : []),
-    ...(points.length >= 2 ? [{
+    { id: "spread", label: "5Y spread", value: formatBp(summary.spreadBp), detail: summary.date },
+    ...(summary.change1mBp != null ? [{ id: "change", label: "1M", value: formatSpreadChange(summary.change1mBp) }] : []),
+    ...(summary.range ? [{
       id: "range",
       label: "Range",
-      value: `${formatBp(Math.min(...levels)).slice(0, -2)} to ${formatBp(Math.max(...levels))}`,
-      detail: `since ${points[0]!.date}`,
+      value: formatSpreadRange(summary.range),
+      detail: `since ${summary.range.since}`,
     }] : []),
   ];
 }

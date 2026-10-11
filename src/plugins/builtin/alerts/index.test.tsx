@@ -297,7 +297,12 @@ describe("alertsPlugin command", () => {
           lastUpdated: Date.now(),
           dataSource: "live",
         }),
+        // 7203 trades in Tokyo only.
+        search: async (query: string) => query.startsWith("7203")
+          ? [{ providerId: "test", symbol: "7203", name: "Toyota Motor Corporation", exchange: "JPX", currency: "JPY", type: "EQUITY" }]
+          : [],
       },
+      tickerRepository: { loadTicker: async () => null, loadAllTickers: async () => [] },
       notify(notification: any) {
         notifications.push(notification);
       },
@@ -333,6 +338,10 @@ describe("alertsPlugin command", () => {
         status: "active",
       });
       expect(notifications[0]?.body).toContain("AAPL");
+
+      // An alert link's 7203:TSE is Tokyo, where 7203 trades, as `alerts add` reads it.
+      await command.execute({ symbol: "7203:TSE", condition: "above", price: "3000" });
+      expect(deserializeAlerts(String(store.get("alerts")))[1]).toMatchObject({ symbol: "7203:JPX", targetPrice: 3000 });
     } finally {
       alertsPlugin.dispose?.();
     }
