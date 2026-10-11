@@ -177,6 +177,7 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
    stream: a touch or pen press on them never starts a pan or zoom. */
 [data-gloom-role="pane-header"][data-drag-surface="pane"],
 [data-gloom-role="resize-handle"],
+[data-gloom-role="resize-edge"],
 [data-gloom-role="dock-divider"] {
   touch-action: none;
 }
@@ -274,6 +275,23 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="resize-handle"] {
   cursor: nwse-resize;
+}
+/* The invisible strips around a floating pane that resize it from any edge or corner. */
+[data-gloom-role="resize-edge"][data-edge="left"],
+[data-gloom-role="resize-edge"][data-edge="right"] {
+  cursor: ew-resize;
+}
+[data-gloom-role="resize-edge"][data-edge="top"],
+[data-gloom-role="resize-edge"][data-edge="bottom"] {
+  cursor: ns-resize;
+}
+[data-gloom-role="resize-edge"][data-edge="top-left"],
+[data-gloom-role="resize-edge"][data-edge="bottom-right"] {
+  cursor: nwse-resize;
+}
+[data-gloom-role="resize-edge"][data-edge="top-right"],
+[data-gloom-role="resize-edge"][data-edge="bottom-left"] {
+  cursor: nesw-resize;
 }
 [data-gloom-role="window-mode-status"] {
   border: 1px solid color-mix(in srgb, var(--gloom-border-focused) 76%, transparent);

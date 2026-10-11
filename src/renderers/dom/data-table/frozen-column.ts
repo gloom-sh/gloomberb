@@ -7,7 +7,9 @@ export function useFrozenColumnInsets(enabled: boolean, scrollLeft: number, view
   useLayoutEffect(() => {
     const cells = ref.current?.children;
     if (!enabled || !cells?.length) {
-      setInsets((current) => current.length ? [] : current);
+      // Most tables freeze nothing: leave their rows' state alone, since a
+      // state update from a layout effect costs every render a second commit.
+      if (insets.length) setInsets([]);
       return;
     }
     const first = cells[0]!.getBoundingClientRect();

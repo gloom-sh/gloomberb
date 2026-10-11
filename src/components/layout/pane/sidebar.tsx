@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, startTransition, useCallback, useContext, useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useNativeRenderer, useUiCapabilities, type BoxRenderable } from "../../../ui";
+import { beginLiveResize, createCatchUp, type CatchUp } from "../../../ui/live-resize";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
 import { blendHex, colors, hoverBg } from "../../../theme/colors";
 import { t } from "../../../i18n";
@@ -44,7 +45,11 @@ export interface PaneSidebarResize {
   /** Narrowest and widest the divider may be dragged to, in cells. */
   min: number;
   max: number;
-  /** Fires on every frame of the drag with the clamped width. */
+  /**
+   * Fires as the drag goes with the clamped width: on every frame in the
+   * terminal, a few times a second on the desktop, where the divider and the
+   * sidebar's box follow the pointer on their own in between.
+   */
   onResize: (width: number) => void;
   /** Fires once the pointer is released, for callers that persist the width. */
   onResizeEnd?: (width: number) => void;
@@ -76,19 +81,45 @@ export function PaneSidebar({
   const { nativePaneChrome } = useUiCapabilities();
   const nativeRenderer = useNativeRenderer();
   const dividerRef = useRef<BoxRenderable>(null);
+  const sidebarRef = useRef<BoxRenderable>(null);
   const dragOriginRef = useRef<{ pointerX: number; width: number } | null>(null);
+  /**
+   * Desktop drag: the sidebar's box follows the pointer by restyling itself
+   * (`setLiveFrame`), and its content catches up through `onResize` a few
+   * times a second, at the width last caught up to.
+   */
+  const liveDragRef = useRef<{ width: number; caughtUp: number; catchUp: CatchUp; end: () => void } | null>(null);
+  const resizeRef = useRef(resize);
+  resizeRef.current = resize;
   const [resizing, setResizing] = useState(false);
   const [dividerHovered, setDividerHovered] = useState(false);
 
-  const resolveDragWidth = useCallback((event?: PaneSidebarPointerEvent) => {
+  /** Where the pointer has the divider, in cells, clamped; whole cells unless `precise`. */
+  const resolveDragWidth = useCallback((event?: PaneSidebarPointerEvent, precise = false) => {
     const origin = dragOriginRef.current;
     if (!origin || !resize) return null;
     event?.preventDefault?.();
     event?.stopPropagation?.();
     const pointerX = event?.preciseX ?? event?.x ?? origin.pointerX;
-    const next = Math.round(origin.width + (pointerX - origin.pointerX));
-    return Math.min(resize.max, Math.max(resize.min, next));
+    const next = origin.width + (pointerX - origin.pointerX);
+    return Math.min(resize.max, Math.max(resize.min, precise ? next : Math.round(next)));
   }, [resize]);
+
+  const stopLiveDrag = useCallback(() => {
+    const drag = liveDragRef.current;
+    if (!drag) return null;
+    liveDragRef.current = null;
+    drag.catchUp.cancel();
+    sidebarRef.current?.setLiveFrame?.(null);
+    drag.end();
+    return drag;
+  }, []);
+  useEffect(() => () => { stopLiveDrag(); }, [stopLiveDrag]);
+  // A catch-up renders the sidebar at whole cells; its box stays where the pointer has it.
+  useLayoutEffect(() => {
+    const drag = liveDragRef.current;
+    if (drag) sidebarRef.current?.setLiveFrame?.({ width: drag.width });
+  });
 
   const beginResize = useCallback((event?: PaneSidebarPointerEvent) => {
     if (!resize) return;
@@ -97,9 +128,34 @@ export function PaneSidebar({
     dragOriginRef.current = { pointerX: event?.preciseX ?? event?.x ?? 0, width };
     setResizing(true);
     capturePointerDrag(nativeRenderer, dividerRef.current);
-  }, [nativeRenderer, resize, width]);
+    stopLiveDrag();
+    if (nativePaneChrome && sidebarRef.current?.setLiveFrame) {
+      const drag = {
+        width,
+        caughtUp: width,
+        end: beginLiveResize(),
+        catchUp: createCatchUp(() => {
+          const next = Math.round(drag.width);
+          if (liveDragRef.current !== drag || next === drag.caughtUp) return;
+          drag.caughtUp = next;
+          // In slices between the frames the drag draws; the release renders at once.
+          startTransition(() => resizeRef.current?.onResize(next));
+        }),
+      };
+      liveDragRef.current = drag;
+    }
+  }, [nativePaneChrome, nativeRenderer, resize, stopLiveDrag, width]);
 
   const continueResize = useCallback((event?: PaneSidebarPointerEvent) => {
+    const drag = liveDragRef.current;
+    if (drag) {
+      const next = resolveDragWidth(event, true);
+      if (next === null || next === drag.width) return;
+      drag.width = next;
+      sidebarRef.current?.setLiveFrame?.({ width: next });
+      drag.catchUp.request();
+      return;
+    }
     const next = resolveDragWidth(event);
     if (next !== null) resize?.onResize(next);
   }, [resize, resolveDragWidth]);
@@ -109,11 +165,18 @@ export function PaneSidebar({
     const origin = dragOriginRef.current;
     dragOriginRef.current = null;
     setResizing(false);
+    // The box goes back to the width React last drew, and the release draws
+    // the final one in the same commit.
+    const drag = stopLiveDrag();
     // A click that never moved is not a resize: leave the width as it was,
     // so tapping the divider does not pin a sidebar that still follows the pane.
-    if (next === null || next === origin?.width) return;
+    if (next === null || next === origin?.width) {
+      // Dragged out and back: undo what the content caught up to.
+      if (next !== null && drag && drag.caughtUp !== next) resize?.onResize(next);
+      return;
+    }
     (resize?.onResizeEnd ?? resize?.onResize)?.(next);
-  }, [resize, resolveDragWidth]);
+  }, [resize, resolveDragWidth, stopLiveDrag]);
 
   // The keyboard moves the divider too: `<` and `>` while the pane is focused,
   // listed in the pane menu. Each press is a finished resize, so it persists.
@@ -160,6 +223,7 @@ export function PaneSidebar({
   return (
     <PaneSidebarContext.Provider value={{ ...renderState, activeBackgroundColor, keyboardFocused }}>
       <Box
+        ref={sidebarRef}
         width={width}
         height={sidebarLayoutHeight}
         flexDirection="row"
@@ -168,7 +232,8 @@ export function PaneSidebar({
         data-gloom-role="pane-sidebar"
       >
         <Box
-          width={listWidth}
+          // The desktop list fills the sidebar, so it follows a drag of its box.
+          width={nativePaneChrome ? "100%" : listWidth}
           height={sidebarLayoutHeight}
           flexDirection="column"
           backgroundColor={backgroundColor}

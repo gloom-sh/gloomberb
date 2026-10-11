@@ -90,8 +90,9 @@ jobs:
           git worktree add ../base FETCH_HEAD
           cd ../base && bun install --frozen-lockfile
 
-      # Fails when dragging a docked or floating pane clearly costs the main
-      # thread more per frame, or renders React more, than on the base branch;
-      # the table lands in the job summary either way.
+      # Fails when dragging or resizing a pane clearly costs the main thread
+      # more per frame, or renders React more, than on the base branch, or
+      # when a resized frame falls behind the pointer; the table lands in the
+      # job summary either way.
       - name: Compare a pane drag's frame budget with the base branch
         run: bun run benchmark:pane-drag:compare --base ../base

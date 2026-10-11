@@ -53,10 +53,24 @@ export interface PaneDragRectState {
   origRect: FloatingRect;
 }
 
+/**
+ * The edges of a floating pane a resize moves: -1 the left or top edge, 1 the
+ * right or bottom one, 0 neither on that axis.
+ */
+export interface ResizeEdges {
+  x: -1 | 0 | 1;
+  y: -1 | 0 | 1;
+}
+
+/** The bottom-right corner, the one resize the terminal has. */
+const CORNER_RESIZE: ResizeEdges = { x: 1, y: 1 };
+
 export interface FloatResizeDragState {
   startX: number;
   startY: number;
   origRect: FloatingRect;
+  /** Omitted: the bottom-right corner. */
+  edges?: ResizeEdges;
 }
 
 const DOCK_DIVIDER_SIZE = 1;
@@ -145,6 +159,21 @@ export function resolvePaneDragFloatingRect(
   }, totalWidth, totalHeight);
 }
 
+/**
+ * Moves one edge of a span by `delta`, keeping it at least `min` long and
+ * inside 0..`total`: the far edge (1) grows the length, the near one (-1)
+ * moves the start and keeps the far edge where it was.
+ */
+function resizeSpan(start: number, length: number, delta: number, edge: -1 | 0 | 1, min: number, total: number): [number, number] {
+  if (edge === 1) return [start, Math.max(min, Math.min(total - start, length + delta))];
+  if (edge === -1) {
+    const end = start + length;
+    const nextStart = Math.max(0, Math.min(end - min, start + delta));
+    return [nextStart, end - nextStart];
+  }
+  return [start, length];
+}
+
 export function resolveFloatResizeRect(
   drag: FloatResizeDragState,
   pointerX: number,
@@ -152,13 +181,11 @@ export function resolveFloatResizeRect(
   totalWidth: number,
   totalHeight: number,
 ): FloatingRect {
-  return constrainFloatingRectToBounds({
-    x: drag.origRect.x,
-    y: drag.origRect.y,
-    width: Math.max(MIN_FLOAT_WIDTH, Math.min(totalWidth - drag.origRect.x, drag.origRect.width + (pointerX - drag.startX))),
-    height: Math.max(MIN_FLOAT_HEIGHT, Math.min(totalHeight - drag.origRect.y, drag.origRect.height + (pointerY - drag.startY))),
-    zIndex: drag.origRect.zIndex,
-  }, totalWidth, totalHeight);
+  const edges = drag.edges ?? CORNER_RESIZE;
+  const { origRect } = drag;
+  const [x, width] = resizeSpan(origRect.x, origRect.width, pointerX - drag.startX, edges.x, MIN_FLOAT_WIDTH, totalWidth);
+  const [y, height] = resizeSpan(origRect.y, origRect.height, pointerY - drag.startY, edges.y, MIN_FLOAT_HEIGHT, totalHeight);
+  return constrainFloatingRectToBounds({ x, y, width, height, zIndex: origRect.zIndex }, totalWidth, totalHeight);
 }
 
 function centerRectWithin(parent: LayoutBounds, width: number, height: number): LayoutBounds {

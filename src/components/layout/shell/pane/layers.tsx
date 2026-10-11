@@ -9,8 +9,9 @@ import type {
   ResolvedPane,
 } from "../../../../layout/pane-manager";
 import { colors } from "../../../../theme/colors";
-import { constrainFloatingRectToBounds, sameRect } from "../drag";
-import { useLiveBoxFrame, useLiveDrag, useLiveResizeRect, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
+import { constrainFloatingRectToBounds, sameRect, type ResizeEdges } from "../drag";
+import { useLiveBoxFrame, useLiveCatchUp, useLiveDrag, type LiveDragGeometry, type LiveDragStore } from "../drag/live";
 import { pathKey } from "../../window-edit/mode";
 import { FloatingPaneWrapper } from "../../floating-pane";
 import { PaneContent } from "../../pane/content";
@@ -52,7 +53,7 @@ interface ShellPaneLayersProps {
   startNativeDividerDrag: (divider: DockDividerLayout, event: any) => void;
   startNativeDockedDrag: (paneId: string, rect: LayoutBounds, event: any) => void;
   startNativeFloatingDrag: (paneId: string, rect: FloatingRect, event: any) => void;
-  startNativeFloatResize: (paneId: string, rect: FloatingRect, event: any) => void;
+  startNativeFloatResize: (paneId: string, rect: FloatingRect, event: any, edges?: ResizeEdges) => void;
   transientFocusActive: boolean;
   transientFocusPaneId: string | null;
   visibleFloatingPanes: VisibleFloatingPane[];
@@ -71,7 +72,7 @@ interface PaneLayerActions {
   hover: (paneId: string) => void;
   dockedDragStart: (paneId: string, rect: LayoutBounds, event: any) => void;
   floatingDragStart: (paneId: string, rect: FloatingRect, event: any) => void;
-  floatResizeStart: (paneId: string, rect: FloatingRect, event: any) => void;
+  floatResizeStart: (paneId: string, rect: FloatingRect, event: any, edges?: ResizeEdges) => void;
   drag: ShellMouseHandler;
   contextMenu: (paneId: string, rect: LayoutBounds, event: any) => void;
   menu: (paneId: string, rect: LayoutBounds, event: any) => void;
@@ -112,9 +113,16 @@ function usePaneQuickSettings(getPaneQuickSettings: PaneLayerProps["getPaneQuick
   return useMemo(() => getPaneQuickSettings(paneId), [getPaneQuickSettings, paneId]);
 }
 
+/**
+ * A docked pane at its layout rect. On the desktop a divider drag moves and
+ * sizes it by restyling its box on every move (`useLiveBoxFrame`), so its
+ * header, body and footer stretch with the split and nothing renders; its
+ * content renders at the new size a few times a second (`useLiveCatchUp`),
+ * and the release lays the split out once.
+ */
 const DockedPaneLayer = memo(function DockedPaneLayer({
   pane,
-  rect,
+  rect: layoutRect,
   title,
   focused,
   windowModeSelected,
@@ -127,12 +135,25 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
   nativeContextMenu,
   getPaneQuickSettings,
   actions,
-}: PaneLayerProps) {
+  live,
+}: PaneLayerProps & { live: LiveDragStore }) {
   const paneId = pane.instance.instanceId;
   const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
   const nativeMove = nativePaneChrome && movable;
+  const boxRef = useRef<BoxRenderable | null>(null);
+  const frameOf = useMemo(() => (nativePaneChrome ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
+    const at = geometry.dock?.leaves.get(paneId);
+    return at ? { x: at.x, y: at.y, width: at.width, height: at.height } : null;
+  } : null), [nativePaneChrome, paneId]);
+  useLiveBoxFrame(live, boxRef, frameOf);
+  const selectCatchUp = useMemo(() => (nativePaneChrome ? (geometry: LiveDragGeometry) => {
+    const at = geometry.dock?.leaves.get(paneId);
+    return at && !sameRect(at, layoutRect) ? at : null;
+  } : null), [layoutRect, nativePaneChrome, paneId]);
+  const rect = useLiveCatchUp(live, selectCatchUp) ?? layoutRect;
   return (
     <Box
+      ref={boxRef}
       position="absolute"
       left={rect.x}
       top={rect.y}
@@ -158,6 +179,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
               focused={focused}
               width={rect.width}
               height={rect.height}
+              stretch={nativePaneChrome}
               locked={pane.instance.locked === true}
               showActions={showActions}
               quickSettings={quickSettings}
@@ -212,14 +234,11 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   actions,
   zIndex,
   frameRef,
-  contentPinned = false,
 }: PaneLayerProps & {
   rect: FloatingRect;
   zIndex: number;
   /** Desktop: the frame a resize sizes outside React. */
   frameRef?: RefObject<BoxRenderable | null>;
-  /** Desktop: a resize is under way, so the content keeps the size it last rendered at. */
-  contentPinned?: boolean;
 }) {
   const paneId = pane.instance.instanceId;
   const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
@@ -280,7 +299,6 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
               inView={inView}
               onClose={actions.close}
               closePane={actions.close}
-              pinned={contentPinned}
             />
           </FloatingPaneWrapper>
         );
@@ -290,15 +308,93 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
 });
 
 /**
+ * Px a desktop resize edge reaches out past a floating pane's border, and in
+ * over it: a few px either way, so it takes neither a press meant for what
+ * sits next to the pane nor much of the pane's own scrollbar.
+ */
+const RESIZE_EDGE_OUTSIDE_PX = 3;
+const RESIZE_EDGE_INSIDE_PX = 3;
+/** A corner's grab square runs this far along both edges, in px, short of the header's buttons. */
+const RESIZE_CORNER_PX = 10;
+
+const RESIZE_EDGES: Array<{ id: string; edges: ResizeEdges }> = [
+  { id: "left", edges: { x: -1, y: 0 } },
+  { id: "right", edges: { x: 1, y: 0 } },
+  { id: "top", edges: { x: 0, y: -1 } },
+  { id: "bottom", edges: { x: 0, y: 1 } },
+  { id: "top-left", edges: { x: -1, y: -1 } },
+  { id: "top-right", edges: { x: 1, y: -1 } },
+  { id: "bottom-left", edges: { x: -1, y: 1 } },
+  { id: "bottom-right", edges: { x: 1, y: 1 } },
+];
+
+/** Where an edge's grab strip sits, in px from the layer's corner (the shell's), around a pane at `rect`. */
+function resizeEdgeStyle(rect: FloatingRect, edges: ResizeEdges) {
+  const left = rect.x * WEB_CELL_WIDTH;
+  const top = rect.y * WEB_CELL_HEIGHT;
+  const width = rect.width * WEB_CELL_WIDTH;
+  const height = rect.height * WEB_CELL_HEIGHT;
+  const thick = RESIZE_EDGE_OUTSIDE_PX + RESIZE_EDGE_INSIDE_PX;
+  const span = (start: number, length: number, edge: -1 | 0 | 1): [number, number] => {
+    if (edge === -1) return [start - RESIZE_EDGE_OUTSIDE_PX, edges.x !== 0 && edges.y !== 0 ? RESIZE_CORNER_PX : thick];
+    if (edge === 1) {
+      const size = edges.x !== 0 && edges.y !== 0 ? RESIZE_CORNER_PX : thick;
+      return [start + length + RESIZE_EDGE_OUTSIDE_PX - size, size];
+    }
+    // Along the edge, short of the corners.
+    return [start + RESIZE_CORNER_PX - RESIZE_EDGE_OUTSIDE_PX, Math.max(0, length - 2 * (RESIZE_CORNER_PX - RESIZE_EDGE_OUTSIDE_PX))];
+  };
+  const [x, w] = span(left, width, edges.x);
+  const [y, h] = span(top, height, edges.y);
+  return { left: x, top: y, width: w, height: h };
+}
+
+/**
+ * Desktop: the invisible strips along a floating pane's edges and corners
+ * that resize it, as a window's do. They straddle the border, short of the
+ * header's buttons.
+ */
+const FloatingResizeEdges = memo(function FloatingResizeEdges({
+  paneId,
+  rect,
+  zIndex,
+  actions,
+}: {
+  paneId: string;
+  rect: FloatingRect;
+  zIndex: number;
+  actions: PaneLayerActions;
+}) {
+  return (
+    <>
+      {RESIZE_EDGES.map(({ id, edges }) => (
+        <Box
+          key={id}
+          position="absolute"
+          zIndex={zIndex + 1}
+          data-gloom-role="resize-edge"
+          data-edge={id}
+          style={resizeEdgeStyle(rect, edges)}
+          onMouseDown={(event: any) => actions.floatResizeStart(paneId, rect, event, edges)}
+          onMouseDrag={actions.drag}
+          onMouseDragEnd={actions.drag}
+        />
+      ))}
+    </>
+  );
+});
+
+/**
  * A floating pane, drawn at its layout rect or where a drag has it right now.
  * On the desktop a move never renders: the pane's layer is promoted at the
  * press and each frame of the move only writes its transform (see
  * `useLiveBoxFrame`), so nothing inside it re-renders, lays out or repaints
  * until the release commits the new position. A resize writes the frame's
- * size the same way, on the same layer, and the header, body and footer
- * stretch with it; the content keeps its size and renders at the new one a
- * few times a second (`useLiveResizeRect`). Every terminal frame redraws it
- * at the drag's rect.
+ * size the same way, on the same layer (moved too when a left or top edge
+ * leads), and the header, body, footer and content stretch with it; what the
+ * content lays out on the cell grid renders at the new size a few times a
+ * second (`useLiveCatchUp`). Every terminal frame redraws it at the drag's
+ * rect.
  */
 const FloatingPaneLayer = memo(function FloatingPaneLayer({
   live,
@@ -317,15 +413,14 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
     return geometry.floating.rect;
   }, [paneId, slide]);
   const dragRect = useLiveDrag(live, selectRedraw);
-  const selectResizing = useCallback((geometry: LiveDragGeometry) => (
-    slide && geometry.paneResize?.paneId === paneId
-  ), [paneId, slide]);
-  const resizing = useLiveDrag(live, selectResizing);
   const layerRef = useRef<BoxRenderable | null>(null);
   const frameOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
     // A resize keeps the pane on its own layer too: the panes it uncovers or
-    // covers never repaint, only the pane does.
-    if (geometry.paneResize?.paneId === paneId) return { dx: 0, dy: 0 };
+    // covers never repaint, only the pane does. A left or top edge moves it.
+    if (geometry.paneResize?.paneId === paneId) {
+      const resized = geometry.floating?.paneId === paneId ? constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight) : null;
+      return resized ? { dx: resized.x - rect.x, dy: resized.y - rect.y } : { dx: 0, dy: 0 };
+    }
     if (geometry.paneDrag?.paneId !== paneId) return null;
     const moving = geometry.floating?.paneId === paneId ? geometry.floating.rect : null;
     // Promoted from the press, so the first move already only slides it.
@@ -341,11 +436,18 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
     return { width: at.width, height: at.height };
   } : null), [contentHeight, paneId, slide, width]);
   useLiveBoxFrame(live, frameRef, sizeOf);
-  const resizeRect = useLiveResizeRect(live, paneId, slide);
+  const selectCatchUp = useMemo(() => (slide ? (geometry: LiveDragGeometry) => {
+    if (geometry.paneResize?.paneId !== paneId || geometry.floating?.paneId !== paneId) return null;
+    const resized = constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight);
+    return sameRect(resized, rect) ? null : resized;
+  } : null), [contentHeight, paneId, rect, slide, width]);
+  const resizeRect = useLiveCatchUp(live, selectCatchUp);
   const preview = dragRect
     ? constrainFloatingRectToBounds(dragRect, width, contentHeight)
-    : resizeRect && !sameRect(resizeRect, rect)
-      ? constrainFloatingRectToBounds(resizeRect, width, contentHeight)
+    // The content catches up with the size; a left or top edge's move stays
+    // on the layer's offset until the release lays it out.
+    : resizeRect
+      ? { ...rect, width: resizeRect.width, height: resizeRect.height }
       : rect;
   const content = (
     <FloatingPaneFrame
@@ -353,7 +455,6 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
       rect={preview}
       zIndex={zIndex}
       frameRef={slide ? frameRef : undefined}
-      contentPinned={resizing}
     />
   );
   if (!slide) return content;
@@ -368,13 +469,17 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
       zIndex={zIndex}
     >
       {content}
+      {frame.movable && !frame.hidden && (
+        <FloatingResizeEdges paneId={paneId} rect={rect} zIndex={zIndex} actions={frame.actions} />
+      )}
     </Box>
   );
 });
 
 /**
  * A tiled split's divider, which follows the pointer while it is dragged: on
- * the desktop by restyling itself each move, in the terminal by redrawing.
+ * the desktop by restyling itself each move, with the dividers inside the
+ * split it resizes, in the terminal by redrawing.
  */
 const DockDividerLayer = memo(function DockDividerLayer({
   divider,
@@ -401,8 +506,10 @@ const DockDividerLayer = memo(function DockDividerLayer({
   const previewRect = useLiveDrag(live, nativePaneChrome ? selectNothing : selectRect);
   const boxRef = useRef<BoxRenderable | null>(null);
   const frameOf = useMemo(() => (nativePaneChrome ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
+    const placed = geometry.dock?.dividers.get(dividerPathKey);
+    if (placed) return { x: placed.x, y: placed.y, width: placed.width, height: placed.height };
     const at = geometry.divider?.pathKey === dividerPathKey ? geometry.divider.rect : null;
-    return at ? { dx: at.x - divider.rect.x, dy: at.y - divider.rect.y } : null;
+    return at && (at.x !== divider.rect.x || at.y !== divider.rect.y) ? { dx: at.x - divider.rect.x, dy: at.y - divider.rect.y } : null;
   } : null), [divider.rect.x, divider.rect.y, dividerPathKey, nativePaneChrome]);
   useLiveBoxFrame(live, boxRef, frameOf);
   const active = dragged || resizing;
@@ -523,7 +630,7 @@ export function ShellPaneLayers({
     hover: (paneId) => handlersRef.current.setHoveredPaneIfChanged(paneId),
     dockedDragStart: (paneId, rect, event) => handlersRef.current.startNativeDockedDrag(paneId, rect, event),
     floatingDragStart: (paneId, rect, event) => handlersRef.current.startNativeFloatingDrag(paneId, rect, event),
-    floatResizeStart: (paneId, rect, event) => handlersRef.current.startNativeFloatResize(paneId, rect, event),
+    floatResizeStart: (paneId, rect, event, edges) => handlersRef.current.startNativeFloatResize(paneId, rect, event, edges),
     drag: (event) => handlersRef.current.handleNativeDrag(event),
     contextMenu: (paneId, rect, event) => handlersRef.current.handleNativePaneContextMenu(paneId, rect, event),
     menu: (paneId, rect, event) => handlersRef.current.handlePaneAction(paneId, rect, event),
@@ -566,6 +673,7 @@ export function ShellPaneLayers({
           <DockedPaneLayer
             key={`dock:${leaf.instanceId}`}
             {...layerProps(pane, transientFocusActive ? fullscreenRect : leaf.rect)}
+            live={live}
           />
         );
       })}

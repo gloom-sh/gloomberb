@@ -113,6 +113,9 @@ export interface LiveBoxFrame {
   /** Offset from where the box is laid out, carried on the box's own layer. */
   dx?: number;
   dy?: number;
+  /** Position in place of the laid-out one (left and top in its parent): laid out again, with no layer of its own. */
+  x?: number;
+  y?: number;
   /** Size in place of the laid-out one: the box and what stretches inside it lay out again, nothing renders. */
   width?: number;
   height?: number;

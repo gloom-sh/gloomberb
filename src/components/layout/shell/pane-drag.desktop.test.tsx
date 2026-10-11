@@ -62,8 +62,23 @@ function floatingState() {
   return { ...state, focusedPaneId: detail.instanceId };
 }
 
+/** The portfolio and Ticker Research docked side by side, half and half. */
+function splitState() {
+  const state = floatingState();
+  const layout = cloneLayout(state.config.layout);
+  layout.dockRoot = {
+    kind: "split",
+    axis: "horizontal",
+    ratio: 0.5,
+    first: { kind: "pane", instanceId: "portfolio-list:main" },
+    second: { kind: "pane", instanceId: "ticker-detail:main" },
+  };
+  layout.floating = [];
+  return { ...state, config: { ...state.config, layout } };
+}
+
 /** The desktop shell; counts React commits and records dispatched actions. */
-async function renderDesktopShell() {
+async function renderDesktopShell(state = floatingState()) {
   const actions: Array<{ type: string; [key: string]: unknown }> = [];
   let commits = 0;
   const container = await render(
@@ -72,7 +87,7 @@ async function renderDesktopShell() {
         <WebInputHostProvider>
           <WebToastHostProvider>
             <WebDialogHostProvider>
-              <AppContext value={createStaticAppStore(floatingState(), (action: { type: string }) => actions.push(action))}>
+              <AppContext value={createStaticAppStore(state, (action: { type: string }) => actions.push(action))}>
                 <Shell pluginRegistry={registry()} />
               </AppContext>
             </WebDialogHostProvider>
@@ -194,7 +209,7 @@ async function dragCorner(container: HTMLElement, steps: number, wait: () => Pro
   return { end: { x: 400 + steps * 16, y: 300 + steps * 18 } };
 }
 
-test("a desktop pane resize sizes only its frame, renders its content a few times a second and commits once", async () => {
+test("a desktop pane resize sizes its frame, which its content fills, renders the content a few times a second and commits once", async () => {
   const { container, actions, commits } = await renderDesktopShell();
   const { pane } = floatingParts(container);
   const header = pane.querySelector("[data-gloom-role=pane-header]") as HTMLElement;
@@ -212,27 +227,25 @@ test("a desktop pane resize sizes only its frame, renders its content a few time
     for (let step = 2; step <= 4; step += 1) {
       await act(async () => { pointer("move", doc, 400 + step * 16, 300 + step * 18); await wait(); });
     }
-    // Every move sized the frame and rendered nothing; the header stretches
-    // with it, and the content keeps the size it rendered at.
+    // Every move sized the frame and rendered nothing; the header and the
+    // content box stretch with it, so what lays out by CSS follows at once,
+    // and the pane is still drawn at the size it rendered at.
     expect(commits()).toBe(rendersBefore);
     expect({ width: pane.style.width, height: pane.style.height }).toEqual({ width: "384px", height: "288px" });
     expect(header.style.width).toBe("");
+    expect(content.style.width).toBe("");
     expect(contentWidth(pane)).toBe(40);
-    expect(content.style.width).toBe("320px");
 
     // The content catches up once, at the size the frame has now.
     await act(async () => { jest.advanceTimersByTime(100); });
     expect(commits()).toBe(rendersBefore + 1);
     expect(contentWidth(pane)).toBe(48);
-    expect(content.style.width).toBe("384px");
     expect(pane.style.width).toBe("384px");
 
     await act(async () => { pointer("up", doc, 464, 372); await wait(); });
   } finally {
     jest.useRealTimers();
   }
-  // The content fills its pane again.
-  expect(content.style.width).toBe("");
   const updates = actions.filter((action) => action.type === "UPDATE_LAYOUT");
   expect(updates).toHaveLength(1);
   const floating = (updates[0]!.layout as LayoutConfig).floating.find((entry) => entry.instanceId === "ticker-detail:main");
@@ -258,4 +271,68 @@ test.each([
   expect(contentWidth(pane)).toBe(40);
   await act(async () => { pointer("up", testWindow.document as unknown as EventTarget, end.x, end.y); await frame(); });
   expect(actions.filter((action) => action.type === "UPDATE_LAYOUT")).toHaveLength(0);
+});
+
+test("a desktop pane resized from its left edge moves with the pointer and keeps its right edge", async () => {
+  const { container, actions } = await renderDesktopShell();
+  const { pane, layer } = floatingParts(container);
+  const edge = layer.querySelector("[data-gloom-role=resize-edge][data-edge=left]") as HTMLElement;
+  const doc = testWindow.document as unknown as EventTarget;
+  // The pane's left edge is at cell 10 (80px).
+  await act(async () => { pointer("down", edge, 80, 150); });
+  for (let step = 1; step <= 4; step += 1) {
+    await act(async () => { pointer("move", doc, 80 - step * 8, 150); await frame(); });
+  }
+  // Four cells to the left: the layer carries the move, the frame grows by as much.
+  expect(slide(layer)).toEqual([-32, 0]);
+  expect(pane.style.width).toBe("352px");
+  await act(async () => { pointer("up", doc, 48, 150); await frame(); });
+  const updates = actions.filter((action) => action.type === "UPDATE_LAYOUT");
+  expect(updates).toHaveLength(1);
+  const floating = (updates[0]!.layout as LayoutConfig).floating.find((entry) => entry.instanceId === "ticker-detail:main");
+  expect(floating).toMatchObject({ x: 6, y: 4, width: 44, height: 12 });
+  expect(layer.style.transform).toBe("");
+});
+
+test("a desktop divider drag sizes the panes on both sides as it goes, catches their content up and commits once", async () => {
+  const { container, actions, commits } = await renderDesktopShell(splitState());
+  const box = (paneId: string) => (container.querySelector(`[data-gloom-role=pane-window][data-gloom-pane-id='${paneId}']`) as HTMLElement).parentElement as HTMLElement;
+  const left = box("portfolio-list:main");
+  const right = box("ticker-detail:main");
+  const divider = container.querySelector("[data-gloom-role=dock-divider]") as HTMLElement;
+  const doc = testWindow.document as unknown as EventTarget;
+  const px = (value: string) => Number.parseFloat(value);
+  const before = { leftWidth: px(left.style.width), rightLeft: px(right.style.left), rightWidth: px(right.style.width), divider: px(divider.style.left) };
+  const total = (before.leftWidth + before.rightWidth) / 8;
+  const contentBefore = contentWidth(right.firstElementChild as HTMLElement)!;
+  jest.useFakeTimers();
+  try {
+    const wait = async () => { jest.advanceTimersByTime(10); };
+    await act(async () => { pointer("down", divider, before.leftWidth, 100); });
+    await act(async () => { pointer("move", doc, before.leftWidth + 16, 100); await wait(); });
+    const rendersBefore = commits();
+    for (let step = 2; step <= 5; step += 1) {
+      await act(async () => { pointer("move", doc, before.leftWidth + step * 16, 100); await wait(); });
+    }
+    // Ten cells right: both panes and the divider moved with it, and nothing rendered.
+    expect(commits()).toBe(rendersBefore);
+    expect(px(left.style.width)).toBe(before.leftWidth + 80);
+    expect(px(right.style.left)).toBe(before.rightLeft + 80);
+    expect(px(right.style.width)).toBe(before.rightWidth - 80);
+    expect(px(divider.style.left)).toBe(before.divider + 80);
+    expect(contentWidth(right.firstElementChild as HTMLElement)).toBe(contentBefore);
+
+    // The content catches up once, at the width its pane has now.
+    await act(async () => { jest.advanceTimersByTime(100); });
+    expect(commits()).toBe(rendersBefore + 1);
+    expect(contentWidth(right.firstElementChild as HTMLElement)).toBe(contentBefore - 10);
+
+    await act(async () => { pointer("up", doc, before.leftWidth + 80, 100); await wait(); });
+  } finally {
+    jest.useRealTimers();
+  }
+  const updates = actions.filter((action) => action.type === "UPDATE_LAYOUT");
+  expect(updates).toHaveLength(1);
+  const root = (updates[0]!.layout as LayoutConfig).dockRoot;
+  expect(root?.kind === "split" ? root.ratio : null).toBeCloseTo(0.5 + 10 / total);
 });

@@ -67,7 +67,9 @@ jobs:
       # Fails when a pane stops moving from its grip, title or bare header bar
       # (docked, tabbed, failed, floating, fullscreen, popped out), when tabs
       # stop selecting or reordering or start moving their pane, or when the
-      # resize corner or a dock divider stops working. The summary names the step.
+      # resize corner or edges, a dock divider or a sidebar divider stop
+      # working or stop following the pointer during the drag. The summary
+      # names the step.
       - name: Move panes with real pointer input
         run: bun run check:pane-chrome
 

@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "fs/promises";
 import { join, resolve } from "path";
 import { positiveInteger, takeOption } from "../tui-benchmark-harness";
-import { cacheDir, click, drag, evaluate, frames, launchBrowser, waitFor, type Cdp, type Point } from "./browser";
+import { cacheDir, click, drag, evaluate, frames, launchBrowser, mouse, waitFor, type Cdp, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
 
 /**
@@ -144,7 +144,47 @@ async function titleBarMovesWindow(cdp: Cdp, part: string, label: string): Promi
   if (await evaluate<number>(cdp, "__check.windowMoves()") < 1) fail(`pressing the title bar's ${label} did not ask the window to move`);
 }
 
+/**
+ * Presses at `from` and moves to `to` in `steps` moves with a frame after
+ * each, then runs `check` with the pointer still held, and releases at `to`:
+ * what a resize shows while it is under way, not only where it lands.
+ */
+async function dragHolding(cdp: Cdp, from: Point, to: Point, check: () => Promise<void>, steps = 12): Promise<void> {
+  await mouse(cdp, "mouseMoved", from.x, from.y, false);
+  await mouse(cdp, "mousePressed", from.x, from.y, true);
+  await frames(cdp);
+  try {
+    for (let step = 1; step <= steps; step += 1) {
+      await mouse(cdp, "mouseMoved", from.x + ((to.x - from.x) * step) / steps, from.y + ((to.y - from.y) * step) / steps, true);
+      await frames(cdp);
+    }
+    await frames(cdp, 2);
+    await check();
+  } finally {
+    await mouse(cdp, "mouseReleased", to.x, to.y, false);
+    await frames(cdp, 2);
+  }
+}
+
+/** The x of the vertical divider between the first two panes of the top row, half way down `leftId`. */
+async function topDivider(cdp: Cdp, leftId: string, atY?: number): Promise<Point> {
+  const left = await rectOf(cdp, leftId) ?? fail(`${leftId} missing`);
+  const y = atY ?? left.y + left.height / 2;
+  return await evaluate<Point | null>(cdp, `(() => {
+    const edge = ${left.x + left.width};
+    const divider = [...document.querySelectorAll("[data-gloom-role=dock-divider]")].map((element) => element.getBoundingClientRect())
+      .find((r) => r.height > r.width && Math.abs(r.x + r.width / 2 - edge) <= 6 && r.top < ${y} && r.bottom > ${y});
+    return divider ? { x: divider.x + divider.width / 2, y: ${y} } : null;
+  })()`) ?? fail(`no divider right of ${leftId}`);
+}
+
 const PRESS_POINTS = [["grip", "grip"], ["title", "title"], ["empty bar", "empty"]] as const;
+const EDGES = [
+  { edge: "left", by: { x: -64, y: 0 }, moves: { x: 1, y: 0 }, grows: { x: -1, y: 0 } },
+  { edge: "right", by: { x: 64, y: 0 }, moves: { x: 0, y: 0 }, grows: { x: 1, y: 0 } },
+  { edge: "bottom", by: { x: 0, y: 36 }, moves: { x: 0, y: 0 }, grows: { x: 0, y: 1 } },
+  { edge: "top-left", by: { x: -64, y: -36 }, moves: { x: 1, y: 1 }, grows: { x: -1, y: -1 } },
+] as const;
 const CAPTION_BUTTONS = [["minimize", "minimize"], ["maximize", "toggle-maximize"], ["close", "close"]] as const;
 
 const steps: Step[] = [
@@ -257,6 +297,70 @@ const steps: Step[] = [
       const cell = await evaluate<{ width: number; height: number }>(cdp, "window.__paneChrome.cell");
       const resized = `(() => { const r = __check.paneRect("plain:float"); return r && Math.abs(r.width - ${before.width + by.x}) <= ${cell.width + 1} && Math.abs(r.height - ${before.height + by.y}) <= ${cell.height + 1} && Math.abs(r.x - ${before.x}) <= 2 && Math.abs(r.y - ${before.y}) <= 2; })()`;
       if (!await waitFor(cdp, resized)) fail(`dragging the corner by (${by.x}, ${by.y}) did not resize the pane`, { before: round(before), after: round(await rectOf(cdp, "plain:float")) });
+    },
+  },
+  ...EDGES.map(({ edge, by, moves, grows }): Step => ({
+    name: `floating pane: the ${edge} edge resizes it, following the pointer`,
+    scenario: "floating",
+    async run(cdp) {
+      const before = await rectOf(cdp, "plain:float") ?? fail("no floating pane");
+      const handle = await evaluate<Rect | null>(cdp, `__check.rect(document.querySelector("[data-gloom-role=resize-edge][data-edge=${edge}]"))`) ?? fail(`no ${edge} resize edge`);
+      const from = center(handle);
+      const expected = {
+        x: before.x + by.x * moves.x,
+        y: before.y + by.y * moves.y,
+        width: before.width + by.x * grows.x,
+        height: before.height + by.y * grows.y,
+      };
+      const cell = await evaluate<{ width: number; height: number }>(cdp, "window.__paneChrome.cell");
+      const close = (r: Rect | null) => !!r && Math.abs(r.x - expected.x) <= 2 && Math.abs(r.y - expected.y) <= 2
+        && Math.abs(r.width - expected.width) <= 2 && Math.abs(r.height - expected.height) <= 2;
+      // To the pixel while the pointer is down, whole cells or not.
+      await dragHolding(cdp, from, { x: from.x + by.x, y: from.y + by.y }, async () => {
+        const during = await rectOf(cdp, "plain:float");
+        if (!close(during)) fail(`mid-drag, the ${edge} edge did not follow the pointer by (${by.x}, ${by.y})`, { before: round(before), during: round(during), expected: round(expected) });
+      });
+      const settled = `(() => { const r = __check.paneRect("plain:float"); return r && Math.abs(r.x - ${expected.x}) <= ${cell.width / 2 + 1} && Math.abs(r.y - ${expected.y}) <= ${cell.height / 2 + 1} && Math.abs(r.width - ${expected.width}) <= ${cell.width / 2 + 1} && Math.abs(r.height - ${expected.height}) <= ${cell.height / 2 + 1}; })()`;
+      if (!await waitFor(cdp, settled)) fail(`releasing the ${edge} edge did not keep the size`, { before: round(before), after: round(await rectOf(cdp, "plain:float")), expected: round(expected) });
+    },
+  })),
+  {
+    name: "dock divider: the panes on both sides follow the pointer during the drag",
+    scenario: "docked",
+    async run(cdp) {
+      const before = { left: await rectOf(cdp, "plain:a"), right: await rectOf(cdp, "tabs:a"), last: await rectOf(cdp, "plain:b") };
+      if (!before.left || !before.right || !before.last) fail("panes missing");
+      const divider = await topDivider(cdp, "plain:a");
+      const by = 88;
+      // The row's right edge stays put; the panes right of the divider share what is left.
+      await dragHolding(cdp, divider, { x: divider.x + by, y: divider.y }, async () => {
+        const during = { left: await rectOf(cdp, "plain:a"), right: await rectOf(cdp, "tabs:a"), last: await rectOf(cdp, "plain:b") };
+        const followed = during.left && during.right && during.last
+          && Math.abs(during.left.width - (before.left!.width + by)) <= 2
+          && Math.abs(during.right.x - (before.right!.x + by)) <= 2
+          && Math.abs(during.last.x + during.last.width - (before.last!.x + before.last!.width)) <= 2;
+        if (!followed) fail(`mid-drag, the panes did not follow the divider ${by}px`, { before: { left: round(before.left), right: round(before.right), last: round(before.last) }, during: { left: round(during.left), right: round(during.right), last: round(during.last) } });
+      });
+      const settled = `(() => { const left = __check.paneRect("plain:a"); return left && Math.abs(left.width - ${before.left.width + by}) <= 2; })()`;
+      if (!await waitFor(cdp, settled)) fail("the release did not keep the panes where the drag had them", round(await rectOf(cdp, "plain:a")));
+    },
+  },
+  {
+    name: "table column: the sidebar beside a table follows the pointer during the drag",
+    scenario: "resize",
+    async run(cdp) {
+      const sidebar = `__check.rect(__check.pane("sidebar:dock").querySelector("[data-gloom-role=pane-sidebar]"))`;
+      const before = await evaluate<Rect | null>(cdp, sidebar) ?? fail("no sidebar");
+      const from = { x: before.x + before.width, y: before.y + before.height / 2 };
+      const by = 52;
+      await dragHolding(cdp, from, { x: from.x + by, y: from.y }, async () => {
+        const during = await evaluate<Rect | null>(cdp, sidebar);
+        if (!during || Math.abs(during.width - (before.width + by)) > 2) fail(`mid-drag, the sidebar did not follow the pointer ${by}px`, { before: round(before), during: round(during) });
+      });
+      const cell = await evaluate<{ width: number }>(cdp, "window.__paneChrome.cell");
+      if (!await waitFor(cdp, `(() => { const r = ${sidebar}; return r && Math.abs(r.width - ${before.width + by}) <= ${cell.width / 2 + 1}; })()`)) {
+        fail("the release did not keep the sidebar's width", round(await evaluate<Rect | null>(cdp, sidebar)));
+      }
     },
   },
   {

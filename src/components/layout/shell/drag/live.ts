@@ -1,8 +1,16 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
-import type { DockLeafLayout, FloatingRect } from "../../../../layout/pane-manager";
+import { startTransition, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import type { DockLeafLayout, FloatingRect, LayoutBounds } from "../../../../layout/pane-manager";
 import type { BoxRenderable, LiveBoxFrame } from "../../../../ui";
 import type { DividerPreviewState } from "../native/window-state";
 import { hoverOverlayForLeaf, sameRect, type DragPreview, type HoverOverlay } from "./index";
+
+/** Desktop divider drag: where the panes and dividers under the split are this frame. */
+export interface LiveDockGeometry {
+  /** By pane instance id. */
+  leaves: ReadonlyMap<string, LayoutBounds>;
+  /** By divider path ("0.1"). */
+  dividers: ReadonlyMap<string, LayoutBounds>;
+}
 
 /**
  * Where an in-progress drag is right now: the pane on the move, its floating
@@ -17,6 +25,8 @@ export interface LiveDragGeometry {
   /** The floating rect being moved or resized, already kept inside the shell. */
   floating: { paneId: string; rect: FloatingRect } | null;
   divider: DividerPreviewState | null;
+  /** Desktop divider drag: the panes and dividers it resizes, where the pointer has them. */
+  dock: LiveDockGeometry | null;
   /** The tiled pane whose drop grid is under the pointer during a pane move. */
   hoverTargetId: string | null;
   /** Where the release would dock or snap. */
@@ -29,13 +39,19 @@ export interface LiveDragGeometry {
  * desktop following the pointer: it reaches only the elements that restyle
  * themselves to follow it (`subscribeMotion`), so a move renders nothing. The
  * terminal redraws cells, so it sends every change through `set`.
+ *
+ * A desktop resize adds a third: `catchUp`, a few times a second, tells the
+ * content of the frames being resized to render at the size they have now
+ * (`useLiveCatchUp`); every listener runs in the same task, so it is one commit.
  */
 export interface LiveDragStore {
   get(): LiveDragGeometry;
   set(patch: Partial<LiveDragGeometry>): void;
   move(patch: Partial<LiveDragGeometry>): void;
+  catchUp(): void;
   subscribe(listener: () => void): () => void;
   subscribeMotion(listener: () => void): () => void;
+  subscribeCatchUp(listener: () => void): () => void;
 }
 
 export const IDLE_DRAG: LiveDragGeometry = {
@@ -43,6 +59,7 @@ export const IDLE_DRAG: LiveDragGeometry = {
   paneResize: null,
   floating: null,
   divider: null,
+  dock: null,
   hoverTargetId: null,
   dockPreview: null,
 };
@@ -51,6 +68,7 @@ export function createLiveDragStore(): LiveDragStore {
   let geometry = IDLE_DRAG;
   const listeners = new Set<() => void>();
   const motionListeners = new Set<() => void>();
+  const catchUpListeners = new Set<() => void>();
   const apply = (patch: Partial<LiveDragGeometry>): boolean => {
     let changed = false;
     for (const key of Object.keys(patch) as Array<keyof LiveDragGeometry>) {
@@ -72,6 +90,9 @@ export function createLiveDragStore(): LiveDragStore {
     move(patch) {
       if (apply(patch)) notify(motionListeners);
     },
+    catchUp() {
+      notify(catchUpListeners);
+    },
     subscribe(listener) {
       listeners.add(listener);
       return () => { listeners.delete(listener); };
@@ -79,6 +100,10 @@ export function createLiveDragStore(): LiveDragStore {
     subscribeMotion(listener) {
       motionListeners.add(listener);
       return () => { motionListeners.delete(listener); };
+    },
+    subscribeCatchUp(listener) {
+      catchUpListeners.add(listener);
+      return () => { catchUpListeners.delete(listener); };
     },
   };
 }
@@ -91,7 +116,7 @@ export function useLiveDrag<T>(store: LiveDragStore, select: (geometry: LiveDrag
 
 function sameFrame(a: LiveBoxFrame | null, b: LiveBoxFrame | null): boolean {
   if (a === null || b === null) return a === b;
-  return a.dx === b.dx && a.dy === b.dy && a.width === b.width && a.height === b.height;
+  return a.dx === b.dx && a.dy === b.dy && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
 }
 
 /**
@@ -124,61 +149,46 @@ export function useLiveBoxFrame(
   });
 }
 
-/** How often a pane being resized on the desktop draws its content at the new size. */
-const RESIZE_CONTENT_INTERVAL_MS = 100;
-
 /**
- * Desktop: the rect a floating pane being resized draws its content at. Its
- * frame follows every move on its own (`useLiveBoxFrame`); the content, which
- * charts and tables lay out for one size, catches up with it at most every
- * `RESIZE_CONTENT_INTERVAL_MS`, and once more after the last move. Null when
- * the pane is not being resized, or has not changed size yet.
+ * Desktop: the rect a frame being resized draws its content at. The frame
+ * follows every move on its own (`useLiveBoxFrame`); the content, which
+ * charts and tables lay out for one size, renders at the frame's size only
+ * when the drag runtime calls a catch-up: a few times a second while the
+ * pointer moves, and once after it stops. A catch-up renders as a transition,
+ * in slices between the frames the resize draws, and a newer one replaces it
+ * if it has not finished. `select` names the rect to catch up with, or null
+ * when it has nothing to catch up with (not being resized, or back at its
+ * laid-out size); null shows at once, so a release or a put-back draws the
+ * layout's rect in the commit that lays it out.
  */
-export function useLiveResizeRect(store: LiveDragStore, paneId: string, enabled: boolean): FloatingRect | null {
-  const [rect, setRect] = useState<FloatingRect | null>(null);
-  // What `rect` holds, so a move never queues a state update that changes nothing.
-  const shown = useRef<FloatingRect | null>(null);
+export function useLiveCatchUp(
+  store: LiveDragStore,
+  select: ((geometry: LiveDragGeometry) => LayoutBounds | null) | null,
+): LayoutBounds | null {
+  const [rect, setRect] = useState<LayoutBounds | null>(null);
+  // What `rect` holds, so a catch-up never queues a state update that changes nothing.
+  const shown = useRef<LayoutBounds | null>(null);
   useLayoutEffect(() => {
-    if (!enabled) return;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    // The size the content was last drawn at in this resize; the press's own first.
-    let drawn: FloatingRect | null = null;
-    const show = (next: FloatingRect | null) => {
-      if (shown.current === next) return;
+    if (!select) return;
+    const show = (next: LayoutBounds | null) => {
+      const current = shown.current;
+      if (current === next || (current && next && sameRect(current, next))) return false;
       shown.current = next;
-      setRect(next);
+      return true;
     };
-    const resizing = () => {
-      const { paneResize, floating } = store.get();
-      return paneResize?.paneId === paneId && floating?.paneId === paneId ? floating.rect : null;
-    };
-    const catchUp = () => {
-      timer = null;
-      const next = resizing();
-      if (!next || (drawn && sameRect(next, drawn))) return;
-      drawn = next;
-      show(next);
-    };
-    const follow = () => {
-      const next = resizing();
-      if (!next) {
-        // Released or put back: the layout's rect draws it, in the same commit.
-        if (timer !== null) clearTimeout(timer);
-        timer = null;
-        drawn = null;
-        show(null);
-        return;
-      }
-      if (!drawn) drawn = next;
-      else if (timer === null && !sameRect(next, drawn)) timer = setTimeout(catchUp, RESIZE_CONTENT_INTERVAL_MS);
-    };
-    const unsubscribe = store.subscribeMotion(follow);
+    const stopCatchUp = store.subscribeCatchUp(() => {
+      const next = select(store.get());
+      if (show(next)) startTransition(() => setRect(next));
+    });
+    const stopMotion = store.subscribeMotion(() => {
+      if (shown.current && !select(store.get()) && show(null)) setRect(null);
+    });
     return () => {
-      unsubscribe();
-      if (timer !== null) clearTimeout(timer);
+      stopCatchUp();
+      stopMotion();
     };
-  }, [enabled, paneId, store]);
-  return enabled ? rect : null;
+  }, [select, store]);
+  return select ? rect : null;
 }
 
 /** The drop grid under the pointer during a pane move. Re-renders only when the pointer enters another pane's grid. */

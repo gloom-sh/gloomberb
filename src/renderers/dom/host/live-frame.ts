@@ -38,8 +38,8 @@ function slide(element: HTMLElement, transform: string): void {
 /**
  * Draws a box where a drag has it this frame by restyling its element,
  * outside React: an offset on its own compositor layer, with no layout or
- * repaint, and a size, which lays out only the box's subtree. `null` hands
- * the properties back to what React last rendered.
+ * repaint, and a position and size, which lay out only the box's subtree.
+ * `null` hands the properties back to what React last rendered.
  */
 export function applyLiveFrame(element: HTMLElement, frame: LiveBoxFrame | null, props: Record<string, unknown>): void {
   const style = element.style;
@@ -51,8 +51,12 @@ export function applyLiveFrame(element: HTMLElement, frame: LiveBoxFrame | null,
     style.willChange = renderedValue(rendered.willChange);
     style.width = renderedValue(rendered.width);
     style.height = renderedValue(rendered.height);
+    style.left = renderedValue(rendered.left);
+    style.top = renderedValue(rendered.top);
     return;
   }
+  if (frame.x !== undefined) style.left = `${frame.x * WEB_CELL_WIDTH}px`;
+  if (frame.y !== undefined) style.top = `${frame.y * WEB_CELL_HEIGHT}px`;
   if (frame.width !== undefined) style.width = `${frame.width * WEB_CELL_WIDTH}px`;
   if (frame.height !== undefined) style.height = `${frame.height * WEB_CELL_HEIGHT}px`;
   if (frame.dx === undefined && frame.dy === undefined) return;

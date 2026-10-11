@@ -10,21 +10,28 @@
  *
  * The scenario comes from the query string: `?scenario=docked`, `floating`,
  * `detached` (a popped-out window; `&platform=win32` adds Windows caption
- * buttons), `perf` (a denser layout for the frame budget) or `screenshot`
- * (chart panes for the copy screenshot check).
+ * buttons), `perf` (a denser layout for the frame budget), `screenshot`
+ * (chart panes for the copy screenshot check) or `resize` (a news table, a
+ * chart, and a table in a sidebar, docked, with a news table floating over
+ * them; `&float=chart` floats a chart instead).
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { CompositeChart } from "../../src/components/chart/composite";
 import { StaticChartSurface } from "../../src/components/chart/static/chart-surface";
 import { DataTableView } from "../../src/components/data-table/view";
+import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
 import { DetachedPaneShell } from "../../src/components/layout/detached-pane-shell";
 import { usePaneTabs } from "../../src/components/layout/pane/pane-tabs";
 import { Shell } from "../../src/components/layout/shell";
+import type { NewsArticle } from "../../src/news/types";
+import { NewsArticleStackView, type NewsSortPreference } from "../../src/plugins/builtin/news/wire/news/table";
 import type { PluginRegistry } from "../../src/plugins/registry";
 import { DomHostProviders } from "../../src/renderers/dom/dom-host-providers";
 import { createWebUiHost, webRendererHost } from "../../src/renderers/electrobun/view/ui-host";
 import { AppProvider } from "../../src/state/app/context";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../src/theme/font-scale";
+import type { ResolvedSeries } from "../../src/time-series/types";
 import { cloneLayout, createDefaultConfig, type DockLayoutNode, type LayoutConfig } from "../../src/types/config";
 import type { DesktopWindowBridge } from "../../src/types/desktop-window";
 import type { PaneProps } from "../../src/types/plugin";
@@ -186,6 +193,91 @@ function ChartsPane({ width }: PaneProps) {
   );
 }
 
+const NEWS_WORDS = ["Rates", "futures", "slip", "as", "traders", "weigh", "jobs", "data", "ahead", "of", "the", "open", "while", "chip", "makers", "rally", "on", "guidance"];
+const NEWS_ARTICLES: NewsArticle[] = Array.from({ length: 160 }, (_, index) => ({
+  id: `story-${index}`,
+  title: Array.from({ length: 8 + (index % 7) }, (_, word) => NEWS_WORDS[(index * 5 + word * 3) % NEWS_WORDS.length]).join(" "),
+  url: `https://example.invalid/${index}`,
+  source: `Desk ${index % 4}`,
+  publishedAt: new Date(Date.UTC(2026, 0, 2, 14, 0) - index * 7 * 60_000),
+  topic: "markets",
+  topics: ["markets"],
+  sectors: [],
+  categories: [index % 3 === 0 ? "earnings" : "macro"],
+  // No tickers: their badges resolve symbols through services the fixture does not have.
+  tickers: [],
+  scores: { importance: 90 - (index % 50), urgency: 0, marketImpact: 50, novelty: 0, confidence: 0 },
+  importance: 90 - (index % 50),
+  isBreaking: false,
+  isDeveloping: false,
+}));
+const NEWS_COLUMNS: Array<"rank" | "time" | "title" | "tickers" | "categories"> = ["rank", "time", "title", "tickers", "categories"];
+const ignore = () => {};
+
+/** The Top News table, as the news panes draw it, over invented stories. */
+function NewsPane({ focused, width }: PaneProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [sort, setSort] = useState<NewsSortPreference>({ columnId: "rank", direction: "desc" });
+  return (
+    <NewsArticleStackView
+      articles={NEWS_ARTICLES}
+      focused={focused}
+      width={width}
+      selectedArticleId={selectedId}
+      setSelectedArticleId={setSelectedId}
+      sortPreference={sort}
+      setSortPreference={setSort}
+      onOpenArticle={ignore}
+      columns={NEWS_COLUMNS}
+      emptyStateTitle="No stories"
+      detailOpen={false}
+      onBack={ignore}
+      detailContent={null}
+    />
+  );
+}
+
+const CHART_SERIES: ResolvedSeries[] = [{
+  id: "close",
+  label: "Close",
+  color: "#4fc3f7",
+  unit: "USD",
+  unitGroup: "currency",
+  nativeFrequency: "daily",
+  dataShape: "scalar",
+  style: "line",
+  transform: "raw",
+  axis: "left",
+  panelId: "main",
+  interpolation: "none",
+  points: Array.from({ length: 500 }, (_, day) => {
+    const date = new Date(Date.UTC(2024, 0, 1) + day * 86_400_000);
+    return { date, observedAt: date, value: 100 + Math.sin(day / 17) * 12 + Math.sin(day / 3.1) * 3 + day * 0.04 };
+  }),
+}];
+const CHART_PANELS = [{ id: "main" }];
+
+/** A line chart over invented daily closes, drawn the way the chart panes draw. */
+function ChartPane({ focused, width, height }: PaneProps) {
+  return <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={width} height={height} focused={focused} />;
+}
+
+/** A table in a resizable sidebar beside the rest of the pane, like the venue map's list. */
+function SidebarPane({ paneId, focused, width, height }: PaneProps) {
+  const [sidebarWidth, setSidebarWidth] = useState(Math.round(width * 0.45));
+  const resize = useMemo(() => ({ min: 16, max: Math.max(17, Math.floor(width) - 16), onResize: setSidebarWidth }), [width]);
+  return (
+    <Box flexDirection="row" width={width} height={height}>
+      <PaneSidebar width={sidebarWidth} height={height} focused={focused} resize={resize}>
+        <TablePane paneId={paneId} paneType="table" focused={focused} width={sidebarWidth} height={height} />
+      </PaneSidebar>
+      <Box flexGrow={1} flexDirection="column" paddingX={1}>
+        <Text>{`Detail of ${paneId}`}</Text>
+      </Box>
+    </Box>
+  );
+}
+
 const PANES = {
   plain: { name: "Plain", component: PlainPane },
   tabs: { name: "Tabbed", component: TabsPane },
@@ -193,6 +285,9 @@ const PANES = {
   table: { name: "Table", component: TablePane },
   "fear-greed": { name: "Fear & Greed", component: FearGreedPane },
   charts: { name: "Charts", component: ChartsPane },
+  news: { name: "Top News", component: NewsPane },
+  chart: { name: "Chart", component: ChartPane },
+  sidebar: { name: "Sidebar", component: SidebarPane },
 };
 
 function registry(): PluginRegistry {
@@ -266,7 +361,26 @@ function perfLayout(): LayoutConfig {
       second: { kind: "split", axis: "vertical", ratio: 0.5, first: row(ids.slice(3, 6)), second: row(ids.slice(6)) },
     },
     instances: [...ids, "table:float"].map(instance),
-    floating: [{ instanceId: "table:float", x: 60, y: 14, width: 70, height: 20, zIndex: 60 }],
+    // Clear of the docked grips next to it, which its resize edges would take.
+    floating: [{ instanceId: "table:float", x: 62, y: 14, width: 70, height: 20, zIndex: 60 }],
+    detached: [],
+  };
+}
+
+/**
+ * news:dock | chart:dock over sidebar:dock | table:dock, with news:float (or
+ * chart:float) over the middle.
+ */
+function resizeLayout(): LayoutConfig {
+  const floating = params.get("float") === "chart" ? "chart:float" : "news:float";
+  return {
+    dockRoot: {
+      kind: "split", axis: "vertical", ratio: 0.55,
+      first: row(["news:dock", "chart:dock"]),
+      second: row(["sidebar:dock", "table:dock"]),
+    },
+    instances: ["news:dock", "chart:dock", "sidebar:dock", "table:dock", floating].map(instance),
+    floating: [{ instanceId: floating, x: 50, y: 8, width: 72, height: 22, zIndex: 60 }],
     detached: [],
   };
 }
@@ -279,7 +393,7 @@ function screenshotLayout(): LayoutConfig {
 
 function config() {
   const base = createDefaultConfig("/pane-chrome-fixture");
-  const layout = scenario === "perf" ? perfLayout() : scenario === "screenshot" ? screenshotLayout() : chromeLayout();
+  const layout = scenario === "perf" ? perfLayout() : scenario === "screenshot" ? screenshotLayout() : scenario === "resize" ? resizeLayout() : chromeLayout();
   return { ...base, layout, layouts: [{ name: "Fixture", layout: cloneLayout(layout) }], activeLayoutIndex: 0 };
 }
 

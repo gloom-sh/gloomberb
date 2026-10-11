@@ -1,4 +1,5 @@
 import { useCallback, useLayoutEffect, useState, type RefObject, type WheelEvent } from "react";
+import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
 
 const FADE_PX = 32;
 
@@ -39,12 +40,24 @@ export function useHorizontalScrollEdges(ref: RefObject<HTMLElement | null>, dep
     };
     update();
     element.addEventListener("scroll", update, { passive: true });
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    // A pane the pointer is resizing changes size every frame: its edges are
+    // read again once the resize ends, not on every one of them.
+    let updateAfterResize = false;
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => {
+      if (isLiveResizing()) updateAfterResize = true;
+      else update();
+    });
+    const stopListening = onLiveResizeEnd(() => {
+      if (!updateAfterResize) return;
+      updateAfterResize = false;
+      requestAnimationFrame(update);
+    });
     observer?.observe(element);
     for (const child of element.children) observer?.observe(child);
     return () => {
       element.removeEventListener("scroll", update);
       observer?.disconnect();
+      stopListening();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
