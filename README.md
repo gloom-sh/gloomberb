@@ -61,7 +61,7 @@ The [user guide](docs/usage.md) covers charts, broker setup, shortcuts, and the 
 
 ## Data and privacy
 
-The app is MIT licensed. Market data and Ask Gloom use [Gloom Cloud](https://gloom.sh/cloud), our hosted service, which is not open source. Free market data is delayed 15 minutes; Pro adds real-time data. The [browser app](https://term.gloom.sh) has a smaller feature set ([limits](docs/browser.md)).
+The app is MIT licensed. Market data and Ask Gloom use [Gloom Cloud](https://gloom.sh/cloud), our hosted service, which is not open source. Free market data is delayed 15 minutes; Pro adds real-time data. See [what is open and what is not](docs/open-source.md). The [browser app](https://term.gloom.sh) has a smaller feature set ([limits](docs/browser.md)).
 
 Crash reports and usage counts can be turned off. See [what is sent and how to opt out](docs/telemetry.md).
 

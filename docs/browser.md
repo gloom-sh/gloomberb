@@ -2,7 +2,7 @@
 
 [Back to README](../README.md) · [User guide](usage.md)
 
-Open [term.gloom.sh](https://term.gloom.sh) without an account to start with a six-pane research workspace. The browser app uses the same DOM renderer and layout as the desktop app, with a bundled browser plugin catalog.
+Open [term.gloom.sh](https://term.gloom.sh) without an account to start with a starter workspace. The browser app uses the same DOM renderer and layout as the desktop app, with a bundled browser plugin catalog.
 
 ## Accounts and data
 

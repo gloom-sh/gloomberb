@@ -64,6 +64,20 @@ Updates never restart the app by themselves. The desktop app downloads a new ver
 
 For the best terminal experience, use a [Kitty](https://sw.kovidgoyal.net/kitty/)-compatible terminal such as Ghostty, Kitty, or WezTerm.
 
+## What the install script does
+
+The [install script](../scripts/install.sh) downloads a binary or app archive from [GitHub Releases](https://github.com/gloom-sh/gloomberb/releases/latest). It checks the SHA-256 of the download against the digest GitHub lists for the release asset, aborts on a mismatch, and warns if no checksum is available. That catches a corrupt or truncated download; it does not prove who published the release. The script needs `curl` or `wget`, `gzip`, and `sha256sum` or `shasum`, and does not run until the whole file has downloaded.
+
+On Apple Silicon Macs it installs the desktop app in `/Applications` and links the `gloomberb` command into `~/.local/bin`. On Intel Macs and Linux it installs the standalone terminal binary, a single Bun-compiled executable that needs no separate Bun installation, in `~/.local/bin`. `GLOOMBERB_INSTALL_DIR` changes the command's destination and `GLOOMBERB_APP_DIR` the Mac app's. It uses `sudo` only when a destination directory is not writable.
+
+To install by hand on Linux, download the [x64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-x64.gz) or [ARM64](https://github.com/gloom-sh/gloomberb/releases/latest/download/gloomberb-linux-arm64.gz) binary, unpack it with `gzip`, mark it executable and put it on your `PATH` as `gloomberb`.
+
+On first start, the app clones its missing official plugins from GitHub once a local profile exists. That needs Git and network access. Packaged apps use their bundled Bun runtime to install plugin dependencies. See [plugin installation](../PLUGINS.md).
+
+## Uninstall
+
+Run `brew uninstall --cask gloomberb`, `bun remove -g gloomberb`, or remove the app from Windows Installed apps. For a script or manual install, delete `~/.local/bin/gloomberb` (or the path you chose) and `/Applications/Gloomberb.app` if it was installed. Your [profile data](#where-your-data-lives) stays on disk.
+
 ## Where your data lives
 
 Gloomberb keeps its configuration, database, installed plugins, and plugin cache in `~/.gloomberb`. To keep that folder somewhere else, point `GLOOMBERB_HOME` at the location before launching the terminal or the desktop app:
