@@ -131,6 +131,18 @@ export interface QuoteContribution extends Quote {
 
 export type QuoteContributionMap = Record<string, QuoteContribution>;
 
+/** How a fundamentals block's trailing figures were converted from the currency the company reports in. */
+export interface TtmConversion {
+  /** The reporting currency the figures were converted from. */
+  from: string;
+  /** Units of `financialCurrency` per unit of `from` for revenue, income and cash flow; absent when not measured. */
+  rate?: number;
+  /** YYYY-MM-DD the converted figures were fetched. */
+  asOf?: string;
+  /** EPS is converted at the rate of each report date, so a P/E on it divides a spot price by EPS at older rates. */
+  eps?: "report_date";
+}
+
 export interface Fundamentals extends DepositaryReceiptFacts {
   /** Every share count here is on this basis, the basis of the listing's price and market cap; absent when unproven. */
   shareBasis?: ShareBasis;
@@ -139,8 +151,10 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   source?: "gloom";
   fetchedAt?: string;
   stale?: boolean;
-  /** Currency of reported revenue, income, and cash flows; may differ from the listing. */
+  /** Currency of the trailing revenue, income, cash flows and EPS; may differ from the listing and the statements. */
   financialCurrency?: string;
+  /** Set when the trailing figures were converted from the reporting currency into `financialCurrency`. */
+  ttmConversion?: TtmConversion;
   /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */
   marketCap?: number;
   marketCapCurrency?: string;

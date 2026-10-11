@@ -29,3 +29,30 @@ export function fundamentalsCurrency(
 ): string | undefined {
   return financials?.fundamentals?.financialCurrency?.trim() || financials?.financialCurrency?.trim() || undefined;
 }
+
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * "TTM converted from EUR (1 EUR = 1.1257 USD, 2026-10-09); EPS at report-date rates.": what a converted trailing
+ * block was converted from, at which rate and when. Undefined for a block in the currency the company reports in.
+ */
+export function ttmConversionNote(fundamentals: Pick<Fundamentals, "financialCurrency" | "ttmConversion"> | undefined): string | undefined {
+  const conversion = fundamentals?.ttmConversion;
+  const from = conversion?.from?.trim();
+  const to = fundamentals?.financialCurrency?.trim();
+  if (!conversion || !from || !to || from === to) return undefined;
+  const rate = typeof conversion.rate === "number" && Number.isFinite(conversion.rate) && conversion.rate > 0
+    ? `1 ${from} = ${Number(conversion.rate.toPrecision(5))} ${to}`
+    : undefined;
+  const asOf = conversion.asOf && ISO_DAY.test(conversion.asOf) ? conversion.asOf : undefined;
+  const basis = [rate, asOf].filter(Boolean).join(", ");
+  const eps = conversion.eps === "report_date" ? "; EPS at report-date rates" : "";
+  return `TTM converted from ${from}${basis ? ` (${basis})` : ""}${eps}.`;
+}
+
+/** The trailing P/E's footnote when it divides a spot price by EPS converted at report-date rates. */
+export function convertedPriceEarningsNote(fundamentals: Pick<Fundamentals, "financialCurrency" | "ttmConversion"> | undefined): string | undefined {
+  return ttmConversionNote(fundamentals) && fundamentals?.ttmConversion?.eps === "report_date"
+    ? "P/E (TTM): spot price over EPS at report-date rates."
+    : undefined;
+}

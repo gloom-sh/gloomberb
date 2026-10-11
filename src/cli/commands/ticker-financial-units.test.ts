@@ -103,6 +103,31 @@ test("trailing figures use the fundamentals' currency, then the statements' repo
   expect(plain(await report(reportedIn(undefined)))).toContain("Revenue (TTM) 202.08B (ccy?)");
 });
 
+test("a converted TTM block prints in its own currency with what it was converted from, beside statements in theirs", async () => {
+  // SAN on NYSE: EUR statements, a TTM block converted to USD.
+  const santander = (fundamentals: NonNullable<TickerFinancials["fundamentals"]>): TickerFinancials => ({
+    quote: { ...quote, price: 13.49 }, financialCurrency: "EUR", priceHistory: [], quarterlyStatements: [],
+    annualStatements: [{ date: "2025-12-31", currency: "EUR", totalRevenue: 60.02e9, netIncome: 14.1e9 }],
+    fundamentals: { trailingPE: 13.097, eps: 1.03, revenue: 54.63e9, netIncome: 14.52e9, operatingCashFlow: -41.31e9, ...fundamentals },
+  });
+  const converted = { financialCurrency: "USD", ttmConversion: { from: "EUR", rate: 1.12571, asOf: "2026-10-09", eps: "report_date" as const } };
+  const conversionNote = "TTM converted from EUR (1 EUR = 1.1257 USD, 2026-10-09); EPS at report-date rates.";
+  const priceEarningsNote = "P/E (TTM): spot price over EPS at report-date rates.";
+  const text = await report(santander(converted));
+  for (const line of ["EPS (TTM) $1.03", "Revenue (TTM) 54.63B USD", "Net Income (TTM) 14.52B USD", "Operating Cash Flow (TTM) -41.31B USD",
+    conversionNote, priceEarningsNote, "Revenue 60.02B EUR", "Net Income 14.1B EUR"]) expect(text).toContain(line);
+  const valuation = renderFundamentalsReport({ ...santander(converted), symbol: "SAN" }, "valuation").replace(/\u001b\[[0-9;]*m/g, "");
+  expect(valuation).toContain(conversionNote);
+  expect(valuation).toContain(priceEarningsNote);
+  // A loss leaves no P/E to explain; a block in the reporting currency has nothing to say.
+  const loss = await report(santander({ ...converted, eps: -0.5 }));
+  expect(loss).toContain(conversionNote);
+  expect(loss).not.toContain(priceEarningsNote);
+  const madrid = await report(santander({ financialCurrency: "EUR", eps: 0.88 }));
+  expect(madrid).toContain("EPS (TTM) €0.88");
+  expect(madrid).not.toContain("converted");
+});
+
 test("a pence-quoted range shares one decimal count, other ranges are unchanged", async () => {
   const pence = { ...quote, currency: "GBP", instrumentType: "EQUITY", providerPriceDivisor: 100, price: 35.32, low: 35.1, high: 35.4871, low52w: 25.5377, high52w: 37.585 };
   const london = await report({ quote: pence, annualStatements: [], quarterlyStatements: [], priceHistory: [] });

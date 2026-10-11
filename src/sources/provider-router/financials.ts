@@ -471,6 +471,12 @@ function mergeFundamentals(primary: Fundamentals | undefined, fallback: Fundamen
     // A fallback cannot retrospectively denominate an older cached snapshot.
     delete merged.financialCurrency;
   }
+  if (merged) {
+    // A conversion describes the currency it came with, never one merged from elsewhere.
+    const denominated = primary?.financialCurrency ? primary : merged.financialCurrency ? fallback : undefined;
+    if (denominated?.ttmConversion) merged.ttmConversion = denominated.ttmConversion;
+    else delete merged.ttmConversion;
+  }
   return redactUnavailableFundamentals(merged);
 }
 

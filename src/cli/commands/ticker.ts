@@ -1,6 +1,6 @@
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
-import { fundamentalsCurrency, reportedEnterpriseValue } from "../../utils/fundamentals";
+import { convertedPriceEarningsNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
 import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../utils/market-capitalization";
@@ -367,6 +367,22 @@ function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, str
   return metrics.map((metric) => [metric.label, metric.text]);
 }
 
+const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)", "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)"]);
+
+/**
+ * The unit notes under shown fundamentals: what a converted TTM block was converted from, and, beside a P/E on
+ * that converted EPS, that it divides a spot price by EPS at report-date rates.
+ */
+function trailingConversionNotes(fundamentals: TickerFinancials["fundamentals"], metrics: readonly FundamentalsMetric[]): string[] {
+  const shown = (label: string) => metrics.some((metric) => metric.label === label && metric.text !== "—");
+  const conversion = ttmConversionNote(fundamentals);
+  if (!conversion || ![...TRAILING_MONEY_METRICS].some(shown)) return [];
+  const priceEarnings = metrics.some((metric) => metric.label === "P/E (TTM)" && typeof metric.value === "number")
+    ? convertedPriceEarningsNote(fundamentals)
+    : undefined;
+  return priceEarnings ? [conversion, priceEarnings] : [conversion];
+}
+
 const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
 
 type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string };
@@ -403,8 +419,10 @@ export function renderFundamentalsReport(
   if (profileParts.length > 0) lines.push(cliStyles.muted(profileParts.join(METADATA_SEPARATOR)));
 
   const before = lines.length;
-  appendMetricSection(lines, view === "valuation" ? "Valuation" : "Fundamentals", metricLines(fundamentalsReportMetrics(financials, view)));
+  const metrics = fundamentalsReportMetrics(financials, view);
+  appendMetricSection(lines, view === "valuation" ? "Valuation" : "Fundamentals", metricLines(metrics));
   if (lines.length === before) lines.push("", cliStyles.muted(`No ${view} reported for ${financials.symbol}.`));
+  for (const note of trailingConversionNotes(financials.fundamentals, metrics)) lines.push(cliStyles.muted(note));
   if (view === "fundamentals") appendTextSection(lines, "Description", profile?.description);
   return lines.join("\n");
 }
@@ -440,7 +458,7 @@ export function fundamentalsReportTables(
     tables,
     footer: reportFooterLines({
       freshness,
-      notes: metrics.length === 0 ? [`No ${view} reported for ${financials.symbol}.`] : [],
+      notes: metrics.length === 0 ? [`No ${view} reported for ${financials.symbol}.`] : trailingConversionNotes(financials.fundamentals, metrics),
     }),
   };
 }
@@ -591,7 +609,9 @@ export async function buildTickerReport({
     ]);
   }
 
-  appendMetricSection(lines, "Fundamentals", metricLines(fundamentalsMetrics(quote, fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText })));
+  const metrics = fundamentalsMetrics(quote, fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText });
+  appendMetricSection(lines, "Fundamentals", metricLines(metrics));
+  for (const note of trailingConversionNotes(fundamentals, metrics)) lines.push(cliStyles.muted(note));
 
   if (capitalization?.provenance.kind === "fundamentals") {
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));

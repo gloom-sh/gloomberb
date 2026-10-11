@@ -242,6 +242,19 @@ test("keeps incompatible and unverified reporting currencies out of merged valua
   expect(mergeFinancials(primary, fallback)?.fundamentals?.financialCurrency).toBeUndefined();
 });
 
+test("a TTM conversion stays with the currency it describes, from a cached snapshot or a fresh one", () => {
+  const ttmConversion = { from: "EUR", rate: 1.12571, asOf: "2026-10-09", eps: "report_date" as const };
+  const converted = createTestFinancials({ fundamentals: { financialCurrency: "USD", revenue: 54.63e9, ttmConversion } });
+  // A quote-only refresh keeps the cached block's unit and its conversion.
+  expect(mergeFinancials(createTestFinancials({ fundamentals: { beta: 0.94 } }), converted)?.fundamentals)
+    .toMatchObject({ financialCurrency: "USD", ttmConversion });
+  // A fresh block in its own currency, or one without a unit, does not inherit an older conversion.
+  const sameUnit = createTestFinancials({ fundamentals: { financialCurrency: "USD", revenue: 55e9 } });
+  expect(mergeFinancials(sameUnit, converted)?.fundamentals?.ttmConversion).toBeUndefined();
+  const unlabelled = createTestFinancials({ fundamentals: { revenue: 55e9 } });
+  expect(mergeFinancials(unlabelled, converted)?.fundamentals).not.toHaveProperty("ttmConversion");
+});
+
 test("fallback reporting currency does not label unknown primary statement units", () => {
   const primary = createTestFinancials({ annualStatements: [{ date: "2025-12-31", totalRevenue: 100 }] });
   const fallback = createTestFinancials({ financialCurrency: "TWD", annualStatements: [{ date: "2024-12-31", currency: "TWD", totalRevenue: 3000 }] });
