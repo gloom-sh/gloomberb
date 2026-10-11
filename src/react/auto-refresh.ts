@@ -13,17 +13,27 @@ export const AGE_TICK_MS = 30_000;
  * rests while the pane cannot be seen and catches up when it can.
  */
 export function useUpdatedAgo(lastUpdated: number | null): string | null {
+  const now = useAgeClock(lastUpdated);
+  return lastUpdated ? formatRelativeAge(lastUpdated, now) : null;
+}
+
+/**
+ * The time a label that says how old data is reads against: it moves every
+ * `AGE_TICK_MS` once the data has loaded (`since`, restarting when it
+ * reloads), and rests while the pane cannot be seen.
+ */
+export function useAgeClock(since: number | null): number {
   const visible = usePaneVisible();
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
-    if (!lastUpdated || !visible) return;
+    if (!since || !visible) return;
     setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), AGE_TICK_MS);
     return () => clearInterval(timer);
-  }, [lastUpdated, visible]);
+  }, [since, visible]);
 
-  return lastUpdated ? formatRelativeAge(lastUpdated, now) : null;
+  return now;
 }
 
 export interface AutoRefreshOptions {

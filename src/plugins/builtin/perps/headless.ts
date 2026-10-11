@@ -2,8 +2,9 @@ import type { PerpBoardPayload, PerpBoardRow } from "../../../api-client/perps";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpsHistory, fetchPerpsRankings, marketQuery } from "./client";
+import { perpFreshness } from "./freshness";
 import { ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, openingTab, PERP_TABS, perpCellText, perpColumnLabel, percent,
-  positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, VENUES, venueLabel, venueName, venuesOf, type PerpColumnId } from "./model";
+  positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, VENUES, venueName, type PerpColumnId } from "./model";
 
 // Text columns only: the text report shows these, JSON keeps every field of every row. Rates, premiums and
 // changes stay fractions in the rows; `percent` multiplies by 100 so the text agrees with the desktop pane.
@@ -90,11 +91,6 @@ const venueNotice = (venue: string, selected: PerpBoardRow, requested: string, a
     : `${wanted} has no ${selected.baseAsset} contract${access === "pro" ? "" : " in the free preview"}; showing ${shown}.`];
 };
 const venueUnused = (venue: string, tab: string) => venue === "all" ? [] : [`The ${venueName(venue)} filter applies to the board, not ${tab}; showing every venue.`];
-// Many venues' markets, each as last polled: cited by venue, stale after an hour without a poll.
-const listFreshness = (rows: readonly PerpBoardRow[], asOf: string | null, venue = "all") => {
-  const source = rows.length ? venuesOf(rows).map(venueName).join(", ") : venue !== "all" ? venueName(venue) : null;
-  return { ...(source ? { source } : {}), status: "delayed" as const, asOf, maxAgeMinutes: 60 };
-};
 const listMetadata = (data: Pick<PerpBoardPayload, "asOf" | "access" | "status"> & { locked: number | boolean }) => ({ asOf: data.asOf, access: data.access, locked: data.locked, status: data.status, rates: "fraction", oiCurrency: "USD" });
 
 export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -121,15 +117,17 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
       // The server counts what the free view hides across every venue; a venue's own share of it is not known, so a venue filter names no count.
       const lock = venue === "all" ? more(board.locked, "markets") : `${venueName(venue)} markets beyond the free preview need Gloom Pro`;
       return { sections: [{ title: "Markets", columns: BOARD_TEXT_COLUMNS, rows: copy(rows), ...lockedEmpty(board.locked && !rows.length) }], complete: !board.locked && board.status === "ok",
-        errors: board.locked ? [lock] : [], freshness: listFreshness(rows, board.asOf, venue),
+        errors: board.locked ? [lock] : [], freshness: perpFreshness(rows, { funding: rows, venue }),
         metadata: { ...listMetadata(board), total: board.total, assetClass, venue, sort, ...(requested ? { search: requested } : {}) } };
     }
     if (tab === "rankings") {
       const rankings = await fetchPerpsRankings(ctx.apiClient);
       const sections: HeadlessBundleSection[] = RANKINGS.map((ranking) => ({ title: ranking.label, columns: rankingTextColumns(ranking), rows: copy(rankingRows(rankings, ranking.key)), ...lockedEmpty(rankings.locked) }));
       const notices = venueUnused(String(args.options.venue ?? "all"), "rankings");
+      // Only the funding lists show funding.
+      const funding = RANKINGS.filter((ranking) => ranking.field === "fundingRate8h").flatMap((ranking) => rankingRows(rankings, ranking.key));
       return { sections, complete: !rankings.locked && rankings.status === "ok", errors: rankings.locked ? ["Full rankings need Gloom Pro"] : [],
-        freshness: listFreshness(RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key)), rankings.asOf), metadata: { ...(notices.length ? { notices } : {}), ...listMetadata(rankings) } };
+        freshness: perpFreshness(RANKINGS.flatMap((ranking) => rankingRows(rankings, ranking.key)), { funding }), metadata: { ...(notices.length ? { notices } : {}), ...listMetadata(rankings) } };
     }
     if (tab === "compare") {
       // A canonical identity names one contract; its base asset is what the venues share.
@@ -142,7 +140,7 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
       return { sections: [{ title: "Contracts", columns: COMPARE_TEXT_COLUMNS, rows: copy(compare.rows), ...lockedEmpty(compare.locked) },
         ...(spread ? [{ title: "Funding spread", entries: [{ key: "fundingSpread8h", label: "Funding spread 8h", value: spread.value, formatted: `${spread.text} ${spread.detail}` }] }] : [])],
         complete: !compare.locked && compare.status === "ok", errors: compare.locked ? [more(compare.locked, compare.locked === 1 ? "contract" : "contracts")] : [],
-        freshness: listFreshness(compare.rows, compare.asOf),
+        freshness: perpFreshness(compare.rows, { funding: compare.rows }),
         metadata: { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(notices.length ? { notices } : {}),
           ...listMetadata(compare), total: compare.total, baseAsset: base,
           ...(spread ? { fundingSpread8h: spread.value, fundingSpreadHigh: spread.high.marketId, fundingSpreadLow: spread.low.marketId } : {}) } };
@@ -154,8 +152,8 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const notices = [...(requested ? [] : [`Showing ${DEFAULT_MARKET}. Try fn PERP ${EXAMPLE_MARKETS[1]}.`]), ...venueNotice(venue, selected, requested, market.access)];
     const metadata = { ...(requested ? {} : { defaultArgument: DEFAULT_MARKET }), ...(notices.length ? { notices } : {}), marketId: selected.marketId, sourceUrl: selected.sourceUrl, observedAt: selected.observedAt, sourceAsOf: selected.sourceAsOf,
       rates: "fraction", quoteCurrency: selected.quoteCurrency, oiCurrency: "USD", fundingIntervalHours: selected.fundingIntervalHours };
-    // The venue's market, as last polled: not a stream, and a venue trading around the clock is stale after an hour without a poll.
-    const freshness = { source: venueLabel(selected), status: "delayed" as const, asOf: selected.observedAt, maxAgeMinutes: 60 };
+    // The venue's market as last polled, with the funding its latest row shows.
+    const freshness = perpFreshness([selected], { funding: [selected] });
     // The same Positioning lines the pane's Evidence shows; JSON keeps the raw reading on the market row.
     const positioning = positioningFields(selected);
     if (tab === "evidence") return {

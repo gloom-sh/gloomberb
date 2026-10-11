@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { HeadlessPaneDefinition, HeadlessPaneResult } from "../../types/plugin";
 import { cloudNewsFreshness } from "../../plugins/builtin/shared/report-freshness";
 import { formatUtcTime, setDisplayTimeZone } from "../../utils/utc-time";
-import { delayLength, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, periodicityOf, statusLineVariants } from "./freshness";
+import { delayLength, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, paneStatusLine, periodicityOf, statusLineVariants } from "./freshness";
 
 const NOW = Date.parse("2026-10-09T05:00:00Z"); // Friday, before the US open
 const rows = (freshness?: HeadlessPaneDefinition["freshness"]) => ({ shape: "rows" as const, ...(freshness ? { freshness } : {}) });
@@ -56,6 +56,33 @@ describe("report freshness", () => {
       "US trading day Fri 9 Oct 2026 close · 15-20 min delayed, 1 stale · reopens Mon",
       "US trading day Fri 9 Oct 2026 close · 15-20 min delayed, 1 stale",
     ]);
+  });
+
+  test("venues polled apart are each dated by their own observation, and the oldest says how far behind the view is", () => {
+    const now = Date.parse("2026-10-11T02:24:40Z");
+    const venues = rows({ source: "Binance, Bybit", status: "delayed", maxAgeMinutes: 60, note: "funding = current estimate, pays 08:00 UTC",
+      sources: [{ source: "Binance", asOf: "2026-10-11T02:15:10Z" }, { source: "Bybit", asOf: "2026-10-11T02:24:05Z" }] });
+    // A board-wide stamp newer than any row shown is not the view's as-of.
+    const result = { rows: [{ observedAt: "2026-10-11T02:15:10Z", stale: false }, { observedAt: "2026-10-11T02:24:05Z", stale: false }], metadata: { asOf: "2026-10-11T02:24:30Z" } };
+    const freshness = deriveHeadlessFreshness(venues, result, now);
+    expect(freshness).toMatchObject({ source: "Binance, Bybit", asOf: "2026-10-11T02:24:05.000Z", status: "delayed", oldestAgeMinutes: 9,
+      sources: [{ source: "Binance", asOf: "2026-10-11T02:15:10.000Z" }, { source: "Bybit", asOf: "2026-10-11T02:24:05.000Z" }] });
+    // The venues are the sources, so the line names them once.
+    expect(formatFreshnessLine(freshness)).toBe("Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed · funding = current estimate, pays 08:00 UTC");
+    // A narrow capture gives up the day, then the funding part; a pane footer reads today without the day.
+    expect(statusLineVariants(freshness)).toEqual([
+      "Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed · funding = current estimate, pays 08:00 UTC",
+      "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed · funding = current estimate, pays 08:00 UTC",
+      "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed",
+    ]);
+    expect(paneStatusLine(freshness)).toBe("Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed · funding = current estimate, pays 08:00 UTC");
+    // A venue observed the day before carries its date; one that stopped answering makes the line stale, aged once.
+    const lagging = deriveHeadlessFreshness(rows({ status: "delayed", sources: [{ source: "Binance", asOf: "2026-10-10T23:58:00Z" }, { source: "Bybit", asOf: "2026-10-11T00:04:00Z" }] }),
+      { rows: [{ observedAt: "2026-10-10T23:58:00Z", stale: true }, { observedAt: "2026-10-11T00:04:00Z", stale: true }] }, Date.parse("2026-10-11T01:30:00Z"));
+    expect(paneStatusLine(lagging)).toBe("Binance Sat 10 Oct 23:58 · Bybit 00:04 UTC · oldest 92 min · stale");
+    // One source says how old its oldest row is the same way.
+    expect(line(rows({ status: "delayed", oldestAge: true }), { rows: [{ quoteTime: "2026-10-09T04:59:00Z" }, { quoteTime: "2026-10-09T04:56:00Z" }] }))
+      .toBe("Source: Gloom Cloud · Fri 9 Oct 2026 04:59 UTC · oldest 4 min · delayed");
   });
 
   test("a dataset cites its source, observation date and lag; quote rows on its pane keep the market line", () => {

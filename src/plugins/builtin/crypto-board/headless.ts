@@ -2,7 +2,7 @@ import type { CryptoAssetKind } from "../../../api-client/crypto-markets";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact } from "../../../utils/format";
 import { fetchCryptoMarkets } from "./client";
-import { buildCryptoRows, formatCryptoPercent } from "./model";
+import { buildCryptoRows, CRYPTO_BOARD_FRESHNESS, formatCryptoPercent } from "./model";
 
 const NO_QUOTES = new Map();
 const number = (value: unknown) => (typeof value === "number" ? value : null);
@@ -41,8 +41,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
     dataRequirements: ["Gloom Cloud crypto markets"],
   },
   // A board snapshot refreshed every few minutes; the pane streams, the report does not.
-  // Crypto trades around the clock, so a snapshot an hour old has stopped refreshing.
-  freshness: { status: "delayed", maxAgeMinutes: 60 },
+  freshness: { status: "delayed", ...CRYPTO_BOARD_FRESHNESS },
   async load(args, ctx) {
     const kind = args.options.list === "stablecoin" ? "stablecoin" : "coin" satisfies CryptoAssetKind;
     const data = await fetchCryptoMarkets(ctx.apiClient);

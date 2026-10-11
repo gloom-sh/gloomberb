@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpCellText, perpDescription, readingTime } from "./model";
+import { fundingNote } from "./freshness";
 import { longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
 
 test("paid funding normalizes each interval independently and stays separate from snapshots", () => {
@@ -53,10 +54,12 @@ test("a narrow pane gives up figures before the venue, which alone tells one mar
   expect(ids(compareColumns(44))).toEqual(["venue", "symbol", "fundingRate8h"]);
 });
 
-test("a 100-column board and comparison keep the long share, which the annualised funding follows, and its history reads in points", () => {
+test("a 100-column board and comparison keep the long share beside when each venue was observed, and its history reads in points", () => {
   const ids = (columns: ReturnType<typeof boardColumns>) => columns.map((column) => column.id);
-  expect(ids(boardColumns(100))).toEqual(["market", "venue", "markPrice", "fundingRate", "premium", "openInterestUsd", "longShare"]);
-  expect(ids(compareColumns(100))).toEqual(["venue", "symbol", "markPrice", "fundingRate8h", "premium", "openInterestUsd", "longShare"]);
+  expect(ids(boardColumns(100))).toEqual(["market", "venue", "markPrice", "fundingRate", "openInterestUsd", "longShare", "observedAt"]);
+  expect(ids(compareColumns(100))).toEqual(["venue", "symbol", "markPrice", "fundingRate8h", "openInterestUsd", "longShare", "observedAt"]);
+  // Venues are polled apart: a 720 px capture (about 90 columns) still says when each row was observed.
+  expect(ids(compareColumns(85)).at(-1)).toBe("observedAt");
   // Wide enough for all of them, the annualised funding follows the long share and the observation time stays last.
   expect(ids(boardColumns(200)).slice(-4)).toEqual(["longShare", "fundingApr", "priceChange24h", "observedAt"]);
   expect(ids(compareColumns(200)).slice(-3)).toEqual(["longShare", "fundingApr", "observedAt"]);
@@ -95,4 +98,16 @@ test("a reading is dated only when it is not from today, in UTC", () => {
   expect(readingTime("2026-10-09T23:50:00Z", now)).toBe("2026-10-09 23:50 UTC");
   expect(readingTime(null, now)).toBeNull();
   expect(readingTime("not a time", now)).toBeNull();
+});
+
+test("funding reads as a current estimate with when it pays, naming venues only when they pay apart or report no time", () => {
+  const now = Date.parse("2026-10-11T02:24:00Z");
+  const eight = "2026-10-11T08:00:00Z";
+  expect(fundingNote([venueRow("binance", { nextFundingAt: eight }), venueRow("bybit", { nextFundingAt: eight })], now)).toBe("funding = current estimate, pays 08:00 UTC");
+  // Hyperliquid reports no next funding time, so it is not given Binance's.
+  expect(fundingNote([venueRow("binance", { nextFundingAt: eight }), perpRow()], now)).toBe("funding = current estimate, pays 08:00 UTC (Binance)");
+  expect(fundingNote([venueRow("binance", { nextFundingAt: "2026-10-12T00:00:00Z" })], now)).toBe("funding = current estimate, pays Mon 00:00 UTC");
+  expect(fundingNote([venueRow("deribit", { fundingKind: "continuous" }), venueRow("binance", { nextFundingAt: eight })], now))
+    .toBe("funding = current estimate (Binance), pays 08:00 UTC; accrues continuously (Deribit)");
+  expect(fundingNote([perpRow({ fundingRate: null, fundingRate8h: null })], now)).toBeNull();
 });

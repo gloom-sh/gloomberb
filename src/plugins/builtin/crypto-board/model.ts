@@ -4,10 +4,17 @@ import { getTableWidth } from "../../../components/ui/table-layout";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { PricePoint, Quote } from "../../../types/financials";
+import type { HeadlessPaneFreshness } from "../../../types/headless";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { isFiniteNumber } from "../../../utils/guards";
 
 const DAY_MS = 86_400_000;
+
+/**
+ * How the board's report, capture and footer date its prices: crypto trades around the clock, so a price an hour old
+ * has stopped refreshing, and coins are quoted apart, so the line says how old the oldest is.
+ */
+export const CRYPTO_BOARD_FRESHNESS: HeadlessPaneFreshness = { maxAgeMinutes: 60, oldestAge: true };
 
 export const CRYPTO_TABS: Array<{ value: CryptoAssetKind; label: string }> = [
   { value: "coin", label: "Coins" },
@@ -146,6 +153,11 @@ export function buildCryptoRows(
       rowsByAsset.set(asset, { quote, day, row });
       return row;
     });
+}
+
+/** What a capture and the footer read of each row: when its price is from, and whether it is streaming live. */
+export function cryptoRowObservations(rows: readonly CryptoRow[]): Array<{ quoteTime: string; dataSource: "live" | "delayed" }> {
+  return rows.flatMap((row) => row.updatedAt == null ? [] : [{ quoteTime: new Date(row.updatedAt).toISOString(), dataSource: row.live ? "live" as const : "delayed" as const }]);
 }
 
 /**

@@ -194,6 +194,17 @@ export interface HeadlessPaneFreshness {
    * never a market's session. Rows that are quotes keep the market line.
    */
   dataset?: boolean;
+  /**
+   * Each source's own newest observation, for data drawn from several venues
+   * polled apart (a perpetuals board). The line then dates every source and
+   * says how old the oldest of them is (`Binance 02:15 · Bybit 02:24 UTC ·
+   * oldest 9 min`), and `asOf` is the newest of them unless declared.
+   */
+  sources?: Array<{ source: string; asOf: string | number | Date }>;
+  /** Say how old the oldest observation is (`oldest 4 min`): rows polled apart from one source. */
+  oldestAge?: boolean;
+  /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
+  note?: string;
 }
 
 interface HeadlessPaneResultBase {

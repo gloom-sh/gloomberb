@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import type { PerpMarketPayload } from "../../../api-client/perps";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -99,7 +100,7 @@ test("a named market with no tab still reports its history, and no market report
   const named = await perpsHeadless.load(args("BTC"), context([market]));
   expect(named.sections.map((section) => section.title)).toEqual(["Latest market", "Own observations", "Paid funding", "Hourly candles", "Long/short history"]);
   const queries: unknown[] = [];
-  const rows = [market, venueRow("bybit", { fundingRate: 0.0002, oiChange24h: 0.1234 }), venueRow("binance", { assetClass: "metals", marketId: "binance:XAUUSDT", baseAsset: "XAU" })];
+  const rows = [market, venueRow("bybit", { fundingRate: 0.0002, oiChange24h: 0.1234, observedAt: "2026-10-03T23:11:40Z" }), venueRow("binance", { assetClass: "metals", marketId: "binance:XAUUSDT", baseAsset: "XAU" })];
   const boardContext = createTestHeadlessContext({ apiClient: { getCloudPerpsBoard: async (query: unknown) => { queries.push(query); return perpBoard({ rows, access: "preview", locked: 2501 }); } } as never });
   const board = await perpsHeadless.load(args(null, { "asset-class": "all", venue: "all", sort: "oi" }), boardContext);
   expect(queries).toEqual([{ sort: "oi" }]);
@@ -108,7 +109,10 @@ test("a named market with no tab still reports its history, and no market report
   expect(text).toMatch(/BTC\s+Bybit\s+84,724.00 USDT\s+\+0.02000% \/8h/);
   expect(text).toContain("+12.34%");
   expect(text).toContain("2,501 more markets need Gloom Pro");
-  expect(text).toContain("Source: Binance, Bybit, Hyperliquid");
+  // Each venue is dated by its own newest row, not the board's newest stamp, and aged by the one furthest behind.
+  expect(text).toContain("Sat 3 Oct 2026 · Binance 23:20 · Bybit 23:11 · Hyperliquid 23:20 UTC · oldest");
+  expect(deriveHeadlessFreshness(perpsHeadless, board, Date.parse("2026-10-03T23:30:00Z"))).toMatchObject({ source: "Binance, Bybit, Hyperliquid", oldestAgeMinutes: 18,
+    sources: [{ source: "Binance", asOf: "2026-10-03T23:20:09.000Z" }, { source: "Bybit", asOf: "2026-10-03T23:11:40.000Z" }, { source: "Hyperliquid", asOf: "2026-10-03T23:20:09.000Z" }] });
   expect(longest(text)).toBeLessThanOrEqual(140);
   // The venue narrows what the server returned; asset class, search and order go to the server.
   const narrowed = await perpsHeadless.load(args("btc", { tab: "board", "asset-class": "crypto", venue: "bybit", sort: "funding" }), boardContext);
