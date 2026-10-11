@@ -42,6 +42,8 @@ import {
 import { menuItemsForFallback, paneFooterMenuItems } from "./shell/menu";
 import { paneMenuButtonAnchor, ShellActionMenuOverlay, type ActionMenuState } from "./shell/action-menu-overlay";
 import { getPaneFooter } from "./pane/footer";
+import { requestPaneDocs } from "../../docs/requests";
+import { DOCS_PANE_TEMPLATE_ID } from "../../docs/content";
 
 interface DetachedPaneShellProps {
   pluginRegistry: PluginRegistry;
@@ -216,6 +218,11 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     ? () => { fireAndForget(desktopWindowBridge.dockDetachedPane?.(desktopWindowBridge.paneId), "desktop.dockDetachedPane"); }
     : null;
 
+  // The `?`: this window cannot open a pane, so the window's help host shows the pane's card.
+  const openDocs = () => {
+    requestPaneDocs(desktopWindowBridge.paneId, (id) => pluginRegistry.createPaneFromTemplate(DOCS_PANE_TEMPLATE_ID, { values: { pane: id } }));
+  };
+
   /** The same menu as a pane in the main window, minus what a window cannot do. */
   const buildMenuItems = (): ContextMenuItem[] => {
     const items = paneFooterMenuItems(getPaneFooter(desktopWindowBridge.paneId));
@@ -237,6 +244,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         onSelect: () => pluginRegistry.openPaneSettings(desktopWindowBridge.paneId),
       });
     }
+    items.push({ id: "pane-docs", label: "Docs", onSelect: openDocs });
     if (sharePayload) {
       items.push({ id: "share-pane", label: "Share Pane", accelerator: accelerators.share, onSelect: sharePane });
     }
@@ -422,6 +430,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
               }}
               onHeaderMouseDown={startWindowDrag}
               onActionMouseDown={() => openActions()}
+              onHelpMouseDown={openDocs}
             />
             <PaneBodyFrame layoutProps={bodyFrame.layoutProps} backgroundColor={background}>
               <PaneHeaderTabsProvider value={headerTabsContext}>

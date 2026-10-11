@@ -10,7 +10,7 @@ import {
 } from "../../../../layout/pane-manager";
 import type { DesktopDockPreviewState } from "../../../../types/desktop-window";
 import type { LayoutConfig } from "../../../../types/config";
-import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE, PANE_HEADER_RESTORE } from "../../pane/header";
+import { PANE_HEADER_ACTION, PANE_HEADER_CLOSE, PANE_HEADER_HELP, PANE_HEADER_RESTORE } from "../../pane/header";
 
 export interface HoverOverlay {
   targetId: string;
@@ -366,6 +366,8 @@ export function resolveHeaderHitAreas(
   width: number,
   options: { floating: boolean; focused: boolean; fullscreen?: boolean },
 ): {
+  /** The `?` that opens the pane's docs, just left of the menu. */
+  helpStart: number | null;
   actionStart: number | null;
   closeStart: number | null;
 } {
@@ -381,8 +383,9 @@ export function resolveHeaderHitAreas(
   }
 
   actionStart = Math.max(0, rightEdge - PANE_HEADER_ACTION.length);
+  const helpStart = Math.max(0, actionStart - PANE_HEADER_HELP.length);
 
-  return { actionStart, closeStart };
+  return { helpStart, actionStart, closeStart };
 }
 
 export function resolveExternalDockPreview(

@@ -62,6 +62,7 @@
     "desktop:build": "electrobun build",
     "desktop:release": "electrobun build --env=stable",
     "desktop:release:windows": "electrobun build --env=stable --targets=win-x64",
+    "docs:snapshot": "bun run scripts/update-docs-snapshot.ts",
     "plugins:manifest": "bun run scripts/generate-plugin-manifest.ts",
     "plugins:manifest:check": "bun run scripts/generate-plugin-manifest.ts --check",
     "plugins:registry:check": "bun run scripts/check-registry-plugins.ts",
@@ -81,6 +82,7 @@
     "benchmark:tui:compare": "bun run scripts/benchmark-tui-compare.ts",
     "benchmark:tui:memory": "bun run scripts/benchmark-tui-memory.ts",
     "check:pane-chrome": "bun run scripts/pane-chrome/checks.ts",
+    "check:pane-screenshot": "bun run scripts/pane-chrome/screenshot.ts",
     "benchmark:pane-drag:compare": "bun run scripts/pane-chrome/frame-budget.ts",
     "test:global-upgrade": "bun run scripts/smoke-global-upgrade.ts",
     "release": "./scripts/release.sh"

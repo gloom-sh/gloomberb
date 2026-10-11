@@ -72,11 +72,14 @@ function OpenTuiDataTableRowInner<
   renderCell,
   renderSectionHeader,
   rowContextMenuSurface,
+  sectionWidth,
   selected,
   selectedTextOverridesCellColor,
 }: {
   /** Only compared by the row memo; see `getRowVersion`. */
   rowVersion?: unknown;
+  /** Columns of the row in view, which a section header's action keeps to. */
+  sectionWidth: number;
   colors: ReturnType<typeof useThemeColors>;
   columnGap: number;
   columnStarts: number[];
@@ -108,6 +111,7 @@ function OpenTuiDataTableRowInner<
   if (sectionHeader) {
     // A header the cursor can land on (a collapsible group) shows it like a row.
     const headerColor = sectionHeader.color ?? (selected ? colors.selectedText : colors.textBright);
+    const action = sectionHeader.action;
     return (
       <Box
         flexDirection="row"
@@ -125,12 +129,37 @@ function OpenTuiDataTableRowInner<
         {sectionHeader.expanded !== undefined && (
           <Text fg={headerColor}>{sectionHeader.expanded ? "\u25be " : "\u25b8 "}</Text>
         )}
-        <Text
-          attributes={sectionHeader.attributes ?? TextAttributes.BOLD}
-          fg={headerColor}
-        >
-          {sectionHeader.text}
-        </Text>
+        {action ? (
+          // Kept to the columns in view, so a table wider than its pane does not push the action out of sight.
+          <Box flexDirection="row" height={1} flexShrink={1} minWidth={0} width={Math.max(1, sectionWidth - horizontalPadding * 2)}>
+            <Text attributes={sectionHeader.attributes ?? TextAttributes.BOLD} fg={headerColor} wrapMode="none" truncate flexShrink={1} minWidth={0}>
+              {sectionHeader.text}
+            </Text>
+            <Box flexGrow={1} minWidth={1} />
+            <Box
+              flexShrink={0}
+              height={1}
+              cursor="pointer"
+              hoverBackgroundColor={selected ? undefined : hoverBg(colors)}
+              onMouseDown={(event: any) => {
+                // The action, not the header's own press (a group's collapse).
+                event.stopPropagation?.();
+                event.preventDefault?.();
+                focusPane();
+                action.onPress();
+              }}
+            >
+              <Text fg={selected ? colors.selectedText : colors.text}>{action.label}</Text>
+            </Box>
+          </Box>
+        ) : (
+          <Text
+            attributes={sectionHeader.attributes ?? TextAttributes.BOLD}
+            fg={headerColor}
+          >
+            {sectionHeader.text}
+          </Text>
+        )}
       </Box>
     );
   }
@@ -320,6 +349,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
   const horizontalScrollbarVisible = showHorizontalScrollbar
     && hasMeaningfulTableHorizontalOverflow(tableWidth, measuredViewportWidth, columnGap);
   const contentWidth = fillAvailableWidth ? measuredContentWidth : tableWidth;
+  const sectionWidth = measuredViewportWidth > 0 ? Math.min(contentWidth, measuredViewportWidth) : contentWidth;
   const displayColumns = useMemo(
     () => expandTableColumns(columns, contentWidth, columnGap, horizontalPadding),
     [columnGap, columns, contentWidth, horizontalPadding],
@@ -634,6 +664,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     renderSectionHeader={renderSectionHeader}
                     rowContextMenuSurface={rowContextMenuSurface}
                     rowVersion={getRowVersion?.(item, index)}
+                    sectionWidth={sectionWidth}
                     selected={isSelected(item, index)}
                     selectedTextOverridesCellColor={selectedTextOverridesCellColor}
                   />

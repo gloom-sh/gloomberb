@@ -30,6 +30,7 @@ interface FloatingPaneWrapperProps {
   onHeaderMouseDragEnd?: (event: any) => void;
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
+  onHelpMouseDown?: (event: any) => void;
   onCloseMouseDown?: (event: any) => void;
   onRestoreMouseDown?: (event: any) => void;
   fullscreen?: boolean;
@@ -83,6 +84,7 @@ export function FloatingPaneWrapper({
   onHeaderMouseDragEnd,
   onHeaderContextMenu,
   onActionMouseDown,
+  onHelpMouseDown,
   onCloseMouseDown,
   onRestoreMouseDown,
   fullscreen = false,
@@ -144,6 +146,7 @@ export function FloatingPaneWrapper({
         onHeaderMouseDragEnd={onHeaderMouseDragEnd}
         onHeaderContextMenu={onHeaderContextMenu}
         onActionMouseDown={onActionMouseDown}
+        onHelpMouseDown={onHelpMouseDown}
         onCloseMouseDown={onCloseMouseDown}
         onRestoreMouseDown={onRestoreMouseDown}
         fullscreen={fullscreen}

@@ -138,13 +138,30 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   QE: "QE",
   QSE: "QE",
   DSMD: "QE",
+  // Bahrain Bourse, which Gloom Cloud names BHB.
+  BHB: "BHB",
+  XBAH: "BHB",
+  BAHRAIN: "BHB",
+  "BAHRAIN BOURSE": "BHB",
   DFM: "DFM",
   XDFM: "DFM",
+  // The Muscat Stock Exchange, which Gloom Cloud names MSX.
+  MSX: "MSX",
+  XMUS: "MSX",
+  MSM: "MSX",
+  MUSCAT: "MSX",
+  OMAN: "MSX",
   // Boursa Kuwait, which Gloom Cloud names KUWAIT.
   KUWAIT: "KUWAIT",
   XKUW: "KUWAIT",
   BOURSA: "KUWAIT",
   "BOURSA KUWAIT": "KUWAIT",
+  // The Egyptian Exchange, which Gloom Cloud names EGX.
+  EGX: "EGX",
+  CAI: "EGX",
+  XCAI: "EGX",
+  EGYPT: "EGX",
+  CAIRO: "EGX",
   CCC: "CCC",
   // The currency venue: EURUSD:CCY and EURUSD:FX are the pair EURUSD=X. Pairs
   // saved from an older search answer are on PHYSICAL CURRENCY.
@@ -241,8 +258,11 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   TASE: "Asia/Jerusalem",
   TADAWUL: "Asia/Riyadh",
   QE: "Asia/Qatar",
+  BHB: "Asia/Bahrain",
   DFM: "Asia/Dubai",
+  MSX: "Asia/Muscat",
   KUWAIT: "Asia/Kuwait",
+  EGX: "Africa/Cairo",
   CCC: "UTC",
 };
 
@@ -298,8 +318,11 @@ const EXCHANGE_NAMES: Record<string, string> = {
   TASE: "Tel Aviv Stock Exchange",
   TADAWUL: "Saudi Exchange",
   QE: "Qatar Stock Exchange",
+  BHB: "Bahrain Bourse",
   DFM: "Dubai Financial Market",
+  MSX: "Muscat Stock Exchange",
   KUWAIT: "Boursa Kuwait",
+  EGX: "Egyptian Exchange",
 };
 
 const KNOWN_EXCHANGE_CODES: ReadonlySet<string> = new Set([

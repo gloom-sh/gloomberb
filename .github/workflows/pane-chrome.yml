@@ -1,8 +1,10 @@
 name: Pane chrome
 
-# Moves panes with real pointer input in headless Chrome (scripts/pane-chrome).
+# Moves panes with real pointer input in headless Chrome (scripts/pane-chrome),
+# and checks that a pane's Copy Screenshot image shows its charts.
 # Only for changes that can break pane chrome: the shell and pane headers,
-# the dock, the DOM renderer, the desktop view, and these checks themselves.
+# the dock, the DOM renderer, the desktop view, the pane screenshot, and these
+# checks themselves.
 # The pane drag frame budget is in the Performance workflow and runs for the
 # same pull_request paths (scripts/pane-chrome/scope.ts reads them from here).
 on:
@@ -22,6 +24,8 @@ on:
       - "src/state/app/**"
       - "src/core/state/app/**"
       - "src/theme/font-scale.ts"
+      - "src/utils/dom-screenshot*.ts"
+      - "src/utils/screenshot-watermark.ts"
       - "src/types/config.ts"
       - "src/types/desktop-window.ts"
       - "scripts/pane-chrome/**"
@@ -72,5 +76,37 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: pane-chrome-failures
+          path: ~/.cache/gloomberb-pane-chrome/failures
+          if-no-files-found: ignore
+
+  copy-screenshot:
+    name: Copy screenshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: chrome
+        name: Read the pinned Chrome version
+        run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
+          key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+      # Fails when a pane's Copy Screenshot image is missing what the screen
+      # shows in a chart region: an SVG gauge or chart, a canvas chart, or a
+      # CSS gradient or masked icon (GLO-493). The summary has the numbers.
+      - name: Compare pane copies with the screen
+        run: bun run check:pane-screenshot
+
+      - name: Keep the images of failed panes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pane-screenshot-failures
           path: ~/.cache/gloomberb-pane-chrome/failures
           if-no-files-found: ignore

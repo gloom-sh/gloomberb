@@ -32,6 +32,7 @@ import { cotModule } from "./cot";
 import { doeModule } from "./doe";
 import { gpuModule } from "./gpu";
 import { fxMatrixModule } from "./fx-matrix";
+import { docsModule } from "./docs";
 import { helpModule } from "./help";
 import { positionSizerModule } from "./kelly-sizer";
 import { layoutManagerModule } from "./layout-manager";
@@ -105,7 +106,7 @@ import {
 
 export const applicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
-  modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule],
+  modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule, docsModule],
 });
 
 export const portfolioPlugin = composeBuiltinPlugin({

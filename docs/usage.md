@@ -65,6 +65,10 @@ A pane that shows one ticker, such as a price chart (`GP`, `GIP`), `OMON`, `OPX`
 
 **Move to New Layout** (`Ctrl+Shift+N`, `Cmd+Shift+N` in the desktop app on macOS, also in the pane menu and the command bar) takes the focused pane, docked or floating, out of its layout into a new layout tab named after it, such as `Chart: NVDA`, where it fills the window, and switches to it. The pane moves as it is, with its ticker, tab, settings and lock. The layout it left closes the gap. A pane that followed a list keeps the ticker it showed, and panes that followed the moved one keep theirs. **Move Back to** and the layout's name in the pane menu, or the same shortcut while the pane is alone, returns it to its place in that layout, links it again and removes the layout it leaves empty; if that layout was deleted, it docks in the first other tab. A layout's only pane has nothing to move out of. In the browser, `Ctrl+Shift+N` opens a private window instead, so use the pane menu there.
 
+### Docs inside the app
+
+The `?` beside a pane's `...` opens that pane's entry in `DOCS`, the gloom.sh docs and Academy lessons read in a pane: what the function is, an example, and the lesson that teaches it. Links between pages stay in the reader and `Esc` goes back. `DOCS` alone searches every function, page and lesson; `DOCS OMON` opens one entry. From the keyboard, `F1` opens the focused pane's help card and `Enter` reads its docs; **Docs** in the pane menu does the same. `o` opens the page on gloom.sh in your browser. The app ships a copy of the docs and keeps the last one it read, so they read offline; a lesson is kept once it has been opened. A popped-out desktop window cannot open a pane, so there the `?` shows the help card.
+
 Wide tables retain their columns in narrow panes. Use their horizontal scrollbar or horizontal wheel/trackpad scrolling to reach additional fields; `Ctrl+Left` / `Ctrl+Right` moves by half a table viewport. Plain arrows keep their existing navigation behavior, and text-field shortcuts remain with the editor.
 
 ### Custom keybindings
@@ -589,7 +593,7 @@ Open it with `PL` in the command bar. It lists the [built-in plugins](#built-in-
 
 The status reads `on`, `off`, `core` for Ticker Research, `update` when the registry has something newer, `needs setup` when a required setting is missing, `errors (n)` after failures this session, or `failed` when it did not load. Enter opens the detail: every function, Pro ones marked, and the panes.
 
-Starter packs at the top switch the research and markets built-ins to fit how you trade: Everything, Equity research, Options desk, Macro & rates, Credit & bonds, and Alt data & quant. Every pack keeps Ticker Research on and never touches other plugins. Panes of plugins a pack turns off are hidden, not closed, and Undo on the toast brings them back.
+Starter packs are built-in templates for the research and markets plugins: Everything, Equity research, Options desk, Macro & rates, Credit & bonds, and Alt data & quant. The Research and markets heading names the pack your plugins match, such as `Options desk pack`, or `Custom set` once you switch one by hand. Click it or press `a` to apply another. Each pack shows what it would switch from here (`8 off`, `1 on, 2 off`), and a confirmation names the plugins before anything changes. A pack keeps Ticker Research on and never touches other plugins. Panes of plugins it turns off are hidden, not closed; Undo on the toast brings them back.
 
 Plugin GitHub star counts are currently hidden. The marketplace keeps its curated ordering.
 
@@ -599,12 +603,11 @@ Plugin GitHub star counts are currently hidden. The marketplace keeps its curate
 | `g` | Get its update, or reload one that failed to load |
 | `x` | Remove it |
 | `e` | Switch it on or off; Ticker Research asks first |
-| `a` | Choose a starter pack |
+| `a` | Apply a starter pack |
 | `o` | See a built-in on gloom.sh, or open a plugin's page |
 | `s` | Open its setup form |
 | `p` | Open a pane it provides |
 | `d` | Open the debug log filtered to it |
-| `h` `l` or arrows | Move between category tabs |
 | `b` | Show or hide the built-in plugins |
 | `/` | Search |
 

@@ -102,6 +102,8 @@ export function menuForPane(
   fullscreen?: { active: boolean; toggle: () => void },
   paneItems: ContextMenuItem[] = [],
   layoutMove: PaneMenuLayoutMove = {},
+  /** The pane's entry in DOCS, the same as the `?` in its header. */
+  openDocs?: () => void,
 ): ContextMenuItem[] {
   const baseActions: ContextMenuItem[] = [...paneItems];
   if (baseActions.length > 0) baseActions.push(contextMenuDivider("pane:own-actions-divider"));
@@ -121,6 +123,9 @@ export function menuForPane(
       accelerator: accelerators.settings,
       onSelect: () => openPaneSettings(pane.instance.instanceId),
     });
+  }
+  if (openDocs) {
+    baseActions.push({ id: "pane-docs", label: "Docs", onSelect: openDocs });
   }
   if (sharePane) {
     baseActions.push({

@@ -1,15 +1,22 @@
-// Published full-day closures (weekend dates omitted) for Asia-Pacific venues,
+// Published full-day closures (weekend dates omitted) for Asia-Pacific venues and EGX,
 // not a holiday-rule engine. A year a venue has not published is unknown, not
 // open: every weekday of it reads as a session. Half-day sessions (HKEX and
 // SGX eves, ASX's 14:10 closes) are not modelled. Checked 2026-10-09:
 // KRX, also KOSDAQ: http://open.krx.co.kr/contents/MKD/01/0110/01100305/MKD01100305.jsp
 // TWSE, whose closures TPEx shares: https://www.twse.com.tw/en/trading/holiday.html
 //   (2027 not yet published; 12 and 13 Feb 2026 are clearing-only days without trading)
+// BHB closes on the dates its own daily closes skip in 2026, which match the holidays it lists
+//   (some moved, as its list warns), and on National Day, 16 and 17 Dec. Its week is Sunday to Thursday.
 // HKEX: https://www.hkex.com.hk/-/media/HKEX-Market/Services/Circulars-and-Notices/Participant-and-Members-Circulars/SEHK/2025/ce_SEHK_CT_075_2025.pdf
 //   and https://www.hkex.com.hk/-/media/HKEX-Market/Services/Circulars-and-Notices/Participant-and-Members-Circulars/SEHK/2026/ce_SEHK_CT_077_2026.pdf
 // SGX closes on Singapore's gazetted public holidays, one on a Sunday moving to the Monday:
 //   https://www.sgx.com/stock-exchange/trading and https://www.mom.gov.sg/employment-practices/public-holidays
+// MSX closes on the holidays its site lists (msx.om exchange holidays, read 10 Oct 2026).
+//   Its week is Sunday to Thursday.
 // ASX: https://www.asx.com.au/markets/market-resources/trading-hours-calendar/cash-market-trading-hours/trading-calendar
+// EGX closes on Egypt's public holidays, often moved to the Thursday of their
+// week (Armed Forces Day, Tuesday 6 Oct 2026, to Thursday 8 Oct, by the
+// exchange's statement of 5 Oct). Its week is Sunday to Thursday.
 const KRX_CLOSURES: Record<number, readonly string[]> = {
   2026: [
     "01-01", "02-16", "02-17", "02-18", "03-02", "05-01", "05-05", "05-25", "06-03",
@@ -34,6 +41,12 @@ export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, rea
   KOSDAQ: KRX_CLOSURES,
   TWSE: TWSE_CLOSURES,
   TPEX: TWSE_CLOSURES,
+  BHB: {
+    2026: [
+      "01-01", "03-22", "03-23", "03-24", "05-03", "05-26", "05-27", "05-28", "05-31", "06-16", "06-25", "06-28",
+      "08-25", "12-16", "12-17",
+    ],
+  },
   HKEX: {
     2026: [
       "01-01", "02-17", "02-18", "02-19", "04-03", "04-06", "04-07", "05-01", "05-25",
@@ -48,9 +61,18 @@ export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, rea
     2026: ["01-01", "02-17", "02-18", "04-03", "05-01", "05-27", "06-01", "08-10", "11-09", "12-25"],
     2027: ["01-01", "02-08", "03-10", "03-26", "05-17", "05-20", "08-09", "10-28"],
   },
+  MSX: {
+    2026: ["01-15", "01-18", "03-19", "03-22", "03-23", "05-26", "05-27", "05-28", "06-18", "08-27", "11-25", "11-26"],
+  },
   ASX: {
     2026: ["01-01", "01-26", "04-03", "04-06", "06-08", "12-25", "12-28"],
     2027: ["01-01", "01-26", "03-26", "03-29", "06-14", "12-27", "12-28"],
+  },
+  EGX: {
+    2026: [
+      "01-01", "01-07", "01-29", "03-19", "03-22", "03-23", "04-12", "04-13", "05-07",
+      "05-26", "05-27", "05-28", "05-31", "06-18", "07-02", "07-23", "08-27", "10-08",
+    ],
   },
 };
 

@@ -78,6 +78,8 @@ import {
 } from "./cursor-occlusion";
 import { copyLivePaneShare } from "../../../shares/live";
 import { buildPaneSharePayload } from "../../../shares/pane";
+import { requestPaneDocs } from "../../../docs/requests";
+import { DOCS_PANE_TEMPLATE_ID } from "../../../docs/content";
 import type { SharePayload } from "../../../shares/payload";
 
 export { resolveAppHeaderHeightCells } from "./chrome";
@@ -595,6 +597,11 @@ export function Shell({
     toggleFocusedPaneNewLayout,
   });
 
+  // The `?` in a pane's header and the Docs item in its menu: its entry in DOCS.
+  const openPaneDocs = useCallback((paneId: string) => {
+    requestPaneDocs(paneId, (id) => pluginRegistry.createPaneFromTemplate(DOCS_PANE_TEMPLATE_ID, { values: { pane: id } }));
+  }, [pluginRegistry]);
+
   const openPaneMenu = useCallback((
     paneId: string,
     rect: LayoutBounds,
@@ -660,6 +667,7 @@ export function Shell({
       },
       paneFooterMenuItems(getPaneFooter(paneId)),
       paneLayoutMoveMenu(paneId),
+      () => { openPaneDocs(paneId); },
     );
     const showKitMenu = () => {
       const pluginItems = pluginRegistry.getContextMenuItems?.(context) ?? [];
@@ -701,8 +709,9 @@ export function Shell({
     void showContextMenu(context, items, event).then((shown) => {
       if (!shown) showKitMenu();
     });
-  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
   openPaneMenuRef.current = openPaneMenu;
+
 
   // The open pane menu owns the keyboard, ahead of any pane however late it
   // mounted, and over a text field it was opened from. The desktop kit menu
@@ -773,6 +782,7 @@ export function Shell({
     menuState,
     nativePaneChrome,
     openPaneMenu,
+    openPaneDocs,
     paneMap,
     persistLayout,
     precisePointer,
@@ -879,6 +889,7 @@ export function Shell({
         handleNativePaneContextMenu={handleNativePaneContextMenu}
         handleNativePaneMouseDown={handleNativePaneMouseDown}
         handlePaneAction={handlePaneAction}
+        handlePaneHelp={openPaneDocs}
         hoveredPaneId={hoveredPaneId}
         live={live}
         menuPaneId={menuState?.paneId ?? null}

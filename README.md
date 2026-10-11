@@ -43,7 +43,7 @@ For the terminal on **macOS or Linux**:
 curl -fsSL gloom.sh/install | bash
 ```
 
-The script downloads the prebuilt release from GitHub. Apple Silicon Macs get the desktop app and the `gloomberb` command; Linux and Intel Macs get the standalone binary. It asks for `sudo` only if the destination isn't writable. Prefer to download it yourself? See the [installation guide](docs/installation.md).
+The script downloads the prebuilt release from GitHub and checks its SHA-256 against the digest GitHub lists. Apple Silicon Macs get the desktop app and the `gloomberb` command; Linux and Intel Macs get the standalone binary. It asks for `sudo` only if the destination isn't writable. Prefer to download it yourself? See the [installation guide](docs/installation.md).
 
 With [Bun](https://bun.sh), on any supported OS:
 

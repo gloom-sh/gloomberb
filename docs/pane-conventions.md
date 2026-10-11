@@ -125,6 +125,9 @@ Section headings read in title case, bright and bold: the kit capitalises
 lower-case words, so write acronyms in capitals and never a whole heading in
 capitals. Pass `onHeaderClick` only when the table sorts (without it headers
 are not interactive), and `selection={{ kind: "none" }}` for a static table.
+A section header can carry one quiet `action` at its right end for the whole
+group, such as the preset its rows are set to (the Plugins pane's starter
+pack); it is a setting you apply, not a filter, and it also gets a footer key.
 Never build a table from padded `Text` rows: the kit gives the header band,
 gutters and fill to the footer.
 

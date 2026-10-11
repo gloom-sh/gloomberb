@@ -1,5 +1,15 @@
 /// <reference lib="dom" />
 
+import {
+  cssUrl,
+  imageLayerRect,
+  objectFitRect,
+  parseBoxShadows,
+  parseLinearGradient,
+  splitTopLevel,
+  type Box,
+} from "./dom-screenshot-css";
+import { contentBox, prepareImages, type PreparedImages } from "./dom-screenshot-rasters";
 import { isScreenshotWatermarkVisible, setScreenshotWatermarkVisible } from "./screenshot-watermark";
 
 export interface PngScreenshot {
@@ -51,7 +61,10 @@ function localRect(rect: DOMRect, origin: CaptureOrigin) {
   };
 }
 
-function roundedRectPath(
+type LocalRect = ReturnType<typeof localRect>;
+
+/** Adds a rounded rectangle to the current path, as one closed subpath. */
+function addRoundedRect(
   context: CanvasRenderingContext2D,
   x: number,
   y: number,
@@ -60,7 +73,6 @@ function roundedRectPath(
   radius: number,
 ): void {
   const r = Math.max(0, Math.min(radius, width / 2, height / 2));
-  context.beginPath();
   context.moveTo(x + r, y);
   context.lineTo(x + width - r, y);
   context.quadraticCurveTo(x + width, y, x + width, y + r);
@@ -71,6 +83,18 @@ function roundedRectPath(
   context.lineTo(x, y + r);
   context.quadraticCurveTo(x, y, x + r, y);
   context.closePath();
+}
+
+function roundedRectPath(
+  context: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+): void {
+  context.beginPath();
+  addRoundedRect(context, x, y, width, height, radius);
 }
 
 function fillBackground(
@@ -84,30 +108,202 @@ function fillBackground(
   context.fill();
 }
 
+const BORDER_SIDES = ["top", "right", "bottom", "left"] as const;
+
+interface BorderSide {
+  width: number;
+  color: string;
+}
+
+function borderSides(style: CSSStyleDeclaration): (BorderSide | null)[] {
+  return BORDER_SIDES.map((side) => {
+    const lineStyle = style.getPropertyValue(`border-${side}-style`);
+    const width = px(style.getPropertyValue(`border-${side}-width`));
+    const color = style.getPropertyValue(`border-${side}-color`);
+    return lineStyle === "none" || lineStyle === "hidden" || width <= 0 || !isPaintableColor(color)
+      ? null
+      : { width, color };
+  });
+}
+
+/** The border box less its borders, where backgrounds are placed and inset shadows fall. */
+function paddingBox(rect: LocalRect, style: CSSStyleDeclaration): Box {
+  // Computed widths: zero for no border, and still taken by a transparent one.
+  const [top, right, bottom, left] = BORDER_SIDES.map((side) => px(style.getPropertyValue(`border-${side}-width`)));
+  return {
+    x: rect.x + left!,
+    y: rect.y + top!,
+    width: Math.max(0, rect.width - left! - right!),
+    height: Math.max(0, rect.height - top! - bottom!),
+  };
+}
+
+/**
+ * One CSS image layer (a `url()` image or a linear gradient) at its size and
+ * position in `area`. False when it cannot be painted.
+ */
+function paintImageLayer(
+  context: CanvasRenderingContext2D,
+  layer: string,
+  area: Box,
+  size: string,
+  position: string,
+  urls: PreparedImages["urls"],
+): boolean {
+  const url = cssUrl(layer);
+  if (url) {
+    const image = urls.get(url);
+    if (!image) return false;
+    const target = imageLayerRect(area, { width: image.naturalWidth, height: image.naturalHeight }, size, position);
+    context.drawImage(image, target.x, target.y, target.width, target.height);
+    return true;
+  }
+  const tile = imageLayerRect(area, area, size === "contain" || size === "cover" ? "auto" : size, position);
+  const gradient = parseLinearGradient(layer, tile.width, tile.height);
+  if (!gradient) return false;
+  try {
+    const fill = context.createLinearGradient(
+      tile.x + gradient.x0,
+      tile.y + gradient.y0,
+      tile.x + gradient.x1,
+      tile.y + gradient.y1,
+    );
+    for (const stop of gradient.stops) fill.addColorStop(stop.offset, stop.color);
+    context.fillStyle = fill;
+  } catch {
+    // A stop colour the canvas cannot read.
+    return false;
+  }
+  context.fillRect(tile.x, tile.y, tile.width, tile.height);
+  return true;
+}
+
+/** Layer `index` of a comma-separated list that repeats when shorter, as CSS reads it. */
+function layerValue(list: string[], index: number, fallback: string): string {
+  return list.length > 0 ? list[index % list.length]! : fallback;
+}
+
+/** Background images and gradients over the background colour, the last layer lowest. */
+function paintBackgroundImages(
+  context: CanvasRenderingContext2D,
+  style: CSSStyleDeclaration,
+  rect: LocalRect,
+  urls: PreparedImages["urls"],
+): void {
+  const value = style.backgroundImage;
+  if (!value || value === "none") return;
+  const layers = splitTopLevel(value, ",");
+  const sizes = splitTopLevel(style.backgroundSize, ",");
+  const positions = splitTopLevel(style.backgroundPosition, ",");
+  const area = paddingBox(rect, style);
+  context.save();
+  roundedRectPath(context, rect.x, rect.y, rect.width, rect.height, px(style.borderTopLeftRadius));
+  context.clip();
+  for (let index = layers.length - 1; index >= 0; index -= 1) {
+    paintImageLayer(context, layers[index]!, area, layerValue(sizes, index, "auto"), layerValue(positions, index, "0% 0%"), urls);
+  }
+  context.restore();
+}
+
+function maskImage(style: CSSStyleDeclaration): string {
+  const value = style.getPropertyValue("mask-image") || style.getPropertyValue("-webkit-mask-image");
+  return value && value !== "none" ? value : "";
+}
+
+/** Each side in its own width and colour: a divider is often one side alone. */
 function strokeBorder(
   context: CanvasRenderingContext2D,
   style: CSSStyleDeclaration,
-  rect: ReturnType<typeof localRect>,
+  rect: LocalRect,
 ): void {
-  const widths = [
-    px(style.borderTopWidth),
-    px(style.borderRightWidth),
-    px(style.borderBottomWidth),
-    px(style.borderLeftWidth),
-  ];
-  if (widths.every((width) => width <= 0) || !isPaintableColor(style.borderTopColor)) return;
+  const [top, right, bottom, left] = borderSides(style);
+  if (!top && !right && !bottom && !left) return;
+  const radius = px(style.borderTopLeftRadius);
+  if (radius > 0 && top && right && bottom && left
+    && [right, bottom, left].every((side) => side.width === top.width && side.color === top.color)) {
+    context.strokeStyle = top.color;
+    context.lineWidth = top.width;
+    roundedRectPath(
+      context,
+      rect.x + top.width / 2,
+      rect.y + top.width / 2,
+      Math.max(0, rect.width - top.width),
+      Math.max(0, rect.height - top.width),
+      radius,
+    );
+    context.stroke();
+    return;
+  }
+  const band = (side: BorderSide | null | undefined, x: number, y: number, width: number, height: number) => {
+    if (!side || width <= 0 || height <= 0) return;
+    context.fillStyle = side.color;
+    context.fillRect(x, y, width, height);
+  };
+  const topWidth = top?.width ?? 0;
+  const bottomWidth = bottom?.width ?? 0;
+  const middle = rect.height - topWidth - bottomWidth;
+  band(top, rect.x, rect.y, rect.width, topWidth);
+  band(bottom, rect.x, rect.y + rect.height - bottomWidth, rect.width, bottomWidth);
+  band(left, rect.x, rect.y + topWidth, left?.width ?? 0, middle);
+  band(right, rect.x + rect.width - (right?.width ?? 0), rect.y + topWidth, right?.width ?? 0, middle);
+}
 
-  context.strokeStyle = style.borderTopColor;
-  context.lineWidth = Math.max(...widths);
-  roundedRectPath(
-    context,
-    rect.x + context.lineWidth / 2,
-    rect.y + context.lineWidth / 2,
-    Math.max(0, rect.width - context.lineWidth),
-    Math.max(0, rect.height - context.lineWidth),
-    px(style.borderTopLeftRadius),
-  );
-  context.stroke();
+/**
+ * Sharp box shadows: the hairline dividers, focus rings and selection outlines
+ * the app draws with `inset 0 -1px 0` or `0 0 0 2px`. Blurred shadows are
+ * soft decoration around a box and are left out.
+ */
+function paintBoxShadows(
+  context: CanvasRenderingContext2D,
+  style: CSSStyleDeclaration,
+  rect: LocalRect,
+  inset: boolean,
+): void {
+  if (style.boxShadow === "none") return;
+  const radius = px(style.borderTopLeftRadius);
+  // The first shadow is on top, so paint from the last.
+  for (const shadow of parseBoxShadows(style.boxShadow).reverse()) {
+    if (shadow.inset !== inset || shadow.blur > 0 || !isPaintableColor(shadow.color)) continue;
+    context.save();
+    context.fillStyle = shadow.color;
+    if (inset) {
+      const box = paddingBox(rect, style);
+      const innerRadius = Math.max(0, radius - Math.max(box.x - rect.x, box.y - rect.y));
+      roundedRectPath(context, box.x, box.y, box.width, box.height, innerRadius);
+      context.clip();
+      context.beginPath();
+      addRoundedRect(context, box.x, box.y, box.width, box.height, innerRadius);
+      addRoundedRect(
+        context,
+        box.x + shadow.x + shadow.spread,
+        box.y + shadow.y + shadow.spread,
+        Math.max(0, box.width - shadow.spread * 2),
+        Math.max(0, box.height - shadow.spread * 2),
+        Math.max(0, innerRadius - shadow.spread),
+      );
+      context.fill("evenodd");
+    } else {
+      const shape = {
+        x: rect.x + shadow.x - shadow.spread,
+        y: rect.y + shadow.y - shadow.spread,
+        width: rect.width + shadow.spread * 2,
+        height: rect.height + shadow.spread * 2,
+      };
+      // Outside the box only: an outer shadow never shows through a see-through background.
+      context.beginPath();
+      context.rect(
+        Math.min(shape.x, rect.x) - 1,
+        Math.min(shape.y, rect.y) - 1,
+        Math.max(shape.width, rect.width) + Math.abs(shadow.x) + 2,
+        Math.max(shape.height, rect.height) + Math.abs(shadow.y) + 2,
+      );
+      addRoundedRect(context, rect.x, rect.y, rect.width, rect.height, radius);
+      context.clip("evenodd");
+      roundedRectPath(context, shape.x, shape.y, shape.width, shape.height, radius > 0 ? radius + shadow.spread : 0);
+      context.fill();
+    }
+    context.restore();
+  }
 }
 
 function shouldClip(style: CSSStyleDeclaration): boolean {
@@ -119,12 +315,11 @@ function shouldClip(style: CSSStyleDeclaration): boolean {
 function applyClip(
   context: CanvasRenderingContext2D,
   style: CSSStyleDeclaration,
-  rect: ReturnType<typeof localRect>,
-): boolean {
-  if (!shouldClip(style)) return false;
+  rect: LocalRect,
+): void {
+  if (!shouldClip(style)) return;
   roundedRectPath(context, rect.x, rect.y, rect.width, rect.height, px(style.borderTopLeftRadius));
   context.clip();
-  return true;
 }
 
 function fontFor(style: CSSStyleDeclaration): string {
@@ -262,14 +457,99 @@ function drawInputElement(
   }
 }
 
-function drawElement(
+/** An SVG or image the browser rasterized up front, in its content box. */
+function drawRaster(
   context: CanvasRenderingContext2D,
   element: Element,
+  style: CSSStyleDeclaration,
+  raster: CanvasImageSource,
   origin: CaptureOrigin,
-  skip?: (element: Element) => boolean,
 ): void {
+  const box = contentBox(element, style);
+  if (box.width <= 0 || box.height <= 0) return;
+  const local = { x: box.left - origin.left, y: box.top - origin.top, width: box.width, height: box.height };
+  try {
+    if (element instanceof HTMLImageElement) {
+      const fitted = objectFitRect(style.objectFit, local, { width: element.naturalWidth, height: element.naturalHeight });
+      context.save();
+      context.beginPath();
+      context.rect(local.x, local.y, local.width, local.height);
+      context.clip();
+      context.drawImage(raster, fitted.x, fitted.y, fitted.width, fitted.height);
+      context.restore();
+    } else {
+      context.drawImage(raster, local.x, local.y, local.width, local.height);
+    }
+  } catch {
+    // A raster that cannot be drawn is left out, like a failed one.
+  }
+}
+
+interface PaintPass {
+  context: CanvasRenderingContext2D;
+  origin: CaptureOrigin;
+  /** Device pixels per CSS pixel of the capture. */
+  scale: number;
+  skip?: (element: Element) => boolean;
+  /** SVGs, images and CSS image URLs, loaded before the paint (dom-screenshot-rasters). */
+  images: PreparedImages;
+  /** The masked element being painted into its own layer, so it is not masked twice. */
+  maskedElement?: Element;
+}
+
+/**
+ * A masked element (the chart toolbar's icons, a fading tab strip): painted
+ * into a layer of its own, cut by the mask's alpha, then laid down. A mask
+ * image that did not load hides the element, as an unloaded mask does on
+ * screen; a mask the capture cannot read (a radial gradient) returns false,
+ * and the element is painted unmasked instead.
+ */
+function drawMasked(pass: PaintPass, element: Element, style: CSSStyleDeclaration, rect: LocalRect, mask: string): boolean {
+  const width = Math.ceil(rect.width * pass.scale);
+  const height = Math.ceil(rect.height * pass.scale);
+  if (width <= 0 || height <= 0) return true;
+  const layer = document.createElement("canvas");
+  layer.width = width;
+  layer.height = height;
+  const alpha = document.createElement("canvas");
+  alpha.width = width;
+  alpha.height = height;
+  const layerContext = layer.getContext("2d");
+  const alphaContext = alpha.getContext("2d");
+  if (!layerContext || !alphaContext) return false;
+
+  // Masks are placed in the border box.
+  const area = { x: 0, y: 0, width: rect.width, height: rect.height };
+  alphaContext.scale(pass.scale, pass.scale);
+  const layers = splitTopLevel(mask, ",");
+  const sizes = splitTopLevel(style.getPropertyValue("mask-size") || style.getPropertyValue("-webkit-mask-size"), ",");
+  const positions = splitTopLevel(style.getPropertyValue("mask-position") || style.getPropertyValue("-webkit-mask-position"), ",");
+  for (let index = layers.length - 1; index >= 0; index -= 1) {
+    const painted = paintImageLayer(
+      alphaContext,
+      layers[index]!,
+      area,
+      layerValue(sizes, index, "auto"),
+      layerValue(positions, index, "0% 0%"),
+      pass.images.urls,
+    );
+    if (!painted) return cssUrl(layers[index]!) !== null;
+  }
+
+  layerContext.scale(pass.scale, pass.scale);
+  layerContext.translate(-rect.x, -rect.y);
+  drawElement({ ...pass, context: layerContext, maskedElement: element }, element);
+  layerContext.setTransform(1, 0, 0, 1, 0, 0);
+  layerContext.globalCompositeOperation = "destination-in";
+  layerContext.drawImage(alpha, 0, 0);
+  pass.context.drawImage(layer, rect.x, rect.y, rect.width, rect.height);
+  return true;
+}
+
+function drawElement(pass: PaintPass, element: Element): void {
+  const { context, origin } = pass;
   if (!(element instanceof HTMLElement || element instanceof SVGElement)) return;
-  if (skip?.(element)) return;
+  if (pass.skip?.(element)) return;
 
   const style = getComputedStyle(element);
   if (!isVisible(style)) return;
@@ -277,35 +557,44 @@ function drawElement(
   const rect = localRect(element.getBoundingClientRect(), origin);
   if (rect.width <= 0 || rect.height <= 0) return;
 
+  const mask = pass.maskedElement === element ? "" : maskImage(style);
+  if (mask && drawMasked(pass, element, style, rect, mask)) return;
+
   context.save();
   const opacity = Number.parseFloat(style.opacity || "1");
   if (Number.isFinite(opacity)) {
     context.globalAlpha *= Math.max(0, Math.min(opacity, 1));
   }
 
+  // CSS order: outer shadow, background, inset shadow, border, then content.
+  paintBoxShadows(context, style, rect, false);
   fillBackground(context, style, rect);
+  paintBackgroundImages(context, style, rect, pass.images.urls);
+  paintBoxShadows(context, style, rect, true);
   strokeBorder(context, style, rect);
-  const clipped = applyClip(context, style, rect);
+  applyClip(context, style, rect);
 
-  if (element instanceof HTMLCanvasElement) {
+  const raster = pass.images.elements.get(element);
+  if (raster) {
+    drawRaster(context, element, style, raster, origin);
+  } else if (element instanceof HTMLCanvasElement) {
     drawCanvasElement(context, element, origin);
   } else if (element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement) {
     drawInputElement(context, element, origin);
   }
 
-  for (const child of Array.from(element.childNodes)) {
-    if (child.nodeType === Node.TEXT_NODE) {
-      drawTextNode(context, child as Text, origin);
-    } else if (child.nodeType === Node.ELEMENT_NODE) {
-      drawElement(context, child as Element, origin, skip);
+  // An SVG's shapes and text are in its raster; they are not boxes to walk.
+  if (!(element instanceof SVGElement)) {
+    for (const child of Array.from(element.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        drawTextNode(context, child as Text, origin);
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        drawElement(pass, child as Element);
+      }
     }
   }
 
-  if (clipped) {
-    context.restore();
-  } else {
-    context.restore();
-  }
+  context.restore();
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -342,11 +631,14 @@ async function waitForFonts(): Promise<void> {
   ]).catch(() => {});
 }
 
-function paintElement(
+async function paintElement(
   element: HTMLElement,
   scale: number,
   options: { background?: string; skip?: (element: Element) => boolean } = {},
-): { canvas: HTMLCanvasElement; width: number; height: number } {
+): Promise<{ canvas: HTMLCanvasElement; width: number; height: number }> {
+  await waitForFonts();
+  // Images load asynchronously, so SVGs and CSS images are ready before the synchronous paint.
+  const images = await prepareImages(element, options.skip);
   const rect = element.getBoundingClientRect();
   const width = Math.ceil(rect.width);
   const height = Math.ceil(rect.height);
@@ -372,7 +664,7 @@ function paintElement(
   const watermarkWasVisible = isScreenshotWatermarkVisible();
   setScreenshotWatermarkVisible(true);
   try {
-    drawElement(context, element, { left: rect.left, top: rect.top }, options.skip);
+    drawElement({ context, origin: { left: rect.left, top: rect.top }, scale, skip: options.skip, images }, element);
   } finally {
     if (!watermarkWasVisible) setScreenshotWatermarkVisible(false);
   }
@@ -380,9 +672,8 @@ function paintElement(
 }
 
 async function captureElementPngBase64(element: HTMLElement): Promise<PngScreenshot> {
-  await waitForFonts();
   const scale = Math.max(1, Math.min(globalThis.devicePixelRatio || 1, 3));
-  const { canvas, width, height } = paintElement(element, scale);
+  const { canvas, width, height } = await paintElement(element, scale);
   return {
     pngBase64: await blobToBase64(await canvasToPngBlob(canvas)),
     width,
@@ -432,10 +723,9 @@ export async function captureAppScreenshotJpegBase64(options: {
 }): Promise<JpegScreenshot> {
   if (typeof document === "undefined") throw new Error("Screenshots need a window.");
   const root = document.getElementById("root") ?? document.body;
-  await waitForFonts();
   const background = getComputedStyle(document.body).backgroundColor;
   const skipSelector = options.skipSelector;
-  let { canvas } = paintElement(root, 1, {
+  let { canvas } = await paintElement(root, 1, {
     background: isPaintableColor(background) ? background : "#000",
     skip: skipSelector ? (element) => element.matches(skipSelector) : undefined,
   });

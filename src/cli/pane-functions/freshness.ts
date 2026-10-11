@@ -243,13 +243,17 @@ function worstFeedStatus(statuses: Array<"live" | "delayed" | "stale">): "live" 
   ), null);
 }
 
-/** Completed US sessions after the day of `newest`, counted back from `now`, up to `limit`. */
-function sessionsAfter(newest: ReportTime, now: number, limit: number): number {
+/**
+ * Completed sessions after the day of `newest`, counted back from `now`, up to
+ * `limit`: the US's, or `exchange`'s when the app knows its sessions.
+ */
+function sessionsAfter(newest: ReportTime, now: number, limit: number, exchange?: string): number {
   const newestDate = new Date(newest.time).toISOString().slice(0, 10);
+  const venue = exchange && latestRegularSessionClose(exchange, now) ? exchange : "NYSE";
   let count = 0;
   let cursor = now;
   while (count < limit) {
-    const close = latestRegularSessionClose("NYSE", cursor);
+    const close = latestRegularSessionClose(venue, cursor);
     if (!close || close.date <= newestDate) break;
     count += 1;
     cursor = close.close - 1;
@@ -263,7 +267,7 @@ function overdue(declared: HeadlessPaneFreshness, asOf: ReportTime | null, now: 
   if (nextExpected != null && now > nextExpected.time + RELEASE_GRACE_MS) return true;
   if (!asOf) return false;
   if (declared.maxAgeMinutes != null && now - asOf.time > declared.maxAgeMinutes * 60_000) return true;
-  return declared.cadence === "daily" && sessionsAfter(asOf, now, 2) > 1;
+  return declared.cadence === "daily" && sessionsAfter(asOf, now, 2, declared.cadenceExchange) > 1;
 }
 
 /**

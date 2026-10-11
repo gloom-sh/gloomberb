@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { handleRequest, SECURITY_HEADERS, type WorkerEnv } from "./worker";
 import { REGISTRY_ORIGIN } from "../../plugins/builtin/plugin-marketplace/feed";
+import { DOCS_SITE } from "../../docs/content";
 
 function fixture() {
   const requests: Request[] = [];
@@ -208,12 +209,13 @@ describe("static Cloudflare host", () => {
  * pinned to each other here.
  */
 describe("content security policy", () => {
-  test("allows the plugin registry the marketplace fetches", () => {
+  test("allows the plugin registry the marketplace fetches and the docs DOCS reads", () => {
     const connectSrc = SECURITY_HEADERS["content-security-policy"]
       .split(";")
       .map((directive) => directive.trim())
       .find((directive) => directive.startsWith("connect-src"));
 
     expect(connectSrc).toContain(REGISTRY_ORIGIN);
+    expect(connectSrc?.split(/\s+/)).toContain(DOCS_SITE);
   });
 });

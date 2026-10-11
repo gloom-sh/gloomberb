@@ -272,3 +272,44 @@ test("the pane scroll keys scroll a table body, as they do in the terminal", asy
   await press("Home");
   expect(body.scrollTop).toBe(0);
 });
+
+test("a section header's action is its own control: a click presses it, not the header", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  const pressed: string[] = [];
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <WebDataTable
+          items={["research", "a"]}
+          columns={[{ id: "name", label: "Name", width: 10 }]}
+          sortColumnId={null}
+          sortDirection="asc"
+          headerScrollRef={headerScrollRef}
+          scrollRef={scrollRef}
+          syncHeaderScroll={() => {}}
+          onBodyScrollActivity={() => {}}
+          getItemKey={String}
+          isSelected={() => false}
+          onSelect={() => {}}
+          renderCell={(item) => ({ text: item })}
+          renderSectionHeader={(item) => item === "research"
+            ? { text: "Research (1)", onMouseDown: () => pressed.push("header"), action: { label: "Everything pack", onPress: () => pressed.push("action") } }
+            : null}
+          emptyStateTitle="No rows"
+          virtualize={false}
+        />
+      </AppContext>
+    );
+  }
+
+  const container = await render(<Harness />);
+  const action = container.querySelector('[data-gloom-role="data-table-section-action"]') as HTMLElement;
+  expect(action.textContent).toBe("Everything pack");
+  await act(async () => {
+    action.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }) as unknown as Event);
+    action.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true, cancelable: true }) as unknown as Event);
+  });
+  expect(pressed).toEqual(["action"]);
+});

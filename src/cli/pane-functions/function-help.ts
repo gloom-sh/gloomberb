@@ -1224,9 +1224,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   PL: {
-    summary: "What Gloomberb is made of: switch built-ins on and off, one by one or with a starter pack, and install plugins from GitHub.",
+    summary: "What Gloomberb is made of: switch built-ins on and off, one by one or by applying a starter pack, and install plugins from GitHub.",
     usage: ["PL"],
-    keys: [key("e", "nable"), key("a", " packs"), key("i", "nstall"), SEARCH],
+    keys: [key("e", "nable"), key("a", "pply pack"), key("i", "nstall"), SEARCH],
     data: null,
     bloomberg: [],
   },
@@ -1300,6 +1300,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [TABS, key("s", "end feedback")],
     data: null,
     bloomberg: ["HELP"],
+  },
+  DOCS: {
+    summary: "The docs and Academy lessons, searchable, inside the app. The ? on a pane opens that pane's entry; Back returns to where you were.",
+    usage: ["DOCS", "DOCS OMON", "DOCS options chain"],
+    keys: [SEARCH, OPEN, key("o", "pen in browser")],
+    data: null,
+    bloomberg: [],
   },
   FB: {
     summary: "A message and an optional screenshot, sent with scrubbed logs and app details; works signed out. FEEDBACK and BUG open it too.",

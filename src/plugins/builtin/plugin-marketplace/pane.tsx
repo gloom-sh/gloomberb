@@ -23,11 +23,13 @@ import {
 } from "../../../components";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { colors } from "../../../theme/colors";
+import { t, tf } from "../../../i18n";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog, type PromptContext } from "../../../ui/dialog";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
 import { formatRelativeAge } from "../../../utils/datetime-format";
+import { displayWidth } from "../../../utils/format";
 import { requiredGloomberb } from "../../../utils/semver";
 import { VERSION } from "../../../version";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../current-target";
@@ -157,12 +159,6 @@ function rowKey(row: MarketplaceRow): string {
 }
 
 const isEntryRow = (row: MarketplaceRow) => row.type === "entry";
-
-function renderRowSectionHeader(row: MarketplaceRow) {
-  return row.type === "header"
-    ? { text: `${SECTION_LABELS[row.section]} (${row.count})` }
-    : null;
-}
 
 function renderCell(
   row: MarketplaceRow,
@@ -356,31 +352,38 @@ function BuiltinDetail({ entry, width, facts, scrollRef }: {
   );
 }
 
-/** The strip's labels; the full names are in the menu, the confirmation and the toast. */
-const PACK_SHORT_LABELS: Record<string, string> = {
-  everything: "Everything",
-  "equity-research": "Equity",
-  "options-desk": "Options",
-  "macro-rates": "Macro",
-  "credit-bonds": "Credit",
-  "alt-data-quant": "Alt data",
-};
-/** The strip's value when the plugins on match no pack. */
-const CUSTOM_PACK = "custom";
+/**
+ * What the research heading says the plugins on are: the pack they match, or
+ * a custom set once someone switched one by hand.
+ */
+function packStateLabel(pack: StarterPack | null): string {
+  return pack ? tf("{name} pack", { name: pack.name }) : t("Custom set");
+}
 
-/** One line per kind of change, with the plugins it names. */
-function PackChangeBody({ change, name, width }: { change: PackChange; name: (id: string) => string; width: number }) {
+/** What choosing a pack would switch from here, for its row in the chooser. */
+function packChangeSummary(change: PackChange): string {
+  if (change.turnOff.length === 0 && change.turnOn.length === 0) return t("current");
+  return [
+    ...(change.turnOn.length > 0 ? [tf("{count} on", { count: change.turnOn.length })] : []),
+    ...(change.turnOff.length > 0 ? [tf("{count} off", { count: change.turnOff.length })] : []),
+  ].join(", ");
+}
+
+/** One line per kind of change, with the plugins it names; as wide as the dialog it sits in. */
+function PackChangeBody({ change, name }: { change: PackChange; name: (id: string) => string }) {
   const lines = [
-    { label: "Turn off", ids: change.turnOff },
-    { label: "Turn on", ids: change.turnOn },
-    { label: "Keep", ids: change.keep },
-  ].filter((line) => line.ids.length > 0);
+    { label: t("Turn off"), ids: change.turnOff },
+    { label: t("Turn on"), ids: change.turnOn },
+    { label: t("Keep"), ids: change.keep },
+  ].filter((line) => line.ids.length > 0).map((line) => ({ ...line, heading: `${line.label} ${line.ids.length}` }));
+  // Wide enough for the longest heading in any language, plus a gap.
+  const headingWidth = Math.max(12, ...lines.map((line) => displayWidth(line.heading) + 2));
   return (
-    <Box flexDirection="column" width={width} gap={1}>
+    <Box flexDirection="column" width="100%" gap={1}>
       {lines.map((line) => (
-        <Box key={line.label} flexDirection="row" width={width}>
-          <Box width={12} flexShrink={0}>
-            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{`${line.label} ${line.ids.length}`}</Text>
+        <Box key={line.label} flexDirection="row" width="100%">
+          <Box width={headingWidth} flexShrink={0}>
+            <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{line.heading}</Text>
           </Box>
           <Box flexGrow={1} flexShrink={1} minWidth={0}>
             <Text fg={colors.text} wrapText>{line.ids.map(name).join(", ")}</Text>
@@ -388,7 +391,7 @@ function PackChangeBody({ change, name, width }: { change: PackChange; name: (id
         </Box>
       ))}
       {change.turnOff.length > 0 ? (
-        <Text fg={colors.textDim} wrapText>Panes are hidden, not closed. Undo brings them back.</Text>
+        <Text fg={colors.textDim} wrapText>{t("Panes are hidden, not closed. Undo brings them back.")}</Text>
       ) : null}
     </Box>
   );
@@ -678,13 +681,13 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     const change = packChange(previous, pack);
     const toggles = packToggles(change);
     if (Object.keys(toggles).length === 0) {
-      notify({ body: `${pack.name} is already what you have on.`, type: "info" });
+      notify({ body: tf("{name} is already what you have on.", { name: pack.name }), type: "info" });
       return;
     }
     const confirmed = await confirmDialog(dialog, {
-      title: `Switch to ${pack.name}?`,
-      body: <PackChangeBody change={change} name={pluginName} width={confirmWidth} />,
-      confirmLabel: "Switch",
+      title: tf("Apply {name}?", { name: pack.name }),
+      body: <PackChangeBody change={change} name={pluginName} />,
+      confirmLabel: "Apply",
       confirmVariant: "primary",
       width: confirmWidth,
     });
@@ -692,16 +695,16 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     host.setPluginsEnabled(toggles);
     bump();
     const parts = [
-      ...(change.turnOff.length > 0 ? [`${change.turnOff.length} off`] : []),
-      ...(change.turnOn.length > 0 ? [`${change.turnOn.length} back on`] : []),
+      ...(change.turnOff.length > 0 ? [tf("{count} off", { count: change.turnOff.length })] : []),
+      ...(change.turnOn.length > 0 ? [tf("{count} back on", { count: change.turnOn.length })] : []),
     ];
     notify({
-      body: `${pack.name}: ${parts.join(", ")}.`,
+      body: tf("{name} applied: {changes}.", { name: pack.name, changes: parts.join(", ") }),
       type: "success",
       // Long enough to reach for Undo after looking at the list.
       duration: 12_000,
       action: {
-        label: "Undo",
+        label: t("Undo"),
         onClick: () => {
           host.setPluginsEnabled(restoreToggles(previous));
           bump();
@@ -710,21 +713,44 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     });
   }, [bump, confirmWidth, dialog, disabledPlugins, host, notify, pluginName]);
 
+  /**
+   * The packs as templates to apply: each with its tagline and what it would
+   * switch from the plugins on now. Picking one goes to the confirmation that
+   * names those plugins.
+   */
   const choosePack = useCallback(async () => {
+    if (!host) return;
     const id = await dialog.prompt<string>({
       closeOnClickOutside: true,
       content: (context: PromptContext<string>) => (
         <ChoiceDialog
           {...context}
-          title="Starter packs"
+          title="Apply a starter pack"
           selectedChoiceId={currentPack?.id}
-          choices={STARTER_PACKS.map((pack) => ({ id: pack.id, label: pack.name, description: pack.tagline }))}
+          choices={STARTER_PACKS.map((pack) => ({
+            id: pack.id,
+            label: pack.name,
+            description: pack.tagline,
+            detail: packChangeSummary(packChange(disabledPlugins, pack)),
+          }))}
         />
       ),
     }).catch(() => null);
     const pack = STARTER_PACKS.find((candidate) => candidate.id === id);
     if (pack) await applyPack(pack);
-  }, [applyPack, currentPack, dialog]);
+  }, [applyPack, currentPack, dialog, disabledPlugins, host]);
+
+  // The pack reaches exactly the research section, so its heading says which
+  // one the plugins on match and applies another.
+  const renderSectionHeader = useCallback((row: MarketplaceRow) => {
+    if (row.type !== "header") return null;
+    const text = `${SECTION_LABELS[row.section]} (${row.count})`;
+    if (row.section !== "research" || !host) return { text };
+    return {
+      text,
+      action: { label: packStateLabel(currentPack), title: t("Apply a starter pack"), onPress: () => { void choosePack(); } },
+    };
+  }, [choosePack, currentPack, host]);
 
   const setupSelected = useCallback(() => {
     if (!selected || !selected.installed || !selected.hasSetup || !selected.enabled) return;
@@ -826,7 +852,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (canOpen) hints.push({ id: "open-pane", key: "p", label: "ane", onPress: openSelected });
   if (canLog) hints.push({ id: "log", key: "d", label: "ebug log", onPress: openLog });
   if (canRemove) hints.push({ id: "remove", key: "x", label: " remove", onPress: () => { void removeSelected(); } });
-  if (host) hints.push({ id: "packs", key: "a", label: " packs", title: "Starter packs", onPress: () => { void choosePack(); } });
+  if (host) hints.push({ id: "packs", key: "a", label: "pply pack", title: "Apply a starter pack", onPress: () => { void choosePack(); } });
   // A built-in has no repository; its page on gloom.sh shows it at work.
   const seeItUrl = selected?.bundled ? registryPluginUrl(selected.id) : null;
   if (seeItUrl) hints.push({ id: "see-it", key: "o", label: " see it", title: "See it on gloom.sh", onPress: () => openUrl(seeItUrl) });
@@ -845,10 +871,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     status: Math.min(14, Math.max(7, ...visible.map((entry) => statusOf(entry).text.length))),
   }), [factsFor, visible]);
   const columns = useMemo(() => buildColumns(width, fit), [fit, width]);
-  const packOptions = useMemo(() => [
-    ...STARTER_PACKS.map((pack) => ({ value: pack.id, label: pack.name, short: PACK_SHORT_LABELS[pack.id], description: pack.tagline })),
-    ...(currentPack ? [] : [{ value: CUSTOM_PACK, label: "Custom", description: "Your own set of plugins.", disabled: true }]),
-  ], [currentPack]);
   // The pick is saved with the pane, so keep it listed (and resettable) even
   // when the catalog no longer has plugins in it.
   const categoryOptions = useMemo(
@@ -899,21 +921,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
           : null}
         detailTitle={selected?.name}
         rootBefore={(
-          <Box flexDirection="column" flexShrink={0}>
-          <QueryBar
-            width={width}
-            filters={[{
-              id: "pack",
-              label: "Starter pack",
-              inline: true,
-              value: currentPack?.id ?? CUSTOM_PACK,
-              options: packOptions,
-              onChange: (value: string) => {
-                const pack = STARTER_PACKS.find((candidate) => candidate.id === value);
-                if (pack) void applyPack(pack);
-              },
-            }]}
-          />
           <QueryBar
             width={width}
             search={{
@@ -935,7 +942,6 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
               { kind: "toggle" as const, id: "builtin", label: "Built in", value: showBuiltin, defaultValue: true, onChange: setShowBuiltin },
             ]}
           />
-          </Box>
         )}
         selection={{
           kind: "id",
@@ -958,7 +964,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
         getItemKey={rowKey}
         sortColumnId={null}
         sortDirection="asc"
-        renderSectionHeader={renderRowSectionHeader}
+        renderSectionHeader={renderSectionHeader}
         renderCell={renderRow}
         emptyContent={<Box width="100%" paddingX={1} paddingY={1}>{emptyState}</Box>}
         emptyStateTitle={status === "error" ? "Plugin catalog unavailable." : query || category ? "No plugins match." : "Nothing installed yet."}

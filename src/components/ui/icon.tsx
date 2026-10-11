@@ -6,6 +6,7 @@ import { t } from "../../i18n";
 
 export type IconName =
   | "more"
+  | "help"
   | "close"
   | "zap"
   | "sqrt"
@@ -34,6 +35,7 @@ export type IconName =
 /** Terminal glyph for each icon; the desktop host draws SVG. */
 export const ICON_GLYPHS: Record<IconName, string> = {
   more: "...",
+  help: "?",
   close: "x",
   zap: "⚡",
   sqrt: "√",

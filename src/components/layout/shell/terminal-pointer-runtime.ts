@@ -37,6 +37,8 @@ interface UseShellTerminalPointerRuntimeOptions {
     rect: LayoutBounds,
     event?: { preventDefault?: () => void; stopPropagation?: () => void },
   ) => void;
+  /** The header's `?`: the pane's entry in DOCS. */
+  openPaneDocs: (paneId: string) => void;
   paneMap: Map<string, ResolvedPane>;
   selectWindowModePane: (paneId: string) => void;
   setHoveredMenuItemId: Dispatch<SetStateAction<string | null>>;
@@ -77,6 +79,7 @@ export function useShellTerminalPointerRuntime({
   restoreFullscreen,
   menuState,
   openPaneMenu,
+  openPaneDocs,
   paneMap,
   selectWindowModePane,
   setHoveredMenuItemId,
@@ -211,6 +214,16 @@ export function useShellTerminalPointerRuntime({
           event.preventDefault();
           return;
         }
+        if (relativeY === 0
+          && headerAreas.helpStart != null
+          && headerAreas.actionStart != null
+          && relativeX >= headerAreas.helpStart
+          && relativeX < headerAreas.actionStart) {
+          openPaneDocs(paneId);
+          event.stopPropagation();
+          event.preventDefault();
+          return;
+        }
         if (!transientFocusActive && relativeX >= rect.width - 2 && relativeY >= rect.height - 1) {
           startDrag({
             type: "float-resize",
@@ -302,6 +315,16 @@ export function useShellTerminalPointerRuntime({
           event.preventDefault();
           return;
         }
+        if (relativeY === 0
+          && headerAreas.helpStart != null
+          && headerAreas.actionStart != null
+          && relativeX >= headerAreas.helpStart
+          && relativeX < headerAreas.actionStart) {
+          openPaneDocs(leaf.instanceId);
+          event.stopPropagation();
+          event.preventDefault();
+          return;
+        }
         if (relativeY === 0 && transientFocusActive) {
           event.stopPropagation();
           event.preventDefault();
@@ -341,6 +364,7 @@ export function useShellTerminalPointerRuntime({
     restoreFullscreen,
     menuState,
     openPaneMenu,
+    openPaneDocs,
     paneMap,
     selectWindowModePane,
     setHoveredMenuItemId,

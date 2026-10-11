@@ -5,7 +5,7 @@ import { fetchPowerBoard, fetchAllPowerHistory, fetchPowerTickerScopes } from ".
 import { powerQuery } from "./query";
 import {
   COVERAGE_COLUMNS, EXPOSURE_COLUMNS, GENERATION_COLUMNS, HISTORY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, UTILITY_COLUMNS,
-  historyRows, powerNumber, powerPercent, powerRegion, powerScopeOptions, powerTab, powerTickerEmpty, projectRows, tickerLabel, titleCase, UNMAPPED, type PowerTab,
+  historyRows, powerCoverageNote, powerLoadedSources, powerNumber, powerPercent, powerRegion, powerScopeOptions, powerTab, powerTickerEmpty, projectRows, tickerLabel, titleCase, UNMAPPED, type PowerTab,
 } from "./model";
 
 /** Bars the pane draws beside the numbers they are made of; the report has the numbers. */
@@ -95,10 +95,15 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
       .then((scopes) => {
         const message = powerTickerEmpty(symbol, tab, String(args.options.context ?? "capacity"), scopes);
         const where = message.found.map((scope) => `${powerNumber(scope.total)} ${scope.label} (${powerScopeOptions(scope)})`).join(", ");
-        return [message.title, where ? `${symbol} has ${where}.` : message.hint?.replace(/\.$/, " (--search <name>).")].filter(Boolean).join(" ");
+        const loaded = powerLoadedSources(tab, board.coverage);
+        return [message.title, where ? `${symbol} has ${where}.` : message.hint?.replace(/\.$/, " (--search <name>)."),
+          loaded ? `Sources loaded now: ${loaded}.` : null].filter(Boolean).join(" ");
       }) : "No reported records match these filters.";
+    // Missing or unsupported sources are coverage, not failures: one plain line, details in --tab coverage.
+    const coverageNote = tab === "capacity" ? null : powerCoverageNote(board.coverage);
     return { complete: locked === 0, sections: [{ title: POWER_TABS.find((t) => t.value === tab)!.label, columns: columns.filter((column) => shown.includes(column.key)), rows, empty }],
       metadata: { generatedAt: board.generatedAt, access: board.access, locked, total: board.total, units: "MW unless specified", filters: filter, aggregates: board.aggregates, coverage: board.coverage },
-      errors: [...(locked ? ["Additional records and history need Gloom Pro."] : []), ...board.coverage.filter((c) => c.status !== "current").map((c) => `${c.region}: ${c.status}${c.reason ? `: ${c.reason}` : ""}`)] };
+      ...(coverageNote ? { notes: [coverageNote] } : {}),
+      ...(locked ? { errors: ["Additional records and history need Gloom Pro."] } : {}) };
   },
 };

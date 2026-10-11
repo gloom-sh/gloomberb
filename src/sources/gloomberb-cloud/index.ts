@@ -201,15 +201,15 @@ function mapCloudPriceHistory(
   if (stale && !reachesLatestSettledSession(points, Date.now(), { symbol: ticker, exchange, intervalMs: priceHistoryIntervalMs(interval) })) {
     throw createProviderMiss(`Cloud chart data is stale for ${ticker}`);
   }
-  if (
-    /^\d+(min|h)$/i.test(interval)
-    && hasMalformedIntradayHistory(points)
-  ) {
+  const intraday = /^\d+(min|h)$/i.test(interval);
+  // Daily bars answering an intraday range: the listing has no intraday bars.
+  const dailyBars = intraday && response.servedResolution === "1day";
+  if (intraday && !dailyBars && hasMalformedIntradayHistory(points)) {
     throw createProviderMiss(`Cloud chart data failed OHLC validation for ${ticker}`);
   }
   const matchingInterval = [response.providerMeta?.servedResolution, response.providerMeta?.requestedResolution]
     .every((declared) => declared === undefined || canonicalHistoryInterval(declared) === canonicalHistoryInterval(interval));
-  const resolution = matchingInterval ? cloudHistoryResolution(interval) : null;
+  const resolution = dailyBars ? "1d" : matchingInterval ? cloudHistoryResolution(interval) : null;
   // Metadata this client cannot read (a newer version, a far-off clock) is
   // absent, not contradictory; only a readable mismatch rejects the history.
   const declared = parseHistorySession(response.historySession) !== null;

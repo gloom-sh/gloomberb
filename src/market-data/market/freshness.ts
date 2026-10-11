@@ -70,8 +70,11 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   TASE: 9 * 60 + 59,
   TADAWUL: 10 * 60,
   QE: 9 * 60 + 30,
+  BHB: 9 * 60 + 30,
   DFM: 10 * 60,
+  MSX: 10 * 60,
   KUWAIT: 9 * 60,
+  EGX: 10 * 60,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
 // early would let a copy fetched during the auction pass as final.
@@ -96,23 +99,38 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   // Continuous trading to 13:00, the closing auction to 13:10 and trading at
   // last to 13:15. A complete 5-minute copy ends with its 13:05 or 13:10 bar.
   QE: 13 * 60 + 15,
+  // Bahrain Bourse trades continuously to 13:00, with no closing auction.
+  BHB: 13 * 60,
   // Continuous trading to 14:45, the closing auction to 14:55 and trading at
   // the close to 15:00. A complete 5-minute copy ends with its 14:55 bar.
   DFM: 15 * 60,
+  // The Muscat Stock Exchange since 1 Jun 2026: continuous trading to 14:45,
+  // the closing auction to 14:55 and trade at last to 15:00. A complete
+  // 5-minute copy ends with its 14:55 bar.
+  MSX: 15 * 60,
   // Boursa Kuwait: continuous trading to 13:00, the closing auction to 13:10
   // and trade at last to 13:15. Not later than the auction's end: a complete
   // 5-minute copy ends with its 12:40 bar (the source still closes its
   // period at 12:45), which must reach the close less the half hour a
   // history copy may lag.
   KUWAIT: 13 * 60 + 10,
+  // The Egyptian Exchange: continuous trading to 14:15, the closing auction
+  // to 14:25 and trading at the close to 14:30.
+  EGX: 14 * 60 + 25,
 };
 // Venues whose week is not Monday to Friday, as their days off (0 is Sunday).
-// Tadawul, Qatar and Boursa Kuwait trade Sunday to Thursday. Dubai's DFM has
-// traded Monday to Friday since 2022, like the venues not listed here.
+// Tadawul, Qatar, Boursa Kuwait and the Egyptian Exchange trade Sunday to
+// Thursday. Dubai's DFM has traded Monday to Friday since 2022, like the
+// venues not listed here.
 const WEEKEND_DAYS: Record<string, readonly number[]> = {
   TADAWUL: [5, 6],
+  // Bahrain Bourse trades Sunday to Thursday.
+  BHB: [5, 6],
   QE: [5, 6],
+  // The Muscat Stock Exchange trades Sunday to Thursday.
+  MSX: [5, 6],
   KUWAIT: [5, 6],
+  EGX: [5, 6],
 };
 const DEFAULT_WEEKEND_DAYS: readonly number[] = [0, 6];
 // History only: venues whose chart source files their bars on another week,
@@ -258,7 +276,7 @@ function isPublishedClosure(exchange: string, date: string): boolean {
 }
 
 /** Whether `weekday` (0 is Sunday) is in the venue's trading week. */
-function isTradingWeekday(exchange: string, weekday: number, weekendDays?: readonly number[]): boolean {
+export function isTradingWeekday(exchange: string, weekday: number, weekendDays?: readonly number[]): boolean {
   return !(weekendDays ?? WEEKEND_DAYS[exchange] ?? DEFAULT_WEEKEND_DAYS).includes(weekday);
 }
 
@@ -437,7 +455,7 @@ export function isRegularSessionTime(
 /**
  * True when the venue's full-day closures for the year of `date` are
  * published: US venues, JPX, NSE, BSE, SSE, SZSE, KRX, KOSDAQ, TWSE, TPEX,
- * HKEX, SGX and ASX. Elsewhere a local holiday reads as a trading day.
+ * HKEX, SGX, ASX and EGX. Elsewhere a local holiday reads as a trading day.
  */
 export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
   const canonical = canonicalExchange(exchange);

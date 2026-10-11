@@ -23,7 +23,7 @@ import type { SegmentedControlProps } from "../../../components/ui/toggle";
 import {
   CONTROL_RADIUS,
   buttonPalette,
-  buttonShadow,
+  buttonRelief,
   controlBorderColor,
   controlShadow,
   panelBorder,
@@ -51,6 +51,7 @@ export function WebButton({
 }: ButtonProps) {
   const colors = useThemeColors();
   const palette = buttonPalette({ variant, active, disabled }, colors);
+  const relief = buttonRelief({ variant, active, disabled }, colors);
 
   return (
     <button
@@ -80,6 +81,7 @@ export function WebButton({
       data-gloom-role="desktop-button"
       data-gloom-variant={variant}
       data-gloom-interactive={disabled ? undefined : "true"}
+      data-gloom-raised={relief.backgroundImage ? "true" : undefined}
       style={{
         display: "inline-flex",
         flexShrink: 0,
@@ -90,15 +92,19 @@ export function WebButton({
         minWidth: 0,
         boxSizing: "border-box",
         backgroundColor: palette.bg,
+        backgroundImage: relief.backgroundImage,
+        backgroundOrigin: "border-box",
         color: palette.fg,
         font: "inherit",
         fontWeight: active || variant === "primary" ? 700 : 600,
-        border: flush ? "none" : `1px solid ${palette.border}`,
+        border: flush ? "none" : `1px solid ${relief.borderColor ?? palette.border}`,
         borderRadius: CONTROL_RADIUS,
         padding: flush ? 0 : compact ? "0 2px" : "0 8px",
-        boxShadow: buttonShadow({ variant, active, disabled }, colors),
+        boxShadow: relief.boxShadow,
+        "--gloom-pressed-image": relief.pressedImage,
+        "--gloom-pressed-shadow": relief.pressedShadow,
         cursor: disabled ? "default" : "pointer",
-      }}
+      } as CSSProperties}
     >
       {children ?? displayLabel ?? label}
       {shortcut && (

@@ -56,6 +56,7 @@ import { cotModule } from "./builtin/cot";
 import { doeModule } from "./builtin/doe";
 import { gpuModule } from "./builtin/gpu";
 import { fxMatrixModule } from "./builtin/fx-matrix";
+import { docsModule } from "./builtin/docs";
 import { helpModule } from "./builtin/help";
 import { positionSizerModule } from "./builtin/kelly-sizer";
 import { layoutManagerModule } from "./builtin/layout-manager";
@@ -113,7 +114,7 @@ import {
 
 const browserApplicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
-  modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule],
+  modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule, docsModule],
 });
 
 const browserPortfolioPlugin = composeBuiltinPlugin({

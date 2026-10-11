@@ -1,14 +1,14 @@
 import { expect, test } from "bun:test";
 import { PUBLISHED_APAC_CLOSURES } from "./published-apac-sessions";
-import { hasPublishedSessionCalendar, isRegularSessionTime, latestRegularSessionClose } from "./market/freshness";
+import { hasPublishedSessionCalendar, isRegularSessionTime, isTradingWeekday, latestRegularSessionClose } from "./market/freshness";
 
-test("every published closure is a weekday, in date order", () => {
+test("every published closure is a day of its venue's week, in date order", () => {
   for (const [venue, years] of Object.entries(PUBLISHED_APAC_CLOSURES)) {
     for (const [year, dates] of Object.entries(years)) {
       expect([...dates].sort(), `${venue} ${year}`).toEqual([...dates]);
       for (const date of dates) {
         const weekday = new Date(`${year}-${date}T00:00:00Z`).getUTCDay();
-        expect(weekday >= 1 && weekday <= 5, `${venue} ${year}-${date}`).toBe(true);
+        expect(isTradingWeekday(venue, weekday), `${venue} ${year}-${date}`).toBe(true);
       }
     }
   }
