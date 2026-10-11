@@ -115,6 +115,7 @@ function forwardsSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
 
 export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
+  usListingsOnly: "Options data",
   describe: (args) => `OVDV ${args.symbols[0] ?? ""}`,
   options: [
     { key: "tab", type: "enum", values: SURFACE_TABS.map((value) => ({ value })),

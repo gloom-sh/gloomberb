@@ -9,7 +9,7 @@ import { AmbiguousTickerError, resolveTickerSearch, upsertTickerFromSearchResult
 import { parseTickerListInput } from "../../../tickers/list";
 import { resolveTickerOpenTarget, type TickerOpenTarget } from "../../../tickers/open-target";
 import { tickerHasListingSuffix } from "../../../sources/listing-symbols";
-import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
+import { canonicalExchange, isSharedExchangeCode, parsePublicTickerKey, publicTickerKey, typedExchangeCode } from "../../../utils/exchanges";
 import { captureAttentionAction } from "../../../telemetry/attention-counts";
 
 export interface SharedWorkflowDeps {
@@ -138,6 +138,15 @@ export function resolveSoleCollectionTarget(
   return options.length === 1 ? options[0]!.id : null;
 }
 
+/** The key of the listing search settled a typed listing on: 7203:TSE that search found in Tokyo is 7203:JPX. */
+function settledListingKey(typed: string, settled: NonNullable<Awaited<ReturnType<typeof resolveTickerSearch>>>): string {
+  const venue = settled.kind === "local"
+    ? settled.ticker.metadata.exchange
+    : settled.result.exchange === "SMART" ? settled.result.primaryExchange : settled.result.exchange || settled.result.primaryExchange;
+  const exchange = canonicalExchange(venue);
+  return exchange ? `${parsePublicTickerKey(typed).symbol}:${exchange}` : typed;
+}
+
 export async function resolveTickerInput(
   rawInput: string | undefined,
   activeTicker: string | null,
@@ -148,8 +157,17 @@ export async function resolveTickerInput(
   const state = deps.getState();
   let resolvedTicker;
   try {
-    const query = rawInput?.trim() || activeTicker || "";
-    if (options.preserveListingKey && (parsePublicTickerKey(query).exchange || tickerHasListingSuffix(query.toUpperCase()))) {
+    let query = rawInput?.trim() || activeTicker || "";
+    if (options.preserveListingKey && isSharedExchangeCode(typedExchangeCode(query))) {
+      // 7203:TSE is the listing search settles on among the venues TSE names, kept as 7203:JPX would be.
+      const settled = await resolveTickerSearch({
+        query, activeTicker: null, tickers: state.tickers, dataProvider: deps.dataProvider,
+        searchContext: getTickerSearchContext(state, collectionId),
+      });
+      if (settled) query = settledListingKey(query, settled);
+    }
+    const namedVenue = !!parsePublicTickerKey(query).exchange && !isSharedExchangeCode(typedExchangeCode(query));
+    if (options.preserveListingKey && (namedVenue || tickerHasListingSuffix(query.toUpperCase()))) {
       // Commands and incoming layouts must preserve the same validated listing
       // key, including when the repository already stores a bare-symbol holding.
       const target = await resolveTickerOpenTarget({

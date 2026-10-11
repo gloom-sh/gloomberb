@@ -51,6 +51,11 @@ export interface ParsedPaneFunctionArgs {
   requireBotSafe: boolean;
   /** The listing a one-ticker function's argument named, once `applyListingArgument` has resolved it. */
   listing?: CliListing;
+  /**
+   * What `applyListingArgument` says about a list's listings: what a typed
+   * code was read as, and the ones left out of data that covers US listings only.
+   */
+  listingNotes?: string[];
 }
 
 export interface ParsedPaneCatalogArgs {

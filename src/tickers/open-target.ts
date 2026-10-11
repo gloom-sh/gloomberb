@@ -11,7 +11,7 @@ import {
 import { tickerSelectionFromSearchResult } from "./selection";
 import { normalizeTickerSymbol } from "./search/ranking";
 import type { TickerOpenTarget } from "./search/types";
-import { parsePublicTickerKey } from "../utils/exchanges";
+import { isSharedExchangeCode, parsePublicTickerKey, typedExchangeCode } from "../utils/exchanges";
 import { getListingSymbol, tickerHasListingSuffix } from "../sources/listing-symbols";
 
 export type { TickerOpenTarget } from "./search/types";
@@ -34,7 +34,8 @@ export async function resolveTickerOpenTarget({
   const symbol = normalizeTickerInput(null, query);
   if (!symbol) return null;
   const requested = parsePublicTickerKey(symbol);
-  const preserveListingKey = !!requested.exchange || tickerHasListingSuffix(symbol);
+  // A code that names several venues (7203:TSE) opens the listing search settled on, under its own key.
+  const preserveListingKey = (!!requested.exchange && !isSharedExchangeCode(typedExchangeCode(symbol))) || tickerHasListingSuffix(symbol);
 
   let resolved: Awaited<ReturnType<typeof resolveTickerSearch>> | null = null;
   try {

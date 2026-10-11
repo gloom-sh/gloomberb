@@ -65,3 +65,26 @@ test("EVTS with a ticker stays the market board and says whether that ticker is 
   // Sanofi in Paris is not the US board's SAN.
   expect(await highlight("SAN:EPA")).toEqual({ symbol: "SAN:EPA", onBoard: false, date: null });
 });
+
+test("ERN for a listing abroad shows its next report and names the company's US listing instead of the US board's other SAN", async () => {
+  const definition = createEarningsHeadless({
+    calendar: async () => { throw new Error("unused"); },
+    // The board files SAN under Banco Santander, so SAN:EPA must never be asked for there.
+    history: async () => { throw new Error("A US ticker symbol is required"); },
+    upcoming: async () => [{
+      symbol: "SAN:EPA", name: "Sanofi", earningsDate: new Date(`${addDays(today, 19)}T00:00:00Z`), isDateEstimate: false,
+      epsEstimate: 2.85, epsActual: null, revenueEstimate: 13.22e9, revenueActual: null, surprise: null, timing: "",
+    }],
+  });
+  const marketData = {
+    search: async (query: string) => query === "Sanofi"
+      ? [{ providerId: "test", symbol: "SNY", name: "Sanofi ADR", exchange: "NASDAQ", type: "ADR", currency: "USD" }]
+      : [],
+  } as unknown as HeadlessPaneContext["marketData"];
+  const result = await definition.load({ rawArgument: "SAN:EPA", argument: ["SAN:EPA"], symbols: ["SAN:EPA"], options: {} }, { marketData } as HeadlessPaneContext);
+  expect(result.errors).toBeUndefined();
+  expect(result.rows.map((row) => [row.date, row.epsEstimate])).toEqual([[addDays(today, 19), 2.85]]);
+  expect(result.metadata?.notices).toEqual([
+    "Past reports, surprises and implied moves cover US listings only, so SAN:EPA shows its next report. Sanofi's US listing is SNY: ERN SNY has them.",
+  ]);
+});

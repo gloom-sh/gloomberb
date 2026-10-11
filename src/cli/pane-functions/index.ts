@@ -22,7 +22,7 @@ import {
 } from "./catalog";
 import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
-import { loadForListing, quotedListingChoiceNotes } from "../listing-arg";
+import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceNotes } from "../listing-arg";
 import { knownGapMessage } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import {
@@ -44,13 +44,13 @@ async function withPaneRuntime<T>(
     registry: PaneFunctionCatalog;
     resolved: ResolvedPaneFunction;
   }) => Promise<T>,
-  settings: { strictHeadlessOptions?: boolean; tableSection?: boolean } = {},
+  settings: { strictHeadlessOptions?: boolean; tableSection?: boolean; command?: "fn" | "shot" } = {},
 ): Promise<T> {
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
-      const parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions));
+      const parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions), settings.command);
       const resolved = await resolvePaneFunction(registry, context, parsed, settings);
       return await run({ parsed, context, registry, resolved });
     } finally {
@@ -104,7 +104,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const data = glossary
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
-      const warnings = await choice ?? [];
+      const warnings = [...parsed.listingNotes ?? [], ...await choice ?? []];
       ctx.printResult({ data, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
@@ -147,7 +147,8 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
         );
       }
       // Text prints a warning on stderr, out of the way of piped output; JSON carries it in the envelope.
-      const warnings = shotSizeWarnings(parsed.clamped, parsed);
+      const read = parsed.listing ? listingReadNotes(parsed.listing) : [];
+      const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed)];
       ctx.printResult({ data: result, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: (data) => {
           const issues = [
@@ -169,7 +170,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
           return [`Saved ${displayPath(data.outputPath)}`, renderStats(stats)].join("\n");
         },
       });
-    });
+    }, { command: "shot" });
   });
 }
 
@@ -230,6 +231,8 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
   try {
     await run();
   } catch (error) {
+    // A listing it cannot use says what to type instead.
+    if (error instanceof ListingArgError) ctx.fail(error.message, error.details);
     const message = error instanceof Error ? error.message : String(error);
     ctx.fail(message);
   }

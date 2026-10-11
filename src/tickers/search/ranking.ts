@@ -4,7 +4,7 @@ import type {
 } from "./types";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { currencyPairCode } from "../../utils/currency-pair";
-import { canonicalExchange, parsePublicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, exchangeCodeVenues, parsePublicTickerKey, typedExchangeCode } from "../../utils/exchanges";
 import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAssetClassQuery } from "./asset-classes";
 import { futuresContractByCode } from "../../market-data/futures-board";
 
@@ -30,15 +30,15 @@ const COMPANY_NAME_SUFFIXES = new Set([
   "SE",
 ]);
 
-const EXCHANGE_HINT_ALIASES: Record<string, string[]> = {
+/** Words in a search that say where to look ("toyota tokyo"), each with the venue labels it matches. */
+const VENUE_HINT_ALIASES: Record<string, string[]> = {
   NASDAQ: ["NASDAQ", "NMS"],
   NYSE: ["NYSE", "NYSE ARCA", "ARCA"],
   AMEX: ["AMEX"],
   TSX: ["TSX", "TORONTO"],
   TORONTO: ["TORONTO", "TSX"],
   XETRA: ["XETRA"],
-  TSE: ["TOKYO STOCK EXCHANGE", "TOKYO", "JPX", "TSE"],
-  TOKYO: ["TOKYO STOCK EXCHANGE", "TOKYO", "JPX", "TSE"],
+  TOKYO: ["TOKYO STOCK EXCHANGE", "TOKYO", "JPX"],
   JPX: ["JPX", "TOKYO STOCK EXCHANGE", "TOKYO"],
   LSE: ["LSE", "LONDON"],
   HKEX: ["HKEX", "HONG KONG"],
@@ -47,6 +47,13 @@ const EXCHANGE_HINT_ALIASES: Record<string, string[]> = {
   BUENOS: ["BUENOS AIRES", "BUE"],
   AIRES: ["BUENOS AIRES", "BUE"],
 };
+
+/** A code the venue list reads as several venues (TSE: Toronto or Tokyo) ranks a row on any of them. */
+function sharedCodeHint(code: string): string[] {
+  return [code, ...exchangeCodeVenues(code).flatMap((venue) => VENUE_HINT_ALIASES[venue] ?? [venue])];
+}
+
+const EXCHANGE_HINT_ALIASES: Record<string, string[]> = { ...VENUE_HINT_ALIASES, TSE: sharedCodeHint("TSE") };
 
 const ASSET_HINT_MAP: Record<string, TickerSearchInstrumentClass> = {
   STOCK: "equity",
@@ -142,8 +149,10 @@ function matchesQualifiedTicker(
   if (requested.exchange) {
     // EURUSD:CCY and EURUSD:FX name the pair listed as EURUSD=X on CCY.
     const pair = currencyPairCode(requested.symbol, requested.exchange);
+    // A code that names several venues (TSE: Toronto or Tokyo) matches a row on any of them.
+    const venues = exchangeCodeVenues(typedExchangeCode(normalized));
     return (candidate.symbol === requested.symbol || (pair != null && currencyPairCode(candidate.symbol) === pair))
-      && exchanges.some((exchange) => canonicalExchange(exchange) === requested.exchange);
+      && exchanges.some((exchange) => venues.includes(canonicalExchange(exchange)));
   }
   if (isExplicitMarketSymbol(requested.symbol)) {
     const pair = currencyPairCode(requested.symbol);

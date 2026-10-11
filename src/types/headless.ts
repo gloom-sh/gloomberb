@@ -313,6 +313,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    */
   description?: string;
   argument: HeadlessPaneArgumentDef;
+  /**
+   * The data covers US listings only, named as a sentence starts ("Time and
+   * sales"). `fn` and `shot` answer a listing abroad with that and the
+   * company's US listing instead of loading, so a symbol another company uses
+   * in the US never shows that company's numbers.
+   */
+  usListingsOnly?: string;
   options: HeadlessPaneOptionDef[];
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;

@@ -105,6 +105,7 @@ import {
   listingTitle,
   listingVenues,
   listingChoiceNotes,
+  listingReadNotes,
   loadBareVenues,
   type ListingVenue,
   loadForListing,
@@ -634,7 +635,7 @@ async function answerQuote(
     ? [indexRootAlsoLine(root, request.command)] : [];
   if (result.quote) {
     // "CAR = Avis Budget Group, NASDAQ (also XETRA, ASX)" names the venue too, so it replaces "SXR8 -> XETRA".
-    const choice = venues ? await listingChoiceNotes(listing, market, result.quote, venues) : [];
+    const choice = venues ? await listingChoiceNotes(listing, market, result.quote, venues) : listingReadNotes(listing);
     const venue = choice.length > 0 ? null : bareListingNote(listing, result.quote);
     return { result, listing, notes: [...choice, venue ?? [], also(result.quote)].flat() };
   }
@@ -933,8 +934,10 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       return;
     }
     const empty = emptyMessage(false);
+    const read = listing ? listingReadNotes(listing) : [];
     ctx.printResult({
       data: articles,
+      ...(read.length > 0 ? { warnings: read } : {}),
       metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null },
       freshness: rowsFreshness(newsRows(articles), cloudNewsFreshness(await cloudRealtimeAccess())),
     }, {
@@ -1541,6 +1544,7 @@ async function runEarnings(rawArgs: string[], ctx: Parameters<CliCommandDef["exe
     const noCalendar = abroadNotes.join("\n");
     // Text prints the listings without a calendar under the table; other formats carry them as warnings.
     const warnings = [
+      ...listings.flatMap(listingReadNotes),
       ...choiceNotes.filter((note): note is string => !!note),
       ...ctx.cliOptions.format === "text" ? [] : abroadNotes,
     ];

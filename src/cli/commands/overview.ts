@@ -27,7 +27,7 @@ import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix
 import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { CORRELATION_RETURN_BASIS, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
-import { EXCHANGE_OPTION, listingIdentity, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
+import { EXCHANGE_OPTION, listingIdentity, listingReadNotes, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
 import { formatChangePercentCell, formatCompactCell } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
@@ -491,9 +491,10 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
       asOf: newestReportTime(lastBars),
       oldest: oldestReportTime(lastBars),
     });
+    const warnings = [...listingReadNotes(leftListing!), ...listingReadNotes(rightListing!), ...sessionNote ? [sessionNote] : []];
     ctx.printResult({
       data: [{ left, right, samples: sampleSize, correlation }],
-      ...(sessionNote ? { warnings: [sessionNote] } : {}),
+      ...(warnings.length > 0 ? { warnings } : {}),
       metadata: { range: "1Y", basis: CORRELATION_RETURN_BASIS },
       freshness,
     }, {

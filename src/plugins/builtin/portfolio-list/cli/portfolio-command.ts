@@ -3,7 +3,7 @@ import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveTickerForCli } from "../../../../cli/ticker-resolution";
 import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, loadSavedListing, parseListingArg, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
+import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 import { formatMarketCostWithCurrency, formatMarketQuantity } from "../../../../market-data/market/format";
@@ -389,9 +389,11 @@ async function findListedTicker(store: TickerRepository, portfolio: Portfolio, s
     const sameSymbol = listed.filter((ticker) => parsePublicTickerKey(ticker.metadata.ticker).symbol === listing.symbol);
     return sameSymbol.find((ticker) => savedAs(ticker, listing.symbol)) ?? sameSymbol[0] ?? null;
   }
-  const onVenue = listed.filter((ticker) => canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange) === listing.key);
+  // 7203:TSE is the row on any venue TSE names.
+  const keys = listingKeys(listing);
+  const onVenue = listed.filter((ticker) => keys.includes(canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange)));
   // The key as saved (VTI:XMEX), else the same listing under another spelling of its venue (VTI:BMV).
-  return onVenue.find((ticker) => savedAs(ticker, listing.key)) ?? onVenue[0] ?? null;
+  return onVenue.find((ticker) => keys.some((key) => savedAs(ticker, key))) ?? onVenue[0] ?? null;
 }
 
 /** What a target command reports for the cash line, in the fields a listing has. */

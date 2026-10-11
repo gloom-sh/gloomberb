@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { listingAbroadVenue, usListingSymbol } from "../../../utils/sec";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
@@ -95,14 +95,17 @@ export interface StoredSurfacePayload {
 export type ImpliedVolatilityApi = Pick<typeof apiClient, "impliedVolatility">;
 const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
 /** Stored IV is keyed by the bare US symbol; a listing key ("SPY:ARCX") drops its exchange. */
-export const ivSymbol = (symbol: string) => parsePublicTickerKey(symbol.trim()).symbol.toUpperCase();
+/** A US listing's symbol; a listing abroad is refused, since its bare symbol's options are another company's. */
+export const ivSymbol = (symbol: string) => usListingSymbol(symbol, "Implied volatility");
 
 export function loadIvHistory(symbol: string, options: { signal?: AbortSignal; days?: number } = {}, api: ImpliedVolatilityApi = apiClient) {
   return api.impliedVolatility<IvHistoryPayload>(`history?${query({ symbol: ivSymbol(symbol), days: String(options.days ?? 1100) })}`,
     { signal: options.signal });
 }
+/** A listing abroad has no row: its bare symbol's options are another company's. */
 export function loadIvScreen(symbols: readonly string[], options: { signal?: AbortSignal } = {}, api: ImpliedVolatilityApi = apiClient) {
-  return api.impliedVolatility<IvScreenPayload>(`screen?${query({ symbols: symbols.map(ivSymbol).join(",") })}`, { signal: options.signal });
+  const us = symbols.filter((symbol) => listingAbroadVenue(symbol) == null).map(ivSymbol);
+  return api.impliedVolatility<IvScreenPayload>(`screen?${query({ symbols: us.join(",") })}`, { signal: options.signal });
 }
 export function loadSurfaceDates(symbol: string, options: { signal?: AbortSignal } = {}, api: ImpliedVolatilityApi = apiClient) {
   return api.impliedVolatility<{ version: 1; symbol: string; dates: string[] }>(`surface-dates?${query({ symbol: ivSymbol(symbol) })}`,

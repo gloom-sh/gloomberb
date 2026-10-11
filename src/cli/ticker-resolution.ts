@@ -16,6 +16,7 @@ import {
   chosenListingNote,
   ListingArgError,
   listingChoiceNote,
+  listingReadNotes,
   listingVenues,
   noLongerTradingNote,
   notTradedMessage,
@@ -83,7 +84,8 @@ export async function resolveCliTicker(
   }
   const deps: ListingDeps = { store, dataProvider };
   const listing = await resolveCliListing(symbol, exchange, deps, { ownExchangeWins: options.ownExchangeWins });
-  if (listing.saved) return { ticker: listing.saved, notes: [], ended: null };
+  const read = listingReadNotes(listing);
+  if (listing.saved) return { ticker: listing.saved, notes: read, ended: null };
 
   const localTickers = new Map(
     (await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const),
@@ -106,7 +108,7 @@ export async function resolveCliTicker(
   }
 
   if (!resolved) throw new TickerNotFoundError(await missingListingMessage(listing, deps));
-  if (resolved.kind === "local") return { ticker: resolved.ticker, notes: bareNote ? [bareNote] : [], ended: null };
+  if (resolved.kind === "local") return { ticker: resolved.ticker, notes: [...read, ...bareNote ? [bareNote] : []], ended: null };
 
   const { ticker, created } = await upsertTickerFromSearchResult(store, resolved.result);
   const named = created ? await nameFromListingQuote(ticker, store, dataProvider, bareQuote) : { ticker, quote: bareQuote };
@@ -118,7 +120,7 @@ export async function resolveCliTicker(
       ?? chosenListingNote(listing.symbol, saved.exchange, others)
     : null);
   const ended = named.quote ? noLongerTradingNote(saved.label, named.quote) : null;
-  return { ticker: named.ticker, notes: [venueNote, ended].filter((note): note is string => !!note), ended };
+  return { ticker: named.ticker, notes: [...read, venueNote, ended].filter((note): note is string => !!note), ended };
 }
 
 /**

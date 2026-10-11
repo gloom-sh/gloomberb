@@ -24,9 +24,12 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   "CBOE US": "BATS",
   BTS: "BATS",
   TYO: "JPX",
+  // Toronto, as brokers and quote sites spell it; typed after a symbol it can
+  // also be Tokyo (SHARED_EXCHANGE_CODES).
   TSE: "TSX",
   TSEJ: "JPX",
   JPX: "JPX",
+  XTKS: "JPX",
   HKG: "HKEX",
   HKEX: "HKEX",
   SEHK: "HKEX",
@@ -41,6 +44,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   TSXV: "TSXV",
   XTSX: "TSXV",
   VAN: "TSXV",
+  CVE: "TSXV",
   CN: "CSE",
   CNSX: "CSE",
   XCNQ: "CSE",
@@ -49,6 +53,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   XASX: "ASX",
   NZX: "NZX",
   XNZE: "NZX",
+  NZE: "NZX",
   SIX: "SWX",
   SWX: "SWX",
   EBS: "SWX",
@@ -61,6 +66,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   GER: "XETRA",
   FSE: "FWB2",
   FSX: "FWB2",
+  FRA: "FWB2",
   XFRA: "FWB2",
   FWB: "FWB2",
   FWB2: "FWB2",
@@ -113,14 +119,19 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   SSE: "SSE",
   XSHG: "SSE",
   SHH: "SSE",
+  SHA: "SSE",
   SZSE: "SZSE",
   XSHE: "SZSE",
   SHE: "SZSE",
+  SHZ: "SZSE",
+  // KOSPI; typed after a symbol it can also be KOSDAQ, which the Korea Exchange runs too.
   KRX: "KRX",
   XKRX: "KRX",
   KOSPI: "KRX",
+  KSC: "KRX",
   KOSDAQ: "KOSDAQ",
   XKOS: "KOSDAQ",
+  KOE: "KOSDAQ",
   SGX: "SGX",
   XSES: "SGX",
   BMV: "BMV",
@@ -128,6 +139,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   B3: "B3",
   BVMF: "B3",
   B3SA: "B3",
+  SAO: "B3",
   BUE: "BYMA",
   BCBA: "BYMA",
   JSE: "JSE",
@@ -378,6 +390,43 @@ function normalizeExchange(value?: string): string {
 export function canonicalExchange(value?: string): string {
   const normalized = normalizeExchange(value);
   return CANONICAL_EXCHANGE_ALIASES[normalized] ?? normalized;
+}
+
+/**
+ * Codes people type for more than one venue, the venue `canonicalExchange`
+ * reads them as first. TSE is the Tokyo Stock Exchange's own short name, and
+ * the code brokers and quote sites give Toronto; KRX is the Korea Exchange,
+ * which runs both KOSPI and KOSDAQ; EURONEXT runs Paris, Amsterdam, Brussels,
+ * Lisbon, Oslo and Milan. Data that arrives with one (a broker's contract)
+ * keeps the first venue; a listing typed with one is the venue its symbol
+ * trades on.
+ */
+const SHARED_EXCHANGE_CODES: Record<string, readonly string[]> = {
+  TSE: ["TSX", "JPX"],
+  KRX: ["KRX", "KOSDAQ"],
+  EURONEXT: ["AMS", "EPA", "BRU", "LIS", "OSL", "BIT"],
+};
+
+/** Whether a typed exchange code names more than one venue (TSE: Tokyo or Toronto). */
+export function isSharedExchangeCode(value?: string): boolean {
+  return normalizeExchange(value) in SHARED_EXCHANGE_CODES;
+}
+
+/**
+ * Every venue a typed exchange code can name, as canonical codes: TSE is
+ * TSX or JPX, PAR is EPA. Empty for no code.
+ */
+export function exchangeCodeVenues(value?: string): string[] {
+  const normalized = normalizeExchange(value);
+  if (!normalized) return [];
+  return [...(SHARED_EXCHANGE_CODES[normalized] ?? [canonicalExchange(normalized)])];
+}
+
+/** The exchange code after a listing key's colon, as typed: TSE for 7203:TSE; "" when there is none. */
+export function typedExchangeCode(key: string): string {
+  const normalized = normalizeSymbol(key);
+  const separator = normalized.lastIndexOf(":");
+  return separator > 0 ? normalized.slice(separator + 1) : "";
 }
 
 /**

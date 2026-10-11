@@ -10,7 +10,8 @@ import { applyChartComposerCapabilityOptions } from "../../plugins/builtin/chart
 import { parseChartSpec } from "../../plugins/builtin/chart-composer/chart-spec";
 import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
-import { resolveCliListing } from "../listing-arg";
+import { ListingArgError, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
+import { listingAbroadVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
@@ -106,27 +107,59 @@ function findPaneFunction(registry: PaneFunctionCatalog, target: string): { temp
 }
 
 /**
- * `fn ANR SAN --exchange EPA` is `fn ANR SAN:EPA`: a function that takes one
- * ticker gets the listing in its argument, and an exchange the app does not
- * know fails with the venues the symbol trades on.
+ * `fn ANR SAN --exchange EPA` is `fn ANR SAN:EPA`: a function that takes
+ * tickers gets each listing as `quote` reads it (`resolveCliListing`), so
+ * `fn ERN 7203:TSE` is Toyota in Tokyo and an exchange the app does not know
+ * fails with the venues the symbol trades on. With several symbols,
+ * `--exchange` names the venue of the ones that name none. A function whose
+ * data covers US listings only (`usListingsOnly`) answers a listing abroad
+ * with that and the company's US listing, and leaves it out of a list.
  */
 export async function applyListingArgument(
   registry: PaneFunctionCatalog,
   context: MarketContext,
   args: ParsedPaneFunctionArgs,
+  command: "fn" | "shot" = "fn",
 ): Promise<ParsedPaneFunctionArgs> {
   const found = args.target ? findPaneFunction(registry, args.target) : null;
-  if (!found?.pane || !args.arg || /\s/.test(args.arg)) return args;
+  if (!found?.pane || !args.arg) return args;
   const headless = getHeadlessPaneDefinition(found.template, found.pane);
-  const takesOneTicker = headless ? headless.argument.kind === "ticker" : found.template?.shortcut?.argKind === "ticker";
+  const kind = headless?.argument.kind ?? found.template?.shortcut?.argKind;
+  const takesOneTicker = kind === "ticker";
+  const takesList = kind === "tickers" || kind === "symbol-list" || (!headless && kind === "ticker-list");
   // A function with an exchange option of its own (DIST) keeps it.
-  if (!takesOneTicker || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
+  if (!(takesOneTicker || takesList) || (takesOneTicker && /\s/.test(args.arg))
+    || getPaneFunctionCapability(found.template, found.pane).options.some((option) => option.key === "exchange")) {
     return args;
   }
   const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
-  const listing = await resolveCliListing(args.arg, exchange, context);
   const { exchange: _exchange, ...options } = args.options;
-  return { ...args, arg: listing.key, options, listing };
+  const typed = takesOneTicker ? [args.arg] : args.arg.split(/[,\s]+/).filter(Boolean);
+  if (typed.length === 0) return args;
+  let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1 })));
+  const notes: string[] = [];
+  const usOnly = headless?.usListingsOnly;
+  const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
+  if (usOnly && abroad.length > 0) {
+    const token = found.template?.shortcut?.prefix ?? args.target.toUpperCase();
+    const answers = await Promise.all(abroad.map((listing) => usListingsOnlyMessage(
+      usOnly, listing, context, (key) => `gloomberb ${command} ${token} ${key}`,
+    )));
+    listings = listings.filter((listing) => !abroad.includes(listing));
+    if (listings.length === 0) {
+      throw new ListingArgError(answers.map((answer) => answer.message).join("\n"), answers.map((answer) => answer.details).join("\n"));
+    }
+    notes.push(...answers.map((answer) => `${answer.message} ${answer.details}`));
+  }
+  // One listing's notes come with its choice note; a list's are said here.
+  if (listings.length > 1) notes.unshift(...listings.flatMap(listingReadNotes));
+  return {
+    ...args,
+    arg: listings.map((listing) => listing.key).join(", "),
+    options,
+    ...(listings.length === 1 ? { listing: listings[0]! } : {}),
+    ...(notes.length > 0 ? { listingNotes: notes } : {}),
+  };
 }
 
 /**

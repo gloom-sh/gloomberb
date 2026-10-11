@@ -65,6 +65,7 @@ export function createShortInterestHeadless(
       placeholder: "ticker",
       description: "US equity ticker.",
     },
+    usListingsOnly: "FINRA short interest",
     options: [
       {
         key: "order",

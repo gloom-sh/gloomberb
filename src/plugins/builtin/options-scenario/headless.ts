@@ -29,6 +29,7 @@ const VALUATION_LABELS: Record<string, (currency: string) => string> = {
 
 export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Underlying ticker" },
+  usListingsOnly: "Options data",
   describe: (args) => `OSA ${args.symbols[0] ?? ""}`,
   description: "A typed or chain-seeded options position valued across spot, date and volatility: its legs, value and Greeks, expiry risk and a "
     + "scenario P&L grid. With --nav and --budget-bps, how many contracts a hedge budget buys, the premium spent, the notional protected and "

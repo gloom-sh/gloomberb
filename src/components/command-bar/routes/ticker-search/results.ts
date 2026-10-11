@@ -11,7 +11,7 @@ import {
 } from "../../../../tickers/search/asset-classes";
 import type { ResultItem } from "../../list/model";
 import { currencyPairCode } from "../../../../utils/currency-pair";
-import { canonicalExchange, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
+import { canonicalExchange, exchangeCodeVenues, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
 import { compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
@@ -168,8 +168,9 @@ function venueMatchesSuffix(item: ResultItem, suffix: string): boolean {
   const canonicalDisplayed = canonicalExchange(displayed);
   const targets = [displayed, canonicalDisplayed, fromLabel, publicExchange(canonicalDisplayed || displayed)];
   if (targets.some((value) => value.startsWith(suffix))) return true;
-  const aliased = canonicalExchange(suffix);
-  return aliased !== suffix && targets.some((value) => canonicalExchange(value) === aliased);
+  // Another spelling of the venue (XPAR, PAR), or a code that names several (TSE: Toronto or Tokyo).
+  const venues = exchangeCodeVenues(suffix).filter((venue) => venue !== suffix);
+  return targets.some((value) => venues.includes(canonicalExchange(value)));
 }
 
 /** On the currency venue a pair's code is the pair: EURUSD's CCY row is EURUSD=X. */

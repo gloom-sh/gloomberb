@@ -2,7 +2,7 @@ import { withConfigData, withMarketData } from "../../../cli/scoped-context";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, requireListingArg } from "../../../cli/listing-arg";
+import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
 import { saveConfig } from "../../../data/config/store";
 import type { AppConfig } from "../../../types/config";
 import type { CliCommandDef } from "../../../types/plugin";
@@ -226,12 +226,17 @@ export const alertsCliCommand: CliCommandDef = {
     };
     const request = action === "add" ? parseAdd() : null;
     const priceListing = request?.kind === "price" ? await requireListingArg(request.symbol, exchangeOption, ctx) : null;
+    // What a typed listing was read as (7203:TSE as 7203:JPX), said beside what was added.
+    let read = priceListing ? listingReadNotes(priceListing) : [];
     let newEventRule: EventAlertRule | null = null;
     if (request && request.kind !== "price") {
       const target: ScheduledEventTarget = request.kind === "macro"
         ? { kind: "macro", event: request.event }
         : await requireListingArg(request.symbol, exchangeOption, ctx)
-          .then((listing) => ({ kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange }));
+          .then((listing) => {
+            read = listingReadNotes(listing);
+            return { kind: "earnings" as const, symbol: listing.symbol, exchange: listing.exchange };
+          });
       // A listing the rule cannot follow fails before any request.
       try {
         createScheduledAlert(target, request.leadDays, null);
@@ -300,7 +305,7 @@ export const alertsCliCommand: CliCommandDef = {
         const symbol = requireArg(priceListing?.key, ADD_USAGE, ctx);
         const alert = createAlert(symbol, condition, price, priceListing?.exchange);
         await save({ alerts: [...alerts, alert] });
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert } }, {
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           text: (data) => `Added alert ${data.alert.id}: ${symbol} ${condition} ${price}.${dryRunNote(data.dryRun)}`,
         });
         return;
@@ -316,7 +321,7 @@ export const alertsCliCommand: CliCommandDef = {
         await save({ events: [...rules, rule] });
         const eventDate = rule.eventDate!;
         const due = scheduledPhase(eventDate, scheduled.leadDays, undefined, today) === "due";
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule } }, {
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert: rule }, ...(read.length > 0 ? { warnings: read } : {}) }, {
           text: (data) => `Added alert ${data.alert.id}: ${name} on ${eventDate}, ${plural(scheduled.leadDays, "day")} before (${due
             ? "already reached, so the app alerts at its next check"
             : `the app alerts on ${leadStartDate(eventDate, scheduled.leadDays)}`}).${dryRunNote(data.dryRun)}`,

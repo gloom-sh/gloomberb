@@ -15,6 +15,9 @@ import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL 
 import { historyRows } from "./history-model";
 import { EPS_BASIS_NOTE, epsBasisName } from "../shared/earnings-report";
 import { isUsListingExchange } from "../../../utils/exchanges";
+import { listingAbroadVenue } from "../../../utils/sec";
+import { findUsListingOfCompany } from "../../../tickers/us-listing";
+import { shortCompanyName } from "../../../tickers/company-name";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -131,11 +134,30 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   };
 }
 
+/**
+ * What ERN says for a listing abroad, whose next report is its own but whose
+ * past reports, surprises and implied moves only the US board has: that, and
+ * the company's US listing to read them on (Sanofi's SNY for SAN:EPA).
+ */
+async function abroadHistoryNotice(symbol: string, company: string | null, context: HeadlessPaneContext): Promise<string> {
+  const lead = `Past reports, surprises and implied moves cover US listings only, so ${symbol} shows its next report.`;
+  const us = await findUsListingOfCompany(context.marketData, company);
+  return us ? `${lead} ${shortCompanyName(company!)}'s US listing is ${us.symbol}: ERN ${us.symbol} has them.` : lead;
+}
+
 async function historyReport(symbol: string, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies): Promise<HeadlessRowsResult> {
-  const [history, upcoming] = await Promise.allSettled([deps.history(symbol, context), deps.upcoming([symbol], context)]);
+  // The board is US listings'; SAN:EPA's past reports are not on it, and bare SAN there is another company.
+  const abroad = listingAbroadVenue(symbol) != null;
+  const [history, upcoming] = await Promise.allSettled([
+    abroad ? Promise.resolve(null) : deps.history(symbol, context),
+    deps.upcoming([symbol], context),
+  ]);
   if (history.status === "rejected" && upcoming.status === "rejected") throw history.reason;
   const payload = history.status === "fulfilled" ? history.value : null;
   const next = upcoming.status === "fulfilled" ? upcoming.value[0] ?? null : null;
+  const notice = abroad
+    ? await abroadHistoryNotice(symbol, next?.name ?? await context.marketData.getQuote(symbol, "").then((quote) => quote.name ?? null, () => null), context)
+    : null;
   const rows = historyRows(payload, newYorkToday(), next).map((row) => ({
     date: row.date,
     upcoming: row.upcoming,
@@ -162,6 +184,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     metadata: {
       symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null,
       epsBasis: EPS_BASIS_NOTE,
+      ...(notice ? { notices: [notice] } : {}),
     },
   };
 }

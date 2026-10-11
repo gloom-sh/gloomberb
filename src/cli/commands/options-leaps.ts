@@ -2,7 +2,7 @@ import type { OptionContract, OptionsChain } from "../../types/financials";
 import type { CliCommandContext } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import type { CliResultColumn } from "../result";
-import { requireCliListing, loadListingQuote, type CliListing } from "../listing-arg";
+import { listingReadNotes, requireCliListing, loadListingQuote, type CliListing } from "../listing-arg";
 import { rowsFreshness } from "../freshness";
 import { formatCountCell } from "../helpers";
 import { cliStyles } from "../../utils/cli-output";
@@ -388,7 +388,10 @@ export async function runLeapsScreen(
     ctx.fail(screened.map((entry) => entry.warning).filter(Boolean).join("\n"));
   }
   const rows = sortLeapsRows(screened.flatMap((entry) => entry.rows), criteria.sort);
-  const warnings = screened.map((entry) => entry.warning).filter((warning): warning is string => warning != null);
+  const warnings = [
+    ...listings.flatMap(listingReadNotes),
+    ...screened.map((entry) => entry.warning).filter((warning): warning is string => warning != null),
+  ];
   const { format, limit: rowLimit, tail } = ctx.cliOptions;
   const capped = format === "text" && rowLimit == null && tail == null && rows.length > LEAPS_TEXT_ROWS;
   const describe = (data: readonly LeapsRow[]) => {

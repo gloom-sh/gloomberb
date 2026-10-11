@@ -26,6 +26,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
   shape: "bundle",
   freshness: { status: "not-a-feed", basis: "daily open interest", cadence: "daily" },
   argument: { kind: "ticker", optional: true, description: "US option underlying, or SPX; SPY when omitted" },
+  usListingsOnly: "Options data",
   describe: (args) => `${initialTab === "gex" ? "GEX" : "OPX"} ${args.symbols[0] ?? "SPY"}`,
   discovery: {
     aliases: initialTab === "gex" ? ["GEX"] : ["OPX", "MAXPAIN"],

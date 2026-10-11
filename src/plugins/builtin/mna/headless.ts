@@ -2,6 +2,8 @@ import type { MnaDealsParams, MnaRegionFilter, MnaStatusFilter, MnaTargetFilter 
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchMnaDeals } from "./client";
 import { formatDealValue, formatExpectedClose, stageLabel, termsLabel } from "./model";
+import { listingAbroadVenue } from "../../../utils/sec";
+import { shortCompanyName } from "../../../tickers/company-name";
 
 const text = (value: unknown) => (typeof value === "string" ? value : "");
 
@@ -44,12 +46,19 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
   describe: (args) => `M&A${args.symbols[0] ? ` | ${args.symbols[0]}` : ""} | ${text(args.options.status) || "pending"}`,
   async load(args, ctx) {
     const symbol = args.symbols[0];
+    // Deals carry US tickers, where SAN is not SAN:EPA's company: a listing abroad is looked up by its company's name.
+    const company = symbol && listingAbroadVenue(symbol)
+      ? await ctx.marketData.getQuote(symbol, "").then((quote) => quote.name?.trim() || null, () => null)
+      : null;
+    if (symbol && listingAbroadVenue(symbol) && !company) {
+      throw new Error(`Deals are filed by US ticker or company name, and ${symbol} has no company name to look them up by.`);
+    }
     const params: MnaDealsParams = {
       status: ((args.options.status as MnaStatusFilter | undefined) ?? (symbol ? "all" : "pending")),
       target: symbol ? undefined : (args.options.target as MnaTargetFilter | undefined),
       region: symbol ? undefined : (args.options.region as MnaRegionFilter | undefined),
-      symbol,
-      query: text(args.options.query) || undefined,
+      symbol: company ? undefined : symbol,
+      query: text(args.options.query) || (company ? shortCompanyName(company) : undefined),
       limit: Number(args.options.limit ?? 50),
     };
     const payload = await fetchMnaDeals(params, ctx.apiClient);
@@ -77,7 +86,10 @@ export const mnaHeadless: HeadlessPaneDefinition<"rows"> = {
         headline: deal.headline,
       })),
       errors: payload.lockedDeals > 0 ? [`${payload.lockedDeals} deals from the last ${payload.delayDays} days need Gloom Pro`] : [],
-      metadata: { asOf: payload.asOf, access: payload.access, delayDays: payload.delayDays, hasMore: payload.hasMore },
+      metadata: {
+        asOf: payload.asOf, access: payload.access, delayDays: payload.delayDays, hasMore: payload.hasMore,
+        ...(company ? { notices: [`Deals are filed by US ticker, so ${symbol}'s are the ones naming ${shortCompanyName(company)}.`] } : {}),
+      },
     };
   },
 };

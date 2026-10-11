@@ -1,7 +1,7 @@
 import type { SearchRequestContext, DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { canonicalExchange, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, isSharedExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey, typedExchangeCode } from "../../utils/exchanges";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
@@ -362,6 +362,9 @@ async function resolveTickerSymbol(
     publicTickerKey(item.symbol, listingExchange(item.result!)), item.result!.name,
   ])));
   if (pickerQuery && listings.size > 1) throw ambiguity(pickerQuery);
+  // A code that names several venues (TSE) the symbol trades on more than one of is a choice.
+  if (!saved && isSharedExchangeCode(typedExchangeCode(symbol))
+    && new Set(matches.map((item) => canonicalExchange(listingExchange(item.result!)))).size > 1) throw ambiguity(symbol);
   if (saved) return saved;
   if (listings.size > 1 && !parsePublicTickerKey(symbol).exchange && !tickerHasListingSuffix(symbol)) {
     // Search order is relevance, not a canonical listing identifier. Align bare

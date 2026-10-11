@@ -1,7 +1,8 @@
 import { realizedVolatilityCadenceIssue } from "../../../market-data/realized-volatility";
 import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { isKnownNonUsListing } from "../../../utils/sec";
+import { isKnownNonUsListing, listingAbroadVenue } from "../../../utils/sec";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { ShortInterestRecord } from "./types";
 
@@ -178,8 +179,11 @@ export function ownNamesUniverse(tickers: readonly Pick<TickerRecord, "metadata"
 }
 
 export function customUniverse(text: string): ShortWatchUniverse {
-  const symbols = text.split(/[\s,]+/).map((value) => value.split(":")[0]!.toUpperCase()).filter(Boolean);
-  const valid = symbols.filter((symbol) => SYMBOL.test(symbol));
-  const skipped = symbols.length - valid.length;
-  return cap(valid, skipped ? `${plural(skipped)} left out: not a US ticker symbol.` : null);
+  const entries = text.split(/[\s,]+/).map((value) => value.toUpperCase()).filter(Boolean);
+  // A listing abroad (SAN:EPA) is not its symbol's US line, which can be another company's.
+  const valid = entries.filter((entry) => listingAbroadVenue(entry) == null)
+    .map((entry) => parsePublicTickerKey(entry).symbol)
+    .filter((symbol) => SYMBOL.test(symbol));
+  const skipped = entries.length - valid.length;
+  return cap(valid, skipped ? `${plural(skipped)} left out: short interest covers US-listed shares.` : null);
 }

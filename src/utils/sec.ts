@@ -1,6 +1,6 @@
 import type { TickerRecord } from "../types/ticker";
 import { tickerHasListingSuffix } from "../sources/listing-symbols";
-import { canonicalExchange, parsePublicTickerKey, US_LISTING_EXCHANGES } from "./exchanges";
+import { canonicalExchange, exchangeLabel, parsePublicTickerKey, resolveExchangeTimeZone, US_LISTING_EXCHANGES } from "./exchanges";
 import { shortListingTitle } from "../tickers/company-name";
 
 /** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
@@ -122,6 +122,35 @@ export function nonUsSecListingVenue(ticker: string, exchange?: string): string 
   const venue = parsePublicTickerKey(ticker).exchange ?? canonicalExchange(exchange);
   if (!venue || ROUTING_EXCHANGES.has(venue) || isUsExchange(venue)) return null;
   return venue;
+}
+
+// The zones of the US exchanges; a venue in another is abroad.
+const US_TIME_ZONES = new Set(["America/New_York", "America/Chicago"]);
+
+/**
+ * The exchange abroad a listing key names, for data that covers US listings
+ * only (US options and trades, FINRA short interest, the US earnings board):
+ * EPA for SAN:EPA, JPX for 7203:JPX. Null for a US exchange, no exchange, and
+ * venues with no home market (futures, currency and crypto venues), which
+ * such data reads by symbol.
+ */
+export function listingAbroadVenue(key: string): string | null {
+  const venue = nonUsSecListingVenue(key);
+  const zone = venue ? resolveExchangeTimeZone(venue) : null;
+  return venue && zone && zone !== "UTC" && !US_TIME_ZONES.has(zone) ? venue : null;
+}
+
+/**
+ * The symbol data that covers US listings only reads a listing by: AAPL for
+ * AAPL:NASDAQ, ^SPX as it is. A listing abroad throws, naming what covers US
+ * listings only, rather than read its bare symbol, which can be another
+ * company's US ticker (SAN:EPA is Sanofi, SAN in New York Banco Santander).
+ */
+export function usListingSymbol(key: string, what: string): string {
+  const parsed = parsePublicTickerKey(key.trim());
+  const venue = listingAbroadVenue(key);
+  if (venue) throw new Error(`${what} covers US listings only, and ${parsed.symbol}:${venue} is listed on ${exchangeLabel(venue)}.`);
+  return parsed.symbol.toUpperCase();
 }
 
 /**

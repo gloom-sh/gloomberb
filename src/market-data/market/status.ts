@@ -1,6 +1,7 @@
 import type { MarketState, Quote } from "../../types/financials";
 import { blendHex, colors, priceColor, type ThemeColors } from "../../theme/colors";
 import { isFiniteNumber } from "../../utils/guards";
+import { canonicalExchange, isKnownExchangeCode } from "../../utils/exchanges";
 import { quoteTradingDay } from "../quotes/day-range";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
@@ -108,31 +109,14 @@ export function marketChangeColor(change: number | undefined, state?: MarketStat
   return blendHex(directionalColor, colors.textDim, CLOSED_CHANGE_MUTING_RATIO);
 }
 
-/** Short exchange display name */
+/**
+ * The venue's code as a listing key names it (EPA, JPX), from the app's one
+ * venue list, so the code a pane shows is the one to type after the symbol.
+ * A venue the list does not know keeps the name it came with.
+ */
 export function exchangeShortName(exchangeName?: string, fullExchangeName?: string): string {
-  if (!exchangeName && !fullExchangeName) return "";
   const name = exchangeName || fullExchangeName || "";
-  // Common market data exchange abbreviations
-  const map: Record<string, string> = {
-    NMS: "NASDAQ", NGM: "NASDAQ", NCM: "NASDAQ", NAS: "NASDAQ",
-    NYQ: "NYSE", NYS: "NYSE",
-    PCX: "ARCA", NYSEArca: "ARCA", "NYSE Arca": "ARCA", ASE: "AMEX", BTS: "BATS",
-    HKG: "HKEX",
-    TYO: "TYO",
-    LSE: "LSE",
-    ASX: "ASX",
-    SGX: "SGX",
-    KSC: "KRX", KOE: "KOSDAQ",
-    TAI: "TWSE",
-    SHH: "SSE", SHZ: "SZSE",
-    PAR: "EURONEXT", AMS: "EURONEXT", BRU: "EURONEXT",
-    GER: "XETRA",
-    OSL: "OSE",
-    BOM: "BSE", NSI: "NSE",
-    SAO: "B3",
-    JPX: "TYO",
-  };
-  return map[name] || name;
+  return isKnownExchangeCode(name) ? canonicalExchange(name) : name;
 }
 
 /**
