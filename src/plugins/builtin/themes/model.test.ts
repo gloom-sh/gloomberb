@@ -1,7 +1,9 @@
 import { expect, test } from "bun:test";
 import { THEME_PERIODS, type ThemeMember, type ThemeSummary } from "../../../api-client/themes";
 import { fitTableCellText, tableColumnWidth } from "../../../components/ui/table-layout";
-import { aggregateText, coverageWidth, DEFAULT_SORT, matchTheme, memberColumns, percent, sortMembers, sortThemes, themeColumns } from "./model";
+import {
+  aggregateText, coverageWidth, DEFAULT_SORT, matchTheme, memberColumns, memberExtendedSessions, percent, snapshotFooterText, sortMembers, sortThemes, themeColumns,
+} from "./model";
 
 const theme = (id: string, day: number | null, covered = 10): ThemeSummary => ({
   id, name: id, description: "", keywords: [], memberCount: 10, present: 10, stale: false,
@@ -39,6 +41,25 @@ test("narrow columns preserve the daily read and size for partial coverage", () 
   expect(narrow.find((column) => column.id === "changePercent")!.width).toBeGreaterThanOrEqual(aggregateText(rows[0]!.returns.changePercent).length);
   expect(memberColumns(45).map((column) => column.id)).toContain("changePercent");
   expect(memberColumns(45).map((column) => column.id)).toContain("symbol");
+});
+
+test("an after-hours print gets a column after 1D that outlasts the longer windows, and sorts by its move", () => {
+  const ids = (width: number, sessions: Array<"PRE" | "POST"> = ["POST"]) => memberColumns(width, sessions).map((column) => column.id);
+  // The pane's default width keeps it, giving up 1M; a wide pane shows every window beside it.
+  expect(ids(82)).toEqual(["symbol", "name", "price", "changePercent", "afterHours", "return1WPercent"]);
+  expect(ids(82, [])).toEqual(["symbol", "name", "price", "changePercent", "return1WPercent", "return1MPercent"]);
+  expect(ids(120)).toEqual(["symbol", "name", "price", "changePercent", "afterHours", "return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent"]);
+  const rows = [member("C", 1), { ...member("A", 1), extendedSession: "POST", extendedPrice: 10, extendedChangePercent: -1 },
+    { ...member("B", 1), extendedSession: "POST", extendedPrice: 10, extendedChangePercent: 2 }, { ...member("D", 1), extendedSession: "POST", extendedPrice: NaN }] as ThemeMember[];
+  expect(memberExtendedSessions(rows)).toEqual(["POST"]);
+  expect(sortMembers(rows, { columnId: "afterHours", direction: "desc" }).map((row) => row.symbol)).toEqual(["B", "A", "C", "D"]);
+});
+
+test("the footer names the close outside the regular session; in a session and from an older server it reads as before", () => {
+  expect(snapshotFooterText({ regularSessionDate: "2026-10-09", regularSessionClosedAt: Date.UTC(2026, 9, 9, 20) }, "12m ago")).toBe("Fri 9 Oct close · snapshot 12m ago");
+  for (const payload of [{ regularSessionDate: null, regularSessionClosedAt: null }, {}, { regularSessionDate: "Fri" }]) {
+    expect(snapshotFooterText(payload, "3m ago")).toBe("15m delayed · snapshot 3m ago");
+  }
 });
 
 test("command arguments resolve server names and keywords before fuzzy subsequences", () => {

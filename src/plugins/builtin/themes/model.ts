@@ -1,6 +1,7 @@
 import { THEME_PERIODS, type ThemeAggregate, type ThemeMember, type ThemePeriod, type ThemeSummary } from "../../../api-client/themes";
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
+import { marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
 export const PERIOD_LABELS: Record<ThemePeriod, string> = { changePercent: "1D", return1WPercent: "1W", return1MPercent: "1M", return3MPercent: "3M", returnYtdPercent: "YTD" };
@@ -28,8 +29,66 @@ export function sortThemes(rows: readonly ThemeSummary[], sort: ThemeSort): Them
   return [...rows].sort((a, b) => compareSortValues(value(a), value(b), sort.direction) || a.name.localeCompare(b.name));
 }
 export function sortMembers(rows: readonly ThemeMember[], sort: ThemeSort): ThemeMember[] {
-  const value = (row: ThemeMember) => row[sort.columnId as "price" | "symbol" | "name"];
+  const session = EXTENDED_COLUMN_SESSIONS[sort.columnId];
+  const value = (row: ThemeMember) => session ? extendedMove(row, session) : row[sort.columnId as "price" | "symbol" | "name"];
   return [...rows].sort((a, b) => compareSortValues(value(a), value(b), sort.direction) || a.symbol.localeCompare(b.symbol));
+}
+
+/** A snapshot older than this reads stale, whichever session it describes. */
+export const SNAPSHOT_STALE_MS = 30 * 60_000;
+
+/**
+ * The completed regular session a board describes outside the regular
+ * session: its date, and its close when the server sends it. Null while a
+ * session trades, and from a server that does not say, whose figures then
+ * read as before.
+ */
+export function boardClose(payload: { regularSessionDate?: unknown; regularSessionClosedAt?: unknown }): { date: string; closedAt: number | null } | null {
+  const date = payload.regularSessionDate;
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))) return null;
+  const closedAt = payload.regularSessionClosedAt;
+  return { date, closedAt: typeof closedAt === "number" && Number.isFinite(closedAt) && closedAt > 0 ? closedAt : null };
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+/** `Fri 9 Oct close` for the US session dated 2026-10-09, named by its own day, never the reader's. */
+export function closeLabel(date: string): string {
+  const day = new Date(`${date}T00:00:00Z`);
+  return `${WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]} close`;
+}
+
+/**
+ * How current the board is, for its footer. Outside the regular session the
+ * close its figures describe and how old the snapshot is, `Fri 9 Oct close ·
+ * snapshot 12m ago`; while a session trades, or from a server that does not
+ * name the close, the delay and the snapshot's age. `age` is the relative age
+ * (`12m ago`).
+ */
+export function snapshotFooterText(payload: { regularSessionDate?: unknown; regularSessionClosedAt?: unknown }, age: string): string {
+  const close = boardClose(payload);
+  return close ? `${closeLabel(close.date)} · snapshot ${age}` : `15m delayed · snapshot ${age}`;
+}
+
+/** A member's pre-market or after-hours print and its move from the close in Price, when it has a valid one. */
+export function memberExtended(row: ThemeMember): { session: ExtendedSession; price: number; change: number | null; changePercent: number | null } | null {
+  const session = row.extendedSession;
+  const price = row.extendedPrice;
+  if ((session !== "PRE" && session !== "POST") || typeof price !== "number" || !Number.isFinite(price) || price <= 0) return null;
+  const finite = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
+  return { session, price, change: finite(row.extendedChange), changePercent: finite(row.extendedChangePercent) };
+}
+
+const EXTENDED_COLUMN_SESSIONS: Record<string, ExtendedSession | undefined> = { preMarket: "PRE", afterHours: "POST" };
+/** A member's move in the extended-session column `session`, or null. */
+export function extendedMove(row: ThemeMember, session: ExtendedSession): number | null {
+  const extended = memberExtended(row);
+  return extended?.session === session ? extended.changePercent : null;
+}
+
+/** The extended sessions some member has a print for, in the order their columns go. */
+export function memberExtendedSessions(rows: readonly ThemeMember[]): ExtendedSession[] {
+  return (["PRE", "POST"] as const).filter((session) => rows.some((row) => memberExtended(row)?.session === session));
 }
 
 /** Exact id/name, then words, then a subsequence. Server keywords keep new themes searchable. */
@@ -63,10 +122,18 @@ export function themeColumns(width: number, rows: readonly ThemeSummary[]): Data
     column("best", "Best 1D", 15), column("worst", "Worst 1D", 15)];
   return fitColumns(columns, width, ["worst", "best", "return3MPercent", "returnYtdPercent", "return1MPercent", "return1WPercent", "memberCount"]);
 }
-export function memberColumns(width: number): DataTableColumn[] {
+/**
+ * The member table at `width`. Price and 1D are the regular session's; a
+ * PRE-MKT or AFTER-HRS column, named as BI and MOST name it, follows 1D for
+ * each session in `extendedSessions`. A narrow pane gives up the longer
+ * windows first, then that column, then the name.
+ */
+export function memberColumns(width: number, extendedSessions: readonly ExtendedSession[] = []): DataTableColumn[] {
+  const extended = extendedSessions.map((session) => column(session === "PRE" ? "preMarket" : "afterHours", marketStateLabel(session), 9));
+  const [day, ...windows] = THEME_PERIODS.map((period) => column(period, PERIOD_LABELS[period], 9));
   return fitColumns([column("symbol", "Ticker", 7, "left"), column("name", "Name", 24, "left"), column("price", "Price $", 10),
-    ...THEME_PERIODS.map((period) => column(period, PERIOD_LABELS[period], 9))], width,
-  ["return3MPercent", "returnYtdPercent", "return1MPercent", "return1WPercent", "name", "price"]);
+    day!, ...extended, ...windows], width,
+  ["return3MPercent", "returnYtdPercent", "return1MPercent", "return1WPercent", "preMarket", "afterHours", "name", "price"]);
 }
 function fitColumns(columns: DataTableColumn[], width: number, drop: string[]): DataTableColumn[] {
   const used = () => getTableWidth(columns);
