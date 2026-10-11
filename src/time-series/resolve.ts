@@ -77,6 +77,8 @@ import {
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
 import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../utils/price-history";
+import { timeZoneLabel, zonedDateKey, zonedWallClockMs } from "../utils/zoned-date-time";
+import { formatShortDate } from "../utils/datetime-format";
 import { latestSessionStart, latestTradingSessionOpen, listingTimeZone, priorSessionClose } from "../market-data/market/trading-sessions";
 import { futuresGenericCaption, futuresGenericListing, futuresGenericPriceBasis } from "../utils/futures-generic";
 import { isOhlcSeriesStyle } from "./spec";
@@ -267,6 +269,24 @@ function instrumentKey(spec: Extract<ChartSeriesSpec["source"], { kind: "securit
 
 function instrumentLabel(spec: Extract<ChartSeriesSpec["source"], { kind: "security" }>): string {
   return publicTickerKey(spec.instrument.symbol, spec.instrument.exchange);
+}
+
+/**
+ * Shown while a current chart draws a saved copy that no refetch brought up
+ * to date: the last saved bar on the venue's clock, as the axis reads it.
+ */
+function behindHistoryNotice(
+  source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
+  points: TickerFinancials["priceHistory"],
+  now: number,
+): string | null {
+  const latest = points.findLast((point) => Number.isFinite(point.close) && Number.isFinite(getPricePointTimestamp(point)));
+  if (!latest) return null;
+  const zone = listingTimeZone(source.instrument.symbol, source.instrument.exchange) ?? "UTC";
+  const wall = new Date(zonedWallClockMs(getPricePointTimestamp(latest), zone)).toISOString();
+  const sameYear = wall.slice(0, 4) === zonedDateKey(now, zone).slice(0, 4);
+  const day = formatShortDate(wall.slice(0, 10), { utc: true, year: sameYear ? false : "numeric" });
+  return `${instrumentLabel(source)}: newer bars are unavailable; showing saved bars as of ${day} ${wall.slice(11, 16)} ${timeZoneLabel(zone)}.`;
 }
 
 // A series that fails to load keeps its place with no observations. Dropping it
@@ -1653,7 +1673,16 @@ async function resolveChartSpecPass(
       return next;
     };
     pending ??= acquire();
-    let loaded = await pending;
+    let loaded: LoadedPriceHistory;
+    try {
+      loaded = await pending;
+    } catch (error) {
+      // Another series' refetch failed and put the saved copy back below.
+      const restored = cache.priceHistoryByRequest.get(key);
+      if (!restored || restored === pending) throw error;
+      pending = restored;
+      loaded = await pending;
+    }
     const now = () => referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt);
     const currentWindow = () => !request.explicitWindow
       || (request.bounds.end !== null && now() - (request.bounds.end + 1) < 60 * 60_000);
@@ -1662,24 +1691,43 @@ async function resolveChartSpecPass(
         symbol: source.instrument.symbol, exchange: source.instrument.exchange, session: value.session,
         ...(value.resolution ? { intervalMs: CHART_RESOLUTION_STEP_MS[value.resolution] } : {}),
       });
+    // A copy behind the current session is fetched again at most every 30 s.
+    // Until a fetch answers a current one, the saved copy is drawn with a
+    // notice, as every other history path does, rather than an error.
+    let behind = false;
     if (staleCurrent(loaded)) {
+      const saved = pending;
+      const savedValue = loaded;
+      const latest = cache.priceHistoryByRequest.get(key);
+      let refresh: Promise<LoadedPriceHistory> | undefined;
       if (reused && (cache.priceHistoryRefreshAfter.get(key) ?? 0) <= Date.now()) {
         // Claim the refresh before awaiting it so price/volume/studies share one attempt.
         cache.priceHistoryRefreshAfter.set(key, Date.now() + 30_000);
-        if (cache.priceHistoryByRequest.get(key) === pending) pending = acquire();
-        else pending = cache.priceHistoryByRequest.get(key)!;
-        loaded = await pending;
-      } else if (cache.priceHistoryByRequest.get(key) !== pending) {
-        loaded = await cache.priceHistoryByRequest.get(key)!;
+        refresh = latest && latest !== pending ? latest : acquire();
+      } else if (latest && latest !== pending) {
+        refresh = latest;
       }
-      if (staleCurrent(loaded)) {
+      if (refresh) {
+        const attempt = refresh;
+        loaded = await attempt.catch(() => {
+          // A failed refetch leaves the saved copy in place until the next one is due.
+          if (cache.priceHistoryByRequest.get(key) === attempt) {
+            cache.priceHistoryByRequest.set(key, saved);
+            if (savedValue.expiresAt !== undefined) cache.priceHistoryExpiryByRequest.set(key, savedValue.expiresAt);
+            else cache.priceHistoryExpiryByRequest.delete(key);
+          }
+          return savedValue;
+        });
+      }
+      behind = staleCurrent(loaded);
+      if (behind) {
         const previousDeadline = cache.priceHistoryRefreshAfter.get(key) ?? 0;
-        const retryAt = previousDeadline > Date.now() ? previousDeadline : Date.now() + 30_000;
-        cache.priceHistoryRefreshAfter.set(key, retryAt);
-        throw new PriceHistoryAcquisitionError(`Current price history is unavailable for ${instrumentLabel(source)}.`, retryAt);
+        cache.priceHistoryRefreshAfter.set(key, previousDeadline > Date.now() ? previousDeadline : Date.now() + 30_000);
+        const notice = behindHistoryNotice(source, loaded.points, now());
+        if (notice) priorityWarnings.push(notice);
       }
     }
-    cache.priceHistoryRefreshAfter.delete(key);
+    if (!behind) cache.priceHistoryRefreshAfter.delete(key);
     const history = loaded.points;
     const coverageNotice = historyCoverageNotice(loaded.coverageStart, request.visibleBounds.start);
     if (coverageNotice) priorityWarnings.push(coverageNotice);
