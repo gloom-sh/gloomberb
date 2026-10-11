@@ -813,6 +813,19 @@ async function reportShotFreshness(
   }
 }
 
+/** How long a rendered capture waits for its report's freshness before dating itself without it. */
+const SHOT_REPORT_WAIT_MS = 20_000;
+
+/** `pending`'s value, or undefined when it has not settled within `ms`; a later result is dropped. */
+function settledWithin<T>(pending: Promise<T>, ms: number): Promise<T | undefined> {
+  let cancel = () => {};
+  const expired = new Promise<undefined>((resolve) => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    cancel = () => clearTimeout(timer);
+  });
+  return Promise.race([pending, expired]).finally(() => cancel());
+}
+
 /** One load of the pane's report per capture, shared by the payload and the status line. */
 function onceLoader(load: () => Promise<LoadedHeadlessPaneModel>): () => Promise<LoadedHeadlessPaneModel> {
   let pending: Promise<LoadedHeadlessPaneModel> | undefined;
@@ -877,7 +890,7 @@ export async function renderDesktopShot({
       captureImage,
       bridge: recorded.bridge,
       statusLine: async (rendered) => {
-        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, await report);
+        const line = shotFreshness(resolved, shotPayload, rendered, recorded.quotes, report && await settledWithin(report, SHOT_REPORT_WAIT_MS));
         freshness = line.freshness;
         return { variants: line.variants, observed: datesPaneData(line.freshness) };
       },
