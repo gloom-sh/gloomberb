@@ -390,15 +390,23 @@ export function gpuEquityRows(rows: readonly GpuBoardRow[], selectedModel: strin
   return GPU_EQUITIES.map((equity) => {
     const model = equityModel(equity.symbol, selectedModel);
     const candidates = gpuRows(rows, model, "list");
-    const aggregates = candidates.filter((row) => row.providerClass === "aggregate").sort((a, b) =>
-      Number(b.formFactor === "SXM") - Number(a.formFactor === "SXM") || (b.stats?.n ?? 0) - (a.stats?.n ?? 0) || (b.memoryGb ?? 0) - (a.memoryGb ?? 0));
-    const reference = ("provider" in equity ? candidates.find((row) => gpuSource(row) === equity.provider)
-      : aggregates.find((row) => row.provider.startsWith("Neocloud")) ?? aggregates[0]) ?? null;
+    const reference = ("provider" in equity ? candidates.find((row) => gpuSource(row) === equity.provider) : gpuListIndex(candidates, model)) ?? null;
     const gap: "pro" | "unlisted" | null = reference ? null : locked ? "pro" : "unlisted";
     return { ...equity, gpuModel: model, reference, gap };
   });
 }
 export type GpuEquityRow = ReturnType<typeof gpuEquityRows>[number];
+
+/**
+ * A GPU's list index: of its main variant (SXM first, then the most
+ * providers, then the most memory), the neocloud index, else the hyperscaler
+ * one. The series a share reads in Equities, and the catalog's GPU list indexes.
+ */
+export function gpuListIndex<T extends GpuBoardRow>(rows: readonly T[], model: string): T | null {
+  const indexes = gpuRows(rows, model, "list").filter((row) => row.providerClass === "aggregate").sort((a, b) =>
+    Number(b.formFactor === "SXM") - Number(a.formFactor === "SXM") || (b.stats?.n ?? 0) - (a.stats?.n ?? 0) || (b.memoryGb ?? 0) - (a.memoryGb ?? 0));
+  return indexes.find((row) => row.provider.startsWith("Neocloud")) ?? indexes[0] ?? null;
+}
 
 /** The series a share would read, named when it has none: "AWS H100 list", "H100 list index". */
 const gpuEquitySeries = (row: Pick<GpuEquityRow, "gpuModel"> & { provider?: string }) =>

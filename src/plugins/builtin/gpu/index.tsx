@@ -3,6 +3,7 @@ import { gpuBoardCache, gpuEventsCache, gpuHistoryCache } from "./client";
 import { gpuHeadless } from "./headless";
 import { GPU_MODELS, gpuArgument } from "./model";
 import { GpuPane } from "./pane";
+import { GPU_SERIES } from "./series";
 
 export const gpuModule: PluginModule = {
   panes: [{ id: "gpu", name: "GPU Rental Prices", icon: "G", component: GpuPane, defaultPosition: "right", defaultMode: "floating",
@@ -13,6 +14,7 @@ export const gpuModule: PluginModule = {
     shortcut: { prefix: "GPU", argKind: "text", argPlaceholder: "GPU", argOptional: true,
       argOptions: () => GPU_MODELS.map((value) => ({ value, label: value })) }, headless: gpuHeadless,
     createInstance: (_context, options) => ({ placement: "floating", params: { gpuModel: gpuArgument(options?.arg) } }) }],
+  series: GPU_SERIES,
   setup(ctx) { for (const cache of [gpuBoardCache, gpuHistoryCache, gpuEventsCache]) cache.attach(ctx.persistence); },
   dispose() { for (const cache of [gpuBoardCache, gpuHistoryCache, gpuEventsCache]) cache.reset(); },
 };

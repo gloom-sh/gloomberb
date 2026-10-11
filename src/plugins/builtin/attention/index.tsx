@@ -4,6 +4,7 @@ import { attentionWindow } from "./model";
 import { attentionHeadless } from "./headless";
 import { TrendingPane } from "./trending";
 import { AttentionPane } from "./pane";
+import { ATTENTION_SERIES } from "./series";
 export const attentionModule: PluginModule = {
   panes: [{ id: "attention", name: "Research Attention", icon: "A", component: AttentionPane, defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 126, height: 32 }, tableExport: true, headless: attentionHeadless },
@@ -13,6 +14,7 @@ export const attentionModule: PluginModule = {
     keywords: ["attention", "trending", "research", "activity"], shortcut: { prefix: "ATTN", argKind: "text", argPlaceholder: "TICKER", argOptional: true },
     headless: attentionHeadless, createInstance: (_ctx, options) => ({ placement: "floating", settings: { window: attentionWindow(options?.values?.window), symbol: (options?.arg ?? options?.symbol)?.trim().toUpperCase() ?? "" } }) },
     { id: "attention-trending-pane", paneId: "attention-trending", label: "Gloom Trending", description: "Compact daily research attention for a home workspace.", keywords: ["trending", "home"], createInstance: () => ({ placement: "floating" }) }],
+  series: ATTENTION_SERIES,
   setup(ctx) { attentionCache.attach(ctx.persistence); },
   dispose() { attentionCache.reset(); },
 };
