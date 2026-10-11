@@ -14,4 +14,4 @@ Gloomberb is not a Bloomberg replacement: it has no Bloomberg chat network, fixe
 
 ## How it is built
 
-One Bun and React codebase runs the OpenTUI terminal app, Electrobun desktop app and browser client. Terminal releases cover macOS and Linux on x64 and ARM64, and Windows on x64. Desktop releases cover macOS on Apple Silicon and Windows x64, including Windows ARM64 through emulation.
+One Bun and React codebase runs the OpenTUI terminal app, Electrobun desktop app and browser client. Terminal releases cover macOS and Linux on x64 and ARM64, and Windows on x64. Desktop releases cover macOS on Apple Silicon and Windows x64. Windows on ARM can run the x64 build through Windows' built-in emulation, which is untested.
