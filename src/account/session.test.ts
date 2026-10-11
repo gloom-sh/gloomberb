@@ -1,31 +1,38 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { apiClient, type AuthUser } from "../api-client";
-import { chatController } from "../plugins/builtin/chat/controller";
+import { ChatController, chatController } from "../plugins/builtin/chat/controller";
 import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
 import { performEmailAuth } from "./auth-model";
 import { DeviceSignInController } from "./device-signin";
+import { accountSession, registerAccountSession } from "./session";
 
 const restore: Array<() => void> = [];
+let sessionOwner: ChatController | undefined;
 afterEach(() => {
   restore.splice(0).forEach((reset) => reset());
-  chatController.reset(true);
-  chatController.dispose();
+  sessionOwner?.reset(true);
+  sessionOwner?.dispose();
+  registerAccountSession(chatController);
   apiClient.dispose();
   apiClient.setSessionToken(null);
 });
 
 test.each(["email", "device"] as const)("%s sign-in persists through the registered session owner before an offline refresh", async (flow) => {
+  expect(accountSession).toBe(chatController);
   apiClient.setSessionToken(null);
-  apiClient.setCookieSessionMode(false);
   apiClient.restoreCachedUser(null);
   const persistence = new MemoryPluginPersistence();
-  chatController.attachPersistence(persistence);
+  sessionOwner = new ChatController();
+  sessionOwner.attachPersistence(persistence);
+  registerAccountSession(sessionOwner);
+  const activity = spyOn(apiClient, "recordResearchActivity").mockResolvedValue(undefined);
+  restore.push(() => activity.mockRestore());
   const user: AuthUser = {
     id: "account-session-test", email: "account@example.invalid", username: "account",
     name: "Account", emailVerified: true, plan: "free", image: null, createdAt: "", updatedAt: "",
   };
   let persistedBeforeRefresh: unknown;
-  const refresh = spyOn(chatController, "refreshSession").mockImplementation(async () => {
+  const refresh = spyOn(sessionOwner, "refreshSession").mockImplementation(async () => {
     persistedBeforeRefresh = persistence.getState("session", { schemaVersion: 1 });
     throw new Error("Offline after sign-in");
   });
