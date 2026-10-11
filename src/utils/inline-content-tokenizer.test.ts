@@ -28,4 +28,21 @@ describe("tokenizeInlineContent", () => {
       { kind: "link", value: "https://x.com/@desk", url: "https://x.com/@desk" },
     ]);
   });
+
+  test("a cashtag names a listing by a venue the app knows; another colon and money stay text", () => {
+    expect(tokenizeInlineContent("Toyota $7203:TSE, Sanofi $SAN:EPA.")).toEqual([
+      { kind: "text", value: "Toyota " },
+      { kind: "ticker", value: "$7203:TSE", symbol: "7203:TSE" },
+      { kind: "text", value: ", Sanofi " },
+      { kind: "ticker", value: "$SAN:EPA", symbol: "SAN:EPA" },
+      { kind: "text", value: "." },
+    ]);
+    expect(tokenizeInlineContent("$NVDA:AMD at $100: $NVDA: up")).toEqual([
+      { kind: "ticker", value: "$NVDA", symbol: "NVDA" },
+      { kind: "text", value: ":AMD at $100: " },
+      { kind: "ticker", value: "$NVDA", symbol: "NVDA" },
+      { kind: "text", value: ": up" },
+    ]);
+  });
 });
+

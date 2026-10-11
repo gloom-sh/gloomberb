@@ -1,10 +1,6 @@
 import type { TimeSeriesPoint } from "./types";
 import type { CloudFredSeriesInfoPayload, CloudFredSeriesPayload } from "../api-client";
-
-const ICE_CREDIT_SERIES = new Set([
-  "BAMLC0A0CM", "BAMLC0A1CAAA", "BAMLC0A2CAA", "BAMLC0A3CA", "BAMLC0A4CBBB",
-  "BAMLH0A0HYM2", "BAMLC0A0CMEY", "BAMLH0A0HYM2EY",
-]);
+import { ICE_CREDIT_SERIES_IDS } from "./ice-credit";
 
 function sourceDate(value: string | undefined): number | null {
   if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
@@ -20,7 +16,7 @@ export function fredCreditCoverageNotice(
   observations: CloudFredSeriesPayload["observations"] = [],
 ): string | null {
   const id = seriesId.trim().toUpperCase();
-  if (!ICE_CREDIT_SERIES.has(id) || info?.id.trim().toUpperCase() !== id) return null;
+  if (!ICE_CREDIT_SERIES_IDS.has(id) || info?.id.trim().toUpperCase() !== id) return null;
   const start = sourceDate(info.observationStart);
   const end = sourceDate(info.observationEnd);
   if (start === null || end === null || start > end) return null;

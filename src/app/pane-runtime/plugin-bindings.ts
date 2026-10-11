@@ -16,8 +16,8 @@ import {
 } from "../../components/layout/shell/visible-layout";
 import { applyPluginToggles } from "../../plugins/ownership";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
-import { setMarketplaceHost } from "../../plugins/builtin/plugin-marketplace/store";
-import type { InstalledPlugin } from "../../plugins/builtin/plugin-marketplace/model";
+import { setMarketplaceHost } from "../../plugins/marketplace/store";
+import type { InstalledPlugin } from "../../plugins/marketplace/model";
 import {
   listExternalPlugins,
   removeExternalPlugin,

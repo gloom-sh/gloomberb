@@ -6,7 +6,7 @@ import type { MarketDataCoordinator } from "../../market-data/coordinator";
 import { instrumentFromTicker, type InstrumentRef } from "../../market-data/request-types";
 import { useSavedLayoutWarmup } from "./layout-warmup";
 import { chatController } from "../../plugins/builtin/chat/controller";
-import { PLUGIN_MARKETPLACE_PANE_ID } from "../../plugins/builtin/plugin-marketplace/ids";
+import { PLUGIN_MARKETPLACE_PANE_ID } from "../../plugins/marketplace/ids";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import type { PluginRegistry } from "../../plugins/registry";
 import type {

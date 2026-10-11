@@ -2,8 +2,9 @@ import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { CliCommandContext } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
-import { AmbiguousContractError, AmbiguousTickerError, LISTING_SEARCH_LIMIT, listingChoiceQuery, resolveTickerSearch } from "../tickers/search";
+import { listingVenues, quotedOnVenue, readSharedCode, type ListingDeps, type ListingStore, type ListingVenue } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
+import { quotedListing, type CurrentListing } from "../tickers/ticker-changes";
 import { cliStyles } from "../utils/cli-output";
 import { groupByCompany, sameCompany, shortCompanyName } from "../tickers/company-name";
 import {
@@ -100,54 +101,7 @@ export function parseListingArg(
   return { symbol, exchange, key: symbol };
 }
 
-interface ListingStore {
-  loadTicker(symbol: string): Promise<TickerRecord | null>;
-  loadAllTickers(): Promise<TickerRecord[]>;
-}
-
-export interface ListingDeps {
-  store: ListingStore;
-  dataProvider: DataProvider;
-}
-
-export interface ListingVenue {
-  /** Canonical code. */
-  exchange: string;
-  name: string;
-}
-
-/**
- * The venues a symbol trades on and the company on each, from the same
- * listing picker the command bar opens for `SAN:`. This is the one venue list
- * every command names; whether a venue it leaves out trades the symbol is the
- * listing's own quote's to say (`notTradedMessage`).
- */
-export async function listingVenues(symbol: string, { store, dataProvider }: ListingDeps): Promise<ListingVenue[]> {
-  const query = `${symbol}:`;
-  if (!listingChoiceQuery(query)) return [];
-  const tickers = new Map((await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const));
-  let venues: ListingVenue[];
-  try {
-    const resolved = await resolveTickerSearch({
-      query, activeTicker: null, tickers, dataProvider, searchContext: { limit: LISTING_SEARCH_LIMIT },
-    });
-    const only = !resolved ? null
-      : resolved.kind === "local" ? { exchange: resolved.ticker.metadata.exchange, name: resolved.ticker.metadata.name }
-      : {
-        exchange: resolved.result.exchange === "SMART" ? resolved.result.primaryExchange ?? "" : resolved.result.exchange || resolved.result.primaryExchange || "",
-        name: resolved.result.name,
-      };
-    venues = only?.exchange ? [{ exchange: canonicalExchange(only.exchange), name: only.name }] : [];
-  } catch (error) {
-    // One listing settles the picker; several are its choices.
-    if (!(error instanceof AmbiguousTickerError) || error instanceof AmbiguousContractError) return [];
-    venues = error.listings.flatMap((listing) => {
-      const exchange = parsePublicTickerKey(listing).exchange;
-      return exchange ? [{ exchange, name: error.listingNames[listing] ?? "" }] : [];
-    });
-  }
-  return venues.filter((venue, index) => venues.findIndex((other) => other.exchange === venue.exchange) === index);
-}
+export { listingVenues, type ListingDeps, type ListingVenue };
 
 function tradesOn(symbol: string, venues: readonly ListingVenue[]): string {
   return venues.length > 0 ? ` ${symbol} trades on: ${venues.map((venue) => venue.exchange).join(", ")}.` : "";
@@ -171,25 +125,20 @@ function venueChoices(venues: readonly string[]): string {
 async function settleSharedCode(listing: ListingArg, deps: ListingDeps): Promise<ListingArg> {
   const code = listing.sharedCode;
   if (!code) return listing;
-  const meanings = exchangeCodeVenues(code);
-  const venues = await listingVenues(listing.symbol, deps).catch(() => []);
-  let traded = meanings.filter((venue) => venues.some((entry) => entry.exchange === venue));
-  if (traded.length === 0) {
-    const quoted = await Promise.all(meanings.map((exchange) => quotedOnVenue({ symbol: listing.symbol, exchange }, deps)));
-    traded = meanings.filter((_venue, index) => quoted[index]);
-  }
   const { symbol } = listing;
-  if (traded.length > 1) {
+  const meanings = exchangeCodeVenues(code);
+  const reading = await readSharedCode(symbol, code, deps);
+  if (reading.kind === "several") {
     throw new ListingArgError(
-      `${code} is ${venueChoices(meanings)}, and ${symbol} trades on ${traded.join(" and ")}.`,
-      `Name one: ${traded.map((venue) => `${symbol}:${venue}`).join(" or ")}.`,
+      `${code} is ${venueChoices(meanings)}, and ${symbol} trades on ${reading.venues.join(" and ")}.`,
+      `Name one: ${reading.venues.map((venue) => `${symbol}:${venue}`).join(" or ")}.`,
     );
   }
-  if (traded.length === 0) {
-    if (venues.length === 0) return listing;
-    throw new ListingArgError(`${code} is ${venueChoices(meanings)}, and ${symbol} trades on none of them.${tradesOn(symbol, venues)}`);
+  if (reading.kind === "unknown") return listing;
+  if (reading.kind === "none") {
+    throw new ListingArgError(`${code} is ${venueChoices(meanings)}, and ${symbol} trades on none of them.${tradesOn(symbol, reading.venues)}`);
   }
-  const exchange = traded[0]!;
+  const { exchange } = reading;
   const key = `${symbol}:${exchange}`;
   const readAs = exchange === meanings[0] ? {}
     : { readAs: `Read ${symbol}:${code} as ${key}: ${code} is ${venueChoices(meanings)}, and ${symbol} trades on ${exchange}.` };
@@ -223,24 +172,6 @@ async function checkListingExchange(listing: ListingArg, deps: ListingDeps): Pro
     `Unknown exchange ${listing.exchange} for ${listing.symbol}.${tradesOn(listing.symbol, venues)}`,
     venues.length > 0 ? undefined : `No listings of ${listing.symbol} were found.`,
   );
-}
-
-/**
- * Whether the listing's own quote prices it on a venue abroad, as `quote
- * SYM:EXCH` reads it. Search can leave a venue out (CAR's ASX line); a quote
- * there settles that it trades. The US exchanges share one symbol, so a quote
- * named for any of them says only that the symbol has a US line: there,
- * search's venues stand.
- */
-async function quotedOnVenue(listing: Pick<ListingArg, "symbol" | "exchange">, { dataProvider }: ListingDeps): Promise<boolean> {
-  if (isUsListingExchange(listing.exchange)) return false;
-  try {
-    const quote = await dataProvider.getQuote(`${listing.symbol}:${listing.exchange}`, listing.exchange);
-    return Number.isFinite(quote.price) && quote.price !== 0
-      && canonicalExchange(quote.listingExchangeName || quote.exchangeName) === listing.exchange;
-  } catch {
-    return false;
-  }
 }
 
 /**
@@ -670,6 +601,11 @@ function endedTradingDate(quote: Quote, now = Date.now()): string | null {
   if (!(last > 0) || now - last < ENDED_AFTER_MS || !isQuoteStaleForCurrentSession(quote, now)) return null;
   const zone = resolveExchangeTimeZone(quote.listingExchangeName || quote.exchangeName) ?? "UTC";
   return zonedDateKey(last, zone);
+}
+
+/** What trades under a symbol now, from its quote: nothing when it has none or stopped long ago. */
+export function tradingListing(quote: Quote | null | undefined, now = Date.now()): CurrentListing | null {
+  return quote && !endedTradingDate(quote, now) ? quotedListing(quote) : null;
 }
 
 /** "TWTR: no longer trading since 2022-10-27 (last price $53.86)", for a quote that stopped long ago. */

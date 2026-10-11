@@ -3,7 +3,7 @@ import { existsSync, lstatSync, mkdirSync, readdirSync, rmSync, symlinkSync } fr
 import { execFile as execFileCallback, execFileSync, spawn } from "child_process";
 import { promisify } from "util";
 import { findAbsorbedPlugin, type AbsorbedPlugin } from "./absorbed";
-import type { PluginPin } from "./builtin/plugin-marketplace/store";
+import type { PluginPin } from "./marketplace/store";
 import { bunCommand } from "./dependencies";
 import { linkHostPackages, missingPeerPlugins } from "./host-link";
 import {
@@ -518,7 +518,7 @@ export interface RegistryListing {
 export async function loadRegistryListings(): Promise<Map<string, RegistryListing>> {
   const listings = new Map<string, RegistryListing>();
   try {
-    const { loadRegistry } = await import("./builtin/plugin-marketplace/feed");
+    const { loadRegistry } = await import("./marketplace/feed");
     const feed = await loadRegistry();
     for (const plugin of feed.plugins) {
       if (!plugin.repo) continue;

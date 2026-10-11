@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { RegistryPlugin } from "../../../../plugins/builtin/plugin-marketplace/model";
+import type { RegistryPlugin } from "../../../../plugins/marketplace/model";
 import type { CommandDef, PaneTemplateDef } from "../../../../types/plugin";
 import type { Command } from "../../commands/registry";
 import {

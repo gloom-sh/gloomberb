@@ -98,8 +98,9 @@ export function formatContract(maturity: string | null): string {
 export interface CdxRow extends MarketBoardRow {
   index: CdxBoardIndex;
   year: YearStatistics;
-  /** The 1W move as shown. */
+  /** The 1W and 1M moves as shown. */
   week: number | null;
+  month: number | null;
 }
 
 export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null): CdxRow[] {
@@ -120,6 +121,7 @@ export function cdxRows(indexes: readonly CdxBoardIndex[], asOf: string | null):
       index,
       year,
       week: shown(index.quote, index.change1W),
+      month: shown(index.quote, index.change1M ?? null),
     };
   });
 }

@@ -65,6 +65,7 @@ function IndexDetail({ row, width, height, focused }: { row: CdxRow; width: numb
       detail: `${formatPercentileRank(year.percentile, "1Y")} · ${index.date ?? "--"}` },
     { id: "1d", label: "1D", value: formatMove(index.quote, index.change1D) },
     { id: "1w", label: "1W", value: formatMove(index.quote, index.change1W) },
+    { id: "1m", label: "1M", value: formatMove(index.quote, index.change1M ?? null) },
     { id: "range", label: "1Y range", value: `${formatLevel(index.quote, year.low)} to ${formatLevel(index.quote, year.high)}` },
     { id: "contract", label: "Contract", value: formatContract(index.maturity), detail: `${index.couponBp}bp coupon` },
     { id: "prints", label: "Prints", value: index.prints == null ? "--" : String(index.prints) },
@@ -100,7 +101,7 @@ export function CdxPane({ focused, width, height }: PaneProps) {
     info,
   });
 
-  // The 1W move and the print count ride beside the board's own 1D column.
+  // The 1W and 1M moves and the print count ride beside the board's own 1D column.
   const extraColumns = useMemo(() => [
     {
       column: { id: "week", label: "1W", width: 10, align: "right" as const },
@@ -108,6 +109,14 @@ export function CdxPane({ focused, width, height }: PaneProps) {
       renderCell: (row: CdxRow) => ({
         text: formatMove(row.index.quote, row.index.change1W),
         color: signedMoveColor(row.week, row.adverseMove, theme),
+      }),
+    },
+    {
+      column: { id: "month", label: "1M", width: 10, align: "right" as const },
+      sortValue: (row: CdxRow) => row.month,
+      renderCell: (row: CdxRow) => ({
+        text: formatMove(row.index.quote, row.index.change1M ?? null),
+        color: signedMoveColor(row.month, row.adverseMove, theme),
       }),
     },
     {

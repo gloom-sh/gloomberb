@@ -14,6 +14,7 @@ import type { ChartResolutionSupport, ManualChartResolution } from "../time-seri
 import type { BrokerContractRef, InstrumentSearchResult } from "./instrument";
 import type { CachePolicyMap } from "./persistence";
 import type { CachedQueryHandle } from "../data/cached-query";
+import type { TickerChanges } from "./ticker-changes";
 
 export type CachedAssetMethod = "getExchangeRate" | "getHolders" | "getAnalystResearch" | "getCorporateActions"
   | "getOptionsChain" | "getSecFilings" | "getSecFilingDocuments" | "getSecFilingContent" | "getArticleSummary";
@@ -206,6 +207,11 @@ export interface AssetDataProvider {
   getHolders?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<HolderData>;
   getAnalystResearch?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<AnalystResearchData>;
   getCorporateActions?(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<CorporateActionsData>;
+  /**
+   * A US symbol's changes: where the issuer that held it trades now (FB is
+   * META), or what its holder was called before. Null when none is on record.
+   */
+  getTickerChanges?(symbol: string, options?: { signal?: AbortSignal }): Promise<TickerChanges | null>;
   getEarningsCalendar?(symbols: string[], context?: MarketDataRequestContext): Promise<EarningsEvent[]>;
   getSecFilingDocuments?(filing: SecFilingItem): Promise<SecFilingDocument[]>;
   getSecFilingContent?(filing: SecFilingItem): Promise<string | null>;

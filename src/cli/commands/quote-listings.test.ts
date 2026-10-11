@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
-import type { QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
+import type { DataProvider, QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
+import type { TickerChanges } from "../../types/ticker-changes";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createTestTicker } from "../../test-support/ticker";
@@ -189,6 +190,31 @@ test("a bare symbol several companies list names, in one line, the company it wa
   const searched = source.searches();
   expect((await runQuote(["CAR:ASX"], source)).warnings).toEqual([]);
   expect(source.searches()).toBe(searched);
+});
+
+test("a symbol whose company moved says so in one line and in its JSON row; the symbol it moved to, one with no change or no service print nothing", async () => {
+  const etf = createTestQuote({ symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", listingExchangeName: "BATS", exchangeName: "BATS" });
+  const meta = createTestQuote({ symbol: "META", name: "Meta Platforms, Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
+  const apple = createTestQuote({ symbol: "AAPL", name: "Apple Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
+  const hop = { from: "FB", to: "META", date: "2022-06-09" };
+  const changes: Record<string, TickerChanges> = {
+    FB: { symbol: "FB", moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop] }, formerly: null, listedName: null, changes: [hop] },
+    META: { symbol: "META", moved: null, formerly: [hop], listedName: "Meta Platforms, Inc.", changes: [hop] },
+  };
+  const quote = async (args: string[], getTickerChanges: DataProvider["getTickerChanges"]) => {
+    const source = venueSource("FB", [], { FB: etf, META: meta, AAPL: apple });
+    return runQuote(args, { ...source, dataProvider: { ...source.dataProvider, getTickerChanges } });
+  };
+
+  const moved = await quote(["FB", "META", "AAPL"], async (symbol) => changes[symbol] ?? null);
+  expect(moved.warnings).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"]);
+  // META is what was typed: its change stays in the row as data, with no line.
+  expect(moved.rows.map((row) => (row as { tickerChange?: { kind: string } }).tickerChange?.kind ?? null)).toEqual(["moved", "formerly", null]);
+  // Offline: the quote still answers, with nothing extra.
+  const offline = await quote(["FB"], async () => { throw new Error("fetch failed"); });
+  expect(offline.failure).toBeNull();
+  expect(offline.warnings).toEqual([]);
+  expect(offline.rows[0]).not.toHaveProperty("tickerChange");
 });
 
 test("a pasted list is one row per symbol, in order, however it is separated, for quote and compare alike", async () => {

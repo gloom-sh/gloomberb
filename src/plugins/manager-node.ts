@@ -1,5 +1,5 @@
 import { join } from "path";
-import type { PluginManager, PluginOperationResult } from "./builtin/plugin-marketplace/store";
+import type { PluginManager, PluginOperationResult } from "./marketplace/store";
 import { getPluginsDir, loadExternalPlugin } from "./loader";
 import type { PluginTarget } from "../types/plugin";
 

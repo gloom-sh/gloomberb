@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { handleRequest, SECURITY_HEADERS, type WorkerEnv } from "./worker";
-import { REGISTRY_ORIGIN } from "../../plugins/builtin/plugin-marketplace/feed";
+import { REGISTRY_ORIGIN } from "../../plugins/marketplace/feed";
 import { DOCS_SITE } from "../../docs/content";
 
 function fixture() {

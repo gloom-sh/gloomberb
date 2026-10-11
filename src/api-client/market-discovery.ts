@@ -86,7 +86,10 @@ export interface MarketMoversPayload {
 export interface DividendSummary {
   trailingAnnualDividendRate: number | null;
   trailingAnnualDividendYield: number | null;
+  /** The indicated annual rate fundamentals serve: the latest regular distribution annualized. */
   forwardAnnualDividendRate: number | null;
+  /** The ex-date of the distribution that rate annualizes, YYYY-MM-DD. */
+  forwardRateAsOf?: string | null;
   payoutRatio: number | null;
   exDividendDate: number | null;
   dividendDate: number | null;

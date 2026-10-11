@@ -331,7 +331,7 @@
           {
             "code": "CRD",
             "name": "Credit Spreads",
-            "description": "ICE BofA US corporate option-adjusted spreads from FRED."
+            "description": "ICE BofA option-adjusted spreads from FRED: US investment grade and high yield by rating, and euro high yield."
           },
           {
             "code": "AUCT",
@@ -1630,7 +1630,7 @@
           {
             "code": "DVD",
             "name": "Dividend Yield",
-            "description": "Cash distribution history, trailing cash yield, indicated rates when available, and growth. Future payments are not forecast."
+            "description": "Cash distribution history, trailing cash yield, forward yield from the latest distribution, and growth. Future payments are not forecast."
           },
           {
             "code": "RDCF",

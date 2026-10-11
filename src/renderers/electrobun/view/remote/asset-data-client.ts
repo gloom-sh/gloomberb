@@ -41,6 +41,8 @@ const assetDataPayloads: Record<string, PayloadBuilder> = {
   getHolders: (ticker, exchange, context) => ({ ticker, exchange, context }),
   getAnalystResearch: (ticker, exchange, context) => ({ ticker, exchange, context }),
   getCorporateActions: (ticker, exchange, context) => ({ ticker, exchange, context }),
+  // An abort signal does not cross the bridge; the caller stops waiting instead.
+  getTickerChanges: (symbol) => ({ symbol }),
   getSecFilingDocuments: (filing) => ({ filing }),
   getSecFilingContent: (filing) => ({ filing }),
   getEarningsCalendar: (symbols, context) => ({ symbols, context }),

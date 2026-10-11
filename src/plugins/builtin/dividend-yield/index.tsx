@@ -69,7 +69,7 @@ function createDividendYieldModule({
           id: "dividend-yield-pane",
           paneId: "dividend-yield",
           label: "Dividend Yield",
-          description: "Cash distribution history, trailing cash yield, indicated rates when available, and growth. Future payments are not forecast.",
+          description: "Cash distribution history, trailing cash yield, forward yield from the latest distribution, and growth. Future payments are not forecast.",
           keywords: ["dividend", "yield", "dvd", "income", "payout", "ex-date", "distribution"],
           shortcut: "DVD",
         }),

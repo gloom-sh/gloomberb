@@ -119,7 +119,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["GP"],
   },
   GIP: {
-    summary: "One or five sessions of intraday candles with the session boundaries marked.",
+    summary: "One or five sessions of intraday candles, down to 1-minute bars, with the session boundaries marked.",
     usage: ["GIP TSLA"],
     keys: CHART_KEYS,
     data: QUOTES,
@@ -392,7 +392,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["ERN"],
   },
   DVD: {
-    summary: "Cash distributions, trailing yield, indicated rate when available, and payout growth. Future payments are not forecast.",
+    summary: "Cash distributions, trailing yield, the forward yield fundamentals show (latest distribution annualized), and payout growth. Future payments are not forecast.",
     usage: ["DVD KO"],
     keys: [STEP],
     data: same("Daily"),
@@ -906,8 +906,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["WIRP", "FFIP"],
   },
   CRD: {
-    summary: "ICE BofA US corporate option-adjusted spreads by rating bucket and high yield, with the day's change.",
-    usage: ["CRD"],
+    summary: "ICE BofA option-adjusted spreads: US investment grade and high yield by rating, and euro high yield, with the day's change.",
+    usage: ["CRD", "CRD --region euro"],
     keys: [OPEN],
     data: same("Daily close, published the next day"),
     bloomberg: ["CRD"],
@@ -934,8 +934,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["CDS"],
   },
   CDX: {
-    summary: "CDX IG, HY and EM with iTraxx Main and Crossover on the run: the 5Y level, 1D and 1W moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY and EM in price. Sovereign CDS is the other tab.",
-    usage: ["CDX"],
+    summary: "CDX IG, HY and EM with iTraxx Main and Crossover on the run: the 5Y level, 1D, 1W and 1M moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY and EM in price. Naming an index adds its daily history. Sovereign CDS is the other tab.",
+    usage: ["CDX", "CDX XOVER"],
     keys: [TABS, OPEN],
     data: same("Delayed, as trades are disseminated"),
     bloomberg: ["CDX"],

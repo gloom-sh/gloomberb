@@ -26,6 +26,7 @@ import type { PriceHistoryResult } from "../../types/price-history";
 import { parseHistorySession } from "../../market-data/history-session";
 import { quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { InstrumentSearchResult } from "../../types/instrument";
+import type { TickerChanges } from "../../types/ticker-changes";
 import {
   apiClient,
   type CloudAnalystResearchPayload,
@@ -572,6 +573,12 @@ export class GloomberbCloudProvider implements AssetDataProvider {
       const response = await apiClient.getCloudCorporateActions(target.symbol, target.exchange);
       return unwrapRequiredCloudResponse(response, `Cloud corporate actions are unavailable for ${ticker}`) as CloudCorporateActionsPayload;
     }, `Cloud corporate actions are unavailable for ${ticker}`);
+  }
+
+  async getTickerChanges(symbol: string, options: { signal?: AbortSignal } = {}): Promise<TickerChanges | null> {
+    const response = await apiClient.getCloudTickerChanges(symbol, options);
+    // "empty" is an answer: no change on record.
+    return response.status === "success" || response.status === "partial" ? response.data : null;
   }
 
   async getArticleSummary(url: string): Promise<string | null> {

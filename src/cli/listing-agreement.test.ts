@@ -11,7 +11,13 @@ import type { MarketContext } from "./types";
 import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
 import { resolveTickerSearch } from "../tickers/search";
-import { canonicalExchange } from "../utils/exchanges";
+import { canonicalExchange, canonicalTickerKey, parsePublicTickerKey, typedExchangeCode } from "../utils/exchanges";
+import { JsonTickerRepository } from "../data/json-ticker-repository";
+import { resolveDesktopDeepLinkAction } from "../app/runtime/desktop-deeplink";
+import { researchEntryFromSearch } from "../renderers/browser/research-entry";
+import { resolveTickerOpenTarget } from "../tickers/open-target";
+import { settleTypedListingKey } from "../tickers/listing-venues";
+import { tokenizeInlineContent } from "../utils/inline-content-tokenizer";
 
 // Where each symbol trades, as search lists it. 7203 also trades in Riyadh as another company.
 const LISTED: Record<string, Array<[exchange: string, name: string]>> = {
@@ -121,7 +127,40 @@ const READERS: Record<string, (typed: string) => Promise<Reading>> = {
   "fn ERN": (typed) => runFunction("ERN", typed),
 };
 
-test("every command, fn function and the command bar read a listing as quote does, and say what a shared code was read as", async () => {
+/** What a ticker resolves a listing to when it is opened: the ticker's key, by its canonical venue (SAN:PAR is SAN:EPA). */
+async function openTicker(query: string): Promise<string> {
+  const target = await resolveTickerOpenTarget({ query, tickers: new Map(), dataProvider, tickerRepository: new JsonTickerRepository() });
+  return target ? canonicalTickerKey(target.symbol) : "nothing";
+}
+
+/**
+ * Links and chat never pass through search or a command: a ticker link
+ * (gloomberb://ticker/7203:TSE), the web terminal's ?ticker=7203&exchange=TSE,
+ * a news link, and a $7203:TSE cashtag in a chat message.
+ */
+const LINK_READERS: Record<string, (typed: string) => Promise<string>> = {
+  "ticker link": async (typed) => {
+    const action = resolveDesktopDeepLinkAction(`gloomberb://ticker/${encodeURIComponent(typed)}?tab=overview`);
+    return action.type === "open-ticker" ? openTicker(action.symbol) : action.type;
+  },
+  "web link": async (typed) => {
+    const { symbol, exchange } = parsePublicTickerKey(typed);
+    const code = typedExchangeCode(typed);
+    const entry = researchEntryFromSearch(`?ticker=${symbol}${exchange ? `&exchange=${code}` : ""}`);
+    return entry ? openTicker(entry.symbol) : "nothing";
+  },
+  "news link": async (typed) => {
+    const action = resolveDesktopDeepLinkAction(`gloomberb://news/ticker/${encodeURIComponent(typed)}`);
+    if (action.type !== "open-news" || !action.symbol) return action.type;
+    return canonicalTickerKey(await settleTypedListingKey(action.symbol, market));
+  },
+  chat: async (typed) => {
+    const tags = tokenizeInlineContent(`watching $${typed} into the close`).filter((token) => token.kind === "ticker");
+    return tags.length === 1 ? openTicker(tags[0]!.symbol) : `${tags.length} cashtags`;
+  },
+};
+
+test("every command, fn function, the command bar, links and chat read a listing as quote does, and say what a shared code was read as", async () => {
   for (const [typed, key, readAs] of LISTINGS) {
     for (const [reader, read] of Object.entries(READERS)) {
       const reading = await read(typed);
@@ -130,6 +169,9 @@ test("every command, fn function and the command bar read a listing as quote doe
       expect(said, `${reader} ${typed}`).toEqual(readAs ? [expect.stringMatching(new RegExp(`^Read ${typed} as ${key}: `))] : []);
     }
     expect((await openInCommandBar(typed)).listing, `command bar ${typed}`).toBe(key);
+    for (const [reader, read] of Object.entries(LINK_READERS)) {
+      expect(await read(typed), `${reader} ${typed}`).toBe(key);
+    }
   }
 });
 

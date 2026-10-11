@@ -4,8 +4,11 @@ import { suggestCliOption } from "./help";
 
 /** A built-in command, which may say more about an option it does not take than the list of those it does. */
 export interface BuiltinCliCommandDef extends CliCommandDef {
-  /** A sentence for an unknown option people reach for, such as `--from` on `history`; null for the rest. */
-  unknownOptionHint?(flag: string): string | null;
+  /**
+   * A sentence for an unknown option people reach for, such as `--from` on
+   * `history`; null for the rest. `args` are the command's, to name what it was given.
+   */
+  unknownOptionHint?(flag: string, args: readonly string[]): string | null;
 }
 
 interface DeclaredOption {
@@ -34,12 +37,17 @@ function declaredOptions(command: CliCommandDef): Map<string, DeclaredOption> | 
   return declared;
 }
 
-function failUnknownOption(command: BuiltinCliCommandDef, flag: string, declared: Map<string, DeclaredOption>): never {
+function failUnknownOption(
+  command: BuiltinCliCommandDef,
+  flag: string,
+  declared: Map<string, DeclaredOption>,
+  args: readonly string[],
+): never {
   const flags = [...declared.keys()];
   const suggestion = suggestCliOption(flag, flags);
   const help = `See gloomberb help ${command.name}.`;
   fail(`Unknown option ${flag} for ${command.name}.`, [
-    command.unknownOptionHint?.(flag) ?? "",
+    command.unknownOptionHint?.(flag, args) ?? "",
     suggestion ? `Did you mean ${suggestion}?` : "",
     flags.length > 0 ? `Options: ${flags.join(", ")}. ${help}` : `${command.name} takes no options. ${help}`,
   ].filter(Boolean).join("\n"));
@@ -65,7 +73,7 @@ export function checkCliCommandOptions(
     const equals = arg.indexOf("=");
     const flag = equals >= 0 ? arg.slice(0, equals) : arg;
     const option = declared.get(flag);
-    if (!option) failUnknownOption(command, flag, declared);
+    if (!option) failUnknownOption(command, flag, declared, args);
     if (!option.takesValue && equals >= 0) {
       fail(`${flag} takes no value.`, `Write it alone, as ${flag}. See gloomberb help ${command.name}.`);
     }

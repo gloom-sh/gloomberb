@@ -114,6 +114,7 @@ import {
   notTradedMessage,
   quoteBareListing,
   requireCliListing,
+  tradingListing,
   type CliListing,
   type ListingDataRequest,
   type ListingIdentity,
@@ -124,9 +125,11 @@ import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { splitSymbolArgs } from "../symbol-args";
+import { subMinuteDataMessage } from "../known-gaps";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
+import { describeTickerChange, startTickerChangeLookup, tickerChangeLine, type TickerChange } from "../../tickers/ticker-changes";
 import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
@@ -178,6 +181,8 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   listing?: { name: string | null };
   /** A futures row's contract, terms and latest confirmed settlement, as `ticker` reads them. */
   futuresContract?: FuturesContractTermsPayload;
+  /** The symbol changed: its issuer moved to another symbol, or its holder had another before. */
+  tickerChange?: TickerChange;
 };
 type FinancialsCliData = TickerFinancials & {
   symbol: string;
@@ -524,15 +529,28 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     // Each costs a search, so a long list (a portfolio check, not a lookup) names none.
     const venues = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
       : listings.map((listing) => [listing, loadBareVenues(listing, market)] as const));
+    // So is whether a symbol changed (FB is now META), for the same lists.
+    const changes = new Map(listings.length > MAX_CHOICE_LOOKUPS ? []
+      : listings.map((listing) => [listing, startTickerChangeLookup(market.dataProvider, listing.symbol, listing.exchange)] as const));
     const results = await market.dataProvider.getQuotesBatch(targets, { forceRefresh: ctx.cliOptions.refresh });
     const listingOf = (result: QuoteBatchResult, index: number) => listings[targets.indexOf(result.target)] ?? listings[index]!;
+    const asked = results.map(listingOf);
     const request = { command: commandName, noun: "quote" };
     const answers = await Promise.all(results.map((result, index) => {
-      const listing = listingOf(result, index);
+      const listing = asked[index]!;
       return answerQuote(result, listing, market, request, ctx.cliOptions.refresh, venues.get(listing) ?? null);
     }));
+    const now = Date.now();
+    const tickerChanges = await Promise.all(answers.map(async ({ result }, index) => {
+      const listing = asked[index]!;
+      // A bare symbol read on a listing abroad (SXR8 -> XETRA) is not the US symbol the changes are of.
+      if (result.quote && bareListingNote(listing, result.quote)) return null;
+      return describeTickerChange(listing.symbol, await changes.get(listing)?.settle() ?? null, tradingListing(result.quote, now));
+    }));
     const failed = answers[0]?.failure;
-    if (listings.length === 1 && failed) ctx.fail(failed.message, failed.details);
+    if (listings.length === 1 && failed) {
+      ctx.fail(failed.message, [tickerChangeLine(tickerChanges[0]), failed.details].filter(Boolean).join("\n") || undefined);
+    }
     // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table.
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
@@ -547,9 +565,12 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       error: failure?.oneLine ?? errorMessage(result.error),
       ...yieldIndexFields(result),
+      ...tickerChanges[index] ? { tickerChange: tickerChanges[index] } : {},
     }));
-    const now = Date.now();
     const notes = [
+      // FB now lists another security; the company that was FB trades as META. A symbol a
+      // company renamed into (META) is what was typed: its change is in the row, not here.
+      ...tickerChanges.flatMap((change) => tickerChangeLine(change) ?? []),
       // Which listing a bare symbol was read as, and the index a bare root is not, are in no row.
       ...answers.flatMap((answer) => answer.notes),
       // A row that stopped trading long ago reads as a quote that is merely stale.
@@ -675,6 +696,20 @@ const HISTORY_USAGE = "history <symbol> [--range <range>]";
 const HISTORY_ALL_RANGE = `ALL gives the full history the source has, up to ${historyAllRangeYears()} years`;
 /** Options people reach for to ask for dates, which history answers with a range. */
 const DATE_WINDOW_OPTIONS = new Set(["--from", "--to", "--start", "--end", "--since", "--until", "--date", "--start-date", "--end-date"]);
+/** Options people reach for to pick a bar size, which history derives from the range. */
+const BAR_SIZE_OPTIONS = new Set(["--interval", "--resolution", "--bar", "--bars", "--bar-size", "--granularity", "--timeframe", "--frequency", "--freq", "--tick", "--ticks"]);
+
+/** The symbol `history` was given: the first word that is not an option or the value after one. */
+function historySymbolArg(args: readonly string[]): string | undefined {
+  return args.find((arg, index) => !arg.startsWith("-")
+    && !(index > 0 && args[index - 1]!.startsWith("--") && !args[index - 1]!.includes("=")));
+}
+
+function historyOptionHint(flag: string, args: readonly string[]): string | null {
+  if (DATE_WINDOW_OPTIONS.has(flag)) return `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`;
+  if (BAR_SIZE_OPTIONS.has(flag)) return `history serves each --range in one bar size. ${subMinuteDataMessage(historySymbolArg(args))}`;
+  return null;
+}
 
 async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
@@ -1610,9 +1645,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       }],
       examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history ZAR=X --tail 5", "history AAPL --range 5Y --csv > aapl.csv"],
     },
-    unknownOptionHint: (flag) => DATE_WINDOW_OPTIONS.has(flag)
-      ? `history takes a --range instead of dates: ${TIME_RANGES.join(", ")}. ${HISTORY_ALL_RANGE}.`
-      : null,
+    unknownOptionHint: historyOptionHint,
     execute: runHistory,
   },
   {

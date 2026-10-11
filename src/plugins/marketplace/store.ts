@@ -1,4 +1,4 @@
-import type { LoadedExternalPlugin } from "../../loader";
+import type { LoadedExternalPlugin } from "../loader";
 import type { InstalledPlugin } from "./model";
 
 /**

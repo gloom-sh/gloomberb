@@ -1,9 +1,9 @@
-import type { PluginTarget } from "../../../types/plugin";
-import { compareSemver, formatVersion, requiredGloomberb } from "../../../utils/semver";
-import { runsExternalPlugins } from "../../current-target";
-import { BUILTIN_EDITORIAL } from "../../builtin-editorial";
-import { builtinPluginGroupMembers } from "../../ownership";
-import type { FunctionAccess } from "../../../cli/pane-functions/function-help";
+import type { PluginTarget } from "../../types/plugin";
+import { compareSemver, formatVersion, requiredGloomberb } from "../../utils/semver";
+import { runsExternalPlugins } from "../current-target";
+import { BUILTIN_EDITORIAL } from "../builtin-editorial";
+import { builtinPluginGroupMembers } from "../ownership";
+import type { FunctionAccess } from "../../cli/pane-functions/function-help";
 import { PACK_PLUGIN_IDS } from "./packs";
 
 type PluginTier = "official" | "verified" | "community";

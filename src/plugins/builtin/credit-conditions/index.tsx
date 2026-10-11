@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import {
   ChartTableHeader,
   CompositeChart,
@@ -18,13 +18,14 @@ import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
+import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { CREDIT_SPREAD_SERIES } from "./series";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { getCachedCreditConditions, loadCreditConditions } from "./client";
 import { creditConditionsHeadless } from "./headless";
-import { CREDIT_SERIES, type CreditConditionRow } from "./model";
+import { creditRegion, creditSeriesIn, type CreditConditionRow } from "./model";
 
 
 const EMPTY_ROWS: CreditConditionRow[] = [];
@@ -86,7 +87,10 @@ function SpreadDetail({ row, width, height, focused }: { row: CreditConditionRow
 }
 
 export function CreditConditionsPane({ paneId, focused, width, height }: PaneProps) {
-  const resource = useAsyncResource(loadCreditConditions, { initialData: getCachedCreditConditions });
+  const [regionSetting] = usePaneSettingValue<unknown>("region", "all");
+  const series = useMemo(() => creditSeriesIn(creditRegion(regionSetting)), [regionSetting]);
+  const load = useCallback((force: boolean) => loadCreditConditions(force, undefined, series), [series]);
+  const resource = useAsyncResource(load, { initialData: () => getCachedCreditConditions(series) });
   const { loading, load: refresh, reload } = resource;
   const stale = resource.data?.stale ?? false;
   const error = resource.error ?? resource.data?.errors[0] ?? null;
@@ -101,7 +105,7 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   useAutoRefresh(lastUpdated, refresh);
 
   usePaneRefreshKey(reload, { focused, enabled: !loading });
-  const partial = rows.length > 0 && rows.length < CREDIT_SERIES.length;
+  const partial = rows.length > 0 && rows.length < series.length;
   // Each row carries its own date in the AS OF column; a spread between
   // indexes from different sessions is a limitation behind the warning.
   usePaneNoticeFooter({
@@ -111,10 +115,10 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
   });
   const footerInfo = useMemo<PaneFooterSegment[]>(() => [
     ...(rows.length > 0 ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
-    ...(partial ? [{ id: "partial", parts: [{ text: `PARTIAL ${rows.length}/${CREDIT_SERIES.length}`, tone: "warning" as const, bold: true }] }] : []),
+    ...(partial ? [{ id: "partial", parts: [{ text: `PARTIAL ${rows.length}/${series.length}`, tone: "warning" as const, bold: true }] }] : []),
     ...(stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...loadingErrorFooterInfo(loading, error),
-  ], [error, loading, partial, rows.length, stale]);
+  ], [error, loading, partial, rows.length, series.length, stale]);
   usePaneFooter(paneId, () => ({ info: footerInfo }), [footerInfo, paneId]);
 
   if (rows.length === 0) {
@@ -146,14 +150,17 @@ export const creditConditionsModule: PluginModule = {
     component: CreditConditionsPane,
     defaultPosition: "right",
     defaultMode: "floating",
-    defaultFloatingSize: { width: 72, height: 18 },
+    defaultFloatingSize: { width: 72, height: 22 },
+    settings: { title: "Credit Spreads", fields: [{ key: "region", label: "Region", type: "select", options: [
+      { value: "all", label: "All" }, { value: "us", label: "US" }, { value: "euro", label: "Euro" },
+    ] }] },
   }],
   paneTemplates: [{
     id: "credit-conditions-pane",
     paneId: "credit-conditions",
     label: "Credit Spreads",
-    description: "ICE BofA US corporate option-adjusted spreads from FRED.",
-    keywords: ["credit", "spread", "oas", "corporate", "high yield", "investment grade", "macro"],
+    description: "ICE BofA option-adjusted spreads from FRED: US investment grade and high yield by rating, and euro high yield.",
+    keywords: ["credit", "spread", "oas", "corporate", "high yield", "investment grade", "macro", "euro", "europe", "bb", "ccc", "rating"],
     shortcut: { prefix: "CRD" },
     headless: creditConditionsHeadless,
   }],

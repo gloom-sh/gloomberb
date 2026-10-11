@@ -13,6 +13,8 @@ export interface DividendMetrics {
   forwardYield: number | null;
   trailingRate: number | null;
   forwardRate: number | null;
+  /** The ex-date of the distribution the forward rate annualizes, YYYY-MM-DD. */
+  forwardRateAsOf: string | null;
   payoutRatio: number | null;
   growth1Y: number | null;
   growth3Y: number | null;

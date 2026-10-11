@@ -18,6 +18,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { addTickerToPortfolio, addTickerToWatchlist } from "../mutations";
 import { captureAttentionAction } from "../../../../telemetry/attention-counts";
 import { publicTickerKey } from "../../../../utils/exchanges";
+import { tickerChangeLine } from "../../../../tickers/ticker-changes";
 import {
   IDLE_VALIDATION,
   isPlausibleTickerQuery,
@@ -82,15 +83,20 @@ function QuickAddPreview({
   const exchange = exchangeLabelFromValidation(validation);
   const showSymbol = normalizeQuickAddQuery(validation.symbol) !== validation.query;
   const symbolPrefix = showSymbol ? `${validation.symbol} ` : "";
+  // A symbol whose company moved on says where it went before it is added, ahead of the
+  // name of what lists there now; the add notice prints the whole line.
+  const change = validation.change?.kind === "moved" ? validation.change : null;
+  const moved = change?.listed ? `${change.issuer ?? `the former ${change.symbol}`} trades as ${change.tradesAs}` : change?.note;
 
   return (
     <Box flexDirection="row" overflow="hidden">
-      <Text fg={colors.textDim}>{`${symbolPrefix}${priceText} `}</Text>
-      <Text fg={changeValue == null ? colors.textDim : priceColor(changeValue)}>
+      <Text fg={colors.textDim} flexShrink={0}>{`${symbolPrefix}${priceText} `}</Text>
+      <Text fg={changeValue == null ? colors.textDim : priceColor(changeValue)} flexShrink={0}>
         {formatPercentRaw(changeValue)}
       </Text>
-      {name ? <Text fg={colors.textMuted}>{`  ${name}`}</Text> : null}
-      {exchange ? <Text fg={colors.textDim}>{`  ${exchange}`}</Text> : null}
+      {moved ? <Text fg={colors.warning} flexShrink={0}>{`  ${moved}`}</Text> : null}
+      {name && (!change || change.listed) ? <Text fg={colors.textMuted}>{`  ${name}`}</Text> : null}
+      {exchange && !change ? <Text fg={colors.textDim}>{`  ${exchange}`}</Text> : null}
     </Box>
   );
 }
@@ -311,13 +317,13 @@ export function QuickAddTickerInput({
       }
 
       onAdded(result.ticker.metadata.ticker);
-      notify({
-        type: "success",
-        body: tf("Added {symbol} to {collection}.", {
-          symbol: result.ticker.metadata.ticker,
-          collection: collectionName,
-        }),
+      const added = tf("Added {symbol} to {collection}.", {
+        symbol: result.ticker.metadata.ticker,
+        collection: collectionName,
       });
+      // As `watchlist add` prints it: FB now lists another security, Meta trades as META.
+      const change = tickerChangeLine(currentValidation.change);
+      notify({ type: "success", body: change ? `${added} ${change}.` : added });
       resetInput();
       queueMicrotask(() => inputRef.current?.focus?.());
     } catch {

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { applyPluginToggles, regroupedBuiltinPluginIds } from "../../ownership";
+import { applyPluginToggles, regroupedBuiltinPluginIds } from "../ownership";
 import {
   matchingPack,
   PACK_PLUGIN_IDS,
