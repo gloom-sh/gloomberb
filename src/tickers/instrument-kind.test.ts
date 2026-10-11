@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import { createTestTicker } from "../test-support/ticker";
 import type { TickerFinancials } from "../types/financials";
-import { resolveTickerInstrumentKind } from "./instrument-kind";
+import { instrumentTypeLabel, resolveTickerInstrumentKind } from "./instrument-kind";
 
 const quoted = (instrumentType: string): Pick<TickerFinancials, "quote"> => ({
   quote: { symbol: "X", instrumentType, currency: "USD", price: 1, change: 0, changePercent: 0, lastUpdated: 0 },
@@ -18,4 +18,10 @@ test.each([
   ["bare symbol", createTestTicker("AAPL", "Apple"), null, "equity"],
 ] as const)("%s", (_label, ticker, financials, kind) => {
   expect(resolveTickerInstrumentKind(ticker, financials)).toBe(kind);
+});
+
+test("a coin-typed listing named as derivatives is a perpetual price, not a coin; a derivatives fund is neither", () => {
+  expect(instrumentTypeLabel("CRYPTOCURRENCY", "Natural Gas (Derivatives) USD")).toBe("Perpetual futures price");
+  expect(instrumentTypeLabel("CRYPTOCURRENCY", "Bitcoin USD")).toBe("CRYPTOCURRENCY");
+  expect(instrumentTypeLabel("ETF", "Samsung KODEX Gold Futures Special Asset ETF - Gold-Derivatives (H)")).toBe("ETF");
 });

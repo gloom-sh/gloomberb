@@ -2,7 +2,7 @@ import type { MarketContext } from "../types";
 import type { NormalizedPaneFunctionOptions } from "./capabilities";
 import type { ResolvedPaneFunction } from "./resolver";
 import { buildHeadlessFunctionReport } from "./headless";
-import { appendDomReportFooter, buildDomFunctionReport, domReportNote } from "./dom";
+import { appendDomReportFooter, buildDomFunctionReport, domReportNote, domReportView } from "./dom";
 import type { ReportFreshness } from "./freshness";
 import type { CliReportTables } from "../report-tables";
 
@@ -62,15 +62,11 @@ export async function buildFunctionReport(
   const elapsedMs = Math.max(0, Math.round(performance.now() - startedAt));
   report.data = { ...report.data, source, elapsedMs };
   if (source === "dom") {
-    report.text = appendDomReportFooter(
-      report.text,
-      elapsedMs,
-      report.data.truncated === true,
-      report.data.freshness,
-    );
+    const view = domReportView(report.data);
+    report.text = appendDomReportFooter(report.text, elapsedMs, view, report.data.freshness);
     report.tables = {
       ...report.tables,
-      footer: [...report.tables.footer, `note: ${domReportNote(elapsedMs, report.data.truncated === true)}`],
+      footer: [...report.tables.footer, `note: ${domReportNote(elapsedMs, view)}`],
     };
   }
   return report;

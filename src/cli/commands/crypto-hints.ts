@@ -1,4 +1,5 @@
 import { isCryptoInstrumentType } from "../../tickers/search/ranking";
+import { isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
 import type { Quote } from "../../types/financials";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isNotATickerMessage } from "../not-a-ticker";
@@ -78,6 +79,12 @@ export function quoteNotes(results: QuoteNoteResult[], options: { exchange?: str
       const note = notTheCoinNote(result.target.symbol, result.quote);
       if (note) notes.push(note);
     }
+  }
+  const perpetuals = results
+    .filter((result) => result.quote && isCryptoVenuePerpetual(result.quote.instrumentType, result.quote.name))
+    .map((result) => result.target.symbol);
+  if (perpetuals.length > 0) {
+    notes.push(`${perpetuals.join(", ")}: perpetual futures ${perpetuals.length === 1 ? "price" : "prices"} on crypto venues, 24/7; not the listed future, not spot.`);
   }
   return notes;
 }

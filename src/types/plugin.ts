@@ -145,6 +145,12 @@ export interface PaneDef {
    * carries them in `data.metadata.notices`.
    */
   reportNotices?(settings: Readonly<Record<string, unknown>>): string[];
+  /**
+   * A `shot` without `--height` grows to the pane's natural height, up to the
+   * height limit, so a fixed board (FUT) shows every row instead of cutting
+   * the last ones. Leave it off for long or paged lists.
+   */
+  shotFitsRows?: true;
   /** Add an Excel-compatible CSV action for the pane's single active DataTable. */
   tableExport?: true;
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);

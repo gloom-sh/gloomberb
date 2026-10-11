@@ -60,6 +60,11 @@ export interface DesktopPaneShotPayload {
    * once the pane has loaded. Absent for `--no-status` and for reports.
    */
   statusLine?: boolean;
+  /**
+   * The tallest the capture may grow, in cells, to show every row its tables
+   * scroll past; absent keeps the requested height (`--height`, most panes).
+   */
+  maxHeightCells?: number;
   tickers: TickerRecord[];
   /** Broker accounts as last synced, by profile, so a broker portfolio shows its equity and cash. */
   brokerAccounts?: Record<string, BrokerAccount[]>;
@@ -212,6 +217,7 @@ export async function renderDesktopPaneScreenshot(
       userDataDir: join(tempDir, "chrome-profile"),
       captureImage: options.captureImage !== false,
       statusLine: payload.statusLine ? options.statusLine : undefined,
+      ...(payload.maxHeightCells ? { fitRows: { heightCells: payload.heightCells, maxHeightCells: payload.maxHeightCells } } : {}),
     });
   } finally {
     server?.stop(true);
@@ -433,6 +439,7 @@ async function capturePageScreenshot({
   userDataDir,
   captureImage,
   statusLine,
+  fitRows,
 }: {
   chrome: string;
   url: string;
@@ -443,6 +450,7 @@ async function capturePageScreenshot({
   userDataDir: string;
   captureImage: boolean;
   statusLine?: ShotStatusLine;
+  fitRows?: { heightCells: number; maxHeightCells: number };
 }): Promise<DesktopPaneShotRenderResult> {
   await mkdir(userDataDir, { recursive: true });
   const port = 43000 + Math.floor(Math.random() * 10000);
@@ -488,6 +496,7 @@ async function capturePageScreenshot({
       color: { r: 0, g: 0, b: 0, a: 0 },
     });
     await waitForShotReady(session);
+    if (fitRows) await growToFitRows(session, { widthPx, heightPx, deviceScaleFactor, ...fitRows });
     const rendered = await readRenderedPaneState(session);
     if (captureImage && statusLine) {
       const line = await statusLine(rendered);
@@ -511,6 +520,42 @@ async function capturePageScreenshot({
     proc.kill();
     await proc.exited.catch(() => {});
   }
+}
+
+/**
+ * Grows the viewport and the pane by the rows their tables scroll past, up to
+ * `maxHeightCells`, then waits for the taller pane to settle: a board a
+ * default capture would cut (FUT's last sectors) shows every row.
+ */
+async function growToFitRows(session: CdpSession, size: {
+  widthPx: number;
+  heightPx: number;
+  deviceScaleFactor: number;
+  heightCells: number;
+  maxHeightCells: number;
+}): Promise<void> {
+  const result = await session.send("Runtime.evaluate", {
+    expression: `Math.max(0, ...[...document.querySelectorAll('[data-gloom-role="data-table-body-scroll"]')]
+      .map((element) => element.scrollHeight - element.clientHeight))`,
+    returnByValue: true,
+  }) as { result?: { value?: unknown } };
+  const overflowPx = Number(result.result?.value);
+  // One pixel is subpixel layout, not a hidden row.
+  if (!Number.isFinite(overflowPx) || overflowPx <= 1) return;
+  const cellPx = size.heightPx / size.heightCells;
+  const heightCells = Math.min(size.maxHeightCells, size.heightCells + Math.ceil(overflowPx / cellPx));
+  if (heightCells <= size.heightCells) return;
+  await session.send("Emulation.setDeviceMetricsOverride", {
+    width: size.widthPx,
+    height: Math.round(heightCells * cellPx),
+    deviceScaleFactor: size.deviceScaleFactor,
+    mobile: false,
+  });
+  await session.send("Runtime.evaluate", {
+    expression: `window.__GLOOM_CLI_SHOT_RESIZE__ && window.__GLOOM_CLI_SHOT_RESIZE__(${heightCells})`,
+    returnByValue: true,
+  });
+  await waitForShotReady(session);
 }
 
 const LOADING_STATE_PATTERNS = [

@@ -230,6 +230,8 @@ interface HeadlessPaneResultBase {
 export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   columns?: HeadlessPaneColumn[];
   rows: HeadlessPaneRow[];
+  /** What the report says when `rows` is empty, in place of "No data.": why there are none. */
+  empty?: string;
 }
 
 export type HeadlessBundleSection =

@@ -55,6 +55,7 @@ import {
   formatGeoValue,
   formatTickerLinks,
   isChangeColumn,
+  layerCoverageNote,
   LAYERS_SETTING_KEY,
   readVenuesSetting,
   sameGeoView,
@@ -437,9 +438,12 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     : !tableReadable || pageStatus === "unavailable" ? `${tableLayer.name} unavailable.`
       : pages.error && !rows.length ? `${tableLayer.name} could not load.`
         : query.trim() ? "No matches." : `No ${tableLayer.name.toLowerCase()} in view.`;
+  // A one-country layer searched or panned outside its country is empty for that reason.
+  const coverage = layerCoverageNote(tableLayer);
   const emptyHint = tableLocked ? undefined
     : !tableReadable || pageStatus === "unavailable" ? unavailableNote
-      : pages.error && !rows.length ? pages.error.message : query.trim() ? "Clear search." : undefined;
+      : pages.error && !rows.length ? pages.error.message
+        : coverage ?? (query.trim() ? "Clear search." : undefined);
 
   const table = (
     <DataTableStackView<GeoEntityRow, EntityColumn>

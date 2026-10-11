@@ -59,8 +59,14 @@ describe("IV history against realized", () => {
     expect(stat("spread").rank).toBeNull();
     expect(stat("spread").percentile).toBe(50);
   });
-  test("coverage states become warnings", () => {
-    expect(projectIvHistory(payload([], { status: "queued" }), []).warnings.join(" ")).toContain("queued");
+  test("coverage states become warnings, a queued one with when to look again", () => {
+    const queuedAt = Date.parse("2026-09-23T06:25:59Z");
+    const queued = (now: number) => projectIvHistory(payload([], { status: "queued",
+      coverage: { source: "demand", addedAt: "2026-09-23T06:25:59Z", backfilledThrough: null, since: null } }), [], { now }).warnings[0];
+    expect(queued(queuedAt + 60_000)).toBe("SPY implied volatility history is queued; "
+      + "a first backfill usually takes under 10 minutes, try again after 06:35 UTC.");
+    // Past the usual wait there is no estimate left to give.
+    expect(queued(queuedAt + 30 * 60_000)).toContain("waiting since 06:25 UTC, longer than the usual 10 minutes");
     expect(projectIvHistory(payload([], { status: "backfilling" }), prices(dates)).warnings[0]).toContain("backfilling");
   });
 });

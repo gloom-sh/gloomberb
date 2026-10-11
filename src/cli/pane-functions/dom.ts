@@ -14,6 +14,8 @@ const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
 const DOM_LIMITATION =
   "Only values visible in the rendered pane are returned; clipped or off-screen data may be omitted.";
+const DOM_EVERY_ROW =
+  "Every row of the pane's table is returned, including rows scrolled out of view.";
 
 function rowsContainEllipsis(rows: DesktopPaneShotRenderedRow[]): boolean {
   return rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
@@ -190,6 +192,8 @@ export function buildDomPaneReportFromRender(
   });
 
   const complete = failureReason === null && !truncated;
+  // Each table published its rows and nothing else was cut: the report is the whole view.
+  const everyRow = complete && result.render.reportRows !== undefined;
   return {
     data: {
       kind: "rendered-view",
@@ -205,7 +209,8 @@ export function buildDomPaneReportFromRender(
       visibleText: result.render.visibleText,
       truncated,
       truncationReasons,
-      limitation: DOM_LIMITATION,
+      ...(everyRow ? { everyRow } : {}),
+      limitation: everyRow ? DOM_EVERY_ROW : DOM_LIMITATION,
       ...(failureReason ? { reason: failureReason } : {}),
       ...(notices.length > 0 ? { metadata: { ...rendered.facts, notices } } : {}),
       freshness,
@@ -224,21 +229,30 @@ export function buildDomPaneReportFromRender(
 export function appendDomReportFooter(
   text: string,
   elapsedMs: number,
-  truncated: boolean,
+  view: DomReportView,
   freshness: ReportFreshness,
 ): string {
   return [
     text,
     "",
-    domReportNote(elapsedMs, truncated),
+    domReportNote(elapsedMs, view),
     cliStyles.muted(formatFreshnessLine(freshness)),
   ].join("\n");
 }
 
+/** How much of the pane a rendered-view report holds: cut, every row its tables publish, or what the viewport shows. */
+export type DomReportView = "clipped" | "every-row" | "visible";
+
+export function domReportView(data: Readonly<Record<string, unknown>>): DomReportView {
+  return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : "visible";
+}
+
 /** What a rendered-view report says about where its values come from. */
-export function domReportNote(elapsedMs: number, truncated: boolean): string {
-  const clipping = truncated ? "The rendered view is clipped." : "The rendered view may be clipped.";
-  return `Rendered view: values come from the visible pane. ${clipping} Render time: ${elapsedMs} ms.`;
+export function domReportNote(elapsedMs: number, view: DomReportView): string {
+  const source = view === "every-row"
+    ? "Rendered view: every row of the pane's table, including rows scrolled out of view."
+    : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
+  return `${source} Render time: ${elapsedMs} ms.`;
 }
 
 function failedDomReport(

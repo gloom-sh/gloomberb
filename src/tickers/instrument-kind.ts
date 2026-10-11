@@ -130,3 +130,28 @@ export function resolveTickerInstrumentKind(
     ?? kindFromListing(ticker)
     ?? "equity";
 }
+
+/**
+ * A coin-typed listing named "<asset> (Derivatives)", such as NATGAS-USD
+ * "Natural Gas (Derivatives) USD": the price perpetual futures on that asset
+ * trade at on crypto venues, around the clock. It is neither the asset's
+ * exchange-listed future nor its spot price, though its type reads as a coin.
+ */
+export function isCryptoVenuePerpetual(type: string | null | undefined, name: string | null | undefined): boolean {
+  return classifyInstrumentType(type) === "crypto" && /\(derivatives\)/i.test(name ?? "");
+}
+
+/**
+ * A listing's type, in plain words where the provider's type misleads (a
+ * perpetual typed as a coin). `detail` says what it is not, for a report line.
+ */
+export function instrumentTypeLabel(
+  type: string | null | undefined,
+  name: string | null | undefined,
+  options: { detail?: boolean } = {},
+): string | undefined {
+  if (isCryptoVenuePerpetual(type, name)) {
+    return options.detail ? "Perpetual futures price (24/7 on crypto venues; not the listed future, not spot)" : "Perpetual futures price";
+  }
+  return type?.trim() || undefined;
+}

@@ -2,7 +2,7 @@ import type { FinancialStatement, Quote, TickerFinancials } from "../types/finan
 import type { HeadlessPaneFreshness, HeadlessPaneRow } from "../types/headless";
 import { deriveHeadlessFreshness, type ReportFreshness } from "./pane-functions/freshness";
 import { fxPairObservation, fxRateObservations, type FxRateTiming } from "../plugins/builtin/shared/fx-rate-freshness";
-import { quoteFreshnessFields, REPORTED_DATA } from "../plugins/builtin/shared/report-freshness";
+import { quoteObservation, REPORTED_DATA } from "../plugins/builtin/shared/report-freshness";
 import { latestFinancialPeriod } from "../utils/latest-financial-period";
 
 /**
@@ -25,11 +25,6 @@ export function rowsFreshness(
   );
 }
 
-/** One row per quote shown, as `fn` quote reports carry them: live, delayed or stale for its session. */
-function quoteFreshnessRow(quote: Quote, now: number): HeadlessPaneRow {
-  return { ...quoteFreshnessFields(quote, now), updatedAt: quote.lastUpdated };
-}
-
 /**
  * Worst of across the quotes shown, dated by the newest, with their delay and
  * where their markets stand. Quotes that failed to load say nothing.
@@ -39,7 +34,7 @@ export function quotesFreshness(
   declared?: HeadlessPaneFreshness,
   now = Date.now(),
 ): ReportFreshness | undefined {
-  const rows = [...quotes].filter((quote): quote is Quote => quote != null).map((quote) => quoteFreshnessRow(quote, now));
+  const rows = [...quotes].filter((quote): quote is Quote => quote != null).map((quote) => quoteObservation(quote, now));
   return rows.length > 0 ? rowsFreshness(rows, declared, undefined, now) : undefined;
 }
 

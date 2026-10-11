@@ -14,6 +14,7 @@ import type {
   HeadlessPaneOptionValues,
   HeadlessPaneResult,
   HeadlessPaneRow,
+  HeadlessRowsResult,
   HeadlessSeries,
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
@@ -266,9 +267,14 @@ export function serializeHeadlessPaneResult(
   };
   switch (definition.shape) {
     case "rows": {
-      const rowsResult = result as HeadlessPaneResult & { rows: HeadlessPaneRow[]; columns?: HeadlessPaneColumn[] };
+      const rowsResult = result as HeadlessRowsResult;
       const columns = columnsFor(rowsResult.rows, rowsResult.columns, definition.columns);
-      return { ...common, columns: serializableColumns(columns), rows: rowsResult.rows };
+      return {
+        ...common,
+        columns: serializableColumns(columns),
+        rows: rowsResult.rows,
+        ...(rowsResult.empty && rowsResult.rows.length === 0 ? { empty: rowsResult.empty } : {}),
+      };
     }
     case "bundle": {
       const bundle = result as HeadlessBundleResult;
@@ -593,8 +599,8 @@ export function renderHeadlessPaneText(
   if (notices.length) lines.push(...notices, "");
   switch (definition.shape) {
     case "rows": {
-      const rowsResult = result as HeadlessPaneResult & { rows: HeadlessPaneRow[]; columns?: HeadlessPaneColumn[] };
-      lines.push(renderRows(rowsResult.rows, rowsResult.columns, definition.columns));
+      const rowsResult = result as HeadlessRowsResult;
+      lines.push(renderRows(rowsResult.rows, rowsResult.columns, definition.columns, rowsResult.empty));
       break;
     }
     case "bundle":

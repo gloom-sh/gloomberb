@@ -42,6 +42,7 @@ import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./ove
 import type { OverviewFunctionLink, StatField } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-list/live-valuation";
+import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 
 /** Cells between the Day and 52W ranges when they share a row. */
 const RANGE_PAIR_GAP = 4;
@@ -230,7 +231,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
   });
   const profileFields = buildProfileFields({
-    instrumentType,
+    instrumentType: instrumentTypeLabel(instrumentType, quote?.name || ticker.metadata.name),
     sector,
     industry,
     profile,

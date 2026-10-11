@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { createRoot } from "react-dom/client";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { TapeClientContext } from "../../../plugins/builtin/time-sales/use-tape";
 import { createSnapshotTapeClient } from "../../../plugins/builtin/time-sales/snapshot-client";
 import type { TapeSnapshot } from "../../../api-client/tape";
@@ -72,6 +72,8 @@ declare global {
     __GLOOM_CLI_SHOT_PENDING__?: number;
     __GLOOM_CLI_SHOT_ERROR__?: string;
     __GLOOM_CLI_SHOT_SEMANTIC_UI__?: RemoteUiNodeSnapshot[];
+    /** Redraws the pane this many cells tall and waits for it to settle again: a capture growing to fit its rows. */
+    __GLOOM_CLI_SHOT_RESIZE__?: (heightCells: number) => void;
   }
 }
 
@@ -438,7 +440,20 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
   } as Pick<AppState, "config" | "paneState">;
   const title = getPaneDisplayTitle(titleState, instance, pane, registry.panes);
   const width = payload.widthCells;
-  const height = payload.heightCells;
+  const [height, setHeight] = useState(payload.heightCells);
+  useEffect(() => {
+    let cancelReadiness: (() => void) | null = null;
+    window.__GLOOM_CLI_SHOT_RESIZE__ = (heightCells) => {
+      window.__GLOOM_CLI_SHOT_READY__ = false;
+      setHeight(heightCells);
+      cancelReadiness?.();
+      cancelReadiness = waitForShotReadiness();
+    };
+    return () => {
+      cancelReadiness?.();
+      delete window.__GLOOM_CLI_SHOT_RESIZE__;
+    };
+  }, []);
   // PORT keeps what its basket covers, so a capture never reads as the whole account.
   return (
     <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} statusLine={payload.statusLine === true} preserveStatus={["time-sales", "gpu", "hiring", "apps", "catalysts", "litigation", "perps", "members", "analytics"].includes(pane.id)}>

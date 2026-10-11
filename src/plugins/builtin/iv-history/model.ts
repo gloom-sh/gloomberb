@@ -26,6 +26,35 @@ export interface IvStatRow {
 }
 /** Rank and percentile need this many prior sessions, matching the server. */
 const MIN_RANK_SAMPLES = 120;
+/**
+ * Minutes a symbol's first backfill usually takes from the request that
+ * queued it: nine in ten have history by then (docs/research-data.md).
+ */
+const FIRST_BACKFILL_MINUTES = 10;
+/** For a view that checks again by itself, so it needs no time to come back at. */
+export const FIRST_BACKFILL_TEXT = `a first backfill usually takes under ${FIRST_BACKFILL_MINUTES} minutes`;
+
+/** "06:41 UTC" today, with the date on another day: "2026-10-09 06:41 UTC". */
+function utcClock(time: number, now: number): string {
+  const iso = new Date(time).toISOString();
+  return iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10)
+    ? `${iso.slice(11, 16)} UTC` : `${iso.slice(0, 16).replace("T", " ")} UTC`;
+}
+
+/**
+ * When to look again for a queued symbol's history: "a first backfill usually
+ * takes under 10 minutes, try again after 06:41 UTC", from when it was queued,
+ * or from now when the answer does not say. One queued for longer than that is
+ * running late, and says so rather than give a time it cannot know.
+ */
+export function backfillRetryText(queuedAt: string | null | undefined, now = Date.now()): string {
+  const queued = queuedAt ? Date.parse(queuedAt) : Number.NaN;
+  const from = Number.isFinite(queued) && queued <= now ? queued : now;
+  const retryAt = from + FIRST_BACKFILL_MINUTES * 60_000;
+  return retryAt > now
+    ? `${FIRST_BACKFILL_TEXT}, try again after ${utcClock(retryAt, now)}`
+    : `waiting since ${utcClock(from, now)}, longer than the usual ${FIRST_BACKFILL_MINUTES} minutes; try again shortly`;
+}
 export interface IvHistoryModel {
   symbol: string;
   status: IvHistoryPayload["status"];
@@ -93,7 +122,7 @@ function byMethod(series: readonly IvPoint[], method: IvMethod, field: "iv30" | 
  */
 export function projectIvHistory(
   payload: IvHistoryPayload, prices: readonly PricePoint[],
-  options: { lookback?: IvLookback; hvWindow?: HvWindow } = {},
+  options: { lookback?: IvLookback; hvWindow?: HvWindow; now?: number } = {},
 ): IvHistoryModel {
   const lookback = options.lookback ?? "1Y";
   const window = options.hvWindow ?? 20;
@@ -139,7 +168,9 @@ export function projectIvHistory(
     seriesStat("spread", `IV 30d - HV ${window}`, "points", spreadAll, "trade-close"),
     seriesStat("term", "IV 30d / 90d", "ratio", termAll, "trade-close"));
 
-  if (payload.status === "queued") warnings.push(`${payload.symbol} implied volatility history is queued; the first backfill takes a few minutes.`);
+  if (payload.status === "queued") {
+    warnings.push(`${payload.symbol} implied volatility history is queued; ${backfillRetryText(payload.coverage?.addedAt, options.now)}.`);
+  }
   else if (payload.status === "backfilling") warnings.push(`${payload.symbol} history is still backfilling (through ${payload.coverage?.backfilledThrough ?? "--"}).`);
   else if (payload.status === "unavailable" && !payload.warnings.length) warnings.push(`No listed options history found for ${payload.symbol}.`);
   if (!prices.length) warnings.push("Realized volatility unavailable: daily price history is missing.");

@@ -34,6 +34,7 @@ import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFutur
 import type { AppConfig } from "../../types/config";
 import type { FinancialStatement, TickerFinancials } from "../../types/financials";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
+import { instrumentTypeLabel, isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
 import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
 import type { TickerRecord } from "../../types/ticker";
@@ -508,9 +509,9 @@ export async function buildTickerReport({
     lines.push(cliStyles.muted(summaryParts.join(METADATA_SEPARATOR)));
   }
 
-  const instrumentType = quote?.instrumentType?.trim()
+  const instrumentType = instrumentTypeLabel(quote?.instrumentType?.trim()
     || financials.quoteMetadata?.instrumentType?.trim()
-    || tickerFile?.metadata.assetCategory;
+    || tickerFile?.metadata.assetCategory, name, { detail: true });
   const metadataParts = [
     instrumentType ? `Type ${instrumentType}` : undefined,
     (tickerFile?.metadata.sector || profile?.sector) ? `Sector ${tickerFile?.metadata.sector || profile?.sector}` : undefined,
@@ -576,7 +577,9 @@ export async function buildTickerReport({
         ? formatPriceRange(quote.low52w, quote.high52w, quote.currency, quoteOptions)
         : "—"],
       ["Bid / Ask", formatBidAsk(quote.bid, quote.ask, quote.bidSize, quote.askSize, quote.currency, quoteOptions)],
-      ["Volume", quote.volume != null ? formatNumber(quote.volume, 0) : "—"],
+      // A perpetual's price comes with no volume; its 0 means not reported, not no trades.
+      ["Volume", quote.volume != null && !(quote.volume === 0 && isCryptoVenuePerpetual(quote.instrumentType, quote.name))
+        ? formatNumber(quote.volume, 0) : "—"],
       ["Updated", formatTimestamp(quote.lastUpdated)],
     ]);
 
