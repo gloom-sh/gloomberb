@@ -71,6 +71,7 @@ import {
 import {
   historyFacts,
   historyFlagNote,
+  historyGapNote,
   historyAllRangeYears,
   historyIntervalsByRange,
   historyNotes,
@@ -676,7 +677,10 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       // Bars stop arriving on the listing's own trading days, not New York's.
       cadenceExchange: quote?.listingExchangeName || exchange || undefined,
     });
-    const notes = [...historyNotes(range, interval, data[0]?.date), historyFlagNote(data) ?? []].flat();
+    const gaps = historyGapNote(data, {
+      listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
+    });
+    const notes = [...historyNotes(range, interval, data[0]?.date), gaps ?? [], historyFlagNote(data) ?? []].flat();
     const priceColumns: CliResultColumn[] = [
       intraday
         ? { key: "date", header: "Time", format: (value) => typeof value === "string" ? formatUtcTime(value) : "" }
@@ -1383,7 +1387,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       sections: [{
         title: "Bars",
         lines: [
-          `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for.`,
+          `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
           "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every exported row (--csv, --ndjson, --json) carries currency, interval and flag.",
         ],
       }],

@@ -1,8 +1,8 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
 
 /**
- * Plain-words meanings of the rates and auction terms the rates functions
- * show in their rows, headers and footers. `catalog glossary` lists them,
+ * Plain-words meanings of the rates, auction and perpetual-futures terms the
+ * functions show in their rows, headers and footers. `catalog glossary` lists them,
  * `catalog explain <term>` prints one and `fn <function> --explain` follows a
  * report with the ones it shows. Only terms a pane or report actually prints
  * belong here.
@@ -249,6 +249,29 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Monthly-weighted", aliases: ["monthly-weighted method", "calendar weighting"], functions: ["WIRP"],
     shown: ["monthly-weighted"],
     definition: "A meeting's rate read from its own month's contract by weighting the days before and after it, when the next month holds another meeting.",
+  },
+  // Perpetual futures (PERP).
+  {
+    term: "Perpetual", short: "perp", aliases: ["perps", "perpetual future", "perpetual futures", "perpetual swap", "perpetual contract", "perpetual market"],
+    functions: ["PERP"],
+    definition: "A futures contract with no expiry date, so a position can be held for as long as its margin lasts. "
+      + "The funding rate keeps its price close to the asset it tracks.",
+  },
+  {
+    term: "Funding rate", aliases: ["funding", "funding payment", "funding fee", "funding 8h"], functions: ["PERP"],
+    shown: ["Funding %/int", "Funding 8h", "Paid %/int"],
+    definition: "A regular payment between the two sides of a perpetual contract, set to pull its price toward the asset's. "
+      + "Positive means longs pay shorts, negative means shorts pay longs.",
+  },
+  {
+    term: "Open interest", short: "OI", aliases: ["open interest usd"], functions: ["PERP"],
+    definition: "The total value of contracts that are open and not yet closed, counting each buyer and seller pair once, usually in dollars. "
+      + "It rises as new positions open and falls as they close.",
+  },
+  {
+    term: "Premium", aliases: ["mark premium"], functions: ["PERP"],
+    definition: "How far a perpetual's price sits above or below the reference price it tracks, as a percent. "
+      + "Positive means buyers are paying up for the contract; funding pulls it back toward zero.",
   },
 ];
 

@@ -105,16 +105,50 @@ function validatePerpsMarket(data: PerpMarketPayload): PerpMarketPayload {
 }
 const fetchPerpsMarket = async (marketId: string, client: Pick<typeof apiClient, "getCloudPerpsMarket"> = apiClient) => validatePerpsMarket(await client.getCloudPerpsMarket(marketId));
 
-export async function fetchPerpSelection(input: string, client: Pick<typeof apiClient, "getCloudPerpsBoard" | "getCloudPerpsMarket"> = apiClient): Promise<PerpMarketPayload> {
-  const query = input.trim() || "BTC";
+/**
+ * The Market column's label for a market on a Hyperliquid builder dex (`SP500 · XYZ`) read back as the `xyz:SP500`
+ * identity the board search and the venue know it by; anything else is returned as typed.
+ */
+export const marketQuery = (input: string) => {
+  const label = /^([^\s·]+)\s*·\s*([^\s·]+)$/.exec(input.trim());
+  return label ? `${label[2]!.toLowerCase()}:${label[1]}` : input.trim();
+};
+// An identity or symbol, never free text: a market id the server rejects as malformed would surface as raw JSON.
+const SAFE_MARKET_ID = /^[\w.:-]+$/;
+// A venue's usual contract for a base asset, by the identity a market lookup fetches without the board (the free
+// board preview lists a few markets per asset class, an individual market is shown whole). Only the venues
+// Gloom Cloud collects are listed; another venue has no contract to open.
+const VENUE_CONTRACTS: Record<string, (base: string) => string[]> = {
+  hyperliquid: (base) => [`hyperliquid:default:${base}`, `hyperliquid:xyz:${base}`],
+  binance: (base) => [`binance:${base}USDT`],
+  bybit: (base) => [`bybit:${base}USDT`],
+  okx: (base) => [`okx:${base}-USDT-SWAP`, `okx:${base}-USD-SWAP`],
+};
+/**
+ * One market by base asset, underlying, symbol, canonical identity or the Market column's label (`SP500 · XYZ`).
+ * A `venue` opens that venue's contract, from the board's matches or by its own identity; when the venue has none
+ * the usual market comes back and the caller sees its venue differ.
+ */
+export async function fetchPerpSelection(input: string, client: Pick<typeof apiClient, "getCloudPerpsBoard" | "getCloudPerpsMarket"> = apiClient, venue?: string): Promise<PerpMarketPayload> {
+  const query = marketQuery(input) || "BTC";
   if (/^(hyperliquid|binance|bybit|okx|deribit|coinbase|kraken|dydx):/.test(query)) return fetchPerpsMarket(query, client);
   const board = validatePerpsBoard(await client.getCloudPerpsBoard({ search: query }));
-  const exact = board.rows.filter((row) => !row.delisted && [row.baseAsset, row.symbol, row.underlyingSymbol].some((value) => value?.toUpperCase() === query.toUpperCase()));
+  const matches = board.rows.filter((row) => !row.delisted && [row.baseAsset, row.symbol, row.underlyingSymbol].some((value) => value?.toUpperCase() === query.toUpperCase()));
+  const exact = venue && matches.some((row) => row.venue === venue) ? matches.filter((row) => row.venue === venue) : matches;
   const market = exact.find((row) => row.dex === "default") ?? exact.find((row) => row.dex === "xyz") ?? exact[0];
+  if (venue && market?.venue !== venue && /^[A-Za-z0-9]+$/.test(query)) {
+    for (const id of VENUE_CONTRACTS[venue]?.(matches[0]?.baseAsset ?? query.toUpperCase()) ?? []) {
+      const result = await fetchPerpsMarket(id, client);
+      if (result.rows.length) return result;
+    }
+  }
   if (market) return fetchPerpsMarket(market.marketId, client);
-  // Individual latest-value previews are intentionally broader than the fixed board preview.
-  for (const dex of ["default", "xyz"]) {
-    const result = await fetchPerpsMarket(`hyperliquid:${dex}:${query.toUpperCase()}`, client);
+  // Individual latest-value previews are intentionally broader than the fixed board preview. A builder dex's own
+  // identity (`xyz:SP500`) names its Hyperliquid market; a bare symbol is tried on the default dex, then xyz.
+  const builder = /^([a-z0-9]+):(.+)$/i.exec(query);
+  for (const id of builder ? [`hyperliquid:${builder[1]!.toLowerCase()}:${builder[2]}`] : ["default", "xyz"].map((dex) => `hyperliquid:${dex}:${query.toUpperCase()}`)) {
+    if (!SAFE_MARKET_ID.test(id)) continue;
+    const result = await fetchPerpsMarket(id, client);
     if (result.rows.length) return result;
   }
   return { ...board, rows: [], evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals" };

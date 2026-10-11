@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { layoutPaneFooterHintRow, type CombinedPaneFooter, type PaneFooterSegment, type PaneHint } from "./model";
+import { fitPaneFooterInfo, layoutPaneFooterHintRow, type CombinedPaneFooter, type PaneFooterSegment, type PaneHint } from "./model";
 
 const hints: PaneHint[] = [
   { id: "search", key: "/", label: "search" },
@@ -29,6 +29,16 @@ describe("footer hint row", () => {
     expect([...row.hints, ...row.overflow].map((hint) => hint.id)).toEqual(hints.map((hint) => hint.id));
     expect(row.infoWidth).toBeGreaterThanOrEqual("loading".length);
     expect(row.hintsWidth + row.infoWidth).toBeLessThanOrEqual(32);
+  });
+
+  test("a status with shorter forms shows the longest that fits beside the hints, its full text kept as the title", () => {
+    const full = "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed · funding = current estimate";
+    const line: PaneFooterSegment = { id: "line", parts: [{ text: full }], variants: [[{ text: "Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed" }]] };
+    const stale: PaneFooterSegment = { id: "stale", parts: [{ text: "stale" }] };
+    expect(fitPaneFooterInfo([line, stale], full.length + 6)).toEqual([line, stale]);
+    const narrow = fitPaneFooterInfo([line, stale], 70);
+    expect(narrow.map((segment) => segment.parts[0]!.text)).toEqual(["Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed", "stale"]);
+    expect(narrow[0]!.title).toBe(full);
   });
 
   test("a failure keeps more of its sentence than a status word does", () => {

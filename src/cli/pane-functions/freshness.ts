@@ -57,8 +57,26 @@ export interface ReportFreshness {
    * was built. A capture's status line then reads `observed Sun 4 Oct · lag 6d`.
    */
   lagDays?: number;
+  /**
+   * Each source's own newest observation, in the order declared, when the data
+   * comes from several sources polled apart: `asOf` is the newest of them.
+   */
+  sources?: ReportSourceAsOf[];
+  /**
+   * Whole minutes from the oldest of `sources` (or, declared `oldestAge`, the
+   * oldest observation) to when this report was built: `oldest 9 min`.
+   */
+  oldestAgeMinutes?: number;
+  /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
+  note?: string;
   /** When this report was built. */
   retrievedAt: string;
+}
+
+/** One source's newest observation: an ISO instant in UTC. */
+interface ReportSourceAsOf {
+  source: string;
+  asOf: string;
 }
 
 const DEFAULT_REPORT_SOURCE = "Gloom Cloud";
@@ -296,9 +314,24 @@ interface FreshnessInputs {
   now: number;
 }
 
+/** The declared sources that name themselves and carry a time, in the order declared. */
+function declaredSources(declared: HeadlessPaneFreshness, now: number): Array<{ source: string; time: ReportTime }> {
+  return (declared.sources ?? []).flatMap(({ source, asOf }) => {
+    const name = source.trim();
+    const time = observedTime({ asOf }, now, ["asOf"]);
+    return name && time && !time.dateOnly ? [{ source: name, time }] : [];
+  });
+}
+
 function resolveFreshness({ declared, signals, observations, now }: FreshnessInputs): ReportFreshness {
-  const declaredAsOf = observedTime({ asOf: declared.asOf }, now, ["asOf"]);
+  const sources = declaredSources(declared, now);
+  // Sources date the data by their own observations, as a declared as-of does.
+  const declaredAsOf = observedTime({ asOf: declared.asOf }, now, ["asOf"]) ?? newest(sources.map(({ time }) => time));
   const asOf = declaredAsOf ?? newest([...observations.units, ...observations.extra]);
+  // The oldest source, not the newest, says how far behind the view can be.
+  const agedFrom = sources.length ? oldest(sources.map(({ time }) => time))
+    : declared.oldestAge ? oldest(observations.units) ?? asOf : null;
+  const oldestAgeMinutes = agedFrom && !agedFrom.dateOnly ? Math.max(0, Math.floor((now - agedFrom.time) / 60_000)) : null;
   // A loader that dates its data itself also says how old the oldest part is, or nothing;
   // `oldest: null` says the rows are a history, whose first entry is not stale data.
   const oldestTime = declared.oldest != null ? parseReportTime(declared.oldest)
@@ -367,8 +400,9 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const lagDays = declared.dataset && asOf && !quoted && (status === "not-a-feed" || status === "stale")
     ? datasetLagDays(asOf, periodicity, now) : null;
 
+  const note = declared.note?.trim();
   return {
-    source: declared.source?.trim() || DEFAULT_REPORT_SOURCE,
+    source: declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
     asOf: asOf ? isoTime(asOf) : null,
     ...(asOf && oldestTime && asOf.time - oldestTime.time > OLDEST_GAP_MS ? { oldest: isoTime(oldestTime) } : {}),
     status,
@@ -382,6 +416,9 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
     ...(lagDays != null ? { lagDays } : {}),
+    ...(sources.length ? { sources: sources.map(({ source, time }) => ({ source, asOf: isoTime(time) })) } : {}),
+    ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
+    ...(note ? { note } : {}),
     retrievedAt: new Date(now).toISOString(),
   };
 }
@@ -540,7 +577,8 @@ function statusText(freshness: ReportFreshness, short = false): string {
         const count = short ? `${freshness.staleCount}` : `${freshness.staleCount} of ${freshness.observationCount}`;
         return `${rest ? `${rest}, ` : ""}${count} stale`;
       }
-      return freshness.ageMinutes != null ? `stale (${ageText(freshness.ageMinutes)} old)` : "stale";
+      // A line that says how old its oldest observation is does not say it twice.
+      return freshness.ageMinutes != null && freshness.oldestAgeMinutes == null ? `stale (${ageText(freshness.ageMinutes)} old)` : "stale";
     }
     case "not-a-feed":
       return freshness.basis ? `not a live feed (${freshness.basis})` : "not a live feed";
@@ -553,20 +591,48 @@ function statusText(freshness: ReportFreshness, short = false): string {
   }
 }
 
+/** Whether an ISO instant falls on the UTC day the report was built. */
+function onRetrievalDay(iso: string, retrievedAt: string): boolean {
+  return iso.slice(0, 10) === retrievedAt.slice(0, 10);
+}
+
 /**
  * The dated as-of: a session close, a UTC time, a date, or when the report was
- * retrieved; with the oldest observation unless `short`.
+ * retrieved; with the oldest observation unless `short`, or when the line says
+ * how old the oldest is instead. `undated` leaves the day off a time of the
+ * day the report was built, as a pane footer reads today.
  */
-function asOfText(freshness: ReportFreshness, short: boolean, local: boolean): string {
+function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, undated = false): string {
   if (!freshness.asOf) return `retrieved ${timeText(freshness.retrievedAt, local)}`;
   const market = freshness.tradingDayMarket;
   const period = freshness.periodicity;
+  const time = parseReportTime(freshness.asOf);
   const asOf = period ? `${periodText(freshness.asOf, period)} (${period})`
     : freshness.asOfClose
       ? `${tradingDayText(freshness.asOfClose, market)} close`
-      : parseReportTime(freshness.asOf)?.dateOnly ? tradingDayText(freshness.asOf, market) : timeText(freshness.asOf, local);
+      : time?.dateOnly ? tradingDayText(freshness.asOf, market)
+        : undated && time && onRetrievalDay(new Date(time.time).toISOString(), freshness.retrievedAt)
+          ? `${new Date(time.time).toISOString().slice(11, 16)} UTC` : timeText(freshness.asOf, local);
   const oldest = freshness.oldest && (period ? periodText(freshness.oldest, period) : dayText(freshness.oldest));
-  return oldest && !short ? `${asOf} (oldest ${oldest})` : asOf;
+  return oldest && !short && freshness.oldestAgeMinutes == null ? `${asOf} (oldest ${oldest})` : asOf;
+}
+
+/**
+ * Each source's own as-of, the zone named once at the end:
+ * `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC`. The day leads, the newest source's,
+ * and a source observed on another day carries its own (`Binance Sat 10 Oct
+ * 23:58`). `undated` leaves the leading day off when it is the day the report
+ * was built.
+ */
+function sourcesAsOfParts(freshness: ReportFreshness, sources: readonly ReportSourceAsOf[], undated: boolean): string[] {
+  const times = sources.map(({ source, asOf }) => ({ source, iso: new Date(Date.parse(asOf)).toISOString() }));
+  const day = times.reduce((latest, { iso }) => (iso > latest ? iso : latest), "").slice(0, 10);
+  const parts = times.map(({ source, iso }) => {
+    const date = iso.slice(0, 10) === day ? "" : `${dayText(iso).replace(/ \d{4}$/, "")} `;
+    return `${source} ${date}${iso.slice(11, 16)}`;
+  });
+  parts[parts.length - 1] += " UTC";
+  return undated && onRetrievalDay(day, freshness.retrievedAt) ? parts : [dayText(day), ...parts];
 }
 
 /**
@@ -611,19 +677,29 @@ interface StatusLineDetail {
   market?: "short" | "none";
   /** Leave out the reader's local time beside UTC times. */
   local?: "none";
+  /** Leave the day off a time of the day the report was built. */
+  date?: "none";
+  /** Leave out what the figures are (`funding = current estimate`). */
+  note?: "none";
 }
 
 /**
- * The parts of a report's status line: the dated as-of, how current the data
- * is (`15 min delayed`, `live`), and where its markets stand, when known.
+ * The parts of a report's status line: the dated as-of (each source's, when
+ * it names several), how old the oldest observation is when it says, how
+ * current the data is (`15 min delayed`, `live`), where its markets stand,
+ * and what the figures are, when known.
  */
 function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = {}): string[] {
   const now = Date.parse(freshness.retrievedAt);
   const local = detail.local !== "none";
+  const undated = detail.date === "none";
   return [
-    asOfText(freshness, detail.asOf === "short", local),
+    ...(freshness.sources?.length ? sourcesAsOfParts(freshness, freshness.sources, undated)
+      : [asOfText(freshness, detail.asOf === "short", local, undated)]),
+    ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
     statusText(freshness, detail.status === "short"),
     ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
+    ...(freshness.note && detail.note !== "none" ? [freshness.note] : []),
   ];
 }
 
@@ -676,8 +752,36 @@ export function formatStatusLine(freshness: ReportFreshness): string {
 }
 
 /** Whether the status line dates the data by its newest observation and lag (a dataset's), not by a market session. */
-export function datesObservation(freshness: ReportFreshness): freshness is ReportFreshness & { asOf: string; lagDays: number } {
+function datesObservation(freshness: ReportFreshness): freshness is ReportFreshness & { asOf: string; lagDays: number } {
   return freshness.lagDays != null && !!freshness.asOf;
+}
+
+/**
+ * Whether the status line dates the data itself, so a capture leaves out the
+ * pane's own `as of` segment: a dataset's line, or one that dates each source.
+ */
+export function datesPaneData(freshness: ReportFreshness): boolean {
+  return datesObservation(freshness) || (freshness.sources?.length ?? 0) > 0;
+}
+
+/**
+ * The status line a pane's footer shows, the one its report and capture end
+ * with: without the reader's local time, and without the day when the data is
+ * from the day it is read.
+ */
+export function paneStatusLine(freshness: ReportFreshness): string {
+  return paneStatusLineVariants(freshness)[0]!;
+}
+
+/**
+ * `paneStatusLine` from longest to shortest, for a footer to show the first
+ * that fits beside its keys: the market part shortens, the stale total goes,
+ * then what the figures are.
+ */
+export function paneStatusLineVariants(freshness: ReportFreshness): string[] {
+  const pane: StatusLineDetail = { local: "none", date: "none" };
+  const details: StatusLineDetail[] = [pane, { ...pane, market: "short" }, { ...pane, market: "short", status: "short" }, { ...pane, market: "short", status: "short", note: "none" }];
+  return [...new Set(details.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
 }
 
 /**
@@ -707,14 +811,23 @@ export function statusLineVariants(freshness: ReportFreshness): string[] {
     { asOf: "short", status: "short", market: "short", local: "none" },
     { asOf: "short", status: "short", market: "none", local: "none" },
   ];
-  return [...new Set(details.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
+  // A line that dates each source keeps every source's time and their age to
+  // the last: its day goes first, then what the figures are.
+  const shortest = details.at(-1)!;
+  const variants: StatusLineDetail[] = freshness.sources?.length
+    ? [{}, ...details.map((detail) => ({ ...detail, date: "none" as const })), { ...shortest, date: "none", note: "none" }]
+    : freshness.note ? [...details, { ...shortest, note: "none" }] : details;
+  return [...new Set(variants.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
 }
 
 /**
  * The one line every text report ends with, its source then its status line:
  * `Source: Gloom Cloud · Fri 9 Oct close · 15 min delayed · markets closed until Mon`.
  * Without a dated observation it says when the report was retrieved instead.
+ * A line that dates each of its sources names them there, so it is the status
+ * line alone: `Sun 11 Oct 2026 · Binance 02:15 · Bybit 02:24 UTC · oldest 9 min · delayed`.
  */
 export function formatFreshnessLine(freshness: ReportFreshness): string {
-  return [`Source: ${freshness.source}`, ...statusLineParts(freshness)].join(" · ");
+  const parts = statusLineParts(freshness);
+  return (freshness.sources?.length ? parts : [`Source: ${freshness.source}`, ...parts]).join(" · ");
 }

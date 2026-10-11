@@ -68,6 +68,58 @@ test("symbol resolution prefers default crypto and xyz stocks, including individ
   expect(calls[0]).toBe(perpRow().marketId);
 });
 
+test("a Market column label resolves to the market it names and no free text reaches a market id", async () => {
+  const sp500 = perpRow({ marketId: "hyperliquid:xyz:SP500", dex: "xyz", baseAsset: "SP500", symbol: "xyz:SP500" });
+  const searches: unknown[] = [];
+  const ids: string[] = [];
+  const client = {
+    getCloudPerpsBoard: async (query: unknown) => { searches.push(query); return perpBoard({ rows: (query as { search: string }).search === "xyz:SP500" ? [sp500] : [] }); },
+    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ rows: id === sp500.marketId ? [sp500] : [] }); },
+  };
+  // The label the board prints and the identity typed by hand are one market.
+  for (const input of ["SP500 · XYZ", "SP500·XYZ", "xyz:SP500"]) expect((await fetchPerpSelection(input, client)).rows[0]!.marketId).toBe(sp500.marketId);
+  expect(searches).toEqual([{ search: "xyz:SP500" }, { search: "xyz:SP500" }, { search: "xyz:SP500" }]);
+  // Outside the board's preview, the builder dex names its own market; a label nothing carries, or free text, is no market and never a request.
+  ids.length = 0;
+  const preview = { ...client, getCloudPerpsBoard: async () => perpBoard({ access: "preview", rows: [], locked: 300 }) };
+  expect((await fetchPerpSelection("SP500 · XYZ", preview)).rows[0]!.marketId).toBe(sp500.marketId);
+  expect((await fetchPerpSelection("FOO · XYZ", preview)).rows).toEqual([]);
+  expect((await fetchPerpSelection("what is a perp", preview)).rows).toEqual([]);
+  expect(ids).toEqual(["hyperliquid:xyz:SP500", "hyperliquid:xyz:FOO"]);
+});
+
+test("a venue opens its own contract: from the board, by its identity when the free preview lacks it, and otherwise the usual one", async () => {
+  // The free preview lists Binance alone; every contract a venue carries can still be fetched by its identity.
+  const contracts = [venueRow("binance"), venueRow("bybit"), perpRow(), venueRow("okx", { marketId: "okx:BTC-USD-SWAP", symbol: "BTC-USD-SWAP" })];
+  const ids: string[] = [];
+  let boardRows = [contracts[0]!];
+  const client = {
+    getCloudPerpsBoard: async () => perpBoard({ rows: boardRows, access: "preview", locked: 13 }),
+    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ access: "preview", rows: contracts.filter((row) => row.marketId === id) }); },
+  };
+  const venueOf = async (venue?: string) => (await fetchPerpSelection("BTC", client, venue)).rows[0]!.venue;
+  expect(await venueOf("hyperliquid")).toBe("hyperliquid");
+  expect(ids).toEqual(["hyperliquid:default:BTC"]);
+  ids.length = 0;
+  expect(await venueOf("bybit")).toBe("bybit");
+  expect(ids).toEqual(["bybit:BTCUSDT"]);
+  ids.length = 0;
+  // OKX lists the USDT contract first; the USD one is the next identity tried.
+  expect(await venueOf("okx")).toBe("okx");
+  expect(ids).toEqual(["okx:BTC-USDT-SWAP", "okx:BTC-USD-SWAP"]);
+  ids.length = 0;
+  // A venue Gloom Cloud does not collect has no contract to open, and no lookup is made for it.
+  expect(await venueOf("kraken")).toBe("binance");
+  expect(ids).toEqual(["binance:BTCUSDT"]);
+  ids.length = 0;
+  expect(await venueOf()).toBe("binance");
+  // A board that lists the venue's contract is enough.
+  boardRows = [contracts[0]!, contracts[1]!];
+  ids.length = 0;
+  expect(await venueOf("bybit")).toBe("bybit");
+  expect(ids).toEqual(["bybit:BTCUSDT"]);
+});
+
 test("paid caches are isolated per account/plan and failures preserve data except access refusal", async () => {
   perpsMarketCache.reset();
   const data = market();

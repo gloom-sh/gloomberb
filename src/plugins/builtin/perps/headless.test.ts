@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import type { PerpMarketPayload } from "../../../api-client/perps";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -85,7 +86,7 @@ test("evidence reads an OKX reading as derived from its ratio, keeps raw fractio
 
 test("a market nothing matches fails with markets that work, and no market says which one it showed", async () => {
   const args = (argument: string | null) => createTestHeadlessArgs({ argument, rawArgument: argument ?? "", options: { tab: "history", days: "7", metric: "funding" } });
-  await expect(perpsHeadless.load(args("XYZZY"), context([]))).rejects.toThrow('No perpetual market matches "XYZZY". Try BTC, ETH, SOL.');
+  await expect(perpsHeadless.load(args("XYZZY"), context([]))).rejects.toThrow('No perpetual market matches "XYZZY". Try BTC, ETH, SP500, xyz:SP500.');
 
   const shown = await perpsHeadless.load(args(null), context([market]));
   expect(shown.metadata).toMatchObject({ defaultArgument: "BTC", notices: ["Showing BTC. Try fn PERP ETH."] });
@@ -99,7 +100,7 @@ test("a named market with no tab still reports its history, and no market report
   const named = await perpsHeadless.load(args("BTC"), context([market]));
   expect(named.sections.map((section) => section.title)).toEqual(["Latest market", "Own observations", "Paid funding", "Hourly candles", "Long/short history"]);
   const queries: unknown[] = [];
-  const rows = [market, venueRow("bybit", { fundingRate: 0.0002, oiChange24h: 0.1234 }), venueRow("binance", { assetClass: "metals", marketId: "binance:XAUUSDT", baseAsset: "XAU" })];
+  const rows = [market, venueRow("bybit", { fundingRate: 0.0002, oiChange24h: 0.1234, observedAt: "2026-10-03T23:11:40Z" }), venueRow("binance", { assetClass: "metals", marketId: "binance:XAUUSDT", baseAsset: "XAU" })];
   const boardContext = createTestHeadlessContext({ apiClient: { getCloudPerpsBoard: async (query: unknown) => { queries.push(query); return perpBoard({ rows, access: "preview", locked: 2501 }); } } as never });
   const board = await perpsHeadless.load(args(null, { "asset-class": "all", venue: "all", sort: "oi" }), boardContext);
   expect(queries).toEqual([{ sort: "oi" }]);
@@ -108,7 +109,10 @@ test("a named market with no tab still reports its history, and no market report
   expect(text).toMatch(/BTC\s+Bybit\s+84,724.00 USDT\s+\+0.02000% \/8h/);
   expect(text).toContain("+12.34%");
   expect(text).toContain("2,501 more markets need Gloom Pro");
-  expect(text).toContain("Source: Binance, Bybit, Hyperliquid");
+  // Each venue is dated by its own newest row, not the board's newest stamp, and aged by the one furthest behind.
+  expect(text).toContain("Sat 3 Oct 2026 · Binance 23:20 · Bybit 23:11 · Hyperliquid 23:20 UTC · oldest");
+  expect(deriveHeadlessFreshness(perpsHeadless, board, Date.parse("2026-10-03T23:30:00Z"))).toMatchObject({ source: "Binance, Bybit, Hyperliquid", oldestAgeMinutes: 18,
+    sources: [{ source: "Binance", asOf: "2026-10-03T23:20:09.000Z" }, { source: "Bybit", asOf: "2026-10-03T23:11:40.000Z" }, { source: "Hyperliquid", asOf: "2026-10-03T23:20:09.000Z" }] });
   expect(longest(text)).toBeLessThanOrEqual(140);
   // The venue narrows what the server returned; asset class, search and order go to the server.
   const narrowed = await perpsHeadless.load(args("btc", { tab: "board", "asset-class": "crypto", venue: "bybit", sort: "funding" }), boardContext);
@@ -147,5 +151,76 @@ test("rankings and comparisons name the figure they rank and the venues a spread
   // A canonical identity compares its own base asset; an asset no venue lists names ones that work.
   const canonical = await perpsHeadless.load(args("okx:BTC-USDT-SWAP", "compare"), createTestHeadlessContext({ apiClient }));
   expect(canonical.metadata).toMatchObject({ baseAsset: "BTC" });
-  await expect(perpsHeadless.load(args("XYZZY", "compare"), createTestHeadlessContext({ apiClient }))).rejects.toThrow('No perpetual market matches "XYZZY". Try BTC, ETH, SOL.');
+  await expect(perpsHeadless.load(args("XYZZY", "compare"), createTestHeadlessContext({ apiClient }))).rejects.toThrow('No perpetual market matches "XYZZY". Try BTC, ETH, SP500, xyz:SP500.');
+});
+
+test("a Market column label opens its market, and a label nothing carries fails in plain words", async () => {
+  const sp500 = perpRow({ marketId: "hyperliquid:xyz:SP500", dex: "xyz", baseAsset: "SP500", symbol: "xyz:SP500" });
+  const apiClient = {
+    getCloudPerpsBoard: async (query: { search?: string }) => perpBoard({ rows: query.search === "xyz:SP500" ? [sp500] : [] }),
+    getCloudPerpsMarket: async (id: string) => ({ ...perpBoard({ rows: id === sp500.marketId ? [sp500] : [] }), evidence: [], methodologyUrl: "" }),
+    getCloudPerpsHistory: async () => perpHistory({ marketId: sp500.marketId }),
+  } as never;
+  const args = (argument: string, tab = "history") => createTestHeadlessArgs({ argument, rawArgument: argument, options: { tab, days: "7", metric: "funding" } });
+  const opened = await perpsHeadless.load(args("SP500 · XYZ"), createTestHeadlessContext({ apiClient }));
+  expect(opened.metadata).toMatchObject({ marketId: sp500.marketId });
+  expect((await perpsHeadless.load(args("SP500 · XYZ", "board"), createTestHeadlessContext({ apiClient }))).sections[0]).toMatchObject({ rows: [sp500] });
+  await expect(perpsHeadless.load(args("FOO · XYZ"), createTestHeadlessContext({ apiClient }))).rejects.toThrow('No perpetual market matches "FOO · XYZ". Try BTC, ETH, SP500, xyz:SP500.');
+});
+
+test("a free account's locked tables say Locked, and the Pro line says what Pro adds, apart from the errors", async () => {
+  const locked = perpHistory({ locked: true, access: "preview" });
+  const apiClient = { getCloudPerpsBoard: async () => perpBoard({ rows: [market] }), getCloudPerpsMarket: async () => ({ ...perpBoard({ rows: [market], access: "preview" }), evidence: [], methodologyUrl: "" }),
+    getCloudPerpsHistory: async () => locked } as never;
+  const run = async (tab: string) => {
+    const args = createTestHeadlessArgs({ argument: "BTC", rawArgument: "BTC", options: { tab, days: "7", metric: "funding" } });
+    const result = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient }));
+    return { result, text: renderHeadlessPaneText(perpsHeadless, result, args, "PERP") };
+  };
+  const history = await run("history");
+  expect(history.text.match(/^Locked: Gloom Pro$/gm)).toHaveLength(4);
+  expect(history.text).toContain("Pro: Full history requires Gloom Pro");
+  expect(history.text).not.toMatch(/No data|Errors/);
+  // JSON keeps the sections, and the lock stays in errors for readers that only look there.
+  const json = serializeHeadlessPaneResult(perpsHeadless, history.result) as { sections: Array<{ title: string; rows: unknown[]; empty?: string }>; errors: string[] };
+  expect(json.sections.map((section) => section.title)).toEqual(["Latest market", "Own observations", "Paid funding", "Hourly candles", "Long/short history"]);
+  expect(json.sections[1]).toMatchObject({ rows: [], empty: "Locked: Gloom Pro" });
+  expect(json.errors).toEqual(["Full history requires Gloom Pro"]);
+  const evidence = await run("evidence");
+  expect(evidence.text).toMatch(/Observation revisions\nLocked: Gloom Pro/);
+  expect(evidence.text).toContain("Pro: Full evidence requires Gloom Pro");
+});
+
+test("a venue filter names no count it does not have, and a venue with no contract to show is said", async () => {
+  const rows = [venueRow("binance"), venueRow("bybit", { marketId: "bybit:BTCUSDT" })];
+  // Hyperliquid's BTC is outside the free board preview, but an individual market is fetched whole.
+  const known = [...rows, market];
+  const clientFor = (access: "preview" | "pro") => ({
+    getCloudPerpsBoard: async () => perpBoard({ rows, access, locked: access === "pro" ? 0 : 2501 }),
+    getCloudPerpsMarket: async (id: string) => ({ ...perpBoard({ rows: known.filter((row) => row.marketId === id), access }), evidence: [], methodologyUrl: "" }),
+    getCloudPerpsHistory: async (query: { marketId: string }) => perpHistory({ marketId: query.marketId, locked: access === "preview", access }),
+  }) as never;
+  const load = async (argument: string | null, options: Record<string, string>, access: "preview" | "pro" = "preview") => {
+    const args = createTestHeadlessArgs({ argument, rawArgument: argument ?? "", options: { days: "7", metric: "funding", ...options } });
+    const result = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient: clientFor(access) }));
+    return { result, text: renderHeadlessPaneText(perpsHeadless, result, args, "PERP") };
+  };
+  const all = await load(null, { tab: "board", venue: "all" });
+  expect(all.text).toContain("Pro: 2,501 more markets need Gloom Pro");
+  const bybit = await load(null, { tab: "board", venue: "bybit" });
+  expect(bybit.text).toContain("Pro: Bybit markets beyond the free preview need Gloom Pro");
+  expect(bybit.text).not.toContain("2,501");
+  const none = await load(null, { tab: "board", venue: "kraken" });
+  expect(none.text).toMatch(/Markets\nLocked: Gloom Pro\n\nPro: Kraken markets beyond the free preview need Gloom Pro/);
+  expect(none.text).not.toContain("No data");
+
+  // A market opens on the venue asked for, listed on the board or not; only a venue with no contract to open is said.
+  for (const [venue, marketId] of [["bybit", "bybit:BTCUSDT"], ["hyperliquid", market.marketId]] as const) {
+    const opened = (await load("BTC", { venue })).result.metadata;
+    expect(opened).toMatchObject({ marketId });
+    expect(opened).not.toHaveProperty("notices");
+  }
+  expect((await load("BTC", { venue: "kraken" })).result.metadata).toMatchObject({ marketId: "binance:BTCUSDT", notices: ["Kraken has no BTC contract in the free preview; showing Binance."] });
+  expect((await load("BTC", { venue: "kraken" }, "pro")).result.metadata).toMatchObject({ notices: ["Kraken has no BTC contract; showing Binance."] });
+  expect((await load("hyperliquid:default:BTC", { venue: "bybit" })).result.metadata).toMatchObject({ notices: ["hyperliquid:default:BTC is a Hyperliquid market, so the Bybit filter does not apply."] });
 });

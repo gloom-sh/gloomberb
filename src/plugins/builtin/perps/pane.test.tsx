@@ -96,12 +96,15 @@ test("rankings read as five sections of at most ten markets, with the preview's 
   expect(await tui.waitForFrameToContain("Upgrade for the full rankings")).toContain("M2 ");
 });
 
-test("compare spreads 8h funding between the venues it shows, and one venue shows no spread", async () => {
-  serve({ compare: perpBoard({ rows: [venueRow("binance", { fundingRate8h: 0.00003 }), venueRow("bybit", { fundingRate8h: 0.0001 })] }) });
+test("compare spreads 8h funding between the venues it shows, dates each venue, and one venue shows no spread", async () => {
+  serve({ compare: perpBoard({ rows: [venueRow("binance", { fundingRate8h: 0.00003, observedAt: "2026-10-03T23:11:40Z" }), venueRow("bybit", { fundingRate8h: 0.0001 })] }) });
   await mount({ market: "", tab: "compare" });
   const two = await tui.waitForFrameToContain("Funding spread 8h");
   expect(two).toContain("0.0070pp");
   expect(two).toContain("Bybit over Binance");
+  // The footer dates each venue by its own row, as `fn PERP` does, and the table keeps when each was observed.
+  expect(two).toContain("Binance 23:11 · Bybit 23:20 UTC · oldest");
+  expect(two).toContain("10-03 23:11");
   await remount();
   serve({ compare: perpBoard({ access: "preview", locked: 3, rows: [perpRow()] }) });
   await mount({ market: "", tab: "compare" });

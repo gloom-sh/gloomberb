@@ -92,6 +92,11 @@ function indexRootNote(query: string, candidates: TickerSearchCandidate[]): stri
   return indexRootTryLine(root);
 }
 
+/** Search finds tickers and companies; a function, a dataset or a term is in the catalog, so an empty search points there. */
+function catalogHint(query: string): string {
+  return `Search finds tickers and company names. Try: gloomberb catalog "${query.replace(/"/g, "")}"`;
+}
+
 export function buildSearchReport({
   query,
   candidates,
@@ -104,7 +109,7 @@ export function buildSearchReport({
   if (indexNote) lines.push("", indexNote);
 
   if (candidates.length === 0) {
-    lines.push(cliStyles.muted("No matches found."));
+    lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
 
@@ -161,10 +166,11 @@ export async function search(query: string, dependencies: SearchCommandDependenc
 
     if (dependencies.printResult) {
       const indexNote = indexRootNote(trimmedQuery, candidates);
+      const warnings = [...(indexNote ? [indexNote] : []), ...(candidates.length === 0 ? [catalogHint(trimmedQuery)] : [])];
       dependencies.printResult({
         data: searchCandidateRows(candidates),
         metadata: { query: trimmedQuery },
-        warnings: indexNote ? [indexNote] : undefined,
+        warnings: warnings.length ? warnings : undefined,
       }, {
         columns: [
           { key: "category", header: "Category" },

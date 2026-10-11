@@ -37,6 +37,7 @@ import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
+import { isProLock } from "./access-gate";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -486,6 +487,12 @@ function incompleteDetail(
   return status.unavailableSymbols.length > 0 ? `no data for ${status.unavailableSymbols.join(", ")}` : true;
 }
 
+/** What Gloom Pro would unlock apart from what failed: a lock is not an error, though it stays in `errors` for JSON. */
+function splitErrors(result: HeadlessPaneResult): { locked: string[]; failed: string[] } {
+  const errors = result.errors ?? [];
+  return { locked: errors.filter(isProLock), failed: errors.filter((error) => !isProLock(error)) };
+}
+
 function textNotices(result: HeadlessPaneResult): string[] {
   const notices = result.metadata?.notices;
   if (!Array.isArray(notices)) return [];
@@ -539,12 +546,14 @@ export function headlessReportTables(
       return _exhaustive;
     }
   }
+  const { locked, failed } = splitErrors(result);
   return {
     tables,
     footer: reportFooterLines({
       freshness,
       incomplete: incompleteDetail(result, status),
-      errors: result.errors,
+      locked,
+      errors: failed,
       notes: [...textNotices(result), ...(result.notes ?? [])],
     }),
   };
@@ -606,7 +615,9 @@ export function renderHeadlessPaneText(
     }
   }
   if (result.notes?.length) lines.push("", ...renderMessages("Notes", result.notes));
-  if (result.errors?.length) lines.push("", ...renderMessages("Errors", result.errors));
+  const { locked, failed } = splitErrors(result);
+  if (locked.length) lines.push("", ...renderMessages("Pro", locked));
+  if (failed.length) lines.push("", ...renderMessages("Errors", failed));
   return [lines.join("\n").trimEnd(), "", cliStyles.muted(wrapToTerminal(formatFreshnessLine(freshness)))].join("\n");
 }
 

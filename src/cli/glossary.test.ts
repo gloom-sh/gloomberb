@@ -35,3 +35,19 @@ test("a report explains the terms its own function shows, read as whole labels",
   expect(terms(reportGlossary("GC", "Maturity  Yield  Chg bp\n10Y  5.24%  +9bp\n2026-10-08 Bill"))).toEqual(["Basis point"]);
   expect(reportGlossary("HP", auctions)).toEqual([]);
 });
+
+test("the perpetual-futures terms are found by plain names and explained from what PERP prints", () => {
+  // `funding rate` once found only the bank funding rate, a different thing.
+  expect(terms(lookupGlossary("funding rate").exact)).toEqual(["Funding rate"]);
+  expect(terms(lookupGlossary("perp").exact)).toEqual(["Perpetual"]);
+  expect(terms(lookupGlossary("perpetual futures").exact)).toEqual(["Perpetual"]);
+  expect(terms(lookupGlossary("OI").exact)).toEqual(["Open interest"]);
+  expect(terms(lookupGlossary("open interest").exact)).toEqual(["Open interest"]);
+  expect(terms(lookupGlossary("premium").exact)).toEqual(["Premium"]);
+  for (const entry of GLOSSARY.filter((candidate) => candidate.functions.includes("PERP"))) {
+    expect(entry.definition).not.toMatch(/Hyperliquid|Binance|Bybit|OKX|Gloom/);
+  }
+  const board = "Perpetual markets\n\nMarket  Venue  Funding %/int  Premium %  OI USD  OI 24h %\nBTC  Binance  -0.00135% /8h  -0.044%  7.69B  +0.24%\n\nSource: Binance";
+  expect(terms(reportGlossary("PERP", board))).toEqual(["Perpetual", "Funding rate", "Open interest", "Premium"]);
+  expect(terms(reportGlossary("PERP", "Highest Funding 8h\nMarket  Venue  Funding 8h %  OI USD"))).toEqual(["Funding rate", "Open interest"]);
+});
