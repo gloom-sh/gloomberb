@@ -9,7 +9,7 @@ import {
   type PluginAutoUpdateState,
   type PluginCheckout,
 } from "./auto-update";
-import type { PluginManager } from "./builtin/plugin-marketplace/store";
+import type { PluginManager } from "./marketplace/store";
 import { checkPluginCompatibility, readPluginManifest } from "./compat";
 import { installedPeerPlugins } from "./host-link";
 import { getPluginCacheDir, getPluginsDir, pluginsMissingHostExports, readPluginCommit } from "./loader";
@@ -60,7 +60,7 @@ function createNodeAutoUpdateDeps(manager: PluginManager): PluginAutoUpdateDeps 
   return {
     checkouts: readCheckouts,
     registry: async () => {
-      const { loadRegistry } = await import("./builtin/plugin-marketplace/feed");
+      const { loadRegistry } = await import("./marketplace/feed");
       const feed = await loadRegistry();
       return feed.error && feed.plugins.length === 0 ? null : feed.plugins;
     },

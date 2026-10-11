@@ -10,7 +10,7 @@ import { applyPluginToggles } from "../../ownership";
 import { PLUGIN_MARKETPLACE_PANE_ID } from "../../marketplace/ids";
 import { PluginMarketplacePane } from "./pane";
 import { PACK_PLUGIN_IDS } from "../../marketplace/packs";
-import { setMarketplaceHost, type MarketplaceHost } from "./store";
+import { setMarketplaceHost, type MarketplaceHost } from "../../marketplace/store";
 
 const tui = createOpenTuiTestHarness();
 

@@ -38,7 +38,7 @@ import { useAppSelector } from "../../../state/app/context";
 import { BUILTIN_EDITORIAL } from "../../builtin-editorial";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { DEBUG_LOG_TEMPLATE_ID } from "../debug/template";
-import { loadRegistry, registryPluginUrl } from "./feed";
+import { loadRegistry, registryPluginUrl } from "../../marketplace/feed";
 import { highlightedCodes, pluginFunctions, proFunctionCount, type PluginFunction } from "../../plugin-functions";
 import {
   matchingPack,
@@ -69,9 +69,9 @@ import {
   type MarketplaceRow,
   type MarketplaceStatusKind,
   type RegistryPlugin,
-} from "./model";
-import { activateInstall, activateInstalledPlugin } from "./activation";
-import { getMarketplaceHost, getPluginManager, type MarketplaceHost } from "./store";
+} from "../../marketplace/model";
+import { activateInstall, activateInstalledPlugin } from "../../marketplace/activation";
+import { getMarketplaceHost, getPluginManager, type MarketplaceHost } from "../../marketplace/store";
 
 import { PLUGIN_MARKETPLACE_PANE_ID } from "../../marketplace/ids";
 

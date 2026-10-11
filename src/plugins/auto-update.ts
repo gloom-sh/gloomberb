@@ -3,8 +3,8 @@ import { requiredGloomberb } from "../utils/semver";
 import { VERSION } from "../version";
 import { findAbsorbedPlugin } from "./absorbed";
 import { applicationPluginMeta } from "./builtin/builtin-plugin-meta";
-import { hasUpdate, type RegistryPlugin } from "./builtin/plugin-marketplace/model";
-import type { PluginOperationResult, PluginPin } from "./builtin/plugin-marketplace/store";
+import { hasUpdate, type RegistryPlugin } from "./marketplace/model";
+import type { PluginOperationResult, PluginPin } from "./marketplace/store";
 
 /**
  * Keeps official plugins current without their users having to.

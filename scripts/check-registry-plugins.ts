@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
-import { loadRegistry } from "../src/plugins/builtin/plugin-marketplace/feed";
+import { loadRegistry } from "../src/plugins/marketplace/feed";
 import { PluginBundleError, bundleExternalPlugin } from "../src/plugins/bundle";
 import { findMissingHostExport } from "../src/plugins/compat";
 import { linkHostPackages } from "../src/plugins/host-link";

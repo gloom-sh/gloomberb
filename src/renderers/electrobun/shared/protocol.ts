@@ -7,7 +7,7 @@ import type { CachedResourceRecord, ResourceCacheKey } from "../../../data/resou
 import type { TickerRecord } from "../../../types/ticker";
 import type { ReleaseInfo, UpdateCheckResult, UpdateProgress } from "../../../updater";
 import type { CapabilityManifest } from "../../../capabilities";
-import type { PluginOperationResult, PluginPin } from "../../../plugins/builtin/plugin-marketplace/store";
+import type { PluginOperationResult, PluginPin } from "../../../plugins/marketplace/store";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../../../utils/http-proxy-response";
 

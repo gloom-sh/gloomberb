@@ -8,8 +8,8 @@ import * as nodeConfigStoreHost from "../../data/config/store/node";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import { pluginAutoUpdateEnabled } from "../../plugins/auto-update";
 import { startNodePluginAutoUpdates } from "../../plugins/auto-update-node";
-import { activateUpdatedPlugins } from "../../plugins/builtin/plugin-marketplace/activation";
-import { getMarketplaceHost, setPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
+import { activateUpdatedPlugins } from "../../plugins/marketplace/activation";
+import { getMarketplaceHost, setPluginManager } from "../../plugins/marketplace/store";
 import { createNodePluginManager } from "../../plugins/manager-node";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
 import { getLoadablePlugins } from "../../plugins/catalog";
@@ -27,7 +27,7 @@ import type { RemoteControlAdapter } from "../../remote/app-host";
 import { startRemoteControlServer, type RemoteControlServer } from "../../remote/server";
 import { createAppServices } from "../../core/app-services";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
-import { loadOfficialPluginIds } from "../../plugins/builtin/plugin-marketplace/feed";
+import { loadOfficialPluginIds } from "../../plugins/marketplace/feed";
 import { flushCrashReports, installCrashReporter } from "../../telemetry/crash-reports";
 import {
   CRASH_REPORT_EXIT_FLUSH_MS,

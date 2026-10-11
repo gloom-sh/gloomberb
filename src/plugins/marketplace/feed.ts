@@ -1,5 +1,5 @@
-import { createThrottledFetch } from "../../../utils/throttled-fetch";
-import { isOfficialPluginRepo } from "../../auto-update";
+import { createThrottledFetch } from "../../utils/throttled-fetch";
+import { isOfficialPluginRepo } from "../auto-update";
 import type { RegistryFeed, RegistryPlugin } from "./model";
 
 /**

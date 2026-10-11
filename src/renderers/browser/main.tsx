@@ -20,7 +20,7 @@ import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
 import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
-import { loadOfficialPluginIds } from "../../plugins/builtin/plugin-marketplace/feed";
+import { loadOfficialPluginIds } from "../../plugins/marketplace/feed";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../telemetry/crash-reports";
 import {
   browserDoNotTrack,
