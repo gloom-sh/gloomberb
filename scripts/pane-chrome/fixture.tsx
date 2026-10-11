@@ -41,7 +41,9 @@ import { FearGreedPane } from "../../src/plugins/builtin/fear-greed/pane";
 import { loadFearGreed } from "../../src/plugins/builtin/fear-greed/cache";
 import type { FearGreedData } from "../../src/plugins/builtin/fear-greed/data";
 import { PriceSparkline } from "../../src/components/price-sparkline/view";
-import { capturePaneScreenshotPngBase64 } from "../../src/utils/dom-screenshot";
+// A namespace import: the frame budget builds this file against the base branch's
+// sources too, which may not have every capture yet.
+import * as domScreenshot from "../../src/utils/dom-screenshot";
 
 declare global {
   interface Window {
@@ -53,6 +55,10 @@ declare global {
       windowControls: string[];
       /** The pane's Copy Screenshot image, as a PNG data URL. */
       capturePane(paneId: string): Promise<string>;
+      /** pane.screenshot's image painted at `scale`, under `maxBytes`, or why it could not be. */
+      captureForAssistant(paneId: string, scale: number, maxBytes: number, minWidth: number): Promise<
+        { width: number; height: number; bytes: number; reduced: boolean; screen: { width: number; height: number } } | { error: string }
+      >;
       /** Panes whose `?` asked for their docs, in order. */
       docs: string[];
     };
@@ -148,15 +154,26 @@ const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><p
 
 /**
  * A canvas chart (the composite chart's bitmap) over an SVG one (a sparkline),
- * on invented data, then the CSS image layers charts draw: a dashed legend
- * cue (a repeating gradient), a colour scale (a gradient) and a toolbar icon
- * (a colour box cut by an SVG mask).
+ * on invented data, with a toolbar laid over the canvas by z-index, then the
+ * CSS image layers charts draw: a dashed legend cue (a repeating gradient), a
+ * colour scale (a gradient) and a toolbar icon (a colour box cut by an SVG mask).
  */
 function ChartsPane({ width }: PaneProps) {
   const points = inventedSeries(120, 100, 18);
   return (
     <Box flexDirection="column" paddingX={1}>
-      <Box data-shot-region="canvas-chart" height={14} marginTop={1}>
+      <Box data-shot-region="canvas-chart" height={14} marginTop={1} position="relative">
+        {/* Before the canvas in the document and above it by z-index, as a chart's drawing toolbar sits. */}
+        <Box
+          data-shot-region="canvas-overlay"
+          position="absolute"
+          left={2}
+          top={1}
+          zIndex={5}
+          style={{ backgroundColor: "#be123c", width: 120, height: 28, padding: 8 }}
+        >
+          <Box style={{ backgroundColor: "#fde68a", width: 64, height: 12 }} />
+        </Box>
         <StaticChartSurface
           points={points}
           width={Math.max(24, width - 2)}
@@ -419,7 +436,20 @@ window.__paneChrome = {
   registry: paneRegistry,
   windowControls: [],
   docs: [],
-  capturePane: async (paneId) => `data:image/png;base64,${(await capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
+  capturePane: async (paneId) => `data:image/png;base64,${(await domScreenshot.capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
+  captureForAssistant: async (paneId, scale, maxBytes, minWidth) => {
+    try {
+      const { pngBase64: _png, ...shot } = await domScreenshot.capturePaneImage({
+        instanceId: paneId,
+        scaleFor: () => scale,
+        maxBytes,
+        minWidth,
+      });
+      return shot;
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) };
+    }
+  },
 };
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
 if (scenario === "screenshot") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);

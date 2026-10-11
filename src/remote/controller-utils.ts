@@ -18,11 +18,18 @@ export function ok<T>(data: T, rev?: string, state?: RemoteIncludedState): Remot
   };
 }
 
+/** A failure with its own code, such as `unsupported` for an operation this app cannot run. */
+export class RemoteOperationError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+  }
+}
+
 export function fail(code: string, error: unknown): RemoteControlResponse {
   return {
     ok: false,
     error: {
-      code,
+      code: error instanceof RemoteOperationError ? error.code : code,
       message: error instanceof Error ? error.message : String(error),
     },
   };

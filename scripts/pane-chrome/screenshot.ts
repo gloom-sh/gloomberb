@@ -3,6 +3,12 @@ import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
 import { cacheDir, evaluate, launchBrowser, waitFor, type Cdp } from "./browser";
 import { serveFixturePage } from "./page";
+import {
+  PANE_SCREENSHOT_MAX_BYTES,
+  PANE_SCREENSHOT_MAX_EDGE,
+  PANE_SCREENSHOT_MIN_WIDTH,
+  paneScreenshotScale,
+} from "../../src/remote/pane-screenshot";
 
 /**
  * Copy Screenshot paints a pane into a canvas itself (src/utils/dom-screenshot.ts),
@@ -11,9 +17,15 @@ import { serveFixturePage } from "./page";
  * This renders chart panes on invented data in headless Chrome (fixture.tsx,
  * `screenshot`), takes the pane's Copy Screenshot image and Chrome's own
  * screenshot of the same pane, and checks that each chart region has about as
- * much ink in the copy as on screen: an SVG gauge, canvas charts, an SVG chart
- * and the gradients and masked icons charts draw with CSS. Both device pixel
+ * much ink in the copy as on screen: an SVG gauge, canvas charts, an SVG chart,
+ * a toolbar laid over a canvas by z-index (GLO-500), and the gradients and
+ * masked icons charts draw with CSS. Both device pixel
  * ratios are checked, the 2x one being a Retina Mac.
+ *
+ * The image an assistant gets through pane.screenshot (GLO-500) is the same
+ * paint at its own size; the check also holds it to its bounds: twice the
+ * on-screen size within the long edge, and shrunk under a byte cap that the
+ * first paint overshoots, or refused when even the narrowest image would not fit.
  *
  *   bun run check:pane-screenshot [--root <checkout>] [--out <dir>]
  *
@@ -40,6 +52,7 @@ const REGIONS: Region[] = [
   { pane: "fear-greed:a", name: "speedometer gauge (SVG)", selector: "svg[role=img]" },
   { pane: "fear-greed:a", name: "index history (canvas)", selector: "[data-gloom-role=composite-chart-panel]" },
   { pane: "charts:a", name: "line chart (canvas)", selector: "[data-shot-region=canvas-chart]" },
+  { pane: "charts:a", name: "toolbar over the canvas (z-index)", selector: "[data-shot-region=canvas-overlay]" },
   { pane: "charts:a", name: "sparkline (SVG)", selector: "[data-shot-region=svg-chart] svg" },
   { pane: "charts:a", name: "dashed legend cue (repeating gradient)", selector: "[data-shot-region=dashed-cue]" },
   { pane: "charts:a", name: "colour scale (gradient)", selector: "[data-shot-region=colour-scale]" },
@@ -155,6 +168,49 @@ async function checkPanes(cdp: Cdp, scale: number, out: string | undefined): Pro
   return results;
 }
 
+interface Shot { width: number; height: number; bytes: number; reduced: boolean; screen: { width: number; height: number } }
+interface SizeResult { pane: string; name: string; detail: string; ok: boolean }
+
+/** pane.screenshot's bounds, in the real browser's PNG encoder. */
+async function checkAssistantSizes(cdp: Cdp): Promise<SizeResult[]> {
+  const results: SizeResult[] = [];
+  const describe = (shot: Shot | { error: string }) => ("error" in shot ? shot.error : `${shot.width}x${shot.height}, ${shot.bytes} bytes${shot.reduced ? ", shrunk" : ""}`);
+  for (const pane of [...new Set(REGIONS.map((region) => region.pane))]) {
+    const screen = await evaluate<{ width: number; height: number }>(cdp, `(() => {
+      const box = document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id="${pane}"]').getBoundingClientRect();
+      return { width: Math.ceil(box.width), height: Math.ceil(box.height) };
+    })()`);
+    // The scale pane.screenshot picks by default: twice the screen, within the long edge.
+    const scale = paneScreenshotScale(screen);
+    const capture = (maxBytes: number) => evaluate<Shot | { error: string }>(
+      cdp,
+      `window.__paneChrome.captureForAssistant(${JSON.stringify(pane)}, ${scale}, ${maxBytes}, ${PANE_SCREENSHOT_MIN_WIDTH})`,
+    );
+    const first = await capture(PANE_SCREENSHOT_MAX_BYTES);
+    results.push({
+      pane,
+      name: "default size",
+      detail: describe(first),
+      ok: !("error" in first) && !first.reduced && first.bytes <= PANE_SCREENSHOT_MAX_BYTES
+        && Math.abs(first.width - screen.width * scale) <= 1
+        && Math.max(first.width, first.height) <= PANE_SCREENSHOT_MAX_EDGE,
+    });
+    if ("error" in first) continue;
+    const cap = Math.floor(first.bytes / 3);
+    const shrunk = await capture(cap);
+    results.push({
+      pane,
+      name: `shrunk under ${cap} bytes`,
+      detail: describe(shrunk),
+      ok: !("error" in shrunk) && shrunk.reduced && shrunk.bytes <= cap
+        && shrunk.width < first.width && shrunk.width >= PANE_SCREENSHOT_MIN_WIDTH,
+    });
+    const refused = await capture(500);
+    results.push({ pane, name: "refused under 500 bytes", detail: describe(refused), ok: "error" in refused && refused.error.includes("stays over") });
+  }
+  return results;
+}
+
 const percent = (share: number) => `${Math.round(share * 100)}%`;
 
 async function main(): Promise<void> {
@@ -165,6 +221,7 @@ async function main(): Promise<void> {
   const browser = await launchBrowser("screenshot", VIEWPORT.width, VIEWPORT.height);
   const { cdp } = browser;
   const results: Result[] = [];
+  let sizes: SizeResult[] = [];
   try {
     const loaded = cdp.once("Page.loadEventFired");
     await cdp.send("Page.navigate", { url: new URL("?scenario=screenshot", page.url).href });
@@ -175,6 +232,7 @@ async function main(): Promise<void> {
       throw new Error(`the screenshot fixture did not render: ${await evaluate(cdp, "document.body.innerText.slice(0, 400)")}`);
     }
     for (const scale of [1, 2]) results.push(...await checkPanes(cdp, scale, out));
+    sizes = await checkAssistantSizes(cdp);
     if (page.strayRequests.length > 0) throw new Error(`the fixture requested files it does not have: ${page.strayRequests.join(", ")}`);
   } finally {
     await browser.close();
@@ -184,20 +242,31 @@ async function main(): Promise<void> {
   for (const result of results) {
     console.log(`${result.ok ? "ok  " : "FAIL"} ${result.pane} ${result.name} @${result.scale}x: ink ${result.copy} in the copy, ${result.screen} on screen, ${percent(result.differing)} differing`);
   }
+  for (const size of sizes) {
+    console.log(`${size.ok ? "ok  " : "FAIL"} ${size.pane} pane.screenshot ${size.name}: ${size.detail}`);
+  }
   const failures = results.filter((result) => !result.ok);
+  const sizeFailures = sizes.filter((size) => !size.ok);
   const summary = [
     "### Pane screenshot check",
     "",
     "| | Pane | Region | Scale | Ink on screen | Ink in the copy | Differing |",
     "|---|---|---|---|---|---|---|",
     ...results.map((result) => `| ${result.ok ? "ok" : "**failed**"} | ${result.pane} | ${result.name} | ${result.scale}x | ${result.screen} | ${result.copy} | ${percent(result.differing)} |`),
+    "",
+    "| | Pane | pane.screenshot | Image |",
+    "|---|---|---|---|",
+    ...sizes.map((size) => `| ${size.ok ? "ok" : "**failed**"} | ${size.pane} | ${size.name} | ${size.detail} |`),
   ].join("\n");
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   for (const failure of failures) {
     const message = `${failure.pane} ${failure.name} at ${failure.scale}x: ink ${failure.copy} in the copy, ${failure.screen} on screen, ${percent(failure.differing)} differing`;
     if (process.env.GITHUB_ACTIONS) console.log(`::error title=Pane screenshot::${message}`);
   }
-  if (failures.length > 0) process.exitCode = 1;
+  for (const size of sizeFailures) {
+    if (process.env.GITHUB_ACTIONS) console.log(`::error title=Pane screenshot::${size.pane} pane.screenshot ${size.name}: ${size.detail}`);
+  }
+  if (failures.length > 0 || sizeFailures.length > 0) process.exitCode = 1;
 }
 
 await main();

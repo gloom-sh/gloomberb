@@ -33,7 +33,7 @@ import type {
 import type { RemoteUiRegistry } from "./semantic-tree";
 import { commandBarResultsFromNodes, isCommandBarInputNode } from "./command-bar";
 import { findCommandBarResult, findMatchingUiNode } from "./matching";
-import { REMOTE_AGENT_HELP, remoteControlSchema } from "./schema";
+import { REMOTE_AGENT_HELP, REMOTE_OPERATIONS, remoteControlSchema } from "./schema";
 import {
   fail,
   mutationSummary,
@@ -41,8 +41,16 @@ import {
   ok,
   optionalNumber,
   optionalString,
+  RemoteOperationError,
   stringInput,
 } from "./controller-utils";
+import {
+  PANE_SCREENSHOT_MAX_BYTES,
+  PANE_SCREENSHOT_MAX_EDGE,
+  PANE_SCREENSHOT_MIN_WIDTH,
+  paneScreenshotScale,
+  type CapturePane,
+} from "./pane-screenshot";
 import {
   buildGridDockRoot,
   regionToDockPosition,
@@ -78,10 +86,14 @@ interface AppRemoteControllerOptions {
    * they decline or `signal` aborts. Without it such operations refuse.
    */
   confirmChange?: (prompt: RemoteChangePrompt, signal?: AbortSignal) => Promise<boolean>;
+  /** Paints one pane of this window as a PNG; absent where there are no pixels (the TUI). */
+  capturePane?: CapturePane;
 }
 
 /** Operations whose dry run resolves what they would change instead of echoing the input. */
 const PLANNED_OPERATIONS = new Set(["watchlist.add", "watchlist.remove"]);
+/** Reads change nothing, so their answer carries no layout or command-bar state. */
+const READ_OPERATIONS = new Set(REMOTE_OPERATIONS.filter((entry) => entry.sideEffectLevel === "none").map((entry) => entry.id));
 
 // A command with a wizard closes the bar and opens its form, so every call says whether one is open.
 const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar", "form"];
@@ -116,6 +128,7 @@ export function createAppRemoteController({
   isDialogOpen = isAnyDialogOpen,
   closeTopmostDialog = dismissTopmostDialog,
   confirmChange,
+  capturePane,
 }: AppRemoteControllerOptions) {
   const { buildIncludedState, getResource, patchTarget } = createRemoteResources({
     dispatch,
@@ -283,6 +296,50 @@ export function createAppRemoteController({
     return getAfterMutationSummary({ invokedNode: node, result });
   };
 
+  /** The focused pane, or the one asked for, as the window draws it now. */
+  const screenshotPane = async (input: Record<string, unknown>): Promise<unknown> => {
+    if (!capturePane) {
+      throw new RemoteOperationError(
+        "unsupported",
+        "Pane screenshots need the Gloom desktop app: the terminal (TUI) app draws text, not pixels. Read the pane's content instead.",
+      );
+    }
+    const width = input.width;
+    if (width !== undefined && (
+      typeof width !== "number" || !Number.isInteger(width) || width < PANE_SCREENSHOT_MIN_WIDTH || width > PANE_SCREENSHOT_MAX_EDGE
+    )) {
+      throw new Error(`width must be a whole number of pixels from ${PANE_SCREENSHOT_MIN_WIDTH} to ${PANE_SCREENSHOT_MAX_EDGE}.`);
+    }
+    const state = getState();
+    const layout = state.config.layout;
+    const asked = optionalString(input, "paneId");
+    const instance = asked
+      ? resolvePaneInstance(layout, asked)
+      : state.focusedPaneId ? findPaneInstance(layout, state.focusedPaneId) : undefined;
+    if (!instance) {
+      throw new Error(asked ? `No pane "${asked}" is open in this layout. Read app://panes for the open ones.` : "No pane is focused. Pass paneId.");
+    }
+    if ((layout.detached ?? []).some((entry) => entry.instanceId === instance.instanceId)) {
+      throw new Error(`Pane "${instance.instanceId}" is in its own window; dock it to capture it.`);
+    }
+    const shot = await capturePane({
+      instanceId: instance.instanceId,
+      scaleFor: (screen) => paneScreenshotScale(screen, width as number | undefined),
+      maxBytes: PANE_SCREENSHOT_MAX_BYTES,
+      minWidth: PANE_SCREENSHOT_MIN_WIDTH,
+    });
+    return {
+      pane: {
+        instanceId: instance.instanceId,
+        paneId: instance.paneId,
+        ...(instance.title ? { title: instance.title } : {}),
+      },
+      image: { mimeType: "image/png", data: shot.pngBase64, width: shot.width, height: shot.height, bytes: shot.bytes },
+      screen: shot.screen,
+      ...(shot.reduced ? { reduced: true } : {}),
+    };
+  };
+
   const workflowDeps = () => ({
     dataProvider: pluginRegistry.marketData,
     tickerRepository: pluginRegistry.tickerRepository,
@@ -363,6 +420,8 @@ export function createAppRemoteController({
         pluginRegistry.hidePane(paneId);
         return getAfterMutationSummary({ affectedPaneIds: [paneId] });
       }
+      case "pane.screenshot":
+        return screenshotPane(input);
       case "pane.createFromTemplate":
         await pluginRegistry.createPaneFromTemplateAsync(
           stringInput(input, "templateId"),
@@ -571,7 +630,8 @@ export function createAppRemoteController({
           return ok(await queryMarketData(request));
         case "call": {
           const data = await call(request.operation, request.input, request.dryRun, context);
-          return ok(data, undefined, buildIncludedState(request.include, request.dryRun ? [] : DEFAULT_MUTATION_INCLUDE));
+          const defaults = request.dryRun || READ_OPERATIONS.has(request.operation) ? [] : DEFAULT_MUTATION_INCLUDE;
+          return ok(data, undefined, buildIncludedState(request.include, defaults));
         }
         case "patch": {
           const target = patchTarget(request.resource);

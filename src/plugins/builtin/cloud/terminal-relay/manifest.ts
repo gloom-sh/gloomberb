@@ -58,6 +58,7 @@ const DESTRUCTIVE_OPERATIONS = new Set(["layout.delete", "pane.close", "layout.c
 const IDEMPOTENT_OPERATIONS = new Set([
   "pane.show",
   "pane.focus",
+  "pane.screenshot",
   "ticker.select",
   "ticker.switchTab",
   "layout.switch",
@@ -99,10 +100,14 @@ function buildTools(): TerminalRelayTool[] {
     const external = operation.sideEffectLevel === "external-side-effect"
       || operation.sideEffectLevel === "external-trade"
       || operation.sideEffectLevel === "network-write";
+    // The relay hands an image result to the assistant as a picture, not as base64 text.
+    const text = operation.returnsImage
+      ? `${operation.description} The PNG comes back as an image, with the pane and its pixel size as text.`
+      : operation.description;
     return {
       name: remoteOperationToolName(operation.id),
       title: operation.title,
-      description: describe(operation.description, operation.sideEffectLevel, policy),
+      description: describe(text, operation.sideEffectLevel, policy),
       inputSchema: operation.inputSchema,
       tier: operation.sideEffectLevel,
       writeTier: operation.writeTier,

@@ -7,6 +7,7 @@ import { useOptionalDialog } from "../ui/dialog";
 import { confirmRemoteChange } from "./confirm-change";
 import { createAppRemoteController } from "./controller";
 import { useRemoteUiRegistry } from "./semantic-tree";
+import type { CapturePane } from "./pane-screenshot";
 import type { RemoteCallContext, RemoteControlRequest, RemoteControlResponse } from "./types";
 
 /** `context` is for callers inside this process; the local endpoint sends requests alone. */
@@ -31,6 +32,8 @@ export interface RemoteControlAdapter {
    * kind of app it is and the machine name it shows under.
    */
   terminalDevice?: { kind: "desktop" | "tui"; name: string };
+  /** Paints a pane of this window for pane.screenshot; only the desktop app has one. */
+  capturePane?: CapturePane;
 }
 
 interface RemoteControlHostProps {
@@ -61,6 +64,7 @@ export function RemoteControlHost({
     pluginRegistry,
     uiRegistry,
     desktopWindowBridge,
+    capturePane: adapter?.capturePane,
     confirmChange: async (prompt, signal) => {
       const host = dialogRef.current;
       if (!host) throw new Error("This window cannot ask for confirmation, so nothing changed.");
@@ -82,7 +86,7 @@ export function RemoteControlHost({
       });
       await new Promise((resolve) => setTimeout(resolve, 0));
     },
-  }), [desktopWindowBridge, dispatch, getState, pluginRegistry, uiRegistry]);
+  }), [adapter?.capturePane, desktopWindowBridge, dispatch, getState, pluginRegistry, uiRegistry]);
   const dataDir = getState().config.dataDir;
 
   useEffect(() => {

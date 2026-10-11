@@ -370,6 +370,31 @@ describe("terminal relay engine", () => {
     expect(JSON.stringify(content.items)).not.toContain("hunter2");
   });
 
+  test("a pane screenshot runs on the approval alone and its PNG leaves beside the items, not in them", async () => {
+    const png = "iVBORw0KGgo".padEnd(600_000, "A");
+    const h = harness({
+      handle: async (request) => request.type === "call" && request.input && (request.input as { paneId?: string }).paneId === "tui"
+        ? { ok: false, error: { code: "unsupported", message: "Pane screenshots need the Gloom desktop app." } }
+        : { ok: true, data: { pane: { instanceId: "chart:main", title: "Chart" }, image: { mimeType: "image/png", data: png, width: 1600, height: 900, bytes: 450_000 }, screen: { width: 800, height: 450 } } },
+    });
+    h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");
+    h.call("c1", "pane.screenshot", {});
+    h.call("c2", "pane.screenshot", { paneId: "tui" });
+    await settle();
+    expect(h.confirmations).toHaveLength(0);
+    const [shot, tui] = ["c1", "c2"].map((id) => h.results().find((frame) => frame.id === id)!);
+    expect(shot).toMatchObject({
+      ok: true,
+      data: {
+        image: { mimeType: "image/png", width: 1600, height: 900 },
+        items: [{ pane: { instanceId: "chart:main" }, screen: { width: 800, height: 450 } }],
+      },
+    });
+    expect((shot!.data as { image: { data: string } }).image.data).toBe(png);
+    expect(JSON.stringify(shot!.data).length).toBeLessThan(900_000);
+    expect(tui).toMatchObject({ ok: false, error: { code: "unsupported" } });
+  });
+
   test("a tool this app did not generate is refused", async () => {
     const h = harness();
     h.grants.decide(ASSISTANT.id, ASSISTANT.name, "always");

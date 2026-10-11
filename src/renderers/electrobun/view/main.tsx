@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { App } from "../../../app";
 import { applyLanguageFromConfig } from "../../../i18n";
 import { debugLog } from "../../../utils/debug-log";
+import { capturePaneImage } from "../../../utils/dom-screenshot";
 import { measurePerfAsync } from "../../../utils/perf-marks";
 import {
   backendRequest,
@@ -213,6 +214,7 @@ async function boot() {
     ? {
       registerHandler: setElectrobunRemoteRequestHandler,
       terminalDevice: { kind: "desktop" as const, name: init.hostName?.trim() || "Gloom desktop" },
+      capturePane: capturePaneImage,
     }
     : undefined;
   measurePerfAsync("startup.electrobun.root-render", async () => {

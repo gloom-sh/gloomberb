@@ -86,7 +86,8 @@ type ErrorCode =
   | "invalid_input"
   | "app_error"
   | "timeout"
-  | "revoked";
+  | "revoked"
+  | "unsupported";
 
 class RelayRefusal extends Error {
   constructor(readonly code: ErrorCode, message: string) {
@@ -177,6 +178,16 @@ function dataRequest(input: Record<string, unknown>): RemoteMarketDataRequest {
   const defined = Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
   // The type goes last, so nothing above can set it.
   return { ...defined, type: "data" } as RemoteMarketDataRequest;
+}
+
+/**
+ * An operation's PNG (pane.screenshot), lifted out of the items so Gloom
+ * Cloud can hand it to the assistant as an MCP image instead of text.
+ */
+function imageResult(data: unknown): Record<string, unknown> | null {
+  if (!isRecord(data) || !isRecord(data.image)) return null;
+  const { image, ...rest } = data;
+  return image.mimeType === "image/png" && typeof image.data === "string" ? { image, items: [rest] } : null;
 }
 
 function containsRedacted(value: unknown): boolean {
@@ -636,7 +647,9 @@ export class TerminalRelayEngine {
         signal: ended.signal,
         ...(confirmKey ? { confirmed: confirmKey } : {}),
       }));
-      if (!response.ok) throw new RelayRefusal("app_error", response.error.message);
+      if (!response.ok) {
+        throw new RelayRefusal(response.error.code === "unsupported" ? "unsupported" : "app_error", response.error.message);
+      }
       return response;
     } finally {
       call.controller.signal.removeEventListener("abort", end);
@@ -665,7 +678,8 @@ export class TerminalRelayEngine {
       const resource = (plan.request as { resource: string }).resource;
       return { resource, rev: response.rev ?? null, items: [resource === "app://config" ? redactConfig(response.data) : response.data] };
     }
-    return { items: asItems(response.data ?? null), ...(response.rev ? { rev: response.rev } : {}) };
+    return imageResult(response.data)
+      ?? { items: asItems(response.data ?? null), ...(response.rev ? { rev: response.rev } : {}) };
   }
 
   private async snapshot(): Promise<Record<string, unknown>> {

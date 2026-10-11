@@ -11,6 +11,7 @@ import {
 } from "./dom-screenshot-css";
 import { contentBox, prepareImages, type PreparedImages } from "./dom-screenshot-rasters";
 import { isScreenshotWatermarkVisible, setScreenshotWatermarkVisible } from "./screenshot-watermark";
+import type { CapturePane } from "../remote/pane-screenshot";
 
 export interface PngScreenshot {
   pngBase64: string;
@@ -411,14 +412,46 @@ function drawTextNode(
         range.setEnd(textNode, end);
         return Array.from(range.getClientRects());
       });
+    const end = ellipsisEdge(parent, style);
     for (const fragment of fragments) {
-      const text = style.whiteSpace === "normal" || style.whiteSpace === "nowrap"
+      const whole = style.whiteSpace === "normal" || style.whiteSpace === "nowrap"
         ? fragment.value.replace(/\s+/g, " ") : fragment.value.replace(/\r?\n/g, "");
-      if (!text) continue;
       const rect = fragment.rect;
+      const text = end !== null && rect.left + rect.width > end + 0.5
+        ? ellipsized((value) => context.measureText(value).width, whole, end - rect.left)
+        : whole;
+      if (!text) continue;
       context.fillText(text, rect.left - origin.left, rect.top - origin.top + textBaselineOffset(style, rect));
     }
   } finally { range.detach(); }
+}
+
+/**
+ * The right edge where the text's block cuts it with an ellipsis
+ * (text-overflow: ellipsis, set on the block, not inherited), or null.
+ */
+function ellipsisEdge(element: Element, style: CSSStyleDeclaration): number | null {
+  let block: Element = element;
+  let blockStyle = style;
+  while (blockStyle.display === "inline" && block.parentElement) {
+    block = block.parentElement;
+    blockStyle = getComputedStyle(block);
+  }
+  if (blockStyle.textOverflow !== "ellipsis" || !shouldClip(blockStyle)) return null;
+  return block.getBoundingClientRect().right - px(blockStyle.borderRightWidth) - px(blockStyle.paddingRight);
+}
+
+/** The longest start of `text` that fits `width` with an ellipsis after it, as the screen cuts it. */
+export function ellipsized(measure: (text: string) => number, text: string, width: number): string {
+  const characters = Array.from(text);
+  let low = 0;
+  let high = characters.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    if (measure(`${characters.slice(0, middle).join("")}\u2026`) <= width) low = middle;
+    else high = middle - 1;
+  }
+  return `${characters.slice(0, low).join("")}\u2026`;
 }
 
 function drawCanvasElement(
@@ -441,14 +474,17 @@ function drawInputElement(
   origin: CaptureOrigin,
 ): void {
   // Paint what the screen shows: a password field is dots, never its value.
-  const value = element instanceof HTMLInputElement && element.type === "password"
+  const typed = element instanceof HTMLInputElement && element.type === "password"
     ? "\u2022".repeat(element.value.length)
     : element.value;
+  // An empty field shows its placeholder, in the placeholder's colour.
+  const value = typed || element.placeholder;
   if (!value) return;
   const style = getComputedStyle(element);
+  const color = typed ? style.color : getComputedStyle(element, "::placeholder").color;
   const rect = element.getBoundingClientRect();
-  if (!isVisible(style) || !isPaintableColor(style.color) || rect.width <= 0 || rect.height <= 0) return;
-  context.fillStyle = style.color;
+  if (!isVisible(style) || !isPaintableColor(color) || rect.width <= 0 || rect.height <= 0) return;
+  context.fillStyle = color;
   context.font = fontFor(style);
   const left = rect.left - origin.left + px(style.paddingLeft);
   const top = rect.top - origin.top + px(style.paddingTop) + textBaselineOffset(style, rect);
@@ -585,16 +621,43 @@ function drawElement(pass: PaintPass, element: Element): void {
 
   // An SVG's shapes and text are in its raster; they are not boxes to walk.
   if (!(element instanceof SVGElement)) {
-    for (const child of Array.from(element.childNodes)) {
+    for (const child of paintOrder(element)) {
       if (child.nodeType === Node.TEXT_NODE) {
         drawTextNode(context, child as Text, origin);
-      } else if (child.nodeType === Node.ELEMENT_NODE) {
+      } else {
         drawElement(pass, child as Element);
       }
     }
   }
 
   context.restore();
+}
+
+/** Where a child falls in its parent's paint: below the flow, in it, or above it at its z-index. */
+function paintLayer(child: Element): number {
+  const style = getComputedStyle(child);
+  if (style.position === "static") return 0;
+  const z = Number.parseInt(style.zIndex, 10);
+  return Number.isFinite(z) && z !== 0 ? z : 0.5;
+}
+
+/**
+ * A parent's children in the order the screen paints them, as CSS stacks
+ * them: negative z-index first, then text and in-flow boxes, then positioned
+ * boxes, then positive z-index by its value, each in document order. A chart
+ * toolbar placed over its canvas with a z-index comes before the canvas in
+ * the document and would otherwise be painted under it.
+ */
+function paintOrder(element: Element): ChildNode[] {
+  const children = Array.from(element.childNodes)
+    .filter((child) => child.nodeType === Node.TEXT_NODE || child.nodeType === Node.ELEMENT_NODE);
+  if (!children.some((child) => child.nodeType === Node.ELEMENT_NODE && getComputedStyle(child as Element).position !== "static")) {
+    return children;
+  }
+  return children
+    .map((child, index) => ({ child, index, layer: child.nodeType === Node.ELEMENT_NODE ? paintLayer(child as Element) : 0 }))
+    .sort((left, right) => left.layer - right.layer || left.index - right.index)
+    .map(({ child }) => child);
 }
 
 function blobToBase64(blob: Blob): Promise<string> {
@@ -738,6 +801,38 @@ export async function captureAppScreenshotJpegBase64(options: {
   }
   throw new Error("Screenshot is too large.");
 }
+
+/**
+ * One pane of this window, for pane.screenshot: painted at the scale the
+ * request picks for its on-screen size, then shrunk until the PNG fits the
+ * byte cap. Unlike the copy action it never falls back to another pane.
+ */
+export const capturePaneImage: CapturePane = async (request) => {
+  if (typeof document === "undefined") throw new Error("Screenshots need a window.");
+  const target = document.querySelector<HTMLElement>(
+    `[data-gloom-role='pane-window'][data-gloom-pane-id="${escapeAttributeValue(request.instanceId)}"]`,
+  );
+  const rect = target?.getBoundingClientRect();
+  if (!target || !rect || rect.width < 1 || rect.height < 1) {
+    throw new Error(`Pane "${request.instanceId}" is not drawn right now (behind another tab or a full-screen pane). Focus it and try again.`);
+  }
+  const screen = { width: Math.ceil(rect.width), height: Math.ceil(rect.height) };
+  let { canvas } = await paintElement(target, request.scaleFor(screen));
+  let reduced = false;
+  for (;;) {
+    const blob = await canvasToPngBlob(canvas);
+    if (blob.size <= request.maxBytes) {
+      return { pngBase64: await blobToBase64(blob), width: canvas.width, height: canvas.height, bytes: blob.size, screen, reduced };
+    }
+    // PNG size follows the pixel count, so shrink by the square root of the overshoot.
+    const factor = Math.min(0.9, Math.sqrt(request.maxBytes / blob.size) * 0.95);
+    if (Math.round(canvas.width * factor) < request.minWidth) {
+      throw new Error(`The pane's image stays over ${Math.max(1, Math.round(request.maxBytes / 1024))} KB even ${request.minWidth} px wide.`);
+    }
+    canvas = downscale(canvas, factor);
+    reduced = true;
+  }
+};
 
 export async function capturePaneScreenshotPngBase64(paneId?: string): Promise<PngScreenshot> {
   const target = findPaneScreenshotTarget(paneId);

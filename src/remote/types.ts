@@ -176,6 +176,11 @@ export interface RemoteOperationSchema {
   writeTier: RemoteWriteTier;
   requiresConfirmation?: boolean;
   dryRun?: boolean;
+  /**
+   * The result carries a PNG in `image` ({ mimeType, data, width, height,
+   * bytes }). Text-only tool channels (Ask Gloom) leave such an operation out.
+   */
+  returnsImage?: boolean;
 }
 
 /** Stable operation metadata suitable for advertising outside the process. */

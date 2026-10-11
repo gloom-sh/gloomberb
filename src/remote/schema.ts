@@ -7,6 +7,11 @@ import type {
   RemoteSideEffectLevel,
   RemoteWriteTier,
 } from "./types";
+import {
+  PANE_SCREENSHOT_MAX_BYTES,
+  PANE_SCREENSHOT_MAX_EDGE,
+  PANE_SCREENSHOT_MIN_WIDTH,
+} from "./pane-screenshot";
 
 export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
   { uri: "app://snapshot", description: "Current app snapshot including layout, focus, panes, command bar, and plugin/capability catalogs. app.activePanel is deprecated and always \"left\"; read app.focusedPaneId." },
@@ -128,6 +133,28 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op("pane.show", "Show or focus a pane type.", "{ paneId: string }", "local-write", paneIdInput),
   op("pane.focus", "Focus a pane instance or pane type.", "{ paneId: string }", "local-write", paneIdInput),
   op("pane.close", "Close a pane instance or pane type.", "{ paneId: string }", "local-write", paneIdInput),
+  {
+    ...op(
+      "pane.screenshot",
+      "Capture one pane as a PNG, as it looks on screen now: the focused pane, or paneId (an instance id or pane type from app://panes). "
+        + "It only reads what is already on the person's own screen. Desktop app only: the terminal (TUI) app draws text, not pixels. "
+        + `The image is twice the pane's on-screen size by default, at most ${PANE_SCREENSHOT_MAX_EDGE} px on its longer side and ${PANE_SCREENSHOT_MAX_BYTES / 1024} KB; `
+        + `width asks for another width (${PANE_SCREENSHOT_MIN_WIDTH} to ${PANE_SCREENSHOT_MAX_EDGE} px). `
+        + "A pane in its own window, behind another tab or in another layout is not drawn here and cannot be captured.",
+      "{ paneId?: string, width?: number }",
+      "none",
+      objectSchema({
+        paneId: { type: "string", minLength: 1, description: "Pane instance id or pane type. Defaults to the focused pane." },
+        width: {
+          type: "integer",
+          minimum: PANE_SCREENSHOT_MIN_WIDTH,
+          maximum: PANE_SCREENSHOT_MAX_EDGE,
+          description: "Image width in pixels; the height keeps the pane's proportions.",
+        },
+      }),
+    ),
+    returnsImage: true,
+  },
   op(
     "pane.createFromTemplate",
     "Open a pane from a registered template. It only opens the pane: it adds nothing to a portfolio or watchlist.",
@@ -420,6 +447,7 @@ export const REMOTE_AGENT_HELP = {
     "A form with covered: true has another dialog over it, such as a listing picker or a sign-in; its controls wait until that one is answered or closed with app.closeDialog.",
     "Pane settings open in their own dialog, not as command-bar rows; change one with pane.setSetting, read them from app://pane-settings/{paneId}, and close the dialog with app.closeDialog.",
     "watchlist.add and watchlist.remove wait while the person answers a confirmation in the app and return what changed; with dryRun they return what would change without asking.",
+    "pane.screenshot returns the pane's PNG as base64 in image.data, with its pixel size; the terminal (TUI) app answers that it needs the desktop app.",
     "Use ui.invokeMatching only after checking app-level operations; it is intentionally generic and depends on visible semantic controls.",
   ],
 };

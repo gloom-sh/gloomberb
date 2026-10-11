@@ -42,6 +42,7 @@ export const TERMINAL_RELAY_OPERATION_POLICY: Readonly<Record<string, TerminalRe
   "pane.show": { policy: "allow", reason: OPEN },
   "pane.focus": { policy: "allow", reason: OPEN },
   "pane.close": { policy: "allow", reason: "Closes a pane; layout.undo brings it back." },
+  "pane.screenshot": { policy: "allow", reason: "Reads only: a picture of what is already on the person's own screen." },
   "pane.createFromTemplate": { policy: "allow", reason: OPEN },
   "view.create": { policy: "allow", reason: "Creates a custom view pane from data the app already reads." },
   "view.update": { policy: "allow", reason: "Replaces a custom view's spec; layout.undo reverts it." },

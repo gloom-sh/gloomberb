@@ -172,11 +172,14 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
   return candidates;
 }
 
+/** Ask Gloom's tool results are text, so an operation that answers with a PNG is not offered there. */
+const ASKG_REMOTE_OPERATIONS = REMOTE_OPERATIONS.filter((operation) => !operation.returnsImage);
+
 function remoteCandidates(): ManifestCandidate[] {
-  const descriptors = remoteOperationDescriptors();
   const operationsByName = new Map(
-    REMOTE_OPERATIONS.map((operation) => [remoteOperationToolName(operation.id), operation]),
+    ASKG_REMOTE_OPERATIONS.map((operation) => [remoteOperationToolName(operation.id), operation]),
   );
+  const descriptors = remoteOperationDescriptors().filter((descriptor) => operationsByName.has(descriptor.name));
   const candidates = descriptors.map((descriptor): ManifestCandidate => ({
     token: descriptor.name,
     identity: `operation:${operationsByName.get(descriptor.name)?.id ?? descriptor.name}`,
@@ -336,7 +339,7 @@ export async function buildASKGClientManifest(
 
 export function resolveRemoteToolBinding(name: string): RemoteToolBinding | null {
   if (name === REMOTE_RESOURCE_TOOL_NAME) return { kind: "resource" };
-  const operation = REMOTE_OPERATIONS.find((entry) => remoteOperationToolName(entry.id) === name);
+  const operation = ASKG_REMOTE_OPERATIONS.find((entry) => remoteOperationToolName(entry.id) === name);
   return operation ? { kind: "operation", operation: operation.id } : null;
 }
 

@@ -26,6 +26,7 @@ on:
       - "src/theme/font-scale.ts"
       - "src/utils/dom-screenshot*.ts"
       - "src/utils/screenshot-watermark.ts"
+      - "src/remote/pane-screenshot.ts"
       - "src/types/config.ts"
       - "src/types/desktop-window.ts"
       - "scripts/pane-chrome/**"

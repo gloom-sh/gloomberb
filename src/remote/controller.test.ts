@@ -5,6 +5,7 @@ import type { PluginRegistry } from "../plugins/registry";
 import { createDefaultConfig } from "../types/config";
 import type { TickerFinancials } from "../types/financials";
 import { createAppRemoteController } from "./controller";
+import type { CapturePane, PaneScreenshotRequest } from "./pane-screenshot";
 import type { RemoteControlSchema, RemoteUiNodeSnapshot } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
 
@@ -13,6 +14,7 @@ function createRegistryHarness(options: {
   withCustomView?: boolean;
   financials?: TickerFinancials;
   dialogOpen?: boolean;
+  capturePane?: CapturePane;
 } = {}) {
   const config = {
     ...createDefaultConfig("/tmp/gloom-remote-controller"),
@@ -116,6 +118,7 @@ function createRegistryHarness(options: {
     getState: () => state,
     pluginRegistry: registry,
     uiRegistry,
+    capturePane: options.capturePane,
     isDialogOpen: () => dialogOpen,
     closeTopmostDialog: () => {
       const closed = dialogOpen;
@@ -598,6 +601,50 @@ describe("createAppRemoteController", () => {
       kind: "split",
       axis: "vertical",
     });
+  });
+
+  test("pane.screenshot paints the focused pane or the one asked for, within the size bounds; the TUI answers unsupported", async () => {
+    const requests: PaneScreenshotRequest[] = [];
+    const capturePane: CapturePane = async (request) => {
+      requests.push(request);
+      return { pngBase64: "iVBORw0KGgo=", width: 800, height: 600, bytes: 9, screen: { width: 400, height: 300 }, reduced: false };
+    };
+    const { controller, getState } = createRegistryHarness({ withFloatingPane: true, capturePane });
+    const call = (input: Record<string, unknown>) => controller.handle({ type: "call", operation: "pane.screenshot", input });
+
+    const focused = await call({});
+    expect(focused.ok).toBe(true);
+    expect(requests[0]!.instanceId).toBe(getState().focusedPaneId!);
+    // A read: the answer carries no layout or command-bar state.
+    if (focused.ok) expect(focused.state).toBeUndefined();
+
+    const asked = await call({ paneId: "help" });
+    expect(asked.ok && asked.data).toMatchObject({
+      pane: { instanceId: "help:test", paneId: "help" },
+      image: { mimeType: "image/png", data: "iVBORw0KGgo=", width: 800, height: 600, bytes: 9 },
+      screen: { width: 400, height: 300 },
+    });
+    // Twice the screen size by default, the long edge within 1600 px, and width honoured up to 3x.
+    const scale = requests[1]!.scaleFor;
+    expect(scale({ width: 400, height: 300 })).toBe(2);
+    expect(scale({ width: 1200, height: 900 })).toBeCloseTo(1600 / 1200);
+    expect(scale({ width: 300, height: 2000 })).toBeCloseTo(0.8);
+    await call({ paneId: "help:test", width: 1600 });
+    expect(requests[2]!.scaleFor({ width: 400, height: 300 })).toBe(3);
+    expect(requests[2]!.maxBytes).toBe(512 * 1024);
+
+    for (const input of [{ width: 199 }, { width: 1601 }, { width: 640.5 }, { paneId: "nope" }]) {
+      const refused = await call(input);
+      expect(refused.ok).toBe(false);
+    }
+    expect(requests).toHaveLength(3);
+
+    const tui = await createRegistryHarness().controller.handle({ type: "call", operation: "pane.screenshot", input: {} });
+    expect(tui.ok).toBe(false);
+    if (!tui.ok) {
+      expect(tui.error.code).toBe("unsupported");
+      expect(tui.error.message).toContain("desktop app");
+    }
   });
 });
 
