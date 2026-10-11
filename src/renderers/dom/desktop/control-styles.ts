@@ -35,21 +35,62 @@ export function controlShadow(active = false, palette: ThemeColors = colors): st
     : `inset 0 1px 0 ${blendHex(palette.bg, palette.textBright, 0.04)}`;
 }
 
+const WHITE = "#ffffff";
+const BLACK = "#000000";
+
+function withAlpha(hex: string, alpha: number): string {
+  return `${hex}${Math.round(alpha * 255).toString(16).padStart(2, "0")}`;
+}
+
+/** How far a raised button's tones move from its fill, toward white at the top and black below. */
+const SOLID_RELIEF = { light: 0.12, shade: 0.06, edge: 0.18, shadow: 0.3 };
+const SURFACE_RELIEF = { light: 0.05, shade: 0.03, edge: 0.08, shadow: 0.14 };
+
+interface ButtonRelief {
+  backgroundImage?: string;
+  boxShadow: string;
+  /** Replaces the border colour, so a solid fill runs to its edge. */
+  borderColor?: string;
+  /** What the button shows while it is held down. */
+  pressedImage?: string;
+  pressedShadow?: string;
+}
+
 /**
- * A button's shadow. The top highlight of `controlShadow` is mixed from the page
- * background, so it only belongs on a fill that sits near that background. On a
- * solid fill (primary, danger, a selected button) it draws a dark rim on a light
- * one and a pale rim on a saturated one, just inside the top edge, so a solid
- * fill stays flat and a selected button keeps only its halo.
+ * Light from above, built from the button's own fill so it reads the same on
+ * any surface and in every theme: a little lighter at the top, a little darker
+ * toward the bottom, a darker band on the bottom edge and a soft shadow under
+ * it. Nothing draws a line along the top edge. Held down, the light flips and
+ * the shadow goes, so the button sinks.
  */
-export function buttonShadow(
+function raisedRelief(fill: string, tone: typeof SOLID_RELIEF, ring?: string): ButtonRelief {
+  const shade = blendHex(fill, BLACK, tone.shade);
+  const edge = blendHex(fill, BLACK, tone.edge);
+  const drop = `0 1px 2px ${withAlpha(blendHex(fill, BLACK, 0.75), tone.shadow)}`;
+  return {
+    backgroundImage: `linear-gradient(${blendHex(fill, WHITE, tone.light)}, ${shade} calc(100% - 1px), ${edge} calc(100% - 1px))`,
+    boxShadow: ring ? `${ring}, ${drop}` : drop,
+    pressedImage: `linear-gradient(${shade}, ${fill})`,
+    pressedShadow: ring ?? "none",
+  };
+}
+
+/**
+ * A button's relief. Primary, danger and a selected button are raised from
+ * their fill; a secondary one gets the same light, fainter. Ghost and plain
+ * buttons have no fill to light and stay flat, and so does a disabled one.
+ */
+export function buttonRelief(
   props: Pick<ButtonProps, "variant" | "active" | "disabled">,
   palette: ThemeColors = colors,
-): string {
-  if (props.variant === "plain") return "none";
-  if (props.disabled) return controlShadow(props.active, palette);
-  if (props.active) return activeHalo(palette);
-  return props.variant === "primary" || props.variant === "danger" ? "none" : controlShadow(false, palette);
+): ButtonRelief {
+  if (props.variant === "plain" || props.variant === "ghost" || props.disabled) return { boxShadow: "none" };
+  const fill = buttonPalette(props, palette).bg;
+  if (props.active) return raisedRelief(fill, SOLID_RELIEF, `0 0 0 1px ${withAlpha(palette.borderFocused, 0.18)}`);
+  if (props.variant === "primary" || props.variant === "danger") {
+    return { ...raisedRelief(fill, SOLID_RELIEF), borderColor: "transparent" };
+  }
+  return raisedRelief(fill, SURFACE_RELIEF);
 }
 
 export function buttonPalette(

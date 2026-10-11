@@ -27,6 +27,12 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="desktop-button"][data-gloom-variant="plain"]:not(:disabled):hover {
   background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
 }
+/* A raised button sinks while it is held: its light flips and its shadow goes
+   (control-styles.ts, buttonRelief). */
+[data-gloom-raised="true"]:not(:disabled):active {
+  background-image: var(--gloom-pressed-image) !important;
+  box-shadow: var(--gloom-pressed-shadow) !important;
+}
 [data-gloom-hover-bg="true"]:hover {
   background-color: var(--gloom-box-hover-bg) !important;
 }
