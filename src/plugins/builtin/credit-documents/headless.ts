@@ -1,5 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchCreditDocuments, fetchCreditInstrument, fetchCreditScreen } from "./client";
+import type { CreditDocumentsPayload } from "../../../api-client/credit-documents";
+import { creditIssuerSymbol, fetchCreditDocuments, fetchCreditInstrument, fetchCreditScreen } from "./client";
 import { CREDIT_TABS } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 
@@ -28,12 +29,41 @@ export const creditHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const data = await fetchCreditDocuments(args.symbols[0]!, ctx.apiClient);
     const instrument = args.options.instrument ? await fetchCreditInstrument(data.symbol, String(args.options.instrument), ctx.apiClient) : null;
+    const reason = instrument ? null : creditEmptyReason(data, args.symbols[0]!);
+    // Nothing on file says why once, instead of four empty sections.
+    if (reason) {
+      return { complete: false, errors: data.warnings, sections: [],
+        metadata: { symbol: data.symbol, issuer: data.issuer, asOf: data.asOf, access: data.access, lockedRows: data.lockedRows, status: data.status, reason, notices: [reason] } };
+    }
     return { complete: data.status === "available" && data.lockedRows === 0, errors: [...data.warnings, ...(data.lockedRows ? ["Full credit documents and history require Gloom Pro"] : [])],
       sections: instrument ? [{ title: instrument.name, rows: [{ ...instrument }] }, { title: "Current terms", rows: instrument.facts.map((row) => ({ ...row })) }, { title: "Amendment history", rows: (instrument.history ?? []).map((row) => ({ ...row })) }]
         : [{ title: "Capital structure", rows: data.instruments.map((row) => ({ ...row })) }, { title: "Covenants", rows: data.covenants.map((row) => ({ ...row })) }, { title: "Maturity wall", rows: data.maturities.map((row) => ({ ...row })) }, { title: "Change of control", rows: data.changeOfControl.map((row) => ({ ...row })) }],
       metadata: { symbol: data.symbol, issuer: data.issuer, asOf: data.asOf, access: data.access, lockedRows: data.lockedRows, status: data.status } };
   },
 };
+
+/** An issuer whose documents the catalog and the docs use as the example. */
+const CREDIT_EXAMPLE_SYMBOL = "FICO";
+
+/**
+ * Why an issuer's report has no rows at all, from the payload: no issuer on
+ * file for the symbol, or an issuer with no debt instrument read from its
+ * filings yet; with the command for an issuer that has documents. Null when
+ * any section has a row.
+ */
+export function creditEmptyReason(
+  data: Pick<CreditDocumentsPayload, "symbol" | "issuer" | "instruments" | "covenants" | "maturities" | "changeOfControl" | "lockedRows">,
+  requested: string,
+): string | null {
+  const rows = data.instruments.length + data.covenants.length + data.maturities.length + data.changeOfControl.length;
+  if (rows > 0 || data.lockedRows > 0) return null;
+  const symbol = requested.trim().toUpperCase();
+  const why = data.issuer
+    ? `No credit documents on file for ${data.issuer.name} (${symbol}): no debt instrument has been read from its filings yet.`
+    : `No credit documents on file for ${symbol}: it is not an issuer the credit-document set covers.`;
+  const example = creditIssuerSymbol(symbol) === CREDIT_EXAMPLE_SYMBOL ? "" : ` Try \`gloomberb fn CRDOC ${CREDIT_EXAMPLE_SYMBOL}\` for an issuer with documents.`;
+  return `${why}${example}`;
+}
 
 export const covenantsHeadless: HeadlessPaneDefinition<"bundle"> = {
   ...creditHeadless,

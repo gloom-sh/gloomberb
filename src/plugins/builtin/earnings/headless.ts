@@ -14,6 +14,7 @@ import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows } from "./history-model";
 import { EPS_BASIS_NOTE, epsBasisName } from "../shared/earnings-report";
+import { isUsListingExchange } from "../../../utils/exchanges";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -63,7 +64,23 @@ const defaultDependencies: EarningsHeadlessDependencies = {
 
 const NO_OWNERSHIP = new Map();
 
-async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies): Promise<HeadlessRowsResult> {
+/**
+ * EVTS with a ticker: the board is the market's whatever the ticker, so the
+ * report says so once, whether the ticker is on it and when, and where its
+ * own report dates are.
+ */
+function boardTickerNotice(symbol: string, board: ReadonlyArray<{ symbol: string; date: string }>, from: string, to: string): { notice: string; date: string | null } {
+  const [bare = symbol, venue] = symbol.toUpperCase().split(":");
+  // The board lists US tickers; a listing named abroad is never one of them.
+  const report = venue && !isUsListingExchange(venue) ? undefined : board.find((entry) => entry.symbol.toUpperCase() === bare);
+  const where = report ? `${symbol} reports on ${report.date}` : `${symbol} is not on it`;
+  return {
+    notice: `EVTS is the market's earnings board for ${from} to ${to}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloomberb fn ERN ${symbol}\`.`,
+    date: report?.date ?? null,
+  };
+}
+
+async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies, highlight?: string): Promise<HeadlessRowsResult> {
   const today = newYorkToday();
   const named = args.symbols;
   const days = marketDays(today);
@@ -96,11 +113,13 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     impliedMove: report.impliedMove,
     averageMove: report.averageMove,
   }));
+  const ticker = highlight ? boardTickerNotice(highlight, all, query.from, query.to) : null;
   return {
     columns: BOARD_COLUMNS,
     rows,
     errors: cloud.status === "rejected" ? [String(cloud.reason instanceof Error ? cloud.reason.message : cloud.reason)] : undefined,
     metadata: {
+      ...(ticker ? { notices: [ticker.notice], highlight: { symbol: highlight, onBoard: ticker.date != null, date: ticker.date } } : {}),
       asOf: payload?.asOf ?? null,
       from: query.from,
       to: query.to,
@@ -150,7 +169,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
 /** EVTS: the market board, whatever ticker is given. */
 const EARNINGS_CALENDAR: HeadlessPaneFreshness = { status: "not-a-feed", basis: "calendar" };
 
-function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: EARNINGS_CALENDAR,
@@ -161,7 +180,7 @@ function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaul
     columns: BOARD_COLUMNS,
     describe: () => "Earnings Calendar",
     load(args, context) {
-      return boardRows({ ...args, symbols: [] }, context, deps);
+      return boardRows({ ...args, symbols: [] }, context, deps, args.symbols[0]);
     },
   };
 }

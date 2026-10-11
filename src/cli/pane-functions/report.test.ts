@@ -115,6 +115,9 @@ test("HELP has no report and sends a newcomer to the command guide and the funct
   const help = await message("help");
   expect(help).toContain("`gloomberb help`");
   expect(help).toContain("`gloomberb catalog`");
-  // Another interactive pane keeps the plain statement.
-  expect(await message("chat")).toBe("chat is an interactive pane and does not expose a data report.");
+  // Another interactive pane points to the screenshot that draws it, with its argument.
+  const shot = (id: string) => buildFunctionReport({ ...resolved(id), capability: { id, screenshotReadiness: "live-dom" } } as unknown as ResolvedPaneFunction, context, "santander")
+    .catch((error: Error) => error.message);
+  expect(await shot("CAT")).toContain("`gloomberb shot CAT santander`");
+  expect(await message("chat")).not.toContain("gloomberb shot");
 });

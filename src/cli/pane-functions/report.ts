@@ -41,6 +41,12 @@ export function resolvePaneFunctionReportSource(
   return resolved.capability.reportReadiness === "live-dom" ? "dom" : null;
 }
 
+/** `gloomberb shot CAT santander`, the argument quoted when it has spaces. */
+function shotCommand(token: string, rawArg: string): string {
+  const arg = rawArg.trim();
+  return ["gloomberb shot", token, arg && /\s/.test(arg) ? JSON.stringify(arg) : arg].filter(Boolean).join(" ");
+}
+
 export async function buildFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
@@ -52,6 +58,11 @@ export async function buildFunctionReport(
     // HELP is what a newcomer tries first: send them to the command guide and the function list.
     if (resolved.pane.id === "help") {
       throw new Error("HELP is an in-app pane, so it has no report. For the commands run `gloomberb help`; for the functions run `gloomberb catalog`.");
+    }
+    // A pane `shot` can draw is still one command away.
+    const screenshot = resolved.capability.screenshotReadiness;
+    if (screenshot != null && screenshot !== "unsupported") {
+      throw new Error(`${resolved.token} is an interactive pane with no data report; run \`${shotCommand(resolved.token, rawArg)}\` to see it.`);
     }
     throw new Error(`${resolved.token} is an interactive pane and does not expose a data report.`);
   }
