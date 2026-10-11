@@ -30,6 +30,7 @@ import {
 import {
   describeTickerChange,
   startTickerChangeLookup,
+  tickerChangeLine,
   type CurrentListing,
   type TickerChange,
   type TickerChangeLookup,
@@ -54,7 +55,7 @@ export interface CliTicker {
   notes: string[];
   /** Of those, the one saying the listing stopped trading; null while it trades. */
   ended: string | null;
-  /** The symbol changed (FB became META); its note leads `notes`. */
+  /** The symbol changed (FB became META); when its company left it, the line leads `notes`. */
   change: TickerChange | null;
 }
 
@@ -127,7 +128,8 @@ export async function resolveCliTicker(
   if (!resolved) {
     const message = await missingListingMessage(listing, deps);
     const change = describeTickerChange(listing.symbol, await changes?.settle() ?? null, null);
-    throw new TickerNotFoundError(change ? `${message} ${change.note}.` : message);
+    const line = tickerChangeLine(change);
+    throw new TickerNotFoundError(line ? `${message} ${line}.` : message);
   }
   if (resolved.kind === "local") {
     return withChange(listing, changes, { ticker: resolved.ticker, notes: [...read, ...bareNote ? [bareNote] : []], ended: null }, {
@@ -154,7 +156,7 @@ export async function resolveCliTicker(
   }, current);
 }
 
-/** The resolution with the symbol's change, when it has one, leading its notes. */
+/** The resolution with the symbol's change, when it has one; a company that left it leads the notes. */
 async function withChange(
   listing: Pick<CliListing, "symbol">,
   lookup: TickerChangeLookup | null,
@@ -162,7 +164,8 @@ async function withChange(
   current: CurrentListing | null | undefined,
 ): Promise<CliTicker> {
   const change = describeTickerChange(listing.symbol, await lookup?.settle() ?? null, current);
-  return change ? { ...resolved, notes: [change.note, ...resolved.notes], change } : { ...resolved, change: null };
+  const line = tickerChangeLine(change);
+  return { ...resolved, notes: line ? [line, ...resolved.notes] : resolved.notes, change };
 }
 
 /**

@@ -127,7 +127,7 @@ import { isNotATickerMessage } from "../not-a-ticker";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
-import { describeTickerChange, startTickerChangeLookup, type TickerChange } from "../../tickers/ticker-changes";
+import { describeTickerChange, startTickerChangeLookup, tickerChangeLine, type TickerChange } from "../../tickers/ticker-changes";
 import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
 import { windowRows } from "../row-window";
@@ -549,7 +549,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     }));
     const failed = answers[0]?.failure;
     if (listings.length === 1 && failed) {
-      ctx.fail(failed.message, [tickerChanges[0]?.note, failed.details].filter(Boolean).join("\n") || undefined);
+      ctx.fail(failed.message, [tickerChangeLine(tickerChanges[0]), failed.details].filter(Boolean).join("\n") || undefined);
     }
     // A futures quote adds its dated settlement and contract terms, as `ticker` prints them; `compare` stays a table.
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
@@ -568,8 +568,9 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...tickerChanges[index] ? { tickerChange: tickerChanges[index] } : {},
     }));
     const notes = [
-      // FB now lists another security; the company that was FB trades as META.
-      ...tickerChanges.flatMap((change) => change ? [change.note] : []),
+      // FB now lists another security; the company that was FB trades as META. A symbol a
+      // company renamed into (META) is what was typed: its change is in the row, not here.
+      ...tickerChanges.flatMap((change) => tickerChangeLine(change) ?? []),
       // Which listing a bare symbol was read as, and the index a bare root is not, are in no row.
       ...answers.flatMap((answer) => answer.notes),
       // A row that stopped trading long ago reads as a quote that is merely stale.

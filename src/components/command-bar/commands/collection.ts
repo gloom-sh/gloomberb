@@ -20,7 +20,7 @@ import {
 } from "../helpers";
 import type { CommandBarRoute } from "../workflow/types";
 import { AmbiguousCollectionTickerError, resolveCollectionTicker } from "../workflow/collection-ticker";
-import { describeTickerChange, startTickerChangeLookup } from "../../../tickers/ticker-changes";
+import { describeTickerChange, startTickerChangeLookup, tickerChangeLine } from "../../../tickers/ticker-changes";
 
 type WorkflowDeps = Parameters<typeof resolveTickerInput>[3];
 
@@ -248,7 +248,7 @@ function notifyTickerChange(
 ): void {
   const { ticker: symbol, exchange, name } = ticker.metadata;
   void startTickerChangeLookup(dataProvider, symbol, exchange).settle(CHANGE_TOAST_WAIT_MS).then((payload) => {
-    const change = describeTickerChange(symbol, payload, { name });
-    if (change) notify(change.note, { type: "info" });
+    const line = tickerChangeLine(describeTickerChange(symbol, payload, { name }));
+    if (line) notify(line, { type: "info" });
   });
 }

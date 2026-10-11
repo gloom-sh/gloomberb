@@ -142,7 +142,7 @@ test("a symbol whose search the service refused is looked up again, never report
   expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
 });
 
-test("a symbol whose company moved says where it trades now, as watchlist and portfolio adds print it", async () => {
+test("a symbol whose company moved says where it trades now, as watchlist and portfolio adds print it; the symbol renamed into prints nothing", async () => {
   const fund = { providerId: "test", symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", exchange: "BATS", currency: "USD", type: "ETF" };
   const changes: Record<string, TickerChanges> = {
     FB: {
@@ -179,6 +179,9 @@ test("a symbol whose company moved says where it trades now, as watchlist and po
   for (const dataProvider of [offline, provider(async () => null)]) {
     expect(await resolveCliTicker("FB", tickerStore(), dataProvider)).toMatchObject({ notes: [], change: null });
   }
+  // The symbol a company renamed into is what was typed: the change is data, not a line.
+  const renamedInto = provider(async () => ({ ...changes.FB!, moved: null, formerly: [{ from: "OLDFB", to: "FB", date: "2022-06-09" }] }));
+  expect(await resolveCliTicker("FB", tickerStore(), renamedInto)).toMatchObject({ notes: [], change: { kind: "formerly" } });
   const many = ["FB", ...Array.from({ length: 10 }, (_, index) => `ZZ${index}`)];
   const [listed] = await resolveTickersForCli(many, tickerStore(), online, undefined, { retryWaitsMs: [] });
   expect(listed).toMatchObject({ input: "FB", notes: [], change: null });

@@ -192,24 +192,24 @@ test("a bare symbol several companies list names, in one line, the company it wa
   expect(source.searches()).toBe(searched);
 });
 
-test("a symbol whose company moved says so in one line and in its JSON row; one with no change or no service says nothing", async () => {
+test("a symbol whose company moved says so in one line and in its JSON row; the symbol it moved to, one with no change or no service print nothing", async () => {
   const etf = createTestQuote({ symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", listingExchangeName: "BATS", exchangeName: "BATS" });
+  const meta = createTestQuote({ symbol: "META", name: "Meta Platforms, Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
   const apple = createTestQuote({ symbol: "AAPL", name: "Apple Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
-  const fb: TickerChanges = {
-    symbol: "FB",
-    moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [{ from: "FB", to: "META", date: "2022-06-09" }] },
-    formerly: null,
-    listedName: null,
-    changes: [{ from: "FB", to: "META", date: "2022-06-09" }],
+  const hop = { from: "FB", to: "META", date: "2022-06-09" };
+  const changes: Record<string, TickerChanges> = {
+    FB: { symbol: "FB", moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop] }, formerly: null, listedName: null, changes: [hop] },
+    META: { symbol: "META", moved: null, formerly: [hop], listedName: "Meta Platforms, Inc.", changes: [hop] },
   };
   const quote = async (args: string[], getTickerChanges: DataProvider["getTickerChanges"]) => {
-    const source = venueSource("FB", [], { FB: etf, AAPL: apple });
+    const source = venueSource("FB", [], { FB: etf, META: meta, AAPL: apple });
     return runQuote(args, { ...source, dataProvider: { ...source.dataProvider, getTickerChanges } });
   };
 
-  const moved = await quote(["FB", "AAPL"], async (symbol) => symbol === "FB" ? fb : null);
+  const moved = await quote(["FB", "META", "AAPL"], async (symbol) => changes[symbol] ?? null);
   expect(moved.warnings).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"]);
-  expect(moved.rows.map((row) => (row as { tickerChange?: { tradesAs: string } }).tickerChange?.tradesAs ?? null)).toEqual(["META", null]);
+  // META is what was typed: its change stays in the row as data, with no line.
+  expect(moved.rows.map((row) => (row as { tickerChange?: { kind: string } }).tickerChange?.kind ?? null)).toEqual(["moved", "formerly", null]);
   // Offline: the quote still answers, with nothing extra.
   const offline = await quote(["FB"], async () => { throw new Error("fetch failed"); });
   expect(offline.failure).toBeNull();

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { TickerChanges } from "../types/ticker-changes";
-import { describeTickerChange, startTickerChangeLookup } from "./ticker-changes";
+import { describeTickerChange, startTickerChangeLookup, tickerChangeLine } from "./ticker-changes";
 
 const FB: TickerChanges = {
   symbol: "FB",
@@ -58,10 +58,14 @@ describe("describeTickerChange", () => {
       .toBe("TRCH now lists Torchlight Fund; the former TRCH trades as MMATQ (changed to MMAT on 2021-07-06, then MMATQ on 2024-08-21)");
   });
 
-  test("a symbol its holder renamed into says what it was before; none on record says nothing", () => {
+  test("a symbol its holder renamed into keeps what it was before as data, and prints nothing", () => {
     const formerly = (symbol: string, hops: TickerChanges["formerly"]) =>
       describeTickerChange(symbol, { symbol, moved: null, formerly: hops, listedName: null, changes: hops ?? [] });
-    expect(formerly("METV", [{ from: "META", to: "METV", date: "2022-01-31" }])?.note).toBe("METV was META until 2022-01-31");
+    const metv = formerly("METV", [{ from: "META", to: "METV", date: "2022-01-31" }]);
+    expect(metv?.note).toBe("METV was META until 2022-01-31");
+    // Typing META or METV got what was typed: no line beside it.
+    expect(tickerChangeLine(metv)).toBeNull();
+    expect(tickerChangeLine(describeTickerChange("FB", FB, null))).toBe("FB changed to META on 2022-06-09");
     expect(formerly("MMATQ", [
       { from: "MMAT", to: "MMATQ", date: "2024-08-21" },
       { from: "TRCH", to: "MMAT", date: "2021-07-06" },

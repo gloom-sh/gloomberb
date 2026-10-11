@@ -13,6 +13,7 @@ import {
   isUsSymbolVenue,
   quotedListing,
   startTickerChangeLookup,
+  tickerChangeLine,
   type TickerChange,
 } from "../../../../tickers/ticker-changes";
 
@@ -156,7 +157,7 @@ export async function resolveQuickAddValidation({
     });
     if (!resolved) {
       const change = describeTickerChange(query, await changes.settle(), null);
-      return { status: "missing", query, message: change?.note ?? "No exact ticker match" };
+      return { status: "missing", query, message: tickerChangeLine(change) ?? "No exact ticker match" };
     }
 
     const symbol = resolved.symbol;

@@ -6,15 +6,16 @@ import { canonicalExchange, isUsListingExchange } from "../utils/exchanges";
 import { sameCompany, shortCompanyName } from "./company-name";
 
 /**
- * What a command says about a symbol that changed (FB became META), and the
- * same as data for `--json`. `moved`: the issuer that held the symbol left it,
- * so whatever lists under it now is a different security. `formerly`: the
- * symbol's holder traded under another symbol before (METV was META).
+ * A symbol that changed (FB became META), as data for `--json`. `moved`: the
+ * issuer that held the symbol left it, so whatever lists under it now is a
+ * different security, and commands print `note`. `formerly`: the symbol's
+ * holder traded under another symbol before (METV was META); the user got
+ * what they typed, so nothing is printed.
  */
 export interface TickerChange {
   symbol: string;
   kind: "moved" | "formerly";
-  /** The one line a command prints. */
+  /** The change in one line; printed for `moved` only (`tickerChangeLine`). */
   note: string;
   /** Each change, oldest first. */
   changes: TickerChangeHop[];
@@ -158,6 +159,15 @@ function laterHops(hops: readonly TickerChangeHop[], lead: string): string {
 }
 
 /**
+ * The line a command prints beside a symbol that changed: only when its
+ * company left it. Typing the symbol a company renamed into (META, METV) gets
+ * what was typed, so nothing extra.
+ */
+export function tickerChangeLine(change: TickerChange | null | undefined): string | null {
+  return change?.kind === "moved" ? change.note : null;
+}
+
+/**
  * The note for a symbol's changes. `current` is what the command found
  * trading under the symbol: null when nothing does, left out when it did not
  * look. A quote that stopped before the change, or that names the issuer that
@@ -165,7 +175,7 @@ function laterHops(hops: readonly TickerChangeHop[], lead: string): string {
  *
  * "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"
  * "FB changed to META on 2022-06-09"
- * "METV was META until 2022-01-31"
+ * "METV was META until 2022-01-31" (data only: `tickerChangeLine` prints none)
  */
 export function describeTickerChange(
   typed: string,

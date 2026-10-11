@@ -18,6 +18,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { addTickerToPortfolio, addTickerToWatchlist } from "../mutations";
 import { captureAttentionAction } from "../../../../telemetry/attention-counts";
 import { publicTickerKey } from "../../../../utils/exchanges";
+import { tickerChangeLine } from "../../../../tickers/ticker-changes";
 import {
   IDLE_VALIDATION,
   isPlausibleTickerQuery,
@@ -320,8 +321,8 @@ export function QuickAddTickerInput({
         symbol: result.ticker.metadata.ticker,
         collection: collectionName,
       });
-      // As `watchlist add` prints it: FB now lists another security, METV was META.
-      const change = currentValidation.change?.note;
+      // As `watchlist add` prints it: FB now lists another security, Meta trades as META.
+      const change = tickerChangeLine(currentValidation.change);
       notify({ type: "success", body: change ? `${added} ${change}.` : added });
       resetInput();
       queueMicrotask(() => inputRef.current?.focus?.());
