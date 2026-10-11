@@ -33,19 +33,13 @@ export function mergeQuoteMetadata(known: QuoteMetadata | null | undefined, load
   return Object.keys(fields).length ? { ...merged, fieldSources: fields } : merged;
 }
 
-/** A provider's listing name establishes identity, not a session calendar. */
-function metadataExchange(value?: string): string {
-  const exchange = canonicalExchange(value);
-  return exchange === "NY MERCANTILE" ? "NYMEX" : exchange;
-}
-
 /** Qualified listings must agree; provider suffix spellings use the existing exact-listing normalizer. */
 export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: string, exchange?: string): boolean {
   const target = parsePublicTickerKey(symbol);
   const actual = parsePublicTickerKey(metadata.symbol);
-  const requestedExchange = metadataExchange(target.exchange || exchange);
-  const symbolExchange = metadataExchange(actual.exchange);
-  const actualExchange = metadataExchange(metadata.listingExchangeName) || symbolExchange;
+  const requestedExchange = canonicalExchange(target.exchange || exchange);
+  const symbolExchange = canonicalExchange(actual.exchange);
+  const actualExchange = canonicalExchange(metadata.listingExchangeName) || symbolExchange;
   if (symbolExchange && actualExchange && symbolExchange !== actualExchange) return false;
   if (requestedExchange && actualExchange !== requestedExchange) return false;
   if (target.symbol === actual.symbol) return true;

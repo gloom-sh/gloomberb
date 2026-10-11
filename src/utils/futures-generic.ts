@@ -7,7 +7,7 @@
  * ratio-adjusts, A difference-adjusts, neither leaves prices as traded.
  */
 
-import { parsePublicTickerKey } from "./exchanges";
+import { canonicalExchange, parsePublicTickerKey } from "./exchanges";
 
 export type FuturesGenericRoll =
   | { rule: "open-interest" }
@@ -35,11 +35,6 @@ const ROOT_VENUES: Readonly<Record<string, string>> = Object.fromEntries(([
   ["NYB", ["KC", "SB", "CC", "CT", "OJ"]],
   ["CFE", ["VX"]],
 ] as const).flatMap(([venue, roots]) => roots.map((root) => [root, venue])));
-
-/** Other names quotes give each venue, which a listing may carry as its exchange. */
-const VENUE_NAMES: Readonly<Record<string, readonly string[]>> = {
-  NYM: ["NYMEX", "NY MERCANTILE"], CBT: ["CBOT"], CMX: ["COMEX"], NYB: ["ICE FUTURES", "NYBOT"], CFE: ["CBOE FUTURES"],
-};
 
 /** Bloomberg's codes where they differ from the exchange's. */
 const ALIASES: Readonly<Record<string, string>> = {
@@ -83,9 +78,9 @@ export function futuresGenericListing(symbol: string, exchange?: string | null):
   const key = parsePublicTickerKey(symbol);
   const generic = parseFuturesGeneric(key.symbol);
   if (!generic) return null;
-  const venue = (key.exchange || exchange || "").trim().toUpperCase();
-  const own = ROOT_VENUES[generic.root]!;
-  return !venue || venue === own || VENUE_NAMES[own]?.includes(venue) ? generic : null;
+  // The alias table names each venue by its code, however a quote spells it (NYMEX is NYM).
+  const venue = key.exchange || canonicalExchange(exchange ?? "");
+  return !venue || venue === ROOT_VENUES[generic.root] ? generic : null;
 }
 
 const FUTURES_VENUES = new Set(Object.values(ROOT_VENUES));
@@ -98,9 +93,8 @@ const FUTURES_VENUES = new Set(Object.values(ROOT_VENUES));
  */
 export function futuresListingVenue(symbol: string, exchange?: string | null): { venue: string; root: string | null } | null {
   const ticker = symbol.trim().toUpperCase();
-  const named = (exchange ?? "").trim().toUpperCase();
-  const venue = FUTURES_VENUES.has(named) ? named
-    : Object.entries(VENUE_NAMES).find(([, names]) => names.includes(named))?.[0] ?? null;
+  const named = canonicalExchange(exchange ?? "");
+  const venue = FUTURES_VENUES.has(named) ? named : null;
   const coded = /^([A-Z0-9]{1,4}?)(?:=F|[FGHJKMNQUVXZ]\d{2}(?:\.[A-Z]+)?)$/.exec(ticker)?.[1]
     ?? /^([A-Z]{2})-Y\.[A-Z]+$/.exec(ticker)?.[1];
   const root = futuresGenericListing(ticker, venue ?? named)?.root ?? (coded ? ALIASES[coded] ?? coded : null);

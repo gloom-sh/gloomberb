@@ -72,6 +72,22 @@ test("old wrong-venue and unqualified caches cannot reintroduce Tokyo prices or 
   } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("a futures listing on its venue code takes the quote that names the venue, and no other venue's", async () => {
+  // Search and the futures board give the code (GC=F:CMX); the quote names the venue (COMEX).
+  const venues: Record<string, string> = { "GC=F": "COMEX", "CL=F": "NY MERCANTILE", "ZC=F": "CBOT" };
+  apiClient.getCloudQuote = (async (symbol: string) => ({ status: "success", data: {
+    ...quote(), symbol, currency: "USD", exchangeName: venues[symbol], listingExchangeName: venues[symbol], instrumentType: "FUTURE",
+  } })) as any;
+  const store = new AppPersistence(":memory:");
+  try {
+    const router = new AssetDataRouter(new GloomberbCloudProvider(), [], store.resources);
+    for (const [symbol, exchange] of [["GC=F", "CMX"], ["CL=F", "NYM"], ["ZC=F", "CBT"], ["CL=F", "NYMEX"]] as const) {
+      expect(await router.getQuote(symbol, exchange)).toMatchObject({ symbol, price: 3025 });
+    }
+    await expect(router.getQuote("GC=F", "NYM")).rejects.toThrow("No quote provider available");
+  } finally { store.close(); }
+});
+
 test("declared contract contexts retain exact venue, contract and independent cache identity", async () => {
   const calls: unknown[] = [];
   const provider = createTestDataProvider({ getQuote: async (symbol, exchange, context) => {

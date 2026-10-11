@@ -163,6 +163,22 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   EGYPT: "EGX",
   CAIRO: "EGX",
   CCC: "CCC",
+  // Futures venues, by the code search gives each (GC=F on CMX). Quotes spell
+  // the venue out (COMEX, NY MERCANTILE); both spellings are one venue, or the
+  // quote for GC=F:CMX reads as another venue's and is dropped.
+  CME: "CME",
+  CBT: "CBT",
+  CBOT: "CBT",
+  NYM: "NYM",
+  NYMEX: "NYM",
+  "NY MERCANTILE": "NYM",
+  CMX: "CMX",
+  COMEX: "CMX",
+  NYB: "NYB",
+  NYBOT: "NYB",
+  "ICE FUTURES": "NYB",
+  CFE: "CFE",
+  "CBOE FUTURES": "CFE",
   // The currency venue: EURUSD:CCY and EURUSD:FX are the pair EURUSD=X. Pairs
   // saved from an older search answer are on PHYSICAL CURRENCY.
   CCY: "CCY",
@@ -323,6 +339,11 @@ const EXCHANGE_NAMES: Record<string, string> = {
   MSX: "Muscat Stock Exchange",
   KUWAIT: "Boursa Kuwait",
   EGX: "Egyptian Exchange",
+  CBT: "CBOT",
+  NYM: "NYMEX",
+  CMX: "COMEX",
+  NYB: "ICE Futures U.S.",
+  CFE: "Cboe Futures Exchange",
 };
 
 const KNOWN_EXCHANGE_CODES: ReadonlySet<string> = new Set([

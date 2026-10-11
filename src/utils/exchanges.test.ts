@@ -8,12 +8,14 @@ import {
   publicTickerKey,
   resolveExchangeTimeZone,
 } from "./exchanges";
+import { futuresListingVenue } from "./futures-generic";
 
 describe("exchange metadata", () => {
   test("has a valid timezone for every canonical exchange", () => {
     // The currency venue keeps no session clock here: Gloom Cloud judges how current a pair is.
+    // Futures venues neither: their trading days open by venue and root (trading-sessions).
     const canonicalExchanges = [...new Set(Object.values(CANONICAL_EXCHANGE_ALIASES))]
-      .filter((exchange) => exchange !== "CCY").sort();
+      .filter((exchange) => exchange !== "CCY" && !futuresListingVenue("", exchange)).sort();
     const missing = canonicalExchanges.filter((exchange) => !EXCHANGE_TIME_ZONES[exchange]);
 
     expect(missing).toEqual([]);

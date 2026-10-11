@@ -2,6 +2,7 @@ import { apiClient } from "../api-client";
 import type { FuturesContractSpec, FuturesContractTermsPayload } from "../api-client/futures-curve";
 import { classifyInstrumentType } from "../tickers/instrument-kind";
 import type { Quote } from "../types/financials";
+import { parsePublicTickerKey } from "../utils/exchanges";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
 
 /**
@@ -66,7 +67,7 @@ export function futuresSpecLines(spec: FuturesContractSpec): FuturesContractLine
 
 /** A contract as traders write it: GCZ26.CMX is GCZ26. */
 function contractCode(symbol: string): string {
-  return symbol.trim().toUpperCase().replace(/\.[A-Z]+$/, "");
+  return parsePublicTickerKey(symbol).symbol.replace(/\.[A-Z]+$/, "");
 }
 
 /**
@@ -145,5 +146,6 @@ export async function loadFuturesContractTerms(
   symbol: string,
   client: Pick<typeof apiClient, "getCloudFuturesContract"> = apiClient,
 ): Promise<FuturesContractTermsPayload> {
-  return validateFuturesContractTerms(await client.getCloudFuturesContract(symbol.trim()));
+  // The terms are the contract's wherever it is listed: GC=F:CMX asks for GC=F.
+  return validateFuturesContractTerms(await client.getCloudFuturesContract(parsePublicTickerKey(symbol).symbol));
 }
