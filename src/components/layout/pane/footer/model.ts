@@ -25,6 +25,12 @@ export interface PaneFooterSegment {
   parts: PaneFooterPart[];
   /** Desktop affordance; parts retain the terminal representation. */
   icon?: "warning";
+  /**
+   * The segment only dates the pane's data (`as of 2026-10-05`). A `gloomberb
+   * shot` whose status line already dates that data leaves it out, so the
+   * date is not said twice.
+   */
+  asOf?: boolean;
   label?: string;
   title?: string;
   shortcut?: string;

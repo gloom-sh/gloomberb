@@ -96,7 +96,7 @@ import {
   withShotSeasonalityHistory,
 } from "./data";
 import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
-import { deriveHeadlessFreshness, deriveRenderedFreshness, statusLineVariants, type ReportFreshness } from "./freshness";
+import { datesObservation, deriveHeadlessFreshness, deriveRenderedFreshness, statusLineVariants, type ReportFreshness } from "./freshness";
 import { quotesFreshness } from "../freshness";
 import {
   financialRatioRenderMismatches,
@@ -873,7 +873,7 @@ export async function renderDesktopShot({
       bridge: recorded.bridge,
       statusLine: async (rendered) => {
         freshness = await dataset ?? shotFreshness(resolved, shotPayload, rendered, recorded.quotes);
-        return statusLineVariants(freshness);
+        return { variants: statusLineVariants(freshness), observed: datesObservation(freshness) };
       },
     });
   } finally {

@@ -671,6 +671,11 @@ export function formatStatusLine(freshness: ReportFreshness): string {
   return statusLineVariants(freshness)[0]!;
 }
 
+/** Whether the status line dates the data by its newest observation and lag (a dataset's), not by a market session. */
+export function datesObservation(freshness: ReportFreshness): freshness is ReportFreshness & { asOf: string; lagDays: number } {
+  return freshness.lagDays != null && !!freshness.asOf;
+}
+
 /**
  * The status line from longest to shortest, for a capture to take the first
  * that fits its width. Quotes and other reports leave out their source: the
@@ -680,7 +685,7 @@ export function formatStatusLine(freshness: ReportFreshness): string {
  * and gives up its oldest observation, the stale total, then its source.
  */
 export function statusLineVariants(freshness: ReportFreshness): string[] {
-  if (freshness.lagDays != null && freshness.asOf) {
+  if (datesObservation(freshness)) {
     const { asOf, lagDays } = freshness;
     const datasetDetails: DatasetLineDetail[] = [
       {},

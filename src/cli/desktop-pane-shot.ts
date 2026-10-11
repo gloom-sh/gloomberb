@@ -145,9 +145,15 @@ export interface DesktopPaneShotRenderResult {
 
 /**
  * The status line variants for a capture, longest first, worked out from what
- * the pane rendered; null leaves the footer row empty.
+ * the pane rendered; null leaves the footer row empty. `observed` says the
+ * line dates the data by its newest observation (a dataset's), so the pane's
+ * own `as of` footer text is left out rather than repeat the date.
  */
-type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => readonly string[] | null | Promise<readonly string[] | null>;
+interface ShotStatusLineVariants {
+  variants: readonly string[];
+  observed?: boolean;
+}
+type ShotStatusLine = (rendered: DesktopPaneShotRenderResult) => ShotStatusLineVariants | null | Promise<ShotStatusLineVariants | null>;
 
 type CdpResponse = {
   id?: number;
@@ -484,8 +490,8 @@ async function capturePageScreenshot({
     await waitForShotReady(session);
     const rendered = await readRenderedPaneState(session);
     if (captureImage && statusLine) {
-      const variants = await statusLine(rendered);
-      rendered.statusLine = variants?.length ? await fitShotStatusLine(session, variants) : null;
+      const line = await statusLine(rendered);
+      rendered.statusLine = line?.variants.length ? await fitShotStatusLine(session, line) : null;
     }
     if (captureImage) {
       const screenshot = await session.send("Page.captureScreenshot", {
@@ -766,11 +772,11 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
 }
 
 /** Draws the first variant that fits the pane footer, and returns what it drew. */
-async function fitShotStatusLine(session: CdpSession, variants: readonly string[]): Promise<string | null> {
+async function fitShotStatusLine(session: CdpSession, { variants, observed }: ShotStatusLineVariants): Promise<string | null> {
   const result = await session.send("Runtime.evaluate", {
     expression: `(() => {
       const fit = window.__GLOOM_CLI_SHOT_FIT_STATUS__;
-      return fit ? fit(${JSON.stringify(variants)}) : null;
+      return fit ? fit(${JSON.stringify(variants)}, ${JSON.stringify({ observed: observed === true })}) : null;
     })()`,
     awaitPromise: true,
     returnByValue: true,

@@ -55,7 +55,7 @@ function GpuView({ width, height, focused }: PaneProps) {
   const signIn = !data && (session.needsVerification || isCloudSessionRequired(resource.error));
   const notAvailable = !data && resource.error === GPU_NOT_AVAILABLE;
   usePaneStatusFooter({ registrationId: "gpu", loading: resource.loading || preview.loading, error: notAvailable || signIn ? null : resource.error ?? preview.error,
-    stale: !!data && (data.stale || resource.data?.stale), info: data?.asOf ? [{ id: "asof", parts: [{ text: `as of ${gpuTime(data.asOf)}`, tone: "muted" }] }] : [] });
+    stale: !!data && (data.stale || resource.data?.stale), info: data?.asOf ? [{ id: "asof", asOf: true, parts: [{ text: `as of ${gpuTime(data.asOf)}`, tone: "muted" }] }] : [] });
   usePaneNoticeFooter({ registrationId: "gpu:notices", focused,
     notices: [...(data?.gaps ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneFooter("gpu:actions", () => ({ info: data?.access?.preview ? [{ id: "preview", parts: [{ text: "Free preview", tone: "muted" }] }] : [],

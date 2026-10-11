@@ -70,3 +70,35 @@ test("pane screenshots retain warnings, optionally preserve source status and re
   expect(root.querySelector('[data-gloom-role="pane-hint"]')).toBeNull();
   expect(bodyHeight()).toBeCloseTo(withFooter);
 });
+
+test("a status line that dates the observation replaces the pane's own as-of, and keeps its other status", async () => {
+  const ui = createDomUiHost();
+  function Dated() {
+    usePaneFooter("dated", () => ({
+      info: [
+        { id: "observed", asOf: true, parts: [{ text: "as of 2026-10-05" }] },
+        { id: "preview", parts: [{ text: "Pro preview", tone: "warning" }] },
+      ],
+    }), []);
+    return <div>Hiring</div>;
+  }
+  const root = await render(<UiHostProvider ui={ui} renderer={noopRendererHost}>
+    <WebInputHostProvider><WebDialogHostProvider>
+      <PaneShotFrame paneId="shot" title="Hiring" width={60} height={24} preserveStatus statusLine>
+        {() => <PaneFooterScope active><Dated /></PaneFooterScope>}
+      </PaneShotFrame>
+    </WebDialogHostProvider></WebInputHostProvider>
+  </UiHostProvider>);
+  const footer = () => root.querySelector('[data-gloom-role="pane-footer"]')?.textContent ?? "";
+  expect(footer()).toContain("as of 2026-10-05");
+
+  // A market line leaves it alone: the as-of dates the pane's data, not the quotes.
+  await act(async () => { await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.(["Fri 9 Oct close"], { observed: false }); });
+  expect(footer()).toContain("as of 2026-10-05");
+  expect(footer()).toContain("Fri 9 Oct close");
+
+  await act(async () => { await window.__GLOOM_CLI_SHOT_FIT_STATUS__?.(["Observed Mon 5 Oct · lag 5d"], { observed: true }); });
+  expect(footer()).not.toContain("as of");
+  expect(footer()).toContain("Pro preview");
+  expect(footer()).toContain("Observed Mon 5 Oct · lag 5d");
+});

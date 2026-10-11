@@ -9,9 +9,10 @@ declare global {
     /**
      * Set by a capture that carries a status line: shows the first of the
      * variants (longest first) that fits the footer, cut in the middle when
-     * none does, and resolves to the text shown.
+     * none does, and resolves to the text shown. `observed` says the line
+     * dates the data by its observation, so the pane's own `as of` text goes.
      */
-    __GLOOM_CLI_SHOT_FIT_STATUS__?: (variants: string[]) => Promise<string>;
+    __GLOOM_CLI_SHOT_FIT_STATUS__?: (variants: string[], options?: { observed?: boolean }) => Promise<string>;
   }
 }
 
@@ -76,26 +77,33 @@ function footerOverflows(): boolean {
   ));
 }
 
-function useShotStatusLine(enabled: boolean): string {
+function useShotStatusLine(enabled: boolean): { text: string; observed: boolean } {
   const [text, setText] = useState(PENDING_STATUS);
+  const [observed, setObserved] = useState(false);
   useEffect(() => {
     if (!enabled) return;
-    window.__GLOOM_CLI_SHOT_FIT_STATUS__ = (variants) => fitStatusLine(variants, async (next) => {
-      setText(next);
-      await nextFrames(2);
-    }, footerOverflows);
+    // The pane's `as of` goes before the line is fitted, so the line gets its room.
+    window.__GLOOM_CLI_SHOT_FIT_STATUS__ = (variants, options) => {
+      setObserved(options?.observed === true);
+      return fitStatusLine(variants, async (next) => {
+        setText(next);
+        await nextFrames(2);
+      }, footerOverflows);
+    };
     return () => {
       delete window.__GLOOM_CLI_SHOT_FIT_STATUS__;
     };
   }, [enabled]);
-  return text;
+  return { text, observed };
 }
 
 /**
  * Static captures retain warnings and optional source status without action
  * shortcuts. With `statusLine` the footer also carries the capture's dated
  * status line (`Fri 9 Oct close · 15 min delayed · markets closed until Mon`),
- * inside the requested size: the body gives up the footer row for it.
+ * inside the requested size: the body gives up the footer row for it. A line
+ * that dates the data by its observation (`observed Mon 5 Oct · lag 5d`)
+ * replaces the pane's own `as of` segment, so the date is said once.
  */
 export function PaneShotFrame({ paneId, title, width, height, preserveStatus = false, statusLine = false, children }: {
   paneId: string;
@@ -106,10 +114,10 @@ export function PaneShotFrame({ paneId, title, width, height, preserveStatus = f
   statusLine?: boolean;
   children: (frame: ReturnType<typeof resolvePaneBodyFrame>) => ReactNode;
 }) {
-  const statusText = useShotStatusLine(statusLine);
+  const { text: statusText, observed } = useShotStatusLine(statusLine);
   return <PaneFooterProvider>{(registeredFooter) => {
     const status: PaneFooterSegment[] = statusLine ? [{ id: "shot-status", parts: [{ text: statusText, tone: "label" }] }] : [];
-    const info = registeredFooter.info.filter((segment) => preserveStatus || segment.icon === "warning");
+    const info = registeredFooter.info.filter((segment) => (preserveStatus || segment.icon === "warning") && !(observed && segment.asOf));
     const footer = { info: [...info, ...status], hints: [], menu: [], keys: [] };
     const bodyFrame = resolvePaneBodyFrame({
       width,
