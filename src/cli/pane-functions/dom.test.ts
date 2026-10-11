@@ -2,7 +2,7 @@ import { afterAll, beforeAll, expect, setSystemTime, test } from "bun:test";
 import type { ResolvedPaneFunction } from "./resolver";
 import { assessPaneScreenshot, type PaneScreenshotResult } from "./screenshot";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
-import { buildDomPaneReportFromRender } from "./dom";
+import { buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
 import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
 
@@ -132,9 +132,10 @@ test("an OMON report reads every strike of its window past the viewport, and say
   const { resolved, render, notice } = omonCapture();
   const report = buildDomPaneReportFromRender(resolved, { symbols: ["META"], render } as unknown as PaneScreenshotResult);
   expect(report.data).toMatchObject({
-    rowCount: 5, complete: true, truncated: false, truncationReasons: [],
+    rowCount: 5, complete: true, truncated: false, truncationReasons: [], everyRow: true,
     metadata: { strikes: { window: "2", shown: 5, total: 145 }, notices: [notice] },
   });
+  expect(domReportNote(1, domReportView(report.data))).toContain("every row of the pane's table");
   expect((report.data.rows as Array<{ key: string }>).map((row) => row.key)).toEqual(["700", "710", "720", "730", "740"]);
   expect(report.text).toContain(notice);
 
@@ -142,6 +143,7 @@ test("an OMON report reads every strike of its window past the viewport, and say
   const viewportOnly = { ...render, reportRows: undefined, reportTruncationReasons: undefined };
   const clipped = buildDomPaneReportFromRender(resolved, { symbols: ["META"], render: viewportOnly } as unknown as PaneScreenshotResult);
   expect(clipped.data).toMatchObject({ rowCount: 3, complete: false, truncationReasons: ["rows above and below the rendered viewport are cut"] });
+  expect(domReportNote(1, domReportView(clipped.data))).toContain("The rendered view is clipped.");
 });
 
 test("an OMON shot names the rows its image cuts and how many strikes the window lists", () => {

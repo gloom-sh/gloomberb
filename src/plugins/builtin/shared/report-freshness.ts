@@ -79,6 +79,15 @@ export function quoteFreshnessFields(
 }
 
 /**
+ * One quote as a report reads it among the observations behind a view: its
+ * freshness fields and when it was updated. A board publishes one per quote
+ * it shows, so `fn` and `shot` date it as `quote` dates the same quotes.
+ */
+export function quoteObservation(quote: Quote, now = Date.now()): QuoteFreshnessFields & { updatedAt: number } {
+  return { ...quoteFreshnessFields(quote, now), updatedAt: quote.lastUpdated };
+}
+
+/**
  * Whether the Gloom Cloud session a report reads with has real-time access:
  * no session reads as a free account; a session is asked for its plan. Null
  * when the plan cannot be read, so the report does not guess a delay.

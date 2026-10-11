@@ -14,6 +14,7 @@ import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
+import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
@@ -60,6 +61,13 @@ function searchSourceLabel(candidate: TickerSearchCandidate): string {
 
 function resolveSearchName(candidate: TickerSearchCandidate): string {
   return candidate.detail.split(" | ")[0] || candidate.detail || "—";
+}
+
+/** The listing's type as the table shows it; a perpetual price a provider types as a coin says what it is. */
+function searchType(candidate: TickerSearchCandidate): string | undefined {
+  return instrumentTypeLabel(candidate.result?.type
+    || candidate.result?.brokerContract?.secType
+    || candidate.ticker?.metadata.assetCategory, resolveSearchName(candidate));
 }
 
 function searchCandidateRows(candidates: TickerSearchCandidate[]) {
@@ -136,10 +144,7 @@ export function buildSearchReport({
           || candidate.ticker?.metadata.exchange
           || candidate.right
           || "—",
-        candidate.result?.type
-          || candidate.result?.brokerContract?.secType
-          || candidate.ticker?.metadata.assetCategory
-          || "—",
+        searchType(candidate) ?? "—",
         ...(showSource ? [searchSourceLabel(candidate) || "—"] : []),
       ]),
     ));

@@ -126,19 +126,30 @@ function resolveTableIndex<T, C extends DataTableColumn>(
  * Every row as a report reads it: the key, whether it is selected and each
  * column's text, the same text the cells draw. Captured with the semantic
  * snapshot, so a row scrolled out of the viewport still reaches the report.
+ * A section header sits in the first column and a time cell carries the
+ * instant behind its short text, as the capture of a drawn row reads them.
  */
 function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>) {
   const normalize = (text: string) => text.replace(/\s+/g, " ").trim();
+  const first = props.columns[0];
   return props.items.map((item, index) => {
     const selected = props.isSelected(item, index);
     const section = props.renderSectionHeader?.(item, index);
     const cells = section
-      ? [{ columnLabel: "Row", text: normalize(section.action ? `${section.text} ${section.action.label}` : section.text) }]
-      : props.columns.map((column) => ({
-        columnId: column.id,
-        columnLabel: column.label,
-        text: normalize(props.renderCell(item, column, index, { selected }).text),
-      }));
+      ? [{
+        ...(first ? { columnId: first.id } : {}),
+        columnLabel: first?.label ?? "Row",
+        text: normalize(section.action ? `${section.text} ${section.action.label}` : section.text),
+      }]
+      : props.columns.map((column) => {
+        const cell = props.renderCell(item, column, index, { selected });
+        return {
+          columnId: column.id,
+          columnLabel: column.label,
+          text: normalize(cell.text),
+          ...(cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? { instant: cell.value.toISOString() } : {}),
+        };
+      });
     return { key: props.getItemKey(item, index), selected, cells: cells.filter((cell) => cell.text.length > 0) };
   });
 }

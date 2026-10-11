@@ -464,6 +464,11 @@ function shotImagePixels(widthPx: number, heightPx: number, scale = 1): { width:
   };
 }
 
+/** The tallest layout, in cells, a capture may grow to at this scale: the `--height` limit. */
+function shotMaxHeightCells(scale: number): number {
+  return Math.max(1, Math.floor(SHOT_SIZE_LIMITS.height.max / scale / DESKTOP_CELL_HEIGHT_PX));
+}
+
 /** What `shot` says when it drew another size than the one asked for, naming the PNG it wrote. */
 export function shotSizeWarnings(
   clamped: readonly ShotSizeClamp[] | undefined,
@@ -843,6 +848,7 @@ export async function renderDesktopShot({
   scale,
   watermark,
   statusLine = false,
+  fitRows = false,
   options,
   captureImage = true,
 }: {
@@ -857,6 +863,8 @@ export async function renderDesktopShot({
   watermark?: string | null;
   /** Draw the dated status line in the capture's footer. Reports and `--no-status` leave it out. */
   statusLine?: boolean;
+  /** No `--height` was asked for: a pane that fits its rows (FUT) grows to show them all. */
+  fitRows?: boolean;
   options: Record<string, string | true>;
   captureImage?: boolean;
 }): Promise<PaneScreenshotResult> {
@@ -882,6 +890,7 @@ export async function renderDesktopShot({
       loadModel,
     );
     if (statusLine && captureImage) payload.statusLine = true;
+    if (fitRows && resolved.pane.shotFitsRows) payload.maxHeightCells = shotMaxHeightCells(scale ?? 1);
     // Loads while the page renders.
     const report = payload.statusLine ? reportShotFreshness(resolved, loadModel) : undefined;
     const recorded = recordBridgedQuotes(createDesktopShotBridge(context));

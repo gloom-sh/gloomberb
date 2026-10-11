@@ -10,7 +10,7 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatVol, readingLabel, sharedDates, shortDate, VCA_DEFINITIONS, verdictLabel } from "./format";
-import { projectRichCheap, type RichCheapRow, richCheapDates, type VcaPreset } from "./model";
+import { FIRST_BACKFILL_TEXT, projectRichCheap, type RichCheapRow, richCheapDates, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 
 type SortId = keyof RichCheapRow;
@@ -81,7 +81,7 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
   const queued = rows.filter((row) => row.status === "queued").length;
   const uncovered = rows.filter((row) => row.status !== "queued" && row.iv30 == null).length;
   const notices = [universe.error, resource.error,
-    ...(queued ? [`${queued} symbol${queued === 1 ? "" : "s"} queued for implied volatility history; they fill in after backfill.`] : []),
+    ...(queued ? [`${queued} symbol${queued === 1 ? "" : "s"} queued for implied volatility history; ${FIRST_BACKFILL_TEXT}.`] : []),
     ...(uncovered ? [`${uncovered} symbol${uncovered === 1 ? " has" : "s have"} no stored implied volatility yet.`] : [])]
     .filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "iv-screen-notices", notices, focused });

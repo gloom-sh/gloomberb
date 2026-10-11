@@ -133,6 +133,7 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
         scale: parsed.scale,
         watermark: parsed.watermark,
         statusLine: parsed.status !== false,
+        fitRows: parsed.heightGiven !== true,
         options: parsed.options,
       });
       if (parsed.requireBotSafe && !result.usable) {

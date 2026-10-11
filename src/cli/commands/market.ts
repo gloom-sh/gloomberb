@@ -80,6 +80,7 @@ import {
   historyUnit,
 } from "../history-rows";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
+import { newsEmptyMessage } from "./news-hints";
 import { formatUtcTime } from "../../utils/utc-time";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
@@ -834,6 +835,10 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       listing ? loadListingQuote(market.dataProvider, listing) : null,
     ]);
     const identity = listing ? listingIdentity(listing, quote) : null;
+    // A futures code or a symbol nothing answers to has no stories: say why, with a ticker to try.
+    const empty = listing && identity
+      ? newsEmptyMessage(listing.symbol, listingTitle(identity), quote, quote !== null || identity.name !== null)
+      : undefined;
     ctx.printResult({
       data: articles,
       metadata: { ticker: listing?.key ?? null, ...(identity ? listingMetadata(identity) : {}), feed: feed ?? null },
@@ -853,6 +858,7 @@ async function runNews(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
         { key: "tickers", header: "Tickers", maxWidth: 16 },
         { key: "url", header: "URL", optional: true },
       ],
+      ...(empty ? { empty } : {}),
     });
   });
 }

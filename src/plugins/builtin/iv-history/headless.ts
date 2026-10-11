@@ -3,7 +3,7 @@ import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadRealizedVolatilities } from "./client";
 import { formatPoints, formatRank, formatStat, formatVol, readingLabel, sharedDates, VCA_DEFINITIONS, verdictLabel } from "./format";
-import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, VCA_LIMIT, VCA_PRESETS } from "./model";
+import { backfillRetryText, HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 
 const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
@@ -101,7 +101,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
       ], rows: rows.map((row) => ({ ...row })) }],
       complete: !queued.length && !universe.error, unavailableSymbols: queued,
       errors: [universe.error].filter((value): value is string => !!value),
-      notes: [...queued.length ? [`Queued for backfill: ${queued.join(", ")}.`] : [], ...VCA_DEFINITIONS],
+      notes: [...queued.length ? [`Queued for backfill: ${queued.join(", ")}; ${backfillRetryText(null)}.`] : [], ...VCA_DEFINITIONS],
       metadata: { presets: VCA_PRESETS, methodology: METHODOLOGY },
     };
   },

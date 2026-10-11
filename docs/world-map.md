@@ -8,7 +8,7 @@
 | `MAP venues` | Trading venues alone, with open status, local time and the next session change |
 | `MAP ships` | Ships and shipping chokepoints |
 | `MAP ports` | Ports with weekly calls and trade |
-| `MAP energy` | Pipelines, oil and gas fields and LNG terminals |
+| `MAP energy` | Pipelines, oil and gas fields and LNG terminals, all in the United States (the terminals as of 31 Aug 2023); a search elsewhere says so |
 | `MAP air` | Airports, and flights where they are switched on |
 
 ## Layers

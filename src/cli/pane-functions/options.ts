@@ -34,6 +34,8 @@ export interface ParsedPaneFunctionArgs {
   outputPath: string | null;
   width: number;
   height: number;
+  /** `--height` was given; without it a pane that fits its rows (FUT) grows to show them all. */
+  heightGiven?: true;
   /** Theme id override for screenshots; null keeps the configured theme. */
   theme: string | null;
   /** Render scale: 1.5 renders two thirds as many cells at 1.5x size, so text reads larger at the same pixel size. */
@@ -87,6 +89,7 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
   let outputPath: string | null = null;
   let width = DEFAULT_SHOT_WIDTH;
   let height = DEFAULT_SHOT_HEIGHT;
+  let heightGiven = false;
   let theme: string | null = null;
   let scale = 1;
   let watermark: string | null = null;
@@ -132,7 +135,10 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
       const size = parseShotSize(normalizedKey, value);
       if (size.used !== size.requested) clamped.push(size);
       if (normalizedKey === "width") width = size.used;
-      else height = size.used;
+      else {
+        height = size.used;
+        heightGiven = true;
+      }
     } else if (normalizedKey === "theme" && value !== true) {
       theme = value.trim() || null;
     } else if (normalizedKey === "scale" && value !== true) {
@@ -157,6 +163,7 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
   return {
     target, arg, options, outputPath, width, height, theme, scale, watermark, status, requireBotSafe,
     ...(clamped.length > 0 ? { clamped } : {}),
+    ...(heightGiven ? { heightGiven: true as const } : {}),
     ...(explain ? { explain } : {}),
   };
 }
