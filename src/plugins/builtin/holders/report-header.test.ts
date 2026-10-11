@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { holderShareBasisNote, holderValueBasis, holdersHeaderLine, moneyColumnHeader, nonUsHolderCaveat } from "./report-header";
+import { holderListPeriod, holderShareBasisNote, holderValueBasis, holdersHeaderLine, moneyColumnHeader, nonUsHolderCaveat } from "./report-header";
 
 describe("holder report header", () => {
   test("names the listing, spells out a sub-unit currency and says the list is the source's top holders", () => {
@@ -41,6 +41,14 @@ describe("holder report header", () => {
     expect(holderShareBasisNote({ shareBasis: "depositary_receipt", adrRatio: 2 }, [{}, {}])).toBe("Shares are depositary receipts (1 ADR = 2 ordinary shares).");
     expect(holderShareBasisNote({ shareBasis: "ordinary" }, [{ shareBasis: "ordinary" }])).toBeNull();
     expect(holderShareBasisNote({}, [{}])).toBeNull();
+  });
+
+  test("claims one as-of date only when every holder's row is of it", () => {
+    const june = { reportDate: "2026-06-30" };
+    expect(holderListPeriod([june, june], "2026-09-30")).toBe("as of 2026-06-30");
+    expect(holderListPeriod([june, { reportDate: "2026-09-30" }], "2026-09-30")).toBe("latest period per holder");
+    expect(holderListPeriod([], "2026-09-30")).toBe("as of 2026-09-30");
+    expect(holderListPeriod([{}], null)).toBeNull();
   });
 
   test("warns that positions on a listing outside the US are not that market's register", () => {

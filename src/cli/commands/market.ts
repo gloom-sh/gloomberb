@@ -127,6 +127,7 @@ import { windowRows } from "../row-window";
 import { crossRate, describeFxRate, isUsableRate, parseFxRequest } from "../fx-pair";
 import {
   holderListFacts,
+  holderListPeriod,
   holderShareBasisMarker,
   holderShareBasisNote,
   holderValueBasis,
@@ -135,7 +136,14 @@ import {
   sharedReportDate,
 } from "../../plugins/builtin/holders/report-header";
 import { formatPercentHeld, holderStakeMarketCap, holderValueCurrency } from "../../plugins/builtin/holders/format";
-import { holderReportColumns, holderReportNotices, holderReportRows, holderReportUnits } from "../../plugins/builtin/holders/report-rows";
+import {
+  holderReportColumns,
+  holderReportDates,
+  holderReportNotices,
+  holderReportRows,
+  holderReportUnits,
+  unvaluedHoldersNote,
+} from "../../plugins/builtin/holders/report-rows";
 import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
 import { classSharesToday } from "../../plugins/builtin/holders/client";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
@@ -1087,13 +1095,23 @@ async function runHolders(
     const shareBasisNote = holderShareBasisNote(data, rows);
     const markedRows = rows.some((row) => holderShareBasisMarker(row));
     // The heading names the listing; its unit, date and how much of the list follows on the same line.
+    // One "as of" only when every row shown is of that date; each row carries its own.
     const facts = holderListFacts({
-      currency: valueCurrency, listingCurrency: data.currency, asOf: data.asOf, shown, reported: rows.length, total,
+      currency: valueCurrency,
+      listingCurrency: data.currency,
+      period: holderListPeriod(shownRows, data.asOf),
+      shown,
+      reported: rows.length,
+      total,
+      ranked: !positionsBasis,
     });
+    const unvaluedNote = unvaluedHoldersNote(shownRows);
     const columns = holderReportColumns(shownRows, valueCurrency);
     // Dated as HDS dates it: by the list's as-of.
     const freshness = rowsFreshness(shownRows, { ...SEC_FILINGS, basis: "13F filings" }, { asOf: data.asOf ?? null });
-    const { notices } = holderReportNotices({ data, requested: raw, shown: shownRows, reported: rows.length, total });
+    // Named as fn HDS takes it, so the closing notes point to the same listing.
+    const requested = exchangeOption && !raw.includes(":") ? `${raw}:${exchangeOption.toUpperCase()}` : raw;
+    const { notices } = holderReportNotices({ data, requested, shown: shownRows, reported: rows.length, total });
     ctx.printResult({
       data: rows,
       ...(freshness ? { freshness } : {}),
@@ -1104,6 +1122,8 @@ async function runHolders(
         valueCurrency,
         units: holderReportUnits(valueCurrency),
         asOf: data.asOf ?? null,
+        // Each holder's latest period; several when the list mixes quarters.
+        reportDates: holderReportDates(shownRows),
         shown,
         reported: rows.length,
         total,
@@ -1140,7 +1160,7 @@ async function runHolders(
         footer: reportFooterLines({ freshness, notes: notices }),
       },
       summary: () => [
-        [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? ""].filter(Boolean).join(" "),
+        [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? "", unvaluedNote ?? ""].filter(Boolean).join(" "),
         commandName === "insider" && ownerTypes ? insiderSummary(data, ownerTypes) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,

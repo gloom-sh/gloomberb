@@ -27,6 +27,7 @@ import {
   HOLDER_SORT_KEYS,
   holderReportColumns,
   holderReportNotices,
+  holderReportDates,
   holderReportRows,
   holderReportUnits,
 } from "./report-rows";
@@ -187,17 +188,15 @@ export function createHoldersHeadless(
       const currency = data.currency ?? "USD";
       // A London line's values can be dollars from the 13F filings; they are labelled and formatted as such.
       const valueCurrency = holderValueCurrency(data, currency)!;
-      const sorted = holderReportRows(data, {
-        marketCap,
-        sort: {
-          columnId: HOLDER_SORT_KEYS[String(args.options.sort)] ?? "value",
-          direction: args.options.order === "asc" ? "asc" : "desc",
-        },
-      });
+      const sort = {
+        columnId: HOLDER_SORT_KEYS[String(args.options.sort)] ?? "value",
+        direction: args.options.order === "asc" ? "asc" as const : "desc" as const,
+      };
+      const sorted = holderReportRows(data, { marketCap, sort });
       const rows = sorted.slice(0, Number(args.options.limit));
       const total = data.summary?.institutionsCount ?? null;
       const { notices, valueBasis, positionsBasis, changeReported } = holderReportNotices({
-        data, requested: symbol, shown: rows, reported: sorted.length, total,
+        data, requested: symbol, shown: rows, reported: sorted.length, total, sort,
       });
       return {
         // A change column that is empty on every row says nothing; the notices explain it once.
@@ -214,6 +213,8 @@ export function createHoldersHeadless(
           ...(data.shareBasis ? { shareBasis: data.shareBasis } : {}),
           ...(data.adrRatio != null ? { adrRatio: data.adrRatio } : {}),
           asOf: data.asOf ?? null,
+          // Each holder's latest period; several when the list mixes quarters.
+          reportDates: holderReportDates(rows),
           summary: data.summary ?? null,
           shown: rows.length,
           reported: sorted.length,

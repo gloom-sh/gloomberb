@@ -77,11 +77,39 @@ describe("holders headless model", () => {
     // JSON keeps the fields; only the text table loses the empty columns.
     expect(result.rows[0]).toMatchObject({ changeShares: null, changePercent: null });
     expect(result.metadata?.notices).toEqual([
-      "BHP Group Limited (BHP.L) | LSE | GBp (pence) | top 2 reported",
+      "BHP Group Limited (BHP.L) | LSE | GBp (pence) | 2 holders reported",
       "Mkt value = shares reported at 2026-06-30 x latest price. Change vs prior quarter: not reported by this source; see fn 13F BHP",
-      "Positions come from institutional filings (mostly US 13F), not the LSE share register.",
+      "Positions come from institutional filings (mostly US 13F), not the LSE share register, so the line's largest holders may be missing.",
     ]);
   });
+});
+
+test("a list of mixed quarters claims no single date, and holders without a value sort last and say so", async () => {
+  // Gloom Cloud's Madrid list for Banco Santander (2026-10), trimmed: one filer is a quarter ahead, one row is unpriced.
+  const headless = createHoldersHeadless({
+    loadSnapshot: async () => ({
+      data: {
+        symbol: "SAN.MC", name: "Banco Santander, S.A.", currency: "EUR", exchange: "MCE", asOf: "2026-09-30",
+        holders: [
+          { ownerType: "institution", name: "Meyer Handelman Co", reportDate: "2026-06-30", shares: 26_932, value: 323_722 },
+          { ownerType: "institution", name: "Unpriced Fund", reportDate: "2026-06-30", shares: 900_000 },
+          { ownerType: "institution", name: "Generali Investments Cee", reportDate: "2026-06-30", shares: 515_532, value: 6_196_694 },
+          { ownerType: "institution", name: "Gamma Investing LLC", reportDate: "2026-09-30", shares: 5_385, value: 64_727 },
+        ],
+      },
+    }),
+  });
+  const result = await headless.load({ ...args(), rawArgument: "SAN:MCE", argument: "SAN:MCE", symbols: ["SAN:MCE"] }, createTestHeadlessContext());
+  expect(result.rows.map((row) => [row.name, row.reportDate])).toEqual([
+    ["Generali Investments Cee", "2026-06-30"],
+    ["Meyer Handelman Co", "2026-06-30"],
+    ["Gamma Investing LLC", "2026-09-30"],
+    ["Unpriced Fund", "2026-06-30"],
+  ]);
+  expect(result.metadata?.reportDates).toEqual(["2026-09-30", "2026-06-30"]);
+  const notices = result.metadata?.notices as string[];
+  expect(notices[0]).toBe("Banco Santander, S.A. (SAN.MC) | MCE | EUR | latest period per holder | 4 holders reported");
+  expect(notices).toContain("1 holder has no value and is listed last.");
 });
 
 describe("holders headless with the service's units", () => {
@@ -117,9 +145,9 @@ describe("holders headless with the service's units", () => {
     expect(result.rows[1]).toMatchObject({ currency: "USD", shareBasis: "depositary_receipt" });
     expect(result.metadata).toMatchObject({ currency: "GBp", valueCurrency: "USD", isDepositaryReceipt: false, adrRatio: 2 });
     expect(result.metadata?.notices).toEqual([
-      "BHP Group Limited (BHP.L) | LSE | values in USD | top 2 reported",
+      "BHP Group Limited (BHP.L) | LSE | values in USD | 2 holders reported",
       "Mkt value = shares reported at 2026-06-30 x period-end price (USD). Change vs prior quarter: not reported by this source; see fn 13F BHP:LSE",
-      "Positions come from institutional filings (mostly US 13F), not the LSE share register.",
+      "Positions come from institutional filings (mostly US 13F), not the LSE share register, so the line's largest holders may be missing.",
       "ADR: shares held as depositary receipts (1 ADR = 2 ordinary shares).",
     ]);
   });

@@ -11,6 +11,8 @@ import {
   resolveHolderOwnershipPercent,
 } from "./format";
 import {
+  holderListPeriod,
+  holderPeriodsDiffer,
   holderShareBasisMarker,
   holderShareBasisNote,
   holderValueBasis,
@@ -143,6 +145,11 @@ export function holderReportRows(
   }));
 }
 
+/** The report dates of the rows, newest first: one when the list is of one quarter. */
+export function holderReportDates(rows: readonly HolderReportRow[]): string[] {
+  return [...new Set(rows.flatMap((row) => row.reportDate ? [row.reportDate] : []))].sort().reverse();
+}
+
 /** What the JSON rows' numbers are in, for `metadata.units`. */
 export function holderReportUnits(valueCurrency: string): Record<string, string> {
   return { value: valueCurrency, changePercent: "%", percentHeld: "%" };
@@ -178,6 +185,7 @@ export function holderReportNotices({
   shown,
   reported,
   total,
+  sort = DEFAULT_SORT,
 }: {
   data: HolderData;
   /** The symbol as asked for, which `fn 13F` takes. */
@@ -186,30 +194,47 @@ export function holderReportNotices({
   /** Holders on the list before a limit. */
   reported: number;
   total: number | null;
+  sort?: SortPreference;
 }): { notices: string[]; valueBasis: string; positionsBasis: string | null; changeReported: boolean } {
   const valueCurrency = holderValueCurrency(data, "USD")!;
   const changeReported = holderChangeReported(shown);
   const valueBasis = holderValueBasis(sharedReportDate(shown), data.valueBasis, valueCurrency);
   const positionsBasis = shown.length > 0 ? nonUsHolderCaveat(data.exchange, data.currency ?? "USD") : null;
-  // The title names the ticker and the closing line carries the as-of date.
+  // The title names the ticker and the closing line carries the as-of date,
+  // which is one date only when every row has it.
   const header = holdersHeaderLine({
     name: data.name,
     symbol: data.symbol && data.symbol !== requested ? data.symbol : null,
     exchange: data.exchange,
     currency: valueCurrency,
     listingCurrency: data.currency,
+    period: holderPeriodsDiffer(shown) ? holderListPeriod(shown) : null,
     shown: shown.length,
     reported,
     total,
+    ranked: !positionsBasis,
   });
   const basis = shown.length === 0 ? null : [
     `Mkt value = ${valueBasis}.`,
     changeReported ? "" : `Change vs prior quarter: not reported by this source; see fn 13F ${requested}`,
   ].filter(Boolean).join(" ");
   return {
-    notices: [header, basis, positionsBasis, holderShareBasisNote(data, shown)].filter((line): line is string => !!line),
+    notices: [header, basis, positionsBasis, holderShareBasisNote(data, shown), unvaluedHoldersNote(shown, sort)]
+      .filter((line): line is string => !!line),
     valueBasis,
     positionsBasis,
     changeReported,
   };
+}
+
+/**
+ * Holders the list gives no value for (a home line's position its filing
+ * could not tie to a priced security) sort after every valued one, and a
+ * value-ordered report says so rather than ranking them silently.
+ */
+export function unvaluedHoldersNote(rows: readonly HolderReportRow[], sort: SortPreference = DEFAULT_SORT): string | null {
+  if (sort.columnId !== "value") return null;
+  const unvalued = rows.filter((row) => row.value == null).length;
+  if (unvalued === 0 || unvalued === rows.length) return null;
+  return `${unvalued} ${unvalued === 1 ? "holder has" : "holders have"} no value and ${unvalued === 1 ? "is" : "are"} listed last.`;
 }
