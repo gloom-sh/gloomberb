@@ -18,6 +18,8 @@ export interface CliTableOptions {
   /** Total width to fit the table into. Defaults to the terminal width; null keeps every cell whole. */
   maxWidth?: number | null;
   indent?: number;
+  /** Lines printed under each row, by row index, indented and muted: a footnote that belongs to the row. */
+  below?: ReadonlyArray<readonly string[] | undefined>;
 }
 
 export type CliStatEntry = readonly [label: string, value: string];
@@ -347,5 +349,9 @@ export function renderTable(columns: CliTableColumn[], rows: string[][], options
 
   const header = renderRow(columns.map((column) => column.header), cliStyles.bold);
   const divider = `${indent}${shown.map(({ width }) => cliStyles.muted("─".repeat(width))).join(" ".repeat(COLUMN_GAP))}`;
-  return [header, divider, ...rows.map((row) => renderRow(row))].join("\n");
+  const belowIndent = `${indent}${" ".repeat(COLUMN_GAP)}`;
+  const renderBelow = (index: number) => (options.below?.[index] ?? []).flatMap((line) => (
+    available == null ? [line] : wrapText(line, Math.max(1, available - COLUMN_GAP))
+  )).map((line) => `${belowIndent}${cliStyles.muted(line)}`.trimEnd());
+  return [header, divider, ...rows.flatMap((row, index) => [renderRow(row), ...renderBelow(index)])].join("\n");
 }

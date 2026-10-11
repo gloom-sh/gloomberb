@@ -105,6 +105,12 @@ export interface HeadlessPaneColumn {
   format?: (value: unknown, row: HeadlessPaneRow) => string;
   /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */
   textFormat?: (value: unknown, row: HeadlessPaneRow) => string;
+  /**
+   * The text report prints the value on its own lines under the row instead
+   * of in a column, for a footnote that belongs to that row; an empty value
+   * prints nothing. Exports keep it as a column.
+   */
+  underRow?: boolean;
 }
 
 export interface HeadlessPaneEntry {

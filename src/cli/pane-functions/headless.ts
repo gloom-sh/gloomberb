@@ -385,7 +385,14 @@ function renderRows(
   empty?: string,
 ): string {
   if (rows.length === 0) return empty ?? "No data.";
-  const columns = columnsFor(rows, ownColumns, fallbackColumns);
+  const all = columnsFor(rows, ownColumns, fallbackColumns);
+  const columns = all.filter((column) => !column.underRow);
+  const under = all.filter((column) => column.underRow);
+  const cell = (row: HeadlessPaneRow, column: HeadlessPaneColumn) => {
+    const value = row[column.key];
+    const format = column.textFormat ?? column.format;
+    return format ? format(value, row) : displayValue(value);
+  };
   return renderTable(
     columns.map((column) => ({
       header: humanizeCliKey(column.header),
@@ -393,11 +400,12 @@ function renderRows(
       width: column.width,
       shrink: column.shrink,
     })),
-    rows.map((row) => columns.map((column) => {
-      const value = row[column.key];
-      const format = column.textFormat ?? column.format;
-      return format ? format(value, row) : displayValue(value);
-    })),
+    rows.map((row) => columns.map((column) => cell(row, column))),
+    {
+      below: under.length === 0 ? undefined : rows.map((row) => under.flatMap((column) => (
+        row[column.key] == null || row[column.key] === "" ? [] : cell(row, column).split("\n")
+      ))),
+    },
   );
 }
 

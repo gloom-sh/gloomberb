@@ -30,7 +30,8 @@ function isUsExchange(value?: string): boolean {
 
 function isEquityType(value?: string): boolean {
   const normalized = normalize(value).replace(/[\s_-]/g, "");
-  return normalized.length === 0 || ["STK", "EQUITY", "ADR", "COMMONSTOCK", "DEPOSITARYRECEIPT"].includes(normalized);
+  return normalized.length === 0
+    || ["STK", "EQUITY", "ADR", "AMERICANDEPOSITARYRECEIPT", "COMMONSTOCK", "DEPOSITARYRECEIPT"].includes(normalized);
 }
 
 const FUND_TYPES = new Set(["ETF", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND", "CLOSEDENDFUND"]);

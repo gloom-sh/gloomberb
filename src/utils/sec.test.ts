@@ -21,6 +21,8 @@ describe("SEC pane eligibility", () => {
     ["SMART-routed with a primary exchange", smart("NASDAQ"), true, true],
     ["SMART-routed, no primary exchange", smart(), true, true],
     ["catalogue ADR", { assetCategory: "ADR" }, true, true],
+    // What picking SAN on NYSE from search saves.
+    ["catalogue American Depositary Receipt on NYSE", { assetCategory: "American Depositary Receipt", exchange: "NYSE" }, true, true],
     ["catalogue common stock on XNYS", { assetCategory: "Common Stock", exchange: "XNYS" }, true, true],
     ["depositary receipt on NGM", { assetCategory: "Depositary Receipt", exchange: "NGM" }, true, true],
     ["share class with a dot, no exchange", { ticker: "BRK.B", exchange: "", currency: "" }, true, true],

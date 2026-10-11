@@ -3,9 +3,11 @@ import type {
   HeadlessPaneContext,
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
+  HeadlessPaneRow,
 } from "../../../types/plugin";
 import { formatCompact, formatCurrency } from "../../../utils/format";
-import { loadParsedInsiderFilings } from "./client";
+import { loadParsedInsiderFilings, type InsiderFilingsLoad } from "./client";
+import { insiderEmptyNotice } from "./issuer";
 import {
   buildInsiderRows,
   buildInsiderSummary,
@@ -15,7 +17,7 @@ import {
   matchesInsiderTypeFilter,
   type ParsedInsiderFiling,
 } from "./model";
-import { relevantInsiderAmendments } from "./amendments";
+import { isAmendedInsiderFiling, relevantInsiderAmendments } from "./amendments";
 import { formatInsiderName } from "./display";
 import { SEC_FILINGS } from "../shared/report-freshness";
 
@@ -62,7 +64,15 @@ const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
     align: "right",
     format: (value) => value == null ? "-" : `$${formatCompact(Number(value))}`,
   },
+  // An amendment's original date, remarks and footnotes, under the amendment's own row.
+  { key: "note", header: "Note", underRow: true, format: (value) => typeof value === "string" ? value : "" },
 ];
+
+/** What a Form 4/A says about itself, for its last row in the report. */
+function amendmentNote(entry: ParsedInsiderFiling): string {
+  const original = entry.disclosure?.originalFilingDate;
+  return [original ? `Original filed ${original}` : "", ...buildInsiderDisclosureText(entry).split("\n")].filter(Boolean).join("\n");
+}
 
 export interface InsiderHeadlessDependencies {
   loadParsed(
@@ -70,7 +80,7 @@ export interface InsiderHeadlessDependencies {
     limit: number,
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
-  ): Promise<ParsedInsiderFiling[]>;
+  ): Promise<InsiderFilingsLoad>;
 }
 
 const defaultDependencies: InsiderHeadlessDependencies = {
@@ -113,7 +123,7 @@ export function createInsiderHeadless(
       {
         key: "limit",
         aliases: ["count", "rows"],
-        description: "Maximum Form 4 and Form 4/A filings to parse.",
+        description: "Maximum of the company's own Form 4 and Form 4/A filings to parse.",
         type: "integer",
         defaultValue: 20,
         minimum: 1,
@@ -125,7 +135,7 @@ export function createInsiderHeadless(
     async load(args, ctx) {
       const symbol = args.symbols[0]!;
       const limit = Number(args.options.limit);
-      const parsed = await dependencies.loadParsed(symbol, limit, args, ctx);
+      const { parsed, foreignPrivateIssuer } = await dependencies.loadParsed(symbol, limit, args, ctx);
       const name = String(args.options.name ?? "").trim().toLocaleLowerCase();
       const type = isInsiderTypeFilter(args.options.type) ? args.options.type : "all";
       const owned = name
@@ -136,8 +146,16 @@ export function createInsiderHeadless(
       const incomplete = [...new Set(buildInsiderRows(parsed)
         .filter((row) => row.status !== "parsed" && row.status !== "disclosure")
         .map((row) => row.accessionNumber))];
+      // A filing's lines sit together, so its note goes once, under the last of them.
+      const rows: HeadlessPaneRow[] = buildInsiderRows(filtered, parsed).map((row, index) => {
+        const entry = filtered[index]!;
+        const last = filtered[index + 1]?.filing.accessionNumber !== entry.filing.accessionNumber;
+        return isAmendedInsiderFiling(entry) && last ? { ...row, note: amendmentNote(entry) || null } : row;
+      });
       return {
-        rows: buildInsiderRows(filtered, parsed),
+        rows,
+        // Nothing at all: the company has no Form 4 of its own, which is the whole answer.
+        ...(parsed.length === 0 ? { empty: insiderEmptyNotice(foreignPrivateIssuer), unavailableSymbols: [] } : {}),
         errors: [
           ...incomplete.map((accessionNumber) => `${accessionNumber}: Form 4 transactions are unavailable or incomplete.`),
           ...amendments.map((scope) => `${scope.accessionNumber}: Form 4/A is unreconciled; affected transaction totals are unavailable.`),
@@ -146,11 +164,7 @@ export function createInsiderHeadless(
           symbol,
           summary: buildInsiderSummary(owned, Date.now(), parsed),
           amendments,
-          notices: amendments.map((scope) => {
-            const entry = parsed.find(({ filing }) => filing.accessionNumber === scope.accessionNumber)!;
-            return [`Form 4/A ${scope.accessionNumber}${scope.originalFilingDate ? ` | Original filed ${scope.originalFilingDate}` : ""}`,
-              buildInsiderDisclosureText(entry)].filter(Boolean).join("\n");
-          }),
+          foreignPrivateIssuer,
           parsed: new Set(parsed.filter(({ transaction }) => transaction != null).map(({ filing }) => filing.accessionNumber)).size,
           transactions: filtered.filter(({ transaction }) => transaction != null).length,
           requested: limit,

@@ -1,16 +1,17 @@
-import type { DataProvider, SecFilingItem } from "../../../types/data-provider";
+import type { DataProvider } from "../../../types/data-provider";
 import { parseInsiderFiling, type ParsedInsiderFiling } from "./model";
 import { isInsiderForm } from "./insider-data";
+import { filesAsForeignPrivateIssuer } from "./issuer";
 
-async function loadInsiderFilings(
-  provider: DataProvider,
-  symbol: string,
-  count: number,
-  exchange = "",
-): Promise<SecFilingItem[]> {
-  if (!provider.getSecFilings) throw new Error("Insider filing data unavailable");
-  const filings = await provider.getSecFilings(symbol, count, exchange);
-  return filings.filter((filing) => isInsiderForm(filing.form));
+// Recent EDGAR dumps cap at 1,000 mixed forms; older archives are read until
+// this many filings or the company's history ends.
+const SEC_FILING_SCAN_LIMIT = 20_000;
+
+export interface InsiderFilingsLoad {
+  /** The rows of the company's own Form 4 filings, newest first. */
+  parsed: ParsedInsiderFiling[];
+  /** Every Form 4 listed was read, none is the company's own, and it reports as a foreign private issuer. */
+  foreignPrivateIssuer: boolean;
 }
 
 function throwIfAborted(signal: AbortSignal | undefined): void {
@@ -18,29 +19,41 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   throw signal.reason instanceof Error ? signal.reason : new Error("Insider filing load was aborted.");
 }
 
+/**
+ * Reads the company's Form 4 filings newest first, one at a time, until
+ * `limit` of them are its own. A form it filed as an owner of another
+ * company's shares is read and left out, so a list of only those is read to
+ * the end before it can say there are none.
+ */
 export async function loadParsedInsiderFilings(
   provider: DataProvider,
   symbol: string,
   options: { limit: number; exchange?: string; signal?: AbortSignal },
-): Promise<ParsedInsiderFiling[]> {
+): Promise<InsiderFilingsLoad> {
+  if (!provider.getSecFilings) throw new Error("Insider filing data unavailable");
   if (!provider.getSecFilingContent) throw new Error("Insider filing content unavailable");
-  const filings = (await loadInsiderFilings(
-    provider,
-    symbol,
-    20_000,
-    options.exchange,
-  )).slice(0, options.limit);
+  const filings = await provider.getSecFilings(symbol, SEC_FILING_SCAN_LIMIT, options.exchange ?? "");
 
   const parsed: ParsedInsiderFiling[] = [];
+  let own = 0;
   for (const filing of filings) {
+    if (own >= options.limit) break;
+    if (!isInsiderForm(filing.form)) continue;
     throwIfAborted(options.signal);
+    let content: string | null;
     try {
-      const content = await provider.getSecFilingContent(filing);
-      parsed.push(...parseInsiderFiling(filing, content));
+      content = await provider.getSecFilingContent(filing);
     } catch {
       throwIfAborted(options.signal);
+      // An unread filing may be the company's own; it stays as a row that says so.
       parsed.push({ filing, transaction: null, isLoading: false });
+      own += 1;
+      continue;
     }
+    const entries = parseInsiderFiling(filing, content);
+    if (entries.length === 0) continue;
+    parsed.push(...entries);
+    own += 1;
   }
-  return parsed;
+  return { parsed, foreignPrivateIssuer: own === 0 && filesAsForeignPrivateIssuer(filings) };
 }

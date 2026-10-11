@@ -104,6 +104,16 @@ function disclosureText(xml: string): string {
   return decodeHtmlEntities(xml.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim());
 }
 
+/**
+ * The CIK of the company whose shares the form reports, without leading
+ * zeros, or null when the document is not a Form 4 or names none.
+ */
+export function parseForm4IssuerCik(xml: string): string | null {
+  if (!/<(?:[\w.-]+:)?ownershipDocument(?:\s|>)/i.test(xml)) return null;
+  const cik = tagText(tagContent(xml, "issuer") ?? "", "issuerCik").replace(/^0+/, "");
+  return /^\d+$/.test(cik) ? cik : null;
+}
+
 export function parseForm4Disclosure(xml: string): InsiderFilingDisclosure | null {
   if (!/<(?:[\w.-]+:)?ownershipDocument(?:\s|>)/i.test(xml)) return null;
   const original = tagText(xml, "dateOfOriginalSubmission");

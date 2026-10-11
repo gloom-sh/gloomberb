@@ -48,6 +48,7 @@ import {
 import { formatInsiderName } from "./display";
 import { insiderHeadless } from "./headless";
 import { isInsiderForm } from "./insider-data";
+import { filesAsForeignPrivateIssuer, insiderEmptyNotice, isOtherIssuerFiling } from "./issuer";
 import { relevantInsiderAmendments } from "./amendments";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import {
@@ -185,6 +186,17 @@ function InsiderView({ width, height, focused }: { width: number; height: number
     scopeKey: `${ticker?.metadata.ticker ?? "none"}:${ticker?.metadata.exchange ?? ""}`,
     targets: visibleForm4Filings,
   });
+  // The list also holds the Form 4s the company filed as an owner of another
+  // company's shares, which only their documents tell apart. Until one of its
+  // own is read, the pages are read on to the end, so a list of none says so.
+  const ownerFilingsShown = useMemo(() => visibleForm4Filings.some((filing) => (
+    isOtherIssuerFiling(filing, contentMap.get(filing.accessionNumber))
+  )), [contentMap, visibleForm4Filings]);
+  const ownFilingShown = useMemo(() => visibleForm4Filings.some((filing) => (
+    contentMap.has(filing.accessionNumber) && !isOtherIssuerFiling(filing, contentMap.get(filing.accessionNumber))
+  )), [contentMap, visibleForm4Filings]);
+  const searchingOwn = !ownFilingShown && pendingCount === 0 && shownCount < form4Filings.length;
+  const noOwnFilings = !loading && !ownFilingShown && pendingCount === 0 && shownCount >= form4Filings.length;
 
   const allParsed: ParsedFiling[] = useMemo(() => visibleForm4Filings.flatMap((filing) => {
     const hasContent = contentMap.has(filing.accessionNumber);
@@ -223,13 +235,13 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   // load here until it fills a page, back to a year at most.
   const oldestShown = visibleForm4Filings[visibleForm4Filings.length - 1]?.filingDate;
   const oldestShownTime = oldestShown ? new Date(oldestShown).getTime() : Number.NaN;
-  const wantsOlderFilings = (typeFilter !== "all" || nameFilter != null)
+  const wantsOlderFilings = (typeFilter !== "all" || nameFilter != null || ownerFilingsShown)
     && shown.length < Math.max(FORM4_PAGE_SIZE, height)
     && shownCount < Math.min(form4Filings.length, AUTO_FILL_FILING_CAP)
     && oldestShownTime >= Date.now() - AUTO_FILL_DAYS * DAY_MS;
   useEffect(() => {
-    if (wantsOlderFilings && pendingCount === 0) loadNextPage();
-  }, [loadNextPage, pendingCount, shownCount, wantsOlderFilings]);
+    if (searchingOwn || (wantsOlderFilings && pendingCount === 0)) loadNextPage();
+  }, [loadNextPage, pendingCount, searchingOwn, shownCount, wantsOlderFilings]);
 
   const summary = useMemo(() => buildInsiderSummaryFigures(parsed, Date.now(), allParsed), [parsed, allParsed]);
   // A page loading in on scroll clears the totals until it is read; the last
@@ -353,15 +365,15 @@ function InsiderView({ width, height, focused }: { width: number; height: number
   if (authWall) return <SignInWall placement="insider-signin" action="view insider transactions" needsVerification={cloudSession.needsVerification} />;
   if (loading && allFilings.length === 0) return <Spinner label="Loading insider filings..." />;
   if (error && allFilings.length === 0) return <EmptyState title="Insider filings unavailable." message={error} />;
-  if (!loading && form4Filings.length === 0) {
-    return renderFilingNotice(`No Form 4 filings found for ${ticker.metadata.ticker}.`, width);
+  if (noOwnFilings) {
+    return renderFilingNotice(insiderEmptyNotice(filesAsForeignPrivateIssuer(allFilings)), width);
   }
 
   // Until a filing is read there is nothing to say; after that the empty
   // list says how far back the filings it has read go, while older ones load.
   const oldestRead = allParsed.findLast((entry) => !entry.isLoading)?.filing.filingDate;
   const since = oldestRead ? ` since ${formatShortDate(oldestRead, { utc: true })}` : "";
-  const emptyTitle = typeCounts.all === 0 && (pendingCount > 0 || wantsOlderFilings)
+  const emptyTitle = typeCounts.all === 0 && (pendingCount > 0 || wantsOlderFilings || searchingOwn)
     ? "Loading Form 4 transactions..."
     : typeFilter === "trades"
       ? `No open-market buys or sells${nameFilter ? " by this insider" : ""}${since}.`

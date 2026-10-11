@@ -147,6 +147,8 @@ import {
 import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
 import { classSharesToday } from "../../plugins/builtin/holders/client";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
+import { loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
+import { insiderEmptyNotice } from "../../plugins/builtin/insider/issuer";
 import {
   BENEFICIAL_REPORT_COLUMNS,
   beneficialCoverageNotices,
@@ -979,17 +981,36 @@ async function runFilings(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
   });
 }
 
+type Form4Insiders = "available" | "none" | "foreign-private-issuer";
+
+/** Whether the company has Form 4 filings of its own, read as `fn INS` reads them; null when they could not be read. */
+async function loadForm4Insiders(market: MarketContext, listing: CliListing): Promise<Form4Insiders | null> {
+  try {
+    const { parsed, foreignPrivateIssuer } = await loadParsedInsiderFilings(market.dataProvider, listing.request.symbol, {
+      limit: 1,
+      exchange: listing.request.exchange,
+    });
+    return parsed.length > 0 ? "available" : foreignPrivateIssuer ? "foreign-private-issuer" : "none";
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Holder lists name institutions and funds; individual insiders rarely appear.
- * The insider share of the company is reported either way, so say it.
+ * The insider share of the company is reported either way, so say it. The
+ * Form 4 trades are pointed to only when the company has some; otherwise the
+ * line says why there are none, in the words `fn INS` uses.
  */
-function insiderSummary(data: HolderData, ownerTypes: Set<string>): string {
+function insiderSummary(data: HolderData, ownerTypes: Set<string>, symbol: string, form4: Form4Insiders | null): string {
   const held = data.summary?.insidersPercentHeld;
   const share = held == null || !Number.isFinite(held)
     ? ""
     : `Insiders hold ${formatFractionPercentCell(held)} of shares outstanding.`;
   const listed = data.holders.some((holder) => ownerTypes.has(holder.ownerType));
-  const transactions = listed ? "" : `Form 4 transactions: gloomberb fn INS ${data.symbol}`;
+  const transactions = form4 === "available"
+    ? listed ? "" : `Form 4 transactions: gloomberb fn INS ${symbol}`
+    : form4 ? insiderEmptyNotice(form4 === "foreign-private-issuer") : "";
   return [share, transactions].filter(Boolean).join("\n");
 }
 
@@ -1068,7 +1089,8 @@ async function runHolders(
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);
     if (form !== "13f") return printBeneficialOwners(listing, market, form, history, ctx);
-    const [data, quote] = await Promise.all([
+    const insiderCommand = commandName === "insider" && ownerTypes != null;
+    const [data, quote, form4] = await Promise.all([
       loadForListing(
         listing, market, ctx,
         () => market.dataProvider.getHolders(listing.request.symbol, listing.request.exchange),
@@ -1076,6 +1098,7 @@ async function runHolders(
         { command: commandName, noun: "holder data" },
       ),
       loadListingQuote(market.dataProvider, listing),
+      insiderCommand ? loadForm4Insiders(market, listing) : null,
     ]);
     const identity = listingIdentity(listing, quote);
     // A London line's values can be dollars from the 13F filings; the listing's currency is not their unit.
@@ -1130,6 +1153,7 @@ async function runHolders(
         truncated: shown < (total ?? rows.length),
         valueBasis,
         positionsBasis,
+        ...(insiderCommand ? { form4Insiders: form4 } : {}),
       },
     }, {
       heading: `${listingHeading(identity)}${cliStyles.muted(facts.map((fact) => `  ·  ${fact}`).join(""))}`,
@@ -1161,7 +1185,7 @@ async function runHolders(
       },
       summary: () => [
         [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? "", unvaluedNote ?? ""].filter(Boolean).join(" "),
-        commandName === "insider" && ownerTypes ? insiderSummary(data, ownerTypes) : "",
+        insiderCommand ? insiderSummary(data, ownerTypes, listing.request.symbol, form4) : "",
       ].filter(Boolean).join("\n"),
       empty: `No holders reported for ${listingTitle(identity)}.`,
     });
