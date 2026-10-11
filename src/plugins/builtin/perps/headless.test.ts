@@ -187,16 +187,18 @@ test("a free account's locked tables say Locked, and the Pro line says what Pro 
   expect(evidence.text).toContain("Pro: Full evidence requires Gloom Pro");
 });
 
-test("a venue filter names no count it does not have, and a venue the report cannot honour is said", async () => {
+test("a venue filter names no count it does not have, and a venue with no contract to show is said", async () => {
   const rows = [venueRow("binance"), venueRow("bybit", { marketId: "bybit:BTCUSDT" })];
-  const apiClient = {
-    getCloudPerpsBoard: async () => perpBoard({ rows, access: "preview", locked: 2501 }),
-    getCloudPerpsMarket: async (id: string) => ({ ...perpBoard({ rows: rows.filter((row) => row.marketId === id), access: "preview" }), evidence: [], methodologyUrl: "" }),
-    getCloudPerpsHistory: async (query: { marketId: string }) => perpHistory({ marketId: query.marketId, locked: true, access: "preview" }),
-  } as never;
-  const load = async (argument: string | null, options: Record<string, string>) => {
+  // Hyperliquid's BTC is outside the free board preview, but an individual market is fetched whole.
+  const known = [...rows, market];
+  const clientFor = (access: "preview" | "pro") => ({
+    getCloudPerpsBoard: async () => perpBoard({ rows, access, locked: access === "pro" ? 0 : 2501 }),
+    getCloudPerpsMarket: async (id: string) => ({ ...perpBoard({ rows: known.filter((row) => row.marketId === id), access }), evidence: [], methodologyUrl: "" }),
+    getCloudPerpsHistory: async (query: { marketId: string }) => perpHistory({ marketId: query.marketId, locked: access === "preview", access }),
+  }) as never;
+  const load = async (argument: string | null, options: Record<string, string>, access: "preview" | "pro" = "preview") => {
     const args = createTestHeadlessArgs({ argument, rawArgument: argument ?? "", options: { days: "7", metric: "funding", ...options } });
-    const result = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient }));
+    const result = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient: clientFor(access) }));
     return { result, text: renderHeadlessPaneText(perpsHeadless, result, args, "PERP") };
   };
   const all = await load(null, { tab: "board", venue: "all" });
@@ -208,9 +210,13 @@ test("a venue filter names no count it does not have, and a venue the report can
   expect(none.text).toMatch(/Markets\nLocked: Gloom Pro\n\nPro: Kraken markets beyond the free preview need Gloom Pro/);
   expect(none.text).not.toContain("No data");
 
-  // A market opens on the venue asked for when the board lists it there; otherwise the report says which venue it shows.
-  expect((await load("BTC", { venue: "bybit" })).result.metadata).toMatchObject({ marketId: "bybit:BTCUSDT" });
-  expect((await load("BTC", { venue: "bybit" })).result.metadata).not.toHaveProperty("notices");
-  const missing = await load("BTC", { venue: "hyperliquid" });
-  expect(missing.result.metadata).toMatchObject({ marketId: "binance:BTCUSDT", notices: ["Hyperliquid is not available for BTC on the free view; showing Binance."] });
+  // A market opens on the venue asked for, listed on the board or not; only a venue with no contract to open is said.
+  for (const [venue, marketId] of [["bybit", "bybit:BTCUSDT"], ["hyperliquid", market.marketId]] as const) {
+    const opened = (await load("BTC", { venue })).result.metadata;
+    expect(opened).toMatchObject({ marketId });
+    expect(opened).not.toHaveProperty("notices");
+  }
+  expect((await load("BTC", { venue: "kraken" })).result.metadata).toMatchObject({ marketId: "binance:BTCUSDT", notices: ["Kraken has no BTC contract in the free preview; showing Binance."] });
+  expect((await load("BTC", { venue: "kraken" }, "pro")).result.metadata).toMatchObject({ notices: ["Kraken has no BTC contract; showing Binance."] });
+  expect((await load("hyperliquid:default:BTC", { venue: "bybit" })).result.metadata).toMatchObject({ notices: ["hyperliquid:default:BTC is a Hyperliquid market, so the Bybit filter does not apply."] });
 });

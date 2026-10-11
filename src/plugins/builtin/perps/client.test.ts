@@ -88,16 +88,36 @@ test("a Market column label resolves to the market it names and no free text rea
   expect(ids).toEqual(["hyperliquid:xyz:SP500", "hyperliquid:xyz:FOO"]);
 });
 
-test("a venue picks that venue's contract when the board lists it and otherwise keeps the usual one", async () => {
-  const rows = [venueRow("binance"), venueRow("bybit", { marketId: "bybit:BTCUSDT" })];
+test("a venue opens its own contract: from the board, by its identity when the free preview lacks it, and otherwise the usual one", async () => {
+  // The free preview lists Binance alone; every contract a venue carries can still be fetched by its identity.
+  const contracts = [venueRow("binance"), venueRow("bybit"), perpRow(), venueRow("okx", { marketId: "okx:BTC-USD-SWAP", symbol: "BTC-USD-SWAP" })];
   const ids: string[] = [];
+  let boardRows = [contracts[0]!];
   const client = {
-    getCloudPerpsBoard: async () => perpBoard({ rows }),
-    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ rows: rows.filter((row) => row.marketId === id) }); },
+    getCloudPerpsBoard: async () => perpBoard({ rows: boardRows, access: "preview", locked: 13 }),
+    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ access: "preview", rows: contracts.filter((row) => row.marketId === id) }); },
   };
-  expect((await fetchPerpSelection("BTC", client, "bybit")).rows[0]!.venue).toBe("bybit");
-  expect((await fetchPerpSelection("BTC", client, "hyperliquid")).rows[0]!.venue).toBe("binance");
-  expect((await fetchPerpSelection("BTC", client)).rows[0]!.venue).toBe("binance");
+  const venueOf = async (venue?: string) => (await fetchPerpSelection("BTC", client, venue)).rows[0]!.venue;
+  expect(await venueOf("hyperliquid")).toBe("hyperliquid");
+  expect(ids).toEqual(["hyperliquid:default:BTC"]);
+  ids.length = 0;
+  expect(await venueOf("bybit")).toBe("bybit");
+  expect(ids).toEqual(["bybit:BTCUSDT"]);
+  ids.length = 0;
+  // OKX lists the USDT contract first; the USD one is the next identity tried.
+  expect(await venueOf("okx")).toBe("okx");
+  expect(ids).toEqual(["okx:BTC-USDT-SWAP", "okx:BTC-USD-SWAP"]);
+  ids.length = 0;
+  // A venue Gloom Cloud does not collect has no contract to open, and no lookup is made for it.
+  expect(await venueOf("kraken")).toBe("binance");
+  expect(ids).toEqual(["binance:BTCUSDT"]);
+  ids.length = 0;
+  expect(await venueOf()).toBe("binance");
+  // A board that lists the venue's contract is enough.
+  boardRows = [contracts[0]!, contracts[1]!];
+  ids.length = 0;
+  expect(await venueOf("bybit")).toBe("bybit");
+  expect(ids).toEqual(["bybit:BTCUSDT"]);
 });
 
 test("paid caches are isolated per account/plan and failures preserve data except access refusal", async () => {

@@ -115,9 +115,19 @@ export const marketQuery = (input: string) => {
 };
 // An identity or symbol, never free text: a market id the server rejects as malformed would surface as raw JSON.
 const SAFE_MARKET_ID = /^[\w.:-]+$/;
+// A venue's usual contract for a base asset, by the identity a market lookup fetches without the board (the free
+// board preview lists a few markets per asset class, an individual market is shown whole). Only the venues
+// Gloom Cloud collects are listed; another venue has no contract to open.
+const VENUE_CONTRACTS: Record<string, (base: string) => string[]> = {
+  hyperliquid: (base) => [`hyperliquid:default:${base}`, `hyperliquid:xyz:${base}`],
+  binance: (base) => [`binance:${base}USDT`],
+  bybit: (base) => [`bybit:${base}USDT`],
+  okx: (base) => [`okx:${base}-USDT-SWAP`, `okx:${base}-USD-SWAP`],
+};
 /**
  * One market by base asset, underlying, symbol, canonical identity or the Market column's label (`SP500 · XYZ`).
- * A `venue` prefers that venue's contract among the board's matches; the caller sees whether it was found in the row's venue.
+ * A `venue` opens that venue's contract, from the board's matches or by its own identity; when the venue has none
+ * the usual market comes back and the caller sees its venue differ.
  */
 export async function fetchPerpSelection(input: string, client: Pick<typeof apiClient, "getCloudPerpsBoard" | "getCloudPerpsMarket"> = apiClient, venue?: string): Promise<PerpMarketPayload> {
   const query = marketQuery(input) || "BTC";
@@ -126,6 +136,12 @@ export async function fetchPerpSelection(input: string, client: Pick<typeof apiC
   const matches = board.rows.filter((row) => !row.delisted && [row.baseAsset, row.symbol, row.underlyingSymbol].some((value) => value?.toUpperCase() === query.toUpperCase()));
   const exact = venue && matches.some((row) => row.venue === venue) ? matches.filter((row) => row.venue === venue) : matches;
   const market = exact.find((row) => row.dex === "default") ?? exact.find((row) => row.dex === "xyz") ?? exact[0];
+  if (venue && market?.venue !== venue && /^[A-Za-z0-9]+$/.test(query)) {
+    for (const id of VENUE_CONTRACTS[venue]?.(matches[0]?.baseAsset ?? query.toUpperCase()) ?? []) {
+      const result = await fetchPerpsMarket(id, client);
+      if (result.rows.length) return result;
+    }
+  }
   if (market) return fetchPerpsMarket(market.marketId, client);
   // Individual latest-value previews are intentionally broader than the fixed board preview. A builder dex's own
   // identity (`xyz:SP500`) names its Hyperliquid market; a bare symbol is tried on the default dex, then xyz.

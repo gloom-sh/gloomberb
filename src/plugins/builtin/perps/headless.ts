@@ -87,7 +87,7 @@ const venueNotice = (venue: string, selected: PerpBoardRow, requested: string, a
   if (venue === "all" || selected.venue === venue) return [];
   const [wanted, shown] = [venueName(venue), venueName(selected.venue)];
   return [VENUES.some((id) => requested.startsWith(`${id}:`)) ? `${requested} is a ${shown} market, so the ${wanted} filter does not apply.`
-    : `${wanted} is not available for ${selected.baseAsset}${access === "pro" ? "" : " on the free view"}; showing ${shown}.`];
+    : `${wanted} has no ${selected.baseAsset} contract${access === "pro" ? "" : " in the free preview"}; showing ${shown}.`];
 };
 const venueUnused = (venue: string, tab: string) => venue === "all" ? [] : [`The ${venueName(venue)} filter applies to the board, not ${tab}; showing every venue.`];
 // Many venues' markets, each as last polled: cited by venue, stale after an hour without a poll.
