@@ -321,6 +321,30 @@ describe("pane catalog search", () => {
     expect(filterPaneCatalogEntries(entries, "date").map(({ token }) => token)).toEqual(["AAA", "CCC"]);
   });
 
+  test("two words typed as one find the functions that carry both, and a word that is neither finds nothing", () => {
+    const entry = (token: string, description: string) => ({
+      token,
+      label: token,
+      description,
+      paneId: token.toLowerCase(),
+      paneName: token,
+      shortcut: token,
+      aliases: [],
+      keywords: [],
+      defaultSettings: {},
+      capability: capabilityFor(`${token.toLowerCase()}-pane`),
+    });
+    const entries = [
+      entry("AAA", "Implied volatility surface and smiles."),
+      entry("BBB", "Volatility index closes."),
+      entry("CCC", "Surface temperature by ocean basin."),
+    ];
+    // BBB has "vol" and CCC "surf", but only AAA has both; a query that matches on its own is not cut.
+    expect(filterPaneCatalogEntries(entries, "volsurf").map(({ token }) => token)).toEqual(["AAA"]);
+    expect(filterPaneCatalogEntries(entries, "volatility").map(({ token }) => token)).toEqual(["AAA", "BBB"]);
+    expect(filterPaneCatalogEntries(entries, "zzqxvb")).toEqual([]);
+  });
+
   test("a multi-word query lists the functions that carry every word, or the few closest, with the rest counted", () => {
     const entry = (token: string, description: string) => ({
       token,

@@ -5178,8 +5178,8 @@
        "Print a function's report; `--explain` adds the meaning of the terms it shows"
       ],
       [
-       "`shot <function> [argument] [--output file] [--width px] [--height px] [--theme id] [--no-status]`",
-       "Save a PNG of the function as it looks on the desktop"
+       "`shot <function> [argument] [--output file] [--width px] [--height px] [--theme id] [--no-status] [--strict]`",
+       "Save a PNG of the function as it looks on the desktop; `--strict` exits 2 when the pane has no usable data"
       ]
      ]
     },

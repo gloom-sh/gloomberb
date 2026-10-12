@@ -16,6 +16,7 @@ import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
   buildTemplateContext,
+  suggestPaneFunctions,
   type PaneFunctionCatalog,
 } from "./catalog";
 import {
@@ -177,6 +178,29 @@ function takeTableSection(
   return { options: rest, tableSection: section };
 }
 
+/** A name that opens no function: `details` list the closest ones and where to search for more. */
+export class UnknownPaneFunctionError extends Error {
+  constructor(name: string, readonly details: string) {
+    super(`Unknown function or pane "${name}".`);
+    this.name = "UnknownPaneFunctionError";
+  }
+}
+
+async function unknownPaneFunctionError(
+  registry: PaneFunctionCatalog,
+  context: MarketContext,
+  name: string,
+): Promise<UnknownPaneFunctionError> {
+  // A catalog that cannot be read still leaves the pointer to it.
+  const closest = await suggestPaneFunctions(registry, context, name).catch(() => []);
+  const tokenWidth = Math.max(0, ...closest.map((entry) => entry.token.length));
+  const word = /^[\w.:-]+$/.test(name) ? name : JSON.stringify(name);
+  return new UnknownPaneFunctionError(name, [
+    ...closest.length > 0 ? ["Closest matches:", ...closest.map((entry) => `  ${entry.token.padEnd(tokenWidth)}  ${entry.label}`)] : [],
+    `Search the catalog: gloomberb catalog ${word}`,
+  ].join("\n"));
+}
+
 export async function resolvePaneFunction(
   registry: PaneFunctionCatalog,
   context: MarketContext,
@@ -189,13 +213,7 @@ export async function resolvePaneFunction(
   }
 
   const found = findPaneFunction(registry, args.target);
-  if (!found) {
-    const shortcuts = [...registry.paneTemplates.values()]
-      .map((template) => template.shortcut?.prefix)
-      .filter((prefix): prefix is string => !!prefix)
-      .sort();
-    throw new Error(`Unknown function or pane "${args.target}". Try one of: ${shortcuts.slice(0, 18).join(", ")}`);
-  }
+  if (!found) throw await unknownPaneFunctionError(registry, context, args.target);
 
   const { template, pane } = found;
   if (!pane) {

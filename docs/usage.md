@@ -539,6 +539,10 @@ A symbol that trades in several places takes its exchange after a colon or with 
 
 With `--require-bot-safe`, a report or screenshot that is incomplete because part of it needs Gloom Cloud Pro, or a sign-in, says so instead of a generic message.
 
+A function name nothing opens (`fn volsurf SPY`) fails with the functions closest to it by name, keyword and description, at most five, and `Search the catalog: gloomberb catalog volsurf`; a name that matches nothing gets only that line.
+
+A command exits 0 when it worked and 1 when it failed (bad input, no data found, a failed check); `gloomberb help` ends with the list. `shot` saves its PNG, prints the Reason line and still exits 0 when the pane drew an error, was empty, was still loading or was behind an access gate, so a script cannot tell that from a good capture. `shot --strict` exits 2 in those cases instead, with the PNG still saved and the Reason still printed (`--json` carries `usable` and `unusableReason`); `fn` fails on `--strict`.
+
 In short DVD panes, the summary scrolls separately so cash history stays visible. Page Up/Down scroll the summary; arrows or j/k navigate history. The mouse wheel scrolls the region under the pointer.
 
 | Command | Use |
