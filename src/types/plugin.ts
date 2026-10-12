@@ -163,11 +163,25 @@ export interface PaneDef {
   /** Portable sharing is public by default; list the few pane-owned fields that must remain local. */
   portableShare?: PanePortableShareDef;
   /**
+   * The person's own data the pane shows, so posting a picture of it to chat
+   * asks first. A function decides per instance from what it shows now (a
+   * chat pane on a public channel, a quote of a ticker not held). Leave it
+   * off for market data.
+   */
+  personalData?: PanePersonalData | ((context: PanePersonalDataContext) => PanePersonalData | null);
+  /**
    * Compact controls surfaced next to the pane title. A key references a
    * toggle field in settings, or a two-option select field when `onValue` is set.
    */
   quickSettings?: readonly PaneQuickSettingDef[];
 }
+
+/**
+ * Kinds of personal data a pane can show: `holdings` (positions, balances,
+ * orders, profit and loss), `account` (account numbers, email, plan) and
+ * `messages` (private conversations).
+ */
+export type PanePersonalData = "holdings" | "account" | "messages";
 
 /**
  * An option of a rendered-view report, which sets the pane setting of its key,
@@ -211,6 +225,11 @@ export interface PaneSettingsContext {
   paneState: Record<string, unknown>;
   activeTicker: string | null;
   activeCollectionId: string | null;
+}
+
+/** What `PaneDef.personalData` decides from: the pane's settings context and the tickers with their positions. */
+export interface PanePersonalDataContext extends PaneSettingsContext {
+  tickers: ReadonlyMap<string, TickerRecord>;
 }
 
 export interface PaneSettingOption {

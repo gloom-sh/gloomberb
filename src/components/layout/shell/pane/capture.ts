@@ -1,0 +1,135 @@
+import { useCallback, useEffect, useRef } from "react";
+import type { LayoutBounds, ResolvedPane } from "../../../../layout/pane-manager";
+import { getPaneSettings } from "../../../../pane-settings";
+import type { PluginRegistry } from "../../../../plugins/registry";
+import { paneScreenshotScale, PANE_SCREENSHOT_MIN_WIDTH } from "../../../../remote/pane-screenshot";
+import {
+  base64Bytes,
+  formatCaptureStamp,
+  resolvePanePersonalData,
+  type PaneImageCapture,
+} from "../../../../shares/pane-image";
+import { resolveCollectionForPane, resolveTickerForPane, useAppStateRef, type AppState } from "../../../../state/app/context";
+import type { LayoutConfig } from "../../../../types/config";
+import type { PanePersonalDataContext } from "../../../../types/plugin";
+import type { NativeRendererHost } from "../../../../ui";
+import { useDialog } from "../../../../ui/dialog";
+import { capturePaneImage as paintPaneImage } from "../../../../utils/dom-screenshot";
+import { setPaneCaptureStamp } from "../../pane/capture-stamp";
+
+/** Under the chat's 5 MB image limit with room to spare; a larger paint is shrunk to fit. */
+const PANE_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+/** How long the terminal gets to draw the footer as a status line (a frame or two). */
+const TERMINAL_SETTLE_MS = 120;
+
+function nextFrames(count: number): Promise<void> {
+  if (typeof requestAnimationFrame !== "function") return new Promise((resolve) => setTimeout(resolve, 32 * count));
+  return new Promise((resolve) => {
+    const step = (left: number) => (left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1)));
+    step(count);
+  });
+}
+
+/** What a pane shows now, for its `personalData` rule. */
+function personalDataContext(state: AppState, layout: LayoutConfig, pane: ResolvedPane): PanePersonalDataContext {
+  const paneId = pane.instance.instanceId;
+  return {
+    config: state.config,
+    layout,
+    paneId,
+    paneType: pane.instance.paneId,
+    pane: pane.instance,
+    settings: getPaneSettings(pane.instance),
+    paneState: state.paneState[paneId] ?? {},
+    activeTicker: resolveTickerForPane(state, paneId),
+    activeCollectionId: resolveCollectionForPane(state, paneId),
+    tickers: state.tickers,
+  };
+}
+
+/** Whether the plugin that owns a pane also connects a broker. */
+function ownerConnectsBroker(pluginRegistry: PluginRegistry, paneType: string): boolean {
+  const owner = pluginRegistry.getPanePluginId(paneType);
+  return !!owner && [...pluginRegistry.brokers.keys()].some((brokerType) => pluginRegistry.getBrokerPluginId(brokerType) === owner);
+}
+
+interface UseShellPaneCaptureOptions {
+  appHeaderHeight: number;
+  closePaneMenu: () => void;
+  focusedPaneId: string | null;
+  getPaneTitle: (pane: ResolvedPane) => string;
+  /** The layout the panes are in, for their `personalData` rules. */
+  layout: LayoutConfig;
+  nativePaneChrome: boolean;
+  nativeRenderer: NativeRendererHost;
+  paneMap: Map<string, ResolvedPane>;
+  pluginRegistry: PluginRegistry;
+  /** Where each visible pane sits in the shell, fullscreen and transient focus applied. */
+  screenRects: () => Map<string, LayoutBounds>;
+}
+
+/**
+ * Binds `capturePaneImage` and `promptDialog` for plugins that post a pane's
+ * picture (Share to Chat). The desktop and the web paint the pane's DOM; the
+ * terminal draws the cells it shows, kitty charts included.
+ */
+export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
+  const { pluginRegistry } = options;
+  const dialog = useDialog();
+  const stateRef = useAppStateRef();
+  const latest = useRef(options);
+  latest.current = options;
+
+  const capture = useCallback(async (requestedPaneId?: string): Promise<PaneImageCapture> => {
+    const current = latest.current;
+    const paneId = requestedPaneId ?? current.focusedPaneId;
+    const pane = paneId ? current.paneMap.get(paneId) : undefined;
+    if (!paneId || !pane) throw new Error("Focus a pane to share it.");
+    current.closePaneMenu();
+    const capturedAt = new Date();
+    setPaneCaptureStamp(paneId, formatCaptureStamp(capturedAt));
+    try {
+      let image: Pick<PaneImageCapture, "png" | "width" | "height" | "pixels" | "cells">;
+      if (current.nativePaneChrome) {
+        await nextFrames(2);
+        const shot = await paintPaneImage({
+          instanceId: paneId,
+          scaleFor: (screen) => paneScreenshotScale(screen),
+          maxBytes: PANE_IMAGE_MAX_BYTES,
+          minWidth: PANE_SCREENSHOT_MIN_WIDTH,
+        });
+        image = { png: base64Bytes(shot.pngBase64), width: shot.width, height: shot.height };
+      } else {
+        const rect = current.screenRects().get(paneId);
+        if (!rect || !current.nativeRenderer.capturePaneImage) {
+          throw new Error("Show the pane on screen to share it.");
+        }
+        current.nativeRenderer.requestRender();
+        await new Promise((resolve) => setTimeout(resolve, TERMINAL_SETTLE_MS));
+        image = await current.nativeRenderer.capturePaneImage({
+          x: rect.x,
+          y: rect.y + current.appHeaderHeight,
+          width: rect.width,
+          height: rect.height,
+        });
+      }
+      return {
+        paneId,
+        paneType: pane.instance.paneId,
+        title: current.getPaneTitle(pane),
+        capturedAt: capturedAt.toISOString(),
+        personalData: resolvePanePersonalData(pane.def, personalDataContext(stateRef.current, current.layout, pane), {
+          ownerConnectsBroker: ownerConnectsBroker(current.pluginRegistry, pane.def.id),
+        }),
+        ...image,
+      };
+    } finally {
+      setPaneCaptureStamp(paneId, null);
+    }
+  }, [stateRef]);
+
+  useEffect(() => pluginRegistry.bindHost({
+    capturePaneImage: capture,
+    promptDialog: (prompt) => dialog.prompt(prompt),
+  }), [capture, dialog, pluginRegistry]);
+}

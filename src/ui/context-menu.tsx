@@ -295,12 +295,24 @@ export function tickerContextMenuItems({
  * A context's own items, then what plugins add for it: the menu a right-click
  * shows, for a surface that lists it somewhere else too (the pane menu).
  */
+/**
+ * Marks where plugin items go among a context's own items, as a divider with
+ * this id; the marker itself is never drawn. Without one they follow at the end.
+ */
+export function pluginContextMenuSlot(kind: ContextMenuContext["kind"]): ContextMenuItem {
+  return contextMenuDivider(`${kind}:plugin-items`);
+}
+
 export function withPluginContextMenuItems(
   context: ContextMenuContext,
   localItems: ContextMenuItem[],
   registry: Pick<PluginRegistry, "getContextMenuItems"> | null,
 ): ContextMenuItem[] {
-  const pluginItems = registry?.getContextMenuItems(context) ?? [];
+  const pluginItems = registry?.getContextMenuItems?.(context) ?? [];
+  const slot = localItems.findIndex((item) => item.type === "divider" && item.id === `${context.kind}:plugin-items`);
+  if (slot >= 0) {
+    return compactContextMenuItems([...localItems.slice(0, slot), ...pluginItems, ...localItems.slice(slot + 1)]);
+  }
   return compactContextMenuItems([
     ...localItems,
     ...(localItems.length > 0 && pluginItems.length > 0 ? [contextMenuDivider(`${context.kind}:plugin-divider`)] : []),

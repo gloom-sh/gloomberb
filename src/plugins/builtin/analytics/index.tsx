@@ -447,6 +447,7 @@ export const portfolioAnalyticsModule: PluginModule = {
     {
       id: "analytics",
       name: "Portfolio Analytics",
+      personalData: "holdings",
       icon: "R",
       component: PortfolioAnalyticsPane,
       headless: portfolioRiskHeadless,

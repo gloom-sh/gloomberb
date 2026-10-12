@@ -1,6 +1,8 @@
 import type { NewsCapability } from "../../capabilities";
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import type { LayoutMarketplacePayload } from "../../shares/portable-layout";
+import type { PaneImageCapture } from "../../shares/pane-image";
+import type { DialogOptions, PromptContext } from "../../ui/dialog";
 import type { AppConfig, BrokerInstanceConfig, LayoutConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
 import type { NewsQuery, NewsQueryState } from "../../types/news-source";
@@ -42,6 +44,13 @@ export interface PluginHostActions {
   /** `options.fieldKey` starts the cursor on that setting, as a setting picked in the command bar does. */
   openPaneSettings(paneId?: string, options?: { fieldKey?: string }): void;
   sharePane(paneId?: string): void;
+  /**
+   * A picture of a pane (the focused one when omitted) as it looks now, its
+   * footer reading as a dated status line. Not on the plugin API.
+   */
+  capturePaneImage(paneId?: string): Promise<PaneImageCapture>;
+  /** Opens a dialog from code outside a React tree, such as a command or a menu item. Not on the plugin API. */
+  promptDialog<T>(options: DialogOptions<PromptContext<T>>): Promise<T | undefined>;
   openWindowMode(paneId?: string, mode?: WindowEditMode): void;
   /** The shell's fullscreen toggle for a pane; false when there is nothing to fill the window with. */
   togglePaneFullscreen(paneId: string): boolean;
@@ -105,6 +114,8 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
     openBuiltInWorkflow: () => {},
     openPaneSettings: () => {},
     sharePane: () => {},
+    capturePaneImage: async () => { throw new Error("Pictures of panes are not available here."); },
+    promptDialog: async () => undefined,
     openWindowMode: () => {},
     togglePaneFullscreen: () => false,
     movePaneToNewLayout: () => false,

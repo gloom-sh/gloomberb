@@ -1,4 +1,4 @@
-import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities, useUiHost } from "../../ui";
+import { Box, Text, useContextMenu, useNativeRenderer, useRendererHost, useUiCapabilities, useUiHost } from "../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { t } from "../../i18n";
 import { useShortcut, useViewport } from "../../react/input";
@@ -40,6 +40,9 @@ import {
   resolvePaneManagementShortcut,
 } from "./shell/shortcuts";
 import { menuItemsForFallback, paneFooterMenuItems } from "./shell/menu";
+import { useShellPaneCapture } from "./shell/pane/capture";
+import { captureStampFooter, usePaneCaptureStamp } from "./pane/capture-stamp";
+import { pluginContextMenuSlot, withPluginContextMenuItems } from "../../ui/context-menu";
 import { paneMenuButtonAnchor, ShellActionMenuOverlay, type ActionMenuState } from "./shell/action-menu-overlay";
 import { getPaneFooter } from "./pane/footer";
 import { requestPaneDocs } from "../../docs/requests";
@@ -190,6 +193,24 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   }, [pluginRegistry, rendererHost, sharePayload]);
   useEffect(() => pluginRegistry.bindHost({ sharePane: () => { void sharePane(); } }), [pluginRegistry, sharePane]);
 
+  // Share to Chat takes this window's pane, as the main window's shell does.
+  const nativeRenderer = useNativeRenderer();
+  const paneMap = useMemo(() => new Map(instance && paneDef ? [[instance.instanceId, { instance, def: paneDef }]] : []), [instance, paneDef]);
+  const closeMenu = useCallback(() => setMenuState(null), []);
+  const emptyRects = useCallback(() => new Map(), []);
+  useShellPaneCapture({
+    appHeaderHeight: 0,
+    closePaneMenu: closeMenu,
+    focusedPaneId: desktopWindowBridge.paneId,
+    getPaneTitle: () => title,
+    layout: config.layout,
+    nativePaneChrome: true,
+    nativeRenderer,
+    paneMap,
+    pluginRegistry,
+    screenRects: emptyRects,
+  });
+  const captureStamp = usePaneCaptureStamp(desktopWindowBridge.paneId);
 
   const togglePaneLock = useCallback(() => {
     void pluginRegistry.applyPaneSettingValue(
@@ -248,6 +269,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     if (sharePayload) {
       items.push({ id: "share-pane", label: "Share Pane", accelerator: accelerators.share, onSelect: sharePane });
     }
+    items.push(pluginContextMenuSlot("pane"));
     if (dockPane) {
       items.push({ id: "dock", label: "Dock in Main Window", accelerator: accelerators.toggleFloating, onSelect: dockPane });
     }
@@ -286,20 +308,21 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const openActions = (options: { keyboard?: boolean } = {}) => {
     focusPane();
     const items = buildMenuItems();
-    // A native menu opens at the pointer, nowhere near the button when the
-    // keyboard asked for it.
-    if (options.keyboard) {
-      openKitMenu(items);
-      return;
-    }
-    void showContextMenu({
-      kind: "pane",
+    const context = {
+      kind: "pane" as const,
       paneId: desktopWindowBridge.paneId,
       paneType: instance?.paneId ?? "",
       title,
       floating: true,
-    }, items).then((shown) => {
-      if (!shown) openKitMenu(items);
+    };
+    // A native menu opens at the pointer, nowhere near the button when the
+    // keyboard asked for it.
+    if (options.keyboard) {
+      openKitMenu(withPluginContextMenuItems(context, items, pluginRegistry));
+      return;
+    }
+    void showContextMenu(context, items).then((shown) => {
+      if (!shown) openKitMenu(withPluginContextMenuItems(context, items, pluginRegistry));
     });
   };
   const openActionsRef = useRef(openActions);
@@ -369,7 +392,8 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
 
   return (
     <PaneFooterProvider>
-      {(footer) => {
+      {(registeredFooter) => {
+        const footer = captureStampFooter(registeredFooter, captureStamp);
         const showFooter = hasPaneFooterContent(footer);
         const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
         const renderFooter = reserveFooter || showFooter;
@@ -447,7 +471,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
               </PaneHeaderTabsProvider>
             </PaneBodyFrame>
             {renderFooter && <PaneFooterBar footer={footer} focused={focused} width={width} />}
-            <PaneFooterKeys paneId={desktopWindowBridge.paneId} footer={footer} focused={focused} />
+            <PaneFooterKeys paneId={desktopWindowBridge.paneId} footer={registeredFooter} focused={focused} />
             <ShellActionMenuOverlay
               menuState={menuState}
               hoveredMenuItemId={null}

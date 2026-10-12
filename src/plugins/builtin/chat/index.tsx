@@ -1,8 +1,11 @@
 import type { PluginModule } from "../plugin-module";
+import { resolvePluginShortcutChords, serializeKeyChord } from "../../../app/keybindings";
+import type { GloomPluginContext, KeyboardShortcut } from "../../../types/plugin";
 import { teamChannelId } from "../cloud/team/model";
 import { teamStore } from "../cloud/team/store";
 import { formatChatPaneTitle } from "./channel-labels";
 import {
+  DEFAULT_CHAT_CHANNEL_ID,
   buildDmCommandResults,
   getPreferredChatOpenChannelId,
   hasOnlyDmUsernameArgs,
@@ -18,6 +21,7 @@ import { ChatPane } from "./pane";
 import { chatSidebarStore } from "./sidebar-store";
 import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
+import { sharePaneToChat } from "./share/flow";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
 
 /**
@@ -37,6 +41,54 @@ async function resolveTypedChannelId(rawArg: string): Promise<string> {
   }
 }
 
+/** A DM, a group or a team channel: what only its members read. */
+function isPrivateConversation(channelId: unknown): boolean {
+  const id = typeof channelId === "string" && channelId.trim() ? channelId.trim() : DEFAULT_CHAT_CHANNEL_ID;
+  const kind = chatController.getChannels().find((channel) => channel.id === id)?.kind;
+  return kind ? kind !== "public" : /^(dm|grp|group|team):/.test(id);
+}
+
+const SHARE_TO_CHAT_SHORTCUT: Omit<KeyboardShortcut, "execute"> = {
+  id: "share-pane-to-chat",
+  key: "y",
+  ctrl: true,
+  shift: true,
+  description: "Post a picture of the focused pane to chat.",
+};
+
+/**
+ * Share to Chat, from the pane menu (mouse, `.` or right-click), the command
+ * bar and its own key, which Help lists and can rebind.
+ */
+function registerShareToChat(ctx: GloomPluginContext): void {
+  // After the command bar or the menu has closed, so the picture shows the pane alone.
+  const share = (paneId?: string) => setTimeout(() => { void sharePaneToChat(ctx, paneId); }, 0);
+  const shortcut: KeyboardShortcut = { ...SHARE_TO_CHAT_SHORTCUT, execute: () => share() };
+  ctx.registerShortcut(shortcut);
+  ctx.registerCommand({
+    id: "share-pane-to-chat",
+    label: "Share to Chat",
+    description: "Post a picture of the focused pane to a chat channel",
+    keywords: ["share", "chat", "post", "picture", "screenshot", "image", "pane", "discord"],
+    category: "navigation",
+    execute: () => { share(); },
+  });
+  ctx.registerContextMenuProvider({
+    id: "share-pane-to-chat",
+    contexts: ["pane"],
+    getItems: (context) => {
+      if (context.kind !== "pane") return null;
+      const chord = resolvePluginShortcutChords(ctx.getConfig().keybindings, shortcut)[0];
+      return [{
+        id: "share-pane-to-chat",
+        label: "Share to Chat",
+        ...(chord ? { accelerator: serializeKeyChord(chord) } : {}),
+        onSelect: () => { share(context.paneId); },
+      }];
+    },
+  });
+}
+
 export const chatModule: PluginModule = {
   panes: [{
     id: "chat",
@@ -46,6 +98,7 @@ export const chatModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 80, height: 30 },
+    personalData: (context) => (isPrivateConversation(context.settings.channelId) ? "messages" : null),
     portableShare: {
       private: { title: true, params: true, settings: true, state: true },
     },
@@ -53,6 +106,8 @@ export const chatModule: PluginModule = {
     id: UNREAD_INBOX_PANE_ID,
     reportFreshness: { status: "not-a-feed", basis: "chat messages" },
     name: "Unread",
+    // Mentions and replies from every conversation, DMs included.
+    personalData: "messages",
     icon: "U",
     component: UnreadInboxPane,
     defaultPosition: "right",
@@ -131,6 +186,7 @@ export const chatModule: PluginModule = {
   },
   setup(ctx) {
     ctx.registerCommandBarSearchProvider(createChatSearchProvider(ctx));
+    registerShareToChat(ctx);
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatController.setNotifier(ctx.notify, (channelId, messageId) => {

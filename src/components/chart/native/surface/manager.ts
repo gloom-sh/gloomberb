@@ -198,11 +198,42 @@ export class NativeSurfaceManager {
     this.syncAll();
   }
 
+  /**
+   * Every image as it shows now, with the cells left visible once the panes,
+   * menus and dialogs over it are cut away: what a picture of the screen
+   * draws back over the blank cells kitty images leave in the frame.
+   */
+  visibleImages(): Array<{ rect: CellRect; fragments: CellRect[]; bitmap: NativeChartBitmap }> {
+    const occluders = this.resolvedOccluders();
+    return [...this.surfaces.values()]
+      .map(({ snapshot }) => ({ snapshot, zIndex: this.paneZIndex(snapshot.paneId) }))
+      .sort((a, b) => a.zIndex - b.zIndex || (a.snapshot.imageZIndex ?? 0) - (b.snapshot.imageZIndex ?? 0))
+      .map(({ snapshot, zIndex }) => ({
+        rect: snapshot.rect,
+        fragments: computeSurfaceVisibleFragments(snapshot.rect, snapshot.visibleRect, zIndex, snapshot.paneId, occluders),
+        bitmap: snapshot.bitmap,
+      }))
+      .filter((image) => image.fragments.length > 0);
+  }
+
   destroy() {
     for (const id of [...this.surfaces.keys()]) {
       this.removeSurface(id);
     }
     this.localOccluders.clear();
+  }
+
+  private paneZIndex(paneId: string): number {
+    return this.windowState.paneLayers.find((layer) => layer.paneId === paneId)?.zIndex ?? 0;
+  }
+
+  private resolvedOccluders(): NativeOccluder[] {
+    const localOccluders: NativeOccluder[] = [...this.localOccluders.values()].map((occluder) => ({
+      ...occluder,
+      zIndex: this.paneZIndex(occluder.paneId),
+      occludesOwnPane: true,
+    }));
+    return [...this.windowState.occluders, ...localOccluders];
   }
 
   private syncAll() {
@@ -218,18 +249,12 @@ export class NativeSurfaceManager {
       return;
     }
 
-    const surfaceZIndex = this.windowState.paneLayers.find((layer) => layer.paneId === entry.snapshot.paneId)?.zIndex ?? 0;
-    const localOccluders: NativeOccluder[] = [...this.localOccluders.values()].map((occluder) => ({
-      ...occluder,
-      zIndex: this.windowState.paneLayers.find((layer) => layer.paneId === occluder.paneId)?.zIndex ?? 0,
-      occludesOwnPane: true,
-    }));
     const fragments = computeSurfaceVisibleFragments(
       entry.snapshot.rect,
       entry.snapshot.visibleRect,
-      surfaceZIndex,
+      this.paneZIndex(entry.snapshot.paneId),
       entry.snapshot.paneId,
-      [...this.windowState.occluders, ...localOccluders],
+      this.resolvedOccluders(),
     );
 
     const placements = computeNativePlacements(

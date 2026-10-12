@@ -19,6 +19,8 @@ export const positionSizerModule: PluginModule = {
       reportFreshness: { source: "Your inputs and Gloom Cloud", status: "not-a-feed", basis: "position sizing" },
       name: "Position Sizer",
       icon: "K",
+      // The bankroll is the account's value.
+      personalData: "holdings",
       component: KellySizerPane,
       defaultPosition: "right",
       defaultMode: "floating",

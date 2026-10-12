@@ -9,6 +9,7 @@ import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
 import { isPaneLocked, setPaneLocked } from "../../../pane-settings";
 import { contextMenuDivider, type ContextMenuItem } from "../../../types/context-menu";
+import { pluginContextMenuSlot } from "../../../ui/context-menu";
 import { paneHintTitle, type CombinedPaneFooter } from "../pane/footer/model";
 import {
   formatPlatformShortcutLabel,
@@ -151,6 +152,8 @@ export function menuForPane(
       onSelect: () => exportPaneCsv(pane.instance.instanceId),
     });
   }
+  // What plugins do with a pane (Share to Chat) sits with sharing and exporting it.
+  baseActions.push(pluginContextMenuSlot("pane"));
 
   if (fullscreen) {
     baseActions.push({

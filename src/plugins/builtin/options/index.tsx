@@ -1,5 +1,6 @@
 import type { PaneReportOptionDef, PaneSettingsDef, TickerResearchTabProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
+import { holdsActiveTicker } from "../../../shares/pane-image";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import type { OptionsViewProps } from "./types";
 import { OptionsView } from "./view";
@@ -99,6 +100,8 @@ export const optionsModule: PluginModule = {
       component: OptionsPane,
       defaultPosition: "right",
       tickerFollower: true,
+      // An option the person holds shows their position.
+      personalData: (context) => (holdsActiveTicker(context) ? "holdings" : null),
       defaultMode: "floating",
       defaultFloatingSize: { width: 112, height: 28 },
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],

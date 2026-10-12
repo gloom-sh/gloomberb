@@ -26,6 +26,7 @@ export const teamModule: PluginModule = {
     reportFreshness: { status: "not-a-feed", basis: "account data" },
     name: "Team",
     icon: "T",
+    personalData: "account",
     component: TeamPane,
     defaultPosition: "right",
     defaultMode: "floating",

@@ -1,6 +1,7 @@
-import { AsciiText, Box, compactContextMenuItems, useContextMenu, useUiHost, type BoxRenderable } from "../../../ui";
+import { AsciiText, Box, useContextMenu, useUiHost, type BoxRenderable } from "../../../ui";
+import { withPluginContextMenuItems } from "../../../ui/context-menu";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRendererHost, useUiCapabilities } from "../../../ui";
+import { useNativeRenderer, useRendererHost, useUiCapabilities } from "../../../ui";
 import { useShortcut, useViewport } from "../../../react/input";
 import { useDialogState } from "../../../ui/dialog";
 import { scheduleConfigSave } from "../../../state/config-save-scheduler";
@@ -15,7 +16,6 @@ import {
 } from "../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../plugins/registry";
 import type { LayoutConfig } from "../../../types/config";
-import { contextMenuDivider } from "../../../types/context-menu";
 import {
   resolveTickerForPane,
   syncConfigActiveLayoutState,
@@ -69,6 +69,7 @@ import { FormModalHost } from "../../form-modal";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { DataProvider } from "../../../types/data-provider";
 import { useShellPaneActions } from "./pane/actions";
+import { useShellPaneCapture } from "./pane/capture";
 import { useShellPaneLayoutMoves } from "./pane/new-layout";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import { useTransientLayout } from "../transient-layout";
@@ -121,6 +122,7 @@ export function Shell({
   const stateRef = useAppStateRef();
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
   const rendererHost = useRendererHost();
+  const nativeRenderer = useNativeRenderer();
   const { setTransientLayout } = useTransientLayout();
   const uiKind = useUiHost().kind;
   const shortcutDisplayMode = getShortcutDisplayMode(uiKind);
@@ -565,6 +567,23 @@ export function Shell({
     },
   }), [pluginRegistry, sharePaneById, stateRef]);
 
+  const screenPaneRects = useCallback(() => new Map<string, LayoutBounds>([
+    ...screenDockLeafLayouts.map((leaf) => [leaf.instanceId, leaf.rect] as const),
+    ...screenFloatingPanes.map(({ pane, rect }) => [pane.instance.instanceId, rect] as const),
+  ]), [screenDockLeafLayouts, screenFloatingPanes]);
+  useShellPaneCapture({
+    appHeaderHeight,
+    closePaneMenu,
+    focusedPaneId,
+    getPaneTitle,
+    layout: visibleLayout,
+    nativePaneChrome,
+    nativeRenderer,
+    paneMap,
+    pluginRegistry,
+    screenRects: screenPaneRects,
+  });
+
   const openPaneMenuRef = useRef<((paneId: string, rect: LayoutBounds, event?: undefined, options?: { keyboard?: boolean }) => void) | null>(null);
   const openFocusedPaneMenu = useCallback(() => {
     if (!focusedPaneId || windowMode) return false;
@@ -670,12 +689,7 @@ export function Shell({
       () => { openPaneDocs(paneId); },
     );
     const showKitMenu = () => {
-      const pluginItems = pluginRegistry.getContextMenuItems?.(context) ?? [];
-      const fallbackSourceItems = compactContextMenuItems([
-        ...items,
-        ...(items.length > 0 && pluginItems.length > 0 ? [contextMenuDivider(`${context.kind}:plugin-divider`)] : []),
-        ...pluginItems,
-      ]);
+      const fallbackSourceItems = withPluginContextMenuItems(context, items, pluginRegistry);
       const fallbackItems = menuItemsForFallback(fallbackSourceItems, shortcutDisplayMode);
       if (fallbackItems.length === 0) return;
       const menuWidth = actionMenuWidth(fallbackItems, width);

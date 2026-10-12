@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { displayWidth } from "../../../utils/format";
 import { getLanguage, setLanguage, t } from "../../../i18n";
+import { withPluginContextMenuItems } from "../../../ui/context-menu";
 import { actionMenuWidth, menuForPane } from "./menu";
 
 describe("pane action menu", () => {
@@ -36,6 +37,31 @@ describe("pane action menu", () => {
     expect(unlock?.label).toBe("Unlock Pane");
     await unlock?.onSelect?.();
     expect(persisted.at(-1)?.instances[0]?.locked).toBeUndefined();
+  });
+});
+
+describe("plugin items in the pane menu", () => {
+  test("sit with Share Pane and Export CSV, and leave nothing behind when there are none", () => {
+    const pane = { instance: { instanceId: "chart-1", paneId: "chart-composer" }, def: { defaultPosition: "right" }, floating: false } as any;
+    const layout = { dockRoot: { kind: "pane", instanceId: "chart-1" }, instances: [pane.instance], floating: [], detached: [] } as any;
+    const items = menuForPane(
+      pane, layout, 120, 40,
+      { hasPaneSettings: () => false, openWindowMode: () => {} } as any,
+      () => {}, () => {}, () => {}, undefined, undefined,
+      () => {},
+      [],
+      () => {},
+    );
+    const context = { kind: "pane" as const, paneId: "chart-1", paneType: "chart-composer", title: "Chart", floating: false };
+    const ids = (registryItems: Array<{ id: string; label: string }>) => withPluginContextMenuItems(context, items, {
+      getContextMenuItems: () => registryItems,
+    } as any).map((item) => (item.type === "divider" ? "-" : item.id));
+
+    const withPlugin = ids([{ id: "share-pane-to-chat", label: "Share to Chat" }]);
+    expect(withPlugin.slice(withPlugin.indexOf("share-pane"), withPlugin.indexOf("share-pane") + 4))
+      .toEqual(["share-pane", "export-csv", "share-pane-to-chat", "float"]);
+    const without = ids([]);
+    expect(without.slice(without.indexOf("export-csv"), without.indexOf("export-csv") + 2)).toEqual(["export-csv", "float"]);
   });
 });
 

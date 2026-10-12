@@ -227,6 +227,29 @@ export interface NativeFrameSpan {
   attributes: number;
 }
 
+/** One cell of a captured frame, in the colours it shows (inverse and dim applied). */
+interface NativeFrameCell {
+  /** Empty for the second cell of a wide character. */
+  char: string;
+  fg: string;
+  bg: string;
+  bold: boolean;
+}
+
+/** A picture of part of the screen, as `capturePaneImage` draws it. */
+export interface NativePaneImage {
+  png: Uint8Array;
+  width: number;
+  height: number;
+  /** The same picture as RGBA pixels, for a preview drawn in cells. */
+  pixels: Uint8ClampedArray;
+  /**
+   * The cells it was drawn from, row by row, for a preview where they fit.
+   * Absent when kitty images were drawn in: the cells under them are blank.
+   */
+  cells?: { cols: number; rows: number; cells: NativeFrameCell[] };
+}
+
 /** The last frame the terminal renderer drew, as styled rows. */
 export interface NativeFrameCapture {
   cols: number;
@@ -264,6 +287,11 @@ export interface NativeRendererHost {
   removePostProcessFn?(processFn: NativePostProcessFn): void;
   /** Terminal renderers only. Kitty graphics are drawn out of band and come back as blank cells. */
   captureFrame?(): NativeFrameCapture | null;
+  /**
+   * Terminal renderers only: a PNG of a rectangle of the frame shown now, in
+   * cells, its characters drawn in a bundled font and its kitty images put back.
+   */
+  capturePaneImage?(rect: { x: number; y: number; width: number; height: number }): Promise<NativePaneImage>;
   copyToClipboardOSC52?(text: string): boolean;
   write?(data: string | Uint8Array): boolean;
   captureMouseRenderable?(renderable: unknown): void;
@@ -277,7 +305,7 @@ export interface NativeRendererHost {
   /** Terminal renderers only: keeps kitty images clear of the panes, menus and dialogs drawn over them. */
   nativeSurfaceManager?: Pick<
     import("../components/chart/native/surface/manager").NativeSurfaceManager,
-    "setWindowState" | "upsertLocalOccluder" | "removeLocalOccluder"
+    "setWindowState" | "upsertLocalOccluder" | "removeLocalOccluder" | "visibleImages"
   >;
 }
 

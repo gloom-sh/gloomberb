@@ -68,6 +68,7 @@
     "plugins:registry:check": "bun run scripts/check-registry-plugins.ts",
     "web:proxy-hosts": "bun run scripts/generate-web-proxy-hosts.ts",
     "map:data": "bun run scripts/generate-world-map-data.ts",
+    "glyphs:terminal": "bun run scripts/generate-terminal-glyphs.ts",
     "macro-releases:update": "bun run scripts/update-macro-releases.ts",
     "web:proxy-hosts:check": "bun run scripts/generate-web-proxy-hosts.ts --check",
     "typecheck": "bun run typecheck:opentui && bun run typecheck:dom && bun run typecheck:cloudflare && bun run typecheck:scripts && bun run typecheck:plugin-tests",

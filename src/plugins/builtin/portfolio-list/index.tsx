@@ -54,6 +54,10 @@ export const portfolioListModule: PluginModule = {
       defaultWidth: "40%",
       tickerSource: true,
       tableExport: true,
+      // A watchlist is tickers someone follows; a portfolio is what they hold.
+      personalData: (context) => (
+        context.config.watchlists.some((watchlist) => watchlist.id === context.activeCollectionId) ? null : "holdings"
+      ),
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       portableShare: {
         private: {

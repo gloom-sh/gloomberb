@@ -48,6 +48,7 @@ const originalMarkChatNotificationsDelivered = apiClient.markChatNotificationsDe
 const originalSubscribeChatNotifications = apiClient.subscribeChatNotifications.bind(apiClient);
 const originalSubscribeChatPresence = apiClient.subscribeChatPresence.bind(apiClient);
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
+const originalSendMessage = apiClient.sendMessage.bind(apiClient);
 
 const SERVER_CHAT_CHANNELS: ChatChannel[] = [
   { id: "everyone", name: "everyone", created_at: "2026-03-26T12:10:05.684Z" },
@@ -138,6 +139,7 @@ afterEach(() => {
   apiClient.subscribeChatNotifications = originalSubscribeChatNotifications;
   apiClient.subscribeChatPresence = originalSubscribeChatPresence;
   apiClient.editMessage = originalEditMessage;
+  apiClient.sendMessage = originalSendMessage;
 });
 
 describe("ChatController", () => {
@@ -1363,6 +1365,46 @@ describe("ChatController", () => {
     expect(sends[1]).toEqual(sends[0]!);
     expect(sends[0]!.clientMessageId).toBeTruthy();
     expect(controller.getSnapshot().messages).toEqual([stored]);
+  });
+
+  test("posts a shared pane as its own message, leaving the channel's draft and images alone", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    persistSession(persistence, { emailVerified: true });
+    controller.attachPersistence(persistence);
+    controller.setNotifier(() => {});
+    controller.setChannelDraft("everyone", "half written");
+
+    const uploaded: string[] = [];
+    controller.uploadAttachment = async (_channelId, upload) => {
+      uploaded.push(upload.name);
+      return { id: `img_${uploaded.length}`, mime: upload.type, width: 564, height: 600, size: 4, url: `https://api.example/img_${uploaded.length}` };
+    };
+    const sends: Array<{ channelId: string; content: string; attachmentIds?: string[] }> = [];
+    apiClient.sendMessage = async (channelId, content, _replyToId, clientMessageId, attachmentIds) => {
+      sends.push({ channelId, content, attachmentIds });
+      if (sends.length === 1) throw new Error("server offline");
+      return chatMessage({ id: "m7", content, createdAt: new Date().toISOString(), clientMessageId, attachments: [] });
+    };
+    const picture = { name: "portfolio-list.png", type: "image/png", data: new Uint8Array(4), previewUrl: "data:image/png;base64,AAAA" };
+
+    // A send that fails stays in the channel to retry, and the share says why.
+    await expect(controller.postImage("everyone", picture, " up 3% ")).rejects.toThrow("server offline");
+    expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+      content: "up 3%",
+      clientStatus: "failed",
+      attachments: [{ id: "img_1", url: "data:image/png;base64,AAAA" }],
+    });
+
+    const message = await controller.postImage("everyone", picture, "");
+    expect(message.id).toBe("m7");
+    expect(sends.map(({ content, attachmentIds }) => ({ content, attachmentIds }))).toEqual([
+      { content: "up 3%", attachmentIds: ["img_1"] },
+      { content: "", attachmentIds: ["img_2"] },
+    ]);
+    expect(controller.getSnapshot().messages.map((entry) => entry.id)).toContain("m7");
+    expect(controller.getSnapshot().draft).toBe("half written");
+    expect(controller.getSnapshot().draftAttachments).toEqual([]);
   });
 
   test("holds a send while images upload, takes four, and reports the server's refusal on the image", async () => {
