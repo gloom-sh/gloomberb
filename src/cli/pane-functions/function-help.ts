@@ -1195,6 +1195,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [key("r", "eview"), key("o", "rders")],
     data: same("Broker account and quote"),
     bloomberg: [],
+    docs: "BR",
   },
   SELL: {
     summary: "Open the shared Trade ticket with a sell quantity and optional limit price. Focus starts on Review; holdings and broker capabilities are checked before confirmation.",
@@ -1202,6 +1203,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [key("r", "eview"), key("o", "rders")],
     data: same("Broker account and quote"),
     bloomberg: [],
+    docs: "BR",
   },
   ORD: {
     summary: "Open orders and recent activity for a selected broker profile and account. Review a modification or confirm cancellation from an open order; uncertain outcomes require reconciliation before another action.",
@@ -1209,6 +1211,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [key("m", "odify"), key("c", "ancel")],
     data: same("Broker account snapshot"),
     bloomberg: [],
+    docs: "BR",
   },
 
   // Layouts and settings

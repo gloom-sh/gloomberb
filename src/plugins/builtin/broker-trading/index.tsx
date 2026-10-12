@@ -7,7 +7,7 @@ import { createTradeCommand, openTradeTicket } from "./command";
 /** Trading lives with broker profiles, with one research tab and one orders view. */
 export const brokerTradingModule: PluginModule = {
   panes: [{
-    id: "broker-orders", name: "Orders", icon: "O", component: BrokerOrdersPane,
+    id: "broker-orders", name: "Orders", personalData: "account", icon: "O", component: BrokerOrdersPane,
     defaultPosition: "right", defaultMode: "floating",
     defaultFloatingSize: { width: 100, height: 30 }, headless: brokerOrdersHeadless,
     portableShare: { private: { title: true, params: true, settings: true, state: true } },

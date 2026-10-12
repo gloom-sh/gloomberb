@@ -43,12 +43,20 @@ export interface NoticeProps {
 export function Notice({ children, tone = "warning", variant = "inline" }: NoticeProps) {
   const colors = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
-  const callout = variant === "callout";
   const color = tone === "muted" ? colors.textDim : colors[tone];
-  const foreground = callout ? blendForContrast(color, colors.panel, higherContrast("#000000", "#ffffff", colors.panel), 4.5) : color;
+  const status = tone === "negative" ? "error" : "notice";
+  // Inline feedback keeps its original single-text shape: a flex row here collapses inside content-sized parents.
+  if (variant !== "callout") {
+    return (
+      <Box data-gloom-status={status} data-gloom-ui="notice">
+        <Text fg={color} wrapText>{children}</Text>
+      </Box>
+    );
+  }
+  const foreground = blendForContrast(color, colors.panel, higherContrast("#000000", "#ffffff", colors.panel), 4.5);
   return (
-    <Box flexDirection="row" gap={callout ? 1 : 0} paddingX={callout ? 1 : 0} paddingY={callout && native ? 0.35 : 0} backgroundColor={callout ? colors.panel : undefined} border={callout ? ["left"] : undefined} borderColor={color} data-gloom-status={tone === "negative" ? "error" : "notice"} data-gloom-ui="notice" role={native && callout ? tone === "negative" ? "alert" : "status" : undefined} aria-atomic={native && callout ? true : undefined}>
-      {callout ? <Text fg={foreground}>!</Text> : null}<Box flexGrow={1} minWidth={0}><Text fg={foreground} wrapText>{children}</Text></Box>
+    <Box flexDirection="row" gap={1} paddingX={1} paddingY={native ? 0.35 : 0} backgroundColor={colors.panel} border={["left"]} borderColor={color} data-gloom-status={status} data-gloom-ui="notice" role={native ? tone === "negative" ? "alert" : "status" : undefined} aria-atomic={native ? true : undefined}>
+      <Text fg={foreground}>!</Text><Box flexGrow={1} minWidth={0}><Text fg={foreground} wrapText>{children}</Text></Box>
     </Box>
   );
 }
