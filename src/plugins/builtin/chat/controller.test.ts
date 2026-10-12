@@ -1053,6 +1053,37 @@ describe("ChatController", () => {
     expect(calls[1]?.opts?.after).toBe("m2");
   });
 
+  test("a page read before the session was restored is read again as the account, with its own reactions", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    const page = (me: boolean) => [chatMessage({
+      id: "m1",
+      content: "rates",
+      createdAt: "2026-03-28T00:00:00.000Z",
+      user: { id: "u2", username: "bob", displayName: "Bob" },
+      reactions: [{ emoji: "👍", count: 1, me, users: [] }],
+    })];
+    const calls: Array<string | undefined> = [];
+    let signedIn = false;
+    apiClient.getMessages = async (_channelId, opts) => {
+      calls.push(opts?.after);
+      return opts?.after ? [] : page(signedIn);
+    };
+
+    // The pane mounted and read the channel before the plugin restored the session.
+    await controller.refreshMessages();
+    expect(controller.getSnapshot().messages[0]?.reactions?.[0]?.me).toBe(false);
+
+    persistSession(persistence, { emailVerified: true });
+    controller.attachPersistence(persistence);
+    signedIn = true;
+    await controller.refreshMessages();
+    await controller.refreshMessages();
+
+    expect(calls).toEqual([undefined, undefined, "m1"]);
+    expect(controller.getSnapshot().messages[0]?.reactions?.[0]?.me).toBe(true);
+  });
+
   test("shows a pending message immediately and replaces it when the send succeeds", async () => {
     const persistence = new MemoryPersistence();
     const controller = createController();

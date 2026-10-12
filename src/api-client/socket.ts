@@ -3,6 +3,7 @@ import type {
   AuthUser,
   ChatMessage,
   ChatNotification,
+  ChatReactionsUpdate,
   CloudQuotePayload,
   QuoteStreamTarget,
   ScannerFeedEvent,
@@ -12,6 +13,7 @@ import type {
 import {
   normalizeChatMessage,
   normalizeChatNotification,
+  normalizeChatReactions,
   normalizeTeamNotification,
 } from "./normalizers";
 import { debugLog } from "../utils/debug-log";
@@ -41,6 +43,7 @@ const cloudApiLog = debugLog.createLogger("cloud-api");
 type ChannelListener = (message: ChatMessage) => void;
 type ChatNotificationListener = (notification: ChatNotification) => void;
 type ChatPresenceListener = (onlineCount: number) => void;
+type ChatReactionsListener = (update: ChatReactionsUpdate) => void;
 type TeamNotificationListener = (notification: TeamNotification) => void;
 type CloudEventListener = (data: unknown) => void;
 type QuoteListener = (
@@ -106,6 +109,7 @@ export class CloudApiSocket {
   private readonly chatNotificationListeners =
     new Set<ChatNotificationListener>();
   private readonly chatPresenceListeners = new Set<ChatPresenceListener>();
+  private readonly chatReactionsListeners = new Set<ChatReactionsListener>();
   private readonly teamNotificationListeners =
     new Set<TeamNotificationListener>();
   private readonly cloudEventListeners = new Map<
@@ -242,6 +246,14 @@ export class CloudApiSocket {
     this.chatNotificationListeners.add(listener);
     return () => {
       this.chatNotificationListeners.delete(listener);
+    };
+  }
+
+  /** A message's reactions changed in a channel this socket reads. */
+  subscribeChatReactions(listener: ChatReactionsListener): () => void {
+    this.chatReactionsListeners.add(listener);
+    return () => {
+      this.chatReactionsListeners.delete(listener);
     };
   }
 
@@ -500,6 +512,7 @@ export class CloudApiSocket {
     this.connectionListeners.clear();
     this.chatNotificationListeners.clear();
     this.chatPresenceListeners.clear();
+    this.chatReactionsListeners.clear();
     this.teamNotificationListeners.clear();
     this.cloudEventListeners.clear();
     this.quoteSubscriptions.clear();
@@ -571,6 +584,22 @@ export class CloudApiSocket {
       for (const listener of this.channelListeners.get(parsed.channelId) ??
         []) {
         listener(message);
+      }
+      return;
+    }
+
+    if (
+      parsed?.type === "chat.reactions" &&
+      typeof parsed.channelId === "string" &&
+      typeof parsed.data?.messageId === "string"
+    ) {
+      const update: ChatReactionsUpdate = {
+        channelId: parsed.channelId,
+        messageId: parsed.data.messageId,
+        reactions: normalizeChatReactions(parsed.data.reactions),
+      };
+      for (const listener of this.chatReactionsListeners) {
+        listener(update);
       }
       return;
     }

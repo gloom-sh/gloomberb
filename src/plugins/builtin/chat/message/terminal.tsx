@@ -4,6 +4,10 @@ import { t } from "../../../../i18n";
 import { formatInlinePreview, getMessageBodyTokenLines } from "../layout";
 import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
+import { Button } from "../../../../components/ui";
+import { MESSAGE_ACTION_WIDTH } from "../layout";
+import { canReactToMessage } from "../reactions";
+import { TerminalChatReactions } from "./reactions";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { useSlowPendingSend } from "./pending-send";
 import { getChatMessageRenderState } from "./render-state";
@@ -37,9 +41,14 @@ export function TerminalChatMessage({
   latestEditableMessageId,
   retryMessage,
   setHoveredIdx,
+  reactionsEnabled = false,
+  currentUserId = null,
+  toggleReaction,
+  openReactionPicker,
 }: TerminalChatMessageProps) {
   const rendererHost = useRendererHost();
   const slowSend = useSlowPendingSend(msg);
+  const canReact = reactionsEnabled && canReactToMessage(msg);
   const state = getChatMessageRenderState({
     msg,
     index,
@@ -48,10 +57,19 @@ export function TerminalChatMessage({
     hoveredIdx,
     canSend,
     canEdit: msg.id === latestEditableMessageId,
+    canReact: canReact && !!openReactionPicker,
     slowSend,
     host: "terminal",
   });
-  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage };
+  const reactAction = openReactionPicker ? (
+    <Button stopPropagation
+      label={t("React")}
+      width={MESSAGE_ACTION_WIDTH}
+      variant={state.isSelected ? "primary" : "secondary"}
+      onPress={() => openReactionPicker(index)}
+    />
+  ) : null;
+  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction };
   const attachments = msg.attachments ?? [];
   // An image-only message has no text row; its image rows start where the text would.
   const bodyLines = msg.content.length > 0 || attachments.length === 0
@@ -159,6 +177,14 @@ export function TerminalChatMessage({
           </Text>
         </Box>
       )}
+      <TerminalChatReactions
+        msg={msg}
+        currentUserId={currentUserId}
+        canReact={canReact && !!toggleReaction}
+        onToggle={toggleReaction ?? (() => {})}
+        rowProps={messageRowProps}
+        width={messageBodyWidth}
+      />
     </Box>
   );
 }

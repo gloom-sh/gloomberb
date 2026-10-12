@@ -193,7 +193,8 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   pointer-events: none;
 }
 [data-gloom-role="chat-message"]:hover [data-gloom-role="chat-message-reply-action"],
-[data-gloom-role="chat-message"][data-selected="true"] [data-gloom-role="chat-message-reply-action"] {
+[data-gloom-role="chat-message"][data-selected="true"] [data-gloom-role="chat-message-reply-action"],
+[data-gloom-role="chat-message-reply-action"][data-picker-open="true"] {
   opacity: 1;
   pointer-events: auto;
 }

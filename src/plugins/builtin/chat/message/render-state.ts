@@ -9,6 +9,8 @@ export interface ChatMessageRenderState {
   isHovered: boolean;
   grouped: boolean;
   showReplyAction: boolean;
+  /** Reactions are on offer here: the server takes them and the message can have them. */
+  showReactAction: boolean;
   showEditAction: boolean;
   /** A failed send of yours offers Retry in place of Reply and Edit. */
   showRetryAction: boolean;
@@ -35,6 +37,7 @@ export function getChatMessageRenderState({
   hoveredIdx,
   canSend,
   canEdit,
+  canReact = false,
   slowSend,
   host,
 }: {
@@ -45,6 +48,8 @@ export function getChatMessageRenderState({
   hoveredIdx: number | null;
   canSend: boolean;
   canEdit: boolean;
+  /** The message takes a reaction from you. */
+  canReact?: boolean;
   /** A pending send that has waited past the threshold; a fresh one is drawn like a sent message. */
   slowSend: boolean;
   /** The desktop reveals actions on hover with CSS, so it renders them on every row. */
@@ -69,6 +74,7 @@ export function getChatMessageRenderState({
     isHovered,
     grouped,
     showReplyAction,
+    showReactAction: showReplyAction && canReact,
     showEditAction: showReplyAction && canEdit,
     showRetryAction: showActions && hasFailed,
     isSending,

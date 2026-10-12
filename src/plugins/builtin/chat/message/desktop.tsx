@@ -9,6 +9,9 @@ import { DesktopChatMessageImages } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
 import { chatAuthorName } from "../ghost-user";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
+import { MESSAGE_ACTION_WIDTH } from "../layout";
+import { canReactToMessage } from "../reactions";
+import { DesktopChatReactions, DesktopReactionAction } from "./reactions";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { useSlowPendingSend } from "./pending-send";
 import { getChatMessageRenderState } from "./render-state";
@@ -37,12 +40,19 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   retryMessage,
   onImageLoadError,
   registerMessageElement,
+  reactionsEnabled = false,
+  currentUserId = null,
+  toggleReaction,
+  openReactionPicker,
+  reactionPickerMessageId = null,
+  closeReactionPicker,
 }: ChatMessageBaseProps & {
   registerMessageElement: (messageId: string, node: unknown | null) => void;
 }) {
   useAppLanguage();
   const themeColors = useThemeColors();
   const slowSend = useSlowPendingSend(msg);
+  const canReact = reactionsEnabled && canReactToMessage(msg) && !!toggleReaction;
   const state = getChatMessageRenderState({
     msg,
     index,
@@ -51,10 +61,26 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
     hoveredIdx,
     canSend,
     canEdit: msg.id === latestEditableMessageId,
+    canReact,
     slowSend,
     host: "desktop",
   });
-  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage };
+  const reactionPickerOpen = canReact && reactionPickerMessageId === msg.id;
+  const reactAction = canReact && toggleReaction ? (
+    <DesktopReactionAction
+      msg={msg}
+      currentUserId={currentUserId}
+      open={reactionPickerOpen}
+      width={MESSAGE_ACTION_WIDTH}
+      variant={state.isSelected ? "primary" : "secondary"}
+      onOpenChange={(open) => {
+        if (open) openReactionPicker?.(index);
+        else closeReactionPicker?.();
+      }}
+      onToggle={toggleReaction}
+    />
+  ) : null;
+  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen };
   const attachments = msg.attachments ?? [];
   // An image-only message has no text row; its images start where the text would.
   const showBody = msg.content.length > 0 || attachments.length === 0;
@@ -160,6 +186,16 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
             onLoadError={onImageLoadError}
           />
           {state.grouped && !showBody && <ChatMessageActions floating {...actionProps} />}
+        </Box>
+      )}
+      {(msg.reactions?.length ?? 0) > 0 && (
+        <Box {...rowProps} paddingLeft={3} flexDirection="row" style={{ minWidth: 0 }}>
+          <DesktopChatReactions
+            msg={msg}
+            currentUserId={currentUserId}
+            canReact={canReact}
+            onToggle={toggleReaction ?? (() => {})}
+          />
         </Box>
       )}
     </Box>

@@ -59,6 +59,12 @@ interface ChatTranscriptProps {
   stickyTranscript: boolean;
   user: { id: string; username: string; emailVerified: boolean } | null;
   userByUsername: Map<string, ChatUserSummary>;
+  /** The server takes reactions and you can send. */
+  reactionsEnabled: boolean;
+  toggleReaction: (messageId: string, emoji: string) => void;
+  openReactionPicker: (index: number) => void;
+  reactionPickerMessageId: string | null;
+  closeReactionPicker: () => void;
 }
 
 export function ChatTranscript({
@@ -101,7 +107,18 @@ export function ChatTranscript({
   onUserContextMenu,
   profileMessageAction,
   profileMessageRefusal,
+  reactionsEnabled,
+  toggleReaction,
+  openReactionPicker,
+  reactionPickerMessageId,
+  closeReactionPicker,
 }: ChatTranscriptProps) {
+  const reactionProps = {
+    reactionsEnabled,
+    currentUserId: user?.id ?? null,
+    toggleReaction,
+    openReactionPicker,
+  };
   return (
     <>
       <ScrollBox
@@ -158,6 +175,9 @@ export function ChatTranscript({
               retryMessage={retryMessage}
               onImageLoadError={onImageLoadError}
               registerMessageElement={registerMessageElement}
+              {...reactionProps}
+              reactionPickerMessageId={reactionPickerMessageId}
+              closeReactionPicker={closeReactionPicker}
             />
           ) : (
             <TerminalChatMessage
@@ -183,6 +203,7 @@ export function ChatTranscript({
               latestEditableMessageId={latestEditableMessageId}
               retryMessage={retryMessage}
               setHoveredIdx={setHoveredIdx}
+              {...reactionProps}
             />
           )
         ))}
