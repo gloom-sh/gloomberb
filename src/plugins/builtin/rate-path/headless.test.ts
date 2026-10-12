@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { RatePathPayload } from "../../../api-client/rates";
+import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { ratePathHeadless } from "./headless";
@@ -29,4 +30,18 @@ test("text names the policy rates and says whether data is stale, while JSON kee
   expect(policy.rows.map((row) => [row.name, row.stale, row.source])).toEqual([["effr", false, "fred"], ["targetLower", false, "fred"], ["targetUpper", false, "nyfed"]]);
   const contract = text.split("\n").find((line) => line.startsWith("ZQV26.CBT"))!;
   expect(contract.trim().endsWith("available  yes")).toBe(true);
+});
+
+test("the status line names the CME futures and how far they are delayed", async () => {
+  const context = createTestHeadlessContext({ apiClient: { getCloudRatePath: async () => payload } as never });
+  const result = await ratePathHeadless.load(createTestHeadlessArgs(), context);
+  const freshness = deriveHeadlessFreshness(ratePathHeadless, result, Date.parse("2026-10-09T21:00:00Z"));
+  expect(freshness).toMatchObject({ source: "CME futures", status: "stale", feed: "delayed", delayMinutes: 10, staleCount: 1 });
+  expect(formatFreshnessLine(freshness)).toBe("Source: CME futures · Fri 9 Oct 2026 20:59 UTC (oldest Thu 8 Oct 2026) · 10 min delayed, 1 of 4 stale");
+  // Without a stale row it is a plain delayed feed, never live.
+  const fresh = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({
+    apiClient: { getCloudRatePath: async () => ({ ...payload, fedFunds: [{ ...payload.fedFunds[0], stale: false }] }) } as never,
+  }));
+  expect(formatFreshnessLine(deriveHeadlessFreshness(ratePathHeadless, fresh, Date.parse("2026-10-09T21:00:00Z"))))
+    .toBe("Source: CME futures · Fri 9 Oct 2026 20:59 UTC (oldest Thu 8 Oct 2026) · 10 min delayed");
 });

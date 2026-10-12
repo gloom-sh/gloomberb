@@ -38,8 +38,8 @@ import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
-import { deriveHeadlessFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
-import { isProLock } from "./access-gate";
+import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
+import { accessGateStatus, errorsAccessGate, isProLock } from "./access-gate";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -659,18 +659,44 @@ function resultRowCount(definition: HeadlessPaneDefinition, result: HeadlessPane
   }
 }
 
+/**
+ * Whether a loaded report covers what was asked, and which inputs it has no
+ * data for. The one derivation behind `fn`'s `complete` and the status of a
+ * capture of the same report.
+ */
+export function reportCoverage(
+  { definition, args, result }: LoadedHeadlessPaneModel,
+): { complete: boolean; unavailableSymbols: string[]; rowCount: number; symbols: string[] } {
+  const rowCount = resultRowCount(definition, result);
+  const symbols = result.symbols ?? args.symbols;
+  const unavailableSymbols = result.unavailableSymbols ?? (rowCount === 0 ? symbols : []);
+  const complete = result.complete !== false && unavailableSymbols.length === 0 && !result.errors?.length;
+  return { complete, unavailableSymbols, rowCount, symbols };
+}
+
+/**
+ * What a report that is not complete leaves out, in the words its own status
+ * line and `# incomplete` line use: `2 stale`, `no data for IN`. Null when it
+ * is complete or does not say.
+ */
+export function reportGaps(loaded: LoadedHeadlessPaneModel, freshness: ReportFreshness): string | null {
+  const { complete, unavailableSymbols } = reportCoverage(loaded);
+  if (complete) return null;
+  const missing = incompleteDetail(loaded.result, { complete, unavailableSymbols });
+  const gate = errorsAccessGate(loaded.result.errors);
+  return [staleRowsText(freshness, true), typeof missing === "string" ? missing : null, gate ? accessGateStatus(gate) : null]
+    .filter(Boolean).join(", ") || null;
+}
+
 export async function buildHeadlessFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArgument: string,
 ): Promise<PaneFunctionReport> {
   const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
-  const rowCount = resultRowCount(loaded.definition, loaded.result);
-  const symbols = loaded.result.symbols ?? loaded.args.symbols;
-  const unavailableSymbols = loaded.result.unavailableSymbols ?? (rowCount === 0 ? symbols : []);
+  const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
   const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);
-  const complete = loaded.result.complete !== false && unavailableSymbols.length === 0 && !loaded.result.errors?.length;
   return {
     data: {
       kind: loaded.definition.shape,

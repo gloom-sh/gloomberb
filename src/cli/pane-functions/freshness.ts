@@ -586,6 +586,16 @@ function ageText(minutes: number): string {
   return `${Math.floor(hours / 24)} days`;
 }
 
+/**
+ * How many rows are stale when only some are: `2 of 16 stale`, or `2 stale`
+ * when `short`. Null when the report does not count them. One wording for a
+ * report's status line, a capture's and the status a capture prints.
+ */
+export function staleRowsText(freshness: Pick<ReportFreshness, "staleCount" | "observationCount">, short = false): string | null {
+  if (freshness.staleCount == null || freshness.observationCount == null) return null;
+  return `${short ? freshness.staleCount : `${freshness.staleCount} of ${freshness.observationCount}`} stale`;
+}
+
 /** `short` counts stale rows without their total (`2 stale`), for a narrow capture. */
 function statusText(freshness: ReportFreshness, short = false): string {
   switch (freshness.status) {
@@ -594,10 +604,10 @@ function statusText(freshness: ReportFreshness, short = false): string {
     case "delayed":
       return delayedText(freshness);
     case "stale": {
-      if (freshness.staleCount != null && freshness.observationCount != null) {
+      const stale = staleRowsText(freshness, short);
+      if (stale) {
         const rest = freshness.feed === "live" ? "live" : freshness.feed === "delayed" ? delayedText(freshness) : null;
-        const count = short ? `${freshness.staleCount}` : `${freshness.staleCount} of ${freshness.observationCount}`;
-        return `${rest ? `${rest}, ` : ""}${count} stale`;
+        return `${rest ? `${rest}, ` : ""}${stale}`;
       }
       // A line that says how old its oldest observation is does not say it twice.
       return freshness.ageMinutes != null && freshness.oldestAgeMinutes == null ? `stale (${ageText(freshness.ageMinutes)} old)` : "stale";
@@ -768,10 +778,7 @@ function datasetLineParts(freshness: ReportFreshness, asOf: string, lagDays: num
   const period = freshness.periodicity;
   const dated = (date: string) => (period ? periodText(date, period) : observedDayText(date, freshness.retrievedAt));
   const oldest = freshness.oldest && detail.oldest !== "none" ? ` (oldest ${dated(freshness.oldest)})` : "";
-  const partly = freshness.staleCount != null && freshness.observationCount != null;
-  const stale = freshness.status !== "stale" ? null
-    : !partly ? "stale"
-      : detail.status === "short" ? `${freshness.staleCount} stale` : `${freshness.staleCount} of ${freshness.observationCount} stale`;
+  const stale = freshness.status !== "stale" ? null : staleRowsText(freshness, detail.status === "short") ?? "stale";
   return [
     ...(detail.source === "none" ? [] : [`Source: ${freshness.source}`]),
     `observed ${dated(asOf)}${period ? ` (${period})` : ""}${oldest}`,

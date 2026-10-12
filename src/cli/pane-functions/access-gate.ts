@@ -34,14 +34,20 @@ export function accessGateStatus(gate: PaneAccessGate): string {
   return gate === "pro" ? "locked" : "needs sign-in";
 }
 
+/** The gate a report's own errors name, when they name one. */
+export function errorsAccessGate(errors: unknown): PaneAccessGate | null {
+  const messages = errorMessages(errors);
+  return messages.some((message) => SIGN_IN_ERROR.test(message)) ? "sign-in"
+    : messages.some((message) => PRO_ERROR.test(message)) ? "pro" : null;
+}
+
 /**
  * The failure for an incomplete report whose own errors name a gate, with
  * those errors saying which values; null when they name none.
  */
 export function incompleteReportGateMessage(token: string, errors: unknown): string | null {
   const messages = errorMessages(errors);
-  const gate = messages.some((message) => SIGN_IN_ERROR.test(message)) ? "sign-in"
-    : messages.some((message) => PRO_ERROR.test(message)) ? "pro" : null;
+  const gate = errorsAccessGate(errors);
   const detail = messages.map((message) => message.replace(/\.+$/, "")).join(". ");
   return gate ? `${token} is not bot-safe: ${accessGateReason(gate)}. ${detail}.` : null;
 }

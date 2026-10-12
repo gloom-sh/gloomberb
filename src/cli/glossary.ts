@@ -204,9 +204,22 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Net liquidity", aliases: ["liquidity"], functions: ["BTMM"],
     definition: "Fed assets minus the Treasury account minus overnight RRP: a rough gauge of the dollars the Fed leaves in markets, not a forecast.",
   },
+  // Central bank rates (CBR), in the order its columns run. Pctl 1Y sits between them, shared with BTMM and WIRP.
   {
-    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "pctl"], functions: ["BTMM", "WIRP"],
+    term: "Last move", aliases: ["latest move"], functions: ["CBR"],
+    definition: "The latest change in the policy rate, in basis points: up for a hike, down for a cut. The US figure is the move in the midpoint of the target range.",
+  },
+  {
+    term: "Change observed", aliases: ["last change", "change date"], functions: ["CBR"],
+    definition: "The first date the new rate level appears in the data, not necessarily the announcement or effective date.",
+  },
+  {
+    term: "Pctl 1Y", aliases: ["percentile", "1y percentile", "pctl"], functions: ["BTMM", "WIRP", "CBR"],
     definition: "Where today's value ranks against the past year of the same series: 100 is the highest, 0 the lowest.",
+  },
+  {
+    term: "Status", aliases: ["stale"], functions: ["CBR"],
+    definition: "Whether the latest observation is current. Stale means the source observation is delayed or comes from an expired cache, so the rate may have changed since its date; unavailable means the source has none.",
   },
   // US rate path (WIRP).
   {

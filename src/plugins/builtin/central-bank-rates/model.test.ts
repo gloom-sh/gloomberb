@@ -2,6 +2,11 @@ import { describe, expect, test } from "bun:test";
 import type { CentralBankRatesPayload, CentralBankRow } from "../../../api-client/central-bank-rates";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { HeadlessPaneContext } from "../../../types/plugin";
+import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { reportGlossary } from "../../../cli/glossary";
+import { reportShotCoverage, shotStatusIssues, withReportCoverage, type PaneScreenshotResult } from "../../../cli/pane-functions/screenshot";
+import { createTestHeadlessArgs } from "../../../test-support/headless";
 import { fetchCentralBankRates, validateCentralBankRates } from "./client";
 import { centralBankRatesHeadless } from "./headless";
 import { policyBoardRow, policyHistory, policyNotices } from "./model";
@@ -80,5 +85,45 @@ describe("central bank policy boundary", () => {
     await expect(fetchCentralBankRates({ getCloudCentralBankRates: async () => { throw new ApiRequestError("not found", 404); } })).rejects.toThrow("not available yet");
     const denied = new ApiRequestError("sign in", 401);
     await expect(fetchCentralBankRates({ getCloudCentralBankRates: async () => { throw denied; } })).rejects.toBe(denied);
+  });
+});
+
+describe("a board with stale rows", () => {
+  const NOW = Date.parse("2026-10-12T09:00:00Z");
+  const stale = (id: string, label: string, asOf: string, lagDays: number) => row({ id, label, status: "stale", asOf, lagDays, source: "bis", range: null, lastChangeDate: "2025-12-05", previousAsOf: "2025-12-04" });
+  const board = () => {
+    const data = payload();
+    data.status = "partial";
+    data.rows.push(stale("AU", "Australia", "2026-09-24", 18), stale("IN", "India", "2026-07-23", 81));
+    return data;
+  };
+  const load = async (data: CentralBankRatesPayload) => {
+    const args = createTestHeadlessArgs();
+    const result = await centralBankRatesHeadless.load(args, { apiClient: { getCloudCentralBankRates: async () => data } } as unknown as HeadlessPaneContext);
+    return { definition: centralBankRatesHeadless, args, result };
+  };
+
+  test("is partial everywhere: the report's line counts the stale rows and a capture's status says so", async () => {
+    const loaded = await load(board());
+    expect(formatFreshnessLine(deriveHeadlessFreshness(loaded.definition, loaded.result, NOW)))
+      .toBe("Source: Central banks and BIS · Thu 24 Sep 2026 (oldest Thu 23 Jul 2026) · 2 of 3 stale");
+    const coverage = await reportShotCoverage({ headless: centralBankRatesHeadless }, async () => loaded);
+    expect(coverage).toEqual({ complete: false, unavailableSymbols: [], gaps: "2 stale" });
+    // A capture that read its own view as complete takes the report's word, but stays as usable as it was.
+    const captured = { complete: true, usable: true, empty: false, semanticMismatch: false, unavailableSymbols: [], render: {} } as unknown as PaneScreenshotResult;
+    const partial = withReportCoverage(captured, coverage);
+    expect(shotStatusIssues(partial)).toEqual(["partial: 2 stale"]);
+    expect(partial).toMatchObject({ complete: false, usable: true, gaps: "2 stale" });
+    // A complete board changes nothing.
+    const whole = await load(payload());
+    const clean = await reportShotCoverage({ headless: centralBankRatesHeadless }, async () => whole);
+    expect(shotStatusIssues(withReportCoverage(captured, clean))).toEqual([]);
+  });
+
+  test("--explain lists the terms the report shows, with the change date defined as the first observation", async () => {
+    const { definition, args, result } = await load(board());
+    const entries = reportGlossary("CBR", renderHeadlessPaneText(definition, result, args, "CBR"));
+    expect(entries.map((entry) => entry.term)).toEqual(["Last move", "Change observed", "Pctl 1Y", "Status"]);
+    expect(entries[1]!.definition).toContain("first date the new rate level appears in the data");
   });
 });

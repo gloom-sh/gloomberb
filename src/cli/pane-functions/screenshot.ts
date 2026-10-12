@@ -5,7 +5,7 @@ import { apiClient } from "../../api-client";
 import { snapshotInstrumentKey, type SnapshotMarketData } from "../../market-data/snapshot-provider";
 import { toMarketDataContext } from "../../market-data/selectors";
 import type { ChartPaneModel } from "../../plugins/builtin/chart-composer/headless";
-import { loadResolvedHeadlessPaneModel, type LoadedHeadlessPaneModel } from "./headless";
+import { loadResolvedHeadlessPaneModel, reportCoverage, reportGaps, type LoadedHeadlessPaneModel } from "./headless";
 import { dirname, resolve } from "path";
 import { mkdir } from "fs/promises";
 import type { PaneRuntimeState } from "../../core/state/app/state";
@@ -73,7 +73,7 @@ import { getCloudApiBaseUrl } from "../../api-client/request";
 import { collectExternalPluginBundles } from "../../renderers/electrobun/bun/external-plugins";
 import type { ResolvedSeries } from "../../time-series/types";
 import { getQuoteMonitorPaneSettings } from "../../plugins/builtin/ticker-detail/settings";
-import { accessGateSentence } from "./access-gate";
+import { accessGateSentence, accessGateStatus } from "./access-gate";
 import { findCollection } from "../../plugins/builtin/portfolio-list/cli/render";
 import { peekCachedBrokerAccounts } from "../../plugins/builtin/portfolio-list/cached-account";
 import {
@@ -434,6 +434,8 @@ export interface PaneScreenshotResult {
   dataEvidence: PaneScreenshotDataEvidence | null;
   /** What the pane says its view leaves out, such as OMON's "21 of 145 strikes". */
   notices?: string[];
+  /** What the pane's report leaves out when it is not complete, as `fn` words it: `2 stale`. */
+  gaps?: string;
   /** How current the captured data is, as the capture's status line says it; absent with `--no-status`. */
   freshness?: ReportFreshness;
   outputPath: string;
@@ -821,6 +823,68 @@ async function reportShotFreshness(
   }
 }
 
+/** What a capture's report says about its own completeness (`fn`'s `complete`), as `reportCoverage` derives it. */
+export interface ShotReportCoverage {
+  complete: boolean;
+  unavailableSymbols: string[];
+  gaps?: string;
+}
+
+/**
+ * Whether the pane's report covers what was asked, loaded once with the
+ * capture's other uses of it. Undefined for a pane without a report, or when
+ * it did not load.
+ */
+export async function reportShotCoverage(
+  resolved: Pick<ResolvedPaneFunction, "headless">,
+  loadModel: () => Promise<LoadedHeadlessPaneModel>,
+): Promise<ShotReportCoverage | undefined> {
+  if (!resolved.headless) return undefined;
+  try {
+    const loaded = await loadModel();
+    const { complete, unavailableSymbols } = reportCoverage(loaded);
+    const gaps = reportGaps(loaded, deriveHeadlessFreshness(loaded.definition, loaded.result));
+    return { complete, unavailableSymbols, ...(gaps ? { gaps } : {}) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The capture's result with its report's completeness: a capture of a partial
+ * report is partial too, whatever the rendered view shows. Whether the image
+ * is fit to use stays what the render says.
+ */
+export function withReportCoverage(result: PaneScreenshotResult, coverage: ShotReportCoverage | undefined): PaneScreenshotResult {
+  if (!coverage || coverage.complete) return result;
+  return {
+    ...result,
+    complete: false,
+    unavailableSymbols: [...new Set([...result.unavailableSymbols, ...coverage.unavailableSymbols])],
+    ...(coverage.gaps ? { gaps: coverage.gaps } : {}),
+  };
+}
+
+/**
+ * The words after `Status` in a capture's text output: why it is not
+ * complete, empty, matching its data or usable, `partial: 2 stale`. Empty when
+ * nothing is wrong.
+ */
+export function shotStatusIssues(
+  data: Pick<PaneScreenshotResult, "empty" | "complete" | "gaps" | "semanticMismatch" | "usable"> & {
+    render: Pick<PaneScreenshotResult["render"], "accessGate">;
+  },
+): string[] {
+  const gated = data.render.accessGate && (data.empty || !data.usable) ? data.render.accessGate : null;
+  return [
+    gated ? accessGateStatus(gated) : data.empty ? "empty" : null,
+    // A gate already says why a report is not whole.
+    data.complete ? null : data.gaps ? `partial: ${data.gaps}` : gated ? null : "partial",
+    data.semanticMismatch ? "does not match the data" : null,
+    data.usable ? null : "not usable",
+  ].filter((issue): issue is string => issue != null);
+}
+
 /** How long a rendered capture waits for its report's freshness before dating itself without it. */
 const SHOT_REPORT_WAIT_MS = 20_000;
 
@@ -904,6 +968,8 @@ export async function renderDesktopShot({
   let payload: DesktopPaneShotPayload;
   let render: DesktopPaneShotRenderResult;
   let freshness: ReportFreshness | undefined;
+  let coverage: Promise<ShotReportCoverage | undefined> | undefined;
+  let covered: ShotReportCoverage | undefined;
   // A report still loading when the status line stops waiting for it is
   // aborted, and the caller told: a loader that ignores the signal goes on.
   const reportLoads = new AbortController();
@@ -936,6 +1002,8 @@ export async function renderDesktopShot({
     if (fitRows && resolved.pane.shotFitsRows) payload.maxHeightCells = shotMaxHeightCells(scale ?? 1);
     // Loads while the page renders.
     const report = payload.statusLine ? reportShotFreshness(resolved, loadModel) : undefined;
+    // The same load says whether the report is complete, with or without a status line.
+    coverage = captureImage ? reportShotCoverage(resolved, loadModel) : undefined;
     const recorded = recordBridgedQuotes(createDesktopShotBridge(context));
     const shotPayload = payload;
     render = await renderDesktopPaneScreenshot(payload, outputPath, apiProxy, {
@@ -950,13 +1018,14 @@ export async function renderDesktopShot({
         return { variants: line.variants, dates: line.dates };
       },
     });
+    covered = coverage && await settledWithin(coverage, SHOT_REPORT_WAIT_MS);
   } finally {
     apiClient.setSessionToken(previousSessionToken);
     abandonReports();
   }
   const renderedInstance = payload.config.layout.instances.find(({ instanceId }) => instanceId === payload.paneId);
   if (renderedInstance) resolved = { ...resolved, instance: renderedInstance };
-  const assessed = assessPaneScreenshot(resolved, payload, render, rawArg, outputPath);
+  const assessed = withReportCoverage(assessPaneScreenshot(resolved, payload, render, rawArg, outputPath), covered);
   return freshness ? { ...assessed, freshness } : assessed;
 }
 

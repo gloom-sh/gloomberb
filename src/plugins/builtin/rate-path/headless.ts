@@ -35,12 +35,22 @@ const contractColumns: HeadlessPaneColumn[] = [
   { key: "status", header: "Status" }, { key: "stale", header: "Data stale", format: yesNo },
 ];
 
+/**
+ * How far the fed funds and SOFR futures quotes are held back. The rate-path
+ * endpoint does not carry a delay. CME Group's delayed market data is at least
+ * 10 minutes behind its real-time feed (its information license agreement
+ * defines delayed data as published more than 10 minutes after it is
+ * disseminated), and the futures-curve endpoint reports `delayMinutes: 10` on
+ * every CME contract.
+ */
+const CME_FUTURES_DELAY_MINUTES = 10;
+
 export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["WIRP", "FFIP"], dataRequirements: ["Gloom Cloud rate-path endpoint"],
     limitations: ["Conditional two-outcome probabilities.", "SR3 history from hourly trades.", "Maintained FOMC schedule and SEP snapshot."] },
   shape: "bundle", argument: { kind: "none" }, options: [], describe: "US rate path",
-  // Delayed futures quotes; each contract and policy rate says whether it is stale.
-  freshness: { status: "delayed" },
+  // Delayed CME futures quotes; each contract and policy rate says whether it is stale.
+  freshness: { source: "CME futures", status: "delayed", delayMinutes: CME_FUTURES_DELAY_MINUTES },
   async load(_args, ctx) {
     const data = await fetchRatePath(ctx.apiClient);
     const moves = meetingMoves(data.meetings);

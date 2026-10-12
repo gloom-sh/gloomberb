@@ -11,7 +11,10 @@ export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
     const data = await fetchCentralBankRates(ctx.apiClient);
     const errors = policyNotices(data);
     const complete = data.status === "available" && errors.length === 0;
-    return { complete, sections: [{ title: "Policy rates", columns: [
+    // A row says "stale" in its status, not in a `stale` flag: hand the report its rows' staleness so its status line and a capture count them.
+    const observations = data.rows.filter((row) => row.status !== "unavailable")
+      .map((row) => ({ asOf: row.asOf, stale: row.status === "stale" }));
+    return { complete, freshness: { observations }, sections: [{ title: "Policy rates", columns: [
       { key: "label", header: "Jurisdiction" }, { key: "valueText", header: "Rate", align: "right" },
       { key: "changeText", header: "Last move", align: "right" }, { key: "lastChangeDate", header: "Change observed" },
       { key: "percentileValue", header: "Pctl 1Y", align: "right", format: (value) => value == null ? "--" : Number(value).toFixed(0) },

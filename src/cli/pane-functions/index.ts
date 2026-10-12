@@ -18,11 +18,11 @@ import {
 } from "./options";
 import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
-import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings } from "./screenshot";
+import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings, shotStatusIssues } from "./screenshot";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
-import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
+import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceNotes } from "../listing-arg";
 import { knownGapMessage, topicPointer } from "../known-gaps";
@@ -175,12 +175,7 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
       const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed)];
       ctx.printResult({ data: result, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: (data) => {
-          const issues = [
-            data.render.accessGate && (data.empty || !data.usable) ? accessGateStatus(data.render.accessGate) : data.empty ? "empty" : null,
-            data.complete ? null : "incomplete",
-            data.semanticMismatch ? "does not match the data" : null,
-            data.usable ? null : "not usable",
-          ].filter((issue): issue is string => issue != null);
+          const issues = shotStatusIssues(data);
           const stats: CliStatEntry[] = [
             ["Rows", String(data.rowCount)],
             ["Status", issues.length > 0 ? cliStyles.warning(issues.join(", ")) : cliStyles.success("complete")],

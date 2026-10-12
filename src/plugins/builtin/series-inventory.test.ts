@@ -13,8 +13,9 @@ const CHART_USE = /\b(?:CompositeChart|StaticChartSurface|CurveSurface|ScatterCh
 const NOT_MODULES = new Set(["shared"]);
 /** The public bodies built-in series may name as their publisher. */
 // Ember publishes open energy data under CC-BY-4.0, whose attribution the day-ahead series carry; EEX is
-// the EU ETS common auction platform, which publishes the auction results.
-const PUBLISHERS = new Set(["FRED", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX"]);
+// the EU ETS common auction platform, which publishes the auction results; the BIS publishes the central
+// bank policy rates the policy-rate series chart outside the US and the euro area.
+const PUBLISHERS = new Set(["FRED", "BIS", "EIA", "CFTC", "FINRA", "Bundesbank", "Bank of England", "Japan Ministry of Finance", "Bank of Canada", "ECB", "U.S. Treasury", "SEC", "Ember", "EEX"]);
 const SAMPLE_INPUTS = { ticker: "AAPL", option: "AAPL260618C00200000", crypto: "BTC-USD" } as const;
 
 function sourceFiles(dir: string): string[] {

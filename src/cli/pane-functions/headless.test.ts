@@ -19,6 +19,7 @@ import {
   buildHeadlessPaneLoadArgs,
   buildHeadlessFunctionReport,
   headlessReportTables,
+  reportGaps,
   renderHeadlessPaneText,
   serializeHeadlessPaneResult,
 } from "./headless";
@@ -345,6 +346,20 @@ test("partial usable reports retain rows without marking their symbol wholly una
     headless: definition, token: "partial", label: "Partial", options: {}, instance: {}, capability: { id: "partial" },
   } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-partial") } as MarketContext, "");
   expect(report.data).toMatchObject({ rowCount: 1, empty: false, complete: false, unavailableSymbols: [], rows: [{ date: "2025-06-30", margin: .46 }] });
+});
+
+test("an incomplete report's gaps read as its status line and `# incomplete` line do, and a complete one has none", () => {
+  const definition: HeadlessPaneDefinition<"rows"> = { shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [] }) };
+  const now = Date.parse("2026-10-12T00:00:00Z");
+  const gaps = (result: HeadlessRowsResult) => reportGaps({ definition, args, result }, deriveHeadlessFreshness(definition, result, now));
+  const rows = [{ asOf: "2026-10-09" }];
+  expect(gaps({ rows })).toBeNull();
+  expect(gaps({ rows, complete: false, metadata: { requested: 20, available: 19 } })).toBe("19 of 20 available");
+  expect(gaps({ rows, symbols: ["IN"], unavailableSymbols: ["IN"] })).toBe("no data for IN");
+  // A Pro lock is named as the gate screenshots name it, not as a failure.
+  expect(gaps({ rows, errors: ["2,508 more markets need Gloom Pro"] })).toBe("locked");
+  expect(gaps({ rows, errors: ["Something failed"] })).toBeNull();
+  expect(gaps({ rows: [{ asOf: "2026-10-09", stale: true }, { asOf: "2026-10-09", stale: false }], errors: ["One row is stale"] })).toBe("1 stale");
 });
 
 test("headless text preserves applicable coverage notices once before the exported rows", () => {

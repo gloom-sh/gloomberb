@@ -2,6 +2,13 @@ import type { SeriesDefinition } from "../../../series/types";
 import { cachedSeriesWarning } from "../shared/series-warning";
 import { loadCentralBankRates } from "./client";
 
+/**
+ * The board rows the endpoint reads from FRED (the Fed's and the ECB's rates,
+ * `source: "fred"` on the row); every other row is the BIS central bank policy
+ * rates (`source: "bis"`). Check a new bank against `fn CBR --json`.
+ */
+const FRED_ROWS: ReadonlySet<string> = new Set(["US", "EA"]);
+
 /** The banks the board charts a policy rate for, by the board's row id. */
 const BANKS: ReadonlyArray<readonly [id: string, place: string, instrument: string]> = [
   ["US", "United States", "Fed funds target, midpoint"],
@@ -28,6 +35,7 @@ export const CENTRAL_BANK_SERIES: readonly SeriesDefinition[] = BANKS.map(([id, 
   unit: "%",
   frequency: "daily",
   group: "Rates",
+  publisher: FRED_ROWS.has(id) ? "FRED" : "BIS",
   tags: ["central bank", "policy rate", id],
   load: async () => {
     const resource = await loadCentralBankRates();
