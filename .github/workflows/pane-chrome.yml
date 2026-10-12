@@ -5,7 +5,8 @@ name: Pane chrome
 # Only for changes that can break pane chrome: the shell and pane headers,
 # the dock, the DOM renderer, the desktop view, the pane screenshot, the
 # charts and heat maps that follow a resize, the keys held down (one-shot
-# shortcuts run once, arrows repeat), and these checks themselves.
+# shortcuts run once, arrows repeat), the chat message list, and these checks
+# themselves.
 # The pane drag frame budget is in the Performance workflow and runs for the
 # same pull_request paths (scripts/pane-chrome/scope.ts reads them from here).
 on:
@@ -21,6 +22,7 @@ on:
       - "src/components/ui/data-table/**"
       - "src/components/data-table/**"
       - "src/layout/**"
+      - "src/plugins/builtin/chat/**"
       - "src/react/input.ts"
       - "src/react/key-repeat.ts"
       - "src/ui/**"

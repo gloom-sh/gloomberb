@@ -390,9 +390,26 @@ export const chatSteps: ChatStep[] = [
       if (!await waitFor(cdp, `__chat.rows().length > ${rowsBefore}`, 3_000)) fail("the older messages never arrived");
       await frames(cdp, 6);
       expectPlace(before, await anchor(cdp), "older messages arriving");
-      // The reader pressed no key, so no message is selected (the oldest one used to be).
+    },
+  },
+  {
+    // The oldest message was selected when older ones arrived, with a nudge of the wheel and no key
+    // pressed: its band and Reply button stayed until Esc, which no mouse reader presses.
+    name: "chat list: older messages arriving select no message",
+    scenario: "chat&latency=200",
+    async run(cdp) {
+      await ready(cdp);
+      await wheel(cdp, await listCentre(cdp), -5_000);
+      if (!await waitFor(cdp, "window.__chatFake.historyRequests >= 1", 2_000)) fail("reaching the top did not ask for older messages", await state(cdp));
+      if (!await waitFor(cdp, "__chat.rows().length > 50", 3_000)) fail("the older messages never arrived");
+      await pause(cdp, 300);
       const chosen = await selected(cdp);
       if (chosen.length > 0) fail("older messages arriving selected a message nobody selected", chosen);
+      // And with the pointer gone from the list, nothing in it stays marked.
+      const away = await evaluate<Point>(cdp, "__chat.neighbour()");
+      await mouse(cdp, "mouseMoved", away.x, away.y, false);
+      await frames(cdp, 3);
+      expectMarked(await marked(cdp), [], "pointer out of the list after older messages arrived");
     },
   },
   {

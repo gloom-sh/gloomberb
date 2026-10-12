@@ -631,6 +631,8 @@ describe("ChatContent", () => {
 
     async function hoverMessage(controller: ReturnType<typeof createController>, text: string) {
       await mountChat(controller, { width: 72, height: 12 });
+      // The channel list draws once it has loaded, and moves the messages right.
+      await tui.waitForFrameToContain("#everyone");
       const rows = tui.frame().split("\n");
       const row = rows.findIndex((line) => line.includes(text));
       expect(row).toBeGreaterThanOrEqual(0);

@@ -25,6 +25,11 @@ interface MutableRef<T> {
   current: T;
 }
 
+interface RequestOlderOptions {
+  /** The first message was selected a moment ago, by a key whose state has not been drawn yet. */
+  firstIsSelected?: boolean;
+}
+
 export interface ChatPrependAnchor {
   oldestMessageId: string | null;
   scrollHeight: number;
@@ -110,7 +115,7 @@ export function useChatScrollRuntime({
     }
   }, [messageElementsRef]);
 
-  const requestOlderMessages = useCallback(() => {
+  const requestOlderMessages = useCallback((options?: RequestOlderOptions) => {
     const scrollBox = scrollRef.current;
     if (!scrollBox || loadingOlderMessages || !hasOlderMessages || messages.length === 0) return;
     const exactPixels = nativePaneChrome === true && hasPixelScrollMetrics(scrollBox);
@@ -119,10 +124,12 @@ export function useChatScrollRuntime({
       oldestMessageId: messages[0]?.id ?? null,
       scrollHeight: getScrollHeight(scrollBox, exactPixels),
       scrollTop: getScrollTop(scrollBox, exactPixels),
-      // Only a selection there already is follows the rows down. Nothing selected stays so:
-      // the oldest message used to be selected here, and kept the selected band and its
-      // Reply button until the reader pressed Esc, which a mouse reader never does.
-      selectedMessageId: selectedIdx >= 0 ? messages[selectedIdx]?.id ?? null : null,
+      // Only a selection there is follows the rows down. Nothing selected stays so: the
+      // oldest message used to be selected here, and kept the selected band and its Reply
+      // button until the reader pressed Esc, which a mouse reader never does.
+      selectedMessageId: selectedIdx >= 0
+        ? messages[selectedIdx]?.id ?? null
+        : options?.firstIsSelected ? messages[0]?.id ?? null : null,
     };
     setFollowMessages(false);
     const request = useDefaultControllerChannel
@@ -145,10 +152,10 @@ export function useChatScrollRuntime({
     useDefaultControllerChannel,
   ]);
 
-  const requestOlderMessagesIfNeeded = useCallback(() => {
+  const requestOlderMessagesIfNeeded = useCallback((options?: RequestOlderOptions) => {
     const scrollBox = scrollRef.current;
     if (!scrollBox || scrollBox.scrollTop > 1) return;
-    requestOlderMessages();
+    requestOlderMessages(options);
   }, [requestOlderMessages, scrollRef]);
 
   // The thread is built again when the pane crosses the width the channel list
