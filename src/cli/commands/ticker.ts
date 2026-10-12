@@ -68,6 +68,7 @@ import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../
 import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { forwardDividendBasis } from "../../utils/forward-dividend";
+import { notTheCoinNote } from "./crypto-hints";
 
 const NEWS_ITEM_LIMIT = 5;
 const SEC_FILING_LIMIT = 5;
@@ -886,9 +887,13 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     // The quote is the feed in this report; without one, the fundamentals date it.
     const freshness = quote ? quotesFreshness([quote]) : fundamentalsFreshness(resolvedFinancials);
     const quoteNote = quote ? undefined : await quoteUnavailableNote(dataProvider, requestSymbol, exchange);
-    const [listingNote] = await listingChoiceNotes(listing, { store, dataProvider }, quote, venues);
+    const [choiceNote] = await listingChoiceNotes(listing, { store, dataProvider }, quote, venues);
+    // A bare coin ticker read as a fund says where the coin is, as `quote` does; a named listing was meant.
+    const coinNote = listing.exchange ? null
+      : notTheCoinNote(listing.symbol, quote ?? (tickerFile ? { name: tickerFile.metadata.name, instrumentType: tickerFile.metadata.assetCategory } : null));
+    const listingNote = [choiceNote, coinNote].filter((note): note is string => !!note).join("\n") || undefined;
     if (dependencies.printResult) {
-      const warnings = [listingNote, quoteNote].filter((note): note is string => !!note);
+      const warnings = [choiceNote, coinNote, quoteNote].filter((note): note is string => !!note);
       dependencies.printResult({
         freshness,
         warnings: warnings.length > 0 ? warnings : undefined,

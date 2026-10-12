@@ -7,6 +7,7 @@ import { humanLabel } from "../shared/research-cells";
 import { fetchExposure, fetchScenarios } from "./client";
 import { DEFAULT_SCENARIO, exposureCellText, parseCustomScenario, parseHoldings, pathRows, portfolioRows, scenarioTitle, tableRows, TABS, type ExposureRow } from "./model";
 import { portfolioHoldings, watchlistHoldings } from "./holdings";
+import { describeCollections, findNamedCollection } from "../../../portfolio/collection-name";
 import { driverAmount, driverRows, driverScope } from "./drivers";
 
 /*
@@ -207,12 +208,13 @@ export const exposureHeadless: HeadlessPaneDefinition<"bundle"> = {
     let holdings: ExposureRequest["holdings"];
     if (source?.[1]?.toUpperCase() === "PORT") {
       const local = await ctx.resolvePortfolio?.(source[2]!);
-      if (!local) throw new Error(`Unknown local portfolio: ${source[2]}`);
+      if (!local) throw new Error(`Unknown local portfolio: ${source[2]}.${ctx.config.portfolios.length ? ` Portfolios: ${describeCollections(ctx.config.portfolios)}.` : ""}`);
       holdings = await portfolioHoldings(local.portfolio, local.tickers, Number(args.options.nav), ctx.marketData);
     } else if (source) {
       const tickers = await ctx.resolveWatchlist?.(source[2]!);
-      if (!tickers) throw new Error(`Unknown local watchlist: ${source[2]}`);
-      holdings = watchlistHoldings(tickers, source[2]!);
+      if (!tickers) throw new Error(`Unknown local watchlist: ${source[2]}.${ctx.config.watchlists.length ? ` Watchlists: ${describeCollections(ctx.config.watchlists)}.` : ""}`);
+      // The host reads the name in any case; membership is kept under the configured id.
+      holdings = watchlistHoldings(tickers, findNamedCollection(ctx.config.watchlists, source[2])?.id ?? source[2]!);
     } else holdings = parseHoldings(input);
     const id = String(args.options.scenario ?? DEFAULT_SCENARIO.id);
     const scenario = args.options.custom ? parseCustomScenario(String(args.options.custom)) : (await fetchScenarios(ctx.apiClient)).find(s => s.id === id);

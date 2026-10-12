@@ -1,5 +1,6 @@
 import { createBaseConverter } from "../../../../cli/base-converter";
 import { savedListingName } from "../../../../cli/listing-arg";
+import { currentListingName } from "../../../../tickers/listing-name";
 import { withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import {
@@ -55,6 +56,7 @@ import {
 } from "../allocation";
 import { findCachedPortfolioAccount } from "../cached-account";
 import { importedFromText } from "../imported-from";
+import { findNamedCollection } from "../../../../portfolio/collection-name";
 
 /** Money prices pad to the currency's minor unit ($337.90, not $337.9), as the ticker view does. */
 function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { currency?: string }, assetCategory?: string) {
@@ -90,9 +92,12 @@ export function extendedQuoteFields(extended: ExtendedSessionDisplay | null) {
   };
 }
 
-/** The listing a row is (SAN:EPA, as the Ticker column names it) and its company, as export fields. */
+/**
+ * The listing a row is (SAN:EPA, as the Ticker column names it) and its company, as export fields:
+ * the name its quote gives now, as `quote` names it, else the one it was saved with.
+ */
 function listingColumns(ticker: TickerRecord, quote: CollectionQuote | undefined) {
-  return { listing: listingLabel(ticker), name: savedListingName(ticker).name ?? quote?.name?.trim() ?? null };
+  return { listing: listingLabel(ticker), name: currentListingName(ticker, quote) };
 }
 
 /** The Chg column's move as export fields: from the close the headline price is measured against. */
@@ -158,14 +163,9 @@ export type CollectionMatch =
   | { kind: "watchlist"; id: string; name: string };
 
 export function findCollection(config: AppConfig, name: string): CollectionMatch | null {
-  const normalized = name.trim().toLowerCase();
-  const portfolio = config.portfolios.find((entry) =>
-    entry.id.toLowerCase() === normalized || entry.name.toLowerCase() === normalized
-  );
+  const portfolio = findNamedCollection(config.portfolios, name);
   if (portfolio) return { kind: "portfolio", id: portfolio.id, name: portfolio.name, portfolio };
-  const watchlist = config.watchlists.find((entry) =>
-    entry.id.toLowerCase() === normalized || entry.name.toLowerCase() === normalized
-  );
+  const watchlist = findNamedCollection(config.watchlists, name);
   return watchlist ? { kind: "watchlist", id: watchlist.id, name: watchlist.name } : null;
 }
 

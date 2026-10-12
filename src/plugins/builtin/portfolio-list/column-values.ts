@@ -31,6 +31,7 @@ import {
   type ActiveQuoteDisplay,
 } from "../../../market-data/market/status";
 import { formatOptionTicker } from "../../../utils/options";
+import { currentListingName } from "../../../tickers/listing-name";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
 import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../../../components/price-sparkline/model";
 import {
@@ -270,6 +271,11 @@ function rowAllocation(
 /** A held position without a price says so where its allocation would be. */
 const UNPRICED = "n/a";
 
+/** The symbol the Ticker column shows after its market-state dot: an option reads as its contract. */
+export function tickerDisplayName(ticker: TickerRecord): string {
+  return ticker.metadata.assetCategory === "OPT" ? formatOptionTicker(ticker.metadata.ticker) : ticker.metadata.ticker;
+}
+
 export function resolvePortfolioPriceValue(
   activeQuote: ActiveQuoteDisplay | null,
   brokerMarkPrice: number | undefined,
@@ -294,7 +300,7 @@ export function getColumnValue(
   ticker: TickerRecord,
   financials: TickerFinancials | undefined,
   ctx: ColumnContext,
-): { text: string; color?: string; pnlBasis?: PortfolioPositionPnl["basis"] } {
+): { text: string; color?: string; value?: number | null; pnlBasis?: PortfolioPositionPnl["basis"] } {
   const quote = financials?.quote;
 
   const fundamentals = financials?.fundamentals;
@@ -332,13 +338,11 @@ export function getColumnValue(
     case "ticker": {
       const marketState = quote?.marketState;
       const statusDot = marketStateDot(marketState);
-      const displayName = ticker.metadata.assetCategory === "OPT"
-        ? formatOptionTicker(ticker.metadata.ticker)
-        : ticker.metadata.ticker;
-      return { text: `${statusDot} ${displayName}` };
+      return { text: `${statusDot} ${tickerDisplayName(ticker)}` };
     }
     case "name":
-      return { text: compactText(ticker.metadata.name || quote?.name) };
+      // The name the listing's quote gives now, as `quote` and `portfolio show` name it, else the saved one.
+      return { text: compactText(currentListingName(ticker, quote) || ticker.metadata.name || quote?.name) };
     case "asset_type":
       return { text: compactText(ticker.metadata.assetCategory) };
     case "exchange":
@@ -454,7 +458,8 @@ export function getColumnValue(
       const allocation = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx);
       if (allocation.unpriced && allocation.targetWeight != null) return { text: UNPRICED };
       const text = formatTradeUnits(allocation.tradeUnits, { units: totalShares, assetCategory: ticker.metadata.assetCategory });
-      return { text, color: /[1-9]/.test(text) ? priceColor(allocation.tradeUnits!) : undefined };
+      // The cell shows the trade rounded; exports and rendered-view reports keep the full figure.
+      return { text, value: allocation.tradeUnits, color: /[1-9]/.test(text) ? priceColor(allocation.tradeUnits!) : undefined };
     }
     case "trade_value": {
       const allocation = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx);
@@ -574,7 +579,7 @@ export function getSortValue(
     case "ticker":
       return ticker.metadata.ticker;
     case "name":
-      return ticker.metadata.name || quote?.name || null;
+      return currentListingName(ticker, quote) || ticker.metadata.name || quote?.name || null;
     case "asset_type":
       return ticker.metadata.assetCategory ?? null;
     case "exchange":

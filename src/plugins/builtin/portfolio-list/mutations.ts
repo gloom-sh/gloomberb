@@ -3,6 +3,7 @@ import type { Portfolio, PortfolioCash, TickerPosition, TickerRecord, Watchlist 
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { slugifyName } from "../../../utils/slugify";
 import { parseCollectionRef } from "../cloud/team/collections";
+import { findNamedCollection } from "../../../portfolio/collection-name";
 
 export interface DeleteWatchlistResult {
   config: AppConfig;
@@ -41,10 +42,6 @@ function clonePortfolio(portfolio: Portfolio): Portfolio {
   return { ...portfolio };
 }
 
-function normalizePortfolioName(rawName: string): string {
-  return rawName.trim().toLowerCase();
-}
-
 function replaceTickerMetadata(ticker: TickerRecord, metadata: TickerRecord["metadata"]): TickerRecord {
   return {
     ...ticker,
@@ -57,11 +54,7 @@ export function isManualPortfolio(portfolio: Portfolio): boolean {
 }
 
 export function findPortfolio(config: AppConfig, rawName: string): Portfolio | null {
-  const normalized = normalizePortfolioName(rawName);
-  if (!normalized) return null;
-  return config.portfolios.find((portfolio) =>
-    portfolio.id.toLowerCase() === normalized || portfolio.name.toLowerCase() === normalized
-  ) ?? null;
+  return findNamedCollection(config.portfolios, rawName);
 }
 
 export function getManualPortfolioPosition(ticker: TickerRecord, portfolioId: string): TickerPosition | null {

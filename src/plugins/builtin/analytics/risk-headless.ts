@@ -2,6 +2,7 @@ import { loadPortfolioOptionBook } from "./risk-options";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
+import { describeCollections } from "../../../portfolio/collection-name";
 import {
   BASKET_VIEWS,
   buildPortfolioRisk,
@@ -28,6 +29,19 @@ const RISK_COLUMNS = [
   { key: "asOf", header: "As of" },
   { key: "detail", header: "Evidence" },
 ];
+
+/** The error for a portfolio argument nothing matches: the names and ids there are, so the next call can use one. */
+function unknownPortfolio(raw: string, portfolios: readonly { id: string; name: string }[]): string {
+  return `Unknown local portfolio: ${raw}.${portfolios.length ? ` Portfolios: ${describeCollections(portfolios)}.` : ""}`;
+}
+
+/** The portfolio's name in a full result (its model) or a compact one. */
+function reportPortfolioName(metadata: Record<string, unknown> | undefined): string | undefined {
+  const model = metadata?.model as Partial<PortfolioRiskModel> | undefined;
+  const compact = metadata?.portfolio as { name?: unknown } | undefined;
+  const name = model?.portfolio?.name ?? compact?.name;
+  return typeof name === "string" ? name : undefined;
+}
 
 /** Rows of one view in the compact result; the pane and reports keep every row. */
 const COMPACT_ROW_LIMIT = 100;
@@ -113,7 +127,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     optional: true,
     placeholder: "portfolio-id",
     // Not "Defaults to the first portfolio": Gloom read that as an id and sent "default".
-    description: "Portfolio ID exactly as configured. Leave it out to use the first portfolio.",
+    description: "Portfolio ID or name, in any case. Leave it out to use the first portfolio.",
   },
   discovery: {
     aliases: ["PORT", "MARS"],
@@ -175,17 +189,17 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       description: "Independent VIX shock in index points (10 when left out).",
     },
   ],
-  describe: (args) =>
-    `Portfolio risk | ${args.rawArgument || "local portfolio"}`,
+  // The portfolio as configured, so `Family`, `family` and `FAMILY` head the report alike.
+  describe: (args, result) =>
+    `Portfolio risk | ${reportPortfolioName(result?.metadata) || args.rawArgument || "local portfolio"}`,
   async load(args, ctx) {
-    const id = args.rawArgument.trim() || ctx.config.portfolios[0]?.id;
-    if (!id || !ctx.resolvePortfolio)
+    // The host reads the argument by id or name, in any case; everything after goes by the configured id.
+    const requested = args.rawArgument.trim() || ctx.config.portfolios[0]?.id;
+    if (!requested || !ctx.resolvePortfolio)
       throw new Error("A local portfolio is required");
-    const local = await ctx.resolvePortfolio(id);
-    if (!local) {
-      const ids = ctx.config.portfolios.map((portfolio) => portfolio.id);
-      throw new Error(`Unknown local portfolio: ${id}.${ids.length ? ` Portfolio IDs: ${ids.slice(0, 12).join(", ")}${ids.length > 12 ? ` and ${ids.length - 12} more` : ""}.` : ""}`);
-    }
+    const local = await ctx.resolvePortfolio(requested);
+    if (!local) throw new Error(unknownPortfolio(requested, ctx.config.portfolios));
+    const id = local.portfolio.id;
     const tickers = portfolioRiskTickers(local.tickers, id);
     const evidence = parsePortfolioRiskEvidence(
       String(args.options.evidence ?? ctx.settings?.riskEvidence ?? ""),

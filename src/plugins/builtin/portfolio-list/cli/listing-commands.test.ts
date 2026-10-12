@@ -141,3 +141,30 @@ test("portfolio show, target show and watchlist show label two listings of one s
   await portfolioCliCommand.execute(["target", "show", "main"], targetJson.context);
   expect((targetJson.printed[0]!.result.data as { symbol: string }[]).map((row) => row.symbol)).toEqual(["SAN", "SAN:XNYS"]);
 });
+
+test("a bare coin ticker on a fund says it is not the coin on every add and position path, a named listing does not", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  await store.saveTicker(createTestTicker("ETH", "Grayscale Ethereum Mini Trust ETF", { exchange: "ARCA", assetCategory: "ETF" }));
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-coin-hints-"));
+  dataDirs.push(dataDir);
+  const config = { ...createDefaultConfig(dataDir), portfolios: [{ id: "family", name: "Family", currency: "USD" }], watchlists: [{ id: "growth", name: "Growth" }] };
+  await saveConfig(config);
+  const note = "ETH is Grayscale Ethereum Mini Trust ETF, not ethereum. For ethereum use ETH-USD.";
+  const run = async (command: typeof portfolioCliCommand, args: string[]) => {
+    const cli = createTestCliContext({ config: await loadConfig(dataDir), store });
+    await command.execute(args, cli.context);
+    return cli.printed[0]!.result;
+  };
+
+  expect((await run(portfolioCliCommand, ["add", "family", "ETH"])).warnings).toContain(note);
+  expect((await run(portfolioCliCommand, ["position", "set", "FAMILY", "ETH", "10", "20"])).warnings).toContain(note);
+  expect((await run(portfolioCliCommand, ["target", "set", "Family", "ETH", "5"])).warnings).toContain(note);
+  expect((await run(watchlistCliCommand, ["add", "growth", "ETH"])).warnings).toContain(note);
+  // A list carries it per symbol, as a field of its own.
+  const rows = (await run(watchlistCliCommand, ["add", "growth", "ETH", "AAPL"])).data as Array<{ hint: string | null }>;
+  expect(rows.map((row) => row.hint)).toEqual([note, null]);
+  // Naming the listing asks for the fund on purpose.
+  expect((await run(portfolioCliCommand, ["add", "family", "ETH:ARCA"])).warnings ?? []).not.toContain(note);
+});

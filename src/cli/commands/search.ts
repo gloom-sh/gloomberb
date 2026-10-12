@@ -5,6 +5,8 @@ import {
   renderTable,
 } from "../../utils/cli-output";
 import type { DataProvider } from "../../types/data-provider";
+import type { Quote } from "../../types/financials";
+import { quotedListingName } from "../../tickers/listing-name";
 import type { TickerRecord } from "../../types/ticker";
 import {
   LISTING_SEARCH_LIMIT,
@@ -63,11 +65,21 @@ export async function searchCandidatesForCli({
       totalLimit: Math.max(totalLimit, LISTING_SEARCH_LIMIT),
       searchContext: { limit: LISTING_SEARCH_LIMIT },
     });
-    return (await withPrimaryListingFirst(trimmedQuery, candidates, dataProvider)).slice(0, totalLimit);
+    const symbol = trimmedQuery.toUpperCase();
+    // A bare symbol search lists asks for the quote `quote SYM` reads, once, for its venue and its name:
+    // on the venue a saved row of the symbol is on, as `quote` asks for it, else the bare symbol.
+    const savedExchange = localTickerMap.get(symbol)?.metadata.exchange ?? "";
+    const quote = BARE_SYMBOL.test(symbol) && candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol)
+      ? await Promise.resolve().then(() => dataProvider.getQuote(symbol, savedExchange)).catch(() => null)
+      : null;
+    return withQuotedNames(symbol, withPrimaryListingFirst(symbol, candidates, quote), quote).slice(0, totalLimit);
   } catch {
     return [];
   }
 }
+
+/** A query that is a bare symbol (CAR, BRK.B), not a name or a phrase. */
+const BARE_SYMBOL = /^[A-Z0-9][A-Z0-9.\-]{0,11}$/;
 
 function candidateExchange(candidate: TickerSearchCandidate): string {
   return canonicalExchange(candidate.result?.exchange === "SMART"
@@ -82,24 +94,18 @@ function candidateExchange(candidate: TickerSearchCandidate): string {
  * list still shows every company. A saved listing is the user's choice and
  * stays where search put it. Any other query keeps search's order.
  */
-async function withPrimaryListingFirst(
-  query: string,
+function withPrimaryListingFirst(
+  symbol: string,
   candidates: TickerSearchCandidate[],
-  dataProvider: DataProvider,
-): Promise<TickerSearchCandidate[]> {
-  const symbol = query.toUpperCase();
-  if (!/^[A-Z0-9][A-Z0-9.\-]{0,11}$/.test(symbol)) return candidates;
+  quote: Quote | null,
+): TickerSearchCandidate[] {
+  if (!BARE_SYMBOL.test(symbol)) return candidates;
   const exact = candidates.filter((candidate) => candidate.symbol.toUpperCase() === symbol);
   if (exact.some((candidate) => candidate.kind === "ticker" || candidate.saved)) return candidates;
   const listed = exact.filter((candidate) => candidate.kind === "search" && (candidate.instrumentClass === "equity" || candidate.instrumentClass === "other"));
   const companies = groupByCompany(listed, resolveSearchName);
   if (companies.length < 2) return candidates;
-  const quote = await dataProvider.getQuote(symbol, "").catch(() => null);
-  const quoted = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
-  if (!quoted) return candidates;
-  // The US exchanges share one symbol: a quote on any of them is the symbol's one US line.
-  const primary = listed.find((candidate) => candidateExchange(candidate) === quoted)
-    ?? (isUsListingExchange(quoted) ? listed.find((candidate) => isUsListingExchange(candidateExchange(candidate))) : undefined);
+  const primary = quotedCandidate(listed, quote);
   if (!primary) return candidates;
   const firsts = companies.filter((group) => !group.includes(primary)).map((group) => group[0]!);
   const ordered = [primary, ...firsts, ...listed.filter((candidate) => candidate !== primary && !firsts.includes(candidate))];
@@ -110,6 +116,33 @@ async function withPrimaryListingFirst(
       : listed.includes(candidate) || candidate.category === "Primary Listing" ? { ...candidate, category: "Other Listings" as const }
       : candidate
   ));
+}
+
+/** The candidate on the venue the quote prices; the US exchanges share one symbol, so a quote on any of them is its one US line. */
+function quotedCandidate(candidates: readonly TickerSearchCandidate[], quote: Quote | null): TickerSearchCandidate | undefined {
+  const quoted = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
+  if (!quoted) return undefined;
+  return candidates.find((candidate) => candidateExchange(candidate) === quoted)
+    ?? (isUsListingExchange(quoted) ? candidates.find((candidate) => isUsListingExchange(candidateExchange(candidate))) : undefined);
+}
+
+/**
+ * A catalogue can keep a listing's name from before a rename. For a bare
+ * symbol, the listing its quote prices goes by the quote's name, as `quote`,
+ * `history` and the portfolio name it, and so do the same company's other
+ * venues of the symbol. Other companies' listings keep their own.
+ */
+function withQuotedNames(symbol: string, candidates: TickerSearchCandidate[], quote: Quote | null): TickerSearchCandidate[] {
+  const exact = candidates.filter((candidate) => candidate.symbol.toUpperCase() === symbol && !candidate.contractKey);
+  const onVenue = quotedCandidate(exact, quote);
+  const name = onVenue ? quotedListingName(candidateExchange(onVenue), quote) : null;
+  if (!onVenue || !name) return candidates;
+  const company = groupByCompany(exact, resolveSearchName).find((group) => group.includes(onVenue)) ?? [onVenue];
+  return candidates.map((candidate) => {
+    if (!company.includes(candidate) || resolveSearchName(candidate) === name) return candidate;
+    const [, ...rest] = candidate.detail.split(" | ");
+    return { ...candidate, detail: [name, ...rest].join(" | "), ...candidate.result ? { result: { ...candidate.result, name } } : {} };
+  });
 }
 
 /** "Saved", or the broker a row came from; never the data service's internal id. */

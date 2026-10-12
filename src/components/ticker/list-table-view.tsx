@@ -35,6 +35,8 @@ import { PaneStatusBody } from "../ui/status";
 export interface TickerTableCell {
   text: string;
   color?: string;
+  /** The full-precision number behind a rounded `text`, which exports and rendered-view reports keep. */
+  value?: number | null;
   /**
    * Makes the cell a link: a click selects the row and calls this instead of
    * the row's own click. The pane gives the same action a key (its menu).
@@ -286,11 +288,12 @@ export function TickerListTableView({
       };
     }
 
-    const { text, color, onPress } = resolveCellRef.current.resolve(column, ticker, financials);
+    const { text, color, onPress, value } = resolveCellRef.current.resolve(column, ticker, financials);
     const shouldFlash = flashSymbolsRef.current.has(ticker.metadata.ticker)
       && flashesOnQuoteTick(column.id, financials?.quote);
     return {
       text,
+      ...(value !== undefined ? { value } : {}),
       color: color || (rowState.selected ? colors.selectedText : undefined),
       attributes: shouldFlash ? TextAttributes.DIM : TextAttributes.NONE,
       // Any other button falls through to the row, so a right click still opens its menu.

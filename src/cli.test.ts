@@ -408,6 +408,25 @@ describe("CLI search helpers", () => {
     expect(report).not.toContain("gloom");
   });
 
+  test("a bare symbol's listings go by the name its quote gives, as quote names them; another company keeps its own", async () => {
+    const listing = (exchange: string, name: string) => ({ providerId: "gloom", symbol: "VTI", name, exchange, type: "ETF", currency: "USD" });
+    const candidates = await searchCandidatesForCli({
+      query: "vti",
+      tickers: [],
+      dataProvider: createTestDataProvider({
+        // The catalogue still files VTI under its name from before the July 2026 rename.
+        search: async () => [listing("ARCA", "Vanguard Total Stock Market ETF"), listing("BMV", "Vanguard Total Stock Market ETF"), listing("TSX", "Vitality Products Inc")],
+        getQuote: async () => ({ symbol: "VTI", name: "Vanguard Morningstar Total Stock Market ETF", listingExchangeName: "ARCA", price: 381.94, currency: "USD", change: 0, changePercent: 0, lastUpdated: 0 }),
+      }),
+    });
+    const names = Object.fromEntries(candidates.map((candidate) => [candidate.result?.exchange, candidate.detail.split(" | ")[0]]));
+    expect(names).toEqual({
+      ARCA: "Vanguard Morningstar Total Stock Market ETF",
+      BMV: "Vanguard Morningstar Total Stock Market ETF",
+      TSX: "Vitality Products Inc",
+    });
+  });
+
   test("renders an empty state when no search results match", () => {
     const report = buildSearchReport({
       query: "zzzz",

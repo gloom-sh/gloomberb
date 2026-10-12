@@ -1,6 +1,7 @@
 import { getSharedRegistry } from "../../plugins/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
 import { parsePublicTickerKey } from "../../utils/exchanges";
+import { findNamedCollection } from "../../portfolio/collection-name";
 import { apiClient } from "../../api-client";
 import type { MarketContext } from "../types";
 import type {
@@ -184,14 +185,15 @@ export async function loadResolvedHeadlessPaneModel(
     settings: resolved.instance.settings,
     capabilities: getSharedRegistry() ?? context.seriesCapabilities,
     async resolvePortfolio(id) {
-      const portfolio = context.config.portfolios.find(row => row.id === id);
+      const portfolio = findNamedCollection(context.config.portfolios, id);
       if (!portfolio) return null;
-      const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(id));
+      const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(portfolio.id));
       return { portfolio, tickers, account: findCachedPortfolioAccount(context.config, portfolio, context.persistence?.resources) };
     },
     async resolveWatchlist(id) {
-      if (!context.config.watchlists.some(row => row.id === id)) return null;
-      return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(id));
+      const watchlist = findNamedCollection(context.config.watchlists, id);
+      if (!watchlist) return null;
+      return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(watchlist.id));
     },
     async resolveInstrument(key) {
       const parsed = parsePublicTickerKey(key);

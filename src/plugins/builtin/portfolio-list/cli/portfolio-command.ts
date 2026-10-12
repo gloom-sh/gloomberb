@@ -41,6 +41,8 @@ import { findCachedPortfolioAccount } from "../cached-account";
 import { apiClient } from "../../../../api-client";
 import { importSource, notionalPositions, rankThirteenFLines, type ThirteenFImportLine } from "./import-13f";
 import { importedFromText } from "../imported-from";
+import { savedListingCoinNote } from "../../../../cli/commands/crypto-hints";
+import { findNamedCollection } from "../../../../portfolio/collection-name";
 import {
   failPortfolioCommand,
   isCashArgument,
@@ -277,7 +279,8 @@ async function setPositionCommand(
       rejectCashSymbol(symbol, exchange, portfolio.name);
       const shares = parseFiniteNumber(sharesValue, "Shares");
       const avgCost = parseFiniteNumber(avgCostValue, "Average cost");
-      const ticker = await resolveTickerForCli(symbol, store, dataProvider, exchange);
+      // The notes say which listing a bare symbol went to, and that a bare coin ticker is not the coin, as `portfolio add` does.
+      const { ticker, notes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
       const currency = resolveManualPositionCurrency(rawCurrency, ticker, portfolio, config.baseCurrency);
       const result = setManualPortfolioPosition(ticker, portfolio.id, {
         shares,
@@ -291,6 +294,7 @@ async function setPositionCommand(
       const saved = savedListingName(result.ticker);
       ctx.printResult({
         data: { changed: true, ...listingFields(saved), portfolio: portfolio.name, shares, avgCost, currency },
+        warnings: notes.length > 0 ? notes : undefined,
       }, {
         text: () => [
           cliStyles.success(`Set position for ${saved.label} in "${portfolio.name}".`),
@@ -425,8 +429,15 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
       }
       let ticker = await findListedTicker(store, portfolio, symbol, exchange);
       let added = false;
-      if (!ticker) {
-        const resolved = await resolveTickerForCli(symbol, store, dataProvider, exchange);
+      let notes: string[] = [];
+      if (ticker) {
+        // A bare coin ticker the portfolio holds as a fund says so here too.
+        const listing = parseListingArg(symbol, exchange);
+        const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, ticker);
+        if (coinNote) notes = [coinNote];
+      } else {
+        const { ticker: resolved, notes: resolvedNotes } = await resolveCliTicker(symbol, store, dataProvider, exchange);
+        notes = resolvedNotes;
         if (!resolved.metadata.portfolios.includes(portfolio.id)) {
           if (!isManualPortfolio(portfolio)) {
             throw new PortfolioCliError(
@@ -448,6 +459,7 @@ async function setTargetCommand(rest: string[], exchange: string | undefined, ct
       const note = targetSumNote(next, portfolio.id, await store.loadAllTickers());
       ctx.printResult({
         data: { changed: true, ...listingFields(saved), portfolio: portfolio.name, targetWeight: weight, added },
+        warnings: notes.length > 0 ? notes : undefined,
       }, {
         text: () => [
           added ? cliStyles.success(`Added ${saved.label} to "${portfolio.name}".`) : null,
@@ -466,7 +478,7 @@ async function clearTargetCommand(rest: string[], exchange: string | undefined, 
   await withConfigData(ctx, async ({ config, store }) => {
     try {
       // The whole argument naming a portfolio clears every target; otherwise the last word is the symbol.
-      const whole = config.portfolios.some((entry) => [entry.id, entry.name].some((value) => value.toLowerCase() === rest.join(" ").trim().toLowerCase()));
+      const whole = findNamedCollection(config.portfolios, rest.join(" ")) != null;
       const portfolio = requirePortfolio(config, whole ? rest.join(" ") : rest.slice(0, -1).join(" "));
       const rawSymbol = whole ? undefined : rest.at(-1);
       const cash = rawSymbol != null && isCashArgument(rawSymbol, exchange);
@@ -606,7 +618,7 @@ async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliC
       if (!source) throw new PortfolioCliError(`No dated 13F holdings report found for "${options.query}".`);
       const detail = { cik: source.cik, name: source.name };
       const name = options.name ?? `${detail.name} 13F`;
-      const existing = config.portfolios.find((entry) => [entry.id, entry.name].some((value) => value.toLowerCase() === name.toLowerCase()));
+      const existing = findNamedCollection(config.portfolios, name);
       if (existing && !isManualPortfolio(existing)) {
         throw new PortfolioCliError(`Portfolio "${existing.name}" is broker-managed and cannot be imported into.`, "Name another with --name.");
       }

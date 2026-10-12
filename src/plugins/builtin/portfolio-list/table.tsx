@@ -17,10 +17,17 @@ import type { TickerRecord } from "../../../types/ticker";
 import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion, PERPETUAL_COLUMN_IDS } from "./cell-version";
 import { getColumnValue, type ColumnContext } from "./metrics";
+import { tickerDisplayName } from "./column-values";
+import { displayWidth } from "../../../utils/format";
 import { portfolioPnlLabel } from "../../../portfolio/position-metrics";
 import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
 
 export type { QuoteFlashDirection };
+
+/** The market-state dot and the space after it, before each symbol in the Ticker column. */
+const TICKER_DOT_WIDTH = 2;
+/** The widest the Ticker column grows for its symbols; an option contract longer than that still clips. */
+const MAX_TICKER_COLUMN_WIDTH = 12;
 
 /** A cell recomputes only when its row's records or a context input it reads change. */
 function buildCellVersion(
@@ -151,11 +158,17 @@ export function PortfolioTickerTable({
   const hasNonShareQuantity = useMemo(() => sortedTickers.some(ticker => ticker.metadata.positions.some(position =>
     (!columnContext.activeTab || position.portfolio === columnContext.activeTab) && position.shares !== 0 && (position.priceBasis === "percent-of-par" || ticker.metadata.assetCategory?.toUpperCase() === "BOND"))),
   [columnContext.activeTab, sortedTickers]);
+  // The Ticker column grows to its longest symbol, so ETH-USD shows whole beside its market-state dot.
+  const tickerWidth = useMemo(() => Math.min(MAX_TICKER_COLUMN_WIDTH, sortedTickers.reduce(
+    (widest, ticker) => Math.max(widest, TICKER_DOT_WIDTH + displayWidth(tickerDisplayName(ticker))),
+    0,
+  )), [sortedTickers]);
   const displayColumns = useMemo(() => columns.map((column) => column.id === "shares" && hasNonShareQuantity ? { ...column, label: "QTY" }
+    : column.id === "ticker" && tickerWidth > column.width ? { ...column, width: tickerWidth }
     : pnlLabel !== "P&L" && (column.id === "pnl" || column.id === "pnl_pct") ? {
     ...column,
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
-  } : column), [columns, hasNonShareQuantity, pnlLabel]);
+  } : column), [columns, hasNonShareQuantity, pnlLabel, tickerWidth]);
   // The table offers "Sort by…" while it has a sort column. A watchlist starts
   // unsorted and a third header click turns sorting off, so the unsorted state
   // needs its own entry until TickerListTableView takes `sortable`.

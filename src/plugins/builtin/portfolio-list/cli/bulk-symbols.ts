@@ -6,7 +6,7 @@ import { loadSavedListing, parseListingArg, savedListingName } from "../../../..
 import { StagedTickerRepository } from "../../../../cli/staged-tickers";
 import { splitSymbolArgs } from "../../../../cli/symbol-args";
 import { readSymbolList, symbolInputKey, SymbolListError } from "../../../../cli/symbol-list";
-import { resolveTickersForCli, TickerNotFoundError } from "../../../../cli/ticker-resolution";
+import { CoinListingError, resolveTickersForCli, TickerNotFoundError } from "../../../../cli/ticker-resolution";
 import { cliStyles } from "../../../../utils/cli-output";
 import { listingFields } from "./shared";
 
@@ -42,6 +42,11 @@ interface SymbolRow extends Record<string, unknown> {
   message: string | null;
   /** What the single-symbol add says beside the listing: the venue a bare symbol went to, a listing that stopped trading. */
   notes: string | null;
+  /**
+   * A bare coin ticker read as something other than the coin (ETH as a fund, SOL as
+   * Solvay), and the pair to use instead. Also in `notes` when the symbol was added.
+   */
+  hint: string | null;
 }
 
 type Verb = "add" | "remove";
@@ -60,13 +65,14 @@ function listingRow(
   input: string,
   status: SymbolStatus,
   ticker: TickerRecord,
-  { notes = [], ended = null, extra = {} }: { notes?: string[]; ended?: string | null; extra?: Record<string, unknown> } = {},
+  { notes = [], ended = null, hint = null, extra = {} }: { notes?: string[]; ended?: string | null; hint?: string | null; extra?: Record<string, unknown> } = {},
 ): SymbolRow {
-  return { input, status, ...listingFields(savedListingName(ticker)), message: ended, notes: notes.join("; ") || null, ...extra };
+  return { input, status, ...listingFields(savedListingName(ticker)), message: ended, notes: notes.join("; ") || null, hint, ...extra };
 }
 
 function failedRow(input: string, error: Error, status: SymbolStatus = error instanceof TickerNotFoundError ? "not_found" : "failed"): SymbolRow {
-  return { input, status, listing: null, symbol: null, exchange: null, name: null, message: error.message, notes: null };
+  const hint = error instanceof CoinListingError ? error.hint : null;
+  return { input, status, listing: null, symbol: null, exchange: null, name: null, message: error.message, notes: null, hint };
 }
 
 /** The plain no-match answer, which a "Not found" line already says. */
@@ -97,6 +103,12 @@ function summarizeSymbolRows(rows: readonly SymbolRow[], verb: Verb, repeated: n
 function reason(message: string, subject: string): string {
   const text = message.startsWith(`${subject}: `) ? message.slice(subject.length + 2) : message;
   return text.replace(/\.$/, "");
+}
+
+/** A row's line, and under it the coin hint when a bare coin ticker was read as something else. */
+function rowLines(row: SymbolRow, verb: Verb): string {
+  const line = rowLine(row, verb);
+  return row.hint ? `${line}\n  ${cliStyles.warning(row.hint)}` : line;
 }
 
 function rowLine(row: SymbolRow, verb: Verb): string {
@@ -138,7 +150,7 @@ export function printSymbolRows(
     data: rows,
     metadata: { [collection.kind]: collection.name, ...counts, repeated, summary },
   }, {
-    text: () => [...rows.map((row) => rowLine(row, verb)), "", summary].join("\n"),
+    text: () => [...rows.map((row) => rowLines(row, verb)), "", summary].join("\n"),
   });
   const { format, quiet } = ctx.cliOptions;
   if ((format === "csv" || format === "ndjson") && !quiet) console.error(summary);
@@ -222,7 +234,7 @@ export async function addSymbols({
     const current = await staged.loadTicker(resolution.ticker.metadata.ticker) ?? resolution.ticker;
     const result = add(current);
     if (result.changed) await staged.saveTicker(result.ticker);
-    rows.push(listingRow(input, result.changed ? "added" : "already_listed", result.ticker, { notes: resolution.notes, ended: resolution.ended }));
+    rows.push(listingRow(input, result.changed ? "added" : "already_listed", result.ticker, { notes: resolution.notes, ended: resolution.ended, hint: resolution.coinNote }));
   }
   await staged.commit();
   return rows;

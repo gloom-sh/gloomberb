@@ -66,6 +66,7 @@ import {
   type SectorTableColumn,
 } from "./sector-model";
 import { describePortfolioTab, resolvePortfolioId, resolveTemplatePortfolioId } from "./portfolio-selection";
+import { findNamedCollection } from "../../../portfolio/collection-name";
 import {
   analyticsFigures,
   riskFigureNotices,
@@ -480,7 +481,8 @@ export const portfolioAnalyticsModule: PluginModule = {
       headless: portfolioRiskHeadless,
       canCreate: (context) => context.config.portfolios.length > 0,
       createInstance: (context, options) => {
-        const portfolioId = resolvePortfolioId(context.config.portfolios, options?.arg) ?? resolveTemplatePortfolioId(context.config.portfolios, context.activeCollectionId);
+        // `PORT Family` opens Family by its name or id, in any case, as `fn PORT` reads it.
+        const portfolioId = findNamedCollection(context.config.portfolios, options?.arg)?.id ?? resolveTemplatePortfolioId(context.config.portfolios, context.activeCollectionId);
         return portfolioId ? { params: { portfolioId }, settings: { analyticsView: "risk" } } : null;
       },
     })),

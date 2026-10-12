@@ -148,6 +148,7 @@ function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>)
           columnLabel: column.label,
           text: normalize(cell.text),
           ...(cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? { instant: cell.value.toISOString() } : {}),
+          ...(typeof cell.value === "number" && Number.isFinite(cell.value) ? { value: cell.value } : {}),
         };
       });
     return { key: props.getItemKey(item, index), selected, cells: cells.filter((cell) => cell.text.length > 0) };

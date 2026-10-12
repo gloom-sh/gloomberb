@@ -381,6 +381,8 @@ function WebDataTableRowInner<
             data-gloom-role="data-table-cell"
             // The instant behind a shortened time ("Wed 11:27"), so a rendered-view report can print it whole.
             data-gloom-cell-instant={cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? cell.value.toISOString() : undefined}
+            // The full-precision number behind a rounded cell (a trade of -9.4596 for -9.45963753), for the same reports.
+            data-gloom-cell-value={typeof cell.value === "number" && Number.isFinite(cell.value) ? String(cell.value) : undefined}
             style={{
               minWidth: 0,
               position: freezeFirstColumn && columnIndex === 0 ? "sticky" : undefined,

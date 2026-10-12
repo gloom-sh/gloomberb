@@ -5,6 +5,7 @@ import type { TickerRecord } from "../types/ticker";
 import { listingVenues, quotedOnVenue, readSharedCode, type ListingDeps, type ListingStore, type ListingVenue } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
 import { quotedListing, type CurrentListing } from "../tickers/ticker-changes";
+import { quotedListingName } from "../tickers/listing-name";
 import { cliStyles } from "../utils/cli-output";
 import { groupByCompany, sameCompany, shortCompanyName } from "../tickers/company-name";
 import {
@@ -792,9 +793,8 @@ export function listingIdentity(
 ): ListingIdentity {
   const quoteExchange = canonicalExchange(quote?.listingExchangeName || quote?.exchangeName);
   const exchange = listing.exchange || quoteExchange || canonicalExchange(listing.saved?.metadata.exchange);
-  // A quote that prices another venue names another listing's company.
-  const quoteName = !quoteExchange || quoteExchange === exchange ? quote?.name?.trim() : undefined;
-  return { symbol: listing.symbol, exchange, name: quoteName || listing.saved?.metadata.name?.trim() || null };
+  // The listing's own quote names it, as a portfolio and search do; a quote that prices another venue names another listing's company.
+  return { symbol: listing.symbol, exchange, name: quotedListingName(exchange, quote) || listing.saved?.metadata.name?.trim() || null };
 }
 
 /** The listing's own quote, for its company name and venue; null when it has none. */

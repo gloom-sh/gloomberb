@@ -103,7 +103,7 @@ test("a watchlist reads by name, and an unknown id lists the ones that exist", a
   expect(watchlist.metadata).toMatchObject({ collection: { kind: "watchlist", id: "tech" }, tickers: 1 });
 
   await expect(collectionHoldingsHeadless.load(args("default"), context()))
-    .rejects.toThrow(`Unknown portfolio or watchlist "default". IDs: main, ${BROKER.id}, tech.`);
+    .rejects.toThrow(`Unknown portfolio or watchlist "default". Portfolios and watchlists: Main (main), U1234567 (${BROKER.id}), Tech (tech).`);
 });
 
 test("the text Ticker column names two listings of one symbol SAN:EPA and SAN:NYSE, while JSON and CSV keep the stored key", async () => {

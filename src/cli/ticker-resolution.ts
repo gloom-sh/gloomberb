@@ -35,6 +35,7 @@ import {
   type TickerChange,
   type TickerChangeLookup,
 } from "../tickers/ticker-changes";
+import { coinElsewhereNote, savedListingCoinNote } from "./commands/crypto-hints";
 
 /** The saved ticker for a symbol (`SAN:EPA`, or `SAN` with `--exchange EPA`), saving it from search first if needed. */
 export async function resolveTickerForCli(
@@ -57,6 +58,12 @@ export interface CliTicker {
   ended: string | null;
   /** The symbol changed (FB became META); when its company left it, the line leads `notes`. */
   change: TickerChange | null;
+  /**
+   * A bare coin ticker (ETH) read as a listing that is not the coin, such as a
+   * fund named for it: "ETH is Grayscale Ethereum Mini Trust ETF, not ethereum.
+   * For ethereum use ETH-USD." It is also the last of `notes`.
+   */
+  coinNote: string | null;
 }
 
 export interface CliTickerOptions {
@@ -66,6 +73,23 @@ export interface CliTickerOptions {
   ownExchangeWins?: boolean;
   /** Look up whether the symbol changed (FB became META); a long list skips it. True by default. */
   changes?: boolean;
+  /**
+   * Ask a listing already saved for its quote and save the name the quote
+   * gives, as `quote` and `portfolio show` name it; a long list skips it. True by default.
+   */
+  refreshName?: boolean;
+}
+
+/**
+ * A bare coin ticker several companies list, none of them the coin (SOL): the
+ * listings to choose from in `details`, and where the coin is in `hint`, which
+ * is also the last line of `details`.
+ */
+export class CoinListingError extends ListingArgError {
+  constructor(message: string, details: string, readonly hint: string) {
+    super(message, `${details}\n${hint}`);
+    this.name = "CoinListingError";
+  }
 }
 
 /** Search found no listing for the symbol: the message says so, or why (no longer trading, not on that exchange). */
@@ -102,7 +126,8 @@ export async function resolveCliTicker(
   const changes = options.changes === false ? null : startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);
   // A saved listing names what lists there; the issuer that left, if it is that one, is its old line.
   if (listing.saved) {
-    return withChange(listing, changes, { ticker: listing.saved, notes: read, ended: null }, { name: listing.saved.metadata.name });
+    const saved = options.refreshName === false ? listing.saved : (await nameFromListingQuote(listing.saved, store, dataProvider, null)).ticker;
+    return withChange(listing, changes, { ticker: saved, notes: read, ended: null }, { name: saved.metadata.name });
   }
 
   const localTickers = new Map(
@@ -119,7 +144,10 @@ export async function resolveCliTicker(
     // No quote of the bare symbol settles which listing it is: the one `quote` reads instead.
     const bare = await quoteBareListing(listing, deps, { command: "quote", noun: "quote", retry: options.retry ?? null });
     if (!bare) throw error;
-    if (bare.kind === "missing") throw new ListingArgError(bare.message, bare.details);
+    if (bare.kind === "missing") {
+      const hint = coinElsewhereNote(listing.symbol, error.listings.map((key) => ({ key, name: error.listingNames[key] ?? "" })));
+      throw hint ? new CoinListingError(bare.message, bare.details, hint) : new ListingArgError(bare.message, bare.details);
+    }
     resolved = await search(bare.listing.key);
     bareNote = bare.note;
     bareQuote = bare.quote;
@@ -132,8 +160,9 @@ export async function resolveCliTicker(
     throw new TickerNotFoundError(line ? `${message} ${line}.` : message);
   }
   if (resolved.kind === "local") {
-    return withChange(listing, changes, { ticker: resolved.ticker, notes: [...read, ...bareNote ? [bareNote] : []], ended: null }, {
-      name: resolved.ticker.metadata.name,
+    const local = options.refreshName === false ? resolved.ticker : (await nameFromListingQuote(resolved.ticker, store, dataProvider, bareQuote)).ticker;
+    return withChange(listing, changes, { ticker: local, notes: [...read, ...bareNote ? [bareNote] : []], ended: null }, {
+      name: local.metadata.name,
     });
   }
 
@@ -156,16 +185,22 @@ export async function resolveCliTicker(
   }, current);
 }
 
-/** The resolution with the symbol's change, when it has one; a company that left it leads the notes. */
+/**
+ * The resolution with the symbol's change, when it has one, and the coin note
+ * for a bare coin ticker on a listing that is not the coin: a company that left
+ * the symbol leads the notes, the coin note ends them. A named exchange (ETH:ARCA,
+ * --exchange) asked for that listing on purpose and gets no coin note, as in `quote`.
+ */
 async function withChange(
-  listing: Pick<CliListing, "symbol">,
+  listing: Pick<CliListing, "symbol" | "exchange">,
   lookup: TickerChangeLookup | null,
-  resolved: Omit<CliTicker, "change">,
+  resolved: Omit<CliTicker, "change" | "coinNote">,
   current: CurrentListing | null | undefined,
 ): Promise<CliTicker> {
   const change = describeTickerChange(listing.symbol, await lookup?.settle() ?? null, current);
   const line = tickerChangeLine(change);
-  return { ...resolved, notes: line ? [line, ...resolved.notes] : resolved.notes, change };
+  const coinNote = listing.exchange ? null : savedListingCoinNote(listing.symbol, resolved.ticker);
+  return { ...resolved, notes: [...line ? [line] : [], ...resolved.notes, ...coinNote ? [coinNote] : []], change, coinNote };
 }
 
 /**
@@ -285,8 +320,9 @@ export async function resolveTickersForCli(
     retryWaitsMs?: readonly number[];
   } = {},
 ): Promise<CliTickerResolution[]> {
+  // A short list is a lookup: it says which symbols changed and refreshes saved names. A long one is a portfolio.
   const changes = symbols.length <= MAX_CHANGE_LOOKUPS;
-  const resolve = (symbol: string) => resolveCliTicker(symbol, store, dataProvider, exchange, { retry, ownExchangeWins: true, changes });
+  const resolve = (symbol: string) => resolveCliTicker(symbol, store, dataProvider, exchange, { retry, ownExchangeWins: true, changes, refreshName: changes });
   const failedRequests = watchFailedRequests();
   try {
     let lookups = await lookUpTickers(symbols, RESOLVE_CONCURRENCY, resolve);

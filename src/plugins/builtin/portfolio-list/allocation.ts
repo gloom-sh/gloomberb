@@ -211,9 +211,10 @@ export function formatAllocationDrift(value: number | null | undefined): string 
 }
 
 /**
- * Units to trade, signed. A holding kept in whole units trades in whole units,
- * rounded to the nearest; fractional holdings and coins keep four decimals
- * (eight for coins).
+ * Units to trade, signed, at display precision: a holding kept in whole units
+ * trades in whole units, rounded to the nearest; a fractional holding to at
+ * most two decimals and a coin to at most four, trailing zeros dropped. JSON,
+ * CSV and the pane's cell value keep the full-precision figure.
  */
 export function formatTradeUnits(
   value: number | null | undefined,
@@ -222,7 +223,7 @@ export function formatTradeUnits(
   if (!finite(value)) return "—";
   const kind = resolveAssetDisplayKind({ assetCategory });
   const whole = kind !== "crypto" && kind !== "cash" && Number.isInteger(units);
-  const decimals = whole ? 0 : kind === "crypto" ? 8 : 4;
+  const decimals = whole ? 0 : kind === "crypto" ? 4 : 2;
   const rounded = Number(value.toFixed(decimals));
   if (rounded === 0) return "0";
   const body = new Intl.NumberFormat("en-US", { maximumFractionDigits: decimals }).format(Math.abs(rounded));

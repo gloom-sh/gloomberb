@@ -10,6 +10,7 @@ import type { AppConfig } from "../types/config";
 import type { Watchlist, TickerRecord } from "../types/ticker";
 import { isFiniteNumber } from "../utils/guards";
 import { formatUtcTime } from "../utils/utc-time";
+import { findNamedCollection } from "../portfolio/collection-name";
 
 export function formatSignedCurrency(value: number, currency: string): string {
   return value > 0 ? `+${formatCurrency(value, currency)}` : formatCurrency(value, currency);
@@ -131,9 +132,5 @@ export function countCollectionTickers(
 }
 
 export function findWatchlist(config: AppConfig, rawName: string): Watchlist | null {
-  const normalized = rawName.trim().toLowerCase();
-  if (!normalized) return null;
-  return config.watchlists.find((watchlist) =>
-    watchlist.id.toLowerCase() === normalized || watchlist.name.toLowerCase() === normalized
-  ) ?? null;
+  return findNamedCollection(config.watchlists, rawName);
 }

@@ -3,6 +3,8 @@ import { isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
 import type { Quote } from "../../types/financials";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { isNotATickerMessage } from "../not-a-ticker";
+import { groupByCompany } from "../../tickers/company-name";
+import type { TickerRecord } from "../../types/ticker";
 
 /** Where a crypto pair that will not load can still be read. `fn CRYP` takes no argument. */
 export const CRYPTO_BOARD_HINT = "Crypto prices may be briefly unavailable; the CRYP function (gloomberb fn CRYP) shows the crypto board.";
@@ -27,15 +29,39 @@ const MAJOR_COINS = new Map([
 /**
  * A bare coin ticker usually resolves to a listed fund, not the coin. The note applies only when
  * the listing is not crypto and its own name says the coin (a "Bitcoin" trust), so a company that
- * happens to share the letters (Interlink Electronics on LINK) is left alone.
+ * happens to share the letters (Interlink Electronics on LINK) is left alone. Every command that
+ * reads a bare symbol as a listing says it: quote, ticker, and the portfolio and watchlist adds.
  */
-function notTheCoinNote(symbol: string, quote: Pick<Quote, "name" | "instrumentType"> | null | undefined): string | null {
+export function notTheCoinNote(symbol: string, quote: Pick<Quote, "name" | "instrumentType"> | null | undefined): string | null {
   const coin = MAJOR_COINS.get(symbol);
   const type = quote?.instrumentType?.trim();
   const name = quote?.name?.trim();
   if (!coin || !name || !type || isCryptoInstrumentType(type)) return null;
   if (!new RegExp(`\\b${coin}\\b`, "i").test(name)) return null;
   return `${symbol} is ${name}, not ${coin}. For ${coin} use ${symbol}-USD.`;
+}
+
+/** `notTheCoinNote` for a saved listing, by the name and asset category it was saved with. */
+export function savedListingCoinNote(symbol: string, ticker: Pick<TickerRecord, "metadata">): string | null {
+  return notTheCoinNote(symbol, { name: ticker.metadata.name, instrumentType: ticker.metadata.assetCategory });
+}
+
+/**
+ * A bare coin ticker several companies list asks which listing; when none of them is the coin
+ * (SOL: Solvay, Washington H. Soul Pattinson), the coin is where the user may have meant:
+ * "SOL is Solvay SA or Washington H. Soul Pattinson and Company Limited, not solana. For
+ * solana use SOL-USD." Null for any other symbol, or when a listing is a crypto pair.
+ */
+export function coinElsewhereNote(symbol: string, listings: ReadonlyArray<{ key: string; name: string }>): string | null {
+  const coin = MAJOR_COINS.get(symbol);
+  if (!coin || listings.some((listing) => isCryptoPairSymbol(listing.key))) return null;
+  const names = groupByCompany(listings.filter((listing) => listing.name.trim()), (listing) => listing.name.trim())
+    .map((group) => group[0]!.name.trim());
+  if (names.length === 0) return null;
+  const named = names.length === 1 ? names[0]!
+    : names.length === 2 ? `${names[0]} or ${names[1]}`
+    : `${names[0]}, ${names[1]} or another company`;
+  return `${symbol} is ${named}, not ${coin}. For ${coin} use ${symbol}-USD.`;
 }
 
 interface QuoteNoteResult {

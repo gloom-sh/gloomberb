@@ -32,11 +32,11 @@ import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from 
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
 import { quoteFreshnessFields } from "../shared/report-freshness";
 import { importedFromText } from "./imported-from";
+import { describeCollections } from "../../../portfolio/collection-name";
+import { currentListingName } from "../../../tickers/listing-name";
 
 const DEFAULT_ROW_LIMIT = 50;
 const MAX_ROW_LIMIT = 200;
-/** Collection ids an unknown-name error lists, so the caller can retry with one. */
-const LISTED_COLLECTION_IDS = 12;
 
 const amount = (value: unknown) => formatNumber(typeof value === "number" ? value : undefined, 2);
 /** Market values and trades in whole units, as `portfolio show` prints them. */
@@ -163,11 +163,10 @@ function resolveTarget(rawArgument: string, ctx: HeadlessPaneContext): Collectio
   }
   const match = findCollection(config, raw);
   if (match) return match;
-  const ids = [...config.portfolios, ...config.watchlists].map(({ id }) => id);
-  const listed = ids.slice(0, LISTED_COLLECTION_IDS).join(", ");
+  const collections = [...config.portfolios, ...config.watchlists];
   throw new Error(
-    ids.length
-      ? `Unknown portfolio or watchlist "${raw}". IDs: ${listed}${ids.length > LISTED_COLLECTION_IDS ? ` and ${ids.length - LISTED_COLLECTION_IDS} more` : ""}.`
+    collections.length
+      ? `Unknown portfolio or watchlist "${raw}". Portfolios and watchlists: ${describeCollections(collections)}.`
       : `Unknown portfolio or watchlist "${raw}". No portfolios or watchlists are set up.`,
   );
 }
@@ -211,7 +210,8 @@ async function portfolioHoldings(
         ...quoteFreshnessFields(quotes.get(ticker.metadata.ticker)),
         updatedAt: quotes.get(ticker.metadata.ticker)?.lastUpdated ?? null,
         symbol: ticker.metadata.ticker,
-        name: ticker.metadata.name ?? null,
+        // The name the listing's quote gives now, as `quote` names it, else the saved one.
+        name: currentListingName(ticker, quotes.get(ticker.metadata.ticker)) ?? ticker.metadata.name ?? null,
         exchange: ticker.metadata.exchange || null,
         assetCategory: ticker.metadata.assetCategory ?? null,
         shares: finite(row.shares),
@@ -315,7 +315,7 @@ async function watchlistHoldings(
       ...quoteFreshnessFields(quote),
       updatedAt: quote?.lastUpdated ?? null,
       symbol: ticker.metadata.ticker,
-      name: ticker.metadata.name ?? null,
+      name: currentListingName(ticker, quote) ?? ticker.metadata.name ?? null,
       exchange: ticker.metadata.exchange || null,
       price: finite(headline?.price ?? quote?.price),
       priceCurrency: quote?.currency ?? null,

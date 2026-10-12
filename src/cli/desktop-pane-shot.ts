@@ -110,6 +110,8 @@ interface DesktopPaneShotRenderedCell {
   text: string;
   /** The ISO instant behind a cell whose text shortens a time ("Wed 11:27"), from the table cell's export value. */
   instant?: string;
+  /** The full-precision number behind a cell whose text rounds it (a trade of -9.4596), from the same export value. */
+  value?: number;
 }
 
 export interface DesktopPaneShotRenderedRow {
@@ -685,6 +687,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
                 if (!reportedTables.has(table)) reportTruncationReasons.add("one or more cells are visibly clipped");
               }
               const instant = cell.getAttribute("data-gloom-cell-instant");
+              const exact = Number(cell.getAttribute("data-gloom-cell-value") || "NaN");
               return {
                 ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
                 columnLabel: typeof semanticColumn.label === "string"
@@ -692,6 +695,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
                   : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
                 text,
                 ...(instant ? { instant } : {}),
+                ...(Number.isFinite(exact) ? { value: exact } : {}),
               };
             }).filter((cell) => cell.text.length > 0);
             if (cells.length === 0) return;
