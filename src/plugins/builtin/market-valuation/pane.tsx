@@ -56,7 +56,7 @@ function buildColumns(width: number, stacked: boolean): Column[] {
     { id: "name", label: "INDICATOR", width: 11, flexGrow: 1, align: "left" },
     { id: "value", label: "VALUE", width: 8, align: "right" },
     { id: "zone", label: "ZONE", width: 11, align: "right" },
-    { id: "percentile", label: "RICH", width: 6, align: "right" },
+    { id: "percentile", label: "RICH", title: "Percentile against its own history; higher is more expensive", width: 6, align: "right" },
     ...(withTrend
       ? [{ id: "sigma" as const, label: "TREND", width: 8, align: "right" as const }]
       : []),

@@ -39,7 +39,7 @@ const BOARD_COLUMNS: DataTableColumn[] = [
 ];
 const CURVE_COLUMNS: DataTableColumn[] = [
   { id: "tenor", label: "Tenor", width: 7, align: "left" },
-  { id: "value", label: "IV", width: 8, align: "right" },
+  { id: "value", label: "IV", title: "Implied volatility", width: 8, align: "right" },
   { id: "change1w", label: "1W chg", width: 8, align: "right" },
   { id: "change1m", label: "1M chg", width: 8, align: "right" },
 ];

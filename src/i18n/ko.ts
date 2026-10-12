@@ -499,9 +499,8 @@ export const ko: Record<string, string> = {
 
   // ── Help pane ────────────────────────────────────────────────
   "How To Use Gloomberb": "Gloomberb 사용 방법",
-  "Gloomberb is command-bar first.": "Gloomberb은 명령 팔레트를 중심으로 작동합니다.",
-  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "코드를 모르겠다면 위쪽 검색창을 클릭하거나 {key}을 누르고 \"apple earnings\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
-  "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "코드를 모르겠다면 위쪽 검색창을 클릭하고 \"apple earnings\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
+  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "코드를 모르겠다면 위쪽 검색창을 클릭하거나 {key}을 누르고 \"top news\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
+  "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "코드를 모르겠다면 위쪽 검색창을 클릭하고 \"top news\"처럼 원하는 것을 평범한 말로 입력하세요. 기능 탭에 전체 목록이 있습니다.",
   "Click anything to use it; the keys shown beside actions are shortcuts.": "무엇이든 클릭해서 사용하세요. 동작 옆에 표시된 키는 단축키입니다.",
   "Open Help": "도움말 열기",
   "Command Prefixes": "명령 접두사",

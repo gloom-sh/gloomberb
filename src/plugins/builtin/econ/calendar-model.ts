@@ -17,6 +17,12 @@ export type ImpactFilter = "high" | "medium" | "low" | "all";
 export type CountryFilter = "all" | "US" | "G7" | "EU";
 
 export const FILTER_CYCLE: ImpactFilter[] = ["all", "high", "medium", "low"];
+/**
+ * Where a calendar nobody has filtered opens. Most rows are low-impact
+ * releases few people follow; the high-impact ones still fill a few a day.
+ * A filter the user picked is saved with the pane and wins.
+ */
+export const DEFAULT_IMPACT_FILTER: ImpactFilter = "high";
 export const COUNTRY_CYCLE: CountryFilter[] = ["all", "US", "G7", "EU"];
 
 /** The seven members plus the EU, which attends every summit. */
@@ -158,6 +164,22 @@ export function calendarDisplayRows(sorted: readonly EconEvent[], now: number): 
  */
 export function matchesImpact(event: EconEvent, filter: ImpactFilter): boolean {
   return filter === "all" || event.impact === filter;
+}
+
+const IMPACT_WORDS: Record<Exclude<ImpactFilter, "all">, string> = {
+  high: "high-impact",
+  medium: "medium-impact",
+  low: "low-impact",
+};
+
+/**
+ * What an empty list says when the filters, not the calendar, emptied it:
+ * "No high-impact US events listed". Null with no filter set.
+ */
+export function filteredEmptyTitle(impact: ImpactFilter, country: CountryFilter): string | null {
+  if (impact === "all" && country === "all") return null;
+  const words = [impact === "all" ? null : IMPACT_WORDS[impact], country === "all" ? null : country];
+  return `No ${words.filter(Boolean).join(" ")} events listed`;
 }
 
 export function matchesCountry(event: EconEvent, filter: CountryFilter): boolean {
