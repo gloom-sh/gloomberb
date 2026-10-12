@@ -24,7 +24,6 @@ on:
       - "src/plugins/builtin/news/wire/news/footer.ts"
       - "src/components/chart/composite/**"
       - "src/components/chart/native/raster/**"
-      - "src/plugins/builtin/chart-composer/pane.tsx"
       - "src/time-series/resolve.ts"
       - "src/time-series/use-chart-resolution.ts"
       - "src/components/metric-treemap/**"

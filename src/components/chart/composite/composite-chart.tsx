@@ -582,6 +582,7 @@ function ThemedCompositeChart({
           lineCues={lineCues}
           formatValue={formatValue}
           colors={resolvedColors}
+          plotWidth={plotWidth}
           left={leftPadding}
           right={rightPadding}
           top={legendRows + (showToolbar ? 1 : 0)}

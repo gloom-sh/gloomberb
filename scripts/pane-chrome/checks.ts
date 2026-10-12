@@ -362,7 +362,11 @@ const plotRect = async (cdp: Cdp, paneId: string) => await evaluate<Rect | null>
   `__check.rect(__check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-panel]"))`,
 ) ?? fail(`${paneId} has no chart plot`);
 
-/** The day of the observation the chart's legend reads out under the pointer, as days since 1970. */
+/**
+ * The day of the observation the chart reads out under the pointer, as days
+ * since 1970: the crosshair's readout on the desktop, where the legend keeps
+ * the latest values, else the legend's entry.
+ */
 async function cursorDay(cdp: Cdp, paneId: string, at: Point): Promise<number> {
   // A move off and back, so the chart reads the pointer here even when it already was.
   await mouse(cdp, "mouseMoved", at.x + 2, at.y, false);
@@ -370,7 +374,8 @@ async function cursorDay(cdp: Cdp, paneId: string, at: Point): Promise<number> {
   await mouse(cdp, "mouseMoved", at.x, at.y, false);
   await frames(cdp, 4);
   const day = await evaluate<number | null>(cdp, `(() => {
-    const label = __check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-legend-series]")?.getAttribute("data-gloom-label") ?? "";
+    const pane = __check.pane(${JSON.stringify(paneId)});
+    const label = (pane?.querySelector("[data-gloom-role=composite-chart-readout-row]") ?? pane?.querySelector("[data-gloom-role=composite-chart-legend-series]"))?.getAttribute("data-gloom-label") ?? "";
     const date = /Observed (\\d{4}-\\d{2}-\\d{2})/.exec(label)?.[1];
     return date ? Date.parse(date) / 86400000 : null;
   })()`);
@@ -455,6 +460,41 @@ const nestedChartSteps: Step[] = NESTED_CHARTS.flatMap((paneId) => [
       await drag(cdp, from, [to]);
       const after = await cursorDay(cdp, paneId, to);
       if (Math.abs(after - before) > 2) fail(`panning moved the observation under the pointer by ${after - before} days`);
+    },
+  },
+  {
+    // The readout box and the line markers are placed by CSS in the plot's own
+    // width and height, a fraction of a cell off its cells: they must still sit
+    // on the crosshair, and the box inside the plot and clear of the line.
+    name: `${paneId} chart: the readout and the line markers follow the crosshair`,
+    scenario: "nested",
+    async run(cdp: Cdp) {
+      const plot = await plotRect(cdp, paneId);
+      for (const share of [0.12, 0.5, 0.92]) {
+        const at = { x: plot.x + plot.width * share, y: plot.y + plot.height * 0.6 };
+        await crosshairUnder(cdp, paneId, at);
+        const geometry = `(() => {
+          const pane = __check.pane(${JSON.stringify(paneId)});
+          const rect = (selector) => pane?.querySelector(selector)?.getBoundingClientRect();
+          const line = rect("[data-gloom-role=chart-crosshair-x]");
+          const marker = rect("[data-gloom-role=chart-crosshair-marker]");
+          const box = rect("[data-gloom-role=composite-chart-readout]");
+          const area = rect("[data-gloom-role=composite-chart-panel]");
+          return line && marker && box && area ? {
+            line: line.x + line.width / 2, marker: marker.x + marker.width / 2, markerY: marker.y + marker.height / 2,
+            left: box.left, right: box.right, top: box.top, bottom: box.bottom,
+            areaLeft: area.left, areaRight: area.right, areaTop: area.top, areaBottom: area.bottom,
+          } : null;
+        })()`;
+        const g = await waitFor<Record<string, number> | null>(cdp, geometry) ?? fail(`${paneId}: no readout or line marker at ${Math.round(share * 100)}% of the plot`);
+        if (Math.abs(g.marker! - g.line!) > 1.5 || g.markerY! < g.areaTop! - 1 || g.markerY! > g.areaBottom! + 1) {
+          fail(`${paneId}: the line marker is not on the crosshair at ${Math.round(share * 100)}% of the plot`, g);
+        }
+        if (g.left! < g.areaLeft! - 1 || g.right! > g.areaRight! + 1 || g.top! < g.areaTop! - 1 || g.bottom! > g.areaBottom! + 1) {
+          fail(`${paneId}: the readout leaves the plot at ${Math.round(share * 100)}% of it`, g);
+        }
+        if (g.left! < g.line! + 8 && g.right! > g.line! - 8) fail(`${paneId}: the readout covers the crosshair at ${Math.round(share * 100)}% of the plot`, g);
+      }
     },
   },
   {
