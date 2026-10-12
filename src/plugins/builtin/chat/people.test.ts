@@ -17,9 +17,9 @@ const labels = (user: Parameters<typeof chatNameBadges>[0]) => chatNameBadges(us
 
 describe("chat people", () => {
   test("the account type and badges give the name its badges: one role, then Pro", () => {
-    expect(labels({ accountType: "managed_llm" })).toEqual(["AI"]);
-    // A bot is only ever an AI, whatever else it is sent with.
-    expect(labels({ accountType: "managed_llm", badges: ["team", "pro"] })).toEqual(["AI"]);
+    expect(labels({ accountType: "managed_llm" })).toEqual(["Bot"]);
+    // A bot only ever carries its Bot badge, whatever else it is sent with.
+    expect(labels({ accountType: "managed_llm", badges: ["team", "pro"] })).toEqual(["Bot"]);
     expect(labels({ accountType: "human", badges: ["pro", "team"] })).toEqual(["Team", "Pro"]);
     expect(labels({ badges: ["pro"] })).toEqual(["Pro"]);
     expect(labels({ accountType: "human" })).toEqual([]);
@@ -31,6 +31,10 @@ describe("chat people", () => {
     expect(fitChatNameBadges(badges, 13).map((badge) => badge.id)).toEqual(["team", "pro"]);
     expect(fitChatNameBadges(badges, 12).map((badge) => badge.id)).toEqual(["team"]);
     expect(fitChatNameBadges(badges, 6)).toEqual([]);
+    // "Bot" takes six cells: a row with five to spare shows the name alone.
+    const bot = chatNameBadges({ accountType: "managed_llm" });
+    expect(fitChatNameBadges(bot, 6).map((badge) => badge.label)).toEqual(["Bot"]);
+    expect(fitChatNameBadges(bot, 5)).toEqual([]);
   });
 
   test("a bot's colour stands apart from people's names, mentions and the Team badge, and reads in every built-in theme", () => {
@@ -89,6 +93,6 @@ describe("chat people", () => {
     expect(chatPersonFacts({ badges: ["team", "pro"], utcOffsetMinutes: 120, desks: ["options", "crypto", "futures"] }, now))
       .toEqual({ roles: ["Gloom team", "Pro"], localTime: "11:30", trades: ["Options", "Futures"] });
     expect(chatPersonFacts({ accountType: "managed_llm", utcOffsetMinutes: 0, desks: ["fx"] }, now))
-      .toEqual({ roles: ["AI bot run by Gloom"], localTime: null, trades: [] });
+      .toEqual({ roles: ["Bot run by Gloom"], localTime: null, trades: [] });
   });
 });

@@ -803,6 +803,9 @@ export const zhCN: Record<string, string> = {
   "private": "私有",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the badge beside its name and the line on its card.
+  "Bot": "机器人",
+  "Bot run by Gloom": "由 Gloom 运营的机器人",
   "Direct message": "私信",
   "Group chat": "群聊",
   "Group": "群组",

@@ -36,7 +36,7 @@ import { applyUnreadInboxItemToConfig } from "./pane-state";
 import { buildUnreadListRows, type UnreadInboxItem, type UnreadListRow } from "./unread-inbox";
 import { chatTextWithImages } from "./attachments/model";
 import { isManagedBot } from "./ghost-user";
-import { CHAT_AI_BADGE_WIDTH, ChatAiBadge } from "./message/ai-badge";
+import { ChatAiBadge, chatBotBadgeWidth } from "./message/ai-badge";
 
 type UnreadController = Pick<ChatController, "getSnapshot" | "listUnreadInbox" | "subscribe" | "markAllChannelsRead">;
 
@@ -82,13 +82,13 @@ function chatCell(
       const name = preview.user.username ? `@${preview.user.username}` : "";
       const text = chatTextWithImages(preview.content, preview.attachments?.length ?? 0).replace(/\s+/g, " ").trim();
       if (!isManagedBot(preview.user)) return { text: `${name ? `${name}: ` : ""}${text}` };
-      // A managed assistant's name carries the same AI badge as in the transcript.
+      // A managed assistant's name carries the same Bot badge as in the transcript.
       const ink = rowState.selected ? colors.selectedText : colors.text;
       // The badge stands where the colon would. The table gives the terminal its resolved width to clip
       // to; the desktop clips the preview with CSS.
-      const latest = native ? ` ${text}` : truncateToDisplayWidth(` ${text}`, Math.max(0, column.width - displayWidth(name) - CHAT_AI_BADGE_WIDTH));
+      const latest = native ? ` ${text}` : truncateToDisplayWidth(` ${text}`, Math.max(0, column.width - displayWidth(name) - chatBotBadgeWidth()));
       return {
-        text: `${name ? `${name} ` : ""}[AI]: ${text}`,
+        text: `${name ? `${name} ` : ""}[Bot]: ${text}`,
         content: (
           <Box flexDirection="row" height={1} width={native ? "100%" : column.width} overflow="hidden">
             {name ? <Text fg={ink}>{name}</Text> : null}

@@ -105,7 +105,7 @@ export function ChatMessageHeader({
   const { nativeContextMenu } = useUiCapabilities();
   // The card opens beside the name the pointer is on.
   const nameRef = useRef<BoxRenderable | null>(null);
-  // AI or Team, then Pro. A row that cannot hold them, the status and its
+  // Bot or Team, then Pro. A row that cannot hold them, the status and its
   // actions drops Pro first, then the role: the actions must stay reachable.
   const rowWidth = typeof rowProps.width === "number" ? rowProps.width : fitWidth ?? null;
   const badges = rowWidth === null

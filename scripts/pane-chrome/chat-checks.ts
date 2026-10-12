@@ -225,7 +225,7 @@ export const chatSteps: ChatStep[] = [
       const bot = await nameOf(cdp, "deskbot") ?? fail("no bot message in view");
       const person = await nameOf(cdp, "quill") ?? fail("no member message in view");
       if (bot.color === person.color) fail("the bot's name is drawn like a person's", { bot: bot.color, person: person.color });
-      const expected: Record<string, string> = { deskbot: "AI", marlow: "Team,Pro", quill: "Pro" };
+      const expected: Record<string, string> = { deskbot: "Bot", marlow: "Team,Pro", quill: "Pro" };
       for (const [username, badges] of Object.entries(expected)) {
         const actual = (await badgesOf(cdp, username)).join();
         if (actual !== badges) fail(`${username} carries the wrong badges`, { actual, expected: badges });

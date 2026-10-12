@@ -4,7 +4,7 @@ import { t } from "../../../../i18n";
 import { formatInlinePreview, getMessageBodyTokenLines, MESSAGE_ACTION_WIDTH } from "../layout";
 import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
 import { isQuotedAuthorManagedBot } from "../ghost-user";
-import { CHAT_AI_BADGE_WIDTH, ChatAiBadge } from "./ai-badge";
+import { ChatAiBadge, chatBotBadgeWidth } from "./ai-badge";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { Button } from "../../../../components/ui";
 import { canReactToMessage } from "../reactions";
@@ -116,7 +116,7 @@ export function TerminalChatMessage({
           <Text fg={state.replyMetaColor}>
             {formatInlinePreview(
               chatReplyQuoteText(msg.replyTo),
-              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}`.length - (quotedAuthorIsBot ? CHAT_AI_BADGE_WIDTH + 1 : 2), 0),
+              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}`.length - (quotedAuthorIsBot ? chatBotBadgeWidth() + 1 : 2), 0),
             )}
           </Text>
         </Box>

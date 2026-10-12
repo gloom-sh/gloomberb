@@ -14,6 +14,7 @@ import { MESSAGE_HIGHLIGHT_MS } from "./content/row-activity";
 import { SLOW_SEND_THRESHOLD_MS } from "./message/pending-send";
 import { chatHighlightBg } from "./message/render-state";
 import { chatBotNameColor } from "./people";
+import { chatBotBadgeWidth } from "./message/ai-badge";
 import { ChatStatusWidget } from "./status-widget";
 import {
   createChatTestHarness,
@@ -1362,7 +1363,7 @@ describe("ChatContent", () => {
     expect(tui.frame()).toContain("@cy");
   });
 
-  test("badges a bot as AI in its own colour, staff as Team and Pro accounts as Pro, never a Discord ghost", async () => {
+  test("badges a bot as Bot in its own colour, staff as Team and Pro accounts as Pro, never a Discord ghost", async () => {
     const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
     const controller = createController({
       messages: [
@@ -1378,9 +1379,10 @@ describe("ChatContent", () => {
 
     const rows = tui.frame().split("\n").map((row) => row.trimEnd());
     const header = (author: string) => rows.find((row) => row.startsWith(` ${author} `))!;
-    expect(header("gloombot")).toContain(" AI ");
-    expect(header("bob")).not.toMatch(/ (AI|Team|Pro) /);
-    expect(header("Grace H")).not.toMatch(/ (AI|Team|Pro) /);
+    expect(header("gloombot")).toContain(" Bot ");
+    expect(header("gloombot")).not.toContain("AI");
+    expect(header("bob")).not.toMatch(/ (Bot|Team|Pro) /);
+    expect(header("Grace H")).not.toMatch(/ (Bot|Team|Pro) /);
     expect(header("wren")).toMatch(/ wren +Team +Pro /);
     expect(header("otto")).toContain(" Pro ");
     expect(header("otto")).not.toContain("Team");
@@ -1395,7 +1397,8 @@ describe("ChatContent", () => {
     // The badge is not a target of its own: the name still opens the card, which says what the account is.
     await tui.clickFrameText("gloombot");
     await flushFrame();
-    expect(tui.frame()).toContain("AI bot run by Gloom");
+    expect(tui.frame()).toContain("Bot run by Gloom");
+    expect(tui.frame()).not.toContain("AI bot");
     expect(tui.frame()).not.toContain("Local time");
 
     // A person's card has their role, their local time and the desks they chose to show.
@@ -1407,6 +1410,51 @@ describe("ChatContent", () => {
     expect(card).toContain("Gloom team · Pro");
     expect(card).toMatch(/Local time \d\d:\d\d/);
     expect(card).toContain("Trades Options, Futures");
+  });
+
+  test("at 70 columns the Bot badge fits beside its name, a quote and the reply being written, and a long staff row keeps its actions", async () => {
+    // "Bot" is a cell wider than the "AI" it replaced: a cell before the chip, then the label padded a cell either side.
+    expect(chatBotBadgeWidth()).toBe(6);
+    const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
+    const bot = { id: "b1", username: "deskbot", displayName: "Deskbot", accountType: "managed_llm" as const };
+    const staff = { id: "s1", username: "a_staff_member_with_a_long_nam", displayName: "Staff", accountType: "human" as const, badges: ["team" as const, "pro" as const] };
+    const quoted = "Futures are flat into the open and the calendar stays quiet until ten, with nothing else after the bell.";
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: quoted, replyToId: null, createdAt: at(0), user: bot, reactions: [] },
+        { id: "m2", channelId: "everyone", content: "thanks", replyToId: "m1", replyTo: { content: quoted, user: { id: "b1", username: "deskbot" } }, createdAt: at(10), user: staff, reactions: [] },
+        { id: "m3", channelId: "everyone", content: quoted, replyToId: null, createdAt: at(20), user: bot, reactions: [] },
+      ],
+    });
+
+    await mountChat(controller, { width: 70, height: 18 });
+    const rows = () => tui.frame().split("\n").map((row) => row.trimEnd());
+
+    // The quote of a bot's message: the badge stands where the colon would, and the preview ends in an ellipsis inside the row.
+    const quote = rows().find((row) => row.trimStart().startsWith("reply deskbot"))!;
+    expect(quote).toMatch(/reply deskbot +Bot +Futures/);
+    expect(quote.endsWith("...")).toBe(true);
+
+    // The newest message, a bot's, selected: its badge and its actions all show.
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await flushFrame();
+    const botHeader = rows().filter((row) => row.startsWith(" deskbot ")).at(-1)!;
+    expect(botHeader).toMatch(/ deskbot +Bot .*Reply +React/);
+
+    // A 30-character staff name with Reply and React: Pro goes, Team stays, and the actions stay in the row.
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await flushFrame();
+    const staffHeader = rows().find((row) => row.startsWith(` ${staff.username} `))!;
+    expect(staffHeader).toContain(" Team ");
+    expect(staffHeader).not.toContain("Pro");
+    expect(staffHeader).toMatch(/Reply +React$/);
+
+    // Replying to the bot: the composer names it with its badge and keeps Cancel whole.
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await flushFrame();
+    const replying = rows().find((row) => row.includes("replying to @deskbot"))!;
+    expect(replying).toMatch(/replying to @deskbot +Bot +Futures.*\.\.\. +Cancel$/);
   });
 
   test("a narrow terminal row drops the Pro badge before the role, and a hidden clock never shows", async () => {

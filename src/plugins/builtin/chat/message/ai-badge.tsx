@@ -1,15 +1,19 @@
 import { Badge } from "../../../../components/ui";
 import { Box } from "../../../../ui";
 import { useThemeColors } from "../../../../theme/theme-context";
-import { chatNameBadgeColor, type ChatNameBadge } from "../people";
-
-/** What the AI badge takes of a terminal line: the cell before it, then "AI" with a cell of padding either side. */
-export const CHAT_AI_BADGE_WIDTH = 5;
-
-const AI_BADGE: ChatNameBadge = { id: "ai", label: "AI" };
+import { CHAT_BOT_BADGE, chatNameBadgeColor, chatNameBadgeWidth, type ChatNameBadge } from "../people";
 
 /**
- * The badges beside a name, each with a cell of space before it: AI in the
+ * What the Bot badge takes of a terminal line: the cell before it, then "Bot"
+ * (as the reader's language writes it) with a cell of padding either side.
+ * Six cells in English.
+ */
+export function chatBotBadgeWidth(): number {
+  return chatNameBadgeWidth(CHAT_BOT_BADGE);
+}
+
+/**
+ * The badges beside a name, each with a cell of space before it: Bot in the
  * bot colour, Team in the theme's other accent, Pro in the quietest tone the
  * kit has. A selected row passes its own text color so the chips stay
  * legible on the selection.
@@ -27,7 +31,7 @@ export function ChatNameBadges({ badges, selectedColor }: { badges: readonly Cha
   );
 }
 
-/** "AI" beside the name of a managed assistant, where only that badge is shown: a reply quote, the composer, the inbox. */
+/** "Bot" beside the name of a managed assistant, where only that badge is shown: a reply quote, the composer, the inbox. */
 export function ChatAiBadge({ selectedColor }: { selectedColor?: string }) {
-  return <ChatNameBadges badges={[AI_BADGE]} selectedColor={selectedColor} />;
+  return <ChatNameBadges badges={[CHAT_BOT_BADGE]} selectedColor={selectedColor} />;
 }

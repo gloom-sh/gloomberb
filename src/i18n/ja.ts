@@ -803,6 +803,9 @@ export const ja: Record<string, string> = {
   "private": "非公開",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the badge beside its name and the line on its card.
+  "Bot": "ボット",
+  "Bot run by Gloom": "Gloom が運営するボット",
   "Direct message": "ダイレクトメッセージ",
   "Group chat": "グループチャット",
   "Group": "グループ",

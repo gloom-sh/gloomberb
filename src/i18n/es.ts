@@ -789,6 +789,9 @@ export const es: Record<string, string> = {
   "private": "privado",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the badge beside its name and the line on its card.
+  "Bot": "Bot",
+  "Bot run by Gloom": "Bot gestionado por Gloom",
   "Direct message": "Mensaje directo",
   "Group chat": "Chat grupal",
   "Group": "Grupo",

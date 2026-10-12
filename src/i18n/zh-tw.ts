@@ -803,6 +803,9 @@ export const zhTW: Record<string, string> = {
   "private": "不公開",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the badge beside its name and the line on its card.
+  "Bot": "機器人",
+  "Bot run by Gloom": "由 Gloom 營運的機器人",
   "Direct message": "私訊",
   "Group chat": "群組聊天",
   "Group": "群組",

@@ -2,6 +2,8 @@ import type { ChatUserSummary } from "../../../api-client";
 import { blendForContrastOnSurfaces, higherContrast, parseHex } from "../../../theme/color-utils";
 import { blendHex, colors, hoverBg, type ThemeColors } from "../../../theme/colors";
 import { DESK_KEYS, type DeskKey } from "../../../layout/desk-keys";
+import { t } from "../../../i18n";
+import { displayWidth } from "../../../utils/format";
 import { isManagedBot } from "./ghost-user";
 
 /**
@@ -10,6 +12,7 @@ import { isManagedBot } from "./ghost-user";
  * each from the account (GLO-646); a field it leaves out shows nothing.
  */
 
+/** `ai` is a bot's badge: its label reads "Bot", and the id names its `chat-ai-badge` role. */
 type ChatNameBadgeId = "ai" | "team" | "pro";
 
 export interface ChatNameBadge {
@@ -17,17 +20,18 @@ export interface ChatNameBadge {
   label: string;
 }
 
-const AI_BADGE: ChatNameBadge = { id: "ai", label: "AI" };
+/** The badge beside a bot's name, in the transcript, reply quotes, the composer and the inbox. */
+export const CHAT_BOT_BADGE: ChatNameBadge = { id: "ai", label: "Bot" };
 const TEAM_BADGE: ChatNameBadge = { id: "team", label: "Team" };
 const PRO_BADGE: ChatNameBadge = { id: "pro", label: "Pro" };
 
 /**
- * The badges beside a name: at most one role, AI for a bot Gloom runs or
- * Team for Gloom staff, then Pro. A bot carries only its AI badge.
+ * The badges beside a name: at most one role, Bot for a bot Gloom runs or
+ * Team for Gloom staff, then Pro. A bot carries only its Bot badge.
  */
 export function chatNameBadges(user: Pick<ChatUserSummary, "accountType" | "badges"> | null | undefined): ChatNameBadge[] {
   if (!user) return [];
-  if (isManagedBot(user)) return [AI_BADGE];
+  if (isManagedBot(user)) return [CHAT_BOT_BADGE];
   const badges = user.badges ?? [];
   return [
     ...(badges.includes("team") ? [TEAM_BADGE] : []),
@@ -35,9 +39,13 @@ export function chatNameBadges(user: Pick<ChatUserSummary, "accountType" | "badg
   ];
 }
 
-/** Terminal cells one badge takes beside a name: a cell before it, then its label with a cell either side. */
-function chatNameBadgeWidth(badge: ChatNameBadge): number {
-  return badge.label.length + 3;
+/**
+ * Terminal cells one badge takes beside a name: a cell before it, then its
+ * label as the reader's language shows it, with a cell either side. "Bot" is
+ * 6 cells in English; a translated label can be wider.
+ */
+export function chatNameBadgeWidth(badge: ChatNameBadge): number {
+  return displayWidth(t(badge.label)) + 3;
 }
 
 function chatNameBadgesWidth(badges: readonly ChatNameBadge[]): number {
@@ -104,7 +112,7 @@ function legibleOnRows(colour: string, palette: ThemeColors): string {
   return blendForContrastOnSurfaces(colour, surfaces, higherContrast("#ffffff", "#000000", palette.bg), 4.5);
 }
 
-/** The colour a bot's name and its AI badge are drawn in. */
+/** The colour a bot's name and its Bot badge are drawn in. */
 export function chatBotNameColor(palette: ThemeColors = colors): string {
   return legibleOnRows(roleHues(palette).bot, palette);
 }
@@ -180,7 +188,7 @@ export function chatDeskChoices(): Array<{ value: DeskKey; label: string }> {
 }
 
 export interface ChatPersonFacts {
-  /** "Gloom team" and "Pro", "AI bot run by Gloom", or none. */
+  /** "Gloom team" and "Pro", "Bot run by Gloom", or none. */
   roles: string[];
   /** "14:05", "01:30 tomorrow", or null when hidden or unknown. */
   localTime: string | null;
@@ -197,7 +205,7 @@ export function chatPersonFacts(
   const bot = isManagedBot(user);
   return {
     roles: bot
-      ? ["AI bot run by Gloom"]
+      ? ["Bot run by Gloom"]
       : chatNameBadges(user).map((badge) => (badge.id === "team" ? "Gloom team" : badge.label)),
     localTime: bot ? null : formatChatLocalTime(user.utcOffsetMinutes, now, readerOffsetMinutes),
     trades: bot ? [] : chatDeskLabels(user.desks),

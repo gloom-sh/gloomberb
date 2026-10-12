@@ -801,6 +801,9 @@ export const ko: Record<string, string> = {
   "private": "비공개",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the badge beside its name and the line on its card.
+  "Bot": "봇",
+  "Bot run by Gloom": "Gloom이 운영하는 봇",
   "Direct message": "DM",
   "Group chat": "그룹 채팅",
   "Group": "그룹",
