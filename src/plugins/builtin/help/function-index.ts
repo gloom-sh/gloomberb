@@ -61,6 +61,8 @@ function withHelp(fn: Omit<HelpFunction, "help">): HelpFunction {
 export function buildHelpFunctionIndex(sources: HelpFunctionSources): HelpFunctionIndex {
   const functions: HelpFunction[] = [];
   for (const command of sources.commands ?? builtInCommands) {
+    // Search phrases on an action without a mnemonic are not standalone functions.
+    if (!command.prefix.trim()) continue;
     const [code, ...aliases] = getCommandPrefixes(command);
     if (!code) continue;
     functions.push(withHelp({

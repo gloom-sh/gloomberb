@@ -77,11 +77,8 @@ import {
   resolveShellCursorOcclusionRects,
   useShellCursorOcclusionGuard,
 } from "./cursor-occlusion";
-import { copyLivePaneShare } from "../../../shares/live";
-import { buildPaneSharePayload } from "../../../shares/pane";
 import { requestPaneDocs } from "../../../docs/requests";
 import { DOCS_PANE_TEMPLATE_ID } from "../../../docs/content";
-import type { SharePayload } from "../../../shares/payload";
 
 export { resolveAppHeaderHeightCells } from "./chrome";
 export { buildNativeWindowState } from "./native/window-state";
@@ -131,7 +128,7 @@ export function Shell({
     dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
   }, [dispatch]);
   const paneAccelerators = useMemo(() => paneManagementAccelerators(keybindings), [keybindings]);
-  const { nativePaneChrome = false, nativeContextMenu, precisePointer, publicSharing, titleBarOverlay, cellHeightPx } = useUiCapabilities();
+  const { nativePaneChrome = false, nativeContextMenu, precisePointer, titleBarOverlay, cellHeightPx } = useUiCapabilities();
   const { showContextMenu } = useContextMenu();
   const { width, height } = useViewport();
   const shellRef = useRef<BoxRenderable | null>(null);
@@ -530,42 +527,14 @@ export function Shell({
       onMouseDown: (event) => handlePaneQuickSetting(paneId, setting.key, event),
     }))
   ), [config, handlePaneQuickSetting, pluginRegistry]);
-  const sharePane = useCallback((payload: Extract<SharePayload, { kind: "pane" }>) => (
-    copyLivePaneShare(payload, {
-      copyText: (text) => rendererHost.copyText(text),
-      notify: (notification) => { pluginRegistry.notify(notification); },
-    })
-  ), [pluginRegistry, rendererHost]);
-  const sharePaneById = useCallback((paneId: string) => {
-    if (!publicSharing) return false;
-    const pane = paneMap.get(paneId);
-    if (!pane) return false;
-    const state = stateRef.current;
-    const payload = buildPaneSharePayload(
-      pluginRegistry,
-      pane.instance,
-      state.paneState[paneId] ?? {},
-      resolveTickerForPane(state, paneId),
-      state.tickers,
-    );
-    if (!payload) {
-      pluginRegistry.notify({ body: "This pane cannot be shared.", type: "error" });
-      return false;
-    }
-    void sharePane(payload);
+  const sharePane = useCallback((paneId: string) => {
+    pluginRegistry.sharePane(paneId);
+  }, [pluginRegistry]);
+  const shareFocusedPane = useCallback(() => {
+    if (!focusedPaneId) return false;
+    sharePane(focusedPaneId);
     return true;
-  }, [paneMap, pluginRegistry, publicSharing, sharePane, stateRef]);
-  const shareFocusedPane = useCallback(() => (
-    focusedPaneId ? sharePaneById(focusedPaneId) : false
-  ), [focusedPaneId, sharePaneById]);
-  // Pane-level share hints (chart, news) go through the same live hand-off as
-  // the shell shortcut and the pane menu.
-  useEffect(() => pluginRegistry.bindHost({
-    sharePane: (paneId) => {
-      const target = paneId ?? stateRef.current.focusedPaneId;
-      if (target) sharePaneById(target);
-    },
-  }), [pluginRegistry, sharePaneById, stateRef]);
+  }, [focusedPaneId, sharePane]);
 
   const screenPaneRects = useCallback(() => new Map<string, LayoutBounds>([
     ...screenDockLeafLayouts.map((leaf) => [leaf.instanceId, leaf.rect] as const),
@@ -644,15 +613,6 @@ export function Shell({
       title: getPaneTitle(pane),
       floating: !!pane.floating,
     };
-    const sharePayload = publicSharing
-      ? buildPaneSharePayload(
-          pluginRegistry,
-          pane.instance,
-          paneState[paneId] ?? {},
-          resolveTickerForPane(titleState, paneId),
-          stateRef.current.tickers,
-        )
-      : null;
     const items = menuForPane(
       pane,
       visibleLayout,
@@ -664,7 +624,7 @@ export function Shell({
       openPaneSettings,
       desktopWindowBridge,
       nativePaneChrome && rendererHost.copyPngImage ? copyPaneScreenshot : undefined,
-      sharePayload ? () => sharePane(sharePayload) : undefined,
+      () => sharePane(paneId),
       tickerLinkMenuItems({
         instance: pane.instance,
         layout: visibleLayout,
@@ -723,7 +683,7 @@ export function Shell({
     void showContextMenu(context, items, event).then((shown) => {
       if (!shown) showKitMenu();
     });
-  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
   openPaneMenuRef.current = openPaneMenu;
 
 

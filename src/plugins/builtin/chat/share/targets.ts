@@ -1,13 +1,7 @@
 import type { ChatConversation } from "../conversations";
 import { DEFAULT_CHAT_CHANNEL_ID, normalizeChannelId } from "../channels";
 
-export interface ShareTarget {
-  channelId: string;
-  /** As the Chat pane titles it: #everyone, MD·#general, @alice. */
-  label: string;
-  /** Muted beside it: a DM's full name, a group's members, a channel's team. */
-  description?: string;
-}
+import type { ShareTarget } from "../../../../shares/chat";
 
 /**
  * Where a pane's picture can go: every conversation the Chat sidebar lists,

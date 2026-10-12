@@ -45,6 +45,14 @@ describe("HELP <arg>", () => {
     expect(none.kind === "search" ? none.matches : null).toEqual([]);
   });
 
+  test("search-only action aliases do not become undocumented function mnemonics", () => {
+    const actions = buildHelpFunctionIndex({
+      commands: [{ id: "copy", prefix: "", aliases: ["copy this view"], label: "Copy", description: "Copy the view", category: "Config" }],
+      pluginCommands: [], paneTemplates: [],
+    });
+    expect(actions.size).toBe(0);
+  });
+
   test("the command bar reads HELP OMON as HELP with an argument", () => {
     const intent = parseRootShortcutIntent({ query: "HELP OMON", commands, paneTemplates, activeTicker: null });
     expect(intent.kind === "complete" && intent.source === "command"

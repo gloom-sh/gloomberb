@@ -1,6 +1,4 @@
 import type { PluginModule } from "../plugin-module";
-import { resolvePluginShortcutChords, serializeKeyChord } from "../../../app/keybindings";
-import type { GloomPluginContext, KeyboardShortcut } from "../../../types/plugin";
 import { teamChannelId } from "../cloud/team/model";
 import { teamStore } from "../cloud/team/store";
 import { formatChatPaneTitle } from "./channel-labels";
@@ -21,7 +19,7 @@ import { ChatPane } from "./pane";
 import { chatSidebarStore } from "./sidebar-store";
 import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
-import { sharePaneToChat } from "./share/flow";
+import { installPaneChatSharing } from "./share/flow";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
 
 /**
@@ -48,46 +46,7 @@ function isPrivateConversation(channelId: unknown): boolean {
   return kind ? kind !== "public" : /^(dm|grp|group|team):/.test(id);
 }
 
-const SHARE_TO_CHAT_SHORTCUT: Omit<KeyboardShortcut, "execute"> = {
-  id: "share-pane-to-chat",
-  key: "y",
-  ctrl: true,
-  shift: true,
-  description: "Post a picture of the focused pane to chat.",
-};
-
-/**
- * Share to Chat, from the pane menu (mouse, `.` or right-click), the command
- * bar and its own key, which Help lists and can rebind.
- */
-function registerShareToChat(ctx: GloomPluginContext): void {
-  // After the command bar or the menu has closed, so the picture shows the pane alone.
-  const share = (paneId?: string) => setTimeout(() => { void sharePaneToChat(ctx, paneId); }, 0);
-  const shortcut: KeyboardShortcut = { ...SHARE_TO_CHAT_SHORTCUT, execute: () => share() };
-  ctx.registerShortcut(shortcut);
-  ctx.registerCommand({
-    id: "share-pane-to-chat",
-    label: "Share to Chat",
-    description: "Post a picture of the focused pane to a chat channel",
-    keywords: ["share", "chat", "post", "picture", "screenshot", "image", "pane", "discord"],
-    category: "navigation",
-    execute: () => { share(); },
-  });
-  ctx.registerContextMenuProvider({
-    id: "share-pane-to-chat",
-    contexts: ["pane"],
-    getItems: (context) => {
-      if (context.kind !== "pane") return null;
-      const chord = resolvePluginShortcutChords(ctx.getConfig().keybindings, shortcut)[0];
-      return [{
-        id: "share-pane-to-chat",
-        label: "Share to Chat",
-        ...(chord ? { accelerator: serializeKeyChord(chord) } : {}),
-        onSelect: () => { share(context.paneId); },
-      }];
-    },
-  });
-}
+let disposePaneChatSharing: (() => void) | undefined;
 
 export const chatModule: PluginModule = {
   panes: [{
@@ -186,7 +145,8 @@ export const chatModule: PluginModule = {
   },
   setup(ctx) {
     ctx.registerCommandBarSearchProvider(createChatSearchProvider(ctx));
-    registerShareToChat(ctx);
+    disposePaneChatSharing?.();
+    disposePaneChatSharing = installPaneChatSharing(ctx);
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatController.setNotifier(ctx.notify, (channelId, messageId) => {
@@ -216,6 +176,8 @@ export const chatModule: PluginModule = {
     });
   },
   dispose() {
+    disposePaneChatSharing?.();
+    disposePaneChatSharing = undefined;
     chatController.dispose();
   },
 };

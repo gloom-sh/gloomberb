@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "fs/promises";
 import { join, resolve } from "path";
 import { positiveInteger, takeOption } from "../tui-benchmark-harness";
-import { cacheDir, click, drag, evaluate, frames, launchBrowser, mouse, waitFor, type Cdp, type Point } from "./browser";
+import { cacheDir, click, drag, evaluate, frames, launchBrowser, mouse, sleep, waitFor, type Cdp, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
 
 /**
@@ -529,6 +529,31 @@ const steps: Step[] = [
       if (await evaluate<number>(cdp, "__check.windowMoves()") > 0) fail("the pane menu button asked the window to move");
     },
   },
+  {
+    name: "popped-out window: one Share entry opens its picture by pointer and held key",
+    scenario: "detached",
+    async run(cdp) {
+      await click(cdp, await pointOf(cdp, "tabs:a", "action"));
+      await waitFor(cdp, `!!document.querySelector('[role="menu"]')`);
+      const shares = await evaluate<number>(cdp, `[...document.querySelectorAll('[role="menuitem"]')].filter(e => e.textContent.startsWith('Share')).length`);
+      if (shares !== 1) fail("expected one Share entry", shares);
+      const target = await evaluate<Rect>(cdp, `__check.rect([...document.querySelectorAll('[role="menuitem"]')].find(e => e.textContent.startsWith('Share')))`);
+      await click(cdp, center(target));
+      if (!await waitFor(cdp, `!!document.querySelector('[role="dialog"]')`)) fail("Share did not open");
+      const press = async (key: string, code: string, modifiers: number, autoRepeat = false) => {
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code, modifiers, autoRepeat });
+        if (!autoRepeat) await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code, modifiers });
+      };
+      await press("Escape", "Escape", 0);
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "S", code: "KeyS", modifiers: 10 });
+      if (!await waitFor(cdp, "window.__paneChrome.shares === 2")) fail("Share key did not open");
+      await press("Escape", "Escape", 0);
+      for (let i = 0; i < 5; i++) await press("S", "KeyS", 10, true);
+      await sleep(200);
+      if (await evaluate<number>(cdp, "window.__paneChrome.shares") !== 2) fail("a held key opened Share twice");
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "S", code: "KeyS", modifiers: 10 });
+    },
+  },
   // Each caption button on a fresh window: it does its own job, never the window move.
   ...CAPTION_BUTTONS.map(([label, action]): Step => ({
     name: `popped-out window (Windows): the ${label} button does not move the window`,
@@ -560,8 +585,9 @@ async function main(): Promise<void> {
   const only = takeOption(args, "--only");
   const repeat = positiveInteger(takeOption(args, "--repeat"), 1, "--repeat");
   const root = resolve(takeOption(args, "--root") ?? join(import.meta.dir, "../.."));
+  const includeShare = !only || "global Share".includes(only);
   const selected = steps.filter((step) => !only || step.name.includes(only));
-  if (selected.length === 0) throw new Error(`No step matches "${only}"`);
+  if (selected.length === 0 && !includeShare) throw new Error(`No step matches "${only}"`);
 
   const page = await serveFixturePage(root, cacheDir("build", `checks-${process.pid}`));
   const browser = await launchBrowser("checks", VIEWPORT.width, VIEWPORT.height);
@@ -596,7 +622,17 @@ async function main(): Promise<void> {
     await page.close();
   }
 
-  const total = selected.length * repeat;
+  if (includeShare) {
+    try {
+      const { checkGlobalShare } = await import("./share");
+      for (let round = 0; round < repeat; round++) await checkGlobalShare(root);
+    } catch (error) {
+      failures.push({ name: "global Share", message: error instanceof Error ? error.message : String(error) });
+      console.error("FAIL global Share", error);
+    }
+  }
+
+  const total = selected.length * repeat + (includeShare ? repeat : 0);
   const summary = [
     "### Pane chrome pointer checks",
     "",
@@ -604,6 +640,7 @@ async function main(): Promise<void> {
     "",
     "| | Step |",
     "|---|---|",
+    ...(includeShare ? [`| ${failures.some(f => f.name === "global Share") ? "**failed**" : "ok"} | global Share |`] : []),
     ...selected.map((step) => `| ${passes.get(step.name) === repeat ? "ok" : "**failed**"} | ${step.name} |`),
     ...(failures.length > 0 ? ["", "Failures:", "", ...failures.map((failure) => `- **${failure.name}**: ${failure.message}`)] : []),
   ].join("\n");

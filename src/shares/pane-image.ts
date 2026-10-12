@@ -1,5 +1,6 @@
 import type { PaneDef, PanePersonalData, PanePersonalDataContext } from "../types/plugin";
 import type { NativePaneImage } from "../ui/host";
+import type { SharePayload } from "./payload";
 
 /** A picture of one pane as it looked when it was taken, ready to post. */
 export interface PaneImageCapture {
@@ -10,6 +11,8 @@ export interface PaneImageCapture {
   capturedAt: string;
   /** What personal data the pane shows, so posting it asks first; null for market data. */
   personalData: PanePersonalData | null;
+  /** The same view, projected through the existing public sharing rules at capture time. */
+  sharePayload?: Extract<SharePayload, { kind: "pane" }> | null;
   png: Uint8Array;
   width: number;
   height: number;

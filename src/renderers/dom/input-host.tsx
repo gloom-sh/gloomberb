@@ -39,6 +39,7 @@ function domKeyEventLike(
     meta: event.metaKey,
     super: event.metaKey,
     targetEditable: isEditableKeyboardTarget(event.target),
+    repeat: "repeat" in event && event.repeat === true,
     get defaultPrevented() {
       return event.defaultPrevented;
     },

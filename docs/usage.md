@@ -44,7 +44,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+Shift+D` | Dock or float focused pane |
 | `Ctrl+Shift+N` | Move the focused pane to a new layout of its own; again to move it back |
 | `Ctrl+Shift+E` | Export focused pane table as CSV |
-| `Ctrl+Shift+Y` | Share the focused pane to chat |
+| `Cmd/Ctrl+Shift+S` | Share the focused pane: post to chat or copy link |
 | `Ctrl+Shift+L` | Layout actions |
 | `Ctrl+Shift+G` | Tidy windows |
 | `Tab` | Switch panes |
@@ -748,9 +748,13 @@ Public channels are mirrored to the Gloom Discord, and messages written there ap
 
 A message can carry up to four images: PNG, JPEG, WebP or GIF, up to 5 MB each. In the desktop app and the web app, paste an image into the message field, drop image files on the chat, or use the image button at the end of the field (also `Attach Image…` in the pane menu). Each image uploads at once and shows above the field with its progress; the x removes it, and one that failed to upload offers Retry. Enter sends once every image is up, with or without text. In the terminal, paste or drop the path of an image file into the message field to attach it; Backspace in an empty field removes the last one. Images in public channels are checked before anyone else sees them: your own message says `Checking image...` meanwhile, and `Could not be checked, only visible to you` if the check could not run. The desktop and web show images in the conversation and open them full size on a click (Left and Right step through a message's images, Esc closes); the terminal lists each image as a row such as `[image 1280x720 179 KB]` that opens in the browser on a click, or with `o` on the selected message. A message that failed to send has Retry, or Enter while it is selected, which sends it again without uploading its images again.
 
-### Share to Chat
+### Share
 
-**Share to Chat** posts a picture of a pane to a chat channel as your own message, the way you see the pane now. It is in every pane's menu (`.`, the `...` button, or a right-click on the header on the desktop), in the command bar, and on `Ctrl+Shift+Y` for the focused pane (rebind it in Help). The picture's footer reads as a dated status line: what the pane says about its data, such as `15m delayed`, and when the picture was taken, such as `Mon 12 Oct 2026 14:52 UTC`; the pane's action keys are left out. A dialog shows the picture before anything is sent, with the channel to post to (the one you last used in chat, else #everyone; your channels, team channels and DMs are all offered) and an optional caption. Post sends it as a message with the picture attached, so in a public channel it is checked and mirrored to Discord like any other image. Posting needs a signed-in account with a verified email; without one the action says which is missing and posts nothing.
+**Share** is the one action for the focused pane, in its menu (`.`, the `...` button, or a right-click on the header on the desktop), in the command bar, and on `Cmd/Ctrl+Shift+S`. Help lists it under Pane Management; existing `pane-share` rebindings keep working. Searching `share pane` or `share to chat` finds the same command. Popped-out windows use the same menu and key. Chart and news footers no longer have a separate share action; Copy Screenshot (`Cmd/Ctrl+Shift+C`) and Export CSV are unchanged.
+
+The dialog previews the pane's picture, then offers **Post to chat** and **Copy link**. Posting picks a channel (the last one used in chat, else #everyone) and an optional caption. **Include link** starts on and remembers your choice: when a public link is available, the message includes it below the caption so the recipient can open the same view in their terminal, including a DES option chain's selected tab and ticker. Otherwise the message is picture-only. Copy link copies that same public Gloom link and shows a toast. Public link rules, private-state filtering and expiry are unchanged; no link is created until you copy or post with Include link on.
+
+The picture's footer shows the pane's data status, such as `15m delayed`, and its capture time in UTC, without action keys. Posting needs a signed-in account with a verified email. Public-channel pictures are checked and mirrored to Discord like other images.
 
 A pane that shows your own data asks first, under the picture: your portfolios (not watchlists), Portfolio Analytics, the position sizer, Earnings Ripple on your holdings, Ticker Research and `OMON` on a ticker you hold say `This shows your holdings. Post it?`; Brokers, ACM and Team say `This shows your account details. Post it?`; a DM, group or team chat, Unread Chat and Ask Gloom say `This shows private messages. Post it?`. Enter in the caption does not post such a picture: press Post.
 

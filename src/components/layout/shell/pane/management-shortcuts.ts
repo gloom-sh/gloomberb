@@ -168,7 +168,7 @@ export function useShellPaneManagementShortcuts({
         handled = exportFocusedPaneCsv();
         break;
       case "share":
-        handled = shareFocusedPane();
+        handled = event.repeat === true || shareFocusedPane();
         break;
       case "layout-gallery":
         openLayoutGallery();

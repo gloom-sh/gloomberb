@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { LayoutMarketplacePayload } from "./portable-layout";
 import type { PaneDef, PaneTemplateDef } from "../types/plugin";
 import { buildPaneSharePayload, openPaneShare } from "./pane";
+import { getLoadablePlugins } from "../plugins/catalog";
 
 const paneDef: PaneDef = {
   id: "ticker-news",
@@ -74,6 +75,21 @@ describe("public pane shares", () => {
 
     await openPaneShare(pluginRegistry, payload!.data);
     expect(pluginRegistry.portable).toEqual([payload!.data.version === 2 ? payload!.data.layout : null]);
+  });
+
+  test.each([
+    { paneType: "ticker-research", settings: { expiration: 1800000000, expirationTargetKey: "EXAMPLE:NASDAQ" }, state: { activeTabId: "options" } },
+    { paneType: "ticker-news", settings: {}, state: { pluginState: { news: { "openArticleId:EXAMPLE": "invented-story" } } } },
+  ])("the global link reopens $paneType on the selected content", async ({ paneType, settings, state }) => {
+    const def = getLoadablePlugins().flatMap(plugin => plugin.panes ?? []).find(pane => pane.id === paneType)!;
+    const host = registry(undefined, def);
+    const payload = buildPaneSharePayload(host, { instanceId: "selected", paneId: paneType, settings, binding: { kind: "fixed", symbol: "EXAMPLE" } }, state);
+    if (payload?.data.version !== 2) throw new Error("expected a portable share");
+    await openPaneShare(host, payload.data);
+    const reopened = host.portable[0] as LayoutMarketplacePayload;
+    expect(reopened.layout.instances[0]?.settings ?? {}).toEqual(settings);
+    expect(reopened.layout.instances[0]?.binding).toEqual({ kind: "fixed", symbol: "EXAMPLE" });
+    expect(reopened.paneState?.p1).toEqual(state);
   });
 
   test("opens legacy adapter shares for existing links", async () => {

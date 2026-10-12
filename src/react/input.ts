@@ -17,6 +17,8 @@ export interface KeyEventLike {
   meta: boolean;
   super?: boolean;
   targetEditable?: boolean;
+  /** The platform reports this press as a held-key repeat. */
+  readonly repeat?: boolean;
   readonly defaultPrevented?: boolean;
   readonly propagationStopped?: boolean;
   preventDefault(): void;

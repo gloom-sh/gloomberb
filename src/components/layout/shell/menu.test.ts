@@ -41,7 +41,7 @@ describe("pane action menu", () => {
 });
 
 describe("plugin items in the pane menu", () => {
-  test("sit with Share Pane and Export CSV, and leave nothing behind when there are none", () => {
+  test("sit with Share and Export CSV, and leave nothing behind when there are none", () => {
     const pane = { instance: { instanceId: "chart-1", paneId: "chart-composer" }, def: { defaultPosition: "right" }, floating: false } as any;
     const layout = { dockRoot: { kind: "pane", instanceId: "chart-1" }, instances: [pane.instance], floating: [], detached: [] } as any;
     const items = menuForPane(
@@ -57,9 +57,9 @@ describe("plugin items in the pane menu", () => {
       getContextMenuItems: () => registryItems,
     } as any).map((item) => (item.type === "divider" ? "-" : item.id));
 
-    const withPlugin = ids([{ id: "share-pane-to-chat", label: "Share to Chat" }]);
+    const withPlugin = ids([{ id: "plugin-action", label: "Plugin action" }]);
     expect(withPlugin.slice(withPlugin.indexOf("share-pane"), withPlugin.indexOf("share-pane") + 4))
-      .toEqual(["share-pane", "export-csv", "share-pane-to-chat", "float"]);
+      .toEqual(["share-pane", "export-csv", "plugin-action", "float"]);
     const without = ids([]);
     expect(without.slice(without.indexOf("export-csv"), without.indexOf("export-csv") + 2)).toEqual(["export-csv", "float"]);
   });

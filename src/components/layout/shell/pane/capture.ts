@@ -12,7 +12,10 @@ import {
 import { resolveCollectionForPane, resolveTickerForPane, useAppStateRef, type AppState } from "../../../../state/app/context";
 import type { LayoutConfig } from "../../../../types/config";
 import type { PanePersonalDataContext } from "../../../../types/plugin";
-import type { NativeRendererHost } from "../../../../ui";
+import { useUiCapabilities, type NativeRendererHost } from "../../../../ui";
+import { buildPaneSharePayload } from "../../../../shares/pane";
+import { preparePaneShare } from "../../../../shares/prepare";
+import { shareFocusedPane } from "../../../../shares/flow";
 import { useDialog } from "../../../../ui/dialog";
 import { capturePaneImage as paintPaneImage } from "../../../../utils/dom-screenshot";
 import { setPaneCaptureStamp } from "../../pane/capture-stamp";
@@ -70,12 +73,13 @@ interface UseShellPaneCaptureOptions {
 
 /**
  * Binds `capturePaneImage` and `promptDialog` for plugins that post a pane's
- * picture (Share to Chat). The desktop and the web paint the pane's DOM; the
+ * picture or copy its link. The desktop and the web paint the pane's DOM; the
  * terminal draws the cells it shows, kitty charts included.
  */
 export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
   const { pluginRegistry } = options;
   const dialog = useDialog();
+  const { publicSharing } = useUiCapabilities();
   const stateRef = useAppStateRef();
   const latest = useRef(options);
   latest.current = options;
@@ -86,6 +90,9 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
     const pane = paneId ? current.paneMap.get(paneId) : undefined;
     if (!paneId || !pane) throw new Error("Focus a pane to share it.");
     current.closePaneMenu();
+    await preparePaneShare(paneId);
+    // React state/settings flushed by the pane must land before building the link.
+    await nextFrames(2);
     const capturedAt = new Date();
     setPaneCaptureStamp(paneId, formatCaptureStamp(capturedAt));
     try {
@@ -118,6 +125,13 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
         paneType: pane.instance.paneId,
         title: current.getPaneTitle(pane),
         capturedAt: capturedAt.toISOString(),
+        sharePayload: publicSharing ? buildPaneSharePayload(
+          pluginRegistry,
+          latest.current.paneMap.get(paneId)?.instance ?? pane.instance,
+          stateRef.current.paneState[paneId] ?? {},
+          resolveTickerForPane(stateRef.current, paneId),
+          stateRef.current.tickers,
+        ) : null,
         personalData: resolvePanePersonalData(pane.def, personalDataContext(stateRef.current, current.layout, pane), {
           ownerConnectsBroker: ownerConnectsBroker(current.pluginRegistry, pane.def.id),
         }),
@@ -126,9 +140,17 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
     } finally {
       setPaneCaptureStamp(paneId, null);
     }
-  }, [stateRef]);
+  }, [pluginRegistry, publicSharing, stateRef]);
 
   useEffect(() => pluginRegistry.bindHost({
+    sharePane: (requestedPaneId) => {
+      const paneId = requestedPaneId ?? latest.current.focusedPaneId;
+      if (!paneId) return;
+      // Let a menu/command close before the capture starts.
+      setTimeout(() => {
+        void shareFocusedPane(pluginRegistry, paneId);
+      }, 0);
+    },
     capturePaneImage: capture,
     promptDialog: (prompt) => dialog.prompt(prompt),
   }), [capture, dialog, pluginRegistry]);

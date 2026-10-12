@@ -131,7 +131,7 @@ export function menuForPane(
   if (sharePane) {
     baseActions.push({
       id: "share-pane",
-      label: "Share Pane",
+      label: "Share",
       accelerator: accelerators.share,
       onSelect: sharePane,
     });
@@ -152,7 +152,7 @@ export function menuForPane(
       onSelect: () => exportPaneCsv(pane.instance.instanceId),
     });
   }
-  // What plugins do with a pane (Share to Chat) sits with sharing and exporting it.
+  // Plugin actions sit with sharing and exporting.
   baseActions.push(pluginContextMenuSlot("pane"));
 
   if (fullscreen) {

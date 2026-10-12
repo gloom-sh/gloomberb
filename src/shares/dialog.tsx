@@ -1,42 +1,42 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Button, Notice, SelectButton, TextField, type SelectControl } from "../../../../components/ui";
-import { DialogActions } from "../../../../components/ui/dialog-actions";
-import { DialogFrame, fitDialogWidth } from "../../../../components/ui/frame";
-import { t } from "../../../../i18n";
-import { useAppLanguage } from "../../../../i18n/react";
+import { Button, Checkbox, Notice, SelectButton, TextField, type SelectControl } from "../components/ui";
+import { DialogActions } from "../components/ui/dialog-actions";
+import { DialogFrame, fitDialogWidth } from "../components/ui/frame";
+import { t } from "../i18n";
+import { useAppLanguage } from "../i18n/react";
 import {
   paneImageThumbnail,
   personalDataQuestion,
   pngDataUrl,
   type PaneImageCapture,
-} from "../../../../shares/pane-image";
-import { useThemeColors } from "../../../../theme/theme-context";
-import { Box, ImageSurface, Span, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
-import { useDialogKeyboard, type PromptContext } from "../../../../ui/dialog";
-import { isPlainKey } from "../../../../utils/keyboard";
-import { truncateWithEllipsis } from "../../../../utils/text-wrap";
-import { chatImageLabel } from "../attachments/model";
-import type { ShareTarget } from "./targets";
+} from "./pane-image";
+import { useThemeColors } from "../theme/theme-context";
+import { Box, ImageSurface, Span, Text, TextAttributes, useUiCapabilities, useRendererHost } from "../ui";
+import { useDialogKeyboard, type PromptContext } from "../ui/dialog";
+import { isPlainKey } from "../utils/keyboard";
+import { truncateWithEllipsis } from "../utils/text-wrap";
+
+import type { SharePost, ShareTarget } from "./chat";
 
 /** The widest the dialog gets, in cells; the preview is as wide as the form. */
 export const SHARE_DIALOG_COLUMNS = 72;
 
-type ShareField = "channel" | "caption" | "post";
-const FIELDS: readonly ShareField[] = ["channel", "caption", "post"];
+type ShareField = "destination" | "channel" | "caption" | "includeLink" | "post";
 
-export interface SharePost {
-  channelId: string;
-  caption: string;
-}
+export type ShareResult = ({ kind: "post"; messageId: string } & SharePost) | { kind: "copy" };
 
-export interface ShareToChatDialogProps extends PromptContext<SharePost & { messageId: string }> {
+export interface ShareDialogProps extends PromptContext<ShareResult> {
   capture: PaneImageCapture;
   targets: readonly ShareTarget[];
   defaultChannelId: string;
+  chatAvailable?: boolean;
   /** Terminal: the dialog's content width and the rows the preview may take. */
   width: number;
   previewRows: number;
   post: (request: SharePost) => Promise<{ messageId: string }>;
+  getLink: (() => Promise<string>) | null;
+  defaultIncludeLink: boolean;
+  onIncludeLinkChange: (value: boolean) => void;
 }
 
 /** The terminal's stand-in for the picture where it cannot draw images: half blocks, two pixels a cell. */
@@ -85,27 +85,38 @@ function CellRows({ cells }: { cells: NonNullable<PaneImageCapture["cells"]> }) 
 }
 
 /**
- * Share to Chat: the pane's picture as it will be posted, where it goes and
+ * Share: the pane's picture as it will be posted, where it goes and
  * an optional caption. A pane that shows the person's own data asks before
  * posting, under the preview, and Enter in the caption does not post it.
  */
-export function ShareToChatDialog({
+export function ShareDialog({
   dialogId,
   resolve,
   dismiss,
   capture,
   targets,
   defaultChannelId,
+  chatAvailable = true,
   width,
   previewRows,
   post,
-}: ShareToChatDialogProps) {
+  getLink,
+  defaultIncludeLink,
+  onIncludeLinkChange,
+}: ShareDialogProps) {
   useAppLanguage();
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
+  const rendererHost = useRendererHost();
+  const [destination, setDestination] = useState(chatAvailable ? "chat" : "link");
+  const [includeLink, setIncludeLink] = useState(defaultIncludeLink);
+  const destinationControl = useRef<SelectControl | null>(null);
+  const fields: readonly ShareField[] = destination === "chat"
+    ? ["destination", "channel", "caption", ...(getLink ? ["includeLink" as const] : []), "post"]
+    : ["destination", "post"];
   const [channelId, setChannelId] = useState(defaultChannelId);
   const [caption, setCaption] = useState("");
-  const [activeField, setActiveField] = useState<ShareField>("caption");
+  const [activeField, setActiveField] = useState<ShareField>(chatAvailable ? "caption" : "post");
   const [posting, setPosting] = useState(false);
   const postingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
@@ -114,27 +125,39 @@ export function ShareToChatDialog({
   captionRef.current = caption;
   const previewUrl = useMemo(() => (nativePaneChrome ? pngDataUrl(capture.png) : ""), [capture.png, nativePaneChrome]);
   const question = capture.personalData ? personalDataQuestion(capture.personalData) : null;
-  const meta = `${capture.title} · ${chatImageLabel({ width: capture.width, height: capture.height, size: capture.png.byteLength })}`;
+  const meta = `${capture.title} · ${capture.width}x${capture.height} · ${Math.ceil(capture.png.byteLength / 1024)} KB`;
 
   const submit = useCallback(async () => {
     if (postingRef.current) return;
     postingRef.current = true;
     setPosting(true);
     setError(null);
-    const request = { channelId, caption: captionRef.current.trim() };
+    const request = { channelId, caption: captionRef.current.trim(), includeLink };
     try {
-      const { messageId } = await post(request);
-      resolve({ ...request, messageId });
+      if (destination === "link") {
+        if (!getLink) throw new Error(t("A public link is unavailable for this pane."));
+        await rendererHost.copyText(await getLink());
+        resolve({ kind: "copy" });
+      } else {
+        const { messageId } = await post(request);
+        resolve({ ...request, kind: "post", messageId });
+      }
     } catch (failure) {
       postingRef.current = false;
       setPosting(false);
-      setError(failure instanceof Error && failure.message ? failure.message : t("Could not post. Try again."));
+      setError(failure instanceof Error && failure.message ? failure.message : t("Could not share. Try again."));
     }
-  }, [channelId, post, resolve]);
+  }, [channelId, destination, getLink, includeLink, post, rendererHost, resolve]);
+
+  const toggleIncludeLink = (value: boolean) => {
+    setIncludeLink(value);
+    setActiveField("includeLink");
+    onIncludeLinkChange(value);
+  };
 
   const move = useCallback((delta: 1 | -1) => {
-    setActiveField((field) => FIELDS[(FIELDS.indexOf(field) + delta + FIELDS.length) % FIELDS.length]!);
-  }, []);
+    setActiveField((field) => fields[(fields.indexOf(field) + delta + fields.length) % fields.length]!);
+  }, [fields]);
 
   useDialogKeyboard((event) => {
     if (event.name === "escape") {
@@ -158,7 +181,9 @@ export function ShareToChatDialog({
     if (event.name === "return" || event.name === "enter" || isPlainKey(event, "space")) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      if (activeField === "channel") channelControl.current?.open();
+      if (activeField === "destination") destinationControl.current?.open();
+      else if (activeField === "channel") channelControl.current?.open();
+      else if (activeField === "includeLink") toggleIncludeLink(!includeLink);
       else void submit();
     }
   }, { scope: dialogId, allowEditable: true });
@@ -195,54 +220,72 @@ export function ShareToChatDialog({
   );
 
   return (
-    <DialogFrame title="Share to Chat" footer="Enter post · Tab next field · Esc cancel" desktopFooter={null}>
+    <DialogFrame title="Share" footer="Enter select · Tab next field · Esc cancel" desktopFooter={null}>
       <Box flexDirection="column" gap={1} {...(nativePaneChrome ? { style: { width: fitDialogWidth(SHARE_DIALOG_COLUMNS) } } : { width })}>
         <Box flexDirection="column">
           {preview}
           <Text fg={colors.textDim}>{truncateWithEllipsis(meta, width)}</Text>
         </Box>
         <SelectButton
-          label={t("Channel")}
-          title={t("Post to")}
+          label={t("Destination")}
+          title={t("Destination")}
           variant="field"
-          value={channelId}
-          options={channelOptions}
+          value={destination}
+          options={[
+            { value: "chat", label: t("Post to chat"), disabled: !chatAvailable },
+            { value: "link", label: t("Copy link"), disabled: !getLink },
+          ]}
           disabled={posting}
-          controlRef={channelControl}
-          onFocus={() => setActiveField("channel")}
-          onChange={(next) => {
-            setChannelId(next);
-            setError(null);
-          }}
+          controlRef={destinationControl}
+          onFocus={() => setActiveField("destination")}
+          onChange={(next) => { setDestination(next); setActiveField("destination"); setError(null); }}
         />
-        <TextField
-          label={t("Caption")}
-          active={activeField === "caption"}
-          focused={activeField === "caption" && !posting}
-          value={caption}
-          placeholder={t("Optional")}
-          width={width}
-          onMouseDown={() => setActiveField("caption")}
-          onChange={(value) => {
-            setCaption(value);
-            setError(null);
-          }}
-          onSubmit={() => {
-            // Holdings and private messages are posted only with the button.
-            if (question) setActiveField("post");
-            else void submit();
-          }}
-        />
-        {question ? <Notice tone="warning">{t(question)}</Notice> : null}
+        {destination === "chat" ? (<>
+          <SelectButton
+            label={t("Channel")}
+            title={t("Post to")}
+            variant="field"
+            value={channelId}
+            options={channelOptions}
+            disabled={posting}
+            controlRef={channelControl}
+            onFocus={() => setActiveField("channel")}
+            onChange={(next) => {
+              setChannelId(next);
+              setError(null);
+            }}
+          />
+          <TextField
+            label={t("Caption")}
+            active={activeField === "caption"}
+            focused={activeField === "caption" && !posting}
+            value={caption}
+            placeholder={t("Optional")}
+            width={width}
+            onMouseDown={() => setActiveField("caption")}
+            onChange={(value) => {
+              setCaption(value);
+              setError(null);
+            }}
+            onSubmit={() => {
+              // Holdings and private messages are posted only with the button.
+              if (question) setActiveField("post");
+              else void submit();
+            }}
+          />
+          {getLink ? <Checkbox label={t("Include link")} checked={includeLink} disabled={posting}
+            active={activeField === "includeLink"} onChange={toggleIncludeLink} /> : null}
+          {question ? <Notice tone="warning">{t(question)}</Notice> : null}
+        </>) : null}
         {error ? <Text fg={colors.negative} wrapText>{error}</Text> : null}
         <DialogActions alignEnd>
           <Button label="Cancel" variant="secondary" disabled={posting} desktopShortcut="Esc" onPress={dismiss} />
           <Button
-            label={posting ? t("Posting...") : t("Post")}
-            variant={question ? "danger" : "primary"}
+            label={posting ? (destination === "chat" ? t("Posting...") : t("Copying...")) : (destination === "chat" ? t("Post") : t("Copy link"))}
+            variant={question && destination === "chat" ? "danger" : "primary"}
             active={!nativePaneChrome && activeField === "post"}
             disabled={posting}
-            desktopShortcut={question ? undefined : "Enter"}
+            desktopShortcut={question && destination === "chat" ? undefined : "Enter"}
             onPress={() => { void submit(); }}
           />
         </DialogActions>

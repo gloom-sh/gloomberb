@@ -26,8 +26,6 @@ import {
   resetDoubleEscapeClose,
   takeDoubleEscapeClose,
 } from "../../utils/double-escape-close";
-import { copyLivePaneShare } from "../../shares/live";
-import { buildPaneSharePayload } from "../../shares/pane";
 import { contextMenuDivider, type ContextMenuItem } from "../../types/context-menu";
 import { useKeybindings } from "../../app/keybindings";
 import { useDialogState } from "../../ui/dialog";
@@ -74,7 +72,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const {
     cellHeightPx = 18,
     nativePaneChrome,
-    publicSharing,
     titleBarOverlay,
     nativeWindowChrome = titleBarOverlay,
     windowControls,
@@ -94,16 +91,6 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     () => ({ config, paneState }) as Parameters<typeof resolveTickerForPane>[0],
     [config, paneState],
   );
-  const tickers = useAppSelector((state) => state.tickers);
-  const sharePayload = useMemo(() => instance && publicSharing
-    ? buildPaneSharePayload(
-        pluginRegistry,
-        instance,
-        paneState[instance.instanceId] ?? {},
-        resolveTickerForPane(titleState, instance.instanceId),
-        tickers,
-      )
-    : null, [instance, paneState, pluginRegistry, publicSharing, tickers, titleState]);
   const quickSettings = instance ? pluginRegistry.resolvePaneQuickSettings(instance.instanceId) : [];
   const title = instance && paneDef
     ? getPaneDisplayTitle(titleState, instance, paneDef, pluginRegistry.panes)
@@ -184,16 +171,11 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     if (nativeWindowChrome) void rendererHost.startWindowDrag?.();
   }, [focusPane, nativeWindowChrome, rendererHost]);
 
-  const sharePane = useCallback(async () => {
-    if (!sharePayload) return;
-    await copyLivePaneShare(sharePayload, {
-      copyText: (text) => rendererHost.copyText(text),
-      notify: (notification) => { pluginRegistry.notify(notification); },
-    });
-  }, [pluginRegistry, rendererHost, sharePayload]);
-  useEffect(() => pluginRegistry.bindHost({ sharePane: () => { void sharePane(); } }), [pluginRegistry, sharePane]);
+  const sharePane = useCallback(() => {
+    pluginRegistry.sharePane(desktopWindowBridge.paneId);
+  }, [desktopWindowBridge.paneId, pluginRegistry]);
 
-  // Share to Chat takes this window's pane, as the main window's shell does.
+  // Share takes this window's pane, as the main window's shell does.
   const nativeRenderer = useNativeRenderer();
   const paneMap = useMemo(() => new Map(instance && paneDef ? [[instance.instanceId, { instance, def: paneDef }]] : []), [instance, paneDef]);
   const closeMenu = useCallback(() => setMenuState(null), []);
@@ -266,9 +248,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       });
     }
     items.push({ id: "pane-docs", label: "Docs", onSelect: openDocs });
-    if (sharePayload) {
-      items.push({ id: "share-pane", label: "Share Pane", accelerator: accelerators.share, onSelect: sharePane });
-    }
+    items.push({ id: "share-pane", label: "Share", accelerator: accelerators.share, onSelect: sharePane });
     items.push(pluginContextMenuSlot("pane"));
     if (dockPane) {
       items.push({ id: "dock", label: "Dock in Main Window", accelerator: accelerators.toggleFloating, onSelect: dockPane });
@@ -367,8 +347,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         else handled = false;
         break;
       case "share":
-        if (sharePayload) void sharePane();
-        else handled = false;
+        if (!event.repeat) sharePane();
         break;
       case "toggle-floating":
         if (dockPaneRef.current) dockPaneRef.current();

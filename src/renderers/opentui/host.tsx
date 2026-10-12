@@ -43,6 +43,7 @@ export function toKeyEventLike(event: {
   sequence?: string;
   key?: string;
   super?: boolean;
+  repeated?: boolean;
 }): KeyEventLike {
   const key = event.name ?? event.key ?? "";
   return {
@@ -57,6 +58,7 @@ export function toKeyEventLike(event: {
     alt: event.alt === true || event.meta === true || event.option === true,
     meta: event.super === true,
     super: event.super === true,
+    repeat: event.repeated === true,
     get defaultPrevented() {
       return event.defaultPrevented ?? false;
     },
