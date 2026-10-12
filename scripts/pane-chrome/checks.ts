@@ -274,6 +274,280 @@ const HELD_MS = 1_500;
 /** Longer than the action's cooldown, so the next press is a separate one. */
 const KEY_UP_FOR_MS = 800;
 
+/**
+ * Moves the pointer over a pane's chart plot and waits for the crosshair to
+ * sit under it: the horizontal line at the pointer, the vertical one on the
+ * nearest observation.
+ */
+async function crosshairUnder(cdp: Cdp, paneId: string, at: Point): Promise<void> {
+  await mouse(cdp, "mouseMoved", at.x, at.y, false);
+  const crosshair = `(() => {
+    const pane = __check.pane(${JSON.stringify(paneId)});
+    const x = pane?.querySelector("[data-gloom-role=chart-crosshair-x]")?.getBoundingClientRect();
+    const y = pane?.querySelector("[data-gloom-role=chart-crosshair-y]")?.getBoundingClientRect();
+    return x && y ? { x: Math.round(x.x + x.width / 2), y: Math.round(y.y + y.height / 2) } : null;
+  })()`;
+  const under = `(() => { const lines = ${crosshair}; return lines && Math.abs(lines.x - ${at.x}) <= 4 && Math.abs(lines.y - ${at.y}) <= 2; })()`;
+  if (!await waitFor(cdp, under)) {
+    fail(`the crosshair in ${paneId} is not under the pointer`, { pointer: { x: Math.round(at.x), y: Math.round(at.y) }, crosshair: await evaluate(cdp, crosshair) });
+  }
+}
+
+const plotRect = async (cdp: Cdp, paneId: string) => await evaluate<Rect | null>(
+  cdp,
+  `__check.rect(__check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-panel]"))`,
+) ?? fail(`${paneId} has no chart plot`);
+
+/** The day of the observation the chart's legend reads out under the pointer, as days since 1970. */
+async function cursorDay(cdp: Cdp, paneId: string, at: Point): Promise<number> {
+  // A move off and back, so the chart reads the pointer here even when it already was.
+  await mouse(cdp, "mouseMoved", at.x + 2, at.y, false);
+  await frames(cdp, 2);
+  await mouse(cdp, "mouseMoved", at.x, at.y, false);
+  await frames(cdp, 4);
+  const day = await evaluate<number | null>(cdp, `(() => {
+    const label = __check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-legend-series]")?.getAttribute("data-gloom-label") ?? "";
+    const date = /Observed (\\d{4}-\\d{2}-\\d{2})/.exec(label)?.[1];
+    return date ? Date.parse(date) / 86400000 : null;
+  })()`);
+  return day ?? fail(`${paneId} reads out no observation under the pointer`, at);
+}
+
+/** Presses a tool in the chart's toolbar by the start of its label. */
+async function armTool(cdp: Cdp, paneId: string, label: string): Promise<void> {
+  const at = await evaluate<Point | null>(cdp, `(() => {
+    const tool = [...(__check.pane(${JSON.stringify(paneId)})?.querySelectorAll("[data-gloom-role=composite-chart-tool]") ?? [])]
+      .find((element) => (element.getAttribute("data-gloom-label") ?? "").startsWith(${JSON.stringify(label)}));
+    const r = tool?.getBoundingClientRect();
+    return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+  })()`) ?? fail(`${paneId} has no ${label} tool`);
+  await click(cdp, at);
+}
+
+/** The chart's vector shapes (drawings, the ruler's box) in page px, from their 0..1 overlay space. */
+async function chartShapes(cdp: Cdp, paneId: string): Promise<Array<{ kind: string; points: Point[] }>> {
+  return evaluate(cdp, `(() => {
+    const svg = __check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-panel] svg");
+    if (!svg) return [];
+    const r = svg.getBoundingClientRect();
+    const toPage = (x, y) => ({ x: r.x + Number(x) * r.width, y: r.y + Number(y) * r.height });
+    return [...svg.querySelectorAll("polyline, rect")].map((shape) => shape.tagName === "rect"
+      ? { kind: "box", points: [toPage(shape.getAttribute("x"), shape.getAttribute("y")), toPage(Number(shape.getAttribute("x")) + Number(shape.getAttribute("width")), Number(shape.getAttribute("y")) + Number(shape.getAttribute("height")))] }
+      : { kind: "line", points: shape.getAttribute("points").trim().split(/\\s+/).map((pair) => toPage(...pair.split(","))) });
+  })()`);
+}
+
+/** Three notches of Ctrl+wheel up over the plot: a zoom in anchored on the pointer. */
+async function zoomIn(cdp: Cdp, at: Point): Promise<void> {
+  await mouse(cdp, "mouseMoved", at.x, at.y, false);
+  for (let notch = 0; notch < 3; notch += 1) {
+    await cdp.send("Input.dispatchMouseEvent", { type: "mouseWheel", x: at.x, y: at.y, deltaX: 0, deltaY: -120, modifiers: 2 });
+    await frames(cdp, 2);
+  }
+  await frames(cdp, 2);
+}
+
+const near2 = (a: Point, b: Point, tolerance: number) => Math.abs(a.x - b.x) <= tolerance && Math.abs(a.y - b.y) <= tolerance;
+
+/** Drags from `from` to `to` in steps, a frame after each, without letting go. */
+async function dragHeld(cdp: Cdp, from: Point, to: Point, steps = 12): Promise<void> {
+  await mouse(cdp, "mouseMoved", from.x, from.y, false);
+  await mouse(cdp, "mousePressed", from.x, from.y, true);
+  await frames(cdp);
+  for (let step = 1; step <= steps; step += 1) {
+    await mouse(cdp, "mouseMoved", from.x + ((to.x - from.x) * step) / steps, from.y + ((to.y - from.y) * step) / steps, true);
+    await frames(cdp);
+  }
+}
+
+/**
+ * The charts that sit inside a pane's own layout (`nested`) take the pointer
+ * as they did before they filled their box: the crosshair under it, a pan
+ * that keeps the observation under it, a wheel zoom anchored on it, and the
+ * trend line and the ruler drawn from where it pressed to where it let go.
+ */
+const NESTED_CHARTS = ["chart-bar:dock", "beside:dock", "overlay:dock"];
+const nestedChartSteps: Step[] = NESTED_CHARTS.flatMap((paneId) => [
+  {
+    name: `${paneId} chart: the crosshair sits under the pointer across the plot`,
+    scenario: "nested",
+    async run(cdp: Cdp) {
+      const plot = await plotRect(cdp, paneId);
+      await crosshairUnder(cdp, paneId, { x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 });
+      // Clear of the chart's drawing toolbar at the plot's top left.
+      await crosshairUnder(cdp, paneId, { x: plot.x + plot.width * 0.5, y: plot.y + 3 });
+    },
+  },
+  {
+    name: `${paneId} chart: a pan keeps the observation under the pointer`,
+    scenario: "nested",
+    async run(cdp: Cdp) {
+      const plot = await plotRect(cdp, paneId);
+      // Zoomed in first: the whole history has nowhere to pan to.
+      await zoomIn(cdp, { x: plot.x + plot.width * 0.5, y: plot.y + plot.height * 0.5 });
+      const from = { x: plot.x + plot.width * 0.3, y: plot.y + plot.height * 0.5 };
+      const to = { x: from.x + Math.round(plot.width * 0.25), y: from.y };
+      const before = await cursorDay(cdp, paneId, from);
+      await drag(cdp, from, [to]);
+      const after = await cursorDay(cdp, paneId, to);
+      if (Math.abs(after - before) > 2) fail(`panning moved the observation under the pointer by ${after - before} days`);
+    },
+  },
+  {
+    name: `${paneId} chart: a wheel zoom keeps the observation under the pointer`,
+    scenario: "nested",
+    async run(cdp: Cdp) {
+      const plot = await plotRect(cdp, paneId);
+      const at = { x: plot.x + plot.width * 0.6, y: plot.y + plot.height * 0.5 };
+      const before = await cursorDay(cdp, paneId, at);
+      const axis = `__check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=chart-time-axis]")?.getAttribute("data-gloom-label")`;
+      const labels = await evaluate<string>(cdp, axis);
+      await zoomIn(cdp, at);
+      if (!await waitFor(cdp, `${axis} !== ${JSON.stringify(labels)}`)) fail("the wheel did not zoom the chart");
+      const after = await cursorDay(cdp, paneId, at);
+      if (Math.abs(after - before) > 2) fail(`zooming moved the observation under the pointer by ${after - before} days`);
+    },
+  },
+  {
+    name: `${paneId} chart: a trend line runs from the press to the release`,
+    scenario: "nested",
+    async run(cdp: Cdp) {
+      const plot = await plotRect(cdp, paneId);
+      await armTool(cdp, paneId, "Trend line");
+      const from = { x: plot.x + plot.width * 0.25, y: plot.y + plot.height * 0.3 };
+      const to = { x: plot.x + plot.width * 0.7, y: plot.y + plot.height * 0.75 };
+      await drag(cdp, from, [to]);
+      await frames(cdp, 3);
+      const line = (await chartShapes(cdp, paneId)).find((shape) => shape.kind === "line" && shape.points.length === 2);
+      if (!line) fail("no trend line was drawn");
+      // Its ends sit on observations: within a few px of the pointer, as before.
+      if (!near2(line.points[0]!, from, 4) || !near2(line.points[1]!, to, 4)) {
+        fail("the trend line does not run from the press to the release", { from, to, line: line.points });
+      }
+    },
+  },
+  {
+    name: `${paneId} chart: the ruler spans from the press to the pointer`,
+    scenario: "nested",
+    async run(cdp: Cdp) {
+      const plot = await plotRect(cdp, paneId);
+      await armTool(cdp, paneId, "Ruler");
+      const from = { x: plot.x + plot.width * 0.2, y: plot.y + plot.height * 0.7 };
+      const to = { x: plot.x + plot.width * 0.65, y: plot.y + plot.height * 0.35 };
+      await dragHeld(cdp, from, to);
+      const box = (await chartShapes(cdp, paneId)).find((shape) => shape.kind === "box");
+      const readout = await evaluate<boolean>(cdp, `!!__check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-measure]")`);
+      await mouse(cdp, "mouseReleased", to.x, to.y, false);
+      if (!box || !readout) fail("the ruler drew no box or readout", { box, readout });
+      const [a, b] = box.points as [Point, Point];
+      const corners = { left: Math.min(a.x, b.x), right: Math.max(a.x, b.x), top: Math.min(a.y, b.y), bottom: Math.max(a.y, b.y) };
+      if (Math.abs(corners.left - from.x) > 4 || Math.abs(corners.right - to.x) > 4 || Math.abs(corners.top - to.y) > 4 || Math.abs(corners.bottom - from.y) > 4) {
+        fail("the ruler does not span from the press to the pointer", { from, to, corners });
+      }
+    },
+  },
+]);
+
+nestedChartSteps.push({
+  name: "board:dock chart: the crosshair sits under the pointer across the kit's chart band",
+  scenario: "nested",
+  async run(cdp: Cdp) {
+    const plot = await plotRect(cdp, "board:dock");
+    await crosshairUnder(cdp, "board:dock", { x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 });
+    await crosshairUnder(cdp, "board:dock", { x: plot.x + plot.width * 0.5, y: plot.y + 3 });
+  },
+});
+
+/** A floating pane's resize grip and the text of every label on its charts' time axes, in page px. */
+const GRIP_AND_AXIS_LABELS = (paneId: string) => `(() => {
+  const pane = __check.pane(${JSON.stringify(paneId)});
+  const grip = __check.rect(pane?.querySelector(":scope > [data-gloom-role=resize-handle]"));
+  const labels = [...(pane?.querySelectorAll("[data-gloom-role=chart-time-axis] *") ?? [])]
+    .filter((element) => element.children.length === 0 && (element.textContent ?? "").trim().length > 0)
+    .map((label) => {
+      // The text, not its box: a segment's box reaches the edge, its text may not.
+      const range = document.createRange();
+      range.selectNodeContents(label);
+      const r = range.getBoundingClientRect();
+      return { x: r.x, y: r.y, width: r.width, height: r.height, text: label.textContent.trim() };
+    });
+  return { grip, labels };
+})()`;
+
+async function endLabelsClearOfGrip(cdp: Cdp, paneId: string, when: string): Promise<void> {
+  const { grip, labels } = await evaluate<{ grip: Rect | null; labels: Array<Rect & { text: string }> }>(cdp, GRIP_AND_AXIS_LABELS(paneId));
+  if (!grip) fail(`${paneId} has no resize grip`);
+  if (labels.length === 0) fail(`${paneId} has no time axis labels`);
+  for (const label of labels) {
+    const overlaps = label.x < grip.x + grip.width && label.x + label.width > grip.x && label.y < grip.y + grip.height && label.y + label.height > grip.y;
+    const { text: _text, ...box } = label;
+    if (overlaps) fail(`${when}, the time axis label "${label.text}" in ${paneId} runs under the resize grip`, { label: round(box), grip: round(grip) });
+  }
+}
+
+/**
+ * A chart that reaches the bottom of a floating pane keeps the last label of
+ * its time axis clear of the resize grip in the corner, at rest and while the
+ * corner is dragged.
+ */
+const gripSteps: Step[] = [
+  ["chart", "chart:float"],
+  ["g", "chart-bar:float"],
+  ["beside", "beside:float"],
+  ["overlay", "overlay:float"],
+].map(([float, paneId]) => ({
+  name: `floating ${paneId}: its time axis stays clear of the resize grip`,
+  scenario: `resize&float=${float}`,
+  async run(cdp: Cdp) {
+    await endLabelsClearOfGrip(cdp, paneId!, "at rest");
+    const from = await pointOf(cdp, paneId!, "resize");
+    await dragHeld(cdp, from, { x: from.x + 120, y: from.y + 40 });
+    await endLabelsClearOfGrip(cdp, paneId!, "while resizing");
+    await mouse(cdp, "mouseReleased", from.x + 120, from.y + 40, false);
+    await frames(cdp, 4);
+    await endLabelsClearOfGrip(cdp, paneId!, "after the release");
+  },
+}));
+
+/**
+ * Every box outside the charts and the boxes that fill with them, with the
+ * fills taken off and put back: where they are must not change. A fill only
+ * takes the fraction of a cell left empty below or beside a chart.
+ */
+const FILLS_MOVE = `(() => {
+  const filled = [...document.querySelectorAll("[data-gloom-fill-x],[data-gloom-fill-y]")];
+  const others = [...document.querySelectorAll("[data-gloom-role=pane-window] *")]
+    .filter((element) => !filled.some((fill) => fill === element || fill.contains(element)));
+  const box = (element) => { const r = element.getBoundingClientRect(); return [r.x, r.y, r.width, r.height].map((v) => Math.round(v * 100) / 100); };
+  const before = others.map(box);
+  const saved = filled.map((fill) => [fill, fill.getAttribute("data-gloom-fill-x"), fill.getAttribute("data-gloom-fill-y")]);
+  for (const fill of filled) { fill.removeAttribute("data-gloom-fill-x"); fill.removeAttribute("data-gloom-fill-y"); }
+  const after = others.map(box);
+  for (const [fill, x, y] of saved) { if (x) fill.setAttribute("data-gloom-fill-x", x); if (y) fill.setAttribute("data-gloom-fill-y", y); }
+  const moved = others.map((element, i) => ({ element, filled: before[i], cells: after[i] }))
+    .filter(({ filled, cells }) => filled.some((value, j) => Math.abs(value - cells[j]) > 0.5))
+    .slice(0, 6)
+    .map(({ element, filled, cells }) => ({ box: element.getAttribute("data-gloom-role") ?? element.tagName.toLowerCase(), pane: element.closest("[data-gloom-pane-id]")?.getAttribute("data-gloom-pane-id"), filled, cells }));
+  return { filled: filled.length, moved };
+})()`;
+
+const fillSteps: Step[] = ([
+  ["nested", true],
+  ["stacked", true],
+  ["resize", true],
+  ["resize&float=under", false],
+  ["resize&float=board", false],
+] as const).map(([scenario, fills]) => ({
+  name: `${scenario}: at rest, a chart's fill moves nothing outside it`,
+  scenario,
+  async run(cdp: Cdp) {
+    await frames(cdp, 6);
+    const { filled, moved } = await evaluate<{ filled: number; moved: unknown[] }>(cdp, FILLS_MOVE);
+    if (fills && filled === 0) fail("no chart fills its box here, so this check checks nothing");
+    if (moved.length > 0) fail("taking the fills off moves boxes outside the charts", moved);
+  },
+}));
+
 const steps: Step[] = [
   { name: "theme preview paints every surface, cancel and commit agree", scenario: "theme&theme=high-contrast", run: checkThemePreview },
   { name: "theme preview paints a popped-out chart, cancel and commit agree", scenario: "theme-detached&theme=high-contrast", run: checkThemePreview },
@@ -576,6 +850,32 @@ const steps: Step[] = [
     },
   })),
   {
+    // A chart over a data table stays on its cells and the prediction during a
+    // resize: following the frame would lay the table's rows out on every
+    // frame. The table keeps the size the pane last rendered it at.
+    name: "floating board: the table under the chart band keeps its size between catch-ups",
+    scenario: "resize&float=board",
+    async run(cdp) {
+      const width = `__check.rect(__check.pane("board:float")?.querySelector("[data-gloom-role=data-table]"))?.width ?? null`;
+      const before = await evaluate<number | null>(cdp, width) ?? fail("board:float has no table");
+      const from = await pointOf(cdp, "board:float", "resize");
+      await mouse(cdp, "mouseMoved", from.x, from.y, false);
+      await mouse(cdp, "mousePressed", from.x, from.y, true);
+      await frames(cdp);
+      let during: number | null = null;
+      try {
+        await mouse(cdp, "mouseMoved", from.x + 6, from.y + 6, true);
+        await mouse(cdp, "mouseMoved", from.x + 140, from.y + 54, true);
+        await frames(cdp, 2);
+        during = await evaluate<number | null>(cdp, width);
+      } finally {
+        await mouse(cdp, "mouseReleased", from.x + 140, from.y + 54, false);
+        await frames(cdp, 2);
+      }
+      if (during === null || Math.abs(during - before) > 0.5) fail("mid-drag, the table under the chart band was laid out at the frame's size", { before, during });
+    },
+  },
+  {
     name: "dock divider: the chart beside it keeps to its pane's edge between catch-ups",
     scenario: "resize",
     async run(cdp) {
@@ -613,6 +913,9 @@ const steps: Step[] = [
       }
     },
   },
+  ...nestedChartSteps,
+  ...gripSteps,
+  ...fillSteps,
   {
     name: "idle: a pane with two tables renders nothing while nothing moves",
     scenario: "resize",

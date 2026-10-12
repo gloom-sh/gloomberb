@@ -288,7 +288,8 @@ export function WebSurface3D(props: Surface3DHostProps) {
   const boxRef = useRef<BoxRenderable | null>(null);
   // While a resize has the pane ahead of this size, the box takes the size it
   // will have and the drawing buffer follows it (below), crisp on every move.
-  useLiveStretch(boxRef, props.width, props.height);
+  // It keeps its cells at rest: the GPU path is not checked without a GPU.
+  useLiveStretch(boxRef, props.width, props.height, { fit: false });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const labelLayerRef = useRef<HTMLDivElement | null>(null);

@@ -14,9 +14,12 @@
  * (chart panes for the copy screenshot check) or `resize` (a news table, a
  * chart, and a table in a sidebar beside a second table, docked, with a news
  * table floating over them; `&float=chart`, `&float=heat` or `&float=fear`
- * floats a chart, a heat map or the Fear & Greed pane instead) or `narrow`
- * (floating panes either side of the width a header keeps Ask Gloom at) or
- * `chat` (the chat view over an invented channel, see chat-fixture.tsx).
+ * floats a chart, a heat map or the Fear & Greed pane instead, and `&float=g`,
+ * `&float=board`, `&float=beside`, `&float=overlay` or `&float=under` one of
+ * the charts that sit inside a pane's own layout), `nested` (the first four
+ * docked), `stacked` (the chart under a table docked beside a chart),
+ * `narrow` (floating panes either side of the width a header keeps Ask Gloom
+ * at) or `chat` (the chat view over an invented channel, see chat-fixture.tsx).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -34,6 +37,8 @@ import { createRoot } from "react-dom/client";
 import { CompositeChart } from "../../src/components/chart/composite";
 import { StaticChartSurface } from "../../src/components/chart/static/chart-surface";
 import { DataTableView } from "../../src/components/data-table/view";
+import { ChartTableHeader } from "../../src/components/chart-table/header";
+import { QueryBar } from "../../src/components/ui/query-bar";
 import { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface } from "../../src/components/metric-treemap/heat-surface";
 import type { MetricTreemapItem } from "../../src/components/metric-treemap/layout";
 import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
@@ -312,6 +317,152 @@ function ChartPane({ focused, width, height }: PaneProps) {
   return <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={width} height={height} focused={focused} />;
 }
 
+const RANGE_FILTER_OPTIONS = ["1M", "3M", "1Y", "5Y"].map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
+
+/**
+ * The G chart pane's layout over the same invented closes: a query bar, then
+ * the chart in the rest of the pane, given the pane's cells less the bar's row.
+ */
+function ChartUnderBarPane({ focused, width, height }: PaneProps) {
+  const [range, setRange] = useState("1Y");
+  return (
+    <Box flexDirection="column" width={width} height={height}>
+      <QueryBar
+        width={width}
+        filters={[{ id: "range", label: "Range", inline: true, value: range, options: RANGE_FILTER_OPTIONS, onChange: setRange }]}
+      />
+      <Box flexGrow={1} minHeight={4}>
+        <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={Math.max(1, width)} height={Math.max(4, height - 1)} focused={focused} />
+      </Box>
+    </Box>
+  );
+}
+
+const BOARD_TABS = [{ value: "one", label: "Stocks" }, { value: "two", label: "Rates" }];
+const BOARD_ROWS = TABLE_ROWS.slice(0, 12);
+
+/**
+ * A board as the chart-table kit lays it out (inventories, money markets):
+ * the pane's tabs, a query bar, the kit's chart band and a table under it.
+ */
+function ChartBoardPane({ paneId, focused, width, height }: PaneProps) {
+  const [tab, setTab] = useState("one");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const { strip, rows: tabRows } = usePaneTabs({ tabs: BOARD_TABS, activeValue: tab, onSelect: setTab, focused, dense: true });
+  const bodyHeight = Math.max(3, height - tabRows);
+  return (
+    <Box width={width} height={height} flexDirection="column">
+      {strip}
+      <DataTableView<number>
+        focused={focused}
+        rootWidth={width}
+        rootHeight={bodyHeight}
+        rootBefore={(
+          <ChartTableHeader
+            width={width}
+            height={bodyHeight}
+            tableRows={BOARD_ROWS.length}
+            tableColumns={TABLE_COLUMNS}
+            query={<QueryBar width={width} meta="Invented closes" />}
+            chart={{ series: CHART_SERIES, minRows: 8 }}
+          />
+        )}
+        selection={{ kind: "id", selectedId, getId: String, onChange: setSelectedId }}
+        columns={TABLE_COLUMNS}
+        items={BOARD_ROWS}
+        sortColumnId={null}
+        sortDirection="asc"
+        getItemKey={String}
+        emptyStateTitle="No rows"
+        renderCell={(row, column) => {
+          const value = ((row * 7919 + Number(column.id.slice(1)) * 104729 + paneId.length) % 99991) / 100;
+          return { text: column.id === "c0" ? `T${row}` : value.toFixed(2) };
+        }}
+      />
+    </Box>
+  );
+}
+
+const BESIDE_TABLE_WIDTH = 34;
+
+/** A table of a fixed width with the chart taking the rest of the row, as a board with its history beside it. */
+function ChartBesideTablePane({ paneId, focused, width, height }: PaneProps) {
+  const tableWidth = Math.min(BESIDE_TABLE_WIDTH, Math.floor(width / 2));
+  return (
+    <Box flexDirection="row" width={width} height={height}>
+      <Box width={tableWidth} height={height} flexShrink={0}>
+        <TablePane paneId={paneId} paneType="table" focused={focused} width={tableWidth} height={height} />
+      </Box>
+      <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={Math.max(1, width - tableWidth)} height={height} focused={focused} />
+    </Box>
+  );
+}
+
+/** A header row, then the chart with a toolbar laid over its top right by z-index, as a board's controls sit on its chart. */
+function ChartOverlayPane({ focused, width, height }: PaneProps) {
+  return (
+    <Box flexDirection="column" width={width} height={height}>
+      <Box height={1} paddingX={1}>
+        <Text>Invented closes</Text>
+      </Box>
+      <Box flexGrow={1} position="relative">
+        <Box
+          position="absolute"
+          top={1}
+          right={2}
+          zIndex={5}
+          data-shot-region="chart-overlay-toolbar"
+          style={{ backgroundColor: "#1d4ed8", width: 96, height: 18, borderRadius: 4 }}
+        />
+        <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={Math.max(1, width)} height={Math.max(4, height - 1)} focused={focused} />
+      </Box>
+    </Box>
+  );
+}
+
+const UNDER_POINTS = inventedSeries(200, 20, 6);
+
+/**
+ * A table on top that takes most of the pane and grows into what is left,
+ * a caption row, then a static chart of the selected row in the rest, given
+ * the fraction of a row the pane's cells leave, as the volatility board lays
+ * out its index history under its board.
+ */
+function ChartUnderTablePane({ paneId, focused, width, height }: PaneProps) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const tableHeight = Math.max(5, Math.min(BOARD_ROWS.length + 2, Math.floor(height * 0.62)));
+  return (
+    <Box width={width} height={height} flexDirection="column" overflow="hidden">
+      <DataTableView<number>
+        focused={focused}
+        rootWidth={width}
+        rootHeight={tableHeight}
+        selection={{ kind: "id", selectedId, getId: String, onChange: setSelectedId }}
+        columns={TABLE_COLUMNS}
+        items={BOARD_ROWS}
+        sortColumnId={null}
+        sortDirection="asc"
+        getItemKey={String}
+        emptyStateTitle="No rows"
+        renderCell={(row, column) => {
+          const value = ((row * 7919 + Number(column.id.slice(1)) * 104729 + paneId.length) % 99991) / 100;
+          return { text: column.id === "c0" ? `T${row}` : value.toFixed(2) };
+        }}
+      />
+      <Box height={1} paddingX={1}><Text>Invented index</Text></Box>
+      <StaticChartSurface
+        points={UNDER_POINTS}
+        calendarSpaced
+        showTimeAxis
+        width={width}
+        height={Math.max(3, height - tableHeight - 1)}
+        colors={{ lineColor: "#d4d4d8", gridColor: "#2a2f3a", crosshairColor: "#9aa3b2", bgColor: "#101218", axisColor: "#9aa3b2" }}
+        focused={focused}
+      />
+    </Box>
+  );
+}
+
 /**
  * A table in a resizable sidebar, like the venue map's list, beside a second
  * table that takes the rest of the pane. The second one's box sizes to its
@@ -437,6 +588,11 @@ const PANES = {
   charts: { name: "Charts", component: ChartsPane },
   news: { name: "Top News", component: NewsPane },
   chart: { name: "Chart", component: ChartPane },
+  "chart-bar": { name: "G chart", component: ChartUnderBarPane },
+  board: { name: "Board", component: ChartBoardPane },
+  beside: { name: "Chart beside a table", component: ChartBesideTablePane },
+  overlay: { name: "Chart under a toolbar", component: ChartOverlayPane },
+  under: { name: "Chart under a table", component: ChartUnderTablePane },
   sidebar: { name: "Sidebar", component: SidebarPane },
   heat: { name: "Heat map", component: HeatPane },
   chat: { name: "Chat", component: ChatFixturePane },
@@ -519,11 +675,14 @@ function perfLayout(): LayoutConfig {
   };
 }
 
-const FLOATING_RESIZE: Record<string, string> = { chart: "chart", heat: "heat", fear: "fear-greed" };
+const FLOATING_RESIZE: Record<string, string> = {
+  chart: "chart", heat: "heat", fear: "fear-greed", g: "chart-bar", board: "board", beside: "beside", overlay: "overlay", under: "under",
+};
 
 /**
  * news:dock | chart:dock over sidebar:dock | table:dock, with news:float (or
- * chart:float, heat:float, fear-greed:float) over the middle.
+ * chart:float, heat:float, fear-greed:float, chart-bar:float, board:float,
+ * beside:float, overlay:float, under:float) over the middle.
  */
 function resizeLayout(): LayoutConfig {
   const floating = `${FLOATING_RESIZE[params.get("float") ?? ""] ?? "news"}:float`;
@@ -558,6 +717,26 @@ function narrowLayout(): LayoutConfig {
   };
 }
 
+/** The charts that sit inside a pane's own layout, docked: chart-bar:dock | beside:dock over board:dock | overlay:dock. */
+function nestedLayout(): LayoutConfig {
+  return {
+    dockRoot: {
+      kind: "split", axis: "vertical", ratio: 0.5,
+      first: row(["chart-bar:dock", "beside:dock"]),
+      second: row(["board:dock", "overlay:dock"]),
+    },
+    instances: ["chart-bar:dock", "beside:dock", "board:dock", "overlay:dock"].map(instance),
+    floating: [],
+    detached: [],
+  };
+}
+
+/** The chart under a table beside a chart, docked: each a fraction of a cell off whole cells. */
+function stackedLayout(): LayoutConfig {
+  const ids = ["under:dock", "chart:dock"];
+  return { dockRoot: { kind: "split", axis: "horizontal", ratio: 0.62, first: leaf(ids[0]!), second: leaf(ids[1]!) }, instances: ids.map(instance), floating: [], detached: [] };
+}
+
 /** The Fear & Greed pane beside the charts pane, both tall enough to show their charts. */
 function screenshotLayout(): LayoutConfig {
   const ids = ["fear-greed:a", "charts:a"];
@@ -582,6 +761,8 @@ function config() {
     : scenario === "resize" ? resizeLayout()
     : scenario === "narrow" ? narrowLayout()
     : scenario === "chat" ? chatLayout()
+    : scenario === "nested" ? nestedLayout()
+    : scenario === "stacked" ? stackedLayout()
     : chromeLayout();
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
   const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];

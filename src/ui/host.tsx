@@ -143,11 +143,19 @@ export interface BoxRenderable {
    */
   observeSize?: (listener: (size: { width: number; height: number }) => void) => () => void;
   /**
-   * Desktop only: whether CSS sizes this box to its pane's whole content box
-   * (`PANE_FILL` on a pane's root, ui/pane-fill.ts), so it follows every
-   * frame of a resize on its own.
+   * Desktop only, for a surface root (a chart, a heat map): fills the box the
+   * surface sits in where its cells leave a fraction of a cell, refits when
+   * that box changes size at rest, and takes part in every resize (see
+   * `followsFrame`). Returns the untrack.
    */
-  fillsPane?: () => boolean;
+  trackSurface?: () => () => void;
+  /** Desktop only: fits a tracked surface to its box again, after it renders at new cells. */
+  refitSurface?: () => void;
+  /**
+   * Desktop only, during a resize: the axes on which CSS keeps a tracked
+   * surface on the frame's size by itself, to the pixel.
+   */
+  followsFrame?: () => { x: boolean; y: boolean };
   [key: string]: unknown;
 }
 

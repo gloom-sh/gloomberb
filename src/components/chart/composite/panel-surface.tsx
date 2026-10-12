@@ -194,10 +194,10 @@ export function CompositePanelSurface({
     | null
   >(null);
   // The plot's box as the browser lays it out: on the desktop a chart that
-  // fills its pane (PANE_FILL) has it a fraction of a cell past its columns
-  // and rows. The bitmap is drawn at that size, so it is 1:1 at rest, and the
-  // pointer is read back into the scene's columns and rows. Elsewhere, and in
-  // the terminal, it is the plot's cells.
+  // fills its box has it a fraction of a cell past its columns and rows. The
+  // bitmap is drawn at that size, so it is 1:1 at rest, and the pointer is
+  // read back into the scene's columns and rows. Elsewhere, and in the
+  // terminal, it is the plot's cells.
   const plotSize = useMeasuredCells(plotRef, { width: plotWidth, height: panel.height });
   const plotAspect = (plotSize.width * cellWidthPx) / Math.max(plotSize.height * cellHeightPx, 1);
   // The plot is wider than the viewport by the reserved right offset. Gestures

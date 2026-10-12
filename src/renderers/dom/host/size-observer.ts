@@ -1,5 +1,4 @@
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
-import { PANE_FILL_SELECTOR } from "../../../ui/pane-fill";
 
 /**
  * The element's border box in cells each time the browser lays it out at a new
@@ -18,9 +17,4 @@ export function observeCellSize(element: HTMLElement, listener: (size: { width: 
   });
   observer.observe(element);
   return () => observer.disconnect();
-}
-
-/** Whether styles.css sizes the element to its pane's content box. */
-export function fillsPane(element: HTMLElement): boolean {
-  return element.matches(PANE_FILL_SELECTOR);
 }

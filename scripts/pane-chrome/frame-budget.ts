@@ -9,8 +9,11 @@ import { serveFixturePage, type FixturePage } from "./page";
  * drags with real pointer input at 60 moves a second for 1.5 s: a docked and a
  * floating pane across a dense layout (fixture.tsx, `perf`), and, over the
  * `resize` layout, the corner of a floating news table, chart, heat map and
- * Fear & Greed pane, a dock divider between a news table and a chart
- * (measured on each side), and the divider of a table in a pane's sidebar. It
+ * Fear & Greed pane and of the charts that sit inside a pane's own layout (G
+ * layout, chart over a table, chart beside a table, chart under a toolbar), a
+ * dock divider between a news table and a chart and one between the G layout
+ * and the chart beside a table (`nested`, each measured on both sides), and
+ * the divider of a table in a pane's sidebar. It
  * reads what the page's main thread spent (Performance.getMetrics, in thread
  * time), the React commits and the animation frames the page ran, and for a
  * resize how far the frame's edge and the content's edge fell behind the
@@ -124,14 +127,17 @@ const rightOf = (selector: string) => `document.querySelector(${JSON.stringify(s
 const lastRightOf = (selector: string) => `(() => { const all = document.querySelectorAll(${JSON.stringify(selector)}); return all[all.length - 1].getBoundingClientRect().right; })()`;
 const pane = (id: string) => `[data-gloom-pane-id='${id}']`;
 /** The divider between the news table and the chart, above the floating pane. */
-const TOP_DIVIDER = `(() => {
-  const edge = document.querySelector("${pane("news:dock")}").getBoundingClientRect();
+/** The vertical divider at the right edge of a docked pane, 60 px down it. */
+const dividerRightOf = (paneId: string) => `(() => {
+  const edge = document.querySelector("${pane(paneId)}").getBoundingClientRect();
   const y = edge.top + 60;
   const divider = [...document.querySelectorAll("[data-gloom-role=dock-divider][data-axis=horizontal]")]
     .map((element) => element.getBoundingClientRect())
     .find((r) => Math.abs(r.x + r.width / 2 - edge.right) <= 6 && r.top <= y && r.bottom >= y);
   return { x: divider.x + divider.width / 2, y };
 })()`;
+const TOP_DIVIDER = dividerRightOf("news:dock");
+const NESTED_DIVIDER = dividerRightOf("chart-bar:dock");
 
 /** A floating pane's corner, dragged out, in past where it started and out again, as the chart and table resizes do. */
 const cornerResize = (name: string, float: string, paneId: string, content: string, canvas?: string): Scenario => ({
@@ -201,6 +207,40 @@ const SCENARIOS: Scenario[] = [
       anchor: rightOf(pane("chart:dock")),
     },
     canvas: `${pane("chart:dock")} canvas`,
+  },
+  // Charts inside a pane's own layout: under a query bar (the G pane), in the
+  // chart-table kit's band over a table with the pane's tabs, beside a table,
+  // and under a toolbar laid over them.
+  cornerResize("G layout resize", "g", "chart-bar:float", "canvas", `${pane("chart-bar:float")} canvas`),
+  cornerResize("chart over a table resize", "board", "board:float", "canvas", `${pane("board:float")} canvas`),
+  // The same corner, judged by the table under the band: it keeps its size until the pane renders, as on main.
+  cornerResize("table under a chart band resize", "board", "board:float", "[data-gloom-role=data-table]"),
+  cornerResize("chart beside a table resize", "beside", "beside:float", "canvas", `${pane("beside:float")} canvas`),
+  cornerResize("chart under a toolbar resize", "overlay", "overlay:float", "canvas", `${pane("overlay:float")} canvas`),
+  // A static chart under a table that grows into what the chart leaves, as the volatility board draws its index history.
+  cornerResize("chart under a table resize", "under", "under:float", "canvas", `${pane("under:float")} canvas`),
+  {
+    // The divider between the docked G layout and the chart beside a table:
+    // the G chart's canvas keeps to its pane's moving right edge.
+    name: "dock divider beside a G layout",
+    fixture: "nested",
+    grab: (cdp) => evaluate(cdp, NESTED_DIVIDER),
+    path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 240, y: start.y }),
+    track: { frame: rightOf(pane("chart-bar:dock")), content: rightOf(`${pane("chart-bar:dock")} canvas`) },
+    canvas: `${pane("chart-bar:dock")} canvas`,
+  },
+  {
+    // The same divider from the other side: the chart beside a table keeps to its pane's right edge.
+    name: "dock divider beside a chart beside a table",
+    fixture: "nested",
+    grab: (cdp) => evaluate(cdp, NESTED_DIVIDER),
+    path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 240, y: start.y }),
+    track: {
+      frame: `document.querySelector("${pane("beside:dock")}").getBoundingClientRect().left`,
+      content: rightOf(`${pane("beside:dock")} canvas`),
+      anchor: rightOf(pane("beside:dock")),
+    },
+    canvas: `${pane("beside:dock")} canvas`,
   },
   {
     name: "table column drag",

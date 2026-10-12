@@ -232,6 +232,8 @@ export function StaticXAxisLabels({
                 key={`${entry.label}:${entry.ratio}:${index}`}
                 fg={color}
                 selectable={false}
+                // The label against the right edge, which a floating pane's resize grip may cover.
+                data-gloom-edge={"right" in edgeStyle ? "end" : undefined}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -248,7 +250,12 @@ export function StaticXAxisLabels({
       ) : (
         <Box width={width} height={1} flexDirection="row">
           {visibleLabels.map((label, index) => (
-            <Box key={`${label}:${index}`} width={segmentWidths[index]} overflow="hidden">
+            <Box
+              key={`${label}:${index}`}
+              width={segmentWidths[index]}
+              overflow="hidden"
+              data-gloom-edge={index === visibleLabels.length - 1 && visibleLabels.length > 1 ? "end-segment" : undefined}
+            >
               <Text fg={color}>{flowText[index]}</Text>
             </Box>
           ))}

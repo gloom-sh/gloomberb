@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { learnStretchAxis, predictStretchAxis, startStretchAxis } from "./live-stretch";
+import { learnStretchAxis, liveStretchFrame, predictStretchAxis, startStretchAxis } from "./live-stretch";
 
 /** A chart that renders at whole cells, `gutter` short of a pane of `pane` (fractional) cells. */
 const across = (pane: number, gutter = 0) => Math.floor(pane) - gutter;
@@ -34,6 +34,18 @@ describe("live stretch", () => {
     const axis = learnStretchAxis(startStretchAxis(80, 40), 100, 50);
     expect(axis.slope).toBe(0.5);
     expect(predictStretchAxis(axis, 100, 50, 90)).toBe(45);
+  });
+
+  test("draws both axes on every move, so an axis whose prediction is back at its cells is drawn there", () => {
+    // The pane rendered at 100 by 40 cells; the chart at 100 across and 10 high, half of every row it gains.
+    const axes = { x: startStretchAxis(100, 100), y: { pane: 40, own: 10, slope: 0.5 } };
+    const own = { width: 100, height: 10 };
+    expect(liveStretchFrame({ x: false, y: false }, axes, { width: 100, height: 40 }, own, { width: 110, height: 44 })).toEqual({ width: 110, height: 12 });
+    // Back at the rendered height: the chart is drawn 10 high again, not left at 12.
+    expect(liveStretchFrame({ x: false, y: false }, axes, { width: 100, height: 40 }, own, { width: 112, height: 40 })).toEqual({ width: 112, height: 10 });
+    // Across by CSS: the width stays the chart's cells, the height is still predicted.
+    expect(liveStretchFrame({ x: true, y: false }, axes, { width: 100, height: 40 }, own, { width: 112, height: 44 })).toEqual({ width: 100, height: 12 });
+    expect(liveStretchFrame({ x: true, y: false }, axes, { width: 100, height: 40 }, own, { width: 112, height: 40 })).toBeNull();
   });
 
   test("never draws below nothing", () => {

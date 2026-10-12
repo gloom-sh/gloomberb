@@ -262,13 +262,35 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   min-height: 0;
   max-height: 100%;
 }
-/* A surface that takes its pane's whole box (src/ui/pane-fill.ts), as the
-   pane's root, is the content box's size whatever cells it was given: it
-   follows every frame of a resize, and at rest fills the last fraction of a
-   cell the cells leave. */
-[data-gloom-role="pane-content"] > [data-gloom-pane-fill]:only-child {
-  width: 100% !important;
-  height: 100% !important;
+/* A chart or heat map takes the space its box gives it rather than the whole
+   cells it was given (host/surface-fit.ts): a fill at rest, and, while a
+   resize is under way, the boxes up to the pane that are exactly the space
+   their parent gives them follow the frame the same way. */
+[data-gloom-fill-x="stretch"], [data-gloom-follow-x="stretch"] {
+  width: auto !important;
+  align-self: stretch !important;
+}
+[data-gloom-fill-x="grow"], [data-gloom-follow-x="grow"] {
+  flex: 1 1 0px !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+[data-gloom-fill-y="stretch"], [data-gloom-follow-y="stretch"] {
+  height: auto !important;
+  align-self: stretch !important;
+}
+[data-gloom-fill-y="grow"], [data-gloom-follow-y="grow"] {
+  flex: 1 1 0px !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+/* A chart whose time axis reaches a floating pane's resize grip keeps its
+   last label clear of it. */
+[data-gloom-grip-clear] [data-gloom-role="chart-time-axis"] [data-gloom-edge="end"] {
+  right: calc(2 * var(--cell-w)) !important;
+}
+[data-gloom-grip-clear] [data-gloom-role="chart-time-axis"] [data-gloom-edge="end-segment"] {
+  padding-right: calc(2 * var(--cell-w)) !important;
 }
 /* The same chrome row as the pane header, query bar and table header. */
 [data-gloom-role="pane-footer"] {

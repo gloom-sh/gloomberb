@@ -1,0 +1,386 @@
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { isLiveResizing, onLiveResizeEnd, onLiveResizeStart } from "../../../ui/live-resize";
+
+/**
+ * A surface that draws for one size (a chart, a heat map) inside a pane's own
+ * layout: under a query bar, beside a table, in a column of text. Panes size
+ * their boxes in whole cells from the pane's size, so a surface is a fraction
+ * of a cell short of the box it sits in, and nothing in it follows a resize
+ * until the pane renders again.
+ *
+ * A surface looks up its boxes to the pane's content box. On an axis where
+ * every box between them follows the frame by CSS already (it stretches or
+ * grows), is sized to exactly the space its own parent gives it, or is a
+ * fraction of a cell short of a space nothing else takes, and its own cells
+ * reach within a cell of the space its parent gives it, the surface takes
+ * that space by CSS at rest (`data-gloom-fill-x`/`-y`): it fills its box, and
+ * so does each box above it that was short. When a resize starts, the exact
+ * boxes above a filled surface follow by CSS for the length of the resize
+ * (`data-gloom-follow-x`/`-y`), and the surface follows the frame to the
+ * pixel on that axis (`followsFrame`).
+ *
+ * A box that has a size of its own on the way (a fixed width, a share of the
+ * pane, a whole-cell rounding) leaves the surface on its cells on that axis,
+ * as it was, and to `useLiveStretch`'s prediction during a resize. So does a
+ * box that scrolls content larger than itself (a column of charts and text),
+ * and a sized box that holds a data table (the chart-table kit's band over
+ * its table): following the frame through either would lay all of that
+ * content out on every frame, a table's rows up to 4 ms a frame.
+ *
+ * Nothing here changes a box's size at the moment it is marked: an exact box
+ * is already the size CSS gives it, and a filled box only gains the fraction
+ * of a cell its cells leave, from space that is empty: it starts where that
+ * space starts and nothing comes after it, and no sibling grows into it.
+ */
+
+type Axis = "x" | "y";
+type Mode = "stretch" | "grow";
+/** A box on the way up from a surface: exact (follows only during a resize) or short (fills at rest). */
+type Link = [HTMLElement, Mode, "exact" | "short"];
+
+/** Tracked surfaces, with the observer that refits each when its parent's box changes size at rest. */
+const surfaces = new Map<HTMLElement, ResizeObserver | null>();
+/** The boxes above each surface that fill at rest along with it. */
+const boxFills = new Map<HTMLElement, Array<[HTMLElement, Axis, Mode]>>();
+const followed = new WeakMap<HTMLElement, { x: boolean; y: boolean }>();
+let followMarks: Array<[HTMLElement, Axis]> = [];
+let installed = false;
+
+/** Below this, in px, two sizes are the same: the browser lays out in 1/64 px. */
+const EXACT_PX = 0.5;
+
+const SIZE = { x: "width", y: "height" } as const;
+const FILL_ATTRIBUTE = { x: "data-gloom-fill-x", y: "data-gloom-fill-y" } as const;
+const FOLLOW_ATTRIBUTE = { x: "data-gloom-follow-x", y: "data-gloom-follow-y" } as const;
+
+interface Pass {
+  styles: Map<Element, CSSStyleDeclaration>;
+}
+
+function styleOf(pass: Pass, element: Element): CSSStyleDeclaration {
+  let style = pass.styles.get(element);
+  if (!style) {
+    // The element's own window: the page's, or a test's DOM that sets no globals.
+    style = (element.ownerDocument.defaultView ?? window).getComputedStyle(element);
+    pass.styles.set(element, style);
+  }
+  return style;
+}
+
+const px = (value: string) => {
+  const parsed = parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/** The size the box was given in its own style, in px, or null (auto, a percentage, nothing). */
+function ownSize(element: HTMLElement, axis: Axis): number | null {
+  const value = element.style[SIZE[axis]];
+  return value.endsWith("px") ? parseFloat(value) : null;
+}
+
+function isPaneContent(element: Element): boolean {
+  return element.getAttribute("data-gloom-role") === "pane-content";
+}
+
+function inFlow(pass: Pass, element: Element): boolean {
+  const style = styleOf(pass, element);
+  return style.display !== "none" && style.position !== "absolute" && style.position !== "fixed";
+}
+
+/** The parent's content box on `axis`, in fractional px (clientWidth rounds to whole ones). */
+function innerSize(pass: Pass, parent: HTMLElement, axis: Axis): number {
+  const style = styleOf(pass, parent);
+  const rect = parent.getBoundingClientRect();
+  if (axis === "x") {
+    const borders = px(style.borderLeftWidth) + px(style.borderRightWidth);
+    const scrollbar = Math.max(0, parent.offsetWidth - parent.clientWidth - borders);
+    return rect.width - borders - scrollbar - px(style.paddingLeft) - px(style.paddingRight);
+  }
+  const borders = px(style.borderTopWidth) + px(style.borderBottomWidth);
+  const scrollbar = Math.max(0, parent.offsetHeight - parent.clientHeight - borders);
+  return rect.height - borders - scrollbar - px(style.paddingTop) - px(style.paddingBottom);
+}
+
+/**
+ * How `element` takes its size on `axis` from its parent: as the flex
+ * container's cross axis, its main axis, or neither (a grid, a block's
+ * height), with the space the parent gives it there; NaN when that space is
+ * not one the element could simply take (siblings that grow too).
+ */
+function placement(pass: Pass, element: HTMLElement, axis: Axis): { mode: Mode | null; space: number } {
+  const parent = element.parentElement;
+  if (!parent) return { mode: null, space: NaN };
+  const parentStyle = styleOf(pass, parent);
+  const style = styleOf(pass, element);
+  const inner = innerSize(pass, parent, axis);
+  const margins = axis === "x"
+    ? px(style.marginLeft) + px(style.marginRight)
+    : px(style.marginTop) + px(style.marginBottom);
+  const flex = parentStyle.display === "flex" || parentStyle.display === "inline-flex";
+  if (!flex) return axis === "x" && parentStyle.display === "block" ? { mode: "stretch", space: inner - margins } : { mode: null, space: NaN };
+  const row = parentStyle.flexDirection.startsWith("row");
+  const main = (axis === "x") === row;
+  if (!main) return { mode: "stretch", space: inner - margins };
+  let taken = 0;
+  let count = 0;
+  for (const sibling of parent.children) {
+    if (!inFlow(pass, sibling)) continue;
+    count += 1;
+    if (sibling === element) continue;
+    const siblingStyle = styleOf(pass, sibling);
+    // A sibling that grows shares what is left: nothing here is simply the rest.
+    if (px(siblingStyle.flexGrow) > 0) return { mode: "grow", space: NaN };
+    const rect = sibling.getBoundingClientRect();
+    taken += axis === "x"
+      ? rect.width + px(siblingStyle.marginLeft) + px(siblingStyle.marginRight)
+      : rect.height + px(siblingStyle.marginTop) + px(siblingStyle.marginBottom);
+  }
+  const gap = px(axis === "x" ? parentStyle.columnGap : parentStyle.rowGap);
+  return { mode: "grow", space: inner - taken - gap * Math.max(0, count - 1) - margins };
+}
+
+/**
+ * Whether the space `element` would grow into on `axis` is empty and right
+ * after it: it starts where its space starts, so filling it moves nothing
+ * (not a sibling after it, not a centred or end-aligned box).
+ */
+function startsSpace(pass: Pass, element: HTMLElement, axis: Axis, space: number): boolean {
+  const parent = element.parentElement;
+  if (!parent) return false;
+  const style = styleOf(pass, parent);
+  const own = styleOf(pass, element);
+  const rect = element.getBoundingClientRect();
+  const box = parent.getBoundingClientRect();
+  const end = axis === "x"
+    ? box.left + px(style.borderLeftWidth) + px(style.paddingLeft) + innerSize(pass, parent, "x")
+    : box.top + px(style.borderTopWidth) + px(style.paddingTop) + innerSize(pass, parent, "y");
+  const start = axis === "x" ? rect.left : rect.top;
+  const margin = px(axis === "x" ? own.marginRight : own.marginBottom);
+  return Math.abs(end - start - margin - space) <= EXACT_PX;
+}
+
+/**
+ * How a box with a size of its own on `axis` sits in the space its parent
+ * gives it: exactly, a fraction of a cell short of empty space, or neither.
+ */
+function sizedFit(pass: Pass, element: HTMLElement, axis: Axis, own: number): { mode: Mode; kind: "exact" | "short" } | null {
+  const { mode, space } = placement(pass, element, axis);
+  if (mode === null || !Number.isFinite(space)) return null;
+  const short = space - own;
+  if (Math.abs(short) <= EXACT_PX) return { mode, kind: "exact" };
+  // Whole cells floored from the pane's size leave less than a cell, give or
+  // take the layout's rounding of the pane's box.
+  const cell = axis === "x" ? WEB_CELL_WIDTH : WEB_CELL_HEIGHT;
+  if (short > 0 && short < cell + EXACT_PX && startsSpace(pass, element, axis, space)) return { mode, kind: "short" };
+  return null;
+}
+
+/** Whether `element` scrolls content larger than itself on either axis. */
+function scrolls(pass: Pass, element: HTMLElement): boolean {
+  const style = styleOf(pass, element);
+  const scrollable = (overflow: string) => overflow === "auto" || overflow === "scroll";
+  if (!scrollable(style.overflowX) && !scrollable(style.overflowY)) return false;
+  return element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1;
+}
+
+/** Whether a data table lays out inside `element`. */
+function holdsTable(element: HTMLElement): boolean {
+  return element.querySelector("[data-gloom-role=\"data-table\"]") !== null;
+}
+
+/** Whether `element` is the only box laid out in its parent. */
+function onlyInFlow(pass: Pass, element: HTMLElement): boolean {
+  for (const sibling of element.parentElement?.children ?? []) {
+    if (sibling !== element && inFlow(pass, sibling)) return false;
+  }
+  return true;
+}
+
+/**
+ * Whether `element`'s size on `axis` follows the frame by CSS (exact boxes
+ * once marked, short ones once filled), and whether it is definite, that is,
+ * does not come from what it holds. Collects the sized boxes on the way into
+ * `links`.
+ */
+function trace(pass: Pass, element: HTMLElement, axis: Axis, links: Link[]): { follows: boolean; definite: boolean } {
+  if (isPaneContent(element)) return { follows: true, definite: true };
+  const parent = element.parentElement;
+  if (!parent || !inFlow(pass, element) || scrolls(pass, element)) return { follows: false, definite: ownSize(element, axis) !== null };
+  const own = ownSize(element, axis);
+  const style = styleOf(pass, element);
+  if (own !== null) {
+    const above = trace(pass, parent, axis, links);
+    const fit = sizedFit(pass, element, axis, own);
+    if (above.follows && above.definite && fit) {
+      links.push([element, fit.mode, fit.kind]);
+      return { follows: true, definite: true };
+    }
+    return { follows: false, definite: true };
+  }
+  const { mode } = placement(pass, element, axis);
+  const parentStyle = styleOf(pass, parent);
+  const blockLevel = style.display === "flex" || style.display === "block" || style.display === "grid";
+  const align = style.alignSelf === "auto" || style.alignSelf === "normal" ? parentStyle.alignItems : style.alignSelf;
+  const stretches = mode === "stretch" && blockLevel && (align === "stretch" || align === "normal");
+  const grows = mode === "grow" && px(style.flexGrow) > 0;
+  if (!stretches && !grows) return { follows: false, definite: false };
+  const above = trace(pass, parent, axis, links);
+  return { follows: above.follows, definite: above.definite };
+}
+
+/**
+ * The surface's fill on `axis` at rest, the mode it takes its parent's space
+ * by, with the short boxes above it that fill too; null when it keeps its cells.
+ */
+function restFill(pass: Pass, surface: HTMLElement, axis: Axis): { mode: Mode; boxes: Array<[HTMLElement, Mode]> } | null {
+  const parent = surface.parentElement;
+  const own = ownSize(surface, axis);
+  if (!parent || own === null || !inFlow(pass, surface)) return null;
+  // The pane's root takes the pane's whole box, however many cells it was given.
+  if (isPaneContent(parent) && onlyInFlow(pass, surface)) {
+    const { mode, space } = placement(pass, surface, axis);
+    return mode && own <= space + EXACT_PX ? { mode, boxes: [] } : null;
+  }
+  // Its cells reach within a cell of the space, never past it, and into space nothing else takes.
+  const fit = sizedFit(pass, surface, axis, own);
+  if (!fit) return null;
+  // Only where the boxes above it follow the frame too: a surface that could
+  // not follow keeps its cells, and the prediction keeps it on the frame.
+  const links: Link[] = [];
+  if (!trace(pass, parent, axis, links).follows) return null;
+  if (links.some(([element]) => holdsTable(element))) return null;
+  return { mode: fit.mode, boxes: links.filter(([, , kind]) => kind === "short").map(([element, mode]) => [element, mode]) };
+}
+
+/** Whether a surface other than `surface` fills `element` on `axis`. */
+function filledByAnother(surface: HTMLElement, element: HTMLElement, axis: Axis): boolean {
+  for (const [other, boxes] of boxFills) {
+    if (other !== surface && boxes.some(([box, at]) => box === element && at === axis)) return true;
+  }
+  return false;
+}
+
+/** Sets the boxes above `surface` that fill along with it, and clears the ones that no longer do. */
+function setBoxFills(surface: HTMLElement, boxes: Array<[HTMLElement, Axis, Mode]>): void {
+  for (const [element, axis] of boxFills.get(surface) ?? []) {
+    const kept = boxes.some(([box, at]) => box === element && at === axis);
+    if (!kept && !filledByAnother(surface, element, axis)) element.removeAttribute(FILL_ATTRIBUTE[axis]);
+  }
+  if (boxes.length) boxFills.set(surface, boxes);
+  else boxFills.delete(surface);
+  for (const [element, axis, mode] of boxes) {
+    if (element.getAttribute(FILL_ATTRIBUTE[axis]) !== mode) element.setAttribute(FILL_ATTRIBUTE[axis], mode);
+  }
+}
+
+/** Fills the surface's box at rest, on the axes where it is a fraction of a cell short of it. */
+export function fitSurface(surface: HTMLElement): void {
+  if (!surface.isConnected || isLiveResizing()) return;
+  const pass: Pass = { styles: new Map() };
+  // Judged on the cells each box was given and where it starts, neither of which a fill changes.
+  const fills = { x: restFill(pass, surface, "x"), y: restFill(pass, surface, "y") };
+  const boxes: Array<[HTMLElement, Axis, Mode]> = [];
+  for (const axis of ["x", "y"] as const) {
+    const fill = fills[axis];
+    if (!fill) surface.removeAttribute(FILL_ATTRIBUTE[axis]);
+    else {
+      if (surface.getAttribute(FILL_ATTRIBUTE[axis]) !== fill.mode) surface.setAttribute(FILL_ATTRIBUTE[axis], fill.mode);
+      for (const [element, mode] of fill.boxes) boxes.push([element, axis, mode]);
+    }
+  }
+  setBoxFills(surface, boxes);
+  fitGrip(surface);
+}
+
+/**
+ * A floating pane's resize grip sits over the bottom-right corner of its
+ * content when it has no footer: a chart that reaches that corner keeps the
+ * last label of its time axis clear of it.
+ */
+function fitGrip(surface: HTMLElement): void {
+  const frame = surface.closest("[data-gloom-role=\"pane-window\"][data-floating=\"true\"]");
+  const grip = frame?.querySelector(":scope > [data-gloom-role=\"resize-handle\"]");
+  let under = false;
+  if (grip) {
+    const at = grip.getBoundingClientRect();
+    for (const axis of surface.querySelectorAll("[data-gloom-role=\"chart-time-axis\"]")) {
+      const rect = axis.getBoundingClientRect();
+      if (rect.right > at.left + EXACT_PX && rect.bottom > at.top + EXACT_PX && rect.top < at.bottom && rect.left < at.right) under = true;
+    }
+  }
+  if (under) surface.setAttribute("data-gloom-grip-clear", "true");
+  else surface.removeAttribute("data-gloom-grip-clear");
+}
+
+function startFollowing(): void {
+  const pass: Pass = { styles: new Map() };
+  const marks: Array<[HTMLElement, Axis, Mode]> = [];
+  // A resize changes the parents' boxes on every frame; nothing refits until it ends.
+  for (const observer of surfaces.values()) observer?.disconnect();
+  for (const surface of surfaces.keys()) {
+    if (!surface.isConnected || !surface.parentElement) continue;
+    const result = { x: false, y: false };
+    for (const axis of ["x", "y"] as const) {
+      if (!surface.hasAttribute(FILL_ATTRIBUTE[axis])) continue;
+      const links: Link[] = [];
+      if (!trace(pass, surface.parentElement, axis, links).follows) continue;
+      result[axis] = true;
+      // A short box fills, and so follows, already.
+      for (const [element, mode, kind] of links) if (kind === "exact") marks.push([element, axis, mode]);
+    }
+    followed.set(surface, result);
+  }
+  // Marked after every surface is traced: a mark changes no size now, but the
+  // trace reads the layout as the pane drew it.
+  for (const [element, axis, mode] of marks) {
+    element.setAttribute(FOLLOW_ATTRIBUTE[axis], mode);
+    followMarks.push([element, axis]);
+  }
+}
+
+function stopFollowing(): void {
+  for (const [element, axis] of followMarks) element.removeAttribute(FOLLOW_ATTRIBUTE[axis]);
+  followMarks = [];
+  for (const surface of surfaces.keys()) followed.delete(surface);
+  // After the release has laid the panes out: every surface fits its box again.
+  const refit = () => {
+    for (const [surface, observer] of surfaces) {
+      fitSurface(surface);
+      if (observer && surface.parentElement) observer.observe(surface.parentElement);
+    }
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(refit);
+  else setTimeout(refit, 0);
+}
+
+/**
+ * Tracks a surface root: fits it now, again whenever its parent's box changes
+ * size at rest, and takes it into every resize's pass. Returns the untrack.
+ */
+export function trackSurface(surface: HTMLElement): () => void {
+  if (!installed) {
+    installed = true;
+    onLiveResizeStart(startFollowing);
+    onLiveResizeEnd(stopFollowing);
+  }
+  const parent = surface.parentElement;
+  const observer = typeof ResizeObserver !== "undefined" && parent
+    ? new ResizeObserver(() => fitSurface(surface))
+    : null;
+  surfaces.set(surface, observer);
+  fitSurface(surface);
+  if (parent && !isLiveResizing()) observer?.observe(parent);
+  return () => {
+    observer?.disconnect();
+    setBoxFills(surface, []);
+    surfaces.delete(surface);
+    followed.delete(surface);
+    for (const axis of ["x", "y"] as const) surface.removeAttribute(FILL_ATTRIBUTE[axis]);
+    surface.removeAttribute("data-gloom-grip-clear");
+  };
+}
+
+/** During a resize, the axes on which the surface follows the frame by CSS. */
+export function surfaceFollows(surface: HTMLElement): { x: boolean; y: boolean } {
+  return followed.get(surface) ?? { x: false, y: false };
+}

@@ -22,7 +22,8 @@ import {
 } from "./mouse";
 import { hideDragShield, showDragShield } from "./drag-shield";
 import { applyLiveFrame } from "./live-frame";
-import { fillsPane, observeCellSize } from "./size-observer";
+import { observeCellSize } from "./size-observer";
+import { fitSurface, surfaceFollows, trackSurface } from "./surface-fit";
 import { cleanDomProps, commonStyle } from "./style";
 
 /** Farther than this from the pointer, in px, a predicted point is noise. */
@@ -90,7 +91,11 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         if (elementRef.current) applyLiveFrame(elementRef.current, frame, propsRef.current);
       };
       handle.observeSize = (listener) => (elementRef.current ? observeCellSize(elementRef.current, listener) : () => {});
-      handle.fillsPane = () => (elementRef.current ? fillsPane(elementRef.current) : false);
+      handle.trackSurface = () => (elementRef.current ? trackSurface(elementRef.current) : () => {});
+      handle.refitSurface = () => {
+        if (elementRef.current) fitSurface(elementRef.current);
+      };
+      handle.followsFrame = () => (elementRef.current ? surfaceFollows(elementRef.current) : { x: false, y: false });
       return handle as unknown as HTMLDivElement;
     }, []);
 

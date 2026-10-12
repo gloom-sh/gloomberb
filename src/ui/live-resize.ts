@@ -7,11 +7,15 @@
  * the end instead of rendering once per cell the pointer crosses.
  */
 let active = 0;
+const startListeners = new Set<() => void>();
 const endListeners = new Set<() => void>();
 
 /** Starts a resize; call what it returns once, when the pointer lets go or the resize is put back. */
 export function beginLiveResize(): () => void {
   active += 1;
+  if (active === 1) {
+    for (const listener of [...startListeners]) listener();
+  }
   let open = true;
   return () => {
     if (!open) return;
@@ -24,6 +28,12 @@ export function beginLiveResize(): () => void {
 
 export function isLiveResizing(): boolean {
   return active > 0;
+}
+
+/** Called when a resize starts while none is under way, before its first move. */
+export function onLiveResizeStart(listener: () => void): () => void {
+  startListeners.add(listener);
+  return () => { startListeners.delete(listener); };
 }
 
 /** Called when the last resize under way ends. */

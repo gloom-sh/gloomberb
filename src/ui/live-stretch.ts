@@ -64,6 +64,26 @@ export function predictStretchAxis(axis: StretchAxis, renderedPane: number, own:
   return Math.max(0, own + axis.slope * (livePane - renderedPane));
 }
 
+const NO_FOLLOW = { x: false, y: false } as const;
+
+/**
+ * The box's size for one move of a resize, in cells: the predicted size on
+ * each axis CSS does not follow, its rendered cells on each it does, or null
+ * when both are its cells. Always both axes: an axis whose prediction is back
+ * at its cells has to be drawn there, not left at the last move's size.
+ */
+export function liveStretchFrame(
+  css: { x: boolean; y: boolean },
+  axes: { x: StretchAxis; y: StretchAxis },
+  rendered: CellSize,
+  own: CellSize,
+  live: CellSize,
+): LiveBoxFrame | null {
+  const width = css.x ? own.width : predictStretchAxis(axes.x, rendered.width, own.width, live.width);
+  const height = css.y ? own.height : predictStretchAxis(axes.y, rendered.height, own.height, live.height);
+  return width !== own.width || height !== own.height ? { width, height } : null;
+}
+
 function sameFrame(a: LiveBoxFrame | null, b: LiveBoxFrame | null): boolean {
   if (a === null || b === null) return a === b;
   return a.width === b.width && a.height === b.height;
@@ -71,42 +91,54 @@ function sameFrame(a: LiveBoxFrame | null, b: LiveBoxFrame | null): boolean {
 
 /**
  * Desktop: keeps a surface laid out on the cell grid (a chart, a heat map)
- * filling its part of a pane while a resize sizes the pane's frame ahead of
- * what it renders. On every move the box (`width` by `height` cells, as it
- * rendered) takes the size it will render at once the content catches up, by
- * restyling it outside React, and what lays out inside it by CSS follows: a
- * plot's bitmap stretches, labels placed in percentages move with it, tiles
- * placed in percentages reflow, a canvas that redraws on a resize redraws.
- * When the content renders at the new size the box draws as laid out again,
- * and when the resize ends it is handed back in the commit that lays the pane
- * out. Nothing renders per move. The terminal redraws its cells on every move
- * and has no frame to follow. A surface that is its pane's root and takes the
- * pane's whole box (`PANE_FILL`) is sized by CSS instead, and this leaves it
- * alone; the prediction is for surfaces placed inside a pane's own layout.
+ * filling its part of a pane, at rest and while a resize sizes the pane's
+ * frame ahead of what it renders.
+ *
+ * The surface takes the box it sits in by CSS where its cells leave a
+ * fraction of a cell (`trackSurface`), and during a resize follows the frame
+ * by CSS on every axis where the boxes above it do (`followsFrame`): to the
+ * pixel, with no render. Pass `fit: false` to keep a surface on its cells.
+ *
+ * On an axis CSS cannot follow (a box above it with a size of its own, such
+ * as a share of the pane), every move gives the box (`width` by `height`
+ * cells, as it rendered) the size it will render at once the content catches
+ * up, by restyling it outside React, and what lays out inside it by CSS
+ * follows: a plot's bitmap stretches, labels placed in percentages move with
+ * it, tiles placed in percentages reflow, a canvas that redraws on a resize
+ * redraws. When the content renders at the new size the box draws as laid
+ * out again, and when the resize ends it is handed back in the commit that
+ * lays the pane out. Nothing renders per move. The terminal redraws its cells
+ * on every move and has no frame to follow.
  */
-export function useLiveStretch(box: RefObject<BoxRenderable | null>, width: number, height: number): void {
+export function useLiveStretch(
+  box: RefObject<BoxRenderable | null>,
+  width: number,
+  height: number,
+  { fit = true }: { fit?: boolean } = {},
+): void {
   const pane = useContext(LivePaneFrameContext);
   const axes = useRef<{ x: StretchAxis; y: StretchAxis } | null>(null);
   // What the element carries now, across re-subscriptions.
   const drawn = useRef<LiveBoxFrame | null>(null);
+  useLayoutEffect(() => (fit ? box.current?.trackSurface?.() : undefined), [box, fit]);
+  useLayoutEffect(() => {
+    if (fit) box.current?.refitSurface?.();
+  }, [box, fit, height, width]);
   useLayoutEffect(() => {
     if (!pane) return;
     // A render at a new size may have written the box's laid-out size over
     // what was drawn, so the first follow draws whatever the element holds.
     let redraw = drawn.current !== null;
     const follow = () => {
-      // A pane's root that CSS sizes to the pane (pane-fill.ts) follows the
-      // frame on its own, to the pixel: nothing to predict.
-      const live = box.current?.fillsPane?.() ? null : pane.live();
+      const css = box.current?.followsFrame?.() ?? NO_FOLLOW;
+      const live = css.x && css.y ? null : pane.live();
       let next: LiveBoxFrame | null = null;
       if (live) {
         const { rendered } = pane;
         const begun = axes.current ?? { x: startStretchAxis(rendered.width, width), y: startStretchAxis(rendered.height, height) };
         const learned = { x: learnStretchAxis(begun.x, rendered.width, width), y: learnStretchAxis(begun.y, rendered.height, height) };
         axes.current = learned;
-        const toWidth = predictStretchAxis(learned.x, rendered.width, width, live.width);
-        const toHeight = predictStretchAxis(learned.y, rendered.height, height, live.height);
-        if (toWidth !== width || toHeight !== height) next = { width: toWidth, height: toHeight };
+        next = liveStretchFrame(css, learned, rendered, { width, height }, live);
       } else {
         axes.current = null;
       }
