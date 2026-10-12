@@ -193,7 +193,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "ticker.navigate",
-    "Navigate a ticker into the best available ticker research target.",
+    "Show any ticker in the ticker research pane the user is on, or the best available one, as in \"switch to MSFT\".",
     "{ symbol: string, sourcePaneId?: string }",
     "local-write",
     objectSchema({ symbol: requiredStringSchema, sourcePaneId: stringSchema }, ["symbol"]),
@@ -212,7 +212,8 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "ticker.select",
-    "Select a ticker in a target pane.",
+    "Move the cursor of a portfolio or watchlist pane to a ticker on its list, so the panes that follow the list show it. "
+      + "To show any ticker in a ticker pane, use ticker.navigate.",
     "{ symbol: string, paneId?: string }",
     "local-write",
     objectSchema({ symbol: requiredStringSchema, paneId: stringSchema }, ["symbol"]),
