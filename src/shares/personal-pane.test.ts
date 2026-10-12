@@ -5,9 +5,17 @@ import { TickerRepository } from "../data/ticker-repository";
 import { PluginRegistry } from "../plugins/registry";
 import { createTestBrokerAdapter } from "../test-support/broker";
 import { createTestDataProvider } from "../test-support/data-provider";
+import { createDefaultConfig } from "../types/config";
 import type { PaneDef, PanePersonalDataContext } from "../types/plugin";
 import { paneShowsPersonalData } from "./personal-pane";
 import { held, paneDefs, personalDataContext, withBuiltinPanes } from "./test-fixture";
+
+/** A config whose last visited chat channel is `channelId`. */
+function withLastChat(channelId: string) {
+  const config = createDefaultConfig("/gloom");
+  config.pluginConfig = { "gloomberb-cloud": { lastChatChannelId: channelId } };
+  return config;
+}
 
 const noBrokers = { brokers: new Map(), getPanePluginId: () => undefined, getBrokerPluginId: () => undefined };
 
@@ -40,7 +48,9 @@ describe("which panes Ask Gloom asks about before it reads them", () => {
     { name: "a watchlist, declared public (was personal for keeping fields private)", pane: "portfolio-list", overrides: { activeCollectionId: "watchlist" }, expected: false },
     { name: "research on a held ticker", pane: "ticker-research", overrides: { activeTicker: "NVDA", tickers: held }, expected: true },
     { name: "a chart of a held ticker, which shows no position (was personal for the ticker)", pane: "chart-composer", overrides: { activeTicker: "NVDA", tickers: held }, expected: false },
-    { name: "a heatmap that remembers a portfolio it is not showing (was personal for the setting)", pane: "market-heatmap", overrides: { settings: { universe: "us-equity" }, paneState: { portfolioSourceId: "main" } }, expected: false },
+    { name: "a chat pane with no channel yet, opening on the last visited DM", pane: "chat", overrides: { config: withLastChat("dm:u1:u2") }, expected: true },
+    { name: "relative rotation linked to a portfolio (was personal only while the cursor sat on a held ticker)", pane: "relative-rotation", overrides: { settings: { scope: "collection" }, activeCollectionId: "main" }, expected: true },
+    { name: "relative rotation linked to a watchlist", pane: "relative-rotation", overrides: { settings: { scope: "collection" }, activeCollectionId: "watchlist" }, expected: false },
     { name: "the unread chat inbox, which declares messages (was not personal)", pane: "unread-inbox", overrides: {}, expected: true },
   ])("$name", ({ pane, overrides, expected }) => {
     expect(asksAboutPane(paneDefs.get(pane), pane, overrides as Partial<PanePersonalDataContext>)).toBe(expected);
