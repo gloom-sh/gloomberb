@@ -45,3 +45,8 @@ test("a function is tagged Pro exactly when Free gets nothing but the upgrade", 
   const tagged = Object.entries(FUNCTION_HELP).filter(([, help]) => help.access === "pro").map(([code]) => code);
   expect(tagged.sort()).toEqual(proOnly.sort());
 });
+
+test("EQS help names ATR% and says IV rank is a rank, not an IV percentile", () => {
+  expect(FUNCTION_HELP.EQS!.summary).toContain("ATR% is the 14-session average true range as a percent of the last close");
+  expect(FUNCTION_HELP.EQS!.summary).toContain("IV rank is a rank, not an IV percentile");
+});

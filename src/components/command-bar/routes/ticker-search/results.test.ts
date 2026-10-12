@@ -65,6 +65,23 @@ test("crypto punctuation aliases never outrank the verified exact symbol in comm
   expect(mergePlainRootTickerResults("SHIB-USD", rows, [resultItem("pane", "Research", "", "action")])[0]?.id).toBe("exact");
 });
 
+test("an index typed by its code is the exact match; the fund named for it and a name search are not", () => {
+  const rows = (query: string) => mergeTickerSearchResultItems(query, [
+    { ...resultItem("index", "^BVSP", "B3", "search"), detail: "Ibovespa", category: "Primary Listing", instrumentType: "INDEX", searchAliases: ["^BVSP", "IBOV", "IBOV Index"] },
+    { ...resultItem("fund", "IBOV11", "B3", "search"), detail: "IBOV11 Fund", category: "Other Listings", instrumentType: "Common Stock", searchAliases: ["IBOV11"] },
+  ], []);
+  for (const query of ["IBOV", "ibov", "IBOV Index"]) {
+    expect(rows(query).map((item) => [item.id, item.category]), query).toEqual([["index", "Exact Match"], ["fund", "Other Listings"]]);
+  }
+  expect(rows("ibovespa")[0]?.category).toBe("Primary Listing");
+  const pane: ResultItem = { id: "pane:news", label: "News", detail: "", category: "Panes", kind: "action", action: () => {} };
+  expect(mergePlainRootTickerResults("IBOV", rows("IBOV"), [pane]).map((item) => [item.id, item.category])).toEqual([
+    ["index", "Exact Match"],
+    ["pane:news", "Panes"],
+    ["fund", "Instruments"],
+  ]);
+});
+
 test("folds a plain query's symbol hits into one capped Instruments section behind the local rows", () => {
   const pane: ResultItem = {
     id: "pane:news",

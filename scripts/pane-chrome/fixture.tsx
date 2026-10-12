@@ -671,6 +671,29 @@ function sessionDays(start: number, end: number): Date[] {
   return days;
 }
 
+/**
+ * The invented source's own "now": the latest close, over every listing, of
+ * the newest weekday that has ended for all of them, never later than the
+ * clock. Its newest bar is then always the last US bar of a session day, after
+ * the German listing's, whatever the hour or day the checks run at; against
+ * the plain clock, both venues have a bar at the newest time while they are
+ * open together and nothing is carried. Derived from the listings' own closes
+ * and zones, so it holds across daylight saving changes.
+ */
+function settledNow(clock: number): number {
+  for (let day = Math.floor(clock / DAY_MS) * DAY_MS; ; day -= DAY_MS) {
+    const date = new Date(day);
+    if (date.getUTCDay() === 0 || date.getUTCDay() === 6) continue;
+    const [year, month, dayOfMonth] = [date.getUTCFullYear(), date.getUTCMonth() + 1, date.getUTCDate()];
+    const settled = Math.max(...Object.values(LISTINGS).map((listing) => (
+      zonedWallClockToUtcMs(listing.timeZone, year, month, dayOfMonth, listing.close[0], listing.close[1], 0)
+    )));
+    if (settled <= clock) return settled;
+  }
+}
+
+const sourceNow = () => settledNow(Date.now());
+
 function intradayBars(listing: Listing, start: number, end: number, step: number, now: number): PricePoint[] {
   let days = sessionDays(start - DAY_MS, Math.min(end, now));
   if (listing.intradaySessions !== undefined) {
@@ -699,7 +722,7 @@ function dailyBars(listing: Listing, start: number, end: number, now: number): P
 function history(symbol: string, start: number, end: number, resolution: ManualChartResolution): PriceHistoryResult {
   const listing = LISTINGS[symbol.toUpperCase()];
   if (!listing) return { points: [], resolution };
-  const now = Date.now();
+  const now = sourceNow();
   const step = STEP_MS[resolution];
   const points = step ? intradayBars(listing, start, end, step, now) : dailyBars(listing, start, end, now);
   // Like the real service: a window longer than one answer gets its newest bars.
@@ -712,10 +735,11 @@ function later<T>(value: () => T): Promise<T> {
 
 function quote(symbol: string): Quote {
   const listing = LISTINGS[symbol.toUpperCase()]!;
-  const price = priceAt(listing, Date.now());
+  const now = sourceNow();
+  const price = priceAt(listing, now);
   return {
     symbol: symbol.toUpperCase(), price, currency: listing.currency, change: 0, changePercent: 0,
-    lastUpdated: Date.now(), listingExchangeName: listing.exchange, instrumentType: "EQUITY",
+    lastUpdated: now, listingExchangeName: listing.exchange, instrumentType: "EQUITY",
   };
 }
 
@@ -729,7 +753,9 @@ const RESOLUTIONS: Record<string, ManualChartResolution> = {
  * listings and bars, never real market data, served after a short delay the
  * way a network source answers. Like the real service it caps one answer at
  * the newest `ANSWER_CAP` bars, so a long window comes back short and the
- * chart asks for the older part on its own.
+ * chart asks for the older part on its own. Its bars end at the last close of
+ * every listing, not at the clock (see settledNow), so they read the same at
+ * any hour.
  *
  * - ALFA, BRVO (NASDAQ): 30-minute bars for years.
  * - CHRL (XETR): another venue's hours, so a US afternoon carries its close.
@@ -749,7 +775,7 @@ function createInventedChartSource(): DataProvider {
     getArticleSummary: async () => null,
     getPriceHistory: async () => [],
     getPriceHistoryForResolutionWithMetadata: (symbol, _exchange, range: TimeRange, resolution) => later(() => {
-      const end = Date.now();
+      const end = sourceNow();
       return history(symbol, subtractTimeRange(new Date(end), range).getTime(), end, resolution);
     }),
     getDetailedPriceHistoryWithMetadata: (symbol, _exchange, start, end, barSize) => later(() => (

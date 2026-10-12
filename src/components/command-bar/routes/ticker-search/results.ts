@@ -12,7 +12,7 @@ import {
 import type { ResultItem } from "../../list/model";
 import { currencyPairCode } from "../../../../utils/currency-pair";
 import { canonicalExchange, exchangeCodeVenues, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
-import { compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
+import { answersToIndexCode, compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
 
@@ -76,6 +76,8 @@ function isExactTickerResultMatch(item: ResultItem, rawQuery: string): boolean {
   return [assetClass?.symbolQuery ?? rawQuery, ...(marketSymbol ? [marketSymbol] : [])].some((query) => (
     findExactTickerSearchMatch([item], query) != null
     || parsePublicTickerKey(item.label).symbol === query.trim().toUpperCase()
+    // IBOV is how the Ibovespa is typed; its own symbol is ^BVSP.
+    || answersToIndexCode(item, query)
   ));
 }
 
