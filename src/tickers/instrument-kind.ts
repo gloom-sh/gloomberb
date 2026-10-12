@@ -2,6 +2,7 @@ import type { TickerFinancials } from "../types/financials";
 import type { TickerInstrumentKind } from "../types/instrument";
 import type { TickerRecord } from "../types/ticker";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { perpetualListing } from "./perpetual-listing";
 
 const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
   STK: "equity",
@@ -43,6 +44,8 @@ const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
   FUTURE: "future",
   FUTURES: "future",
   CONTFUT: "future",
+  PERP: "perpetual",
+  PERPETUAL: "perpetual",
   OPT: "option",
   OPTION: "option",
   OPTIONS: "option",
@@ -72,9 +75,10 @@ export function classifyInstrumentType(type: string | null | undefined): TickerI
   return null;
 }
 
-/** Market listing syntax: `CCC` coins, `^` indices, `=X` pairs, `=F` futures. */
+/** Market listing syntax: `CCC` coins, a perpetual venue's contracts, `^` indices, `=X` pairs, `=F` futures. */
 export function kindFromListingSyntax(listing: string, exchange?: string): TickerInstrumentKind | null {
   if (canonicalExchange(exchange) === "CCC") return "crypto";
+  if (perpetualListing(listing, exchange)) return "perpetual";
   const symbol = parsePublicTickerKey(listing).symbol;
   if (symbol.startsWith("^")) return "index";
   if (symbol.endsWith("=X")) return "currency";
@@ -153,5 +157,6 @@ export function instrumentTypeLabel(
   if (isCryptoVenuePerpetual(type, name)) {
     return options.detail ? "Perpetual futures price (24/7 on crypto venues; not the listed future, not spot)" : "Perpetual futures price";
   }
+  if (classifyInstrumentType(type) === "perpetual") return "Perpetual futures";
   return type?.trim() || undefined;
 }

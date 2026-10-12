@@ -57,6 +57,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const windowMoveBadges = actionBadges("window-move-mode");
   const windowResizeBadges = actionBadges("window-resize-mode");
   const functionHelpBadges = actionBadges("function-help");
+  const askBadges = actionBadges("pane-ask");
   useEffect(() => subscribeKeybindingCapture(() => setActiveTabId("shortcuts")), []);
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
@@ -186,7 +187,11 @@ function HelpPane({ focused, width, height }: PaneProps) {
         ...(functionHelpBadges.length > 0
           ? [entry("function-help", functionHelpBadges, "Open the focused pane's help card; Enter reads its docs.")]
           : []),
+        ...(askBadges.length > 0
+          ? [entry("ask-gloom", askBadges, "Ask Gloom about the focused pane, in a new conversation with the pane attached. Also Ask Gloom in the pane menu.")]
+          : []),
         entry("search", ["/"], "Search in the focused pane."),
+        entry("sidebar", ["<", ">"], "Narrow or widen the list beside the content, as in MAP and ASKG."),
         entry("warnings", ["!"], "Open the focused pane's data warnings."),
         entry("notification", [...actionBadges("notification-action"), ...actionBadges("notification-dismiss")], "Run or dismiss the newest notification."),
       ],
@@ -225,6 +230,14 @@ function HelpPane({ focused, width, height }: PaneProps) {
       ],
     },
     {
+      label: "Map",
+      items: [
+        entry("map-pan", ["m", "Arrows"], "Give the arrow keys to the map and pan it; Shift pans further, Esc gives them back to the list."),
+        entry("map-zoom", ["+/-", "0"], "Zoom the map in or out, or reset it."),
+        entry("map-pointer", ["Scroll", "Pinch"], "Zoom the map around the pointer; drag to pan, double-click to zoom in."),
+      ],
+    },
+    {
       label: "Clipboard",
       items: [
         entry("copy", copyBadges, "Copy the active terminal selection."),
@@ -255,7 +268,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("commit", ["Enter", "Esc"], "Commit pending changes or exit window mode."),
       ],
     },
-  ], [copyBadges, functionHelpBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
+  ], [askBadges, copyBadges, functionHelpBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
 
   const renderContent = () => {
     switch (activeTabId) {

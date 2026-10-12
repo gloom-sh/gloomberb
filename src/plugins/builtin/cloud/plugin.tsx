@@ -12,7 +12,8 @@ import { cloudTweetsModule } from "../cloud-tweets";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
 import { askgConversationListStore } from "./askg/conversation-store";
 import { ASKG_PANE_ID, ASKGPane } from "./askg/pane";
-import { askGloomQuestion } from "./askg/pending-question";
+import { askGloomQuestion, requestASKGPaneAttachment } from "./askg/pending-question";
+import { registerAskGloomPaneHandler } from "../../../ask-gloom/pane-request";
 import { registerCloudAuthCommands } from "./auth-commands";
 import { registerMcpConnectCommand } from "./mcp-connect/command";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
@@ -63,11 +64,26 @@ const cloudAccountModule: PluginModule = {
   },
 };
 
+const ASKG_TEMPLATE_ID = "askg-pane";
+
+/** While Ask Gloom is on, every pane offers to be asked about. */
+let removeAskGloomPaneHandler: (() => void) | null = null;
+
 const askgModule: PluginModule = {
   setup(ctx) {
     // Only the dragged sidebar width is per device; the conversations
     // themselves belong to the account and are read from the cloud.
     askgConversationListStore.attach(ctx.persistence);
+    removeAskGloomPaneHandler?.();
+    removeAskGloomPaneHandler = registerAskGloomPaneHandler((attachment) => {
+      // The pane takes it once it is open: a new conversation with the pane attached.
+      requestASKGPaneAttachment(attachment);
+      ctx.createPaneFromTemplate(ASKG_TEMPLATE_ID);
+    });
+  },
+  dispose() {
+    removeAskGloomPaneHandler?.();
+    removeAskGloomPaneHandler = null;
   },
   panes: [{
     id: ASKG_PANE_ID,
@@ -85,7 +101,7 @@ const askgModule: PluginModule = {
     },
   }],
   paneTemplates: [{
-    id: "askg-pane",
+    id: ASKG_TEMPLATE_ID,
     paneId: ASKG_PANE_ID,
     label: "Ask Gloom",
     description: "Ask a question about your panes and watch the tools Gloom runs",

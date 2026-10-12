@@ -9,6 +9,7 @@ import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { chatMessageOpenTargets, type ChatOpenTarget } from "./open-targets";
 import { openChatImageViewer } from "../attachments/desktop";
+import { canReactToMessage } from "../reactions";
 
 /**
  * The chat pane's keys, shown in its footer and listed in its pane menu. The
@@ -45,6 +46,8 @@ export function useChatFooter({
   needsProfileSetup,
   openProfileSetup,
   authorMessageAction,
+  reactionsEnabled = false,
+  openReactionPicker,
 }: {
   /**
    * The composer or the New DM overlay owns the keyboard. Hints about the
@@ -84,6 +87,10 @@ export function useChatFooter({
   openProfileSetup: () => void;
   /** "Message @author" for the selected message, where its author can be written to. */
   authorMessageAction: { label: string; run: () => void } | null;
+  /** The server takes reactions and you can send. */
+  reactionsEnabled?: boolean;
+  /** Opens the reaction picker for the message at an index. */
+  openReactionPicker?: (index: number) => void;
 }) {
   const dialog = useOptionalDialog();
   const rendererHost = useRendererHost();
@@ -157,6 +164,7 @@ export function useChatFooter({
   }, [closeProfilePopover, selectedIdx]);
 
   const canEdit = canSend && !!selectedMessage && selectedMessage.id === latestEditableMessageId;
+  const canReact = reactionsEnabled && !!openReactionPicker && !!selectedMessage && canReactToMessage(selectedMessage);
   const replyToId = selectedMessage?.replyToId ?? null;
   const onlyTarget = openTargets.length === 1 ? openTargets[0]! : null;
   const failedSend = selectedMessage?.clientStatus === "failed";
@@ -188,6 +196,7 @@ export function useChatFooter({
     setChannelNotificationsEnabled,
     toggleAuthorProfile,
     authorMessageAction,
+    openReactionPicker,
   });
   latest.current = {
     beginEditMessage,
@@ -206,6 +215,7 @@ export function useChatFooter({
     setChannelNotificationsEnabled,
     toggleAuthorProfile,
     authorMessageAction,
+    openReactionPicker,
   };
   const authorMessageLabel = composing ? null : authorMessageAction?.label ?? null;
 
@@ -215,6 +225,7 @@ export function useChatFooter({
     if (!composing && selectedMessage) {
       if (canSend && failedSend) hints.push({ id: "retry", key: "Enter", label: "retry", title: "Send Again", onPress: () => latest.current.retryMessage(latest.current.selectedIdx) });
       else if (canSend) hints.push({ id: "reply", key: "Enter", label: "reply", title: "Reply", onPress: () => latest.current.beginReplyTo(latest.current.selectedIdx, { deferFocus: true }) });
+      if (canReact) hints.push({ id: "react", key: "+", label: " react", title: "Add Reaction", onPress: () => latest.current.openReactionPicker?.(latest.current.selectedIdx) });
       if (canEdit) hints.push({ id: "edit", key: "e", label: "dit", title: "Edit Message", onPress: () => { latest.current.beginEditMessage(latest.current.selectedIdx, { deferFocus: true }); } });
       if (openTargets.length > 0) hints.push({ id: "open", key: "o", label: "pen", title: openTargetTitle, onPress: () => { void latest.current.openSelectedTargets(); } });
       // Every author but a Discord ghost has a card, if only their name and a way to write to them.
@@ -271,6 +282,7 @@ export function useChatFooter({
     failedSend,
     canCycleChannels,
     canEdit,
+    canReact,
     canFocusSidebar,
     canSend,
     composing,

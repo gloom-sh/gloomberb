@@ -117,3 +117,26 @@ test("a stock's history keeps its export columns, with no volume unit it cannot 
   expect(result.metadata).not.toHaveProperty("volumeUnit");
   expect(result.freshness).not.toHaveProperty("note");
 });
+
+test("history of a listing that stopped trading says so instead of not a ticker, and a symbol whose company left says so beside its bars", async () => {
+  const lastTrade = Date.parse("2022-10-27T23:59:59.953Z");
+  const hop = { from: "FB", to: "META", date: "2022-06-09" };
+  const dataProvider = createTestDataProvider({
+    getQuote: async (symbol) => symbol === "TWTR"
+      ? createTestQuote({ symbol, price: 53.86, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true })
+      : createTestQuote({ symbol, name: "ProShares S&P 500 Dynamic Daily Buffer ETF", listingExchangeName: "BATS" }),
+    getPriceHistoryWithMetadata: async (symbol) => {
+      if (symbol === "TWTR") throw new Error("Not a ticker: TWTR.");
+      return { resolution: "1d", points: [{ date: new Date("2026-10-09"), open: 45.9, high: 46, low: 45.8, close: 45.98, volume: 1042 }] };
+    },
+    getTickerChanges: async (symbol) => symbol === "FB"
+      ? { symbol, moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop] }, formerly: null, listedName: null, changes: [hop] }
+      : null,
+  });
+  const cli = createTestCliContext({ config: createDefaultConfig("/tmp/gloom-history-command-fixture"), dataProvider });
+  await expect(history.execute(["TWTR", "--range", "5Y"], cli.context)).rejects.toThrow("TWTR stopped trading 2022-10-27; no history or options served.");
+  await history.execute(["FB"], cli.context);
+  expect(cli.printed[0]!.result.warnings?.[0]).toBe(
+    "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)",
+  );
+});

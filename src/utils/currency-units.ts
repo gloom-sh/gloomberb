@@ -156,3 +156,14 @@ export function hasLikelyQuoteUnitMismatch(
   const ratio = normalizedRatio(left.price, right.price);
   return likelyUnitMismatchRatios(leftUnit.currency).some((target) => isRatioWithin(ratio, target));
 }
+
+/**
+ * Stablecoins perpetual venues quote and settle in (USDT, USDC). Gloom has no
+ * exchange rate for them and does not read one as a dollar, so a price in one
+ * stays in it: there is no rate to ask for.
+ */
+const STABLECOIN_CURRENCIES: ReadonlySet<string> = new Set(["USDT", "USDC", "USDE", "USDH", "USD1", "DAI", "FDUSD", "PYUSD", "TUSD", "BUSD"]);
+
+export function isStablecoinCurrency(currency?: string | null): boolean {
+  return STABLECOIN_CURRENCIES.has((currency ?? "").trim().toUpperCase());
+}

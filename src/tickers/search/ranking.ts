@@ -9,7 +9,7 @@ import { assetClassKeeps, assetClassMarketSymbol, instrumentClassCode, parseAsse
 import { futuresContractByCode } from "../../market-data/futures-board";
 
 const FUND_TYPES = new Set(["ETF", "ETN", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND"]);
-const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
+const DERIVATIVE_TYPES = new Set(["OPT", "OPTION", "OPTIONS", "FUT", "FUTURE", "FUTURES", "PERP", "PERPETUAL", "WARRANT", "WARRANTS", "RIGHT", "RIGHTS"]);
 const EQUITY_TYPES = new Set(["STK", "STOCK", "EQUITY", "COMMONSTOCK", "COMMON STOCK", "ADR", "DEPOSITARY RECEIPT", "DEPOSITARYRECEIPT", "ORDINARYSHARES", "ORDINARY SHARES"]);
 const COMPANY_NAME_SUFFIXES = new Set([
   "AG",
@@ -74,6 +74,10 @@ const ASSET_HINT_MAP: Record<string, TickerSearchInstrumentClass> = {
   WARRANTS: "derivative",
   FUTURE: "derivative",
   FUTURES: "derivative",
+  PERP: "derivative",
+  PERPS: "derivative",
+  PERPETUAL: "derivative",
+  PERPETUALS: "derivative",
 };
 
 const SAVED_MATCH_BONUS = 900;

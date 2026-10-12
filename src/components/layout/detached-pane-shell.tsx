@@ -31,6 +31,7 @@ import { useKeybindings } from "../../app/keybindings";
 import { useDialogState } from "../../ui/dialog";
 import { getShortcutDisplayMode } from "../../utils/shortcut-labels";
 import { fireAndForget } from "../../utils/fire-and-forget";
+import { createOneShots } from "../../utils/one-shot";
 import {
   inputCaptureAllowsPaneManagementShortcut,
   modalSurfaceOwnsKey,
@@ -60,6 +61,8 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
   const paneState = useAppSelector((state) => state.paneState);
   const inputCaptured = useAppSelector((state) => state.inputCaptured);
   const doubleEscapeCloseRef = useRef(createDoubleEscapeCloseState());
+  // A key held down, or a trigger with no repeat flag, runs each action once.
+  const [shots] = useState(createOneShots);
   const keybindings = useKeybindings();
   const accelerators = useMemo(() => paneManagementAccelerators(keybindings), [keybindings]);
   const shortcutDisplayMode = getShortcutDisplayMode(useUiHost().kind);
@@ -323,6 +326,9 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     if (resolvePaneManagementShortcut(event, keybindings) !== "menu") return;
     event.preventDefault();
     event.stopPropagation();
+    const shot = shots.get("menu");
+    if (shot.refuses(event)) return;
+    shot.end();
     openActionsRef.current({ keyboard: true });
   }, { phase: "idle" });
 
@@ -335,11 +341,21 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
       // window's own close accelerator.
       event.preventDefault();
       event.stopPropagation();
-      if (!dialogOpen && !menuState) closePane();
+      const closeShot = shots.get(shortcut);
+      if (!dialogOpen && !menuState && !closeShot.refuses(event)) {
+        closeShot.end();
+        closePane();
+      }
       return;
     }
     if (dialogOpen || menuState) return;
     if (inputCaptured && !inputCaptureAllowsPaneManagementShortcut(shortcut, event)) return;
+    const shot = shots.get(shortcut);
+    if (shot.refuses(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
     let handled = true;
     switch (shortcut) {
       case "settings":
@@ -347,7 +363,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         else handled = false;
         break;
       case "share":
-        if (!event.repeat) sharePane();
+        sharePane();
         break;
       case "toggle-floating":
         if (dockPaneRef.current) dockPaneRef.current();
@@ -357,6 +373,7 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
         handled = false;
     }
     if (!handled) return;
+    shot.end();
     event.preventDefault();
     event.stopPropagation();
   });

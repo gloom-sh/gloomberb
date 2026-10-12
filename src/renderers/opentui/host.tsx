@@ -10,6 +10,7 @@ import { buildTerminalMediaArgs, createTerminalMediaReaper, terminalMediaStateFi
 import { saveTextFileToDownloads } from "../../utils/save-text-file";
 import { installInteractionPerformanceRecorder } from "./interaction-performance";
 import { provideKittyServices } from "./kitty-services";
+import { captureRendererFrame } from "./frame-capture";
 import {
   createTimerFrameDriver,
   installMarketDataFrameDriver,
@@ -43,6 +44,7 @@ export function toKeyEventLike(event: {
   sequence?: string;
   key?: string;
   super?: boolean;
+  /** Set only when the terminal reports key event types (kitty protocol); the app does not ask for them. */
   repeated?: boolean;
 }): KeyEventLike {
   const key = event.name ?? event.key ?? "";
@@ -244,20 +246,7 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     addPostProcessFn: (processFn) => renderer.addPostProcessFn(processFn as any),
     removePostProcessFn: (processFn) => renderer.removePostProcessFn(processFn as any),
     copyToClipboardOSC52: (text) => renderer.copyToClipboardOSC52(text),
-    captureFrame() {
-      if (renderer.isDestroyed) return null;
-      const buffer = renderer.currentRenderBuffer;
-      return {
-        cols: buffer.width,
-        rows: buffer.height,
-        lines: buffer.getSpanLines().map((line) => line.spans.map((span) => ({
-          text: span.text,
-          fg: span.fg.toInts(),
-          bg: span.bg.toInts(),
-          attributes: span.attributes,
-        }))),
-      };
-    },
+    captureFrame: () => captureRendererFrame(renderer),
     async capturePaneImage(rect) {
       if (renderer.isDestroyed) throw new Error("The terminal has closed.");
       // Loaded on first use: the glyph atlas is only needed for a picture.

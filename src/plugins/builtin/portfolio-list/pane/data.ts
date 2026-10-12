@@ -1,3 +1,4 @@
+import { isStablecoinCurrency } from "../../../../utils/currency-units";
 import { createRowValueCache } from "../../../../components/ui/row-value-cache";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../../components/price-sparkline/view";
 import type { AppConfig, ColumnConfig } from "../../../../types/config";
@@ -190,7 +191,9 @@ export function buildTrackedCurrencies(
     }
   }
 
-  return [...currencies];
+  // A stablecoin has no rate to ask for: its rows keep their own currency, and a holding in one says its value
+  // is unavailable rather than the whole list reporting FX as down.
+  return [...currencies].filter((currency) => !isStablecoinCurrency(currency));
 }
 
 export function getCollectionTypeFromConfig(config: AppConfig, collectionId: string | null): "portfolio" | "watchlist" | null {

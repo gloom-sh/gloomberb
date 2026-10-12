@@ -3,14 +3,16 @@ import { act } from "react";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { colors } from "../../../theme/colors";
+import { colors, hoverBg } from "../../../theme/colors";
 import { createDefaultConfig } from "../../../types/config";
 import type { ChatMessage } from "../../../api-client";
 import { apiClient } from "../../../api-client";
 import { PluginRenderProvider } from "../../runtime";
 import { setSharedRegistryForTests } from "../../registry";
 import { ChatContent } from "./content";
+import { MESSAGE_HIGHLIGHT_MS } from "./content/row-activity";
 import { SLOW_SEND_THRESHOLD_MS } from "./message/pending-send";
+import { chatHighlightBg } from "./message/render-state";
 import { ChatStatusWidget } from "./status-widget";
 import {
   createChatTestHarness,
@@ -523,29 +525,207 @@ describe("ChatContent", () => {
     expect(bodySpan!.fg.toInts().join(",")).toBe(expectedSelectedFg);
   });
 
-  test("selects the exact message requested by a chat deep link", async () => {
-    const controller = createController({
-      messages: [makeMessage(1), makeMessage(2)],
+  describe("a message a chat deep link opened on", () => {
+    const bodyBg = (text: string) => {
+      const span = tui.setup().captureSpans().lines
+        .filter((line) => lineText(line).includes(text))
+        .flatMap((line) => line.spans)
+        .find((candidate) => candidate.text.includes(text));
+      return span?.bg.toInts().join(",");
+    };
+    const highlighted = hexToRgbaInts(chatHighlightBg());
+
+    async function openOnFirstMessage() {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2)] });
+      let handled = 0;
+      await mountChat(controller, {
+        width: 72,
+        height: 12,
+        targetMessageId: "m1",
+        onTargetMessageHandled: () => {
+          handled += 1;
+        },
+      });
+      expect(handled).toBe(1);
+      return controller;
+    }
+
+    test("is marked, not selected: a selection would stay until someone cleared it", async () => {
+      await openOnFirstMessage();
+
+      expect(bodyBg("message 1")).toBe(highlighted);
+      // The text keeps its usual colour: the selected look is the keyboard's cursor.
+      const bodySpan = tui.setup().captureSpans().lines
+        .filter((line) => lineText(line).includes("message 1"))
+        .flatMap((line) => line.spans)
+        .find((candidate) => candidate.text.includes("message 1"));
+      expect(bodySpan!.fg.toInts().join(",")).not.toBe(hexToRgbaInts(colors.selectedText));
     });
-    let handled = 0;
 
-    await mountChat(controller, {
-      width: 72,
-      height: 12,
-      targetMessageId: "m1",
-      onTargetMessageHandled: () => {
-        handled += 1;
-      },
+    test("goes back to normal on a key press", async () => {
+      await openOnFirstMessage();
+
+      await emitKeypress({ name: "x", sequence: "x" });
+      await flushFrame();
+
+      expect(bodyBg("message 1")).not.toBe(highlighted);
     });
 
-    const expectedSelectedFg = hexToRgbaInts(colors.selectedText);
-    const frame = tui.setup().captureSpans();
-    const bodyLine = frame.lines.find((line) => lineText(line).includes("message 1"));
-    const bodySpan = bodyLine?.spans.find((span) => span.text.includes("message 1"));
+    test("goes back to normal on a wheel turn over the list", async () => {
+      await openOnFirstMessage();
 
-    expect(handled).toBe(1);
-    expect(bodySpan).toBeDefined();
-    expect(bodySpan!.fg.toInts().join(",")).toBe(expectedSelectedFg);
+      await act(async () => {
+        await tui.setup().mockMouse.scroll(20, 4, "up");
+        await tui.setup().renderOnce();
+      });
+      await flushFrame();
+
+      expect(bodyBg("message 1")).not.toBe(highlighted);
+    });
+
+    test("goes back to normal when a message arrives", async () => {
+      const controller = await openOnFirstMessage();
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(3)]);
+      });
+      await flushFrame();
+
+      expect(bodyBg("message 1")).not.toBe(highlighted);
+    });
+
+    test("goes back to normal on its own", async () => {
+      await openOnFirstMessage();
+      expect(bodyBg("message 1")).toBe(highlighted);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, MESSAGE_HIGHLIGHT_MS + 100));
+      });
+      await flushFrame();
+
+      expect(bodyBg("message 1")).not.toBe(highlighted);
+    });
+
+    test("leaves the list following new messages, which a selection would not", async () => {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2), makeMessage(3), makeMessage(4), makeMessage(5), makeMessage(6)] });
+      await mountChat(controller, { width: 60, height: 13, targetMessageId: "m6" });
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(7)]);
+      });
+      await flushFrame();
+
+      expect(tui.frame()).toContain("message 7");
+    });
+  });
+
+  describe("the row under the pointer", () => {
+    const bodyBg = (text: string) => {
+      const span = tui.setup().captureSpans().lines
+        .filter((line) => lineText(line).includes(text))
+        .flatMap((line) => line.spans)
+        .find((candidate) => candidate.text.includes(text));
+      return span?.bg.toInts().join(",");
+    };
+    const hovered = hexToRgbaInts(hoverBg());
+
+    async function hoverMessage(controller: ReturnType<typeof createController>, text: string) {
+      await mountChat(controller, { width: 72, height: 12 });
+      // The channel list draws once it has loaded, and moves the messages right.
+      await tui.waitForFrameToContain("#everyone");
+      const rows = tui.frame().split("\n");
+      const row = rows.findIndex((line) => line.includes(text));
+      expect(row).toBeGreaterThanOrEqual(0);
+      await act(async () => {
+        await tui.setup().mockMouse.moveTo(rows[row]!.indexOf(text) + 1, row);
+        await tui.setup().renderOnce();
+      });
+      await flushFrame();
+      expect(bodyBg(text)).toBe(hovered);
+    }
+
+    test("is let go when a message arrives, which moves every row after it", async () => {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2), makeMessage(3)] });
+      await hoverMessage(controller, "message 2");
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(4)]);
+      });
+      await flushFrame();
+
+      expect(bodyBg("message 2")).not.toBe(hovered);
+    });
+
+    test("is let go when a key is pressed", async () => {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2), makeMessage(3)] });
+      await hoverMessage(controller, "message 2");
+
+      await emitKeypress({ name: "x", sequence: "x" });
+      await flushFrame();
+
+      expect(bodyBg("message 2")).not.toBe(hovered);
+    });
+  });
+
+  describe("new messages while the reader is scrolled back", () => {
+    const manyMessages = () => Array.from({ length: 14 }, (_, index) => makeMessage(index + 1));
+
+    async function scrollBack(controller: ReturnType<typeof createController>) {
+      await mountChat(controller, { width: 60, height: 13 });
+      await act(async () => {
+        await tui.setup().mockMouse.scroll(20, 4, "up");
+        await tui.setup().mockMouse.scroll(20, 4, "up");
+        await tui.setup().renderOnce();
+      });
+      await flushFrame();
+    }
+
+    test("leave the view where it is and offer the newest message", async () => {
+      const controller = createController({ messages: manyMessages() });
+      await scrollBack(controller);
+      const before = tui.frame();
+      expect(before).not.toContain("1 new message");
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(15)]);
+      });
+      await flushFrame();
+
+      const frame = tui.frame();
+      expect(frame).toContain("1 new message");
+      expect(frame).not.toContain("message 15");
+    });
+
+    test("show the control, which takes the reader to the newest message when pressed", async () => {
+      const controller = createController({ messages: manyMessages() });
+      await scrollBack(controller);
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(15), makeMessage(16)]);
+      });
+      await flushFrame();
+      expect(tui.frame()).toContain("2 new messages");
+
+      await tui.clickFrameText("2 new messages");
+      await flushFrame();
+
+      const frame = tui.frame();
+      expect(frame).toContain("message 16");
+      expect(frame).not.toContain("new messages");
+    });
+
+    test("do not count as new for a reader who is at the bottom", async () => {
+      const controller = createController({ messages: manyMessages() });
+      await mountChat(controller, { width: 60, height: 13 });
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(15)]);
+      });
+      await flushFrame();
+
+      const frame = tui.frame();
+      expect(frame).toContain("message 15");
+      expect(frame).not.toContain("new message");
+    });
   });
 
   test("grows the composer for multi-line drafts", async () => {
@@ -912,6 +1092,35 @@ describe("ChatContent", () => {
     const frame = tui.frame();
     expect(frame).toContain("message 4");
     expect(frame).not.toContain("message 1");
+  });
+
+  test("selects nothing when scrolling to the top loads older messages", async () => {
+    const controller = createController({
+      messages: [makeMessage(4), makeMessage(5), makeMessage(6), makeMessage(7), makeMessage(8), makeMessage(9), makeMessage(10)],
+    });
+    let loadCount = 0;
+    controller.loadOlderMessages = async () => {
+      loadCount += 1;
+      (controller as any).mergeMessages([makeMessage(1), makeMessage(2), makeMessage(3)], { notifyMentions: false });
+    };
+
+    await mountChat(controller, { width: 60, height: 13 });
+    // By wheel, as a mouse reader does: no key puts a cursor on a message.
+    for (let turn = 0; turn < 12; turn += 1) {
+      await act(async () => {
+        await tui.setup().mockMouse.scroll(20, 4, "up");
+        await tui.setup().renderOnce();
+      });
+    }
+    await flushFrame();
+
+    expect(loadCount).toBeGreaterThan(0);
+    const rowBg = (text: string) => tui.setup().captureSpans().lines
+      .filter((line) => lineText(line).includes(text))
+      .flatMap((line) => line.spans)
+      .find((span) => span.text.includes(text))?.bg.toInts().join(",");
+    // The message that was at the top before the page came in, and the one the reader sees now.
+    expect(rowBg("message 4")).not.toBe(hexToRgbaInts(colors.selected));
   });
 
   test("renders ticker badges and opens a floating Ticker Research pane on click", async () => {

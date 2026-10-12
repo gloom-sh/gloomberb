@@ -90,6 +90,7 @@ import { openPerpLabel, useOpenPerpMarket } from "../../perps/open-market";
 import { useLiveStreamingSetting } from "../../../../state/hooks/live-streaming";
 import { useThrottledTickerOrder } from "../use-throttled-ticker-order";
 import { useThrottledMemo } from "../use-throttled-memo";
+import { perpetualDisplaySymbol, perpetualListing, perpetualVenueName } from "../../../../tickers/perpetual-listing";
 import { useColumnClock } from "../use-column-clock";
 import { liveMarketCapitalization } from "../live-valuation";
 import { hasUnknownOptionMultiplier } from "../../../../portfolio/position-metrics";
@@ -420,10 +421,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     setViewMode((current) => current === "table" ? "grid" : "table");
   }, [isPortfolioTab, setViewMode]);
 
+  // A perpetual opens PERP on its market's history, as its PERP% and FUND 8H cells do; any other row its research.
   const handleRowActivate = useCallback((ticker: TickerRecord) => {
     flushCursorSymbol(ticker.metadata.ticker);
-    openTickerFloating(ticker.metadata.ticker);
-  }, [flushCursorSymbol, openTickerFloating]);
+    const perpetual = perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange);
+    if (perpetual) openPerpMarket(perpetual.marketId);
+    else openTickerFloating(ticker.metadata.ticker);
+  }, [flushCursorSymbol, openPerpMarket, openTickerFloating]);
   const handleTickerAdded = useCallback((symbol: string) => {
     setCursorSymbol(symbol, { immediate: true });
   }, [setCursorSymbol]);
@@ -572,11 +576,17 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     }
   }, [appStateRef, dialog, dispatch, notify, removalCollection, selectedTicker, setCursorSymbol]);
 
-  // The cursor row's perpetual, for the keyboard: the pane menu opens what clicking its cell opens.
+  // The cursor row's perpetual, for the keyboard: the pane menu opens what clicking its cell opens. A row that is a
+  // perpetual market opens its own, as Enter does.
   const cursorPerpetual = showsPerpetuals && cursorSymbol ? perpetuals.markets.get(cursorSymbol) ?? null : null;
+  const cursorMarket = useMemo(() => selectedTicker ? perpetualListing(selectedTicker.metadata.ticker, selectedTicker.metadata.exchange) : null,
+    [selectedTicker]);
   usePaneMenuItems("portfolio-list-perpetual", () => cursorPerpetual
     ? [{ id: "open-perpetual", label: openPerpLabel(cursorPerpetual), onSelect: () => openPerpMarket(cursorPerpetual.marketId) }]
-    : null, [cursorPerpetual, openPerpMarket]);
+    : cursorMarket
+      ? [{ id: "open-perpetual", label: tf("Open {label}", { label: `PERP ${perpetualDisplaySymbol(cursorMarket)} · ${perpetualVenueName(cursorMarket.exchange)}` }),
+        onSelect: () => openPerpMarket(cursorMarket.marketId) }]
+      : null, [cursorMarket, cursorPerpetual, openPerpMarket]);
 
   usePaneFooter("portfolio-list", () => ({
     info: [

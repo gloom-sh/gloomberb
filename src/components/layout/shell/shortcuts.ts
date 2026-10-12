@@ -1,12 +1,15 @@
 import type { KeyEventLike } from "../../../react/input";
 import {
+  advertisedChord,
   getDefaultKeybindings,
   isPaneKeybindingAction,
   matchKeybinding,
   menuAcceleratorFor,
+  serializeKeyChord,
   type CoreKeybindingActionId,
   type ResolvedKeybindings,
 } from "../../../app/keybindings";
+import type { ShortcutDisplayMode } from "../../../utils/shortcut-labels";
 
 export type PaneManagementShortcut =
   | "menu"
@@ -18,6 +21,7 @@ export type PaneManagementShortcut =
   | "copy-screenshot"
   | "export-csv"
   | "share"
+  | "ask"
   | "close"
   | "close-all-floating"
   | "layout-gallery"
@@ -35,6 +39,7 @@ const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManage
   "pane-screenshot": "copy-screenshot",
   "pane-export-csv": "export-csv",
   "pane-share": "share",
+  "pane-ask": "ask",
   "pane-close": "close",
   "close-floating-panes": "close-all-floating",
   "layout-gallery": "layout-gallery",
@@ -44,13 +49,22 @@ const PANE_ACTION_TO_SHORTCUT: Partial<Record<CoreKeybindingActionId, PaneManage
 };
 
 export type PaneManagementAccelerators = Record<
-  "menu" | "settings" | "fullscreen" | "newLayout" | "toggleFloating" | "popOut" | "copyScreenshot" | "exportCsv" | "share" | "close"
+  "menu" | "settings" | "fullscreen" | "newLayout" | "toggleFloating" | "popOut" | "copyScreenshot" | "exportCsv" | "share" | "ask" | "close"
   | "closeAllFloating" | "layoutGallery" | "gridlockAll" | "windowMode" | "windowResizeMode",
   string | undefined
 >;
 
-/** Menu accelerators for the pane actions, read from the same table the keys are. */
-export function paneManagementAccelerators(keybindings: ResolvedKeybindings): PaneManagementAccelerators {
+/**
+ * Menu accelerators for the pane actions, read from the same table the keys
+ * are. A native menu only takes chords on the platform modifier; the terminal
+ * menu shows Ask Gloom on the chord a terminal delivers (Alt+A), not on
+ * Ctrl+Shift+A, which many terminals keep for themselves.
+ */
+export function paneManagementAccelerators(
+  keybindings: ResolvedKeybindings,
+  mode: ShortcutDisplayMode = "platform",
+): PaneManagementAccelerators {
+  const terminalAsk = mode === "terminal" ? advertisedChord(keybindings, "pane-ask", "terminal") : null;
   return {
     menu: menuAcceleratorFor(keybindings, "pane-menu"),
     settings: menuAcceleratorFor(keybindings, "pane-settings"),
@@ -61,6 +75,7 @@ export function paneManagementAccelerators(keybindings: ResolvedKeybindings): Pa
     copyScreenshot: menuAcceleratorFor(keybindings, "pane-screenshot"),
     exportCsv: menuAcceleratorFor(keybindings, "pane-export-csv"),
     share: menuAcceleratorFor(keybindings, "pane-share"),
+    ask: terminalAsk ? serializeKeyChord(terminalAsk) : menuAcceleratorFor(keybindings, "pane-ask"),
     close: menuAcceleratorFor(keybindings, "pane-close"),
     closeAllFloating: menuAcceleratorFor(keybindings, "close-floating-panes"),
     layoutGallery: menuAcceleratorFor(keybindings, "layout-gallery"),
@@ -101,7 +116,9 @@ export function inputCaptureAllowsPaneManagementShortcut(
   // A screenshot does not edit the field that captured input. Keep it available
   // from composers (ASKG, chat, etc.) on both desktop modifier layouts.
   if (shortcut === "copy-screenshot") return event.ctrl || event.meta || event.super === true;
-  if (shortcut === "toggle-fullscreen" || shortcut === "new-layout") return event.meta || event.super === true;
+  // Command chords are never text. Alt+A and Ctrl+Shift+A edit a terminal
+  // field (line start), so a field that has the keyboard keeps them there.
+  if (shortcut === "toggle-fullscreen" || shortcut === "new-layout" || shortcut === "ask") return event.meta || event.super === true;
   if (shortcut !== "close" && shortcut !== "close-all-floating") return false;
   return event.meta || event.super || event.targetEditable !== true;
 }

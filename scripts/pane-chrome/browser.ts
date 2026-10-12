@@ -279,3 +279,49 @@ export async function drag(cdp: Cdp, from: Point, waypoints: Point[], steps = 12
   await mouse(cdp, "mouseReleased", at.x, at.y, false);
   await frames(cdp, 2);
 }
+
+/** DevTools modifier bits. */
+const MODIFIERS = { alt: 1, ctrl: 2, meta: 4, shift: 8 } as const;
+
+/**
+ * A real key press on the focused document: keydown and keyup for a letter
+ * with modifiers held, as a keyboard sends it, then a frame for the result.
+ */
+export async function pressKey(cdp: Cdp, letter: string, modifiers: Array<keyof typeof MODIFIERS> = []): Promise<void> {
+  const bits = modifiers.reduce((total, modifier) => total | MODIFIERS[modifier], 0);
+  const upper = letter.toUpperCase();
+  const key = modifiers.includes("shift") ? upper : letter.toLowerCase();
+  const base = { modifiers: bits, key, code: `Key${upper}`, windowsVirtualKeyCode: upper.charCodeAt(0), nativeVirtualKeyCode: upper.charCodeAt(0) };
+  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...base });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+  await frames(cdp, 2);
+}
+
+/** A key chord as DevTools describes it: `modifiers` is Alt 1, Ctrl 2, Meta 4, Shift 8. */
+export interface Chord { key: string; code: string; keyCode: number; modifiers: number }
+
+/**
+ * Holds `chord` for `holdMs`: one key down, then the auto-repeat keydowns the
+ * operating system sends while a key stays down (`autoRepeat`, which the page
+ * reads as `event.repeat`) every `intervalMs`, then key up. Real input events,
+ * so the page's own key handling runs, not a call into it. `flagRepeats: false`
+ * sends the same stream with no repeat flag, as a native menu accelerator
+ * reaches the page.
+ */
+export async function holdKey(cdp: Cdp, chord: Chord, holdMs: number, { intervalMs = 33, flagRepeats = true } = {}): Promise<void> {
+  const event = {
+    key: chord.key,
+    code: chord.code,
+    windowsVirtualKeyCode: chord.keyCode,
+    nativeVirtualKeyCode: chord.keyCode,
+    modifiers: chord.modifiers,
+  };
+  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...event });
+  const until = performance.now() + holdMs;
+  while (performance.now() < until) {
+    await sleep(intervalMs);
+    await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", autoRepeat: flagRepeats, ...event });
+  }
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...event });
+  await frames(cdp, 2);
+}

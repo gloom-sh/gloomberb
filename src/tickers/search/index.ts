@@ -31,6 +31,7 @@ import {
   isLowQualityTickerName,
 } from "./result";
 
+import { typedPerpetualListing } from "../perpetual-listing";
 export type {
   ResolvedTickerSearch,
   TickerSearchCandidate,
@@ -99,8 +100,9 @@ interface TickerSearchCandidateOptions {
   providerPopularity?: ReadonlyMap<string, number>;
 }
 
+/** The ticker typed, upper case; a perpetual's market id (`binance:BZUSDT`) as its listing (`BZUSDT:BINANCE`). */
 export function normalizeTickerInput(activeTicker: string | null, arg?: string): string | null {
-  const explicitTicker = arg?.trim().toUpperCase();
+  const explicitTicker = arg ? (typedPerpetualListing(arg)?.key ?? arg).trim().toUpperCase() : "";
   if (explicitTicker) return explicitTicker;
   return activeTicker;
 }

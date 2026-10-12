@@ -10,7 +10,7 @@ import {
   renderTable,
 } from "../../../../utils/cli-output";
 import { formatCompact, formatPercentRaw } from "../../../../utils/format";
-import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketCostWithCurrency, formatMarketPrice, formatMarketPriceWithCurrency, formatMarketQuantity, quoteFormatOptions } from "../../../../market-data/market/format";
 import { resolvePriceBasis } from "../../../../market-data/market/price-basis";
 import { getPortfolioPositionMetrics, resolvePortfolioMarketValue, resolvePortfolioPositionPnl } from "../../../../portfolio/position-metrics";
 import {
@@ -74,6 +74,14 @@ function priceFormatOptions(quote: Parameters<typeof quoteFormatOptions>[0] & { 
   return resolvePriceBasis(options.priceBasis, options.assetCategory) === "per-unit"
     ? { ...options, minimumFractionDigits: currencyPriceMinDigits(quote?.currency) }
     : options;
+}
+
+/** A Last as `quote` prints it: money in the quote's currency, and an index level in points, padded to two decimals. */
+function formatListPrice(value: number, quote: Parameters<typeof quoteFormatOptions>[0] & { currency: string }, assetCategory?: string): string {
+  const options = priceFormatOptions(quote, assetCategory);
+  return options.assetCategory?.trim().toUpperCase() === "INDEX"
+    ? formatMarketPrice(value, { ...options, minimumFractionDigits: 2 })
+    : formatMarketPriceWithCurrency(value, quote.currency, options);
 }
 
 /**
@@ -467,7 +475,7 @@ function extendedCells(
   assetCategory: string | undefined,
 ): string[] {
   return sessions.map((session) => extended?.session === session && quote
-    ? `${formatMarketPriceWithCurrency(extended.price, quote.currency, priceFormatOptions(quote, assetCategory))} ${colorBySign(formatPercentRaw(extended.changePercent), extended.change)}`
+    ? `${formatListPrice(extended.price, quote, assetCategory)} ${colorBySign(formatPercentRaw(extended.changePercent), extended.change)}`
     : "");
 }
 
@@ -686,7 +694,7 @@ async function showCollectionWithMarketData(
     const rows: string[][] = valued.map(({ ticker, quote, headline, extended, position, metrics, pnl, row, valuation: priced }, index) => {
       const asOf = valuationTimeText(priced.valuationAsOf, now);
       const priceText = quote && headline
-        ? colorBySign(formatMarketPriceWithCurrency(headline.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), headline.change)
+        ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
       const changeText = headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
       const quoteCells = [priceText, changeText, ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory)];
@@ -783,7 +791,7 @@ async function showCollectionWithMarketData(
     const extendedSessions = extendedSessionsOf(watched.map(({ extended }) => extended?.session));
     const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap }) => {
       const priceText = quote && headline
-        ? colorBySign(formatMarketPriceWithCurrency(headline.price, quote.currency, priceFormatOptions(quote, ticker.metadata.assetCategory)), headline.change)
+        ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
       const changeText = headline ? colorBySign(formatPercentRaw(headline.changePercent), headline.change) : "—";
       return [
@@ -918,6 +926,7 @@ const NO_MARKET_CAP: Partial<Record<TickerInstrumentKind, string>> = {
   index: "indices",
   currency: "currencies",
   future: "futures",
+  perpetual: "perpetuals",
   option: "options",
   bond: "bonds",
 };

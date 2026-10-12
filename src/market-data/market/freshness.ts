@@ -7,10 +7,11 @@ import { hasPublishedNseCalendar, isPublishedNseClosure } from "../published-nse
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
 import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
+import { PERPETUAL_EXCHANGES } from "../../tickers/perpetual-listing";
 
-const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
+const ALWAYS_OPEN_EXCHANGES = new Set(["CCC", ...PERPETUAL_EXCHANGES]);
 
-/** Spot crypto venues have no equity open or close. */
+/** Spot crypto and perpetual futures venues have no equity open or close. */
 export function isAlwaysOpenExchange(exchange: string | undefined): boolean {
   return ALWAYS_OPEN_EXCHANGES.has(canonicalExchange(exchange));
 }

@@ -3,6 +3,7 @@ import type { Quote } from "../../../types/financials";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { delayedFeedLagMs } from "../../../market-data/market/freshness";
 import { apiClient } from "../../../api-client";
+import { isPerpetualExchange } from "../../../tickers/perpetual-listing";
 import { CLOUD_NEWS_DELAY_HOURS, hasProAccess } from "../../../api-client/plan-rules";
 
 /**
@@ -68,7 +69,8 @@ export function quoteFreshnessFields(
 ): QuoteFreshnessFields {
   if (!quote) return {};
   const exchange = quote.listingExchangeName || quote.exchangeName;
-  const delayed = quote.dataSource === "delayed" && quote.providerId === CLOUD_QUOTE_PROVIDER_ID;
+  // A perpetual's venue is read about once a minute, not held back by a feed lag.
+  const delayed = quote.dataSource === "delayed" && quote.providerId === CLOUD_QUOTE_PROVIDER_ID && !isPerpetualExchange(exchange);
   return {
     ...(quote.dataSource === "live" || quote.dataSource === "delayed" ? { dataSource: quote.dataSource } : {}),
     stale: isQuoteStaleForCurrentSession(quote, now),

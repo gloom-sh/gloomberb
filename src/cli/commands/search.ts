@@ -16,6 +16,9 @@ import {
   type TickerSearchCandidate,
 } from "../../tickers/search";
 import { initMarketData, withMarketData } from "../context";
+import { loadListingFate } from "../listing-arg";
+import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { startTickerChangeLookup, tickerChangeLine, type TickerChangeLookup } from "../../tickers/ticker-changes";
 import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
@@ -72,18 +75,26 @@ export async function searchFunctionsForCli(query: string, plugins: GloomPlugin[
   }
 }
 
+/** A bare symbol's quote, asked as `quote SYM` asks it: on the venue a saved row of the symbol is on, else the bare symbol. */
+function loadSearchedQuote(symbol: string, savedExchange: string, dataProvider: DataProvider): Promise<Quote | null> {
+  return Promise.resolve().then(() => dataProvider.getQuote(symbol, savedExchange)).catch(() => null);
+}
+
 export async function searchCandidatesForCli({
   query,
   tickers,
   dataProvider,
   totalLimit = 10,
   localLimit = 6,
+  quote: quoted,
 }: {
   query: string;
   tickers: TickerRecord[];
   dataProvider: DataProvider;
   totalLimit?: number;
   localLimit?: number;
+  /** The symbol's quote when the caller asked for it beside the search; otherwise asked only when search lists the symbol. */
+  quote?: Promise<Quote | null>;
 }): Promise<TickerSearchCandidate[]> {
   const trimmedQuery = query.trim();
   if (!trimmedQuery) return [];
@@ -106,12 +117,63 @@ export async function searchCandidatesForCli({
     // on the venue a saved row of the symbol is on, as `quote` asks for it, else the bare symbol.
     const savedExchange = localTickerMap.get(symbol)?.metadata.exchange ?? "";
     const quote = BARE_SYMBOL.test(symbol) && candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol)
-      ? await Promise.resolve().then(() => dataProvider.getQuote(symbol, savedExchange)).catch(() => null)
+      ? await (quoted ?? loadSearchedQuote(symbol, savedExchange, dataProvider))
       : null;
     return withQuotedNames(symbol, withPrimaryListingFirst(symbol, candidates, quote), quote).slice(0, totalLimit);
   } catch {
     return [];
   }
+}
+
+/** A symbol search does not list whose quote stopped long ago: TWTR, last traded 2022-10-27. */
+interface StoppedListing {
+  symbol: string;
+  /** The security's name, from its quote or the company that left the symbol; null when neither says. */
+  name: string | null;
+  /** The exchange-local date it last traded. */
+  lastTraded: string;
+  /** Its last price with its currency: $53.86. */
+  lastPrice: string;
+  /** What history and options say of it: "TWTR stopped trading 2022-10-27; no history or options served". */
+  note: string;
+}
+
+interface SearchFate {
+  /** The symbol searched for, when search no longer lists it and its quote stopped long ago. */
+  stopped: StoppedListing | null;
+  /** Lines beside the results: `quote`'s line for a company that left the symbol (FB), or a listed symbol that stopped trading. */
+  notes: string[];
+}
+
+const NO_SEARCH_FATE: SearchFate = { stopped: null, notes: [] };
+
+/**
+ * What became of a bare symbol, read as `quote` reads it (`loadListingFate`):
+ * one search does not list but whose quote stopped long ago is listed as no
+ * longer trading, and a line says when its company left the symbol (FB) or a
+ * listing search still lists stopped trading. Nothing for anything else.
+ */
+async function searchFate(
+  symbol: string,
+  candidates: readonly TickerSearchCandidate[],
+  quote: Quote | null,
+  dataProvider: DataProvider,
+  changes: TickerChangeLookup,
+): Promise<SearchFate> {
+  const fate = await loadListingFate({ symbol }, dataProvider, { quote, changes });
+  const unlisted = !candidates.some((candidate) => candidate.symbol.toUpperCase() === symbol);
+  const stopped = unlisted && quote && fate.endedOn && fate.note
+    ? {
+      symbol,
+      name: quote.name?.trim() || fate.change?.issuer || null,
+      lastTraded: fate.endedOn,
+      lastPrice: formatMarketPriceWithCurrency(quote.price, quote.currency, quoteFormatOptions(quote)),
+      note: fate.note,
+    }
+    : null;
+  // The row says when a listing stopped; a company that left the symbol is a line of its own.
+  const changed = tickerChangeLine(fate.change);
+  return { stopped, notes: changed ? [changed] : fate.note && !stopped ? [fate.note] : [] };
 }
 
 /** A query that is a bare symbol (CAR, BRK.B), not a name or a phrase. */
@@ -197,6 +259,24 @@ function searchType(candidate: TickerSearchCandidate): string | undefined {
     || candidate.ticker?.metadata.assetCategory, resolveSearchName(candidate));
 }
 
+/** What `--json` lists for a symbol search no longer lists: its category says so, and it keeps its last date and price. */
+function stoppedListingRow(stopped: StoppedListing) {
+  return {
+    category: STOPPED_CATEGORY, symbol: stopped.symbol, name: stopped.name ?? "", exchange: "", type: "", source: "", providerId: "",
+    saved: false, lastTraded: stopped.lastTraded, lastPrice: stopped.lastPrice, note: stopped.note,
+  };
+}
+
+const STOPPED_CATEGORY = "No Longer Trading";
+
+/** The stopped listing in its own section, as the search results list: its name when known, its last date and price. */
+function renderStoppedListing(stopped: StoppedListing): string {
+  return [renderSection(STOPPED_CATEGORY), renderTable(
+    [{ header: "Symbol" }, ...stopped.name ? [{ header: "Name" }] : [], { header: "Last traded" }, { header: "Last price", align: "right" as const }],
+    [[stopped.symbol, ...stopped.name ? [stopped.name] : [], stopped.lastTraded, stopped.lastPrice]],
+  )].join("\n");
+}
+
 function searchCandidateRows(candidates: TickerSearchCandidate[]) {
   return candidates.map((candidate) => ({
     category: candidate.category,
@@ -237,9 +317,15 @@ function catalogHint(query: string): string {
  * asks for that no source carries yet, and for an empty search the catalog,
  * unless a known gap or the functions listed already said where to look instead.
  */
-function searchNotes(query: string, candidates: TickerSearchCandidate[], functions: readonly SearchFunctionMatch[]): string[] {
+function searchNotes(
+  query: string,
+  candidates: TickerSearchCandidate[],
+  functions: readonly SearchFunctionMatch[],
+  fate: SearchFate,
+): string[] {
   const gap = knownGapMessage(query);
-  return [indexRootNote(query, candidates), gap, candidates.length === 0 && !gap && functions.length === 0 ? catalogHint(query) : null]
+  const empty = candidates.length === 0 && !fate.stopped;
+  return [...fate.notes, indexRootNote(query, candidates), gap, empty && !gap && functions.length === 0 ? catalogHint(query) : null]
     .filter((note): note is string => !!note);
 }
 
@@ -260,6 +346,7 @@ export function buildSearchReport({
   candidates,
   series = [],
   functions = [],
+  fate = NO_SEARCH_FATE,
 }: {
   query: string;
   candidates: TickerSearchCandidate[];
@@ -267,8 +354,11 @@ export function buildSearchReport({
   series?: readonly SeriesMatch[];
   /** The functions that carry every word of a query no ticker matches. */
   functions?: readonly SearchFunctionMatch[];
+  /** What became of the symbol searched for: a listing that stopped trading, a company that left it. */
+  fate?: SearchFate;
 }): string {
   const lines = [renderSection(`Search: ${query}`)];
+  if (fate.notes.length > 0) lines.push("", ...fate.notes);
   const indexNote = indexRootNote(query, candidates);
   if (indexNote) lines.push("", indexNote);
   const gap = knownGapMessage(query);
@@ -278,8 +368,11 @@ export function buildSearchReport({
   // be in a series name ("apple") list them after the tickers.
   const seriesFirst = series.some((match) => match.exact);
   if (charted && (seriesFirst || candidates.length === 0)) lines.push("", charted);
+  // The symbol asked for goes first, though search no longer lists it.
+  if (fate.stopped) lines.push("", renderStoppedListing(fate.stopped));
 
   if (candidates.length === 0) {
+    if (fate.stopped) return lines.join("\n");
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
     else if (!gap && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
@@ -329,21 +422,29 @@ export async function search(query: string, dependencies: SearchCommandDependenc
   await withMarketData(initMarketDataFn, async (context) => {
     const { store, dataProvider } = context;
     const tickers = await store.loadAllTickers();
+    const symbol = trimmedQuery.toUpperCase();
+    // A bare symbol's quote and whether it changed (FB is now META) are asked beside the search, so they cost no wait.
+    const bare = BARE_SYMBOL.test(symbol);
+    const savedExchange = tickers.find((ticker) => ticker.metadata.ticker.toUpperCase() === symbol)?.metadata.exchange ?? "";
+    const quote = bare ? loadSearchedQuote(symbol, savedExchange, dataProvider) : null;
+    const changes = bare ? startTickerChangeLookup(dataProvider, symbol) : null;
     const candidates = await searchCandidatesForCli({
       query: trimmedQuery,
       tickers,
       dataProvider,
+      ...quote ? { quote } : {},
     });
+    const fate = quote && changes ? await searchFate(symbol, candidates, await quote, dataProvider, changes) : NO_SEARCH_FATE;
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");
     // A query that names no ticker may name what a function does; a known gap already says where to look.
-    const functions = candidates.length === 0 && !knownGapMessage(trimmedQuery) && dependencies.plugins
+    const functions = candidates.length === 0 && !fate.stopped && !knownGapMessage(trimmedQuery) && dependencies.plugins
       ? await searchFunctionsForCli(trimmedQuery, dependencies.plugins, context)
       : [];
     if (dependencies.printResult) {
-      const warnings = searchNotes(trimmedQuery, candidates, functions);
+      const warnings = searchNotes(trimmedQuery, candidates, functions, fate);
       dependencies.printResult({
-        data: searchCandidateRows(candidates),
+        data: [...fate.stopped ? [stoppedListingRow(fate.stopped)] : [], ...searchCandidateRows(candidates)],
         metadata: { query: trimmedQuery, ...(series.length ? { series } : {}), ...(functions.length ? { functions } : {}) },
         warnings: warnings.length ? warnings : undefined,
       }, {
@@ -354,6 +455,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
           { key: "exchange", header: "Exchange" },
           { key: "type", header: "Type" },
           { key: "source", header: "Source" },
+          ...fate.stopped ? [{ key: "lastTraded", header: "Last traded" }, { key: "lastPrice", header: "Last price" }] : [],
         ],
       });
       return;
@@ -364,6 +466,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
       candidates,
       series,
       functions,
+      fate,
     }));
   });
 }

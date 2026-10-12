@@ -73,6 +73,13 @@ describe("pane function CLI args", () => {
     expect(parsePaneFunctionArgs(["AUCT", "--explain", "bill"])).toMatchObject({ target: "AUCT", arg: "bill", explain: true, options: {} });
   });
 
+  test("--strict is a switch, so the token after it stays the function's argument", () => {
+    expect(parsePaneFunctionArgs(["OVDV", "--strict", "SPY", "--tab", "term"])).toMatchObject({
+      target: "OVDV", arg: "SPY", strict: true, options: { tab: "term" },
+    });
+    expect(parsePaneFunctionArgs(["OVDV", "SPY"]).strict).toBeUndefined();
+  });
+
   test("expands --arguments key-value pairs", () => {
     expect(parseArgumentsOption("range-preset=1Y, axis_mode=percent")).toEqual({
       rangePreset: "1Y",

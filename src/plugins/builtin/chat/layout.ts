@@ -9,10 +9,11 @@ import {
   type TickerBadgeStatus,
 } from "../../../components/ticker/badge/format";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
+import { STICKY_BOTTOM_THRESHOLD_PX } from "../../../ui/sticky-scroll";
+import { terminalReactionRows } from "./reactions";
 
 const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
 const MESSAGE_SELECTION_BOTTOM_INSET = 1;
-const SCROLL_BOTTOM_THRESHOLD_PX = 2;
 
 export const CHAT_COMPOSER_MAX_ROWS = 5;
 export const MESSAGE_ACTION_WIDTH = 9;
@@ -277,7 +278,8 @@ export function estimateMessageHeight(
       ? getMessageBodyTokenLines(message.content, contentLineWidth, catalog).length
       : getMessageBodyLines(message, width, catalog).length;
   const reviewNoteHeight = message.attachmentReview ? 1 : 0;
-  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + imageCount + reviewNoteHeight;
+  const reactionRows = message.reactions?.length ? terminalReactionRows(message.reactions, contentLineWidth).length : 0;
+  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + imageCount + reviewNoteHeight + reactionRows;
 }
 
 export function estimateComposerHeight(text: string, width: number) {
@@ -336,7 +338,7 @@ export function isScrolledToBottom(scrollBox: ScrollBoxRenderable | null, prefer
   const exactPixels = preferPixels && hasPixelScrollMetrics(scrollBox);
   const scrollTop = getScrollTop(scrollBox, exactPixels);
   const maxScrollTop = Math.max(0, getScrollHeight(scrollBox, exactPixels) - getViewportHeight(scrollBox, exactPixels));
-  const threshold = exactPixels ? SCROLL_BOTTOM_THRESHOLD_PX : 0;
+  const threshold = exactPixels ? STICKY_BOTTOM_THRESHOLD_PX : 0;
   return maxScrollTop - scrollTop <= threshold;
 }
 
@@ -354,21 +356,31 @@ function getScrollTopForElementIntoView({
   elementTop,
   elementHeight,
   bottomInset = 0,
+  center = false,
 }: {
   scrollTop: number;
   viewportHeight: number;
   elementTop: number;
   elementHeight: number;
   bottomInset?: number;
+  /** An element out of view is brought to the middle of it, not to the nearest edge. */
+  center?: boolean;
 }) {
   const visibleHeight = Math.max(viewportHeight - bottomInset, 1);
   const elementBottom = elementTop + elementHeight;
-  if (elementTop < scrollTop || elementHeight >= visibleHeight) return elementTop;
+  if (elementHeight >= visibleHeight) return elementTop;
+  const outOfView = elementTop < scrollTop || elementBottom > scrollTop + visibleHeight;
+  if (center && outOfView) return Math.max(0, elementTop - (visibleHeight - elementHeight) / 2);
+  if (elementTop < scrollTop) return elementTop;
   if (elementBottom > scrollTop + visibleHeight) return elementBottom - visibleHeight;
   return scrollTop;
 }
 
-export function scrollElementIntoScrollBoxView(scrollBox: ScrollBoxRenderable | null, node: unknown) {
+export function scrollElementIntoScrollBoxView(
+  scrollBox: ScrollBoxRenderable | null,
+  node: unknown,
+  options: { center?: boolean } = {},
+) {
   const nodeRect = (node as { getBoundingClientRect?: () => { x?: number; y?: number; top?: number; width?: number; height?: number } } | null)
     ?.getBoundingClientRect?.();
   const scrollRect = scrollBox?.getBoundingClientRect?.() as { x?: number; y?: number; top?: number; width?: number; height?: number } | undefined;
@@ -388,6 +400,7 @@ export function scrollElementIntoScrollBoxView(scrollBox: ScrollBoxRenderable | 
       viewportHeight: scrollBox.viewportPx.height,
       elementTop,
       elementHeight: Math.max(nodeRect.height ?? 0, 1),
+      center: options.center,
     });
     if (nextScrollTop !== scrollBox.scrollTopPx) {
       scrollBox.scrollToPixels(nextScrollTop);
@@ -399,6 +412,66 @@ export function scrollElementIntoScrollBoxView(scrollBox: ScrollBoxRenderable | 
   if (typeof scrollIntoView !== "function") return false;
   scrollIntoView.call(node, { block: "nearest", inline: "nearest" });
   return true;
+}
+
+/** Where a reader is in the list: at the bottom, or which message is at the top of the view and how far down. */
+export interface ScrollPlace {
+  atBottom: boolean;
+  anchorId: string | null;
+  /** In px from the top of the view to the top of the anchor message. */
+  anchorOffsetPx: number;
+}
+
+function messageRect(node: unknown): { y: number; height: number } | null {
+  const rect = (node as { getBoundingClientRect?: () => { y?: number; top?: number; height?: number } } | null)
+    ?.getBoundingClientRect?.();
+  if (!rect) return null;
+  return { y: rect.y ?? rect.top ?? 0, height: rect.height ?? 0 };
+}
+
+/**
+ * The reader's place in a pixel-scrolled list, to put them back after the list is
+ * rebuilt. Null where the list has no pixel layout.
+ */
+export function readScrollPlace(
+  scrollBox: ScrollBoxRenderable | null,
+  messages: ChatMessage[],
+  elements: Map<string, unknown>,
+): ScrollPlace | null {
+  const view = scrollBox?.getBoundingClientRect?.();
+  if (!scrollBox || !view || !hasPixelScrollMetrics(scrollBox)) return null;
+  if (isScrolledToBottom(scrollBox, true)) return { atBottom: true, anchorId: null, anchorOffsetPx: 0 };
+  // Rows run down the page in order, so the first with any part in view is found by halving.
+  let low = 0;
+  let high = messages.length - 1;
+  let found: { id: string; y: number } | null = null;
+  while (low <= high) {
+    const middle = (low + high) >> 1;
+    const message = messages[middle]!;
+    const rect = messageRect(elements.get(message.id));
+    if (!rect) return null;
+    if (rect.y + rect.height > view.y + 1) {
+      found = { id: message.id, y: rect.y };
+      high = middle - 1;
+    } else {
+      low = middle + 1;
+    }
+  }
+  return found ? { atBottom: false, anchorId: found.id, anchorOffsetPx: found.y - view.y } : null;
+}
+
+export function restoreScrollPlace(
+  scrollBox: ScrollBoxRenderable | null,
+  place: ScrollPlace,
+  elements: Map<string, unknown>,
+) {
+  const view = scrollBox?.getBoundingClientRect?.();
+  const rect = place.anchorId ? messageRect(elements.get(place.anchorId)) : null;
+  if (!scrollBox || !view || place.atBottom || !rect || typeof scrollBox.scrollTopPx !== "number") {
+    scrollToBottom(scrollBox, true);
+    return;
+  }
+  scrollToPosition(scrollBox, scrollBox.scrollTopPx + (rect.y - view.y) - place.anchorOffsetPx, true);
 }
 
 export function getSelectedMessageScrollTop({

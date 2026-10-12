@@ -1,4 +1,5 @@
 import type { CliCommandDef } from "../types/plugin";
+import { CLI_EXIT_CODES } from "./exit-codes";
 import {
   cliStyles,
   cliTerminalWidth,
@@ -53,6 +54,12 @@ const GLOBAL_OPTIONS: Array<[string, string]> = [
   ["-q, --quiet", "Print no results or errors in text mode, for commands that print results"],
   ["--color, --no-color", "Force or turn off colors (NO_COLOR=1 also turns them off)"],
   ["--width <n>", "Fit tables to n columns (default: the terminal width; piped output is not fitted). shot takes its own --width in pixels"],
+];
+
+const EXIT_CODES: Array<[string, string]> = [
+  [String(CLI_EXIT_CODES.ok), "Success"],
+  [String(CLI_EXIT_CODES.error), "Failed: bad input, no data found or a failed check"],
+  [String(CLI_EXIT_CODES.unusableShot), "shot --strict saved an image of a pane with no usable data"],
 ];
 
 export interface CliHelpEntry {
@@ -130,6 +137,9 @@ export function renderCliHelp(entries: CliHelpEntry[], version: string, descript
 
   lines.push("", renderSection("Global options"));
   lines.push(...renderDefinitions(GLOBAL_OPTIONS, { width, termStyle: cliStyles.command }));
+
+  lines.push("", renderSection("Exit codes"));
+  lines.push(...renderDefinitions(EXIT_CODES, { width, termStyle: cliStyles.command }));
   return lines.join("\n");
 }
 

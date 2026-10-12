@@ -143,12 +143,10 @@ function TickerNewsView({ width, height, focused }: { width: number; height: num
           item={detailWithSummary}
           focused={listFocused}
           width={width}
-          showTitle={false}
         />
       ) : (
         <Box flexGrow={1} />
       )}
-      detailTitle={detailWithSummary?.title}
       columns={["time", "source", "title", "categories", "sentiment"]}
       rootBefore={(
         <QueryBar

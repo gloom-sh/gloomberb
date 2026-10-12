@@ -39,19 +39,36 @@ function getNumberFormatter(decimals: number): Intl.NumberFormat {
 }
 
 /** Format a number as currency (e.g., $1,234.56) */
+/**
+ * An amount in a currency. A code the runtime cannot format as money (USDT, a
+ * stablecoin perpetual venues quote in) reads as the code before the amount,
+ * as a price in it does: USDT101.70.
+ */
+function formatMoney(value: number, currency: string, maximumFractionDigits: number): string {
+  try {
+    return getCurrencyFormatter(currency, maximumFractionDigits).format(value);
+  } catch {
+    const body = new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: Math.min(currencyPriceDigits(currency), maximumFractionDigits),
+      maximumFractionDigits,
+    }).format(Math.abs(value));
+    return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${currency.trim().toUpperCase()}${body}`;
+  }
+}
+
 export function formatCurrency(
   value: number | undefined,
   currency = "USD",
   maximumFractionDigits: number = currencyPriceDigits(currency),
 ): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return getCurrencyFormatter(currency, maximumFractionDigits).format(value);
+  return formatMoney(value, currency, maximumFractionDigits);
 }
 
 /** Preserve fractional per-share distributions, including split-adjusted history. */
 export function formatDistributionAmount(value: number | undefined, currency = "USD"): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return getCurrencyFormatter(currency, 6).format(value);
+  return formatMoney(value, currency, 6);
 }
 
 /** Signs a fixed-decimal move; one that rounds to zero is unsigned (0.00, never +0.00 or -0.00). */

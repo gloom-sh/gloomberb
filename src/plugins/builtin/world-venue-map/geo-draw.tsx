@@ -151,7 +151,8 @@ const SHIP_CELLS: Partial<Record<string, string>> = {
   other: "•",
 };
 
-function cellLine(grid: string[][], from: WorldMapPoint, to: WorldMapPoint, glyph: string) {
+/** A run of `glyph` cells from one point to another, over empty cells and coastline dots only. */
+export function cellLine(grid: string[][], from: WorldMapPoint, to: WorldMapPoint, glyph: string) {
   const steps = Math.max(1, Math.ceil(Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y))));
   for (let step = 0; step <= steps; step += 1) {
     const x = Math.round(from.x + ((to.x - from.x) * step) / steps);

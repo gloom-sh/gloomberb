@@ -393,11 +393,21 @@ header, with the detail's height.
   `preventDefault()` when it acts). Reserved: `j`/`k`/arrows move, Enter
   opens, Esc/Backspace back, `r` refresh, `Shift+R` refresh all, `!`
   warnings, `o` open source, `/` search, `.` pane menu, Tab/Shift+Tab next
-  pane or field, `h`/`l` tabs, `?` help, F1 the pane's help card, `` ` `` ticker search, `q` quit (terminal),
+  pane or field, `h`/`l` tabs, `<`/`>` the width of a resizable sidebar, `?` help, F1 the pane's help card, `` ` `` ticker search, `q` quit (terminal),
   `u` restart into a downloaded update or retry a failed one, `$` Pro upgrade, Ctrl+P command bar. `q`, `u`, `r`,
   `Shift+R`, `?` and `` ` `` reach the app before any pane. Table keys go
   through `onRootKeyDown` and `onDetailKeyDown` (return `true` when handled);
   global shortcuts through `registerShortcut` so Help lists them.
+- A key held down repeats, and an action should run once per press. The
+  shortcut registry drops the repeats (`event.repeat`) of command chords
+  (Ctrl, Cmd or Super with a key), Esc, function keys and the menu key before
+  any handler runs. The shell's own actions (pane keys, help, refresh, the
+  command bar) also refuse a repeat and any second trigger within 600 ms,
+  which covers a terminal that cannot say a key is a repeat and a native menu
+  accelerator. Plain keys still repeat, as movement keys must (arrows, page
+  keys, `j`/`k`, `+`/`-`), and a footer hint repeats only for those; a pane
+  key that opens a dialog, writes the clipboard, downloads or sends ignores
+  `event.repeat` itself.
 - Esc Esc closes the focused pane, and only an Esc nobody consumed counts
   as the first press. Consume Esc only when it backs out of something (a
   detail, a menu, a selection, a draft); with nothing to back out of, let it

@@ -58,11 +58,11 @@ export function useNewsArticleFooter({
   }, [access.isPayingPro, language, segment]);
   const footerInfo = useMemo(() => [...accessInfo, ...(info ?? [])], [accessInfo, info]);
 
+  // The story's header names its source, so the footer keeps to the link.
   usePaneStatusLinkFooter({
     registrationId,
     focused,
     url: article?.url,
-    source: article?.source,
     info: footerInfo,
     // [o]pen is appended after these, so the story's own actions stay rightmost.
     hints: [

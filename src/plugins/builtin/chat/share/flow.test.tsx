@@ -60,7 +60,7 @@ function fixture() {
     get: (key: string) => config.get(key), set: async (key: string, value: unknown) => { config.set(key, value); },
   } } as unknown as GloomPluginContext;
   disposeChat = installPaneChatSharing(ctx);
-  return { capture, sent, get created() { return created; }, set fail(value: boolean) { fail = value; },
+  return { registry, capture, sent, get created() { return created; }, set fail(value: boolean) { fail = value; },
     open: async () => { await shareFocusedPane(registry); return dialog!; } };
 }
 
@@ -80,6 +80,43 @@ test("cancel creates no link; copy and post reuse the captured view; the include
   await reopened.post({ channelId: "everyone", caption: "", includeLink: false });
   expect(f.sent.at(-1)).toBe("");
   expect(f.created).toBe(1);
+});
+
+test("a second trigger is refused during capture, the dialog and an in-flight post", async () => {
+  const f = fixture();
+  const painted = Promise.withResolvers<void>();
+  const opened = Promise.withResolvers<ShareDialogProps>();
+  const closed = Promise.withResolvers<any>();
+  const posting = Promise.withResolvers<void>();
+  const sent = Promise.withResolvers<any>();
+  let captures = 0;
+  f.registry.capturePaneImage = async () => { captures++; await painted.promise; return f.capture; };
+  f.registry.promptDialog = ((options: any) => {
+    opened.resolve(options.content({}).props);
+    return closed.promise;
+  }) as PluginRegistry["promptDialog"];
+  chatController.postImage = () => { posting.resolve(); return sent.promise; };
+
+  const first = shareFocusedPane(f.registry);
+  try {
+    await shareFocusedPane(f.registry);
+    expect(captures).toBe(1);
+    painted.resolve();
+    const dialog = await opened.promise;
+    await shareFocusedPane(f.registry);
+    expect(captures).toBe(1);
+    const post = dialog.post({ channelId: "everyone", caption: "Example", includeLink: true });
+    await posting.promise;
+    await shareFocusedPane(f.registry);
+    expect(captures).toBe(1);
+    sent.resolve({ id: "invented-message" });
+    expect(await post).toEqual({ messageId: "invented-message" });
+  } finally {
+    painted.resolve();
+    sent.resolve({ id: "invented-message" });
+    closed.resolve(undefined);
+    await first;
+  }
 });
 
 test("a gated/unshareable pane posts only the picture", async () => {

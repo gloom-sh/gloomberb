@@ -41,8 +41,9 @@ function metricList(rows: CompanyRow[]): string {
 /**
  * The free preview is fixed, so a metric asked for is picked out of it here,
  * never answered with another metric's rows. An id the dictionary does not
- * know fails naming the ones this company has; a known metric without rows
- * says so and names them.
+ * know fails naming the ones this company has. A known metric the preview has
+ * no rows for may be among the values it holds back, so that case gives the
+ * preview's own counts; only a company with nothing held back has none.
  */
 function metricFilter(requested: string, data: CompanyDataset, mode: CompanyMode): { keep: (row: CompanyRow) => boolean; empty?: string } {
   if (!requested) return { keep: () => true };
@@ -54,7 +55,14 @@ function metricFilter(requested: string, data: CompanyDataset, mode: CompanyMode
   if (!known) throw new Error(`${requested} is not a known metric id. ${has}.`);
   const keep = (row: CompanyRow) => row.metricId === requested;
   if (rows.some(keep)) return { keep };
-  return { keep, empty: `${whose} has no ${known.name} (${known.id}) ${mode === "kpis" ? "disclosures" : "guidance"}${offered ? `; it has ${offered}` : ""}.` };
+  if (data.access === "preview" && data.lockedRows > 0) {
+    const shown = Math.max(0, data.totalRows - data.lockedRows);
+    const noun = (count: number) => `${mode === "kpis" ? "KPI value" : "guidance figure"}${count === 1 ? "" : "s"}`;
+    const all = `Gloom Pro shows all ${data.totalRows.toLocaleString("en-US")}`;
+    return { keep, empty: shown === 0 ? `The free preview shows no ${noun(0)}; ${all}.`
+      : `${known.name} is not ${shown === 1 ? "the" : "among the"} ${shown.toLocaleString("en-US")} free ${noun(shown)}; ${all}.` };
+  }
+  return { keep, empty: `${data.symbol} has no ${known.name} (${known.id}) ${mode === "kpis" ? "disclosures" : "guidance"}${offered ? `; it has ${offered}` : ""}.` };
 }
 
 /**

@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createOneShot } from "../../../../utils/one-shot";
 import type { LayoutBounds, ResolvedPane } from "../../../../layout/pane-manager";
 import { getPaneSettings } from "../../../../pane-settings";
 import type { PluginRegistry } from "../../../../plugins/registry";
@@ -79,6 +80,8 @@ interface UseShellPaneCaptureOptions {
 export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
   const { pluginRegistry } = options;
   const dialog = useDialog();
+  // Shared by menu, command, key and plugin calls, including triggers without a repeat flag.
+  const [shareOnce] = useState(createOneShot);
   const { publicSharing } = useUiCapabilities();
   const stateRef = useAppStateRef();
   const latest = useRef(options);
@@ -145,13 +148,15 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
   useEffect(() => pluginRegistry.bindHost({
     sharePane: (requestedPaneId) => {
       const paneId = requestedPaneId ?? latest.current.focusedPaneId;
-      if (!paneId) return;
-      // Let a menu/command close before the capture starts.
+      if (!paneId || shareOnce.refuses()) return;
+      shareOnce.start();
+      // Let a menu/command close before the capture starts. The flow also refuses
+      // a second run for the entire dialog/post, even beyond the cooldown's timeout.
       setTimeout(() => {
-        void shareFocusedPane(pluginRegistry, paneId);
+        void shareFocusedPane(pluginRegistry, paneId).finally(() => shareOnce.end());
       }, 0);
     },
     capturePaneImage: capture,
     promptDialog: (prompt) => dialog.prompt(prompt),
-  }), [capture, dialog, pluginRegistry]);
+  }), [capture, dialog, pluginRegistry, shareOnce]);
 }

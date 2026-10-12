@@ -7,8 +7,6 @@ on:
   pull_request:
     branches:
       - main
-      # Validate the Share follow-up before its parent merges and it retargets.
-      - feat/glo-583-share-pane-to-chat
 
 permissions:
   contents: read

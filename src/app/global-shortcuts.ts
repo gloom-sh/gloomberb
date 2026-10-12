@@ -1,4 +1,4 @@
-import { useEffect, useRef, type Dispatch } from "react";
+import { useEffect, useRef, useState, type Dispatch } from "react";
 import { useShortcut } from "../react/input";
 import { useNativeRenderer, useRendererHost, useUiHost } from "../ui";
 import { useDialogState } from "../ui/dialog";
@@ -13,6 +13,7 @@ import { getVisiblePaneCycleOrder } from "../components/layout/pane/cycle-order"
 import { requestFunctionHelp, useFunctionHelpHost } from "../plugins/builtin/help/function-card";
 import { buildRegistryHelpIndex, helpFunctionForPane } from "../plugins/builtin/help/function-index";
 import { recordFunctionOpen } from "../telemetry/usage-counts";
+import { createOneShots } from "../utils/one-shot";
 import { DOCS_PANE_TEMPLATE_ID } from "../docs/content";
 import { registerPaneDocsHandler } from "../docs/requests";
 import { isMoveDownShortcut, isMoveUpShortcut } from "../components/command-bar/keyboard-handlers";
@@ -117,6 +118,10 @@ export function useAppGlobalShortcuts({
   const uiKind = useUiHost().kind;
   const toastHost = useToastHost();
   useKeybindingIssueNotice(keybindings, pluginRegistry, state.initialized);
+  // Every action here runs once per press: a held key, or a terminal that does
+  // not say it is a repeat, must not run it again. Only moving focus between
+  // panes (Tab) and switching layouts by number (idempotent) are left to repeat.
+  const [shots] = useState(createOneShots);
   useFunctionHelpHost({
     closeCommandBar: () => {
       if (state.commandBarOpen) dispatch({ type: "SET_COMMAND_BAR", open: false });
@@ -149,6 +154,23 @@ export function useAppGlobalShortcuts({
 
     const match = matchKeybinding(keybindings, event);
     const action = match?.kind === "action" ? match.id : null;
+    /**
+     * Whether the action already ran for this press or hold. An action that
+     * takes the key (`claims`) swallows the refused ones as well; one that
+     * leaves it to the pane (R) does not, so a pane's own key keeps working.
+     */
+    const ranAlready = (id: string, claims = true): boolean => {
+      const shot = shots.get(id);
+      if (shot.refuses(event)) {
+        if (claims) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return true;
+      }
+      shot.end();
+      return false;
+    };
 
     // Terminals send Ctrl; the browser and the desktop webview send Cmd on
     // macOS, which the OpenTUI host also reports as `super` under the kitty
@@ -172,6 +194,7 @@ export function useAppGlobalShortcuts({
     // The status bar's star line answers the same keys once no toast does,
     // but only over the workspace itself.
     if (action === "notification-action" || action === "notification-dismiss") {
+      if (ranAlready(action)) return;
       const toastHandled = action === "notification-action"
         ? toastHost.activateNewest?.() === true
         : toastHost.dismissNewest?.() === true;
@@ -195,12 +218,14 @@ export function useAppGlobalShortcuts({
       // Ctrl+P and Ctrl+N move the open bar's selection, so a bar chord that
       // is one of them only opens it; Esc and the bar's other chords close it.
       if (state.commandBarOpen && (isMoveUpShortcut(event) || isMoveDownShortcut(event))) return;
+      if (ranAlready(action)) return;
       event.preventDefault();
       event.stopPropagation();
       dispatch({ type: "TOGGLE_COMMAND_BAR" });
       return;
     }
     if (!isDetachedWindow && action === "ticker-search" && !state.commandBarOpen) {
+      if (ranAlready(action)) return;
       event.preventDefault();
       event.stopPropagation();
       dispatch({
@@ -233,6 +258,7 @@ export function useAppGlobalShortcuts({
       // Command and function keys are never text, so they still fire.
       const editing = state.inputCaptured || event.targetEditable === true;
       if (editing && event.ctrl && !(event.meta || event.super)) return;
+      if (ranAlready(`command:${match.command.query}`)) return;
       event.preventDefault();
       event.stopPropagation();
       dispatch({
@@ -246,6 +272,7 @@ export function useAppGlobalShortcuts({
 
     // A function key is never text, so the card opens from a focused field too.
     if (action === "function-help") {
+      if (ranAlready(action)) return;
       event.preventDefault();
       event.stopPropagation();
       recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
@@ -259,6 +286,7 @@ export function useAppGlobalShortcuts({
     if (state.inputCaptured) return;
 
     if (!isDetachedWindow && action === "help") {
+      if (ranAlready(action)) return;
       event.preventDefault();
       event.stopPropagation();
       pluginRegistry.showPane("help");
@@ -266,13 +294,16 @@ export function useAppGlobalShortcuts({
     }
 
     if (!isDetachedWindow && action === "quit") {
+      if (ranAlready(action, false)) return;
       if (uiKind === "opentui") rendererHost.requestExit();
     } else if (action === "refresh-ticker") {
+      if (ranAlready(action, false)) return;
       if (focusedTickerSymbol) {
         const ticker = state.tickers.get(focusedTickerSymbol);
         if (ticker) refreshTicker(ticker.metadata.ticker, ticker.metadata.exchange, ticker, 0);
       }
     } else if (action === "refresh-all") {
+      if (ranAlready(action, false)) return;
       for (const ticker of state.tickers.values()) {
         refreshTicker(ticker.metadata.ticker, ticker.metadata.exchange, ticker, 1);
       }
@@ -280,10 +311,12 @@ export function useAppGlobalShortcuts({
       // A release that can install itself downloads on its own, so the key is
       // for the one that waits for a restart and for the one that failed.
       if (!isDetachedWindow && canRestartToApply(state.updateProgress)) {
+        if (ranAlready(action)) return;
         event.preventDefault();
         event.stopPropagation();
         restartToApplyUpdate();
       } else if (canRetryUpdate(state)) {
+        if (ranAlready(action)) return;
         event.preventDefault();
         event.stopPropagation();
         startUpdate(state.updateAvailable!);
@@ -296,6 +329,7 @@ export function useAppGlobalShortcuts({
         if (ownerId && disabledPlugins.has(ownerId)) continue;
         const chords = resolvePluginShortcutChords(keybindingsConfig, shortcut);
         if (chords.some((chord) => matchesKeyChord(chord, event))) {
+          if (ranAlready(`plugin:${shortcut.id}`, false)) return;
           shortcut.execute();
           break;
         }

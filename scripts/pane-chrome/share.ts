@@ -72,6 +72,7 @@ export async function checkGlobalShare(root: string): Promise<void> {
     await opened();
     await screenshot("dialog");
     await key(cdp, "Escape", "Escape");
+    await sleep(800);
 
     // A genuine held-key event opens once, including repeats after dismissing it.
     await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "S", code: "KeyS", windowsVirtualKeyCode: 83, modifiers: 10 });
@@ -83,6 +84,13 @@ export async function checkGlobalShare(root: string): Promise<void> {
     await sleep(500);
     if (await evaluate(cdp, `!!${dialog} || window.__shareDialogCount !== ${count}`)) throw new Error("Held Share key opened another dialog");
     await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "S", code: "KeyS", modifiers: 10 });
+    // Keep a hold refused even when the platform does not mark its repeats.
+    for (let i = 0; i < 45; i++) {
+      await key(cdp, "S", "KeyS", 10);
+      await sleep(33);
+    }
+    if (await evaluate(cdp, `!!${dialog} || window.__shareDialogCount !== ${count}`)) throw new Error("Unflagged hold reopened Share");
+    await sleep(800);
 
     // Both old phrases find ONE command, and keyboard activation opens the same dialog.
     for (const phrase of ["share pane", "share to chat"]) {
@@ -100,6 +108,7 @@ export async function checkGlobalShare(root: string): Promise<void> {
       await key(cdp, "Enter", "Enter");
       await opened();
       await key(cdp, "Escape", "Escape");
+      await sleep(800);
     }
 
     // Share while the chart's pan is still waiting for its debounced settings write.
@@ -118,6 +127,7 @@ export async function checkGlobalShare(root: string): Promise<void> {
     const copied = await evaluate<string>(cdp, "navigator.clipboard.readText()");
     if (!copied.startsWith("https://term.gloom.sh/api/shares/")) throw new Error(`Wrong clipboard link: ${copied}`);
 
+    await sleep(800);
     // Draw, then share before the drawing store's debounce expires.
     await key(cdp, "D", "KeyD", 8);
     await drag(cdp, { x: plot.x - 100, y: plot.y + 20 }, [{ x: plot.x + 70, y: plot.y - 30 }], 3);
@@ -131,10 +141,12 @@ export async function checkGlobalShare(root: string): Promise<void> {
     const drawnPayload = api.shares[1] as typeof payload;
     const drawings = drawnPayload?.data.layout.layout.instances[0]?.settings?.chartDrawings;
     if (!Array.isArray(drawings) || drawings.length !== 1) throw new Error("Global Share lost the chart's new drawing");
+    await sleep(800);
     await key(cdp, "S", "KeyS", 10);
     await opened();
     await click(cdp, await point(cdp, `document.querySelector('input[type="checkbox"]')`));
     await key(cdp, "Escape", "Escape");
+    await sleep(800);
     await key(cdp, "S", "KeyS", 10);
     await opened();
     if (await evaluate(cdp, `document.querySelector('input[type="checkbox"]').checked`)) throw new Error("Include link preference was not remembered");

@@ -643,6 +643,8 @@ class GloomApiClient {
   chatAttachmentsSupported = this.chat.attachmentsSupported.bind(this.chat);
   subscribeChatAttachmentSupport = this.chat.subscribeAttachmentSupport.bind(this.chat);
   editMessage = this.chat.editMessage.bind(this.chat);
+  setChatReaction = this.chat.setReaction.bind(this.chat);
+  subscribeChatReactions = this.chat.subscribeReactions.bind(this.chat);
   connectChannel = this.chat.connectChannel.bind(this.chat);
   subscribeChatNotifications = this.chat.subscribeNotifications.bind(this.chat);
   subscribeChatPresence = this.chat.subscribePresence.bind(this.chat);

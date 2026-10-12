@@ -1,14 +1,19 @@
+import { ONE_SHOT_COOLDOWN_MS } from "./one-shot";
+
 const DOUBLE_ESCAPE_CLOSE_MS = 650;
 
 export interface DoubleEscapeCloseState {
   lastAt: number;
   targetId: string | null;
+  /** The last Esc that closed a pane, or came while that close was still cooling down. */
+  closedAt: number;
 }
 
 export function createDoubleEscapeCloseState(): DoubleEscapeCloseState {
   return {
     lastAt: 0,
     targetId: null,
+    closedAt: Number.NEGATIVE_INFINITY,
   };
 }
 
@@ -30,7 +35,10 @@ export function takeDoubleEscapeClose(
   thresholdMs = DOUBLE_ESCAPE_CLOSE_MS,
 ): boolean {
   const matched = !!targetId && state.targetId === targetId && now - state.lastAt <= thresholdMs;
-  if (matched) resetDoubleEscapeClose(state);
+  if (matched) {
+    resetDoubleEscapeClose(state);
+    state.closedAt = now;
+  }
   return matched;
 }
 
@@ -61,6 +69,12 @@ export function armDoubleEscapeClose(
 ) {
   if (!targetId) {
     resetDoubleEscapeClose(state);
+    return;
+  }
+  // A held Esc is a stream of presses: after the close it arms nothing, so it
+  // cannot close the next pane too. Each Esc of the stream extends the pause.
+  if (now - state.closedAt < ONE_SHOT_COOLDOWN_MS) {
+    state.closedAt = now;
     return;
   }
   state.targetId = targetId;

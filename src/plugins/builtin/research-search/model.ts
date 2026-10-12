@@ -221,15 +221,6 @@ export function chunkAttribution(
   return metadata.source?.trim() || "";
 }
 
-/**
- * Columns a wrapped paragraph gets in the document view. The scroll box keeps
- * one column of text inset on the left, and its vertical scrollbar sits in the
- * last column of the pane, so those are the only two the body cannot use.
- */
-export function documentBodyWidth(width: number): number {
-  return Math.max(20, Math.floor(width) - 2);
-}
-
 type SearchColumnId = "ticker" | "type" | "date" | "title" | "match";
 
 export interface SearchColumn extends DataTableColumn {

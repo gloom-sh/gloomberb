@@ -2,9 +2,19 @@ import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { CliCommandContext } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
+import { perpetualListingOfMarket, typedPerpetualListing } from "../tickers/perpetual-listing";
 import { listingVenues, quotedOnVenue, readSharedCode, type ListingDeps, type ListingStore, type ListingVenue } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
-import { quotedListing, type CurrentListing } from "../tickers/ticker-changes";
+import {
+  describeTickerChange,
+  quotedListing,
+  startTickerChangeLookup,
+  tickerChangeLine,
+  type CurrentListing,
+  type TickerChange,
+  type TickerChangeLookup,
+} from "../tickers/ticker-changes";
+import type { TickerChanges } from "../types/ticker-changes";
 import { quotedListingName } from "../tickers/listing-name";
 import { cliStyles } from "../utils/cli-output";
 import { groupByCompany, sameCompany, shortCompanyName } from "../tickers/company-name";
@@ -74,7 +84,8 @@ export function parseListingArg(
 ): ListingArg {
   const optionCode = (exchangeOption ?? "").trim().toUpperCase();
   const option = canonicalExchange(optionCode);
-  let typed = raw.trim().replace(/^\$/, "").toUpperCase();
+  // A perpetual's market id (binance:BZUSDT, as PERP names it) is its listing on that venue (BZUSDT:BINANCE).
+  let typed = (typedPerpetualListing(raw)?.key ?? raw).trim().replace(/^\$/, "").toUpperCase();
   // `SAN:` asks which listing; with --exchange it has its answer.
   if (option && typed.endsWith(":")) typed = typed.slice(0, -1);
   const venueKey = parsePublicTickerKey(typed);
@@ -215,6 +226,13 @@ export interface ListingDataRequest {
    * command (`gloomberb watchlist add Growth SAN:EPA`); null names the listings alone.
    */
   retry?: ((key: string) => string) | null;
+  /**
+   * What became of the symbol (`loadListingFate`), for a command a listing
+   * that stopped trading has nothing for (history, options): a request no
+   * source serves fails with `fate.note` instead of the source's miss, and the
+   * change line leads any listings the failure names.
+   */
+  fate?: () => Promise<ListingFate>;
 }
 
 /**
@@ -617,6 +635,103 @@ export function noLongerTradingNote(label: string, quote: Quote, now = Date.now(
   return `${label}: no longer trading since ${date} (last price ${price})`;
 }
 
+/**
+ * What became of a symbol, from what `quote` reads it by: the listing's own
+ * quote, which says when it stopped trading, and the symbol's ticker changes
+ * beside that quote (FB became META).
+ */
+export interface ListingFate {
+  /** The exchange-local date the listing last traded, when its quote stopped long ago (TWTR's 2022-10-27). */
+  endedOn: string | null;
+  /** The symbol's change as `quote` reads it; null when it has none, or was read on a listing abroad. */
+  change: TickerChange | null;
+  /**
+   * The line a command with nothing to serve for the symbol says: `quote`'s
+   * change line when its company left it ("FB now lists ...; Meta Platforms
+   * trades as META (changed 2022-06-09)"), else, for a listing that stopped,
+   * "TWTR stopped trading 2022-10-27; no history or options served". Null
+   * for a symbol that trades as it always has.
+   */
+  note: string | null;
+}
+
+const NO_FATE: ListingFate = { endedOn: null, change: null, note: null };
+/** How long a fate whose change lookup started late waits for it. */
+const LATE_CHANGE_WAIT_MS = 2_000;
+
+/** `ListingFate` from a listing's quote (null when it has none) and its ticker changes. */
+export function describeListingFate(
+  listing: { symbol: string; exchange?: string | null },
+  quote: Quote | null,
+  changes: TickerChanges | null,
+  now = Date.now(),
+): ListingFate {
+  const symbol = listing.symbol.trim().toUpperCase();
+  const endedOn = quote ? endedTradingDate(quote, now) : null;
+  // A bare symbol read on a listing abroad (SXR8 -> XETRA) is not the US symbol the changes are of.
+  const abroad = !!quote && !!bareListingNote({ symbol, request: { symbol, exchange: listing.exchange ?? "" } }, quote);
+  const change = abroad ? null : describeTickerChange(symbol, changes, tradingListing(quote, now));
+  const note = tickerChangeLine(change) ?? (endedOn ? `${symbol} stopped trading ${endedOn}; no history or options served` : null);
+  return { endedOn, change, note };
+}
+
+/**
+ * `describeListingFate` for a listing: its quote is `quote` when the command
+ * has it, else loaded; its changes come from `changes` when the command started
+ * that lookup beside its own request, else from one started here. Fails soft:
+ * a source that does not answer says nothing became of it.
+ */
+export async function loadListingFate(
+  listing: { symbol: string; exchange?: string | null; request?: { symbol: string; exchange: string } },
+  dataProvider: Pick<DataProvider, "getQuote" | "getTickerChanges">,
+  options: { quote?: Quote | null | Promise<Quote | null>; changes?: TickerChangeLookup } = {},
+): Promise<ListingFate> {
+  const request = listing.request ?? { symbol: listing.symbol, exchange: listing.exchange ?? "" };
+  const lookup = options.changes ?? startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);
+  try {
+    const [quote, changes] = await Promise.all([
+      options.quote !== undefined ? options.quote : dataProvider.getQuote(request.symbol, request.exchange).catch(() => null),
+      options.changes ? lookup.settle() : lookup.settle(LATE_CHANGE_WAIT_MS),
+    ]);
+    return describeListingFate(listing, quote, changes);
+  } catch {
+    return NO_FATE;
+  }
+}
+
+/**
+ * `loadListingFate` for a command's listing, looked up once whenever it is
+ * asked for: the change lookup starts now, beside the command's own request,
+ * and the fate reads the quote the command loads.
+ */
+export function listingFateLoader(
+  listing: Pick<CliListing, "symbol" | "exchange" | "request">,
+  deps: Pick<ListingDeps, "dataProvider">,
+  quote: Promise<Quote | null>,
+): () => Promise<ListingFate> {
+  const changes = startTickerChangeLookup(deps.dataProvider, listing.symbol, listing.exchange);
+  let fate: Promise<ListingFate> | null = null;
+  return () => fate ??= loadListingFate(listing, deps.dataProvider, { quote, changes });
+}
+
+/**
+ * The lines a command says about a symbol's fate beside what it served. With
+ * nothing served, `fate.note`. With data, `quote`'s change line when the
+ * symbol's company left it (FB's bars are the fund listed there now), and, for
+ * bars from before the symbol's holder took it (META's from 2021), that they
+ * are from its old symbol: "Includes FB-era bars: META was FB until 2022-06-09".
+ */
+export function listingFateNotes(fate: ListingFate, served: { served: boolean; firstDate?: string | null }): string[] {
+  if (!served.served) return fate.note ? [fate.note] : [];
+  const { change } = fate;
+  const first = served.firstDate?.slice(0, 10);
+  const earlier = change?.kind === "formerly" && first ? change.changes.filter((hop) => first < hop.date).map((hop) => hop.from) : [];
+  return [
+    tickerChangeLine(change),
+    earlier.length > 0 ? `Includes ${earlier.join("- and ")}-era bars: ${change!.note}` : null,
+  ].filter((line): line is string => !!line);
+}
+
 // The zones of the US exchanges; a venue in another is abroad.
 const US_TIME_ZONES = new Set(["America/New_York", "America/Chicago"]);
 
@@ -677,8 +792,9 @@ export async function loadForListing<T>(
   } catch (error) {
     await checkVenues();
     if (request && all.length === 1 && isNoProviderError(error)) {
-      const other = await otherListingsMessage(all[0]!, deps, request);
-      if (other) ctx.fail(other.message, other.details);
+      const [other, fate] = await Promise.all([otherListingsMessage(all[0]!, deps, request), request.fate?.() ?? null]);
+      if (other) ctx.fail(other.message, [fate?.note, other.details].filter(Boolean).join("\n"));
+      if (fate?.note) ctx.fail(`${fate.note}.`);
     }
     throw error;
   }
@@ -716,15 +832,36 @@ export interface CliListing extends ListingArg {
   request: { symbol: string; exchange: string };
 }
 
+/**
+ * `XYZ:BRENTOIL`, which reads as a symbol on an exchange no venue has, as Hyperliquid's name for a market on one
+ * of its builder dexes (`xyz:BRENTOIL`, its listing XYZ-BRENTOIL:HYPERLIQUID), when that market exists. Asked only
+ * after the exchange was not found, so a mistyped exchange still says so.
+ */
+async function builderDexMarket(listing: ListingArg, deps: ListingDeps): Promise<ListingArg | null> {
+  if (!/^[A-Z][A-Z0-9]{0,11}$/.test(listing.symbol) || !/^[A-Z0-9]{1,32}$/.test(listing.exchange)) return null;
+  const market = perpetualListingOfMarket(`hyperliquid:${listing.symbol.toLowerCase()}:${listing.exchange}`);
+  if (!market) return null;
+  const found = await deps.dataProvider.search(market.key).catch(() => []);
+  return found.some((result) => result.symbol.toUpperCase() === market.key)
+    ? { symbol: market.symbol, exchange: market.exchange, key: market.key }
+    : null;
+}
+
 export async function resolveCliListing(
   raw: string,
   exchangeOption: string | null | undefined,
   deps: ListingDeps,
   options: { ownExchangeWins?: boolean } = {},
 ): Promise<CliListing> {
-  const parsed = parseListingArg(raw, exchangeOption, options);
+  let parsed = parseListingArg(raw, exchangeOption, options);
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
-  await checkListingExchange(parsed, deps);
+  try {
+    await checkListingExchange(parsed, deps);
+  } catch (error) {
+    const market = error instanceof ListingArgError ? await builderDexMarket(parsed, deps) : null;
+    if (!market) throw error;
+    parsed = market;
+  }
   let listing = await settleSharedCode(parsed, deps);
   const saved = await loadSavedListing(deps.store, listing);
   // A code nothing could read stays the venue it is saved on.

@@ -35,20 +35,23 @@ test("a report on a listing abroad names the saved venue and the company from th
   expect(listings).toEqual([{ exchange: "EPA", name: "Air Liquide S.A." }, { exchange: "EPA" }]);
 });
 
-test("a metric the free preview does not have says so and names the ones it has, never another metric's rows", async () => {
+test("a metric outside the free preview is not called missing, a company without it is, and neither gets another metric's rows", async () => {
   const requests: unknown[] = [];
   const backlog = { ...observation().metric, id: "backlog", name: "Order backlog" };
   // The preview ignores the metric it was asked for and answers with its fixed rows.
-  const payload = kpisPayload({ access: "preview", truncated: true, lockedRows: 2, totalRows: 3, dictionary: [observation().metric, backlog] });
+  let payload = kpisPayload({ access: "preview", truncated: true, lockedRows: 20, totalRows: 23, dictionary: [observation().metric, backlog] });
   const client = { getCloudCompanyKpis: async (_symbol: string, options: unknown) => { requests.push(options); return payload; } } as unknown as typeof apiClient;
   const load = (metric: string) => companyHeadless("kpis").load(createTestHeadlessArgs({ symbols: [payload.symbol], options: { metric } }), createTestHeadlessContext({ apiClient: client }));
-  const missing = await load("backlog");
-  expect(missing.sections.every((section) => section.rows?.length === 0)).toBe(true);
-  expect(missing.sections[0]).toMatchObject({ empty: expect.stringMatching(/no Order backlog \(backlog\).*arr \(Annual recurring revenue\)/) });
+  const held = await load("backlog");
+  expect(held.sections.every((section) => section.rows?.length === 0)).toBe(true);
+  expect(held.sections[0]).toMatchObject({ empty: "Order backlog is not among the 3 free KPI values; Gloom Pro shows all 23." });
+  // A preview that holds nothing back is everything the company has.
+  payload = { ...payload, truncated: false, lockedRows: 0, totalRows: 1 };
+  expect((await load("backlog")).sections[0]).toMatchObject({ empty: `${payload.symbol} has no Order backlog (backlog) disclosures; it has arr (Annual recurring revenue).` });
   await expect(load("backlgo")).rejects.toThrow(/backlgo is not a known metric id.*arr \(Annual recurring revenue\)/);
   // A name is not an id the server takes, so it is not sent.
   await expect(load("net sales")).rejects.toThrow("not a known metric id");
-  expect(requests).toEqual([{ metric: "backlog" }, { metric: "backlgo" }, {}]);
+  expect(requests).toEqual([{ metric: "backlog" }, { metric: "backlog" }, { metric: "backlgo" }, {}]);
 });
 
 test("the text report prints the pane's fiscal labels and compact values and says how old a preview is; exports keep the whole number", async () => {

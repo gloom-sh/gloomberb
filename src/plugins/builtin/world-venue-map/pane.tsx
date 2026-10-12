@@ -25,7 +25,7 @@ import { loadWorldVenues } from "./client";
 import { WORLD_VENUE_MAP_PANE_ID } from "./ids";
 import { LayeredMapView } from "./layered-pane";
 import { activeLayerTokens, isPlainMap, LAYERS_SETTING_KEY, resolveActiveLayers, VENUES_SETTING_KEY } from "./layers";
-import { WorldVenueMap } from "./map";
+import { useMapKeyboard, WorldVenueMap } from "./map";
 import { filterWorldVenues, formatVenueLocalTime } from "./model";
 import { useGeoCatalog } from "./use-geo";
 import { SelectedVenueHeader } from "./venue-header";
@@ -72,6 +72,7 @@ function VenueMapView({ focused, width, height }: PaneProps) {
   const { data, loading, error, load } = useAsyncResource(loadWorldVenues);
   const [query, setQuery] = useState("");
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
+  const mapKeys = useMapKeyboard(searchFocused);
   const [selectedMic, setSelectedMic] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
 
@@ -182,7 +183,8 @@ function VenueMapView({ focused, width, height }: PaneProps) {
 
   const table = (
     <DataTableView<CloudWorldVenuePayload, VenueColumn>
-      focused={focused && !searchFocused}
+      focused={focused && !searchFocused && !mapKeys.active}
+      onTableMouseDown={mapKeys.release}
       selection={{
         kind: "id",
         selectedId: selectedMic,
@@ -222,6 +224,7 @@ function VenueMapView({ focused, width, height }: PaneProps) {
         onSelect={(venue) => setSelectedMic(venue.mic)}
         savedViewport={savedViewport}
         onViewportSettled={setSavedViewport}
+        keyboard={mapKeys.keyboard}
       />
     </Box>
   );

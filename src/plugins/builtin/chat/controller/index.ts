@@ -11,8 +11,11 @@ import {
   type ChatChannel,
   type ChatChannelState,
   type ChatMessage,
+  type ChatReaction,
+  type ChatReactionsUpdate,
   type PersistedAuthUser,
 } from "../../../../api-client";
+import { withOwnReaction } from "../reactions";
 import { normalizeSessionUser } from "./persistence";
 import { debugLog } from "../../../../utils/debug-log";
 import {
@@ -145,6 +148,7 @@ export class ChatController {
     emit: (channelId) => this.emit(channelId),
     mergeMessages: (channelId, messages, options) => this.mergeMessages(channelId, messages, options),
     persistChannelState: (channelId) => this.storage.persistChannelState(channelId),
+    getReaderId: () => this.session.user?.id ?? null,
   });
   private readonly realtime = new ChatControllerRealtime({
     getAppActive: () => this.appActive,
@@ -152,6 +156,7 @@ export class ChatController {
     getUser: () => this.session.user,
     refreshSession: () => this.refreshSession(),
     handleNotification: (notification) => this.handleChatNotification(notification),
+    handleReactions: (update) => this.applyReactionsUpdate(update),
     setOnlineCount: (onlineCount) => {
       this.channelCatalog.setOnlineCount(onlineCount);
     },
@@ -666,6 +671,55 @@ export class ChatController {
       this.notifyFn({ body: errorMessage, type: "error" });
       return false;
     }
+  }
+
+  /**
+   * Adds or takes back your reaction with one emoji. The chip moves at once;
+   * the server's answer settles it, and a refusal puts it back and says why.
+   */
+  async toggleChannelReaction(channelId: string, messageId: string, emoji: string): Promise<boolean> {
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const channel = this.ensureChannelState(normalizedChannelId);
+    const user = this.session.user;
+    if (!user?.emailVerified) return false;
+    const message = channel.messages.find((entry) => entry.id === messageId);
+    if (!message) return false;
+    const reacted = !(message.reactions ?? []).some((reaction) => reaction.emoji === emoji && reaction.me);
+    const self = { id: user.id, username: user.username, displayName: user.username };
+    this.replaceMessageReactions(normalizedChannelId, messageId, (current) => withOwnReaction(current, emoji, reacted, self));
+    try {
+      const update = await apiClient.setChatReaction(normalizedChannelId, messageId, emoji, reacted);
+      this.replaceMessageReactions(normalizedChannelId, messageId, () => update.reactions);
+      return true;
+    } catch (error) {
+      // Only this change is undone; what others did meanwhile stays.
+      this.replaceMessageReactions(normalizedChannelId, messageId, (current) => withOwnReaction(current, emoji, !reacted, self));
+      const body = error instanceof Error && error.message ? error.message : "Failed to react.";
+      this.notifyFn({ body, type: "error" });
+      return false;
+    }
+  }
+
+  /** A message's reactions as everyone reading the channel just got them. */
+  applyReactionsUpdate(update: ChatReactionsUpdate): void {
+    this.replaceMessageReactions(normalizeChannelId(update.channelId), update.messageId, () => update.reactions);
+  }
+
+  private replaceMessageReactions(
+    channelId: string,
+    messageId: string,
+    next: (current: ChatReaction[]) => ChatReaction[],
+  ): void {
+    const channel = this.storage.channelStates.get(channelId);
+    if (!channel) return;
+    const index = channel.messages.findIndex((entry) => entry.id === messageId);
+    if (index < 0) return;
+    const message = channel.messages[index]!;
+    channel.messages = channel.messages.map((entry, entryIndex) => (
+      entryIndex === index ? { ...message, reactions: next(message.reactions ?? []) } : entry
+    ));
+    this.storage.persistTranscript(channelId);
+    this.emit(channelId);
   }
 
   ensureConnection(channelId = DEFAULT_CHAT_CHANNEL_ID): void {

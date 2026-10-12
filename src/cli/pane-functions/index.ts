@@ -16,7 +16,7 @@ import {
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
-import { applyListingArgument, resolvePaneFunction, type ResolvedPaneFunction } from "./resolver";
+import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
 import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings } from "./screenshot";
 import {
@@ -28,6 +28,7 @@ import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceN
 import { knownGapMessage, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
+import { CLI_EXIT_CODES } from "../exit-codes";
 import {
   GLOSSARY,
   glossaryRecord,
@@ -65,6 +66,9 @@ async function withPaneRuntime<T>(
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     await withPaneRuntime(ctx, args, async ({ parsed, context, resolved }) => {
+      if (parsed.strict) {
+        throw new Error("--strict is an option of shot. fn takes --require-bot-safe to fail on a report that is not complete.");
+      }
       if (parsed.requireBotSafe && (
         !resolved.capability.botSafe || resolved.capability.reportReadiness !== "ready"
       )) {
@@ -190,6 +194,8 @@ async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onS
           return [`Saved ${displayPath(data.outputPath)}`, renderStats(stats)].join("\n");
         },
       });
+      // The image is saved and the reason printed; --strict tells a script it should not be used.
+      if (parsed.strict && !result.usable) process.exitCode = CLI_EXIT_CODES.unusableShot;
     }, { command: "shot" });
   });
 }
@@ -259,8 +265,8 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
   try {
     await run();
   } catch (error) {
-    // A listing it cannot use says what to type instead.
-    if (error instanceof ListingArgError) ctx.fail(error.message, error.details);
+    // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
+    if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details);
     const message = error instanceof Error ? error.message : String(error);
     ctx.fail(message);
   }

@@ -344,12 +344,36 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string): CatalogM
   };
 }
 
-export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
+function rankPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
   return entries
     .map((entry) => ({ entry, score: scorePaneCatalogEntry(entry, query).score }))
     .filter(({ score }) => score > 0)
     .sort((left, right) => right.score - left.score || left.entry.token.localeCompare(right.entry.token))
     .map(({ entry }) => entry);
+}
+
+/** The shortest word start a fused query is cut into, and the shortest query that is cut. */
+const FUSED_PART_MIN = 3;
+
+/**
+ * Two words typed as one ("volsurf" for Volatility Surface) match the functions that carry both
+ * words, found by cutting the query into two word starts.
+ */
+function fusedQueryMatches(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
+  const word = query.trim().toLowerCase();
+  if (/\s/.test(word)) return [];
+  for (let cut = FUSED_PART_MIN; cut <= word.length - FUSED_PART_MIN; cut += 1) {
+    const split = `${word.slice(0, cut)} ${word.slice(cut)}`;
+    const ranked = rankPaneCatalogEntries(entries, split);
+    const { shown, loose } = selectPaneCatalogMatches(ranked, split, ranked.length);
+    if (shown.length > 0 && !loose) return shown;
+  }
+  return [];
+}
+
+export function filterPaneCatalogEntries(entries: PaneCatalogEntry[], query: string): PaneCatalogEntry[] {
+  const ranked = rankPaneCatalogEntries(entries, query);
+  return ranked.length > 0 ? ranked : fusedQueryMatches(entries, query);
 }
 
 interface PaneCatalogSelection {
@@ -380,6 +404,23 @@ export function selectPaneCatalogMatches(ranked: PaneCatalogEntry[], query: stri
   const named = scored.filter(({ named }) => named > 0);
   const shown = every(named.length > 0 ? named : scored).slice(0, Math.min(limit, LOOSE_MATCH_LIMIT));
   return { shown, hidden: ranked.length - shown.length, loose: true };
+}
+
+/** Functions an unknown name is answered with. */
+const SUGGESTION_LIMIT = 5;
+
+/**
+ * The functions closest to a name that opens none, as `catalog <name>` ranks them by name, keyword and
+ * description. None when no function carries every word of it.
+ */
+export async function suggestPaneFunctions(
+  registry: PaneFunctionCatalog,
+  context: MarketContext,
+  name: string,
+): Promise<PaneCatalogEntry[]> {
+  const entries = await buildPaneCatalogEntries(registry, context);
+  const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, name), name, SUGGESTION_LIMIT);
+  return loose ? [] : shown;
 }
 
 const CATALOG_TEXT_WIDTH = 100;

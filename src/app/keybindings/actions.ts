@@ -28,6 +28,7 @@ export type CoreKeybindingActionId =
   | "pane-screenshot"
   | "pane-export-csv"
   | "pane-share"
+  | "pane-ask"
   | "layout-gallery"
   | "tidy-windows"
   | "window-move-mode"
@@ -59,6 +60,7 @@ export const PANE_ACTION_IDS = new Set<CoreKeybindingActionId>([
   "pane-screenshot",
   "pane-export-csv",
   "pane-share",
+  "pane-ask",
   "layout-gallery",
   "tidy-windows",
   "window-move-mode",
@@ -227,6 +229,15 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     category: "Pane Management",
     description: "Share the focused pane: post a picture to chat or copy its link.",
     defaults: ["CmdOrCtrl+Shift+S"],
+  },
+  {
+    id: "pane-ask",
+    category: "Pane Management",
+    description: "Ask Gloom about the focused pane, in a new conversation with the pane attached.",
+    // A for ask. Alt+A first, because it reaches most terminals, where
+    // Ctrl+Shift+A is often the terminal's own select all; the desktop app
+    // advertises the chord on its platform modifier.
+    defaults: ["Alt+A", "CmdOrCtrl+Shift+A"],
   },
   {
     id: "layout-gallery",
