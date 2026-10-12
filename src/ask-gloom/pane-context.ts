@@ -106,7 +106,7 @@ export function buildAskGloomPaneAttachment({
 }
 
 /**
- * Whatever the pane declares as personal data, as sharing its picture reads it.
+ * Whatever the pane shows as personal data, as sharing its picture reads it.
  * A pane that cannot be read for it counts as personal: its contents then wait for a yes.
  */
 function showsPersonalData(source: Parameters<typeof panePersonalData>[0]): boolean {

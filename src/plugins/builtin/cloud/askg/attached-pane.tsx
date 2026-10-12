@@ -16,7 +16,7 @@ export function attachedPaneBlockHeight(attached: ASKGAttachedPane | null): numb
 
 /**
  * The pane a conversation is about, above the composer: a chip with its
- * function, and an x that takes it off. A pane that declares personal data
+ * function, and an x that takes it off. A pane that shows personal data
  * asks first whether what it shows may go with the question.
  */
 export function AttachedPaneBlock({

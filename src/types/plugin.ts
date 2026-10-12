@@ -164,9 +164,14 @@ export interface PaneDef {
   portableShare?: PanePortableShareDef;
   /**
    * The person's own data the pane shows, so posting a picture of it to chat
-   * asks first. A function decides per instance from what it shows now (a
-   * chat pane on a public channel, a quote of a ticker not held). Leave it
-   * off for market data.
+   * and attaching it to an Ask Gloom question ask first. A function decides
+   * per instance from what it shows now (a chat pane on a public channel, a
+   * quote of a ticker not held), and a function that returns null opts that
+   * instance out. Leave it off for market data. A pane that says nothing is
+   * still asked about when its plugin connects a broker (`holdings`) or the
+   * pane keeps fields private when shared (`portableShare.private`,
+   * `personal`), for plugins written before this field existed; declare it
+   * to say exactly what the pane shows.
    */
   personalData?: PanePersonalData | ((context: PanePersonalDataContext) => PanePersonalData | null);
   /**
@@ -178,10 +183,11 @@ export interface PaneDef {
 
 /**
  * Kinds of personal data a pane can show: `holdings` (positions, balances,
- * orders, profit and loss), `account` (account numbers, email, plan) and
- * `messages` (private conversations).
+ * orders, profit and loss), `account` (account numbers, email, plan),
+ * `messages` (private conversations) and `personal` (the person's own data
+ * of a kind the pane does not name).
  */
-export type PanePersonalData = "holdings" | "account" | "messages";
+export type PanePersonalData = "holdings" | "account" | "messages" | "personal";
 
 /**
  * An option of a rendered-view report, which sets the pane setting of its key,

@@ -23,7 +23,7 @@ export interface AskGloomPaneAttachment {
   /** Its text as drawn when asked, bounded; null when none could be read. */
   visibleText: string | null;
   /**
-   * The pane declares personal data (`PaneDef.personalData`), so Ask Gloom
+   * The pane shows personal data (`PaneDef.personalData`), so Ask Gloom
    * asks before anything it shows leaves the device.
    */
   personal: boolean;

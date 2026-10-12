@@ -18,7 +18,15 @@ const brokerPlugin = {
     personalData: () => { throw new Error("cannot read it"); },
   },
 } satisfies Record<string, PaneDef>;
-const defs = new Map<string, PaneDef>(Object.entries(brokerPlugin));
+/** An external plugin with no broker, written before `personalData` existed. */
+const vaultPlugin = {
+  "vault-notes": { id: "vault-notes", name: "Vault", component: NOT_A_PANE, defaultPosition: "right", portableShare: { private: { state: true } } },
+  "vault-public": {
+    id: "vault-public", name: "Vault board", component: NOT_A_PANE, defaultPosition: "right",
+    portableShare: { private: { state: true } }, personalData: () => null,
+  },
+} satisfies Record<string, PaneDef>;
+const defs = new Map<string, PaneDef>(Object.entries({ ...brokerPlugin, ...vaultPlugin }));
 let disposeBuiltinPanes = () => {};
 
 beforeAll(async () => {
@@ -29,11 +37,11 @@ beforeAll(async () => {
 
 afterAll(() => disposeBuiltinPanes());
 
-/** The registry as the shell has it, with an external plugin that connects a broker. */
+/** The registry as the shell has it, with an external plugin that connects a broker and one that does not. */
 const registry = {
   paneTemplates: new Map(),
   brokers: new Map([["ibkr", {}]]),
-  getPanePluginId: (paneType: string) => (paneType in brokerPlugin ? "ibkr" : "builtin"),
+  getPanePluginId: (paneType: string) => (paneType in brokerPlugin ? "ibkr" : paneType in vaultPlugin ? "vault" : "builtin"),
   getBrokerPluginId: () => "ibkr",
 } as unknown as PluginRegistry;
 
@@ -106,6 +114,8 @@ describe("Ask Gloom asks before attaching what the share path asks about", () =>
     { name: "rotation of the sectors beside a portfolio", scene: { paneType: "relative-rotation", settings: { scope: "sectors" }, followsCollection: "main" }, asks: false },
     { name: "an external broker plugin's pane that declares nothing", scene: { paneType: "ibkr-orders" }, asks: true },
     { name: "an external broker plugin's pane that opts out", scene: { paneType: "ibkr-quotes" }, asks: false },
+    { name: "an external plugin's pane with private fields and no declaration", scene: { paneType: "vault-notes" }, asks: true },
+    { name: "the same plugin's pane that declares it shows nothing personal", scene: { paneType: "vault-public" }, asks: false },
     { name: "a pane whose rule cannot be read", scene: { paneType: "broken-rule" }, asks: true },
   ])("$name", ({ scene, asks }) => {
     const { attachment, shareAnswer } = attach(scene);

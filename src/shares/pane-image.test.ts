@@ -4,7 +4,7 @@ import { loadBuiltinPanes } from "../test-support/builtin-panes";
 import { createTestTicker } from "../test-support/ticker";
 import { createDefaultConfig, type PaneInstanceConfig } from "../types/config";
 import type { PaneDef, PanePersonalDataContext } from "../types/plugin";
-import { resolvePanePersonalData } from "./pane-image";
+import { personalDataQuestion, resolvePanePersonalData } from "./pane-image";
 
 const paneDefs = new Map<string, PaneDef>(
   getLoadablePlugins().flatMap((plugin) => plugin.panes ?? []).map((pane) => [pane.id, pane]),
@@ -40,9 +40,10 @@ describe("which panes ask before their picture is posted to chat", () => {
     // Includes setup-registered panes, not just the catalogue's static definitions.
     const { panes, dispose } = await loadBuiltinPanes();
     try {
-      // Share and Ask Gloom both read `personalData` alone, so a private pane without it asks
-      // about nothing. No exceptions today. A future exception must name the pane and explain
-      // why its private portable fields cannot expose personal data in a picture or an attachment.
+      // The fallback for an undeclared private pane exists for plugins written before
+      // `personalData`; built-ins say exactly what they show. No exceptions today. A future
+      // exception must name the pane and explain why its private portable fields cannot expose
+      // personal data in a picture or an attachment.
       expect([...panes.values()]
         .filter((pane) => pane.portableShare?.private && pane.personalData === undefined)
         .map((pane) => pane.id).sort()).toEqual([]);
@@ -86,5 +87,21 @@ describe("which panes ask before their picture is posted to chat", () => {
     expect(resolvePanePersonalData(orders, context("ibkr-orders"), { ownerConnectsBroker: true })).toBe("holdings");
     expect(resolvePanePersonalData(orders, context("quotes"), { ownerConnectsBroker: false })).toBeNull();
     expect(resolvePanePersonalData(paneDefs.get("ticker-research"), context("ticker-research"), { ownerConnectsBroker: true })).toBeNull();
+  });
+
+  test("a pane that says nothing but keeps fields private when shared asks about its own data, unless a declaration says otherwise", () => {
+    const vault = { portableShare: { private: { state: true } } };
+    const ask = (def: Parameters<typeof resolvePanePersonalData>[0], options = {}) => resolvePanePersonalData(def, context("vault"), options);
+    expect(ask(vault)).toBe("personal");
+    expect(personalDataQuestion("personal")).toBe("This shows your own data. Post it?");
+    // A broker plugin's pane stays holdings, declared or not.
+    expect(ask(vault, { ownerConnectsBroker: true })).toBe("holdings");
+    // Any declaration wins, a rule that returns null included.
+    expect(ask({ ...vault, personalData: () => null })).toBeNull();
+    expect(ask({ ...vault, personalData: () => null }, { ownerConnectsBroker: true })).toBeNull();
+    expect(ask({ ...vault, personalData: "messages" })).toBe("messages");
+    expect(ask({ portableShare: { prepare: (pane) => pane } })).toBeNull();
+    // A rule that throws is not read as an answer.
+    expect(() => ask({ ...vault, personalData: () => { throw new Error("cannot read it"); } })).toThrow();
   });
 });

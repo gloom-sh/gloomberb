@@ -16,7 +16,7 @@ const MAX_QUERY_LENGTH = 120;
 
 /**
  * Whether what the pane shows goes with the question: a pane with nothing of
- * the user's in it goes as is; one that declares personal data (holdings,
+ * the user's in it goes as is; one that shows personal data (holdings,
  * account details or messages) waits for a yes, and a no keeps its contents on the device.
  */
 type ASKGPaneConsent = "not-needed" | "pending" | "granted" | "declined";
