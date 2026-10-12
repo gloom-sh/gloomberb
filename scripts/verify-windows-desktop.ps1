@@ -1425,7 +1425,7 @@ function Capture-OnboardingScreenshot {
 }
 
 function Assert-TuiStarts {
-  param([string]$CliPath)
+  param([string]$CliPath, [switch]$Capture)
 
   & $CliPath __gloomberb-smoke-opentui-native
   if ($LASTEXITCODE -ne 0) {
@@ -1435,6 +1435,11 @@ function Assert-TuiStarts {
   & $CliPath help
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
+  }
+
+  if ($Capture) {
+    & bun (Join-Path $Root "scripts\verify-desktop-cli.ts") $CliPath (Join-Path $Root "artifacts\windows-cli-verification")
+    if ($LASTEXITCODE -ne 0) { throw "Installed desktop CLI capture verification failed: $LASTEXITCODE" }
   }
 }
 
@@ -1521,9 +1526,7 @@ try {
     throw "Installed TUI command was not found: $InstalledCli"
   }
 
-  Assert-TuiStarts $InstalledCli
-  & bun (Join-Path $Root "scripts\verify-desktop-cli.ts") $InstalledCli (Join-Path $Root "artifacts\windows-cli-verification")
-  if ($LASTEXITCODE -ne 0) { throw "Installed desktop CLI capture verification failed: $LASTEXITCODE" }
+  Assert-TuiStarts $InstalledCli -Capture
 
   Disable-InstalledDesktopUpdates -InstallDir $InstallDir
 
