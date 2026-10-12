@@ -78,6 +78,28 @@ describe("which open pane a template focuses", () => {
     expect(findReusablePaneInstance([board], evts, templates, { settings: { board: true } })?.instanceId).toBe("earnings:board");
   });
 
+  // A pane type that says which settings name a window can tell its functions apart
+  // from the windows themselves, including panes saved before the declaration existed.
+  test("a pane type that declares its identity settings finds a window that picked up others", () => {
+    const ern = template("ern", "earnings-calendar", { prefix: "ERN", argPlaceholder: "tickers", argOptional: true });
+    const evts = template("evts", "earnings-calendar", { prefix: "EVTS", argPlaceholder: "ticker", argOptional: true });
+    const templates = templatesOf(ern, evts);
+    const paneDef = { identitySettings: ["board", "symbols", "symbolsText"] };
+    const market = instance("earnings:1", "earnings-calendar", { settings: { liveStreaming: false } });
+    const board = instance("earnings:2", "earnings-calendar", { settings: { board: true, liveStreaming: false } });
+    const scoped = instance("earnings:3", "earnings-calendar", { settings: { symbols: ["AAPL"], symbolsText: "AAPL", liveStreaming: false } });
+    const all = [board, scoped, market];
+
+    expect(findReusablePaneInstance(all, ern, templates, {}, { paneDef })).toBe(market);
+    // The other function's windows are never taken, with or without the pane they would take instead.
+    expect(findReusablePaneInstance([board, scoped], ern, templates, {}, { paneDef })).toBeNull();
+    expect(findReusablePaneInstance(all, evts, templates, { settings: { board: true } }, { paneDef })).toBe(board);
+    expect(findReusablePaneInstance([market, scoped], evts, templates, { settings: { board: true } }, { paneDef })).toBeNull();
+    // Opened with the tickers named, ERN is the scoped window, not the market one.
+    const named = { settings: { symbols: ["AAPL"], symbolsText: "AAPL" } };
+    expect(findReusablePaneInstance(all, ern, templates, named, { paneDef })).toBe(scoped);
+  });
+
   test("a spec without settings does not take a pane its sibling function opened with one", () => {
     const opx = template("opx", "options-positioning", { prefix: "OPX", argPlaceholder: "ticker" });
     const gex = template("gex", "options-positioning", { prefix: "GEX", argPlaceholder: "ticker" });
@@ -99,8 +121,8 @@ describe("which open pane a template focuses", () => {
     const hm = template("hm", "market-heatmap", { prefix: "HM" });
     const first = instance("hm:1", "market-heatmap", { settings: { a: 1 } });
     const second = instance("hm:2", "market-heatmap", { settings: { a: 2 } });
-    expect(findReusablePaneInstance([first, second], hm, templatesOf(hm), {}, "hm:2")?.instanceId).toBe("hm:2");
-    expect(findReusablePaneInstance([first, second], hm, templatesOf(hm), {}, null)?.instanceId).toBe("hm:1");
+    expect(findReusablePaneInstance([first, second], hm, templatesOf(hm), {}, { focusedPaneId: "hm:2" })?.instanceId).toBe("hm:2");
+    expect(findReusablePaneInstance([first, second], hm, templatesOf(hm), {}, { focusedPaneId: null })?.instanceId).toBe("hm:1");
   });
 });
 
@@ -116,15 +138,66 @@ const OPENS_ANOTHER_WINDOW: Record<string, string> = {
   "new-collection-pane": "creates a list",
   "new-portfolio-pane": "creates a list",
   "new-watchlist-pane": "creates a list",
-  // One pane type behind two functions that both ask for nothing: which settings
-  // belong to which function is not something the host can tell.
-  "mna-pane": "shares a pane type with DIST",
-  "distress-pane": "shares a pane type with MA",
-  "earnings-calendar-pane": "shares a pane type with EVTS",
-  "power-pane": "shares a pane type with EPWR",
-  "sectors-pane": "shares a pane type with THEM",
-  "themes-pane": "shares a pane type with BI",
 };
+
+/** The host's side of opening a function: what it adds and what it focuses, over a layout it starts from. */
+async function openFunctions(
+  catalog: Awaited<ReturnType<typeof createPaneCatalog>>,
+  placed: PaneInstanceConfig[],
+) {
+  const config = createDefaultConfig("/tmp/gloomberb-pane-reuse-catalog");
+  const state = createInitialState({
+    ...config,
+    layout: {
+      dockRoot: null,
+      instances: placed,
+      floating: placed.map((entry) => ({ instanceId: entry.instanceId, x: 0, y: 0, width: 60, height: 20, zIndex: 50 })),
+      detached: [],
+    },
+  });
+  for (const symbol of ["AAPL", "MSFT"]) {
+    state.tickers.set(symbol, createTestTicker(symbol, symbol, { exchange: "NASDAQ", currency: "USD" }));
+  }
+  const added: string[] = [];
+  const focused: string[] = [];
+  const deps = {
+    dataProvider: createTestDataProvider({ id: "test" }),
+    tickerRepository: new JsonTickerRepository(),
+    dispatch: () => {},
+    getState: () => state,
+    pluginRegistry: {
+      paneTemplates: catalog.paneTemplates,
+      panes: catalog.panes,
+      getPaneTemplatePluginId: () => undefined,
+      getDisabledPaneTemplateOwner: () => null,
+      events: { emit: () => {} },
+      focusPane: (paneId: string) => { focused.push(paneId); },
+      updateLayout: (layout: typeof state.config.layout) => { state.config.layout = layout; },
+    } as never,
+    buildPaneInstance: (paneType: string, spec?: Partial<PaneInstanceConfig>) => createPaneInstance(paneType, spec ?? {}),
+    placePaneInstance: (placedInstance: PaneInstanceConfig) => {
+      added.push(placedInstance.instanceId);
+      state.config.layout = {
+        ...state.config.layout,
+        instances: [...state.config.layout.instances, placedInstance],
+        floating: [...state.config.layout.floating, { instanceId: placedInstance.instanceId, x: 0, y: 0, width: 60, height: 20, zIndex: 50 }],
+      };
+    },
+  };
+  return {
+    open: (id: string, options?: PaneTemplateCreateOptions) => createPaneTemplateOrThrow(id, options, deps),
+    layout: () => state.config.layout,
+    added,
+    focused,
+    /** The pane picks up a view preference of its own, as a toggled quick setting does. */
+    tune: () => {
+      state.config.layout = {
+        ...state.config.layout,
+        instances: state.config.layout.instances.map((entry) => ({ ...entry, settings: { ...(entry.settings ?? {}), liveStreaming: false } })),
+      };
+    },
+  };
+}
 
 describe("every function opens once", () => {
   test("opening it again focuses its window, even after the pane picked up a setting of its own", async () => {
@@ -140,51 +213,16 @@ describe("every function opens once", () => {
         if (entry.shortcut?.argKind === "ticker" || argKind === "ticker") variants.push({ arg: "AAPL" });
         else if (entry.shortcut?.argKind === "ticker-list" || argKind === "tickers") variants.push({ arg: "AAPL MSFT" });
         for (const options of variants) {
-          const state = createInitialState({ ...config, layout: { dockRoot: null, instances: [], floating: [], detached: [] } });
-          for (const symbol of ["AAPL", "MSFT"]) {
-            state.tickers.set(symbol, createTestTicker(symbol, symbol, { exchange: "NASDAQ", currency: "USD" }));
-          }
-          let added = 0;
-          const deps = {
-            dataProvider: createTestDataProvider({ id: "test" }),
-            tickerRepository: new JsonTickerRepository(),
-            dispatch: () => {},
-            getState: () => state,
-            pluginRegistry: {
-              paneTemplates: catalog.paneTemplates,
-              panes: catalog.panes,
-              getPaneTemplatePluginId: () => undefined,
-              getDisabledPaneTemplateOwner: () => null,
-              events: { emit: () => {} },
-              focusPane: () => {},
-              updateLayout: (layout: typeof state.config.layout) => { state.config.layout = layout; },
-            } as never,
-            buildPaneInstance: (paneType: string, spec?: Partial<PaneInstanceConfig>) => createPaneInstance(paneType, spec ?? {}),
-            placePaneInstance: (placed: PaneInstanceConfig) => {
-              added += 1;
-              state.config.layout = {
-                ...state.config.layout,
-                instances: [...state.config.layout.instances, placed],
-                floating: [...state.config.layout.floating, { instanceId: placed.instanceId, x: 0, y: 0, width: 60, height: 20, zIndex: 50 }],
-              };
-            },
-          };
+          const host = await openFunctions(catalog, []);
           try {
-            await createPaneTemplateOrThrow(id, options, deps);
+            await host.open(id, options);
           } catch {
             continue; // Nothing to open without a ticker or a context.
           }
-          if (added === 0) continue;
-          // The pane writes a view preference into its own settings, as a quick-setting toggle does.
-          state.config.layout = {
-            ...state.config.layout,
-            instances: state.config.layout.instances.map((placed) => ({
-              ...placed,
-              settings: { ...(placed.settings ?? {}), liveStreaming: false },
-            })),
-          };
-          await createPaneTemplateOrThrow(id, options, deps);
-          if (added === 1) reused += 1;
+          if (host.added.length === 0) continue;
+          host.tune();
+          await host.open(id, options);
+          if (host.added.length === 1) reused += 1;
           else dupes.push(id);
         }
       }
@@ -195,4 +233,67 @@ describe("every function opens once", () => {
     expect([...new Set(dupes)].sort()).toEqual(Object.keys(OPENS_ANOTHER_WINDOW).sort());
     expect(reused).toBeGreaterThan(100);
   });
+
+  // Two functions on one pane type. Layouts saved before the pane type said which
+  // settings name a window hold panes with no marker, tuned or not: each is still
+  // found by its own function, and never taken by the other.
+  const PAIRS: Array<{ pair: string; first: string; second: string; paneId: string; legacy: Record<string, Partial<PaneInstanceConfig>> }> = [
+    {
+      pair: "ERN and EVTS", first: "earnings-calendar-pane", second: "earnings-board-pane", paneId: "earnings-calendar",
+      legacy: { "earnings-calendar-pane": {}, "earnings-board-pane": { settings: { board: true } } },
+    },
+    {
+      pair: "MA and DIST", first: "mna-pane", second: "distress-pane", paneId: "mna",
+      legacy: { "mna-pane": {}, "distress-pane": { params: { tab: "distress" } } },
+    },
+    {
+      pair: "POWER and EPWR", first: "power-pane", second: "power-prices-pane", paneId: "power",
+      legacy: { "power-pane": { params: { symbol: "" } }, "power-prices-pane": { settings: { tab: "prices" } } },
+    },
+    {
+      pair: "BI and THEM", first: "sectors-pane", second: "themes-pane", paneId: "sectors",
+      legacy: { "sectors-pane": {}, "themes-pane": { params: { theme: "" } } },
+    },
+  ];
+
+  for (const { pair, first, second, paneId, legacy } of PAIRS) {
+    test(`${pair}: each finds its own window, tuned or not, and never the other's`, async () => {
+      const catalog = await createPaneCatalog({ config: createDefaultConfig("/tmp/gloomberb-pane-reuse-catalog") } as never, getLoadablePlugins());
+      try {
+        const legacyPane = (id: string, settings: Record<string, unknown> = {}) => {
+          const stored = legacy[id]!;
+          return createPaneInstance(paneId, {
+            instanceId: `${paneId}:${id}`,
+            params: stored.params,
+            settings: { ...(stored.settings ?? {}), ...settings },
+          });
+        };
+        for (const tuned of [{}, { liveStreaming: false }]) {
+          const both = await openFunctions(catalog, [legacyPane(first, tuned), legacyPane(second, tuned)]);
+          await both.open(first);
+          await both.open(second);
+          expect(both.added).toEqual([]);
+          expect(both.focused).toEqual([`${paneId}:${first}`, `${paneId}:${second}`]);
+
+          // With only the other function's window open, a window of its own is added.
+          for (const [mine, theirs] of [[first, second], [second, first]] as const) {
+            const alone = await openFunctions(catalog, [legacyPane(theirs, tuned)]);
+            await alone.open(mine);
+            expect(alone.focused).toEqual([]);
+            expect(alone.added).toHaveLength(1);
+          }
+        }
+        // The window a function opens itself is found again after it picked up a setting.
+        for (const id of [first, second]) {
+          const host = await openFunctions(catalog, []);
+          await host.open(id);
+          host.tune();
+          await host.open(id);
+          expect(host.added).toHaveLength(1);
+        }
+      } finally {
+        catalog.destroy();
+      }
+    });
+  }
 });

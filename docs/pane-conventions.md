@@ -461,10 +461,15 @@ template's `createInstance` returns:
   never a view preference (live streaming, a range). The host matches a pane by
   what the spec names and ignores the settings it leaves out, so a pane the user
   has tuned is still found.
-- **Two functions on one pane type** name what tells them apart in `settings`
-  (EVTS sets `board`). A bare spec on a pane type with several templates only
-  matches a pane with no settings at all, because the host cannot tell whose
-  settings are whose.
+- **Two functions on one pane type** (ERN and EVTS, MA and DIST, POWER and
+  EPWR, BI and THEM) tell their windows apart by binding, params and settings.
+  Declare the settings that name a window as `identitySettings` on the pane def
+  (`["board", "symbols", "symbolsText"]`; `[]` when binding and params say it
+  all). A window that picked up any other setting is still found, and a window
+  carrying an identity setting the function does not set is left to the function
+  that does. This reads what the window stores, so panes saved before the
+  declaration are found too. Without it a bare spec only matches a window with no
+  settings at all, because the host cannot tell whose settings are whose.
 - **New on purpose**: a blank form that builds something (`VIEW`), a function
   that creates a list (`PF`), "Open in new pane" (`forceNewPane`) and Duplicate
   Pane. Charts and quotes for different tickers are different specs, so they

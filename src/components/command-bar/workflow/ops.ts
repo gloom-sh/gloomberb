@@ -249,7 +249,7 @@ export async function createPaneTemplateOrThrow(
     template,
     deps.pluginRegistry.paneTemplates,
     spec,
-    deps.getState().focusedPaneId,
+    { focusedPaneId: deps.getState().focusedPaneId, paneDef: deps.pluginRegistry.panes.get(template.paneId) },
   );
   if (existing) {
     const retargeted = retargetPaneInstance(existing, spec);

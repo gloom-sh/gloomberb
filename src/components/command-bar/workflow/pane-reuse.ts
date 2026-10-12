@@ -1,5 +1,5 @@
 import type { PaneBinding, PaneInstanceConfig } from "../../../types/config";
-import type { PaneTemplateDef, PaneTemplateInstanceConfig } from "../../../types/plugin";
+import type { PaneDef, PaneTemplateDef, PaneTemplateInstanceConfig } from "../../../types/plugin";
 import { scopedBrokerContractIdentityKey } from "../../../utils/instrument-identity";
 
 /**
@@ -17,9 +17,12 @@ import { scopedBrokerContractIdentityKey } from "../../../utils/instrument-ident
  *    live streaming toggle, a range, a column), and a stable id outlives the
  *    ticker or channel a pane was opened on, so neither can be required to
  *    match. Settings the spec leaves out are tolerated only when they cannot
- *    belong to another function: the template is the only one that opens its
- *    pane type, and it names a ticker or takes no argument (or an optional
- *    one, typed bare). A blank form that builds something new (VIEW) is not.
+ *    belong to another function, which the host knows in one of two ways: the
+ *    template is the only one that opens its pane type, or the pane type
+ *    declares its `identitySettings` and the window carries none of them that
+ *    the spec leaves out (ERN's window has no `board`, EVTS's has). Either way
+ *    the spec has to name a ticker or take no argument (or an optional one,
+ *    typed bare): a blank form that builds something new (VIEW) is not tolerated.
  */
 
 /** Key order in stored settings is not guaranteed, so compare on sorted keys. */
@@ -95,17 +98,34 @@ function namesATarget(spec: PaneTemplateInstanceConfig): boolean {
   return (!!spec.binding && spec.binding.kind !== "none") || Object.keys(spec.params ?? {}).length > 0;
 }
 
+/** What a window may carry beyond the settings a spec names. */
+interface OtherSettings {
+  /** The pane type's `identitySettings`: a window that has one the spec does not set is another function's. */
+  identity: readonly string[] | undefined;
+  /** The template is the only one that opens its pane type. */
+  onlyTemplate: boolean;
+  /** The spec names a ticker or params, or the form takes no argument or an optional one. */
+  bareFormOk: boolean;
+}
+
 function showsWhatSpecNames(
   instance: PaneInstanceConfig,
   spec: PaneTemplateInstanceConfig,
-  tolerateOtherSettings: boolean,
+  other: OtherSettings,
 ): boolean {
   if (bindingIdentity(instance.binding) !== bindingIdentity(spec.binding)) return false;
   if (stableKey(instance.params ?? {}) !== stableKey(spec.params ?? {})) return false;
   const stored = instance.settings ?? {};
-  const wanted = Object.entries(spec.settings ?? {});
-  if (wanted.some(([key, value]) => stableKey(stored[key]) !== stableKey(value))) return false;
-  return wanted.length > 0 || tolerateOtherSettings || Object.keys(stored).length === 0;
+  const named = spec.settings ?? {};
+  if (Object.entries(named).some(([key, value]) => stableKey(stored[key]) !== stableKey(value))) return false;
+  const unnamed = Object.keys(stored).filter((key) => !(key in named));
+  if (unnamed.length === 0) return true;
+  const namesSettings = Object.keys(named).length > 0;
+  if (other.identity) {
+    // Another function's window carries a setting that says so; the rest are the window's own.
+    return !unnamed.some((key) => other.identity!.includes(key)) && (namesSettings || other.bareFormOk);
+  }
+  return namesSettings || (other.onlyTemplate && other.bareFormOk);
 }
 
 export function findReusablePaneInstance(
@@ -113,7 +133,7 @@ export function findReusablePaneInstance(
   template: PaneTemplateDef,
   templates: ReadonlyMap<string, PaneTemplateDef>,
   spec: PaneTemplateInstanceConfig,
-  focusedPaneId: string | null = null,
+  options: { focusedPaneId?: string | null; paneDef?: Pick<PaneDef, "identitySettings"> } = {},
 ): PaneInstanceConfig | null {
   const paneId = template.paneId;
   if (spec.instanceId) {
@@ -127,10 +147,13 @@ export function findReusablePaneInstance(
   ));
   if (exact) return exact;
 
-  const tolerateOtherSettings = isOnlyTemplateForPane(template, templates)
-    && (namesATarget(spec) || !template.shortcut?.argPlaceholder || template.shortcut.argOptional === true);
-  const matches = candidates.filter((instance) => showsWhatSpecNames(instance, spec, tolerateOtherSettings));
-  return matches.find((instance) => instance.instanceId === focusedPaneId) ?? matches[0] ?? null;
+  const other: OtherSettings = {
+    identity: options.paneDef?.identitySettings,
+    onlyTemplate: isOnlyTemplateForPane(template, templates),
+    bareFormOk: namesATarget(spec) || !template.shortcut?.argPlaceholder || template.shortcut.argOptional === true,
+  };
+  const matches = candidates.filter((instance) => showsWhatSpecNames(instance, spec, other));
+  return matches.find((instance) => instance.instanceId === options.focusedPaneId) ?? matches[0] ?? null;
 }
 
 /**

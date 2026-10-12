@@ -395,6 +395,8 @@ export const sectorsModule: PluginModule = {
       name: "Sector Performance",
       icon: "S",
       component: SectorPerformancePane,
+      // BI and THEM open this pane: THEM sets the theme param; the ETF lists are preferences.
+      identitySettings: [],
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 82, height: 18 },

@@ -10,7 +10,8 @@ const CACHES = [powerBoardCache, powerHistoryCache, powerDetailCache, powerPrice
 
 export const powerModule: PluginModule = {
   series: [...DAY_AHEAD_SERIES, ...CARBON_SERIES],
-  panes: [{ id: "power", name: "Power & Grid", icon: "P", component: PowerPane, defaultPosition: "right", defaultMode: "floating",
+  // POWER sets the symbol param, EPWR the prices tab.
+  panes: [{ id: "power", name: "Power & Grid", icon: "P", component: PowerPane, defaultPosition: "right", defaultMode: "floating", identitySettings: ["tab", "symbol"],
     defaultFloatingSize: { width: 132, height: 34 }, tableExport: true, headless: powerHeadless }],
   paneTemplates: [{ id: "power-pane", paneId: "power", label: "Power & Grid",
     description: "Pro: interconnection queues, historical MW and outcomes, datacenter loads, utility exposure and generation capacity, with primary evidence.",

@@ -125,6 +125,17 @@ export interface PaneDef {
    * win over the binding.
    */
   tickerFollower?: boolean | ((pane: PaneInstanceConfig) => boolean);
+  /**
+   * For a pane type that two or more functions open (ERN and EVTS): the settings that say
+   * what a window shows, as against how (a range, a toggle, a column choice). Opening a
+   * function again focuses a window whose binding, params and settings match what the
+   * function opens; a window with a setting of its own that is not listed here is still that
+   * window, and one with a listed setting the function does not set belongs to another
+   * function and is left alone. Without it, a pane type opened by several functions is
+   * matched on its settings exactly, and a window that picked up any setting is not found.
+   * An empty list says binding and params alone name the window.
+   */
+  identitySettings?: readonly string[];
   /** Renderer-neutral data model used by CLI functions, automation, and hosted tools. */
   headless?: HeadlessPaneDefinition;
   /**
