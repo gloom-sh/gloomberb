@@ -1,0 +1,4033 @@
+[
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 0,
+    "timeMs": 0.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": []
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 1,
+    "timeMs": 16.6,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": []
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 2,
+    "timeMs": 33.2,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 3,
+    "timeMs": 49.9,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 4,
+    "timeMs": 66.6,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 5,
+    "timeMs": 83.3,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 6,
+    "timeMs": 99.9,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 7,
+    "timeMs": 116.6,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 8,
+    "timeMs": 133.2,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 9,
+    "timeMs": 149.9,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 10,
+    "timeMs": 166.6,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 11,
+    "timeMs": 183.2,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 12,
+    "timeMs": 200.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 13,
+    "timeMs": 216.6,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 14,
+    "timeMs": 233.3,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 15,
+    "timeMs": 249.9,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 0,
+    "timeMs": 0.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": []
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 1,
+    "timeMs": 16.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 2,
+    "timeMs": 66.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 3,
+    "timeMs": 83.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 4,
+    "timeMs": 100.03,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 5,
+    "timeMs": 116.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 6,
+    "timeMs": 133.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 7,
+    "timeMs": 150.03,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 8,
+    "timeMs": 166.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 9,
+    "timeMs": 183.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 10,
+    "timeMs": 200.03,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 11,
+    "timeMs": 216.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 12,
+    "timeMs": 233.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 13,
+    "timeMs": 249.93,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 14,
+    "timeMs": 266.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 15,
+    "timeMs": 283.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "chart",
+    "frame": 16,
+    "timeMs": 299.93,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 0,
+    "timeMs": 0.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 1,
+    "timeMs": 16.7,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": []
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 2,
+    "timeMs": 33.3,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": []
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 3,
+    "timeMs": 50.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 4,
+    "timeMs": 66.6,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 5,
+    "timeMs": 83.4,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 6,
+    "timeMs": 100.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 7,
+    "timeMs": 116.6,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 8,
+    "timeMs": 133.3,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 9,
+    "timeMs": 149.9,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 10,
+    "timeMs": 166.7,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 11,
+    "timeMs": 183.4,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 12,
+    "timeMs": 200.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 13,
+    "timeMs": 216.7,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 14,
+    "timeMs": 233.4,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 15,
+    "timeMs": 250.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 16,
+    "timeMs": 266.7,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 0,
+    "timeMs": 0.0,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 1,
+    "timeMs": 16.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 2,
+    "timeMs": 33.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 3,
+    "timeMs": 50.03,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 4,
+    "timeMs": 66.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 5,
+    "timeMs": 83.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 6,
+    "timeMs": 100.03,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 7,
+    "timeMs": 116.73,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 8,
+    "timeMs": 133.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 9,
+    "timeMs": 150.03,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 10,
+    "timeMs": 166.73,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 11,
+    "timeMs": 183.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 12,
+    "timeMs": 200.03,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 13,
+    "timeMs": 216.73,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 14,
+    "timeMs": 233.33,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 15,
+    "timeMs": 250.03,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "white",
+    "operation": "overview",
+    "frame": 16,
+    "timeMs": 266.63,
+    "body": "rgb(15, 15, 15)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              15,
+              15,
+              15,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 0,
+    "timeMs": 0.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": []
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 1,
+    "timeMs": 16.63,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": []
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 2,
+    "timeMs": 33.33,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": []
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 3,
+    "timeMs": 49.93,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 4,
+    "timeMs": 66.63,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 5,
+    "timeMs": 83.33,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 6,
+    "timeMs": 99.93,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 7,
+    "timeMs": 116.63,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 8,
+    "timeMs": 133.23,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 9,
+    "timeMs": 149.93,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 10,
+    "timeMs": 166.53,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 11,
+    "timeMs": 183.23,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 12,
+    "timeMs": 200.03,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 13,
+    "timeMs": 216.63,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 14,
+    "timeMs": 233.33,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 15,
+    "timeMs": 249.93,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 16,
+    "timeMs": 266.63,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 0,
+    "timeMs": 0.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": []
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 1,
+    "timeMs": 16.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 2,
+    "timeMs": 33.4,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 3,
+    "timeMs": 50.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 4,
+    "timeMs": 66.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 5,
+    "timeMs": 83.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 6,
+    "timeMs": 100.1,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 7,
+    "timeMs": 116.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 8,
+    "timeMs": 133.4,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 9,
+    "timeMs": 150.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 10,
+    "timeMs": 166.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 11,
+    "timeMs": 183.4,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 12,
+    "timeMs": 200.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 13,
+    "timeMs": 216.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 14,
+    "timeMs": 233.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 15,
+    "timeMs": 250.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "chart",
+    "frame": 16,
+    "timeMs": 266.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 0,
+    "timeMs": 0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 1,
+    "timeMs": 16.6,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": []
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 2,
+    "timeMs": 33.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 3,
+    "timeMs": 49.9,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 4,
+    "timeMs": 66.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 5,
+    "timeMs": 83.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 6,
+    "timeMs": 100,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 7,
+    "timeMs": 116.6,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 8,
+    "timeMs": 133.2,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 9,
+    "timeMs": 150,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 10,
+    "timeMs": 166.6,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 11,
+    "timeMs": 183.2,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 12,
+    "timeMs": 200,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 13,
+    "timeMs": 216.6,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 14,
+    "timeMs": 233.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "before",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 15,
+    "timeMs": 250,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 0,
+    "timeMs": 0.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 1,
+    "timeMs": 16.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 64,
+          "y": 38,
+          "w": 1336,
+          "h": 792
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1336,
+            "height": 792,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 2,
+    "timeMs": 33.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 3,
+    "timeMs": 66.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 4,
+    "timeMs": 83.4,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 5,
+    "timeMs": 100.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 6,
+    "timeMs": 116.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 7,
+    "timeMs": 133.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 8,
+    "timeMs": 150.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 9,
+    "timeMs": 166.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 10,
+    "timeMs": 183.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 11,
+    "timeMs": 200.1,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 12,
+    "timeMs": 216.6,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 13,
+    "timeMs": 233.3,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 14,
+    "timeMs": 250.1,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 15,
+    "timeMs": 266.7,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 16,
+    "timeMs": 283.4,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "side": "after",
+    "theme": "colorblind-light",
+    "operation": "overview",
+    "frame": 17,
+    "timeMs": 300.0,
+    "body": "rgb(242, 242, 242)",
+    "plots": [
+      {
+        "rect": {
+          "x": 8,
+          "y": 88.09375,
+          "w": 1344,
+          "h": 162
+        },
+        "background": "rgba(0, 0, 0, 0)",
+        "canvases": [
+          {
+            "width": 1344,
+            "height": 162,
+            "pixel": [
+              242,
+              242,
+              242,
+              255
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]
