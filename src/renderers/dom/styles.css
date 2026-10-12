@@ -185,18 +185,31 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-[data-gloom-role="chat-message"]:hover [data-gloom-role="chat-message-row"][data-selected="false"] {
-  background-color: var(--chat-hover-bg);
-}
+/* A row's hover band is painted from the chat's own state (data-hovered), not
+   :hover, so it can be dropped when the list scrolls or fills under a pointer
+   that did not move. Its actions show with it. */
 [data-gloom-role="chat-message-reply-action"] {
   opacity: 0;
   pointer-events: none;
 }
-[data-gloom-role="chat-message"]:hover [data-gloom-role="chat-message-reply-action"],
+[data-gloom-role="chat-message"][data-hovered="true"] [data-gloom-role="chat-message-reply-action"],
 [data-gloom-role="chat-message"][data-selected="true"] [data-gloom-role="chat-message-reply-action"],
 [data-gloom-role="chat-message-reply-action"][data-picker-open="true"] {
   opacity: 1;
   pointer-events: auto;
+}
+/* The message a notification pointed at: marked, then fading out. */
+[data-gloom-role="chat-message"][data-highlighted="true"] [data-gloom-role="chat-message-row"] {
+  animation: gloom-chat-highlight 2s ease-out forwards;
+}
+@keyframes gloom-chat-highlight {
+  from { background-color: var(--chat-highlight-bg); }
+  to { background-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-gloom-role="chat-message"][data-highlighted="true"] [data-gloom-role="chat-message-row"] {
+    animation: none;
+  }
 }
 /* Message text can be selected and copied, like any chat. */
 [data-gloom-role="chat-message-body"] {

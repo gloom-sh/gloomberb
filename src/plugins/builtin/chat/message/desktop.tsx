@@ -1,6 +1,5 @@
 import { memo } from "react";
 import { Box, Text } from "../../../../ui";
-import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
@@ -14,7 +13,7 @@ import { canReactToMessage } from "../reactions";
 import { DesktopChatReactions, DesktopReactionAction } from "./reactions";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { useSlowPendingSend } from "./pending-send";
-import { getChatMessageRenderState } from "./render-state";
+import { chatHighlightBg, getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
 const DESKTOP_MESSAGE_RIGHT_PADDING = 2;
@@ -25,6 +24,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   messages,
   selectedIdx,
   hoveredIdx,
+  highlighted,
   canSend,
   catalog,
   userByUsername,
@@ -59,6 +59,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
     messages,
     selectedIdx,
     hoveredIdx,
+    highlighted,
     canSend,
     canEdit: msg.id === latestEditableMessageId,
     canReact,
@@ -103,7 +104,9 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
       data-gloom-role="chat-message"
       data-gloom-chat-message-id={msg.id}
       data-selected={state.isSelected ? "true" : "false"}
-      style={{ "--chat-hover-bg": hoverBg(themeColors), minWidth: 0 }}
+      data-hovered={state.isHovered ? "true" : "false"}
+      data-highlighted={state.isHighlighted ? "true" : "false"}
+      style={{ "--chat-highlight-bg": chatHighlightBg(themeColors), minWidth: 0 }}
     >
       {msg.replyTo && (
         <Box

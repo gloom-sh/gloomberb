@@ -39,6 +39,8 @@ import { useChatComposerRuntime } from "./composer-runtime";
 import { runDiscordCommand } from "../discord-command";
 import type { DiscordComposerCommand } from "../composer-commands";
 import { useChatMessageSelection } from "./selection-runtime";
+import { useChatRowActivity } from "./row-activity";
+import { useUnseenMessageCount } from "./new-messages";
 import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 import { DesktopChatDropOverlay, DesktopChatDropTarget } from "../attachments/desktop";
 import { uploadFromTransferFile, type TransferFile } from "../attachments/transfer";
@@ -102,7 +104,6 @@ export function ChatContent({
   const rendererHost = useRendererHost();
   const [inputFocused, setInputFocused] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(-1);
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [followMessages, setFollowMessages] = useState(true);
   const [newDmOpen, setNewDmOpen] = useState(false);
@@ -216,7 +217,20 @@ export function ChatContent({
   const canAttach = imagesAvailable && !editingMessage;
   const selectionActive = selectedIdx >= 0 && selectedIdx < messages.length;
   const stickyTranscript = followMessages && !selectionActive;
-  const latestMessageId = messages[messages.length - 1]?.id ?? null;
+  const latestMessage = messages[messages.length - 1] ?? null;
+  const {
+    clearHighlight,
+    clearHover,
+    highlightMessage,
+    highlightedMessageId,
+    hoveredIdx,
+    onPointerMove,
+    setHoveredIdx,
+  } = useChatRowActivity({ channelId, focused, messages, nativePaneChrome });
+  // A selected row is the keyboard's cursor; a pane that no longer has the keyboard keeps none.
+  useEffect(() => {
+    if (!focused) setSelectedIdx(-1);
+  }, [focused]);
   const [editWindowNowMs, setEditWindowNowMs] = useState(() => Date.now());
   const latestOwnMessage = useMemo(() => {
     if (!user?.id) return null;
@@ -737,11 +751,15 @@ export function ChatContent({
   ]);
 
   const {
+    atBottom,
     handleTranscriptScrollActivity,
     jumpToMessage,
     registerMessageElement,
     requestOlderMessages,
     requestOlderMessagesIfNeeded,
+    scrollToLatest,
+    setPinnedToBottom,
+    takeBackScrollPlace,
   } = useChatScrollRuntime({
     channelId,
     catalog,
@@ -750,7 +768,7 @@ export function ChatContent({
     focused,
     hasOlderMessages,
     height,
-    latestMessageId,
+    latestMessage,
     loadingOlderMessages,
     messageAreaHeight,
     messageElementsRef,
@@ -765,7 +783,11 @@ export function ChatContent({
     stickyTranscript,
     useDefaultControllerChannel,
     composerLayoutKey: editingMessage ? "" : draftAttachments.map((attachment) => attachment.status).join(","),
+    highlightMessage,
+    clearHover,
+    clearHighlight,
   });
+  const unseenCount = useUnseenMessageCount({ channelId, following: atBottom, messages, userId: user?.id });
 
   // A jump to a message (a notification, the unread list) shows the channel.
   useEffect(() => {
@@ -939,7 +961,10 @@ export function ChatContent({
       flexGrow={nativePaneChrome ? 1 : undefined}
       backgroundColor={chatContentBg}
       position="relative"
-      onMouseDown={() => focusChatContent()}
+      onMouseDown={() => {
+        clearHighlight();
+        focusChatContent();
+      }}
       style={nativeFillStyle}
     >
       {/* In the stack, the Back row above takes the place of the top rule. */}
@@ -958,6 +983,7 @@ export function ChatContent({
         chatWidth={chatWidth}
         contentWidth={contentWidth}
         handleTranscriptScrollActivity={handleTranscriptScrollActivity}
+        highlightedMessageId={highlightedMessageId}
         hoveredIdx={hoveredIdx}
         jumpToMessage={jumpToMessage}
         loading={loading}
@@ -970,6 +996,8 @@ export function ChatContent({
         messageBodyWidth={messageBodyWidth}
         messages={messages}
         nativePaneChrome={nativePaneChrome}
+        onPointerMove={onPointerMove}
+        onStickyPinChange={setPinnedToBottom}
         latestEditableMessageId={latestEditableMessageId}
         openTicker={openTicker}
         profilePopoverUser={profilePopoverUser}
@@ -983,6 +1011,9 @@ export function ChatContent({
         toggleProfilePopover={toggleUserProfile}
         dismissProfilePopover={dismissProfilePopover}
         stickyTranscript={stickyTranscript}
+        unseenCount={unseenCount}
+        onJumpToLatest={scrollToLatest}
+        takeBackScrollPlace={takeBackScrollPlace}
         user={user}
         userByUsername={userByUsername}
         onSetUpProfile={openProfileSetup}

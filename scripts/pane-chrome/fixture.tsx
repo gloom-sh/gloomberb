@@ -15,7 +15,8 @@
  * chart, and a table in a sidebar beside a second table, docked, with a news
  * table floating over them; `&float=chart`, `&float=heat` or `&float=fear`
  * floats a chart, a heat map or the Fear & Greed pane instead) or `narrow`
- * (floating panes either side of the width a header keeps Ask Gloom at).
+ * (floating panes either side of the width a header keeps Ask Gloom at) or
+ * `chat` (the chat view over an invented channel, see chat-fixture.tsx).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -60,6 +61,7 @@ import type { FearGreedData } from "../../src/plugins/builtin/fear-greed/data";
 import { PriceSparkline } from "../../src/components/price-sparkline/view";
 import { registerAskGloomPaneHandler } from "../../src/ask-gloom/pane-request";
 import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/header";
+import { ChatFixturePane, chatLayout } from "./chat-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -437,6 +439,7 @@ const PANES = {
   chart: { name: "Chart", component: ChartPane },
   sidebar: { name: "Sidebar", component: SidebarPane },
   heat: { name: "Heat map", component: HeatPane },
+  chat: { name: "Chat", component: ChatFixturePane },
 };
 
 function registry(): PluginRegistry {
@@ -578,6 +581,7 @@ function config() {
     : scenario === "screenshot" ? screenshotLayout()
     : scenario === "resize" ? resizeLayout()
     : scenario === "narrow" ? narrowLayout()
+    : scenario === "chat" ? chatLayout()
     : chromeLayout();
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
   const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];

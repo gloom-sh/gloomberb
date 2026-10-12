@@ -17,6 +17,8 @@ export interface ChatMessageBaseProps {
   messages: ChatMessage[];
   selectedIdx: number;
   hoveredIdx: number | null;
+  /** A message the reader was sent to, marked for a moment. */
+  highlighted?: boolean;
   canSend: boolean;
   catalog: Record<string, InlineTickerCatalogEntry>;
   userByUsername: Map<string, ChatUserSummary>;

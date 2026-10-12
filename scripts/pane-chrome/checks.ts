@@ -3,6 +3,7 @@ import { join, resolve } from "path";
 import { positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, click, drag, evaluate, frames, holdKey, launchBrowser, mouse, pressKey, sleep, waitFor, type Cdp, type Chord, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
+import { chatSteps } from "./chat-checks";
 import { checkFirstPaint, checkThemePreview } from "./paint";
 
 /**
@@ -787,6 +788,7 @@ const steps: Step[] = [
       if (await evaluate<number>(cdp, "__check.windowMoves()") > 0) fail(`the ${label} button asked the window to move`);
     },
   })),
+  ...chatSteps,
 ];
 
 async function openScenario(cdp: Cdp, page: FixturePage, scenario: string): Promise<void> {

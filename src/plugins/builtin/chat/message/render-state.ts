@@ -1,12 +1,18 @@
 import { TextAttributes } from "../../../../ui";
-import { colors, hoverBg } from "../../../../theme/colors";
+import { blendHex, colors, hoverBg } from "../../../../theme/colors";
 import type { ChatMessage } from "../../../../api-client";
 import { formatTimeAgo } from "../../../../utils/datetime-format";
 import { isGroupedWithPrevious } from "../layout";
 
+/** The band on a message the reader was sent to: the accent at low strength, between the hover and the selection. */
+export function chatHighlightBg(palette = colors): string {
+  return blendHex(palette.bg, palette.borderFocused, 0.22);
+}
+
 export interface ChatMessageRenderState {
   isSelected: boolean;
   isHovered: boolean;
+  isHighlighted: boolean;
   grouped: boolean;
   showReplyAction: boolean;
   /** Reactions are on offer here: the server takes them and the message can have them. */
@@ -35,6 +41,7 @@ export function getChatMessageRenderState({
   messages,
   selectedIdx,
   hoveredIdx,
+  highlighted = false,
   canSend,
   canEdit,
   canReact = false,
@@ -46,6 +53,7 @@ export function getChatMessageRenderState({
   messages: ChatMessage[];
   selectedIdx: number;
   hoveredIdx: number | null;
+  highlighted?: boolean;
   canSend: boolean;
   canEdit: boolean;
   /** The message takes a reaction from you. */
@@ -57,6 +65,7 @@ export function getChatMessageRenderState({
 }): ChatMessageRenderState {
   const isSelected = index === selectedIdx;
   const isHovered = index === hoveredIdx && !isSelected;
+  const isHighlighted = highlighted && !isSelected;
   const grouped = isGroupedWithPrevious(messages, index);
   const isSending = msg.clientStatus === "sending" && slowSend;
   const hasFailed = msg.clientStatus === "failed";
@@ -72,13 +81,14 @@ export function getChatMessageRenderState({
   return {
     isSelected,
     isHovered,
+    isHighlighted,
     grouped,
     showReplyAction,
     showReactAction: showReplyAction && canReact,
     showEditAction: showReplyAction && canEdit,
     showRetryAction: showActions && hasFailed,
     isSending,
-    bgColor: isSelected ? colors.selected : isHovered ? hoverBg() : undefined,
+    bgColor: isSelected ? colors.selected : isHighlighted ? chatHighlightBg() : isHovered ? hoverBg() : undefined,
     selectedTextColor,
     replyMetaColor: isSelected ? selectedTextColor : colors.textMuted,
     replyAuthorColor: isSelected ? selectedTextColor : colors.textDim,

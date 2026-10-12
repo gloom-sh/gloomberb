@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -17,6 +18,7 @@ import { isHeaderStripScrollBox, scrollBoxScrollsVertically } from "../../../ui/
 import { callMouseHandler } from "./mouse";
 import { cleanDomProps, commonStyle } from "./style";
 import { useScrollbarActivity } from "../scrollbar-activity";
+import { attachStickyScroll, type StickyScroll } from "./sticky-scroll";
 
 type InsetSide = "Left" | "Right" | "Top" | "Bottom";
 
@@ -70,6 +72,13 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
     const verticalScrollChangeHandlersRef = useRef(new Set<() => void>());
     const scrollFrameRef = useRef<number | null>(null);
     const lastWheelAtRef = useRef(0);
+    const stickyRef = useRef<StickyScroll | null>(null);
+    // `stickyScroll` as the terminal's ScrollBox takes it: follow the bottom while
+    // the reader is there, and `stickyStart="bottom"` opens there.
+    const stickyScroll = props.stickyScroll === true;
+    const stickyStartsAtBottom = props.stickyStart === "bottom";
+    const stickyPinChangeRef = useRef(props.onStickyPinChange);
+    stickyPinChangeRef.current = props.onStickyPinChange;
     const [scrollbarActive, markScrollbarActive] = useScrollbarActivity();
 
     const getElement = useCallback(() => elementRef.current, []);
@@ -140,6 +149,21 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
       }
     }, []);
 
+    // Before the first paint, so a list that opens at the bottom is never drawn at the top.
+    useLayoutEffect(() => {
+      const element = elementRef.current;
+      if (!stickyScroll || !element) return;
+      const sticky = attachStickyScroll(element, {
+        startAtBottom: stickyStartsAtBottom,
+        onPinChange: (pinned) => (stickyPinChangeRef.current as ((pinned: boolean) => void) | undefined)?.(pinned),
+      });
+      stickyRef.current = sticky;
+      return () => {
+        sticky.dispose();
+        stickyRef.current = null;
+      };
+    }, [stickyScroll, stickyStartsAtBottom]);
+
     useImperativeHandle(ref, () => ({
       get scrollTop() {
         return toCellY(getElement()?.scrollTop ?? 0);
@@ -148,6 +172,7 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
         const element = getElement();
         if (element) {
           element.scrollTop = Math.max(0, value) * WEB_CELL_HEIGHT;
+          stickyRef.current?.sync();
           emitVerticalScrollChange();
         }
       },
@@ -158,6 +183,7 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
         const element = getElement();
         if (element) {
           element.scrollTop = Math.max(0, value);
+          stickyRef.current?.sync();
           emitVerticalScrollChange();
         }
       },
@@ -223,6 +249,7 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
         if (!element) return;
         if (typeof target === "number") {
           element.scrollTop = Math.max(0, target) * WEB_CELL_HEIGHT;
+          stickyRef.current?.sync();
           emitVerticalScrollChange();
           if (typeof y === "number") {
             element.scrollLeft = Math.max(0, y) * WEB_CELL_WIDTH;
@@ -234,6 +261,7 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
           left: Math.max(0, target.x ?? toCellX(element.scrollLeft)) * WEB_CELL_WIDTH,
           top: Math.max(0, target.y ?? toCellY(element.scrollTop)) * WEB_CELL_HEIGHT,
         });
+        stickyRef.current?.sync();
         emitScrollPositionChanges();
       },
       scrollToPixels(target: number | { x?: number; y?: number }, y?: number) {
@@ -241,6 +269,7 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
         if (!element) return;
         if (typeof target === "number") {
           element.scrollTop = Math.max(0, target);
+          stickyRef.current?.sync();
           emitVerticalScrollChange();
           if (typeof y === "number") {
             element.scrollLeft = Math.max(0, y);
@@ -252,6 +281,7 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
           left: Math.max(0, target.x ?? element.scrollLeft),
           top: Math.max(0, target.y ?? element.scrollTop),
         });
+        stickyRef.current?.sync();
         emitScrollPositionChanges();
       },
     }), [
@@ -301,6 +331,8 @@ export const WebScrollBox = forwardRef<ScrollBoxRenderable, Record<string, unkno
           ...contentInsetStyle(props, contentOptions),
           overflowX,
           overflowY,
+          // A sticky list anchors its own scroll position; the engine's would shift it a second time.
+          ...(stickyScroll ? { overflowAnchor: "none" } : undefined),
           ...(props.style as CSSProperties | undefined),
           ...(props.visible === false ? { display: "none" } : undefined),
         }}
