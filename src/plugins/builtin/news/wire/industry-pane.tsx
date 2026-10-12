@@ -4,7 +4,7 @@ import type { MarketNewsItem } from "../../../../types/news-source";
 import type { NewsQuery } from "../../../../news/types";
 import { useNewsArticles, useNewsTableLoadMore } from "../../../../news/hooks";
 import { usePluginPaneState } from "../../../runtime";
-import { PaneStatusBody, QueryBar, type SelectButtonOption } from "../../../../components";
+import { PaneStatusBody, QueryBar, type QueryBarFilter, type SelectButtonOption } from "../../../../components";
 import { usePaneInstance, usePaneTitle } from "../../../../state/app/context";
 import { newsListEmptyCopy } from "./filter-articles";
 import { newsMutesApplyToFeed, useNewsMuteFilter } from "./mutes";
@@ -14,6 +14,7 @@ import {
   type NewsColumnId,
   type NewsSortPreference,
 } from "./news/table";
+import { LettersBody } from "./letters/pane";
 import { usePersistedNewsArticles } from "./persisted-articles";
 import {
   NEWS_INDUSTRY_CODES,
@@ -80,7 +81,7 @@ function useIndustryArticles(entry: NewsIndustryCode | null): IndustryArticles {
   };
 }
 
-export function IndustryPane({ focused, width, height }: PaneProps) {
+export function IndustryPane(props: PaneProps) {
   const pane = usePaneInstance();
   // Held a sector id before NI took codes; the parser reads both.
   const [savedCode, setSavedCode] = usePluginPaneState<string>("industry:category", pane?.params?.code ?? "ALL");
@@ -88,6 +89,30 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
   const code = entry?.code ?? savedCode.trim().toUpperCase();
   usePaneTitle(code === "ALL" ? TOPIC_NEWS_TITLE : `NI ${code}`);
 
+  const options = entry
+    ? CODE_OPTIONS
+    : [...CODE_OPTIONS, { value: code, label: code, description: "Unknown code", disabled: true }];
+  const codeFilter: QueryBarFilter = {
+    id: "code",
+    label: "Topic",
+    title: "NI code",
+    value: code,
+    defaultValue: "ALL",
+    options,
+    onChange: setSavedCode,
+  };
+  // Letters are links, not stories: they have their own list and none of the news hooks.
+  if (entry?.letters) {
+    return <LettersBody focused={props.focused} width={props.width} height={props.height} codeFilter={codeFilter} />;
+  }
+  return <IndustryNewsBody {...props} entry={entry} code={code} codeFilter={codeFilter} />;
+}
+
+function IndustryNewsBody({ focused, width, height, entry, code, codeFilter }: PaneProps & {
+  entry: NewsIndustryCode | null;
+  code: string;
+  codeFilter: QueryBarFilter;
+}) {
   const loaded = useIndustryArticles(entry);
   const articles = useNewsMuteFilter(loaded.articles, newsMutesApplyToFeed(loaded.query?.feed));
   const { scrollRef, onBodyScrollActivity } = useNewsTableLoadMore(loaded.query, loaded.newsState);
@@ -107,9 +132,6 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
     setSelectedArticleId(null);
   }, [code, setSelectedArticleId]);
 
-  const options = entry
-    ? CODE_OPTIONS
-    : [...CODE_OPTIONS, { value: code, label: code, description: "Unknown code", disabled: true }];
   const fallbackCopy = {
     title: entry ? `No ${entry.label} news yet` : `${code} is not an NI code`,
     hint: entry ? "Stories appear here as the wires publish them." : `Codes: ${VALID_CODES}`,
@@ -126,15 +148,7 @@ export function IndustryPane({ focused, width, height }: PaneProps) {
     <QueryBar
       width={width}
       search={search}
-      filters={[{
-        id: "code",
-        label: "Topic",
-        title: "NI code",
-        value: code,
-        defaultValue: "ALL",
-        options,
-        onChange: setSavedCode,
-      }]}
+      filters={[codeFilter]}
     />
   );
 

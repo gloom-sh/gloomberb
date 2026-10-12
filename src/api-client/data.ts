@@ -23,6 +23,7 @@ import {
   type GoingConcernParams,
   type InsolvencyNoticesParams,
 } from "./distress";
+import type { LettersParams } from "./letters";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
 import type { CryptoMarketsPayload } from "./crypto-markets";
@@ -744,6 +745,10 @@ export class CloudDataApi {
 
   async getPublicInsolvencyNotices(params: InsolvencyNoticesParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
     return this.request<unknown>(`/public/insolvency-notices${distressQuery(params)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
+  }
+
+  async getPublicLetters(params: LettersParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
+    return this.request<unknown>(`/public/letters${distressQuery(params)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getCloudIpoCalendar(params: IpoCalendarParams = {}, options?: { signal?: AbortSignal }): Promise<IpoCalendarPayload> {

@@ -18,6 +18,8 @@ A story shows a ticker when the story itself names the company, by name, brand o
 
 `NI` codes are assigned from each story's category, the wire it came from, its sectors and the words in its headline and summary: `MNA` for deals, `CB` for central banks and rate decisions, `ENERGY` for oil, gas and power across every sector, `REG` for regulators and regulation, `CRYPTO`, `EARN` for results and guidance, `IPO` for listings. A story can carry several codes. The sector codes filter by the story's sectors.
 
+`NI LTR` is the one code that lists no stories. It lists public fund and investor letters as links: manager commentaries and memos, company shareholder letters and annual reports to shareholders, newest first, for the last 12 months. A row shows the date, who wrote it, the title and the kind; Enter or a click opens the publisher's own page, and the Kind filter narrows the list. Only those five facts are kept, never the letter's text or a summary of it, and the list is not ranked. It needs no account. Annual reports are listed for companies with a ticker, up to five a day, and do not all contain a letter from the chief executive.
+
 ## Filtering, mutes and pop-out
 
 `/` filters the stories a news list has loaded, by headline, source, summary, ticker and topic; a story has to contain every word typed. It does not search older stories the list has not loaded yet: clear the filter and scroll to load them.

@@ -773,6 +773,7 @@ class GloomApiClient {
   getPublicGoingConcern = this.data.getPublicGoingConcern.bind(this.data);
   getPublicDistressDesignations = this.data.getPublicDistressDesignations.bind(this.data);
   getPublicInsolvencyNotices = this.data.getPublicInsolvencyNotices.bind(this.data);
+  getPublicLetters = this.data.getPublicLetters.bind(this.data);
   getCloudIpoCalendar = this.data.getCloudIpoCalendar.bind(this.data);
   getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
   getCloudSocialMentions = this.data.getCloudSocialMentions.bind(this.data);
