@@ -79,7 +79,9 @@ test("NI LTR lists letters from the anonymous route, newest first, and Enter ope
   expect(frame).toContain("Oaktree Capital Management");
   expect(frame).toContain("Memo");
   expect(frame).toContain("Commentary");
-  expect(requests).toEqual(["/public/letters?limit=50&offset=0"]);
+  // The default view leaves out annual reports, in one request for the other three kinds.
+  expect(requests).toEqual(["/public/letters?kind=shareholder_letter%2Cmemo%2Ccommentary&limit=50&offset=0"]);
+  expect(frame).toContain("Kind All but annual reports");
 
   await press("return");
   expect(opened).toEqual(["https://www.oaktreecapital.com/insights/memo/a"]);
@@ -107,21 +109,29 @@ test("an empty list says so in one line", async () => {
   await tui.waitForFrameToContain("No letters yet");
 });
 
-test("the Kind filter asks the server for that kind and starts the list over", async () => {
+test("annual reports, and everything, are each one choice away, and a new view starts its paging over", async () => {
   serve(() => Response.json({
     items: [letter("a", { title: "A memo", kind: "memo" })], hasMore: false, limit: 50, offset: 0,
   }));
   await mount();
   await tui.waitForFrameToContain("A memo");
-  await act(async () => { await tui.clickFrameText("Kind All"); });
-  await tui.waitForFrameToContain("Annual report");
-  await press("down");
+  await act(async () => { await tui.clickFrameText("Kind All but annual reports"); });
+  const menu = await tui.waitForFrameToContain("Everything");
+  for (const label of ["All but annual reports", "Shareholder letters", "Memos", "Commentary", "Annual reports", "Everything"])
+    expect(menu).toContain(label);
+  for (let i = 0; i < 4; i++) await press("down");
+  await press("return");
+  await tui.waitForFrameToContain("Kind Annual reports");
+  await act(async () => { await tui.renderFrames(3); });
+  await act(async () => { await tui.clickFrameText("Kind Annual reports"); });
+  await tui.waitForFrameToContain("Everything");
   await press("down");
   await press("return");
-  await tui.waitForFrameToContain("Kind Memo");
+  await tui.waitForFrameToContain("Kind Everything");
   expect(requests).toEqual([
+    "/public/letters?kind=shareholder_letter%2Cmemo%2Ccommentary&limit=50&offset=0",
+    "/public/letters?kind=annual_report&limit=50&offset=0",
     "/public/letters?limit=50&offset=0",
-    "/public/letters?kind=memo&limit=50&offset=0",
   ]);
 });
 

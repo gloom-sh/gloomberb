@@ -748,7 +748,9 @@ export class CloudDataApi {
   }
 
   async getPublicLetters(params: LettersParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
-    return this.request<unknown>(`/public/letters${distressQuery(params)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
+    const { kinds, ...rest } = params;
+    const query = distressQuery({ kind: kinds?.length ? kinds.join(",") : undefined, ...rest });
+    return this.request<unknown>(`/public/letters${query}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getCloudIpoCalendar(params: IpoCalendarParams = {}, options?: { signal?: AbortSignal }): Promise<IpoCalendarPayload> {

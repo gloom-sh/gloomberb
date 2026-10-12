@@ -89,13 +89,14 @@ export interface LetterPage {
 }
 
 /**
- * One page loader per kind filter: a new kind starts the list over. A page
+ * One page loader per set of kinds (null: every kind): a new set starts the
+ * list over, so offsets always count within the set asked for. A page
  * for another offset than the one asked for is unreadable, and a page with no
  * rows ends the list whatever it says, so paging can never spin in place.
  */
-export function letterPageLoader(kind: LetterKind | null, client: LettersApi = apiClient): PageLoader<LetterPage> {
+export function letterPageLoader(kinds: readonly LetterKind[] | null, client: LettersApi = apiClient): PageLoader<LetterPage> {
   return async ({ offset, signal }) => {
-    const payload = await fetchLetters({ ...(kind ? { kind } : {}), limit: PAGE_LIMIT, offset }, client, signal);
+    const payload = await fetchLetters({ ...(kinds ? { kinds } : {}), limit: PAGE_LIMIT, offset }, client, signal);
     if (payload.offset !== offset) throw new UnreadableLetters();
     const nextOffset = offset + payload.items.length;
     return {

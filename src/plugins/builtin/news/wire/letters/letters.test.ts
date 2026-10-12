@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../../../api-client/errors";
 import type { Letter } from "../../../../../api-client/letters";
 import { fetchLetters, letterPageLoader, parseLetters } from "./client";
-import { letterColumns, letterKindFilter } from "./model";
+import { DEFAULT_KIND_VIEW, LETTER_KIND_OPTIONS, LETTER_KIND_VIEWS, letterColumns, letterKindView } from "./model";
 import { NEWS_INDUSTRY_CODES, parseNewsIndustryCode } from "../news/query-presets";
 
 const letter = (overrides: Partial<Letter> = {}): Letter => ({
@@ -78,10 +78,10 @@ test("pages follow the server's offset, carry the kind filter, and stop at the r
       return { items: [letter({ id: String(offset) })], hasMore: true, limit: 50, offset };
     },
   };
-  const load = letterPageLoader("memo", client as never);
+  const load = letterPageLoader(["memo"], client as never);
   const first = await load({ offset: 0, signal: new AbortController().signal, force: false });
   expect(first).toMatchObject({ hasMore: true, nextOffset: 1 });
-  expect(calls[0]).toEqual({ kind: "memo", limit: 50, offset: 0 });
+  expect(calls[0]).toEqual({ kinds: ["memo"], limit: 50, offset: 0 });
   const last = await load({ offset: 2_000, signal: new AbortController().signal, force: false });
   expect(last.hasMore).toBe(false);
   await letterPageLoader(null, client as never)({ offset: 0, signal: new AbortController().signal, force: false });
@@ -102,8 +102,23 @@ test("narrow panes drop the kind, then the entity, then the date basis, and keep
   expect(letterColumns(40).map((column) => column.id)).toEqual(["date", "title"]);
 });
 
-test("a saved kind filter is one of the four kinds or none, never an inherited name", () => {
-  expect(letterKindFilter("memo")).toBe("memo");
-  for (const value of ["all", "bogus", "constructor", "__proto__", "toString", "hasOwnProperty"])
-    expect(letterKindFilter(value)).toBeNull();
+test("the Kind filter opens on everything but annual reports, with each kind, annual reports alone and everything one choice away", () => {
+  expect(DEFAULT_KIND_VIEW).toBe("no_annual_reports");
+  expect(LETTER_KIND_VIEWS[DEFAULT_KIND_VIEW].kinds).toEqual(["shareholder_letter", "memo", "commentary"]);
+  expect(LETTER_KIND_OPTIONS.map((option) => option.label)).toEqual([
+    "All but annual reports", "Shareholder letters", "Memos", "Commentary", "Annual reports", "Everything",
+  ]);
+  expect(LETTER_KIND_VIEWS.annual_report.kinds).toEqual(["annual_report"]);
+  expect(LETTER_KIND_VIEWS.everything.kinds).toBeNull();
+  // No label is another's singular or plural, and no two read the same.
+  const labels = LETTER_KIND_OPTIONS.map((option) => option.label.toLowerCase().replace(/s$/, ""));
+  expect(new Set(labels).size).toBe(labels.length);
+});
+
+test("a saved view is kept by name; an older build's \"all\", an unknown or an inherited name opens the default", () => {
+  expect(letterKindView("memo")).toBe("memo");
+  expect(letterKindView("everything")).toBe("everything");
+  expect(letterKindView("annual_report")).toBe("annual_report");
+  for (const value of ["all", "bogus", "", "constructor", "__proto__", "toString", "hasOwnProperty", null, 3])
+    expect(letterKindView(value)).toBe(DEFAULT_KIND_VIEW);
 });

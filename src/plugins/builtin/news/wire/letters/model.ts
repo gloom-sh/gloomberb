@@ -8,12 +8,26 @@ export const LETTER_KIND_LABELS: Record<LetterKind, string> = {
   annual_report: "Annual report",
 };
 
-export const ALL_KINDS = "all";
+/**
+ * What the Kind filter can show. The default leaves out the annual reports,
+ * which EDGAR sends by the dozen in proxy season and would bury the letters;
+ * they are one choice away, as is each kind on its own and everything.
+ * `kinds: null` asks for every kind.
+ */
+export const LETTER_KIND_VIEWS = {
+  no_annual_reports: { label: "All but annual reports", kinds: ["shareholder_letter", "memo", "commentary"] },
+  shareholder_letter: { label: "Shareholder letters", kinds: ["shareholder_letter"] },
+  memo: { label: "Memos", kinds: ["memo"] },
+  commentary: { label: "Commentary", kinds: ["commentary"] },
+  annual_report: { label: "Annual reports", kinds: ["annual_report"] },
+  everything: { label: "Everything", kinds: null },
+} as const satisfies Record<string, { label: string; kinds: readonly LetterKind[] | null }>;
+export type LetterKindView = keyof typeof LETTER_KIND_VIEWS;
+export const DEFAULT_KIND_VIEW: LetterKindView = "no_annual_reports";
 
-export const LETTER_KIND_OPTIONS: SelectButtonOption[] = [
-  { value: ALL_KINDS, label: "All" },
-  ...(Object.entries(LETTER_KIND_LABELS) as [LetterKind, string][]).map(([value, label]) => ({ value, label })),
-];
+export const LETTER_KIND_OPTIONS: SelectButtonOption[] = (
+  Object.entries(LETTER_KIND_VIEWS) as [LetterKindView, { label: string }][]
+).map(([value, view]) => ({ value, label: view.label }));
 
 /** What each date is. A file's last change is not when the letter came out. */
 export const DATE_BASIS_LABELS: Record<LetterDateBasis, string> = {
@@ -26,9 +40,12 @@ export const DATE_BASIS_LABELS: Record<LetterDateBasis, string> = {
 export const isOwnKey = <T extends object>(record: T, key: unknown): key is keyof T =>
   typeof key === "string" && Object.prototype.hasOwnProperty.call(record, key);
 
-/** The kind a saved filter names, or null for all of them (also for a value an older build saved). */
-export function letterKindFilter(value: string): LetterKind | null {
-  return isOwnKey(LETTER_KIND_LABELS, value) ? value : null;
+/**
+ * The view a saved filter names. Anything else, including an older build's
+ * "all" or an inherited name such as `constructor`, is the default view.
+ */
+export function letterKindView(value: unknown): LetterKindView {
+  return isOwnKey(LETTER_KIND_VIEWS, value) ? value : DEFAULT_KIND_VIEW;
 }
 
 /** Below this width the table has no Date basis column and the footer names the selected row's. */

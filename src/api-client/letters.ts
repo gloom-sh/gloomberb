@@ -14,7 +14,8 @@ export type LetterKind = "shareholder_letter" | "memo" | "commentary" | "annual_
 export type LetterDateBasis = "published" | "filed" | "file_modified";
 
 export interface LettersParams {
-  kind?: LetterKind;
+  /** Any of these kinds, sent as one comma-separated `kind`; every kind when absent. */
+  kinds?: readonly LetterKind[];
   /** 1 to 200. */
   limit?: number;
   offset?: number;

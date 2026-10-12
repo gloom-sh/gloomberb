@@ -18,13 +18,14 @@ import { colors } from "../../../../../theme/colors";
 import { Box, useRendererHost, type ScrollBoxRenderable } from "../../../../../ui";
 import { letterPageLoader } from "./client";
 import {
-  ALL_KINDS,
   BASIS_COLUMN_MIN_WIDTH,
+  DEFAULT_KIND_VIEW,
   LETTER_KIND_OPTIONS,
+  LETTER_KIND_VIEWS,
   letterColumns,
   letterDateBasisLabel,
-  letterKindFilter,
   letterKindLabel,
+  letterKindView,
   type LetterColumn,
 } from "./model";
 
@@ -46,10 +47,12 @@ export function LettersBody({ focused, width, height, codeFilter }: {
   codeFilter: QueryBarFilter;
 }) {
   const rendererHost = useRendererHost();
-  const [kindValue, setKind] = usePluginPaneState<string>("industry:letters:kind", ALL_KINDS);
-  const kind = letterKindFilter(kindValue);
+  // Saved by name; an older build's "all" or anything unknown reads as the default view.
+  const [savedView, setKind] = usePluginPaneState<string>("industry:letters:kind", DEFAULT_KIND_VIEW);
+  const view = letterKindView(savedView);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("industry:letters:selected", null);
-  const loadPage = useMemo(() => letterPageLoader(kind), [kind]);
+  // One loader per view, so a change of view starts the list and its offsets over.
+  const loadPage = useMemo(() => letterPageLoader(LETTER_KIND_VIEWS[view].kinds), [view]);
   const letters = usePagedRows(loadPage, { getId: (letter) => letter.id });
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loadMore = useTableLoadMore(scrollRef, letters.hasMore, letters.loadMore);
@@ -89,8 +92,8 @@ export function LettersBody({ focused, width, height, codeFilter }: {
     id: "kind",
     label: "Kind",
     title: "Kind",
-    value: kindValue,
-    defaultValue: ALL_KINDS,
+    value: view,
+    defaultValue: DEFAULT_KIND_VIEW,
     options: LETTER_KIND_OPTIONS,
     onChange: (value) => {
       setKind(value);

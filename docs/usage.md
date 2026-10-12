@@ -259,7 +259,7 @@ The level tool (`Shift+H`, or `═` in the chart toolbar) draws horizontal price
 | `PM <query>` | Polymarket and Kalshi prediction data ([Prediction Markets plugin](https://github.com/gloom-sh/gloom-prediction-markets)) |
 | `N` | News feed |
 | `CN <ticker>` | Ticker news |
-| `NI [code]` | News by topic: `MNA`, `CB` (central banks), `ENERGY`, `REG` (regulation), `CRYPTO`, `EARN`, `IPO`, or a sector: `TECH`, `FIN`, `HEALTH`, `INDU`, `CONSD`, `CONSS`, `COMMS`, `MATS`, `UTIL`. `LTR` lists public fund and investor letters as links |
+| `NI [code]` | News by topic: `MNA`, `CB` (central banks), `ENERGY`, `REG` (regulation), `CRYPTO`, `EARN`, `IPO`, or a sector: `TECH`, `FIN`, `HEALTH`, `INDU`, `CONSD`, `CONSS`, `COMMS`, `MATS`, `UTIL`. `LTR` lists public fund and investor letters as links (annual reports under its Kind filter) |
 | `SUB` | Authenticated Substack reader feed ([Substack plugin](https://github.com/gloom-sh/gloom-substack)) |
 | `FIRST` | Breaking news |
 | `TWIT <query>` | Ticker-related market posts |
