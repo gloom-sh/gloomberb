@@ -5,10 +5,10 @@ import { parseRootShortcutIntent } from "./shortcuts";
 function tickerTemplate(id: string, prefix: string): PaneTemplateDef {
   return {
     id,
-    paneId: "ticker-detail",
+    paneId: prefix === "FA" ? "ticker-research" : "ticker-detail",
     label: prefix,
     description: `${prefix} shortcut`,
-    shortcut: { prefix, argPlaceholder: "ticker", argKind: "ticker" },
+    shortcut: { prefix, argPlaceholder: "ticker", argKind: "ticker", ...(prefix === "FA" ? { showInBrowse: false } : {}) },
   };
 }
 

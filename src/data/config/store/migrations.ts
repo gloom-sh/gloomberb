@@ -17,7 +17,7 @@ import {
   type LegacyChartMigrationContext,
 } from "../chart-settings";
 import { sanitizeLayout } from "../layout";
-import { foldSavedPanes } from "./fold-panes";
+import { foldSavedFinancialAnalysisPanes, foldSavedPanes } from "./fold-panes";
 import { migratePortfolioAsOfColumn } from "./portfolio-as-of-column";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
@@ -30,6 +30,7 @@ const MARKET_OVERVIEW_ABSORBED_CONFIG_VERSION = 23;
 const IPO_CALENDAR_ABSORBED_CONFIG_VERSION = 24;
 const FOLDED_PANES_CONFIG_VERSION = 25;
 const PORTFOLIO_AS_OF_COLUMN_CONFIG_VERSION = 26;
+const FINANCIAL_ANALYSIS_ABSORBED_CONFIG_VERSION = 30;
 
 /** What a migration may ask of the machine the config is loaded on. */
 export interface ConfigMigrationHost {
@@ -93,6 +94,11 @@ const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
     name: "portfolio-as-of-column",
     toVersion: PORTFOLIO_AS_OF_COLUMN_CONFIG_VERSION,
     migrate: migratePortfolioAsOfColumn,
+  },
+  {
+    name: "fold-financial-analysis-into-ticker-research",
+    toVersion: FINANCIAL_ANALYSIS_ABSORBED_CONFIG_VERSION,
+    migrate: foldSavedFinancialAnalysisPanes,
   },
 ];
 

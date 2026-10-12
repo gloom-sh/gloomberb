@@ -25,6 +25,7 @@ import { resolveOptionsTarget } from "../../../utils/options";
 import {
   buildVisibleTickerResearchTabs,
   getTickerResearchPaneSettings,
+  includeLockedFinancialsTab,
   resolveLockedTabId,
 } from "./settings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
@@ -195,10 +196,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       })
       : TICKER_RESEARCH_BUILTIN_TABS
   ), [disabledPlugins, registry, tickerResearchTabsSnapshot]);
-  const allTabs = buildVisibleTickerResearchTabs(tickerResearchTabs, ticker, financials, {
-    config,
-    hasOptionsChain,
-  });
+  const allTabs = includeLockedFinancialsTab(
+    buildVisibleTickerResearchTabs(tickerResearchTabs, ticker, financials, {
+      config,
+      hasOptionsChain,
+    }),
+    tickerResearchTabs,
+    paneSettings,
+  );
   const resolvedTabId = paneSettings.hideTabs
     ? resolveLockedTabId(paneSettings, allTabs)
     : (allTabs.some((tab) => tab.id === activeTabId) ? activeTabId : (allTabs[0]?.id ?? "overview"));

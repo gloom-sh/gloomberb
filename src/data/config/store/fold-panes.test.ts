@@ -118,3 +118,59 @@ describe("fold short volume and sovereign CDS", () => {
     expect(saved[1]?.layout.dockRoot).toEqual({ kind: "pane", instanceId: "cdx-2" });
   });
 });
+
+describe("fold Financial Analysis into Ticker Research", () => {
+  test("migrates open and saved FA panes while preserving their instance state and focus", () => {
+    const saved = {
+      configVersion: 29,
+      layout: layout([
+        {
+          instanceId: "financial-analysis:AAPL",
+          paneId: "financial-analysis",
+          title: "FA AAPL",
+          binding: { kind: "fixed" as const, symbol: "AAPL" },
+          params: { section: "ratios" },
+          settings: { period: "quarterly" },
+        },
+      ], { kind: "pane", instanceId: "financial-analysis:AAPL" }),
+      layouts: [{
+        name: "Statements",
+        layout: layout([
+          { instanceId: "financial-analysis:MSFT", paneId: "financial-analysis", binding: { kind: "fixed" as const, symbol: "MSFT" } },
+          { instanceId: "ticker-research:NVDA", paneId: "ticker-research", binding: { kind: "fixed" as const, symbol: "NVDA" } },
+        ], {
+          kind: "split" as const,
+          axis: "horizontal" as const,
+          ratio: 0.5,
+          first: { kind: "pane" as const, instanceId: "financial-analysis:MSFT" },
+          second: { kind: "pane" as const, instanceId: "ticker-research:NVDA" },
+        }),
+        paneState: { "financial-analysis:MSFT": { pluginState: { retained: true } } },
+        focusedPaneId: "financial-analysis:MSFT",
+      }],
+    };
+
+    const result = migrateSavedConfig(saved, "/tmp");
+    expect(result.config.configVersion).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.applied).toContain("fold-financial-analysis-into-ticker-research");
+    expect(result.config.layout).toMatchObject({
+      dockRoot: { kind: "pane", instanceId: "financial-analysis:AAPL" },
+      instances: [{
+        instanceId: "financial-analysis:AAPL",
+        paneId: "ticker-research",
+        title: "FA AAPL",
+        binding: { kind: "fixed", symbol: "AAPL" },
+        params: { section: "ratios", tab: "financials" },
+        settings: { period: "quarterly", hideTabs: true, lockedTabId: "financials" },
+      }],
+    });
+    expect(result.config.layouts).toMatchObject([{
+      layout: { instances: [
+        { instanceId: "financial-analysis:MSFT", paneId: "ticker-research", params: { tab: "financials" }, settings: { hideTabs: true, lockedTabId: "financials" } },
+        { instanceId: "ticker-research:NVDA", paneId: "ticker-research" },
+      ] },
+      paneState: { "financial-analysis:MSFT": { pluginState: { retained: true } } },
+      focusedPaneId: "financial-analysis:MSFT",
+    }]);
+  });
+});

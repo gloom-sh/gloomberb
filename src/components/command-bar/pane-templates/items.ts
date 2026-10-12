@@ -208,7 +208,7 @@ export function buildPaneShortcutItems(options: {
   }) => ResultItem;
 }): ResultItem[] {
   const items = options.templates
-    .filter((template) => template.shortcut)
+    .filter((template) => template.shortcut && template.shortcut.showInBrowse !== false)
     .map((template) => options.createItem(template, {
       category: "Panes",
       createOptions: options.createOptions,

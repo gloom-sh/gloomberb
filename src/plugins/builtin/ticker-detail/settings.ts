@@ -201,3 +201,18 @@ export function buildVisibleTickerResearchTabs(
 
   return tabs.sort((left, right) => left.order - right.order);
 }
+
+/** A Financials-locked pane must keep its loading or no-coverage state available when the tab is normally hidden. */
+export function includeLockedFinancialsTab(
+  visibleTabs: TickerResearchTabSummary[],
+  pluginTabs: TickerResearchTabDef[],
+  settings: TickerResearchPaneSettings,
+): TickerResearchTabSummary[] {
+  if (!settings.hideTabs || settings.lockedTabId !== "financials" || visibleTabs.some((tab) => tab.id === "financials")) {
+    return visibleTabs;
+  }
+  const tab = pluginTabs.find((candidate) => candidate.id === "financials");
+  if (!tab) return visibleTabs;
+  return [...visibleTabs, { id: tab.id, name: tab.name, order: tab.order }]
+    .sort((left, right) => left.order - right.order);
+}

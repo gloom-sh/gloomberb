@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
+import type { PluginRegistry } from "../../../plugins/registry";
 import type { PaneTemplateDef } from "../../../types/plugin";
-import { recentPaneTemplateArg } from "./items";
+import { buildPaneShortcutItems, getAvailablePaneShortcutTemplatesForQuery, recentPaneTemplateArg } from "./items";
 
 const template = (shortcut: PaneTemplateDef["shortcut"]) => ({ id: "t", paneId: "p", label: "T", shortcut }) as PaneTemplateDef;
 
@@ -13,4 +14,30 @@ test("a recent pane run keeps a ticker argument and drops free text", () => {
   expect(recentPaneTemplateArg(template({ prefix: "EXPO", argKind: "text" }), "AAPL=60% NVDA=40%")).toBeUndefined();
   expect(recentPaneTemplateArg(template({ prefix: "PORT", argKind: "text", argPlaceholder: "portfolio-id" }), "main")).toBeUndefined();
   expect(recentPaneTemplateArg(template(undefined), "anything")).toBeUndefined();
+});
+
+test("a hidden shortcut stays executable but has no browse row", () => {
+  const hidden = { ...template({ prefix: "OLD", showInBrowse: false }), id: "legacy-view" };
+  const registry = {
+    paneTemplates: new Map([[hidden.id, hidden]]),
+    getPaneTemplatePluginId: () => null,
+  } as unknown as PluginRegistry;
+  const context = {
+    config: {} as never,
+    layout: { instances: [] } as never,
+    focusedPaneId: null,
+    activeTicker: null,
+    activeCollectionId: null,
+  };
+
+  expect(buildPaneShortcutItems({
+    templates: [hidden],
+    createItem: (candidate) => ({ id: candidate.id }) as never,
+  })).toEqual([]);
+  expect(getAvailablePaneShortcutTemplatesForQuery({
+    pluginRegistry: registry,
+    disabledPlugins: [],
+    context,
+    query: "OLD",
+  })).toEqual([hidden]);
 });

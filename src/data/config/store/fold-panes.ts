@@ -1,5 +1,6 @@
 import {
   removePaneInstances,
+  TICKER_RESEARCH_PANE_ID,
   type DockLayoutNode,
   type LayoutConfig,
   type PaneInstanceConfig,
@@ -10,6 +11,7 @@ const SHORT_VOLUME_PANE_ID = "short-volume";
 const SHORT_INTEREST_PANE_ID = "short-interest";
 const SOVR_PANE_ID = "sovr-board";
 const CDX_PANE_ID = "cdx-board";
+const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
 
 interface FoldedLayout {
   layout: LayoutConfig;
@@ -144,6 +146,43 @@ export function foldSavedPanes(saved: Record<string, unknown>): Record<string, u
   return {
     ...saved,
     ...(open ? { layout: open.layout } : {}),
+    layouts,
+  };
+}
+
+/** Financial Analysis becomes the Financials tab of Ticker Research. */
+function foldFinancialAnalysisPaneLayout(layout: LayoutConfig): LayoutConfig {
+  return {
+    ...layout,
+    instances: layout.instances.map((instance) => instance.paneId === FINANCIAL_ANALYSIS_PANE_ID
+      ? {
+        ...instance,
+        paneId: TICKER_RESEARCH_PANE_ID,
+        params: { ...(instance.params ?? {}), tab: "financials" },
+        settings: { ...(instance.settings ?? {}), hideTabs: true, lockedTabId: "financials" },
+      }
+      : instance),
+  };
+}
+
+function foldFinancialAnalysisLayoutField(value: unknown): LayoutConfig | null {
+  const layout = asLayout(value);
+  return layout ? foldFinancialAnalysisPaneLayout(layout) : null;
+}
+
+/** Rewrite the open layout and every saved tab without changing their instance ids or pane state. */
+export function foldSavedFinancialAnalysisPanes(saved: Record<string, unknown>): Record<string, unknown> {
+  const open = foldFinancialAnalysisLayoutField(saved.layout);
+  const layouts = Array.isArray(saved.layouts)
+    ? saved.layouts.map((entry) => {
+      if (!isRecord(entry)) return entry;
+      const layout = foldFinancialAnalysisLayoutField(entry.layout);
+      return layout ? { ...entry, layout } : entry;
+    })
+    : saved.layouts;
+  return {
+    ...saved,
+    ...(open ? { layout: open } : {}),
     layouts,
   };
 }
