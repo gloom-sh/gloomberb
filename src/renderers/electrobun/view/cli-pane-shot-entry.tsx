@@ -231,6 +231,17 @@ function isShotLoadingTextVisible(): boolean {
   return document.querySelector(SHOT_LOADING_SELECTOR) !== null;
 }
 
+/**
+ * A WebGL surface still being drawn: its first frame is not on the canvas, or
+ * a refreshed mesh is mid-morph. A frame with no mesh counts as drawn, so an
+ * empty sheet fails the capture's checks instead of holding it until timeout.
+ */
+function hasUndrawnSurface(): boolean {
+  return document.querySelector(
+    '[data-gloom-surface-renderer="webgl"]:not([data-gloom-surface-state="drawn"]):not([data-gloom-surface-state="blank"])',
+  ) !== null;
+}
+
 /** A chart pane holds the capture by publishing `ready: false` on its chart-data node. */
 function hasUnresolvedChartData(): boolean {
   return (window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ ?? []).some((node) => (
@@ -261,6 +272,7 @@ function waitForShotReadiness(): () => void {
       pendingShotWork === 0
       && !isShotLoadingTextVisible()
       && !hasUnresolvedChartData()
+      && !hasUndrawnSurface()
       && !changedSinceLastFrame
     ) {
       stableFrames += 1;

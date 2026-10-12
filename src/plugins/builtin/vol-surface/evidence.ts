@@ -123,9 +123,15 @@ export function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolS
   };
 }
 
+/** The evidence plus `ready: false` while an expiry is still loading, which holds a capture: a partial surface is no surface. */
+export function volSurfaceEvidenceMetadata(input: VolSurfaceEvidenceInput): VolSurfaceEvidence & { ready: boolean } {
+  const evidence = volSurfaceSemanticEvidence(input);
+  return { ...evidence, ready: !evidence.loading };
+}
+
 export function useVolSurfaceEvidence(input: VolSurfaceEvidenceInput): void {
   useRemoteUiNode({ role: "chart-data", label: "Rendered volatility observations",
-    getMetadata: () => ({ ...volSurfaceSemanticEvidence(input) }) });
+    getMetadata: () => ({ ...volSurfaceEvidenceMetadata(input) }) });
 }
 
 /** Verify values and recompute counts so asserted readiness alone cannot certify a chart. */

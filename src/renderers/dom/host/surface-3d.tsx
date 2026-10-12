@@ -472,6 +472,9 @@ export function WebSurface3D(props: Surface3DHostProps) {
         marker.style.transform = `translate(${at.x}px, ${at.y}px) translate(-50%, -50%)`;
       } else marker.style.display = "none";
     }
+    // What a screenshot waits for and reports: this frame is on the canvas, whole.
+    const container = containerRef.current;
+    if (container) container.dataset.gloomSurfaceState = r.indexCount === 0 ? "blank" : s.morph ? "morphing" : "drawn";
   };
 
   const schedule = () => {
@@ -642,6 +645,7 @@ export function WebSurface3D(props: Surface3DHostProps) {
       ref={containerRef as Ref<HTMLDivElement>}
       aria-label={props.ariaLabel}
       role="img"
+      data-gloom-surface-renderer="webgl"
       style={{ position: "absolute", inset: 0, overflow: "hidden", touchAction: "none", cursor: "grab", userSelect: "none" }}
       onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
         if (event.button !== 0) return;
