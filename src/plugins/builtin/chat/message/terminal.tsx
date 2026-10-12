@@ -1,11 +1,10 @@
 import { Box, Text, TextAttributes, useRendererHost } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
-import { formatInlinePreview, getMessageBodyTokenLines } from "../layout";
+import { formatInlinePreview, getMessageBodyTokenLines, MESSAGE_ACTION_WIDTH } from "../layout";
 import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { Button } from "../../../../components/ui";
-import { MESSAGE_ACTION_WIDTH } from "../layout";
 import { canReactToMessage } from "../reactions";
 import { TerminalChatReactions } from "./reactions";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
