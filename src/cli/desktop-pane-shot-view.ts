@@ -13,7 +13,8 @@ import { buildViewBundle, electrobunViewPath, readViewStylesheet } from "../rend
  * A source checkout builds these on first use. The release binary has no
  * sources to build from, so scripts/build.ts builds them once, packs them
  * with `packShotView` and embeds the archive, which its entry hands to
- * `usePrebuiltShotView` before the CLI starts.
+ * `usePrebuiltShotView` before the CLI starts. The desktop app ships the same
+ * archive alongside its CLI entry rather than embedding it in an executable.
  */
 export type ShotViewFiles = ReadonlyMap<string, string>;
 
@@ -21,9 +22,11 @@ const SHOT_VIEW_ENTRY = "cli-pane-shot-entry.tsx";
 /** The bundle the page loads, named after its entry. */
 export const SHOT_VIEW_SCRIPT = "cli-pane-shot-entry.js";
 export const SHOT_VIEW_STYLESHEET = "styles.css";
+export const SHOT_VIEW_ARCHIVE = "shot-view.json.gz";
 
 const MISSING_VIEW_MESSAGE = "This copy of Gloomberb cannot draw panes: it was built without the page they are drawn in. "
-  + "The standalone gloomberb binary (https://github.com/gloom-sh/gloomberb/releases/latest) has it.";
+  + "Reinstall or update Gloomberb. The standalone gloomberb binary "
+  + "(https://github.com/gloom-sh/gloomberb/releases/latest) also includes it.";
 
 let prebuiltArchive: string | null = null;
 let loading: Promise<ShotViewFiles> | null = null;
