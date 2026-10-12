@@ -1,5 +1,6 @@
 import type { PaneRuntimeState } from "../core/state/app/types";
 import { foldPaneLayout } from "../data/config/store/fold-panes";
+import { swapDefaultPortfolioAgeColumn } from "../data/config/store/portfolio-as-of-column";
 import { publicTickerBindingSymbol } from "../tickers/selection";
 import { pinFollowingPane } from "../layout/pane-follow";
 import {
@@ -643,8 +644,9 @@ export function materializeMarketplaceLayout(
   ),
 ): { layout: LayoutConfig; paneState: Record<string, PaneRuntimeState> } {
   // A layout or pane shared before SIV and SOVR folded into SI and CDX still
-  // names the old panes. It opens the way a saved layout migrates.
-  const folded = foldPaneLayout(payload.layout);
+  // names the old panes, and one shared before AS OF UTC still has a portfolio
+  // pane on the old default columns. It opens the way a saved layout migrates.
+  const folded = foldPaneLayout(swapDefaultPortfolioAgeColumn(payload.layout));
   const source = {
     layout: folded.layout,
     paneState: Object.fromEntries(Object.entries(payload.paneState).flatMap(([id, state]) => (

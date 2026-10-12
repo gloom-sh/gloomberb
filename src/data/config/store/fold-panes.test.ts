@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { migrateSavedConfig } from "./migrations";
 import { foldPaneLayout } from "./fold-panes";
-import type { DockLayoutNode, LayoutConfig, PaneInstanceConfig } from "../../../types/config";
+import { CURRENT_CONFIG_VERSION, type DockLayoutNode, type LayoutConfig, type PaneInstanceConfig } from "../../../types/config";
 
 function layout(instances: PaneInstanceConfig[], dockRoot: DockLayoutNode | null = null, floating: LayoutConfig["floating"] = []): LayoutConfig {
   return { dockRoot, instances, floating, detached: [] };
@@ -102,7 +102,7 @@ describe("fold short volume and sovereign CDS", () => {
       ],
     }, "/tmp");
 
-    expect(result.config.configVersion).toBe(25);
+    expect(result.config.configVersion).toBe(CURRENT_CONFIG_VERSION);
     expect(result.applied).toContain("fold-short-volume-and-sovereign-cds");
     const open = result.config.layout as LayoutConfig;
     expect(open.instances[0]).toMatchObject({ instanceId: "short-interest:TSLA", paneId: "short-interest", params: { tab: "volume" } });
