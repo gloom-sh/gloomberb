@@ -20,8 +20,12 @@ export interface IvPoint {
   iv90: number | null;
   iv180: number | null;
   iv365: number | null;
-  put25_30: number | null;
-  call25_30: number | null;
+  /**
+   * 30-day 25-delta put and call IV, on quote captures only. Optional: a
+   * server that leaves them out has no skew history to give.
+   */
+  put25_30?: number | null;
+  call25_30?: number | null;
 }
 export interface IvStats {
   value: number;

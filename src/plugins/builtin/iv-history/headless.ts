@@ -2,7 +2,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadRealizedVolatilities } from "./client";
-import { formatPoints, formatRank, formatStat, formatVol, readingLabel, sharedDates, VCA_DEFINITIONS, verdictLabel } from "./format";
+import { formatPoints, formatRank, formatStat, formatVol, readingLabel, sharedDates, skewHeader, VCA_DEFINITIONS, verdictLabel } from "./format";
 import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, screenCoverage, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 import { listingFateNotes, loadListingFate } from "../../../cli/listing-arg";
@@ -11,6 +11,7 @@ const METHODOLOGY = "docs/research-data.md#implied-volatility-history";
 /** VCA rows with nothing to show whose symbol's fate it looks up; a long list of them is a backfill, not a lookup. */
 const MAX_FATE_LOOKUPS = 10;
 const percent = (value: unknown) => typeof value === "number" ? formatVol(value) : "--";
+const points = (value: unknown) => typeof value === "number" ? formatPoints(value) : "--";
 
 export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "US option underlying" },
@@ -19,7 +20,8 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: (args) => `HIVG ${args.symbols[0] ?? ""}`,
   discovery: { aliases: ["HIVG"], screenshotReadiness: "live-dom", dataRequirements: ["Cloud stored implied volatility", "Daily price history"],
     limitations: ["History starts February 2024 (daily option trade closes).", "Rank and percentile use trade-close readings only.",
-      "IV1Y needs long-dated trades: it can start later, has gaps, and ranks from 60 prior sessions."] },
+      "IV1Y needs long-dated trades: it can start later, has gaps, and ranks from 60 prior sessions.",
+      "skew25d (put-call) and rr25d (call-put) come from the daily quote captures and are blank before the first one."] },
   options: [
     { key: "lookback", type: "enum", values: [{ value: "1Y" }, { value: "2Y" }, { value: "ALL" }], defaultValue: "1Y", description: "Visible history" },
     { key: "hvWindow", type: "enum", values: HV_WINDOWS.map((window) => ({ value: String(window) })), defaultValue: "20", description: "Realized volatility window in sessions" },
@@ -36,16 +38,27 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
       hvWindow: (Number(args.options.hvWindow) === 30 ? 30 : 20) as HvWindow });
     const hvByDay = new Map(model.hv.map((point) => [point.date.getTime(), point.value]));
     const iv365ByDay = new Map(model.iv365.map((point) => [point.date.getTime(), point.value]));
-    const rows = model.iv30.map((point, index) => ({ date: point.date.toISOString().slice(0, 10), iv30: point.value,
-      iv90: model.iv90.find((entry) => entry.date.getTime() === point.date.getTime())?.value ?? null,
-      iv365: iv365ByDay.get(point.date.getTime()) ?? null,
-      hv: hvByDay.get(point.date.getTime()) ?? null, spread: model.spread[index]?.value ?? null })).reverse();
+    const skewByDay = new Map(model.skew.map((point) => [point.date.getTime(), point.value]));
+    const rows = model.iv30.map((point, index) => {
+      const skew = skewByDay.get(point.date.getTime()) ?? null;
+      return { date: point.date.toISOString().slice(0, 10), iv30: point.value,
+        iv90: model.iv90.find((entry) => entry.date.getTime() === point.date.getTime())?.value ?? null,
+        iv365: iv365ByDay.get(point.date.getTime()) ?? null,
+        hv: hvByDay.get(point.date.getTime()) ?? null, spread: model.spread[index]?.value ?? null,
+        // The same capture's wings, signed both ways so either convention matches without arithmetic.
+        skew25d: skew, rr25d: skew == null ? null : -skew };
+    }).reverse();
+    const historyColumns = [{ key: "date", header: "Session" },
+      ...[["iv30", "IV30"], ["iv90", "IV90"], ["iv365", "IV1Y"], ["hv", "HV"]].map(([key, header]) => ({ key: key!, header: header!, format: percent })),
+      { key: "spread", header: "IV-HV", format: points }];
+    const skewColumns = [{ key: "skew25d", header: skewHeader("skew25d", "put-call"), format: points },
+      { key: "rr25d", header: skewHeader("rr25d", "call-put"), format: points }];
     const served = model.iv30.length > 0 || prices.history.length > 0;
     const fateNotes = listingFateNotes(fate, { served });
     // With nothing served, the fate is why: no "not a ticker" or missing-history errors beside it.
     const errors = !served && fateNotes.length > 0 ? []
       : [prices.error, ...model.warnings].filter((value): value is string => !!value);
-    const notes = [...fateNotes, ...model.oneYearNote ? [model.oneYearNote] : []];
+    const notes = [...fateNotes, ...[model.oneYearNote, model.skewNote].filter((note): note is string => !!note)];
     return {
       sections: [
         { title: "Statistics", columns: [
@@ -58,15 +71,15 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
           { key: "percentile", header: "Pctl", format: (value: unknown) => formatRank(value as number | null) },
           { key: "samples", header: "Sessions" },
         ], rows: model.stats.map((row) => ({ ...row })) },
-        { title: "Daily history", columns: [{ key: "date", header: "Session" },
-          ...[["iv30", "IV30"], ["iv90", "IV90"], ["iv365", "IV1Y"], ["hv", "HV"]].map(([key, header]) => ({ key: key!, header: header!, format: percent })),
-          { key: "spread", header: "IV-HV", format: (value: unknown) => typeof value === "number" ? formatPoints(value) : "--" }], rows },
+        // Exports always carry the skew columns, so a script's header never moves; the text table drops them when none has a value.
+        { title: "Daily history", columns: [...historyColumns, ...skewColumns], rows,
+          ...(rows.some((row) => row.skew25d != null) ? {} : { textColumns: historyColumns }) },
       ],
       complete: payload.status === "ready" && errors.length === 0,
       unavailableSymbols: model.iv30.length ? [] : [instrument.symbol], errors,
       ...(notes.length > 0 ? { notes } : {}),
       metadata: { status: payload.status, coverage: payload.coverage, latest: payload.latest, stats: payload.stats,
-        unit: "decimal annualized volatility", methodology: METHODOLOGY },
+        skewSince: model.skewSince, unit: "decimal annualized volatility", methodology: METHODOLOGY },
     };
   },
 };
@@ -114,7 +127,7 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...(hasIv1y ? [{ key: "iv1y", header: "IV1Y", format: percent }] : []),
         ...(hasIv1yRank ? [{ key: "iv1yPercentile", header: "IVP1Y", format: (value: unknown) => formatRank(value as number | null) }] : []),
         { key: "termSlope", header: "30-90", format: (value: unknown) => formatPoints(value as number | null) },
-        ...(hasSkew ? [{ key: "skew", header: "25D skew", format: (value: unknown) => formatPoints(value as number | null) }] : []),
+        ...(hasSkew ? [{ key: "skew", header: skewHeader("25D skew", "put-call"), format: (value: unknown) => formatPoints(value as number | null) }] : []),
         ...(hasSkew && dates.skewApart ? [{ key: "skewDate", header: "Skew as of", format: dated }] : []),
         { key: "hv", header: "HV20", format: percent },
         { key: "ivHv", header: "IV/HV", format: (value: unknown) => typeof value === "number" ? value.toFixed(2) : "--" },

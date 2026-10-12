@@ -1,6 +1,8 @@
 import type { OptionContract } from "../../../types/financials";
 import { logForwardMoneyness, type ExpectedMove, type SkewMetrics, type SmileFit } from "../shared/volatility";
-import type { StoredSurfacePayload } from "../iv-history/client";
+import { ivSymbol, loadStoredSurface, loadSurfaceDates, type ImpliedVolatilityApi, type StoredSurfacePayload } from "../iv-history/client";
+import { ApiRequestError } from "../../../api-client/errors";
+import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-rules";
 import { evaluateSurfaceSmile, normalizeSurfaceSettings, type SurfaceExpiry, type SurfaceFilterCounts, type SurfaceSnapshot } from "./model";
 import { isFiniteNumber } from "../../../utils/guards";
 
@@ -61,6 +63,64 @@ function storedExpiry(entry: StoredExpiry, spot: number, capturedAt: number, sou
   expiry.points.sort((a, b) => a.strike - b.strike);
   for (const point of expiry.points) point.fitResidual = point.volatility - (evaluateSurfaceSmile(expiry, point.strike) ?? point.volatility);
   return expiry;
+}
+
+const CAPTURE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+/** A capture's New York clock time, "15:47", as the pane and the report both say it. */
+export function formatCaptureTime(iso: string): string {
+  const time = Date.parse(iso);
+  return Number.isFinite(time) ? CAPTURE_TIME.format(time) : "--";
+}
+
+/** A session date as `--date` takes it: YYYY-MM-DD, a day the calendar has. */
+export function storedSurfaceDate(value: string): string {
+  const date = value.trim();
+  const time = Date.parse(`${date}T00:00:00Z`);
+  // A month or day out of range parses to NaN or rolls over; both are refused.
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== date) {
+    throw new Error("Use a session date in YYYY-MM-DD format, such as --date 2026-10-09.");
+  }
+  return date;
+}
+
+/** Past this many stored dates, a miss names the nearest ones and the span. */
+const LISTED_DATES = 30;
+const NEAREST_DATES = 10;
+
+/**
+ * Why there is no stored surface to show for `date`. A date on the stored
+ * list that still did not load is a capture not shown yet: without real-time
+ * data a capture shows 15 minutes after it is taken, which is not a missing
+ * date. Otherwise the stored dates are named, newest first.
+ */
+export function storedSurfaceMiss(symbol: string, date: string, dates: readonly string[]): string {
+  if (dates.includes(date)) {
+    return `The ${symbol} ${date} close capture is not shown yet: without real-time data a capture shows ${CLOUD_QUOTE_DELAY_MINUTES} minutes after it is taken.`;
+  }
+  const stored = [...new Set(dates)].sort().reverse();
+  if (!stored.length) return `No stored ${symbol} close surface for ${date}: ${symbol} has none stored.`;
+  if (stored.length <= LISTED_DATES) return `No stored ${symbol} close surface for ${date}. Stored dates: ${stored.join(", ")}.`;
+  const target = Date.parse(`${date}T00:00:00Z`);
+  const distance = (entry: string) => Math.abs(Date.parse(`${entry}T00:00:00Z`) - target);
+  const nearest = [...stored].sort((a, b) => distance(a) - distance(b) || b.localeCompare(a)).slice(0, NEAREST_DATES).sort().reverse();
+  return `No stored ${symbol} close surface for ${date}. Nearest stored dates: ${nearest.join(", ")}; `
+    + `${stored.length} stored from ${stored.at(-1)} to ${stored[0]}.`;
+}
+
+/**
+ * The stored close surface of one session, for `fn OVDV --date`. The date
+ * list and the surface are asked for together; the list only matters when
+ * the surface is not there.
+ */
+export async function loadDatedSurface(symbol: string, date: string, options: { signal?: AbortSignal; api?: ImpliedVolatilityApi } = {}): Promise<DatedSurfaceSnapshot> {
+  const bare = ivSymbol(symbol);
+  const request = { ...options.signal ? { signal: options.signal } : {} };
+  const [surface, dates] = await Promise.allSettled([loadStoredSurface(bare, date, request, options.api),
+    loadSurfaceDates(bare, request, options.api)]);
+  if (surface.status === "fulfilled") return storedSurfaceSnapshot(surface.value);
+  if (!(surface.reason instanceof ApiRequestError && surface.reason.status === 404)) throw surface.reason;
+  if (dates.status === "rejected") throw dates.reason;
+  throw new Error(storedSurfaceMiss(bare, date, dates.value.dates));
 }
 
 /** A stored close surface in the shape the live OVDV views render: mid quotes, recomputed IV. */

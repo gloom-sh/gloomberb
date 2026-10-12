@@ -75,6 +75,16 @@ export interface IvHistoryModel {
   quoteIv30: DatedValue[];
   hv: DatedValue[];
   spread: DatedValue[];
+  /**
+   * Each session's 30-day 25-delta put IV minus call IV from its quote
+   * capture (put-call: positive means puts are richer). The risk reversal,
+   * call minus put, is its negative.
+   */
+  skew: DatedValue[];
+  /** First session with a stored skew; skew is blank before it. */
+  skewSince: string | null;
+  /** "skew from 2026-09-23", or why there is no skew at all. */
+  skewNote: string | null;
   stats: IvStatRow[];
   since: string | null;
   /** Where the 1Y series starts and how deep it is, when that differs from the rest or leaves it unranked. */
@@ -122,6 +132,20 @@ function byMethod(series: readonly IvPoint[], method: IvMethod, field: "iv30" | 
   return series.filter((point) => point.method === method && point[field] != null)
     .map((point) => ({ date: utc(point.sessionDate), value: point[field] }))
     .sort((a, b) => a.date.getTime() - b.date.getTime());
+}
+
+/**
+ * 25-delta skew per session, put minus call, from the quote captures: the
+ * only readings that store the wings. A server that sends no wing fields at
+ * all predates them, which is not the same as a symbol with no capture yet.
+ */
+function skewSeries(series: readonly IvPoint[]): { points: DatedValue[]; note: string | null } {
+  const points = series.filter((point) => point.method === "quote-mid" && point.put25_30 != null && point.call25_30 != null)
+    .map((point) => ({ date: utc(point.sessionDate), value: point.put25_30! - point.call25_30! }))
+    .sort((a, b) => a.date.getTime() - b.date.getTime());
+  if (points[0]) return { points, note: `skew from ${day(points[0].date)}` };
+  if (!series.length) return { points, note: null };
+  return { points, note: series.every((point) => point.put25_30 === undefined) ? "skew unavailable from this server" : "no skew history yet" };
 }
 
 /**
@@ -186,6 +210,7 @@ export function projectIvHistory(
   if (!prices.length) warnings.push("Realized volatility unavailable: daily price history is missing.");
 
   const tradeIv365 = byMethod(payload.series, "trade-close", "iv365");
+  const skew = skewSeries(payload.series);
   const since = payload.coverage?.since ?? earliest;
   const oneYearSince = payload.coverage?.iv365Since ?? (tradeIv365[0] ? day(tradeIv365[0].date) : null);
   const oneYearNote = !oneYearSince ? (since ? "no IV1Y history yet" : null)
@@ -196,7 +221,8 @@ export function projectIvHistory(
     symbol: payload.symbol, status: payload.status,
     iv30: visible(tradeIv30), iv90: visible(byMethod(payload.series, "trade-close", "iv90")), iv365: visible(tradeIv365),
     quoteIv30: visible(byMethod(payload.series, "quote-mid", "iv30")),
-    hv, spread: visible(spreadAll), stats,
+    hv, spread: visible(spreadAll), skew: visible(skew.points),
+    skewSince: skew.points[0] ? day(skew.points[0].date) : null, skewNote: skew.note, stats,
     since, oneYearNote, asOf: latestDate, warnings,
   };
 }

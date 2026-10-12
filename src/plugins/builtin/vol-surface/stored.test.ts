@@ -2,8 +2,9 @@ import { expect, test } from "bun:test";
 import type { OptionContract, OptionsChain } from "../../../types/financials";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
-import { buildSurfaceExpiry, buildSurfaceGrid, normalizeSurfaceSettings, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
-import { storedSurfaceSnapshot } from "./stored";
+import { buildSurfaceExpiry, buildSurfaceGrid, normalizeSurfaceSettings, type SurfaceSnapshot } from "./model";
+import { storedSurfaceMiss, storedSurfaceSnapshot } from "./stored";
+import { storedSurfacePayload } from "./test-fixture";
 
 const now = Date.UTC(2026, 8, 22, 19, 50);
 const curve = [{ maturity: "1M", maturityYears: 1 / 12, yield: 4, asOf: "2026-09-21" }, { maturity: "1Y", maturityYears: 1, yield: 4, asOf: "2026-09-21" }];
@@ -22,24 +23,12 @@ function chain(expiry: number, volatility: number): OptionsChain {
     puts: strikes.map((strike) => contract(strike, "put")), providerId: "test", dataSource: "live", asOf: new Date(now).toISOString() };
 }
 
-/** Gloom Cloud's compaction of a captured surface, including its rounding. */
-const round = (value: number | null | undefined, digits: number) => value == null || !Number.isFinite(value) ? null : Number(value.toFixed(digits));
-const compact = (expiry: SurfaceExpiry) => ({
-  expiration: expiry.expiration, years: round(expiry.years, 8), rate: round(expiry.rate, 6), rateMethod: expiry.rateMethod,
-  rateAsOf: expiry.rateAsOf, forward: round(expiry.forward, 4), dividendYield: round(expiry.dividendYield, 6),
-  atmIV: round(expiry.atmIV, 6), termSlope: round(expiry.termSlope, 6), skew: expiry.skew, expectedMove: expiry.expectedMove,
-  fit: expiry.fit, filterCounts: expiry.filterCounts, warnings: expiry.warnings, asOf: expiry.asOf,
-  points: expiry.points.map((point) => [point.strike, point.side === "call" ? 1 : 0, round(point.volatility, 6), round(point.mid, 4),
-    round(point.contract.bid, 4), round(point.contract.ask, 4), point.openInterest, point.contract.contractSymbol]),
-});
-
 test("a stored close surface rebuilds the live grid", () => {
   const live = expiries.map((expiration, index) => buildSurfaceExpiry({ chain: chain(expiration, 0.25 + index * 0.03), expiration, spot: 100, curve, now }));
   const liveSnapshot: SurfaceSnapshot = { symbol: "AAPL", spot: 100, phase: "ready", settings: normalizeSurfaceSettings({}), catalogue: expiries,
     requested: 2, loaded: 2, failed: 0, expiries: live, failures: [], warnings: [], rateAsOf: "2026-09-21", fetchedAt: now };
-  const stored = storedSurfaceSnapshot({ version: 1, symbol: "AAPL", sessionDate: "2026-09-22", capturedAt: new Date(now).toISOString(), spot: 100,
-    surface: { version: 1, symbol: "AAPL", spot: 100, spotAsOf: new Date(now).toISOString(), capturedAt: new Date(now).toISOString(), source: null,
-      expiries: JSON.parse(JSON.stringify(live.map(compact))), failures: ["2027-01-15: no clean quotes"] } });
+  const stored = storedSurfaceSnapshot(storedSurfacePayload({ symbol: "AAPL", sessionDate: "2026-09-22", capturedAt: new Date(now).toISOString(), spot: 100,
+    expiries: live, failures: ["2027-01-15: no clean quotes"] }));
   expect(stored.stored).toEqual({ sessionDate: "2026-09-22", capturedAt: new Date(now).toISOString() });
   expect(stored.catalogue).toEqual(expiries);
   expect(stored.failures).toEqual([{ expiration: null, message: "2027-01-15: no clean quotes" }]);
@@ -60,4 +49,12 @@ test("a stored close surface rebuilds the live grid", () => {
 
 test("an unknown stored format is rejected", () => {
   expect(() => storedSurfaceSnapshot({ version: 1, symbol: "AAPL", sessionDate: "2026-09-22", capturedAt: "", spot: 100, surface: { version: 2 } })).toThrow();
+});
+
+test("a long stored list names the dates nearest the miss and the span", () => {
+  const dates = Array.from({ length: 40 }, (_, index) => new Date(Date.UTC(2026, 8, 1 + index)).toISOString().slice(0, 10))
+    .filter((date) => date !== "2026-09-15").reverse();
+  expect(storedSurfaceMiss("SPY", "2026-09-15", dates)).toBe("No stored SPY close surface for 2026-09-15. Nearest stored dates: "
+    + "2026-09-20, 2026-09-19, 2026-09-18, 2026-09-17, 2026-09-16, 2026-09-14, 2026-09-13, 2026-09-12, 2026-09-11, 2026-09-10; "
+    + "39 stored from 2026-09-01 to 2026-10-10.");
 });
