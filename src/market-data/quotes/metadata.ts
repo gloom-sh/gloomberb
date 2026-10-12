@@ -46,6 +46,9 @@ export function mergeQuoteMetadata(known: QuoteMetadata | null | undefined, load
 export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: string, exchange?: string): boolean {
   const target = parsePublicTickerKey(symbol);
   const actual = parsePublicTickerKey(metadata.symbol);
+  // An index is one series whatever its venue is called: search files ^VIX under CXI and ^RUT under WCB, while
+  // their quotes name CBOE INDICES and CHICAGO OPTIONS. Saved from search, the index must still match its quote.
+  if (target.symbol.startsWith("^") && target.symbol === actual.symbol) return true;
   const requestedExchange = canonicalExchange(target.exchange || exchange);
   const symbolExchange = canonicalExchange(actual.exchange);
   const actualExchange = canonicalExchange(metadata.listingExchangeName) || symbolExchange;

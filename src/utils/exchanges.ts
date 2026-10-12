@@ -197,6 +197,14 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   CCY: "CCY",
   FX: "CCY",
   "PHYSICAL CURRENCY": "CCY",
+  // Perpetual futures venues: a contract is a listing on its venue
+  // (BZUSDT:BINANCE), see tickers/perpetual-listing.
+  HYPERLIQUID: "HYPERLIQUID",
+  BINANCE: "BINANCE",
+  BYBIT: "BYBIT",
+  OKX: "OKX",
+  DERIBIT: "DERIBIT",
+  DYDX: "DYDX",
 };
 
 const PUBLIC_EXCHANGE_ALIASES: Record<string, string> = {
@@ -293,6 +301,12 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   KUWAIT: "Asia/Kuwait",
   EGX: "Africa/Cairo",
   CCC: "UTC",
+  HYPERLIQUID: "UTC",
+  BINANCE: "UTC",
+  BYBIT: "UTC",
+  OKX: "UTC",
+  DERIBIT: "UTC",
+  DYDX: "UTC",
 };
 
 /**
@@ -357,6 +371,11 @@ const EXCHANGE_NAMES: Record<string, string> = {
   CMX: "COMEX",
   NYB: "ICE Futures U.S.",
   CFE: "Cboe Futures Exchange",
+  HYPERLIQUID: "Hyperliquid",
+  BINANCE: "Binance",
+  BYBIT: "Bybit",
+  DERIBIT: "Deribit",
+  DYDX: "dYdX",
 };
 
 const KNOWN_EXCHANGE_CODES: ReadonlySet<string> = new Set([

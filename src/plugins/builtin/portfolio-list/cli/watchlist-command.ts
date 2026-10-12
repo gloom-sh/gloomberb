@@ -219,6 +219,7 @@ export const watchlistCliCommand: CliCommandDef = {
       "watchlist create Growth",
       "watchlist add Growth NVDA",
       "watchlist add Growth SAN:EPA",
+      "watchlist add Energy hyperliquid:xyz:BRENTOIL",
       "watchlist add Growth NVDA AMD,AVGO",
       "watchlist add Growth --file holdings.csv",
       "watchlist show Growth --csv",

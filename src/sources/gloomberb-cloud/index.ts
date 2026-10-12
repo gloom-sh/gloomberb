@@ -66,6 +66,14 @@ import {
   toCloudInterval,
   toHistoryRequest,
 } from "./normalizers";
+import {
+  getPerpetualHistory,
+  getPerpetualQuote,
+  namesPerpetualMarket,
+  perpetualTarget,
+  searchPerpetualMarkets,
+} from "./perpetuals";
+import { settleWithin } from "../../utils/async-deadline";
 
 const providerId = GLOOMBERB_CLOUD_PROVIDER_ID;
 const CLOUD_RESOLUTION_SUPPORT = normalizeChartResolutionSupport([
@@ -337,6 +345,24 @@ function unwrapRequiredCloudResponse<T>(response: CloudMarketResponse<T>, messag
   throw new Error(response.reasonCode ?? message);
 }
 
+/** Perpetual markets go to the PERP dataset; every other listing to the quote service. */
+function splitPerpetualTargets<T extends { symbol: string; exchange?: string }>(targets: T[]): { perpetuals: T[]; others: T[] } {
+  const perpetuals: T[] = [];
+  const others: T[] = [];
+  for (const target of targets) (perpetualTarget(target.symbol, target.exchange) ? perpetuals : others).push(target);
+  return { perpetuals, others };
+}
+
+/** A perpetual contract has no holders, filings or options; asking the quote service would only miss. */
+function rejectPerpetual(ticker: string, exchange: string | undefined, what: string): void {
+  if (perpetualTarget(ticker, exchange)) throw createProviderMiss(`Perpetual markets have no ${what}: ${ticker}`);
+}
+
+/** A perpetual has a price and nothing a company reports. */
+function perpetualFinancials(quote: Quote): TickerFinancials {
+  return { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] };
+}
+
 export class GloomberbCloudProvider implements AssetDataProvider {
   readonly id = providerId;
   readonly name = "Gloom Cloud";
@@ -355,6 +381,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getTickerFinancials(ticker: string, exchange = "", context?: MarketDataRequestContext): Promise<TickerFinancials> {
+    const perpetual = perpetualTarget(ticker, exchange);
+    if (perpetual) return perpetualFinancials(await getPerpetualQuote(perpetual));
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudFinancials(target.symbol, target.exchange, context?.statementHistory);
@@ -377,6 +405,17 @@ export class GloomberbCloudProvider implements AssetDataProvider {
         try { return { target, financials: await this.getTickerFinancials(target.symbol, target.exchange, target) }; }
         catch (error) { return { target, financials: null, error }; }
       }));
+    }
+    const { perpetuals, others } = splitPerpetualTargets(targets);
+    if (perpetuals.length) {
+      const [listed, answered] = await Promise.all([
+        others.length ? this.getTickerFinancialsBatch(others, options) : Promise.resolve([]),
+        Promise.all(perpetuals.map(async (target) => {
+          try { return { target, financials: await this.getTickerFinancials(target.symbol, target.exchange, target) }; }
+          catch (error) { return { target, financials: null, error }; }
+        })),
+      ]);
+      return [...listed, ...answered];
     }
     const { valid, invalid } = cloudBatchTargets(targets);
     const rejected = invalid.map((entry) => ({ ...entry, financials: null }));
@@ -409,6 +448,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getQuote(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<Quote> {
+    const perpetual = perpetualTarget(ticker, exchange);
+    if (perpetual) return getPerpetualQuote(perpetual);
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(
       async () => {
@@ -427,6 +468,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getQuoteMetadata(ticker: string, exchange = ""): Promise<QuoteMetadata | null> {
+    const perpetual = perpetualTarget(ticker, exchange);
+    if (perpetual) return quoteMetadataFromQuote(await getPerpetualQuote(perpetual));
     const target = cloudInstrumentTarget(ticker, exchange);
     const response = await apiClient.getCloudQuote(target.symbol, target.exchange);
     const quote = mapQuote(unwrapRequiredCloudResponse(response, `Cloud quote metadata is unavailable for ${ticker}`), response.providerMeta);
@@ -439,6 +482,17 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     targets: QuoteSubscriptionTarget[],
     options: { forceRefresh?: boolean } = {},
   ): Promise<QuoteBatchResult[]> {
+    const { perpetuals, others } = splitPerpetualTargets(targets);
+    if (perpetuals.length) {
+      const [listed, answered] = await Promise.all([
+        others.length ? this.getQuotesBatch(others, options) : Promise.resolve([]),
+        Promise.all(perpetuals.map(async (target) => {
+          try { return { target, quote: await this.getQuote(target.symbol, target.exchange) }; }
+          catch (error) { return { target, quote: null, error }; }
+        })),
+      ]);
+      return [...listed, ...answered];
+    }
     const { valid, invalid } = cloudBatchTargets(targets);
     const rejected = invalid.map((entry) => ({ ...entry, quote: null }));
     if (!valid.length) return rejected;
@@ -492,13 +546,21 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async search(query: string, context?: SearchRequestContext): Promise<InstrumentSearchResult[]> {
-    return withCloudFallback(
+    // Perpetual markets are listings too, asked for beside the others. They are optional: a failed lookup leaves the
+    // other results, and a keystroke waits for them only briefly once the listings are in, unless the query names one.
+    const pending = searchPerpetualMarkets(query).catch(() => [] as InstrumentSearchResult[]);
+    const listings = await withCloudFallback(
       () => apiClient.searchInstruments(query, context?.limit ?? 10),
       "Cloud search is unavailable",
     );
+    const perpetuals = await settleWithin(pending, namesPerpetualMarket(query) ? 2_000 : context?.interactive ? 250 : 2_000) ?? [];
+    // Ahead of the listings, so a contract found by its plain name ("brent" for BZUSDT:BINANCE) is not cut
+    // behind every warrant that names it; an exact symbol still leads.
+    return perpetuals.length ? [...perpetuals, ...listings] : listings;
   }
 
   async getSecFilings(ticker: string, count = 15, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]> {
+    rejectPerpetual(ticker, exchange, "SEC filings");
     const venue = nonUsSecListingVenue(ticker, exchange);
     const name = venue ? context?.listingName?.trim() || await this.listingName(ticker, venue) || undefined : undefined;
     const filings = await withCloudFallback(async () => {
@@ -552,6 +614,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getHolders(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<HolderData> {
+    rejectPerpetual(ticker, exchange, "holders");
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudHolders(target.symbol, target.exchange);
@@ -560,6 +623,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getAnalystResearch(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<AnalystResearchData> {
+    rejectPerpetual(ticker, exchange, "analyst research");
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudAnalystResearch(target.symbol, target.exchange);
@@ -568,6 +632,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getCorporateActions(ticker: string, exchange = "", _context?: MarketDataRequestContext): Promise<CorporateActionsData> {
+    rejectPerpetual(ticker, exchange, "corporate actions");
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudCorporateActions(target.symbol, target.exchange);
@@ -608,6 +673,11 @@ export class GloomberbCloudProvider implements AssetDataProvider {
 
   async getPriceHistoryWithMetadata(ticker: string, exchange: string, range: TimeRange, _context?: MarketDataRequestContext): Promise<PriceHistoryResult> {
     if (_context?.historyRecovery) throw new Error("History recovery requires exact bounds");
+    const perpetual = perpetualTarget(ticker, exchange);
+    if (perpetual) {
+      const end = new Date();
+      return getPerpetualHistory(perpetual, subtractTimeRange(end, range), end);
+    }
     const target = cloudInstrumentTarget(ticker, exchange);
     exchange = target.exchange ?? "";
     const request = toHistoryRequest(range);
@@ -633,6 +703,11 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     _context?: MarketDataRequestContext,
   ): Promise<PriceHistoryResult> {
     if (_context?.historyRecovery) throw new Error("History recovery requires exact bounds");
+    const perpetual = perpetualTarget(ticker, exchange);
+    if (perpetual) {
+      const end = new Date();
+      return getPerpetualHistory(perpetual, subtractTimeRange(end, bufferRange), end);
+    }
     const target = cloudInstrumentTarget(ticker, exchange);
     exchange = target.exchange ?? "";
     const interval = toCloudInterval(resolution);
@@ -666,6 +741,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     ticker: string, exchange: string, startDate: Date, endDate: Date, barSize: string,
     _context?: MarketDataRequestContext,
   ): Promise<PriceHistoryResult> {
+    const perpetual = perpetualTarget(ticker, exchange);
+    if (perpetual) return getPerpetualHistory(perpetual, startDate, endDate);
     const target = cloudInstrumentTarget(ticker, exchange);
     exchange = target.exchange ?? "";
     const interval = toCloudInterval(barSize);
@@ -685,6 +762,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
   }
 
   async getOptionsChain(ticker: string, exchange?: string, expirationDate?: number, _context?: MarketDataRequestContext): Promise<OptionsChain> {
+    rejectPerpetual(ticker, exchange, "options chains");
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudOptionsChain(target.symbol, target.exchange, expirationDate);
@@ -700,7 +778,8 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     targets: QuoteSubscriptionTarget[],
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void {
-    const { valid } = cloudBatchTargets(targets);
+    // Perpetual markets are polled, a minute apart at the venue; the quote stream carries none.
+    const { valid } = cloudBatchTargets(splitPerpetualTargets(targets).others);
     if (!valid.length) return () => {};
     // No-op without a session credential; covers browser cookie sessions too.
     void apiClient.ensureVerifiedSession().catch(() => {});

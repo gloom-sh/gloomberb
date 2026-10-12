@@ -21,6 +21,7 @@ import {
 } from "./help";
 import { parsePaneFunctionArgs, SHOT_SIZE_LIMITS } from "./pane-functions/options";
 import { checkCliCommandOptions } from "./command-options";
+import { CLI_EXIT_CODES } from "./exit-codes";
 import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
 import { cliStyles, setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
 import { setDisplayTimeZone } from "../utils/utc-time";
@@ -192,6 +193,7 @@ function createCoreCliCommands(
           { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
           { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
           { flags: "--no-status", description: "Leave out the dated status line (as-of, delay, market hours) drawn in the pane footer" },
+          { flags: "--strict", description: `Exit ${CLI_EXIT_CODES.unusableShot} when the pane is empty, shows an error, is still loading or is access-gated; the PNG and the Reason line are still written` },
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
           EXCHANGE_OPTION,
         ],
@@ -201,6 +203,7 @@ function createCoreCliCommands(
           "shot DDIS MSFT --tab history",
           "shot HP NVDA --width 1600 --theme green",
           "shot QQ AAPL,MSFT --no-status",
+          "shot OVDV SPY --tab term --strict --output term.png",
         ],
       },
       execute: async (args, ctx) => {

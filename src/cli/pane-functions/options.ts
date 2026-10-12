@@ -51,6 +51,8 @@ export interface ParsedPaneFunctionArgs {
   /** `--explain`: follow a report with the meaning of the terms it shows. */
   explain?: boolean;
   requireBotSafe: boolean;
+  /** `shot --strict`: exit with the unusable-shot code when the capture shows no usable data. */
+  strict?: boolean;
   /** The listing a one-ticker function's argument named, once `applyListingArgument` has resolved it. */
   listing?: CliListing;
   /**
@@ -102,6 +104,7 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
   let watermark: string | null = null;
   let status = true;
   let explain = false;
+  let strict = false;
   let requireBotSafe = false;
   const clamped: ShotSizeClamp[] = [];
 
@@ -128,6 +131,10 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
     }
     if (normalizeOptionKey(key) === "explain" && inlineValue === undefined) {
       explain = true;
+      continue;
+    }
+    if (normalizeOptionKey(key) === "strict" && inlineValue === undefined) {
+      strict = true;
       continue;
     }
     const next = args[index + 1];
@@ -172,6 +179,7 @@ export function parsePaneFunctionArgs(args: string[], globalOptions: { limit?: n
     ...(clamped.length > 0 ? { clamped } : {}),
     ...(heightGiven ? { heightGiven: true as const } : {}),
     ...(explain ? { explain } : {}),
+    ...(strict ? { strict } : {}),
   };
 }
 

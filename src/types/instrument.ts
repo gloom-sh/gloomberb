@@ -11,6 +11,8 @@ export type TickerInstrumentKind =
   | "currency"
   | "index"
   | "future"
+  /** A perpetual futures contract on a crypto or on-chain venue (BZUSDT:BINANCE): no expiry, trades around the clock. */
+  | "perpetual"
   | "option"
   | "bond"
   | "other";

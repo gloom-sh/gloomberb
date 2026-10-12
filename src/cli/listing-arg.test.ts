@@ -74,6 +74,30 @@ test("an exchange code the app does not know is refused unless the symbol trades
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
 });
 
+test("a perpetual is a listing on its venue, typed by PERP's market id or Hyperliquid's dex name", async () => {
+  expect(parseListingArg("binance:BZUSDT")).toEqual({ symbol: "BZUSDT", exchange: "BINANCE", key: "BZUSDT:BINANCE" });
+  expect(parseListingArg("hyperliquid:xyz:BRENTOIL").key).toBe("XYZ-BRENTOIL:HYPERLIQUID");
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const searched: string[] = [];
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      searched.push(query);
+      return query === "XYZ-BRENTOIL:HYPERLIQUID"
+        ? [{ providerId: "test", symbol: "XYZ-BRENTOIL:HYPERLIQUID", name: "Brent crude oil perpetual", exchange: "HYPERLIQUID", type: "PERP" }]
+        : [];
+    },
+  });
+  // Upper-cased on the command line, xyz:BRENTOIL reads as a symbol on an exchange no venue has: it is the dex market.
+  expect((await resolveCliListing("XYZ:BRENTOIL", undefined, { store, dataProvider })).request)
+    .toEqual({ symbol: "XYZ-BRENTOIL:HYPERLIQUID", exchange: "HYPERLIQUID" });
+  // A mistyped exchange with no such market still says the exchange is unknown.
+  const refused = await resolveCliListing("XOM:NYSEE", undefined, { store, dataProvider }).catch((error: unknown) => error);
+  expect((refused as Error).message).toStartWith("Unknown exchange NYSEE for XOM.");
+  expect(searched).toContain("XOM-NYSEE:HYPERLIQUID");
+});
+
 test("a request for an exchange the symbol is not listed on ends in where it trades, and only a miss looks the venues up", async () => {
   const persistence = new AppPersistence(":memory:");
   persistences.push(persistence);

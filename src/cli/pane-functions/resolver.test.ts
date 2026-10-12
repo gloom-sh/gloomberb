@@ -5,7 +5,7 @@ import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../typ
 import type { MarketContext } from "../types";
 import type { PaneFunctionCatalog } from "./catalog";
 import { parsePaneFunctionArgs } from "./options";
-import { resolvePaneFunction } from "./resolver";
+import { resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
 
 const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
 const template = (prefix: string, paneId: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
@@ -48,4 +48,25 @@ test("an option or argument a function refuses names the function code, never it
     registry, context, { ...parsePaneFunctionArgs(["CALLS"]), requireBotSafe: true }, { strictHeadlessOptions: true },
   ).catch((error: Error) => error.message);
   expect(strict).toBe("CALLS requires exactly one ticker.");
+});
+
+test("a name that opens nothing lists the closest functions and where to search, never an alphabetical list", async () => {
+  const surface: PaneTemplateDef = {
+    ...template("OVDV", "vol-surface", indices),
+    label: "Volatility Surface",
+    description: "Implied volatility surface and smiles.",
+  };
+  const withSurface: PaneFunctionCatalog = {
+    ...registry,
+    panes: new Map([...registry.panes, ["vol-surface", pane("vol-surface")]]),
+    paneTemplates: new Map([...registry.paneTemplates, ["vol-surface-pane", surface]]),
+  };
+  const unknown = (name: string) => resolvePaneFunction(withSurface, context, parsePaneFunctionArgs([name, "SPY"]))
+    .then(() => null, (error: unknown) => error as UnknownPaneFunctionError);
+
+  const close = await unknown("volsurf");
+  expect(close).toBeInstanceOf(UnknownPaneFunctionError);
+  expect(close?.message).toBe('Unknown function or pane "volsurf".');
+  expect(close?.details).toBe("Closest matches:\n  OVDV  Volatility Surface\nSearch the catalog: gloomberb catalog volsurf");
+  expect((await unknown("zzqxvb"))?.details).toBe("Search the catalog: gloomberb catalog zzqxvb");
 });
