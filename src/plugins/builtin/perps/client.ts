@@ -166,7 +166,12 @@ const VENUE_CONTRACTS: Record<string, (base: string) => string[]> = {
  */
 export async function fetchPerpSelection(input: string, client: Pick<typeof apiClient, "getCloudPerpsBoard" | "getCloudPerpsMarket"> = apiClient, venue?: string): Promise<PerpMarketPayload> {
   const query = marketQuery(input) || "BTC";
-  if (/^(hyperliquid|binance|bybit|okx|deribit|coinbase|kraken|dydx):/.test(query)) return fetchPerpsMarket(query, client);
+  if (/^(hyperliquid|binance|bybit|okx|deribit|coinbase|kraken|dydx):/.test(query)) {
+    const result = await fetchPerpsMarket(query, client);
+    // A watchlist row is saved upper case; Hyperliquid writes its thousand-unit coins with a small k (kPEPE).
+    const kCoin = /^hyperliquid:default:K([A-Z0-9]+)$/.exec(query);
+    return result.rows.length || !kCoin ? result : fetchPerpsMarket(`hyperliquid:default:k${kCoin[1]}`, client);
+  }
   const board = validatePerpsBoard(await client.getCloudPerpsBoard({ search: query }));
   const matches = board.rows.filter((row) => !row.delisted && [row.baseAsset, row.symbol, row.underlyingSymbol].some((value) => value?.toUpperCase() === query.toUpperCase()));
   const exact = venue && matches.some((row) => row.venue === venue) ? matches.filter((row) => row.venue === venue) : matches;
