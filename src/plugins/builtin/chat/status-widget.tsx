@@ -1,10 +1,11 @@
 import { Button } from "../../../components/ui/button";
 import { Icon } from "../../../components/ui/icon";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { Box, Span, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { usePluginAppActions } from "../../runtime";
+import { getNotificationLog, subscribeNotificationLog, unreadNotificationLogCount } from "../../../notifications/notification-log";
 import { InlineAuthActions } from "../cloud/auth-actions";
 import {
   getPreferredChatOpenChannelId,
@@ -53,7 +54,9 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
   const [username, setUsername] = useState<string | null>(initialSnapshot.user?.username ?? null);
   const [hasSavedSession, setHasSavedSession] = useState(initialSnapshot.hasSavedSession);
   const [snapshot, setSnapshot] = useState(initialSnapshot);
-  const unreadCount = getTotalUnreadCount(snapshot);
+  // What the Unread list shows as unread: chat, then missed price, catalyst and team notices.
+  const notices = useSyncExternalStore(subscribeNotificationLog, getNotificationLog, getNotificationLog);
+  const unreadCount = getTotalUnreadCount(snapshot) + unreadNotificationLogCount(notices);
 
   const openChat = (event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
     event?.preventDefault?.();
@@ -100,7 +103,7 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
           </Button>
           {unreadCount > 0 ? (
             <Button
-              label={`Open ${unreadCount} unread chat messages`}
+              label={`Open ${unreadCount} unread`}
               variant="plain"
               compact
               stopPropagation

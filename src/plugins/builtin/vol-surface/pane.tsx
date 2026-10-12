@@ -419,7 +419,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         .reduce<SurfaceExpiry | undefined>((best, entry) => !best || Math.abs(entry.years - years) < Math.abs(best.years - years) ? entry : best, undefined);
       if (expiry) setExpiration(expiry.expiration);
       setSurfaceCoordinate(denseGrid.moneyness[selection.moneynessIndex] ?? (deltaSurface ? 0 : 1));
-    }} fallback={table} /> : activeTab === "smile" && snapshot ? <SmileChart snapshot={snapshot} expiry={selectedExpiry}
+    }} fallback={table} loading={active.loading} meshAvailable={bitmapAvailable} /> : activeTab === "smile" && snapshot ? <SmileChart snapshot={snapshot} expiry={selectedExpiry}
       overlay={overlaySmiles} axis={axis} width={width} height={tableHeight} focused={focused} />
       : activeTab === "term" && snapshot ? <TermChart snapshot={snapshot} width={width} height={tableHeight} focused={focused} />
       : ["skew", "forwards"].includes(activeTab) && snapshot ? <ExpiryTable snapshot={snapshot} selected={selectedExpiry}

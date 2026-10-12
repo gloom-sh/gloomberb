@@ -38,6 +38,7 @@ import type { LayoutBounds } from "./layout/pane-manager";
 import type { AppSessionSnapshot } from "./core/state/session-persistence";
 import type { MarketDataCoordinator } from "./market-data/coordinator";
 import { createAppNotifier } from "./notifications/app-notifier";
+import { attachNotificationLog } from "./notifications/notification-log";
 import { useBrokerImportRuntime } from "./app/runtime/broker-import";
 import { useDesktopDeepLinkRuntime } from "./app/runtime/desktop-deeplink";
 import { useDesktopApplicationMenuRuntime } from "./app/runtime/desktop-menu";
@@ -374,6 +375,11 @@ function AppInner({
 
   // Wire up app-level notifications.
   pluginRegistry.bindHost({ notify: appNotifier.notify });
+  // Missed alerts live in this device's state store. A detached window keeps
+  // its own in memory rather than overwrite the main window's.
+  useEffect(() => (
+    isDetachedWindow ? undefined : attachNotificationLog(pluginRegistry.persistence.pluginState)
+  ), [isDetachedWindow, pluginRegistry]);
 
   // Persist layout changes (switching, saving, deleting, renaming layouts).
   // The saved layouts also mirror live pane state and focus, so they change on

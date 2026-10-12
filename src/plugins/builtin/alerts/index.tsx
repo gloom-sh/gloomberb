@@ -73,6 +73,7 @@ export const alertsPlugin: GloomPlugin = {
       ctx.notify({
         body: `${formatAlertDescription(alert)} triggered at ${price}`,
         type: "success",
+        refId: `price:${alert.id}`,
         desktop: "always",
         persistent: true,
         sound: "Glass",

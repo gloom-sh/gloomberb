@@ -1,6 +1,13 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import type { ChatChannel, ChatMessage, ChatUserSummary } from "../../../api-client";
+import {
+  appendNotificationLog,
+  resetNotificationLogForTest,
+  unreadNotificationLogCount,
+} from "../../../notifications/notification-log";
+import { teamStore } from "../cloud/team/store";
 import { listUnreadInboxItems, type UnreadInboxChannelState } from "./unread-inbox";
+import { markAllUnreadRead } from "./unread-inbox-pane";
 
 const me = { id: "u-me", username: "vince" };
 
@@ -111,5 +118,24 @@ describe("listUnreadInboxItems", () => {
       ["#options", null, false],
       ["#macro", null, false],
     ]);
+  });
+});
+
+describe("mark all read", () => {
+  afterEach(resetNotificationLogForTest);
+
+  test("reads the notices and the chat, and leaves a pending team invite pending", () => {
+    appendNotificationLog({ title: "MD Macro Desk", body: "@carol invited you to Macro Desk. Run TEAM to accept.", refId: "team:card-1" });
+    appendNotificationLog({ body: "AAPL above 230.00 triggered at 230.12", refId: "price:alert-1" });
+    const dismiss = spyOn(teamStore, "dismissNotifications");
+    let channelsRead = 0;
+    try {
+      markAllUnreadRead({ markAllChannelsRead: () => { channelsRead += 1; } });
+      expect(unreadNotificationLogCount()).toBe(0);
+      expect(channelsRead).toBe(1);
+      expect(dismiss).not.toHaveBeenCalled();
+    } finally {
+      dismiss.mockRestore();
+    }
   });
 });

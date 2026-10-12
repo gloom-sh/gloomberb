@@ -999,6 +999,7 @@ export function assessPaneScreenshot(
     ...intradayChartEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...paneEvidenceMismatches(resolved, payload, render),
     ...financialRatioRenderMismatches(resolved, payload, render),
+    ...surfaceNotDrawnMismatches(render),
   ];
   const semanticMismatch = missingExpectedText.length > 0
     || missingExpectedSelections.length > 0
@@ -1021,7 +1022,11 @@ export function assessPaneScreenshot(
   const unusableReason = usable
     ? null
     : shotUnusableReasonFor(resolved, payload, render, unavailableSymbols, semanticMismatch);
-  const { notices } = renderedReportNotices(render.semanticUi ?? []);
+  const notices = [
+    ...renderedReportNotices(render.semanticUi ?? []).notices,
+    ...(render.surfaces?.some((surface) => surface.renderer === "software")
+      ? ["The 3D surface was drawn by the software renderer: this browser has no WebGL."] : []),
+  ];
   return {
     kind: "pane-screenshot",
     target: resolved.token,
@@ -1077,10 +1082,23 @@ export function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKe
   }).length;
 }
 
+/**
+ * A 3D surface that is not the real drawing: the frame has no mesh, or the 2D
+ * grid stands in for it. Both are fine for a person using the pane and wrong
+ * for a capture of it.
+ */
+export function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResult, "surfaces">): string[] {
+  const surfaces = render.surfaces ?? [];
+  return [
+    ...(surfaces.some((surface) => surface.state === "blank") ? ["the 3D surface drew no mesh"] : []),
+    ...(surfaces.some((surface) => surface.renderer === "grid") ? ["the 3D surface was replaced by a 2D grid"] : []),
+  ];
+}
+
 export function shotUnusableReasonFor(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
-  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected" | "accessGate">,
+  render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected" | "accessGate" | "surfaces">,
   unavailableSymbols: string[],
   semanticMismatch: boolean,
 ): string {
@@ -1097,6 +1115,8 @@ export function shotUnusableReasonFor(
   if (render.accessGate) return accessGateSentence(render.accessGate);
   if (render.errorStateDetected) return "The pane rendered an error state.";
   if (render.emptyStateDetected) return "The pane rendered an empty state.";
+  const surfaceGap = surfaceNotDrawnMismatches(render)[0];
+  if (surfaceGap) return `${surfaceGap[0]!.toUpperCase()}${surfaceGap.slice(1)}.`;
   if (unavailableSymbols.length > 0) return `Data is unavailable for ${unavailableSymbols.join(", ")}.`;
   const ratioGap = financialRatioShotGap(resolved, payload);
   if (ratioGap) return ratioGap;

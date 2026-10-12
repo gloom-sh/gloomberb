@@ -4,6 +4,7 @@ import type {
   AppNotificationType,
 } from "../types/plugin";
 import { debugLog } from "../utils/debug-log";
+import { appendNotificationLog, markNotificationLogRead } from "./notification-log";
 
 const DEFAULT_NOTIFICATION_TITLE = "Gloomberb";
 const notificationLog = debugLog.createLogger("notifications");
@@ -243,7 +244,22 @@ export function createAppNotifier({
   desktop = typeof Bun !== "undefined" ? createDesktopNotifier() : null,
 }: CreateAppNotifierOptions): AppNotifier {
   return {
-    notify(notification) {
+    notify(request) {
+      // A missed price, catalyst or team notice waits in the Unread list; using
+      // its toast action means it was seen.
+      const logged = appendNotificationLog(request);
+      const notification: AppNotificationRequest = logged && request.action
+        ? {
+          ...request,
+          action: {
+            ...request.action,
+            onClick: () => {
+              markNotificationLogRead([logged.id]);
+              request.action?.onClick();
+            },
+          },
+        }
+        : request;
       const appActive = isAppActive();
       const toastEnabled = notification.toast !== false;
       const desktopMode = notification.desktop ?? "never";

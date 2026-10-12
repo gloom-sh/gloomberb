@@ -178,6 +178,30 @@ export class ChatController {
     this.openMessageFn = openMessage;
   }
 
+  /**
+   * Mark all read in the Unread list: each unread channel is read through its
+   * newest message the way opening it in Chat reads it, and a channel with
+   * nothing on this device yet once its latest messages load. A failed load
+   * leaves that channel unread.
+   */
+  markAllChannelsRead(): void {
+    let changed = false;
+    for (const [channelId, channel] of this.storage.channelStates) {
+      if (channel.unreadCount <= 0) continue;
+      if (channel.messages.length > 0) {
+        changed = this.markViewedThroughLatestMessage(channelId) || changed;
+        continue;
+      }
+      void this.refreshChannelMessages(channelId)
+        .then(() => {
+          if (this.ensureChannelState(channelId).messages.length === 0) return;
+          if (this.markViewedThroughLatestMessage(channelId)) this.emit(channelId);
+        })
+        .catch(() => {});
+    }
+    if (changed) this.emit();
+  }
+
   hydrate(): void {
     hydrateChatControllerSession({
       session: this.session,

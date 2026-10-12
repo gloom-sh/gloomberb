@@ -78,7 +78,7 @@ function SoftwareSurface3D(props: Surface3DChartProps & { scene: ReturnType<type
     if (cell) props.onSelect(cell);
   };
   return <ChartSurface ref={surfaceRef} width={props.width} height={props.height} flexDirection="column"
-    bitmaps={[render.bitmap]} data-gloom-role="surface-3d" aria-label={props.ariaLabel}
+    bitmaps={[render.bitmap]} data-gloom-role="surface-3d" data-gloom-surface-renderer="software" aria-label={props.ariaLabel}
     onMouseDown={(event: ChartMouseEvent) => {
       const at = pointer(event);
       if (!at) return;

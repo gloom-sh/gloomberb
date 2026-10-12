@@ -1790,6 +1790,44 @@ describe("ChatController", () => {
     expect(deliveredIds).toEqual([["n1"]]);
   });
 
+  test("mark all read reads each unread channel through its newest message, loading one not on this device first", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    const readThrough: Array<[string, string | undefined]> = [];
+    persistSession(persistence, { emailVerified: true });
+    apiClient.updateChatChannelState = async (channelId, body) => {
+      readThrough.push([channelId, body.readThroughMessageId]);
+      return { channelId, notificationsEnabled: false, lastReadMessageId: body.readThroughMessageId ?? null, unreadCount: 0 };
+    };
+    const bob = { id: "u2", username: "bob", displayName: "Bob" };
+    apiClient.getMessages = async (channelId) => (channelId === "options"
+      ? [
+        chatMessage({ id: "o1", channelId: "options", content: "0DTE flow into the close", createdAt: "2026-03-28T00:01:00.000Z", user: bob }),
+        chatMessage({ id: "o2", channelId: "options", content: "SPX 5800 calls again", createdAt: "2026-03-28T00:02:00.000Z", user: bob }),
+      ]
+      : []);
+    controller.attachPersistence(persistence);
+    const everyone = (controller as any).ensureChannelState("everyone");
+    everyone.messages = [
+      chatMessage({ id: "e1", content: "the marker", createdAt: "2026-03-28T00:00:00.000Z", user: bob }),
+      chatMessage({ id: "e2", content: "@ada did you see CPI?", createdAt: "2026-03-28T00:03:00.000Z", user: bob }),
+    ];
+    everyone.lastViewedMessageId = "e1";
+    everyone.unreadCount = 1;
+    const options = (controller as any).ensureChannelState("options");
+    options.unreadCount = 2;
+    const help = (controller as any).ensureChannelState("help");
+    help.messages = [chatMessage({ id: "h1", channelId: "help", content: "read already", createdAt: "2026-03-28T00:00:00.000Z" })];
+    help.lastViewedMessageId = "h1";
+
+    controller.markAllChannelsRead();
+    await flushMicrotasks();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(readThrough).toEqual([["everyone", "e2"], ["options", "o2"]]);
+    expect(controller.getSnapshot().channelStates.filter((state) => state.unreadCount > 0)).toEqual([]);
+  });
+
   test("toggles channel notifications optimistically and keeps the channel connected", async () => {
     const persistence = new MemoryPersistence();
     const controller = createController();

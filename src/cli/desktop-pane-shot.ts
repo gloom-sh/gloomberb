@@ -122,6 +122,11 @@ export interface DesktopPaneShotRenderedRow {
   cells: DesktopPaneShotRenderedCell[];
 }
 
+interface DesktopPaneShotSurface {
+  renderer: string;
+  state: string;
+}
+
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
   /**
@@ -134,6 +139,8 @@ export interface DesktopPaneShotRenderResult {
   reportTruncationReasons?: string[];
   /** Text of the pane footers, where a pane says whether its data is live, delayed or stale. */
   footerText?: string;
+  /** How each 3D surface in the view was drawn: `webgl`, `software` (a CPU raster) or `grid` (the 2D stand-in), and its last frame's state. */
+  surfaces?: DesktopPaneShotSurface[];
   visibleKeyValues?: Array<{ label: string; text: string }>;
   rows: DesktopPaneShotRenderedRow[];
   truncated: boolean;
@@ -746,6 +753,10 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
           .filter(Boolean)
           .join(" "),
         visibleKeyValues: (${readVisibleKeyValues.toString()})(root),
+        surfaces: [...root.querySelectorAll('[data-gloom-surface-renderer]')].filter(isVisible).map((element) => ({
+          renderer: element.getAttribute("data-gloom-surface-renderer") || "",
+          state: element.getAttribute("data-gloom-surface-state") || "",
+        })),
         error: window.__GLOOM_CLI_SHOT_ERROR__ || "",
         loadingStateDetected: root.querySelector('[data-gloom-status="loading"]') !== null,
         errorStateDetected: root.querySelector('[data-gloom-status="error"]') !== null,
@@ -769,6 +780,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         visibleText?: string;
         footerText?: string;
         visibleKeyValues?: Array<{ label: string; text: string }>;
+        surfaces?: DesktopPaneShotSurface[];
         error?: string;
         loadingStateDetected?: boolean;
         errorStateDetected?: boolean;
@@ -803,6 +815,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
     visibleText,
     footerText: typeof value?.footerText === "string" ? value.footerText : "",
     visibleKeyValues: Array.isArray(value?.visibleKeyValues) ? value.visibleKeyValues : [],
+    ...(Array.isArray(value?.surfaces) && value.surfaces.length > 0 ? { surfaces: value.surfaces } : {}),
     rows,
     truncated: value?.truncated === true || textShowsEllipsis,
     truncationReasons,
