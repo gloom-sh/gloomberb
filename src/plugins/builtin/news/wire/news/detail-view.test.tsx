@@ -262,7 +262,8 @@ test("older detail preserves the newer known headline and summary", async () => 
   // The header's date is the newest of the story and its coverage.
   const headerLine = capture().split("\n").find((line) => line.includes("Controlled wire \u00b7"));
   expect(headerLine).toContain(formatDetailDate(new Date("2026-09-11T12:00:00Z")));
-  expect(capture()).toContain(formatDetailDate(new Date("2026-09-11T11:00:00Z")));
+  // Coverage from the story's own day is timed, not dated again.
+  expect(capture()).toContain(new Date("2026-09-11T11:00:00Z").toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
   expect(service.getQueryState(query).articles[0]?.title).toBe("Acme acquisition terminated");
 });
 

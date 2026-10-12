@@ -181,16 +181,29 @@ function TextLines({
   ));
 }
 
+/** The time alone on the story's own day, which the header already dates; the date otherwise. */
+function coverageTime(value: Date, storyDay: Date): string {
+  return value.toDateString() === storyDay.toDateString()
+    ? value.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })
+    : formatDetailDate(value);
+}
+
 function NewsStoryTimelineItemView({
   item,
+  storyTitle,
+  storyDay,
   width,
   nativePaneChrome,
 }: {
   item: NewsStoryItem;
+  /** An outlet's headline that is the story's own is not printed again. */
+  storyTitle: string;
+  storyDay: Date;
   width: number;
   nativePaneChrome: boolean;
 }) {
-  const time = formatDetailDate(storyItemDate(item.publishedAt));
+  const time = coverageTime(storyItemDate(item.publishedAt), storyDay);
+  const title = item.title.trim() === storyTitle.trim() ? "" : item.title;
   const summary = item.summary && item.summary.trim() !== item.title.trim() ? item.summary : "";
   const source = item.sourceName || item.sourceKey;
   const contentWidth = Math.max(10, width - 2);
@@ -203,7 +216,7 @@ function NewsStoryTimelineItemView({
         <ExternalLinkText url={item.url} label={sourceLabel} color={colors.textBright} />
       </Box>
       <Box flexDirection="column" paddingLeft={2} width={nativePaneChrome ? "100%" : undefined} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
-        <TextLines text={item.title} width={contentWidth} color={colors.text} nativePaneChrome={nativePaneChrome} />
+        <TextLines text={title} width={contentWidth} color={colors.text} nativePaneChrome={nativePaneChrome} />
         <TextLines text={summary} width={contentWidth} color={colors.textDim} nativePaneChrome={nativePaneChrome} />
       </Box>
     </Box>
@@ -294,7 +307,7 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
       focused={focused}
       width={width}
       height={0}
-      childrenLabel={showTimeline ? t("Coverage") : undefined}
+      childrenLabel={showTimeline ? "Coverage" : undefined}
     >
       {showTimeline && (
         <Box flexDirection="column" gap={1} width={nativePaneChrome ? "100%" : coverageWidth} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
@@ -302,6 +315,8 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
             <NewsStoryTimelineItemView
               key={timelineItem.id}
               item={timelineItem}
+              storyTitle={item.title}
+              storyDay={lastUpdatedAt}
               width={coverageWidth}
               nativePaneChrome={nativePaneChrome === true}
             />

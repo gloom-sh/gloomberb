@@ -19,6 +19,7 @@ import { wrapTextLines } from "../../utils/text-wrap";
 import { usePaneFooter, usePaneMenuItems, type PaneHint } from "../layout/pane/footer";
 import { TickerBadgeList } from "../ticker/badge/list";
 import { ActionRow } from "../ui/action-row";
+import { titleCase } from "../ui/header-case";
 import { splitFigures } from "../ui/prose";
 import { blockWords, markTerms, type ArticleBlock } from "./article-text";
 
@@ -160,6 +161,12 @@ function visibleBlockCount(
   if (cut === null) return null;
   const hiddenWords = body.slice(cut).reduce((sum, block) => sum + blockWords(block), 0);
   return hiddenWords >= COLLAPSE_MIN_HIDDEN_WORDS ? cut : null;
+}
+
+/** A section label in the kit's casing: title case in English, a translation as it is written. */
+function readerLabel(label: string): string {
+  const translated = t(label);
+  return translated === label ? titleCase(label) : translated;
 }
 
 /** Minutes the rest takes to read, at an unhurried 220 words a minute. */
@@ -364,7 +371,7 @@ function ArticleReaderView({
       ) : null}
       {!raw && facts.length > 0 ? (
         <Box flexDirection="column" style={desktop ? { margin: "0.3em 0 1.3em" } : undefined}>
-          <ReaderText text={t("Key facts")} geometry={geometry} color={colors.textDim} variant="label" />
+          <ReaderText text={readerLabel("Key facts")} geometry={geometry} color={colors.textDim} variant="label" />
           {facts.map((fact, index) => (
             <ReaderText key={index} text={fact} geometry={geometry} color={colors.text} variant="fact" segments={figureSegments(fact)} figureColor={colors.textBright} />
           ))}
@@ -389,7 +396,7 @@ function ArticleReaderView({
       ) : null}
       {children ? (
         <Box flexDirection="column" style={desktop ? { marginTop: lead || blocks.length > 0 ? "0.8em" : 0 } : undefined}>
-          {childrenLabel ? <ReaderText text={childrenLabel} geometry={geometry} color={colors.textDim} variant="label" /> : null}
+          {childrenLabel ? <ReaderText text={readerLabel(childrenLabel)} geometry={geometry} color={colors.textDim} variant="label" /> : null}
           <Box flexDirection="column" style={desktop ? { fontSize: `${1 / geometry.fontEm}em`, lineHeight: "normal" } : undefined}>
             {children}
           </Box>
@@ -461,7 +468,7 @@ const DESKTOP_VARIANT_STYLE: Record<TextVariant, Record<string, string | number>
   lead: { fontSize: "1.1em", lineHeight: 1.55, marginBottom: "1.1em" },
   body: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.9em" },
   heading: { fontSize: "1.08em", lineHeight: 1.35, margin: "0.6em 0 0.35em" },
-  label: { fontSize: "0.72em", lineHeight: 1.6, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: "0.3em" },
+  label: { fontSize: "0.8em", lineHeight: 1.6, marginBottom: "0.3em" },
   fact: { fontSize: "0.95em", lineHeight: 1.55, marginBottom: "0.35em" },
   item: { lineHeight: 1.6, marginBottom: "0.3em" },
 };
