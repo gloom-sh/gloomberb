@@ -234,6 +234,23 @@ function expectMarked(actual: string[], expected: string[], what: string): void 
   if (actual.join() !== expected.join()) fail(`${what}: rows marked ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
 }
 
+/** The handle prompt's field, its value and whether it has the focus; null once the prompt is gone. */
+const handleField = (cdp: Cdp) => evaluate<{ x: number; y: number; value: string; focused: boolean; text: string } | null>(cdp, `(() => {
+  const prompt = document.querySelector('[data-gloom-role=chat-handle-prompt]');
+  const input = prompt?.querySelector('input');
+  if (!input) return null;
+  const r = input.getBoundingClientRect();
+  return { x: r.x + 24, y: r.y + r.height / 2, value: input.value, focused: document.activeElement === input, text: prompt.textContent };
+})()`);
+
+async function backspace(cdp: Cdp, times: number): Promise<void> {
+  for (let press = 0; press < times; press += 1) {
+    await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+  }
+  await frames(cdp, 3);
+}
+
 const OPENED_ON = "m60";
 
 /** Opens on a message the way a notification does, with the pointer parked outside the list. */
@@ -839,6 +856,35 @@ export const chatSteps: ChatStep[] = [
       const outside = await evaluate<string[]>(cdp, "window.__paneChrome.externalOpens");
       if (outside.length > 0) fail("o opened a page outside Gloom", outside);
       if (await evaluate<boolean>(cdp, `document.body.innerText.includes(${JSON.stringify(LEGACY_NEWS.address)})`)) fail("the publisher's address is still on screen");
+    },
+  },
+  {
+    name: "chat handle: the first-chat prompt keeps a refused handle in its field, gives the chat its keys back when the pointer leaves, and saves into the composer with the draft kept",
+    scenario: "chat&handle=placeholder&latency=50",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await cdp.send("Input.insertText", { text: "draft stays" });
+      await pressKey(cdp, "Escape", "Escape");
+      const field = await handleField(cdp) ?? fail("no handle prompt for an account on its signup placeholder");
+      await click(cdp, field);
+      await cdp.send("Input.insertText", { text: "taken" });
+      await pressKey(cdp, "Enter", "Enter", "\r");
+      if (!await waitFor(cdp, "document.querySelector('[data-gloom-role=chat-handle-prompt]')?.textContent.includes('is taken')", 3_000)) fail("a taken handle did not say so", await handleField(cdp));
+      const refused = await handleField(cdp);
+      if (!refused?.focused || refused.value !== "taken") fail("a refused handle left its field", refused);
+      // A click on a message takes the keyboard back to the chat.
+      await click(cdp, await listCentre(cdp));
+      await pressKey(cdp, "k", "KeyK", "k");
+      if ((await selected(cdp)).length !== 1) fail("after a click away from the field, k selected no message", await handleField(cdp));
+      // The reason under the field moved it up.
+      await click(cdp, await handleField(cdp) ?? fail("the handle prompt went away after a click outside it"));
+      await backspace(cdp, 5);
+      await cdp.send("Input.insertText", { text: "vince" });
+      await pressKey(cdp, "Enter", "Enter", "\r");
+      if (!await waitFor(cdp, "!document.querySelector('[data-gloom-role=chat-handle-prompt]')", 3_000)) fail("a free handle did not save", await handleField(cdp));
+      const composer = await evaluate<{ focused: boolean; value: string }>(cdp, "(() => { const t = document.querySelector('textarea'); return { focused: document.activeElement === t, value: t?.value ?? '' }; })()");
+      if (!composer.focused || composer.value !== "draft stays") fail("saving from the field did not hand the keyboard to the composer with its draft", composer);
     },
   },
 ];

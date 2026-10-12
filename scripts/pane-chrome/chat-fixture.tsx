@@ -18,9 +18,13 @@
  * publisher's address (it still ends in it), a Wire calendar post, a share
  * posted with its picture and a bare share link, with an in-page stand-in for
  * the share service; `shares=held` holds its answers until `releaseShares()`.
+ * `handle=placeholder` signs you in on a signup placeholder handle, so the
+ * composer offers to choose one; saving `taken` is refused as taken, and
+ * `solo=1` gives the chat the whole page.
  */
 import { useState } from "react";
-import { apiClient, type ChatChannel, type ChatMessage, type ChatUserSummary } from "../../src/api-client";
+import { apiClient, type AccountProfile, type AuthUser, type ChatChannel, type ChatMessage, type ChatUserSummary } from "../../src/api-client";
+import { ApiRequestError } from "../../src/api-client/errors";
 import { ChatContent } from "../../src/plugins/builtin/chat/content";
 import { ChatController } from "../../src/plugins/builtin/chat/controller";
 import { attachChatPaneLinkPanes } from "../../src/plugins/builtin/chat/pane-links/previews";
@@ -257,9 +261,25 @@ apiClient.connectChannel = ((_channelId: string, onMessage: (message: ChatMessag
   };
 }) as typeof apiClient.connectChannel;
 
+/** The handle signup gives an account until its person picks one. */
+const PLACEHOLDER_HANDLE = "gloom_3fa91c0d5e7b2a48";
+const placeholderHandle = params.get("handle") === "placeholder";
+if (placeholderHandle) {
+  let account = { id: "u0", username: PLACEHOLDER_HANDLE, name: PLACEHOLDER_HANDLE, emailVerified: true } as AccountProfile;
+  apiClient.getCurrentUser = () => ({ ...account } as unknown as AuthUser);
+  apiClient.getAccountProfile = async () => account;
+  apiClient.updateAccountProfile = async (update) => {
+    await new Promise((done) => setTimeout(done, latency));
+    if (update.username?.toLowerCase() === "taken") throw new ApiRequestError("Username is already taken.", 409);
+    account = { ...account, ...update } as AccountProfile;
+    return account;
+  };
+}
+
 function createController(): ChatController {
   const persistence = new MemoryPluginPersistence();
-  persistence.setState("session", { sessionToken: "fixture", user: { id: "u0", username: "ada", emailVerified: true } }, { schemaVersion: 1 });
+  const username = placeholderHandle ? PLACEHOLDER_HANDLE : "ada";
+  persistence.setState("session", { sessionToken: "fixture", user: { id: "u0", username, emailVerified: true } }, { schemaVersion: 1 });
   const controller = new ChatController();
   controller.attachPersistence(persistence);
   controller.refreshSession = async () => {};
@@ -301,6 +321,9 @@ export function ChatFixturePane({ focused, width, height }: PaneProps) {
 /** The chat pane beside a plain one, which the pointer can leave to. */
 export function chatLayout(): LayoutConfig {
   const instance = (instanceId: string) => ({ instanceId, paneId: instanceId.split(":")[0]!, binding: { kind: "none" as const } });
+  if (params.get("solo") === "1") {
+    return { dockRoot: { kind: "pane", instanceId: "chat:a" }, instances: [instance("chat:a")], floating: [], detached: [] };
+  }
   return {
     dockRoot: {
       kind: "split", axis: "horizontal", ratio: 0.72,

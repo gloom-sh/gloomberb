@@ -18,6 +18,7 @@ import { buildChatConversations, selectChatConversations } from "./conversations
 import { pickChatPaneToReuse } from "./pane-state";
 import { ChatPane } from "./pane";
 import { chatSidebarStore } from "./sidebar-store";
+import { chatHandlePromptStore } from "./handle-prompt";
 import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
 import { installPaneChatSharing } from "./share/flow";
@@ -155,6 +156,7 @@ export const chatModule: PluginModule = {
     detachPaneLinkPanes = attachChatPaneLinkPanes((paneId) => ctx.getPaneDef(paneId));
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
+    chatHandlePromptStore.attach(ctx.persistence);
     // The desktop app's Dock badge follows the Unread count; other hosts have no badge.
     disposeUnreadBadge?.();
     const badgeHost = getAppBadgeHost();
