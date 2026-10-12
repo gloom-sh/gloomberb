@@ -30,18 +30,20 @@ function accountMode(mode: BrokerTradingMode | undefined): string {
 function BrokerAccountChoiceDialog({ accounts, value, resolve }: PromptContext<string> & Pick<BrokerAccountPickerProps, "accounts" | "value">) {
   const colors = useThemeColors();
   const [index, setIndex] = useState(() => accounts.findIndex((account) => account.value === value));
-  const selected = accounts[index];
+  // Read the latest key movement, not the last rendered account, on Enter.
+  const cursor = useRef(index);
+  const selectIndex = (next: number) => { cursor.current = next; setIndex(next); };
   useDialogKeyboard((event) => {
     event.stopPropagation();
     const move = listCursorMove(event, 5);
-    if (move) { event.preventDefault(); setIndex((current) => move(accounts, current)); }
-    else if (event.name === "return" || event.name === "enter") { event.preventDefault(); if (selected) resolve(selected.value); }
+    if (move) { event.preventDefault(); selectIndex(move(accounts, cursor.current)); }
+    else if (event.name === "return" || event.name === "enter") { event.preventDefault(); const selected = accounts[cursor.current]; if (selected) resolve(selected.value); }
     else if (event.name === "escape") { event.preventDefault(); resolve(""); }
   }, { allowEditable: true });
   return <DialogFrame title="Choose an account" subtitle="Simulation accounts first. Choose before trading." footer="↑↓ choose · Enter select · Esc back" onClose={() => resolve("")}>
     <Box width={64} flexDirection="column">
       <ListView items={accounts.map((account) => ({ id: account.value, label: account.label, detail: accountMode(account.tradingMode) }))}
-        selectedIndex={index} onSelect={setIndex} onActivate={(item) => resolve(item.id)} selectOnHover
+        selectedIndex={index} onSelect={selectIndex} onActivate={(item) => resolve(item.id)} selectOnHover
         height={Math.min(Math.max(accounts.length, 1), 6) * 2} rowHeight={2} rowGap={0} scrollable={accounts.length > 6}
         surface="framed" emptyMessage="No accounts available." remoteLabel="Broker accounts"
         renderRow={(_item, state, rowIndex) => {

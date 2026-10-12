@@ -5,7 +5,7 @@ import { AppContext, appReducer, createInitialState, type AppAction } from "../.
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { BrokerConnectionStatus } from "../../../types/broker";
-import { BrokerTradeTab } from "./pane";
+import { BrokerOrdersPane, BrokerTradeTab } from "./pane";
 import { createTradeCommand } from "./command";
 import { createDemoBroker } from "./test-fixture";
 
@@ -31,10 +31,27 @@ test("a command prefills the resolved ticket once, focuses Review, and invalidat
     expect(symbol).toBe("AAPL");
     store.dispatch({ type: "UPDATE_PANE_STATE", paneId, patch: { ...options?.tabState, activeTabId: options?.tabId } });
   } }, action));
+  let captured = false;
+  const onCapture = (value: boolean) => { captured = value; };
   await act(async () => {
-    await tui.render(<TestPaneFrame state={initial} paneId={paneId} pluginId="broker" runtime={runtime} width={90} height={30} footerKeys>{() => <AppContext value={store}><BrokerTradeTab width={90} height={29} focused onCapture={() => {}} /></AppContext>}</TestPaneFrame>);
+    await tui.render(<TestPaneFrame state={initial} paneId={paneId} pluginId="broker" runtime={runtime} width={90} height={30} footerKeys>{() => <AppContext value={store}><BrokerTradeTab width={90} height={29} focused onCapture={onCapture} /></AppContext>}</TestPaneFrame>);
   });
   await tui.waitForFrameToContain("Buy 1 AAPL");
+  expect(captured).toBe(false);
+  await tui.emitKeypress([{ name: "tab" }, { name: "tab" }, { name: "tab" }], { trackPropagation: true });
+  expect(captured).toBe(true);
+  await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
+  expect(captured).toBe(false);
+  await act(async () => { await commands[0]!.execute({ symbol: "AAPL", quantity: "7", limitPrice: "150" }); });
+  await tui.waitForFrameToContain("Buy 7 AAPL");
+  // A second command while already editing must prefill its own quote side too.
+  await act(async () => { await commands[1]!.execute({ symbol: "AAPL", quantity: "3" }); });
+  await tui.waitForFrameToContain("336.4");
+  await tui.emitKeypress({ name: "enter", sequence: "\r" });
+  await tui.waitForFrameToContain("Review Order");
+  expect(demo.calls.filter((call) => call.method === "previewOrder").at(-1)?.request).toMatchObject({ action: "SELL", quantity: 3, limitPrice: 336.4 });
+  await tui.emitKeypress({ name: "escape" });
+  demo.calls.length = 0;
   await act(async () => { await commands[0]!.execute({ symbol: "AAPL", quantity: "7", limitPrice: "150" }); });
   await tui.waitForFrameToContain("Buy 7 AAPL");
   expect(latest.paneState[paneId]?.brokerTradeIntent).toBeNull();
@@ -51,6 +68,33 @@ test("a command prefills the resolved ticket once, focuses Review, and invalidat
   await tui.waitForFrameToContain("Review Order");
   expect(demo.calls.filter((call) => call.method === "previewOrder").at(-1)?.request).toMatchObject({ action: "SELL", quantity: 3, limitPrice: 336.4, orderType: "LMT" });
   expect(demo.calls.filter((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method))).toHaveLength(0);
+});
+
+test.each(["trade", "orders"] as const)("%s broker selection is reachable without a pointer", async (view) => {
+  const first = createDemoBroker();
+  const second = createDemoBroker();
+  second.adapter = { ...second.adapter, id: "second-demo-broker", name: "Second demo broker" };
+  second.instance = { ...second.instance, id: "second-profile", label: "Second profile", brokerType: second.adapter.id };
+  const paneId = "broker-ticket:profiles";
+  const config = createTestPaneConfig("/synthetic/ticket-profiles", { instanceId: paneId, paneId: "ticker-detail", binding: { kind: "fixed", symbol: "AAPL" }, settings: {} });
+  config.brokerInstances = [first.instance, second.instance];
+  const state = createInitialState(config);
+  state.focusedPaneId = paneId;
+  state.tickers.set("AAPL", createTestTicker("AAPL", "Example company"));
+  const runtime = createTestPluginRuntime({ getBrokerAdapter: (id) => id === first.adapter.id ? first.adapter : second.adapter });
+  await act(async () => {
+    await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={runtime} width={90} height={30} footerKeys>{() => view === "trade"
+      ? <BrokerTradeTab width={90} height={29} focused onCapture={() => {}} />
+      : <BrokerOrdersPane paneId={paneId} paneType="broker-orders" width={90} height={29} focused />}</TestPaneFrame>);
+  });
+  await tui.waitForFrameToContain("Choose");
+  await tui.emitKeypress({ name: "d", sequence: "d" }, { trackPropagation: true });
+  await tui.waitForFrameToContain(view === "trade" ? "Second demo broker" : "Second profile");
+  await tui.emitKeypress([{ name: "down" }, { name: "enter", sequence: "\r" }], { trackPropagation: true });
+  await tui.waitForFrameToContain(view === "trade" ? "Buy 1 AAPL" : "No open orders in this account.");
+  await tui.waitForFrameToExclude(view === "trade" ? "Choose a broker" : "Choose a profile");
+  expect(first.calls.some((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method))).toBe(false);
+  expect(second.calls.some((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method))).toBe(false);
 });
 
 test("broker read status heartbeats never reschedule account or holdings reads", async () => {

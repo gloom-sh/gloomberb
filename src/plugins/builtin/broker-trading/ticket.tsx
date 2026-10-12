@@ -32,6 +32,7 @@ export interface BrokerTicketViewProps {
   onEdit(field: TicketField, value: string | boolean): void;
   onAction(action: TicketAction): void;
   onAccountChange(accountId: string): void;
+  onCapture?(capturing: boolean): void;
 }
 export function ticketQuoteAge(quote: Quote | undefined, now = Date.now()): string {
   const at = quote?.lastTradeTime ?? quote?.lastUpdated;
@@ -65,7 +66,7 @@ function TicketNumberInput({ value, focused, onChange, ...props }: {
 }
 
 /** One ticket presentation, with the same review and focus gates on every renderer. */
-export function BrokerTicketView({ model: m, width, height, focused, onEdit, onAction, onAccountChange }: BrokerTicketViewProps) {
+export function BrokerTicketView({ model: m, width, height, focused, onEdit, onAction, onAccountChange, onCapture }: BrokerTicketViewProps) {
   const c = useThemeColors();
   const native = useUiCapabilities().nativePaneChrome;
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -123,6 +124,11 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
   const blockingPreview = !!m.preview?.errors?.length;
   const canConfirm = review && typedMatches && !blockingPreview && m.connected && m.tradingEnabled && !busy;
   const textActive = ["quantity", "limitPrice", "stopPrice", "typedConfirmation"].includes(active);
+  // Leaving a field must return h/l to the research strip, including after a command.
+  useEffect(() => {
+    onCapture?.(focused && textActive);
+    return () => onCapture?.(false);
+  }, [focused, textActive, onCapture]);
   const quickDisabled = (key: TicketAction) => key === "priceBid" ? !validPrice(m.quote?.bid) : key === "priceAsk" ? !validPrice(m.quote?.ask)
     : key === "priceMid" ? !validPrice(m.quote?.bid) || !validPrice(m.quote?.ask) : key === "priceLast" ? !validPrice(m.quote?.price)
     : sell ? m.position === undefined || m.position <= 0 : !account || !validPrice(account.buyingPower) || !validPrice(m.quote?.ask ?? m.quote?.price);
@@ -185,7 +191,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     hints: busy ? [] : [
       ...(textActive ? [keyAction("Esc", editing ? "Leave field" : "Edit", () => editing ? setActive("account") : onAction("back"))] : shortcuts.slice(0, 4)),
       { id: "ticket-tab", key: "Tab", label: "Next" },
-      keyAction("Enter", textActive ? editing ? m.tradingEnabled ? "Review focus" : "Enable focus" : "Confirm focus" : active === "confirm" ? "Confirm" : active === "back" ? "Edit" : "Select", activate, active === "confirm" && !canConfirm),
+      keyAction("Enter", textActive ? editing ? m.tradingEnabled ? "Buy/Sell focus" : "Enable focus" : "Confirm focus" : active === "confirm" ? "Confirm" : active === "back" ? "Edit" : active === "review" ? sell ? "Sell" : "Buy" : "Select", activate, active === "confirm" && !canConfirm || active === "review" && !canReview),
       ...(!textActive && (review || m.phase === "cancel-review" || m.phase === "enable") ? [actionShortcut("Esc", "Back", "back")] : []),
       ...(!textActive ? shortcuts.slice(4) : []),
     ],

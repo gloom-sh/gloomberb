@@ -39,8 +39,13 @@ The footer shows actions relevant to the current screen. Tab and Shift+Tab walk 
 | Ticket editing | `r` | Open review, even when SIM one-click is enabled |
 | Numeric field | Up/Down | Increase/decrease by one editing step |
 | Numeric field | Enter | Focus the primary action, without submitting |
+| Numeric field | Escape | Leave the field and return focus to the account control |
+| Ticket outside a text field | `h`, `l` | Switch research tabs |
+| Buy/Sell side control | Left/Right | Change side, without submitting |
+| Confirm orders checkbox (SIM only) | Tab/Shift+Tab, then Space or Enter | Focus and toggle confirmation |
 | Primary Buy/Sell action | Enter | Preview, then open confirmation or submit an opted-in SIM order |
 | Ticket editing | `a` | Choose account |
+| Trade with multiple brokers, or standalone Orders | `d` | Choose broker or broker profile |
 | Ticket editing | `t` | Choose time in force |
 | Ticket editing | `x` | Toggle extended hours, where supported |
 | Ticket editing | `1`, `2`, `3`, `4` | Market, Limit, Stop, Stop limit, where supported |
@@ -57,7 +62,8 @@ The footer shows actions relevant to the current screen. Tab and Shift+Tab walk 
 | Orders | Up/Down or `k`/`j` | Select an order |
 | Orders | `m` | Modify the selected order |
 | Orders | `c` | Request cancellation confirmation |
-| Orders | `a`, `v` | Choose account or view |
+| Orders | `a` | Choose account |
+| Orders | `v` | Toggle Open orders and Activity |
 | Orders | `r` | Refresh orders and executions |
 | Orders opened from Trade | Escape | Return to the ticket |
 | Confirmation or picker | Enter | Activate the focused confirmation or selected choice |

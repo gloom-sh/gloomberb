@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { Button, EmptyState, Notice, SelectButton } from "../../../components";
+import { Button, EmptyState, Notice, SelectButton, usePaneFooter, type SelectControl } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneVisible } from "../../../state/app/activity";
 import { useAppGetState, usePaneAppConfig, usePaneStateValue } from "../../../state/app/context";
@@ -19,11 +19,12 @@ import { availableTicketPosition, buildTicketAccountChoices, chooseTicketAccount
 import { BrokerTicketView, type TicketAction, type TicketField } from "./ticket";
 
 /** The ticket talks to the selected broker directly, never to the market router. */
-function ProfileTicket({ broker, instance, contract, width, height, focused, ordersFirst = false, accountChoices, selectedAccountId, onChooseProfileAccount, allowAutoAccount = true }: {
+function ProfileTicket({ broker, instance, contract, width, height, focused, ordersFirst = false, accountChoices, selectedAccountId, onChooseProfileAccount, allowAutoAccount = true, onCapture }: {
   broker: BrokerAdapter; instance: BrokerInstanceConfig; contract: BrokerContractRef;
   width: number; height: number; focused: boolean; ordersFirst?: boolean;
   accountChoices?: ProfileAccountChoice[]; selectedAccountId?: string;
   onChooseProfileAccount?: (choice: ProfileAccountChoice) => void; allowAutoAccount?: boolean;
+  onCapture?: (capturing: boolean) => void;
 }) {
   const visible = usePaneVisible();
   const getState = useAppGetState();
@@ -155,7 +156,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     void quote(true);
     const timer = setInterval(() => { void quote(); }, 15_000);
     return () => clearInterval(timer);
-  }, [connected, visible, page, accountId, contractKey, draft?.orderType, state.phase, quote, instance.id, statusVersion]);
+  }, [connected, visible, page, accountId, contractKey, draft?.orderType, state.phase, quote, instance.id, statusVersion, focusRevision]);
   useEffect(() => {
     if (!visible || !connected || state.phase !== "result" || !state.result || ["FILLED", "CANCELLED", "CANCELED", "REJECTED", "EXPIRED", "SUPERSEDED"].includes(state.result.status.toUpperCase())) return;
     const timer = setInterval(() => { void controller.refreshResult().catch(() => {}); }, 10_000);
@@ -241,7 +242,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   };
   if (page === "orders") return <Box flexDirection="column" flexGrow={1} minHeight={0}>{error ? <Notice tone="negative">{error}</Notice> : null}<BrokerOrdersView broker={broker} instance={instance} accounts={accounts} accountId={accountId} onAccountChange={onAccountChange} onModify={onModify} onBack={ticketContract.symbol ? () => setPage("ticket") : undefined} width={width} height={height} focused={focused} /></Box>;
   const position = ticketPositionContext(positions, instance, accountId, ticketContract);
-  return <BrokerTicketView width={width} height={height} focused={focused} model={{
+  return <BrokerTicketView width={width} height={height} focused={focused} onCapture={onCapture} model={{
     brokerName: broker.name, symbol: ticketContract.localSymbol ?? ticketContract.symbol, accounts, accountId,
     accountChoices, accountChoiceValue: accountChoices && accountId ? ticketAccountChoiceKey(instance.id, accountId) : undefined,
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,
@@ -261,11 +262,15 @@ export function BrokerTradeTab({ width, height, focused, onCapture }: TickerRese
   const { getBrokerAdapter } = usePluginBrokerActions();
   const { showPane } = usePluginAppActions();
   const [selectedBroker, setSelectedBroker] = useState<string>();
+  const brokerControl = useRef<SelectControl>(null);
   const [selectedAccount, setSelectedAccount] = useState<ProfileAccountChoice>();
   const [accountChoices, setAccountChoices] = useState<ProfileAccountChoice[]>([]);
   const [statusVersion, setStatusVersion] = useState(0);
   const profiles = useMemo(() => config.brokerInstances.filter((profile) => profile.enabled !== false && !!getBrokerAdapter(profile.brokerType)?.placeOrder), [config.brokerInstances, getBrokerAdapter]);
   const brokerTypes = useMemo(() => [...new Set(profiles.map((profile) => profile.brokerType))], [profiles]);
+  usePaneFooter("broker-ticket-profile", () => focused && brokerTypes.length > 1 ? {
+    hints: [{ id: "ticket-broker", key: "d", label: "Broker", onPress: () => brokerControl.current?.open() }],
+  } : null, [focused, brokerTypes.length]);
   const brokerType = brokerTypes.includes(selectedBroker ?? "") ? selectedBroker : brokerTypes.length === 1 ? brokerTypes[0] : undefined;
   const groupProfiles = useMemo(() => profiles.filter((profile) => profile.brokerType === brokerType), [profiles, brokerType]);
   const instance = groupProfiles.find((value) => value.id === selectedAccount?.profileId) ?? groupProfiles.find((value) => value.id === identity.contract?.brokerInstanceId) ?? groupProfiles[0];
@@ -298,12 +303,11 @@ export function BrokerTradeTab({ width, height, focused, onCapture }: TickerRese
   }, [groupProfiles, getBrokerAdapter, visible, statusVersion]);
   const resolution = useMemo(() => broker && instance ? resolveTicketContract(identity, broker, instance) : {}, [identity, instance?.id, broker]);
   const contract = resolution.contract;
-  useEffect(() => { onCapture(focused); return () => onCapture(false); }, [focused, onCapture]);
   if (!identity.symbol || identity.error) return <EmptyState title={identity.error ?? "Choose a ticker to trade."} />;
   if (!profiles.length) return <EmptyState title="Connect a broker to trade" message="Add a trading-capable broker profile in Brokers." actions={<Button label="Open Brokers" onPress={() => showPane("brokers")} />} />;
   return <Box flexDirection="column" flexGrow={1} minHeight={0}>
-    {brokerTypes.length > 1 ? <Box paddingX={1}><SelectButton label="Broker" value={brokerType ?? ""} options={[{ value: "", label: "Choose a broker", disabled: true }, ...brokerTypes.map((value) => ({ value, label: getBrokerAdapter(value)?.name ?? value }))]} onChange={(value) => { setSelectedBroker(value); setSelectedAccount(undefined); }} /></Box> : null}
-    {broker && instance && contract ? <ProfileTicket key={`${instance.id}:${JSON.stringify(contract)}`} broker={broker} instance={instance} contract={contract} width={width} height={height - (brokerTypes.length > 1 ? 1 : 0)} focused={focused} accountChoices={accountChoices} selectedAccountId={selectedAccount?.profileId === instance.id ? selectedAccount.accountId : undefined} onChooseProfileAccount={setSelectedAccount} allowAutoAccount={groupProfiles.length === 1} /> : <Box flexDirection="column">{accountChoices.length ? <BrokerAccountPicker accounts={accountChoices} value={selectedAccount?.value} onChange={(value) => setSelectedAccount(accountChoices.find((choice) => choice.value === value))} /> : null}<Notice tone={resolution.error ? "warning" : "muted"}>{resolution.error ?? "Choose the broker for this order."}</Notice></Box>}
+    {brokerTypes.length > 1 ? <Box paddingX={1}><SelectButton label="Broker" controlRef={brokerControl} emphasized={focused && !brokerType} value={brokerType ?? ""} options={[{ value: "", label: "Choose a broker", disabled: true }, ...brokerTypes.map((value) => ({ value, label: getBrokerAdapter(value)?.name ?? value }))]} onChange={(value) => { setSelectedBroker(value); setSelectedAccount(undefined); }} /></Box> : null}
+    {broker && instance && contract ? <ProfileTicket key={`${instance.id}:${JSON.stringify(contract)}`} broker={broker} instance={instance} contract={contract} width={width} height={height - (brokerTypes.length > 1 ? 1 : 0)} focused={focused} onCapture={onCapture} accountChoices={accountChoices} selectedAccountId={selectedAccount?.profileId === instance.id ? selectedAccount.accountId : undefined} onChooseProfileAccount={setSelectedAccount} allowAutoAccount={groupProfiles.length === 1} /> : <Box flexDirection="column">{accountChoices.length ? <BrokerAccountPicker accounts={accountChoices} value={selectedAccount?.value} onChange={(value) => setSelectedAccount(accountChoices.find((choice) => choice.value === value))} /> : null}<Notice tone={resolution.error ? "warning" : "muted"}>{resolution.error ?? "Choose the broker for this order."}</Notice></Box>}
   </Box>;
 }
 
@@ -311,9 +315,13 @@ export function BrokerOrdersPane({ width, height, focused }: PaneProps) {
   const config = usePaneAppConfig();
   const { getBrokerAdapter } = usePluginBrokerActions();
   const [selected, setSelected] = useState<string>();
+  const profileControl = useRef<SelectControl>(null);
   const profiles = config.brokerInstances.filter((instance) => instance.enabled !== false && !!getBrokerAdapter(instance.brokerType)?.listOpenOrders);
+  usePaneFooter("broker-orders-profile", () => focused && profiles.length ? {
+    hints: [{ id: "orders-profile", key: "d", label: "Broker profile", onPress: () => profileControl.current?.open() }],
+  } : null, [focused, profiles.length]);
   const instance = profiles.find((value) => value.id === selected) ?? (profiles.length === 1 ? profiles[0] : undefined);
   const broker = instance ? getBrokerAdapter(instance.brokerType) : null;
   const contract = useMemo(() => ({ brokerId: broker?.id ?? "", brokerInstanceId: instance?.id, symbol: "", currency: "USD", secType: "STK" }), [broker?.id, instance?.id]);
-  return <Box flexGrow={1} flexDirection="column"><Box paddingX={1}><SelectButton label="Broker profile" value={instance?.id ?? ""} options={[{ value: "", label: "Choose a profile", disabled: true }, ...profiles.map((value) => ({ value: value.id, label: value.label }))]} onChange={setSelected} /></Box>{broker && instance ? <ProfileTicket key={instance.id} broker={broker} instance={instance} contract={contract} width={width} height={height - 1} focused={focused} ordersFirst /> : <EmptyState title="Choose a broker profile" />}</Box>;
+  return <Box flexGrow={1} flexDirection="column"><Box paddingX={1}><SelectButton label="Broker profile" controlRef={profileControl} emphasized={focused && !instance} value={instance?.id ?? ""} options={[{ value: "", label: "Choose a profile", disabled: true }, ...profiles.map((value) => ({ value: value.id, label: value.label }))]} onChange={setSelected} /></Box>{broker && instance ? <ProfileTicket key={instance.id} broker={broker} instance={instance} contract={contract} width={width} height={height - 1} focused={focused} ordersFirst /> : <EmptyState title="Choose a broker profile" />}</Box>;
 }

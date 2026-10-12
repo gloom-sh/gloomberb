@@ -27,6 +27,17 @@ test("account choices show modes and require a deliberate selection, with simula
   expect(changes).toEqual(["sim"]);
 });
 
+test("account navigation and Enter in one input batch select the latest account", async () => {
+  const control = createRef<SelectControl>();
+  const changes: string[] = [];
+  await tui.render(<BrokerAccountPicker accounts={accounts} value="live" onChange={(value) => changes.push(value)} controlRef={control} />);
+  await act(async () => control.current!.open());
+  await tui.waitForFrameToContain("Demo live profile");
+  await tui.emitKeypress([{ name: "up" }, { name: "enter", sequence: "\r" }], { trackPropagation: true });
+  await tui.waitForFrameToExclude("Demo live profile");
+  expect(changes).toEqual(["sim"]);
+});
+
 test("closing the picker preserves selection and disabled controls cannot open", async () => {
   const control = createRef<SelectControl>();
   const changes: string[] = [];
