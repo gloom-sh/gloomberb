@@ -81,7 +81,7 @@ function raisedRelief(fill: string, tone: typeof SOLID_RELIEF, ring?: string): B
  * buttons have no fill to light and stay flat, and so does a disabled one.
  */
 export function buttonRelief(
-  props: Pick<ButtonProps, "variant" | "active" | "disabled">,
+  props: Pick<ButtonProps, "variant" | "active" | "disabled" | "tone">,
   palette: ThemeColors = colors,
 ): ButtonRelief {
   if (props.variant === "plain" || props.variant === "ghost" || props.disabled) return { boxShadow: "none" };

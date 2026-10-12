@@ -52,7 +52,7 @@ export function WebButton({
 }: ButtonProps) {
   const colors = useThemeColors();
   const palette = buttonPalette({ variant, active, disabled, tone }, colors);
-  const relief = buttonRelief({ variant, active, disabled }, colors);
+  const relief = buttonRelief({ variant, active, disabled, tone }, colors);
 
   return (
     <button

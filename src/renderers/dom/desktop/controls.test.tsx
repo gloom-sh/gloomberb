@@ -3,6 +3,7 @@ import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import { WebCheckbox, WebSegmentedControl } from "./controls";
 import { WebListView } from "./list-view";
+import { buttonRelief } from "./control-styles";
 import { Button } from "../../../components/ui/button";
 import { NumberField, TextField } from "../../../components/ui/fields";
 import { ActionRow } from "../../../components/ui/action-row";
@@ -106,6 +107,33 @@ test("shared buttons activate once by mouse or keyboard and isolate nested actio
     disabled!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
   });
   expect(presses).toEqual(["reply", "reply", "reply"]);
+});
+
+test("semantic primary buttons keep their fill through raised, focused and pressed states", async () => {
+  const originalTheme = getCurrentThemeId();
+  try {
+    for (const theme of ["white", "monokai"]) {
+      const colors = getThemeColors(theme);
+      for (const active of [false, true]) {
+        const container = await renderDom(<ThemeProvider themeId={theme}>
+          <Button label="Buy" variant="primary" tone="positive" active={active} />
+          <Button label="Sell" variant="primary" tone="negative" active={active} />
+          <Button label="Unavailable" variant="primary" tone="positive" disabled />
+        </ThemeProvider>);
+        const buttons = [...container.querySelectorAll("button")];
+        for (const [index, tone] of (["positive", "negative"] as const).entries()) {
+          // Relief is an opaque image over the background color. Checking just
+          // that color misses a gradient that silently hides the Buy/Sell tone.
+          const expected = buttonRelief({ variant: "primary", active }, { ...colors, borderFocused: colors[tone], selected: colors[tone] });
+          expect(buttons[index]!.style.backgroundImage).toBe(expected.backgroundImage!);
+          expect(buttons[index]!.style.getPropertyValue("--gloom-pressed-image")).toBe(expected.pressedImage!);
+        }
+        expect(buttons[2]!.style.backgroundImage).toBe("");
+      }
+    }
+  } finally {
+    syncTheme(originalTheme);
+  }
 });
 
 test("TextField delivers normalized native keys before submit and respects cancellation", async () => {
