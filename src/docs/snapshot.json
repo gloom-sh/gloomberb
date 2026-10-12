@@ -5193,6 +5193,14 @@
     },
     {
      "type": "paragraph",
+     "text": "A command exits 0 when it worked and 1 when it failed (bad input, no data found, a failed check); `gloomberb help` ends with the list. `shot` saves its PNG, prints the Reason line and still exits 0 when the pane drew an error, was empty, was still loading or was behind an access gate, so a script cannot tell that from a good capture. `shot --strict` exits 2 in those cases instead, with the PNG still saved and the Reason still printed."
+    },
+    {
+     "type": "paragraph",
+     "text": "A function name nothing opens (`fn volsurf SPY`) fails with the functions closest to it by name, keyword and description, at most five, and `Search the catalog: gloomberb catalog volsurf`."
+    },
+    {
+     "type": "paragraph",
      "text": "`shot` sizes the layout from 720 to 2400 wide and 360 to 1800 tall, and the PNG is drawn at twice that. A size outside the limits is clamped, and a warning says what was used."
     },
     {
