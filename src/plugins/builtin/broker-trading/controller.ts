@@ -1,3 +1,4 @@
+import { matchesNumberStep } from "../../../components/ui/number-step";
 import type { BrokerAdapter, BrokerConnectionStatus } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { Quote } from "../../../types/financials";
@@ -47,6 +48,8 @@ export interface BrokerTradingSnapshot {
   error?: string;
   loadingQuote?: boolean;
   modifying?: boolean;
+  /** Opt-in is ephemeral and scoped to the current SIM profile/account. */
+  confirmOrders: boolean;
 }
 
 interface ReviewGate {
@@ -84,7 +87,7 @@ function tradingCapabilities(context: BrokerTradingContext, request?: BrokerOrde
 
 /** All mutations pass through a consumed review or cancel confirmation. No method retries a mutation. */
 export class BrokerTradingController {
-  private snapshot: BrokerTradingSnapshot = freeze({ phase: "editing" });
+  private snapshot: BrokerTradingSnapshot = freeze({ phase: "editing", confirmOrders: true });
   private readonly listeners = new Set<() => void>();
   private readonly now: () => number;
   private readonly staleQuoteMs: number;
@@ -97,6 +100,7 @@ export class BrokerTradingController {
   private identityKey = "";
   private disposed = false;
   private mutationPending = false;
+  private entryPending = false;
 
   constructor(private readonly options: { getContext: (request?: BrokerOrderRequest) => BrokerTradingContext; now?: () => number; staleQuoteMs?: number; reviewTtlMs?: number }) {
     this.now = options.now ?? Date.now;
@@ -141,6 +145,7 @@ export class BrokerTradingController {
       if (!this.mutationPending && this.snapshot.phase !== "result") this.publish({ phase: "editing", review: undefined, loadingQuote: false, error: "The held position changed or became unavailable. Review the order again." });
       return;
     }
+    this.publish({ confirmOrders: true });
     if (!this.mutationPending) {
       this.modifyOrder = undefined;
       this.publish({ phase: "editing", modifying: false, review: undefined, result: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: "Profile, account or connection changed. Review the order again." });
@@ -150,6 +155,7 @@ export class BrokerTradingController {
   private editable(): void {
     if (this.disposed) throw new Error("This order ticket is closed.");
     if (this.mutationPending) throw new Error("An order action is already pending.");
+    if (this.snapshot.result?.status.toUpperCase() === "UNKNOWN") throw new Error(uncertainMessage);
   }
 
   setDraft(request: BrokerOrderRequest): void {
@@ -194,10 +200,7 @@ export class BrokerTradingController {
       if (request.quantity > Math.max(0, context.availablePosition)) throw new Error("Sell quantity exceeds the held position. This broker has not enabled short selling.");
     }
     if (!capabilities.fractionalQuantity && !Number.isInteger(request.quantity)) throw new Error("This instrument requires a whole quantity.");
-    if (positive(capabilities.quantityStep)) {
-      const steps = request.quantity / capabilities.quantityStep;
-      if (Math.abs(steps - Math.round(steps)) > 1e-8) throw new Error("Quantity does not match the broker's allowed increment.");
-    }
+    if (capabilities.quantityStep !== undefined && !matchesNumberStep(request.quantity, capabilities.quantityStep)) throw new Error("Quantity does not match the broker's allowed increment.");
     if (!capabilities.tif.includes(request.tif ?? "DAY")) throw new Error("This broker does not support the selected time in force.");
     if (request.outsideRth && (!capabilities.extendedHours || (capabilities.extendedHoursTif && !capabilities.extendedHoursTif.includes(request.tif ?? "DAY")))) throw new Error("Extended hours are unavailable for this order and time in force.");
     const limit = request.orderType === "LMT" || request.orderType === "STP LMT";
@@ -205,7 +208,8 @@ export class BrokerTradingController {
     for (const [needed, value, label] of [[limit, request.limitPrice, "limit"], [stop, request.stopPrice, "stop"]] as const) {
       if (needed && !positive(value)) throw new Error(`Enter a valid ${label} price.`);
       if (!needed && value !== undefined) throw new Error(`Remove the ${label} price for this order type.`);
-      if (value !== undefined && capabilities.priceDecimals !== undefined && Number(value.toFixed(capabilities.priceDecimals)) !== value) throw new Error("Price precision exceeds the broker's limit.");
+      if (value !== undefined && capabilities.priceDecimals !== undefined && (!Number.isInteger(capabilities.priceDecimals) || capabilities.priceDecimals < 0 || capabilities.priceDecimals > 18 || Number(value.toFixed(capabilities.priceDecimals)) !== value)) throw new Error("Price precision exceeds the broker's limit.");
+      if (value !== undefined && capabilities.priceStep !== undefined && !matchesNumberStep(value, capabilities.priceStep)) throw new Error("Price does not match the broker's allowed increment.");
     }
     return copy(request);
   }
@@ -253,7 +257,35 @@ export class BrokerTradingController {
     this.setDraft({ ...draft, [field]: decimals === undefined ? price : Number(price.toFixed(decimals)) });
   }
 
+  setConfirmOrders(confirm: boolean): void {
+    this.editable();
+    const { account } = this.context(false);
+    if (this.entryPending || this.snapshot.phase !== "editing") throw new Error("Wait for the current order review before changing confirmation.");
+    if (!confirm && account.tradingMode !== "simulation") throw new Error("Only simulation accounts can skip confirmation.");
+    this.publish({ confirmOrders: confirm });
+  }
+
+  /** One deliberate entry action. Even fast SIM orders consume a fresh exact-draft review. */
+  async submitFromEntry(): Promise<void> {
+    this.editable();
+    const { account } = this.context();
+    if (this.entryPending || this.snapshot.phase !== "editing") throw new Error("An order action is already pending or needs reconciliation.");
+    const fast = !this.snapshot.confirmOrders && account.tradingMode === "simulation" && !this.modifyOrder;
+    this.entryPending = true;
+    try {
+      await this.prepareReview(fast);
+      // New risk information cannot be waived by a session preference.
+      const review = this.snapshot.review;
+      if (fast && review && !review.requiresTypedConfirmation && !review.warnings.length && !review.preview.errors?.length) await this.submitReviewed(undefined, true);
+    } finally { this.entryPending = false; }
+  }
+
   async review(): Promise<void> {
+    if (this.entryPending) throw new Error("An order action is already pending.");
+    await this.prepareReview();
+  }
+
+  private async prepareReview(skipConfirmation = false): Promise<void> {
     this.editable();
     const request = this.request();
     const { context, account, capabilities } = this.context();
@@ -278,7 +310,7 @@ export class BrokerTradingController {
       const result: BrokerOrderReview = { request, preview: copy(preview), warnings: [...new Set(warnings)], account: copy(account), brokerName: context.adapter.name,
         createdAt: this.now(), mode: this.modifyOrder ? "modify" : "place", requiresTypedConfirmation: account.tradingMode !== "simulation", confirmationText: request.contract.symbol.toUpperCase() };
       this.gate = { context: fingerprint, request: canonical(request), version, quoteRisk: this.quoteRisk(quote), order: this.modifyOrder ? copy(this.modifyOrder) : undefined };
-      this.publish({ phase: "review", review: result, quote, error: preview.errors?.length ? "The broker preview has blocking errors." : undefined });
+      this.publish({ phase: skipConfirmation && !result.warnings.length && !preview.errors?.length ? "previewing" : "review", review: result, quote, error: preview.errors?.length ? "The broker preview has blocking errors." : undefined });
     } catch (error) {
       if (!this.disposed && version === this.version) this.publish({ phase: "editing", review: undefined, error: errorMessage(error, "The broker could not preview this order.") });
       throw error;
@@ -286,10 +318,14 @@ export class BrokerTradingController {
   }
 
   async confirm(typedConfirmation?: string): Promise<void> {
+    await this.submitReviewed(typedConfirmation);
+  }
+
+  private async submitReviewed(typedConfirmation?: string, fromEntry = false): Promise<void> {
     this.editable();
     const request = this.request(), review = this.snapshot.review, gate = this.gate;
     const { context } = this.context();
-    if (this.snapshot.phase !== "review" || !review || !gate || gate.version !== this.version || gate.context !== this.key() || gate.request !== canonical(request)) throw new Error("Review the current order before submitting.");
+    if (this.snapshot.phase !== (fromEntry ? "previewing" : "review") || fromEntry && (this.snapshot.confirmOrders || review?.requiresTypedConfirmation) || !review || !gate || gate.version !== this.version || gate.context !== this.key() || gate.request !== canonical(request)) throw new Error("Review the current order before submitting.");
     if (review.preview.errors?.length) throw new Error("Resolve the broker preview errors before submitting.");
     if (this.now() - review.createdAt > this.reviewTtlMs || !this.snapshot.quote || gate.quoteRisk !== this.quoteRisk(this.snapshot.quote)) {
       this.gate = undefined;

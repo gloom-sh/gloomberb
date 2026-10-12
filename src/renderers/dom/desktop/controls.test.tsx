@@ -126,6 +126,44 @@ test("TextField delivers normalized native keys before submit and respects cance
   expect(submitted).toEqual(["draft"]);
 });
 
+test("numeric stepper owns only its wheel/key events, bounds and disabled state", async () => {
+  let submits = 0, parentWheels = 0;
+  function Fields() {
+    const [price, setPrice] = useState("0.3");
+    const [disabled, setDisabled] = useState(false);
+    return <div onWheel={() => parentWheels++}>
+      <NumberField label="Limit price" focused value={price} onChange={setPrice} step={0.1} min={0.1} max={0.5} disabled={disabled} onSubmit={() => submits++} />
+      <NumberField label="Quantity" value="10" step={1} />
+      <button onClick={() => setDisabled(true)}>Busy</button><span id="outside">Outside</span>
+    </div>;
+  }
+  const container = await renderDom(<Fields />);
+  const price = container.querySelector<HTMLInputElement>('input[aria-label="Limit price"]')!;
+  const quantity = container.querySelector<HTMLInputElement>('input[aria-label="Quantity"]')!;
+  const wheel = () => new WheelEvent("wheel", { deltaY: -80, bubbles: true, cancelable: true });
+  const event = wheel();
+  await act(async () => { price.dispatchEvent(event); });
+  expect(price.value).toBe("0.4");
+  expect(quantity.value).toBe("10");
+  expect(event.defaultPrevented).toBe(true);
+  expect(parentWheels).toBe(0);
+  await act(async () => { price.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true })); });
+  expect(price.value).toBe("0.5");
+  expect(container.querySelector<HTMLButtonElement>('button[aria-label="Increase Limit price"]')!.disabled).toBe(true);
+  await act(async () => { price.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })); });
+  expect(price.value).toBe("0.4");
+  await act(async () => { container.querySelector("#outside")!.dispatchEvent(wheel()); });
+  expect(parentWheels).toBe(1);
+  await act(async () => { [...container.querySelectorAll("button")].find((button) => button.textContent === "Busy")!.click(); });
+  expect(price.disabled).toBe(true);
+  const disabledWheel = wheel();
+  await act(async () => { price.dispatchEvent(disabledWheel); });
+  expect(price.value).toBe("0.4");
+  expect(disabledWheel.defaultPrevented).toBe(false);
+  expect(parentWheels).toBe(2);
+  expect(submits).toBe(0);
+});
+
 test("field labels survive the shared wrapper and reach native accessible names", async () => {
   const container = await renderDom(<Box>
     <TextField label="Visible label" value="one" />

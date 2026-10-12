@@ -41,6 +41,7 @@ export function toKeyEventLike(event: {
   defaultPrevented?: boolean;
   propagationStopped?: boolean;
   sequence?: string;
+  repeated?: boolean;
   key?: string;
   super?: boolean;
 }): KeyEventLike {
@@ -49,6 +50,7 @@ export function toKeyEventLike(event: {
     key,
     name: key,
     sequence: event.sequence,
+    repeated: event.repeated ?? false,
     ctrl: event.ctrl ?? false,
     shift: event.shift ?? false,
     // OpenTUI follows terminal naming: `meta` is Alt/Option, while the

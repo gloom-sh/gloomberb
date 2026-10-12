@@ -56,7 +56,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const connected = connection?.state === "connected";
   const ticketContract = draft?.contract ?? contract;
   const contractKey = JSON.stringify(ticketContract);
-  const busy = state.phase === "submitting" || state.phase === "cancelling";
+  const busy = state.phase === "previewing" || state.phase === "submitting" || state.phase === "cancelling";
   const reportError = (failure: unknown) => setError(failure instanceof Error ? failure.message : "This broker action could not be completed.");
   useEffect(() => () => controller.dispose(), [controller]);
   useEffect(() => {
@@ -163,6 +163,10 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   }, [visible, connected, state.phase, state.result?.orderId, state.result?.status, controller]);
   const onEdit = (field: TicketField, value: string | boolean) => {
     if (field === "typedConfirmation") { setTyped(String(value)); return; }
+    if (field === "confirmOrders") {
+      try { controller.setConfirmOrders(value === true); setError(undefined); } catch (failure) { reportError(failure); }
+      return;
+    }
     const latestDraft = controller.getSnapshot().draft;
     if (!latestDraft) return;
     try {
@@ -187,7 +191,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
           setPage("ticket");
         } else if (action === "back") {
           setPage("ticket"); setTyped(""); if (draft) controller.setDraft({ ...draft });
-        } else if (action === "review") await controller.review();
+        } else if (action === "submit") await controller.submitFromEntry();
+        else if (action === "review") await controller.review();
         else if (action === "confirm") await controller.confirm(typed);
         else if (action === "cancel") await controller.confirmCancel(true);
         else if (action === "refresh") await controller.refreshResult();
@@ -244,7 +249,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
     phase: page === "enable" ? "enable" : state.phase, draft, preview: state.review?.preview, warnings: state.review?.warnings ?? [], result: state.result,
     error: connection?.state === "error" && connection.message ? connection.message : error ?? state.error,
     position: position?.quantity, avgCost: position?.avgCost, positionPnl: position?.pnl, tradingEnabled: caps?.enabled === true,
-    typedConfirmation: typed, connected, capabilities: caps, modifying: state.modifying, defaultPriceLabel,
+    typedConfirmation: typed, connected, capabilities: caps, modifying: state.modifying, defaultPriceLabel, confirmOrders: state.confirmOrders,
     initialFocus: focusRevision ? "review" : undefined, focusRevision,
   }} onEdit={onEdit} onAction={onAction} onAccountChange={onTicketAccountChange} />;
 }

@@ -18,6 +18,115 @@ function setup(options: DemoBrokerOptions = {}) {
     count: (method: string) => demo.calls.filter((call) => call.method === method).length };
 }
 
+describe("entry submission", () => {
+  const fresh = { realtime: true, quoteAgeMs: 0 };
+  test("confirmation defaults on; SIM opt-in previews and places the identical immutable draft once", async () => {
+    const { controller, demo, count } = setup(fresh);
+    await controller.submitFromEntry();
+    expect(controller.getSnapshot().phase).toBe("review");
+    expect(count("placeOrder")).toBe(0);
+    controller.setDraft(demo.draft);
+    controller.setConfirmOrders(false);
+    const original = demo.adapter.previewOrder!;
+    demo.adapter.previewOrder = async (instance, request) => {
+      const preview = await original(instance, request);
+      request.quantity = 999; request.contract.symbol = "MUTATED";
+      return preview;
+    };
+    await controller.submitFromEntry();
+    expect(count("previewOrder")).toBe(2);
+    expect(count("placeOrder")).toBe(1);
+    expect(demo.calls.find((call) => call.method === "placeOrder")?.request).toEqual(demo.draft);
+    await expect(controller.submitFromEntry()).rejects.toThrow();
+    expect(count("placeOrder")).toBe(1);
+  });
+
+  test("opt-in never applies to LIVE/unknown, and does not survive switching away and back", async () => {
+    const f = setup({ ...fresh, mode: "both" });
+    f.controller.setConfirmOrders(false);
+    f.setAccount(DEMO_LIVE_ACCOUNT); f.controller.syncContext();
+    expect(f.controller.getSnapshot().confirmOrders).toBe(true);
+    expect(() => f.controller.setConfirmOrders(false)).toThrow("Only simulation");
+    f.controller.setDraft({ ...f.demo.draft, accountId: DEMO_LIVE_ACCOUNT });
+    await f.controller.submitFromEntry();
+    await expect(f.controller.confirm()).rejects.toThrow("Type AAPL");
+    f.setAccount(DEMO_SIM_ACCOUNT); f.controller.syncContext();
+    expect(f.controller.getSnapshot().confirmOrders).toBe(true);
+    f.setAccounts(f.demo.accounts().map((account) => ({ ...account, tradingMode: undefined })));
+    expect(() => f.controller.setConfirmOrders(false)).toThrow("Only simulation");
+    expect(f.count("placeOrder")).toBe(0);
+  });
+
+  test.each(["warning", "errors", "delayed", "stale"] as const)("fast mode still opens review for %s", async (risk) => {
+    const f = setup({ ...fresh, realtime: risk !== "delayed", quoteAgeMs: risk === "stale" ? 70_000 : 0, previewError: risk === "errors" ? "Insufficient funds" : undefined });
+    if (risk === "warning") f.demo.adapter.previewOrder = async () => ({ warnings: ["Review market risk"] });
+    f.controller.setConfirmOrders(false);
+    await f.controller.submitFromEntry();
+    expect(f.controller.getSnapshot().phase).toBe("review");
+    expect(f.count("placeOrder")).toBe(0);
+  });
+
+  test.each(["draft", "account", "mode", "config", "caps", "connection", "dispose"] as const)("a %s change during preview invalidates fast submission", async (change) => {
+    const f = setup({ ...fresh, mode: "both" });
+    const started = Promise.withResolvers<void>(), pending = Promise.withResolvers<BrokerOrderPreview>();
+    f.demo.adapter.previewOrder = () => { started.resolve(); return pending.promise; };
+    f.controller.setConfirmOrders(false);
+    const action = f.controller.submitFromEntry();
+    await started.promise;
+    if (change === "draft") f.controller.setDraft({ ...f.demo.draft, quantity: 20 });
+    if (change === "account") f.setAccount(DEMO_LIVE_ACCOUNT);
+    if (change === "mode") f.setAccounts(f.demo.accounts().map((account) => ({ ...account, tradingMode: "live" })));
+    if (change === "config") f.demo.instance.config.tradingEnabled = false;
+    if (change === "caps") {
+      const caps = f.demo.adapter.getTradingCapabilities!(f.demo.instance);
+      f.demo.adapter.getTradingCapabilities = () => ({ ...caps, quantityStep: 100 });
+    }
+    if (change === "connection") f.demo.setConnected(false);
+    if (change === "dispose") f.controller.dispose();
+    pending.resolve({});
+    await expect(action).rejects.toThrow("changed");
+    expect(f.count("placeOrder")).toBe(0);
+  });
+
+  test("a stale quote request never reaches preview, and repeated entry actions cannot start parallel chains", async () => {
+    const f = setup(fresh);
+    const quote = Promise.withResolvers<ReturnType<typeof f.demo.quote>>();
+    f.demo.adapter.getQuote = () => quote.promise;
+    f.controller.setConfirmOrders(false);
+    const pending = f.controller.submitFromEntry();
+    await expect(f.controller.submitFromEntry()).rejects.toThrow("pending");
+    await expect(f.controller.review()).rejects.toThrow("pending");
+    f.controller.setDraft({ ...f.demo.draft, limitPrice: 300 });
+    quote.resolve(f.demo.quote());
+    await expect(pending).rejects.toThrow("changed");
+    expect(f.count("previewOrder")).toBe(0);
+    expect(f.count("placeOrder")).toBe(0);
+  });
+
+  test("fast UNKNOWN remains reconciliation-only, with no mutation retry or draft reset", async () => {
+    const f = setup({ ...fresh, outcome: "unknown" });
+    f.controller.setConfirmOrders(false);
+    await f.controller.submitFromEntry();
+    await expect(f.controller.submitFromEntry()).rejects.toThrow("Outcome unknown");
+    expect(() => f.controller.setDraft(f.demo.draft)).toThrow("Outcome unknown");
+    await f.controller.refreshResult();
+    expect(f.controller.getSnapshot().result?.status).toBe("UNKNOWN");
+    expect(f.count("placeOrder")).toBe(1);
+  });
+
+  test("quantity and price precision/increments block fast entry before any broker request", async () => {
+    const f = setup(fresh);
+    const caps = f.demo.adapter.getTradingCapabilities!(f.demo.instance);
+    f.demo.adapter.getTradingCapabilities = () => ({ ...caps, fractionalQuantity: false, quantityStep: 2, priceStep: 0.05 });
+    for (const patch of [{ quantity: 0 }, { quantity: 1.5 }, { quantity: 3 }, { limitPrice: 1.234 }, { limitPrice: 1.23 }, { orderType: "MKT" as const }]) {
+      f.controller.setDraft({ ...f.demo.draft, ...patch });
+      f.controller.setConfirmOrders(false);
+      await expect(f.controller.submitFromEntry()).rejects.toThrow();
+    }
+    expect(f.count("getQuote") + f.count("previewOrder") + f.count("placeOrder")).toBe(0);
+  });
+});
+
 describe("shared broker review and confirmation gate", () => {
   test("submission needs a broker preview of the exact current request and consumes it once", async () => {
     const { demo, controller, count } = setup();
@@ -346,7 +455,8 @@ describe("modification, cancellation and unknown outcomes", () => {
     await controller.review();
     await controller.confirm();
     expect(controller.getSnapshot().result?.status).toBe("UNKNOWN");
-    await expect(controller.confirm()).rejects.toThrow("Review");
+    await expect(controller.confirm()).rejects.toThrow("Outcome unknown");
+    expect(() => controller.reset()).toThrow("Outcome unknown");
     await controller.refreshResult();
     expect(controller.getSnapshot().result?.status).toBe("UNKNOWN");
     expect(count("placeOrder")).toBe(1);

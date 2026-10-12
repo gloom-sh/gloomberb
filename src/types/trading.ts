@@ -21,6 +21,8 @@ export interface BrokerTradingCapabilities {
   minQuantity?: number;
   quantityStep?: number;
   priceDecimals?: number;
+  /** Broker-reported price increment for this instrument/order. Omit if unknown. */
+  priceStep?: number;
   modify?: boolean;
   cancel?: boolean;
   executionKind?: "fills" | "order-summaries";

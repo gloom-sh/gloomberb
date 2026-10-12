@@ -267,6 +267,7 @@ export function WebTextField({
   value,
   placeholder,
   focused,
+  disabled = false,
   width,
   inputRef,
   onChange,
@@ -313,6 +314,7 @@ export function WebTextField({
         alignItems="center"
         backgroundColor={plain ? "transparent" : resolvedBackgroundColor}
         onMouseDown={() => {
+          if (disabled) return;
           onMouseDown?.();
           resolvedInputRef.current?.focus?.();
         }}
@@ -334,6 +336,7 @@ export function WebTextField({
       >
         <Input
           aria-label={accessibleLabel ?? label}
+          disabled={disabled}
           ref={resolvedInputRef as RefObject<InputRenderable | null>}
           width="100%"
           value={value}

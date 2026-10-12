@@ -17,6 +17,8 @@ export interface KeyEventLike {
   meta: boolean;
   super?: boolean;
   targetEditable?: boolean;
+  /** True for a held key's repeat, when the host reports it. */
+  repeated?: boolean;
   readonly defaultPrevented?: boolean;
   readonly propagationStopped?: boolean;
   preventDefault(): void;

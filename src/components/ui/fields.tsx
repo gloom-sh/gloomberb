@@ -1,10 +1,12 @@
 import { Box, Input, Span, Text, TextAttributes, useUiCapabilities, useUiHost } from "../../ui";
-import { useEffect, useRef, useState, type ComponentType, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ComponentType, type RefObject } from "react";
 import { type InputRenderable } from "../../ui";
 import { useThemeColors } from "../../theme/theme-context";
 import { useRemoteUiNode } from "../../remote/semantic-tree";
 import { remoteStringValue } from "../../remote/semantic-helpers";
 import { truncateWithEllipsis } from "../../utils/text-wrap";
+import { Button } from "./button";
+import { stepNumber } from "./number-step";
 
 export interface FieldLabelProps {
   label: string;
@@ -51,6 +53,7 @@ export interface TextFieldProps {
   value?: string;
   placeholder?: string;
   focused?: boolean;
+  disabled?: boolean;
   width?: number;
   inputRef?: RefObject<InputRenderable | null>;
   onChange?: (value: string) => void;
@@ -123,6 +126,7 @@ function TextFieldControl({
   value,
   placeholder,
   focused,
+  disabled = false,
   width,
   inputRef,
   onChange,
@@ -149,11 +153,11 @@ function TextFieldControl({
     actions: {
       setValue: (input) => {
         const nextValue = remoteStringValue(input);
-        onChange?.(nextValue);
+        if (!disabled) onChange?.(nextValue);
       },
       submit: (input) => {
         const nextValue = remoteStringValue(input, value ?? "");
-        onSubmit?.(nextValue);
+        if (!disabled) onSubmit?.(nextValue);
       },
       blur: () => onBlur?.(value ?? ""),
     },
@@ -167,7 +171,8 @@ function TextFieldControl({
         accessibleLabel={accessibleLabel}
         value={value}
         placeholder={placeholder}
-        focused={focused}
+        focused={focused && !disabled}
+        disabled={disabled}
         width={width}
         inputRef={inputRef}
         onChange={onChange}
@@ -221,6 +226,7 @@ function TextFieldControl({
         </Box>
       )}
       <Box height={1} onMouseDown={() => {
+        if (disabled) return;
         onMouseDown?.();
         resolvedInputRef.current?.focus?.();
       }}>
@@ -230,16 +236,20 @@ function TextFieldControl({
           value={value}
           selectable={!isPassword}
           placeholder={isPassword ? "" : placeholder}
-          focused={focused}
+          focused={focused && !disabled}
           textColor={isPassword ? backgroundColor : textColor}
           placeholderColor={placeholderColor}
           backgroundColor={backgroundColor}
           selectionBg={isPassword ? backgroundColor : undefined}
           selectionFg={isPassword ? backgroundColor : undefined}
           showCursor={!isPassword}
-          onKeyDown={onKeyDown}
+          onKeyDown={(event: Parameters<NonNullable<TextFieldProps["onKeyDown"]>>[0]) => {
+            if (disabled) { event.preventDefault(); event.stopPropagation(); return; }
+            onKeyDown?.(event);
+          }}
           onCursorChange={() => syncCursorOffset()}
           onInput={(nextValue: string) => {
+            if (disabled) return;
             currentValueRef.current = nextValue;
             syncCursorOffset(nextValue);
             onChange?.(nextValue);
@@ -249,12 +259,12 @@ function TextFieldControl({
             // the form has since cleared and swapped out still blurs when the
             // next one takes focus, and passing its old text on would put it
             // back into the cleared draft.
-            if (nextValue === currentValueRef.current) return;
+            if (disabled || nextValue === currentValueRef.current) return;
             currentValueRef.current = nextValue;
             syncCursorOffset(nextValue);
             onChange?.(nextValue);
           }}
-          onSubmit={() => onSubmit?.(currentValueRef.current)}
+          onSubmit={() => { if (!disabled) onSubmit?.(currentValueRef.current); }}
           onBlur={() => onBlur?.(currentValueRef.current)}
         />
         {isPassword && (
@@ -308,6 +318,10 @@ function sanitizeNumberInput(value: string, allowDecimal: boolean, allowNegative
 export interface NumberFieldProps extends Omit<TextFieldProps, "onChange" | "onSubmit" | "onBlur"> {
   allowDecimal?: boolean;
   allowNegative?: boolean;
+  /** Opt-in shared minus/plus, pointer wheel and Up/Down stepping. Not an exchange tick unless the caller supplies one. */
+  step?: number;
+  min?: number;
+  max?: number;
   onChange?: (value: string) => void;
   onSubmit?: (value: string) => void;
   onBlur?: (value: string) => void;
@@ -319,14 +333,67 @@ export function NumberField({
   onChange,
   onSubmit,
   onBlur,
+  step,
+  min,
+  max,
   ...props
 }: NumberFieldProps) {
-  return (
-    <TextField
-      {...props}
-      onChange={(nextValue) => onChange?.(sanitizeNumberInput(nextValue, allowDecimal, allowNegative))}
-      onSubmit={(nextValue) => onSubmit?.(sanitizeNumberInput(nextValue, allowDecimal, allowNegative))}
-      onBlur={(nextValue) => onBlur?.(sanitizeNumberInput(nextValue, allowDecimal, allowNegative))}
-    />
-  );
+  const valueRef = useRef(props.value ?? "");
+  valueRef.current = props.value ?? "";
+  const localInput = useRef<InputRenderable | null>(null);
+  const inputRef = props.inputRef ?? localInput;
+  const stepping = step !== undefined;
+  const pendingCursor = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    const cursor = pendingCursor.current, input = inputRef.current;
+    if (cursor === undefined || !input) return;
+    pendingCursor.current = undefined;
+    const offset = Math.min(cursor, (props.value ?? "").length);
+    if (input.setCursorOffset) input.setCursorOffset(offset);
+    else input.cursorOffset = offset;
+  }, [props.value, inputRef]);
+  const change = (value: string) => {
+    if (props.disabled) return;
+    valueRef.current = value;
+    onChange?.(value);
+  };
+  const next = (direction: 1 | -1) => step === undefined ? undefined : stepNumber(valueRef.current, direction, step, min ?? (allowNegative ? undefined : 0), max);
+  const advance = (direction: 1 | -1) => {
+    if (props.disabled) return;
+    const value = next(direction);
+    if (value === undefined) return;
+    // Restore after the controlled value commits, not before the DOM input updates.
+    pendingCursor.current = inputRef.current?.cursorOffset;
+    change(value);
+  };
+  const field = <TextField
+    {...props}
+    label={stepping ? undefined : props.label}
+    accessibleLabel={props.accessibleLabel ?? props.label}
+    inputRef={inputRef}
+    width={stepping && props.width !== undefined ? Math.max(6, props.width - 8) : props.width}
+    onChange={(value) => change(sanitizeNumberInput(value, allowDecimal, allowNegative))}
+    onSubmit={(value) => { if (!props.disabled) onSubmit?.(sanitizeNumberInput(value, allowDecimal, allowNegative)); }}
+    onBlur={(value) => { if (!props.disabled) onBlur?.(sanitizeNumberInput(value, allowDecimal, allowNegative)); }}
+    onKeyDown={(event) => {
+      if (stepping && (event.name === "up" || event.name === "down")) {
+        event.preventDefault(); event.stopPropagation(); advance(event.name === "up" ? 1 : -1); return;
+      }
+      props.onKeyDown?.(event);
+    }}
+  />;
+  if (!stepping) return field;
+  const name = props.accessibleLabel ?? props.label ?? "value";
+  return <Box flexDirection="column" width={props.width}>
+    {props.label ? <FieldLabel label={props.label} active={props.active} /> : null}
+    <Box flexDirection="row" alignItems="center" gap={1} onMouseScroll={(event: { scroll?: { direction?: string }; preventDefault(): void; stopPropagation(): void }) => {
+      if (props.disabled || !["up", "down"].includes(event.scroll?.direction ?? "")) return;
+      event.preventDefault(); event.stopPropagation();
+      advance(event.scroll?.direction === "up" ? 1 : -1);
+    }}>
+      {field}
+      <Button label={`Decrease ${name}`} displayLabel="-" width={3} compact disabled={props.disabled || next(-1) === undefined} onPress={() => { inputRef.current?.focus?.(); advance(-1); }} />
+      <Button label={`Increase ${name}`} displayLabel="+" width={3} compact disabled={props.disabled || next(1) === undefined} onPress={() => { inputRef.current?.focus?.(); advance(1); }} />
+    </Box>
+  </Box>;
 }

@@ -902,6 +902,7 @@ getTradingCapabilities(instance, contract, orderType) {
     minQuantity: 1,
     quantityStep: 1,
     priceDecimals: 2,
+    priceStep: 0.01, // Only when the broker reports this instrument's increment.
     modify: true,
     cancel: true,
     executionKind: "fills",
@@ -914,9 +915,11 @@ getTradingConfigUpdate(_instance, enabled) {
 
 `BrokerTradingCapabilities` describes supported order types, time in force, quantity and price constraints, extended hours, modification and cancellation. `extendedHoursTif`, when supplied, restricts extended hours to those time-in-force values. Return capabilities for the given instrument and order type, without network requests. `getTradingConfigUpdate` is optional and returns the config patch the host saves after consent, also without I/O; without it, users enable trading through the broker's own settings. Keep the adapter's mutation guards even when the host ticket enforces the same constraints.
 
+Optional `priceStep` is the broker-reported price increment for this instrument and order type. Omit it when unknown. The ticket's numeric controls otherwise use `priceDecimals` (or 0.01 without precision metadata) as an editing convenience only, not an inferred exchange tick. Quantity and price increments are validated with decimal arithmetic before preview.
+
 `shortSelling` defaults to false. Without an explicit true value, selling requires a fresh position snapshot for the exact profile, account and contract, and quantity cannot exceed the long holding. Missing or stale holdings block a sell; a successfully loaded empty position list means zero held. Position changes invalidate a sell review. Quick quantity controls round down to the broker's increment, use the held quantity for sells, and use reported buying power and the broker quote for buys, including the contract multiplier. These are sizing aids; the broker preview still decides whether the order can proceed.
 
-Set optional `BrokerAccount.tradingMode` to `simulation`, `live` or `unknown`. The ticket only selects an account automatically when it is the sole account and explicitly marked simulation. Multiple accounts require a choice; live and unknown accounts require a typed symbol confirmation. Use account names that are safe to display. The ticket reviews the exact current request, invalidates a review on edits or relevant profile changes, and does not automatically retry uncertain mutations. Modification goes through another review; cancellation requires its own confirmation.
+Set optional `BrokerAccount.tradingMode` to `simulation`, `live` or `unknown`. The ticket only selects an account automatically when it is the sole account and explicitly marked simulation. Multiple accounts require a choice; live and unknown accounts require a typed symbol confirmation. Use account names that are safe to display. The ticket reviews the exact current request, invalidates a review on edits or relevant profile changes, and does not automatically retry uncertain mutations. Modification goes through another review; cancellation requires its own confirmation. Confirmation is on by default. A user may explicitly skip the confirmation screen for the current simulation account/ticket session only. That path still requests a fresh exact-draft broker preview and submits once; warnings or errors open review instead. Account/profile, mode, configuration and connection changes reset the preference. LIVE and unknown accounts cannot opt out.
 
 Set optional `BrokerAccount.accountType` to the broker-reported classification, such as Cash or Margin, for the ticket context chip. Omit it when the broker does not report one; never infer it from buying power or balances.
 

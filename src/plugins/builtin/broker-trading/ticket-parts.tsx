@@ -33,9 +33,12 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
   const px = draft?.limitPrice ?? draft?.stopPrice ?? m.quote?.price;
   const total = draft && px !== undefined ? px * draft.quantity * Number(draft.contract.multiplier ?? 1) : undefined;
   const positionAfter = m.position !== undefined && draft ? m.position + (draft.action === "SELL" ? -draft.quantity : draft.quantity) : undefined;
-  const powerAfter = m.preview?.buyingPowerAfter ?? (draft?.action === "BUY" && account?.buyingPower !== undefined && total !== undefined ? account.buyingPower - total : undefined);
+  const powerAfter = m.preview?.buyingPowerAfter;
   const sideColor = draft?.action === "SELL" ? c.negative : c.positive;
-  if (compact && receipt) return <TicketReceiptRow label="Account impact" value={`Buying power ${m.preview?.buyingPowerAfter === undefined ? "impact" : "after"} ${ticketMoney(m.preview?.buyingPowerAfter ?? m.preview?.buyingPowerImpact, currency)}`} width={width} />;
+  if (compact && receipt) return <Box flexDirection="column">
+    <Text fg={c.textDim}>Buying power · broker preview</Text>
+    <TicketReceiptRow label={powerAfter === undefined ? "Impact" : "After order"} value={ticketMoney(powerAfter ?? m.preview?.buyingPowerImpact, currency)} width={width} />
+  </Box>;
   if (compact) return <Box flexDirection="row" justifyContent="space-between" paddingX={1} backgroundColor={c.panel}>
     <Text fg={sideColor} attributes={TextAttributes.BOLD}>{`${draft?.action ?? "BUY"} ${ticketNumber(draft?.quantity)} ${m.symbol}`}</Text>
     <Text fg={c.textBright} attributes={TextAttributes.BOLD}>{`Est. ${ticketMoney(total, currency)}`}</Text>
@@ -46,8 +49,8 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
     <Box paddingY={1}><FigureText>{positionAfter === undefined ? "Unknown position" : `${ticketNumber(positionAfter)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`}</FigureText></Box>
     <TicketReceiptRow label="Current position" value={ticketNumber(m.position)} width={rowWidth} />
     <TicketReceiptRow label="Order quantity" value={`${draft?.action === "SELL" ? "−" : "+"}${ticketNumber(draft?.quantity)}`} color={sideColor} width={rowWidth} />
-    <Box marginTop={1}><SectionHeading title="Buying power" /></Box>
-    <TicketReceiptRow label="Before order" value={ticketMoney(account?.buyingPower, currency)} width={rowWidth} />
+    <Box marginTop={1}><SectionHeading title="Buying power · broker preview" /></Box>
+    <TicketReceiptRow label="Before order" value={ticketMoney(m.preview?.buyingPowerBefore ?? account?.buyingPower, currency)} width={rowWidth} />
     <TicketReceiptRow label="Broker impact" value={ticketMoney(m.preview?.buyingPowerImpact, currency)} width={rowWidth} />
     <TicketReceiptRow label="After order" value={ticketMoney(m.preview?.buyingPowerAfter, currency)} width={rowWidth} />
   </TicketCard>;
@@ -58,7 +61,7 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
     <TicketReceiptRow label="Quantity" value={`${ticketNumber(draft?.quantity)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`} width={rowWidth} />
     <TicketReceiptRow label="Price" value={draft?.orderType === "MKT" ? "At market" : ticketMoney(px, currency)} width={rowWidth} />
     <TicketReceiptRow label="Fees / commission" value={m.preview ? `${ticketMoney(m.preview.fees, currency)} / ${ticketMoney(m.preview.commission, currency)}` : "At review"} width={rowWidth} />
-    <TicketReceiptRow label="Est. power after" value={ticketMoney(powerAfter, currency)} width={rowWidth} />
+    <TicketReceiptRow label="Broker power after" value={ticketMoney(powerAfter, currency)} width={rowWidth} />
     <TicketReceiptRow label="Position after" value={positionAfter === undefined ? "Not reported" : `${ticketNumber(positionAfter)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`} width={rowWidth} />
     <Box marginTop={1}><Notice variant="callout" tone="warning">{m.quoteData !== "realtime" ? "Delayed broker quote. Execution prices may differ." : "Final cost and availability are checked at review."}</Notice></Box>
   </TicketCard>;

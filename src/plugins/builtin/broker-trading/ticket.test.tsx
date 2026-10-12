@@ -7,12 +7,13 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { BrokerTradingController } from "./controller";
 import { editTicketDraft, newTicketDraft, quickTicketQuantity } from "./pane-model";
 import { BrokerTicketView, ticketQuoteAge, type TicketAction } from "./ticket";
+import { TicketOrderSummary } from "./ticket-parts";
 import { createDemoBroker, type DemoOrderOutcome } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
 const paneId = "broker-ticket:render-test";
-async function mount(mode: "simulation" | "live", typed = "", outcome: DemoOrderOutcome = "working", options: { quantity?: number; limitPrice?: number; tif?: string[]; editing?: boolean; initialFocus?: string; enabled?: boolean } = {}) {
-  const demo = createDemoBroker({ mode, outcome });
+async function mount(mode: "simulation" | "live", typed = "", outcome: DemoOrderOutcome = "working", options: { quantity?: number; limitPrice?: number; tif?: string[]; editing?: boolean; initialFocus?: string; enabled?: boolean; fresh?: boolean } = {}) {
+  const demo = createDemoBroker({ mode, outcome, realtime: options.fresh, quoteAgeMs: options.fresh ? 0 : undefined });
   const actions: TicketAction[] = [];
   if (options.tif) {
     const capabilities = demo.adapter.getTradingCapabilities!(demo.instance);
@@ -30,13 +31,14 @@ async function mount(mode: "simulation" | "live", typed = "", outcome: DemoOrder
     const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
     const [confirmation, setConfirmation] = useState(typed);
     return <BrokerTicketView width={90} height={29} focused model={{ brokerName: demo.adapter.name, symbol: "AAPL", accounts: demo.accounts(), accountId: demo.draft.accountId, draft: snapshot.draft,
-      quote: snapshot.quote?.quote, quoteData: "delayed", phase: snapshot.phase, preview: snapshot.review?.preview, warnings: snapshot.review?.warnings ?? [], result: snapshot.result, error: snapshot.error,
+      quote: snapshot.quote?.quote, quoteData: options.fresh ? "realtime" : "delayed", confirmOrders: snapshot.confirmOrders, phase: snapshot.phase, preview: snapshot.review?.preview, warnings: snapshot.review?.warnings ?? [], result: snapshot.result, error: snapshot.error,
       connected: true, tradingEnabled: options.enabled !== false, typedConfirmation: confirmation, capabilities: demo.adapter.getTradingCapabilities!(demo.instance), synthetic: true, position: 25, initialFocus: options.initialFocus }}
-      onAccountChange={() => {}} onEdit={(key, value) => { if (key === "typedConfirmation") setConfirmation(String(value)); else controller.setDraft(editTicketDraft(demo.adapter, demo.instance, controller.getSnapshot().draft!, key, value)); }}
+      onAccountChange={() => {}} onEdit={(key, value) => { if (key === "typedConfirmation") setConfirmation(String(value)); else if (key === "confirmOrders") controller.setConfirmOrders(value === true); else controller.setDraft(editTicketDraft(demo.adapter, demo.instance, controller.getSnapshot().draft!, key, value)); }}
       onAction={(action) => {
         actions.push(action);
         if (action === "confirm") void controller.confirm(confirmation).catch(() => {});
         if (action === "review") void controller.review();
+        if (action === "submit") void controller.submitFromEntry().catch(() => {});
         if (action === "back") controller.setDraft({ ...controller.getSnapshot().draft! });
         if (action === "refresh") void controller.refreshResult();
         if (action === "new") { controller.reset(); controller.setDraft(newTicketDraft(demo.adapter, demo.instance, demo.draft.contract, demo.draft.accountId)); }
@@ -48,6 +50,16 @@ async function mount(mode: "simulation" | "live", typed = "", outcome: DemoOrder
   await tui.waitForFrameToContain(options.editing ? "Order Details" : "Review Order");
   return { controller, demo, actions, mutations: () => demo.calls.filter((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method)) };
 }
+
+test("unreported buying power after is never invented by subtracting an order estimate", async () => {
+  const demo = createDemoBroker();
+  const model = { brokerName: demo.adapter.name, symbol: "AAPL", accounts: demo.accounts(), accountId: demo.draft.accountId, draft: demo.draft,
+    phase: "editing" as const, warnings: [], tradingEnabled: true, connected: true };
+  await tui.render(<TicketOrderSummary model={model} width={80} />);
+  await tui.waitForFrameToContain("Broker power after");
+  expect(tui.frame()).not.toContain("$21,235.00");
+  expect(tui.frame().split("\n").find((line) => line.includes("Broker power after"))).toContain("Not reported");
+});
 
 test("review opens on Edit, so a repeated Enter cannot submit the order", async () => {
   const f = await mount("simulation");
@@ -113,8 +125,8 @@ test("filled result focuses New order without submitting a second order", async 
 test("time in force keyboard control exposes all broker choices at 90 by 30", async () => {
   const f = await mount("simulation", "", "working", { tif: ["DAY", "GTC", "IOC", "FOK", "EXTENDED_HOURS", "AT_THE_OPENING", "AT_THE_CLOSE"] });
   await tui.emitKeypress({ name: "escape", sequence: "\u001b" }, { trackPropagation: true });
-  await tui.waitForFrameToContain("Time in force");
-  await tui.clickFrameText("Time in force");
+  await tui.waitForFrameToContain("TIF");
+  await tui.clickFrameText("TIF");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
   await tui.waitForFrameToContain("At the close");
   for (const label of ["Day", "Good til cancelled", "Immediate or cancel", "Fill or kill", "Extended hours", "At the opening", "At the close"]) expect(tui.frame()).toContain(label);
@@ -195,7 +207,7 @@ test("LIVE symbol typing is not interpreted as shortcuts and needs a separate fo
 
 test("Tab leaves both ends of the ticket and a command can start on Review without submitting", async () => {
   const f = await mount("simulation", "", "working", { editing: true, initialFocus: "review" });
-  expect(tui.frame()).toContain("> Review buy");
+  expect(tui.frame()).toContain("> Buy 10 AAPL");
   const end = await press("tab", "\t") as { propagationStopped: boolean };
   expect(end.propagationStopped).toBe(false);
   await press("a");
@@ -213,6 +225,44 @@ test("direct review key stays blocked when trading is disabled", async () => {
   await press("e");
   expect(f.actions).toEqual(["enable"]);
   expect(f.mutations()).toHaveLength(0);
+  f.controller.dispose();
+});
+
+test("one entry click confirms by default; SIM opt-in uses a fresh preview with no separate confirm click", async () => {
+  const f = await mount("simulation", "", "working", { editing: true, fresh: true });
+  await tui.clickFrameText("Buy 10 AAPL");
+  await tui.waitForFrameToContain("Review Order");
+  expect(f.mutations()).toHaveLength(0);
+  await press("escape", "\u001b");
+  await tui.waitForFrameToContain("Confirm orders");
+  await tui.clickFrameText("Confirm orders");
+  expect(f.controller.getSnapshot().confirmOrders).toBe(false);
+  await tui.clickFrameText("Sell");
+  await press("b");
+  expect(f.mutations()).toHaveLength(0);
+  await tui.clickFrameText("Buy 10 AAPL");
+  await tui.waitForFrameToContain("Working");
+  expect(f.mutations()).toHaveLength(1);
+  expect(f.demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(2);
+  f.controller.dispose();
+});
+
+test("numeric Up/Down and pointer wheel change only the targeted field and do not submit", async () => {
+  const f = await mount("simulation", "", "working", { editing: true });
+  await tui.clickFrameText("Limit price");
+  await press("up", "\u001b[A");
+  expect(f.controller.getSnapshot().draft?.limitPrice).toBe(336.51);
+  await press("down", "\u001b[B");
+  expect(f.controller.getSnapshot().draft?.limitPrice).toBe(336.5);
+  const rows = tui.frame().split("\n"), y = rows.findIndex((row) => row.includes("Limit price"));
+  const x = rows[y]!.indexOf("336.5") + 1;
+  await act(async () => { await tui.setup().mockMouse.scroll(x, y, "up"); await tui.setup().renderOnce(); });
+  expect(f.controller.getSnapshot().draft).toMatchObject({ quantity: 10, limitPrice: 336.51 });
+  await press("enter", "\r");
+  expect(f.mutations()).toHaveLength(0);
+  expect(f.demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(0);
+  await tui.emitKeypress({ name: "enter", sequence: "\r", repeated: true }, { trackPropagation: true });
+  expect(f.demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(0);
   f.controller.dispose();
 });
 

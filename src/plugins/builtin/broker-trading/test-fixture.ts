@@ -11,6 +11,7 @@ export interface DemoBrokerOptions {
   connected?: boolean;
   outcome?: DemoOrderOutcome;
   quoteAgeMs?: number;
+  realtime?: boolean;
   previewError?: string;
   now?: () => number;
   seedOrders?: boolean;
@@ -59,7 +60,7 @@ export function createDemoBroker(options: DemoBrokerOptions = {}) {
     currency: "USD", change: 1.20, changePercent: 0.36, previousClose: 335.22,
     volume: 34_600_000, lastUpdated: now() - (options.quoteAgeMs ?? 15 * 60_000),
     lastTradeTime: now() - (options.quoteAgeMs ?? 15 * 60_000), receivedAt: now(),
-    dataSource: "delayed", delivery: "poll", marketState: "REGULAR", sessionConfidence: "explicit",
+    dataSource: options.realtime ? "live" : "delayed", delivery: "poll", marketState: "REGULAR", sessionConfidence: "explicit",
   });
   const positions = (): BrokerPosition[] => accounts().map((value) => ({
     ticker: "AAPL", exchange: "NASDAQ", shares: 25, avgCost: 321.20, currency: "USD",
@@ -109,7 +110,7 @@ export function createDemoBroker(options: DemoBrokerOptions = {}) {
     async validate() { return connected; },
     async connect() { connected = true; },
     async disconnect() { connected = false; },
-    getStatus() { return { state: connected ? "connected" : "disconnected", quoteData: "delayed", updatedAt: now() }; },
+    getStatus() { return { state: connected ? "connected" : "disconnected", quoteData: options.realtime ? "realtime" : "delayed", updatedAt: now() }; },
     async listAccounts() { calls.push({ method: "listAccounts" }); return accounts(); },
     async importPositions() { calls.push({ method: "importPositions" }); return positions(); },
     async importPortfolioSnapshot() { return { accounts: accounts(), positions: positions() }; },
@@ -120,7 +121,7 @@ export function createDemoBroker(options: DemoBrokerOptions = {}) {
         disabledReason: profile.config.tradingEnabled ? undefined : "Trading is off for this profile.",
         orderTypes: ["MKT", "LMT", "STP", "STP LMT"], tif: ["DAY", "GTC"],
         extendedHours: true, fractionalQuantity: true, minQuantity: 0.001, quantityStep: 0.001,
-        priceDecimals: 2, modify: true, cancel: true, executionKind: "fills",
+        priceDecimals: 2, priceStep: 0.01, modify: true, cancel: true, executionKind: "fills",
       };
     },
     getTradingConfigUpdate(_profile, enabled) { return { tradingEnabled: enabled }; },

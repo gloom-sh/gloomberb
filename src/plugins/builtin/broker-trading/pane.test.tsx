@@ -34,9 +34,9 @@ test("a command prefills the resolved ticket once, focuses Review, and invalidat
   await act(async () => {
     await tui.render(<TestPaneFrame state={initial} paneId={paneId} pluginId="broker" runtime={runtime} width={90} height={30} footerKeys>{() => <AppContext value={store}><BrokerTradeTab width={90} height={29} focused onCapture={() => {}} /></AppContext>}</TestPaneFrame>);
   });
-  await tui.waitForFrameToContain("Review buy 1 AAPL");
+  await tui.waitForFrameToContain("Buy 1 AAPL");
   await act(async () => { await commands[0]!.execute({ symbol: "AAPL", quantity: "7", limitPrice: "150" }); });
-  await tui.waitForFrameToContain("Review buy 7 AAPL");
+  await tui.waitForFrameToContain("Buy 7 AAPL");
   expect(latest.paneState[paneId]?.brokerTradeIntent).toBeNull();
   expect(demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(0);
   await tui.emitKeypress({ name: "enter", sequence: "\r" });
@@ -44,7 +44,7 @@ test("a command prefills the resolved ticket once, focuses Review, and invalidat
   expect(demo.calls.filter((call) => call.method === "previewOrder").at(-1)?.request).toMatchObject({ action: "BUY", quantity: 7, limitPrice: 150, orderType: "LMT" });
 
   await act(async () => { await commands[1]!.execute({ symbol: "AAPL", quantity: "3" }); });
-  await tui.waitForFrameToContain("Review sell 3 AAPL");
+  await tui.waitForFrameToContain("Sell 3 AAPL");
   expect(latest.paneState[paneId]?.brokerTradeIntent).toBeNull();
   expect(demo.calls.filter((call) => call.method === "previewOrder")).toHaveLength(1);
   await tui.emitKeypress({ name: "enter", sequence: "\r" });
