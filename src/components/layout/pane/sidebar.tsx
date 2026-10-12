@@ -18,8 +18,8 @@ export {
 const PANE_SIDEBAR_MOUSE_HANDLED = "__gloomberbPaneSidebarHandled";
 /** Pixels of grab area around the divider; the divider itself stays 1px. */
 const DESKTOP_RESIZE_HANDLE_PADDING_PX = 3;
-/** Cells one press of `<` or `>` moves the divider. */
-const KEYBOARD_RESIZE_STEP = 2;
+/** Cells one press of `<` or `>` moves the divider: enough to see it move. */
+const KEYBOARD_RESIZE_STEP = 4;
 const NARROW_KEY = "<";
 const WIDEN_KEY = ">";
 
@@ -179,7 +179,8 @@ export function PaneSidebar({
   }, [resize, resolveDragWidth, stopLiveDrag]);
 
   // The keyboard moves the divider too: `<` and `>` while the pane is focused,
-  // listed in the pane menu. Each press is a finished resize, so it persists.
+  // shown in the footer and listed in the pane menu. Each press is a finished
+  // resize, so it persists.
   const resizeRegistrationId = `pane-sidebar-resize:${useId()}`;
   const canNarrow = !!resize && width > resize.min;
   const canWiden = !!resize && width < resize.max;
@@ -189,15 +190,13 @@ export function PaneSidebar({
     if (next !== width) (resize.onResizeEnd ?? resize.onResize)(next);
   };
   usePaneFooter(resizeRegistrationId, () => (resize ? {
-    keys: [
-      { id: "sidebar-narrow", key: NARROW_KEY, label: "", onPress: () => stepResize(-KEYBOARD_RESIZE_STEP), disabled: !canNarrow },
-      { id: "sidebar-widen", key: WIDEN_KEY, label: "", onPress: () => stepResize(KEYBOARD_RESIZE_STEP), disabled: !canWiden },
+    // After the pane's own actions, which register at order 0.
+    order: 1,
+    hints: [
+      { id: "sidebar-narrow", key: NARROW_KEY, label: " sidebar", title: t("Narrow Sidebar"), onPress: () => stepResize(-KEYBOARD_RESIZE_STEP), disabled: !canNarrow },
+      { id: "sidebar-widen", key: WIDEN_KEY, label: "", title: t("Widen Sidebar"), onPress: () => stepResize(KEYBOARD_RESIZE_STEP), disabled: !canWiden },
     ],
-    menu: [
-      ...(canNarrow ? [{ id: "sidebar-narrow", label: t("Narrow Sidebar"), accelerator: NARROW_KEY, onSelect: () => stepResize(-KEYBOARD_RESIZE_STEP) }] : []),
-      ...(canWiden ? [{ id: "sidebar-widen", label: t("Widen Sidebar"), accelerator: WIDEN_KEY, onSelect: () => stepResize(KEYBOARD_RESIZE_STEP) }] : []),
-    ],
-  } : null), [!!resize, canNarrow, canWiden, width]);
+  } : null), [!!resize, canNarrow, canWiden, resize?.min, resize?.max, width]);
 
   const borderWidth = nativePaneChrome ? 0 : width > 1 ? 1 : 0;
   const listWidth = Math.max(width - borderWidth, 1);

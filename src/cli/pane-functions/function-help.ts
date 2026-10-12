@@ -858,7 +858,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   MAP: {
     summary: "Trading venues around the world with open or closed status, local time and time to the next session change. Layers add ships, chokepoints, ports, pipelines, fields, LNG terminals and airports to the same map, each with a table of what is in view and the companies it links to.",
     usage: ["MAP", "MAP ships", "MAP energy", "MAP air", "MAP ports"],
-    keys: [SEARCH, OPEN, key("d", "es"), key("+", " zoom in")],
+    keys: [SEARCH, key("d", "es"), key("m", " pan map"), key("+", " zoom in")],
     data: same("Venues live from exchange calendars; ships live, chokepoints and ports daily, the rest reference data"),
     bloomberg: [],
   },

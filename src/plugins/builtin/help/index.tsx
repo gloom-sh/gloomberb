@@ -187,6 +187,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
           ? [entry("function-help", functionHelpBadges, "Open the focused pane's help card; Enter reads its docs.")]
           : []),
         entry("search", ["/"], "Search in the focused pane."),
+        entry("sidebar", ["<", ">"], "Narrow or widen the list beside the content, as in MAP and ASKG."),
         entry("warnings", ["!"], "Open the focused pane's data warnings."),
         entry("notification", [...actionBadges("notification-action"), ...actionBadges("notification-dismiss")], "Run or dismiss the newest notification."),
       ],
@@ -222,6 +223,14 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("colour", ["c", "Backspace"], "Cycle the drawing colour, or delete the picked drawing (the last one while a drawing tool is picked)."),
         entry("zoom-pointer", ["Ctrl+Scroll"], "Zoom around the pointer."),
         entry("zoom-keys", ["+/-", "0"], "Zoom the focused chart in or out, or reset it."),
+      ],
+    },
+    {
+      label: "Map",
+      items: [
+        entry("map-pan", ["m", "Arrows"], "Give the arrow keys to the map and pan it; Shift pans further, Esc gives them back to the list."),
+        entry("map-zoom", ["+/-", "0"], "Zoom the map in or out, or reset it."),
+        entry("map-pointer", ["Scroll", "Pinch"], "Zoom the map around the pointer; drag to pan, double-click to zoom in."),
       ],
     },
     {

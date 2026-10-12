@@ -13,18 +13,21 @@ import {
   closestWorldVenueCluster,
   clusterWorldVenues,
   DEFAULT_WORLD_MAP_VIEWPORT,
+  MAX_LATITUDE,
   MAX_WORLD_MAP_ZOOM,
+  MIN_LATITUDE,
   panWorldMapViewport,
   projectWorldPoint,
   savedWorldMapViewport,
   unprojectWorldPoint,
+  zoomForDegreeScale,
   zoomWorldMapViewport,
   type WorldMapPoint,
   type WorldMapViewport,
   type WorldVenueCluster,
 } from "./model";
 import { WORLD_OUTLINES } from "./world-outlines";
-import { drawGeoBitmap, hitTestGeo, rasterGeoCells, type GeoHit, type GeoMapOverlay } from "./geo-draw";
+import { cellLine, drawGeoBitmap, hitTestGeo, rasterGeoCells, type GeoHit, type GeoMapOverlay } from "./geo-draw";
 import { GeoSvgLayers, MapIconSwatch, toneColor, type MapMatrix, type SymbolTones } from "./geo-svg";
 import { BasemapLayer, type BasemapPalette } from "./basemap-layer";
 import { loadCountryLabels, type CountryLabel, type GeoBox } from "./basemap";
@@ -61,6 +64,36 @@ interface WorldVenueMapProps {
   savedViewport?: unknown;
   /** The view once it has rested for a moment, for the pane to keep. */
   onViewportSettled?: (viewport: WorldMapViewport) => void;
+  /**
+   * Whether the arrow keys pan this map or move the pane's list. The pane
+   * owns it because the list gives its keys up while the map has them; the map
+   * asks for them (a click on it) and hands them back (Esc). Absent, the map
+   * has no keyboard panning.
+   */
+  keyboard?: { active: boolean; onActiveChange: (active: boolean) => void };
+}
+
+/**
+ * Who has the arrow keys in a pane with a list beside its map: the list (they
+ * move its cursor) or the map (they pan it). The list has them until the map is
+ * asked for them, and the search field has them while it is open.
+ */
+export function useMapKeyboard(searchFocused: boolean): {
+  /** Whether the map has the arrows now; the list gives its keys up while it does. */
+  active: boolean;
+  /** For the map. */
+  keyboard: NonNullable<WorldVenueMapProps["keyboard"]>;
+  /** The list asks for its keys back, on a click. */
+  release: () => void;
+} {
+  const [held, setHeld] = useState(false);
+  useEffect(() => {
+    if (searchFocused) setHeld(false);
+  }, [searchFocused]);
+  const active = held && !searchFocused;
+  const keyboard = useMemo(() => ({ active, onActiveChange: setHeld }), [active]);
+  const release = useCallback(() => setHeld(false), []);
+  return { active, keyboard, release };
 }
 
 function clusterVenue(cluster: WorldVenueCluster, selectedMic: string | null): CloudWorldVenuePayload {
@@ -84,7 +117,7 @@ function drawWorldOutlines(
     for (let index = 1; index < outline.length; index += 1) {
       const previous = outline[index - 1]!;
       const current = outline[index]!;
-      if (previous[1] < -60 || current[1] < -60) continue;
+      if (previous[1] < MIN_LATITUDE || current[1] < MIN_LATITUDE) continue;
       const from = projectWorldPoint(previous[0], previous[1], width, height);
       const to = projectWorldPoint(current[0], current[1], width, height);
       if (Math.abs(to.x - from.x) > width / 2) continue;
@@ -192,11 +225,24 @@ function renderAsciiMap(
 ): string[] {
   const grid = Array.from({ length: height }, () => Array.from({ length: width }, () => " "));
   for (const outline of WORLD_OUTLINES) {
+    let previous: readonly [number, number] | null = null;
     for (const coordinate of outline) {
+      // The map stops at its southern edge, and land above its northern one would lie along it.
+      if (coordinate[1] < MIN_LATITUDE) {
+        previous = null;
+        continue;
+      }
       const point = projectWorldPoint(coordinate[0], coordinate[1], width, height, cellAspect);
       const x = Math.round(point.x);
       const y = Math.round(point.y);
       if (grid[y]?.[x] === " ") grid[y]![x] = ".";
+      // Joined up, so the coast reads as a line even where the projection spreads its points apart;
+      // a run across the date line is no coast.
+      if (previous && Math.abs(coordinate[0] - previous[0]) <= 180 && (coordinate[1] <= MAX_LATITUDE || previous[1] <= MAX_LATITUDE)) {
+        const from = projectWorldPoint(previous[0], previous[1], width, height, cellAspect);
+        cellLine(grid, { x: Math.round(from.x), y: Math.round(from.y) }, { x, y }, ".");
+      }
+      previous = coordinate;
     }
   }
   const project = (longitude: number, latitude: number) => projectWorldPoint(longitude, latitude, width, height, cellAspect);
@@ -311,6 +357,13 @@ function TerminalWorldVenueMap(props: WorldVenueMapProps) {
 /** Desktop rows are about twice as tall as they are wide; the measured surface replaces this once it is laid out. */
 const DESKTOP_MAP_ASPECT = 2.12;
 const MAP_PAN_THRESHOLD_PX = 4;
+/**
+ * The closest the map draws: 6,000 px to a degree is a harbor about 15 km
+ * across in a pane 900 px wide, where a ship is some 16 px long. Closer in,
+ * the browser's painting of the SVG layers stalls for half a second at a time
+ * (measured from about 9,000).
+ */
+const MAX_MAP_PX_PER_DEGREE = 6000;
 const MAP_CLICK_HIT_PX = 14;
 const MAP_DOUBLE_CLICK_ZOOM = 1.8;
 /** Share of the plot a selected venue may sit inside before the map pans to it. */
@@ -385,10 +438,33 @@ function CountryNames({ labels, project, unitPx, color, halo }: {
   );
 }
 
+/** A trackpad pinch arrives as small wheel steps with Ctrl held, and needs a firmer factor than a scroll. */
+const PINCH_WHEEL_RATE = 0.01;
+const WHEEL_RATE = 0.002;
+
 function wheelZoomFactor(event: WheelEvent): number {
   const delta = event.deltaMode === 1 ? event.deltaY * 16 : event.deltaY;
-  return Math.exp(-delta * 0.002);
+  return Math.exp(-delta * (event.ctrlKey ? PINCH_WHEEL_RATE : WHEEL_RATE));
 }
+
+/** Safari and the desktop app's web view report a trackpad pinch as gesture events, with the scale since it began. */
+interface PinchGestureEvent extends Event {
+  scale: number;
+  clientX?: number;
+  clientY?: number;
+}
+
+/** The arrow keys, and which way each one moves the view. */
+const ARROW_KEYS = [
+  { name: "Left", columns: -1, rows: 0 },
+  { name: "Right", columns: 1, rows: 0 },
+  { name: "Up", columns: 0, rows: -1 },
+  { name: "Down", columns: 0, rows: 1 },
+] as const;
+
+/** Share of the view one arrow press pans, and one with Shift held. */
+const PAN_STEP = 0.125;
+const PAN_STEP_LARGE = 0.5;
 
 function clientToMapPoint(
   event: { clientX: number; clientY: number },
@@ -461,13 +537,19 @@ function hoverLabel(hit: GeoHit, overlay: GeoMapOverlay): { title: string; detai
 
 function DesktopWorldVenueMap(props: WorldVenueMapProps) {
   const colors = useThemeColors();
-  const maxZoom = props.maxZoom ?? MAX_WORLD_MAP_ZOOM;
   const surfaceRef = useRef<HTMLDivElement | null>(null);
   const surfaceSize = useElementSize(surfaceRef);
+  const sized = mapHasArea(props.width, props.height);
+  // The view box takes the surface's own proportions, so the drawing fills it
+  // and a pointer maps to the same place it is drawn.
+  const plotHeight = surfaceSize ? (props.width * surfaceSize.height) / surfaceSize.width : props.height * DESKTOP_MAP_ASPECT;
+  const unitPx = surfaceSize ? surfaceSize.width / Math.max(props.width, 1) : 8;
+  // As close as the map goes: the most the pane may zoom, and no more than
+  // MAX_MAP_PX_PER_DEGREE pixels to a degree wherever the pane's size puts that.
+  const maxZoom = Math.min(props.maxZoom ?? MAX_WORLD_MAP_ZOOM, Math.max(1, zoomForDegreeScale(MAX_MAP_PX_PER_DEGREE / unitPx, props.width, plotHeight)));
   const [viewport, setViewport] = useState<WorldMapViewport>(
     () => savedWorldMapViewport(props.savedViewport, maxZoom) ?? DEFAULT_WORLD_MAP_VIEWPORT,
   );
-  const sized = mapHasArea(props.width, props.height);
   const viewportRef = useRef(viewport);
   viewportRef.current = viewport;
   const [dragging, setDragging] = useState(false);
@@ -481,10 +563,6 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     originY: number;
     moved: boolean;
   } | null>(null);
-  // The view box takes the surface's own proportions, so the drawing fills it
-  // and a pointer maps to the same place it is drawn.
-  const plotHeight = surfaceSize ? (props.width * surfaceSize.height) / surfaceSize.width : props.height * DESKTOP_MAP_ASPECT;
-  const unitPx = surfaceSize ? surfaceSize.width / Math.max(props.width, 1) : 8;
   const zoomed = viewport.zoom > 1;
   const clusters = useMemo(
     () => clusterWorldVenues(props.venues, props.width, plotHeight, 1, viewport),
@@ -649,18 +727,44 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
     });
   }, [props.selectedMic]);
 
+  // Arrow keys step the view by a share of what it shows, so a step is the same
+  // distance on screen however far in the map is; Shift takes bigger ones.
+  const panBy = useCallback((columns: number, rows: number, large: boolean) => {
+    const share = large ? PAN_STEP_LARGE : PAN_STEP;
+    // A key moves the view, so the map moves the other way.
+    setViewport((current) => panWorldMapViewport(current, props.width, plotHeight, -columns * props.width * share, -rows * plotHeight * share, 1, maxZoom));
+  }, [maxZoom, plotHeight, props.width]);
+
+  const keyboard = props.keyboard;
+  const panKeys = keyboard?.active === true;
+  const setPanKeys = keyboard?.onActiveChange;
   const atMaxZoom = viewport.zoom >= maxZoom;
   usePaneFooter("world-venue-map:zoom", () => ({
     hints: [
+      // One key hands the arrows to the map, Esc hands them back to the list.
+      ...(setPanKeys ? (panKeys
+        // Only says which keys pan; the keys themselves are bound below.
+        ? [
+          { id: "pan", key: "←↑↓→", label: " pan", title: "Pan Map" },
+          { id: "pan-leave", key: "Esc", label: " list", title: "Back to List", onPress: () => setPanKeys(false) },
+        ]
+        : [{ id: "pan-enter", key: "m", label: " pan map", title: "Pan Map", onPress: () => setPanKeys(true) }]) : []),
       { id: "zoom-in", key: "+", label: " zoom in", title: "Zoom In", onPress: () => zoomBy(MAP_DOUBLE_CLICK_ZOOM), disabled: atMaxZoom },
       ...(zoomed ? [
         { id: "zoom-out", key: "-", label: " zoom out", title: "Zoom Out", onPress: () => zoomBy(1 / MAP_DOUBLE_CLICK_ZOOM) },
         { id: "zoom-reset", key: "0", label: " reset zoom", title: "Reset Zoom", onPress: () => setViewport(DEFAULT_WORLD_MAP_VIEWPORT) },
       ] : []),
     ],
-    // "=" is "+" without Shift, as it is for charts.
-    keys: [{ id: "zoom-in-equals", key: "=", label: "", onPress: () => zoomBy(MAP_DOUBLE_CLICK_ZOOM) }],
-  }), [atMaxZoom, zoomBy, zoomed]);
+    keys: [
+      // "=" is "+" without Shift, as it is for charts.
+      { id: "zoom-in-equals", key: "=", label: "", onPress: () => zoomBy(MAP_DOUBLE_CLICK_ZOOM) },
+      ...(panKeys ? ARROW_KEYS.flatMap(({ name, columns, rows }) => [
+        { id: `pan-${name}`, key: name, label: "", onPress: () => panBy(columns, rows, false) },
+        { id: `pan-${name}-large`, key: `Shift+${name}`, label: "", onPress: () => panBy(columns, rows, true) },
+      ]) : []),
+      ...(panKeys && setPanKeys ? [{ id: "pan-leave-m", key: "m", label: "", onPress: () => setPanKeys(false) }] : []),
+    ],
+  }), [atMaxZoom, panBy, panKeys, setPanKeys, zoomBy, zoomed]);
 
   useEffect(() => {
     const element = surfaceRef.current;
@@ -672,8 +776,33 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
       const factor = wheelZoomFactor(event);
       setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, factor, 1, maxZoom));
     };
+    // The web view on a Mac pinches with gesture events, and zooms the page itself unless they are cancelled.
+    let gestureScale = 1;
+    const onGestureStart = (event: Event) => {
+      event.preventDefault();
+      gestureScale = (event as PinchGestureEvent).scale || 1;
+    };
+    const onGestureChange = (event: Event) => {
+      event.preventDefault();
+      const gesture = event as PinchGestureEvent;
+      const factor = gestureScale > 0 ? gesture.scale / gestureScale : 1;
+      gestureScale = gesture.scale;
+      const point = typeof gesture.clientX === "number" && typeof gesture.clientY === "number"
+        ? clientToMapPoint({ clientX: gesture.clientX, clientY: gesture.clientY }, element, props.width, plotHeight)
+        : { x: props.width / 2, y: plotHeight / 2 };
+      if (Number.isFinite(factor) && factor > 0) setViewport((current) => zoomWorldMapViewport(current, props.width, plotHeight, point, factor, 1, maxZoom));
+    };
+    const onGestureEnd = (event: Event) => event.preventDefault();
     element.addEventListener("wheel", onWheel, { passive: false });
-    return () => element.removeEventListener("wheel", onWheel);
+    element.addEventListener("gesturestart", onGestureStart);
+    element.addEventListener("gesturechange", onGestureChange);
+    element.addEventListener("gestureend", onGestureEnd);
+    return () => {
+      element.removeEventListener("wheel", onWheel);
+      element.removeEventListener("gesturestart", onGestureStart);
+      element.removeEventListener("gesturechange", onGestureChange);
+      element.removeEventListener("gestureend", onGestureEnd);
+    };
   }, [maxZoom, plotHeight, props.width]);
 
   useEffect(() => () => {
@@ -718,6 +847,8 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
         onPointerDown={(event) => {
           if (event.button !== 0) return;
           event.stopPropagation();
+          // Clicking the map is asking for it: the arrow keys pan it from here.
+          setPanKeys?.(true);
           dragRef.current = {
             pointerId: event.pointerId,
             lastX: event.clientX,

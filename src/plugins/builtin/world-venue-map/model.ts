@@ -18,15 +18,44 @@ export interface WorldMapViewport {
   centerLatitude: number;
 }
 
-const MAX_LATITUDE = 85;
-const MIN_LATITUDE = -60;
+/** The map's northern and southern edges; the land data is cut at the south one. */
+export const MAX_LATITUDE = 80;
+export const MIN_LATITUDE = -60;
 const LONGITUDE_SPAN = 360;
-export const MAX_WORLD_MAP_ZOOM = 18;
+/** The most the map zooms in a narrow pane: 4,096 times the world. A wider pane stops sooner, at a pixel density (see map.tsx). */
+export const MAX_WORLD_MAP_ZOOM = 4096;
+
+/** Web Mercator stops here, where the projection runs to infinity. */
+const MERCATOR_LIMIT = 85.0511287798;
+
+/**
+ * Where a latitude falls on the map's vertical axis: Mercator, in degrees of
+ * longitude at the equator, so one unit north is one unit east wherever the
+ * point is. That keeps a country's proportions at every latitude, as on any
+ * web map. Plain latitude would stretch everything sideways by 1/cos(latitude):
+ * France drew about 1.4 times wider than it is tall.
+ */
+export function mercatorY(latitude: number): number {
+  const radians = (clamp(latitude, -MERCATOR_LIMIT, MERCATOR_LIMIT) * Math.PI) / 180;
+  return (Math.log(Math.tan(Math.PI / 4 + radians / 2)) * 180) / Math.PI;
+}
+
+/** The latitude at a Mercator `y`, the inverse of {@link mercatorY}. */
+function latitudeAtMercatorY(y: number): number {
+  return (Math.atan(Math.exp((y * Math.PI) / 180)) * 360) / Math.PI - 90;
+}
+
+const MERCATOR_TOP = mercatorY(MAX_LATITUDE);
+const MERCATOR_BOTTOM = mercatorY(MIN_LATITUDE);
+const MERCATOR_SPAN = MERCATOR_TOP - MERCATOR_BOTTOM;
+
+/** The whole map's height over its width, for a pane that sizes itself to the world. */
+export const WORLD_MAP_HEIGHT_RATIO = MERCATOR_SPAN / LONGITUDE_SPAN;
 
 export const DEFAULT_WORLD_MAP_VIEWPORT: WorldMapViewport = {
   zoom: 1,
   centerLongitude: 0,
-  centerLatitude: (MAX_LATITUDE + MIN_LATITUDE) / 2,
+  centerLatitude: latitudeAtMercatorY((MERCATOR_TOP + MERCATOR_BOTTOM) / 2),
 };
 
 function mapExtent(width: number, height: number, yUnitAspect = 1) {
@@ -34,13 +63,21 @@ function mapExtent(width: number, height: number, yUnitAspect = 1) {
   const availableHeight = Math.max(height - 1, 0);
   const unitAspect = Math.max(yUnitAspect, Number.EPSILON);
   const effectiveHeight = availableHeight * unitAspect;
-  const latitudeSpan = MAX_LATITUDE - MIN_LATITUDE;
-  return { availableWidth, availableHeight, unitAspect, effectiveHeight, latitudeSpan };
+  return { availableWidth, availableHeight, unitAspect, effectiveHeight, mercatorSpan: MERCATOR_SPAN };
 }
 
 function fittedWorldMapScale(width: number, height: number, yUnitAspect = 1): number {
-  const { availableWidth, effectiveHeight, latitudeSpan } = mapExtent(width, height, yUnitAspect);
-  return Math.min(availableWidth / LONGITUDE_SPAN, effectiveHeight / latitudeSpan);
+  const { availableWidth, effectiveHeight, mercatorSpan } = mapExtent(width, height, yUnitAspect);
+  return Math.min(availableWidth / LONGITUDE_SPAN, effectiveHeight / mercatorSpan);
+}
+
+/**
+ * The zoom at which the map draws `unitsPerDegree` view units to each degree of
+ * longitude, so a ceiling set in screen pixels follows the size of the pane.
+ */
+export function zoomForDegreeScale(unitsPerDegree: number, width: number, height: number, yUnitAspect = 1): number {
+  const fit = fittedWorldMapScale(width, height, yUnitAspect);
+  return fit > 0 ? unitsPerDegree / fit : Number.POSITIVE_INFINITY;
 }
 
 function worldMapScale(
@@ -62,11 +99,11 @@ export function projectWorldPoint(
 ): WorldMapPoint {
   const { availableWidth, unitAspect, effectiveHeight } = mapExtent(width, height, yUnitAspect);
   const scale = worldMapScale(width, height, yUnitAspect, viewport);
-  const clampedLatitude = clamp(latitude, MIN_LATITUDE, MAX_LATITUDE);
+  const northing = mercatorY(clamp(latitude, MIN_LATITUDE, MAX_LATITUDE)) - mercatorY(viewport.centerLatitude);
 
   return {
     x: availableWidth / 2 + (longitude - viewport.centerLongitude) * scale,
-    y: (effectiveHeight / 2 - (clampedLatitude - viewport.centerLatitude) * scale) / unitAspect,
+    y: (effectiveHeight / 2 - northing * scale) / unitAspect,
   };
 }
 
@@ -82,7 +119,7 @@ export function unprojectWorldPoint(
   const scale = worldMapScale(width, height, yUnitAspect, viewport);
   return {
     longitude: viewport.centerLongitude + (x - availableWidth / 2) / scale,
-    latitude: viewport.centerLatitude - (y * unitAspect - effectiveHeight / 2) / scale,
+    latitude: latitudeAtMercatorY(mercatorY(viewport.centerLatitude) - (y * unitAspect - effectiveHeight / 2) / scale),
   };
 }
 
@@ -96,25 +133,25 @@ export function clampWorldMapViewport(
   const zoom = clamp(viewport.zoom, 1, maxZoom);
   if (zoom <= 1) return DEFAULT_WORLD_MAP_VIEWPORT;
 
-  const { availableWidth, effectiveHeight, latitudeSpan } = mapExtent(width, height, yUnitAspect);
+  const { availableWidth, effectiveHeight, mercatorSpan } = mapExtent(width, height, yUnitAspect);
   // A plot with no area yet (a pane mid-layout) says nothing about what fits:
   // keep the centre rather than resetting it to the middle of the world.
   if (availableWidth <= 0 || effectiveHeight <= 0) return { ...viewport, zoom };
   const scale = fittedWorldMapScale(width, height, yUnitAspect) * zoom;
   const halfLongitude = availableWidth / (2 * scale);
-  const halfLatitude = effectiveHeight / (2 * scale);
+  const halfNorthing = effectiveHeight / (2 * scale);
   const minLongitude = -180 + halfLongitude;
   const maxLongitude = 180 - halfLongitude;
-  const minLatitude = MIN_LATITUDE + halfLatitude;
-  const maxLatitude = MAX_LATITUDE - halfLatitude;
+  const minNorthing = MERCATOR_BOTTOM + halfNorthing;
+  const maxNorthing = MERCATOR_TOP - halfNorthing;
 
   return {
     zoom,
     centerLongitude: minLongitude < maxLongitude
       ? clamp(viewport.centerLongitude, minLongitude, maxLongitude)
       : DEFAULT_WORLD_MAP_VIEWPORT.centerLongitude,
-    centerLatitude: halfLatitude < latitudeSpan / 2
-      ? clamp(viewport.centerLatitude, minLatitude, maxLatitude)
+    centerLatitude: halfNorthing < mercatorSpan / 2
+      ? latitudeAtMercatorY(clamp(mercatorY(viewport.centerLatitude), minNorthing, maxNorthing))
       : DEFAULT_WORLD_MAP_VIEWPORT.centerLatitude,
   };
 }
@@ -150,7 +187,7 @@ export function zoomWorldMapViewport(
   return clampWorldMapViewport({
     zoom: nextZoom,
     centerLongitude: geographic.longitude - (point.x - availableWidth / 2) / scale,
-    centerLatitude: geographic.latitude + (point.y * unitAspect - effectiveHeight / 2) / scale,
+    centerLatitude: latitudeAtMercatorY(mercatorY(geographic.latitude) + (point.y * unitAspect - effectiveHeight / 2) / scale),
   }, width, height, yUnitAspect, maxZoom);
 }
 
@@ -169,7 +206,7 @@ export function panWorldMapViewport(
   return clampWorldMapViewport({
     zoom: viewport.zoom,
     centerLongitude: viewport.centerLongitude - deltaX / scale,
-    centerLatitude: viewport.centerLatitude + (deltaY * unitAspect) / scale,
+    centerLatitude: latitudeAtMercatorY(mercatorY(viewport.centerLatitude) + (deltaY * unitAspect) / scale),
   }, width, height, yUnitAspect, maxZoom);
 }
 

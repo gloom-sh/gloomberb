@@ -20,11 +20,11 @@ import {
   type PointStyle,
   type SymbolTone,
 } from "./map-symbols";
-import type { WorldMapPoint } from "./model";
+import { mercatorY, type WorldMapPoint } from "./model";
 
 type Project = (longitude: number, latitude: number) => WorldMapPoint;
 
-/** Degrees to view units: x = a * longitude + bx, y = by - a * latitude. */
+/** Map units to view units: x = a * longitude + bx, y = by - a * mercatorY(latitude). */
 export interface MapMatrix {
   a: number;
   bx: number;
@@ -59,7 +59,7 @@ function visibleFeatureCount(features: readonly GeoFeature[], view: GeoBox): num
   return count;
 }
 
-/** A path through coordinate runs in degrees, broken where a run crosses the date line. */
+/** A path through coordinate runs in map units, broken where a run crosses the date line. */
 function degreePath(lines: readonly (readonly (readonly [number, number])[])[], close: boolean): string {
   let path = "";
   for (const line of lines) {
@@ -68,7 +68,7 @@ function degreePath(lines: readonly (readonly (readonly [number, number])[])[], 
     for (const [longitude, latitude] of line) {
       if (previous !== null && Math.abs(longitude - previous) > 180) drawing = false;
       previous = longitude;
-      path += `${drawing ? "L" : "M"}${longitude} ${-latitude}`;
+      path += `${drawing ? "L" : "M"}${longitude} ${-mercatorY(latitude)}`;
       drawing = true;
     }
     if (close && drawing) path += "Z";
@@ -82,7 +82,7 @@ function turn(symbol: MapSymbolId, rotation: number | null): string {
 }
 
 function iconTransform(symbol: MapSymbolId, longitude: number, latitude: number, rotation: number | null, size: number): string {
-  return `translate(${longitude}px, ${-latitude}px)${turn(symbol, rotation)} scale(var(${ICON_SCALE_VAR})) scale(${(size / 16).toFixed(4)})`;
+  return `translate(${longitude}px, ${-mercatorY(latitude)}px)${turn(symbol, rotation)} scale(var(${ICON_SCALE_VAR})) scale(${(size / 16).toFixed(4)})`;
 }
 
 interface IconProps {
@@ -135,7 +135,7 @@ const PointLayer = memo(function PointLayer({ layer, style, density, tones, back
   if (style === "dots") {
     // One path per colour of zero-length runs: round caps draw every dot the same size at any zoom.
     const byColor = new Map<string, string>();
-    for (const item of drawn) byColor.set(item.color, `${byColor.get(item.color) ?? ""}M${item.longitude} ${-item.latitude}h0`);
+    for (const item of drawn) byColor.set(item.color, `${byColor.get(item.color) ?? ""}M${item.longitude} ${-mercatorY(item.latitude)}h0`);
     return (
       <g data-geo-layer={layer.id} data-geo-style="dots">
         {[...byColor].map(([color, d]) => (

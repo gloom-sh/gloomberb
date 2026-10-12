@@ -3,6 +3,7 @@ import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { WORLD_MAP_DATA_SPECIFIER } from "../../../renderers/dom/build-assets";
 import { basemapLevel, basemapPaths, decodeParts, DETAIL_MIN_PX_PER_DEGREE, tilesInView, type DetailTile } from "./basemap";
+import { mercatorY } from "./model";
 import { DETAIL_TILES } from "./natural-earth/index.chunk";
 import * as world from "./natural-earth/world-50m.chunk";
 
@@ -50,8 +51,11 @@ describe("basemap", () => {
     // Land filling the tile's west half: its west, north and south sides are cuts, only the east side is coast.
     const chunk = { STEP: 1, LAND: encode([[[0, 0], [5, 0], [5, 10], [0, 10]]]), BORDERS: "" };
     const paths = basemapPaths(chunk, [0, 0, 10, 10]);
-    expect(paths.land).toBe("M0 0L5 0L5 -10L0 -10Z");
-    expect(paths.coast).toBe("M5 0L5 -10");
+    // Paths run south in Mercator degrees, so ten degrees of latitude is a little more than ten units.
+    const north = String(Math.round(-mercatorY(10) * 1e5) / 1e5);
+    expect(north).toBe("-10.05116");
+    expect(paths.land).toBe(`M0 0L5 0L5 ${north}L0 ${north}Z`);
+    expect(paths.coast).toBe(`M5 0L5 ${north}`);
   });
 
   test("detail loads only the tiles under the view, with a margin for the next pan", () => {
