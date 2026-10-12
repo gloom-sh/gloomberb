@@ -227,6 +227,19 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
+    // The selection the message used to get was re-revealed on every new message.
+    name: "chat list: a new message does not pull a reader who scrolled on from a notification message back to it",
+    scenario: `chat&target=${OPENED_ON}`,
+    async run(cdp) {
+      await openOnTarget(cdp);
+      await wheel(cdp, await listCentre(cdp), 380);
+      const before = await anchor(cdp);
+      await evaluate(cdp, "window.__chatFake.deliver('Something new while reading elsewhere.')");
+      await frames(cdp, 5);
+      expectPlace(before, await anchor(cdp), "a new message");
+    },
+  },
+  {
     name: "chat list: a notification message at the bottom still follows new messages",
     scenario: "chat&target=m89",
     async run(cdp) {
