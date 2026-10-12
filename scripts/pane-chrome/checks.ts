@@ -32,6 +32,25 @@ interface Step {
   run(cdp: Cdp): Promise<void>;
 }
 
+/**
+ * `PANE_CHROME_NOW=2026-07-08T14:30:00Z` runs every page with its clock set to
+ * that instant (still ticking), to rerun a check as it would run at another
+ * time of day. Only the page's `Date` moves: timers and frames keep real time.
+ */
+function pageClock(now: string | undefined): string {
+  if (!now) return "";
+  const instant = Date.parse(now);
+  if (Number.isNaN(instant)) throw new Error(`PANE_CHROME_NOW is not a date: ${now}`);
+  return `
+(() => {
+  const offset = ${instant} - Date.now();
+  window.Date = new Proxy(Date, {
+    construct: (target, args, newTarget) => Reflect.construct(target, args.length ? args : [target.now() + offset], newTarget),
+    get: (target, key) => (key === "now" ? () => target.now() + offset : Reflect.get(target, key)),
+  });
+})();`;
+}
+
 /** Page helpers, installed in every document before the app runs. */
 const PAGE_HELPERS = `
 // React commits, through the DevTools hook React looks for when it loads.
@@ -1304,7 +1323,7 @@ async function main(): Promise<void> {
   const failures: Array<{ name: string; message: string }> = [];
   const passes = new Map<string, number>();
   try {
-    await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_HELPERS });
+    await cdp.send("Page.addScriptToEvaluateOnNewDocument", { source: PAGE_HELPERS + pageClock(process.env.PANE_CHROME_NOW) });
     for (let round = 1; round <= repeat; round += 1) {
       for (const step of selected) {
         const started = performance.now();

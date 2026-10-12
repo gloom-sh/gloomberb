@@ -32,6 +32,8 @@ export interface ResultItem {
   right?: string;
   /** Provider type retained for symbol/alias identity checks. */
   instrumentType?: string;
+  /** The other spellings the row answers to (IBOV for ^BVSP), for the same checks. */
+  searchAliases?: string[];
   contractKey?: string;
   instrument?: BrokerContractRef | null;
   listing?: TickerListingRef;
