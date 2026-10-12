@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getLoadablePlugins } from "../plugins/catalog";
+import { createPaneDiscoveryContext } from "../cli/pane-functions/discovery";
 import { createTestTicker } from "../test-support/ticker";
 import { createDefaultConfig, type PaneInstanceConfig } from "../types/config";
 import type { PaneDef, PanePersonalDataContext } from "../types/plugin";
@@ -31,27 +32,30 @@ function personalData(paneType: string, overrides: Partial<PanePersonalDataConte
   return resolvePanePersonalData(paneDefs.get(paneType), context(paneType, overrides));
 }
 
-const held = new Map([["NVDA", createTestTicker("NVDA", "NVIDIA", { positions: [{ portfolio: "main", shares: 120, avgCost: 98.4, broker: "manual" }] })]]);
+const held = new Map([["NVDA", createTestTicker("NVDA", "NVIDIA", { portfolios: ["main"], positions: [{ portfolio: "main", shares: 120, avgCost: 98.4, broker: "manual" }] })]]);
 const followed = new Map([["NVDA", createTestTicker("NVDA", "NVIDIA", { watchlists: ["watchlist"] })]]);
 
 describe("which panes ask before their picture is posted to chat", () => {
-  // The catalogue's personal data, so a new pane that shows it is a decision here, not an oversight.
-  test("only panes that can show the person's own data declare it", () => {
-    const declared = [...paneDefs.values()].filter((pane) => pane.personalData).map((pane) => pane.id).sort();
-    expect(declared).toEqual([
-      "account-management",
-      "analytics",
-      "askg",
-      "brokers",
-      "chat",
-      "earnings-ripple",
-      "kelly-sizer",
-      "options",
-      "portfolio-list",
-      "team",
-      "ticker-research",
-      "unread-inbox",
-    ]);
+  test("every built-in pane with private portable data declares picture privacy", async () => {
+    const { panes, paneTemplates: _templates, ...discovery } = createPaneDiscoveryContext({
+      getConfig: () => context("discovery").config,
+      panes: new Map(paneDefs),
+    });
+    const started: ReturnType<typeof getLoadablePlugins> = [];
+    try {
+      // Include setup-registered panes, not just the catalogue's static definitions.
+      for (const plugin of getLoadablePlugins()) {
+        started.push(plugin);
+        await plugin.setup?.(discovery);
+      }
+      // No exceptions today. A future exception must name the pane and explain
+      // why its private portable fields cannot expose personal data in a picture.
+      expect([...panes.values()]
+        .filter((pane) => pane.portableShare?.private && pane.personalData === undefined)
+        .map((pane) => pane.id).sort()).toEqual([]);
+    } finally {
+      for (const plugin of started.reverse()) plugin.dispose?.();
+    }
   });
 
   test.each([
@@ -59,6 +63,20 @@ describe("which panes ask before their picture is posted to chat", () => {
     { name: "a watchlist", pane: "portfolio-list", overrides: { activeCollectionId: "watchlist" }, expected: null },
     { name: "a held ticker's research", pane: "ticker-research", overrides: { activeTicker: "NVDA", tickers: held }, expected: "holdings" },
     { name: "a watched ticker's research", pane: "ticker-research", overrides: { activeTicker: "NVDA", tickers: followed }, expected: null },
+    { name: "research notes on an unheld ticker", pane: "ticker-research", overrides: { paneState: { activeTabId: "notes" } }, expected: "messages" },
+    { name: "research thesis on an unheld ticker", pane: "ticker-research", overrides: { paneState: { activeTabId: "thesis" } }, expected: "holdings" },
+    { name: "research locked to notes", pane: "ticker-research", overrides: { settings: { hideTabs: true, lockedTabId: "notes" }, paneState: { activeTabId: "overview" } }, expected: "messages" },
+    { name: "research locked to thesis", pane: "ticker-research", overrides: { settings: { hideTabs: true, lockedTabId: "thesis" }, paneState: { activeTabId: "overview" } }, expected: "holdings" },
+    { name: "market research with an inactive notes tab", pane: "ticker-research", overrides: { settings: { hideTabs: true, lockedTabId: "overview" }, paneState: { activeTabId: "notes" } }, expected: null },
+    { name: "a portfolio value heatmap", pane: "market-heatmap", overrides: { settings: { universe: "portfolio" }, paneState: { collectionKind: "portfolio" } }, expected: "holdings" },
+    { name: "a watchlist heatmap", pane: "market-heatmap", overrides: { settings: { universe: "portfolio" }, paneState: { collectionKind: "watchlist" } }, expected: null },
+    { name: "a market heatmap with an inactive portfolio tab", pane: "market-heatmap", overrides: { settings: { universe: "us-equity" }, paneState: { collectionKind: "portfolio" } }, expected: null },
+    { name: "earnings with held-position markers", pane: "earnings-calendar", overrides: { tickers: held }, expected: "holdings" },
+    { name: "earnings with watchlist markers only", pane: "earnings-calendar", overrides: { tickers: followed }, expected: null },
+    { name: "earnings scoped to held tickers", pane: "earnings-calendar", overrides: { settings: { symbols: ["NVDA", "FABLE"] }, tickers: held }, expected: "holdings" },
+    { name: "earnings scoped away from held tickers", pane: "earnings-calendar", overrides: { settings: { symbols: ["FABLE", "MYTH"] }, tickers: held }, expected: null },
+    { name: "public single-ticker earnings history", pane: "earnings-calendar", overrides: { settings: { symbols: ["NVDA"] }, tickers: held }, expected: null },
+    { name: "earnings board regardless of its ticker scope", pane: "earnings-calendar", overrides: { settings: { board: true, symbols: ["NVDA"] }, tickers: held }, expected: "holdings" },
     { name: "options on a held ticker", pane: "options", overrides: { activeTicker: "NVDA", tickers: held }, expected: "holdings" },
     { name: "earnings ripple over the portfolios", pane: "earnings-ripple", overrides: {}, expected: "holdings" },
     { name: "earnings ripple on named tickers", pane: "earnings-ripple", overrides: { settings: { symbols: "AAPL MSFT" } }, expected: null },

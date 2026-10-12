@@ -743,6 +743,12 @@ export const marketHeatmapPlugin: GloomPlugin = {
       name: "Market Heatmap",
       icon: "H",
       component: MarketHeatmapPane,
+      // Portfolio tiles disclose position values; watchlist and market tiles do not.
+      personalData: ({ settings, paneState }) => (
+        settings.universe === PORTFOLIO_HEATMAP_TAB
+        && paneState[HEATMAP_COLLECTION_KIND_STATE_KEY] === "portfolio"
+          ? "holdings" : null
+      ),
       headless: marketHeatmapHeadless,
       defaultPosition: "right",
       defaultMode: "floating",

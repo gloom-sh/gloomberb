@@ -99,6 +99,15 @@ export const earningsModule: PluginModule = {
       name: "Earnings Calendar",
       icon: "$",
       component: EarningsPane,
+      personalData: ({ settings, tickers }) => {
+        const symbols = settings.board === true ? [] : scopedSymbolsFromSettings(settings);
+        // Single-ticker report history is public. The board marks owned names.
+        if (symbols.length === 1) return null;
+        return [...tickers.values()].some(({ metadata }) => (
+          metadata.portfolios.length > 0
+          && (symbols.length === 0 || symbols.includes(metadata.ticker.trim().toUpperCase()))
+        )) ? "holdings" : null;
+      },
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 110, height: 28 },
