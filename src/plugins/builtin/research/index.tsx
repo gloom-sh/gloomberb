@@ -61,6 +61,8 @@ export const researchModule: PluginModule = {
     {
       id: "equity-diagnostic",
       reportFreshness: { status: "not-a-feed", basis: "analysis of filings" },
+      // Signed in, Free reads a preview and Pro the full report; signed out it shows the sign-in wall.
+      reportRequirements: ["Free Gloom sign-in"],
       name: "Equity Diagnostic",
       icon: "D",
       component: EquityDiagnosticView,

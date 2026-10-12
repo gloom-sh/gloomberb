@@ -3,7 +3,7 @@ import { getLoadablePlugins } from "../plugins/catalog";
 import { createDefaultConfig } from "../types/config";
 import { knownGapMessage, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
-import { buildSearchReport } from "./commands/search";
+import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
 import { buildPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
 import { createPaneCatalog } from "./pane-functions/discovery";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
@@ -45,4 +45,17 @@ test("a topic no function covers is answered with the nearest functions, whereve
   const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["defense budget"]), lookupGlossary("defense budget"), pointer.message);
   expect(catalog).toContain("defense budget: not in the terminal yet");
   expect(catalog).not.toContain("No functions match");
+});
+
+test("a search no ticker answers lists the functions that carry every word, so a task finds its function", async () => {
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  const functions = await searchFunctionsForCli("target weights rebalance", getLoadablePlugins(), context);
+  expect(functions.map((match) => match.token)).toEqual(["PF"]);
+  // PF's own words say what it does with targets, so the list explains the match.
+  expect(functions[0]!.description).toMatch(/target weights.*drift.*rebalance/);
+  const report = buildSearchReport({ query: "target weights rebalance", candidates: [], functions }).replace(/\x1b\[[0-9;]*m/g, "");
+  expect(report).toContain("PF  Collection Pane");
+  expect(report).not.toContain("No matches found");
+  // Some of the words only: no function carries them all, and the search says so as before.
+  expect(await searchFunctionsForCli("rebalance xylophone", getLoadablePlugins(), context)).toEqual([]);
 });

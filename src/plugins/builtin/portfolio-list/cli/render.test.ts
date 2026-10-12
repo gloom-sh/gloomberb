@@ -270,3 +270,24 @@ test("a broker account's saved cash stands in for cash entered by hand, so it is
   expect(data[0]).toMatchObject({ marketValue: 9_000, weight: 90, targetWeight: 80, drift: 10, tradeValue: -1_000 });
   expect(data[0].tradeShares).toBeCloseTo(-1_000 / 90, 8);
 });
+
+test("portfolio show --explain follows the report with the terms its table shows, and --json lists them", async () => {
+  const config = createDefaultConfig("/unused-explain");
+  config.portfolios = [{ id: "main", name: "Main", currency: "USD", targetWeights: { AAPL: 50 } }];
+  const held: TickerRecord = { metadata: { ...ticker.metadata, positions: [{ portfolio: "main", shares: 10, avgCost: 80, currency: "USD", broker: "manual" }] } };
+  const dependencies = { config, store: { loadAllTickers: async () => [held] }, dataProvider: createTestDataProvider({ getQuote: async () => quote }) };
+  const output: string[] = [];
+  const logger = spyOn(console, "log").mockImplementation((...args) => { output.push(args.join(" ")); });
+  try { await portfolioCliCommand.execute(["show", "Main", "--explain"], createTestCliContext(dependencies).context); }
+  finally { logger.mockRestore(); }
+  const text = output.join("\n").replace(/\x1b\[[0-9;]*m/g, "");
+  const terms = text.slice(text.indexOf("Terms"));
+  expect(text.indexOf("Terms")).toBeGreaterThan(text.indexOf("TOTAL"));
+  for (const term of ["Weight", "Target", "Drift", "Trade", "Percentage point (pp)"]) expect(terms).toContain(`  ${term}  `);
+
+  const cli = createTestCliContext(dependencies, { format: "json" });
+  await portfolioCliCommand.execute(["show", "Main", "--explain"], cli.context);
+  expect(cli.printed[0]!.result.metadata?.glossary).toMatchObject([{ term: "Weight" }, { term: "Target" }, { term: "Drift" }, { term: "Trade" }, { term: "Percentage point", short: "pp" }]);
+  // Only show reads it; another action says where it belongs.
+  await expect(portfolioCliCommand.execute(["target", "show", "Main", "--explain"], cli.context)).rejects.toThrow("--explain is an option of portfolio show");
+});

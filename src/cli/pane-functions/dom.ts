@@ -17,6 +17,21 @@ const DOM_LIMITATION =
 const DOM_EVERY_ROW =
   "Every row of the pane's table is returned, including rows scrolled out of view.";
 
+/** The sign-in wall's buttons, which a rendered view reads as words: `Log in ↵ Sign up free`. */
+const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Email)(?:\s*\u21B5)?(?=\s|$)/g;
+
+/**
+ * A pane behind the sign-in wall, as a report reads it: the wall's headline
+ * without its buttons, and what it needs in place of them.
+ */
+function signInWallText(visibleText: string): string {
+  const headline = visibleText.replace(SIGN_IN_WALL_BUTTONS, "").trim();
+  const needs = /\bVerify your email\b/i.test(visibleText)
+    ? "Requires a verified email on your Gloom account; resend the verification email in the app."
+    : "Requires a free Gloom sign-in: log in or sign up in the app.";
+  return headline ? `${headline} ${needs}` : needs;
+}
+
 function rowsContainEllipsis(rows: DesktopPaneShotRenderedRow[]): boolean {
   return rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
 }
@@ -178,7 +193,7 @@ export function buildDomPaneReportFromRender(
   if (hasStructuredRows) {
     textLines.push(...renderDomTables(rows));
   } else if (result.render.visibleText) {
-    textLines.push(result.render.visibleText);
+    textLines.push(result.render.accessGate === "sign-in" ? signInWallText(result.render.visibleText) : result.render.visibleText);
   } else {
     textLines.push(failureReason ?? "No rendered values were available.");
   }

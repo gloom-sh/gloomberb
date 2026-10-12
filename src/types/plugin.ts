@@ -146,6 +146,12 @@ export interface PaneDef {
    */
   reportNotices?(settings: Readonly<Record<string, unknown>>): string[];
   /**
+   * What a rendered-view report needs before it shows anything, such as a
+   * sign-in: `gloomberb catalog` lists it under Requires, as it does a
+   * `headless` model's `discovery.dataRequirements`.
+   */
+  reportRequirements?: readonly string[];
+  /**
    * A `shot` without `--height` grows to the pane's natural height, up to the
    * height limit, so a fixed board (FUT) shows every row instead of cutting
    * the last ones. Leave it off for long or paged lists.

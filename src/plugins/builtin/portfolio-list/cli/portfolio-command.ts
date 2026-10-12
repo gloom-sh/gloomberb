@@ -697,6 +697,9 @@ async function importThirteenFCommand(options: ThirteenFImportOptions, ctx: CliC
 
 const IMPORT_FLAGS = new Set(["--13f", "--top", "--name", "--notional", "--replace"]);
 
+/** The actions `portfolio` takes; any other first word names a portfolio to show. */
+const KNOWN_ACTIONS = new Set(["list", "show", "create", "delete", "rm", "add", "remove", "position", "cash", "target", "targets", "import"]);
+
 /** Actions that change a portfolio: none of them previews, so --dry-run would change it anyway. */
 const MUTATING_ACTIONS = new Set(["create", "delete", "rm", "add", "remove", "position", "cash", "import"]);
 
@@ -728,6 +731,7 @@ export const portfolioCliCommand: CliCommandDef = {
       { flags: "--name <portfolio>", description: "portfolio import: the portfolio to create or fill (default: the manager's name and 13F)" },
       { flags: "--notional <amount>", description: "portfolio import: the USD total the shares add up to at the filing's prices (default 100,000)" },
       { flags: "--replace", description: "portfolio import: replace the positions of an existing portfolio of that name" },
+      { flags: "--explain", description: "portfolio show: follow the report with what its terms mean (Weight, Target, Drift, Trade); gloomberb catalog glossary lists every term" },
     ],
     examples: [
       "portfolio show Research",
@@ -739,6 +743,7 @@ export const portfolioCliCommand: CliCommandDef = {
       "portfolio target set Research ASML 12.5%",
       "portfolio target set Research CASH 10",
       "portfolio show Research --csv",
+      "portfolio show Research --explain",
       "portfolio import --13f 0001067983 --top 10",
     ],
     sections: [SYMBOL_LIST_HELP],
@@ -752,6 +757,15 @@ export const portfolioCliCommand: CliCommandDef = {
       return;
     }
     const exchange = takeOption(args, "--exchange");
+    const explain = takeFlag(args, "--explain");
+    // A bare name shows the portfolio, as `show` does.
+    const shows = action === "show" || (action != null && !KNOWN_ACTIONS.has(action));
+    if (explain && !shows) {
+      ctx.fail(
+        `--explain is an option of portfolio show, not portfolio ${action ?? "list"}.`,
+        "Run gloomberb portfolio show <name> --explain, or gloomberb catalog glossary for every term.",
+      );
+    }
     const hasFile = args.some((arg) => arg === "--file" || arg.startsWith("--file="));
     const file = hasFile ? takeOption(args, "--file") ?? "" : undefined;
     if (file != null && action !== "add" && action !== "remove") ctx.fail(`--file is an option of portfolio add and remove, not portfolio ${action ?? "list"}.`, ADD_USAGE);
@@ -768,8 +782,8 @@ export const portfolioCliCommand: CliCommandDef = {
 
     if (action === "show") {
       const name = args.slice(1).join(" ");
-      if (!name) ctx.fail("Usage: gloomberb portfolio show <name>");
-      await showCollection(name, ctx);
+      if (!name) ctx.fail("Usage: gloomberb portfolio show <name> [--explain]");
+      await showCollection(name, ctx, { explain });
       return;
     }
 
@@ -841,6 +855,6 @@ export const portfolioCliCommand: CliCommandDef = {
       ctx.fail(TARGET_USAGE);
     }
 
-    await showCollection(args.join(" "), ctx);
+    await showCollection(args.join(" "), ctx, { explain });
   },
 };

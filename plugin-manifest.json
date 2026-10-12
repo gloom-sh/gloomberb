@@ -1190,7 +1190,7 @@
           {
             "code": "PF",
             "name": "Collection Pane",
-            "description": "Open another pane for the current portfolio or watchlist"
+            "description": "Holdings, weights and P&L of a portfolio or watchlist; set target weights to see drift and the trades that rebalance"
           },
           {
             "code": "PORT",

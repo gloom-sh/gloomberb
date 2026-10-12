@@ -418,7 +418,7 @@ export const zhCN: Record<string, string> = {
   "Open a historical OHLCV table for a ticker.": "打开股票的历史 OHLCV 表格。",
   "Open financial statements for a ticker.": "打开股票的财务报表。",
   "Open a compact quote monitor for one or more tickers": "为一只或多只股票打开紧凑行情监控",
-  "Open another pane for the current portfolio or watchlist": "为当前组合或自选列表再开一个面板",
+  "Holdings, weights and P&L of a portfolio or watchlist; set target weights to see drift and the trades that rebalance": "组合或自选列表的持仓、权重与盈亏；设置目标权重，即可看到偏离与再平衡所需的交易",
   "Open another portfolio list pane": "再开一个组合列表面板",
   "Open another watchlist pane": "再开一个自选列表面板",
   "Open another research pane for the selected ticker or current collection": "为所选股票或当前集合再开一个研究面板",

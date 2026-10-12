@@ -37,6 +37,7 @@ import { liveMarketCapitalization } from "../live-valuation";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
 import { toMarketDataContext } from "../../../../market-data/selectors";
 import { cliFreshnessFooter } from "../../../../cli/result";
+import { renderReportGlossary, reportGlossary, type GlossaryEntry } from "../../../../cli/glossary";
 import { quotesFreshness } from "../../../../cli/freshness";
 import type { BrokerAccount } from "../../../../types/trading";
 import {
@@ -148,8 +149,21 @@ export function renderCollectionOverview(config: AppConfig, tickers: TickerRecor
   return blocks.join("\n");
 }
 
-export async function showCollection(name: string, ctx: CliCommandContext) {
-  await withMarketData(ctx, (context) => showCollectionWithMarketData(name, ctx, context));
+export interface ShowCollectionOptions {
+  /** `--explain`: follow the report with what the terms it shows mean, as `fn <function> --explain` does. */
+  explain?: boolean;
+}
+
+export async function showCollection(name: string, ctx: CliCommandContext, options: ShowCollectionOptions = {}) {
+  await withMarketData(ctx, (context) => showCollectionWithMarketData(name, ctx, context, options));
+}
+
+/** What `--explain` names a report by when it shows no terms. */
+const EXPLAINED_REPORT = "This report";
+
+/** The terms as `--json` lists them, in the shape `fn --explain` gives `data.glossary`. */
+function glossaryExport(entries: readonly GlossaryEntry[]) {
+  return entries.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition }));
 }
 
 /** A portfolio or watchlist named by its id or its name, either in any case. */
@@ -390,6 +404,7 @@ async function showCollectionWithMarketData(
   name: string,
   ctx: CliCommandContext,
   { config, store, dataProvider, persistence }: MarketContext,
+  { explain = false }: ShowCollectionOptions,
 ) {
   const tickers = (await store.loadAllTickers()).sort((left, right) =>
     left.metadata.ticker.localeCompare(right.metadata.ticker)
@@ -420,8 +435,11 @@ async function showCollectionWithMarketData(
   if (filtered.length === 0 && !structured && !hasCash) {
     console.log(cliStyles.bold(displayName));
     console.log(cliStyles.muted("No tickers in this collection."));
+    if (explain) console.log(`\n${renderReportGlossary(EXPLAINED_REPORT, [])}`);
     return;
   }
+  // The terms the report shows, which --explain follows it with.
+  let explained: GlossaryEntry[] = [];
 
   const quotes = await loadCollectionQuotes(filtered, collection, dataProvider);
   // Worst of across the holdings' quotes, as the PORT and watchlist reports state it.
@@ -452,6 +470,9 @@ async function showCollectionWithMarketData(
     const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: matchedPortfolio, account, toBase });
     const allocationBySymbol = new Map(allocation.rows.map((row) => [row.symbol, row]));
     const showTargets = allocation.targetSum != null;
+    // Never dropped on a narrow terminal, so --explain reads the terms off them.
+    const allocationHeaders = showTargets ? ["Weight", "Target", "Drift", "Trade", "Trade Value"] : ["Weight"];
+    explained = reportGlossary("PF", allocationHeaders.join("  "));
     // A ticker held in several lots carries its allocation on its first row.
     const firstRows = new Set<string>();
     const positionsExport = valued.map((entry): Record<string, unknown> & {
@@ -505,6 +526,7 @@ async function showCollectionWithMarketData(
         unavailableCostSymbols: [...unavailableCost], brokerPnlSymbols: [...brokerPnlSymbols],
         accountingBasis, ...(manualAccounting ? { manualAccounting } : {}),
         ...(matchedPortfolio.importedFrom ? { importedFrom: matchedPortfolio.importedFrom } : {}),
+        ...(explain ? { glossary: glossaryExport(explained) } : {}),
       }, freshness }, { rows: (data) => [...(data as Record<string, unknown>[]), ...extraRows] });
       return;
     }
@@ -584,15 +606,7 @@ async function showCollectionWithMarketData(
         { header: quantityHeader, align: "right" },
         { header: "Avg Cost", align: "right", optional: true, dropPriority: 3 },
         { header: "Value", align: "right" },
-        { header: "Weight", align: "right" },
-        ...(showTargets
-          ? [
-            { header: "Target", align: "right" as const },
-            { header: "Drift", align: "right" as const },
-            { header: "Trade", align: "right" as const },
-            { header: "Trade Value", align: "right" as const },
-          ]
-          : []),
+        ...allocationHeaders.map((header) => ({ header, align: "right" as const })),
         { header: "P&L", align: "right", optional: true },
       ],
       rows,
@@ -624,7 +638,7 @@ async function showCollectionWithMarketData(
     if (structured) {
       ctx.printResult({
         data: watched.map((entry) => entry.row),
-        metadata: { watchlistId: id, watchlistName: displayName, baseCurrency: currency },
+        metadata: { watchlistId: id, watchlistName: displayName, baseCurrency: currency, ...(explain ? { glossary: [] } : {}) },
         freshness,
       });
       return;
@@ -661,6 +675,7 @@ async function showCollectionWithMarketData(
     if (notes.length > 0) console.log(["", ...notes.map((note) => cliStyles.muted(note))].join("\n"));
   }
   if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
+  if (explain) console.log(`\n${renderReportGlossary(EXPLAINED_REPORT, explained)}`);
 }
 
 /** One watchlist row: the quote as the table shows it, the market cap in the base currency, and the `--json` and `--csv` row. */

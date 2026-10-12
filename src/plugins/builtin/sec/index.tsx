@@ -35,7 +35,7 @@ import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { SignInWall } from "../cloud/auth-actions";
 import { ETF_FILING_FORMS, ETF_FORMS_SETTING, filterFilingsByForms, parseFormsSetting, SEC_FILING_FETCH_LIMIT } from "./forms";
-import { createSecHeadless, secHeadless } from "./headless";
+import { createSecHeadless, fundFilingsEmpty, secHeadless } from "./headless";
 import {
   getFilingDisplayTitle,
   getFilingColumnText,
@@ -469,6 +469,7 @@ export const secModule: PluginModule = {
         forms: ETF_FILING_FORMS,
         title: "Fund Filings",
         argumentDescription: "US-listed fund ticker.",
+        empty: fundFilingsEmpty,
       }),
     },
   ],

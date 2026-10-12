@@ -81,7 +81,7 @@ export const portfolioListModule: PluginModule = {
       id: "new-collection-pane",
       paneId: "portfolio-list",
       label: "Collection Pane",
-      description: "Open another pane for the current portfolio or watchlist",
+      description: "Holdings, weights and P&L of a portfolio or watchlist; set target weights to see drift and the trades that rebalance",
       // Phrases rather than bare words, so `fn rebalance` and `fn target` keep resolving where they did.
       keywords: [
         "portfolio", "watchlist", "collection", "pane", "list",

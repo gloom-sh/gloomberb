@@ -10,7 +10,7 @@ test("a term is found by its name, abbreviation or another name, whatever its ca
   expect(terms(lookupGlossary("stop-out").partial)).toEqual(["Stop-out vs average"]);
   expect(lookupGlossary("b/c")).toEqual({ exact: [GLOSSARY.find((entry) => entry.short === "B/C")!], partial: [] });
   expect(terms(lookupGlossary("dealers").exact)).toEqual(["Dealer"]);
-  expect(terms(lookupGlossary("discount").partial)).toEqual(["High discount margin"]);
+  expect(terms(lookupGlossary("discount").partial)).toEqual(["High discount margin", "Premium/discount"]);
   expect(lookupGlossary("carry")).toEqual({ exact: [], partial: [] });
   // Every name leads to one entry, so a lookup never has to pick between two.
   const keys = GLOSSARY.flatMap((entry) => [...new Set([entry.term, entry.short, ...entry.aliases].filter(Boolean)
@@ -50,4 +50,20 @@ test("the perpetual-futures terms are found by plain names and explained from wh
   const board = "Perpetual markets\n\nMarket  Venue  Funding %/int  Premium %  OI USD  OI 24h %\nBTC  Binance  -0.00135% /8h  -0.044%  7.69B  +0.24%\n\nSource: Binance";
   expect(terms(reportGlossary("PERP", board))).toEqual(["Perpetual", "Funding rate", "Open interest", "Premium"]);
   expect(terms(reportGlossary("PERP", "Highest Funding 8h\nMarket  Venue  Funding 8h %  OI USD"))).toEqual(["Funding rate", "Open interest"]);
+});
+
+test("the rebalance table's and ETF's words are found by plain names, and premium gives both meanings", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["drift", "pp", "percentage points", "rebalance", "Trade Value", "target weights", "weight", "NAV", "tracking error", "discount to NAV"].map(exact))
+    .toEqual([["Drift"], ["Percentage point"], ["Percentage point"], ["Trade"], ["Trade"], ["Target"], ["Weight"], ["NAV"], ["Tracking error"], ["Premium/discount"]]);
+  // A perpetual's premium is over its reference price, a fund's over its NAV: `catalog explain premium` prints both.
+  const premium = lookupGlossary("premium");
+  expect([...terms(premium.exact), ...terms(premium.partial)]).toEqual(["Premium", "Premium/discount"]);
+
+  // portfolio show and fn PF head the columns so; drift prints in pp (+2.3pp), never the word.
+  const rebalance = "Ticker  Last  Shares  Value  Weight  Target  Drift  Trade  Trade Value  P&L\nVTI  $300.00  10  $3,000  60.0%  50.0%  +10.0pp  -2  -$500";
+  expect(terms(reportGlossary("PF", rebalance))).toEqual(["Weight", "Target", "Drift", "Trade", "Percentage point"]);
+  // Without targets the table has weights only; "Targets add up to" names no column.
+  expect(terms(reportGlossary("PF", "Ticker  Value  Weight  P&L\nTargets add up to 90.0%; 10.0% is unallocated."))).toEqual(["Weight"]);
+  expect(terms(reportGlossary("ETF", "Fund facts (fee, NAV, premium) are not available yet; try fn SEC IBIT."))).toEqual(["NAV", "Premium/discount"]);
 });

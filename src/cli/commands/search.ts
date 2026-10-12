@@ -1,8 +1,10 @@
 import {
   cliStyles,
   cliTerminalWidth,
+  renderDefinitions,
   renderSection,
   renderTable,
+  wrapText,
 } from "../../utils/cli-output";
 import type { DataProvider } from "../../types/data-provider";
 import type { TickerRecord } from "../../types/ticker";
@@ -14,25 +16,59 @@ import {
 import { initMarketData, withMarketData } from "../context";
 import { fail } from "../errors";
 import type { MarketContext } from "../types";
-import type { CliCommandContext } from "../../types/plugin";
+import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
 import { knownGapMessage } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { groupByCompany } from "../../tickers/company-name";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
-import type { SeriesDefinition } from "../../series/types";
+import { createPaneCatalog } from "../pane-functions/discovery";
+import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
 
 interface SearchCommandDependencies {
   initMarketData?: () => Promise<MarketContext>;
   fail?: (message: string, details?: string) => never;
   printResult?: CliCommandContext["printResult"];
-  /** Plugins whose data catalog series a query can name, listed before the tickers. */
-  plugins?: ReadonlyArray<{ series?: readonly SeriesDefinition[] }>;
+  /**
+   * Plugins whose data catalog series a query can name, listed before the
+   * tickers, and whose functions a search that finds no ticker lists.
+   */
+  plugins?: GloomPlugin[];
 }
 
 /** Series a search lists before pointing at the catalog for the rest. */
 const SEARCH_SERIES_LIMIT = 3;
+/** Functions a search that finds no ticker lists, as `catalog` would. */
+const SEARCH_FUNCTION_LIMIT = 3;
+
+/** A function a search lists: what `catalog` shows of it in a list. */
+export interface SearchFunctionMatch {
+  token: string;
+  label: string;
+  description: string;
+}
+
+/**
+ * The functions that carry every word of the query in their name, keywords
+ * or description, best first, as `catalog <query>` ranks them: "target
+ * weights rebalance" names no company, but PF does that. None when only some
+ * of the words match.
+ */
+export async function searchFunctionsForCli(query: string, plugins: GloomPlugin[], context: MarketContext): Promise<SearchFunctionMatch[]> {
+  let registry: Awaited<ReturnType<typeof createPaneCatalog>> | null = null;
+  try {
+    registry = await createPaneCatalog(context, plugins);
+    const entries = await buildPaneCatalogEntries(registry, context);
+    const { shown, loose } = selectPaneCatalogMatches(filterPaneCatalogEntries(entries, query), query, SEARCH_FUNCTION_LIMIT);
+    return loose ? [] : shown.map(({ token, label, description }) => ({ token, label, description }));
+  } catch {
+    // A plugin that cannot set up for discovery leaves the search as it was.
+    return [];
+  } finally {
+    registry?.destroy();
+  }
+}
 
 export async function searchCandidatesForCli({
   query,
@@ -166,23 +202,38 @@ function catalogHint(query: string): string {
 /**
  * The notes beside the results: the index a bare root names, data the query
  * asks for that no source carries yet, and for an empty search the catalog,
- * unless a known gap already said where to look instead.
+ * unless a known gap or the functions listed already said where to look instead.
  */
-function searchNotes(query: string, candidates: TickerSearchCandidate[]): string[] {
+function searchNotes(query: string, candidates: TickerSearchCandidate[], functions: readonly SearchFunctionMatch[]): string[] {
   const gap = knownGapMessage(query);
-  return [indexRootNote(query, candidates), gap, candidates.length === 0 && !gap ? catalogHint(query) : null]
+  return [indexRootNote(query, candidates), gap, candidates.length === 0 && !gap && functions.length === 0 ? catalogHint(query) : null]
     .filter((note): note is string => !!note);
+}
+
+/** The functions an empty search lists: each with what it does, whole, since that is why it matched. */
+function renderFunctionMatches(functions: readonly SearchFunctionMatch[]): string {
+  const width = Math.min(cliTerminalWidth() ?? 100, 100);
+  return [
+    renderSection("Functions"),
+    ...renderDefinitions(functions.map((match) => [`${match.token}  ${match.label}`, match.description] as const), { width, termStyle: cliStyles.command }),
+    "",
+    ...wrapText("No ticker or company matches. gloomberb catalog <function> shows a function's options and examples.", width)
+      .map((line) => cliStyles.muted(line)),
+  ].join("\n");
 }
 
 export function buildSearchReport({
   query,
   candidates,
   series = [],
+  functions = [],
 }: {
   query: string;
   candidates: TickerSearchCandidate[];
   /** Data catalog series the query names: data, such as a price or a rate, that no ticker is. */
   series?: readonly SeriesMatch[];
+  /** The functions that carry every word of a query no ticker matches. */
+  functions?: readonly SearchFunctionMatch[];
 }): string {
   const lines = [renderSection(`Search: ${query}`)];
   const indexNote = indexRootNote(query, candidates);
@@ -196,7 +247,8 @@ export function buildSearchReport({
   if (charted && (seriesFirst || candidates.length === 0)) lines.push("", charted);
 
   if (candidates.length === 0) {
-    if (!gap && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
+    if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
+    else if (!gap && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
 
@@ -241,7 +293,8 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     failCommand("Usage: gloomberb search <query>");
   }
 
-  await withMarketData(initMarketDataFn, async ({ store, dataProvider }) => {
+  await withMarketData(initMarketDataFn, async (context) => {
+    const { store, dataProvider } = context;
     const tickers = await store.loadAllTickers();
     const candidates = await searchCandidatesForCli({
       query: trimmedQuery,
@@ -250,11 +303,15 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     });
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");
+    // A query that names no ticker may name what a function does; a known gap already says where to look.
+    const functions = candidates.length === 0 && !knownGapMessage(trimmedQuery) && dependencies.plugins
+      ? await searchFunctionsForCli(trimmedQuery, dependencies.plugins, context)
+      : [];
     if (dependencies.printResult) {
-      const warnings = searchNotes(trimmedQuery, candidates);
+      const warnings = searchNotes(trimmedQuery, candidates, functions);
       dependencies.printResult({
         data: searchCandidateRows(candidates),
-        metadata: { query: trimmedQuery, ...(series.length ? { series } : {}) },
+        metadata: { query: trimmedQuery, ...(series.length ? { series } : {}), ...(functions.length ? { functions } : {}) },
         warnings: warnings.length ? warnings : undefined,
       }, {
         columns: [
@@ -273,6 +330,7 @@ export async function search(query: string, dependencies: SearchCommandDependenc
       query: trimmedQuery,
       candidates,
       series,
+      functions,
     }));
   });
 }

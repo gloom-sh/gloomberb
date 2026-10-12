@@ -417,7 +417,7 @@ export const es: Record<string, string> = {
   "Open a historical OHLCV table for a ticker.": "Abrir la tabla OHLCV histórica de un ticker.",
   "Open financial statements for a ticker.": "Abrir los estados financieros de un ticker.",
   "Open a compact quote monitor for one or more tickers": "Abrir un monitor compacto de cotizaciones para uno o más tickers",
-  "Open another pane for the current portfolio or watchlist": "Abrir otro panel para la cartera o lista actual",
+  "Holdings, weights and P&L of a portfolio or watchlist; set target weights to see drift and the trades that rebalance": "Posiciones, pesos y P&L de una cartera o lista; fija pesos objetivo para ver la desviación y las operaciones que la reequilibran",
   "Open another portfolio list pane": "Abrir otro panel de lista de carteras",
   "Open another watchlist pane": "Abrir otro panel de lista de seguimiento",
   "Open another research pane for the selected ticker or current collection": "Abrir otro panel de análisis para el ticker o la colección actual",

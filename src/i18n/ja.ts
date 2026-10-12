@@ -418,7 +418,7 @@ export const ja: Record<string, string> = {
   "Open a historical OHLCV table for a ticker.": "銘柄の履歴 OHLCV テーブルを開きます。",
   "Open financial statements for a ticker.": "銘柄の財務諸表を開きます。",
   "Open a compact quote monitor for one or more tickers": "1 つ以上の銘柄のコンパクトな株価モニターを開く",
-  "Open another pane for the current portfolio or watchlist": "現在のポートフォリオまたはウォッチリストの別のペインを開きます",
+  "Holdings, weights and P&L of a portfolio or watchlist; set target weights to see drift and the trades that rebalance": "ポートフォリオまたはウォッチリストの保有、ウェイト、損益。目標ウェイトを設定すると、乖離とリバランスに必要な取引を表示します",
   "Open another portfolio list pane": "別のポートフォリオ リスト ペインを開く",
   "Open another watchlist pane": "別のウォッチリスト ペインを開く",
   "Open another research pane for the selected ticker or current collection": "選択した銘柄または現在のコレクションの別のリサーチ ペインを開きます",

@@ -3,6 +3,8 @@ import type { ResolvedPaneFunction } from "./resolver";
 import { assessPaneScreenshot, type PaneScreenshotResult } from "./screenshot";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
 import { buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
+import { getPaneFunctionCapability } from "./capabilities";
+import { researchModule } from "../../plugins/builtin/research";
 import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
 
@@ -224,4 +226,27 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
   // A pane that publishes nothing is still not reported.
   const bare = { ...screenshot, render: { ...screenshot.render, semanticUi: [] } } as unknown as PaneScreenshotResult;
   expect(formatFreshnessLine(buildDomPaneReportFromRender(resolved, bare).data.freshness)).toContain("status not reported");
+});
+
+test("a pane behind the sign-in wall reports what it needs instead of the wall's buttons, as its catalog entry does", () => {
+  const diagnostic = researchModule.panes!.find((pane) => pane.id === "equity-diagnostic")!;
+  expect(getPaneFunctionCapability(undefined, diagnostic).dataRequirements).toEqual(["Free Gloom sign-in"]);
+
+  const resolved = {
+    token: "DIAG", label: "Equity Diagnostic", options: {}, capability: { id: "equity-diagnostic-pane" }, pane: diagnostic,
+  } as unknown as ResolvedPaneFunction;
+  const wall = (visibleText: string) => buildDomPaneReportFromRender(resolved, {
+    symbols: ["MSTR"],
+    render: {
+      visibleText, accessGate: "sign-in", rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false,
+      errorStateDetected: true, errorStateMarkers: ["Sign in to"], emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  } as unknown as PaneScreenshotResult).text;
+  expect(wall("DIAG MSTR Sign in to run the Equity Diagnostic. Log in \u21B5 Sign up free")).toBe([
+    "Equity Diagnostic", "", "DIAG MSTR Sign in to run the Equity Diagnostic. Requires a free Gloom sign-in: log in or sign up in the app.",
+  ].join("\n"));
+  // Signed in with an unconfirmed address, the wall asks for the email instead.
+  expect(wall("DIAG MSTR Verify your email to run the Equity Diagnostic. Resend Verification Email")).toEndWith(
+    "Verify your email to run the Equity Diagnostic. Requires a verified email on your Gloom account; resend the verification email in the app.",
+  );
 });

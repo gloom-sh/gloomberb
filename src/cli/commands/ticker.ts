@@ -35,7 +35,7 @@ import type { AppConfig } from "../../types/config";
 import type { FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
-import { instrumentTypeLabel, isCryptoVenuePerpetual } from "../../tickers/instrument-kind";
+import { instrumentTypeLabel, isCryptoVenuePerpetual, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import type { SecFilingItem } from "../../types/data-provider";
 import type { NewsArticle } from "../../news/types";
 import type { TickerRecord } from "../../types/ticker";
@@ -56,7 +56,7 @@ import {
 } from "../helpers";
 import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isKnownNonUsListing } from "../../utils/sec";
-import { canonicalExchange, exchangeLabel, isKnownExchangeCode } from "../../utils/exchanges";
+import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import {
   failIfNotTraded, ListingArgError, listingChoiceNotes, listingIdentity, loadBareVenues, resolveCliListing, type CliListing,
 } from "../listing-arg";
@@ -421,6 +421,21 @@ const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)"
 
 type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string };
 
+/**
+ * What a fund's report cannot show yet, and for a US listing where its SEC
+ * filings are. Only for a fund: a stock's report says nothing of it.
+ */
+function fundFactsNote(
+  symbol: string,
+  exchange: string | undefined,
+  financials: Pick<TickerFinancials, "quote" | "quoteMetadata">,
+  tickerFile: TickerRecord | null = null,
+): string | null {
+  if (resolveTickerInstrumentKind(tickerFile, financials) !== "fund") return null;
+  const note = "Fund facts (fee, NAV, premium) are not available yet";
+  return !exchange || isUsListingExchange(exchange) ? `${note}; try fn SEC ${symbol}.` : `${note}.`;
+}
+
 /** The lines `fundamentals` or `valuation` reports, the ones with a value. */
 function fundamentalsReportMetrics(financials: FundamentalsReportData, view: "fundamentals" | "valuation"): FundamentalsMetric[] {
   const quote = financials.quote;
@@ -455,7 +470,9 @@ export function renderFundamentalsReport(
   const before = lines.length;
   const metrics = fundamentalsReportMetrics(financials, view);
   appendMetricSection(lines, view === "valuation" ? "Valuation" : "Fundamentals", metricLines(metrics));
-  if (lines.length === before) lines.push("", cliStyles.muted(`No ${view} reported for ${financials.symbol}.`));
+  const fund = fundFactsNote(symbol, financials.exchange || quote?.exchangeName, financials);
+  if (lines.length === before) lines.push("", cliStyles.muted([`No ${view} reported for ${financials.symbol}.`, fund].filter(Boolean).join(" ")));
+  else if (fund) lines.push(cliStyles.muted(fund));
   for (const note of trailingConversionNotes(financials.fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   if (view === "fundamentals") appendTextSection(lines, "Description", profile?.description);
   return lines.join("\n");
@@ -472,6 +489,7 @@ export function fundamentalsReportTables(
   freshness: ReportFreshness,
 ): CliReportTables {
   const metrics = fundamentalsReportMetrics(financials, view);
+  const fund = fundFactsNote(financials.quote?.symbol ?? financials.symbol, financials.exchange || financials.quote?.exchangeName, financials);
   const tables = [exportEntriesTable(
     view === "valuation" ? "Valuation" : "Fundamentals",
     metrics.map((metric) => ({ label: metric.label, value: metric.value, formatted: metric.text, unit: metric.unit })),
@@ -492,9 +510,12 @@ export function fundamentalsReportTables(
     tables,
     footer: reportFooterLines({
       freshness,
-      notes: metrics.length === 0
-        ? [`No ${view} reported for ${financials.symbol}.`]
-        : trailingConversionNotes(financials.fundamentals, metrics, financials.quote?.currency),
+      notes: [
+        ...metrics.length === 0
+          ? [`No ${view} reported for ${financials.symbol}.`]
+          : trailingConversionNotes(financials.fundamentals, metrics, financials.quote?.currency),
+        ...fund ? [fund] : [],
+      ],
     }),
   };
 }
@@ -651,8 +672,13 @@ export async function buildTickerReport({
   }
 
   const metrics = fundamentalsMetrics(quote, fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText });
+  const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
   for (const note of trailingConversionNotes(fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  // Where a fund's facts would go: under its fundamentals, or in their place.
+  const fund = fundFactsNote(quote?.symbol ?? symbol,
+    quote?.tradingExchangeName || listingExchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange, financials, tickerFile);
+  if (fund) lines.push(...lines.length === beforeFundamentals ? [""] : [], cliStyles.muted(fund));
 
   if (capitalization?.provenance.kind === "fundamentals") {
     lines.push(cliStyles.muted(`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`));

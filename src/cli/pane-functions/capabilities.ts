@@ -61,7 +61,7 @@ function fallbackCapability(
     outputKind: dataPane ? "rendered-view" : "pane",
     reportReadiness: dataPane ? "live-dom" : "unsupported",
     screenshotReadiness: "live-dom",
-    dataRequirements: [],
+    dataRequirements: [...(pane.reportRequirements ?? [])],
     limitations: [dataPane
       ? RENDERED_VIEW_LIMITATION
       : "This pane is an interactive surface and does not expose a data report."],

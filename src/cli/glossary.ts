@@ -1,11 +1,11 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
 
 /**
- * Plain-words meanings of the rates, auction, energy and perpetual-futures terms the
- * functions show in their rows, headers and footers. `catalog glossary` lists them,
- * `catalog explain <term>` prints one and `fn <function> --explain` follows a
- * report with the ones it shows. Only terms a pane or report actually prints
- * belong here.
+ * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio
+ * and fund terms the functions show in their rows, headers and footers.
+ * `catalog glossary` lists them, `catalog explain <term>` prints one, and
+ * `fn <function> --explain` and `portfolio show --explain` follow a report with
+ * the ones it shows. Only terms a pane or report actually prints belong here.
  */
 export interface GlossaryEntry {
   term: string;
@@ -299,6 +299,47 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "How far a perpetual's price sits above or below the reference price it tracks, as a percent. "
       + "Positive means buyers are paying up for the contract; funding pulls it back toward zero.",
   },
+  // Portfolio weights and rebalancing (PF, portfolio show).
+  {
+    term: "Weight", aliases: ["weights", "portfolio weight", "allocation weight"], functions: ["PF"],
+    definition: "A holding's share of the portfolio's total value, cash included, in percent. A holding without a price is left out of the total.",
+  },
+  {
+    term: "Target", aliases: ["target weight", "target weights", "targets", "target allocation"], functions: ["PF"],
+    definition: "The weight you want a holding to have, set with portfolio target set. Targets need not add up to 100%; the report says what is unallocated.",
+  },
+  {
+    term: "Drift", aliases: ["allocation drift", "weight drift", "overweight", "underweight"], functions: ["PF"],
+    definition: "A holding's weight minus its target, in percentage points: +2.3pp is 2.3 points over its target, -2.3pp under it.",
+  },
+  {
+    term: "Trade", aliases: ["trades", "trade value", "rebalance", "rebalancing", "rebalance trade"], functions: ["PF"],
+    definition: "The units to buy (+) or sell (-) to bring a holding to its target at the current price; Trade Value is the same in money. "
+      + "Making these trades is rebalancing; they leave out fees, taxes and lot sizes.",
+  },
+  {
+    // Drift prints it after each figure (+2.3pp), never as a word of its own.
+    term: "Percentage point", short: "pp", aliases: ["percentage points", "percent points", "ppt"], functions: ["PF"],
+    shown: ["Drift"],
+    definition: "The plain difference between two percentages. A 22% weight against a 20% target is 2pp over it, not 10%.",
+  },
+  // Funds (ETF). Named in what ETF says it cannot show yet.
+  {
+    term: "NAV", aliases: ["net asset value", "nav per share", "net asset value per share"], functions: ["ETF"],
+    definition: "Net asset value: what a fund's holdings are worth, less what it owes, per share, struck once a trading day. "
+      + "An ETF's market price trades close to it.",
+  },
+  {
+    term: "Premium/discount", aliases: ["etf premium", "etf discount", "fund premium", "premium to nav", "discount to nav", "nav premium"],
+    functions: ["ETF"], shown: ["Premium/discount", "premium", "Premium", "discount", "Discount"],
+    definition: "How far an ETF's market price sits above (a premium) or below (a discount) its NAV, as a percent. "
+      + "It is usually a fraction of a percent, and widens when the fund's holdings are hard to trade or their market is shut.",
+  },
+  {
+    term: "Tracking error", aliases: ["index tracking error"], functions: ["ETF"], shown: ["Tracking error", "tracking error"],
+    definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
+      + "Fees, cash and holdings that differ from the index widen it.",
+  },
 ];
 
 const ANSI = /\x1b\[[0-9;]*m/g;
@@ -412,7 +453,7 @@ export function renderGlossaryIndex(): string {
       index === 0 ? `  ${cliStyles.command(owner)}${" ".repeat(labelWidth - 2 - owner.length)}${line}` : `${" ".repeat(labelWidth)}${line}`
     ))),
     "",
-    ...wrapText("gloomberb catalog glossary <term> explains one; fn <function> --explain adds the terms a report shows.", width)
+    ...wrapText("gloomberb catalog glossary <term> explains one; fn <function> --explain and portfolio show --explain add the terms a report shows.", width)
       .map((line) => cliStyles.muted(line)),
   ].join("\n");
 }

@@ -416,7 +416,7 @@ export const ko: Record<string, string> = {
   "Open a historical OHLCV table for a ticker.": "종목의 과거 OHLCV 표를 엽니다.",
   "Open financial statements for a ticker.": "종목 재무제표를 엽니다.",
   "Open a compact quote monitor for one or more tickers": "하나 이상의 종목에 대한 간결한 시세 모니터 열기",
-  "Open another pane for the current portfolio or watchlist": "현재 포트폴리오 또는 관심 목록 패널 추가",
+  "Holdings, weights and P&L of a portfolio or watchlist; set target weights to see drift and the trades that rebalance": "포트폴리오 또는 관심 목록의 보유 종목, 비중, 손익. 목표 비중을 설정하면 괴리와 리밸런싱 거래를 표시합니다",
   "Open another portfolio list pane": "포트폴리오 목록 패널 추가",
   "Open another watchlist pane": "관심 목록 패널 추가",
   "Open another research pane for the selected ticker or current collection": "선택 종목 또는 현재 컬렉션의 리서치 패널 추가",
