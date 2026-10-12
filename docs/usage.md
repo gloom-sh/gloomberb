@@ -964,6 +964,12 @@ social attention, fields cover:
   nearest the start, within four days. 1W needs daily closes.
 - **VS 52W HI%**: price against the highest high of the last 52 weeks, 0 at a new high.
 - **Beta**: raw beta of two years of weekly returns against SPY, US listings.
+- **ATR%**: the 14-session average true range as a percent of the last close, US
+  listings. A session's true range is its high less low or, when larger, the distance
+  from its high or low to the prior close, so a gap counts. The average is Wilder's,
+  as in the chart's ATR study, over the latest completed sessions (at least 15, at
+  most 30); it is unavailable with fewer. Pair it with Beta and IV RANK to screen
+  volatility.
 - **P/B**, **EV/EBITDA** and **FY ROE%**: market cap over latest balance-sheet equity;
   market cap plus debt minus cash over the last four quarters' EBITDA; annual net
   income over average equity. The same definitions as the FA ratio tabs. Statements
@@ -973,7 +979,7 @@ social attention, fields cover:
 - **UPSIDE%**: mean analyst price target over the price.
 - **IV RANK** and **IV/HV**, for optionable US names: 30-day implied volatility
   between its 52-week low (0) and high (100), and over the realized volatility of
-  the last 21 daily closes.
+  the last 21 daily closes. IV rank is a rank, not an IV percentile.
 
 Returns, EPS revisions and upside take the sign colour.
 
