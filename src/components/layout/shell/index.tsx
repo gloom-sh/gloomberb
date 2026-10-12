@@ -28,6 +28,7 @@ import { getPaneDisplayTitle } from "../pane/title";
 import type { PaneHeaderQuickSetting } from "../pane/header";
 import { getPaneFooter } from "../pane/footer";
 import { getShortcutDisplayMode } from "../../../utils/shortcut-labels";
+import { createOneShot } from "../../../utils/one-shot";
 import { formatAdvertisedChord, useKeybindings } from "../../../app/keybindings";
 import { modalSurfaceOwnsKey, paneManagementAccelerators } from "./shortcuts";
 import {
@@ -546,12 +547,20 @@ export function Shell({
       onMouseDown: (event) => handlePaneQuickSetting(paneId, setting.key, event),
     }))
   ), [config, handlePaneQuickSetting, pluginRegistry]);
-  const sharePane = useCallback((payload: Extract<SharePayload, { kind: "pane" }>) => (
-    copyLivePaneShare(payload, {
-      copyText: (text) => rendererHost.copyText(text),
-      notify: (notification) => { pluginRegistry.notify(notification); },
-    })
-  ), [pluginRegistry, rendererHost]);
+  // One share runs at a time, from the key, the menu or a pane's hint alike.
+  const [shareOnce] = useState(createOneShot);
+  const sharePane = useCallback(async (payload: Extract<SharePayload, { kind: "pane" }>) => {
+    if (shareOnce.refuses()) return;
+    shareOnce.start();
+    try {
+      await copyLivePaneShare(payload, {
+        copyText: (text) => rendererHost.copyText(text),
+        notify: (notification) => { pluginRegistry.notify(notification); },
+      });
+    } finally {
+      shareOnce.end();
+    }
+  }, [pluginRegistry, rendererHost, shareOnce]);
   const sharePaneById = useCallback((paneId: string) => {
     if (!publicSharing) return false;
     const pane = paneMap.get(paneId);

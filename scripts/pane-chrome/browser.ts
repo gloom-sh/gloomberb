@@ -296,3 +296,32 @@ export async function pressKey(cdp: Cdp, letter: string, modifiers: Array<keyof 
   await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
   await frames(cdp, 2);
 }
+
+/** A key chord as DevTools describes it: `modifiers` is Alt 1, Ctrl 2, Meta 4, Shift 8. */
+export interface Chord { key: string; code: string; keyCode: number; modifiers: number }
+
+/**
+ * Holds `chord` for `holdMs`: one key down, then the auto-repeat keydowns the
+ * operating system sends while a key stays down (`autoRepeat`, which the page
+ * reads as `event.repeat`) every `intervalMs`, then key up. Real input events,
+ * so the page's own key handling runs, not a call into it. `flagRepeats: false`
+ * sends the same stream with no repeat flag, as a native menu accelerator
+ * reaches the page.
+ */
+export async function holdKey(cdp: Cdp, chord: Chord, holdMs: number, { intervalMs = 33, flagRepeats = true } = {}): Promise<void> {
+  const event = {
+    key: chord.key,
+    code: chord.code,
+    windowsVirtualKeyCode: chord.keyCode,
+    nativeVirtualKeyCode: chord.keyCode,
+    modifiers: chord.modifiers,
+  };
+  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...event });
+  const until = performance.now() + holdMs;
+  while (performance.now() < until) {
+    await sleep(intervalMs);
+    await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", autoRepeat: flagRepeats, ...event });
+  }
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...event });
+  await frames(cdp, 2);
+}

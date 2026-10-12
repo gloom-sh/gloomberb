@@ -3,6 +3,7 @@ import {
   type ElectrobunApplicationMenuCommand,
 } from "./index";
 import { recordOrNull } from "../../../../utils/guards";
+import { createOneShots } from "../../../../utils/one-shot";
 import { menuClickPayload } from "../menu-event";
 
 function normalizeApplicationMenuCommand(value: unknown): ElectrobunApplicationMenuCommand | null {
@@ -45,4 +46,21 @@ export function applicationMenuCommand(event: unknown): ElectrobunApplicationMen
   const payload = menuClickPayload(event);
   if (payload?.action !== ELECTROBUN_APPLICATION_MENU_ACTION) return null;
   return normalizeApplicationMenuCommand(payload.data);
+}
+
+/**
+ * Holding a menu accelerator (Cmd+Shift+L, Cmd+K) makes the system click its
+ * item again about thirty times a second, and the click that reaches the Bun
+ * process says nothing about being a repeat. Each command runs once, then not
+ * again until none has come for a cooldown: a held key stays refused, and
+ * nothing queues up to run after it is released.
+ */
+export function createApplicationMenuGate(options?: { cooldownMs?: number; now?: () => number }) {
+  const shots = createOneShots(options);
+  return (command: ElectrobunApplicationMenuCommand): boolean => {
+    const shot = shots.get(JSON.stringify(command));
+    if (shot.refuses()) return false;
+    shot.end();
+    return true;
+  };
 }

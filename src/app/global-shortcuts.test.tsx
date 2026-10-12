@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import type { PluginRegistry } from "../plugins/registry";
 import { TestDialogProvider, createOpenTuiTestHarness, type TestKeyEvent } from "../renderers/opentui/test-utils";
@@ -7,6 +7,7 @@ import { cloneLayout, createDefaultConfig, type KeybindingsConfig } from "../typ
 import type { ReleaseInfo } from "../updater";
 import { useAppGlobalShortcuts } from "./global-shortcuts";
 import { resolveKeybindings } from "./keybindings";
+import { ONE_SHOT_COOLDOWN_MS } from "../utils/one-shot";
 
 const tui = createOpenTuiTestHarness({ width: 40, height: 8 });
 
@@ -381,5 +382,105 @@ describe("useAppGlobalShortcuts", () => {
     expect(sideEffects).toEqual([]);
     expect(event.defaultPrevented).toBe(testCase.consumed);
     expect(event.propagationStopped).toBe(testCase.consumed);
+  });
+});
+
+describe("useAppGlobalShortcuts with a key held down", () => {
+  afterEach(() => setSystemTime());
+
+  /** Holds the key for 1.5 s at the keyboard's repeat rate. */
+  async function hold(key: TestKeyEvent, flagRepeats: boolean) {
+    setSystemTime(new Date("2026-03-02T10:00:00Z"));
+    await emitKeypress(key);
+    for (let elapsed = 0; elapsed < 1_500; elapsed += 33) {
+      setSystemTime(new Date(Date.now() + 33));
+      await emitKeypress({ ...key, repeated: flagRepeats });
+    }
+  }
+
+  const cases: Array<{
+    name: string;
+    key: TestKeyEvent;
+    state?: () => AppState;
+    run: (outcome: { actions: AppAction[]; openedPanes: string[]; refreshed: string[] }) => unknown;
+    once: unknown;
+  }> = [
+    { name: "toggling the command bar", key: { name: "k", ctrl: true }, run: (o) => o.actions.length, once: 1 },
+    { name: "ticker search", key: { name: "`" }, run: (o) => o.actions.length, once: 1 },
+    { name: "Help", key: { name: "?", shift: true }, run: (o) => o.openedPanes.length, once: 1 },
+    {
+      name: "refreshing the focused ticker",
+      key: { name: "r" },
+      state: () => {
+        const state = { ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-held")) };
+        state.tickers.set("AAPL", { metadata: { ticker: "AAPL", exchange: "NASDAQ" } } as any);
+        return state;
+      },
+      run: (o) => o.refreshed.length,
+      once: 1,
+    },
+  ];
+
+  for (const flagRepeats of [true, false]) {
+    for (const testCase of cases) {
+      test(`${testCase.name} runs once ${flagRepeats ? "for flagged repeats" : "when the terminal cannot flag them"}, and again after a pause`, async () => {
+        const outcome = { actions: [] as AppAction[], openedPanes: [] as string[], refreshed: [] as string[] };
+        const state = testCase.state?.() ?? { ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-held")) };
+        await renderHarness(
+          state,
+          createRegistry(undefined, (paneId) => outcome.openedPanes.push(paneId)),
+          (action) => outcome.actions.push(action),
+          { focusedTickerSymbol: state.tickers.size > 0 ? "AAPL" : null, refreshTicker: (symbol) => outcome.refreshed.push(symbol) },
+        );
+
+        await hold(testCase.key, flagRepeats);
+        expect(testCase.run(outcome)).toBe(testCase.once);
+
+        setSystemTime(new Date(Date.now() + ONE_SHOT_COOLDOWN_MS + 1));
+        await emitKeypress(testCase.key);
+        expect(testCase.run(outcome)).toBe(2);
+      });
+    }
+  }
+
+  test("Help held past a slow repeat delay opens once", async () => {
+    setSystemTime(new Date("2026-03-02T10:00:00Z"));
+    const openedPanes: string[] = [];
+    const state = { ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-slow")) };
+    await renderHarness(state, createRegistry(undefined, (paneId) => openedPanes.push(paneId)), () => {});
+
+    await emitKeypress({ name: "?", shift: true });
+    setSystemTime(new Date(Date.now() + 1_800));
+    await emitKeypress({ name: "?", shift: true, repeated: true });
+    await emitKeypress({ name: "?", shift: true, repeated: true });
+
+    expect(openedPanes).toEqual(["help"]);
+  });
+
+  test("a held Tab keeps moving focus", async () => {
+    setSystemTime(new Date("2026-03-02T10:00:00Z"));
+    const actions: AppAction[] = [];
+    const state = { ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-tab")) };
+    await renderHarness(state, createRegistry(), (action) => actions.push(action));
+
+    for (let index = 0; index < 5; index += 1) {
+      await emitKeypress({ name: "tab", repeated: index > 0 });
+      setSystemTime(new Date(Date.now() + 33));
+    }
+
+    expect(actions.filter((action) => action.type === "FOCUS_NEXT")).toHaveLength(5);
+  });
+
+  // R refreshes through the shell but is also a pane's own key, so a refused
+  // refresh leaves the key to the pane instead of swallowing it.
+  test("a refused refresh does not take R from the focused pane", async () => {
+    setSystemTime(new Date("2026-03-02T10:00:00Z"));
+    await renderHarness({ ...createInitialState(createDefaultConfig("/tmp/gloomberb-global-shortcuts-r")) }, createRegistry(), () => {});
+
+    await emitKeypress({ name: "r" });
+    const second = await emitKeypress({ name: "r" });
+
+    expect(second.defaultPrevented).toBe(false);
+    expect(second.propagationStopped).toBe(false);
   });
 });

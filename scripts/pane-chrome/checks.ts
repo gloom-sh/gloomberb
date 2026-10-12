@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "fs/promises";
 import { join, resolve } from "path";
 import { positiveInteger, takeOption } from "../tui-benchmark-harness";
-import { cacheDir, click, drag, evaluate, frames, launchBrowser, mouse, pressKey, waitFor, type Cdp, type Point } from "./browser";
+import { cacheDir, click, drag, evaluate, frames, holdKey, launchBrowser, mouse, pressKey, sleep, waitFor, type Cdp, type Chord, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
 import { checkFirstPaint, checkThemePreview } from "./paint";
 
@@ -10,7 +10,8 @@ import { checkFirstPaint, checkThemePreview } from "./paint";
  * Input.dispatchMouseEvent) on the desktop pane chrome in headless Chrome,
  * checking where each pane ends up rather than which handler ran. The pane
  * header has broken this way before: v0.16.1 shipped panes that only moved
- * from the grip and the title (#1478).
+ * from the grip and the title (#1478). Held keys are real too: the key goes
+ * down and then repeats with `autoRepeat`, as a keyboard sends it (GLO-591).
  *
  *   bun run check:pane-chrome [--only <text>] [--repeat <n>] [--root <checkout>]
  *
@@ -262,6 +263,16 @@ const EDGES = [
 ] as const;
 const CAPTION_BUTTONS = [["minimize", "minimize"], ["maximize", "toggle-maximize"], ["close", "close"]] as const;
 
+const PANE_COUNT = `document.querySelectorAll("[data-gloom-role=pane-window]").length`;
+// Modifiers as DevTools numbers them: Meta 4, Shift 8.
+const COPY_SCREENSHOT: Chord = { key: "C", code: "KeyC", keyCode: 67, modifiers: 4 | 8 };
+const ASK_GLOOM: Chord = { key: "A", code: "KeyA", keyCode: 65, modifiers: 4 | 8 };
+const CLOSE_PANE: Chord = { key: "w", code: "KeyW", keyCode: 87, modifiers: 4 };
+const ARROW_DOWN: Chord = { key: "ArrowDown", code: "ArrowDown", keyCode: 40, modifiers: 0 };
+const HELD_MS = 1_500;
+/** Longer than the action's cooldown, so the next press is a separate one. */
+const KEY_UP_FOR_MS = 800;
+
 const steps: Step[] = [
   { name: "theme preview paints every surface, cancel and commit agree", scenario: "theme&theme=high-contrast", run: checkThemePreview },
   { name: "theme preview paints a popped-out chart, cancel and commit agree", scenario: "theme-detached&theme=high-contrast", run: checkThemePreview },
@@ -375,7 +386,9 @@ const steps: Step[] = [
       await pressKey(cdp, "a", ["meta", "shift"]);
       const asked = await waitFor<string[] | null>(cdp, `window.__paneChrome.asks.length ? window.__paneChrome.asks : null`);
       if (asked?.join() !== "plain:b") fail("Cmd+Shift+A did not ask about the focused pane once", asked);
-      // Control is the primary modifier on Windows and Linux.
+      // Control is the primary modifier on Windows and Linux. A second press
+      // inside the cooldown would be a held key's, so the key goes up first.
+      await sleep(KEY_UP_FOR_MS);
       await click(cdp, await pointOf(cdp, "plain:a", "title"));
       await pressKey(cdp, "a", ["ctrl", "shift"]);
       const again = await waitFor<string[] | null>(cdp, `window.__paneChrome.asks.length > 1 ? window.__paneChrome.asks : null`);
@@ -672,6 +685,91 @@ const steps: Step[] = [
       await click(cdp, await pointOf(cdp, "tabs:a", "action"));
       if (!await waitFor(cdp, `!!document.querySelector("[role=menu]")`)) fail("the pane menu did not open");
       if (await evaluate<number>(cdp, "__check.windowMoves()") > 0) fail("the pane menu button asked the window to move");
+    },
+  },
+  {
+    name: "held keys: Cmd+Shift+C held for 1.5 s copies one screenshot, and a later press copies another",
+    scenario: "docked",
+    async run(cdp) {
+      await click(cdp, await pointOf(cdp, "plain:a", "title"));
+      await holdKey(cdp, COPY_SCREENSHOT, HELD_MS);
+      if (!await waitFor(cdp, "window.__paneChrome.clipboardImages.length >= 1", 10_000)) fail("a held Cmd+Shift+C copied no screenshot");
+      // A capture the hold queued would land after the key came up.
+      await sleep(KEY_UP_FOR_MS);
+      const held = await evaluate<number[]>(cdp, "window.__paneChrome.clipboardImages");
+      if (held.length !== 1) fail("a held Cmd+Shift+C did not copy exactly one screenshot", held);
+      await holdKey(cdp, COPY_SCREENSHOT, 0);
+      if (!await waitFor(cdp, "window.__paneChrome.clipboardImages.length >= 2", 10_000)) fail("a second Cmd+Shift+C press copied nothing");
+      await sleep(KEY_UP_FOR_MS);
+      const again = await evaluate<number[]>(cdp, "window.__paneChrome.clipboardImages");
+      if (again.length !== 2) fail("a single Cmd+Shift+C press did not copy exactly one more screenshot", again);
+    },
+  },
+  {
+    name: "held keys: Cmd+Shift+C sent 45 times with no repeat flag in 1.5 s still copies one screenshot",
+    scenario: "docked",
+    async run(cdp) {
+      await click(cdp, await pointOf(cdp, "plain:a", "title"));
+      // What a held native menu accelerator looks like to the page: every trigger a fresh press.
+      await holdKey(cdp, COPY_SCREENSHOT, HELD_MS, { flagRepeats: false });
+      if (!await waitFor(cdp, "window.__paneChrome.clipboardImages.length >= 1", 10_000)) fail("the triggers copied no screenshot");
+      await sleep(KEY_UP_FOR_MS);
+      const copied = await evaluate<number[]>(cdp, "window.__paneChrome.clipboardImages");
+      if (copied.length !== 1) fail("45 triggers in 1.5 s did not copy exactly one screenshot", copied);
+    },
+  },
+  {
+    name: "held keys: the Ask Gloom key held for 1.5 s hands the pane over once",
+    scenario: "docked",
+    async run(cdp) {
+      await click(cdp, await pointOf(cdp, "plain:b", "title"));
+      await holdKey(cdp, ASK_GLOOM, HELD_MS);
+      await sleep(KEY_UP_FOR_MS);
+      const asked = await evaluate<string[]>(cdp, "window.__paneChrome.asks");
+      if (asked.join() !== "plain:b") fail("a held Ask Gloom key did not hand over the pane exactly once", asked);
+    },
+  },
+  {
+    name: "held keys: Cmd+W held for 1.5 s closes one pane, and a later press closes the next",
+    scenario: "docked",
+    async run(cdp) {
+      const before = await evaluate<number>(cdp, PANE_COUNT);
+      await click(cdp, await pointOf(cdp, "plain:a", "title"));
+      await holdKey(cdp, CLOSE_PANE, HELD_MS);
+      await frames(cdp, 3);
+      const closed = await evaluate<number>(cdp, PANE_COUNT);
+      if (closed !== before - 1) fail(`a held Cmd+W closed ${before - closed} panes, not one`, { before, closed });
+      await sleep(KEY_UP_FOR_MS);
+      await click(cdp, await pointOf(cdp, "plain:b", "title"));
+      await holdKey(cdp, CLOSE_PANE, 0);
+      await frames(cdp, 3);
+      const next = await evaluate<number>(cdp, PANE_COUNT);
+      if (next !== before - 2) fail(`a second Cmd+W press left ${next} panes, not ${before - 2}`);
+    },
+  },
+  {
+    name: "held keys: the arrow keys keep repeating in a table",
+    scenario: "resize",
+    async run(cdp) {
+      await click(cdp, await pointOf(cdp, "news:float", "title"));
+      const selected = `Number(__check.pane("news:float").querySelector("[data-selected=true]")?.textContent?.match(/^(\\d+)/)?.[1] ?? -1)`;
+      const start = await evaluate<number>(cdp, selected);
+      await holdKey(cdp, ARROW_DOWN, 1_000);
+      const end = await evaluate<number>(cdp, selected);
+      // About thirty repeats a second: the selection is well down the list, not one row on.
+      if (start < 0 || end - start < 10) fail("a held arrow key did not keep moving the table selection", { start, end });
+    },
+  },
+  {
+    name: "held keys: Cmd+W held in a popped-out window closes it once",
+    scenario: "detached",
+    async run(cdp) {
+      await holdKey(cdp, CLOSE_PANE, HELD_MS);
+      const closes = await evaluate<number>(cdp, "window.__paneChrome.detachedCloses");
+      if (closes !== 1) fail(`a held Cmd+W asked the popped-out window to close ${closes} times, not once`);
+      await sleep(KEY_UP_FOR_MS);
+      await holdKey(cdp, CLOSE_PANE, 0);
+      if (await evaluate<number>(cdp, "window.__paneChrome.detachedCloses") !== 2) fail("a second Cmd+W press did not ask again");
     },
   },
   // Each caption button on a fresh window: it does its own job, never the window move.

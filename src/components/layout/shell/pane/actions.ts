@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import type { DesktopWindowBridge } from "../../../../types/desktop-window";
 import {
   applyDrop,
@@ -15,6 +15,7 @@ import { isPaneLockedInLayout } from "../../../../pane-settings";
 import type { RendererHost } from "../../../../ui";
 import { capturePaneScreenshotPngBase64 } from "../../../../utils/dom-screenshot";
 import { fireAndForget } from "../../../../utils/fire-and-forget";
+import { createOneShots } from "../../../../utils/one-shot";
 import {
   exportPaneTableCsv,
   hasPaneTableExporter,
@@ -64,6 +65,10 @@ export function useShellPaneActions({
   visibleLayout,
   width,
 }: UseShellPaneActionsOptions) {
+  // Actions with a side effect outside the layout (the clipboard, a file, a new
+  // window) refuse a second trigger while one runs and for a moment after, from
+  // a held key, a native menu accelerator or a double press alike.
+  const [shots] = useState(createOneShots);
   const openPaneSettings = useCallback((paneId: string) => {
     pluginRegistry.openPaneSettings(paneId);
     closePaneMenu();
@@ -71,6 +76,9 @@ export function useShellPaneActions({
 
   const copyPaneScreenshot = useCallback(async (paneId: string) => {
     closePaneMenu();
+    const shot = shots.get("copy-screenshot");
+    if (shot.refuses()) return;
+    shot.start();
     try {
       await new Promise((resolve) => setTimeout(resolve, 0));
       if (!rendererHost.copyPngImage) {
@@ -82,8 +90,10 @@ export function useShellPaneActions({
     } catch (error) {
       const message = error instanceof Error ? error.message : "Could not copy pane screenshot.";
       pluginRegistry.notify({ body: message, type: "error" });
+    } finally {
+      shot.end();
     }
-  }, [closePaneMenu, pluginRegistry, rendererHost]);
+  }, [closePaneMenu, pluginRegistry, rendererHost, shots]);
 
   const canExportPaneCsv = useCallback((paneId: string) => {
     const pane = paneMap.get(paneId);
@@ -94,12 +104,19 @@ export function useShellPaneActions({
     closePaneMenu();
     const pane = paneMap.get(paneId);
     if (!pane) return;
-    await exportPaneTableCsv(
-      paneId,
-      pane.instance.title ?? pane.def.name,
-      pluginRegistry.notify,
-    );
-  }, [closePaneMenu, paneMap, pluginRegistry]);
+    const shot = shots.get("export-csv");
+    if (shot.refuses()) return;
+    shot.start();
+    try {
+      await exportPaneTableCsv(
+        paneId,
+        pane.instance.title ?? pane.def.name,
+        pluginRegistry.notify,
+      );
+    } finally {
+      shot.end();
+    }
+  }, [closePaneMenu, paneMap, pluginRegistry, shots]);
 
   const exportFocusedPaneCsv = useCallback(() => {
     if (!focusedPaneId || !canExportPaneCsv(focusedPaneId)) return false;
@@ -161,9 +178,14 @@ export function useShellPaneActions({
   const popOutFocusedPane = useCallback(() => {
     if (!focusedPaneId || desktopWindowBridge?.kind !== "main" || !desktopWindowBridge.popOutPane) return false;
     if (!isPaneInLayout(visibleLayout, focusedPaneId)) return false;
-    fireAndForget(desktopWindowBridge.popOutPane(focusedPaneId), "desktop.popOutPane");
+    const shot = shots.get("pop-out");
+    if (shot.refuses()) return true;
+    shot.start();
+    const request = desktopWindowBridge.popOutPane(focusedPaneId);
+    fireAndForget(request, "desktop.popOutPane");
+    void Promise.resolve(request).then(() => undefined, () => undefined).finally(() => shot.end());
     return true;
-  }, [desktopWindowBridge, focusedPaneId, visibleLayout]);
+  }, [desktopWindowBridge, focusedPaneId, shots, visibleLayout]);
 
   const gridlockVisiblePanes = useCallback(() => {
     tidyWindows({

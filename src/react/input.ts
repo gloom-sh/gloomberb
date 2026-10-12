@@ -6,6 +6,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { keySignature, mayRepeat } from "./key-repeat";
 
 export interface KeyEventLike {
   key: string;
@@ -17,6 +18,12 @@ export interface KeyEventLike {
   meta: boolean;
   super?: boolean;
   targetEditable?: boolean;
+  /**
+   * The platform sent this press because the key is held down (DOM `repeat`,
+   * the kitty protocol's repeat event). Absent where the host cannot tell,
+   * such as a terminal that does not report event types.
+   */
+  readonly repeat?: boolean;
   readonly defaultPrevented?: boolean;
   readonly propagationStopped?: boolean;
   preventDefault(): void;
@@ -104,7 +111,7 @@ export function createShortcutRegistry({ flushSync }: ShortcutRegistryOptions = 
   const entries = new Map<number, ShortcutEntry>();
   const beforeListeners = new Set<(event: KeyEventLike) => void>();
 
-  return {
+  const registry: ShortcutRegistry = {
     register(registration) {
       const order = nextOrder++;
       entries.set(order, {
@@ -150,6 +157,31 @@ export function createShortcutRegistry({ flushSync }: ShortcutRegistryOptions = 
           }
           if (event.propagationStopped) return;
         }
+      }
+    },
+  };
+
+  // A held key repeats its press. Only the keys meant to repeat (key-repeat.ts)
+  // reach the handlers again; the rest already ran when the key went down.
+  // `lastPress` is that press: a repeat of a key the app claimed stays claimed,
+  // or the webview would act on it itself (a beep on macOS).
+  let lastPress: { signature: string; claimed: boolean } | null = null;
+  return {
+    ...registry,
+    dispatch(event) {
+      if (event.repeat === true && !mayRepeat(event)) {
+        if (lastPress?.claimed && lastPress.signature === keySignature(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
+      registry.dispatch(event);
+      if (event.repeat !== true) {
+        lastPress = {
+          signature: keySignature(event),
+          claimed: event.defaultPrevented === true || event.propagationStopped === true,
+        };
       }
     },
   };

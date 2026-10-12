@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act, useReducer } from "react";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
@@ -13,6 +13,7 @@ import { ThirteenFPane } from "./pane";
 import { ThirteenFTickerPane } from "./signals-pane";
 import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
+import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
 
 const PANE_ID = "thirteenf-pane-test";
 
@@ -22,6 +23,7 @@ let latestState: AppState | null = null;
 afterEach(() => {
   latestState = null;
   setHttpFetchTransport(null);
+  setSystemTime();
 });
 
 function Harness() {
@@ -238,6 +240,8 @@ describe("ThirteenFPane", () => {
 
     urls.length = 0;
     await emitKeypress({ name: "r", sequence: "R", ctrl: true, shift: true });
+    // A separate press: a held chord would not run window resize mode twice.
+    setSystemTime(new Date(Date.now() + ONE_SHOT_COOLDOWN_MS + 1));
     await emitKeypress({ name: "r", sequence: "R", super: true, shift: true });
     await renderFrames(4);
     expect(modes).toEqual(["resize", "resize"]);

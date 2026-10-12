@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { ReactNode } from "react";
 import { act, useReducer, useState } from "react";
 import type { PluginRegistry } from "../../../plugins/registry";
@@ -25,6 +25,7 @@ import {
   resolvePaneManagementShortcut,
 } from "./index";
 import { inputCaptureAllowsPaneManagementShortcut } from "./shortcuts";
+import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
 import { registerPaneDocsHandler } from "../../../docs/requests";
 import { registerAskGloomPaneHandler, type AskGloomPaneAttachment } from "../../../ask-gloom/pane-request";
 
@@ -200,6 +201,13 @@ function ShellTransientHarness({
 function findUpdateLayout(actions: ShellTestAction[]) {
   return actions.find((action) => action.type === "UPDATE_LAYOUT");
 }
+
+/** A later, separate press of a one-shot shortcut: the key went up and the cooldown ran out. */
+function pressAgainLater() {
+  setSystemTime(new Date(Date.now() + ONE_SHOT_COOLDOWN_MS + 1));
+}
+
+afterEach(() => setSystemTime());
 
 describe("Shell", () => {
   test.each([false, true])("keeps both numeric edges visible under terminal focus borders (floating=%s)", async (floating) => {
@@ -450,6 +458,7 @@ describe("Shell", () => {
     expect(tui.frame()).toContain("Portfolio Body 1");
     expect(notices).toEqual(["Moved to a layout of its own. Ctrl+Shift+N moves it back."]);
 
+    pressAgainLater();
     await emitKeypress({ name: "n", ctrl: true, shift: true });
     expect(controls.state?.config.layouts.map((entry) => entry.name)).toEqual(["Default"]);
     expect(controls.state?.config.layout.dockRoot).toEqual(docked.dockRoot);
@@ -534,6 +543,7 @@ describe("Shell", () => {
     expect(frame).not.toContain("Ticker Research Body");
     expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
 
+    pressAgainLater();
     await emitKeypress({ name: "f", ctrl: true, shift: true });
     await act(async () => {
       await tui.setup().renderOnce();
