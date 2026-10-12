@@ -61,6 +61,8 @@ window.__chat = {
       return painted || (reply ? parseFloat(getComputedStyle(reply).opacity) > 0.01 : false);
     }).map((row) => row.getAttribute('data-gloom-chat-message-id'));
   },
+  /** Rows selected, the keyboard's cursor: nothing but a key press or a reply should leave one. */
+  selected() { return this.rows().filter((row) => row.getAttribute('data-selected') === 'true').map((row) => row.getAttribute('data-gloom-chat-message-id')); },
   jump() {
     const control = document.querySelector('[data-gloom-role=chat-new-messages] button');
     if (!control) return null;
@@ -85,6 +87,7 @@ function fail(message: string, detail?: unknown): never {
 const state = (cdp: Cdp) => evaluate<ListState>(cdp, "__chat.state()");
 const anchor = (cdp: Cdp) => evaluate<Anchor>(cdp, "__chat.anchor()");
 const marked = (cdp: Cdp) => evaluate<string[]>(cdp, "__chat.marked()");
+const selected = (cdp: Cdp) => evaluate<string[]>(cdp, "__chat.selected()");
 const pause = (cdp: Cdp, ms: number) => evaluate(cdp, `new Promise((done) => setTimeout(done, ${ms}))`);
 
 async function ready(cdp: Cdp): Promise<void> {
@@ -387,6 +390,9 @@ export const chatSteps: ChatStep[] = [
       if (!await waitFor(cdp, `__chat.rows().length > ${rowsBefore}`, 3_000)) fail("the older messages never arrived");
       await frames(cdp, 6);
       expectPlace(before, await anchor(cdp), "older messages arriving");
+      // The reader pressed no key, so no message is selected (the oldest one used to be).
+      const chosen = await selected(cdp);
+      if (chosen.length > 0) fail("older messages arriving selected a message nobody selected", chosen);
     },
   },
   {

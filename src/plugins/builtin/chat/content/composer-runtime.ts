@@ -212,11 +212,8 @@ export function useChatComposerRuntime({
     setEditingMessage(null);
     replaceLocalComposer("");
     persistDraft("");
-    // The edit selected its message; with the edit gone it has no more claim on the band.
-    setSelectedIdx(-1);
-    setFollowMessages(true);
     focusInput();
-  }, [focusInput, persistDraft, replaceLocalComposer, setEditingMessage, setFollowMessages, setSelectedIdx]);
+  }, [focusInput, persistDraft, replaceLocalComposer, setEditingMessage]);
 
   const returnToComposer = useCallback(() => {
     setSelectedIdx(-1);

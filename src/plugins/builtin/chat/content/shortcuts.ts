@@ -197,9 +197,6 @@ export function useChatContentShortcuts({
           cancelEditMessage();
         } else if (replyTo) {
           clearReplyTarget();
-          // Pressing Reply or Enter on a message selected it; with the reply gone it has no more claim on the band.
-          setSelectedIdx(-1);
-          setFollowMessages(true);
         } else {
           // Leaving an empty composer is the first half of a double-Esc close;
           // leaving a draft is not, so a quick Esc Esc never closes over it.

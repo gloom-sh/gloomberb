@@ -112,12 +112,9 @@ export function attachStickyScroll(
     if (element.scrollTop !== knownTop) readPosition();
   };
   element.addEventListener("scroll", onScroll, { passive: true });
-  readPosition();
-  // Starts at the bottom of what is already there.
-  if (startAtBottom) {
-    pinned = true;
-    settle();
-  }
+  // Opens at the bottom of what is already there, or wherever it was left.
+  if (startAtBottom) settle();
+  else readPosition();
 
   return {
     sync: readPosition,

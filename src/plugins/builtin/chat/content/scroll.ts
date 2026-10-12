@@ -119,7 +119,10 @@ export function useChatScrollRuntime({
       oldestMessageId: messages[0]?.id ?? null,
       scrollHeight: getScrollHeight(scrollBox, exactPixels),
       scrollTop: getScrollTop(scrollBox, exactPixels),
-      selectedMessageId: selectedIdx >= 0 ? messages[selectedIdx]?.id ?? null : messages[0]?.id ?? null,
+      // Only a selection there already is follows the rows down. Nothing selected stays so:
+      // the oldest message used to be selected here, and kept the selected band and its
+      // Reply button until the reader pressed Esc, which a mouse reader never does.
+      selectedMessageId: selectedIdx >= 0 ? messages[selectedIdx]?.id ?? null : null,
     };
     setFollowMessages(false);
     const request = useDefaultControllerChannel
@@ -206,6 +209,8 @@ export function useChatScrollRuntime({
       const scrollBox = scrollRef.current;
       if (!scrollBox) return;
       scrollBox.scrollTo(getMessageTopOffset(messages, targetIndex, contentWidth, catalog));
+      // A message near the bottom leaves the reader at it, and following.
+      setFollowMessages(isScrolledToBottom(scrollBox, nativePaneChrome));
     });
     return true;
   }, [

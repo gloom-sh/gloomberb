@@ -615,7 +615,6 @@ export function ChatContent({
     onDiscordCommand: handleDiscordCommand,
   });
   replaceComposerDraftRef.current = replaceComposerDraft;
-
   // A conversation just opened or started: selected in the sidebar, with the
   // composer ready to write in.
   const showConversation = useCallback((nextChannelId: string) => {
