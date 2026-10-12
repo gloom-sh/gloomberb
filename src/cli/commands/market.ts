@@ -114,6 +114,8 @@ import {
   type ListingVenue,
   loadForListing,
   loadListingQuote,
+  listingFateLoader,
+  listingFateNotes,
   noLongerTradingNote,
   notTradedMessage,
   quoteBareListing,
@@ -742,12 +744,14 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const load = () => market.dataProvider.getPriceHistoryWithMetadata
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
       : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points) => ({ points, resolution: null }));
+    const quoted = loadListingQuote(market.dataProvider, listing);
+    const fate = listingFateLoader(listing, market, quoted);
     const [{ points, resolution }, quote] = await Promise.all([
       loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, {
-        command: range === "1Y" ? "history" : `history --range ${range}`, noun: "history",
+        command: range === "1Y" ? "history" : `history --range ${range}`, noun: "history", fate,
       })
         .catch((error) => failHistory(error, listing.key, ctx)),
-      loadListingQuote(market.dataProvider, listing),
+      quoted,
     ]);
     const identity = listingIdentity(listing, quote);
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
@@ -775,6 +779,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     });
     const gaps = historyGapNote(data, traded);
     const notes = [
+      // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
+      ...listingFateNotes(await fate(), { served: data.length > 0, firstDate: data[0]?.date }),
       ...await listingChoiceNotes(listing, market, quote, venues),
       ...historyNotes(range, interval, data[0]?.date), gaps ?? [], historyFlagNote(data) ?? [], historyBarStatusNote(data) ?? [],
     ].flat();
@@ -1435,6 +1441,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const refresh = ctx.cliOptions.refresh;
     const venues = loadBareVenues(listing, market);
     const quotePromise = loadListingQuote(market.dataProvider, listing);
+    const fate = listingFateLoader(listing, market, quotePromise);
     const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quotePromise, refresh);
     const { result, chain: loaded } = await loadForListing(listing, market, ctx, async () => {
       const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
@@ -1445,7 +1452,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
           cacheMode: refresh ? "refresh" : "default",
         }),
       };
-    }, undefined, { command: "options", noun: "options chain" }).catch((error: unknown) => {
+    }, undefined, { command: "options", noun: "options chain", fate }).catch((error: unknown) => {
       if (!isOptionsUnavailableError(error)) throw error;
       // A future or commodity with no chain of its own: name the listed fund whose options stand in.
       const alternative = listedOptionsAlternative(listing.key);
@@ -1474,7 +1481,10 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const modelWarning = inputs.spot == null && (chain.calls.length > 0 || chain.puts.length > 0)
       ? `IV and delta need a current ${listing.key} quote; those columns are blank`
       : null;
+    const listed = chain.expirationDates.length > 0 || chain.calls.length > 0 || chain.puts.length > 0;
     const warnings = [
+      // FB's chain is the fund listed there now; a listing that stopped trading has none.
+      ...listingFateNotes(await fate(), { served: listed }),
       ...await listingChoiceNotes(listing, market, quote, venues),
       ...[refreshWarning ?? sessionWarning, modelWarning].filter((warning): warning is string => warning != null),
     ];

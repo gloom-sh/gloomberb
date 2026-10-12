@@ -306,13 +306,18 @@ interface ScreenCoverage {
  * backfilling says how far it has got. One that finished with no options
  * history is final and leaves the screen complete; one demand coverage could
  * not take is not final. An older server says only ready or queued, without
- * dates, so its queued symbols are counted from now as before.
+ * dates, so its queued symbols are counted from now as before. A symbol in
+ * `explained` (a listing that stopped trading, which its row says) is not
+ * listed again as having no options history.
  */
-export function screenCoverage(rows: readonly RichCheapRow[], options: { now?: number; retry?: boolean } = {}): ScreenCoverage {
+export function screenCoverage(
+  rows: readonly RichCheapRow[],
+  options: { now?: number; retry?: boolean; explained?: ReadonlySet<string> } = {},
+): ScreenCoverage {
   const now = options.now ?? Date.now();
   const queued = rows.filter((row) => row.status === "queued");
   const backfilling = rows.filter((row) => row.status === "backfilling");
-  const final = rows.filter((row) => row.status === "unavailable" && !row.warning);
+  const final = rows.filter((row) => row.status === "unavailable" && !row.warning && !options.explained?.has(row.symbol));
   const uncovered = rows.filter((row) => row.status === "unavailable" && row.warning);
   const notes: string[] = [];
   if (queued.length) {

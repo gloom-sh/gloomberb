@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
+import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
 import type { IvMethod, IvScreenPayload, IvScreenRow } from "./client";
 import { VCA_DEFINITIONS } from "./format";
@@ -15,12 +17,12 @@ const row = (symbol: string, latest: ReturnType<typeof reading>, rankDate: strin
   iv30: { value: 0.3, date: rankDate, method: "trade-close", rank, percentile: rank, low: 0.2, high: 0.4, samples: 250, windowStart: "2025-10-08" },
   iv90: null, skew: null,
 });
-const load = async (rows: IvScreenRow[]) => {
+const load = async (rows: IvScreenRow[], marketData: DataProvider = createTestDataProvider()) => {
   // The response's own date is the day it was fetched, a day after the newest session.
   const payload: IvScreenPayload = { version: 1, asOf: "2026-10-10", rows };
   const apiClient = { impliedVolatility: async () => payload } as unknown as HeadlessPaneApiClient;
   const result = await ivScreenHeadless.load(createTestHeadlessArgs({ symbols: rows.map((entry) => entry.symbol) }),
-    createTestHeadlessContext({ apiClient })) as HeadlessBundleResult;
+    createTestHeadlessContext({ apiClient, marketData })) as HeadlessBundleResult;
   const section = result.sections[0]! as Extract<HeadlessBundleResult["sections"][number], { rows: unknown[] }>;
   const cell = (key: string, index: number) => {
     const column = section.columns!.find((entry) => entry.key === key)!;
@@ -137,6 +139,30 @@ describe("VCA backfill states", () => {
   test("a symbol demand coverage could not take is not final", async () => {
     expect(await report([ready, pending("FULL", "unavailable", null, null, ["Coverage for new underlyings is full; try again later."])]))
       .toEqual({ notes: ["Not queued: FULL. Coverage for new underlyings is full; try again later."], complete: false, unavailableSymbols: ["FULL"] });
+  });
+
+  test("a row with no reading says what became of its symbol, and one that stopped trading is not listed again as having no options history", async () => {
+    setSystemTime(new Date("2026-10-11T08:04:00Z"));
+    const lastTrade = Date.parse("2022-10-27T23:59:59.953Z");
+    const hop = { from: "FB", to: "META", date: "2022-06-09" };
+    const marketData = createTestDataProvider({
+      getQuote: async (symbol) => symbol === "TWTR"
+        ? createTestQuote({ symbol, price: 53.86, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true })
+        : createTestQuote({ symbol, name: "ProShares S&P 500 Dynamic Daily Buffer ETF", listingExchangeName: "BATS" }),
+      getTickerChanges: async (symbol) => symbol === "FB"
+        ? { symbol, moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop] }, formerly: null, listedName: null, changes: [hop] }
+        : null,
+    });
+    const final = (symbol: string) => pending(symbol, "unavailable", "2026-10-11T04:09:51Z", "2026-10-09");
+    const { keys, result } = await load([ready, final("TWTR"), final("FB")], marketData);
+    expect(keys.at(-1)).toBe("note");
+    const section = result.sections[0] as { rows: Array<{ note?: string }> };
+    expect(section.rows.map((row) => row.note ?? null)).toEqual([
+      null,
+      "TWTR stopped trading 2022-10-27; no history or options served",
+      "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)",
+    ]);
+    expect(result.notes?.[0]).toBe("No options history: FB.");
   });
 
   test("an older server's queued symbol reads as before, retried from now", async () => {

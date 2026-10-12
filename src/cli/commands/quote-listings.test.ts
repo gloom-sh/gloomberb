@@ -1,10 +1,10 @@
-import { expect, test } from "bun:test";
+import { expect, spyOn, test } from "bun:test";
 import type { DataProvider, QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { TickerChanges } from "../../types/ticker-changes";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
 import { createTestTicker } from "../../test-support/ticker";
-import { buildSearchReport } from "./search";
+import { buildSearchReport, search } from "./search";
 import { marketDataCliCommands } from "./market";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
@@ -215,6 +215,55 @@ test("a symbol whose company moved says so in one line and in its JSON row; the 
   expect(offline.failure).toBeNull();
   expect(offline.warnings).toEqual([]);
   expect(offline.rows[0]).not.toHaveProperty("tickerChange");
+});
+
+test("search lists a symbol it no longer finds as no longer trading with its last date, and says when a company left a symbol it finds", async () => {
+  const lastTrade = Date.parse("2022-10-27T23:59:59.953Z");
+  const twitter = createTestQuote({ symbol: "TWTR", price: 53.86, lastUpdated: lastTrade, lastTradeTime: lastTrade, stale: true });
+  const fund = "ProShares S&P 500 Dynamic Daily Buffer ETF";
+  const etf = createTestQuote({ symbol: "FB", name: fund, listingExchangeName: "BATS", exchangeName: "BATS" });
+  const hop = { from: "FB", to: "META", date: "2022-06-09" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => query.toUpperCase() === "FB" ? [{ providerId: "test", symbol: "FB", name: fund, exchange: "BATS", type: "ETF", currency: "USD" }] : [],
+    getQuote: async (symbol) => {
+      if (symbol === "TWTR") return twitter;
+      if (symbol === "FB") return etf;
+      throw new Error(`Not a ticker: ${symbol}.`);
+    },
+    getTickerChanges: async (symbol) => symbol === "FB"
+      ? { symbol, moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [hop] }, formerly: null, listedName: null, changes: [hop] }
+      : null,
+  });
+  const initMarketData = async () => ({ store: { loadAllTickers: async () => [] }, dataProvider, persistence: { close() {} } }) as never;
+  const json = async (query: string) => {
+    const printed: PrintedCliResult["result"][] = [];
+    await search(query, { initMarketData, printResult: (result) => { printed.push(result); } });
+    return printed[0]!;
+  };
+
+  const twtr = await json("twtr");
+  expect(twtr.data).toEqual([expect.objectContaining({
+    category: "No Longer Trading", symbol: "TWTR", lastTraded: "2022-10-27", lastPrice: "$53.86",
+    note: "TWTR stopped trading 2022-10-27; no history or options served",
+  })]);
+  // It was found: no pointer to the catalog.
+  expect(twtr.warnings).toBeUndefined();
+  const log = spyOn(console, "log").mockImplementation(() => {});
+  try {
+    await search("TWTR", { initMarketData });
+    const text = String(log.mock.calls[0]![0]).replace(/\x1b\[[0-9;]*m/g, "");
+    expect(text).toContain("No Longer Trading");
+    expect(text).toMatch(/TWTR\s+2022-10-27\s+\$53\.86/);
+    expect(text).not.toContain("No matches found.");
+  } finally {
+    log.mockRestore();
+  }
+
+  const fb = await json("FB");
+  expect(fb.warnings).toEqual([`FB now lists ${fund}; Meta Platforms trades as META (changed 2022-06-09)`]);
+  expect((fb.data as Array<{ category: string }>).map((row) => row.category)).not.toContain("No Longer Trading");
+  // A symbol with no change and no quote says nothing more.
+  expect((await json("ZZZZ")).warnings).toEqual(['Search finds tickers and company names. Try: gloomberb catalog "ZZZZ"']);
 });
 
 test("a pasted list is one row per symbol, in order, however it is separated, for quote and compare alike", async () => {
