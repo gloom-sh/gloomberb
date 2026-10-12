@@ -44,10 +44,10 @@ test("a metric outside the free preview is not called missing, a company without
   const load = (metric: string) => companyHeadless("kpis").load(createTestHeadlessArgs({ symbols: [payload.symbol], options: { metric } }), createTestHeadlessContext({ apiClient: client }));
   const held = await load("backlog");
   expect(held.sections.every((section) => section.rows?.length === 0)).toBe(true);
-  expect(held.sections[0]?.empty).toBe("Order backlog is not among the 3 free KPI values; Gloom Pro shows all 23.");
+  expect(held.sections[0]).toMatchObject({ empty: "Order backlog is not among the 3 free KPI values; Gloom Pro shows all 23." });
   // A preview that holds nothing back is everything the company has.
   payload = { ...payload, truncated: false, lockedRows: 0, totalRows: 1 };
-  expect((await load("backlog")).sections[0]?.empty).toBe(`${payload.symbol} has no Order backlog (backlog) disclosures; it has arr (Annual recurring revenue).`);
+  expect((await load("backlog")).sections[0]).toMatchObject({ empty: `${payload.symbol} has no Order backlog (backlog) disclosures; it has arr (Annual recurring revenue).` });
   await expect(load("backlgo")).rejects.toThrow(/backlgo is not a known metric id.*arr \(Annual recurring revenue\)/);
   // A name is not an id the server takes, so it is not sent.
   await expect(load("net sales")).rejects.toThrow("not a known metric id");
