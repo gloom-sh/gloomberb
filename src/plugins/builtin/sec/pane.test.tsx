@@ -11,10 +11,9 @@ import { TestPaneProvider, createTestPaneConfig, createTestTicker } from "../../
 import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { DataProvider, SecFilingItem } from "../../../types/data-provider";
 import { Box } from "../../../ui";
-import { secHeadless, secModule } from "./index";
+import { secHeadless, SecView } from "./index";
 
 const PANE_ID = "sec:test";
-const Pane = secModule.panes![0]!.component;
 const filing: SecFilingItem = {
   accessionNumber: "0000000001-26-000001",
   form: "8-K",
@@ -51,7 +50,7 @@ function Harness() {
           footer = value;
           return (
             <Box width={110} height={36} flexDirection="column">
-              <Box height={35}><Pane paneId={PANE_ID} paneType="sec" focused width={110} height={35} /></Box>
+              <Box height={35}><SecView focused width={110} height={35} /></Box>
               <PaneFooterBar footer={value} focused width={110} />
             </Box>
           );

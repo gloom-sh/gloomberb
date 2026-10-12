@@ -62,7 +62,6 @@ import { userSeriesModule } from "./chart-composer/user-series";
 import { congressResearchModule } from "./congress-trades";
 import { dividendYieldModule } from "./dividend-yield";
 import { executivesModule } from "./executives";
-import { filingEventsModule } from "./filing-events";
 import { holdersModule } from "./holders";
 import { insiderModule } from "./insider";
 import { jobsModule } from "./jobs";
@@ -82,6 +81,7 @@ import { backtestModule } from "./backtest";
 import { researchModule } from "./research";
 import { riskFactorsModule } from "./risk-factors";
 import { secModule } from "./sec";
+import { eventsWorkspaceModule, filingsWorkspaceModule } from "./filings-workspace";
 import { shortInterestModule } from "./short-interest";
 import { thirteenFModule } from "./thirteenf";
 import { tickerDetailModule } from "./ticker-detail";
@@ -170,7 +170,8 @@ export const ownershipPlugin = composeBuiltinPlugin({
 
 export const filingsPlugin = composeBuiltinPlugin({
   ...filingsPluginMeta,
-  modules: [secModule, riskFactorsModule, filingEventsModule, catalystsModule, mnaModule].map(rendererOnly),
+  hosts: ["efts.sec.gov"],
+  modules: [secModule, riskFactorsModule, catalystsModule, mnaModule, filingsWorkspaceModule, eventsWorkspaceModule].map(rendererOnly),
 });
 
 export const brokerPlugin = composeBuiltinPlugin({

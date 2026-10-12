@@ -1,12 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
-  EmptyState,
   PaneStatusBody,
   QueryBar,
   useTableLoadMore,
   usePaneFooter,
-  usePaneTabs,
   type DataTableCell,
   type DataTableColumn,
   type PaneHint,
@@ -24,12 +22,11 @@ import type {
 } from "../../../api-client/mna";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut } from "../../../public/react";
-import { usePaneInstance } from "../../../state/app/context";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { listingIdentity } from "../shared/ticker-request";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
-import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
+import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, useUiCapabilities, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { usePluginTickerActions } from "../../runtime";
@@ -124,57 +121,14 @@ type Item = { kind: "deal"; deal: MnaDeal } | { kind: "locked"; index: number };
 
 const itemKey = (item: Item) => (item.kind === "deal" ? item.deal.id : `locked:${item.index}`);
 
-type MnaTab = "deals" | "distress";
-
-const MNA_TABS: { label: string; value: MnaTab }[] = [
-  { label: "Deals", value: "deals" },
-  { label: "Distress", value: "distress" },
-];
-
-/** `MA`, or `MA ACVA`. A link supplies the ticker; an older pane still has it in settings. */
-export function MnaPane(props: PaneProps) {
+/** One view from the Events workspace, with the old pane's ticker binding. */
+export function MnaWorkspacePane({ view, ...props }: PaneProps & { view: "deals" | "distress" }) {
   const { symbol: bound } = usePaneTickerIdentity();
   const [ticker] = usePaneSettingValue("ticker", "");
   const fromSettings = typeof ticker === "string" ? ticker.trim().toUpperCase() : "";
   const symbol = listingIdentity(bound)?.symbol || fromSettings;
-  // One company's deals have no market-wide distress tab beside them.
-  if (symbol) return <MnaDealsView key={symbol} focused={props.focused} width={props.width} height={props.height} symbol={symbol} />;
-  return <MnaBoard focused={props.focused} width={props.width} height={props.height} />;
-}
-
-/**
- * The market-wide pane: deals, and companies in difficulty, the other side of
- * special situations. `DIST` opens it on the Distress tab. Only the active tab
- * is mounted, so the pane always has one table to export and the hidden deal
- * list keeps no quotes streaming.
- */
-function MnaBoard({ focused, width, height }: { focused: boolean; width: number; height: number }) {
-  const opensOnDistress = usePaneInstance()?.params?.tab === "distress";
-  const [storedTab, setTab] = usePluginPaneState<string>("tab", opensOnDistress ? "distress" : "deals");
-  const tab: MnaTab = storedTab === "distress" ? "distress" : "deals";
-  const { strip, rows } = usePaneTabs({
-    tabs: MNA_TABS,
-    activeValue: tab,
-    onSelect: setTab,
-    focused,
-    compact: true,
-    variant: "bare",
-  });
-  // The terminal draws the strip; Distress puts its source picker on the same row.
-  if (tab === "distress") return <DistressBoard focused={focused} width={width} height={height} tabStrip={strip} />;
-  return (
-    <Box width={width} height={height} flexDirection="column">
-      {strip ? <Box height={1} flexShrink={0} paddingX={1} flexDirection="column">{strip}</Box> : null}
-      <MnaDealsView focused={focused} width={width} height={Math.max(1, height - rows)} symbol={null} />
-    </Box>
-  );
-}
-
-export function MnaTickerTab({ focused, width, height }: TickerResearchTabProps) {
-  const { ticker } = usePaneTickerIdentity();
-  const symbol = ticker?.metadata.ticker;
-  if (!symbol) return <EmptyState title="Select a ticker." />;
-  return <MnaDealsView key={symbol} focused={focused} width={width} height={height} symbol={symbol} />;
+  if (view === "distress") return <DistressBoard {...props} />;
+  return <MnaDealsView key={symbol || "market"} {...props} symbol={symbol || null} />;
 }
 
 function MnaDealsView({ focused, width, height, symbol }: {

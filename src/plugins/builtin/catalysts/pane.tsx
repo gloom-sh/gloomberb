@@ -30,17 +30,17 @@ const isSelectable = (row: Row) => row.kind === "item" || row.kind === "locked";
 const EMPTY_FILTERS: Record<string, unknown> = {};
 const EMPTY_DETAILS: Record<string, CatalystDetail> = {};
 
-export function CatalystsPane(props: PaneProps) {
+export function CatalystsPane(props: PaneProps & { queryBarWidth?: number }) {
   const { symbol: bound } = usePaneTickerIdentity();
   const [scope] = usePaneSettingValue<string>("symbol", "");
   const symbol = bound || scope.trim() || null;
   return <CatalystView key={symbol || "market"} {...props} symbol={symbol} />;
 }
-export function LitigationPane(props: PaneProps) {
+export function LitigationPane(props: PaneProps & { queryBarWidth?: number }) {
   const { symbol } = usePaneTickerIdentity();
   return symbol ? <CatalystView key={symbol} {...props} symbol={symbol} litigation /> : <EmptyState title="Select a ticker." />;
 }
-export function CatalystView({ width, height, focused, symbol, litigation = false }: Pick<PaneProps, "width" | "height" | "focused"> & { symbol: string | null; litigation?: boolean }) {
+function CatalystView({ width, height, focused, symbol, litigation = false, queryBarWidth }: Pick<PaneProps, "width" | "height" | "focused"> & { symbol: string | null; litigation?: boolean; queryBarWidth?: number }) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const instance = usePaneInstance();
@@ -99,7 +99,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const asOf = data?.asOf ? Date.parse(data.asOf) : null;
   useAutoRefresh(asOf && Number.isFinite(asOf) ? asOf : null, resource.reload);
   usePaneRefreshKey(resource.reload, { focused: focused && !openId });
-  const { strip, rows: tabRows } = usePaneTabs(!openId ? { tabs: [...CATALYST_TABS].map((item) => litigation && item.value === "calendar" ? { ...item, label: "Dockets" } : item), activeValue: tab, onSelect: (value) => { setTab(value); setSelectedId(null); }, focused, dense: true } : null);
+  const { strip, rows: tabRows } = usePaneTabs(!openId ? { tabs: [...CATALYST_TABS].map((item) => litigation && item.value === "calendar" ? { ...item, label: "Dockets" } : item), activeValue: tab, onSelect: (value) => { setTab(value); setSelectedId(null); }, focused, dense: true, queryBarWidth } : null);
   const selectedSymbol = selected ? catalystSymbol(selected) : symbol;
   const hints: PaneHint[] = [
     ...(!openId && selectedSymbol ? [{ id: "description", key: "d", label: "es", onPress: () => openDescription(selectedSymbol) },

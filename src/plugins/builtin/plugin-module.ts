@@ -55,6 +55,8 @@ const ALL_MODULE_KEYS_HANDLED: MissingModuleKey extends never ? true : never = t
 void ALL_MODULE_KEYS_HANDLED;
 
 interface CompositePluginOptions extends PluginMetadata {
+  /** Hosts contributed by a renderer module group, for proxy setup. */
+  hosts?: GloomPlugin["hosts"];
   modules: readonly PluginModuleInput[];
 }
 

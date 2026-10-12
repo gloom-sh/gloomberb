@@ -444,6 +444,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     access: "pro",
     bloomberg: ["MGMT"],
   },
+  EVNT: {
+    summary: "Corporate actions, catalysts, legal dockets, M&A deals and distress signals in one workspace, with a tab for each kind of event.",
+    usage: ["EVNT", "EVNT NVDA"],
+    keys: [TABS, OPEN, OPEN_SOURCE],
+    data: { free: "As published; M&A delayed 7 days", pro: "As published; M&A as announced, spreads live" },
+    bloomberg: [],
+    docs: "CATL",
+  },
   EK: {
     summary: "The company's 8-Ks classified by item (agreements, executive changes, auditor changes, restructurings) with a summary of what each one said.",
     usage: ["EK NVDA"],
@@ -972,6 +980,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
 
   // Ownership and filings
+  FIL: {
+    summary: "SEC and ETF filings, 8-Ks, risk factors and SEC comment letters grouped by tab in one workspace.",
+    usage: ["FIL", "FIL NVDA"],
+    keys: [TABS, OPEN, OPEN_SOURCE],
+    data: AS_FILED,
+    bloomberg: [],
+    docs: "SEC",
+  },
   SEC: {
     summary: "Recent SEC filings for a ticker with form type and date; open any of them inline. US equities.",
     usage: ["SEC AAPL"],

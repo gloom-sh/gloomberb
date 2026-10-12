@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { migrateSavedConfig } from "./migrations";
-import { foldPaneLayout } from "./fold-panes";
+import { foldPaneLayout, foldSavedPanes } from "./fold-panes";
 import { CURRENT_CONFIG_VERSION, type DockLayoutNode, type LayoutConfig, type PaneInstanceConfig } from "../../../types/config";
 
 function layout(instances: PaneInstanceConfig[], dockRoot: DockLayoutNode | null = null, floating: LayoutConfig["floating"] = []): LayoutConfig {
@@ -8,6 +8,30 @@ function layout(instances: PaneInstanceConfig[], dockRoot: DockLayoutNode | null
 }
 
 describe("fold short volume and sovereign CDS", () => {
+  test("the version 25 helper leaves Filings and Events for their later migration", () => {
+    const savedLayout = layout([
+      { instanceId: "sec:AAPL", paneId: "sec", binding: { kind: "fixed", symbol: "AAPL" } },
+      { instanceId: "mna:AAPL", paneId: "mna", binding: { kind: "fixed", symbol: "AAPL" } },
+    ]);
+    const paneState = {
+      "ticker-research:main": {
+        activeTabId: "filing-events",
+        pluginState: { "ticker-research": { keep: "state" } },
+      },
+    };
+    const folded = foldSavedPanes({
+      layout: savedLayout,
+      layouts: [{ name: "Research", layout: savedLayout, paneState }],
+    });
+    const saved = (folded.layouts as Array<{ layout: LayoutConfig; paneState: typeof paneState }>)[0]!;
+
+    expect(saved.layout.instances.map(({ instanceId, paneId }) => ({ instanceId, paneId }))).toEqual([
+      { instanceId: "sec:AAPL", paneId: "sec" },
+      { instanceId: "mna:AAPL", paneId: "mna" },
+    ]);
+    expect(saved.paneState).toEqual(paneState);
+  });
+
   test("a daily-volume pane becomes the short interest pane on Daily volume, and a sovereign board beside an index board is removed", () => {
     const folded = foldPaneLayout(layout([
       { instanceId: "short-volume:AAPL", paneId: "short-volume", binding: { kind: "fixed", symbol: "AAPL" }, params: { keep: "1" } },
@@ -116,5 +140,77 @@ describe("fold short volume and sovereign CDS", () => {
       focusedPaneId: null,
     });
     expect(saved[1]?.layout.dockRoot).toEqual({ kind: "pane", instanceId: "cdx-2" });
+  });
+});
+
+describe("fold issuer research into Filings and Events", () => {
+  test("keeps pane identities and saved state while routing old panes to their workspace tabs", () => {
+    const instances: PaneInstanceConfig[] = [
+      { instanceId: "sec:NVDA", paneId: "sec", title: "SEC NVDA", binding: { kind: "fixed", symbol: "NVDA" } },
+      { instanceId: "sec:NVDA:ETF", paneId: "sec", title: "ETF Filings NVDA", binding: { kind: "fixed", symbol: "NVDA" }, settings: { forms: "N-1A" } },
+      { instanceId: "filing-events:NVDA", paneId: "filing-events", binding: { kind: "fixed", symbol: "NVDA" } },
+      { instanceId: "risk-factors:NVDA", paneId: "risk-factors", binding: { kind: "fixed", symbol: "NVDA" } },
+      { instanceId: "comment-letters:NVDA", paneId: "comment-letters", binding: { kind: "none" }, settings: { query: "NVDA" } },
+      { instanceId: "corporate-actions:NVDA", paneId: "corporate-actions", binding: { kind: "fixed", symbol: "NVDA" } },
+      { instanceId: "catalysts:NVDA", paneId: "catalysts", binding: { kind: "fixed", symbol: "NVDA" } },
+      { instanceId: "litigation:NVDA", paneId: "litigation", binding: { kind: "fixed", symbol: "NVDA" } },
+      { instanceId: "mna:market", paneId: "mna", binding: { kind: "none" } },
+      { instanceId: "ticker-research:main", paneId: "ticker-research", binding: { kind: "fixed", symbol: "NVDA" }, settings: { hideTabs: true, lockedTabId: "risk-factors" } },
+    ];
+    const paneState = {
+      "sec:NVDA": { pluginState: { "ticker-research": { selectedIdx: 4 } } },
+      "comment-letters:NVDA": { pluginState: { "comment-letters": { query: "NVDA", openItemId: "letter-1" } } },
+      "mna:market": { pluginState: { "ticker-research": { tab: "distress" } } },
+      "ticker-research:main": { activeTabId: "filing-events", pluginState: { "ticker-research": { keep: "state" } } },
+    };
+    const savedLayout = layout(instances, {
+      kind: "split",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: { kind: "pane", instanceId: "sec:NVDA" },
+      second: { kind: "pane", instanceId: "mna:market" },
+    }, [{ instanceId: "corporate-actions:NVDA", x: 4, y: 2, width: 80, height: 24 }]);
+    const result = migrateSavedConfig({
+      configVersion: 26,
+      layout: savedLayout,
+      activeLayoutIndex: 0,
+      layouts: [{ name: "Research", layout: savedLayout, paneState, focusedPaneId: "mna:market" }],
+    }, "/tmp");
+
+    expect(result.config.configVersion).toBe(CURRENT_CONFIG_VERSION);
+    expect(result.applied).toContain("fold-filings-and-events-workspaces");
+    const saved = (result.config.layouts as Array<{ layout: LayoutConfig; paneState: typeof paneState; focusedPaneId: string }>)[0]!;
+    expect(saved.layout.instances.map(({ instanceId, paneId, params }) => ({ instanceId, paneId, tab: params?.tab }))).toEqual([
+      { instanceId: "sec:NVDA", paneId: "filings-workspace", tab: "sec" },
+      { instanceId: "sec:NVDA:ETF", paneId: "filings-workspace", tab: "etf" },
+      { instanceId: "filing-events:NVDA", paneId: "filings-workspace", tab: "eight-k" },
+      { instanceId: "risk-factors:NVDA", paneId: "filings-workspace", tab: "risks" },
+      { instanceId: "comment-letters:NVDA", paneId: "filings-workspace", tab: "comments" },
+      { instanceId: "corporate-actions:NVDA", paneId: "events-workspace", tab: "corporate-actions" },
+      { instanceId: "catalysts:NVDA", paneId: "events-workspace", tab: "catalysts" },
+      { instanceId: "litigation:NVDA", paneId: "events-workspace", tab: "litigation" },
+      { instanceId: "mna:market", paneId: "events-workspace", tab: "distress" },
+      { instanceId: "ticker-research:main", paneId: "ticker-research", tab: undefined },
+    ]);
+    expect(saved.layout.instances.find(({ instanceId }) => instanceId === "ticker-research:main")?.settings).toEqual({
+      hideTabs: true,
+      lockedTabId: "filings-workspace",
+      lockedWorkspaceTab: "risks",
+    });
+    expect(saved.layout.dockRoot).toEqual({
+      kind: "split",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: { kind: "pane", instanceId: "sec:NVDA" },
+      second: { kind: "pane", instanceId: "mna:market" },
+    });
+    expect(saved.layout.floating[0]?.instanceId).toBe("corporate-actions:NVDA");
+    expect(saved.focusedPaneId).toBe("mna:market");
+    expect(saved.paneState["sec:NVDA"]).toEqual(paneState["sec:NVDA"]);
+    expect(saved.paneState["comment-letters:NVDA"]).toEqual(paneState["comment-letters:NVDA"]);
+    expect(saved.paneState["ticker-research:main"]).toEqual({
+      activeTabId: "filings-workspace",
+      pluginState: { "ticker-research": { keep: "state", "filings:tab": "eight-k" } },
+    });
   });
 });

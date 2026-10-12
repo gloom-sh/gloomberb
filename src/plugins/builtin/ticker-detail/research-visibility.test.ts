@@ -19,7 +19,7 @@ import { congressResearchModule } from "../congress-trades";
 import { dividendYieldModule } from "../dividend-yield";
 import { earningsCallsModule } from "../earnings-calls";
 import { executivesModule } from "../executives";
-import { filingEventsModule } from "../filing-events";
+import { eventsWorkspaceModule, filingsWorkspaceModule } from "../filings-workspace";
 import { holdersModule } from "../holders";
 import { insiderModule } from "../insider";
 import { jobsModule } from "../jobs";
@@ -42,15 +42,15 @@ const modules: PluginModule[] = [
   researchModule, revenueBreakdownModule, companyAttentionModule, catalystsModule,
   mnaModule, dividendYieldModule, holdersModule, shortInterestModule, thirteenFModule,
   secModule, insiderModule, jobsModule, executivesModule, riskFactorsModule,
-  filingEventsModule, earningsCallsModule, tickerNewsModule, cloudTweetsModule,
+  eventsWorkspaceModule, filingsWorkspaceModule, earningsCallsModule, tickerNewsModule, cloudTweetsModule,
   notesPlugin, thesisModule,
 ];
 
 const common = ["overview", "chart", "news", "notes", "thesis", "external"];
-const usFund = [...common, "corporate-actions", "options", "congress", "ticker-tweets", "dividend-yield", "thirteenf"];
+const usFund = [...common, "events-workspace", "options", "congress", "ticker-tweets", "dividend-yield", "thirteenf"];
 const mutualFund = usFund.filter((id) => id !== "options" && id !== "thirteenf");
-const foreignEquity = [...common, "analyst-research", "equity-diagnostic", "corporate-actions", "earnings-calls", "options", "catalysts", "mna", "jobs", "hiring-momentum", "app-attention", "dividend-yield", "holders"];
-const usEquity = [...foreignEquity, "revenue", "executives", "short-interest", "risk-factors", "filing-events", "congress", "ticker-tweets", "thirteenf", "sec", "insider"];
+const foreignEquity = [...common, "analyst-research", "equity-diagnostic", "events-workspace", "earnings-calls", "options", "jobs", "hiring-momentum", "app-attention", "dividend-yield", "holders"];
+const usEquity = [...foreignEquity, "filings-workspace", "revenue", "executives", "short-interest", "congress", "ticker-tweets", "thirteenf", "insider"];
 const withOptions = [...common, "options"];
 const quoted = (instrumentType: string) => createTestFinancials({ quote: createTestQuote({ instrumentType }) });
 const cached = (instrumentType: string) => createTestFinancials({ quoteMetadata: { symbol: "X", instrumentType, source: {} } });

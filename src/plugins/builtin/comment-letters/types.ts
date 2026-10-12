@@ -1,4 +1,3 @@
-export const COMMENT_LETTERS_PLUGIN_ID = "comment-letters";
 export const COMMENT_LETTERS_PANE_ID = "comment-letters";
 
 /** UPLOAD is a letter SEC staff wrote; CORRESP is one the company sent. */

@@ -12,7 +12,6 @@ import type { ScrollBoxRenderable } from "../../../ui";
 import { EmptyState, FeedDataTableStackView, Spinner, StatGrid, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type StatItem } from "../../../components";
 import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
 import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
-import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   formatFilingMetaDate,
   buildInsiderTransactionTitle,
@@ -34,8 +33,7 @@ import {
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { SignInWall } from "../cloud/auth-actions";
-import { ETF_FILING_FORMS, ETF_FORMS_SETTING, filterFilingsByForms, parseFormsSetting, SEC_FILING_FETCH_LIMIT } from "./forms";
-import { createSecHeadless, fundFilingsEmpty, secHeadless } from "./headless";
+import { ETF_FILING_FORMS, filterFilingsByForms, parseFormsSetting, SEC_FILING_FETCH_LIMIT } from "./forms";
 import {
   getFilingDisplayTitle,
   getFilingColumnText,
@@ -218,7 +216,7 @@ function toFeedItems(
   });
 }
 
-function SecView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
+export function SecView({ width, height, focused, fundFilings = false }: { width: number; height: number; focused: boolean; fundFilings?: boolean }) {
   const { ticker } = usePaneTickerIdentity();
   const selectionKey = `selectedIdx:${ticker?.metadata.ticker ?? "none"}`;
   const [selectedIdx, setSelectedIdx] = useDebouncedPluginPaneState<number>(selectionKey, 0);
@@ -234,8 +232,8 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
   );
   const [formsSetting] = usePaneSettingValue("forms", "");
   const forms = useMemo(
-    () => parseFormsSetting(typeof formsSetting === "string" ? formsSetting : ""),
-    [formsSetting],
+    () => fundFilings ? [...ETF_FILING_FORMS] : parseFormsSetting(typeof formsSetting === "string" ? formsSetting : ""),
+    [formsSetting, fundFilings],
   );
   // A filing chosen in the command bar opens here once the pane is on its
   // ticker. The fund filings view (ETF) lists other forms, so it leaves it.
@@ -425,65 +423,9 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
 }
 
 export const secModule: PluginModule = {
-  panes: [
-    {
-      id: "sec",
-      name: "SEC",
-      icon: "S",
-      component: SecView,
-      defaultPosition: "right",
-      tickerFollower: true,
-      defaultMode: "floating",
-      defaultFloatingSize: { width: 100, height: 32 },
-      tableExport: true,
-    },
-  ],
-
-  paneTemplates: [
-    {
-      ...createTickerSurfacePaneTemplate({
-        id: "sec-pane",
-        paneId: "sec",
-        label: "SEC",
-        description: "Recent SEC filings for the selected ticker.",
-        keywords: ["sec", "filings", "10-k", "10-q", "8-k"],
-        shortcut: "SEC",
-        shortcutAliases: ["CF"],
-        canCreate: (_context, options) => !options?.ticker || mayBeUsEquityTicker(options.ticker),
-      }),
-      headless: secHeadless,
-    },
-    {
-      ...createTickerSurfacePaneTemplate({
-        id: "sec-etf-pane",
-        paneId: "sec",
-        label: "ETF Filings",
-        description: "A US-listed fund's SEC filings: registration statements, prospectus updates, shareholder reports, N-CEN and N-PORT.",
-        keywords: ["etf", "fund", "n-1a", "485bpos", "497", "n-csr", "n-cen", "n-port", "prospectus"],
-        shortcut: "ETF",
-        viewKey: "etf",
-        canCreate: (_context, options) => !options?.ticker || mayBeUsEquityOrFundTicker(options.ticker),
-        settings: () => ({ forms: ETF_FORMS_SETTING }),
-      }),
-      headless: createSecHeadless(undefined, {
-        forms: ETF_FILING_FORMS,
-        title: "Fund Filings",
-        argumentDescription: "US-listed fund ticker.",
-        empty: fundFilingsEmpty,
-      }),
-    },
-  ],
 
   setup(ctx) {
     ctx.registerCommandBarSearchProvider(createSecFilingSearchProvider(ctx));
-    ctx.registerTickerResearchTab({
-      id: "sec",
-      name: "SEC",
-      order: 45,
-      component: SecView,
-      instruments: ["equity"],
-      isVisible: ({ ticker }) => mayBeUsEquityTicker(ticker),
-    });
   },
   dispose() {
     resetSecFilingFocusRequests();

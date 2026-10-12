@@ -12,7 +12,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { Quote } from "../../../types/financials";
 import { Box } from "../../../ui";
 import { mnaDealCache, mnaDealsCache } from "./client";
-import { MnaPane } from "./pane";
+import { EventsWorkspacePane } from "../filings-workspace";
 
 const deal = (overrides: Partial<MnaDeal>): MnaDeal => ({
   id: "acv",
@@ -68,7 +68,7 @@ async function mount(width = 130, height = 10) {
   mnaDealsCache.attach(new MemoryPluginPersistence());
   mnaDealCache.attach(new MemoryPluginPersistence());
   const paneId = "mna:test";
-  const state = createInitialState(createTestPaneConfig("/tmp/mna-test", { paneId: "mna", instanceId: paneId }));
+  const state = createInitialState(createTestPaneConfig("/tmp/mna-test", { paneId: "events-workspace", instanceId: paneId, params: { tab: "mna" } }));
   const provider = createTestDataProvider({
     getQuote: async (symbol) => ({ symbol, price: 10.46, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.now() } as Quote),
   });
@@ -82,7 +82,7 @@ async function mount(width = 130, height = 10) {
       <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="ticker-research" runtime={runtime}>
         <PaneFooterProvider>{(footer) => (
           <Box width={width} height={height} flexDirection="column">
-            <Box height={height - 1}><MnaPane focused width={width} height={height - 1} paneId={paneId} paneType="mna" /></Box>
+            <Box height={height - 1}><EventsWorkspacePane focused width={width} height={height - 1} paneId={paneId} paneType="events-workspace" /></Box>
             <PaneFooterBar footer={footer} focused width={width} />
           </Box>
         )}</PaneFooterProvider>

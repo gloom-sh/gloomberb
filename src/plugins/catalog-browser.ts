@@ -23,7 +23,6 @@ import { portfolioAnalyticsModule } from "./builtin/analytics";
 import { earningsCallsModule } from "./builtin/earnings-calls";
 import { browserDividendYieldModule } from "./builtin/dividend-yield/browser";
 import { executivesModule } from "./builtin/executives";
-import { filingEventsModule } from "./builtin/filing-events";
 import { riskFactorsModule } from "./builtin/risk-factors";
 import { researchSearchPlugin } from "./builtin/research-search";
 import { alertsPlugin } from "./builtin/alerts";
@@ -33,7 +32,6 @@ import { fearGreedPlugin } from "./builtin/fear-greed";
 import { membersPlugin } from "./builtin/members";
 import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
 import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
-import { commentLettersPlugin } from "./builtin/comment-letters";
 import { openFdaPlugin } from "./builtin/openfda";
 import { browserGloomberbCloudPlugin } from "./builtin/cloud/browser";
 import { changelogModule } from "./builtin/changelog";
@@ -63,6 +61,7 @@ import { layoutManagerModule } from "./builtin/layout-manager";
 import { tickerNewsModule } from "./builtin/news";
 import { browserNewsWireModule } from "./builtin/news/wire";
 import { secModule } from "./builtin/sec";
+import { eventsWorkspaceModule, filingsWorkspaceModule } from "./builtin/filings-workspace";
 import { insiderModule } from "./builtin/insider";
 import { jobsModule } from "./builtin/jobs";
 import { optionsModule } from "./builtin/options";
@@ -169,8 +168,9 @@ const browserOwnershipPlugin = composeBuiltinPlugin({
 
 const browserFilingsPlugin = composeBuiltinPlugin({
   ...filingsPluginMeta,
+  hosts: ["efts.sec.gov"],
   // Filings come through Gloom Cloud, behind a sign-in wall.
-  modules: [secModule, riskFactorsModule, filingEventsModule, catalystsModule, mnaModule],
+  modules: [secModule, riskFactorsModule, catalystsModule, mnaModule, filingsWorkspaceModule, eventsWorkspaceModule],
 });
 
 const browserNewsPlugin = composeBuiltinPlugin({
@@ -288,7 +288,6 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   membersPlugin,
   ipoCalendarPlugin,
   clinicalTrialsPlugin,
-  commentLettersPlugin,
   openFdaPlugin,
   browserRatesMacroPlugin,
   browserCreditPlugin,

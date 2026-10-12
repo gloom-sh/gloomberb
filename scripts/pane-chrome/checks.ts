@@ -53,6 +53,18 @@ function pageClock(now: string | undefined): string {
 
 /** Page helpers, installed in every document before the app runs. */
 const PAGE_HELPERS = `
+// The cross-venue readout fixture needs a completed US session after XETR's
+// close. Fix its browser clock so the check does not depend on when CI starts.
+if (new URLSearchParams(location.search).get("scenario") === "cmp"
+  && new URLSearchParams(location.search).get("chart") === "readout") {
+  const RealDate = Date;
+  const fixedNow = RealDate.UTC(2026, 7, 12, 21, 0, 0);
+  class PaneChromeDate extends RealDate {
+    constructor(...args) { super(...(args.length ? args : [fixedNow])); }
+    static now() { return fixedNow; }
+  }
+  window.Date = PaneChromeDate;
+}
 // React commits, through the DevTools hook React looks for when it loads.
 window.__commits = 0;
 window.__REACT_DEVTOOLS_GLOBAL_HOOK__ = {

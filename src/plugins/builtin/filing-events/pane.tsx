@@ -33,7 +33,7 @@ import {
   type FilingEventEntry,
 } from "./feed";
 
-export const FILING_EVENTS_PANE_ID = "filing-events";
+const FILING_EVENTS_PANE_ID = "filing-events";
 
 const EK_WALL: ProFeatureWallCopy = {
   placement: "ek-wall",

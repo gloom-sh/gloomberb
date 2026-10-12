@@ -58,7 +58,7 @@ export const filingsPluginMeta = {
   stateId: "ticker-research",
   name: "Filings & Events",
   version: "1.0.0",
-  description: "SEC filings, risk factors, 8-K events, catalysts and litigation, and M&A and distress.",
+  description: "Issuer SEC and ETF filings, 8-Ks, risk factors and comment letters, with corporate actions, catalysts, legal dockets, M&A and distress.",
   toggleable: true,
 };
 

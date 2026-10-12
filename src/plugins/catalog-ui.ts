@@ -12,7 +12,6 @@ import { fearGreedPlugin } from "./builtin/fear-greed";
 import { membersPlugin } from "./builtin/members";
 import { ipoCalendarPlugin } from "./builtin/ipo-calendar";
 import { clinicalTrialsPlugin } from "./builtin/clinical-trials";
-import { commentLettersPlugin } from "./builtin/comment-letters";
 import { openFdaPlugin } from "./builtin/openfda";
 import {
   altDataPlugin,
@@ -57,7 +56,6 @@ export const uiBuiltinPlugins: GloomPlugin[] = [
   membersPlugin,
   ipoCalendarPlugin,
   clinicalTrialsPlugin,
-  commentLettersPlugin,
   openFdaPlugin,
   ratesMacroPlugin,
   creditPlugin,

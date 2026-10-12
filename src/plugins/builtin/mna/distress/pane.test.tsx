@@ -7,7 +7,7 @@ import { createTestPaneConfig, TestPaneFrame } from "../../../../test-support/pa
 import { MemoryPluginPersistence } from "../../../../test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { mnaDealCache, mnaDealsCache } from "../client";
-import { MnaPane } from "../pane";
+import { EventsWorkspacePane } from "../../filings-workspace";
 import { DISTRESS_CACHES } from "./client";
 import { filingEvent, goingConcernRow, insolvencyPage, placeholderFilingEvent } from "./test-fixture";
 
@@ -41,7 +41,7 @@ function serve(answers: Record<string, unknown> = {}) {
 
 async function mount(params?: Record<string, string>) {
   for (const cache of [mnaDealsCache, mnaDealCache, ...DISTRESS_CACHES]) cache.attach(new MemoryPluginPersistence());
-  const config = createTestPaneConfig(":memory:", { instanceId: PANE, paneId: "mna", ...(params ? { params } : {}) });
+  const config = createTestPaneConfig(":memory:", { instanceId: PANE, paneId: "events-workspace", ...(params ? { params } : {}) });
   config.refreshIntervalMinutes = 0;
   const pins: string[] = [];
   const runtime = createTestPluginRuntime({ pinTicker: (symbol) => { pins.push(symbol); } });
@@ -51,7 +51,7 @@ async function mount(params?: Record<string, string>) {
     stateRef.current = state;
     return (
       <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE} pluginId="ticker-research" runtime={runtime} width={130} height={14} footerKeys>
-        {(body) => <MnaPane paneId={PANE} paneType="mna" focused {...body} />}
+        {(body) => <EventsWorkspacePane paneId={PANE} paneType="events-workspace" focused {...body} />}
       </TestPaneFrame>
     );
   }
@@ -61,17 +61,17 @@ async function mount(params?: Record<string, string>) {
 
 const press = (name: string) => tui.emitKeypress({ name, sequence: name });
 
-test("MA opens on its deals with a Distress tab beside them, and the tab is kept with the pane", async () => {
+test("M&A opens on its tab in Events, and Distress opens from the same workspace", async () => {
   const requests = serve();
-  const { stateRef } = await mount();
-  await tui.waitForFrameToContain("Deals  Distress");
+  const { stateRef } = await mount({ tab: "mna" });
+  await tui.waitForFrameToContain("Events Catalysts Legal M&A Distress");
   expect(requests.some((request) => request.startsWith("/cloud/mna/deals"))).toBe(true);
   expect(requests.some((request) => request.startsWith("/public/"))).toBe(false);
 
   await press("l");
   await tui.waitForFrameToContain("Leslie's, Inc.");
   expect(requests).toContain("/public/events?kind=distress&limit=200");
-  expect(JSON.stringify(stateRef.current?.paneState[PANE])).toContain("\"tab\":\"distress\"");
+  expect(JSON.stringify(stateRef.current?.paneState[PANE])).toContain("\"events:tab\":\"distress\"");
 });
 
 test("DIST opens the pane on the Distress tab without reading the deals", async () => {

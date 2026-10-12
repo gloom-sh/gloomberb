@@ -41,7 +41,6 @@ export const BUILTIN_EDITORIAL: Readonly<Record<string, BuiltinEditorial>> = {
   application: { categories: ["core"] },
   broker: { categories: ["broker"], tagline: "Broker accounts, sync and connections." },
   "clinical-trials": { categories: ["research"], tagline: "Clinical trials by drug, condition, sponsor." },
-  "comment-letters": { categories: ["research"], tagline: "SEC comment letters and company replies." },
   credit: {
     categories: ["macro", "markets"],
     tagline: "CDS, credit spreads, auctions and bonds.",
@@ -63,9 +62,9 @@ export const BUILTIN_EDITORIAL: Readonly<Record<string, BuiltinEditorial>> = {
   "fear-greed": { categories: ["markets", "sentiment"], icon: "plugin-icons/fear-greed.webp", tagline: "The Fear & Greed index and its inputs." },
   filings: {
     categories: ["research"],
-    tagline: "SEC filings, 8-Ks, risk factors, litigation.",
-    highlights: ["SEC", "EK", "RISK"],
-    screenshots: ["EK", "RISK"],
+    tagline: "Issuer filings, catalysts, legal dockets, deals and distress.",
+    highlights: ["FIL", "EVNT", "SEC"],
+    screenshots: ["FIL", "EVNT"],
   },
   "futures-commodities": {
     categories: ["markets", "macro"],

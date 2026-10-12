@@ -257,39 +257,6 @@
       ]
     },
     {
-      "id": "comment-letters",
-      "name": "SEC Comment Letters",
-      "description": "SEC staff comment letters and company responses (CORRESP and UPLOAD). Search their text or list a company's letters by ticker.",
-      "tagline": "SEC comment letters and company replies.",
-      "categories": [
-        "research"
-      ],
-      "toggleable": true,
-      "targets": [
-        "cli",
-        "tui",
-        "desktop",
-        "web"
-      ],
-      "contributes": {
-        "panes": [
-          "comment-letters"
-        ],
-        "capabilities": [],
-        "broker": false,
-        "shortcuts": [
-          {
-            "code": "CLTR",
-            "name": "SEC Comment Letters",
-            "description": "SEC staff comment letters and company responses (CORRESP, UPLOAD): search their text, or a ticker for one company's letters."
-          }
-        ]
-      },
-      "highlights": [
-        "CLTR"
-      ]
-    },
-    {
       "id": "credit",
       "name": "Credit & Bonds",
       "description": "Single-name, index and sovereign CDS, credit spreads, Treasury auctions, a bond calculator, credit documents and covenants, and debt maturities.",
@@ -545,8 +512,8 @@
     {
       "id": "filings",
       "name": "Filings & Events",
-      "description": "SEC filings, risk factors, 8-K events, catalysts and litigation, and M&A and distress.",
-      "tagline": "SEC filings, 8-Ks, risk factors, litigation.",
+      "description": "Issuer SEC and ETF filings, 8-Ks, risk factors and comment letters, with corporate actions, catalysts, legal dockets, M&A and distress.",
+      "tagline": "Issuer filings, catalysts, legal dockets, deals and distress.",
       "categories": [
         "research"
       ],
@@ -559,19 +526,20 @@
       ],
       "contributes": {
         "panes": [
-          "catalysts",
-          "filing-events",
-          "litigation",
-          "mna",
-          "risk-factors",
-          "sec"
+          "events-workspace",
+          "filings-workspace"
         ],
         "capabilities": [],
         "broker": false,
         "shortcuts": [
           {
+            "code": "FIL",
+            "name": "Filings",
+            "description": "Issuer SEC filings, 8-Ks, ETF filings, risk factors, and comment letters."
+          },
+          {
             "code": "SEC",
-            "name": "SEC",
+            "name": "SEC Filings",
             "description": "Recent SEC filings for the selected ticker."
           },
           {
@@ -590,6 +558,21 @@
             "name": "8-K Filings",
             "description": "The company's 8-K filings, classified by item and read: agreements, executive changes, auditor changes, restructurings, and what each said.",
             "access": "pro"
+          },
+          {
+            "code": "CLTR",
+            "name": "SEC Comment Letters",
+            "description": "SEC staff comment letters and company responses (CORRESP, UPLOAD): search their text, or a ticker for one company's letters."
+          },
+          {
+            "code": "EVNT",
+            "name": "Events & Special Situations",
+            "description": "Issuer corporate actions, catalysts, legal dockets, M&A deals, and distress signals."
+          },
+          {
+            "code": "EVT",
+            "name": "Corporate Actions",
+            "description": "Dividends, splits, reported earnings, and analyst estimates."
           },
           {
             "code": "CATL",
@@ -616,13 +599,13 @@
         ]
       },
       "highlights": [
-        "SEC",
-        "EK",
-        "RISK"
+        "FIL",
+        "EVNT",
+        "SEC"
       ],
       "screenshots": [
-        "EK",
-        "RISK"
+        "FIL",
+        "EVNT"
       ]
     },
     {
@@ -1497,7 +1480,6 @@
           "chart-composer",
           "company-guidance",
           "company-kpis",
-          "corporate-actions",
           "data-catalog",
           "dividend-yield",
           "earnings-estimates",
@@ -1588,11 +1570,6 @@
             "name": "Equity Diagnostic",
             "description": "Red flags, anomalies, green flags, and watch items for one company, with cited evidence.",
             "access": "preview"
-          },
-          {
-            "code": "EVT",
-            "name": "Corporate Actions",
-            "description": "Dividends, splits, reported earnings, and analyst estimates."
           },
           {
             "code": "EE",

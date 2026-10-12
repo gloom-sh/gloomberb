@@ -7,7 +7,6 @@ import { EquityDiagnosticView } from "./equity-diagnostic-pane";
 import { RelativeValuationPane } from "./relative-valuation-pane";
 import { relativeValuationHeadless } from "./relative-valuation-headless";
 import { analystResearchHeadless } from "./analyst-headless";
-import { eventsHeadless } from "./events-headless";
 import { earningsEstimatesHeadless } from "./headless";
 
 
@@ -37,13 +36,6 @@ export const researchModule: PluginModule = {
       component: EquityDiagnosticView,
       instruments: ["equity"],
     });
-    ctx.registerTickerResearchTab({
-      id: "corporate-actions",
-      name: "Events",
-      order: 34,
-      component: CorporateActionsView,
-      instruments: ["equity", "fund"],
-    });
   },
 
   panes: [
@@ -70,18 +62,6 @@ export const researchModule: PluginModule = {
       tickerFollower: true,
       defaultMode: "floating",
       defaultFloatingSize: { width: 96, height: 30 },
-    },
-    {
-      id: "corporate-actions",
-      name: "Corporate Actions",
-      icon: "E",
-      component: CorporateActionsView,
-      defaultPosition: "right",
-      tickerFollower: true,
-      defaultMode: "floating",
-      defaultFloatingSize: { width: 104, height: 24 },
-      tableExport: true,
-      headless: eventsHeadless,
     },
     {
       id: "relative-valuation",
@@ -127,15 +107,6 @@ export const researchModule: PluginModule = {
       description: "Red flags, anomalies, green flags, and watch items for one company, with cited evidence.",
       keywords: ["diagnostic", "diag", "red flags", "anomalies", "green flags", "review", "evidence"],
       shortcut: "DIAG",
-      publicShare: true,
-    }),
-    createTickerSurfacePaneTemplate({
-      id: "corporate-actions-pane",
-      paneId: "corporate-actions",
-      label: "Corporate Actions",
-      description: "Dividends, splits, reported earnings, and analyst estimates.",
-      keywords: ["events", "corporate", "actions", "dividend", "split", "earnings", "estimate", "revenue", "evt"],
-      shortcut: "EVT",
       publicShare: true,
     }),
     {

@@ -312,7 +312,7 @@ describe("Ticker Research's successors", () => {
       "ticker-research": pane("ticker-research"),
       options: pane("options"),
       "holders tab": tab("holders"),
-      sec: pane("sec"),
+      filings: pane("filings-workspace"),
     }).toEqual({
       "credit-documents": "ticker-research",
       "debt-maturities": "ticker-research",
@@ -329,7 +329,7 @@ describe("Ticker Research's successors", () => {
       "ticker-research": "ticker-research",
       options: "ticker-research",
       "holders tab": "ticker-research",
-      sec: "ticker-research",
+      filings: "ticker-research",
     });
   });
 

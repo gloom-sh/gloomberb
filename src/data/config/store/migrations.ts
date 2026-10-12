@@ -17,7 +17,7 @@ import {
   type LegacyChartMigrationContext,
 } from "../chart-settings";
 import { sanitizeLayout } from "../layout";
-import { foldSavedPanes } from "./fold-panes";
+import { foldSavedFilingsEventsPanes, foldSavedPanes } from "./fold-panes";
 import { migratePortfolioAsOfColumn } from "./portfolio-as-of-column";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
@@ -30,6 +30,7 @@ const MARKET_OVERVIEW_ABSORBED_CONFIG_VERSION = 23;
 const IPO_CALENDAR_ABSORBED_CONFIG_VERSION = 24;
 const FOLDED_PANES_CONFIG_VERSION = 25;
 const PORTFOLIO_AS_OF_COLUMN_CONFIG_VERSION = 26;
+const FILINGS_EVENTS_WORKSPACES_CONFIG_VERSION = 27;
 
 /** What a migration may ask of the machine the config is loaded on. */
 export interface ConfigMigrationHost {
@@ -93,6 +94,11 @@ const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
     name: "portfolio-as-of-column",
     toVersion: PORTFOLIO_AS_OF_COLUMN_CONFIG_VERSION,
     migrate: migratePortfolioAsOfColumn,
+  },
+  {
+    name: "fold-filings-and-events-workspaces",
+    toVersion: FILINGS_EVENTS_WORKSPACES_CONFIG_VERSION,
+    migrate: foldSavedFilingsEventsPanes,
   },
 ];
 
