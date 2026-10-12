@@ -25,7 +25,7 @@ await mkdir(evidence, { recursive: true });
 // Chrome puts a Unix socket below TMPDIR; keep the path within its byte limit.
 const work = await mkdtemp(join(cache, "v-"));
 const caller = join(work, "caller with spaces");
-const profile = join(work, "profile");
+const profile = join(work, ".gloomberb");
 const temp = join(work, "t");
 for (const dir of [caller, profile, temp]) await mkdir(dir);
 await Bun.write(join(profile, "config.json"), JSON.stringify({ telemetry: { crashReports: false } }));
@@ -37,8 +37,9 @@ const env = {
   NO_COLOR: "1",
 };
 let command = launcher;
+const preloadMarker = join(caller, "preload-ran.json");
 
-async function run(name: string, args: string[], expectedCode = 0): Promise<string> {
+async function run(name: string, args: string[], expectedCode = 0, envOverrides: NodeJS.ProcessEnv = {}): Promise<string> {
   // cmd /s strips the enclosing pair of quotes, leaving the quoted executable
   // and each argument intact. Do not let Bun add another layer of quoting.
   const windows = process.platform === "win32";
@@ -46,7 +47,7 @@ async function run(name: string, args: string[], expectedCode = 0): Promise<stri
     ? [process.env.ComSpec ?? "cmd.exe", "/d", "/s", "/c", `""${command}" ${args.map((arg) => `"${arg}"`).join(" ")}"`]
     : [command, ...args];
   const child = Bun.spawn(cmd, {
-    cwd: caller, env, stdout: "pipe", stderr: "pipe", timeout: 60_000,
+    cwd: caller, env: { ...env, ...envOverrides }, stdout: "pipe", stderr: "pipe", timeout: 60_000,
     ...(windows ? { windowsVerbatimArguments: true } : {}),
   });
   const [stdout, stderr, code] = await Promise.all([
@@ -69,6 +70,26 @@ try {
     command = join(links, "gloomberb");
     await symlink("desktop cli", command);
   }
+  // Bun must start in the app's runtime folder, then the entry restores cwd.
+  // Otherwise an unrelated project can change the CLI's env or execute a
+  // preload before the entry has any chance to protect itself.
+  const dotenvHome = join(work, "dotenv-marker-home");
+  await Bun.write(join(caller, ".env"), `GLOOMBERB_HOME="${dotenvHome.replaceAll("\\", "/")}"\n`);
+  await Bun.write(join(caller, "bunfig.toml"), 'preload = ["./preload.ts"]\n');
+  await Bun.write(join(caller, "preload.ts"), `await Bun.write(${JSON.stringify(preloadMarker)}, JSON.stringify({ ran: true }));\n`);
+  // Let the CLI report its normal HOME-based data folder, rather than masking
+  // dotenv loading with an explicit GLOOMBERB_HOME in the child's environment.
+  const version = JSON.parse(await run("caller-config", ["version", "--json"], 0, {
+    GLOOMBERB_HOME: undefined, HOME: work, USERPROFILE: work,
+  }));
+  assert.equal(version.ok, true);
+  const callerConfig = {
+    dotenvIgnored: resolve(version.data[0].dataDir) === profile,
+    preloadIgnored: !(await Bun.file(preloadMarker).exists()),
+  };
+  await Bun.write(join(evidence, "caller-config.json"), JSON.stringify(callerConfig, null, 2));
+  assert.deepEqual(callerConfig, { dotenvIgnored: true, preloadIgnored: true }, "Bun loaded the caller's .env or bunfig.toml");
+
   for (const [name, arg] of [
     ["native", OPEN_TUI_NATIVE_SMOKE_COMMAND],
     ["runtime", OPEN_TUI_RUNTIME_SMOKE_COMMAND],
@@ -112,10 +133,12 @@ try {
       assert.match(report.data.visibleText, /Equity Diagnostic.*Select a ticker/);
     }
   }
+  assert(!(await Bun.file(preloadMarker).exists()), "A later CLI command ran the caller's preload");
   await Bun.write(join(evidence, "verification.json"), JSON.stringify({
     platform: process.platform, arch: process.arch, launcher, command, caller,
     archive: join(resources, "gloomberb-tui", SHOT_VIEW_ARCHIVE),
     relativeOutput: relative(caller, shot.data.outputPath),
+    callerConfig,
     png: { width: bitmap.width, height: bitmap.height, colors: colors.size },
     reports: { DOCS: "rendered rows", DIAG: "rendered no-ticker empty state" },
     head: process.env.GITHUB_SHA ?? null,

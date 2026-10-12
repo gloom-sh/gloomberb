@@ -30,6 +30,8 @@ done
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$SOURCE")" && pwd)"
 CONTENTS_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+export GLOOMBERB_CALLER_CWD="$PWD"
+cd "$CONTENTS_DIR/MacOS"
 exec "$CONTENTS_DIR/MacOS/bun" "$CONTENTS_DIR/Resources/gloomberb-tui/tui-entry.js" "$@"
 `;
 
@@ -48,6 +50,8 @@ done
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$SOURCE")" && pwd)"
 APP_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+export GLOOMBERB_CALLER_CWD="$PWD"
+cd "$APP_DIR/bin"
 exec "$APP_DIR/bin/bun" "$APP_DIR/Resources/gloomberb-tui/tui-entry.js" "$@"
 `;
 
@@ -55,8 +59,12 @@ const WINDOWS_CMD_SHIM = `@echo off
 setlocal
 set "SCRIPT_DIR=%~dp0"
 set "APP_DIR=%SCRIPT_DIR%.."
+set "GLOOMBERB_CALLER_CWD=%CD%"
+pushd "%APP_DIR%\\bin" >nul || exit /b 1
 "%APP_DIR%\\bin\\bun.exe" "%APP_DIR%\\Resources\\gloomberb-tui\\tui-entry.js" %*
-exit /b %ERRORLEVEL%
+set "GLOOMBERB_EXIT_CODE=%ERRORLEVEL%"
+popd >nul
+exit /b %GLOOMBERB_EXIT_CODE%
 `;
 
 function appBundlesIn(dir: string): string[] {
