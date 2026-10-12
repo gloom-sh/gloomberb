@@ -1,6 +1,7 @@
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 import type { BoxRenderable } from "../../../../ui";
+import type { ChatMessagePaneLink } from "../pane-links/model";
 
 /** The name or @mention a user's card opens beside, where the renderer places cards next to it. */
 export type ChatUserAnchor = BoxRenderable | null;
@@ -46,4 +47,6 @@ export interface ChatMessageBaseProps {
   /** The message whose picker is open on the desktop. */
   reactionPickerMessageId?: string | null;
   closeReactionPicker?: () => void;
+  /** Opens what a chip under the message stands for: a shared pane, a Wire post's story or calendar. */
+  openPaneLink: (link: ChatMessagePaneLink) => void;
 }

@@ -11,6 +11,7 @@ import {
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 import { STICKY_BOTTOM_THRESHOLD_PX } from "../../../ui/sticky-scroll";
 import { terminalReactionRows } from "./reactions";
+import { chatMessagePaneLinks } from "./pane-links/model";
 
 const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
 const MESSAGE_SELECTION_BOTTOM_INSET = 1;
@@ -252,16 +253,6 @@ export function getMessageBodyTokenLines(
   return lines.length > 0 ? lines : [[]];
 }
 
-function getMessageBodyLines(
-  message: ChatMessage,
-  width: number,
-  catalog?: Record<string, InlineTickerCatalogEntry>,
-) {
-  const contentLineWidth = Math.max(width - 4, 1);
-  if (catalog) return getMessageBodyTokenLines(message.content, contentLineWidth, catalog).map((line) => line.map((token) => token.value).join(""));
-  return wrapTextLines(message.content, contentLineWidth);
-}
-
 export function estimateMessageHeight(
   message: ChatMessage,
   width: number,
@@ -271,15 +262,17 @@ export function estimateMessageHeight(
   const headerHeight = grouped ? 0 : 1;
   const contentLineWidth = Math.max(width - 4, 1);
   const imageCount = message.attachments?.length ?? 0;
+  // A chip row for each share link or Wire post link, in place of the link's text.
+  const { links, content } = chatMessagePaneLinks(message);
   // The terminal draws a row per image and one for a review note; an image-only message has no text row.
-  const bodyLineCount = message.content.length === 0 && imageCount > 0
+  const bodyLineCount = content.length === 0 && (imageCount > 0 || links.length > 0)
     ? 0
     : catalog
-      ? getMessageBodyTokenLines(message.content, contentLineWidth, catalog).length
-      : getMessageBodyLines(message, width, catalog).length;
+      ? getMessageBodyTokenLines(content, contentLineWidth, catalog).length
+      : wrapTextLines(content, contentLineWidth).length;
   const reviewNoteHeight = message.attachmentReview ? 1 : 0;
   const reactionRows = message.reactions?.length ? terminalReactionRows(message.reactions, contentLineWidth).length : 0;
-  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + imageCount + reviewNoteHeight + reactionRows;
+  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + links.length + imageCount + reviewNoteHeight + reactionRows;
 }
 
 export function estimateComposerHeight(text: string, width: number) {

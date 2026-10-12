@@ -13,7 +13,8 @@ import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { requestAccountManagementTab } from "../../plugins/builtin/account-management/navigation";
 import { openTeamPane } from "../../plugins/builtin/cloud/team/pane-request";
 import { chatController } from "../../plugins/builtin/chat/controller";
-import { getShare } from "../../shares/api";
+import { getShare, type ShareRecord } from "../../shares/api";
+import { openShareLink, registerShareOpener } from "../../shares/open";
 import { openPaneShare } from "../../shares/pane";
 import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { materializeMarketplaceLayout } from "../../shares/portable-layout";
@@ -514,15 +515,44 @@ async function handleOpenLayout(
   notifySuccess(options.pluginRegistry, `Layout "${entry.name}" added.`);
 }
 
-async function handleOpenShare(
-  action: Extract<DesktopDeepLinkAction, { type: "open-share" }>,
+/**
+ * Opens a pane share in this app: the web app's `?share=` hand-off, a
+ * gloomberb://share link and a share link in chat all come through here.
+ * With `fallback`, a share this app cannot read or that holds a snapshot
+ * goes there (its web page) instead of to an error.
+ */
+async function openShareInApp(
+  id: string,
   pluginRegistry: PluginRegistry,
+  options: { retry: () => void; fallback?: () => void },
 ): Promise<void> {
-  const share = await getShare(action.id, fetch, { trackView: false });
-  if (!share) throw new Error("This share is unavailable or has expired.");
-  if (share.kind !== "pane") throw new Error("This link contains a snapshot, not a live pane.");
-  await openPaneShare(pluginRegistry, share.data);
-  notifySuccess(pluginRegistry, action.message);
+  let share: ShareRecord | null;
+  try {
+    share = await getShare(id, fetch, { trackView: false });
+  } catch (error) {
+    if (options.fallback) options.fallback();
+    else notifyError(pluginRegistry, error instanceof Error ? error.message : "Could not open shared pane.");
+    return;
+  }
+  if (!share) {
+    notifyError(pluginRegistry, "This share is unavailable or has expired.");
+    return;
+  }
+  if (share.kind !== "pane") {
+    if (options.fallback) options.fallback();
+    else notifyError(pluginRegistry, "This link contains a snapshot, not a live pane.");
+    return;
+  }
+  try {
+    await openPaneShare(pluginRegistry, share.data);
+    notifySuccess(pluginRegistry, "Opened shared pane.");
+  } catch (error) {
+    if (error instanceof PluginOffError) {
+      notifyPluginOff(pluginRegistry, error, options.retry);
+      return;
+    }
+    notifyError(pluginRegistry, error instanceof Error ? error.message : "Could not open shared pane.");
+  }
 }
 
 export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHandlerOptions): void {
@@ -569,13 +599,7 @@ export function handleDesktopDeepLink(rawUrl: string, options: DesktopDeepLinkHa
       handleOpenNews(action, options.pluginRegistry);
       return;
     case "open-share":
-      void handleOpenShare(action, options.pluginRegistry).catch((error) => {
-        if (error instanceof PluginOffError) {
-          notifyPluginOff(options.pluginRegistry, error, () => handleDesktopDeepLink(rawUrl, options));
-          return;
-        }
-        notifyError(options.pluginRegistry, error instanceof Error ? error.message : "Could not open shared pane.");
-      });
+      void openShareInApp(action.id, options.pluginRegistry, { retry: () => handleDesktopDeepLink(rawUrl, options) });
       return;
     case "open-layout":
       void handleOpenLayout(action, options).catch((error) => {
@@ -600,6 +624,15 @@ export function useDesktopDeepLinkRuntime({
   pluginRegistry: PluginRegistry;
   stateRef: { current: AppState };
 }) {
+  // Share links opened inside the app (chat's share chips) take the same path, in every renderer.
+  useEffect(() => {
+    if (!initialized) return;
+    return registerShareOpener((id, { fallback }) => openShareInApp(id, pluginRegistry, {
+      fallback,
+      retry: () => openShareLink(id, fallback),
+    }));
+  }, [initialized, pluginRegistry]);
+
   useEffect(() => {
     if (!initialized || desktopWindowKind === "detached" || !desktopDeepLinkBridge) return;
     return desktopDeepLinkBridge.subscribe((deeplink) => {

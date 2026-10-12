@@ -9,6 +9,7 @@ import type {
   TickerFinancials,
 } from "../types/financials";
 import type { SyncSettings, SyncSnapshot } from "../sync/types";
+import type { ChatPaneLink } from "./chat-pane-link";
 
 /**
  * What stands behind a chat account. `discord` is a person on the Gloom
@@ -117,6 +118,8 @@ export interface ChatMessage {
    * message yet.
    */
   attachmentReview?: "pending" | "failed";
+  /** What the message opens in the terminal (a Gloom Wire story or calendar). Only the server sets it. */
+  paneLink?: ChatPaneLink;
   clientStatus?: "sending" | "failed";
   clientError?: string | null;
   /** The idempotency key a local send went out with, so a retry repeats it. */

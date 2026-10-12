@@ -105,6 +105,19 @@ window.__chat = {
     const r = document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id="plain:a"]')?.getBoundingClientRect();
     return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
   },
+  /** A message's chips: what each says, where it is, and whether it shows a picture. */
+  chips(id) {
+    const row = this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id);
+    return [...(row?.querySelectorAll('[data-gloom-role=chat-pane-chip]') ?? [])].map((chip) => {
+      const r = chip.getBoundingClientRect();
+      return { link: chip.getAttribute('data-gloom-pane-link'), text: chip.textContent, picture: !!chip.querySelector('img'), x: r.x + r.width / 2, y: r.y + r.height / 2, height: r.height };
+    });
+  },
+  /** The words a message's body draws, without its chips. */
+  bodyText(id) {
+    const row = this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id);
+    return row?.querySelector('[data-gloom-role=chat-message-body]')?.textContent ?? '';
+  },
 };
 `;
 
@@ -214,6 +227,19 @@ async function pointAtName(cdp: Cdp, username: string): Promise<void> {
 /** The badges a drawn name carries, in order. */
 async function badgesOf(cdp: Cdp, username: string): Promise<string[]> {
   return ((await nameOf(cdp, username)) ?? fail(`no name ${username} drawn`)).badges.map((badge) => badge.label);
+}
+
+interface Chip { link: string; text: string; picture: boolean; x: number; y: number; height: number }
+
+/** The invented shares and the last three messages the `chips=1` channel ends on. */
+const SHARES = { posted: "5ea7c0de".repeat(4), bare: "b0a7c0de".repeat(4) };
+const CHIP_ROWS = { wire: "m87", posted: "m88", bare: "m89" };
+const chips = (cdp: Cdp, id: string) => evaluate<Chip[]>(cdp, `__chat.chips(${JSON.stringify(id)})`);
+
+async function oneChip(cdp: Cdp, id: string): Promise<Chip> {
+  const found = await chips(cdp, id);
+  if (found.length !== 1) fail(`message ${id} should draw one chip`, found);
+  return found[0]!;
 }
 
 export const chatSteps: ChatStep[] = [
@@ -596,6 +622,71 @@ export const chatSteps: ChatStep[] = [
       const offset = await evaluate<number | null>(cdp, `__chat.offsetOf(${JSON.stringify(before.id)})`);
       if (offset === null) fail("narrowing the pane took the message the reader was on out of the list", { before });
       expectPlace(before, { id: before.id, offset }, "narrowing the pane");
+    },
+  },
+  {
+    name: "chat chips: a share link is a chip with the share's title and pane, and its row keeps its height while the share is read",
+    scenario: "chat&chips=1&shares=held",
+    async run(cdp) {
+      await ready(cdp);
+      if (!await waitFor(cdp, "window.__chatFake.shareReads >= 2", 3_000)) fail("the chips never asked for their shares");
+      const rowsBefore = await Promise.all(Object.values(CHIP_ROWS).map((id) => evaluate<{ height: number }>(cdp, `__chat.rowRect(${JSON.stringify(id)})`)));
+      const bare = await oneChip(cdp, CHIP_ROWS.bare);
+      if (bare.link !== `share:${SHARES.bare}`) fail("the bare link's chip opens the wrong share", bare);
+      // The link is the chip now: no bare address in the text, and a message that was only a link has no text row.
+      if (await evaluate<string>(cdp, `__chat.bodyText(${JSON.stringify(CHIP_ROWS.bare)})`)) fail("a message that was only a share link still draws a text row");
+      const postedText = await evaluate<string>(cdp, `__chat.bodyText(${JSON.stringify(CHIP_ROWS.posted)})`);
+      if (postedText.includes("gloom.sh") || !postedText.includes("Chain for the week")) fail("the caption should stay and the share link should go", postedText);
+      // A share posted with its picture shows the picture in the chip, not again below it.
+      const posted = await oneChip(cdp, CHIP_ROWS.posted);
+      if (!posted.picture) fail("the posted picture is not the chip's preview", posted);
+      if (await evaluate<number>(cdp, `__chat.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === ${JSON.stringify(CHIP_ROWS.posted)}).querySelectorAll('[data-gloom-role=chat-message-image]').length`) !== 0) {
+        fail("the posted picture is drawn twice");
+      }
+      const wire = await oneChip(cdp, CHIP_ROWS.wire);
+      if (wire.link !== "economic-calendar" || !/Economic Calendar/.test(wire.text) || !/Jan 8/.test(wire.text)) fail("the Wire post's chip does not name its calendar and day", wire);
+
+      await evaluate(cdp, "window.__chatFake.releaseShares()");
+      if (!await waitFor(cdp, `__chat.chips(${JSON.stringify(CHIP_ROWS.bare)})[0]?.text.includes("DES SAMPL Options")`, 3_000)) fail("the chip never showed the share's title", await chips(cdp, CHIP_ROWS.bare));
+      await frames(cdp, 4);
+      const readChip = await oneChip(cdp, CHIP_ROWS.bare);
+      if (!readChip.text.includes("Research")) fail("the chip does not say which pane the share holds", readChip);
+      const rowsAfter = await Promise.all(Object.values(CHIP_ROWS).map((id) => evaluate<{ height: number }>(cdp, `__chat.rowRect(${JSON.stringify(id)})`)));
+      rowsBefore.forEach((before, index) => {
+        if (Math.abs(before.height - rowsAfter[index]!.height) > 0.5) fail("a chip's row changed height when its share was read", { before, after: rowsAfter[index] });
+      });
+      const after = await state(cdp);
+      if (after.fromBottom > 4) fail("reading the shares moved a reader at the bottom", after);
+    },
+  },
+  {
+    name: "chat chips: a click on a share chip opens the shared pane and a Wire post's chip opens its calendar, without selecting the row",
+    scenario: "chat&chips=1",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await oneChip(cdp, CHIP_ROWS.bare));
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("share:${SHARES.bare}")`, 2_000)) fail("a click on the chip did not open its share", await evaluate(cdp, "window.__chatFake.opened"));
+      await click(cdp, await oneChip(cdp, CHIP_ROWS.posted));
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("share:${SHARES.posted}")`, 2_000)) fail("a click on the picture chip did not open its share", await evaluate(cdp, "window.__chatFake.opened"));
+      await click(cdp, await oneChip(cdp, CHIP_ROWS.wire));
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("template:econ-calendar-pane")`, 2_000)) fail("a click on the Wire chip did not open its calendar", await evaluate(cdp, "window.__chatFake.opened"));
+      const chosen = await selected(cdp);
+      if (chosen.length > 0) fail("a click on a chip selected its message", chosen);
+      if (await evaluate<number>(cdp, "document.querySelectorAll('[data-gloom-role=chat-image-lightbox]').length") !== 0) fail("a click on the picture chip opened the image viewer instead");
+    },
+  },
+  {
+    name: "chat chips: the keyboard opens the chip of the selected message",
+    scenario: "chat&chips=1",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await pressKey(cdp, "Escape", "Escape");
+      await pressKey(cdp, "k", "KeyK", "k");
+      const chosen = await selected(cdp);
+      if (chosen.join() !== CHIP_ROWS.bare) fail("k did not select the newest message", chosen);
+      await pressKey(cdp, "o", "KeyO", "o");
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("share:${SHARES.bare}")`, 2_000)) fail("o did not open the selected message's chip", await evaluate(cdp, "window.__chatFake.opened"));
     },
   },
 ];

@@ -40,6 +40,7 @@ import type {
 
 export { setCloudApiFetchTransport, setCloudApiUploadTransport } from "./request";
 export type { ChatAttachmentUpload } from "./chat";
+export type { ChatPaneLink } from "./chat-pane-link";
 export { NoteConflictError } from "./notes";
 export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";

@@ -56,6 +56,8 @@ import type { ChatUserAnchor, ChatUserContextMenuEvent } from "../message/types"
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../cloud/team/pane-request";
+import { openChatPaneLink } from "../pane-links/open";
+import type { ChatMessagePaneLink } from "../pane-links/model";
 import { teamStore } from "../../cloud/team/store";
 import { requestAccountManagementTab } from "../../account-management/navigation";
 import {
@@ -526,6 +528,15 @@ export function ChatContent({
     if (controller.attachToChannel(channelIdRef.current, files.map(uploadFromTransferFile)) > 0) focusInput();
   }, [canAttach, controller, focusInput, imagesAvailable, notify]);
 
+  // A chip under a message: the shared pane, or the story or calendar a Wire post names.
+  const openPaneLink = useCallback((link: ChatMessagePaneLink) => {
+    openChatPaneLink(link, {
+      createPaneFromTemplate,
+      notify,
+      openExternal: (url) => { void rendererHost.openExternal(url); },
+    });
+  }, [createPaneFromTemplate, notify, rendererHost]);
+
   const handleDiscordCommand = useCallback((command: DiscordComposerCommand) => {
     void runDiscordCommand(command, { openUrl: (url) => rendererHost.openExternal(url) }).then(notify);
   }, [notify, rendererHost]);
@@ -887,6 +898,7 @@ export function ChatContent({
     focusComposer,
     catalog,
     openTicker,
+    openPaneLink,
     openAttachPicker: canAttach && nativePaneChrome ? () => attachPickerRef.current?.() : null,
     profilePopoverUser,
     showProfilePopover: showUserProfilePopover,
@@ -1002,6 +1014,7 @@ export function ChatContent({
         onStickyPinChange={setPinnedToBottom}
         latestEditableMessageId={latestEditableMessageId}
         openTicker={openTicker}
+        openPaneLink={openPaneLink}
         profilePopoverUser={profilePopoverUser}
         profilePopoverAnchor={profilePopoverAnchor}
         registerMessageElement={registerMessageElement}

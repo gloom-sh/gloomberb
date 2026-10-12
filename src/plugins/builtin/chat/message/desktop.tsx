@@ -13,6 +13,8 @@ import { MESSAGE_ACTION_WIDTH } from "../layout";
 import { canReactToMessage } from "../reactions";
 import { DesktopChatReactions, DesktopReactionAction } from "./reactions";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
+import { DesktopChatPaneChip } from "./pane-chip";
+import { chatMessagePaneLinks } from "../pane-links/model";
 import { useSlowPendingSend } from "./pending-send";
 import { chatHighlightBg, getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
@@ -48,6 +50,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   openReactionPicker,
   reactionPickerMessageId = null,
   closeReactionPicker,
+  openPaneLink,
 }: ChatMessageBaseProps & {
   registerMessageElement: (messageId: string, node: unknown | null) => void;
   /** The list's width in cells, so a narrow pane keeps its actions in the row before its badges. */
@@ -86,9 +89,18 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
     />
   ) : null;
   const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen };
-  const attachments = msg.attachments ?? [];
+  const { links: paneLinks, content } = chatMessagePaneLinks(msg);
+  // A share posted with its picture (what Share > Post to chat sends): the
+  // picture is the chip's thumbnail rather than a second copy below it.
+  const chipPreview = paneLinks.length === 1 && paneLinks[0]!.kind === "share"
+    && msg.attachments?.length === 1 && !msg.attachmentReview
+    ? msg.attachments[0]!
+    : null;
+  const attachments = chipPreview ? [] : msg.attachments ?? [];
+  const dimmed = state.isSending || msg.clientStatus === "failed";
   // An image-only message has no text row; its images start where the text would.
-  const showBody = msg.content.length > 0 || attachments.length === 0;
+  const showBody = content.length > 0 || (attachments.length === 0 && paneLinks.length === 0);
+  const showChips = paneLinks.length > 0;
   const showImages = attachments.length > 0 || !!msg.attachmentReview;
   const rowProps = {
     width: "100%",
@@ -172,7 +184,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         >
           <Box flexGrow={1} data-gloom-role="chat-message-body" style={{ minWidth: 0 }}>
             <ResponsiveTickerBadgeText
-              text={msg.content}
+              text={content}
               catalog={catalog}
               textColor={state.bodyColor}
               openTicker={openTicker}
@@ -186,7 +198,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           {state.grouped && <ChatMessageActions floating {...actionProps} />}
         </Box>
       )}
-      {showImages && (
+      {showChips && (
         <Box
           {...rowProps}
           paddingLeft={3}
@@ -194,15 +206,38 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           position={state.grouped && !showBody ? "relative" : undefined}
           style={{ minWidth: 0, alignItems: "flex-start" }}
         >
+          <Box data-gloom-role="chat-pane-chips" style={{ minWidth: 0, flex: "1 1 auto", alignItems: "flex-start" }}>
+            {paneLinks.map((link) => (
+              <DesktopChatPaneChip
+                key={link.kind === "share" ? link.id : link.link.kind}
+                link={link}
+                preview={chipPreview}
+                dimmed={dimmed}
+                onOpen={openPaneLink}
+                onPreviewError={onImageLoadError}
+              />
+            ))}
+          </Box>
+          {state.grouped && !showBody && <ChatMessageActions floating {...actionProps} />}
+        </Box>
+      )}
+      {showImages && (
+        <Box
+          {...rowProps}
+          paddingLeft={3}
+          flexDirection="row"
+          position={state.grouped && !showBody && !showChips ? "relative" : undefined}
+          style={{ minWidth: 0, alignItems: "flex-start" }}
+        >
           <DesktopChatMessageImages
             attachments={attachments}
             caption={msg.content}
             author={chatAuthorName(msg.user)}
             review={msg.attachmentReview}
-            dimmed={state.isSending || msg.clientStatus === "failed"}
+            dimmed={dimmed}
             onLoadError={onImageLoadError}
           />
-          {state.grouped && !showBody && <ChatMessageActions floating {...actionProps} />}
+          {state.grouped && !showBody && !showChips && <ChatMessageActions floating {...actionProps} />}
         </Box>
       )}
       {(msg.reactions?.length ?? 0) > 0 && (

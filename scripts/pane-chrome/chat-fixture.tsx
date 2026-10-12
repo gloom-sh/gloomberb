@@ -13,13 +13,18 @@
  * opens on a message the way a notification does, `count=<n>` sets how many
  * messages the channel starts with (default 90), `latency=<ms>` how long a
  * history page takes (default 400) and `anchoring=off` switches the engine's
- * own scroll anchoring off, as it is in browsers that have none.
+ * own scroll anchoring off, as it is in browsers that have none. `chips=1`
+ * ends the channel on a Gloom Wire calendar post, a share posted with its
+ * picture and a bare share link, with an in-page stand-in for the share
+ * service; `shares=held` holds its answers until `releaseShares()`.
  */
 import { useState } from "react";
 import { apiClient, type ChatChannel, type ChatMessage, type ChatUserSummary } from "../../src/api-client";
 import { ChatContent } from "../../src/plugins/builtin/chat/content";
 import { ChatController } from "../../src/plugins/builtin/chat/controller";
+import { attachChatPaneLinkPanes } from "../../src/plugins/builtin/chat/pane-links/previews";
 import { PluginRenderProvider } from "../../src/plugins/runtime";
+import { registerShareOpener } from "../../src/shares/open";
 import { MemoryPluginPersistence } from "../../src/test-support/plugin-persistence";
 import { createTestPluginRuntime } from "../../src/test-support/plugin-runtime";
 import type { LayoutConfig } from "../../src/types/config";
@@ -41,6 +46,12 @@ export interface ChatFake {
   /** Holds history pages until `release()`, instead of `latency` ms. */
   holdHistory(): void;
   release(): void;
+  /** What a chip opened: `share:<id>` for a shared pane, `template:<id>[:<arg>]` for a pane template. */
+  opened: string[];
+  /** How many times the page asked the share service for a share. */
+  shareReads: number;
+  /** Lets the share service answer (`shares=held`). */
+  releaseShares(): void;
 }
 
 declare global {
@@ -55,6 +66,7 @@ const MEMBERS: Record<string, ChatUserSummary> = {
     id: "u2", username: "marlow", displayName: "Marlow", accountType: "human", badges: ["team", "pro"], utcOffsetMinutes: 120, desks: ["options", "futures"],
   },
   deskbot: { id: "u3", username: "deskbot", displayName: "Deskbot", accountType: "managed_llm" },
+  gloomwire: { id: "u9", username: "gloomwire", displayName: "Gloom Wire", accountType: "managed_llm" },
 };
 const MEMBER_ORDER = ["quill", "marlow", "deskbot", "quill", "quill", "marlow"];
 const PHRASES = [
@@ -88,10 +100,34 @@ function invented(index: number, extra: Partial<ChatMessage> = {}): ChatMessage 
 }
 
 const count = Number(params.get("count") ?? 90);
+/** Two invented shares: one posted with its picture, one pasted on its own. */
+const FIXTURE_SHARES = { posted: "5ea7c0de".repeat(4), bare: "b0a7c0de".repeat(4) };
+const shareLink = (id: string) => `https://term.gloom.sh/api/shares/${id}/open`;
+
+function withChips(messages: ChatMessage[]): ChatMessage[] {
+  const at = (offset: number) => messages.length - offset;
+  const replace = (offset: number, change: Partial<ChatMessage>) => {
+    messages[at(offset)] = { ...messages[at(offset)]!, ...change };
+  };
+  replace(3, {
+    user: MEMBERS.gloomwire!,
+    content: "Macro calendar for Thu, Jan 8, high-impact releases (New York time, as of Jan 8)\n08:30 US Example Index m/m: forecast 0.2%, prior 0.1%",
+    paneLink: { kind: "economic-calendar", date: "2026-01-08" },
+  });
+  replace(2, {
+    user: MEMBERS.marlow!,
+    content: `Chain for the week\n\n${shareLink(FIXTURE_SHARES.posted)}`,
+    attachments: [{ id: "share-picture", mime: "image/svg+xml", width: 320, height: 180, size: 1000, url: IMAGE }],
+  });
+  replace(1, { user: MEMBERS.quill!, content: shareLink(FIXTURE_SHARES.bare) });
+  return messages;
+}
+
+const initialMessages = Array.from({ length: count }, (_, index) => invented(index, index % 23 === 11 ? {
+  attachments: [{ id: `img${index}`, mime: "image/svg+xml", width: 320, height: 180, size: 1000, url: IMAGE }],
+} : {}));
 const fake: ChatFake = {
-  messages: Array.from({ length: count }, (_, index) => invented(index, index % 23 === 11 ? {
-    attachments: [{ id: `img${index}`, mime: "image/svg+xml", width: 320, height: 180, size: 1000, url: IMAGE }],
-  } : {})),
+  messages: params.get("chips") === "1" ? withChips(initialMessages) : initialMessages,
   historyRequests: 0,
   sent: [],
   connected: () => socket.onMessage !== null,
@@ -116,7 +152,56 @@ const fake: ChatFake = {
   },
   holdHistory() { held = Promise.withResolvers<void>(); },
   release() { held?.resolve(); held = null; },
+  opened: [],
+  shareReads: 0,
+  releaseShares() { sharesHeld.resolve(); },
 };
+const sharesHeld = Promise.withResolvers<void>();
+if (params.get("shares") !== "held") sharesHeld.resolve();
+
+/** The share service as the page reads it, for the two invented shares only. */
+const SHARE_TITLES: Record<string, string> = {
+  [FIXTURE_SHARES.posted]: "DES EXMPL Options",
+  [FIXTURE_SHARES.bare]: "DES SAMPL Options",
+};
+const pageFetch = window.fetch.bind(window);
+window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = String(input instanceof Request ? input.url : input);
+  const id = /\/shares\/([a-f0-9]{32})(?:\?|$)/.exec(url)?.[1];
+  if (!id) return pageFetch(input, init);
+  fake.shareReads += 1;
+  await sharesHeld.promise;
+  const title = SHARE_TITLES[id];
+  if (!title) return new Response(JSON.stringify({ error: "Share not found." }), { status: 404 });
+  return Response.json({
+    kind: "pane",
+    data: {
+      version: 2,
+      title,
+      layout: {
+        schemaVersion: 2,
+        sourceConfigVersion: 1,
+        layout: {
+          dockRoot: { kind: "pane", instanceId: "p1" },
+          instances: [{ instanceId: "p1", paneId: "ticker-research", title, binding: { kind: "fixed", symbol: "EXMPL" } }],
+          floating: [],
+          detached: [],
+        },
+        paneState: {},
+      },
+    },
+    createdAt: "2026-01-05T09:00:00.000Z",
+    expiresAt: "2026-02-04T09:00:00.000Z",
+    ownedByViewer: false,
+  });
+}) as typeof fetch;
+// What the app binds: the shared pane opens through the one share path; here it is written down.
+registerShareOpener(async (id) => { fake.opened.push(`share:${id}`); });
+attachChatPaneLinkPanes((paneId) => ({
+  "ticker-research": { name: "Research", icon: "D" },
+  "econ-calendar": { name: "Economic Calendar", icon: "E" },
+  "news-story": { name: "Story", icon: "A" },
+})[paneId]);
 let held: PromiseWithResolvers<void> | null = null;
 const socket: { onMessage: ((message: ChatMessage) => void) | null } = { onMessage: null };
 const latency = Number(params.get("latency") ?? 400);
@@ -175,7 +260,11 @@ function createController(): ChatController {
 }
 
 const controller = createController();
-const runtime = createTestPluginRuntime();
+const runtime = createTestPluginRuntime({
+  createPaneFromTemplate: (templateId, options) => {
+    fake.opened.push(`template:${templateId}${options?.arg ? `:${options.arg}` : ""}`);
+  },
+});
 window.__chatFake = fake;
 
 /** What the Chat pane does with its channel and a message a notification pointed at. */

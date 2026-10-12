@@ -19,6 +19,7 @@ import type {
   TeamNotification,
 } from "./types";
 import { normalizeTimestamp } from "../utils/timestamp";
+import { parseChatPaneLink } from "./chat-pane-link";
 
 /**
  * Saved-search writes answer with either the record itself or `{ search }`.
@@ -126,6 +127,11 @@ export function normalizeChatMessage(message: ChatMessage): ChatMessage {
   if (message.origin !== undefined && !CHAT_MESSAGE_ORIGINS.includes(message.origin)) delete normalized.origin;
   if (message.attachmentReview !== "pending" && message.attachmentReview !== "failed") {
     delete normalized.attachmentReview;
+  }
+  if ("paneLink" in message) {
+    const paneLink = parseChatPaneLink(message.paneLink);
+    if (paneLink) normalized.paneLink = paneLink;
+    else delete normalized.paneLink;
   }
   return normalized;
 }
