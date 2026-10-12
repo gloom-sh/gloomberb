@@ -1313,6 +1313,30 @@ describe("ChatContent", () => {
     expect(tui.frame()).toContain("@cy");
   });
 
+  test("badges a managed assistant's messages as AI, never a person's or a Discord ghost's", async () => {
+    const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: "ask me anything", replyToId: null, createdAt: at(0), user: { id: "b1", username: "gloombot", displayName: "Gloombot", accountType: "managed_llm" } },
+        { id: "m2", channelId: "everyone", content: "from a person", replyToId: null, createdAt: at(10), user: { id: "u1", username: "bob", displayName: "Bob", accountType: "human" } },
+        { id: "m3", channelId: "everyone", content: "a guest speaking", replyToId: null, createdAt: at(20), user: { id: "d1", username: null, displayName: "Grace H", accountType: "discord" }, origin: "discord" },
+      ],
+    });
+
+    await mountChat(controller, { width: 60, height: 18 });
+
+    const rows = tui.frame().split("\n").map((row) => row.trimEnd());
+    const header = (author: string) => rows.find((row) => row.startsWith(` ${author} `))!;
+    expect(header("gloombot")).toContain(" AI ");
+    expect(header("bob")).not.toContain("AI");
+    expect(header("Grace H")).not.toContain("AI");
+
+    // The badge is not a target of its own: the name still opens the card, which says what the account is.
+    await tui.clickFrameText("gloombot");
+    await flushFrame();
+    expect(tui.frame()).toContain("AI bot run by Gloom");
+  });
+
   test("shows a saved-login read-only footer when a session token is cached", async () => {
     const controller = createController({
       sessionToken: "token-123",

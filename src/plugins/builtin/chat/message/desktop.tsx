@@ -6,7 +6,8 @@ import { useAppLanguage } from "../../../../i18n/react";
 import { normalizeInlinePreview } from "../layout";
 import { DesktopChatMessageImages } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
-import { chatAuthorName } from "../ghost-user";
+import { chatAuthorName, isQuotedAuthorManagedBot } from "../ghost-user";
+import { ChatAiBadge } from "./ai-badge";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
 import { canReactToMessage } from "../reactions";
@@ -121,7 +122,16 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         >
           {/* One line: the quoted text ends in an ellipsis, the whole message is a click away. */}
           <Text fg={state.replyMetaColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${t("reply")} `}</Text>
-          <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${msg.replyTo.user.username}: `}</Text>
+          {isQuotedAuthorManagedBot(msg.replyTo, userByUsername) ? (
+            // The badge stands where the colon would.
+            <>
+              <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{msg.replyTo.user.username}</Text>
+              <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
+              <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{" "}</Text>
+            </>
+          ) : (
+            <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${msg.replyTo.user.username}: `}</Text>
+          )}
           <Text
             fg={state.replyMetaColor}
             style={{

@@ -14,13 +14,16 @@ import {
 import { scheduleConfigSave } from "../../../state/config-save-scheduler";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, TextAttributes } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
+import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { SignInWall } from "../cloud/auth-actions";
 import { chatController, type ChatController } from "./controller";
 import { applyUnreadInboxItemToConfig } from "./pane-state";
 import type { UnreadInboxItem } from "./unread-inbox";
 import { chatTextWithImages } from "./attachments/model";
+import { isManagedBot } from "./ghost-user";
+import { CHAT_AI_BADGE_WIDTH, ChatAiBadge } from "./message/ai-badge";
 
 interface UnreadInboxPaneProps extends PaneProps {
   controller?: Pick<ChatController, "getSnapshot" | "listUnreadInbox" | "subscribe">;
@@ -32,7 +35,12 @@ const COLUMNS: DataTableColumn[] = [
   { id: "latest", label: "Latest", width: 24, align: "left", flexGrow: 1 },
 ];
 
-function renderCell(item: UnreadInboxItem, column: DataTableColumn): DataTableCell {
+function renderCell(
+  item: UnreadInboxItem,
+  column: DataTableColumn,
+  rowState: { selected: boolean },
+  native: boolean,
+): DataTableCell {
   switch (column.id) {
     case "channel":
       return { text: item.title };
@@ -44,9 +52,29 @@ function renderCell(item: UnreadInboxItem, column: DataTableColumn): DataTableCe
     default: {
       const preview = item.preview;
       if (!preview) return { text: "" };
-      const author = preview.user.username ? `@${preview.user.username}: ` : "";
-      const text = chatTextWithImages(preview.content, preview.attachments?.length ?? 0);
-      return { text: `${author}${text.replace(/\s+/g, " ").trim()}` };
+      const name = preview.user.username ? `@${preview.user.username}` : "";
+      const text = chatTextWithImages(preview.content, preview.attachments?.length ?? 0).replace(/\s+/g, " ").trim();
+      if (!isManagedBot(preview.user)) return { text: `${name ? `${name}: ` : ""}${text}` };
+      // A managed assistant's name carries the same AI badge as in the transcript.
+      const ink = rowState.selected ? colors.selectedText : colors.text;
+      // The badge stands where the colon would. The table gives the terminal its resolved width to clip
+      // to; the desktop clips the preview with CSS.
+      const latest = native ? ` ${text}` : truncateToDisplayWidth(` ${text}`, Math.max(0, column.width - displayWidth(name) - CHAT_AI_BADGE_WIDTH));
+      return {
+        text: `${name ? `${name} ` : ""}[AI]: ${text}`,
+        content: (
+          <Box flexDirection="row" height={1} width={native ? "100%" : column.width} overflow="hidden">
+            {name ? <Text fg={ink}>{name}</Text> : null}
+            <ChatAiBadge selectedColor={rowState.selected ? colors.selectedText : undefined} />
+            <Text
+              fg={ink}
+              style={native ? { flex: "1 1 0", minWidth: 0, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" } : undefined}
+            >
+              {latest}
+            </Text>
+          </Box>
+        ),
+      };
     }
   }
 }
@@ -67,6 +95,7 @@ export function UnreadInboxPane({
   controller = chatController,
 }: UnreadInboxPaneProps) {
   const dispatch = useAppDispatch();
+  const { nativePaneChrome } = useUiCapabilities();
   const stateRef = useAppStateRef();
   const inboxInstanceId = useOptionalPaneInstanceId();
   const { createPaneFromTemplate } = usePluginAppActions();
@@ -78,6 +107,11 @@ export function UnreadInboxPane({
     setInbox(readInbox(controller));
     return controller.subscribe(() => setInbox(readInbox(controller)));
   }, [controller]);
+
+  const renderInboxCell = useCallback(
+    (item: UnreadInboxItem, column: DataTableColumn, _index: number, rowState: { selected: boolean }) => renderCell(item, column, rowState, !!nativePaneChrome),
+    [nativePaneChrome],
+  );
 
   const openItem = useCallback((item: UnreadInboxItem) => {
     const currentState = stateRef.current;
@@ -135,7 +169,7 @@ export function UnreadInboxPane({
           }}
           selectedTextOverridesCellColor
           onActivate={openItem}
-          renderCell={renderCell}
+          renderCell={renderInboxCell}
         />
       )}
     </Box>

@@ -2,9 +2,10 @@ import { useRef, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { displayWidth } from "../../../../utils/format";
-import { chatAuthorName, isDiscordGhost } from "../ghost-user";
+import { chatAuthorName, isDiscordGhost, isManagedBot } from "../ghost-user";
 import { Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
+import { ChatAiBadge } from "./ai-badge";
 import type { ChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
@@ -128,6 +129,7 @@ export function ChatMessageHeader({
           {authorLabel}
         </Text>
       </Box>
+      {isManagedBot(msg.user) && <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />}
       {msg.origin === "discord" && <Text fg={state.originTagColor}> Discord</Text>}
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
       {(state.showReplyAction || (state.showRetryAction && actionProps.retryMessage)) && <Text fg={state.headerStatusColor}> </Text>}
