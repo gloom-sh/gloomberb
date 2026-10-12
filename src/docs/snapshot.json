@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-11",
+ "updatedAt": "2026-10-12",
  "categories": [
   {
    "id": "research",
@@ -337,7 +337,7 @@
    "code": "SEAS",
    "name": "Seasonality",
    "description": "Monthly returns and calendar patterns",
-   "detail": "Monthly returns for each year as a heatmap, every month's average, median and share of up years, and each year's path laid over one January-to-December axis.",
+   "detail": "Monthly returns for each year as a heatmap, every month's average, median and share of up years, each year's path laid over one January-to-December axis, and a Weekdays tab with the average return, up share and session count for each weekday and the turn of the month.",
    "category": "research",
    "arg": "SPY",
    "shot": "https://gloom.sh/screenshots/fn/SEAS.png",
@@ -816,7 +816,7 @@
    "code": "POWER",
    "name": "Power and grid buildout",
    "description": "Grid queues and large loads",
-   "detail": "Grid interconnection queues, datacentre and other large-load requests, generation capacity and utility exposure, with a link to the source for every project. Pro shows the full data and history; Free shows three rows per section.",
+   "detail": "Grid interconnection queues, datacentre and other large-load requests, generation capacity and utility exposure, with a link to the source for every project. Pro shows the full data and history; Free shows three rows per section. EPWR opens the Prices tab, free: day-ahead power prices for 32 European markets in EUR/MWh and the EU carbon (EUA) auction clearing price in EUR/tCO2, each with its daily history.",
    "category": "markets",
    "arg": "NEE",
    "access": "pro",
@@ -1310,7 +1310,7 @@
    "code": "PF",
    "name": "Portfolio",
    "description": "Positions with live P&L",
-   "detail": "Your portfolio or watchlist with live quotes, P&L, weights, and sparklines. Broker-synced and manual positions sit in the same table.",
+   "detail": "Your portfolio or watchlist with live quotes, P&L, weights, and sparklines. Set target weights and each holding shows its drift from them and the trade that rebalances it. Broker-synced and manual positions sit in the same table.",
    "category": "workspace",
    "shot": "https://gloom.sh/screenshots/fn/PF.png",
    "lesson": "/academy/terminal-and-workspace/your-workspace/portfolios-and-watchlists"
@@ -2342,6 +2342,125 @@
     {
      "type": "paragraph",
      "text": "All five are Pro. Free shows a preview of each except `JOBS`. See [All functions](/docs/functions) for the rest."
+    }
+   ]
+  },
+  {
+   "slug": "portfolio",
+   "title": "Portfolios and rebalancing",
+   "lead": "Give each holding a target weight. PF then shows how far each one has drifted and the trade that brings it back.",
+   "category": "Start here",
+   "tags": [
+    "PF",
+    "portfolio",
+    "target weights",
+    "drift",
+    "rebalance",
+    "weights",
+    "glossary"
+   ],
+   "updatedAt": "2026-10-12",
+   "blocks": [
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Build a portfolio"
+    },
+    {
+     "type": "paragraph",
+     "text": "A portfolio is what you hold: shares, what you paid for them, and cash. It stays on your device. In the app, run **New Portfolio**; in a shell:"
+    },
+    {
+     "type": "code",
+     "code": "gloomberb portfolio create Core\ngloomberb portfolio position set Core VTI 40 280\ngloomberb portfolio position set Core BND 60 72\ngloomberb portfolio cash set Core 2000 USD"
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Set targets"
+    },
+    {
+     "type": "paragraph",
+     "text": "A target is the weight you want a holding to have, as a share of the whole portfolio. Cash can have one too."
+    },
+    {
+     "type": "code",
+     "code": "gloomberb portfolio target set Core VTI 60\ngloomberb portfolio target set Core BND 35\ngloomberb portfolio target set Core CASH 5"
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Read the drift table"
+    },
+    {
+     "type": "paragraph",
+     "text": "`PF` and `gloomberb portfolio show Core` add four columns once targets are set:"
+    },
+    {
+     "type": "code",
+     "code": "Ticker      Shares    Value  Weight  Target    Drift  Trade  Trade Value\n──────────  ──────  ───────  ──────  ──────  ───────  ─────  ───────────\nBND:NASDAQ      60   $4,212   19.6%   35.0%  -15.4pp    +47      +$3,309\nVTI:ARCA        40  $15,276   71.1%   60.0%  +11.1pp     -6      -$2,383\nCASH                 $2,000    9.3%    5.0%   +4.3pp               -$926\nTOTAL               $21,488  100.0%  100.0%"
+    },
+    {
+     "type": "table",
+     "headers": [
+      "Column",
+      "Means"
+     ],
+     "rows": [
+      [
+       "Weight",
+       "Share of the total value, cash included"
+      ],
+      [
+       "Target",
+       "The weight you set"
+      ],
+      [
+       "Drift",
+       "Weight minus target, in percentage points (pp)"
+      ],
+      [
+       "Trade",
+       "Shares to buy (+) or sell (-) to get back to target"
+      ]
+     ]
+    },
+    {
+     "type": "heading",
+     "level": 2,
+     "text": "Rebalance"
+    },
+    {
+     "type": "paragraph",
+     "text": "VTI is 11.1pp over its target, so the table says sell 6 shares. BND is 15.4pp under, so buy 47. Make both trades and every drift lands near 0pp."
+    },
+    {
+     "type": "callout",
+     "blocks": [
+      {
+       "type": "paragraph",
+       "text": "`gloomberb portfolio show Core --explain` prints these terms under the table. `gloomberb catalog glossary` lists every term the terminal uses."
+      }
+     ]
+    },
+    {
+     "type": "details",
+     "summary": "Fine print",
+     "blocks": [
+      {
+       "type": "list",
+       "items": [
+        "Targets need not add up to 100%; the report says what is unallocated.",
+        "Trades use the current price and leave out fees, taxes and lot sizes.",
+        "A broker portfolio uses the cash its account reports.",
+        "In the PF pane the columns read `WEIGHT`, `TGT WT`, `DRIFT` and `TRADE`."
+       ]
+      }
+     ]
+    },
+    {
+     "type": "paragraph",
+     "text": "Related: [PF](/docs/functions#pf), [CLI](/docs/cli-functions#portfolios-and-notes)."
     }
    ]
   },
@@ -4815,7 +4934,7 @@
     "functions",
     "screenshots"
    ],
-   "updatedAt": "2026-10-07",
+   "updatedAt": "2026-10-12",
    "blocks": [
     {
      "type": "paragraph",
@@ -4895,8 +5014,8 @@
        "Holders, insiders, institutions and funds, SEC filings"
       ],
       [
-       "`news [symbol]`, `rss fetch <url>`",
-       "Headlines; any RSS or Atom feed"
+       "`news [symbol or text]`, `rss fetch <url>`",
+       "Headlines, or the stories that mention some text; any RSS or Atom feed"
       ],
       [
        "`correlation <a> <b>`",
@@ -4952,11 +5071,11 @@
      "rows": [
       [
        "`portfolio list|show|create|delete <name>`",
-       "Manual portfolios; `show` lists value, weight, target, drift and the trade to rebalance"
+       "Manual portfolios; `show` lists value, weight, target, drift and the trade to rebalance, and `show --explain` adds what those terms mean"
       ],
       [
-       "`portfolio add|remove <portfolio> <symbol>`",
-       "Add or remove a ticker"
+       "`portfolio add|remove <portfolio> <symbols...> [--file <csv|txt>]`",
+       "Add or remove tickers: several at once (commas, spaces or lines), a CSV or text file, or piped input (`-`); one line per symbol and a summary of what was not found"
       ],
       [
        "`portfolio position set <portfolio> <symbol> <shares> <avg-cost> [currency]`",
@@ -4972,7 +5091,7 @@
       ],
       [
        "`watchlist list|show|create|delete|add|remove`",
-       "The same verbs for watchlists"
+       "The same verbs for watchlists, with the same multi-symbol and `--file` add; `watchlist show <name> --csv` or `--json` prints one row per ticker, market cap included"
       ],
       [
        "`broker list [--type ibkr]`",
@@ -4990,7 +5109,7 @@
     },
     {
      "type": "paragraph",
-     "text": "`CASH` in `portfolio target` is the cash line; `portfolio add` and `position set` refuse a bare `CASH` (the stock is `CASH:NASDAQ`). `portfolio` and `watchlist` write immediately and ignore `--dry-run`. Sign-in, account management and chat are app-only."
+     "text": "[Portfolios and rebalancing](/docs/portfolio) walks through targets and the drift table. `CASH` in `portfolio target` is the cash line; `portfolio add` and `position set` refuse a bare `CASH` (the stock is `CASH:NASDAQ`). `portfolio` and `watchlist` write immediately and ignore `--dry-run`. Sign-in, account management and chat are app-only."
     },
     {
      "type": "heading",
@@ -5006,7 +5125,7 @@
      "rows": [
       [
        "`config list|get|set`",
-       "Settings and key bindings"
+       "Settings and key bindings, including your `timezone`"
       ],
       [
        "`cache status|clear [namespace]`",
@@ -5051,8 +5170,12 @@
        "Find functions and their options"
       ],
       [
-       "`fn <function> [argument] [--option value]`",
-       "Print a function's report"
+       "`catalog glossary [term]`, `catalog explain <term>`",
+       "What a term means, such as `stop-out`, `B/C`, `drift` or `NAV`"
+      ],
+      [
+       "`fn <function> [argument] [--option value] [--explain]`",
+       "Print a function's report; `--explain` adds the meaning of the terms it shows"
       ],
       [
        "`shot <function> [argument] [--output file] [--width px] [--height px] [--theme id] [--no-status]`",
@@ -5070,7 +5193,15 @@
     },
     {
      "type": "paragraph",
-     "text": "Reports end with their source and a dated status line, such as `Source: Gloom Cloud · Fri 9 Oct close · 15 min delayed · markets closed until Mon`: when the data is from (UTC, or a session close), how far it is held back, and when its market reopens. Screenshots draw the same line, without the source, in the pane footer, inside the requested size; `--no-status` leaves it out."
+     "text": "`shot` sizes the layout from 720 to 2400 wide and 360 to 1800 tall, and the PNG is drawn at twice that. A size outside the limits is clamped, and a warning says what was used."
+    },
+    {
+     "type": "paragraph",
+     "text": "Reports end with their source and a dated status line, such as `Source: Gloom Cloud · US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon`: when the data is from (UTC, or the close of a market's trading day, always with the year), how far it is held back, and when its market reopens. Screenshots draw the same line, without the source, in the pane footer, inside the requested size; `--no-status` leaves it out."
+    },
+    {
+     "type": "paragraph",
+     "text": "Times print in UTC. To see your own clock beside them, run `gloomberb config set timezone Asia/Tokyo` (any `Region/City` name; `none` turns it off): `Sat 10 Oct 2026 16:56 UTC (Sun 11 Oct 01:56 Asia/Tokyo)`. A trading day keeps its market's date in every zone, and `--json` and `--csv` keep the raw values."
     },
     {
      "type": "heading",

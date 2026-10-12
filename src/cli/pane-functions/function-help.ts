@@ -1042,6 +1042,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [key("a", "dd"), OPEN, key("s", " grid")],
     data: QUOTES,
     bloomberg: [],
+    docs: "https://gloom.sh/docs/portfolio",
   },
   PORT: {
     summary: "Benchmark-relative risk, factor betas, and index, rate and VIX stress shifts for a portfolio. The Overview view in pane settings has P&L, Sharpe, beta and sector allocation.",
