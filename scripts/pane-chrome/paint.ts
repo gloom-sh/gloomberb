@@ -39,7 +39,8 @@ const FRAME_PROBE = `(() => {
   const surface=document.querySelector('[data-gloom-role=surface-3d] canvas');
   let surfacePixel=null;
   if(surface){const copy=document.createElement('canvas');copy.width=surface.width;copy.height=surface.height;const ctx=copy.getContext('2d');ctx.drawImage(surface,0,0);surfacePixel=[...ctx.getImageData(1,1,1,1).data];}
-  return {theme, surfacePixel, tab:document.querySelector('[role=tab][aria-selected=true]')?.textContent.trim(), panes, dividers:[...document.querySelectorAll('[data-gloom-role=dock-divider]')].map(e=>getComputedStyle(e).getPropertyValue('--divider-color').trim())};
+  const paletteTransitions=document.getAnimations().filter(a=>a.transitionProperty && /color|fill|stroke|shadow/.test(a.transitionProperty) && a.playState==='running').map(a=>a.transitionProperty);
+  return {theme, surfacePixel, paletteTransitions, tab:document.querySelector('[role=tab][aria-selected=true]')?.textContent.trim(), panes, dividers:[...document.querySelectorAll('[data-gloom-role=dock-divider]')].map(e=>getComputedStyle(e).getPropertyValue('--divider-color').trim())};
 })()`;
 
 interface Frame {
@@ -48,6 +49,7 @@ interface Frame {
   theme: string;
   tab: string | undefined;
   surfacePixel: number[] | null;
+  paletteTransitions: string[];
   panes: Array<{
     id: string; focused: boolean; floating: boolean; background: string;
     plots: Array<{ rect: number[]; background: string; canvas: { size: number[]; pixel: number[] } | null }>;
@@ -94,6 +96,7 @@ function checkFrames(samples: Frame[], palettes: Record<string, Record<string, s
   for (const sample of samples) {
     const palette = palettes[sample.theme]!;
     const at = `frame ${sample.n} (+${(sample.time - samples[0]!.time).toFixed(1)} ms), ${sample.theme}`;
+    if (checkTheme && sample.paletteTransitions.length) throw new Error(`${at}: interpolating between palettes (${sample.paletteTransitions.join(", ")})`);
     for (const pane of sample.panes) {
       if (checkTheme) {
         const expected = pane.focused
@@ -137,14 +140,12 @@ export async function checkThemePreview(cdp: Cdp): Promise<void> {
     await key(cdp, "Home");
     for (let index = 0; index < sorted.indexOf(id); index++) await key(cdp, "ArrowDown");
     if (!await waitFor(cdp, `document.querySelector('[data-theme-controls]').dataset.preview === ${JSON.stringify(id === "high-contrast" ? "" : id)}`, 3000)) throw new Error(`picker did not preview ${id}`);
-    // Capture the whole transition too. Chrome's existing hover/button color
-    // transitions finish in 120 ms; compare settled tokens after that.
-    await frames(cdp, 12);
+    await frames(cdp, 3);
     const samples = await stopFrames(cdp, `preview-${id}`);
     checkFrames(samples, palettes, true);
     const preview = await evaluate(cdp, SNAPSHOT);
     await key(cdp, "Enter");
-    await frames(cdp, 12);
+    await frames(cdp, 3);
     const committed = await evaluate(cdp, SNAPSHOT);
     if (JSON.stringify(preview) !== JSON.stringify(committed)) {
       await Bun.write(cacheDir("paint", `commit-${id}.json`), JSON.stringify({ preview, committed }, null, 2));
@@ -155,7 +156,7 @@ export async function checkThemePreview(cdp: Cdp): Promise<void> {
     await key(cdp, "Home");
     await frames(cdp, 12);
     await key(cdp, "Escape");
-    await frames(cdp, 12);
+    await frames(cdp, 3);
     if (JSON.stringify(committed) !== JSON.stringify(await evaluate(cdp, SNAPSHOT))) throw new Error(`${id}: cancel did not restore committed pixels and tokens`);
   }
   await evaluate(cdp, "window.__paneChrome.resetTheme()");
