@@ -27,7 +27,10 @@ interface ViewBundleOptions {
   missingEntryMessage: string;
 }
 
-const ELECTROBUN_VIEW_DIR = join(process.cwd(), "src", "renderers", "electrobun", "view");
+// From this file rather than the working directory, so a build started from
+// any folder (`gloomberb shot` run from a checkout or a package install) finds
+// the sources.
+const ELECTROBUN_VIEW_DIR = join(import.meta.dir, "..", "electrobun", "view");
 
 /**
  * Where the world map finds its land data, relative to the map's
@@ -35,7 +38,7 @@ const ELECTROBUN_VIEW_DIR = join(process.cwd(), "src", "renderers", "electrobun"
  * never draws that map, leaves the data out.
  */
 export const WORLD_MAP_DATA_SPECIFIER = "./natural-earth/index.chunk.js";
-const DOM_RENDERER_DIR = join(process.cwd(), "src", "renderers", "dom");
+const DOM_RENDERER_DIR = import.meta.dir;
 
 export function electrobunViewPath(...parts: string[]): string {
   return join(ELECTROBUN_VIEW_DIR, ...parts);
@@ -106,20 +109,26 @@ export async function writeElectrobunViewPage(options: PageOptions): Promise<str
       __GLOOMBERB_API_URL__: JSON.stringify(process.env.GLOOMBERB_API_URL ?? ""),
     },
   });
-  const stylesheet = withTitlebarOverlayHeight(await readFile(join(DOM_RENDERER_DIR, "styles.css"), "utf8"));
+  const stylesheet = await readViewStylesheet();
   const entrySrc = `./${relative(options.outdir, script).replaceAll("\\", "/")}`;
   const htmlPath = join(options.outdir, "index.html");
   await writeFile(htmlPath, renderElectrobunViewHtml({ ...options, stylesheet, entrySrc }));
   return htmlPath;
 }
 
-function renderElectrobunViewHtml({
+/** The DOM renderer's stylesheet, sized for the titlebar, which a view page inlines. */
+export async function readViewStylesheet(): Promise<string> {
+  return withTitlebarOverlayHeight(await readFile(join(DOM_RENDERER_DIR, "styles.css"), "utf8"));
+}
+
+/** A view page: the stylesheet inline, the bootstrap script, then the bundle at `entrySrc`. */
+export function renderElectrobunViewHtml({
   title,
   loadingText,
   stylesheet,
   bootstrapScript,
   entrySrc,
-}: PageOptions & { stylesheet: string; entrySrc: string }): string {
+}: Pick<PageOptions, "title" | "loadingText" | "bootstrapScript"> & { stylesheet: string; entrySrc: string }): string {
   return `<!doctype html>
 <html lang="en">
   <head>

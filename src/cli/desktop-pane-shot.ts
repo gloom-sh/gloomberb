@@ -1,7 +1,7 @@
 import type { TapeCapture } from "../plugins/builtin/time-sales/snapshot-client";
 import { mkdir, mkdtemp, rm, writeFile } from "fs/promises";
 import { tmpdir } from "os";
-import { join, resolve, sep } from "path";
+import { join } from "path";
 import { encodeRpcValue } from "../renderers/electrobun/shared/rpc-codec";
 import type { AppConfig } from "../types/config";
 import type { ChartResolutionResult } from "../time-series/types";
@@ -21,10 +21,8 @@ import { readVisibleKeyValues } from "./visible-key-values";
 import { scrollTruncationReasons } from "./scroll-truncation";
 import { SHOT_API_PROXY_PREFIX, SHOT_HTTP_BRIDGE_PATH, SHOT_MARKET_BRIDGE_PATH } from "./desktop-pane-shot-routes";
 import { SESSION_COOKIE_NAMES } from "../api-client/session-cookie";
-import {
-  electrobunViewPath,
-  writeElectrobunViewPage,
-} from "../renderers/dom/build-assets";
+import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
+import { loadShotView, SHOT_VIEW_SCRIPT, SHOT_VIEW_STYLESHEET, type ShotViewFiles } from "./desktop-pane-shot-view";
 import { errorMessage } from "../utils/errors";
 
 export interface DesktopPaneShotIntradayHistory {
@@ -208,14 +206,12 @@ export async function renderDesktopPaneScreenshot(
   apiProxy: DesktopPaneShotApiProxy,
   options: { captureImage?: boolean; bridge?: DesktopPaneShotBridge; statusLine?: ShotStatusLine } = {},
 ): Promise<DesktopPaneShotRenderResult> {
+  const chrome = await findChromeExecutable();
+  const view = await loadShotView();
   const tempDir = await mkdtemp(join(tmpdir(), "gloom-pane-shot-"));
   let server: ReturnType<typeof Bun.serve> | null = null;
   try {
-    const outdir = join(tempDir, "assets");
-    await mkdir(outdir, { recursive: true });
-    await buildShotPage(outdir, payload);
-    server = serveShotPage(outdir, apiProxy, options.bridge ?? null);
-    const chrome = await findChromeExecutable();
+    server = serveShotPage(view, shotPageHtml(view, payload), apiProxy, options.bridge ?? null);
     return await capturePageScreenshot({
       chrome,
       url: new URL("/", server.url).href,
@@ -234,16 +230,12 @@ export async function renderDesktopPaneScreenshot(
   }
 }
 
-async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): Promise<string> {
+/** The page for one capture: the shared view, with this capture's pane and data in its bootstrap script. */
+function shotPageHtml(view: ShotViewFiles, payload: DesktopPaneShotPayload): string {
   const payloadJson = JSON.stringify(encodeRpcValue(payload)).replace(/</g, "\\u003c");
-  return writeElectrobunViewPage({
-    entrypoint: electrobunViewPath("cli-pane-shot-entry.tsx"),
-    outdir,
-    aliasRules: [
-      ["backend-rpc", "native-stubs/backend-rpc.ts"],
-    ],
-    failureMessage: "Failed to build desktop pane screenshot renderer.",
-    missingEntryMessage: "Desktop pane screenshot build did not produce a JavaScript entrypoint.",
+  return renderElectrobunViewHtml({
+    stylesheet: view.get(SHOT_VIEW_STYLESHEET) ?? "",
+    entrySrc: `./${SHOT_VIEW_SCRIPT}`,
     title: "Gloomberb Pane Shot",
     loadingText: "Rendering pane...",
     bootstrapScript: `
@@ -275,11 +267,11 @@ async function buildShotPage(outdir: string, payload: DesktopPaneShotPayload): P
 }
 
 function serveShotPage(
-  outdir: string,
+  view: ShotViewFiles,
+  html: string,
   apiProxy: DesktopPaneShotApiProxy,
   bridge: DesktopPaneShotBridge | null,
 ): ReturnType<typeof Bun.serve> {
-  const staticRoot = resolve(outdir);
   return Bun.serve({
     hostname: "127.0.0.1",
     port: 0,
@@ -295,7 +287,7 @@ function serveShotPage(
       if (url.pathname === SHOT_HTTP_BRIDGE_PATH) {
         return runShotHttpBridge(request, bridge);
       }
-      return serveShotAsset(url, staticRoot);
+      return serveShotAsset(url, view, html);
     },
   });
 }
@@ -330,21 +322,22 @@ async function runShotHttpBridge(
   }
 }
 
-async function serveShotAsset(url: URL, staticRoot: string): Promise<Response> {
+function serveShotAsset(url: URL, view: ShotViewFiles, html: string): Response {
   let pathname: string;
   try {
     pathname = decodeURIComponent(url.pathname);
   } catch {
     return new Response("Bad request", { status: 400 });
   }
-  const relativePath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
-  const filePath = resolve(staticRoot, relativePath);
-  if (filePath !== staticRoot && !filePath.startsWith(`${staticRoot}${sep}`)) {
-    return new Response("Not found", { status: 404 });
+  if (pathname === "/" || pathname === "/index.html") {
+    return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
   }
-  const file = Bun.file(filePath);
-  if (!(await file.exists())) return new Response("Not found", { status: 404 });
-  return new Response(file);
+  const path = pathname.replace(/^\/+/, "");
+  const body = view.get(path);
+  if (body === undefined) return new Response("Not found", { status: 404 });
+  // A module script is only run when served as JavaScript.
+  const type = path.endsWith(".js") ? "text/javascript" : path.endsWith(".css") ? "text/css" : "text/plain";
+  return new Response(body, { headers: { "Content-Type": `${type}; charset=utf-8` } });
 }
 
 async function proxyShotApiRequest(
@@ -427,15 +420,21 @@ async function findChromeExecutable(): Promise<string> {
     "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     "/Applications/Chromium.app/Contents/MacOS/Chromium",
     Bun.which("google-chrome"),
+    Bun.which("google-chrome-stable"),
     Bun.which("chromium"),
     Bun.which("chromium-browser"),
+    // Windows installs Chrome outside PATH, per machine or per user.
+    ...["PROGRAMFILES", "PROGRAMFILES(X86)", "LOCALAPPDATA"].map((name) => {
+      const dir = process.env[name];
+      return dir ? join(dir, "Google", "Chrome", "Application", "chrome.exe") : null;
+    }),
   ].filter((value): value is string => !!value);
 
   for (const candidate of candidates) {
     const file = Bun.file(candidate);
     if (await file.exists()) return candidate;
   }
-  throw new Error("Could not find Chrome or Chromium to render the desktop pane screenshot.");
+  throw new Error("Drawing a pane needs Google Chrome or Chromium, and neither was found. Install one, or set CHROME_PATH to its executable.");
 }
 
 async function capturePageScreenshot({

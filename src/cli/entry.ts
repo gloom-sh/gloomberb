@@ -11,9 +11,11 @@ import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
   OPEN_TUI_RUNTIME_SMOKE_COMMAND,
   PLUGIN_HOST_SMOKE_COMMAND,
+  SHOT_VIEW_SMOKE_COMMAND,
   smokeOpenTuiNative,
   smokeOpenTuiRuntime,
   smokePluginHost,
+  smokeShotView,
 } from "./native-smoke";
 
 async function launchOpenTuiApp(cliLaunchRequest: CliLaunchRequest | null = null): Promise<void> {
@@ -48,6 +50,11 @@ export async function runCliEntrypoint(rawArgs = process.argv.slice(2)): Promise
 
   if (command === PLUGIN_HOST_SMOKE_COMMAND) {
     await smokePluginHost();
+    process.exit(0);
+  }
+
+  if (command === SHOT_VIEW_SMOKE_COMMAND) {
+    await smokeShotView();
     process.exit(0);
   }
 
