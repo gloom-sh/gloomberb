@@ -8,7 +8,7 @@ import type {
   LayoutBounds,
   ResolvedPane,
 } from "../../../../layout/pane-manager";
-import { colors } from "../../../../theme/colors";
+import { useThemeColors } from "../../../../theme/theme-context";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../../theme/font-scale";
 import { LivePaneFrameContext, type CellSize, type LivePaneFrame } from "../../../../ui/live-stretch";
 import { constrainFloatingRectToBounds, sameRect, type ResizeEdges } from "../drag";
@@ -535,6 +535,7 @@ const DockDividerLayer = memo(function DockDividerLayer({
   nativePaneChrome: boolean;
   actions: PaneLayerActions;
 }) {
+  const colors = useThemeColors();
   const dividerPathKey = pathKey(divider.path);
   const selectDragged = useCallback((geometry: LiveDragGeometry) => (
     geometry.divider?.pathKey === dividerPathKey

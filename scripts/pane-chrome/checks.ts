@@ -3,6 +3,7 @@ import { join, resolve } from "path";
 import { positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, click, drag, evaluate, frames, launchBrowser, mouse, pressKey, waitFor, type Cdp, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
+import { checkFirstPaint, checkThemePreview } from "./paint";
 
 /**
  * Moves panes the way a person does: real pointer input (DevTools
@@ -262,6 +263,11 @@ const EDGES = [
 const CAPTION_BUTTONS = [["minimize", "minimize"], ["maximize", "toggle-maximize"], ["close", "close"]] as const;
 
 const steps: Step[] = [
+  { name: "theme preview paints every surface, cancel and commit agree", scenario: "theme&theme=high-contrast", run: checkThemePreview },
+  { name: "theme preview paints a popped-out chart, cancel and commit agree", scenario: "theme-detached&theme=high-contrast", run: checkThemePreview },
+  ...["white", "colorblind-light"].map((theme) => ({
+    name: `first paint has no blank chart or overview frame (${theme})`, scenario: `paint&theme=${theme}`, run: checkFirstPaint,
+  })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
     name: `docked pane: drag by the ${label} docks it elsewhere`,
     scenario: "docked",

@@ -17,7 +17,18 @@
  * floats a chart, a heat map or the Fear & Greed pane instead) or `narrow`
  * (floating panes either side of the width a header keeps Ask Gloom at).
  */
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
+import { useCommandBarThemePreview } from "../../src/components/command-bar/theme-preview";
+import { OverviewTab } from "../../src/plugins/builtin/ticker-detail/overview-tab";
+import { createTestTicker } from "../../src/test-support/ticker";
+import { createTestFinancials, createTestQuote } from "../../src/test-support/data-provider";
+import { useAppDispatch, useAppSelector } from "../../src/state/app/context";
+import { getThemeIds } from "../../src/theme/themes";
+import { matchThemeOptions } from "../../src/components/command-bar/theme-picker";
+import { Surface3DChart } from "../../src/components/chart/surface3d/chart";
+import { DEFAULT_SURFACE3D_CAMERA, type Surface3DInput } from "../../src/components/chart/surface3d/model";
+import { getThemeColors } from "../../src/theme/colors";
 import { createRoot } from "react-dom/client";
 import { CompositeChart } from "../../src/components/chart/composite";
 import { StaticChartSurface } from "../../src/components/chart/static/chart-surface";
@@ -28,6 +39,8 @@ import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
 import { DetachedPaneShell } from "../../src/components/layout/detached-pane-shell";
 import { usePaneTabs } from "../../src/components/layout/pane/pane-tabs";
 import { Shell } from "../../src/components/layout/shell";
+import { Header } from "../../src/components/layout/header";
+import { StatusBar } from "../../src/components/layout/status-bar";
 import type { NewsArticle } from "../../src/news/types";
 import { NewsArticleStackView, type NewsSortPreference } from "../../src/plugins/builtin/news/wire/news/table";
 import type { PluginRegistry } from "../../src/plugins/registry";
@@ -40,7 +53,7 @@ import { cloneLayout, createDefaultConfig, type DockLayoutNode, type LayoutConfi
 import type { DesktopWindowBridge } from "../../src/types/desktop-window";
 import type { PaneProps } from "../../src/types/plugin";
 import type { RendererHost } from "../../src/ui/host";
-import { Box, Text, useUiCapabilities } from "../../src/ui";
+import { AsciiText, Box, Text, useUiCapabilities } from "../../src/ui";
 import { FearGreedPane } from "../../src/plugins/builtin/fear-greed/pane";
 import { loadFearGreed } from "../../src/plugins/builtin/fear-greed/cache";
 import type { FearGreedData } from "../../src/plugins/builtin/fear-greed/data";
@@ -55,6 +68,9 @@ declare global {
   interface Window {
     __paneChrome: {
       ready: boolean;
+      themes: Record<string, ReturnType<typeof getThemeColors>>;
+      themeOrder: string[];
+      resetTheme(): void;
       cell: { width: number; height: number };
       registry: PluginRegistry;
       /** Caption button actions (minimize, toggle-maximize, close), in order. */
@@ -78,6 +94,7 @@ declare global {
 const params = new URLSearchParams(window.location.search);
 const scenario = params.get("scenario") ?? "docked";
 const platform = params.get("platform") ?? "darwin";
+const detached = scenario === "detached" || scenario === "theme-detached";
 
 function PlainPane({ paneId }: PaneProps) {
   return <Text>{`Body of ${paneId}`}</Text>;
@@ -336,7 +353,76 @@ function HeatPane({ width, height }: PaneProps) {
   return <HeatTreemapSurface scene={scene} items={HEAT_ITEMS} width={width} height={height} selectedId={null} onSelect={ignoreTile} />;
 }
 
+const OVERVIEW_TICKER = createTestTicker("EXMPL", "Example Industries", { exchange: "", assetCategory: "STK" });
+const OVERVIEW_FINANCIALS = createTestFinancials({
+  quote: createTestQuote({ symbol: "EXMPL", price: 108, change: 2, changePercent: 1.89, lastUpdated: Date.UTC(2026, 0, 2) }),
+  priceHistory: inventedSeries(120, 100, 18),
+});
+function OverviewPane({ width, height, focused }: PaneProps) {
+  return <OverviewTab ticker={OVERVIEW_TICKER} financials={OVERVIEW_FINANCIALS} width={width} height={height} focused={focused} />;
+}
+
+/** Real title-bar tabs mount each chart just as opening a research tab does. */
+function PaintPane(props: PaneProps) {
+  const [active, setActive] = useState("empty");
+  const { strip } = usePaneTabs({
+    tabs: ["empty", "chart", "overview"].map((value) => ({ value, label: value })),
+    activeValue: active, onSelect: setActive,
+  });
+  return <Box flexDirection="column" flexGrow={1}>
+    {strip}
+    {active === "chart" ? <ChartPane {...props} /> : active === "overview" ? <OverviewPane {...props} /> : null}
+  </Box>;
+}
+
+/** The product picker and its preview/commit/cancel path, without network search. */
+function ThemeControls() {
+  const dispatch = useAppDispatch();
+  const committed = useAppSelector((state) => state.config.theme);
+  const preview = useAppSelector((state) => state.themePreview);
+  const themePickerRef = useRef<ThemePickerHandle | null>(null);
+  const getCommittedThemeId = useCallback(() => committed, [committed]);
+  const { applyThemePreview, clearThemePreview, commitTheme } = useCommandBarThemePreview({ dispatch, getCommittedThemeId, themePickerRef });
+  useEffect(() => { window.__paneChrome.resetTheme = () => commitTheme("high-contrast"); }, [commitTheme]);
+  const [filter, setFilter] = useState("");
+  const [open, setOpen] = useState(false);
+  return <div data-theme-controls data-preview={preview ?? ""} data-committed={committed} style={{ position: "absolute", top: 48, right: 24, zIndex: 200 }}>
+    <button onClick={() => setOpen(!open)}>Themes</button>
+    {open && <div style={{ background: "var(--gloom-command-bg)", padding: 12, width: 480 }}>
+      <input aria-label="Theme filter" value={filter} onChange={(event) => setFilter(event.target.value)} onKeyDown={(event) => {
+        if (event.key === "ArrowDown") themePickerRef.current?.move(1);
+        else if (event.key === "ArrowUp") themePickerRef.current?.move(-1);
+        else if (event.key === "Home") themePickerRef.current?.jump("first");
+        else if (event.key === "End") themePickerRef.current?.jump("last");
+        else if (event.key === "Escape") clearThemePreview(committed);
+        else if (event.key === "Enter") themePickerRef.current?.commit();
+        else return;
+        event.preventDefault();
+      }} />
+      <button onClick={() => clearThemePreview(committed)}>Cancel preview</button>
+      <button onClick={() => themePickerRef.current?.commit()}>Commit preview</button>
+      <ThemePicker ref={themePickerRef} filter={filter} committedThemeId={committed} height={6} contentPadding={1} labelWidth={50} trailingWidth={6} queryDisplayWidth={50} nativePaneChrome onPreview={applyThemePreview} onCommit={commitTheme} />
+    </div>}
+  </div>;
+}
+
+const SURFACE_INPUT: Surface3DInput = {
+  values: [[1, 2, 1], [2, 4, 2], [1, 3, 1]], columnPositions: [0, .5, 1], rowPositions: [0, .5, 1],
+  zMin: 0, zMax: 5, xTicks: [], yTicks: [], zTicks: [], titles: { x: "", y: "", z: "" },
+};
+const SPARKLINE_POINTS = inventedSeries(30, 100, 12);
+function PalettePane({ width, height }: PaneProps) {
+  return <Box flexDirection="column">
+    <AsciiText text="GLOOM" color="var(--gloom-text)" />
+    <PriceSparkline priceHistory={SPARKLINE_POINTS} width={width} height={2} period="all" />
+    <Surface3DChart input={SURFACE_INPUT} camera={DEFAULT_SURFACE3D_CAMERA} onCameraChange={ignore} onSelect={ignore} width={width} height={Math.max(3, height - 6)} />
+  </Box>;
+}
+
 const PANES = {
+  palette: { name: "Surface", component: PalettePane },
+  overview: { name: "Overview", component: OverviewPane },
+  paint: { name: "Research", component: PaintPane },
   plain: { name: "Plain", component: PlainPane },
   tabs: { name: "Tabbed", component: TabsPane },
   broken: { name: "Broken", component: BrokenPane },
@@ -471,20 +557,34 @@ function screenshotLayout(): LayoutConfig {
   return { dockRoot: row(ids), instances: ids.map(instance), floating: [], detached: [] };
 }
 
+function themeLayout(): LayoutConfig {
+  const ids = ["chart:theme", "overview:theme", "heat:theme", "table:theme", "palette:theme"];
+  return {
+    dockRoot: { kind: "split", axis: "vertical", ratio: 0.55, first: row(ids.slice(0, 2)), second: row(ids.slice(2)) },
+    instances: [...ids, "chart:float"].map(instance),
+    floating: [{ instanceId: "chart:float", x: 116, y: 29, width: 52, height: 15, zIndex: 60 }], detached: [],
+  };
+}
+
 function config() {
   const base = createDefaultConfig("/pane-chrome-fixture");
-  const layout = scenario === "perf" ? perfLayout()
+  const layout: LayoutConfig = scenario.startsWith("theme") ? themeLayout()
+    : scenario === "paint" ? { dockRoot: leaf("paint:a"), instances: [instance("paint:a")], floating: [], detached: [] }
+    : scenario === "perf" ? perfLayout()
     : scenario === "screenshot" ? screenshotLayout()
     : scenario === "resize" ? resizeLayout()
     : scenario === "narrow" ? narrowLayout()
     : chromeLayout();
-  return { ...base, layout, layouts: [{ name: "Fixture", layout: cloneLayout(layout) }], activeLayoutIndex: 0 };
+  if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
+  const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];
+  if (scenario === "theme") layouts.push({ name: "Alternate", layout: cloneLayout(layout) });
+  return { ...base, theme: params.get("theme") ?? base.theme, layout, layouts, activeLayoutIndex: 0 };
 }
 
 const paneRegistry = registry();
 const detachedBridge: DesktopWindowBridge & { kind: "detached"; paneId: string } = {
   kind: "detached",
-  paneId: "tabs:a",
+  paneId: scenario === "theme-detached" ? "chart:theme" : "tabs:a",
   subscribeState: () => () => {},
   closeDetachedPane: async () => {},
 };
@@ -499,6 +599,9 @@ function Ready() {
 
 window.__paneChrome = {
   ready: false,
+  themes: Object.fromEntries(getThemeIds().map((id) => [id, getThemeColors(id)])),
+  themeOrder: matchThemeOptions("").map(({ id }) => id),
+  resetTheme: ignore,
   cell: { width: WEB_CELL_WIDTH, height: WEB_CELL_HEIGHT },
   registry: paneRegistry,
   windowControls: [],
@@ -536,10 +639,15 @@ const root = document.getElementById("root")!;
 root.tabIndex = -1;
 createRoot(root).render(
   <DomHostProviders ui={createWebUiHost(platform)} renderer={rendererHost}>
-    <AppProvider config={config()} desktopBridge={scenario === "detached" ? detachedBridge : undefined}>
-      {scenario === "detached"
+    <AppProvider config={config()} desktopBridge={detached ? detachedBridge : undefined}>
+      {detached
         ? <DetachedPaneShell pluginRegistry={paneRegistry} desktopWindowBridge={detachedBridge} />
-        : <Shell pluginRegistry={paneRegistry} />}
+        : scenario === "theme" ? <Box flexDirection="column" width="100%" height="100%">
+          <Box data-theme-chrome="header"><Header /></Box>
+          <Shell pluginRegistry={paneRegistry} />
+          <Box data-theme-chrome="status"><StatusBar /></Box>
+        </Box> : <Shell pluginRegistry={paneRegistry} />}
+      {(scenario.startsWith("theme") || scenario === "paint") && <ThemeControls />}
       <Ready />
     </AppProvider>
   </DomHostProviders>,

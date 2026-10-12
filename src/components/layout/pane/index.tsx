@@ -1,6 +1,7 @@
 import { Box, useUiCapabilities } from "../../../ui";
 import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./frame";
 import { PaneHeader, type PaneHeaderQuickSetting } from "./header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./header-tabs";
@@ -73,7 +74,10 @@ export function PaneWrapper({
 }: PaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(nativePaneChrome === true && !!title);
-  const bg = paneBg(focused);
+  // This frame can sit below a memoized layer. The body surface feeds canvas
+  // charts too, so subscribe rather than reading the non-reactive facade.
+  const colors = useThemeColors();
+  const bg = paneBg(focused, colors);
   const showFooter = hasPaneFooterContent(footer);
   const reserveFooter = !!title && shouldReservePaneFooter(nativePaneChrome, showFooter);
   const renderFooter = !!title && (reserveFooter || showFooter);
