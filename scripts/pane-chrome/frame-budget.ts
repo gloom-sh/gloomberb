@@ -12,8 +12,9 @@ import { serveFixturePage, type FixturePage } from "./page";
  * Fear & Greed pane and of the charts that sit inside a pane's own layout (G
  * layout, chart over a table, chart beside a table, chart under a toolbar), a
  * dock divider between a news table and a chart and one between the G layout
- * and the chart beside a table (`nested`, each measured on both sides), and
- * the divider of a table in a pane's sidebar. It
+ * and the chart beside a table (`nested`, each measured on both sides), the
+ * divider of a table in a pane's sidebar, and a chart composer's plot panned
+ * back and forth (`cmp`). It
  * reads what the page's main thread spent (Performance.getMetrics, in thread
  * time), the React commits and the animation frames the page ran, and for a
  * resize how far the frame's edge and the content's edge fell behind the
@@ -119,6 +120,8 @@ interface Scenario {
   track?: { frame: string; content: string; anchor?: string };
   /** Charts: the canvas whose bitmap scale (its CSS width against its pixels) says whether it is drawn 1:1. */
   canvas?: string;
+  /** A page expression that holds once the scenario's content has loaded, for panes that load data. */
+  ready?: string;
 }
 
 const partCenter = (selector: string) => `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + Math.min(r.width / 2, 16), y: r.y + r.height / 2 }; })()`;
@@ -241,6 +244,16 @@ const SCENARIOS: Scenario[] = [
     canvas: `${pane("beside:dock")} canvas`,
   },
   {
+    // A chart composer's plot dragged back and forth over its loaded bars:
+    // each move pans the view, which re-projects and redraws every series in
+    // it, with the crosshair reading out all six of them.
+    name: "chart composer pan",
+    fixture: "cmp&chart=readout",
+    ready: `document.querySelectorAll("${pane("chart-composer:a")} [data-gloom-role=composite-chart-legend-series]").length === 6 && !!document.querySelector("${pane("chart-composer:a")} canvas")`,
+    grab: (cdp) => evaluate(cdp, middleOf(`${pane("chart-composer:a")} [data-gloom-role=composite-chart-panel]`)),
+    path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 300, y: start.y }),
+  },
+  {
     name: "table column drag",
     fixture: "resize",
     // The divider of the table in the sidebar pane: its grab strip straddles
@@ -271,6 +284,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   await cdp.send("Page.navigate", { url: new URL(`?scenario=${scenario.fixture}`, page.url).href });
   await loaded;
   if (!await waitFor(cdp, "window.__paneChrome?.ready === true", 15_000)) throw new Error(`the ${scenario.fixture} fixture did not render`);
+  if (scenario.ready && !await waitFor(cdp, scenario.ready, 15_000)) throw new Error(`the ${scenario.name} content did not load`);
   await frames(cdp, 10);
   const start = await scenario.grab(cdp);
   await mouse(cdp, "mouseMoved", start.x, start.y, false);

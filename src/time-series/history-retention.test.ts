@@ -159,10 +159,11 @@ test("zooming out or panning left past the first retained bar keeps the retained
     expect(retentionNotices(result.warnings)).toEqual(["15m history starts Jul 24; the source keeps the last 60 days."]);
     expect(result.viewport).toEqual(viewport);
     expect(result.series.find(series => series.id === "close")!.points).toHaveLength(data.filter(point => point.date <= viewport.end).length);
-    // One request, inside the validated evidence.
-    expect(calls.filter(call => call.kind === "recovery")).toEqual([expect.objectContaining({ start: firstBar, end: +viewport.end })]);
+    // One request, inside the validated evidence. A view in the past asks for half a view past its end too.
+    const requestedEnd = Math.min(NOW, +viewport.end + (+viewport.end - +viewport.start) / 2);
+    expect(calls.filter(call => call.kind === "recovery")).toEqual([expect.objectContaining({ start: firstBar, end: requestedEnd })]);
     expect(calls.find(call => call.kind === "recovery")!.context?.historyRecovery?.retention)
-      .toMatchObject({ availableStart: proof().availableStart, requestedEnd: +viewport.end });
+      .toMatchObject({ availableStart: proof().availableStart, requestedEnd });
   }
 });
 

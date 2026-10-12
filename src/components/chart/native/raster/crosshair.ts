@@ -1,10 +1,12 @@
-import { drawCircle, drawLine, parseHex } from "./primitives";
+import { drawCircle, drawLine, drawRing, parseHex } from "./primitives";
 import type { CellRect, NativeChartBitmap } from "./types";
 import { clamp } from "../../../../utils/math";
 
 interface CrosshairMarker {
   pixelY: number;
   color: string;
+  /** A ring rather than a dot: the series carries an earlier value here. */
+  hollow?: boolean;
 }
 
 export interface CrosshairStripsOptions {
@@ -56,15 +58,18 @@ export function renderCrosshairStrips(options: CrosshairStripsOptions): Crosshai
   const vertical = bitmap(verticalWidth, pixelHeight);
   const localX = clamp(x - verticalStart * cellWidth, 0, vertical.width - 1);
   drawLine(vertical.pixels, vertical.width, vertical.height, localX, 0, localX, vertical.height - 1, lineColor, 1.05);
+  let markerKey = "";
   for (const marker of options.markers ?? []) {
     const markerY = clamp(marker.pixelY, 0, Math.max(pixelHeight - 1, 0));
-    drawCircle(vertical.pixels, vertical.width, vertical.height, localX, markerY, 2.6, parseHex(marker.color));
+    if (marker.hollow) drawRing(vertical.pixels, vertical.width, vertical.height, localX, markerY, 2.6, 1.2, parseHex(marker.color));
+    else drawCircle(vertical.pixels, vertical.width, vertical.height, localX, markerY, 2.6, parseHex(marker.color));
+    markerKey += `${markerY.toFixed(1)}${marker.hollow ? "o" : "."}${marker.color}`;
   }
   if (y !== null) drawCircle(vertical.pixels, vertical.width, vertical.height, localX, y, 2.1, focusColor);
   strips.push({
     rect: { x: verticalStart, y: 0, width: verticalCols, height: rows },
     bitmap: vertical,
-    key: `v:${verticalStart}:${localX.toFixed(2)}:${y === null ? "-" : y.toFixed(2)}`,
+    key: `v:${verticalStart}:${localX.toFixed(2)}:${y === null ? "-" : y.toFixed(2)}:${markerKey}`,
   });
   if (y === null) return strips;
 

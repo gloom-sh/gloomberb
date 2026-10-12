@@ -19,7 +19,11 @@
  * the charts that sit inside a pane's own layout), `nested` (the first four
  * docked), `stacked` (the chart under a table docked beside a chart),
  * `narrow` (floating panes either side of the width a header keeps Ask Gloom
- * at) or `chat` (the chat view over an invented channel, see chat-fixture.tsx).
+ * at), `chat` (the chat view over an invented channel, see chat-fixture.tsx)
+ * or `cmp` (one chart composer pane on invented 30-minute bars, see
+ * createInventedChartSource: `&chart=readout` three listings on two venues,
+ * volume and two studies, `pan` one listing with years of bars, `edge` one
+ * whose bars start 150 sessions back, `percent` three listings rebased).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -70,6 +74,21 @@ import { ChatFixturePane, chatLayout } from "./chat-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
+import { ChartComposerPane } from "../../src/plugins/builtin/chart-composer/pane";
+import { buildComparisonChartPreset, buildPriceChartPreset } from "../../src/plugins/builtin/chart-composer/presets";
+import { appendChartSeries } from "../../src/plugins/builtin/chart-composer/chart-spec-edit";
+import { setBuiltinStudies } from "../../src/plugins/builtin/chart-composer/studies";
+import { PluginRenderProvider } from "../../src/plugins/runtime";
+import { createTestPluginRuntime } from "../../src/test-support/plugin-runtime";
+import type { ChartSpec } from "../../src/time-series/types";
+import type { DataProvider } from "../../src/types/data-provider";
+import type { PricePoint, Quote, TickerFinancials } from "../../src/types/financials";
+import type { PriceHistoryResult } from "../../src/types/price-history";
+import type { ChartResolutionSupport, ManualChartResolution } from "../../src/time-series/resolution";
+import type { TimeRange } from "../../src/time-series/range";
+import { subtractTimeRange } from "../../src/time-series/date-window";
+import { zonedWallClockToUtcMs } from "../../src/utils/zoned-date-time";
+import { isRegularSessionTime } from "../../src/market-data/market/freshness";
 
 declare global {
   interface Window {
@@ -577,6 +596,181 @@ function PalettePane({ width, height }: PaneProps) {
   </Box>;
 }
 
+const DAY_MS = 86_400_000;
+const STEP_MS: Record<string, number> = { "1m": 60_000, "5m": 300_000, "15m": 900_000, "30m": 1_800_000, "1h": 3_600_000 };
+const ANSWER_CAP = 2_000;
+const LATENCY_MS = 120;
+const SUPPORT: ChartResolutionSupport[] = [
+  { resolution: "15m", maxRange: "3M" },
+  { resolution: "30m", maxRange: "6M" },
+  { resolution: "1h", maxRange: "1Y" },
+  { resolution: "1d", maxRange: "5Y" },
+];
+
+interface Listing {
+  exchange: string;
+  timeZone: string;
+  open: [number, number];
+  close: [number, number];
+  currency: string;
+  base: number;
+  /** Sessions of intraday bars it keeps; daily bars go back as far as the rest. */
+  intradaySessions?: number;
+}
+
+const LISTINGS: Record<string, Listing> = {
+  ALFA: { exchange: "NASDAQ", timeZone: "America/New_York", open: [9, 30], close: [16, 0], currency: "USD", base: 120 },
+  BRVO: { exchange: "NASDAQ", timeZone: "America/New_York", open: [9, 30], close: [16, 0], currency: "USD", base: 48 },
+  CHRL: { exchange: "XETR", timeZone: "Europe/Berlin", open: [9, 0], close: [17, 30], currency: "EUR", base: 86 },
+  EDGE: { exchange: "NASDAQ", timeZone: "America/New_York", open: [9, 30], close: [16, 0], currency: "USD", base: 30, intradaySessions: 150 },
+};
+
+/**
+ * A wandering made-up price: waves from minutes to months long, their sizes
+ * growing with their length, so it reads like a market without being one.
+ */
+const WAVES: Array<[periodDays: number, size: number]> = [
+  [0.021, 0.0012], [0.067, 0.0021], [0.23, 0.004], [0.81, 0.007], [2.7, 0.012], [9.1, 0.022], [31, 0.04], [97, 0.07], [301, 0.12],
+];
+
+function priceAt(listing: Listing, time: number): number {
+  const days = time / DAY_MS;
+  let wave = 0;
+  for (const [period, size] of WAVES) wave += size * Math.sin((days / period) * Math.PI * 2 + listing.base * period);
+  return listing.base * Math.exp(wave);
+}
+
+function bar(listing: Listing, time: number, step: number): PricePoint {
+  const open = priceAt(listing, time);
+  const close = priceAt(listing, time + step);
+  const swing = Math.abs(close - open) + listing.base * 0.002;
+  return {
+    date: new Date(time), open, close,
+    high: Math.max(open, close) + swing * 0.4, low: Math.min(open, close) - swing * 0.4,
+    volume: Math.round(listing.base * (900 + 700 * Math.abs(Math.sin(time / 2_700_000)) + 500 * Math.abs(Math.sin(time / 31_000_000)))),
+  };
+}
+
+/** Session days (weekdays) from `start` to `end`, newest last. */
+function sessionDays(start: number, end: number): Date[] {
+  const days: Date[] = [];
+  for (let day = Math.floor(start / DAY_MS) * DAY_MS; day <= end; day += DAY_MS) {
+    const weekday = new Date(day).getUTCDay();
+    if (weekday !== 0 && weekday !== 6) days.push(new Date(day));
+  }
+  return days;
+}
+
+function intradayBars(listing: Listing, start: number, end: number, step: number, now: number): PricePoint[] {
+  let days = sessionDays(start - DAY_MS, Math.min(end, now));
+  if (listing.intradaySessions !== undefined) {
+    const kept = sessionDays(now - listing.intradaySessions * 1.5 * DAY_MS, now).slice(-listing.intradaySessions);
+    const first = kept[0]?.getTime() ?? Number.POSITIVE_INFINITY;
+    days = days.filter((day) => day.getTime() >= first);
+  }
+  const bars: PricePoint[] = [];
+  for (const day of days) {
+    const [year, month, date] = [day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate()];
+    const open = zonedWallClockToUtcMs(listing.timeZone, year, month, date, listing.open[0], listing.open[1], 0);
+    const close = zonedWallClockToUtcMs(listing.timeZone, year, month, date, listing.close[0], listing.close[1], 0);
+    // Holidays have no session; the venue's own calendar says which.
+    if (!isRegularSessionTime(listing.exchange, open + step)) continue;
+    for (let time = open; time < close; time += step) {
+      if (time >= start && time < end && time + step <= now) bars.push(bar(listing, time, step));
+    }
+  }
+  return bars;
+}
+
+function dailyBars(listing: Listing, start: number, end: number, now: number): PricePoint[] {
+  return sessionDays(start, Math.min(end, now - DAY_MS)).map((day) => bar(listing, day.getTime(), DAY_MS));
+}
+
+function history(symbol: string, start: number, end: number, resolution: ManualChartResolution): PriceHistoryResult {
+  const listing = LISTINGS[symbol.toUpperCase()];
+  if (!listing) return { points: [], resolution };
+  const now = Date.now();
+  const step = STEP_MS[resolution];
+  const points = step ? intradayBars(listing, start, end, step, now) : dailyBars(listing, start, end, now);
+  // Like the real service: a window longer than one answer gets its newest bars.
+  return { points: points.slice(-ANSWER_CAP), resolution };
+}
+
+function later<T>(value: () => T): Promise<T> {
+  return new Promise((resolve) => setTimeout(() => resolve(value()), LATENCY_MS));
+}
+
+function quote(symbol: string): Quote {
+  const listing = LISTINGS[symbol.toUpperCase()]!;
+  const price = priceAt(listing, Date.now());
+  return {
+    symbol: symbol.toUpperCase(), price, currency: listing.currency, change: 0, changePercent: 0,
+    lastUpdated: Date.now(), listingExchangeName: listing.exchange, instrumentType: "EQUITY",
+  };
+}
+
+const RESOLUTIONS: Record<string, ManualChartResolution> = {
+  "1m": "1m", "1min": "1m", "5m": "5m", "5min": "5m", "15m": "15m", "15min": "15m", "30m": "30m", "30min": "30m",
+  "1h": "1h", "1d": "1d", "1day": "1d",
+};
+
+/**
+ * An invented market-data source for the chart composer pane: made-up
+ * listings and bars, never real market data, served after a short delay the
+ * way a network source answers. Like the real service it caps one answer at
+ * the newest `ANSWER_CAP` bars, so a long window comes back short and the
+ * chart asks for the older part on its own.
+ *
+ * - ALFA, BRVO (NASDAQ): 30-minute bars for years.
+ * - CHRL (XETR): another venue's hours, so a US afternoon carries its close.
+ * - EDGE (NASDAQ): 30-minute bars for its last 150 sessions only.
+ */
+function createInventedChartSource(): DataProvider {
+  return {
+    id: "fixture",
+    name: "Fixture",
+    getChartResolutionSupport: () => SUPPORT,
+    getTickerFinancials: async (symbol): Promise<TickerFinancials> => ({
+      annualStatements: [], quarterlyStatements: [], priceHistory: [], quote: quote(symbol),
+    }),
+    getQuote: (symbol) => later(() => quote(symbol)),
+    getExchangeRate: async () => 1,
+    search: async () => [],
+    getArticleSummary: async () => null,
+    getPriceHistory: async () => [],
+    getPriceHistoryForResolutionWithMetadata: (symbol, _exchange, range: TimeRange, resolution) => later(() => {
+      const end = Date.now();
+      return history(symbol, subtractTimeRange(new Date(end), range).getTime(), end, resolution);
+    }),
+    getDetailedPriceHistoryWithMetadata: (symbol, _exchange, start, end, barSize) => later(() => (
+      history(symbol, start.getTime(), end.getTime(), RESOLUTIONS[barSize] ?? "1d")
+    )),
+  };
+}
+
+const CHART_SOURCE = createInventedChartSource();
+const CHART_RUNTIME = createTestPluginRuntime({ getMarketData: () => CHART_SOURCE });
+
+/** The chart composer pane itself, reading the invented source. */
+function ChartComposerFixturePane(props: PaneProps) {
+  return (
+    <PluginRenderProvider pluginId="charts" runtime={CHART_RUNTIME}>
+      <ChartComposerPane {...props} />
+    </PluginRenderProvider>
+  );
+}
+
+function chartComposerSpec(kind: string): ChartSpec {
+  if (kind === "percent") return { ...buildComparisonChartPreset(["ALFA:NASDAQ", "BRVO:NASDAQ", "CHRL:XETR"]), viewport: { range: "3M", resolution: "30m" } };
+  let spec = buildPriceChartPreset(kind === "edge" ? "EDGE:NASDAQ" : "ALFA:NASDAQ");
+  if (kind === "readout") {
+    spec = appendChartSeries(spec, { kind: "security", symbol: "BRVO", exchange: "NASDAQ", fieldId: "market.close" }).spec;
+    spec = appendChartSeries(spec, { kind: "security", symbol: "CHRL", exchange: "XETR", fieldId: "market.close" }).spec;
+    spec = setBuiltinStudies(spec, ["volume", "sma20", "rsi14"]);
+  }
+  return { ...spec, viewport: { ...spec.viewport, range: "3M", resolution: "30m" } };
+}
+
 const PANES = {
   palette: { name: "Surface", component: PalettePane },
   overview: { name: "Overview", component: OverviewPane },
@@ -597,6 +791,7 @@ const PANES = {
   sidebar: { name: "Sidebar", component: SidebarPane },
   heat: { name: "Heat map", component: HeatPane },
   chat: { name: "Chat", component: ChatFixturePane },
+  "chart-composer": { name: "Chart", component: ChartComposerFixturePane },
 };
 
 function registry(): PluginRegistry {
@@ -762,6 +957,17 @@ function themeLayout(): LayoutConfig {
   };
 }
 
+/** One chart composer pane across the window. */
+function chartComposerLayout(): LayoutConfig {
+  const instanceId = "chart-composer:a";
+  return {
+    dockRoot: leaf(instanceId),
+    instances: [{ ...instance(instanceId), settings: { chartSpec: chartComposerSpec(params.get("chart") ?? "pan") } }],
+    floating: [],
+    detached: [],
+  };
+}
+
 function config() {
   const base = createDefaultConfig("/pane-chrome-fixture");
   const layout: LayoutConfig = scenario.startsWith("theme") ? themeLayout()
@@ -773,6 +979,7 @@ function config() {
     : scenario === "chat" ? chatLayout()
     : scenario === "nested" ? nestedLayout()
     : scenario === "stacked" ? stackedLayout()
+    : scenario === "cmp" ? chartComposerLayout()
     : chromeLayout();
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
   const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];

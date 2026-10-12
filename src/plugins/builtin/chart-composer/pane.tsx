@@ -123,6 +123,8 @@ import type { InstrumentRef } from "../../../market-data/request-types";
 
 const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
+/** A load for a moving view that has not answered in this long no longer holds the next one back. */
+const LOAD_AHEAD_TIMEOUT_MS = 4_000;
 /**
  * Drawings persist into pane settings on a short debounce after the pointer
  * settles. A share reads those settings, so it waits at least that long for a
@@ -142,6 +144,22 @@ interface RuntimeChartViewportState {
   key: string;
   adaptiveViewport: RuntimeChartViewport | null;
   requestViewport: RuntimeChartViewport;
+}
+
+/** The oldest and newest market bars loaded, and whether every listing has said it keeps nothing older. */
+function loadedMarketHistory(series: readonly ResolvedSeries[]): { start: number; end: number; complete: boolean } | null {
+  let start = Number.POSITIVE_INFINITY;
+  let end = Number.NEGATIVE_INFINITY;
+  let complete = true;
+  for (const entry of series) {
+    if (entry.observationKind !== "market" || entry.points.length === 0) continue;
+    const first = entry.points[0]!.date.getTime();
+    const last = entry.points.at(-1)!.date.getTime();
+    if (Number.isFinite(first)) start = Math.min(start, first);
+    if (Number.isFinite(last)) end = Math.max(end, last);
+    if (!entry.historyStart) complete = false;
+  }
+  return Number.isFinite(start) && Number.isFinite(end) ? { start, end, complete } : null;
 }
 
 function runtimeViewportFromSetting(
@@ -351,9 +369,15 @@ function ChartComposerSurface({
     spec.viewport.range,
     spec.viewport.resolution,
   ]);
+  // Auto names the bars it is on, which change as the view moves: a pan back
+  // past where a source keeps 30-minute bars charts days instead.
+  const autoBars = spec.viewport.resolution === "auto" ? resolution.resolution ?? null : null;
   const resolutionOptions = useMemo(
-    () => availableResolutions.map((value) => ({ label: formatChartResolution(value), value })),
-    [availableResolutions],
+    () => availableResolutions.map((value) => ({
+      label: value === "auto" && autoBars ? `Auto (${formatChartResolution(autoBars)})` : formatChartResolution(value),
+      value,
+    })),
+    [autoBars, availableResolutions],
   );
   const selectedStudies = getSelectedBuiltinStudies(spec);
   const selectedPairStudies = getSelectedPairStudies(spec);
@@ -627,7 +651,19 @@ function ChartComposerSurface({
   const activatePane = useCallback(() => {
     if (!focused) dispatch({ type: "FOCUS_PANE", paneId });
   }, [dispatch, focused, paneId]);
+  useEffect(() => () => {
+    if (runtimeViewportTimerRef.current !== null) {
+      clearTimeout(runtimeViewportTimerRef.current);
+      runtimeViewportTimerRef.current = null;
+    }
+  }, []);
+  // The view this pane last saved, so its own write coming back through the
+  // settings is not mistaken for another device's view: that would cancel the
+  // load a pan still in progress has scheduled and put its window back.
+  const savedInteractionViewportRef = useRef<string | null>(null);
   useEffect(() => {
+    if (persistedInteractionViewport && requestViewportOwnerRef.current === authoredViewportKey
+      && JSON.stringify(persistedInteractionViewport) === savedInteractionViewportRef.current) return;
     if (runtimeViewportTimerRef.current !== null) {
       clearTimeout(runtimeViewportTimerRef.current);
       runtimeViewportTimerRef.current = null;
@@ -641,30 +677,41 @@ function ChartComposerSurface({
     requestViewportOwnerRef.current = authoredViewportKey;
     setRuntimeViewportState((current) => current?.key === authoredViewportKey ? current : restored);
     if (persistedInteractionViewport && !restored) setStoredInteractionViewport(null);
-    return () => {
-      if (runtimeViewportTimerRef.current !== null) {
-        clearTimeout(runtimeViewportTimerRef.current);
-        runtimeViewportTimerRef.current = null;
-      }
-    };
   }, [authoredViewportKey, persistedInteractionViewport, setStoredInteractionViewport]);
-  const commitRuntimeViewport = useCallback(() => {
+  // The bars loaded so far, and whether the source has said nothing older exists.
+  const loadedHistory = useMemo(() => loadedMarketHistory(plottedSeries), [plottedSeries]);
+  const loadedHistoryRef = useRef(loadedHistory);
+  loadedHistoryRef.current = loadedHistory;
+  // The newest bar seen at all: bars loaded for a moved view (finer ones, after
+  // a zoom) can end before it, and a pan forward then has more to ask for.
+  const newestBarRef = useRef(Number.NEGATIVE_INFINITY);
+  if (loadedHistory) newestBarRef.current = Math.max(newestBarRef.current, loadedHistory.end);
+  // A window asked for and not answered yet: the result's view ends where the request does once it lands.
+  const loadingWindowRef = useRef<{ end: number; at: number } | null>(null);
+  const resultViewportEnd = resolution.viewport?.end.getTime() ?? null;
+  if (loadingWindowRef.current && resultViewportEnd !== null
+    && Math.abs(resultViewportEnd - loadingWindowRef.current.end) < 1_000) loadingWindowRef.current = null;
+  const commitRuntimeViewport = useCallback((save = true) => {
     const requestViewport = requestViewportRef.current;
     if (!requestViewport) return;
     const adaptiveViewport = spec.viewport.resolution === "auto"
       ? adaptiveViewportRef.current
       : null;
+    loadingWindowRef.current = { end: requestViewport.end.getTime(), at: Date.now() };
     setRuntimeViewportState({
       key: authoredViewportKey,
       adaptiveViewport,
       requestViewport,
     });
-    setStoredInteractionViewport({
+    if (!save) return;
+    const saved = {
       authoredViewportKey,
       start: requestViewport.start.toISOString(),
       end: requestViewport.end.toISOString(),
       adaptive: adaptiveViewport !== null,
-    } satisfies ChartInteractionViewport);
+    } satisfies ChartInteractionViewport;
+    savedInteractionViewportRef.current = JSON.stringify(parseChartInteractionViewport(saved));
+    setStoredInteractionViewport(saved);
   }, [authoredViewportKey, setStoredInteractionViewport, spec.viewport.resolution]);
   const handleChartViewportChange = useCallback((
     next: { start: Date; end: Date } | null,
@@ -677,6 +724,7 @@ function ChartComposerSurface({
     if (!next) {
       adaptiveViewportRef.current = null;
       requestViewportRef.current = null;
+      loadingWindowRef.current = null;
       setRuntimeViewportState(null);
       setStoredInteractionViewport(null);
       return;
@@ -690,11 +738,23 @@ function ChartComposerSurface({
     // A pan can leave the window a provider serves at the current resolution
     // just as a zoom can, so both re-pick.
     if (spec.viewport.resolution === "auto") adaptiveViewportRef.current = viewport;
+    // Bars are asked for while the view is still moving, once it comes within
+    // half a screen of the oldest loaded one (or of the newest, when newer
+    // ones exist), so a long pan keeps going instead of running into the end
+    // of what is loaded and waiting for the pointer to rest.
+    const loaded = loadedHistoryRef.current;
+    const loading = loadingWindowRef.current;
+    const reach = (end - start) / 2;
+    const nearOldest = !!loaded && !loaded.complete && start - loaded.start < reach;
+    const nearNewest = !!loaded && loaded.end < newestBarRef.current - reach / 10 && loaded.end - end < reach;
+    if ((nearOldest || nearNewest) && (!loading || Date.now() - loading.at > LOAD_AHEAD_TIMEOUT_MS)) {
+      commitRuntimeViewport(false);
+    }
     runtimeViewportTimerRef.current = globalThis.setTimeout(() => {
       runtimeViewportTimerRef.current = null;
       commitRuntimeViewport();
     }, AUTO_VIEWPORT_DEBOUNCE_MS);
-  }, [authoredViewportKey, commitRuntimeViewport, spec.viewport.resolution]);
+  }, [authoredViewportKey, commitRuntimeViewport, setStoredInteractionViewport, spec.viewport.resolution]);
   usePaneSharePreparation(paneId, async () => {
     if (runtimeViewportTimerRef.current !== null) {
       clearTimeout(runtimeViewportTimerRef.current);

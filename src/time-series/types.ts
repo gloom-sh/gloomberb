@@ -162,6 +162,11 @@ export interface ResolvedSeries {
   nativeFrequency: SeriesPeriod;
   /** Acquired market-history cadence; null is explicitly unknown, undefined is legacy or nonmarket. */
   historyResolution?: ManualChartResolution | null;
+  /**
+   * When known, the first bar this listing has at `historyResolution`: the
+   * source keeps nothing older, so the chart stops there instead of asking.
+   */
+  historyStart?: Date;
   /** Authored time basis retained for layout and cursor semantics. */
   timestampMode?: SeriesTimestampMode;
   dataShape: SeriesDataShape;

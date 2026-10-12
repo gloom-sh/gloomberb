@@ -148,6 +148,17 @@ export function historyRetentionNotice(retention: HistoryRetention, interval: st
     + `the source keeps the last ${days === 1 ? "day" : `${days} days`}.`;
 }
 
+/**
+ * Shown while a view reaches before the first bar a source has at an
+ * interval, once it has said there is nothing older to ask for.
+ */
+export function historyStartNotice(start: number, interval: string, timeZone: string | null, now: number): string {
+  const zone = timeZone ?? "UTC";
+  const day = zonedDateKey(start, zone);
+  const sameYear = day.slice(0, 4) === zonedDateKey(now, zone).slice(0, 4);
+  return `${interval} history starts ${formatShortDate(day, { utc: true, year: sameYear ? false : "numeric" })}.`;
+}
+
 export function isHistoryRetentionError(value: unknown): value is HistoryRetentionError {
   return value instanceof HistoryRetentionError && parseHistoryRetention(value.retention) !== null;
 }

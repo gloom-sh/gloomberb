@@ -7,6 +7,7 @@ import { isVerticalWheelDirection } from "./panel-gestures";
 import { type ChartToolSpan, CHART_DRAWING_COLORS, isDrawingTool, type ChartDrawing } from "./tools";
 import { ChartDrawingStore, NO_DRAWINGS } from "./drawing-store";
 import { CompositeLegend } from "./legend";
+import { CompositeCrosshairReadout } from "./crosshair-readout";
 import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
 import { AsciiText, Box, ChartSurface, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { useLiveStretch } from "../../../ui/live-stretch";
@@ -17,12 +18,13 @@ import { assignSeriesLineCues } from "./series-cues";
 import { chartSurfaceBackground, usePaneSurface } from "../../layout/pane/surface";
 import { CHART_WATERMARK_ROLE } from "../../../utils/screenshot-watermark";
 import type { ResolvedSeries } from "../../../time-series/types";
+import { isIntradayResolution } from "../../../time-series/resolution";
 import { downsampleCompositeChartScene } from "./downsample";
 import { reuseResolvedSeriesList } from "./panel-series";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
 import { useShowChartTextFallback } from "../native/use-chart-text-fallback";
 import { StaticXAxisLabels, StaticXMarkerLabels, StaticXMarkerOverlay } from "./axis-overlays";
-import { formatCompositeTimeAxisDate } from "./format";
+import { formatCompositeCursorAxisDate } from "./format";
 import { resolveCompositeWheelPan, resolveCompositeWheelZoom } from "./interactions";
 import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
 import {
@@ -506,6 +508,15 @@ function ThemedCompositeChart({
     );
   }
 
+  const showToolbar = interactive && navigable && plotWidth > CHART_TOOLBAR_WIDTH + 4;
+  // On the desktop and the web the crosshair carries every series' value
+  // beside it, and the legend keeps the latest ones. The terminal's legend
+  // reads out the cursor, as the cell plot has no room for a box over it.
+  const showReadout = isDesktopWeb && interactive && showLegend && !xAxis && scene.cursorDate !== null;
+  // Bars shorter than a day carry a time of day the cursor reads out.
+  const intradayBars = scene.timeZone !== undefined || visibleSeries.some((entry) => (
+    !!entry.historyResolution && isIntradayResolution(entry.historyResolution)
+  ));
   const timeAxisCursorColumn = scene.cursorXRatio === null
     ? null
     : scene.cursorXRatio * Math.max(plotWidth - 1, 0);
@@ -515,17 +526,18 @@ function ThemedCompositeChart({
   const timeAxisCursorLabel = xAxis?.formatCursor && scene.cursorXRatio !== null
     ? xAxis.formatCursor(scene.cursorXRatio)
     : scene.cursorDate
-      ? formatCompositeTimeAxisDate(scene.cursorDate, scene.startTime, scene.endTime, scene.timeZone)
+      ? formatCompositeCursorAxisDate(scene.cursorDate, scene.startTime, scene.endTime, scene.timeZone, intradayBars)
       : null;
   // The crosshair labels the moving end, so the axis only adds the anchor.
   const timeAxisMarkers = toolSpan
     ? [{
       ratio: toolSpan.startXRatio,
-      label: formatCompositeTimeAxisDate(
+      label: formatCompositeCursorAxisDate(
         new Date(toolSpan.startTime),
         scene.startTime,
         scene.endTime,
         scene.timeZone,
+        intradayBars,
       ),
       color: toolSpan.color,
     }]
@@ -540,10 +552,13 @@ function ThemedCompositeChart({
       // The tool overlay anchors here; without it the desktop pins it to the page.
       position="relative"
       data-gloom-role="composite-chart"
+      // Where the view and the loaded bars start and end, in epoch ms, for checks that move it.
+      data-gloom-view={effectiveViewport ? `${effectiveViewport.start.getTime()}:${effectiveViewport.end.getTime()}` : undefined}
+      data-gloom-data={navigationFrame ? `${navigationFrame.dataStart}:${navigationFrame.dataEnd}` : undefined}
     >
       {showLegend ? (
         <CompositeLegend
-          scene={scene}
+          scene={showReadout ? baseScene : scene}
           series={visibleLegendSeries}
           visibleSeriesIds={visibleSeriesIds}
           lineCues={lineCues}
@@ -559,7 +574,20 @@ function ThemedCompositeChart({
           keyboardIndex={legendKeyboardIndex}
         />
       ) : null}
-      {interactive && navigable && plotWidth > CHART_TOOLBAR_WIDTH + 4 ? (
+      {showReadout ? (
+        <CompositeCrosshairReadout
+          scene={scene}
+          series={visibleLegendSeries}
+          visibleSeriesIds={visibleSeriesIds}
+          lineCues={lineCues}
+          formatValue={formatValue}
+          colors={resolvedColors}
+          left={leftPadding}
+          right={rightPadding}
+          top={legendRows + (showToolbar ? 1 : 0)}
+        />
+      ) : null}
+      {showToolbar ? (
         <ChartToolbar
           armedTool={armedTool}
           isDesktopWeb={isDesktopWeb}

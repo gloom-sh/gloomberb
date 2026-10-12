@@ -59,8 +59,8 @@ export interface ChartCrosshairOverlay {
   /** Level line and focus dot; null when only the column is known, as with a keyboard cursor. */
   pixelY: number | null;
   color: string;
-  /** Per-series dots on the cursor column, in bitmap pixels. */
-  markers?: readonly { pixelY: number; color: string }[];
+  /** Per-series dots on the cursor column, in bitmap pixels; hollow for a value carried from an earlier observation. */
+  markers?: readonly { pixelY: number; color: string; hollow?: boolean }[];
 }
 
 /**

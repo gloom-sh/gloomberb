@@ -1,5 +1,6 @@
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import {
+  blendAt,
   blendPixel,
   drawCircle,
   drawLine,
@@ -104,20 +105,61 @@ function fillAreaGradient(
   const reachAbove = Math.max(1, floor - Math.max(0, peakAbove));
   const reachBelow = Math.max(1, Math.min(height - 1, peakBelow) - floor);
 
+  // A pixel's opacity depends on its row alone, so each row's is worked out
+  // once; the pixels a fill covers are inside the bitmap and blend unchecked.
+  const colorAlpha = color.a / 255;
+  const rowAlpha = new Float64Array(height);
+  // Over an opaque pixel a blend is `colour * alpha + pixel * (1 - alpha)`:
+  // the first term and the factor are worked out per row too.
+  const rowRed = new Float64Array(height);
+  const rowGreen = new Float64Array(height);
+  const rowBlue = new Float64Array(height);
+  const rowKeep = new Float64Array(height);
+  for (let y = 0; y < height; y += 1) {
+    const strength = y <= floor ? (floor - y) / reachAbove : (y - floor) / reachBelow;
+    const alpha = clamp(colorAlpha * (AREA_FILL_MIN_OPACITY + (AREA_FILL_MAX_OPACITY - AREA_FILL_MIN_OPACITY) * strength), 0, 1);
+    rowAlpha[y] = alpha;
+    rowRed[y] = color.r * alpha;
+    rowGreen[y] = color.g * alpha;
+    rowBlue[y] = color.b * alpha;
+    rowKeep[y] = 1 - alpha;
+  }
+  // Each column fills from the line to the baseline. Walking the buffer row
+  // by row, in memory order, is several times faster than column by column.
+  const fillFrom = new Float64Array(width).fill(Number.POSITIVE_INFINITY);
+  const fillTo = new Float64Array(width).fill(Number.NEGATIVE_INFINITY);
+  let firstRow = floor + 1;
+  let lastRow = floor;
   for (let x = 0; x < width; x += 1) {
     const top = above[x]!;
-    if (!Number.isNaN(top)) {
-      for (let y = Math.max(0, Math.ceil(top)); y <= floor; y += 1) {
-        const strength = (floor - y) / reachAbove;
-        blendPixel(data, width, height, x, y, color, AREA_FILL_MIN_OPACITY + (AREA_FILL_MAX_OPACITY - AREA_FILL_MIN_OPACITY) * strength);
-      }
-    }
     const bottom = below[x]!;
+    if (!Number.isNaN(top)) {
+      fillFrom[x] = Math.max(0, Math.ceil(top));
+      firstRow = Math.min(firstRow, fillFrom[x]!);
+    }
     if (!Number.isNaN(bottom)) {
-      for (let y = floor + 1; y <= Math.min(height - 1, Math.floor(bottom)); y += 1) {
-        const strength = (y - floor) / reachBelow;
-        blendPixel(data, width, height, x, y, color, AREA_FILL_MIN_OPACITY + (AREA_FILL_MAX_OPACITY - AREA_FILL_MIN_OPACITY) * strength);
+      fillTo[x] = Math.min(height - 1, Math.floor(bottom));
+      lastRow = Math.max(lastRow, fillTo[x]!);
+    }
+  }
+  for (let y = firstRow; y <= lastRow; y += 1) {
+    const alpha = rowAlpha[y]!;
+    if (alpha <= 0) continue;
+    const keep = rowKeep[y]!;
+    const red = rowRed[y]!;
+    const green = rowGreen[y]!;
+    const blue = rowBlue[y]!;
+    const aboveBaseline = y <= floor;
+    for (let x = 0; x < width; x += 1) {
+      if (aboveBaseline ? y < fillFrom[x]! : y > fillTo[x]!) continue;
+      const index = (y * width + x) * 4;
+      if (data[index + 3] !== 255) {
+        blendAt(data, index, color, alpha);
+        continue;
       }
+      data[index] = Math.round(red + data[index]! * keep);
+      data[index + 1] = Math.round(green + data[index + 1]! * keep);
+      data[index + 2] = Math.round(blue + data[index + 2]! * keep);
     }
   }
 }

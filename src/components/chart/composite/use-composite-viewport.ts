@@ -16,6 +16,17 @@ import type { CompositeChartProps } from "./types";
 
 /** How far past the first loaded observation a backfilling chart may pan, as a fraction of the view. */
 const HISTORICAL_PADDING_RATIO = 0.5;
+/**
+ * Once the source has said its history starts at the first loaded bar, a pan
+ * stops there, with this much air before it rather than half an empty view.
+ */
+const HISTORY_EDGE_PADDING_RATIO = 0.02;
+
+/** True when every market listing on the chart has said nothing older exists. */
+function reachesHistoryStart(series: readonly ResolvedSeries[]): boolean {
+  const market = series.filter((entry) => entry.observationKind === "market" && entry.points.length > 0);
+  return market.length > 0 && market.every((entry) => entry.historyStart !== undefined);
+}
 
 export function useCompositeViewport({
   viewport,
@@ -45,11 +56,13 @@ export function useCompositeViewport({
         previousAuthoredViewportRef.current,
         viewport ?? null,
       );
+  const historyStartReached = allowHistoricalBackfill && reachesHistoryStart(visibleSeries);
   const navigationFrame = useMemo(
     () => buildCompositeNavigationFrame(visibleSeries, marketTimelineSeries, {
-      historicalPaddingRatio: allowHistoricalBackfill ? HISTORICAL_PADDING_RATIO : 0,
+      historicalPaddingRatio: !allowHistoricalBackfill ? 0
+        : historyStartReached ? HISTORY_EDGE_PADDING_RATIO : HISTORICAL_PADDING_RATIO,
     }),
-    [allowHistoricalBackfill, marketTimelineSeries, visibleSeries],
+    [allowHistoricalBackfill, historyStartReached, marketTimelineSeries, visibleSeries],
   );
   const authoredViewport = useMemo(() => {
     // The requested dates own the axis, including gaps in a cached or partial
@@ -94,6 +107,21 @@ export function useCompositeViewport({
       setUserViewport(null);
     }
   }, [authoredViewportChanged, userViewport, viewport, viewportResetKey]);
+
+  // Once the source says it has nothing older, a view left in the space
+  // before the first bar (where a pan went while the answer was on its way)
+  // settles onto it, as it would have stopped there had the answer come first.
+  useEffect(() => {
+    if (!historyStartReached || !navigationFrame) return;
+    setUserViewport((current) => {
+      if (!current) return current;
+      const positions = compositeViewportPositions(navigationFrame, current);
+      const span = positions ? positions.end - positions.start : 0;
+      if (!positions || positions.start >= navigationFrame.dataStartPosition - span * HISTORY_EDGE_PADDING_RATIO - 1e-6) return current;
+      viewportInteractionRef.current = "pan";
+      return fitCompositeViewport(navigationFrame, current);
+    });
+  }, [historyStartReached, navigationFrame]);
 
   const navigate = useCallback((
     kind: "pan" | "zoom",

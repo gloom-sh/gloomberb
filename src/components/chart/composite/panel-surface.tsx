@@ -21,7 +21,6 @@ import {
   type CompositeNavigationFrame,
   type CompositeViewportRange,
 } from "./interactions";
-import { buildCompositeColumnLayout } from "./column-layout";
 import {
   fitAxisLabels,
   hitTestLevel,
@@ -205,14 +204,13 @@ export function CompositePanelSurface({
   const plotSpanFactor = 1 + compositeRightOffsetRatio(scene.timeScale);
   const bitmapSize = useStaticChartBitmapSize(plotSize.width, plotSize.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
-  const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
   // The level line follows the pointer only. A keyboard or shared cursor knows
   // its column, and the series markers and axis readout already say the value.
   // A tool placed from the keyboard is the exception: its end is a level.
   const pointerCursorYRatio = scene.cursorXRatio === null ? null : heldCursorYRatio;
   const crosshair = useMemo(
-    () => resolvePanelCrosshair(panel, columnLayout, bitmap, scene.cursorXRatio, pointerCursorYRatio, colors.crosshair),
-    [bitmap, colors.crosshair, columnLayout, panel, pointerCursorYRatio, scene.cursorXRatio],
+    () => resolvePanelCrosshair(panel, bitmap, scene, pointerCursorYRatio, colors.crosshair),
+    [bitmap, colors.crosshair, panel, pointerCursorYRatio, scene],
   );
   const measureDomain = useMemo(() => resolveMeasureAxisDomain(panel), [panel]);
   const toolReadout = useMemo(() => {

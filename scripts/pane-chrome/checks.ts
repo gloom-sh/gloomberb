@@ -255,6 +255,70 @@ function checkHeaderRow(paneId: string, parts: HeaderParts): void {
   if (left > header.x + header.width + 0.5) fail(`${paneId}: the header's buttons run past its edge`, parts);
 }
 
+/** Where a chart's view and its loaded bars start and end (epoch ms), from the chart's own attributes. */
+interface ChartWindow { viewStart: number; viewEnd: number; dataStart: number; dataEnd: number }
+
+async function chartWindow(cdp: Cdp): Promise<ChartWindow> {
+  const window = await evaluate<ChartWindow | null>(cdp, `(() => {
+    const chart = document.querySelector("[data-gloom-role=composite-chart]");
+    const view = chart?.dataset.gloomView?.split(":").map(Number);
+    const data = chart?.dataset.gloomData?.split(":").map(Number);
+    return view && data ? { viewStart: view[0], viewEnd: view[1], dataStart: data[0], dataEnd: data[1] } : null;
+  })()`);
+  return window ?? fail("the chart reports no view");
+}
+
+const day = (time: number) => new Date(time).toISOString().slice(0, 16);
+
+/** Waits for the chart composer to draw its bars (they arrive after a short delay) and returns its plot. */
+async function loadedChartPlot(cdp: Cdp): Promise<Rect> {
+  if (!await waitFor(cdp, `!!document.querySelector("[data-gloom-role=composite-chart]")?.dataset.gloomView && !!document.querySelector("[data-gloom-role=composite-chart-panel] canvas")`, 10_000)) {
+    fail("the chart did not load its bars");
+  }
+  return await evaluate<Rect | null>(cdp, `__check.rect(document.querySelector("[data-gloom-role=composite-chart-panel]"))`) ?? fail("no chart plot");
+}
+
+/**
+ * Drags a chart composer's plot from left to right, which pans back in time,
+ * `drags` times with a pause between for its loads, and checks every frame
+ * that the view only moves back and keeps its span: a pan that ran into the
+ * end of the loaded bars, or whose bars arrived mid-gesture, used to jump the
+ * view forward or squeeze it shut. The one move forward allowed is a view
+ * past the oldest bar settling onto it. Returns the view after each drag.
+ */
+async function panChartBack(cdp: Cdp, drags: number): Promise<ChartWindow[]> {
+  const plot = await loadedChartPlot(cdp);
+  const first = await chartWindow(cdp);
+  const span = first.viewEnd - first.viewStart;
+  const after: ChartWindow[] = [];
+  let previous = first;
+  for (let drag = 0; drag < drags; drag += 1) {
+    const from = { x: plot.x + plot.width * 0.1, y: plot.y + plot.height * 0.5 };
+    await mouse(cdp, "mouseMoved", from.x, from.y, false);
+    await mouse(cdp, "mousePressed", from.x, from.y, true);
+    try {
+      for (let step = 1; step <= 24; step += 1) {
+        await mouse(cdp, "mouseMoved", from.x + (plot.width * 0.75 * step) / 24, from.y, true);
+        await frames(cdp);
+        const now = await chartWindow(cdp);
+        const settling = previous.viewStart < now.dataStart && now.viewStart <= now.dataStart;
+        if (now.viewEnd > previous.viewEnd + 60_000 && !settling) {
+          fail(`drag ${drag + 1}: the view jumped forward`, { from: day(previous.viewEnd), to: day(now.viewEnd) });
+        }
+        // Calendar days per view drift with weekends and holidays, never by much.
+        const ratio = (now.viewEnd - now.viewStart) / span;
+        if (ratio < 0.8 || ratio > 1.25) fail(`drag ${drag + 1}: the view's span changed by ${Math.round((ratio - 1) * 100)}%`, { start: day(now.viewStart), end: day(now.viewEnd) });
+        previous = now;
+      }
+    } finally {
+      await mouse(cdp, "mouseReleased", from.x + plot.width * 0.75, from.y, false);
+    }
+    await evaluate(cdp, "new Promise((done) => setTimeout(done, 900))");
+    after.push(await chartWindow(cdp));
+  }
+  return after;
+}
+
 const PRESS_POINTS = [["grip", "grip"], ["title", "title"], ["empty bar", "empty"]] as const;
 const EDGES = [
   { edge: "left", by: { x: -64, y: 0 }, moves: { x: 1, y: 0 }, grows: { x: -1, y: 0 } },
@@ -916,6 +980,56 @@ const steps: Step[] = [
   ...nestedChartSteps,
   ...gripSteps,
   ...fillSteps,
+  {
+    name: "chart composer: a long pan back keeps its span, loads older bars as it goes and never jumps forward",
+    scenario: "cmp&chart=pan",
+    async run(cdp) {
+      await loadedChartPlot(cdp);
+      const start = await chartWindow(cdp);
+      const views = await panChartBack(cdp, 6);
+      const last = views.at(-1)!;
+      // Six drags of three quarters of a view each go well past the bars the chart opened with.
+      if (last.viewStart >= start.dataStart) fail("the view never left the bars the chart opened with", { opened: day(start.dataStart), view: day(last.viewStart) });
+      if (last.dataStart >= last.viewStart) fail("no older bars loaded ahead of the view", { data: day(last.dataStart), view: day(last.viewStart) });
+    },
+  },
+  {
+    name: "chart composer: a pan past the oldest bar stops at it",
+    scenario: "cmp&chart=edge",
+    async run(cdp) {
+      const views = await panChartBack(cdp, 4);
+      const last = views.at(-1)!;
+      const span = last.viewEnd - last.viewStart;
+      // The source has nothing older: the view rests on the first bar, not half a screen of nothing before it.
+      if (last.dataStart - last.viewStart > span * 0.05) fail("the view kept going past the oldest bar", { oldest: day(last.dataStart), view: day(last.viewStart) });
+      if (views.at(-2)!.viewStart !== last.viewStart) fail("the view did not come to rest at the oldest bar", views.slice(-2).map((view) => day(view.viewStart)));
+    },
+  },
+  {
+    name: "chart composer: the crosshair reads out every series, by key and by pointer",
+    scenario: "cmp&chart=readout",
+    async run(cdp) {
+      const plot = await loadedChartPlot(cdp);
+      if (!await waitFor(cdp, `document.querySelectorAll("[data-gloom-role=composite-chart-legend-series]").length === 6`, 10_000)) fail("the chart did not load its six series");
+      // The newest bar is a US close, after the German listing's: its value is carried.
+      await click(cdp, { x: plot.x + plot.width * 0.5, y: plot.y + plot.height * 0.5 });
+      await mouse(cdp, "mouseMoved", plot.x + plot.width * 0.5, plot.y - 60, false);
+      await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 });
+      await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 });
+      const readout = `(() => {
+        const rows = [...document.querySelectorAll("[data-gloom-role=composite-chart-readout-row]")];
+        return { rows: rows.length, carried: rows.filter((row) => row.dataset.carried === "true").length,
+          markers: document.querySelectorAll("[data-gloom-role=chart-crosshair-marker]").length,
+          hollow: document.querySelectorAll("[data-gloom-role=chart-crosshair-marker][data-hollow=true]").length };
+      })()`;
+      const byKey = await waitFor<{ rows: number; carried: number; markers: number; hollow: number } | null>(cdp, `(() => { const r = ${readout}; return r.rows === 6 && r.carried >= 1 ? r : null; })()`);
+      if (!byKey) fail("the arrow key's crosshair did not read out all six series with the German close carried", await evaluate(cdp, readout));
+      // Price, two closes, the average and the RSI each get a marker; volume is read off its bars.
+      if (byKey.markers !== 5 || byKey.hollow < 1) fail("the crosshair did not mark every line, the carried one hollow", byKey);
+      await mouse(cdp, "mouseMoved", plot.x + plot.width * 0.3, plot.y + plot.height * 0.4, false);
+      if (!await waitFor(cdp, `(() => { const r = ${readout}; return r.rows === 6 && r.markers === 5; })()`)) fail("the pointer's crosshair did not read out every series", await evaluate(cdp, readout));
+    },
+  },
   {
     name: "idle: a pane with two tables renders nothing while nothing moves",
     scenario: "resize",

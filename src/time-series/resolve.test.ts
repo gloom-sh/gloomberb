@@ -1114,7 +1114,8 @@ describe("resolveChartSpecData", () => {
     expect(spec.viewport.resolution).toBe("auto");
     expect(detailedRequests).toHaveLength(1);
     expect(detailedRequests[0]?.resolution).toBe("15m");
-    expect(detailedRequests[0]?.end).toBe("2025-01-17T00:00:00.001Z");
+    // Half a view past the view's end: what a pan forward reaches first.
+    expect(detailedRequests[0]?.end).toBe("2025-01-20T12:00:00.001Z");
     expect(result.viewport?.start.toISOString()).toBe("2025-01-10T00:00:00.000Z");
     expect(result.viewport?.end.toISOString()).toBe("2025-01-17T00:00:00.000Z");
     expect(result.series[0]?.timeBasis).toMatchObject({
@@ -1122,6 +1123,55 @@ describe("resolveChartSpecData", () => {
       timeZone: "America/New_York",
       cadenceMs: 15 * 60 * 1_000,
     });
+  });
+
+  test("asks for the older part of a panned window a capped source answered short, and stops where the source has nothing older", async () => {
+    // Thirty-minute bars on weekdays from FIRST; one answer holds the newest 1,000 of a window.
+    const FIRST = Date.parse("2025-03-03T14:30:00.000Z");
+    const bars = Array.from({ length: 570 }, (_, day) => FIRST + day * 86_400_000)
+      .filter((day) => new Date(day).getUTCDay() % 6 !== 0)
+      .flatMap((day) => Array.from({ length: 13 }, (_, slot) => day + slot * 1_800_000))
+      .map((time) => ({ date: new Date(time), open: 10, high: 11, low: 9, close: 10, volume: 1 }));
+    const requests: Array<[number, number]> = [];
+    const answer = (start: Date, end: Date) => bars.filter(({ date }) => date >= start && date < end).slice(-1_000);
+    const provider = createTestDataProvider({
+      getTickerFinancials: async () => emptyFinancials(),
+      getChartResolutionSupport: () => [{ resolution: "30m", maxRange: "6M" }, { resolution: "1d", maxRange: "ALL" }],
+      getPriceHistoryForResolutionWithMetadata: async () => ({ points: bars.slice(-1_000), resolution: "30m" }),
+      getDetailedPriceHistoryWithMetadata: async (_symbol, _exchange, start, end) => {
+        requests.push([start.getTime(), end.getTime()]);
+        return { points: answer(start, end), resolution: "30m" };
+      },
+    });
+    const spec = chartSpec({
+      viewport: { range: "3M", resolution: "30m" },
+      series: [chartSeries({ source: { kind: "security", instrument: { symbol: "TEST", exchange: "NASDAQ" }, fieldId: "market.ohlcv" }, style: "candles" })],
+    });
+    const sources = { dataProvider: provider, now: new Date("2026-10-01T00:00:00.000Z"), loadFredSeries: async () => fredLoad() };
+    const cache = new ChartResolveCache();
+    await resolveChartSpecData(spec, sources, cache);
+
+    // A view back in May asks for six months to its end and gets the newest
+    // 1,000 bars, from mid-February; the months before are asked for next.
+    const may = await resolveChartSpecData(spec, sources, cache, {
+      requestViewport: { start: new Date("2026-03-01T00:00:00.000Z"), end: new Date("2026-06-01T00:00:00.000Z") },
+    });
+    const [window, older] = requests;
+    expect(requests).toHaveLength(2);
+    expect(older![0]).toBe(window![0]);
+    expect(older![1]).toBe(answer(new Date(window![0]), new Date(window![1]))[0]!.date.getTime());
+    const firstLoaded = may.bufferedSeries?.[0]?.points[0]?.date.getTime() ?? 0;
+    expect(firstLoaded - window![0]).toBeLessThan(4 * 86_400_000);
+    expect(may.bufferedSeries?.[0]?.historyStart).toBeUndefined();
+
+    // A view at the first bar gets an answer that starts late without being
+    // cut short: the history starts there, and the chart says so.
+    const edge = await resolveChartSpecData(spec, sources, cache, {
+      requestViewport: { start: new Date("2025-02-01T00:00:00.000Z"), end: new Date("2025-05-01T00:00:00.000Z") },
+    });
+    expect(requests).toHaveLength(3);
+    expect(edge.bufferedSeries?.[0]?.historyStart?.getTime()).toBe(FIRST);
+    expect(edge.warnings).toContain("30m history starts Mar 3, 2025.");
   });
 
   test("accumulates historical windows without replacing the current tail", async () => {
@@ -1898,7 +1948,8 @@ describe("resolveChartSpecData", () => {
       });
 
       expect(result.errors).toEqual([]);
-      expect(result.viewport?.end.getTime()).toBe(elapsed ? quoteTime : now);
+      // Without the quote the chart ends at its newest bar, not at the reference time after it.
+      expect(result.viewport?.end.getTime()).toBe(elapsed ? quoteTime : now - 86_400_000);
       const price = result.series.find((entry) => entry.id === "price");
       const sma = result.series.find((entry) => entry.id === "sma");
       expect(price?.points.at(-1)?.date.getTime()).toBe(elapsed ? quoteTime : now - 86_400_000);
@@ -2578,7 +2629,7 @@ describe("Auto charts a young listing over the range it has traded", () => {
         expect(result.errors).toEqual([]);
         expect(result.resolution).toBe("5m");
         expect(result.series[0]?.points).toHaveLength(sessions.length * 78);
-        expect(result.viewport).toEqual({ start: new Date(`${sessions[0]}T13:30:00Z`), end: NOW });
+        expect(result.viewport).toEqual({ start: new Date(`${sessions[0]}T13:30:00Z`), end: new Date(`${sessions.at(-1)}T19:55:00Z`) });
       }
     }
   });

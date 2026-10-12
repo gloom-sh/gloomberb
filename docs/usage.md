@@ -226,6 +226,10 @@ When either ratio input has unknown units or a missing price basis, its numeric 
 
 Correlation uses matching observation times when inputs have different frequencies. Chart panes keep units and active failures visible; recurring FX and alignment explanations remain in these docs and export/share metadata.
 
+Moving the crosshair along time, with the pointer or the arrow keys, reads every series at that date: each line gets a marker where the crosshair crosses it, and on the desktop and the web a readout beside the crosshair lists every series' value in its own unit (price, percent change on a rebased chart, the indicator's value), while the legend above keeps the latest values. In the terminal the legend is the readout. The date, with the time for intraday bars, is the one under the crosshair on the time axis. A series with no observation at that time (another venue's closed session, a coarser series, a dataset that lags) shows its last value before it, dimmed with the date or time it is from, and its marker is a ring.
+
+Dragging the plot, the scroll wheel or trackpad, and `a`/`d` or Shift with the arrow keys pan the chart; older bars load while it moves. Where a listing's bars at the chosen interval run out the pan stops at the first one, and the footer says where they start; with Auto, a view that reaches before a source's intraday bars charts coarser ones, and the interval control reads `Auto` with the bars in use, such as `Auto (D)`.
+
 On intraday charts, bars outside the venue's regular session (pre-market, after-hours, and after an early close) sit on a tinted band; the terminal text renderer marks where the regular session starts and ends with a dotted rule. The session comes from the same calendar VWAP uses, so a venue without known hours has no band. Intraday history for US listings currently covers the regular session, so the band appears where a source sends extended-hours bars.
 
 #### Trader studies

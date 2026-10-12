@@ -5,7 +5,7 @@ import {
   downsampleLttb,
   downsampleOhlcProjectedPoints,
 } from "./downsample";
-import { buildCompositeChartScene } from "./scene";
+import { applyCompositeChartCursor, buildCompositeChartScene } from "./scene";
 import { createTestResolvedSeries as series, createTestSeriesPoint as point } from "../../../test-support/time-series";
 
 function ohlcPoint(
@@ -55,6 +55,28 @@ describe("composite downsample", () => {
     expect(downsampled.dates).toHaveLength(400);
     expect(downsampled.panels[0]!.series[0]!.points.length).toBeLessThanOrEqual(64);
     expect(downsampled.panels[0]!.series[0]!.points.length).toBeGreaterThan(2);
+  });
+
+  test("the cursor reads the bar under it, not the thinned plot, and marks a coarser series' value as carried", () => {
+    const start = Date.parse("2024-01-01T00:00:00.000Z");
+    const daily = series({
+      id: "price",
+      style: "candles",
+      points: Array.from({ length: 900 }, (_, index) => ohlcPoint(new Date(start + index * 86_400_000), index, index + 1, index - 1, index + 0.5)),
+    });
+    const weekly = series({
+      id: "weekly",
+      points: Array.from({ length: 129 }, (_, index) => point(new Date(start + index * 7 * 86_400_000), 1_000 + index)),
+    });
+    const scene = buildCompositeChartScene([daily, weekly], [{ id: "main" }], { width: 80, height: 12 })!;
+    // Candles thin to one per two pixels: most bars sit inside another's bucket.
+    const thinned = downsampleCompositeChartScene(scene, 120);
+    expect(thinned.panels[0]!.series[0]!.points.length).toBeLessThan(100);
+    const cursor = applyCompositeChartCursor(thinned, new Date(start + 503 * 86_400_000));
+    const value = (id: string) => cursor.cursorValues.find((entry) => entry.seriesId === id);
+    expect(value("price")?.value).toBe(503.5);
+    expect(value("price")?.carried).toBeUndefined();
+    expect(value("weekly")).toMatchObject({ value: 1_071, carried: true });
   });
 
   test("LTTB never exceeds the requested point budget", () => {

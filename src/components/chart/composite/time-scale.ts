@@ -27,6 +27,7 @@ interface CachedMarketAnchors {
   timeZone: string;
   configuredCadence: number | undefined;
   cadenceMs: number;
+  historyMsPerSlot: number;
   anchors: MarketAnchors;
 }
 
@@ -113,7 +114,7 @@ function lowerBoundAnchor(
 }
 
 function positionForTimestamp(
-  scale: Pick<Extract<CompositeTimeScale, { kind: "market" }>, "anchors" | "cadenceMs">,
+  scale: Pick<Extract<CompositeTimeScale, { kind: "market" }>, "anchors" | "cadenceMs" | "historyMsPerSlot">,
   timestamp: number,
 ): number {
   const { anchors, cadenceMs } = scale;
@@ -122,7 +123,7 @@ function positionForTimestamp(
   if (next?.timestamp === timestamp) return next.position;
   const previous = anchors[index - 1];
   if (!previous) {
-    return anchors[0]!.position + (timestamp - anchors[0]!.timestamp) / cadenceMs;
+    return anchors[0]!.position + (timestamp - anchors[0]!.timestamp) / (scale.historyMsPerSlot ?? cadenceMs);
   }
   if (!next) {
     const last = anchors.at(-1)!;
@@ -134,8 +135,22 @@ function positionForTimestamp(
     + (next.position - previous.position) * ((timestamp - previous.timestamp) / elapsed);
 }
 
+/**
+ * Wall-clock time per slot across the loaded bars, nights and weekends
+ * included. History not loaded yet is laid out at this rate: at the bar
+ * cadence instead, a view panned into it would hold a few days where it held
+ * weeks, and squeeze shut when the bars arrive.
+ */
+function averageMsPerSlot(anchors: MarketAnchors, cadenceMs: number): number {
+  const first = anchors[0];
+  const last = anchors.at(-1);
+  if (!first || !last || last.position <= first.position) return cadenceMs;
+  return Math.max(cadenceMs, (last.timestamp - first.timestamp) / (last.position - first.position));
+}
+
 function buildMarketAnchors(series: ResolvedSeries, timeZone: string): {
   cadenceMs: number;
+  historyMsPerSlot: number;
   anchors: MarketAnchors;
 } {
   const anchorTimestamps = uniqueSeriesTimestamps(series);
@@ -166,7 +181,7 @@ function buildMarketAnchors(series: ResolvedSeries, timeZone: string): {
     }
     anchors.push({ timestamp, position });
   });
-  return { cadenceMs, anchors };
+  return { cadenceMs, historyMsPerSlot: averageMsPerSlot(anchors, cadenceMs), anchors };
 }
 
 /**
@@ -176,7 +191,7 @@ function buildMarketAnchors(series: ResolvedSeries, timeZone: string): {
  */
 function resolveMarketAnchors(
   series: ResolvedSeries,
-): { cadenceMs: number; anchors: MarketAnchors; timeZone: string } | null {
+): { cadenceMs: number; historyMsPerSlot: number; anchors: MarketAnchors; timeZone: string } | null {
   if (!series.timeBasis || series.timeBasis.kind !== "market") return null;
   const { timeZone, cadenceMs: configuredCadence } = series.timeBasis;
   const lastTimestamp = series.points.length > 0
@@ -191,7 +206,7 @@ function resolveMarketAnchors(
     && cached.timeZone === timeZone
     && cached.configuredCadence === configuredCadence
   ) {
-    return { cadenceMs: cached.cadenceMs, anchors: cached.anchors, timeZone };
+    return { cadenceMs: cached.cadenceMs, historyMsPerSlot: cached.historyMsPerSlot, anchors: cached.anchors, timeZone };
   }
   const built = buildMarketAnchors(series, timeZone);
   anchorCache.set(series, {
@@ -201,6 +216,7 @@ function resolveMarketAnchors(
     timeZone,
     configuredCadence,
     cadenceMs: built.cadenceMs,
+    historyMsPerSlot: built.historyMsPerSlot,
     anchors: built.anchors,
   });
   return { ...built, timeZone };
@@ -218,15 +234,16 @@ export function buildCompositeTimeScale(
   if (!anchorSeries || !resolved || resolved.anchors.length === 0) {
     return { kind: "calendar", startTime, endTime, rightOffsetRatio: offset };
   }
-  const { cadenceMs, anchors } = resolved;
-  const startPosition = positionForTimestamp({ anchors, cadenceMs }, startTime);
-  const endPosition = positionForTimestamp({ anchors, cadenceMs }, endTime);
+  const { cadenceMs, historyMsPerSlot, anchors } = resolved;
+  const startPosition = positionForTimestamp({ anchors, cadenceMs, historyMsPerSlot }, startTime);
+  const endPosition = positionForTimestamp({ anchors, cadenceMs, historyMsPerSlot }, endTime);
   return {
     kind: "market",
     startTime,
     endTime,
     anchorSeriesId: anchorSeries.id,
     cadenceMs,
+    historyMsPerSlot,
     anchors,
     startPosition,
     endPosition: endPosition > startPosition ? endPosition : startPosition + 1,
@@ -267,7 +284,7 @@ export function compositeTimeAtPosition(scale: CompositeTimeScale, position: num
   const next = anchors[low];
   const previous = anchors[low - 1];
   if (!previous) {
-    return anchors[0]!.timestamp + (position - anchors[0]!.position) * scale.cadenceMs;
+    return anchors[0]!.timestamp + (position - anchors[0]!.position) * (scale.historyMsPerSlot ?? scale.cadenceMs);
   }
   if (!next) {
     const last = anchors.at(-1)!;

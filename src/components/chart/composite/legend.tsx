@@ -5,7 +5,7 @@ import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
 import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
-import { formatCompositePointDetails, formatCompositeSeriesValue, seriesPriceReference } from "./format";
+import { formatCompositeCarriedStamp, formatCompositePointDetails, formatCompositeSeriesValue, seriesPriceReference } from "./format";
 import type { CompositeChartProps, CompositeChartScene } from "./types";
 import { seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
 
@@ -17,7 +17,8 @@ const DOT_MARKER = "● ";
 const DOM_DOT_CELLS = 2;
 const DOM_LINE_CELLS = 3;
 
-function legendValue(
+/** A series' value as the legend and the crosshair readout print it, in the series' own unit. */
+export function formatLegendSeriesValue(
   series: ResolvedSeries,
   value: number | null,
   formatValue: CompositeChartProps["formatValue"],
@@ -75,7 +76,15 @@ function legendValueDates(
   const cursorDate = scene?.cursorDate;
   if (cursorDate) {
     const cursorDay = cursorDate.toISOString().slice(0, 10);
-    return { lead: null, own: new Map([...text].filter(([id]) => dates.get(id)!.toISOString().slice(0, 10) !== cursorDay)) };
+    const own = new Map([...text].filter(([id]) => dates.get(id)!.toISOString().slice(0, 10) !== cursorDay));
+    // Any other value carried from before the cursor says when it is from:
+    // another venue's last bar, a coarser series, the last print before a halt.
+    for (const entry of series) {
+      const cursorValue = cursorValueById.get(entry.id);
+      if (dates.has(entry.id) || !cursorValue?.carried || cursorValue.value == null || !cursorValue.point) continue;
+      own.set(entry.id, formatCompositeCarriedStamp(cursorValue.point.date, cursorDate, scene?.timeZone));
+    }
+    return { lead: null, own };
   }
   const shared = new Set(text.values());
   return text.size > 0 && text.size === valued && shared.size === 1
@@ -86,10 +95,46 @@ function legendValueDates(
 const LISTED_TICKER_PATTERN = /(^|[\s(])([A-Z0-9^][A-Z0-9.^=/-]*):([A-Z0-9]{2,})(?=$|[\s),])/g;
 
 /** `Volume AAPL:XNAS Price` → `Volume AAPL Price`, for a legend name that must shorten. */
-function withoutListingExchange(label: string): string {
+export function withoutListingExchange(label: string): string {
   return label.replace(LISTED_TICKER_PATTERN, (match, lead: string, symbol: string, exchange: string) => (
     CANONICAL_EXCHANGE_ALIASES[exchange] ? `${lead}${symbol}` : match
   ));
+}
+
+/** The legend's marker for a series on the desktop: its line as the plot strokes it, or a dot. */
+export function CompositeSeriesSwatch({ series, cue, filled = true }: {
+  series: ResolvedSeries;
+  cue: SeriesLineCue | null;
+  filled?: boolean;
+}) {
+  return cue ? (
+    // The line as the plot strokes it: solid, dashed, dotted or heavy.
+    <Box
+      flexShrink={0}
+      style={{
+        width: 16,
+        height: Math.max(2, Math.round(cue.thickness)),
+        marginInlineEnd: 6,
+        background: seriesCueCssBackground(cue, series.color),
+        opacity: filled ? 1 : 0.35,
+      }}
+      data-gloom-role="composite-chart-legend-marker"
+      data-gloom-cue={cue.id}
+    />
+  ) : (
+    <Box
+      flexShrink={0}
+      style={{
+        width: 8,
+        height: 8,
+        marginInlineEnd: 6,
+        borderRadius: 999,
+        border: `1px solid ${series.color}`,
+        backgroundColor: filled ? series.color : "transparent",
+      }}
+      data-gloom-role="composite-chart-legend-marker"
+    />
+  );
 }
 
 export function CompositeLegend({
@@ -146,7 +191,7 @@ export function CompositeLegend({
     const ownDate = valueDates.own.get(entry.id);
     const valueText = entry.points.length === 0
       ? entry.hidden ? "" : "no data"
-      : `${legendValue(
+      : `${formatLegendSeriesValue(
         entry,
         cursorValue?.value ?? null,
         formatValue,
@@ -340,33 +385,8 @@ export function CompositeLegend({
                 data-visible={entryVisible ? "true" : "false"}
                 title={isDesktopWeb ? tooltip : undefined}
               >
-                {isDesktopWeb && cue ? (
-                  // The line as the plot strokes it: solid, dashed, dotted or heavy.
-                  <Box
-                    flexShrink={0}
-                    style={{
-                      width: 16,
-                      height: Math.max(2, Math.round(cue.thickness)),
-                      marginInlineEnd: 6,
-                      background: seriesCueCssBackground(cue, entry.color),
-                      opacity: entryVisible ? 1 : 0.35,
-                    }}
-                    data-gloom-role="composite-chart-legend-marker"
-                    data-gloom-cue={cue.id}
-                  />
-                ) : isDesktopWeb ? (
-                  <Box
-                    flexShrink={0}
-                    style={{
-                      width: 8,
-                      height: 8,
-                      marginInlineEnd: 6,
-                      borderRadius: 999,
-                      border: `1px solid ${entry.color}`,
-                      backgroundColor: entryVisible ? entry.color : "transparent",
-                    }}
-                    data-gloom-role="composite-chart-legend-marker"
-                  />
+                {isDesktopWeb ? (
+                  <CompositeSeriesSwatch series={entry} cue={cue} filled={entryVisible} />
                 ) : (
                   <Text fg={entryVisible ? entry.color : themeColors.textMuted}>{marker}</Text>
                 )}
