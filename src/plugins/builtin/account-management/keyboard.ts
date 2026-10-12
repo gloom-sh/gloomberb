@@ -11,6 +11,8 @@ const SCOPE = "account-management:fields";
 const TOGGLE_FIELDS = [
   "profilePublic",
   "acceptUnknownDms",
+  "showLocalTime",
+  "showDesks",
   "weeklyRoundupEnabled",
   "chatEmailNotificationsEnabled",
   "positionAlertsEnabled",
@@ -23,6 +25,7 @@ export function useAccountManagementKeyboard({
   fieldOrder,
   focused,
   openAssistants,
+  openDeskPicker,
   openPasswordDialog,
   openPortfolioDialog,
   openUpgrade,
@@ -40,6 +43,7 @@ export function useAccountManagementKeyboard({
   fieldOrder: readonly AccountFieldKey[];
   focused: boolean;
   openAssistants: () => void;
+  openDeskPicker: () => void;
   openPasswordDialog: () => void;
   openPortfolioDialog: () => Promise<void>;
   openUpgrade: () => void;
@@ -52,6 +56,7 @@ export function useAccountManagementKeyboard({
 }): FieldRing<AccountFieldKey> {
   const actions: Partial<Record<AccountFieldKey, () => void>> = {
     sharedPortfolioId: () => { void openPortfolioDialog(); },
+    desks: openDeskPicker,
     passwordAction: openPasswordDialog,
     upgradeAction: openUpgrade,
     assistantsAction: openAssistants,

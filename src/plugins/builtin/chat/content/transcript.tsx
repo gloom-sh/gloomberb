@@ -196,6 +196,7 @@ export function ChatTranscript({
                 hoveredIdx={hoveredIdx === index ? index : null}
                 highlighted={msg.id === highlightedMessageId}
                 canSend={canSend}
+                contentWidth={contentWidth}
                 catalog={catalog}
                 userByUsername={userByUsername}
                 openTicker={openTicker}

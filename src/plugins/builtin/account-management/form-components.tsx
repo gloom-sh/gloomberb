@@ -1,5 +1,14 @@
 import { type ReactNode, type Ref } from "react";
-import { Checkbox, FieldLabel, SelectButton, type ChoiceDialogChoice } from "../../../components";
+import {
+  Button,
+  Checkbox,
+  FieldLabel,
+  MultiSelectDialogButton,
+  SelectButton,
+  type ChoiceDialogChoice,
+  type MultiSelectDialogButtonHandle,
+} from "../../../components";
+import { chatDeskChoices } from "../chat/people";
 import { Box, Text, TextAttributes, type BoxRenderable } from "../../../ui";
 import { colors } from "../../../theme/colors";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
@@ -145,6 +154,49 @@ export function PublicAnalyticsGroup({
           {disclaimer}
         </Text>
       ) : null}
+    </Box>
+  );
+}
+
+/**
+ * The desks chat shows beside your name, once What I Trade is on: pre-filled
+ * from your answer to "What do you trade?", coarse words only.
+ */
+export function DeskChoiceRow({
+  desks,
+  active,
+  width,
+  controlRef,
+  nodeRef,
+  onFocus,
+  onChange,
+}: {
+  desks: string[];
+  active: boolean;
+  width: number;
+  controlRef?: Ref<MultiSelectDialogButtonHandle>;
+  nodeRef?: Ref<BoxRenderable>;
+  onFocus: () => void;
+  onChange: (desks: string[]) => void;
+}) {
+  const labelWidth = Math.min(accountFieldLabelWidth(width), Math.max(1, width - 2));
+  return (
+    <Box ref={nodeRef} height={1} flexDirection="row" gap={1} alignItems="center" width={width} onMouseOver={onFocus}>
+      <FieldLabel label={t("Trades")} active={active} maxWidth={labelWidth} />
+      <MultiSelectDialogButton
+        ref={controlRef}
+        label={t("Trades")}
+        title={t("What I Trade")}
+        options={chatDeskChoices().map((choice) => ({ value: choice.value, label: t(choice.label) }))}
+        selectedValues={desks}
+        emptyLabel={t("None")}
+        onOpenChange={(open) => { if (open) onFocus(); }}
+        onChange={onChange}
+        // The label beside it already says Trades: the button shows the picks.
+        renderTrigger={({ summary, disabled, openDialog }) => (
+          <Button label={summary} variant="secondary" active={active} disabled={disabled} onPress={() => openDialog()} />
+        )}
+      />
     </Box>
   );
 }

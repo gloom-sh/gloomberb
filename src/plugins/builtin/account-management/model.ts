@@ -15,6 +15,9 @@ export type AccountFieldKey =
   | "publicEmail"
   | "xAccount"
   | "acceptUnknownDms"
+  | "showLocalTime"
+  | "showDesks"
+  | "desks"
   | "sharedPortfolioId"
   | "weeklyRoundupEnabled"
   | "positionAlertsEnabled"
@@ -36,6 +39,12 @@ export interface AccountDraft {
   xAccount: string;
   sharedPortfolioId: string;
   acceptUnknownDms: boolean;
+  /** Chat shows your local time on your card. */
+  showLocalTime: boolean;
+  /** Chat shows what you trade: off until you turn it on. */
+  showDesks: boolean;
+  /** The desks to show, pre-filled from your answer to "What do you trade?". */
+  desks: string[];
   weeklyRoundupEnabled: boolean;
   positionAlertsEnabled: boolean;
   chatEmailNotificationsEnabled: boolean;
@@ -71,9 +80,27 @@ export function profileToDraft(profile: AccountProfile | null): AccountDraft {
     xAccount: profile?.xAccount ?? "",
     sharedPortfolioId: profile?.sharedPortfolioId ?? "",
     acceptUnknownDms: profile?.acceptUnknownDms === true,
+    showLocalTime: profile?.showLocalTime !== false,
+    showDesks: (profile?.chatDesks?.length ?? 0) > 0,
+    desks: profile?.chatDesks?.length ? [...profile.chatDesks] : [...(profile?.onboardingDesks ?? [])],
     weeklyRoundupEnabled: profile?.weeklyRoundupEnabled === false ? false : true,
     positionAlertsEnabled: profile?.positionAlertsEnabled === false ? false : true,
     chatEmailNotificationsEnabled: profile?.chatEmailNotificationsEnabled === false ? false : true,
+  };
+}
+
+/**
+ * What a save sends for chat's card. Nothing for a server that predates the
+ * settings; desks only while showing them is on and some are picked.
+ */
+export function chatCardUpdate(
+  profile: AccountProfile | null,
+  draft: Pick<AccountDraft, "showLocalTime" | "showDesks" | "desks">,
+): { showLocalTime?: boolean; chatDesks?: string[] | null } {
+  if (profile?.showLocalTime === undefined) return {};
+  return {
+    showLocalTime: draft.showLocalTime,
+    chatDesks: draft.showDesks && draft.desks.length > 0 ? [...draft.desks] : null,
   };
 }
 

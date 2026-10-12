@@ -27,6 +27,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   hoveredIdx,
   highlighted,
   canSend,
+  contentWidth,
   catalog,
   userByUsername,
   openTicker,
@@ -49,6 +50,8 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   closeReactionPicker,
 }: ChatMessageBaseProps & {
   registerMessageElement: (messageId: string, node: unknown | null) => void;
+  /** The list's width in cells, so a narrow pane keeps its actions in the row before its badges. */
+  contentWidth?: number;
 }) {
   useAppLanguage();
   const themeColors = useThemeColors();
@@ -151,6 +154,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         <ChatMessageHeader
           msg={msg}
           rowProps={rowProps}
+          fitWidth={contentWidth === undefined ? undefined : contentWidth - DESKTOP_MESSAGE_RIGHT_PADDING}
           onUserHover={onUserHover}
           onUserHoverEnd={onUserHoverEnd}
           onUserActivate={onUserActivate}

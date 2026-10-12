@@ -20,6 +20,9 @@ export type ChatAccountType = "human" | "managed_llm" | "discord";
 /** Where a message was written. A message without one came from the app. */
 export type ChatMessageOrigin = "app" | "discord";
 
+/** A badge an account earns in chat: `team` for Gloom staff, `pro` with Pro access. */
+export type ChatUserBadge = "team" | "pro";
+
 export interface ChatUserSummary {
   id: string;
   /** A person, a managed assistant (Gloombot), or a Discord user bridged into public channels. */
@@ -32,6 +35,15 @@ export interface ChatUserSummary {
   profilePublic?: boolean;
   acceptUnknownDms?: boolean;
   portfolioAnalytics?: PublicPortfolioAnalytics | null;
+  /** Badges the account earns. A server that predates them, or a person with none, leaves this out. */
+  badges?: ChatUserBadge[];
+  /**
+   * The person's current offset from UTC in minutes, as their app last
+   * reported it: left out while they keep their local time hidden.
+   */
+  utcOffsetMinutes?: number;
+  /** The desks (equities, options, ...) the person chose to show; left out unless they did. */
+  desks?: string[];
 }
 
 /**
@@ -208,6 +220,12 @@ export interface AccountProfile {
   acceptUnknownDms: boolean;
   chatEmailNotificationsEnabled: boolean;
   portfolioAnalytics?: PublicPortfolioAnalytics | null;
+  /** Chat shows your local time on your card. A server that predates the setting leaves it out. */
+  showLocalTime?: boolean;
+  /** The desks chat shows beside your name; empty shows none. */
+  chatDesks?: string[];
+  /** Your answer to "What do you trade?" at the first run: private, it pre-fills `chatDesks`. */
+  onboardingDesks?: string[];
   syncEnabled: boolean;
   weeklyRoundupEnabled: boolean;
   positionAlertsEnabled: boolean;
@@ -351,6 +369,9 @@ export type AccountProfileUpdate = Partial<{
   syncEnabled: boolean;
   weeklyRoundupEnabled: boolean;
   positionAlertsEnabled: boolean;
+  showLocalTime: boolean;
+  /** Null or empty shows no desks. */
+  chatDesks: string[] | null;
 }>;
 
 export interface CloudSyncSnapshotResponse {

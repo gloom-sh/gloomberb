@@ -73,6 +73,34 @@ window.__chat = {
     const r = document.querySelector('textarea')?.getBoundingClientRect();
     return r ? { x: r.x + 24, y: r.y + r.height / 2 } : null;
   },
+  /** The lowest name of a user in view: its box, colour, and the badges beside it. */
+  name(username) {
+    const view = this.scroller().getBoundingClientRect();
+    const text = [...document.querySelectorAll('[data-gloom-role=chat-message-row] span, [data-gloom-role=chat-message-row] div')]
+      .filter((el) => {
+        if (el.childElementCount !== 0 || el.textContent !== username) return false;
+        const r = el.getBoundingClientRect();
+        return r.top >= view.top && r.bottom <= view.bottom;
+      })
+      .at(-1);
+    if (!text) return null;
+    const row = text.closest('[data-gloom-role=chat-message-row]');
+    const r = text.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const badges = [...row.querySelectorAll('[data-gloom-role$=-badge]')].map((badge) => {
+      const b = badge.getBoundingClientRect();
+      return { label: badge.textContent.trim(), right: b.right, visible: b.width > 0 && b.right <= rowRect.right + 0.5 };
+    });
+    // The desktop draws a row's actions on every row and shows them on hover.
+    const actions = row.querySelector('[data-gloom-role=chat-message-reply-action]')?.getBoundingClientRect();
+    const actionsInRow = !actions || actions.right <= rowRect.right + 0.5;
+    return { x: r.x + r.width / 2, y: r.y + r.height / 2, color: getComputedStyle(text).color, badges, actionsInRow };
+  },
+  /** The text of the open profile card, or null. */
+  card() {
+    const card = [...document.querySelectorAll('.gloom-popover')].find((popover) => popover.querySelector('[data-gloom-role^=chat-profile-]'));
+    return card ? card.textContent : null;
+  },
   neighbour() {
     const r = document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id="plain:a"]')?.getBoundingClientRect();
     return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
@@ -166,7 +194,87 @@ async function openOnTarget(cdp: Cdp): Promise<void> {
   await frames(cdp, 3);
 }
 
+interface NameState {
+  x: number;
+  y: number;
+  color: string;
+  badges: Array<{ label: string; right: number; visible: boolean }>;
+  actionsInRow: boolean;
+}
+
+const nameOf = (cdp: Cdp, username: string) => evaluate<NameState | null>(cdp, `__chat.name(${JSON.stringify(username)})`);
+
+async function pointAtName(cdp: Cdp, username: string): Promise<void> {
+  const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn`);
+  await mouse(cdp, "mouseMoved", name.x - 4, name.y, false);
+  await mouse(cdp, "mouseMoved", name.x, name.y, false);
+  await frames(cdp, 3);
+}
+
+/** The badges a drawn name carries, in order. */
+async function badgesOf(cdp: Cdp, username: string): Promise<string[]> {
+  return ((await nameOf(cdp, username)) ?? fail(`no name ${username} drawn`)).badges.map((badge) => badge.label);
+}
+
 export const chatSteps: ChatStep[] = [
+  {
+    name: "chat people: a bot's name has its own colour, and each name carries its own badges",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      const bot = await nameOf(cdp, "deskbot") ?? fail("no bot message in view");
+      const person = await nameOf(cdp, "quill") ?? fail("no member message in view");
+      if (bot.color === person.color) fail("the bot's name is drawn like a person's", { bot: bot.color, person: person.color });
+      const expected: Record<string, string> = { deskbot: "AI", marlow: "Team,Pro", quill: "Pro" };
+      for (const [username, badges] of Object.entries(expected)) {
+        const actual = (await badgesOf(cdp, username)).join();
+        if (actual !== badges) fail(`${username} carries the wrong badges`, { actual, expected: badges });
+      }
+    },
+  },
+  {
+    name: "chat people: pointing at a name opens the card with their local time and what they trade, and the keyboard opens the same card",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await pointAtName(cdp, "marlow");
+      if (!await waitFor(cdp, "(__chat.card() ?? '').includes('Local time')", 2_000)) fail("pointing at a name opened no card with a local time");
+      const card = await evaluate<string>(cdp, "__chat.card()");
+      for (const part of ["Gloom team · Pro", "Trades", "Options, Futures"]) {
+        if (!card.includes(part)) fail(`the card does not say ${JSON.stringify(part)}`, card);
+      }
+      if (!/Local time\s*\d\d:\d\d/.test(card)) fail("the card's local time is not a clock reading", card);
+      // The pointer leaves for the pane beside: the card goes.
+      const away = await evaluate<Point>(cdp, "__chat.neighbour()");
+      await mouse(cdp, "mouseMoved", away.x, away.y, false);
+      if (!await waitFor(cdp, "__chat.card() === null", 2_000)) fail("the card stayed after the pointer left");
+
+      // Without a mouse: the newest message (marlow's), then p.
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      await pressKey(cdp, "p", "KeyP", "p");
+      if (!await waitFor(cdp, "(__chat.card() ?? '').includes('Local time')", 2_000)) fail("p on a selected message opened no card with a local time");
+    },
+  },
+  {
+    name: "chat people: at phone width the badges and the row's actions stay inside the row",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+      try {
+        await frames(cdp, 12);
+        for (const username of ["deskbot", "marlow", "quill"]) {
+          const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn at phone width`);
+          const clipped = name.badges.filter((badge) => !badge.visible);
+          if (clipped.length > 0) fail(`${username}'s badges run past the row at phone width`, name.badges);
+          if (!name.actionsInRow) fail(`${username}'s badges push the row's actions out of it at phone width`, name.badges);
+        }
+      } finally {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+      }
+    },
+  },
   {
     name: "chat list: a message a notification opened on is marked in view, then goes back to normal",
     scenario: `chat&target=${OPENED_ON}`,

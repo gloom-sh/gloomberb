@@ -4,9 +4,12 @@ import {
   buildPublishedProfileAnalyticsPreview,
   buildPortfolioChoices,
   buildProfileAnalyticsPreview,
+  chatCardUpdate,
   countPortfolioHoldings,
   NO_PORTFOLIO_VALUE,
+  profileToDraft,
 } from "./model";
+import { makeAccountProfile } from "../chat/test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 
 function makeTicker(symbol: string, portfolios: string[], positionedPortfolios: string[] = []): TickerRecord {
@@ -24,6 +27,25 @@ function makeTicker(symbol: string, portfolios: string[], positionedPortfolios: 
 }
 
 describe("account management model", () => {
+  test("what you trade stays off until you turn it on, pre-filled from your first-run answer, and local time stays on", () => {
+    const fresh = makeAccountProfile({ showLocalTime: true, chatDesks: [], onboardingDesks: ["options", "futures"] });
+    const draft = profileToDraft(fresh);
+    expect(draft).toMatchObject({ showLocalTime: true, showDesks: false, desks: ["options", "futures"] });
+    // Saving the profile as it is shows no desks.
+    expect(chatCardUpdate(fresh, draft)).toEqual({ showLocalTime: true, chatDesks: null });
+    expect(chatCardUpdate(fresh, { ...draft, showDesks: true })).toEqual({ showLocalTime: true, chatDesks: ["options", "futures"] });
+    // On with nothing picked shows nothing either.
+    expect(chatCardUpdate(fresh, { ...draft, showDesks: true, desks: [] })).toEqual({ showLocalTime: true, chatDesks: null });
+    expect(chatCardUpdate(fresh, { ...draft, showLocalTime: false })).toMatchObject({ showLocalTime: false });
+
+    const shown = profileToDraft(makeAccountProfile({ showLocalTime: false, chatDesks: ["fx"], onboardingDesks: ["options"] }));
+    expect(shown).toMatchObject({ showLocalTime: false, showDesks: true, desks: ["fx"] });
+
+    // A server that predates the settings is sent none of them.
+    const older = makeAccountProfile();
+    expect(chatCardUpdate(older, profileToDraft(older))).toEqual({});
+  });
+
   test("counts portfolio holdings from app ticker state", () => {
     const tickers = new Map([
       ["AAPL", makeTicker("AAPL", ["main"])],

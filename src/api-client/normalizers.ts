@@ -9,6 +9,8 @@ import type {
   ChatReaction,
   ChatReactionUser,
   ChatStateResponse,
+  ChatUserBadge,
+  ChatUserSummary,
   CloudSavedSearch,
   CloudSearchHit,
   CloudSearchResponse,
@@ -82,17 +84,37 @@ export function normalizeChatAttachments(value: unknown): ChatAttachment[] {
 const CHAT_ACCOUNT_TYPES: readonly string[] = ["human", "managed_llm", "discord"] satisfies ChatAccountType[];
 const CHAT_MESSAGE_ORIGINS: readonly string[] = ["app", "discord"] satisfies ChatMessageOrigin[];
 
-/** A value a newer server adds that this client does not know reads as absent: a human, a message from the app. */
-function chatUserWithKnownAccountType(user: ChatMessage["user"]): ChatMessage["user"] {
-  if (!user || user.accountType === undefined || CHAT_ACCOUNT_TYPES.includes(user.accountType)) return user;
-  const { accountType: _unknown, ...known } = user;
-  return known;
+const CHAT_USER_BADGES: readonly string[] = ["team", "pro"] satisfies ChatUserBadge[];
+
+/**
+ * A value a newer server adds that this client does not know reads as absent:
+ * a human, a message from the app, no badge. A clock or desks that are not
+ * what the server promises are dropped rather than shown wrong.
+ */
+function normalizeChatUser(user: ChatUserSummary): ChatUserSummary {
+  if (!user || typeof user !== "object") return user;
+  const { accountType, badges, utcOffsetMinutes, desks, ...rest } = user;
+  const knownBadges = Array.isArray(badges)
+    ? CHAT_USER_BADGES.filter((badge) => badges.includes(badge as ChatUserBadge)) as ChatUserBadge[]
+    : [];
+  const knownDesks = Array.isArray(desks) ? desks.filter((desk): desk is string => typeof desk === "string" && !!desk) : [];
+  const offset = typeof utcOffsetMinutes === "number" && Number.isInteger(utcOffsetMinutes)
+    && utcOffsetMinutes >= -12 * 60 && utcOffsetMinutes <= 14 * 60
+    ? utcOffsetMinutes
+    : null;
+  return {
+    ...rest,
+    ...(accountType !== undefined && CHAT_ACCOUNT_TYPES.includes(accountType) ? { accountType } : {}),
+    ...(knownBadges.length > 0 ? { badges: knownBadges } : {}),
+    ...(offset !== null ? { utcOffsetMinutes: offset } : {}),
+    ...(knownDesks.length > 0 ? { desks: knownDesks } : {}),
+  };
 }
 
 export function normalizeChatMessage(message: ChatMessage): ChatMessage {
   const normalized: ChatMessage = {
     ...message,
-    user: chatUserWithKnownAccountType(message.user),
+    user: normalizeChatUser(message.user),
     content: typeof message.content === "string" ? message.content : "",
     createdAt: normalizeTimestamp(message.createdAt),
     ...(message.editedAt
@@ -171,6 +193,8 @@ export function normalizeChatChannel(
     ...channel,
     kind: channel.kind ?? fallbackKind,
     created_at: normalizeTimestamp(channel.created_at),
+    ...(channel.dmUser ? { dmUser: normalizeChatUser(channel.dmUser) } : {}),
+    ...(Array.isArray(channel.members) ? { members: channel.members.map(normalizeChatUser) } : {}),
   };
 }
 

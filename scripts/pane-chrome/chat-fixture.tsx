@@ -5,6 +5,10 @@
  * in-memory channel the page script drives through `window.__chatFake`.
  * Nothing here sends a request; every name and message is invented.
  *
+ * The people are made up too and cover what chat tells apart at a glance: a
+ * bot Gloom runs (deskbot), a staff member with Pro who shows what they trade
+ * (marlow), a Pro member (quill), and you (ada), each sharing a local time.
+ *
  * Scenario options (query string, after `scenario=chat`): `target=<message id>`
  * opens on a message the way a notification does, `count=<n>` sets how many
  * messages the channel starts with (default 90), `latency=<ms>` how long a
@@ -45,12 +49,14 @@ declare global {
 
 const params = new URLSearchParams(window.location.search);
 const MEMBERS: Record<string, ChatUserSummary> = {
-  ada: { id: "u0", username: "ada", displayName: "Ada" },
-  quill: { id: "u1", username: "quill", displayName: "Quill" },
-  marlow: { id: "u2", username: "marlow", displayName: "Marlow" },
-  juno: { id: "u3", username: "juno", displayName: "Juno" },
+  ada: { id: "u0", username: "ada", displayName: "Ada", accountType: "human" },
+  quill: { id: "u1", username: "quill", displayName: "Quill", accountType: "human", badges: ["pro"], utcOffsetMinutes: -240, profilePublic: true, title: "Analyst" },
+  marlow: {
+    id: "u2", username: "marlow", displayName: "Marlow", accountType: "human", badges: ["team", "pro"], utcOffsetMinutes: 120, desks: ["options", "futures"],
+  },
+  deskbot: { id: "u3", username: "deskbot", displayName: "Deskbot", accountType: "managed_llm" },
 };
-const MEMBER_ORDER = ["quill", "marlow", "juno", "quill", "quill", "marlow"];
+const MEMBER_ORDER = ["quill", "marlow", "deskbot", "quill", "quill", "marlow"];
 const PHRASES = [
   "Morning all.",
   "Anyone watching the open today? Volumes look thin so far.",

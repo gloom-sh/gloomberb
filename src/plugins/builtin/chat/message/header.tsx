@@ -2,10 +2,11 @@ import { useRef, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { displayWidth } from "../../../../utils/format";
-import { chatAuthorName, isDiscordGhost, isManagedBot } from "../ghost-user";
+import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
-import { ChatAiBadge } from "./ai-badge";
+import { chatNameBadges, fitChatNameBadges } from "../people";
+import { ChatNameBadges } from "./ai-badge";
 import type { ChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
@@ -84,6 +85,7 @@ export function ChatMessageHeader({
   state,
   rowProps,
   fitAuthorWidth = false,
+  fitWidth,
   onUserHover,
   onUserHoverEnd,
   onUserActivate,
@@ -94,6 +96,8 @@ export function ChatMessageHeader({
   rowProps: Record<string, unknown>;
   /** The terminal sizes the author cell to its label. */
   fitAuthorWidth?: boolean;
+  /** Cells the row has when `rowProps` sizes it in CSS: the desktop's. */
+  fitWidth?: number;
 }) {
   const authorLabel = chatAuthorName(msg.user);
   // A Discord ghost has no Gloom profile to open and no one to message.
@@ -101,6 +105,18 @@ export function ChatMessageHeader({
   const { nativeContextMenu } = useUiCapabilities();
   // The card opens beside the name the pointer is on.
   const nameRef = useRef<BoxRenderable | null>(null);
+  // AI or Team, then Pro. A row that cannot hold them, the status and its
+  // actions drops Pro first, then the role: the actions must stay reachable.
+  const rowWidth = typeof rowProps.width === "number" ? rowProps.width : fitWidth ?? null;
+  const badges = rowWidth === null
+    ? chatNameBadges(msg.user)
+    : fitChatNameBadges(
+      chatNameBadges(msg.user),
+      rowWidth - 1 - displayWidth(authorLabel)
+        - (msg.origin === "discord" ? 8 : 0)
+        - 1 - displayWidth(state.headerStatus)
+        - state.actionsWidth,
+    );
   return (
     <Box {...rowProps} flexDirection="row" height={1} paddingLeft={1}>
       <Box
@@ -129,7 +145,7 @@ export function ChatMessageHeader({
           {authorLabel}
         </Text>
       </Box>
-      {isManagedBot(msg.user) && <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />}
+      <ChatNameBadges badges={badges} selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
       {msg.origin === "discord" && <Text fg={state.originTagColor}> Discord</Text>}
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
       {(state.showReplyAction || (state.showRetryAction && actionProps.retryMessage)) && <Text fg={state.headerStatusColor}> </Text>}

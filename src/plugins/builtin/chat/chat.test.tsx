@@ -13,6 +13,7 @@ import { ChatContent } from "./content";
 import { MESSAGE_HIGHLIGHT_MS } from "./content/row-activity";
 import { SLOW_SEND_THRESHOLD_MS } from "./message/pending-send";
 import { chatHighlightBg } from "./message/render-state";
+import { chatBotNameColor } from "./people";
 import { ChatStatusWidget } from "./status-widget";
 import {
   createChatTestHarness,
@@ -1361,28 +1362,70 @@ describe("ChatContent", () => {
     expect(tui.frame()).toContain("@cy");
   });
 
-  test("badges a managed assistant's messages as AI, never a person's or a Discord ghost's", async () => {
+  test("badges a bot as AI in its own colour, staff as Team and Pro accounts as Pro, never a Discord ghost", async () => {
     const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
     const controller = createController({
       messages: [
         { id: "m1", channelId: "everyone", content: "ask me anything", replyToId: null, createdAt: at(0), user: { id: "b1", username: "gloombot", displayName: "Gloombot", accountType: "managed_llm" } },
         { id: "m2", channelId: "everyone", content: "from a person", replyToId: null, createdAt: at(10), user: { id: "u1", username: "bob", displayName: "Bob", accountType: "human" } },
         { id: "m3", channelId: "everyone", content: "a guest speaking", replyToId: null, createdAt: at(20), user: { id: "d1", username: null, displayName: "Grace H", accountType: "discord" }, origin: "discord" },
+        { id: "m4", channelId: "everyone", content: "shipping it", replyToId: null, createdAt: at(30), user: { id: "s1", username: "wren", displayName: "Wren", accountType: "human", badges: ["team", "pro"], utcOffsetMinutes: 120, desks: ["options", "futures"] } },
+        { id: "m5", channelId: "everyone", content: "long only", replyToId: null, createdAt: at(40), user: { id: "p1", username: "otto", displayName: "Otto", accountType: "human", badges: ["pro"] } },
       ],
     });
 
-    await mountChat(controller, { width: 60, height: 18 });
+    await mountChat(controller, { width: 60, height: 24 });
 
     const rows = tui.frame().split("\n").map((row) => row.trimEnd());
     const header = (author: string) => rows.find((row) => row.startsWith(` ${author} `))!;
     expect(header("gloombot")).toContain(" AI ");
-    expect(header("bob")).not.toContain("AI");
-    expect(header("Grace H")).not.toContain("AI");
+    expect(header("bob")).not.toMatch(/ (AI|Team|Pro) /);
+    expect(header("Grace H")).not.toMatch(/ (AI|Team|Pro) /);
+    expect(header("wren")).toMatch(/ wren +Team +Pro /);
+    expect(header("otto")).toContain(" Pro ");
+    expect(header("otto")).not.toContain("Team");
+
+    // A bot's name has its own colour; a person's keeps the one every name has.
+    const nameColour = (name: string) => tui.setup().captureSpans().lines
+      .flatMap((line) => line.spans)
+      .find((span) => span.text.trim() === name)?.fg.toInts().join(",");
+    expect(nameColour("gloombot")).toBe(hexToRgbaInts(chatBotNameColor()));
+    expect(nameColour("bob")).toBe(hexToRgbaInts(colors.positive));
 
     // The badge is not a target of its own: the name still opens the card, which says what the account is.
     await tui.clickFrameText("gloombot");
     await flushFrame();
     expect(tui.frame()).toContain("AI bot run by Gloom");
+    expect(tui.frame()).not.toContain("Local time");
+
+    // A person's card has their role, their local time and the desks they chose to show.
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    await flushFrame();
+    await tui.clickFrameText("wren");
+    await flushFrame();
+    const card = tui.frame();
+    expect(card).toContain("Gloom team · Pro");
+    expect(card).toMatch(/Local time \d\d:\d\d/);
+    expect(card).toContain("Trades Options, Futures");
+  });
+
+  test("a narrow terminal row drops the Pro badge before the role, and a hidden clock never shows", async () => {
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: "hi", replyToId: null, createdAt: "2026-03-28T00:00:00.000Z", user: { id: "s1", username: "longer_staff_name", displayName: "Staff", accountType: "human", badges: ["team", "pro"] } },
+      ],
+    });
+
+    await mountChat(controller, { width: 48, height: 12 });
+
+    const header = tui.frame().split("\n").find((row) => row.startsWith(" longer_staff_name "))!;
+    expect(header).toContain(" Team ");
+    expect(header).not.toContain("Pro");
+
+    await tui.clickFrameText("longer_staff_name");
+    await flushFrame();
+    expect(tui.frame()).toContain("Gloom team · Pro");
+    expect(tui.frame()).not.toContain("Local time");
   });
 
   test("shows a saved-login read-only footer when a session token is cached", async () => {
