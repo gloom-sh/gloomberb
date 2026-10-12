@@ -272,14 +272,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   OVDV: {
     summary: "The implied volatility surface fitted from option quotes: 3D sheet, table, smiles, ATM term structure, 25-delta skew and forwards, live or on stored daily closes.",
-    usage: ["OVDV NVDA", "gloomberb fn OVDV NVDA --tab skew --expiration 2027-01-15"],
+    usage: ["OVDV NVDA", "gloomberb fn OVDV NVDA --tab skew --expiration 2027-01-15", "gloomberb fn OVDV SPY --date 2026-10-09 --tab skew"],
     keys: [key("v", "iew"), key("c", "hain"), key("m", "ore expiries"), key("t", " stored dates")],
     data: { free: `${DELAYED}; stored dates at the close`, pro: "Real-time; stored dates at the close" },
     bloomberg: ["OVDV"],
   },
   HIVG: {
     summary: "Daily 30-day, 90-day and one-year at-the-money implied vol since February 2024 against realized vol, with each measure's 52-week rank and percentile.",
-    usage: ["HIVG AAPL"],
+    usage: ["HIVG AAPL", "gloomberb fn HIVG SPY --lookback ALL --csv"],
     keys: [key("s", "urface")],
     data: IV_DAILY,
     bloomberg: ["HIVG", "GV"],

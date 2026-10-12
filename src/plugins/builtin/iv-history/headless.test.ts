@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
+import { headlessReportTables, renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { renderReportCsv } from "../../../cli/report-tables";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessBundleResult, HeadlessPaneApiClient } from "../../../types/headless";
-import type { IvMethod, IvScreenPayload, IvScreenRow } from "./client";
+import type { IvHistoryPayload, IvMethod, IvPoint, IvScreenPayload, IvScreenRow } from "./client";
 import { VCA_DEFINITIONS } from "./format";
-import { ivScreenHeadless } from "./headless";
+import { ivHistoryHeadless, ivScreenHeadless } from "./headless";
 
 const reading = (date: string, method: IvMethod, iv30: number) => ({
   date, method, capturedAt: `${date}T19:55:00Z`, spot: 100, iv7: null, iv30, iv60: null, iv90: iv30 + 0.01, iv180: null, iv365: null,
@@ -30,7 +32,8 @@ const load = async (rows: IvScreenRow[], marketData: DataProvider = createTestDa
     return column.format ? column.format(value, section.rows[index]!) : String(value);
   };
   const footer = formatFreshnessLine(deriveHeadlessFreshness(ivScreenHeadless, result, Date.parse("2026-10-10T02:40:00Z")));
-  return { title: section.title, keys: section.columns!.map((column) => column.key), cell, footer, result };
+  return { title: section.title, keys: section.columns!.map((column) => column.key),
+    header: (key: string) => section.columns!.find((column) => column.key === key)?.header, cell, footer, result };
 };
 
 describe("VCA dates", () => {
@@ -88,8 +91,10 @@ describe("VCA dates", () => {
   test("skew from an older capture than the reading is dated", async () => {
     const stale = { ...row("NVDA", reading("2026-10-09", "trade-close", 0.293), "2026-10-09"),
       skew: { date: "2026-10-08", put25: 0.3, call25: 0.28, skew: 0.02 } };
-    const { keys, cell, result } = await load([stale]);
+    const { keys, header, cell, result } = await load([stale]);
     expect(keys).toContain("skewDate");
+    // The header names the sign: OVDV's risk reversal subtracts the other way.
+    expect(header("skew")).toBe("25D skew put-call (pts)");
     expect(cell("skewDate", 0)).toBe("2026-10-08");
     // Puts at 30% against calls at 28% read +2.0, and the report says which side is subtracted and in what unit.
     expect(cell("skew", 0)).toBe("+2.0");
@@ -171,5 +176,53 @@ describe("VCA backfill states", () => {
       notes: ["Queued for backfill: ZZZZ; a first backfill usually takes under 10 minutes, try again after 08:14 UTC."],
       complete: false, unavailableSymbols: ["ZZZZ"],
     });
+  });
+});
+
+describe("HIVG skew history", () => {
+  const point = (sessionDate: string, method: IvMethod, wings?: { put25_30: number | null; call25_30: number | null }): IvPoint => ({
+    sessionDate, method, capturedAt: `${sessionDate}T${method === "quote-mid" ? "19:47" : "23:30"}:00Z`, spot: 100,
+    iv7: null, iv30: 0.2, iv60: null, iv90: 0.21, iv180: null, iv365: null, ...wings,
+  });
+  const noWings = { put25_30: null, call25_30: null };
+  const report = async (series: IvPoint[]) => {
+    const payload: IvHistoryPayload = { version: 1, symbol: "SPY", asOf: "2026-10-10", status: "ready",
+      coverage: { source: "seed", addedAt: "2026-09-23T00:00:00Z", backfilledThrough: "2026-10-09", since: "2026-10-05" },
+      stats: { iv30: null, iv90: null }, latest: null, series, warnings: [] };
+    const args = createTestHeadlessArgs({ rawArgument: "SPY", argument: "SPY", symbols: ["SPY"], options: { lookback: "ALL", hvWindow: "20" } });
+    const apiClient = { impliedVolatility: async () => payload } as unknown as HeadlessPaneApiClient;
+    const result = await ivHistoryHeadless.load(args, createTestHeadlessContext({ apiClient })) as HeadlessBundleResult;
+    const freshness = deriveHeadlessFreshness(ivHistoryHeadless, result);
+    const csv = renderReportCsv(headlessReportTables(ivHistoryHeadless, result, args, "HIVG", freshness, { complete: true, unavailableSymbols: [] }));
+    const daily = csv.split("# section: Daily history\n")[1]!.split("\n\n")[0]!.split("\n");
+    return { result, daily, text: renderHeadlessPaneText(ivHistoryHeadless, result, args, "HIVG", freshness) };
+  };
+
+  test("each session joins its own capture's skew, blank before the first, and the notes say when it starts", async () => {
+    const { result, daily, text } = await report([
+      point("2026-10-05", "trade-close", noWings), point("2026-10-06", "trade-close", noWings),
+      // A capture that missed a wing is no skew at all, not half of one.
+      point("2026-10-06", "quote-mid", { put25_30: 0.25, call25_30: null }),
+      point("2026-10-07", "trade-close", noWings), point("2026-10-07", "quote-mid", { put25_30: 0.24, call25_30: 0.212 }),
+      point("2026-10-08", "trade-close", noWings), point("2026-10-08", "quote-mid", { put25_30: 0.23, call25_30: 0.205 }),
+    ]);
+    // Existing columns keep their order; the two skew columns follow IV-HV, each naming its sign.
+    expect(daily[0]!.split(",").map((header) => header.replace(/ \(%\)$/, "")))
+      .toEqual(["Session", "IV30", "IV90", "IV1Y", "HV", "IV-HV", "skew25d put-call (pts)", "rr25d call-put (pts)"]);
+    expect(daily.slice(1).map((line) => line.split(",").slice(-2).join(","))).toEqual(["2.5,-2.5", "2.8,-2.8", ",", ","]);
+    expect(daily.slice(1).map((line) => line.split(",")[0])).toEqual(["2026-10-08", "2026-10-07", "2026-10-06", "2026-10-05"]);
+    expect(result.notes).toEqual(["no IV1Y history yet", "skew from 2026-10-07"]);
+    const cells = (date: string) => text.split("\n").find((line) => line.startsWith(date))!.trim().split(/\s{2,}/);
+    expect(cells("2026-10-08").slice(-2)).toEqual(["+2.5", "-2.5"]);
+    expect(cells("2026-10-05").slice(-2)).toEqual(["--", "--"]);
+  });
+
+  test("an older server without the wing fields keeps the CSV columns blank and says skew is unavailable", async () => {
+    const { result, daily, text } = await report([point("2026-10-07", "trade-close"), point("2026-10-07", "quote-mid"), point("2026-10-08", "trade-close")]);
+    expect(daily[0]!.endsWith(",IV-HV,skew25d put-call (pts),rr25d call-put (pts)")).toBe(true);
+    expect(daily.slice(1).every((line) => line.endsWith(",,"))).toBe(true);
+    expect(result.notes).toContain("skew unavailable from this server");
+    // The text table leaves out columns no session fills.
+    expect(text).not.toContain("skew25d");
   });
 });

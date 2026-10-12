@@ -1,10 +1,13 @@
-import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneRow } from "../../../types/plugin";
+import type { Quote } from "../../../types/financials";
+import type { HeadlessBundleSection, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneLoadArgs, HeadlessPaneRow } from "../../../types/plugin";
 import {
-  expirationOptionSeconds, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, readOptionExpiration,
+  expirationOptionSeconds, findListedExpiry, OPTION_EXPIRATION_FORMAT, OPTION_EXPIRATION_PLACEHOLDER, readOptionExpiration, unlistedExpiryText,
 } from "../../../utils/option-expiry";
+import { skewHeader } from "../iv-history/format";
 import { formatStrikeLabel } from "../options/table";
 import { createSurfaceDependencies, loadVolatilitySurface } from "./client";
 import { buildSurfaceGrid, type SurfaceGridOptions, type SurfaceSettings, type SurfaceSnapshot } from "./model";
+import { formatCaptureTime, loadDatedSurface, storedSurfaceDate, type DatedSurfaceSnapshot } from "./stored";
 import {
   expiryFeedFields, expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow, surfaceSkewRow,
   surfaceSmileRows, surfaceTermRows, TERM_SLOPE_MIN_DAYS, type SurfaceForwardRow, type SurfaceSkewRow,
@@ -25,6 +28,17 @@ const SKEW_NOTES = [
   "RR is 25D call IV minus 25D put IV, BF the average 25D wing IV minus ATM IV, 90/110 the IV at 90% of spot minus the IV at 110%; all in vol points.",
   `Slope is the ATM IV change per year to the next listed expiry, in vol points; left out under ${TERM_SLOPE_MIN_DAYS} days to expiry, where it annualises a few hours of noise.`,
 ];
+
+/**
+ * When and at what spot a stored close was taken, worded as the pane's footer
+ * words it, and the settings it cannot honour: it was fitted once, on mid
+ * quotes with recomputed IV.
+ */
+function storedNotes(snapshot: DatedSurfaceSnapshot, options: HeadlessPaneLoadArgs["options"]): string[] {
+  const ignored = [options.ivSource !== "recomputed" && "--ivSource", options.priceSide !== "mid" && "--priceSide"].filter(Boolean);
+  return [`Stored close, spot ${formatPrice(snapshot.spot)}, captured ${formatCaptureTime(snapshot.stored!.capturedAt)} New York.`,
+    ...ignored.length ? [`A stored close is fitted on mid quotes with recomputed IV; ${ignored.join(" and ")} do${ignored.length === 1 ? "es" : ""} not apply.`] : []];
+}
 
 const number = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 const iv = (value: unknown) => formatIv(number(value));
@@ -94,8 +108,9 @@ function skewSection(snapshot: SurfaceSnapshot): HeadlessBundleSection {
   return { title: "Skew", columns: [
     { key: "expiry", header: "Expiry" }, { key: "days", header: "Days", format: days },
     { key: "put25", header: "25D put IV", format: iv }, { key: "call25", header: "25D call IV", format: iv },
-    { key: "riskReversal", header: "RR pts", format: gap }, { key: "butterfly", header: "BF pts", format: gap },
-    { key: "moneynessSkew", header: "90/110 pts", format: (value, row) => typeof value === "number" ? points(value)
+    // Each difference names its sign: the risk reversal is call minus put, unlike HIVG and VCA's put-minus-call skew.
+    { key: "riskReversal", header: skewHeader("RR", "call-put"), format: gap }, { key: "butterfly", header: skewHeader("BF", "wings-ATM"), format: gap },
+    { key: "moneynessSkew", header: skewHeader("90/110", "90%-110%"), format: (value, row) => typeof value === "number" ? points(value)
       : (row as unknown as SurfaceSkewRow).moneynessGap ?? "--" },
     { key: "termSlope", header: "Slope pts/yr", format: (value, row) => typeof value === "number" ? points(value)
       : (row as unknown as SurfaceSkewRow).termSlopeHidden ? HIDDEN_SLOPE_TEXT : "--" },
@@ -128,20 +143,36 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
     { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--expiration 2027-01-15 --tab smile",
       description: `Selected expiry, as ${OPTION_EXPIRATION_FORMAT}; the first at least four weeks out when omitted`,
       settingKey: "expiration", normalize: (value) => expirationOptionSeconds(value) },
+    { key: "date", type: "string", placeholder: "YYYY-MM-DD", example: "--date 2026-10-09 --tab skew",
+      description: "Stored close surface of that session instead of the live chain; a date with no capture lists the stored dates",
+      pluginState: { pluginId: "ticker-research", key: "historyDate" }, normalize: (value) => storedSurfaceDate(value) },
   ],
   async load(args, ctx) {
     const symbol = args.symbols[0]!;
-    const instrument = await ctx.resolveInstrument?.(symbol) ?? { symbol };
-    const quote = await ctx.marketData.getQuote(symbol, instrument.exchange);
-    if (!(quote.price > 0) || !Number.isFinite(quote.price) || quote.stale) {
-      return { sections: [], complete: false, unavailableSymbols: [symbol], errors: ["A current underlying price is required"] };
-    }
     const requested = readOptionExpiration(args.options.expiration);
-    const snapshot = await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated,
-      settings: { ivSource: args.options.ivSource as SurfaceSettings["ivSource"], priceSide: args.options.priceSide as SurfaceSettings["priceSide"] },
-      limit: Number(args.options.limit), signal: ctx.signal,
-      requiredExpiries: requested == null ? [] : [requested],
-    }, createSurfaceDependencies(ctx.marketData, ctx.apiClient));
+    const date = typeof args.options.date === "string" && args.options.date ? storedSurfaceDate(args.options.date) : null;
+    let snapshot: DatedSurfaceSnapshot;
+    let quote: Quote | null = null;
+    if (date) {
+      // A stored close needs no current price: it carries the spot it was fitted at.
+      snapshot = await loadDatedSurface(symbol, date, { signal: ctx.signal, api: ctx.apiClient });
+      // An expiry the capture does not have is named against the ones it has, as the live chain names its own.
+      if (requested != null && findListedExpiry(requested, snapshot.catalogue) == null) {
+        snapshot = { ...snapshot, failures: [...snapshot.failures, { expiration: requested, message: unlistedExpiryText(requested, snapshot.catalogue) }] };
+      }
+    } else {
+      const instrument = await ctx.resolveInstrument?.(symbol) ?? { symbol };
+      quote = await ctx.marketData.getQuote(symbol, instrument.exchange);
+      if (!(quote.price > 0) || !Number.isFinite(quote.price) || quote.stale) {
+        return { sections: [], complete: false, unavailableSymbols: [symbol], errors: ["A current underlying price is required"] };
+      }
+      snapshot = await loadVolatilitySurface({ instrument, spot: quote.price, spotAsOf: quote.lastUpdated,
+        settings: { ivSource: args.options.ivSource as SurfaceSettings["ivSource"], priceSide: args.options.priceSide as SurfaceSettings["priceSide"] },
+        limit: Number(args.options.limit), signal: ctx.signal,
+        requiredExpiries: requested == null ? [] : [requested],
+      }, createSurfaceDependencies(ctx.marketData, ctx.apiClient));
+    }
+    const stored = snapshot.stored ?? null;
     const axis = args.options.axis as SurfaceAxis;
     const tab = (SURFACE_TABS as readonly string[]).includes(String(args.options.tab)) ? args.options.tab as SurfaceTab : "surface";
     const available = snapshot.expiries.some((expiry) => expiry.fit);
@@ -167,9 +198,11 @@ export const volSurfaceHeadless: HeadlessPaneDefinition<"bundle"> = {
       unavailableSymbols: available ? [] : [symbol],
       errors: [...snapshot.failures.map((failure) => failure.expiration == null ? failure.message
         : `${expiryLabel(failure.expiration)}: ${failure.message}`), ...smile?.errors ?? []],
-      ...(tab === "skew" ? { notes: SKEW_NOTES } : {}),
-      ...(smile?.freshness ? { freshness: smile.freshness } : {}),
-      metadata: { ...snapshot, underlyingQuote: quote, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations" },
+      ...(stored || tab === "skew" ? { notes: [...stored ? storedNotes(snapshot, args.options) : [], ...tab === "skew" ? SKEW_NOTES : []] } : {}),
+      // A stored close is dated by its session, whichever view prints it.
+      ...(stored ? { freshness: { status: "not-a-feed" as const, basis: "stored close capture", asOf: stored.sessionDate } }
+        : smile?.freshness ? { freshness: smile.freshness } : {}),
+      metadata: { ...snapshot, ...quote ? { underlyingQuote: quote } : {}, unit: "decimal annualized IV", methodology: "docs/research-data.md#shared-volatility-calculations" },
     };
   },
 };

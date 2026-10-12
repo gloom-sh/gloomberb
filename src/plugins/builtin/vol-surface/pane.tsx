@@ -24,7 +24,7 @@ import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve,
 import { stableSurfaceSheet, SURFACE_LIVE_RELOAD_MS, surfaceFreshnessLabel, type SurfaceSheetAxes } from "./live";
 import { loadStoredSurface, loadSurfaceDates } from "../iv-history/client";
 import { useIvRank } from "../iv-history/rank";
-import { storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
+import { formatCaptureTime, storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
 import { useVolSurfaceEvidence } from "./evidence";
 import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, surfaceFilterSummary, totalSurfaceFilterCounts, windowSurfaceGrid,
   type SurfaceExpiry, type SurfaceGridRow, type SurfaceSettings, type SurfaceSnapshot } from "./model";
@@ -452,11 +452,6 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
 function noRefresh(): void {}
 
 const wholeNumber = (value: number | null) => value == null ? "--" : String(Math.round(value));
-const CAPTURE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-function formatCaptureTime(iso: string): string {
-  const time = Date.parse(iso);
-  return Number.isFinite(time) ? CAPTURE_TIME.format(time) : "--";
-}
 /** Whether a settled live chain produced any clean quote, with the filter counts that explain why not. */
 function liveQuoteCoverage(snapshot: SurfaceSnapshot | null | undefined) {
   const expiries = snapshot?.expiries.filter((entry) => entry.state !== "loading") ?? [];

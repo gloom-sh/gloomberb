@@ -12,6 +12,15 @@ export const VCA_DEFINITIONS = [
   "VIX is Cboe's 30-day S&P 500 implied vol from the whole SPX strike strip, skew included; IV30 here is at the money, so VIX usually reads higher.",
 ] as const;
 
+/**
+ * A skew column's header names its sign, since the conventions differ: the
+ * 25-delta skew is put minus call (HIVG, VCA), the risk reversal call minus
+ * put (OVDV). "skew25d put-call (pts)": the stem a script keys on, the
+ * sign, and vol points in the unit's usual place, as in "IV30 (%)". No
+ * comma, so a CSV header needs no quoting.
+ */
+export const skewHeader = (stem: string, sign: string) => `${stem} ${sign} (pts)`;
+
 export const formatVol = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(1)}%`;
 export const formatPoints = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "--" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}`;

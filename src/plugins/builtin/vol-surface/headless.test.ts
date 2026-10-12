@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
+import { ApiRequestError } from "../../../api-client/errors";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -8,6 +9,8 @@ import { parseOptionExpiration } from "../../../utils/option-expiry";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../options-calculator/model";
 import { daysToExpiryFrom, valueOption } from "../shared/volatility";
 import { volSurfaceHeadless } from "./headless";
+import type { SurfaceSnapshot } from "./model";
+import { storedSurfacePayload } from "./test-fixture";
 
 const now = Date.UTC(2026, 8, 22, 14);
 const expiry = (days: number) => Date.UTC(2026, 8, 22 + days) / 1000;
@@ -59,7 +62,9 @@ describe("OVDV report", () => {
     expect((await load({ tab: "forwards" })).titles).toEqual(["Forwards"]);
     const skew = await load({ tab: "skew" });
     expect(skew.titles).toEqual(["Skew"]);
-    expect(skew.text).toContain("RR pts");
+    // Each difference names its sign; the risk reversal is call minus put, unlike HIVG and VCA's skew.
+    expect(skew.table("Skew").columns!.slice(4, 7).map((column) => column.header))
+      .toEqual(["RR call-put (pts)", "BF wings-ATM (pts)", "90/110 90%-110% (pts)"]);
     expect(skew.text).not.toContain("Expiry / tenor");
     expect(skew.result.notes?.[0]).toContain("RR is 25D call IV minus 25D put IV");
   });
@@ -86,5 +91,44 @@ describe("OVDV report", () => {
     // A date the chain does not list names the listed ones, once.
     const missing = await load({ tab: "smile", expiration: parseOptionExpiration("2026-10-03")! });
     expect(missing.result.errors).toEqual(["2026-10-03: not listed; nearest: 2026-09-25, 2026-10-02, 2026-11-01, 2026-12-21"]);
+  });
+});
+
+describe("OVDV --date", () => {
+  const sessionDate = "2026-09-22";
+  /** The report on a stored close: the live board fitted once is what a close capture stores. */
+  async function stored(options: Record<string, string | number>, { surface, dates }: { surface: boolean; dates: string[] }) {
+    const live = (await load({})).result.metadata as unknown as SurfaceSnapshot;
+    const payload = storedSurfacePayload({ symbol: "AAPL", sessionDate, capturedAt: new Date(now).toISOString(), spot: 100, expiries: live.expiries });
+    const paths: string[] = [];
+    const apiClient = { impliedVolatility: async (path: string) => {
+      paths.push(path);
+      if (path.startsWith("surface-dates?")) return { version: 1, symbol: "AAPL", dates };
+      if (surface) return payload;
+      throw new ApiRequestError("No stored AAPL surface", 404);
+    } } as unknown as HeadlessPaneApiClient;
+    const args = createTestHeadlessArgs({ rawArgument: "AAPL", argument: "AAPL", symbols: ["AAPL"],
+      options: { tab: "surface", ivSource: "recomputed", priceSide: "mid", axis: "spot", tenors: "listed", limit: 18, ...options } });
+    const result = await volSurfaceHeadless.load(args, createTestHeadlessContext({ apiClient,
+      // A stored close carries its own spot; a live quote is never asked for.
+      marketData: createTestDataProvider({ id: "ovdv-test", getQuote: async () => { throw new Error("no quote for a stored close"); } }) })) as HeadlessBundleResult;
+    return { result, paths, text: renderHeadlessPaneText(volSurfaceHeadless, result, args, "OVDV") };
+  }
+
+  test("prints that session's stored close through the same views, dated by the session", async () => {
+    const { result, paths, text } = await stored({ date: sessionDate, tab: "skew" }, { surface: true, dates: [sessionDate] });
+    expect(paths).toContain(`surface?symbol=AAPL&date=${sessionDate}`);
+    expect(result.sections.map((section) => section.title).filter((title) => title !== "Warnings")).toEqual(["Skew"]);
+    expect(result.freshness).toEqual({ status: "not-a-feed", basis: "stored close capture", asOf: sessionDate });
+    expect(result.notes?.[0]).toBe("Stored close, spot 100.00, captured 10:00 New York.");
+    expect(text).toContain("Tue 22 Sep 2026 · not a live feed (stored close capture)");
+    expect(result.metadata).not.toHaveProperty("underlyingQuote");
+  });
+
+  test("a date with no capture lists the stored dates, and a capture not shown yet says so", async () => {
+    await expect(stored({ date: "2026-09-19" }, { surface: false, dates: ["2026-09-22", "2026-09-18"] }))
+      .rejects.toThrow("No stored AAPL close surface for 2026-09-19. Stored dates: 2026-09-22, 2026-09-18.");
+    await expect(stored({ date: sessionDate }, { surface: false, dates: [sessionDate] }))
+      .rejects.toThrow(`The AAPL ${sessionDate} close capture is not shown yet: without real-time data a capture shows 15 minutes after it is taken.`);
   });
 });
