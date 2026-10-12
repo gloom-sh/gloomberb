@@ -11,9 +11,9 @@ interface PersonalPaneSource {
 }
 
 /** Whether the plugin that owns a pane also connects a broker. */
-function ownerConnectsBroker({ brokers, getPanePluginId, getBrokerPluginId }: PersonalPaneSource["registry"], paneType: string): boolean {
-  const owner = getPanePluginId(paneType);
-  return !!owner && [...brokers.keys()].some((brokerType) => getBrokerPluginId(brokerType) === owner);
+function ownerConnectsBroker(registry: PersonalPaneSource["registry"], paneType: string): boolean {
+  const owner = registry.getPanePluginId(paneType);
+  return !!owner && [...registry.brokers.keys()].some((brokerType) => registry.getBrokerPluginId(brokerType) === owner);
 }
 
 /**
