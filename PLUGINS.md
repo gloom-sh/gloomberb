@@ -1526,7 +1526,7 @@ interface TickerResearchTabProps {
 
 Call `onCapture(true)` when your tab needs exclusive keyboard input (e.g., a text editor or chat input) and `onCapture(false)` when done, so global shortcuts keep working.
 
-A tab only appears for tickers it has data for. Declare the instrument kinds it covers with `instruments`; the host resolves the ticker's kind from its quote, broker contract and saved type (`equity`, `fund`, `crypto`, `currency`, `index`, `future`, `option`, `bond`, `other`; `equity` when nothing says otherwise) and hides the tab for any other kind. Omit `instruments` for tabs every ticker has, such as a chart or notes. `isVisible` handles narrower conditions and receives the resolved `instrumentKind`:
+A tab only appears for tickers it has data for. Declare the instrument kinds it covers with `instruments`; the host resolves the ticker's kind from its quote, broker contract and saved type (`equity`, `fund`, `crypto`, `currency`, `index`, `future`, `perpetual`, `prediction`, `option`, `bond`, `other`; `equity` when nothing says otherwise) and hides the tab for any other kind. Omit `instruments` for tabs every ticker has, such as a chart or notes. `isVisible` handles narrower conditions and receives the resolved `instrumentKind`:
 
 ```typescript
 ctx.registerTickerResearchTab({

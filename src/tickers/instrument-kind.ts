@@ -3,6 +3,7 @@ import type { TickerInstrumentKind } from "../types/instrument";
 import type { TickerRecord } from "../types/ticker";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { perpetualListing } from "./perpetual-listing";
+import { predictionMarketListing } from "./prediction-listing";
 
 const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
   STK: "equity",
@@ -46,6 +47,7 @@ const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
   CONTFUT: "future",
   PERP: "perpetual",
   PERPETUAL: "perpetual",
+  KALSHI: "prediction",
   OPT: "option",
   OPTION: "option",
   OPTIONS: "option",
@@ -75,10 +77,11 @@ export function classifyInstrumentType(type: string | null | undefined): TickerI
   return null;
 }
 
-/** Market listing syntax: `CCC` coins, a perpetual venue's contracts, `^` indices, `=X` pairs, `=F` futures. */
+/** Market listing syntax: `CCC` coins, a perpetual venue's contracts, a prediction market, `^` indices, `=X` pairs, `=F` futures. */
 export function kindFromListingSyntax(listing: string, exchange?: string): TickerInstrumentKind | null {
   if (canonicalExchange(exchange) === "CCC") return "crypto";
   if (perpetualListing(listing, exchange)) return "perpetual";
+  if (predictionMarketListing(listing, exchange)) return "prediction";
   const symbol = parsePublicTickerKey(listing).symbol;
   if (symbol.startsWith("^")) return "index";
   if (symbol.endsWith("=X")) return "currency";

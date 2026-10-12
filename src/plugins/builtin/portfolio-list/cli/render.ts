@@ -962,6 +962,7 @@ const NO_MARKET_CAP: Partial<Record<TickerInstrumentKind, string>> = {
   currency: "currencies",
   future: "futures",
   perpetual: "perpetuals",
+  prediction: "prediction markets",
   option: "options",
   bond: "bonds",
 };

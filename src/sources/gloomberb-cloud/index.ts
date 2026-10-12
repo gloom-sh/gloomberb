@@ -73,6 +73,7 @@ import {
   perpetualTarget,
   searchPerpetualMarkets,
 } from "./perpetuals";
+import { predictionMarketListing } from "../../tickers/prediction-listing";
 import { settleWithin } from "../../utils/async-deadline";
 
 const providerId = GLOOMBERB_CLOUD_PROVIDER_ID;
@@ -266,6 +267,7 @@ function cloudResponseTargetKey(key: string, requested: Set<string>): string | u
  * digits: Cloud has no 700 or 5 on HKEX, only 0700 and 0005.
  */
 function cloudInstrumentTarget(symbol: string, exchange?: string) {
+  rejectPredictionMarket(symbol, exchange);
   const target = publicListingTarget(symbol, exchange);
   return target.exchange ? { ...target, symbol: hongKongListingCode(target.symbol, target.exchange) } : target;
 }
@@ -356,6 +358,16 @@ function splitPerpetualTargets<T extends { symbol: string; exchange?: string }>(
 /** A perpetual contract has no holders, filings or options; asking the quote service would only miss. */
 function rejectPerpetual(ticker: string, exchange: string | undefined, what: string): void {
   if (perpetualTarget(ticker, exchange)) throw createProviderMiss(`Perpetual markets have no ${what}: ${ticker}`);
+}
+
+/**
+ * A prediction market has no quote, history or company data on Gloom Cloud.
+ * Every listing request is built from `cloudInstrumentTarget`, so this keeps
+ * one saved as `KALSHI:KXGREENLAND-29` from going out as a stock named KALSHI.
+ */
+function rejectPredictionMarket(ticker: string, exchange: string | undefined): void {
+  const market = predictionMarketListing(ticker, exchange);
+  if (market) throw createProviderMiss(`Prediction markets have no market data: ${market.symbol}`);
 }
 
 /** A perpetual has a price and nothing a company reports. */
@@ -561,6 +573,7 @@ export class GloomberbCloudProvider implements AssetDataProvider {
 
   async getSecFilings(ticker: string, count = 15, exchange?: string, context?: MarketDataRequestContext): Promise<SecFilingItem[]> {
     rejectPerpetual(ticker, exchange, "SEC filings");
+    rejectPredictionMarket(ticker, exchange);
     const venue = nonUsSecListingVenue(ticker, exchange);
     const name = venue ? context?.listingName?.trim() || await this.listingName(ticker, venue) || undefined : undefined;
     const filings = await withCloudFallback(async () => {
@@ -828,7 +841,7 @@ export function createGloomberbCloudCapabilities(provider = createGloomberbCloud
       priority: 10,
       provider: {
         supports(query: NewsQuery): boolean {
-          return normalizeNewsFeed(query) === "ticker" ? !!query.ticker : true;
+          return normalizeNewsFeed(query) === "ticker" ? !!query.ticker && !predictionMarketListing(query.ticker, query.exchange) : true;
         },
         async fetchNewsPage(query: NewsQuery) {
           const response = await withCloudFallback(

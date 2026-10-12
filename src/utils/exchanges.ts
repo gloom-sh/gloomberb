@@ -468,8 +468,25 @@ export function publicExchange(value?: string): string {
   return PUBLIC_EXCHANGE_ALIASES[canonical] ?? canonical;
 }
 
+/**
+ * Prediction-market venues. A market is saved venue first, `KALSHI:KXGREENLAND-29`,
+ * the reverse of a listing key, so what follows the colon is its market id.
+ */
+const PREDICTION_MARKET_EXCHANGES: ReadonlySet<string> = new Set(["KALSHI"]);
+
+/** Whether an exchange code is a prediction-market venue's. */
+export function isPredictionMarketExchange(value?: string): boolean {
+  return PREDICTION_MARKET_EXCHANGES.has(canonicalExchange(value));
+}
+
 export function parsePublicTickerKey(value: string): { symbol: string; exchange?: string } {
   const normalized = normalizeSymbol(value);
+  const venueEnd = normalized.indexOf(":");
+  if (venueEnd > 0 && PREDICTION_MARKET_EXCHANGES.has(normalized.slice(0, venueEnd))) {
+    // What follows the colon is the market id, not an exchange.
+    const marketId = normalized.slice(venueEnd + 1);
+    if (marketId && !marketId.includes(":")) return { symbol: marketId, exchange: normalized.slice(0, venueEnd) };
+  }
   const separator = normalized.lastIndexOf(":");
   if (separator <= 0 || separator === normalized.length - 1) return { symbol: normalized };
   const exchange = canonicalExchange(normalized.slice(separator + 1));
