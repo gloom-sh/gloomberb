@@ -610,7 +610,8 @@ export function renderHeadlessPaneText(
   fallbackTitle: string,
   freshness: ReportFreshness = deriveHeadlessFreshness(definition, result),
 ): string {
-  const lines = [cliStyles.bold(reportTitle(definition, args, result, fallbackTitle)), ""];
+  // A long title wraps to a narrow --width like the text under a table; each line stays bold.
+  const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
   const notices = textNotices(result);
   if (notices.length) lines.push(...notices, "");
   switch (definition.shape) {
