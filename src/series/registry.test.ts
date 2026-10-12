@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { SeriesRegistry, capabilitySeriesId, seriesExpression } from "./registry";
 import { normalizeSeriesPoints, resolveLoadedSeries, seriesLoadWindow } from "./resolve";
+import { chartSeriesResolveOutputSchema } from "../capabilities/chart-series";
 import { hostLabelWords, isValidSeriesUnit, validateSeriesDefinition } from "./validate";
 import type { SeriesDefinition, SeriesLoadRequest } from "./types";
 
@@ -116,7 +117,7 @@ describe("loading a series", () => {
     ]);
   });
 
-  test("the loader gets the chart's window and the typed symbol, and its result carries the unit and warning", async () => {
+  test("the loader gets the chart's window and the typed symbol, and its result carries the unit, warning and attribution", async () => {
     let request: SeriesLoadRequest | null = null;
     const now = new Date("2026-06-15T00:00:00Z");
     const resolved = await resolveLoadedSeries({
@@ -128,7 +129,7 @@ describe("loading a series", () => {
       style: "step",
       load: (received) => {
         request = received;
-        return { points: [{ date: "2026-06-01", value: 0.5 }], warning: "cached" };
+        return { points: [{ date: "2026-06-01", value: 0.5 }], warning: "cached", attribution: { source: "FINRA series FEE", publisher: "FINRA" } };
       },
     }, { viewport: { range: "1Y", resolution: "auto" }, ticker: "aapl" }, now);
     expect(request!).toMatchObject({ ticker: "AAPL", start: new Date("2025-06-15T00:00:00Z") });
@@ -142,6 +143,9 @@ describe("loading a series", () => {
       interpolation: "step-after",
       warning: "cached",
     });
+    // A report cites what the loader named only if the resolve boundary lets it through.
+    expect(chartSeriesResolveOutputSchema.parse(resolved).attribution).toEqual({ source: "FINRA series FEE", publisher: "FINRA" });
+    expect(() => chartSeriesResolveOutputSchema.parse({ ...resolved, attribution: { source: "" } })).toThrow();
     expect(seriesLoadWindow({ range: "ALL", resolution: "auto" })).toEqual({});
     expect(seriesLoadWindow({ range: "1Y", resolution: "auto", dateWindow: { start: "2024-01-01", end: "2024-02-01" } }))
       .toEqual({ start: new Date("2024-01-01"), end: new Date("2024-02-01") });

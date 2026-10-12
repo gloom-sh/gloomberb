@@ -45,6 +45,10 @@ export function validateCentralBankRates(payload: CentralBankRatesPayload): Cent
     if (row.nextMeeting !== null && (!row.nextMeeting || row.nextMeeting.date == null || !dateOrNull(row.nextMeeting.date)
       || !urlOrNull(row.nextMeeting.sourceUrl) || row.nextMeeting.sourceUrl == null
       || !Number.isFinite(Date.parse(row.nextMeeting.verifiedAt)))) return invalid();
+    // Fields a newer server adds are read only when they hold what this app expects.
+    if (row.nextMeeting && row.nextMeeting.kind !== undefined && row.nextMeeting.kind !== "decision" && row.nextMeeting.kind !== "fixing") delete row.nextMeeting.kind;
+    if (row.nextMeetingStatus !== undefined && !["scheduled", "not-published", "not-verified", "no-policy-rate"].includes(row.nextMeetingStatus)) delete row.nextMeetingStatus;
+    if (row.seriesNotes !== undefined && !strings(row.seriesNotes)) delete row.seriesNotes;
   }
   return payload;
 }

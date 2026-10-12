@@ -25,3 +25,98 @@ export function policyBoardRow(row: CentralBankRow): PolicyBoardRow {
     percentile: row.percentile.value, asOf: row.asOf, status: row.status, observation: row,
     history: policyHistory(row).flatMap((point) => point.value == null ? [] : [{ date: new Date(point.date), close: point.value }]) };
 }
+
+const SOURCE_LABELS = { bis: "BIS", fred: "FRED" } as const;
+
+/** Where the row's series is read from: `BIS` or `FRED`. */
+const policySource = (row: CentralBankRow) => row.source ? SOURCE_LABELS[row.source] : null;
+
+/** Each series' own page: one per FRED series (both bounds of the US range), the country's for BIS. */
+function policySeriesUrls(row: CentralBankRow): string[] {
+  if (row.source === "fred") return row.sourceSeriesIds.map((id) => `https://fred.stlouisfed.org/series/${id}`);
+  return row.sourceUrl ? [row.sourceUrl] : [];
+}
+
+/** `BIS series D.GB (url)`; a two-series range cites each bound: `FRED series DFEDTARL (lower bound, url) and DFEDTARU (upper bound, url)`. */
+function seriesCitation(row: CentralBankRow): string | null {
+  const source = policySource(row);
+  const ids = row.sourceSeriesIds;
+  const urls = policySeriesUrls(row);
+  if (!source || ids.length === 0) return null;
+  if (ids.length === 2 && urls.length === 2) return `${source} series ${ids[0]} (lower bound, ${urls[0]}) and ${ids[1]} (upper bound, ${urls[1]})`;
+  return `${source} series ${ids.join(" and ")}${urls.length ? ` (${urls.join(", ")})` : ""}`;
+}
+
+/**
+ * One line to cite the row by: its instrument and rate, the series it is read
+ * from with its page, and its own observation date, then the bank's site when
+ * that confirmed the level. `Bank Rate 3.75%, BIS series D.GB (https://...), as of 2026-10-05`.
+ */
+export function policyCitation(row: CentralBankRow): string {
+  const series = seriesCitation(row);
+  if (row.value == null) {
+    const missing = hasNoPolicyRate(row) ? `${row.label}: ${row.instrument.toLowerCase()}`
+      : `${row.instrument}: no current observation (${(row.unavailableReason ?? "unavailable").replaceAll("-", " ")})`;
+    return series ? `${missing}, ${series}` : missing;
+  }
+  const confirmed = row.confirmedAt && row.confirmationSourceUrl ? `; confirmed at ${row.confirmationSourceUrl} on ${row.confirmedAt.slice(0, 10)}` : "";
+  return `${row.instrument} ${policyLevel(row)}${series ? `, ${series}` : ""}, as of ${row.asOf}${confirmed}`;
+}
+
+interface PolicyNextMeeting {
+  /** The date, or why there is none: `not published`, `not verified`, `no policy rate`. */
+  text: string;
+  kind: "decision" | "fixing" | null;
+  sourceUrl: string | null;
+  verifiedAt: string | null;
+}
+
+/**
+ * The next decision from the bank's own calendar, or China's LPR fixing. A
+ * server that does not say why a meeting is missing predates the calendars,
+ * so its null reads as not published.
+ */
+function policyNextMeeting(row: CentralBankRow): PolicyNextMeeting {
+  const meeting = row.nextMeeting;
+  if (meeting) return { text: meeting.date, kind: meeting.kind ?? "decision", sourceUrl: meeting.sourceUrl, verifiedAt: meeting.verifiedAt };
+  const text = hasNoPolicyRate(row) || row.nextMeetingStatus === "no-policy-rate" ? "no policy rate"
+    : row.nextMeetingStatus === "not-verified" ? "not verified" : "not published";
+  return { text, kind: null, sourceUrl: null, verifiedAt: null };
+}
+
+/** `next decision 2026-11-05 (https://..., verified 2026-10-12)`, `next LPR fixing ...`, or `next decision not published`. */
+export function policyNextMeetingText(row: CentralBankRow): string {
+  const meeting = policyNextMeeting(row);
+  if (meeting.text === "no policy rate") return meeting.text;
+  const event = meeting.kind === "fixing" ? "LPR fixing" : "decision";
+  return meeting.sourceUrl ? `next ${event} ${meeting.text} (${meeting.sourceUrl}, verified ${meeting.verifiedAt})` : `next ${event} ${meeting.text}`;
+}
+
+/**
+ * What an export says about one row, history aside: the board's figures and
+ * a citation block, `central_bank` to `citation`, named as CSV heads them.
+ * Notes keep the caveats on the latest rate; the BIS series definition goes
+ * with the history (`--history`).
+ */
+export function policyExportRow(row: CentralBankRow) {
+  const board = policyBoardRow({ ...row, history: [] });
+  const meeting = policyNextMeeting(row);
+  return {
+    id: row.id, label: row.label, instrument: row.instrument, central_bank: row.centralBank,
+    value: row.value, unit: row.unit, range: row.range, valueText: board.valueText,
+    changeBps: row.changeBps, changeText: board.changeText, lastChangeDate: row.lastChangeDate,
+    previousValue: row.previousValue, percentileValue: row.percentile.value,
+    asOf: row.asOf, lagDays: row.lagDays, status: row.status, unavailableReason: row.unavailableReason,
+    source: policySource(row), series_id: row.sourceSeriesIds.join(", ") || null, source_url: policySeriesUrls(row).join(" ") || null,
+    as_of: row.asOf, next_meeting: meeting.text, next_meeting_kind: meeting.kind,
+    next_meeting_source_url: meeting.sourceUrl, next_meeting_verified_at: meeting.verifiedAt,
+    citation: policyCitation(row), notes: row.notes.filter((note) => !row.seriesNotes?.includes(note)),
+  };
+}
+
+/** Who a chart of the row's series cites: `FRED series ECBDFR`, published by the European Central Bank. */
+export function policySeriesAttribution(row: CentralBankRow): { source: string; publisher?: string } | null {
+  const source = policySource(row);
+  if (!source || row.sourceSeriesIds.length === 0) return null;
+  return { source: `${source} series ${row.sourceSeriesIds.join(" and ")}`, ...(row.centralBank ? { publisher: row.centralBank } : {}) };
+}

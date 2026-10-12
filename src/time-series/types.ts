@@ -1,6 +1,7 @@
 import type { ChartResolution, TimeRange } from "./range";
 import type { ChartResolutionSupport, ManualChartResolution } from "./resolution";
 import type { InstrumentRef } from "../market-data/request-types";
+import type { SeriesAttribution } from "../series/types";
 
 export const CHART_SPEC_VERSION = 2 as const;
 
@@ -192,6 +193,8 @@ export interface ResolvedSeries {
   /** The previous session's close, set on a one-day chart's price series and drawn as its reference line. */
   priorClose?: number;
   points: TimeSeriesPoint[];
+  /** Who a report of a loaded series cites, when its loader names the dataset and publisher. */
+  attribution?: SeriesAttribution;
   /** Rejected valuation price inputs, retained independently of usable observations. */
   valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
   warning?: string;

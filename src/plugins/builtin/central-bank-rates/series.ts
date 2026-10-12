@@ -2,6 +2,7 @@ import type { SeriesDefinition } from "../../../series/types";
 import { CENTRAL_BANKS, centralBankNames } from "../../../utils/central-banks";
 import { cachedSeriesWarning } from "../shared/series-warning";
 import { loadCentralBankRates } from "./client";
+import { policySeriesAttribution } from "./model";
 
 /**
  * The board rows the endpoint reads from FRED (the Fed's and the ECB's rates,
@@ -24,9 +25,12 @@ export const CENTRAL_BANK_SERIES: readonly SeriesDefinition[] = CENTRAL_BANKS.ma
     const row = resource.payload.rows.find((entry) => entry.id === bank.id);
     if (!row) throw new Error(`${bank.place} is not on the board right now.`);
     const warning = cachedSeriesWarning(resource);
+    // Cited as CBR cites the row: the BIS or FRED series and the bank that sets the rate.
+    const attribution = policySeriesAttribution(row);
     return {
       points: row.history.map((point) => ({ date: point.date, value: point.value })),
       ...(warning ? { warning } : {}),
+      ...(attribution ? { attribution } : {}),
     };
   },
 }));

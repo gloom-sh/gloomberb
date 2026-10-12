@@ -44,10 +44,18 @@ export interface SeriesLoadRequest {
   signal?: AbortSignal;
 }
 
+/** Who a chart of a series cites, when the loaded data names it: the dataset (`FRED series ECBDFR`) and who published it. */
+export interface SeriesAttribution {
+  source: string;
+  publisher?: string;
+}
+
 export interface SeriesLoadResult {
   points: readonly SeriesPoint[];
   /** A note the chart shows above the plot, such as "cached data is stale". */
   warning?: string;
+  /** What a report of this series cites in place of Gloom Cloud. */
+  attribution?: SeriesAttribution;
 }
 
 export type SeriesLoadOutput = readonly SeriesPoint[] | SeriesLoadResult;

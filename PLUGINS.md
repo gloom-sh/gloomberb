@@ -830,7 +830,7 @@ export default {
 | `group`, `tags`, `description` | The catalog tab the series is listed under, extra search words, and one sentence for search and automation. |
 | `publisher`, `url` | The official body publishing public data (a statistics agency, a central bank, a regulator) and its page for the series. |
 | `input` | `ticker`, `option` or `crypto`: the series is one per symbol. The catalog asks for the symbol, typing a ticker in the catalog fills it in, and `load` receives it as `ticker`. |
-| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning }`. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
+| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
 | `refreshMs` | For a series that moves during the day: how often a chart showing it loads it again, at least 60000. |
 | `style` | `line` (the default), `area`, `step`, `columns` or `points`. |
 | `expression` | Instead of `load`: a series the composer already draws, such as `FRED:UNRATE`, `FUT:CL` or `{ticker}:close`. Use it to list curated existing series. |

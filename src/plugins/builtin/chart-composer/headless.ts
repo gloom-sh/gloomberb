@@ -3,7 +3,7 @@ import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/f
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
 import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from "../../../time-series/market";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessSeries, HeadlessSeriesResult } from "../../../types/headless";
-import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSpec, ChartSpec, ChartViewportSpec } from "../../../time-series/types";
+import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
 import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
 import { GEO_SERIES_CAPABILITY_ID } from "./series-expression";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
@@ -255,6 +255,20 @@ export function economicChartDates(series: readonly HeadlessSeries[], spec: Pick
 }
 
 /**
+ * Who a chart cites when each of its series names its own dataset (CBR's
+ * policy rates: `FRED series ECBDFR`); nothing, so Gloom Cloud, otherwise.
+ */
+function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPaneFreshness, "source" | "publisher"> {
+  const cited = series.map((entry) => (entry as HeadlessSeries & Pick<ResolvedSeries, "attribution">).attribution);
+  if (!cited.length || cited.some((attribution) => !attribution)) return {};
+  const publishers = [...new Set(cited.map((attribution) => attribution!.publisher))];
+  return {
+    source: [...new Set(cited.map((attribution) => attribution!.source))].join(", "),
+    ...(publishers.every(Boolean) ? { publisher: publishers.join(", ") } : {}),
+  };
+}
+
+/**
  * Price series are bar histories, stale once bars of the coarsest size stop
  * arriving; fundamentals, valuations and economic series are reported data,
  * economic series dated by their periods (`economicChartDates`). A chart of
@@ -266,7 +280,7 @@ function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): Hea
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
   const dataset = spec.series.length > 0 && spec.series.every(({ source }) => source.kind === "capability");
   if (!series.length || resolutions.some((resolution) => !resolution)) {
-    return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}), ...economicChartDates(series, spec) };
+    return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}), ...economicChartDates(series, spec), ...seriesAttribution(series) };
   }
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst

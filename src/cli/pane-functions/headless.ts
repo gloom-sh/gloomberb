@@ -400,7 +400,7 @@ function renderRows(
   };
   return renderTable(
     columns.map((column) => ({
-      header: humanizeCliKey(column.header),
+      header: displayedHeader(column),
       align: column.align,
       width: column.width,
       shrink: column.shrink,
@@ -466,9 +466,14 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
   return lines;
 }
 
+/** A column's header as reports print it: title-cased unless the column keeps it literal. */
+function displayedHeader(column: HeadlessPaneColumn): string {
+  return column.literalHeader ? column.header : humanizeCliKey(column.header);
+}
+
 /** The headers the text table prints. */
 function displayedColumns(columns: HeadlessPaneColumn[]): HeadlessPaneColumn[] {
-  return columns.map((column) => ({ ...column, header: humanizeCliKey(column.header) }));
+  return columns.map((column) => ({ ...column, header: displayedHeader(column) }));
 }
 
 const SERIES_FIELDS = ["value", "open", "high", "low", "close", "volume"] as const;

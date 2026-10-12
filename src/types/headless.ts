@@ -97,6 +97,8 @@ export type HeadlessPaneRow = Record<string, unknown>;
 export interface HeadlessPaneColumn {
   key: string;
   header: string;
+  /** Print `header` as written, a field name such as `source`, where reports would otherwise title-case it. */
+  literalHeader?: boolean;
   align?: "left" | "right" | "center";
   width?: number;
   /** False keeps the column whole when the text table is fitted to a narrow width, so a time or an id is never cut. */

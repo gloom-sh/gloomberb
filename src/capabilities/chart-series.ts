@@ -202,7 +202,7 @@ function resolvedOutput(value: unknown): ResolvedSeries {
   const input = object(value, "resolve output");
   onlyKeys(input, "resolve output", [
     "id", "label", "color", "unit", "unitGroup", "nativeFrequency", "timestampMode", "dataShape", "style", "transform",
-    "axis", "panelId", "interpolation", "timeBasis", "latestChangePercent", "points", "warning", "hidden",
+    "axis", "panelId", "interpolation", "timeBasis", "latestChangePercent", "points", "warning", "hidden", "attribution",
   ]);
   if (!Array.isArray(input.points)) fail("resolve output points", "expected an array.");
   if (input.points.length > MAX_CHART_SERIES_POINTS) {
@@ -212,6 +212,9 @@ function resolvedOutput(value: unknown): ResolvedSeries {
   if (timeBasis) onlyKeys(timeBasis, "resolve output time basis", ["kind", "timeZone", "cadenceMs"]);
   const kind = timeBasis?.kind === undefined ? undefined : enumValue<"market">(timeBasis.kind, "time basis kind", new Set(["market"]));
   const warning = optionalString(input.warning, "resolve output warning", 500);
+  const attribution = input.attribution === undefined ? undefined : object(input.attribution, "resolve output attribution");
+  if (attribution) onlyKeys(attribution, "resolve output attribution", ["source", "publisher"]);
+  const publisher = attribution ? optionalString(attribution.publisher, "resolve output publisher", 160) : undefined;
   return {
     id: boundedString(input.id, "resolve output ID", 160),
     label: boundedString(input.label, "resolve output label", 160),
@@ -242,6 +245,10 @@ function resolvedOutput(value: unknown): ResolvedSeries {
       : {}),
     points: input.points.map(point),
     ...(warning !== undefined ? { warning } : {}),
+    ...(attribution ? { attribution: {
+      source: boundedString(attribution.source, "resolve output source", 160),
+      ...(publisher !== undefined ? { publisher } : {}),
+    } } : {}),
     ...(input.hidden !== undefined
       ? typeof input.hidden === "boolean" ? { hidden: input.hidden } : fail("resolve output hidden", "expected a boolean.")
       : {}),

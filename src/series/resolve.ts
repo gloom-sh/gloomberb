@@ -68,7 +68,7 @@ export function seriesLoadWindow(viewport: ChartViewportSpec, now = new Date()):
   return { start: subtractTimeRange(now, viewport.range) };
 }
 
-function loadResult(output: SeriesLoadOutput): { points: readonly SeriesPoint[]; warning?: string } {
+function loadResult(output: SeriesLoadOutput): Exclude<SeriesLoadOutput, readonly SeriesPoint[]> {
   if (Array.isArray(output)) return { points: output };
   const result = output as Exclude<SeriesLoadOutput, readonly SeriesPoint[]>;
   if (!result || !Array.isArray(result.points)) throw new Error("Series loader returned no points.");
@@ -81,7 +81,7 @@ export async function resolveLoadedSeries(
   now = new Date(),
 ): Promise<ResolvedSeries> {
   const ticker = request.ticker?.trim().toUpperCase() || undefined;
-  const { points, warning } = loadResult(await definition.load({
+  const { points, warning, attribution } = loadResult(await definition.load({
     ...seriesLoadWindow(request.viewport, now),
     ...(ticker ? { ticker } : {}),
     ...(request.signal ? { signal: request.signal } : {}),
@@ -102,6 +102,7 @@ export async function resolveLoadedSeries(
     panelId: "main",
     interpolation: style === "step" ? "step-after" : "none",
     ...(warning ? { warning } : {}),
+    ...(attribution ? { attribution: { ...attribution } } : {}),
     points: normalizeSeriesPoints(points),
   };
 }
