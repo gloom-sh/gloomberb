@@ -829,6 +829,11 @@ export interface SavedListingName {
   label: string;
 }
 
+/** What every collection command reports about the listing it changed, as JSON and as the sentence's subject. */
+export function listingFields(saved: Pick<SavedListingName, "key" | "symbol" | "exchange" | "name">) {
+  return { listing: saved.key, symbol: saved.symbol, exchange: saved.exchange || null, name: saved.name };
+}
+
 /** The listing a saved ticker row is, as a collection command names it after adding or removing it. */
 export function savedListingName(ticker: TickerRecord): SavedListingName {
   const { symbol } = parsePublicTickerKey(ticker.metadata.ticker);

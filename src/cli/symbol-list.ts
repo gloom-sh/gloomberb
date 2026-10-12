@@ -1,6 +1,6 @@
 import { readFile } from "fs/promises";
 import { fstatSync } from "fs";
-import { splitSymbolArgs } from "./symbol-args";
+import { splitSymbolArgs, uniqueSymbols } from "./symbol-args";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
@@ -96,24 +96,6 @@ export function parseSymbolText(text: string): string[] {
   // table with names, prices or weights beside them is read by its first column.
   const grid = records.every((cells) => cells.every((cell, index) => !cell || (looksLikeSymbol(cell) && (index === 0 || !NUMBER_CELL.test(cell)))));
   return grid ? records.flat().filter(Boolean) : records.map((cells) => cells[0] ?? "").filter(Boolean);
-}
-
-/** How a symbol is compared for repeats: AAPL, aapl and $AAPL are one. */
-export function symbolInputKey(symbol: string): string {
-  return symbol.trim().replace(/^\$/, "").toUpperCase();
-}
-
-/** The symbols without repeats, first spelling kept, and how many repeats were dropped. */
-function uniqueSymbols(symbols: readonly string[]): { symbols: string[]; repeated: number } {
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const symbol of symbols) {
-    const key = symbolInputKey(symbol);
-    if (!key || seen.has(key)) continue;
-    seen.add(key);
-    unique.push(symbol.trim());
-  }
-  return { symbols: unique, repeated: symbols.filter((symbol) => symbolInputKey(symbol)).length - unique.length };
 }
 
 /** Whether standard input is a pipe or a file rather than a terminal, so a command may read its list from it. */

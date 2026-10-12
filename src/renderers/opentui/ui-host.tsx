@@ -148,7 +148,35 @@ const OpenTuiScrollBoxPrimitive = createOpenTuiPrimitive("scrollbox");
 const OpenTuiScrollBox = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiScrollBox(props, ref) {
   return createElement(OpenTuiScrollBoxPrimitive, { ...props, scrollY: scrollBoxScrollsVertically(props), ref });
 });
-const OpenTuiInput = createOpenTuiPrimitive("input");
+const OpenTuiInputPrimitive = createOpenTuiPrimitive("input");
+
+/** Pasted lines as one line: each break is a space, so `AAPL` over `MSFT` stays two words. */
+function joinPastedLines(text: string): string {
+  return text.replace(/^[\r\n]+|[\r\n]+$/g, "").replace(/[ \t]*[\r\n]+[ \t]*/g, " ").replace(/\t+/g, " ");
+}
+
+interface PasteEventLike {
+  bytes: Uint8Array;
+}
+
+/**
+ * A one-line field drops the line breaks of a paste, which fuses a pasted
+ * column of symbols into one word; a browser's field turns each break into a
+ * space. `joinPastedLines` does the same here, for the fields that read a list.
+ */
+const OpenTuiInput = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiInput({ joinPastedLines: join, onPaste, ...props }, ref) {
+  const handlePaste = typeof onPaste === "function" ? onPaste as (event: PasteEventLike) => void : null;
+  return createElement(OpenTuiInputPrimitive, {
+    ...props,
+    ref,
+    onPaste: join === true || handlePaste
+      ? (event: PasteEventLike) => {
+        if (join === true) event.bytes = new TextEncoder().encode(joinPastedLines(new TextDecoder().decode(event.bytes)));
+        handlePaste?.(event);
+      }
+      : undefined,
+  });
+});
 const OpenTuiTextarea = createOpenTuiPrimitive("textarea");
 const OpenTuiMediaSurface = createOpenTuiPrimitive("box");
 

@@ -78,6 +78,12 @@ export interface CliTickerOptions {
    * gives, as `quote` and `portfolio show` name it; a long list skips it. True by default.
    */
   refreshName?: boolean;
+  /**
+   * A bare symbol several listings carry, and no quote settles, fails with the
+   * choice instead of going to the first listing that has a quote, for a caller
+   * that asks which listing is meant (the command bar's single add does).
+   */
+  askWhenAmbiguous?: boolean;
 }
 
 /**
@@ -140,7 +146,7 @@ export async function resolveCliTicker(
   try {
     resolved = await search(listing.key);
   } catch (error) {
-    if (!(error instanceof AmbiguousTickerError) || error instanceof AmbiguousContractError || listing.exchange) throw error;
+    if (!(error instanceof AmbiguousTickerError) || error instanceof AmbiguousContractError || listing.exchange || options.askWhenAmbiguous) throw error;
     // No quote of the bare symbol settles which listing it is: the one `quote` reads instead.
     const bare = await quoteBareListing(listing, deps, { command: "quote", noun: "quote", retry: options.retry ?? null });
     if (!bare) throw error;
@@ -312,9 +318,10 @@ export async function resolveTickersForCli(
   exchange?: string,
   {
     retry,
+    askWhenAmbiguous,
     onRetry,
     retryWaitsMs = RETRY_WAITS_MS,
-  }: Pick<CliTickerOptions, "retry"> & {
+  }: Pick<CliTickerOptions, "retry" | "askWhenAmbiguous"> & {
     /** Told before each new look, with how many symbols and how long it waits first. */
     onRetry?: (count: number, waitMs: number) => void;
     retryWaitsMs?: readonly number[];
@@ -322,7 +329,7 @@ export async function resolveTickersForCli(
 ): Promise<CliTickerResolution[]> {
   // A short list is a lookup: it says which symbols changed and refreshes saved names. A long one is a portfolio.
   const changes = symbols.length <= MAX_CHANGE_LOOKUPS;
-  const resolve = (symbol: string) => resolveCliTicker(symbol, store, dataProvider, exchange, { retry, ownExchangeWins: true, changes, refreshName: changes });
+  const resolve = (symbol: string) => resolveCliTicker(symbol, store, dataProvider, exchange, { retry, askWhenAmbiguous, ownExchangeWins: true, changes, refreshName: changes });
   const failedRequests = watchFailedRequests();
   try {
     let lookups = await lookUpTickers(symbols, RESOLVE_CONCURRENCY, resolve);

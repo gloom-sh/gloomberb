@@ -1,9 +1,11 @@
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext } from "../../../../types/plugin";
-import { parseListingArg, type SavedListingName } from "../../../../cli/listing-arg";
+import { parseListingArg } from "../../../../cli/listing-arg";
 import { findPortfolio, isManualPortfolio } from "../mutations";
 import { CASH_SYMBOL } from "../allocation";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
+
+export { listingFields } from "../../../../cli/listing-arg";
 
 /** A command error with a hint printed under it. */
 export class PortfolioCliError extends Error {
@@ -20,11 +22,6 @@ export function failPortfolioCommand(ctx: CliCommandContext, error: unknown, fal
     return ctx.fail(error.message, typeof details === "string" ? details : undefined);
   }
   return ctx.fail(fallback);
-}
-
-/** What every collection command reports about the listing it changed, as JSON and as the sentence's subject. */
-export function listingFields(saved: Pick<SavedListingName, "key" | "symbol" | "exchange" | "name">) {
-  return { listing: saved.key, symbol: saved.symbol, exchange: saved.exchange || null, name: saved.name };
 }
 
 /**

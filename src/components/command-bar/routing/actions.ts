@@ -16,7 +16,7 @@ import type { CommandBarRoute } from "../workflow/types";
 import type { OpenInlineConfirm } from "./confirm";
 
 type CloseAll = (options?: { revertThemePreview?: boolean }) => void;
-type Notify = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
+type Notify = (body: string, options?: { type?: "info" | "success" | "error"; duration?: number }) => void;
 type OpenModeRoute = (
   screen: "ticker-search" | "layout",
   initialQuery?: string,

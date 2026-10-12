@@ -1,7 +1,7 @@
 import type { TickerRepository } from "../data/ticker-repository";
 import type { TickerMetadata, TickerRecord } from "../types/ticker";
 
-type TickerSource = Pick<TickerRepository, "loadTicker" | "loadAllTickers" | "saveTicker"> & Partial<Pick<TickerRepository, "saveTickers">>;
+export type TickerSource = Pick<TickerRepository, "loadTicker" | "loadAllTickers" | "saveTicker"> & Partial<Pick<TickerRepository, "saveTickers">>;
 
 /**
  * A ticker store that keeps a command's changes in memory until `commit`,

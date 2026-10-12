@@ -62,6 +62,8 @@ function resolveHeaderPromptContent(width: number, shortcutLabel: string): {
 }
 
 const PROMPT_CARET = "> ";
+/** Room for a pasted list of a few thousand symbols. */
+const COMMAND_BAR_MAX_LENGTH = 20_000;
 
 /**
  * The topbar's own fill in the terminal. The prompt used to be the only thing
@@ -142,6 +144,9 @@ function HeaderPromptInput({
         onInput={onQueryChange}
         placeholder={placeholder}
         focused
+        // A pasted list of symbols is one line of them, and may run past the field's stock thousand characters.
+        joinPastedLines
+        maxLength={COMMAND_BAR_MAX_LENGTH}
         data-gloom-remote-scope="command-bar"
         data-gloom-remote-surface="command-bar"
         width={nativePaneChrome ? "100%" : width}

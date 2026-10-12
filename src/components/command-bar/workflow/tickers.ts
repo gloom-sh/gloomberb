@@ -206,14 +206,13 @@ export async function resolveTickerInputOrThrow(
   return resolved;
 }
 
-export async function applyCollectionMembershipChange(
+/** The ticker with the collection added to or removed from it; `changed` is false when it already was as asked. */
+export function withCollectionMembership(
   ticker: TickerRecord,
   kind: CollectionKind,
   action: CollectionMembershipAction,
   collectionId: string,
-  deps: SharedWorkflowDeps,
-): Promise<{ changed: boolean; ticker: TickerRecord }> {
-  const recordAttention = captureAttentionAction();
+): { changed: boolean; ticker: TickerRecord } {
   const field = kind === "watchlist" ? "watchlists" : "portfolios";
   const currentValues = ticker.metadata[field];
   const nextValues = action === "add"
@@ -224,19 +223,35 @@ export async function applyCollectionMembershipChange(
     return { changed: false, ticker };
   }
 
-  const nextTicker: TickerRecord = {
-    ...ticker,
-    metadata: {
-      ...ticker.metadata,
-      [field]: nextValues,
+  return {
+    changed: true,
+    ticker: {
+      ...ticker,
+      metadata: {
+        ...ticker.metadata,
+        [field]: nextValues,
+      },
     },
   };
-  await deps.tickerRepository.saveTicker(nextTicker);
-  deps.dispatch({ type: "UPDATE_TICKER", ticker: nextTicker });
+}
+
+export async function applyCollectionMembershipChange(
+  ticker: TickerRecord,
+  kind: CollectionKind,
+  action: CollectionMembershipAction,
+  collectionId: string,
+  deps: SharedWorkflowDeps,
+): Promise<{ changed: boolean; ticker: TickerRecord }> {
+  const recordAttention = captureAttentionAction();
+  const result = withCollectionMembership(ticker, kind, action, collectionId);
+  if (!result.changed) return result;
+
+  await deps.tickerRepository.saveTicker(result.ticker);
+  deps.dispatch({ type: "UPDATE_TICKER", ticker: result.ticker });
   if (kind === "watchlist" && action === "add") {
-    recordAttention(publicTickerKey(nextTicker.metadata.ticker, nextTicker.metadata.exchange), "watchlist_add");
+    recordAttention(publicTickerKey(result.ticker.metadata.ticker, result.ticker.metadata.exchange), "watchlist_add");
   }
-  return { changed: true, ticker: nextTicker };
+  return result;
 }
 
 export async function resolveTickerListInput(
