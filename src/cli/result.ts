@@ -316,9 +316,12 @@ function renderTextTable<Row extends Record<string, unknown>>(
       align: column.align,
       width: column.width,
       maxWidth: column.maxWidth,
+      minWidth: column.minWidth,
       optional: column.optional,
       dropPriority: column.dropPriority,
       shrink: column.shrink,
+      stackPriority: column.stackPriority,
+      stackRows: column.stackRows,
     })),
     cells.map((row) => shown.map(({ index }) => row[index]!)),
   );

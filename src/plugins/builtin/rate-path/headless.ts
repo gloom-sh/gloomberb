@@ -25,14 +25,16 @@ const probabilities = (value: unknown) => {
     : outcomes.map((outcome) => `${outcome.targetMidpoint.toFixed(3)}% ${(outcome.probability * 100).toFixed(0)}%`).join(" / ");
 };
 
+// A narrow terminal leaves out the sample count, status, percentile and quote time (the closing line has it),
+// then moves the staleness and month under each row.
 const contractColumns: HeadlessPaneColumn[] = [
-  { key: "symbol", header: "Symbol" }, { key: "month", header: "Month" },
+  { key: "symbol", header: "Symbol", shrink: false }, { key: "month", header: "Month", shrink: false, stackPriority: 1 },
   { key: "price", header: "Price", align: "right", format: (value) => finiteOrNull(value)?.toFixed(3) ?? "--" },
   { key: "impliedRate", header: "Implied rate", align: "right", format: rate },
-  { key: "percentile", header: "Pctl 1Y", align: "right", format: pctl },
-  { key: "samples", header: "Samples", align: "right" },
-  { key: "asOf", header: "As of UTC", format: timestamp },
-  { key: "status", header: "Status" }, { key: "stale", header: "Data stale", format: yesNo },
+  { key: "percentile", header: "Pctl 1Y", align: "right", stackPriority: 4, stackRows: 0, format: pctl },
+  { key: "samples", header: "Samples", align: "right", stackPriority: 6, stackRows: 0 },
+  { key: "asOf", header: "As of UTC", shrink: false, stackPriority: 3, stackRows: 0, format: timestamp },
+  { key: "status", header: "Status", stackPriority: 5, stackRows: 0 }, { key: "stale", header: "Data stale", stackPriority: 2, format: yesNo },
 ];
 
 /**
@@ -62,21 +64,24 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
       freshness: { observedKey: "asOf", observations: contracts },
       sections: [
         { title: "Current policy", columns: [
-          { key: "name", header: "Name", format: policyLabel }, { key: "value", header: "Value", align: "right", format: rate },
-          { key: "asOf", header: "As of" }, { key: "percentile", header: "Pctl 1Y", align: "right", format: pctl },
-          { key: "samples", header: "Samples", align: "right" }, { key: "stale", header: "Data stale", format: yesNo },
+          { key: "name", header: "Name", minWidth: 18, format: policyLabel }, { key: "value", header: "Value", align: "right", format: rate },
+          { key: "asOf", header: "As of", shrink: false }, { key: "percentile", header: "Pctl 1Y", align: "right", stackPriority: 1, format: pctl },
+          { key: "samples", header: "Samples", align: "right", stackPriority: 2, stackRows: 0 }, { key: "stale", header: "Data stale", format: yesNo },
         ], rows: Object.entries(data.current).map(([name, metric]) => ({ name, ...metric })) },
+        // A narrow terminal keeps the moves and change, prints the probabilities of the next two meetings
+        // under their rows, and leaves out the rest; a reason a meeting has no rate stays under its row.
         { title: "FOMC meetings", columns: [
-          { key: "date", header: "Date" },
+          { key: "date", header: "Date", shrink: false },
           { key: "moves", header: "Moves", align: "right", format: (value) => movesText(finiteOrNull(value)) },
           { key: "moveOdds", header: "P(move)", align: "right", format: (value) => moveOddsText(finiteOrNull(value)) },
-          { key: "impliedRate", header: "Implied rate", align: "right", format: rate },
-          { key: "targetMidpoint", header: "Target midpoint", align: "right", format: (value) => finiteOrNull(value)?.toFixed(3) ?? "--" },
+          { key: "impliedRate", header: "Implied rate", align: "right", stackPriority: 3, stackRows: 0, format: rate },
+          { key: "targetMidpoint", header: "Target midpoint", align: "right", stackPriority: 6, stackRows: 0, format: (value) => finiteOrNull(value)?.toFixed(3) ?? "--" },
           { key: "changeBps", header: "Change", align: "right", format: bps },
-          { key: "percentile", header: "Pctl 1Y", align: "right", format: pctl },
-          { key: "samples", header: "Samples", align: "right" }, { key: "asOf", header: "As of UTC", format: timestamp },
-          { key: "probabilities", header: "Probabilities", format: probabilities },
-          { key: "method", header: "Method" }, { key: "reason", header: "Reason" },
+          { key: "percentile", header: "Pctl 1Y", align: "right", stackPriority: 7, stackRows: 0, format: pctl },
+          { key: "samples", header: "Samples", align: "right", stackPriority: 8, stackRows: 0 },
+          { key: "asOf", header: "As of UTC", shrink: false, stackPriority: 5, stackRows: 0, format: timestamp },
+          { key: "probabilities", header: "Probabilities", shrink: false, stackPriority: 4, stackRows: 2, format: probabilities },
+          { key: "method", header: "Method", stackPriority: 9, stackRows: 0 }, { key: "reason", header: "Reason", stackPriority: 10 },
         ], rows: data.meetings.map((meeting) => ({ ...meeting, moves: movesPriced(meeting), moveOdds: moves.get(meeting.date) ?? null })) },
         { title: "Fed funds contracts", columns: contractColumns, rows: data.fedFunds.map((contract) => ({ ...contract })) },
         { title: "SOFR contracts", columns: contractColumns, rows: data.sofr.map((contract) => ({ ...contract })) },

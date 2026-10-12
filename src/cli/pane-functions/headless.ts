@@ -404,6 +404,9 @@ function renderRows(
       align: column.align,
       width: column.width,
       shrink: column.shrink,
+      minWidth: column.minWidth,
+      stackPriority: column.stackPriority,
+      stackRows: column.stackRows,
     })),
     rows.map((row) => columns.map((column) => cell(row, column))),
     {
@@ -451,7 +454,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
   });
   const columns: HeadlessPaneColumn[] = [
     { key: "series", header: "Series" },
-    { key: "latest", header: "Latest" },
+    { key: "latest", header: "Latest", shrink: false },
     { key: "value", header: "Value", align: "right" },
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
     { key: "points", header: "Points", align: "right" },

@@ -15,10 +15,11 @@ export const centralBankRatesHeadless: HeadlessPaneDefinition<"bundle"> = {
     const observations = data.rows.filter((row) => row.status !== "unavailable")
       .map((row) => ({ asOf: row.asOf, stale: row.status === "stale" }));
     return { complete, freshness: { observations }, sections: [{ title: "Policy rates", columns: [
-      { key: "label", header: "Jurisdiction" }, { key: "valueText", header: "Rate", align: "right" },
-      { key: "changeText", header: "Last move", align: "right" }, { key: "lastChangeDate", header: "Change observed" },
-      { key: "percentileValue", header: "Pctl 1Y", align: "right", format: (value) => value == null ? "--" : Number(value).toFixed(0) },
-      { key: "asOf", header: "As of" }, { key: "status", header: "Status" }, { key: "instrument", header: "Instrument" },
+      { key: "label", header: "Jurisdiction", shrink: false }, { key: "valueText", header: "Rate", align: "right" },
+      { key: "changeText", header: "Last move", align: "right" }, { key: "lastChangeDate", header: "Change observed", shrink: false },
+      { key: "percentileValue", header: "Pctl 1Y", align: "right", stackPriority: 1, format: (value) => value == null ? "--" : Number(value).toFixed(0) },
+      // A narrow terminal moves the instrument, status and percentile under each row first.
+      { key: "asOf", header: "As of", shrink: false }, { key: "status", header: "Status", stackPriority: 2 }, { key: "instrument", header: "Instrument", stackPriority: 3 },
     ], rows: data.rows.map(({ history: _history, ...row }) => {
       const board = policyBoardRow({ ...row, history: [] });
       return { ...row, valueText: board.valueText, changeText: board.changeText, percentileValue: row.percentile.value };

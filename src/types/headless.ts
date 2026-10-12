@@ -101,6 +101,16 @@ export interface HeadlessPaneColumn {
   width?: number;
   /** False keeps the column whole when the text table is fitted to a narrow width, so a time or an id is never cut. */
   shrink?: boolean;
+  /** The narrowest a text column is cut to in a narrow text table, so it never shrinks to a stub that reads like another row's. */
+  minWidth?: number;
+  /**
+   * When the text table cannot fit a narrow width even with its text
+   * shortened, columns move to lines under their row: a higher priority moves
+   * sooner, equal ones go rightmost first. The first column stays.
+   */
+  stackPriority?: number;
+  /** Once moved under the rows, only the first `stackRows` rows print the column; 0 leaves it out of a narrow table. */
+  stackRows?: number;
   description?: string;
   format?: (value: unknown, row: HeadlessPaneRow) => string;
   /** What the text report prints when it can say more than an export should (a unit word beside a number); CSV and NDJSON keep `format`. */

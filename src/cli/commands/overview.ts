@@ -356,8 +356,9 @@ async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execut
   ctx.printResult({ data: rows, metadata: { filter: filter || null, total: catalog.series.length } }, {
     columns: [
       { key: "id", header: "ID", shrink: false },
-      { key: "title", header: "Title" },
-      { key: "group", header: "Group" },
+      // A title too narrow to tell series apart goes on a line under its ID.
+      { key: "title", header: "Title", minWidth: 30, stackPriority: 1 },
+      { key: "group", header: "Group", shrink: false },
     ],
     empty: filter ? `No supported FRED series match "${filter}". Run gloomberb fred --list to see them all.` : "No FRED series are listed.",
   });
