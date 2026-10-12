@@ -34,3 +34,18 @@ test("an EGX one-day range is its latest session's daily bar, read as daily, on 
     expect(asked.every((request) => request.startsWith("COMI.CA:EGX:")), now).toBe(true);
   }
 });
+
+test("a coin's partial and filled days keep their flags through the router", async () => {
+  setSystemTime(Date.parse("2026-10-12T00:25:00Z"));
+  apiClient.getCloudHistory = async () => ({ status: "success", data: [
+    { date: "2026-10-10T00:00:00.000Z", open: 82546.32, high: 83092.03, low: 82473.04, close: 82912.23, volume: 12485050512 },
+    { date: "2026-10-11T00:00:00.000Z", open: 82913.3, high: 84110.54, low: 82716.81, close: 83680.59, filled: true },
+    { date: "2026-10-12T00:00:00.000Z", open: 83673.01, high: 83704.88, low: 83652.21, close: 83704.88, partial: true },
+  ] });
+  const { points } = await new AssetDataRouter(new GloomberbCloudProvider()).getPriceHistoryWithMetadata("BTC-USD", "CCC", "1M");
+  expect(points.map((point) => [new Date(point.date).toISOString().slice(0, 10), point.volume ?? null, point.partial ?? false, point.filled ?? false])).toEqual([
+    ["2026-10-10", 12485050512, false, false],
+    ["2026-10-11", null, false, true],
+    ["2026-10-12", null, true, false],
+  ]);
+});

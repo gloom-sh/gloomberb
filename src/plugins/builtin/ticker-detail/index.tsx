@@ -10,7 +10,7 @@ import { TickerResearchPane } from "./pane";
 import { futuresContractCache } from "./overview/futures-contract";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
-import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless } from "./headless";
+import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
 import {
   buildQuoteMonitorSettingsDef,
   buildQuoteMonitorPaneTitle,
@@ -92,6 +92,7 @@ export const tickerDetailModule: PluginModule = {
       name: "Returns",
       icon: "R",
       component: ReturnsPane,
+      headless: returnsHeadless,
       defaultPosition: "right",
       tickerFollower: true,
       defaultMode: "floating",
@@ -165,16 +166,19 @@ export const tickerDetailModule: PluginModule = {
           : null;
       },
     },
-    createTickerSurfacePaneTemplate({
-      id: "returns-pane",
-      paneId: "returns",
-      label: "Returns",
-      description: "Inspect interval and cumulative price returns over a selectable range and granularity.",
-      keywords: ["returns", "return", "performance", "change", "interval", "granularity"],
-      shortcut: "RETURN",
-      publicShare: true,
-      titlePrefix: "RETURN",
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "returns-pane",
+        paneId: "returns",
+        label: "Returns",
+        description: "Inspect interval and cumulative price returns over a selectable range and granularity.",
+        keywords: ["returns", "return", "performance", "change", "interval", "granularity"],
+        shortcut: "RETURN",
+        publicShare: true,
+        titlePrefix: "RETURN",
+      }),
+      headless: returnsHeadless,
+    },
     {
       ...createTickerSurfacePaneTemplate({
         id: "historical-prices-pane",

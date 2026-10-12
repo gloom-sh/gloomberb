@@ -52,6 +52,19 @@ export interface HistoryRow {
   interval: ManualChartResolution | null;
   /** Each way the bar's prices contradict each other, such as `high<open`; null when they agree. */
   flag: string | null;
+  /** The bar's period had not ended when it was served: the close is the latest price. */
+  partial?: true;
+  /** The bar's prices were rebuilt from hourly bars where the source left the day empty. */
+  filled?: true;
+  /** What the volume counts, when the history says: a coin's is traded value in its quote currency (`USD`). */
+  volumeUnit?: string;
+  /** Why a coin's bar has no volume: `day in progress`, `rebuilt from hourly bars`, `not reported`. */
+  volumeNote?: string;
+}
+
+/** A coin's volume: traded value in its quote currency, per UTC day on daily bars. */
+export interface HistoryVolume {
+  unit: string;
 }
 
 function decimalPlaces(value: number): number {
@@ -119,6 +132,7 @@ export function historyRows(
   resolution: ManualChartResolution | null,
   currency: string | null = null,
   unit: string | null = null,
+  volume: HistoryVolume | null = null,
 ): HistoryRow[] {
   const times = points.map(getPricePointTimestamp);
   const intraday = resolution ? isIntradayResolution(resolution) : looksIntraday(times);
@@ -140,8 +154,60 @@ export function historyRows(
       unit,
       interval,
       flag: flags.length > 0 ? flags.join(",") : null,
+      ...(point.partial ? { partial: true as const } : {}),
+      ...(point.filled ? { filled: true as const } : {}),
+      ...(volume ? { volumeUnit: volume.unit } : {}),
+      // A coin trades every day, so a bar without volume says why.
+      ...(volume && values.volume == null
+        ? { volumeNote: point.partial ? "day in progress" : point.filled ? "rebuilt from hourly bars" : "not reported" }
+        : {}),
     };
   });
+}
+
+/**
+ * The volume of a coin's history: traded value in the quote currency the
+ * prices are in. Null for anything else, whose volume stays unlabelled.
+ */
+export function historyVolume(
+  unit: HistoryUnit,
+  market: { listing: string; exchange?: string; instrumentType?: string },
+): HistoryVolume | null {
+  const coin = isRoundTheClockCoin(market.listing, market.exchange) || classifyInstrumentType(market.instrumentType) === "crypto";
+  return coin && unit.kind === "currency" && unit.currency ? { unit: unit.currency } : null;
+}
+
+/** `volume in USD per UTC day` for a coin's daily bars; `volume in USD` for others. */
+export function historyVolumeText(volume: HistoryVolume, interval: ManualChartResolution | null): string {
+  return interval === "1d" ? `volume in ${volume.unit} per UTC day` : `volume in ${volume.unit}`;
+}
+
+function listDates(dates: readonly string[]): string {
+  const shown = dates.slice(-LISTED_GAPS);
+  const earlier = dates.length - shown.length;
+  const items = [...earlier > 0 ? [`${earlier} earlier`] : [], ...shown];
+  return items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "";
+}
+
+/**
+ * What the partial and filled bars are: "2026-10-12 is still forming
+ * (partial), with no volume until the day closes", and the bars rebuilt from
+ * hourly bars. Null when no bar is either.
+ */
+export function historyBarStatusNote(rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "volume">[]): string | null {
+  const partial = rows.filter((row) => row.partial);
+  const filled = rows.filter((row) => row.filled);
+  const notes = [
+    partial.length > 0
+      ? `${listDates(partial.map((row) => row.date))} ${partial.length === 1 ? "is" : "are"} still forming (partial)`
+        + (partial.every((row) => row.volume == null) ? ", with no volume until the day closes" : "")
+      : null,
+    filled.length > 0
+      ? `${listDates(filled.map((row) => row.date))} ${filled.length === 1 ? "was" : "were"} rebuilt from hourly bars (filled)`
+        + (filled.every((row) => row.volume == null) ? ", without volume" : "")
+      : null,
+  ].filter((note): note is string => note != null);
+  return notes.length > 0 ? notes.join("; ") : null;
 }
 
 function neededDecimals(value: number, cap: number): number {

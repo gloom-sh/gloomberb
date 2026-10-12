@@ -9,11 +9,28 @@ import {
   type ManualChartResolution,
 } from "../../../../time-series/resolution";
 import type { PricePoint } from "../../../../types/financials";
+import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose } from "../../../../market-data/market/freshness";
+import { isRoundTheClockCoin } from "../../../../utils/crypto-pair";
+import { currentFxClosureStart, isCurrencyPairListing } from "../../../../utils/fx-market-hours";
 import { pricePointValues } from "../../../../utils/price-history-integrity";
+import { zonedDateKey } from "../../../../utils/zoned-date-time";
 
 export type ReturnRange = "6H" | "1D" | "5D" | TimeRange;
 
 export const RETURN_RANGES: readonly ReturnRange[] = ["6H", "1D", "5D", "1W", "1M", "3M", "6M", "1Y", "5Y", "ALL"];
+
+/** The bar sizes RETURN takes, as `--interval` reads them. */
+export const RETURN_INTERVAL_VALUES: Array<{ value: ManualChartResolution; aliases?: string[] }> = [
+  { value: "1m", aliases: ["1min"] },
+  { value: "5m", aliases: ["5min"] },
+  { value: "15m", aliases: ["15min"] },
+  { value: "30m", aliases: ["30min"] },
+  { value: "45m", aliases: ["45min"] },
+  { value: "1h", aliases: ["60m", "hour", "hourly"] },
+  { value: "1d", aliases: ["day", "daily"] },
+  { value: "1wk", aliases: ["1w", "week", "weekly"] },
+  { value: "1mo", aliases: ["month", "monthly"] },
+];
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -46,11 +63,49 @@ export function returnVisibleFrom(range: ReturnRange, resolution: ManualChartRes
 }
 
 /**
- * A closed market leaves these windows without a bar when they end now, so
- * they end at the latest bar: on a weekend 1D is the last session.
+ * These windows are shorter than a closed market's gap, so they also end at
+ * the latest bar when it is earlier: a venue whose sessions the app does not
+ * know (an index, a future) still shows its last session on a weekend.
  */
 export function endsAtLatestBar(range: ReturnRange): boolean {
   return range === "6H" || range === "1D";
+}
+
+/** Where a return window ends, and why. */
+export interface ReturnWindowEnd {
+  end: number;
+  /** The market is shut: the local date of its last session, whose close the window ends at. */
+  lastSession?: string;
+}
+
+/**
+ * Where a return window ends: now while the market trades, and always for a
+ * coin, which trades around the clock. A market shut for the weekend, a
+ * holiday or the night ends it at its last session's close, so 5D on a Sunday
+ * is Monday to Friday rather than Wednesday to Friday and a gap. Spot FX
+ * closes for the weekend at 17:00 New York on Friday. A venue whose hours the
+ * app does not know ends now.
+ */
+export function returnWindowEnd(market: { symbol: string; exchange: string }, now: number): ReturnWindowEnd {
+  if (isRoundTheClockCoin(market.symbol, market.exchange) || isAlwaysOpenExchange(market.exchange)) return { end: now };
+  if (isCurrencyPairListing(market.symbol, market.exchange)) {
+    const closure = currentFxClosureStart(now);
+    return closure == null ? { end: now } : { end: closure, lastSession: zonedDateKey(closure - 1, "America/New_York") };
+  }
+  if (isRegularSessionTime(market.exchange, now) !== false) return { end: now };
+  const last = latestRegularSessionClose(market.exchange, now);
+  return last ? { end: last.close, lastSession: last.date } : { end: now };
+}
+
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/** `market closed, last session Fri 9 Oct`; the year only when it is not the current one. */
+export function closedMarketNote(lastSession: string, now: number): string {
+  const day = new Date(`${lastSession}T00:00:00Z`);
+  if (!Number.isFinite(day.getTime())) return "market closed";
+  const year = day.getUTCFullYear() === new Date(now).getUTCFullYear() ? "" : ` ${day.getUTCFullYear()}`;
+  return `market closed, last session ${WEEKDAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]}${year}`;
 }
 
 const WINDOW_DAYS: Record<ReturnRange, number> = {

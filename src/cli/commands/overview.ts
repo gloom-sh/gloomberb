@@ -43,6 +43,7 @@ import {
   fredEmptyMessage,
   fredExportValue,
   fredHistoryNotes,
+  fredProvenance,
   fredPublicationTime,
   fredValueHeader,
   fredValueKey,
@@ -381,9 +382,11 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   });
   // Each observation exports under its unit (`value_bp`, `value_pct`), a spread in basis points.
   const valueKey = fredValueKey(seriesId, data.info?.units);
-  const exportRow = (observation: { date: string; value: number | null }) => ({
+  // A value FRED does not list yet carries its publisher and when it published, in every export.
+  const exportRow = (observation: { date: string; value: number | null; publisher?: string; publishedAt?: string }) => ({
     date: observation.date,
     [valueKey]: fredExportValue(seriesId, observation.value),
+    ...(observation.publisher?.trim() ? { publisher: observation.publisher.trim(), ...(observation.publishedAt ? { publishedAt: observation.publishedAt } : {}) } : {}),
   });
   const rows = data.observations.map(exportRow);
   // The default start hides older history and a start before the series begins is moved up silently: say where it really starts.
@@ -395,10 +398,12 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const latest = rows.length > 0 ? null : await apiClient.getCloudFredSeries(seriesId, { limit: 1, sortOrder: "desc" })
     .then((payload) => payload.observations[0] ?? null).catch(() => null);
   const periodicity = periodicityOf(data.info?.frequency);
-  // FRED names the series' publisher when Gloom Cloud passes it on, and when it last updated the series.
-  const publisher = data.info?.source?.trim();
   const newestDate = rows.reduce<string | null>((newest, row) => (!newest || row.date > newest ? row.date : newest), null);
-  const publishedAt = fredPublicationTime(data.info, newestDate);
+  // A newest value FRED does not list yet names its publisher, Treasury for a yield; FRED's own stay "FRED".
+  const ahead = fredProvenance(data.observations.filter((observation) => observation.date === newestDate));
+  // FRED names the series' publisher when Gloom Cloud passes it on, and when it last updated the series.
+  const publisher = ahead?.publisher ?? data.info?.source?.trim();
+  const publishedAt = ahead ? ahead.publishedAt : fredPublicationTime(data.info, newestDate);
   ctx.printResult({
     data: rows,
     metadata: {
@@ -407,7 +412,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
       ...(latest ? { latestObservation: exportRow(latest) } : {}),
     },
     freshness: rowsFreshness(rows, {
-      source: "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
+      source: ahead?.source ?? "FRED", status: "not-a-feed", basis: "published statistics", observedKey: "date", oldest: null,
       // A monthly or quarterly observation is dated the first of its period, not a day it was seen.
       ...(periodicity ? { periodicity } : {}),
       ...(publisher ? { publisher } : {}),
@@ -446,17 +451,21 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       previousDate: previous?.date ?? null,
       previousValue_pct: previous?.value ?? null,
       changeBasisPoints: latest?.value != null && previous?.value != null ? toBasisPoints(latest.value - previous.value, 1) : null,
-      publishedAt: fredPublicationTime(data.info, latest?.date),
+      latest,
+      publishedAt: latest?.publisher ? null : fredPublicationTime(data.info, latest?.date),
     };
   }));
+  // Tenors whose latest yield FRED does not list yet name the Treasury and when it published them.
+  const ahead = fredProvenance(results.flatMap((row) => row.latest ? [row.latest] : []));
   // The curve shown was published with its last tenor: the newest of their FRED updates, when each has one.
   const published = results.map((row) => row.publishedAt);
-  const publishedAt = published.every((time) => time != null) ? published.sort().at(-1) : null;
+  const publishedAt = ahead ? ahead.publishedAt : published.every((time) => time != null) ? published.sort().at(-1) : null;
   ctx.printResult({
-    data: results.map(({ publishedAt: _publishedAt, ...row }) => row),
+    data: results.map(({ publishedAt: _publishedAt, latest: _latest, ...row }) => row),
     metadata: { startDate },
     freshness: rowsFreshness(results, {
-      source: "FRED", status: "not-a-feed", basis: "daily Treasury yields", observedKey: "date",
+      source: ahead?.source ?? "FRED", status: "not-a-feed", basis: "daily Treasury yields", observedKey: "date",
+      ...(ahead?.publisher ? { publisher: ahead.publisher } : {}),
       ...(publishedAt ? { publishedAt } : {}),
     }),
   }, {

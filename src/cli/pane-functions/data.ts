@@ -18,6 +18,9 @@ import { loadPeriodEndHistory, PERIOD_END_HISTORY_RESOLUTION } from "../../plugi
 import { latestFinancialPeriodEnd } from "../../plugins/builtin/ticker-detail/financials/model";
 import { oldestRatioPeriodEnd, periodEndClose, ratioStatements } from "../../plugins/builtin/ticker-detail/financials/ratios";
 import { shotFinancialPeriod } from "./financial-ratio-shot";
+import { loadReturnSeries } from "../../plugins/builtin/ticker-detail/data-panes/returns-history";
+import type { ReturnRange } from "../../plugins/builtin/ticker-detail/data-panes/returns-model";
+import type { ManualChartResolution } from "../../time-series/resolution";
 
 const SHOT_PRICE_HISTORY_RANGE = "5Y" as const;
 const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
@@ -103,6 +106,33 @@ export async function withShotSeasonalityHistory(
     throw new Error(`${instrument.symbol}: ${history.error ?? `${cadence} price history is stale`}`);
   }
   return { ...financials, priceHistory: history.history, priceHistoryResolution: SEASONALITY_HISTORY_RESOLUTION[cadence] };
+}
+
+/**
+ * RETURN reads bars of its interval over its range. Captured history answers
+ * every request, so the weekly seed stood in for its hourly bars, and a 5D
+ * window held none of them. The pane's own load fetches the bars it asks
+ * for, tagged so no other cadence is answered.
+ */
+export async function withShotReturnHistory(
+  context: MarketContext,
+  instrument: InstrumentRef,
+  exchange: string,
+  resolved: ResolvedPaneFunction,
+  financials: TickerFinancials,
+): Promise<TickerFinancials> {
+  const support = await Promise.resolve(context.dataProvider.getChartResolutionSupport?.(instrument.symbol, exchange) ?? [])
+    .catch(() => []);
+  const series = await loadReturnSeries(context.dataProvider, {
+    symbol: instrument.symbol,
+    exchange,
+    range: (resolved.options.range ?? "5D") as ReturnRange,
+    resolution: (resolved.options.interval ?? "1h") as ManualChartResolution,
+    support,
+    now: Date.now(),
+    forceRefresh: context.refresh,
+  });
+  return { ...financials, priceHistory: series.points, priceHistoryResolution: series.resolution };
 }
 
 /** Correlation and relationship panes read daily returns at every range. */

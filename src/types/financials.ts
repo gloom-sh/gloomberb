@@ -718,6 +718,10 @@ export interface PricePoint {
   low?: number;
   close: number;
   volume?: number;
+  /** The bar's period had not ended when it was served: its close is the latest price, and it may have no volume yet. */
+  partial?: boolean;
+  /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */
+  filled?: boolean;
 }
 
 export interface StatementHistoryAttempt {

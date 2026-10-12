@@ -70,7 +70,7 @@ test("fred --list filters the served series by id, title or group, and says when
 });
 
 /** Gloom Cloud's FRED endpoint: each request's query is kept, and `answer` says what comes back. */
-function serveSeries(answer: (query: URLSearchParams) => { observations: Array<{ date: string; value: number | null }>; info?: Record<string, unknown> }) {
+function serveSeries(answer: (query: URLSearchParams) => { observations: Array<{ date: string; value: number | null; publisher?: string; publishedAt?: string }>; info?: Record<string, unknown> }) {
   const queries: URLSearchParams[] = [];
   setCloudApiFetchTransport(async (url) => {
     const query = new URL(url).searchParams;
@@ -130,6 +130,32 @@ test("nothing on or after --start names the latest observation", async () => {
   // A series with no data at all, or a failed second look, keeps the plain answer.
   serveSeries(() => ({ observations: [] }));
   expect((await runFred(["DGS10", "--start", "2026-10-11"])).text.split("\n")[0]).toBe("No results.");
+});
+
+test("a yield ahead of FRED names Treasury and when it published, in the source line and on its row; FRED's own stay FRED", async () => {
+  // DGS10 on 12 Oct 2026: FRED's own data ended 8 Oct at 5.22; Treasury printed 5.24 for 9 Oct.
+  const info = { id: "DGS10", units: "Percent", frequency: "Daily", source: "Board of Governors of the Federal Reserve System (US)",
+    lastUpdated: "2026-10-08 15:16:37-05", observationEnd: "2026-10-08" };
+  serveSeries(() => ({
+    observations: [
+      { date: "2026-10-09", value: 5.24, publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z" },
+      { date: "2026-10-08", value: 5.22 },
+    ],
+    info,
+  }));
+  const ahead = await runFred(["DGS10"]);
+  expect(ahead.text.split("\n").at(-1)).toBe("Source: U.S. Treasury via FRED, published 2026-10-09 \u00b7 Fri 9 Oct 2026 \u00b7 not a live feed (published statistics)");
+  expect(ahead.result.data).toEqual([
+    { date: "2026-10-09", value_pct: 5.24, publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z" },
+    { date: "2026-10-08", value_pct: 5.22 },
+  ]);
+  expect(ahead.result.freshness).toMatchObject({ publisher: "U.S. Treasury", publishedAt: "2026-10-09T20:01:09.391Z" });
+
+  // Once FRED lists it, the line is FRED's again, with FRED's own publication time.
+  serveSeries(() => ({ observations: [{ date: "2026-10-09", value: 5.24 }], info: { ...info, observationEnd: "2026-10-09", lastUpdated: "2026-10-12 15:16:37-05" } }));
+  const listed = await runFred(["DGS10"]);
+  expect(listed.text.split("\n").at(-1)).toBe("Source: FRED \u00b7 Fri 9 Oct 2026 \u00b7 not a live feed (published statistics)");
+  expect(listed.result.freshness).toMatchObject({ publisher: info.source, publishedAt: "2026-10-12T20:16:37.000Z" });
 });
 
 test("a monthly series is dated by its month, and a lagging one carries its note", async () => {

@@ -215,6 +215,8 @@ export function mapPricePoint(
     low: normalizePriceValueByDivisor(point.low, divisor),
     close: normalizePriceValueByDivisor(point.close, divisor) ?? point.close,
     volume: point.volume,
+    ...(point.partial === true ? { partial: true } : {}),
+    ...(point.filled === true ? { filled: true } : {}),
   };
 }
 

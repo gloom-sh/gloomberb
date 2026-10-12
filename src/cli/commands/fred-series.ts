@@ -75,6 +75,37 @@ export function fredPublicationTime(
   return time && !time.dateOnly ? new Date(time.time).toISOString() : null;
 }
 
+/** Where a FRED report's figures come from, as its source line names them. */
+export interface FredProvenance {
+  source: string;
+  publisher?: string;
+  publishedAt?: string;
+}
+
+/**
+ * Where the newest of these observations comes from: FRED, unless Gloom
+ * Cloud carried a value FRED does not list yet and named its publisher. Then
+ * the source line names that publisher and when it published, so a reader
+ * looking for the figure in FRED's own data knows it is not there yet:
+ * `U.S. Treasury via FRED, published 2026-10-09`. Null for FRED's own.
+ */
+export function fredProvenance(observations: ReadonlyArray<{ date: string; publisher?: string; publishedAt?: string }>): FredProvenance | null {
+  const ahead = observations.filter((observation) => observation.publisher?.trim());
+  if (ahead.length === 0) return null;
+  const publishers = [...new Set(ahead.map((observation) => observation.publisher!.trim()))];
+  const times = ahead.flatMap((observation) => {
+    const time = parseReportTime(observation.publishedAt);
+    return time ? [new Date(time.time).toISOString()] : [];
+  }).sort();
+  const publishedAt = times.at(-1);
+  const publisher = publishers.join(" and ");
+  return {
+    source: `${publisher} via FRED${publishedAt ? `, published ${publishedAt.slice(0, 10)}` : ""}`,
+    publisher,
+    ...(publishedAt ? { publishedAt } : {}),
+  };
+}
+
 /**
  * Series FRED itself publishes late, with what a reader should know under the
  * table. Add a series here when its newest FRED observation is not the newest

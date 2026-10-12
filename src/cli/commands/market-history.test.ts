@@ -61,3 +61,59 @@ test("a venue's daily bars are dated by its own trading days, not New York's", a
     setSystemTime();
   }
 });
+
+test("a coin's partial and filled days say so, its volume is labelled in its quote currency, and a missing one says why", async () => {
+  // BTC-USD at 00:25 UTC on 12 Oct 2026, as Gloom Cloud flags the bars: Oct 11 rebuilt from hourly
+  // bars without volume, Oct 12 still forming without the rolling 24-hour figure.
+  setSystemTime(new Date("2026-10-12T00:25:00Z"));
+  try {
+    const cli = createTestCliContext({
+      config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+      dataProvider: createTestDataProvider({
+        getQuote: async () => createTestQuote({ symbol: "BTC-USD", currency: "USD", listingExchangeName: "CCC", instrumentType: "CRYPTOCURRENCY" }),
+        getPriceHistoryWithMetadata: async () => ({
+          resolution: "1d",
+          points: [
+            { date: new Date("2026-10-10"), open: 82546.32, high: 83092.03, low: 82473.04, close: 82912.23, volume: 12485050512 },
+            { date: new Date("2026-10-11"), open: 82913.3, high: 84110.54, low: 82716.81, close: 83680.59, filled: true },
+            { date: new Date("2026-10-12"), open: 83673.01, high: 83704.88, low: 83652.21, close: 83704.88, partial: true },
+          ],
+        }),
+      }),
+    });
+    await history.execute(["BTC-USD"], cli.context);
+    const [{ result, options }] = cli.printed;
+    expect(result.data.map((row: Record<string, unknown>) => [row.date, row.volume, row.volumeUnit, row.volumeNote, row.partial, row.filled])).toEqual([
+      ["2026-10-10", 12485050512, "USD", undefined, undefined, undefined],
+      ["2026-10-11", null, "USD", "rebuilt from hourly bars", undefined, true],
+      ["2026-10-12", null, "USD", "day in progress", true, undefined],
+    ]);
+    expect(result.metadata).toMatchObject({ volumeUnit: "USD", volumePeriod: "UTC day" });
+    expect(result.warnings).toContain(
+      "2026-10-12 is still forming (partial), with no volume until the day closes; 2026-10-11 was rebuilt from hourly bars (filled), without volume",
+    );
+    const text = serializeCliResult(result, DEFAULT_CLI_OPTIONS, options).split("\n");
+    expect(text.at(-1)).toBe("Source: Gloom Cloud \u00b7 Mon 12 Oct 2026 \u00b7 not a live feed (daily closes) \u00b7 volume in USD per UTC day");
+    expect(text.find((line) => line.startsWith("2026-10-12"))).toMatch(/partial$/);
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("a stock's history keeps its export columns, with no volume unit it cannot vouch for", async () => {
+  const cli = createTestCliContext({
+    config: createDefaultConfig("/tmp/gloom-history-command-fixture"),
+    dataProvider: createTestDataProvider({
+      getQuote: async () => createTestQuote({ symbol: "AAPL", currency: "USD", listingExchangeName: "NASDAQ", instrumentType: "EQUITY" }),
+      getPriceHistoryWithMetadata: async () => ({
+        resolution: "1d",
+        points: [{ date: new Date("2026-10-09"), open: 340, high: 341, low: 330, close: 336.63, volume: 41_000_000 }],
+      }),
+    }),
+  });
+  await history.execute(["AAPL"], cli.context);
+  const [{ result }] = cli.printed;
+  expect(Object.keys(result.data[0] as object)).toEqual(["date", "open", "high", "low", "close", "volume", "currency", "unit", "interval", "flag"]);
+  expect(result.metadata).not.toHaveProperty("volumeUnit");
+  expect(result.freshness).not.toHaveProperty("note");
+});

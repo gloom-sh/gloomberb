@@ -69,6 +69,7 @@ import {
   type CliReportTables,
 } from "../report-tables";
 import {
+  historyBarStatusNote,
   historyFacts,
   historyFlagNote,
   historyGapNote,
@@ -78,6 +79,8 @@ import {
   historyPriceDecimals,
   historyRows,
   historyUnit,
+  historyVolume,
+  historyVolumeText,
 } from "../history-rows";
 import { CRYPTO_BOARD_HINT, quoteNotes } from "./crypto-hints";
 import { bareFuturesCode } from "../../market-data/futures-board";
@@ -738,7 +741,12 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
     const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
     const unit = historyUnit(listing.key, listed ?? quote);
-    const data = historyRows(points, resolution, unit.currency, unit.unit);
+    const traded = {
+      listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
+    };
+    // A coin's volume is traded value in its quote currency: said in every row and on the status line.
+    const volume = historyVolume(unit, traded);
+    const data = historyRows(points, resolution, unit.currency, unit.unit, volume);
     const interval = data[0]?.interval ?? null;
     const decimals = historyPriceDecimals(data, listing.saved?.metadata.assetCategory);
     const price = (value: unknown) => typeof value === "number" ? value.toFixed(decimals) : "";
@@ -751,13 +759,12 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       oldest: null,
       // Bars stop arriving on the listing's own trading days, not New York's.
       cadenceExchange: quote?.listingExchangeName || exchange || undefined,
+      ...(volume ? { note: historyVolumeText(volume, interval) } : {}),
     });
-    const gaps = historyGapNote(data, {
-      listing: listing.key, exchange: quote?.listingExchangeName || exchange || undefined, instrumentType: quote?.instrumentType,
-    });
+    const gaps = historyGapNote(data, traded);
     const notes = [
       ...await listingChoiceNotes(listing, market, quote, venues),
-      ...historyNotes(range, interval, data[0]?.date), gaps ?? [], historyFlagNote(data) ?? [],
+      ...historyNotes(range, interval, data[0]?.date), gaps ?? [], historyFlagNote(data) ?? [], historyBarStatusNote(data) ?? [],
     ].flat();
     const priceColumns: CliResultColumn[] = [
       intraday
@@ -773,6 +780,16 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const flagColumn: CliResultColumn = {
       key: "flag", header: "Flag", format: (value) => typeof value === "string" ? cliStyles.warning(value) : "",
     };
+    // Text also marks a bar still forming or rebuilt from hourly bars there; exports keep them as their own fields.
+    const flagTextColumn: CliResultColumn = {
+      ...flagColumn,
+      format: (value, row) => [
+        typeof value === "string" ? cliStyles.warning(value) : "",
+        row.partial ? cliStyles.muted("partial") : "",
+        row.filled ? cliStyles.muted("filled") : "",
+      ].filter(Boolean).join(" "),
+    };
+    const marked = data.some((row) => row.partial || row.filled);
     ctx.printResult({
       data,
       metadata: {
@@ -787,13 +804,14 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         lastDate: data.at(-1)?.date ?? null,
         bars: data.length,
         asOf: freshness?.asOf ?? null,
+        ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
       },
       ...(notes.length > 0 ? { warnings: notes } : {}),
       freshness,
     }, {
       heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
       dateKey: "date",
-      textColumns: [...priceColumns, flagColumn],
+      textColumns: [...priceColumns, flagTextColumn],
       // Every exported row says its currency, what a price is in and its bar size, so it survives head and concatenation.
       columns: [
         ...priceColumns,
@@ -801,6 +819,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         { key: "unit", header: "Unit" },
         { key: "interval", header: "Interval" },
         flagColumn,
+        ...marked ? [{ key: "partial", header: "Partial" }, { key: "filled", header: "Filled" }] : [],
+        ...volume ? [{ key: "volumeUnit", header: "Volume unit" }, { key: "volumeNote", header: "Volume note" }] : [],
       ],
     });
   });

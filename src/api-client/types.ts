@@ -402,6 +402,10 @@ export interface CloudPricePointPayload {
   low?: number;
   close: number;
   volume?: number;
+  /** A coin's daily bar for the UTC day still forming when served; it has no volume yet. */
+  partial?: boolean;
+  /** A coin's daily bar whose prices were rebuilt from hourly bars; a day the source left empty has no volume. */
+  filled?: boolean;
 }
 
 type CloudEconImpact = "high" | "medium" | "low";
@@ -432,6 +436,13 @@ export interface CloudMacroReleaseDaysPayload {
 export interface CloudFredObservationPayload {
   date: string;
   value: number | null;
+  /**
+   * Who published a value FRED does not list yet, such as a Treasury yield
+   * Gloom Cloud read from the Treasury first. Absent on FRED's own values.
+   */
+  publisher?: string;
+  /** When that publisher's value was first read, ISO in UTC. */
+  publishedAt?: string;
 }
 
 export interface CloudFredSeriesInfoPayload {

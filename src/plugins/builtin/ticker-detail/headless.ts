@@ -30,6 +30,11 @@ import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, barResolutionFromDates, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
+import { cleanFloat32Price, historyPriceDecimals } from "../../../cli/history-rows";
+import { historyCoverageNotice } from "../../../sources/history-coverage";
+import { getChartResolutionLabel, isIntradayResolution, type ManualChartResolution } from "../../../time-series/resolution";
+import { buildReturnRows, closedMarketNote, type ReturnRange } from "./data-panes/returns-model";
+import { loadReturnSeries } from "./data-panes/returns-history";
 
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["financial-analysis-pane"],
@@ -284,5 +289,86 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
     const freshness = { ...barHistoryFreshness(barResolutionFromDates(rows.map((row) => row.date))), observedKey: "date", oldest: null };
     return { rows, freshness, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
+  },
+};
+
+/** A percent with its sign, two decimals: `+0.63%`; a dash for a gap. */
+function signedPercentCell(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "-";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
+  ...paneSchemas["returns-pane"],
+  shape: "rows",
+  description: "Interval and cumulative price returns of one ticker's bars over a range: each bar's close, its move from the bar before, and its move from the bar before the window.",
+  describe: ({ symbols, options }) => `Returns | ${symbols[0]} | ${options.range ?? "5D"} | ${options.interval ?? "1h"}`,
+  async load({ symbols, options }, ctx) {
+    const key = symbols[0]!;
+    const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
+    const range = (options.range ?? "5D") as ReturnRange;
+    const requested = (options.interval ?? "1h") as ManualChartResolution;
+    const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(() => []);
+    const series = await loadReturnSeries(ctx.marketData, {
+      symbol, exchange: exchange ?? "", range, resolution: requested, support, now: Date.now(), forceRefresh: ctx.refresh,
+    });
+    const returns = buildReturnRows(series.points, series.visibleFrom, series.visibleTo).reverse();
+    const decimals = historyPriceDecimals(returns.flatMap((row) => row.price === null ? [] : [{
+      open: null, high: null, low: null, close: cleanFloat32Price(row.price),
+    }]));
+    const rounded = (value: number | null) => value === null || !Number.isFinite(value) ? null : Number(value.toFixed(Math.min(20, decimals)));
+    const percent = (value: number | null) => value === null ? null : value * 100;
+    const intraday = isIntradayResolution(series.resolution);
+    // A daily or longer bar is a trading date; an intraday one its UTC open.
+    const rows = returns.map((row) => ({
+      time: intraday ? new Date(row.timestamp).toISOString() : new Date(row.timestamp).toISOString().slice(0, 10),
+      close: rounded(row.price),
+      intervalChange: rounded(row.intervalChange),
+      intervalReturnPct: percent(row.intervalPercent),
+      totalChange: rounded(row.cumulativeChange),
+      totalReturnPct: percent(row.cumulativePercent),
+      ...(row.inconsistent ? { inconsistent: true } : {}),
+    }));
+    const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
+    const columns: HeadlessPaneColumn[] = [
+      { key: "time", header: intraday ? "Time (UTC)" : "Date", format: (value) => String(value).slice(0, 16).replace("T", " ") },
+      { key: "close", header: "Price", align: "right", format: price },
+      { key: "intervalChange", header: "Int $", align: "right", format: price },
+      { key: "intervalReturnPct", header: "Int %", align: "right", format: signedPercentCell },
+      { key: "totalChange", header: "Total $", align: "right", format: price },
+      { key: "totalReturnPct", header: "Total %", align: "right", format: signedPercentCell },
+    ];
+    // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
+    const notices = [
+      series.resolution !== requested
+        ? `${getChartResolutionLabel(requested)} bars do not reach back ${range}; these are ${getChartResolutionLabel(series.resolution)} bars.`
+        : null,
+      historyCoverageNotice(series.coverageStart, series.visibleFrom),
+      priceHistoryIntegrityNotice(rows.filter((row) => row.inconsistent).length) ?? null,
+    ].filter((notice): notice is string => !!notice);
+    return {
+      rows,
+      columns,
+      unavailableSymbols: rows.length ? [] : [key],
+      ...(rows.length ? {} : { errors: [`${key}: No bars in this window.`] }),
+      freshness: {
+        ...barHistoryFreshness(intraday ? null : series.resolution),
+        observedKey: "time",
+        oldest: null,
+        ...(series.venue ? { cadenceExchange: series.venue } : {}),
+        // The window ends at the last session while the market is shut, which the status line says.
+        ...(series.lastSession ? { note: closedMarketNote(series.lastSession, series.visibleTo) } : {}),
+      },
+      metadata: {
+        symbol: key,
+        range,
+        interval: series.resolution,
+        requestedInterval: requested,
+        window: { after: new Date(series.visibleFrom).toISOString(), through: new Date(series.visibleTo).toISOString() },
+        ...(series.lastSession ? { marketClosed: true, lastSession: series.lastSession } : {}),
+        basis: "Price returns of bar closes; dividends are not included",
+        ...(notices.length ? { notices } : {}),
+      },
+    };
   },
 };
