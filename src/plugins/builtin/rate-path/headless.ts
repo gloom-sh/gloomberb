@@ -49,12 +49,17 @@ export const ratePathHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["WIRP", "FFIP"], dataRequirements: ["Gloom Cloud rate-path endpoint"],
     limitations: ["Conditional two-outcome probabilities.", "SR3 history from hourly trades.", "Maintained FOMC schedule and SEP snapshot."] },
   shape: "bundle", argument: { kind: "none" }, options: [], describe: "US rate path",
-  // Delayed CME futures quotes; each contract and policy rate says whether it is stale.
+  // Delayed CME futures quotes.
   freshness: { source: "CME futures", status: "delayed", delayMinutes: CME_FUTURES_DELAY_MINUTES },
   async load(_args, ctx) {
     const data = await fetchRatePath(ctx.apiClient);
     const moves = meetingMoves(data.meetings);
+    // The line cites CME futures, so the contracts alone date it and count its stale rows. The policy rates
+    // (FRED) keep their own date and stale flag in their table, and the meetings are read from the contracts.
+    const contracts = [...data.fedFunds, ...data.sofr].filter((contract) => contract.status !== "unavailable")
+      .map(({ asOf, stale }) => ({ asOf, stale }));
     return {
+      freshness: { observedKey: "asOf", observations: contracts },
       sections: [
         { title: "Current policy", columns: [
           { key: "name", header: "Name", format: policyLabel }, { key: "value", header: "Value", align: "right", format: rate },

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { RatePathPayload } from "../../../api-client/rates";
+import type { RateContract, RatePathPayload } from "../../../api-client/rates";
 import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
 import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
@@ -32,16 +32,25 @@ test("text names the policy rates and says whether data is stale, while JSON kee
   expect(contract.trim().endsWith("available  yes")).toBe(true);
 });
 
-test("the status line names the CME futures and how far they are delayed", async () => {
-  const context = createTestHeadlessContext({ apiClient: { getCloudRatePath: async () => payload } as never });
-  const result = await ratePathHeadless.load(createTestHeadlessArgs(), context);
-  const freshness = deriveHeadlessFreshness(ratePathHeadless, result, Date.parse("2026-10-09T21:00:00Z"));
-  expect(freshness).toMatchObject({ source: "CME futures", status: "stale", feed: "delayed", delayMinutes: 10, staleCount: 1 });
-  expect(formatFreshnessLine(freshness)).toBe("Source: CME futures · Fri 9 Oct 2026 20:59 UTC (oldest Thu 8 Oct 2026) · 10 min delayed, 1 of 4 stale");
-  // Without a stale row it is a plain delayed feed, never live.
-  const fresh = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({
-    apiClient: { getCloudRatePath: async () => ({ ...payload, fedFunds: [{ ...payload.fedFunds[0], stale: false }] }) } as never,
+test("the status line describes the CME futures alone: their newest quote, delay and stale count", async () => {
+  const now = Date.parse("2026-10-09T21:00:00Z");
+  const line = async (fedFunds: Array<Partial<RateContract>>) => {
+    const result = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({
+      apiClient: { getCloudRatePath: async () => ({ ...payload, fedFunds: fedFunds.map((contract) => ({ ...payload.fedFunds[0], ...contract })) }) } as never,
+    }));
+    return formatFreshnessLine(deriveHeadlessFreshness(ratePathHeadless, result, now));
+  };
+  // The policy rates are dated 8 Oct (FRED), a day before the quotes: that is not the futures' age.
+  expect(await line([{ stale: false }, { symbol: "ZQX26.CBT", asOf: "2026-10-09T20:41:00Z", stale: false }]))
+    .toBe("Source: CME futures · Fri 9 Oct 2026 20:59 UTC · 10 min delayed");
+  // A contract that is genuinely old, and stale, is counted and dated.
+  expect(await line([{ stale: false }, { symbol: "ZQX26.CBT", asOf: "2026-10-06T20:00:00Z", stale: true }]))
+    .toBe("Source: CME futures · Fri 9 Oct 2026 20:59 UTC (oldest Tue 6 Oct 2026) · 10 min delayed, 1 of 2 stale");
+  // A stale policy rate stays in its table and the report's own flags, not in the futures' line.
+  const result = await ratePathHeadless.load(createTestHeadlessArgs(), createTestHeadlessContext({
+    apiClient: { getCloudRatePath: async () => ({ ...payload, current: { ...payload.current, effr: { ...metric, stale: true } },
+      fedFunds: [{ ...payload.fedFunds[0], stale: false }] }) } as never,
   }));
-  expect(formatFreshnessLine(deriveHeadlessFreshness(ratePathHeadless, fresh, Date.parse("2026-10-09T21:00:00Z"))))
-    .toBe("Source: CME futures · Fri 9 Oct 2026 20:59 UTC (oldest Thu 8 Oct 2026) · 10 min delayed");
+  expect(formatFreshnessLine(deriveHeadlessFreshness(ratePathHeadless, result, now))).toBe("Source: CME futures · Fri 9 Oct 2026 20:59 UTC · 10 min delayed");
+  expect((result.sections[0] as { rows: Array<Record<string, unknown>> }).rows[0]).toMatchObject({ name: "effr", stale: true });
 });
