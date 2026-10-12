@@ -1,61 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { getLoadablePlugins } from "../plugins/catalog";
-import { createPaneDiscoveryContext } from "../cli/pane-functions/discovery";
-import { createTestTicker } from "../test-support/ticker";
-import { createDefaultConfig, type PaneInstanceConfig } from "../types/config";
-import type { PaneDef, PanePersonalDataContext } from "../types/plugin";
+import type { PanePersonalDataContext } from "../types/plugin";
 import { resolvePanePersonalData } from "./pane-image";
-
-const paneDefs = new Map<string, PaneDef>(
-  getLoadablePlugins().flatMap((plugin) => plugin.panes ?? []).map((pane) => [pane.id, pane]),
-);
-
-function context(paneType: string, overrides: Partial<PanePersonalDataContext> = {}): PanePersonalDataContext {
-  const config = createDefaultConfig("/gloom");
-  const pane: PaneInstanceConfig = { instanceId: `${paneType}:test`, paneId: paneType, binding: { kind: "none" } } as PaneInstanceConfig;
-  return {
-    config,
-    layout: config.layout,
-    paneId: pane.instanceId,
-    paneType,
-    pane,
-    settings: {},
-    paneState: {},
-    activeTicker: null,
-    activeCollectionId: null,
-    tickers: new Map(),
-    ...overrides,
-  };
-}
+import { followed, held, paneDefs, personalDataContext as context, withBuiltinPanes } from "./test-fixture";
 
 function personalData(paneType: string, overrides: Partial<PanePersonalDataContext> = {}) {
   return resolvePanePersonalData(paneDefs.get(paneType), context(paneType, overrides));
 }
 
-const held = new Map([["NVDA", createTestTicker("NVDA", "NVIDIA", { portfolios: ["main"], positions: [{ portfolio: "main", shares: 120, avgCost: 98.4, broker: "manual" }] })]]);
-const followed = new Map([["NVDA", createTestTicker("NVDA", "NVIDIA", { watchlists: ["watchlist"] })]]);
-
 describe("which panes ask before their picture is posted to chat", () => {
   test("every built-in pane with private portable data declares picture privacy", async () => {
-    const { panes, paneTemplates: _templates, ...discovery } = createPaneDiscoveryContext({
-      getConfig: () => context("discovery").config,
-      panes: new Map(paneDefs),
-    });
-    const started: ReturnType<typeof getLoadablePlugins> = [];
-    try {
-      // Include setup-registered panes, not just the catalogue's static definitions.
-      for (const plugin of getLoadablePlugins()) {
-        started.push(plugin);
-        await plugin.setup?.(discovery);
-      }
-      // No exceptions today. A future exception must name the pane and explain
-      // why its private portable fields cannot expose personal data in a picture.
-      expect([...panes.values()]
-        .filter((pane) => pane.portableShare?.private && pane.personalData === undefined)
-        .map((pane) => pane.id).sort()).toEqual([]);
-    } finally {
-      for (const plugin of started.reverse()) plugin.dispose?.();
-    }
+    // No exceptions today. A future exception must name the pane and explain
+    // why its private portable fields cannot expose personal data in a picture.
+    expect(await withBuiltinPanes((panes) => [...panes.values()]
+      .filter((pane) => pane.portableShare?.private && pane.personalData === undefined)
+      .map((pane) => pane.id).sort())).toEqual([]);
   });
 
   test.each([

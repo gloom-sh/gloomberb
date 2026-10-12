@@ -9,13 +9,17 @@ import { domPaneText, terminalPaneText, type CellRect } from "../../../../ask-gl
 import type { DockLeafLayout, FloatingRect, LayoutBounds, ResolvedPane } from "../../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import { useRemoteUiRegistry, type RemoteUiRegistry } from "../../../../remote/semantic-tree";
-import { resolveTickerForPane, type AppState } from "../../../../state/app/context";
+import type { AppState } from "../../../../state/app/context";
+import type { LayoutConfig } from "../../../../types/config";
 import { useNativeRenderer } from "../../../../ui";
 import { readRenderableBounds } from "../cursor-occlusion";
+import { personalDataContext } from "./personal-data";
 
 interface ShellPaneAskOptions {
   focusedPaneId: string | null;
   getPaneTitle: (pane: ResolvedPane) => string;
+  /** The layout the panes are in, for their `personalData` rules. */
+  layout: LayoutConfig;
   nativePaneChrome: boolean;
   paneMap: Map<string, ResolvedPane>;
   pluginRegistry: PluginRegistry;
@@ -68,6 +72,7 @@ function activePaneTabs(paneId: string, remoteUi: RemoteUiRegistry | null, nativ
 export function useShellPaneAsk({
   focusedPaneId,
   getPaneTitle,
+  layout,
   nativePaneChrome,
   paneMap,
   pluginRegistry,
@@ -110,17 +115,14 @@ export function useShellPaneAsk({
     }
     const attachment = buildAskGloomPaneAttachment({
       registry: pluginRegistry,
-      instance: pane.instance,
+      def: pane.def,
+      context: personalDataContext(state, layout, pane),
       title: getPaneTitle(pane),
-      symbol: resolveTickerForPane(state, paneId),
-      paneState: state.paneState[paneId],
-      config: state.config,
-      tickers: state.tickers,
       activeTabs: activePaneTabs(paneId, remoteUi, nativePaneChrome),
       visibleText,
     });
     return askGloomAboutPane(attachment);
-  }, [getPaneTitle, nativePaneChrome, paneMap, pluginRegistry, readTerminalText, remoteUi, stateRef]);
+  }, [getPaneTitle, layout, nativePaneChrome, paneMap, pluginRegistry, readTerminalText, remoteUi, stateRef]);
 
   const askAboutFocusedPane = useCallback(
     () => (focusedPaneId ? askAboutPane(focusedPaneId) : false),

@@ -163,6 +163,8 @@ export function missingPanePlaceholderDef(paneId: string): PaneDef {
       defaultMode: "floating",
       defaultFloatingSize: { width: 60, height: 12 },
       portableShare: { private: {} },
+      // Its plugin is not here to say what it shows, so it asks before its contents leave the device.
+      personalData: "holdings",
     };
     placeholders.set(paneId, def);
   }

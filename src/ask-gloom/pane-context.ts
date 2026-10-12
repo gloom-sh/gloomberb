@@ -1,8 +1,6 @@
 import type { PluginRegistry } from "../plugins/registry";
 import { paneShowsPersonalData } from "../shares/personal-pane";
-import type { AppConfig, PaneInstanceConfig } from "../types/config";
-import type { PaneSharePrivateFields } from "../types/plugin";
-import type { TickerRecord } from "../types/ticker";
+import type { PaneDef, PanePersonalDataContext, PaneSharePrivateFields } from "../types/plugin";
 import type { AskGloomPaneAttachment } from "./pane-request";
 
 /** A handful of the pane's own settings is enough to say how it is set up. */
@@ -51,13 +49,12 @@ function functionCode(registry: Pick<PluginRegistry, "paneTemplates">, paneType:
 
 export interface PaneAttachmentSource {
   registry: Pick<PluginRegistry, "panes" | "paneTemplates" | "brokers" | "getPanePluginId" | "getBrokerPluginId">;
-  instance: PaneInstanceConfig;
+  /** The pane's definition as the shell resolved it: a pane from a plugin this terminal lacks has a placeholder one. */
+  def: Pick<PaneDef, "personalData">;
+  /** What the pane shows now: its instance, ticker and state, and the tickers with their positions, as a posted picture's `personalData` rule reads them. */
+  context: PanePersonalDataContext;
   /** What the header calls it. */
   title: string;
-  symbol: string | null;
-  paneState?: Readonly<Record<string, unknown>>;
-  config: Pick<AppConfig, "portfolios" | "brokerInstances">;
-  tickers?: ReadonlyMap<string, TickerRecord>;
   /** The tab each of its tab strips has open, outermost first. */
   activeTabs?: readonly string[];
   visibleText: string | null;
@@ -70,15 +67,13 @@ export interface PaneAttachmentSource {
  */
 export function buildAskGloomPaneAttachment({
   registry,
-  instance,
+  def,
+  context,
   title,
-  symbol,
-  paneState,
-  config,
-  tickers,
   activeTabs = [],
   visibleText,
 }: PaneAttachmentSource): AskGloomPaneAttachment {
+  const { pane: instance, paneState, activeTicker: symbol } = context;
   const privateFields = registry.panes.get(instance.paneId)?.portableShare?.private;
   const args: Record<string, string> = {};
   const tabs = activeTabs.map((tab) => tab.trim()).filter(Boolean);
@@ -100,7 +95,7 @@ export function buildAskGloomPaneAttachment({
     symbol,
     args,
     visibleText,
-    personal: showsPersonalData({ registry, instance, paneState, symbol, config, tickers }),
+    personal: showsPersonalData({ registry, def, context }),
   };
 }
 

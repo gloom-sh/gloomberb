@@ -164,9 +164,9 @@ export interface PaneDef {
   portableShare?: PanePortableShareDef;
   /**
    * The person's own data the pane shows, so posting a picture of it to chat
-   * asks first. A function decides per instance from what it shows now (a
-   * chat pane on a public channel, a quote of a ticker not held). Leave it
-   * off for market data.
+   * and asking Ask Gloom about it ask first. A function decides per instance
+   * from what it shows now (a chat pane on a public channel, a quote of a
+   * ticker not held). Leave it off for market data.
    */
   personalData?: PanePersonalData | ((context: PanePersonalDataContext) => PanePersonalData | null);
   /**

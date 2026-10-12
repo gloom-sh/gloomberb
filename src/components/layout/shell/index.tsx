@@ -513,6 +513,7 @@ export function Shell({
   const { canAsk, askAboutPane, askAboutFocusedPane } = useShellPaneAsk({
     focusedPaneId,
     getPaneTitle,
+    layout: visibleLayout,
     nativePaneChrome,
     paneMap,
     pluginRegistry,

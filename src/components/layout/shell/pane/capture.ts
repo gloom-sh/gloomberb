@@ -1,18 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createOneShot } from "../../../../utils/one-shot";
 import type { LayoutBounds, ResolvedPane } from "../../../../layout/pane-manager";
-import { getPaneSettings } from "../../../../pane-settings";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import { paneScreenshotScale, PANE_SCREENSHOT_MIN_WIDTH } from "../../../../remote/pane-screenshot";
-import {
-  base64Bytes,
-  formatCaptureStamp,
-  resolvePanePersonalData,
-  type PaneImageCapture,
-} from "../../../../shares/pane-image";
-import { resolveCollectionForPane, resolveTickerForPane, useAppStateRef, type AppState } from "../../../../state/app/context";
+import { base64Bytes, formatCaptureStamp, type PaneImageCapture } from "../../../../shares/pane-image";
+import { panePersonalData } from "../../../../shares/personal-pane";
+import { resolveTickerForPane, useAppStateRef } from "../../../../state/app/context";
 import type { LayoutConfig } from "../../../../types/config";
-import type { PanePersonalDataContext } from "../../../../types/plugin";
 import { useUiCapabilities, type NativeRendererHost } from "../../../../ui";
 import { buildPaneSharePayload } from "../../../../shares/pane";
 import { preparePaneShare } from "../../../../shares/prepare";
@@ -20,6 +14,7 @@ import { shareFocusedPane } from "../../../../shares/flow";
 import { useDialog } from "../../../../ui/dialog";
 import { capturePaneImage as paintPaneImage } from "../../../../utils/dom-screenshot";
 import { setPaneCaptureStamp } from "../../pane/capture-stamp";
+import { personalDataContext } from "./personal-data";
 
 /** Under the chat's 5 MB image limit with room to spare; a larger paint is shrunk to fit. */
 const PANE_IMAGE_MAX_BYTES = 4 * 1024 * 1024;
@@ -32,29 +27,6 @@ function nextFrames(count: number): Promise<void> {
     const step = (left: number) => (left <= 0 ? resolve() : requestAnimationFrame(() => step(left - 1)));
     step(count);
   });
-}
-
-/** What a pane shows now, for its `personalData` rule. */
-function personalDataContext(state: AppState, layout: LayoutConfig, pane: ResolvedPane): PanePersonalDataContext {
-  const paneId = pane.instance.instanceId;
-  return {
-    config: state.config,
-    layout,
-    paneId,
-    paneType: pane.instance.paneId,
-    pane: pane.instance,
-    settings: getPaneSettings(pane.instance),
-    paneState: state.paneState[paneId] ?? {},
-    activeTicker: resolveTickerForPane(state, paneId),
-    activeCollectionId: resolveCollectionForPane(state, paneId),
-    tickers: state.tickers,
-  };
-}
-
-/** Whether the plugin that owns a pane also connects a broker. */
-function ownerConnectsBroker(pluginRegistry: PluginRegistry, paneType: string): boolean {
-  const owner = pluginRegistry.getPanePluginId(paneType);
-  return !!owner && [...pluginRegistry.brokers.keys()].some((brokerType) => pluginRegistry.getBrokerPluginId(brokerType) === owner);
 }
 
 interface UseShellPaneCaptureOptions {
@@ -135,8 +107,10 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
           resolveTickerForPane(stateRef.current, paneId),
           stateRef.current.tickers,
         ) : null,
-        personalData: resolvePanePersonalData(pane.def, personalDataContext(stateRef.current, current.layout, pane), {
-          ownerConnectsBroker: ownerConnectsBroker(current.pluginRegistry, pane.def.id),
+        personalData: panePersonalData({
+          registry: current.pluginRegistry,
+          def: pane.def,
+          context: personalDataContext(stateRef.current, current.layout, pane),
         }),
         ...image,
       };
