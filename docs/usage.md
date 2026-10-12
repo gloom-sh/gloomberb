@@ -314,6 +314,21 @@ news feed includes only articles whose publisher and original link can be
 verified. Custom RSS and Atom feeds use each item's source when supplied,
 falling back to the name you configured for a direct publisher's feed.
 
+A story opened from `SRCH` or a news pane is set for reading: the headline,
+its source and time, the tickers it names as chips (click one, or `t`), then
+the opening paragraph a size up. A `SRCH` story leaves out the page it was
+taken from (share buttons, "News provided by", cookie and newsletter lines,
+the headline and date printed again, the wire's dateline), breaks a long
+block into paragraphs between sentences, and sets rows of figures as a
+table. A long story lists up to three of its own sentences that carry a
+figure and a move under **Key facts**, and shows about a screen with the
+rest behind **Read more**. Nothing is reworded: every line is the story's
+own. Space and Shift+Space page, `]` and `[` jump between sections (or
+paragraphs), `n` and `p` open the next and previous result, and **Show
+Original Text** in the pane menu (`.`) shows the text as it was indexed.
+Calls and filings keep their text as written, under each speaker or
+section, and still open where the search matched.
+
 Ticker Research includes a **Congress** tab for House and Senate transactions in
 the selected ticker. The **Chamber** filter narrows `CG` and the tab to one chamber. Scroll to append filing windows; `n` or its footer action continues a
 window with no matching transactions. After the year's filings, `p` appends the

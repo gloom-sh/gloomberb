@@ -1,11 +1,9 @@
-import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../../../ui";
-import { TextAttributes, type ScrollBoxRenderable } from "../../../../../ui";
-import { useShortcut } from "../../../../../react/input";
-import { scrollByLines } from "../../../../../state/pane-scroll-registry";
+import { Box, Text, useRendererHost, useUiCapabilities } from "../../../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MarketNewsItem, NewsStoryItem } from "../../../../../types/news-source";
 import { colors } from "../../../../../theme/colors";
-import { InlineTickerBadge } from "../../../../../components/ticker/badge";
+import { ArticleReader } from "../../../../../components/reader/article-reader";
+import type { ArticleBlock } from "../../../../../components/reader/article-text";
 import { ChoiceDialog, ExternalLinkText } from "../../../../../components/ui";
 import { usePaneFooter } from "../../../../../components/layout/pane/footer";
 import { t } from "../../../../../i18n";
@@ -14,7 +12,6 @@ import { useOpenTickerChoice } from "../../../shared/ticker-choice";
 import { collectNewsDisplayTickers } from "../../../../../news/ticker-symbols";
 import { useInlineTickers } from "../../../../../state/hooks/inline-tickers";
 import { truncateToDisplayWidth } from "../../../../../utils/format";
-import { isPlainKey } from "../../../../../utils/keyboard";
 import { wrapTextLines } from "../../../../../utils/text-wrap";
 import { formatDetailDate } from "../../../../../utils/datetime-format";
 import { mergeNewsArticle } from "../../../../../news/news-model";
@@ -151,6 +148,8 @@ function sortStoryItems(items: readonly NewsStoryItem[] | undefined): NewsStoryI
 }
 
 const NATIVE_STRETCH_STYLE = { minWidth: 0 };
+/** A story is its summary and its coverage: the reader has no article text for it. */
+const NO_BODY: ArticleBlock[] = [];
 const NATIVE_TEXT_STYLE = { display: "block" };
 
 function TextLines({
@@ -215,31 +214,25 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
   item: MarketNewsItem;
   focused: boolean;
   width: number;
+  /** Off where the pane's own title is the headline, as in a story popped out to its own pane. */
   showTitle?: boolean;
 }) {
-  const scrollRef = useRef<ScrollBoxRenderable>(null);
   const { nativePaneChrome } = useUiCapabilities();
-
-  const innerW = Math.max(10, Math.floor(width) - 2);
-  const contentWidth = nativePaneChrome ? "100%" : innerW;
-  const contentStyle = nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined;
   const tickers = useMemo(
     () => collectNewsDisplayTickers(item.tickers),
     [item.tickers],
   );
   const tickerTexts = useMemo(() => tickers.map((ticker) => `$${ticker}`), [tickers]);
-  const { catalog, openTicker } = useInlineTickers(tickerTexts, { badgeQuotes: true });
-  const [hoveredTicker, setHoveredTicker] = useState<string | null>(null);
+  const { catalog } = useInlineTickers(tickerTexts, { badgeQuotes: true });
   const timelineItems = useMemo(() => sortStoryItems(item.items), [item.items]);
   const categoryLabels = useMemo(
-    () => item.categories.map(formatNewsCategory).filter(Boolean).join(" · "),
+    () => item.categories.map(formatNewsCategory).filter(Boolean).join(" \u00b7 "),
     [item.categories],
   );
   const lastUpdatedAt = new Date(Math.max(
     storyItemDate(item.publishedAt).getTime(),
     storyItemDate(timelineItems[0]?.publishedAt ?? item.publishedAt).getTime(),
   ));
-  const lastUpdatedStr = formatDetailDate(lastUpdatedAt);
 
   // The badges and outlet links, for the keyboard: [t]icker opens a mentioned
   // company, [s]ources picks another outlet's coverage to read.
@@ -285,95 +278,36 @@ export function NewsDetailView({ item, focused, width, showTitle = true }: {
     ],
   }), [chooseSource, dialog, hasOtherCoverage, openTickerChoice, openableTickers]);
 
-  useEffect(() => {
-    const scrollBox = scrollRef.current;
-    if (scrollBox) scrollBox.scrollTop = 0;
-  }, [item.id]);
-
-  useShortcut((event) => {
-    if (!focused) return;
-    const delta = isPlainKey(event, "j", "down") ? 1 : isPlainKey(event, "k", "up") ? -1 : 0;
-    if (!delta) return;
-    event.stopPropagation();
-    event.preventDefault();
-    if (scrollRef.current) scrollByLines(scrollRef.current, delta);
-  });
+  // One outlet's own headline is the story's: the timeline is worth its rows
+  // once a second outlet has written about it.
+  const showTimeline = timelineItems.length > 1 || (timelineItems.length === 1 && timelineItems[0]!.title.trim() !== item.title.trim());
+  const coverageWidth = Math.max(20, Math.min(72, Math.floor(width) - 6));
 
   return (
-    <Box flexDirection="column" width={nativePaneChrome ? "100%" : width} flexGrow={1} flexBasis={0} minHeight={0} overflow="hidden">
-      <ScrollBox ref={scrollRef} flexGrow={1} flexBasis={0} minHeight={0} scrollY focusable={false}>
-        <Box flexDirection="column" paddingX={1} paddingY={1} gap={1} width={nativePaneChrome ? "100%" : undefined} style={contentStyle}>
-          {showTitle && (
-            <Box flexDirection="column">
-              <TextLines
-                text={item.title}
-                width={innerW}
-                color={colors.textBright}
-                attributes={TextAttributes.BOLD}
-                nativePaneChrome={nativePaneChrome === true}
-              />
-            </Box>
-          )}
-          {/* The source is the footer's [o]pen link; without a link the footer has no source, so it stays here. */}
-          <Box height={nativePaneChrome ? undefined : 1} flexDirection="row">
-            <Text fg={colors.textDim} wrapText={nativePaneChrome}>
-              {`${item.url?.trim() || !item.source ? "" : `${item.source} · `}Last updated ${lastUpdatedStr} · score ${item.importance}/100`}
-            </Text>
-          </Box>
-          <TextLines text={item.summary} width={innerW} color={colors.text} nativePaneChrome={nativePaneChrome === true} />
-          {tickers.length > 0 && (
-            <Box flexDirection="row" flexWrap="wrap" width={contentWidth} style={contentStyle}>
-              {tickers.map((ticker) => {
-                const entry = catalog[ticker];
-                if (!entry || entry.status === "missing") {
-                  return (
-                    <Box key={ticker} paddingRight={1}>
-                      <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>
-                        {ticker}
-                      </Text>
-                    </Box>
-                  );
-                }
-
-                return (
-                  <InlineTickerBadge
-                    key={ticker}
-                    symbol={ticker}
-                    entry={entry}
-                    hovered={hoveredTicker === ticker}
-                    onHoverStart={() => setHoveredTicker(ticker)}
-                    onHoverEnd={() => {
-                      setHoveredTicker((current) => (current === ticker ? null : current));
-                    }}
-                    onOpen={openTicker}
-                  />
-                );
-              })}
-            </Box>
-          )}
-          {item.categories.length > 0 && (
-            nativePaneChrome ? (
-              <TextLines text={categoryLabels} width={innerW} color={colors.textMuted} nativePaneChrome />
-            ) : (
-              <Box height={1} flexDirection="row">
-                <Text fg={colors.textMuted}>{categoryLabels}</Text>
-              </Box>
-            )
-          )}
-          {timelineItems.length > 0 && (
-            <Box flexDirection="column" gap={1} width={contentWidth} style={contentStyle}>
-              {timelineItems.map((timelineItem) => (
-                <NewsStoryTimelineItemView
-                  key={timelineItem.id}
-                  item={timelineItem}
-                  width={innerW}
-                  nativePaneChrome={nativePaneChrome === true}
-                />
-              ))}
-            </Box>
-          )}
+    <ArticleReader
+      articleKey={item.id}
+      title={showTitle ? item.title : null}
+      meta={[item.source, formatDetailDate(lastUpdatedAt), categoryLabels]}
+      tickers={tickers}
+      lead={item.summary}
+      body={NO_BODY}
+      focused={focused}
+      width={width}
+      height={0}
+      childrenLabel={showTimeline ? t("Coverage") : undefined}
+    >
+      {showTimeline && (
+        <Box flexDirection="column" gap={1} width={nativePaneChrome ? "100%" : coverageWidth} style={nativePaneChrome ? NATIVE_STRETCH_STYLE : undefined}>
+          {timelineItems.map((timelineItem) => (
+            <NewsStoryTimelineItemView
+              key={timelineItem.id}
+              item={timelineItem}
+              width={coverageWidth}
+              nativePaneChrome={nativePaneChrome === true}
+            />
+          ))}
         </Box>
-      </ScrollBox>
-    </Box>
+      )}
+    </ArticleReader>
   );
 }

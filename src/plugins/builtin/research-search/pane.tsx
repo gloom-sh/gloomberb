@@ -20,7 +20,6 @@ import {
 } from "../../../components";
 import { TickerBadgeList } from "../../../components/ticker/badge/list";
 import { useShortcut } from "../../../react/input";
-import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import { colors } from "../../../theme/colors";
 import { Box, type InputRenderable, type ScrollBoxRenderable } from "../../../ui";
 import { useDialog } from "../../../ui/dialog";
@@ -51,6 +50,8 @@ import {
 } from "./data";
 import { useDocumentFocusRequest } from "./focus-handoff";
 import { SearchDocumentView } from "./document-view";
+import { searchArticle } from "./article";
+import { useOpenTickerChoice } from "../shared/ticker-choice";
 import { SavedSearchesView } from "./saved-view";
 import {
   buildResultColumns,
@@ -97,7 +98,6 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const openPlan = useCloudPlanAction();
   const openUpgrade = useCloudUpgradeAction("srch-wall");
   const dialog = useDialog();
-  const openTicker = useInlineTickerOpener();
 
   const [seedQuery] = usePaneSettingValue("query", "");
   const [mode, setMode] = usePluginPaneState<PaneMode>("mode", "results");
@@ -142,10 +142,11 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   const failure = useMemo<RequestFailure | null>(() => (
     failedWith ? { message: errorMessage(failedWith), status: statusOf(failedWith) } : null
   ), [failedWith]);
-  const openHit = useMemo(
-    () => (openHitId ? hits.find((hit) => hit.id === openHitId) ?? null : null),
+  const openHitIndex = useMemo(
+    () => (openHitId ? hits.findIndex((hit) => hit.id === openHitId) : -1),
     [hits, openHitId],
   );
+  const openHit = openHitIndex >= 0 ? hits[openHitIndex]! : null;
 
   const focusField = useCallback((field: Exclude<ActiveField, null>) => {
     setActiveField(field);
@@ -326,6 +327,22 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
   }, []);
 
   const closeDetail = useCallback(() => setOpenHitId(null), [setOpenHitId]);
+  // n and p read on through the results without going back to the list.
+  const openAdjacent = useCallback((step: 1 | -1) => {
+    const next = hits[openHitIndex + step];
+    if (!next) return;
+    setSelectedHitId(next.id);
+    setOpenHitId(next.id);
+  }, [hits, openHitIndex, setOpenHitId, setSelectedHitId]);
+  const openNext = useMemo(
+    () => (openHitIndex >= 0 && openHitIndex < hits.length - 1 ? () => openAdjacent(1) : null),
+    [hits.length, openAdjacent, openHitIndex],
+  );
+  const openPrevious = useMemo(
+    () => (openHitIndex > 0 ? () => openAdjacent(-1) : null),
+    [openAdjacent, openHitIndex],
+  );
+  const openTickerChoice = useOpenTickerChoice();
 
   // Opened straight onto a hit from the command bar, ahead of its own results.
   const focusRequestedHit = useCallback((hit: CloudSearchHit) => {
@@ -402,11 +419,18 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     status,
   ]);
 
-  // The ticker a badge click would open: the open document's, else the cursor
+  // The tickers [t] offers: those the open document names, else the cursor
   // row's (the table's cursor rests on the first row until one is chosen).
-  const hintTicker = mode === "results"
-    ? (openHit ?? hits.find((hit) => hit.id === selectedHitId) ?? hits[0])?.ticker || null
-    : null;
+  const documentTickers = useMemo(
+    () => (openHit && document ? searchArticle(document, openHit).tickers : null),
+    [document, openHit],
+  );
+  const hintTickers = useMemo(() => {
+    if (mode !== "results") return [];
+    if (documentTickers && documentTickers.length > 0) return documentTickers;
+    const ticker = (openHit ?? hits.find((hit) => hit.id === selectedHitId) ?? hits[0])?.ticker;
+    return ticker ? [ticker] : [];
+  }, [documentTickers, hits, mode, openHit, selectedHitId]);
   const footerHints = useMemo<PaneHint[]>(() => {
     // A wall or upsell replaces the results, so nothing there can be saved or opened.
     if (signInRequired || verificationRequired || proRequired) return [];
@@ -419,14 +443,14 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
       ];
     }
     return [
-      ...(hintTicker ? [{ id: "ticker", key: "t", label: "icker", onPress: () => openTicker(hintTicker) }] : []),
+      ...(hintTickers.length > 0 ? [{ id: "ticker", key: "t", label: "icker", onPress: () => openTickerChoice(hintTickers) }] : []),
       ...(!openHit && trimmedQuery ? [{ id: "save", key: "Ctrl+S", label: "save search", onPress: saveCurrentSearch }] : []),
     ];
   }, [
-    hintTicker,
+    hintTickers,
     mode,
     openHit,
-    openTicker,
+    openTickerChoice,
     proRequired,
     removeSaved,
     saved,
@@ -438,28 +462,12 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
     verificationRequired,
   ]);
 
-  // The stack title already names the open document, so the footer carries what
-  // the title cannot: which company, when, and what kind. Not how long: a
-  // section count is the kind of number the reader scrolls past anyway.
-  const documentIdentity = useMemo(() => {
-    if (!openHit) return null;
-    return [
-      formatHitDate(openHit.publishedAt),
-      // The type leads the footer when the document has no ticker, so repeating
-      // it here would say the same thing twice on one row.
-      openHit.ticker ? hitTypeLabel(openHit) : null,
-    ].filter((part): part is string => !!part).join(" · ");
-  }, [openHit]);
-
+  // The reader's header names the open document, its source, date and
+  // tickers, so the footer keeps to what changes and what can be done.
   useExternalLinkFooter({
     registrationId: RESEARCH_SEARCH_PANE_ID,
     focused,
     url: openHit?.url ?? null,
-    source: documentIdentity,
-    // Never a fixed word: the row is led by whichever of these the document
-    // actually has, because a footer is for what changes as you move between
-    // documents, not for saying "document".
-    label: openHit ? (openHit.ticker || hitTypeLabel(openHit)) : "",
     info: footerInfo,
     hints: footerHints,
     showHint: !!openHit?.url,
@@ -609,7 +617,7 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
         focused={focused && activeField === null && !typePickerOpen}
         detailOpen={!!openHit}
         onBack={closeDetail}
-        detailTitle={openHit?.title}
+        // No title in the stack bar: the reader sets the headline at the top of the text.
         detailContent={openHit ? (
           <SearchDocumentView
             hit={openHit}
@@ -619,7 +627,10 @@ export function ResearchSearchPane({ focused, paneId, width, height }: PaneProps
               ? "This document is part of Gloom Cloud Pro."
               : documentFailure?.message ?? null}
             width={width}
+            height={Math.max(1, height - tabRows - 1)}
             focused={focused && activeField === null && !typePickerOpen}
+            onNext={openNext}
+            onPrevious={openPrevious}
           />
         ) : (
           <Box flexGrow={1} />

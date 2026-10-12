@@ -115,12 +115,10 @@ export function useNewsArticleStack({
         item={detailArticle}
         focused={listFocused}
         width={width}
-        showTitle={false}
       />
     ) : (
       <Box flexGrow={1} />
     ),
-    detailTitle: detailArticle?.title,
     search: searchBar,
     searchQuery: search.searchQuery,
   };
