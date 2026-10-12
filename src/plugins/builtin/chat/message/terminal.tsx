@@ -4,7 +4,8 @@ import { t } from "../../../../i18n";
 import { formatInlinePreview, getMessageBodyTokenLines, MESSAGE_ACTION_WIDTH } from "../layout";
 import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
 import { isQuotedAuthorManagedBot } from "../ghost-user";
-import { ChatAiBadge, chatBotBadgeWidth } from "./ai-badge";
+import { ChatBotIcon } from "./person-icons";
+import { CHAT_PERSON_ICON_WIDTH } from "../people";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { Button } from "../../../../components/ui";
 import { canReactToMessage } from "../reactions";
@@ -109,10 +110,10 @@ export function TerminalChatMessage({
         >
           <Text fg={state.replyMetaColor}>{`${t("reply")} `}</Text>
           {quotedAuthorIsBot ? (
-            // The badge stands where the colon would.
+            // The bot's icon stands where the colon would.
             <>
               <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}</Text>
-              <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
+              <ChatBotIcon selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
               <Text fg={state.replyAuthorColor}> </Text>
             </>
           ) : (
@@ -121,7 +122,7 @@ export function TerminalChatMessage({
           <Text fg={state.replyMetaColor}>
             {formatInlinePreview(
               chatReplyQuoteText(msg.replyTo),
-              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}`.length - (quotedAuthorIsBot ? chatBotBadgeWidth() + 1 : 2), 0),
+              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}`.length - (quotedAuthorIsBot ? CHAT_PERSON_ICON_WIDTH + 1 : 2), 0),
             )}
           </Text>
         </Box>

@@ -7,7 +7,7 @@ import { normalizeInlinePreview } from "../layout";
 import { DesktopChatMessageImages } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
 import { chatAuthorName, isQuotedAuthorManagedBot } from "../ghost-user";
-import { ChatAiBadge } from "./ai-badge";
+import { ChatBotIcon } from "./person-icons";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
 import { canReactToMessage } from "../reactions";
@@ -53,7 +53,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   openPaneLink,
 }: ChatMessageBaseProps & {
   registerMessageElement: (messageId: string, node: unknown | null) => void;
-  /** The list's width in cells, so a narrow pane keeps its actions in the row before its badges. */
+  /** The list's width in cells, so a narrow pane keeps its actions in the row before its icons. */
   contentWidth?: number;
 }) {
   useAppLanguage();
@@ -138,10 +138,10 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           {/* One line: the quoted text ends in an ellipsis, the whole message is a click away. */}
           <Text fg={state.replyMetaColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${t("reply")} `}</Text>
           {isQuotedAuthorManagedBot(msg.replyTo, userByUsername) ? (
-            // The badge stands where the colon would.
+            // The bot's icon stands where the colon would.
             <>
               <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{msg.replyTo.user.username}</Text>
-              <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
+              <ChatBotIcon selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
               <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{" "}</Text>
             </>
           ) : (

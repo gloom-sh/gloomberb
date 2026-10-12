@@ -23,9 +23,14 @@ export interface ChatMessageRenderState {
   showRetryAction: boolean;
   /**
    * Cells the header's actions take whenever they show, hovered or not, so a
-   * narrow terminal row fits its badges once instead of again on every hover.
+   * narrow row fits its icons once instead of again on every hover.
    */
   actionsWidth: number;
+  /**
+   * The Team and Pro icons show: the row is under the pointer or selected.
+   * A bot's icon shows always.
+   */
+  showPersonIcons: boolean;
   /** Still pending past the slow threshold: drawn dim. */
   isSending: boolean;
   bgColor: string | undefined;
@@ -94,6 +99,7 @@ export function getChatMessageRenderState({
     showEditAction: showReplyAction && canEdit,
     showRetryAction: showActions && hasFailed,
     actionsWidth: !canSend ? 0 : 1 + MESSAGE_ACTION_WIDTH * (hasFailed ? 1 : 1 + (canReact ? 1 : 0) + (canEdit ? 1 : 0)),
+    showPersonIcons: isSelected || hoveredIdx === index,
     isSending,
     bgColor: isSelected ? colors.selected : isHighlighted ? chatHighlightBg() : isHovered ? hoverBg() : undefined,
     selectedTextColor,

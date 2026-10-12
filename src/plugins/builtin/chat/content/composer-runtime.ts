@@ -12,7 +12,7 @@ import { getComposerCursorOffset, moveComposerCursorToOffset } from "./composer-
 import { insertedText, pastedImagePaths } from "../attachments/transfer";
 import { chatTextWithImages } from "../attachments/model";
 import { isManagedBot } from "../ghost-user";
-import { chatBotBadgeWidth } from "../message/ai-badge";
+import { CHAT_PERSON_ICON_WIDTH } from "../people";
 
 interface MutableRef<T> {
   current: T;
@@ -401,7 +401,7 @@ export function useChatComposerRuntime({
     ? formatInlinePreview(
       chatTextWithImages(replyTo.content, replyTo.attachments?.length ?? 0),
       Math.max(
-        contentWidth - ` replying to @${replyTo.user.username}`.length - (isManagedBot(replyTo.user) ? chatBotBadgeWidth() + 1 : 2) - COMPOSER_ACTION_WIDTH - 1,
+        contentWidth - ` replying to @${replyTo.user.username}`.length - (isManagedBot(replyTo.user) ? CHAT_PERSON_ICON_WIDTH + 1 : 2) - COMPOSER_ACTION_WIDTH - 1,
         0,
       ),
     )

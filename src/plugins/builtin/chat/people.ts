@@ -2,64 +2,55 @@ import type { ChatUserSummary } from "../../../api-client";
 import { blendForContrastOnSurfaces, higherContrast, parseHex } from "../../../theme/color-utils";
 import { blendHex, colors, hoverBg, type ThemeColors } from "../../../theme/colors";
 import { DESK_KEYS, type DeskKey } from "../../../layout/desk-keys";
-import { t } from "../../../i18n";
-import { displayWidth } from "../../../utils/format";
+import type { IconName } from "../../../components/ui/icon";
 import { isManagedBot } from "./ghost-user";
 
 /**
- * Who someone is in chat, at a glance: a bot's own colour, the badges their
+ * Who someone is in chat, at a glance: a bot's own colour, the icons their
  * account earns, their local time and what they trade. The server derives
  * each from the account (GLO-646); a field it leaves out shows nothing.
  */
 
-/** `ai` is a bot's badge: its label reads "Bot", and the id names its `chat-ai-badge` role. */
-type ChatNameBadgeId = "ai" | "team" | "pro";
+type ChatPersonIconId = "bot" | "team" | "pro";
 
-export interface ChatNameBadge {
-  id: ChatNameBadgeId;
+export interface ChatPersonIcon {
+  id: ChatPersonIconId;
+  /** From the app's icon set: a bot's face, the Gloom mark, a gem. */
+  icon: IconName;
+  /** What it means, in its tooltip and on the card. */
   label: string;
 }
 
-/** The badge beside a bot's name, in the transcript, reply quotes, the composer and the inbox. */
-export const CHAT_BOT_BADGE: ChatNameBadge = { id: "ai", label: "Bot" };
-const TEAM_BADGE: ChatNameBadge = { id: "team", label: "Team" };
-const PRO_BADGE: ChatNameBadge = { id: "pro", label: "Pro" };
+/** Beside a bot's name wherever it signs: the transcript, reply quotes, the composer and the inbox. */
+export const CHAT_BOT_ICON: ChatPersonIcon = { id: "bot", icon: "bot", label: "Bot run by Gloom" };
+const TEAM_ICON: ChatPersonIcon = { id: "team", icon: "team", label: "Gloom team" };
+const PRO_ICON: ChatPersonIcon = { id: "pro", icon: "pro", label: "Pro" };
 
 /**
- * The badges beside a name: at most one role, Bot for a bot Gloom runs or
- * Team for Gloom staff, then Pro. A bot carries only its Bot badge.
+ * The icons beside a name: at most one role, the bot's for a bot Gloom runs
+ * or the team's for Gloom staff, then Pro. A bot carries only its own.
  */
-export function chatNameBadges(user: Pick<ChatUserSummary, "accountType" | "badges"> | null | undefined): ChatNameBadge[] {
+export function chatPersonIcons(user: Pick<ChatUserSummary, "accountType" | "badges"> | null | undefined): ChatPersonIcon[] {
   if (!user) return [];
-  if (isManagedBot(user)) return [CHAT_BOT_BADGE];
+  if (isManagedBot(user)) return [CHAT_BOT_ICON];
   const badges = user.badges ?? [];
   return [
-    ...(badges.includes("team") ? [TEAM_BADGE] : []),
-    ...(badges.includes("pro") ? [PRO_BADGE] : []),
+    ...(badges.includes("team") ? [TEAM_ICON] : []),
+    ...(badges.includes("pro") ? [PRO_ICON] : []),
   ];
 }
 
-/**
- * Terminal cells one badge takes beside a name: a cell before it, then its
- * label as the reader's language shows it, with a cell either side. "Bot" is
- * 6 cells in English; a translated label can be wider.
- */
-export function chatNameBadgeWidth(badge: ChatNameBadge): number {
-  return displayWidth(t(badge.label)) + 3;
-}
-
-function chatNameBadgesWidth(badges: readonly ChatNameBadge[]): number {
-  return badges.reduce((sum, badge) => sum + chatNameBadgeWidth(badge), 0);
-}
+/** Cells one icon takes on a line: a cell of space before it, then the icon. */
+export const CHAT_PERSON_ICON_WIDTH = 2;
 
 /**
- * The badges that fit in `width` cells. Pro goes first, then the role: a
- * narrow row keeps the name and the bot colour, which say the most.
+ * The icons that fit in `width` cells. Pro goes first, then the role: a
+ * narrow row keeps the name whole and the row's actions in reach.
  */
-export function fitChatNameBadges(badges: readonly ChatNameBadge[], width: number): ChatNameBadge[] {
-  let kept = [...badges];
-  while (kept.length > 0 && chatNameBadgesWidth(kept) > width) {
-    const pro = kept.findIndex((badge) => badge.id === "pro");
+export function fitChatPersonIcons(icons: readonly ChatPersonIcon[], width: number): ChatPersonIcon[] {
+  let kept = [...icons];
+  while (kept.length > 0 && kept.length * CHAT_PERSON_ICON_WIDTH > width) {
+    const pro = kept.findIndex((icon) => icon.id === "pro");
     kept = pro >= 0 ? kept.filter((_, index) => index !== pro) : kept.slice(0, -1);
   }
   return kept;
@@ -78,7 +69,7 @@ function colourDistance(a: string, b: string): number {
 
 /** Below this the bot colour would read as one of the colours it must stand apart from. */
 const BOT_COLOUR_MIN_DISTANCE = 80;
-/** Below this a Team badge would read as the bot colour. */
+/** Below this the team icon would read as the bot colour. */
 const ROLE_COLOUR_MIN_DISTANCE = 90;
 
 /**
@@ -112,16 +103,16 @@ function legibleOnRows(colour: string, palette: ThemeColors): string {
   return blendForContrastOnSurfaces(colour, surfaces, higherContrast("#ffffff", "#000000", palette.bg), 4.5);
 }
 
-/** The colour a bot's name and its Bot badge are drawn in. */
+/** The colour a bot's name and its icon are drawn in. */
 export function chatBotNameColor(palette: ThemeColors = colors): string {
   return legibleOnRows(roleHues(palette).bot, palette);
 }
 
-/** The colour of a badge beside a name; Pro is left to the kit's quiet neutral. */
-export function chatNameBadgeColor(badge: ChatNameBadge, palette: ThemeColors = colors): string | undefined {
-  if (badge.id === "ai") return chatBotNameColor(palette);
-  if (badge.id === "team") return legibleOnRows(roleHues(palette).team, palette);
-  return undefined;
+/** The colour of an icon beside a name: the bot's own, the team's, and Pro in the quiet tone of the time beside it. */
+export function chatPersonIconColor(icon: ChatPersonIcon, palette: ThemeColors = colors): string {
+  if (icon.id === "bot") return chatBotNameColor(palette);
+  if (icon.id === "team") return legibleOnRows(roleHues(palette).team, palette);
+  return palette.textDim;
 }
 
 /** The colour a name is drawn in: a bot's own, everyone else the colour every person has. */
@@ -204,9 +195,7 @@ export function chatPersonFacts(
 ): ChatPersonFacts {
   const bot = isManagedBot(user);
   return {
-    roles: bot
-      ? ["Bot run by Gloom"]
-      : chatNameBadges(user).map((badge) => (badge.id === "team" ? "Gloom team" : badge.label)),
+    roles: chatPersonIcons(user).map((icon) => icon.label),
     localTime: bot ? null : formatChatLocalTime(user.utcOffsetMinutes, now, readerOffsetMinutes),
     trades: bot ? [] : chatDeskLabels(user.desks),
   };

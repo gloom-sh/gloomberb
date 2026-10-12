@@ -6,38 +6,34 @@ import { localUtcOffsetMinutes, reportableTimeZone, utcOffsetMinutesAt } from ".
 import {
   chatAuthorNameColor,
   chatBotNameColor,
-  chatNameBadgeColor,
-  chatNameBadges,
   chatPersonFacts,
-  fitChatNameBadges,
+  chatPersonIconColor,
+  chatPersonIcons,
+  fitChatPersonIcons,
   formatChatLocalTime,
 } from "./people";
 
-const labels = (user: Parameters<typeof chatNameBadges>[0]) => chatNameBadges(user).map((badge) => badge.label);
+const ids = (icons: ReturnType<typeof chatPersonIcons>) => icons.map((icon) => icon.id);
 
 describe("chat people", () => {
-  test("the account type and badges give the name its badges: one role, then Pro", () => {
-    expect(labels({ accountType: "managed_llm" })).toEqual(["Bot"]);
-    // A bot only ever carries its Bot badge, whatever else it is sent with.
-    expect(labels({ accountType: "managed_llm", badges: ["team", "pro"] })).toEqual(["Bot"]);
-    expect(labels({ accountType: "human", badges: ["pro", "team"] })).toEqual(["Team", "Pro"]);
-    expect(labels({ badges: ["pro"] })).toEqual(["Pro"]);
-    expect(labels({ accountType: "human" })).toEqual([]);
-    expect(labels({ accountType: "discord" })).toEqual([]);
+  test("the account type and badges give the name its icons: one role, then Pro", () => {
+    expect(ids(chatPersonIcons({ accountType: "managed_llm" }))).toEqual(["bot"]);
+    // A bot only ever carries its own icon, whatever else it is sent with.
+    expect(ids(chatPersonIcons({ accountType: "managed_llm", badges: ["team", "pro"] }))).toEqual(["bot"]);
+    expect(ids(chatPersonIcons({ accountType: "human", badges: ["pro", "team"] }))).toEqual(["team", "pro"]);
+    expect(ids(chatPersonIcons({ accountType: "human" }))).toEqual([]);
+    expect(ids(chatPersonIcons({ accountType: "discord" }))).toEqual([]);
   });
 
-  test("a narrow row drops Pro before the role", () => {
-    const badges = chatNameBadges({ badges: ["team", "pro"] });
-    expect(fitChatNameBadges(badges, 13).map((badge) => badge.id)).toEqual(["team", "pro"]);
-    expect(fitChatNameBadges(badges, 12).map((badge) => badge.id)).toEqual(["team"]);
-    expect(fitChatNameBadges(badges, 6)).toEqual([]);
-    // "Bot" takes six cells: a row with five to spare shows the name alone.
-    const bot = chatNameBadges({ accountType: "managed_llm" });
-    expect(fitChatNameBadges(bot, 6).map((badge) => badge.label)).toEqual(["Bot"]);
-    expect(fitChatNameBadges(bot, 5)).toEqual([]);
+  test("a narrow row drops Pro before the role, two cells an icon", () => {
+    const icons = chatPersonIcons({ badges: ["team", "pro"] });
+    expect(ids(fitChatPersonIcons(icons, 4))).toEqual(["team", "pro"]);
+    expect(ids(fitChatPersonIcons(icons, 3))).toEqual(["team"]);
+    expect(fitChatPersonIcons(icons, 1)).toEqual([]);
+    expect(ids(fitChatPersonIcons(chatPersonIcons({ badges: ["pro"] }), 2))).toEqual(["pro"]);
   });
 
-  test("a bot's colour stands apart from people's names, mentions and the Team badge, and reads in every built-in theme", () => {
+  test("a bot's colour stands apart from people's names, mentions and the team's icon, and reads in every built-in theme", () => {
     for (const id of Object.keys(themes)) {
       const palette = getThemeColors(id);
       const bot = chatBotNameColor(palette);
@@ -46,7 +42,7 @@ describe("chat people", () => {
       expect(chatAuthorNameColor({ accountType: "human" }, palette)).toBe(palette.positive);
       expect(bot, id).not.toBe(palette.positive);
       expect(bot, id).not.toBe(palette.text);
-      expect(bot, id).not.toBe(chatNameBadgeColor({ id: "team", label: "Team" }, palette));
+      expect(bot, id).not.toBe(chatPersonIconColor(chatPersonIcons({ badges: ["team"] })[0]!, palette));
       for (const surface of [palette.bg, palette.panel, hoverBg(palette)]) {
         expect(contrastRatio(bot, surface), id).toBeGreaterThanOrEqual(4.5);
       }

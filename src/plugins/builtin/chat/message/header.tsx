@@ -5,8 +5,8 @@ import { displayWidth } from "../../../../utils/format";
 import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
-import { chatNameBadges, fitChatNameBadges } from "../people";
-import { ChatNameBadges } from "./ai-badge";
+import { CHAT_PERSON_ICON_WIDTH, chatPersonIcons, fitChatPersonIcons } from "../people";
+import { ChatPersonIcons } from "./person-icons";
 import type { ChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
@@ -79,7 +79,15 @@ export function ChatMessageActions({
   );
 }
 
-/** Author, send status and inline actions for the first message of a group. */
+/**
+ * Author, send status and inline actions for the first message of a group.
+ *
+ * A bot's icon sits beside its name always. The Team and Pro icons show while
+ * the row is pointed at or selected, after the status, in the space the row
+ * already has: nothing before them moves, and a row that is not pointed at
+ * keeps no room for them. A row too narrow for its icons, its status and its
+ * actions drops Pro first, then the role, and never cuts the name.
+ */
 export function ChatMessageHeader({
   msg,
   state,
@@ -105,49 +113,53 @@ export function ChatMessageHeader({
   const { nativeContextMenu } = useUiCapabilities();
   // The card opens beside the name the pointer is on.
   const nameRef = useRef<BoxRenderable | null>(null);
-  // Bot or Team, then Pro. A row that cannot hold them, the status and its
-  // actions drops Pro first, then the role: the actions must stay reachable.
   const rowWidth = typeof rowProps.width === "number" ? rowProps.width : fitWidth ?? null;
-  const badges = rowWidth === null
-    ? chatNameBadges(msg.user)
-    : fitChatNameBadges(
-      chatNameBadges(msg.user),
-      rowWidth - 1 - displayWidth(authorLabel)
-        - (msg.origin === "discord" ? 8 : 0)
-        - 1 - displayWidth(state.headerStatus)
-        - state.actionsWidth,
-    );
+  // Counted with the actions, shown or not, so the icons that fit do not change on hover.
+  const spare = rowWidth === null
+    ? Number.POSITIVE_INFINITY
+    : rowWidth - 1 - displayWidth(authorLabel)
+      - (msg.origin === "discord" ? 8 : 0)
+      - 1 - displayWidth(state.headerStatus)
+      - state.actionsWidth;
+  const icons = chatPersonIcons(msg.user);
+  const besideName = fitChatPersonIcons(icons.filter((icon) => icon.id === "bot"), spare);
+  const onPoint = fitChatPersonIcons(icons.filter((icon) => icon.id !== "bot"), spare - besideName.length * CHAT_PERSON_ICON_WIDTH);
+  // An open reaction picker keeps the row's actions, so it keeps what stands before them too.
+  const showOnPoint = state.showPersonIcons || actionProps.reactionPickerOpen === true;
+  const iconColor = state.isSelected ? state.selectedTextColor : undefined;
+  const profileTarget: Record<string, unknown> = hasProfile
+    ? {
+      onMouseOver: () => onUserHover(msg.user, nameRef.current),
+      onMouseMove: () => onUserHover(msg.user, nameRef.current),
+      onMouseOut: onUserHoverEnd,
+      "data-gloom-context-menu-surface": "true",
+      onMouseDown: (event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        // A native menu opens on the right-click's contextmenu event instead.
+        if (event.button === 2 && nativeContextMenu === true) return;
+        onUserActivate?.(msg.user, nameRef.current);
+      },
+      onContextMenu: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event, nameRef.current),
+      style: { cursor: "pointer" },
+    }
+    : {};
   return (
     <Box {...rowProps} flexDirection="row" height={1} paddingLeft={1}>
       <Box
         ref={nameRef}
         width={fitAuthorWidth ? displayWidth(authorLabel) : undefined}
         height={1}
-        {...(hasProfile
-          ? {
-            onMouseOver: () => onUserHover(msg.user, nameRef.current),
-            onMouseMove: () => onUserHover(msg.user, nameRef.current),
-            onMouseOut: onUserHoverEnd,
-            "data-gloom-context-menu-surface": "true",
-            onMouseDown: (event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
-              event.preventDefault?.();
-              event.stopPropagation?.();
-              // A native menu opens on the right-click's contextmenu event instead.
-              if (event.button === 2 && nativeContextMenu === true) return;
-              onUserActivate?.(msg.user, nameRef.current);
-            },
-            onContextMenu: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event, nameRef.current),
-            style: { cursor: "pointer" },
-          }
-          : {})}
+        {...profileTarget}
       >
         <Text fg={state.authorColor} attributes={state.authorAttributes}>
           {authorLabel}
         </Text>
       </Box>
-      <ChatNameBadges badges={badges} selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
+      <ChatPersonIcons icons={besideName} selectedColor={iconColor} terminalTarget={profileTarget} />
       {msg.origin === "discord" && <Text fg={state.originTagColor}> Discord</Text>}
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
+      {showOnPoint && <ChatPersonIcons icons={onPoint} selectedColor={iconColor} terminalTarget={profileTarget} />}
       {(state.showReplyAction || (state.showRetryAction && actionProps.retryMessage)) && <Text fg={state.headerStatusColor}> </Text>}
       <ChatMessageActions state={state} {...actionProps} />
     </Box>

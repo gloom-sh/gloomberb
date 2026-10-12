@@ -10,7 +10,7 @@ export function isDiscordGhost(user: Pick<ChatUserSummary, "accountType"> | null
 
 /**
  * A managed assistant (Gloombot, Gloom Wire, the AI desk personas): an account
- * Gloom runs, not a person. Wherever it signs a message it carries a Bot badge.
+ * Gloom runs, not a person. Wherever it signs a message it carries the bot's icon.
  */
 export function isManagedBot(user: Pick<ChatUserSummary, "accountType"> | null | undefined): boolean {
   return user?.accountType === "managed_llm";

@@ -73,7 +73,10 @@ window.__chat = {
     const r = document.querySelector('textarea')?.getBoundingClientRect();
     return r ? { x: r.x + 24, y: r.y + r.height / 2 } : null;
   },
-  /** The lowest name of a user in view: its box, colour, and the badges beside it. */
+  /**
+   * The lowest name of a user in view: its box, colour, the icons its header
+   * row shows, where the status beside it starts, and the row's height.
+   */
   name(username) {
     const view = this.scroller().getBoundingClientRect();
     const text = [...document.querySelectorAll('[data-gloom-role=chat-message-row] span, [data-gloom-role=chat-message-row] div')]
@@ -85,21 +88,51 @@ window.__chat = {
       .at(-1);
     if (!text) return null;
     const row = text.closest('[data-gloom-role=chat-message-row]');
+    const message = row.closest('[data-gloom-role=chat-message]');
     const r = text.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
-    const badges = [...row.querySelectorAll('[data-gloom-role$=-badge]')].map((badge) => {
-      const b = badge.getBoundingClientRect();
-      return { label: badge.textContent.trim(), right: b.right, visible: b.width > 0 && b.right <= rowRect.right + 0.5 };
+    const icons = [...row.querySelectorAll('[data-gloom-role=chat-person-icon]')].map((icon) => {
+      const b = icon.getBoundingClientRect();
+      return {
+        id: icon.getAttribute('data-person-icon'),
+        title: icon.getAttribute('title'),
+        left: b.left,
+        drawn: !!icon.querySelector('svg[data-gloom-icon]'),
+        visible: b.width > 0 && b.right <= rowRect.right + 0.5 && b.bottom <= rowRect.bottom + 0.5,
+      };
     });
+    // The status text after the name and its icons: the first leaf that reads like one.
+    const status = [...row.querySelectorAll('span, div')]
+      .find((el) => el.childElementCount === 0 && /^\\s*(\\d|now|sending|failed)/.test(el.textContent ?? ''));
     // The desktop draws a row's actions on every row and shows them on hover.
     const actions = row.querySelector('[data-gloom-role=chat-message-reply-action]')?.getBoundingClientRect();
     const actionsInRow = !actions || actions.right <= rowRect.right + 0.5;
-    return { x: r.x + r.width / 2, y: r.y + r.height / 2, color: getComputedStyle(text).color, badges, actionsInRow };
+    return {
+      id: message?.getAttribute('data-gloom-chat-message-id') ?? null,
+      x: r.x + r.width / 2,
+      y: r.y + r.height / 2,
+      left: r.left,
+      top: r.top,
+      // Whole: its box as wide as its text, and no icon over it.
+      nameWhole: text.parentElement.getBoundingClientRect().width >= r.width - 0.5 && icons.every((icon) => icon.left >= r.right - 0.5),
+      rowHeight: rowRect.height,
+      statusLeft: status ? status.getBoundingClientRect().left : null,
+      color: getComputedStyle(text).color,
+      icons,
+      actionsInRow,
+    };
   },
   /** The text of the open profile card, or null. */
   card() {
-    const card = [...document.querySelectorAll('.gloom-popover')].find((popover) => popover.querySelector('[data-gloom-role^=chat-profile-]'));
+    const card = this.cardElement();
     return card ? card.textContent : null;
+  },
+  cardElement() {
+    return [...document.querySelectorAll('.gloom-popover')].find((popover) => popover.querySelector('[data-gloom-role^=chat-profile-]')) ?? null;
+  },
+  /** The icons the open card shows beside the handle. */
+  cardIcons() {
+    return [...(this.cardElement()?.querySelectorAll('[data-gloom-role=chat-person-icon]') ?? [])].map((icon) => icon.getAttribute('data-person-icon')).join();
   },
   neighbour() {
     const r = document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id="plain:a"]')?.getBoundingClientRect();
@@ -207,11 +240,19 @@ async function openOnTarget(cdp: Cdp): Promise<void> {
   await frames(cdp, 3);
 }
 
+interface PersonIconState { id: string; title: string | null; left: number; drawn: boolean; visible: boolean }
+
 interface NameState {
+  id: string | null;
   x: number;
   y: number;
+  left: number;
+  top: number;
+  nameWhole: boolean;
+  rowHeight: number;
+  statusLeft: number | null;
   color: string;
-  badges: Array<{ label: string; right: number; visible: boolean }>;
+  icons: PersonIconState[];
   actionsInRow: boolean;
 }
 
@@ -224,9 +265,26 @@ async function pointAtName(cdp: Cdp, username: string): Promise<void> {
   await frames(cdp, 3);
 }
 
-/** The badges a drawn name carries, in order. */
-async function badgesOf(cdp: Cdp, username: string): Promise<string[]> {
-  return ((await nameOf(cdp, username)) ?? fail(`no name ${username} drawn`)).badges.map((badge) => badge.label);
+async function parkPointer(cdp: Cdp): Promise<void> {
+  const away = await evaluate<Point>(cdp, "__chat.neighbour()");
+  await mouse(cdp, "mouseMoved", away.x, away.y, false);
+  await frames(cdp, 3);
+}
+
+/** The icons a drawn name's header shows, in order, each drawn and inside the row. */
+async function iconsOf(cdp: Cdp, username: string): Promise<string> {
+  const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn`);
+  const broken = name.icons.filter((icon) => !icon.drawn || !icon.visible);
+  if (broken.length > 0) fail(`${username}'s icons are not all drawn inside the row`, name.icons);
+  return name.icons.map((icon) => icon.id).join();
+}
+
+/** The name, its status and its row stay where they were. */
+function expectUnmoved(before: NameState, after: NameState, what: string): void {
+  const moved = Math.abs(before.left - after.left) > 0.5 || Math.abs(before.top - after.top) > 0.5
+    || Math.abs(before.rowHeight - after.rowHeight) > 0.5
+    || (before.statusLeft !== null && after.statusLeft !== null && Math.abs(before.statusLeft - after.statusLeft) > 0.5);
+  if (moved) fail(`${what} moved the name, its status or the row`, { before, after });
 }
 
 interface Chip { link: string; text: string; picture: boolean; x: number; y: number; height: number }
@@ -244,22 +302,65 @@ async function oneChip(cdp: Cdp, id: string): Promise<Chip> {
 
 export const chatSteps: ChatStep[] = [
   {
-    name: "chat people: a bot's name has its own colour, and each name carries its own badges",
+    name: "chat people: a bot's name has its own colour and its icon always, a person's icons wait for the pointer",
     scenario: "chat",
     async run(cdp) {
       await ready(cdp);
+      await parkPointer(cdp);
       const bot = await nameOf(cdp, "deskbot") ?? fail("no bot message in view");
       const person = await nameOf(cdp, "quill") ?? fail("no member message in view");
       if (bot.color === person.color) fail("the bot's name is drawn like a person's", { bot: bot.color, person: person.color });
-      const expected: Record<string, string> = { deskbot: "Bot", marlow: "Team,Pro", quill: "Pro" };
-      for (const [username, badges] of Object.entries(expected)) {
-        const actual = (await badgesOf(cdp, username)).join();
-        if (actual !== badges) fail(`${username} carries the wrong badges`, { actual, expected: badges });
+      const expected: Record<string, string> = { deskbot: "bot", marlow: "", quill: "" };
+      for (const [username, icons] of Object.entries(expected)) {
+        const actual = await iconsOf(cdp, username);
+        if (actual !== icons) fail(`${username} shows the wrong icons with no pointer on the row`, { actual, expected: icons });
       }
+      const title = bot.icons[0]?.title;
+      if (title !== "Bot run by Gloom") fail("the bot's icon does not say what it is", { title });
     },
   },
   {
-    name: "chat people: pointing at a name opens the card with their local time and what they trade, and the keyboard opens the same card",
+    name: "chat people: Team and Pro show on the row under the pointer and on the selected row, and nothing moves",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await parkPointer(cdp);
+      const before = await nameOf(cdp, "marlow") ?? fail("no staff message in view");
+      if (before.icons.length > 0) fail("marlow's icons show with no pointer on the row", before.icons);
+
+      // The pointer on the message's text, then on the name.
+      const row = await evaluate<{ x: number; y: number; width: number; height: number } | null>(cdp, `__chat.rowRect(${JSON.stringify(before.id)})`) ?? fail("no row for marlow's message");
+      await mouse(cdp, "mouseMoved", row.x + row.width * 0.6, row.y + row.height - 6, false);
+      await mouse(cdp, "mouseMoved", row.x + row.width * 0.6 + 4, row.y + row.height - 6, false);
+      await frames(cdp, 4);
+      const onRow = await nameOf(cdp, "marlow") ?? fail("marlow's name went");
+      if (await iconsOf(cdp, "marlow") !== "team,pro") fail("the row under the pointer does not show Team and Pro", onRow.icons);
+      expectUnmoved(before, onRow, "showing the icons");
+      const titles = onRow.icons.map((icon) => icon.title).join();
+      if (titles !== "Gloom team,Pro") fail("the icons do not say what they are", { titles });
+      await pointAtName(cdp, "marlow");
+      if (await iconsOf(cdp, "marlow") !== "team,pro") fail("the name under the pointer does not show Team and Pro");
+      expectUnmoved(before, (await nameOf(cdp, "marlow"))!, "pointing at the name");
+
+      // The pointer goes: so do the icons, and nothing moves back either.
+      await parkPointer(cdp);
+      if (!await waitFor(cdp, "__chat.card() === null", 2_000)) fail("the card stayed after the pointer left");
+      if (await iconsOf(cdp, "marlow") !== "") fail("Team and Pro stayed after the pointer left");
+      expectUnmoved(before, (await nameOf(cdp, "marlow"))!, "hiding the icons");
+
+      // Without a mouse: the newest message, marlow's, selected.
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await parkPointer(cdp);
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      const selectedNow = await selected(cdp);
+      const newest = await nameOf(cdp, "marlow") ?? fail("marlow's name went");
+      if (selectedNow.join() !== newest.id) fail("ArrowUp did not select marlow's newest message", { selected: selectedNow, marlow: newest.id });
+      if (await iconsOf(cdp, "marlow") !== "team,pro") fail("the selected row does not show Team and Pro");
+      expectUnmoved(before, newest, "selecting the row");
+    },
+  },
+  {
+    name: "chat people: pointing at a name opens the card with their icons, local time and what they trade, and the keyboard opens the same card",
     scenario: "chat",
     async run(cdp) {
       await ready(cdp);
@@ -270,9 +371,10 @@ export const chatSteps: ChatStep[] = [
         if (!card.includes(part)) fail(`the card does not say ${JSON.stringify(part)}`, card);
       }
       if (!/Local time\s*\d\d:\d\d/.test(card)) fail("the card's local time is not a clock reading", card);
+      const cardIcons = await evaluate<string>(cdp, "__chat.cardIcons()");
+      if (cardIcons !== "team,pro") fail("the card does not show the icons beside the handle", { cardIcons });
       // The pointer leaves for the pane beside: the card goes.
-      const away = await evaluate<Point>(cdp, "__chat.neighbour()");
-      await mouse(cdp, "mouseMoved", away.x, away.y, false);
+      await parkPointer(cdp);
       if (!await waitFor(cdp, "__chat.card() === null", 2_000)) fail("the card stayed after the pointer left");
 
       // Without a mouse: the newest message (marlow's), then p.
@@ -283,7 +385,7 @@ export const chatSteps: ChatStep[] = [
     },
   },
   {
-    name: "chat people: at phone width the badges and the row's actions stay inside the row",
+    name: "chat people: at phone width the name stays whole and the icons and the row's actions stay inside the row",
     scenario: "chat",
     async run(cdp) {
       await ready(cdp);
@@ -291,10 +393,13 @@ export const chatSteps: ChatStep[] = [
       try {
         await frames(cdp, 12);
         for (const username of ["deskbot", "marlow", "quill"]) {
+          // Under the pointer, where Team and Pro show and the actions with them.
+          await pointAtName(cdp, username);
           const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn at phone width`);
-          const clipped = name.badges.filter((badge) => !badge.visible);
-          if (clipped.length > 0) fail(`${username}'s badges run past the row at phone width`, name.badges);
-          if (!name.actionsInRow) fail(`${username}'s badges push the row's actions out of it at phone width`, name.badges);
+          const clipped = name.icons.filter((icon) => !icon.visible);
+          if (clipped.length > 0) fail(`${username}'s icons run past the row at phone width`, name.icons);
+          if (!name.actionsInRow) fail(`${username}'s icons push the row's actions out of it at phone width`, name.icons);
+          if (!name.nameWhole) fail(`${username}'s name is cut at phone width`, name);
         }
       } finally {
         await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });

@@ -7,7 +7,15 @@ import { displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { t } from "../../../../i18n";
 import { isDiscordGhost, isManagedBot } from "../ghost-user";
-import { chatAuthorNameColor, chatPersonFacts, type ChatPersonFacts } from "../people";
+import {
+  CHAT_PERSON_ICON_WIDTH,
+  chatAuthorNameColor,
+  chatPersonFacts,
+  chatPersonIcons,
+  fitChatPersonIcons,
+  type ChatPersonFacts,
+} from "../people";
+import { ChatPersonIcons } from "./person-icons";
 import { localUtcOffsetMinutes } from "../../../../utils/local-utc-offset";
 import type { ChatUserAnchor } from "./types";
 
@@ -149,16 +157,33 @@ function nameCardRow(user: ChatUserSummary): { handle: string; name: string | nu
 
 function nameCardNaturalWidth(user: ChatUserSummary): number {
   const { handle, name } = nameCardRow(user);
-  return displayWidth(handle) + (name ? 1 + displayWidth(name) : 0);
+  return displayWidth(handle) + chatPersonIcons(user).length * CHAT_PERSON_ICON_WIDTH + (name ? 1 + displayWidth(name) : 0);
+}
+
+/**
+ * The handle in the name's colour, then the person's icons, Team and Pro
+ * included without a pointer on anything: the line below says what each one
+ * is. A handle too long for them keeps its room and the icons go first.
+ */
+function CardHandle({ user, handle, width }: { user: ChatUserSummary; handle: string; width: number }) {
+  const icons = fitChatPersonIcons(chatPersonIcons(user), width - displayWidth(handle));
+  return (
+    <>
+      <Text fg={chatAuthorNameColor(user)} attributes={TextAttributes.BOLD}>
+        {truncateToDisplayWidth(handle, Math.max(1, width - icons.length * CHAT_PERSON_ICON_WIDTH))}
+      </Text>
+      <ChatPersonIcons icons={icons} />
+    </>
+  );
 }
 
 function NameCardRow({ user, width }: { user: ChatUserSummary; width: number }) {
   const { handle, name } = nameCardRow(user);
-  const handleText = truncateToDisplayWidth(handle, width);
-  const nameWidth = width - displayWidth(handleText) - 1;
+  const handleWidth = Math.min(width, displayWidth(handle) + chatPersonIcons(user).length * CHAT_PERSON_ICON_WIDTH);
+  const nameWidth = width - handleWidth - 1;
   return (
     <Box height={1} width={width} flexDirection="row">
-      <Text fg={chatAuthorNameColor(user)} attributes={TextAttributes.BOLD}>{handleText}</Text>
+      <CardHandle user={user} handle={handle} width={handleWidth} />
       {name && nameWidth >= 4 ? <Text fg={colors.textDim}>{` ${truncateToDisplayWidth(name, nameWidth)}`}</Text> : null}
     </Box>
   );
@@ -276,10 +301,8 @@ export function UserProfilePopover({
   ) : (
     <>
       <Box height={1} width={headerWidth} flexDirection="row">
-        <Box width={usernameWidth}>
-          <Text fg={chatAuthorNameColor(user)} attributes={TextAttributes.BOLD}>
-            {truncateWithEllipsis(user.username ? `@${user.username}` : user.displayName, usernameWidth)}
-          </Text>
+        <Box width={usernameWidth} flexDirection="row">
+          <CardHandle user={user} handle={user.username ? `@${user.username}` : user.displayName} width={usernameWidth} />
         </Box>
         {statsWidth > 0 ? (
           <>

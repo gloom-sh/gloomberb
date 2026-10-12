@@ -8,7 +8,7 @@ import { InlineAuthActions } from "../../cloud/auth-actions";
 import { Button, ListView } from "../../../../components/ui";
 import { COMPOSER_ACTION_WIDTH } from "../layout";
 import { isManagedBot } from "../ghost-user";
-import { ChatAiBadge } from "../message/ai-badge";
+import { ChatBotIcon } from "../message/person-icons";
 import type { ChatMentionSuggestion } from "./mentions";
 import type { ChatDraftAttachment } from "../controller/attachments";
 import { DesktopChatAttachButton, DesktopChatAttachmentStrip } from "../attachments/desktop";
@@ -178,8 +178,8 @@ export function ChatComposerArea({
         <Box height={1} width={contentWidth} flexDirection="row">
           <Text fg={colors.textMuted}>{` ${t("replying to")} `}</Text>
           <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{`@${replyTo.user.username}`}</Text>
-          {isManagedBot(replyTo.user) && <ChatAiBadge />}
-          {/* The badge stands where the colon would. */}
+          {isManagedBot(replyTo.user) && <ChatBotIcon />}
+          {/* The bot's icon stands where the colon would. */}
           <Text fg={colors.textDim}>{replyPreview ? `${isManagedBot(replyTo.user) ? " " : ": "}${replyPreview}` : ""}</Text>
           <Box flexGrow={1} />
           <Button stopPropagation
