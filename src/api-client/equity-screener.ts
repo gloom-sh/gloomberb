@@ -38,6 +38,7 @@ export const NUMERIC_FIELDS = [
   "return1YPercent",
   "fromHigh52WPercent",
   "beta",
+  "atrPercent",
   "priceToBook",
   "evToEbitda",
   "roePercent",
@@ -58,6 +59,8 @@ export const RESEARCH_FIELDS = [
   "return1WPercent", "return1MPercent", "return3MPercent", "returnYtdPercent", "return1YPercent", "fromHigh52WPercent",
   "beta", "priceToBook", "evToEbitda", "roePercent", "epsRevision30dPercent", "analystUpsidePercent", "ivRank", "ivToHv",
 ] as const;
+/** Average true range as a percent of price; listed only when asked (`include=volatility`), and omitted by a server from before it. */
+export const VOLATILITY_FIELDS = ["atrPercent"] as const;
 export const CATEGORY_FIELDS = [
   "symbol",
   "exchange",

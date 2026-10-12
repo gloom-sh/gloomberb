@@ -6,6 +6,7 @@ import {
   RESEARCH_FIELDS,
   KPI_FIELDS,
   SOCIAL_FIELDS,
+  VOLATILITY_FIELDS,
   type NumericField,
   type ScreenMetric,
   type ScreenCriterion,
@@ -80,6 +81,7 @@ export const SHORT_LABELS: Record<NumericField, string> = {
   return1YPercent: "1Y%",
   fromHigh52WPercent: "VS 52W HI%",
   beta: "BETA",
+  atrPercent: "ATR%",
   priceToBook: "P/B",
   evToEbitda: "EV/EBITDA",
   roePercent: "FY ROE%",
@@ -206,6 +208,7 @@ export const screenLabel = (field: string) =>
     return1YPercent: "1Y return %",
     fromHigh52WPercent: "From 52-week high %",
     beta: "Beta",
+    atrPercent: "ATR%",
     priceToBook: "P/B",
     evToEbitda: "EV / EBITDA",
     roePercent: "Annual ROE %",
@@ -427,8 +430,8 @@ export function validateScreenPayload(value: unknown): ScreenPayload {
       throw new Error("Invalid screener listing identity.");
     ids.add(screenRowId(row));
     for (const field of NUMERIC_FIELDS) {
-      // A server from before social or research fields omits them; they read as unavailable.
-      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS] as readonly string[]).includes(field))
+      // A server from before social, research or volatility fields omits them; they read as unavailable.
+      if (!row.metrics[field] && ([...SOCIAL_FIELDS, ...RESEARCH_FIELDS, ...VOLATILITY_FIELDS, ...ATTENTION_FIELDS, ...HIRING_APP_FIELDS, ...KPI_FIELDS] as readonly string[]).includes(field))
         row.metrics[field] = unavailableMetric();
       const metric = row.metrics[field];
       if (

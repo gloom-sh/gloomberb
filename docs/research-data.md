@@ -986,6 +986,15 @@ currency are omitted. Sector and industry come from stored provider profiles and
 are missing for many smaller listings, so a sector criterion covers only listings
 with a stored profile.
 
+ATR% is the 14-session average true range as a percent of the last completed
+close, for US listings, from stored daily bars of settled sessions only. A session's
+true range is its high less low or, when larger, the distance from its high or low
+to the prior close. The average is Wilder's, the smoothing of the chart's ATR study,
+over the latest consecutive sessions, at least 15 and at most 30. A missing session,
+an invalid bar or fewer than 15 sessions leaves it unavailable. IV rank is a rank,
+not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks
+and 100 the highest.
+
 Growth compares matching annual periods with compatible currency and a positive
 base. Margins use reported revenue and their corresponding profit measure.
 Insider purchase/sale counts reflect observed filings and are lower bounds;
