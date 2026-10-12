@@ -7,9 +7,9 @@ import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/fr
 import { headlineQuoteDisplay } from "../column-values";
 import { isManualPortfolio } from "../mutations";
 import type { AllocationHolding } from "../allocation";
+import { getPortfolioValuationDisplay, type PortfolioValuationBasis } from "../../../../portfolio/valuation-basis";
 import {
   getPortfolioPositionMetrics,
-  getPortfolioQuoteDisplay,
   resolvePortfolioMarketValue,
   resolvePortfolioPositionPnl,
   portfolioPnlPercent,
@@ -90,7 +90,11 @@ export function formatPortfolioAmount(
   return `${sign}${getCurrencySymbol(currency)}${text.slice(sign.length)}`;
 }
 
-/** Totals over the collection, every amount converted into `totalsCurrency`. */
+/**
+ * Totals over the collection, every amount converted into `totalsCurrency`,
+ * valued at `valuationBasis`: the latest print unless given, or the regular
+ * close, whose day is that session's move.
+ */
 export function calculatePortfolioSummaryTotals(
   tickers: TickerRecord[],
   financialsMap: Map<string, TickerFinancials>,
@@ -98,6 +102,7 @@ export function calculatePortfolioSummaryTotals(
   exchangeRates: Map<string, number>,
   isPortfolio: boolean,
   collectionId: string | null,
+  valuationBasis: PortfolioValuationBasis = "latest-print",
 ): PortfolioSummaryTotals {
   let totalMktValue = 0;
   let netMktValue = 0;
@@ -144,7 +149,7 @@ export function calculatePortfolioSummaryTotals(
     const positionMetrics = getPortfolioPositionMetrics(ticker, collectionId ?? undefined, quoteCurrency, {
       currency: totalsCurrency, convert: toBase,
     }, quote);
-    activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
+    activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, valuationBasis);
     const { totalPriceUnits, grossPriceUnits, totalCost } = positionMetrics;
     if (positionMetrics.positionCount === 0) {
       // Not held, so a missing rate is no gap in the totals: it only leaves the trade in units out.

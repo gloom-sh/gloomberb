@@ -8,7 +8,7 @@ import type { EarningsEvent } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../../../market-data/quotes/time";
-import { formatShortDate, parseDisplayDate, type ShortDateOptions } from "../../../utils/datetime-format";
+import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../../../utils/datetime-format";
 import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
   formatMarketCost,
@@ -51,6 +51,11 @@ import {
   signedPositionDirection,
   type PortfolioPositionPnl,
 } from "../../../portfolio/position-metrics";
+import {
+  getPortfolioValuationDisplay,
+  getPortfolioValuationTime,
+  type PortfolioValuationBasis,
+} from "../../../portfolio/valuation-basis";
 import { isFiniteNumber } from "../../../utils/guards";
 import {
   allocationFigures,
@@ -68,6 +73,8 @@ export interface ColumnContext {
   exchangeRates: Map<string, number>;
   /** Clock for quote age (per second while shown) and day-based columns. */
   now: number;
+  /** What market values, P&L, weights and the day's move are priced at; the latest print when absent. */
+  valuationBasis?: PortfolioValuationBasis;
   /**
    * The total a portfolio's weights divide by: its priced holdings at net
    * market value plus its cash (see allocation.ts). It may trail the rows by
@@ -223,7 +230,8 @@ function tradedQuoteDisplay(
  * from that close. Until the close, and wherever no close is reported (a
  * pre-market quote without it, venues without extended hours), the traded price
  * as above.
- * Valuation columns (DAY P&L, MKT VAL, weight, P&L) keep the live price.
+ * Valuation columns (DAY P&L, MKT VAL, weight, P&L) keep the latest print,
+ * unless the pane values at the regular close, which is this headline.
  * A watchlist's Avg Day averages this CHG%.
  */
 export function headlineQuoteDisplay(
@@ -307,8 +315,10 @@ export function getColumnValue(
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
-  const activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
-  const displayQuote = tradedQuoteDisplay(positionMetrics, activeQuote, quote);
+  // The latest print, which the quote columns read, and the price the position is valued at.
+  const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
+  const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis);
+  const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
   const headlineQuote = headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
@@ -483,9 +493,9 @@ export function getColumnValue(
       return percent === null ? { text: "—" } : { text: formatPercentRaw(percent), color: priceColor(percent) };
     }
     case "mark_delta":
-      if (!activeQuote || brokerMarkPrice == null || activeQuote.price === 0 || positionMetrics.priceBasis !== (quote?.priceBasis ?? "per-unit") || positionCurrency !== quoteCurrency) return { text: "—" };
+      if (!liveQuote || brokerMarkPrice == null || liveQuote.price === 0 || positionMetrics.priceBasis !== (quote?.priceBasis ?? "per-unit") || positionCurrency !== quoteCurrency) return { text: "—" };
       {
-        const percent = ((brokerMarkPrice - activeQuote.price) / Math.abs(activeQuote.price)) * 100;
+        const percent = ((brokerMarkPrice - liveQuote.price) / Math.abs(liveQuote.price)) * 100;
         return { text: formatPercentRaw(percent), color: priceColor(percent) };
       }
     case "acq_date": {
@@ -542,6 +552,12 @@ export function getColumnValue(
     }
     case "latency":
       return { text: formatQuoteAgeWithSource(quote, ctx.now, { seconds: true }) };
+    case "as_of": {
+      const time = getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics);
+      if (!time) return { text: "—" };
+      // In UTC, as the header says; a close the venue's calendar gives no hour for is dated by its day.
+      return { text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true }) };
+    }
     case PRICE_SPARKLINE_COLUMN_ID:
       return { text: "" };
     default:
@@ -561,8 +577,9 @@ export function getSortValue(
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
-  const activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
-  const displayQuote = tradedQuoteDisplay(positionMetrics, activeQuote, quote);
+  const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
+  const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis);
+  const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
   const headlineQuote = headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
@@ -670,8 +687,8 @@ export function getSortValue(
     case "pnl_pct":
       return portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);
     case "mark_delta":
-      return activeQuote && brokerMarkPrice != null && activeQuote.price !== 0 && positionMetrics.priceBasis === (quote?.priceBasis ?? "per-unit") && positionCurrency === quoteCurrency
-        ? ((brokerMarkPrice - activeQuote.price) / Math.abs(activeQuote.price)) * 100
+      return liveQuote && brokerMarkPrice != null && liveQuote.price !== 0 && positionMetrics.priceBasis === (quote?.priceBasis ?? "per-unit") && positionCurrency === quoteCurrency
+        ? ((brokerMarkPrice - liveQuote.price) / Math.abs(liveQuote.price)) * 100
         : null;
     case "acq_date":
       return earliestDateAcquired(ticker, ctx.activeTab)?.getTime() ?? null;
@@ -704,6 +721,8 @@ export function getSortValue(
       return perpetualValue(col.id, ticker.metadata.ticker, ctx).value;
     case "latency":
       return quote ? ctx.now - (resolveQuoteAgeTimestamp(quote, ctx.now) ?? ctx.now) : null;
+    case "as_of":
+      return getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics)?.time ?? null;
     case PRICE_SPARKLINE_COLUMN_ID: {
       // The trend the sparkline draws: its window, closed by the live price.
       const history = followLiveSparklinePrice(financials?.priceHistory ?? [], quote, {

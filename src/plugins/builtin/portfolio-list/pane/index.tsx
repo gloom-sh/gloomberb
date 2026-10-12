@@ -161,6 +161,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       : null
   ), [activeCollectionId, config.portfolios, isPortfolioTab]);
   const viewMode: PortfolioViewMode = isPortfolioTab ? paneSettings.viewMode : "table";
+  const valuationBasis = paneSettings.valueAtClose ? "regular-close" as const : "latest-print" as const;
 
   const tickers = useMemo(
     () => getCollectionTickersFromConfig(config, tickersBySymbol, activeCollectionId),
@@ -233,9 +234,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       exchangeRates,
       isPortfolioTab,
       activeCollectionId,
+      valuationBasis,
     ).allocationHoldings : undefined,
     [financialsMap],
-    [activeCollectionId, exchangeRates, isPortfolioTab, needsWeightTotal, tickers, totalsCurrency],
+    [activeCollectionId, exchangeRates, isPortfolioTab, needsWeightTotal, tickers, totalsCurrency, valuationBasis],
     WEIGHT_TOTAL_THROTTLE_MS,
   );
   // Priced holdings plus cash, as `portfolio show` totals them.
@@ -251,9 +253,10 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
       exchangeRates,
       isPortfolioTab,
       activeCollectionId,
+      valuationBasis,
     ),
     [financialsMap],
-    [activeCollectionId, exchangeRates, isPortfolioTab, tickers, totalsCurrency],
+    [activeCollectionId, exchangeRates, isPortfolioTab, tickers, totalsCurrency, valuationBasis],
     FOOTER_TOTALS_THROTTLE_MS,
   );
 
@@ -262,6 +265,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     activeTab: isPortfolioTab ? activeCollectionId : undefined,
     baseCurrency: totalsCurrency,
     exchangeRates,
+    valuationBasis,
     portfolioTotalMarketValue,
     portfolioTargets,
     supplementalVersion: supplementalData.version,
@@ -279,6 +283,7 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     portfolioTotalMarketValue,
     supplementalData,
     totalsCurrency,
+    valuationBasis,
   ]);
   const columnContext: ColumnContext = useMemo(() => ({ ...baseColumnContext, now }), [baseColumnContext, now]);
   // The order only follows the per-second clock when sorting by quote age;
@@ -353,7 +358,8 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
     baseCurrency: config.baseCurrency,
     manualCash,
     brokerPortfolio,
-  }), [brokerPortfolio, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, portfolioSummaryTotals, summaryAccountState, totalsCurrency]);
+    valuationBasis,
+  }), [brokerPortfolio, config.baseCurrency, convertAccountValue, isPortfolioTab, manualCash, portfolioSummaryTotals, summaryAccountState, totalsCurrency, valuationBasis]);
   // The header row sits in the pane's one-cell side padding, like the table.
   const summaryWidth = Math.max(0, width - 2);
   const summaryLayout = useMemo(() => layoutPortfolioSummaryHeader(summarySegments, summaryWidth, {

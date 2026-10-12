@@ -13,6 +13,8 @@ export interface PortfolioPaneSettings {
   viewMode: PortfolioViewMode;
   hideHeader: boolean;
   hideCash: boolean;
+  /** Value a portfolio at the regular close rather than the latest print (`fn PF --close`). */
+  valueAtClose: boolean;
 }
 
 export interface CollectionEntry {
@@ -67,6 +69,8 @@ const PORTFOLIO_COLUMN_DEFS: ColumnConfig[] = [
   { id: "mark_delta", label: "MARK%", width: 8, align: "right", format: "percent" },
   { id: "acq_date", label: "ACQ", width: 7, align: "right" },
   { id: "held", label: "HELD", width: 6, align: "right" },
+  // When the price a row is valued at is from: its print, or the regular close.
+  { id: "as_of", label: "AS OF UTC", width: 10, align: "right" },
 ];
 
 const PORTFOLIO_COLUMNS_BY_ID = new Map(PORTFOLIO_COLUMN_DEFS.map((column) => [column.id, column]));
@@ -176,6 +180,7 @@ function describeColumnOption(column: ColumnConfig): string {
   if (TARGET_COLUMN_IDS.has(column.id)) return "Shown by default once the portfolio has target weights.";
   if (column.id === "perp_premium") return "Premium of the stock's perpetual to its last price.";
   if (column.id === "perp_funding") return "Funding of the stock's perpetual, per 8 hours.";
+  if (column.id === "as_of") return "When each row's price is from: its last print, or the regular close.";
   return PORTFOLIO_ONLY_COLUMN_IDS.has(column.id)
     ? "Visible only when this pane is showing a portfolio."
     : "Visible for watchlists and portfolios.";
@@ -196,6 +201,7 @@ export function getPortfolioPaneSettings(settings: Record<string, unknown> | und
     viewMode: isPortfolioViewMode(settings?.viewMode) ? settings.viewMode : "table",
     hideHeader: settings?.hideHeader === true,
     hideCash: settings?.hideCash === true,
+    valueAtClose: settings?.valueAtClose === true,
   };
 }
 
@@ -310,6 +316,12 @@ export function buildPortfolioPaneSettingsDef(
       label: "View",
       type: "select",
       options: VIEW_MODE_OPTIONS,
+    });
+    fields.push({
+      key: "valueAtClose",
+      label: "Value at Regular Close",
+      description: "Price holdings at the regular close instead of the latest print, which includes extended hours.",
+      type: "toggle",
     });
   }
 

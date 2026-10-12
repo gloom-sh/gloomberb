@@ -20,8 +20,12 @@ const FX_COLUMN_IDS = new Set([
 ]);
 /** Columns that divide by the portfolio's total. */
 const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"]);
+/** Columns read at the price the pane values at: the latest print or the regular close. */
+const VALUATION_COLUMN_IDS = new Set([
+  "mkt_value", "weight", "drift", "trade", "trade_value", "day_pnl", "pnl", "pnl_pct", "as_of",
+]);
 const SUPPLEMENTAL_COLUMN_IDS = new Set(["target", "target_pct", "rating", "ex_div", "next_earn"]);
-const DAY_CLOCK_COLUMN_IDS = new Set(["held", "ex_div", "next_earn"]);
+const DAY_CLOCK_COLUMN_IDS = new Set(["held", "ex_div", "next_earn", "as_of"]);
 export const PERPETUAL_COLUMN_IDS: ReadonlySet<string> = new Set(["perp_premium", "perp_funding"]);
 
 const exchangeRateVersions = new WeakMap<ReadonlyMap<string, number>, string>();
@@ -54,6 +58,7 @@ export function columnContextVersion(columnId: string, ctx: ColumnContext): stri
   let version = `${ctx.activeTab ?? ""}|${ctx.baseCurrency}`;
   if (FX_COLUMN_IDS.has(columnId)) version += `|${exchangeRatesVersion(ctx.exchangeRates)}`;
   if (ALLOCATION_COLUMN_IDS.has(columnId)) version += `|${ctx.portfolioTotalMarketValue ?? 0}`;
+  if (VALUATION_COLUMN_IDS.has(columnId)) version += `|${ctx.valuationBasis ?? "latest-print"}`;
   if (ALLOCATION_COLUMN_IDS.has(columnId) || columnId === "target_weight") version += `|${targetsVersion(ctx.portfolioTargets)}`;
   if (SUPPLEMENTAL_COLUMN_IDS.has(columnId)) version += `|${ctx.supplementalVersion ?? 0}`;
   if (PERPETUAL_COLUMN_IDS.has(columnId)) version += `|${ctx.perpetualsVersion ?? 0}`;

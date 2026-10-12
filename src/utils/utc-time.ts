@@ -106,6 +106,18 @@ export function formatUtcTime(value: ReportTime | Date | number | string): strin
   return `${iso.slice(0, 16).replace("T", " ")} UTC${localTimeSuffix(parsed.time)}`;
 }
 
+/**
+ * `Fri 9 Oct 23:59` in UTC, or `Fri 9 Oct` for a date, for a table cell whose
+ * header names the zone: a time without its zone, so each row stays short. The
+ * year follows only when it is not the year of `now`.
+ */
+export function formatUtcDayTime(value: ReportTime, now = Date.now()): string {
+  const date = new Date(value.time);
+  const year = date.getUTCFullYear() === new Date(now).getUTCFullYear() ? "" : ` ${date.getUTCFullYear()}`;
+  const day = `${WEEKDAYS[date.getUTCDay()]} ${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]}${year}`;
+  return value.dateOnly ? day : `${day} ${date.toISOString().slice(11, 16)}`;
+}
+
 /** The newest of some report times, as given, so a loader can declare its as-of from the rows it means. */
 export function newestReportTime<T>(values: Iterable<T>): T | null {
   let best: { value: T; time: number } | null = null;

@@ -22,6 +22,13 @@ import { formatAllocationDrift, formatAllocationWeight, type PortfolioCashLine }
 import { getMostRecentQuoteUpdate } from "../../../../market-data/quotes/time";
 import { fxStatusLabel, type FxRateStatus } from "../../../../utils/fx-status";
 import { t } from "../../../../i18n";
+import type { PortfolioValuationBasis } from "../../../../portfolio/valuation-basis";
+
+/** What the value beside it is priced at, short enough that the header row keeps it with the value. */
+const PRICED_AT_TEXT: Record<PortfolioValuationBasis, string> = {
+  "latest-print": "(latest print)",
+  "regular-close": "(regular close)",
+};
 
 export interface PortfolioSummarySegment {
   id: string;
@@ -225,8 +232,11 @@ export function buildPortfolioSummarySegments({
   baseCurrency = "USD",
   manualCash = null,
   brokerPortfolio = false,
+  valuationBasis,
 }: {
   totals: PortfolioSummaryTotals;
+  /** What the values are priced at, said beside the value; left out when absent. */
+  valuationBasis?: PortfolioValuationBasis;
   accountState: PortfolioSummaryAccountState | null;
   isPortfolioTab?: boolean;
   /** Synced from a broker, so it is worth its account's equity even while the account is missing. */
@@ -285,9 +295,11 @@ export function buildPortfolioSummarySegments({
     ]));
   }
 
+  // Which price the value uses goes with it, so a narrow row never shows one without the other.
   candidates.push(createSummarySegment("val", [
     { text: broker || totals.hasShorts ? "Gross" : "Val", tone: "label" },
     { text: money(totalMarketValue), tone: "value", bold: true },
+    ...(valuationBasis ? [{ text: PRICED_AT_TEXT[valuationBasis], tone: "muted" as const }] : []),
   ]));
 
   if (totals.hasShorts && totals.netMktValue != null) {

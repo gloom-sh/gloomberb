@@ -1,4 +1,4 @@
-import { afterEach, expect, spyOn, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { serializeCliResult } from "../../../../cli/result";
 import { DEFAULT_CLI_OPTIONS } from "../../../../cli/options";
 import { renderHeadlessPaneText } from "../../../../cli/pane-functions/headless";
@@ -13,6 +13,7 @@ import { sessionQuotes } from "../../../../test-support/test-fixture-session-quo
 import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
 import { collectionHoldingsHeadless } from "../headless";
 import { showCollection } from "./render";
+import { portfolioCliCommand } from "./portfolio-command";
 
 afterEach(() => setCliColorEnabledOverride(null));
 
@@ -83,4 +84,93 @@ test("PF reports a portfolio's and a watchlist's rows the same way", async () =>
     expect(text).toContain("After Hours");
     expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(/198\.78 .*\+0\.51% +198\.80 \+0\.01%/);
   }
+});
+
+describe("what a portfolio is priced at and when each row's price is from", () => {
+  // Over the weekend: XLK's last after-hours print beside Friday's close, and a listing with no extended hours.
+  const xlk = createTestTicker("XLK", "Technology Select Sector SPDR", {
+    exchange: "ARCA", portfolios: ["main"],
+    positions: [{ portfolio: "main", shares: 1000, avgCost: 150, currency: "USD", broker: "manual" }],
+  });
+  const sap = createTestTicker("SAP", "SAP SE", {
+    exchange: "XETRA", portfolios: ["main"],
+    positions: [{ portfolio: "main", shares: 50, avgCost: 180, currency: "USD", broker: "manual" }],
+  });
+  const quotes: Record<string, Quote> = {
+    XLK: sessionQuotes().weekend,
+    SAP: { symbol: "SAP", currency: "USD", price: 200, change: 4, changePercent: 2.0408, previousClose: 196,
+      listingExchangeName: "XETRA", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T15:38:00Z") },
+  };
+  const market = { config, store: { loadAllTickers: async () => [xlk, sap] },
+    dataProvider: createTestDataProvider({ getQuote: async (symbol) => quotes[symbol]! }) };
+  const day = (time: string) => new RegExp(`Fri 9 Oct (2026 )?${time}`);
+
+  async function showText(args: string[]) {
+    setCliColorEnabledOverride(false);
+    const output: string[] = [];
+    const logger = spyOn(console, "log").mockImplementation((...line) => { output.push(line.join(" ")); });
+    try { await portfolioCliCommand.execute(args, createTestCliContext(market).context); } finally { logger.mockRestore(); }
+    return output.join("\n");
+  }
+  async function showExport(args: string[], format: "json" | "csv") {
+    const cli = createTestCliContext(market, { format });
+    await portfolioCliCommand.execute(args, cli.context);
+    return serializeCliResult(cli.printed[0]!.result, { ...DEFAULT_CLI_OPTIONS, format }, cli.printed[0]!.options);
+  }
+
+  test("by default the value is the latest print, said under the title, with each row's print time", async () => {
+    const text = await showText(["show", "Main"]);
+    expect(text).toContain("Priced at the latest print, extended hours included");
+    expect(text).toContain("As of (UTC)");
+    expect(text).not.toContain("Day's move");
+    expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(new RegExp(`\\$198,800 .*${day("23:58").source}`));
+    expect(text.split("\n").find((line) => line.startsWith("SAP"))).toMatch(day("15:38"));
+
+    const json = JSON.parse(await showExport(["show", "Main"], "json"));
+    expect(json.metadata.valuationBasis).toBe("latest-print");
+    expect(json.data[1]).toMatchObject({ symbol: "XLK", quotePrice: 198.78, marketValue: 198_800, priceBasis: null,
+      valuationBasis: "latest-print", valuationPrice: 198.8, valuationAsOf: "2026-10-09T23:58:08.000Z", quoteAsOf: Date.parse("2026-10-09T23:58:08Z") });
+  });
+
+  test("--close values every row at Last times its shares, totals them, and says the day's move and the close time", async () => {
+    const text = await showText(["show", "Main", "--close"]);
+    expect(text).toContain("Priced at the regular close");
+    // ARCA closes at 16:00 New York time.
+    expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(new RegExp(`\\$198\\.78 .*\\$198,780 .*${day("20:00").source}`));
+    expect(text).toMatch(/TOTAL .*\$208,780/);
+    // XLK +1.00 a share, SAP +4.00, from 197.78 and 196.
+    expect(text).toContain("Day's move: +$1,200.00 (+0.58%)");
+
+    const json = JSON.parse(await showExport(["show", "Main", "--close"], "json"));
+    for (const row of json.data) expect(row.marketValue).toBe(row.quotePrice * row.shares);
+    expect(json.data.map((row: { valuationAsOf: string }) => row.valuationAsOf)).toEqual(["2026-10-09T15:38:00.000Z", "2026-10-09T20:00:00.000Z"]);
+    expect(json.metadata).toMatchObject({ valuationBasis: "regular-close", total: 208_780, dayChange: 1200 });
+    expect(json.metadata.dayChangePercent).toBeCloseTo(1200 / 207_580 * 100, 8);
+    // Exports are dated by the close, name the basis, and cite the oldest price too.
+    expect(json.source).toMatchObject({ observationDate: "2026-10-09T20:00:00.000Z", oldestObservationDate: "2026-10-09T15:38:00.000Z" });
+
+    const csv = await showExport(["show", "Main", "--close"], "csv");
+    const [header, ...lines] = csv.split("\n");
+    expect(header!.split(",").slice(-3)).toEqual(["valuationBasis", "valuationPrice", "valuationAsOf"]);
+    expect(lines.find((line) => line.startsWith("XLK"))).toMatch(/,regular-close,198\.78,2026-10-09T20:00:00\.000Z$/);
+    expect(csv).toMatch(/# Source: .* · priced at the regular close\n/);
+    expect(csv).toContain("# Observation date: 2026-10-09T20:00:00.000Z\n# Oldest observation: 2026-10-09T15:38:00.000Z\n");
+
+    await expect(portfolioCliCommand.execute(["show", "Tech", "--close"], createTestCliContext(market).context)).rejects.toThrow("is a watchlist");
+  });
+
+  test("PF --close reports the same values, each row's close time and the basis in its closing line", async () => {
+    const ctx = {
+      config, signal: new AbortController().signal, marketData: market.dataProvider,
+      resolvePortfolio: async () => ({ portfolio: config.portfolios[0], tickers: [xlk, sap] }),
+    } as unknown as HeadlessPaneContext;
+    setCliColorEnabledOverride(false);
+    const args = { rawArgument: "Main", argument: "Main", symbols: [], options: { close: true } };
+    const result = await collectionHoldingsHeadless.load(args, ctx);
+    expect(result.rows[0]).toMatchObject({ symbol: "XLK", price: 198.78, marketValue: 198_780, valuationAsOf: "2026-10-09T20:00:00.000Z" });
+    const text = renderHeadlessPaneText(collectionHoldingsHeadless, result, args, "PF");
+    expect(text).toContain("Day's move: +$1,200.00 (+0.58%)");
+    expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(day("20:00"));
+    expect(text).toMatch(/priced at the regular close$/);
+  });
 });

@@ -27,6 +27,8 @@ export interface ReportFreshness {
   asOf: string | null;
   /** Oldest observation, when it is more than a day older than `asOf`. */
   oldest?: string;
+  /** With a declared `citeOldest`: the oldest observation whenever it is older than `asOf`. Exports cite it. */
+  oldestObservation?: string;
   status: ReportFreshnessStatus;
   /** How far the data is held back; the most of its rows when they differ... */
   delayMinutes?: number;
@@ -347,6 +349,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   // `oldest: null` says the rows are a history, whose first entry is not stale data.
   const oldestTime = declared.oldest != null ? parseReportTime(declared.oldest)
     : declaredAsOf || declared.oldest === null ? null : oldest(observations.units);
+  const oldestUnit = declared.citeOldest ? oldest(observations.units) : null;
   const late = overdue(declared, asOf, now);
 
   let status: ReportFreshnessStatus;
@@ -420,6 +423,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     source: declared.source?.trim() || (sources.length ? [...new Set(sources.map(({ source }) => source))].join(", ") : DEFAULT_REPORT_SOURCE),
     asOf: asOf ? isoTime(asOf) : null,
     ...(asOf && oldestTime && asOf.time - oldestTime.time > OLDEST_GAP_MS ? { oldest: isoTime(oldestTime) } : {}),
+    ...(asOf && oldestUnit && oldestUnit.time < asOf.time ? { oldestObservation: isoTime(oldestUnit) } : {}),
     status,
     ...(delayMinutes != null && delayMinutes > 0 ? { delayMinutes } : {}),
     ...(minDelayMinutes != null && minDelayMinutes > 0 ? { minDelayMinutes } : {}),

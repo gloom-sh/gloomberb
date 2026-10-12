@@ -10,15 +10,19 @@ import type { TickerRecord } from "../../../types/ticker";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
   collectionQuoteHeadline,
+  dayMoveLine,
   extendedQuoteFields,
   extendedSessionsOf,
   findCollection,
   listingLabel,
   loadCollectionQuotes,
+  portfolioDayMove,
+  valuationTimeText,
   valuePortfolioAllocation,
   valuePortfolioPositions,
   type CollectionMatch,
 } from "./cli/render";
+import { VALUATION_BASIS_LABELS, type PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
 import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
@@ -77,6 +81,16 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "unrealizedPnl", header: "P&L", align: "right", format: amount, description: "Unrealized, in the portfolio's currency." },
   { key: "weight", header: "Weight", align: "right", format: weight, description: "Percent of the total value, cash included; unpriced holdings are left out." },
 ];
+
+/** Last, after the targets: when the price each row is valued at is from. */
+const VALUATION_TIME_COLUMN: HeadlessPaneColumn = {
+  key: "valuationAsOf",
+  header: "As of (UTC)",
+  // Exports keep the ISO time.
+  textFormat: (value) => valuationTimeText(value),
+  shrink: false,
+  description: "When the price the row is valued at is from: its print, or the regular close with --close.",
+};
 
 /** Shown once the portfolio has a target weight. */
 const TARGET_COLUMNS: HeadlessPaneColumn[] = [
@@ -175,6 +189,7 @@ async function portfolioHoldings(
   target: Extract<CollectionMatch, { kind: "portfolio" }>,
   limit: number,
   ctx: HeadlessPaneContext,
+  basis: PortfolioValuationBasis,
 ): Promise<HeadlessRowsResult> {
   const resolved = await ctx.resolvePortfolio?.(target.id);
   if (!resolved) throw new Error(`Holdings for ${target.id} are not available here.`);
@@ -190,6 +205,7 @@ async function portfolioHoldings(
     currency,
     baseCurrency: ctx.config.baseCurrency,
     toBase,
+    basis,
   });
   const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: resolved.portfolio, account: resolved.account, toBase });
   ctx.signal.throwIfAborted();
@@ -201,7 +217,7 @@ async function portfolioHoldings(
   const seen = new Set<string>();
   const extendedSessions = extendedSessionsOf(held.map(({ extended }) => extended?.session));
   const rows = held
-    .map(({ ticker, headline, extended, row }) => {
+    .map(({ ticker, headline, extended, row, valuation: priced }) => {
       const marketValue = finite(row.marketValue);
       // A ticker held in several lots carries its allocation on its first row.
       const figures = seen.has(ticker.metadata.ticker) ? undefined : allocationBySymbol.get(ticker.metadata.ticker);
@@ -217,7 +233,7 @@ async function portfolioHoldings(
         shares: finite(row.shares),
         avgCost: finite(row.avgCost),
         positionCurrency: row.positionCurrency ?? null,
-        // Last and Chg are the regular session; market value and P&L are at the live price.
+        // Last and Chg are the regular session; market value and P&L are at `valuationPrice`.
         price: finite(row.quotePrice),
         priceCurrency: row.quoteCurrency ?? null,
         changePercent: finite(headline?.changePercent),
@@ -229,6 +245,7 @@ async function portfolioHoldings(
         drift: figures?.drift ?? null,
         tradeShares: figures?.tradeUnits ?? null,
         tradeValue: figures?.tradeValue ?? null,
+        ...priced,
       };
     })
     // Largest exposure first; a position without a market value sorts last.
@@ -256,8 +273,11 @@ async function portfolioHoldings(
   const showTargets = allocation.targetSum != null;
   const targetNote = describeTargetSum(allocation.targetSum);
   const imported = importedFromText(target.portfolio);
+  const dayMove = basis === "regular-close" ? portfolioDayMove(valuation) : null;
   const notices = [
     ...(imported ? [imported] : []),
+    // At the close, Mkt Val is Last times the shares; the day's move from the close before gets its own line.
+    ...(basis === "regular-close" ? [dayMoveLine(dayMove, currency)] : []),
     ...(rows.length > limit
       ? [`${rows.length - limit} more position${rows.length - limit === 1 ? "" : "s"} not shown; totals include every position.`]
       : []),
@@ -266,9 +286,15 @@ async function portfolioHoldings(
   ];
 
   return {
-    freshness: { source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud" },
+    // Dated by the prices the value uses, and the oldest of them in exports, with the basis in the closing line.
+    freshness: {
+      source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud",
+      observedKey: "valuationAsOf",
+      citeOldest: true,
+      note: `priced at ${VALUATION_BASIS_LABELS[basis]}`,
+    },
     columns: withListingLabels(
-      withExtendedColumns(showTargets ? [...POSITION_COLUMNS, ...TARGET_COLUMNS] : POSITION_COLUMNS, extendedSessions),
+      withExtendedColumns([...POSITION_COLUMNS, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], extendedSessions),
       tickers,
     ),
     rows: shown,
@@ -280,6 +306,7 @@ async function portfolioHoldings(
       collection: { kind: "portfolio", id: target.id, name: target.name, broker },
       ...(target.portfolio.importedFrom ? { importedFrom: target.portfolio.importedFrom } : {}),
       currency,
+      valuationBasis: basis,
       positions: rows.length,
       totals: {
         marketValue: sum("marketValue"),
@@ -288,6 +315,8 @@ async function portfolioHoldings(
         unrealizedPnl: valuation.totalPnl,
         cash: allocation.cash ? finite(allocation.cash.value) : null,
         total: allocation.total,
+        // At the regular close, the holdings' move from the close before.
+        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null } : {}),
       },
       ...(cash ? { cash } : {}),
       ...(showTargets ? { targetSum: allocation.targetSum } : {}),
@@ -349,7 +378,7 @@ async function watchlistHoldings(
 export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   description:
-    "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L and weight of the total with cash, largest first, then the cash line and totals. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
+    "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L, weight of the total with cash and when each row's price is from, largest first, then the cash line and totals. Values are at the latest print, extended hours included, or at the regular close with close. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
   discovery: {
     dataRequirements: ["Local portfolios, watchlists and synced broker positions; current quotes"],
     limitations: ["Unrealized P&L on current positions; excludes realized trades, distributions and cash flows."],
@@ -369,6 +398,13 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
       maximum: MAX_ROW_LIMIT,
       description: "Largest positions, or first tickers, to list. Totals cover all of them.",
     },
+    {
+      key: "close",
+      type: "boolean",
+      defaultValue: false,
+      settingKey: "valueAtClose",
+      description: "Value the portfolio at the regular close, not the latest print: Value is Last times the shares.",
+    },
   ],
   columns: POSITION_COLUMNS,
   describe: (args) => (args.rawArgument ? `Holdings | ${args.rawArgument}` : "Holdings"),
@@ -376,7 +412,7 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
     const target = resolveTarget(args.rawArgument, ctx);
     const limit = rowLimit(args.options.limit);
     return target.kind === "portfolio"
-      ? portfolioHoldings(target, limit, ctx)
+      ? portfolioHoldings(target, limit, ctx, args.options.close === true ? "regular-close" : "latest-print")
       : watchlistHoldings(target, limit, ctx);
   },
 };

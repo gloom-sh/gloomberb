@@ -354,8 +354,10 @@ export const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "latency", label: "AGE", width: 6, align: "right" },
 ];
 
+// A portfolio dates each row by the price its value uses (AS OF), where a
+// watchlist shows the quote's age (AGE).
 export const DEFAULT_PORTFOLIO_COLUMN_IDS = [
-  ...DEFAULT_COLUMNS.map((column) => column.id),
+  ...DEFAULT_COLUMNS.map((column) => column.id === "latency" ? "as_of" : column.id),
   "sparkline",
   "shares",
   "avg_cost",

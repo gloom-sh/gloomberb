@@ -239,6 +239,12 @@ export interface HeadlessPaneFreshness {
   sources?: Array<{ source: string; asOf: string | number | Date }>;
   /** Say how old the oldest observation is (`oldest 4 min`): rows polled apart from one source. */
   oldestAge?: boolean;
+  /**
+   * Exports also cite the oldest observation whenever the rows are dated
+   * apart, not only when it is a day older: a portfolio valued at one
+   * listing's Friday close and another's later print.
+   */
+  citeOldest?: boolean;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
 }

@@ -16,6 +16,11 @@ export interface ExportSource {
   publisher: string | null;
   /** The newest observation: an ISO date, or an ISO instant in UTC. */
   observationDate: string | null;
+  /**
+   * The oldest observation, for data that cites it (`citeOldest`) when its rows
+   * are dated apart: a portfolio's Friday close beside a later print.
+   */
+  oldestObservationDate?: string;
   /** When the publisher released the data, when the data states it. */
   publicationTime: string | null;
   /** When the data was retrieved for this export: an ISO instant in UTC. */
@@ -27,6 +32,7 @@ export function exportSource(freshness: ReportFreshness): ExportSource {
     name: freshness.source,
     publisher: freshness.publisher ?? null,
     observationDate: freshness.asOf,
+    ...(freshness.oldestObservation ? { oldestObservationDate: freshness.oldestObservation } : {}),
     publicationTime: freshness.publishedAt ?? null,
     retrievalTime: freshness.retrievedAt,
   };
@@ -34,8 +40,9 @@ export function exportSource(freshness: ReportFreshness): ExportSource {
 
 /**
  * The lines an export ends with: the source line the text report ends with,
- * then the publisher, observation date, publication time and retrieval time,
- * each `not published` when the data does not say.
+ * then the publisher, observation date (the newest; the oldest follows when
+ * the data cites it), publication time and retrieval time, each `not
+ * published` when the data does not say.
  */
 export function exportSourceLines(freshness: ReportFreshness): string[] {
   const source = exportSource(freshness);
@@ -44,6 +51,7 @@ export function exportSourceLines(freshness: ReportFreshness): string[] {
     formatFreshnessLine(freshness),
     `Publisher: ${stated(source.publisher)}`,
     `Observation date: ${stated(source.observationDate)}`,
+    ...(source.oldestObservationDate ? [`Oldest observation: ${source.oldestObservationDate}`] : []),
     `Publication time: ${stated(source.publicationTime)}`,
     `Retrieval time: ${source.retrievalTime}`,
   ];

@@ -31,6 +31,7 @@ const QUOTE_SORT_COLUMN_IDS = new Set([
   "range_52w",
   "market_cap",
   "latency",
+  "as_of",
   "ext_hours",
   "mkt_value",
   "weight",
