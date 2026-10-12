@@ -9,6 +9,7 @@ import type {
 export type PaneFunctionReadiness = "ready" | "partial" | "live-dom" | "unsupported";
 type PaneFunctionScreenshotReadiness = PaneFunctionReadiness;
 type PaneFunctionTickerCardinality = "none" | "one" | "one-or-more" | "two-or-more" | "one-or-two";
+/** A headless option, or a rendered view's, which may name its value, show an example and check what is typed. */
 export type PaneFunctionOptionDef = HeadlessPaneOptionDef;
 export type NormalizedPaneFunctionOptions = Record<string, string | number | boolean>;
 
@@ -60,11 +61,11 @@ function fallbackCapability(
     outputKind: dataPane ? "rendered-view" : "pane",
     reportReadiness: dataPane ? "live-dom" : "unsupported",
     screenshotReadiness: "live-dom",
-    dataRequirements: [],
+    dataRequirements: [...(pane.reportRequirements ?? [])],
     limitations: [dataPane
       ? RENDERED_VIEW_LIMITATION
       : "This pane is an interactive surface and does not expose a data report."],
-    options: [],
+    options: [...(pane.reportOptions ?? [])],
   };
 }
 
@@ -159,6 +160,7 @@ function normalizeOptionValue(option: PaneFunctionOptionDef, rawValue: string | 
     throw new Error(`Invalid --${option.key} value "${rawValue}". Use true or false.`);
   }
   if (rawValue === true) throw new Error(`--${option.key} requires a value.`);
+  if (option.normalize) return option.normalize(rawValue);
   if (option.type === "enum") return normalizeEnumValue(option, rawValue);
   if (option.type === "integer") {
     const value = Number(rawValue);
@@ -177,10 +179,15 @@ function normalizeOptionValue(option: PaneFunctionOptionDef, rawValue: string | 
 export function normalizeCapabilityOptions(
   capability: PaneFunctionCapability,
   options: Record<string, string | true>,
-  settings: { strict?: boolean } = {},
+  /** `code` is what the user types for the function (`CDX`), which an error names; the capability id stands in when there is none. */
+  settings: { strict?: boolean; code?: string } = {},
 ): NormalizedPaneFunctionOptions {
   if (!capability.botSafe) {
-    return Object.fromEntries(Object.entries(options).map(([key, value]) => [key, value]));
+    // A rendered view takes any pane setting; the options it declares are checked.
+    return Object.fromEntries(Object.entries(options).map(([key, value]) => {
+      const option = resolveOptionDef(capability, key);
+      return option ? [option.key, normalizeOptionValue(option, value)] : [key, value];
+    }));
   }
 
   const normalized: Record<string, string | number | boolean> = {};
@@ -196,7 +203,7 @@ export function normalizeCapabilityOptions(
       }
       const supported = capability.options.map(({ key }) => `--${key}`).join(", ");
       throw new Error(
-        `${capability.id} does not support --${rawKey}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
+        `${settings.code ?? capability.id} does not support --${rawKey}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
       );
     }
     normalized[option.key] = normalizeOptionValue(option, rawValue);

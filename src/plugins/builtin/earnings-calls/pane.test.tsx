@@ -462,7 +462,7 @@ test("stale company fallback retains older quarters and its failure without repl
   attachEarningsCallsPersistence(store);
   store.seedResource("calls", JSON.stringify(["FIRST", 50]), {
     calls: [{ ...q2, hasTranscript: false, status: "failed" }, q1],
-  }, { sourceKey: "earnings-calls", schemaVersion: 2, stale: true, expired: true });
+  }, { sourceKey: "earnings-calls", schemaVersion: 3, stale: true, expired: true });
   let fail = true;
   setCloudApiFetchTransport(async url => {
     const ticker = new URL(String(url)).searchParams.get("ticker");

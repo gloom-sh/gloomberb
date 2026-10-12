@@ -19,6 +19,8 @@ export interface StatViewModel {
   latest: StatPoint;
   /** The latest print's period at the series' own cadence: "Sep 21", "Aug", "Q2". */
   period: string;
+  /** What the latest print is a reading of, in full: "Aug 2026", "Q2 2026", "week ending 2026-10-03", "2026-10-09". */
+  reading: string;
   /** The print before this one, for the direction of the last move. */
   previous: StatPoint | null;
   yearAgo: StatPoint | null;
@@ -60,6 +62,20 @@ function formatStatPeriod(date: string, perYear: number): string {
   return `${name} ${Number(date.slice(8, 10))}`;
 }
 
+/**
+ * What the latest reading is a reading of. FRED dates a monthly or quarterly print at the start of
+ * its period, so 2026-08-01 is August 2026, not the first of the month; a weekly print is dated by
+ * the week's last day, a daily one by its day.
+ */
+function formatStatReading(date: string, perYear: number): string {
+  const month = Number(date.slice(5, 7));
+  const name = MONTHS[month - 1];
+  if (!name) return date;
+  if (perYear <= 4) return `Q${Math.ceil(month / 3)} ${date.slice(0, 4)}`;
+  if (perYear <= 12) return `${name} ${date.slice(0, 4)}`;
+  return perYear <= 52 ? `week ending ${date}` : date;
+}
+
 function extreme(points: readonly StatPoint[], pick: "high" | "low"): StatPoint {
   let best = points[0]!;
   for (const point of points) {
@@ -99,6 +115,7 @@ export function projectStat(
     range,
     latest,
     period: formatStatPeriod(latest.date, perYear),
+    reading: formatStatReading(latest.date, perYear),
     previous,
     yearAgo,
     changeOnPrevious: previous ? latest.value - previous.value : null,

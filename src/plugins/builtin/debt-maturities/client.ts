@@ -4,7 +4,10 @@ import type {
   DebtMaturitiesPayload,
   DebtMetric,
 } from "../../../api-client/debt-maturities";
+import { ApiRequestError } from "../../../api-client/errors";
+import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { secListingKey } from "../../../utils/sec";
 import {
   cachedCloudResource,
   loadCloudResource,
@@ -329,29 +332,54 @@ export function validateDebtMaturities(
   return data;
 }
 
+/** The symbol the server answers with: a listing abroad's bare symbol, otherwise the one sent. */
+const answeredSymbol = (symbol: string, listing?: IssuerListingParams) =>
+  listingAbroad(symbol, listing?.exchange)?.symbol ?? symbol;
+
+/**
+ * The schedule of the issuer behind a listing. A listing abroad asks for its
+ * bare symbol with its venue and company (cloudDebtMaturitiesPath), and the
+ * server answers for the bare symbol; a 404 for it is no schedule, like the
+ * server's own empty answer, not a failure.
+ */
 export async function fetchDebtMaturities(
   symbol: string,
   client: Pick<typeof apiClient, "getCloudDebtMaturities"> = apiClient,
+  listing?: IssuerListingParams,
 ) {
+  const abroad = listingAbroad(symbol, listing?.exchange) !== null;
+  const answered = answeredSymbol(symbol, listing);
   try {
     return validateDebtMaturities(
-      await client.getCloudDebtMaturities(symbol),
-      symbol,
+      await client.getCloudDebtMaturities(symbol, listing),
+      answered,
     );
   } catch (error) {
+    if (abroad && error instanceof ApiRequestError && error.status === 404) return noSchedule(answered);
     throw unavailableOnServer(error, "Debt maturities are not available yet.");
   }
 }
-export function cachedDebtMaturities(symbol: string) {
-  return cachedCloudResource(debtMaturitiesCache, symbol, (payload) =>
-    validateDebtMaturities(payload, symbol),
+
+function noSchedule(symbol: string): DebtMaturitiesPayload {
+  return {
+    version: 1, symbol, cik: null, entityName: null, taxonomy: null, status: "unavailable",
+    fetchedAt: new Date().toISOString(), asOf: null,
+    source: { name: "SEC EDGAR company facts", url: "https://www.sec.gov/edgar/search/", cadence: "" },
+    latest: null, history: [], warnings: [],
+  };
+}
+
+// SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
+export function cachedDebtMaturities(symbol: string, listing?: IssuerListingParams) {
+  return cachedCloudResource(debtMaturitiesCache, secListingKey(symbol, listing?.exchange), (payload) =>
+    validateDebtMaturities(payload, answeredSymbol(symbol, listing)),
   );
 }
-export function loadDebtMaturities(symbol: string, force = false) {
+export function loadDebtMaturities(symbol: string, listing?: IssuerListingParams, force = false) {
   return loadCloudResource(
     debtMaturitiesCache,
-    symbol,
-    () => fetchDebtMaturities(symbol),
-    { force, validate: (payload) => validateDebtMaturities(payload, symbol) },
+    secListingKey(symbol, listing?.exchange),
+    () => fetchDebtMaturities(symbol, apiClient, listing),
+    { force, validate: (payload) => validateDebtMaturities(payload, answeredSymbol(symbol, listing)) },
   );
 }

@@ -71,10 +71,14 @@ test("targets parse as percents and their sum names what is left unallocated", (
 test("drift and trades round to their column's precision without a stray sign", () => {
   expect(formatAllocationDrift(2.345)).toBe("+2.3pp");
   expect(formatAllocationDrift(-0.04)).toBe("0.0pp");
-  // Whole-share holdings trade in whole shares; fractional holdings and coins keep their decimals.
+  // Whole-share holdings trade in whole shares, fractional holdings to two decimals and coins to four,
+  // trailing zeros dropped: a coin trade never prints eight decimals among whole shares.
   expect(formatTradeUnits(-364.88, { units: 1_500 })).toBe("-365");
   expect(formatTradeUnits(1_234.4, { units: 0 })).toBe("+1,234");
-  expect(formatTradeUnits(-47.17956, { units: 383.7007 })).toBe("-47.1796");
-  expect(formatTradeUnits(0.123456789, { units: 0, assetCategory: "CRYPTO" })).toBe("+0.12345679");
+  expect(formatTradeUnits(-47.17956, { units: 383.7007 })).toBe("-47.18");
+  expect(formatTradeUnits(-9.45963753, { units: 40, assetCategory: "CRYPTOCURRENCY" })).toBe("-9.4596");
+  expect(formatTradeUnits(0.123456789, { units: 0, assetCategory: "CRYPTO" })).toBe("+0.1235");
+  expect(formatTradeUnits(2.5, { units: 0.5, assetCategory: "CRYPTO" })).toBe("+2.5");
   expect(formatTradeUnits(0.2, { units: 10 })).toBe("0");
+  expect(formatTradeUnits(0.00004, { units: 1, assetCategory: "CRYPTO" })).toBe("0");
 });

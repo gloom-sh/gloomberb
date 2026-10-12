@@ -232,6 +232,43 @@ describe("CloudASKGApi.postToolResult", () => {
   });
 });
 
+describe("CloudASKGApi.sendFeedback", () => {
+  test("puts the rating on the turn and reads back what was stored", async () => {
+    const calls: Array<{ path: string; init?: RequestInit }> = [];
+    const api = new CloudASKGApi({
+      request: async <T,>(path: string, init?: RequestInit) => {
+        calls.push({ path, init });
+        return { turnId: "t/1", rating: "down", reason: "slow", shared: true, updatedAt: "x" } as T;
+      },
+      openStream: async () => new Response(""),
+      isStreamingSupported: () => true,
+    });
+
+    expect(await api.sendFeedback("t/1", { rating: "down", reason: "slow", share: true })).toEqual({
+      rating: "down",
+      reason: "slow",
+      shared: true,
+    });
+    expect(calls[0]?.path).toBe("/askg/turns/t%2F1/feedback");
+    expect(calls[0]?.init?.method).toBe("PUT");
+    // Consent and the thumb only: the server copies the text it already has.
+    expect(JSON.parse(String(calls[0]?.init?.body))).toEqual({ rating: "down", reason: "slow", share: true });
+  });
+
+  test("an unknown answer is null, and a refusal keeps its code", async () => {
+    const failing = (status: number) => new CloudASKGApi({
+      request: async () => {
+        throw new ApiRequestError("refused", status);
+      },
+      openStream: async () => new Response(""),
+      isStreamingSupported: () => true,
+    });
+    expect(await failing(404).sendFeedback("t1", { rating: "up" })).toBeNull();
+    await expect(failing(401).sendFeedback("t1", { rating: "up" })).rejects.toMatchObject({ code: "unauthorized" });
+    await expect(failing(429).sendFeedback("t1", { rating: "up" })).rejects.toMatchObject({ code: "rate_limited" });
+  });
+});
+
 describe("classifyASKGRequestError", () => {
   test("maps the documented statuses onto handled codes", () => {
     expect(

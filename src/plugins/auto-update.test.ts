@@ -9,8 +9,8 @@ import {
   type PluginAutoUpdateState,
   type PluginCheckout,
 } from "./auto-update";
-import type { RegistryPlugin } from "./builtin/plugin-marketplace/model";
-import type { PluginOperationResult, PluginPin } from "./builtin/plugin-marketplace/store";
+import type { RegistryPlugin } from "./marketplace/model";
+import type { PluginOperationResult, PluginPin } from "./marketplace/store";
 
 const OLD = "1".repeat(40);
 const NEW = "2".repeat(40);

@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import {
   floatAtRect,
+  getDockSplitGeometry,
   getRememberedFloatingRect,
   resizeSplitAtPath,
   simulateDrop,
@@ -69,6 +70,7 @@ export function useShellActiveDrag({
   const {
     cancelActiveDrag,
     dragRef,
+    endDrag,
     live,
     setHoverTarget,
     updateDividerPreview,
@@ -128,9 +130,23 @@ export function useShellActiveDrag({
 
     if (event.type === "drag") {
       if (drag.type === "divider") {
-        const nextRatio = dividerRatioAt(drawX, drawShellY);
-        const nextRect = resolveDividerPreviewRect(drag.axis, drag.bounds, nextRatio, nativePaneChrome === true);
-        updateDividerPreview({ pathKey: drag.path.join("."), rect: nextRect, ratio: nextRatio });
+        // Where the pointer is, not where it is predicted to be: the panes
+        // resize to it, and the release lays them out at the same place.
+        const nextRatio = dividerRatioAt(preciseX, preciseShellY);
+        const pathKey = drag.path.join(".");
+        // The desktop lays the split out as the release will, so the panes on
+        // both sides follow the pointer with the divider.
+        const split = nativePaneChrome ? getDockSplitGeometry(baseLayout, drag.path, drag.bounds, nextRatio, dockGeometryOptions) : null;
+        const own = split?.dividers[0];
+        if (split && own) {
+          updateDividerPreview({ pathKey, rect: own.rect, ratio: nextRatio }, {
+            leaves: new Map(split.leaves.map((leaf) => [leaf.instanceId, leaf.rect])),
+            dividers: new Map(split.dividers.map((divider) => [divider.path.join("."), divider.rect])),
+          });
+        } else {
+          const nextRect = resolveDividerPreviewRect(drag.axis, drag.bounds, nextRatio, nativePaneChrome === true);
+          updateDividerPreview({ pathKey, rect: nextRect, ratio: nextRatio });
+        }
       } else if (drag.type === "pane-drag") {
         if (!isMeaningfulPaneDrag(drag.startX, drag.startY, preciseX, preciseShellY, dragThreshold)) {
           updateDockPreview(null);
@@ -218,8 +234,7 @@ export function useShellActiveDrag({
         updateDragFloatingRect(null);
         setHoverTarget(null);
       }
-      dragRef.current = null;
-      live.set({ paneDrag: null });
+      endDrag();
       event.stopPropagation();
       event.preventDefault();
     }
@@ -231,6 +246,7 @@ export function useShellActiveDrag({
     dockGeometryOptions,
     dockLeafLayouts,
     dragRef,
+    endDrag,
     focusPane,
     live,
     nativePaneChrome,

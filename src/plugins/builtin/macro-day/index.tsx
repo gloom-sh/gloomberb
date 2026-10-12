@@ -1,5 +1,6 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
+import { macroReleaseCache } from "./client";
 import { macroDayHeadless } from "./headless";
 import { LOOKBACK_OPTIONS, MacroDayPane } from "./pane";
 
@@ -18,4 +19,6 @@ export const macroDayModule: PluginModule = {
     keywords: ["mday", "macro day", "cpi day", "fomc day", "jobs day", "nfp", "payrolls", "event study", "release reaction"],
     shortcut: "MDAY", publicShare: true,
   }), headless: macroDayHeadless }],
+  setup(ctx) { macroReleaseCache.attach(ctx.persistence); },
+  dispose() { macroReleaseCache.reset(); },
 };

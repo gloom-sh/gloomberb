@@ -34,13 +34,13 @@ import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text } from "../../../ui";
 import { formatCompact } from "../../../utils/format";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPlainKey } from "../../../utils/keyboard";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import {
   loadGamma,
   loadOpenInterest,
-  positioningSymbol,
   type ExpiryOpenInterest,
   type GammaPayload,
   type GammaStrike,
@@ -583,7 +583,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   return <Box width={width} height={height} flexDirection="column">
     <PaneStatusBody loading={openInterest.loading && !data} error={!data ? openInterest.error : null}
       empty={!!data && !data.expiries.length} subject="open interest"
-      emptyTitle={`No listed options for ${positioningSymbol(symbol).replace(/^\^/, "")}.`}>
+      emptyTitle={`No listed options for ${parsePublicTickerKey(symbol).symbol.replace(/^\^/, "")}.`}>
       {data?.expiries.length ? <>
         {tabStrip}
         {content}

@@ -17,7 +17,7 @@ import { createRowValueCache, type RowValueCache } from "../../../components/ui/
 import { objectVersion } from "../../../utils/object-version";
 import { columnContextVersion } from "./cell-version";
 import { getColumnValue, getSortValue, type ColumnContext } from "./metrics";
-import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay } from "./position-metrics";
+import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay } from "../../../portfolio/position-metrics";
 import { PORTFOLIO_ROW_MENU_KEYS } from "./row-actions";
 import { PORTFOLIO_REORDER_THROTTLE_MS } from "./use-throttled-ticker-order";
 import { useThrottledMemo } from "./use-throttled-memo";

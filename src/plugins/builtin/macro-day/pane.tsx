@@ -9,9 +9,9 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { loadMacroDayHistory } from "./client";
-import { projectMacroDays, type MacroDayEvent, type MacroDayModel } from "./model";
-import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, type MacroEventKind } from "./releases";
+import { loadMacroDayEarnings, loadMacroDayHistory, loadMacroReleases, macroDayEarningsNotice } from "./client";
+import { macroDayEventLabel, projectMacroDays, type MacroDayEvent, type MacroDayModel } from "./model";
+import { MACRO_EVENT_KINDS, MACRO_EVENT_LABELS, staleMacroReleasesNotice, type MacroEventKind } from "./releases";
 
 export const LOOKBACK_OPTIONS = [{ value: "1", label: "1Y" }, { value: "2", label: "2Y" }, { value: "3", label: "3Y" }, { value: "5", label: "5Y" }];
 const RELEASE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_EVENT_KINDS.map((kind) => ({ value: kind, label: MACRO_EVENT_LABELS[kind] }))];
@@ -23,14 +23,22 @@ function pct(value: number | null | undefined, signed = true): string {
 }
 const times = (value: number | null | undefined) => value == null ? "--" : `${value.toFixed(1)}x`;
 
-const COLUMNS: DataTableColumn[] = [
-  { id: "date", label: "Date", width: 19, align: "left" },
-  { id: "release", label: "Release", width: 8, align: "left" },
+const EARNINGS_MARK = "earnings";
+const DATE: DataTableColumn = { id: "date", label: "Date", width: 19, align: "left" };
+const MOVE: DataTableColumn[] = [
   { id: "move", label: "Move", width: 9, align: "right" },
   { id: "multiple", label: "vs Normal", width: 10, align: "right" },
 ];
-/** One release selected: every row would repeat its name. */
-const ONE_RELEASE_COLUMNS = COLUMNS.filter((column) => column.id !== "release");
+
+/**
+ * With every release listed, the release's name, widened to take the earnings marker where a row has one. With one
+ * selected, a column only for the marker: every row would repeat the name.
+ */
+function columnsFor(release: string, rows: readonly MacroDayEvent[]): DataTableColumn[] {
+  const marked = rows.some((event) => event.earnings);
+  if (release === "all") return [DATE, { id: "release", label: "Release", width: marked ? 15 : 8, align: "left" }, ...MOVE];
+  return marked ? [DATE, { id: "release", label: "Note", width: EARNINGS_MARK.length, align: "left" }, ...MOVE] : [DATE, ...MOVE];
+}
 
 function figures(model: MacroDayModel, release: string): StatItem[] {
   const normal: StatItem = { id: "normal", label: "Normal day", value: pct(model.normal.meanAbs, false), detail: "avg |move|" };
@@ -39,7 +47,8 @@ function figures(model: MacroDayModel, release: string): StatItem[] {
       const stats = model.byKind[kind];
       return { id: kind, label: `${MACRO_EVENT_LABELS[kind]} day`, value: pct(stats.meanAbs, false),
         detail: stats.count ? `${times(stats.multiple)} normal` : undefined };
-    }), normal];
+    }), ...(model.earnings.count ? [{ id: "earnings", label: "Earnings day", value: pct(model.earnings.meanAbs, false),
+      detail: `${times(model.earnings.multiple)} normal` }] : []), normal];
   }
   const stats = model.byKind[release as MacroEventKind];
   const tone = (value: number | null) => value == null ? undefined : value >= 0 ? "positive" as const : "negative" as const;
@@ -64,35 +73,40 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
   const loader = useCallback(async (force: boolean) => {
     controller.current?.abort();
     controller.current = new AbortController();
-    const snapshot = await loadMacroDayHistory({ instrument: instrument!, forceRefresh: force, signal: controller.current.signal });
+    const request = { instrument: instrument!, forceRefresh: force, signal: controller.current.signal };
+    const [snapshot, releases, earnings] = await Promise.all([loadMacroDayHistory(request), loadMacroReleases({ force }), loadMacroDayEarnings(request)]);
     if (!snapshot.history.length && snapshot.error) throw new Error(snapshot.error);
-    return snapshot;
+    return { ...snapshot, releases, earnings };
   }, [instrumentKey]);
   const history = useAsyncResource(instrument ? loader : null);
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);
   usePaneRefreshKey(() => { void history.reload(); }, { focused });
 
-  const model = useMemo(() => history.data ? projectMacroDays(history.data.history, { symbol: symbol ?? "", lookbackYears: Number(lookback) || 5 }) : null,
-    [history.data, lookback, symbol]);
+  const model = useMemo(() => history.data ? projectMacroDays(history.data.history, { symbol: symbol ?? "", lookbackYears: Number(lookback) || 5,
+    releases: history.data.releases.releases, coveredThrough: history.data.releases.coveredThrough, earnings: history.data.earnings.reports }) : null,
+  [history.data, lookback, symbol]);
+  const releasesNotice = history.data ? staleMacroReleasesNotice(history.data.releases) : null;
+  const earningsNotice = history.data ? macroDayEarningsNotice(history.data.earnings) : null;
   const rows = useMemo(() => model ? model.events.filter((event) => release === "all" || event.kind === release) : [], [model, release]);
   const stats = useMemo(() => model?.events.length ? figures(model, release) : [], [model, release]);
+  const columns = useMemo(() => columnsFor(release, rows), [release, rows]);
 
   usePaneNoticeFooter({ registrationId: "macro-day-notices", focused,
-    notices: [...new Set([identityError, history.error, history.data?.error].filter((value): value is string => !!value))] });
+    notices: [...new Set([identityError, history.error, history.data?.error, releasesNotice, earningsNotice].filter((value): value is string => !!value))] });
   usePaneFooter("macro-day", () => ({ info: [
     ...(history.loading ? [{ id: "loading", parts: [{ text: "loading history", tone: "muted" as const }] }] : []),
-    ...(history.data?.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
+    ...(history.data?.stale || history.data?.earnings.stale ? [{ id: "stale", parts: [{ text: "stale history", tone: "warning" as const }] }] : []),
     ...(model?.asOf ? [{ id: "date", parts: [{ text: `daily closes ${model.start} to ${model.asOf}`, tone: "muted" as const }] }] : []),
-  ] }), [history.loading, history.data?.stale, model?.start, model?.asOf]);
+  ] }), [history.loading, history.data?.stale, history.data?.earnings.stale, model?.start, model?.asOf]);
 
   const renderCell = useCallback((event: MacroDayEvent, column: DataTableColumn): DataTableCell => {
     if (column.id === "date") return { text: event.session === event.date ? event.date : `${event.date} → ${event.session.slice(5)}`, value: event.date };
-    if (column.id === "release") return { text: MACRO_EVENT_LABELS[event.kind] };
+    if (column.id === "release") return { text: release === "all" ? macroDayEventLabel(event) : event.earnings ? EARNINGS_MARK : "" };
     if (column.id === "move") return { text: pct(event.move), value: event.move * 100,
       color: event.move > 0 ? colors.positive : event.move < 0 ? colors.negative : undefined };
     return { text: times(event.multiple), value: event.multiple };
-  }, [colors]);
+  }, [colors, release]);
 
   const contentHeight = Math.max(4, height - 1 - statGridRows(stats, width));
   const key = (event: MacroDayEvent) => `${event.kind}:${event.date}`;
@@ -102,11 +116,11 @@ export function MacroDayPane({ width, height, focused }: PaneProps) {
       { id: "release", label: "Release", value: release, options: RELEASE_OPTIONS, onChange: setRelease, inline: true },
       { id: "lookback", label: "Lookback", value: String(lookback), options: LOOKBACK_OPTIONS, onChange: setLookback },
     ]} />
-    {!symbol ? <EmptyState title="Choose a ticker." /> : <PaneStatusBody subject="macro-day moves" loading={history.loading && !model}
+    {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="macro-day moves" loading={history.loading && !model}
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.events.length}>
       {model ? <>
         <StatGrid items={stats} width={width} />
-        <DataTableView<MacroDayEvent> focused={focused} columns={release === "all" ? COLUMNS : ONE_RELEASE_COLUMNS} items={rows} rootWidth={width} rootHeight={contentHeight}
+        <DataTableView<MacroDayEvent> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={contentHeight}
           getItemKey={key} emptyStateTitle="No release days." sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
           selection={{ kind: "id", selectedId: selectedRow, getId: key, onChange: (id) => setSelectedRow(id) }}
           getExportMetadata={() => [["symbol", model.symbol], ["from", model.start ?? ""], ["to", model.asOf ?? ""],

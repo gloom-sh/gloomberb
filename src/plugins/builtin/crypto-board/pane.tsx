@@ -14,6 +14,9 @@ import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import type { CryptoAssetKind, CryptoMarketAsset } from "../../../api-client/crypto-markets";
 import { isAccessDenied } from "../../../api-client/errors";
 import { useAsyncResource } from "../../../react/async-resource";
+import { useAgeClock } from "../../../react/auto-refresh";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { deriveHeadlessFreshness, paneStatusLine } from "../../../cli/pane-functions/freshness";
 import { usePaneVisible } from "../../../state/app/activity";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { colors, priceColor } from "../../../theme/colors";
@@ -32,7 +35,9 @@ import { cachedCryptoMarkets, loadCryptoMarkets } from "./client";
 import {
   buildCryptoColumns,
   buildCryptoRows,
+  CRYPTO_BOARD_FRESHNESS,
   CRYPTO_TABS,
+  cryptoRowObservations,
   DEFAULT_CRYPTO_SORT,
   formatCryptoPercent,
   nextCryptoSort,
@@ -151,10 +156,18 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
     if (!selectedId || !rows.some((row) => row.id === selectedId)) setSelectedId(rows[0]!.id);
   }, [rows, selectedId, setSelectedId]);
 
-  const latestUpdate = rows.reduce<number | null>(
-    (latest, row) => (row.updatedAt != null && (latest == null || row.updatedAt > latest) ? row.updatedAt : latest),
-    null,
-  );
+  // Dated by the rows on screen while they stream, as `fn CRYP` and `shot CRYP` date the board.
+  const observations = useMemo(() => cryptoRowObservations(liveStreaming && streamedIds.size > 0
+    ? rows.filter((row) => streamedIds.has(row.id)) : rows), [liveStreaming, rows, streamedIds]);
+  const now = useAgeClock(resource.updatedAt);
+  useRemoteUiNode(observations.length ? {
+    role: "report-freshness",
+    label: "Price freshness",
+    getMetadata: () => ({ ...CRYPTO_BOARD_FRESHNESS, observations }),
+  } : null);
+  const statusLine = useMemo(() => observations.length
+    ? paneStatusLine(deriveHeadlessFreshness({ shape: "rows" }, { rows: observations, freshness: CRYPTO_BOARD_FRESHNESS }, now))
+    : null, [now, observations]);
   const columns = useMemo(() => buildCryptoColumns(width), [width]);
 
   const tabItems = CRYPTO_TABS.map((tab) => ({
@@ -178,16 +191,10 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
       // Background refreshes run every 15s; only the first load is worth a label.
       ...(resource.loading && !data ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }] : []),
       ...(data && resource.error ? [{ id: "refresh", parts: [{ text: "refresh failed", tone: "warning" as const }] }] : []),
-      ...(latestUpdate != null ? [{
-        id: "updated",
-        parts: [{
-          text: new Date(latestUpdate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-          tone: "muted" as const,
-        }],
-      }] : []),
+      ...(statusLine ? [{ id: "updated", asOf: true, parts: [{ text: statusLine, tone: "muted" as const }] }] : []),
       ...(resource.data?.stale ? [{ id: "cached", parts: [{ text: "cached", tone: "warning" as const }] }] : []),
     ],
-  }), [data, latestUpdate, resource.data?.stale, resource.error, resource.loading]);
+  }), [data, statusLine, resource.data?.stale, resource.error, resource.loading]);
 
   const handleKeyDown = useCallback((event: DataTableKeyEvent) => (
     handleRefreshKey(event, () => void resource.reload(), { stopPropagation: true })

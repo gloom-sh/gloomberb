@@ -27,6 +27,26 @@ export function isRoundTheClockCoin(symbol?: string, exchange?: string): boolean
   return !!parsed && isUsdCoinPair(parsed.symbol);
 }
 
+const SLASH_COIN_PAIR = /^([A-Z0-9]{1,15})\/(USD|EUR|GBP|USDT|USDC|BTC)$/;
+
+let isoCurrencyCodes: ReadonlySet<string> | null = null;
+
+/** Every ISO currency code the runtime knows (THB, ARS, XAU), so a pair on one is never read as a coin. */
+function isIsoCurrencyCode(code: string): boolean {
+  isoCurrencyCodes ??= new Set(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("currency") : []);
+  return FIAT_CURRENCY_CODES.has(code) || isoCurrencyCodes.has(code);
+}
+
+/**
+ * BTC-USD for BTC/USD, the way crypto venues write a pair; null for anything
+ * else, a currency pair such as EUR/USD or XAU/USD included.
+ */
+export function dashedCoinPair(symbol: string): string | null {
+  const match = SLASH_COIN_PAIR.exec(symbol.trim().toUpperCase());
+  if (!match || isIsoCurrencyCode(match[1]!)) return null;
+  return `${match[1]}-${match[2]}`;
+}
+
 // A base-quote pair such as BTC-USD or SOL-EUR. Equities with a share-class dash (BRK-B) and
 // currency pairs (EURUSD=X) do not match.
 const CRYPTO_PAIR = /^[A-Z0-9]{1,15}-(?:USD|EUR|GBP|USDT|USDC|BTC)$/;

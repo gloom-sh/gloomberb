@@ -12,6 +12,7 @@ import {
 import { bindAppActivity, useAppActive, useAppVisible } from "./state/app/activity";
 import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
+import { useAppChromeShown } from "./components/layout/presentation";
 import { useLinkedLayoutSync } from "./layout-marketplace/linked-sync";
 import { useTeamCollectionsSync } from "./plugins/builtin/cloud/team/collections-sync";
 import { Shell } from "./components/layout/shell";
@@ -20,6 +21,7 @@ import { TransientLayoutProvider } from "./components/layout/transient-layout";
 import { CommandBar } from "./components/command-bar/surface";
 import { OnboardingWizard } from "./components/onboarding/onboarding-wizard";
 import { CompanyPickerHost } from "./plugins/builtin/cloud/company-picker";
+import { TerminalRelayHost } from "./plugins/builtin/cloud/terminal-relay/host";
 import { SignInGate } from "./components/sign-in-gate";
 import { useDialog } from "./ui/dialog";
 import { PluginRegistry } from "./plugins/registry";
@@ -36,6 +38,7 @@ import type { LayoutBounds } from "./layout/pane-manager";
 import type { AppSessionSnapshot } from "./core/state/session-persistence";
 import type { MarketDataCoordinator } from "./market-data/coordinator";
 import { createAppNotifier } from "./notifications/app-notifier";
+import { attachNotificationLog } from "./notifications/notification-log";
 import { useBrokerImportRuntime } from "./app/runtime/broker-import";
 import { useDesktopDeepLinkRuntime } from "./app/runtime/desktop-deeplink";
 import { useDesktopApplicationMenuRuntime } from "./app/runtime/desktop-menu";
@@ -372,6 +375,11 @@ function AppInner({
 
   // Wire up app-level notifications.
   pluginRegistry.bindHost({ notify: appNotifier.notify });
+  // Missed alerts live in this device's state store. A detached window keeps
+  // its own in memory rather than overwrite the main window's.
+  useEffect(() => (
+    isDetachedWindow ? undefined : attachNotificationLog(pluginRegistry.persistence.pluginState)
+  ), [isDetachedWindow, pluginRegistry]);
 
   // Persist layout changes (switching, saving, deleting, renaming layouts).
   // The saved layouts also mirror live pane state and focus, so they change on
@@ -400,6 +408,7 @@ function AppInner({
     }
   }, [focusedTickerSymbol]);
 
+  const chrome = useAppChromeShown();
   const keybindingHost = useUiHost().kind === "opentui" ? "terminal" : "desktop";
   const keybindings = useResolvedKeybindings(state.config.keybindings, keybindingHost);
   useAppGlobalShortcuts({
@@ -451,13 +460,15 @@ function AppInner({
         desktopWindowBridge={desktopWindowBridge}
       >
         <ThemedAppRoot>
-          <Header
-            onOpenHelp={() => {
-              recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
-              pluginRegistry.showPane("help");
-            }}
-            onRestartForUpdate={updatesEnabled && !isDetachedWindow ? restartToApplyUpdate : undefined}
-          />
+          {chrome.header && (
+            <Header
+              onOpenHelp={() => {
+                recordFunctionOpen({ shortcut: "HELP", externalPluginId: null });
+                pluginRegistry.showPane("help");
+              }}
+              onRestartForUpdate={updatesEnabled && !isDetachedWindow ? restartToApplyUpdate : undefined}
+            />
+          )}
           <TransientLayoutProvider>
             <Shell
               pluginRegistry={pluginRegistry}
@@ -476,6 +487,7 @@ function AppInner({
             />
           </TransientLayoutProvider>
           {!onboardingActive ? <CompanyPickerHost pluginRegistry={pluginRegistry} /> : null}
+          <TerminalRelayHost device={remoteControlAdapter?.terminalDevice} />
           {onboardingActive && onOnboardingComplete ? (
             <OnboardingWizard
               pluginRegistry={pluginRegistry}

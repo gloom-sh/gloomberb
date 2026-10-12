@@ -73,3 +73,25 @@ test("historical stale flags do not warn for a fresh board, but an old snapshot 
   await tui.waitForFrameToContain("stale");
   expect(tui.frame()).toContain("Nuclear & uranium");
 });
+
+test("outside the regular session an open theme heads with the close, gives the after-hours move its own column, and dates the footer by the close", async () => {
+  themesCache.attach(new MemoryPluginPersistence());
+  membersCache.attach(new MemoryPluginPersistence());
+  const metadata = { asOf: new Date(Date.now() - 12 * 60_000).toISOString(), snapshotId: "test", stale: false,
+    session: "CLOSED", regularSessionDate: "2026-10-09", regularSessionClosedAt: Date.UTC(2026, 9, 9, 20) };
+  setCloudApiFetchTransport(async (url) => Response.json(String(url).endsWith("/nuclear")
+    ? { ...metadata, theme, members: [{ symbol: "LMT", name: "Lockheed Martin", exchange: "NYSE", present: true, price: 509.59,
+      ...Object.fromEntries(THEME_PERIODS.map((field) => [field, 5.36])), changePercent: 0.33,
+      extendedSession: "POST", extendedPrice: 510.19, extendedChange: 0.6, extendedChangePercent: 0.12, asOf: {}, stale: false }] }
+    : { ...metadata, themes: [theme] }));
+  const state = createInitialState(createTestPaneConfig(":memory:", { instanceId: "themes", paneId: "sectors", params: { theme: "nuclear" } }));
+  await tui.render(<TestPaneFrame state={state} paneId="themes" pluginId="market-overview" runtime={createTestPluginRuntime()} width={90} height={20}>
+    {(body) => <SectorPane paneId="themes" paneType="sectors" focused {...body} />}
+  </TestPaneFrame>, { width: 90, height: 20 });
+  await tui.waitForFrameToContain("Fri 9 Oct close · snapshot 12m ago");
+  const frame = tui.frame();
+  expect(frame).toContain("AFTER-HRS");
+  expect(frame).toMatch(/509\.59\s+\+0\.33%\s+\+0\.12%\s+\+5\.36%/);
+  expect(frame).not.toContain("510.19");
+  expect(frame).not.toContain("delayed");
+});

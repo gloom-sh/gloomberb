@@ -15,7 +15,7 @@ test("market resources written under another schema version are misses until rew
   const read = (kind: string) => listCachedResources(persistence.resources, kind, "MSFT", [key.variantKey], [key.sourceKey], true);
   const resources = [
     ["financials", financials, FINANCIALS_SCHEMA_VERSION], ["quote", quote, QUOTE_SCHEMA_VERSION],
-    ...["holders", "analystResearch-v2", "corporateActions-v2", "options-chain", "exchange-rate"]
+    ...["holders", "analystResearch-v2", "corporateActions-v3", "options-chain", "exchange-rate"]
       .map((kind) => [kind, { source: "gloom" }, MARKET_METADATA_SCHEMA_VERSION] as const),
   ] as const;
   for (const [kind, value, current] of resources) {

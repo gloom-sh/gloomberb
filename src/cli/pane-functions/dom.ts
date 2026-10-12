@@ -8,20 +8,32 @@ import { collectShotSymbols } from "./data";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
+import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
 const DOM_LIMITATION =
   "Only values visible in the rendered pane are returned; clipped or off-screen data may be omitted.";
+const DOM_EVERY_ROW =
+  "Every row of the pane's table is returned, including rows scrolled out of view.";
+
+/** The sign-in wall's buttons, which a rendered view reads as words: `Log in ↵ Sign up free`. */
+const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Email)(?:\s*\u21B5)?(?=\s|$)/g;
+
+/**
+ * A pane behind the sign-in wall, as a report reads it: the wall's headline
+ * without its buttons, and what it needs in place of them.
+ */
+function signInWallText(visibleText: string): string {
+  const headline = visibleText.replace(SIGN_IN_WALL_BUTTONS, "").trim();
+  const needs = /\bVerify your email\b/i.test(visibleText)
+    ? "Requires a verified email on your Gloom account; resend the verification email in the app."
+    : "Requires a free Gloom sign-in: log in or sign up in the app.";
+  return headline ? `${headline} ${needs}` : needs;
+}
 
 function rowsContainEllipsis(rows: DesktopPaneShotRenderedRow[]): boolean {
   return rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
-}
-
-function isDomReportTruncated(
-  render: Pick<PaneScreenshotResult["render"], "rows" | "truncated">,
-): boolean {
-  return render.truncated || rowsContainEllipsis(render.rows);
 }
 
 /** Column identity per cell; a repeated label within one row stays distinct. */
@@ -109,6 +121,7 @@ function domReportTables(
   title: string,
   freshness: ReportFreshness,
   incomplete: boolean | string,
+  notices: readonly string[],
 ): CliReportTables {
   const tables = domTables(rows);
   return {
@@ -117,7 +130,7 @@ function domReportTables(
       table.columns.map((column) => column.header),
       table.rows.map((cells) => table.columns.map((column) => cells.get(column.key))),
     )),
-    footer: reportFooterLines({ freshness, incomplete }),
+    footer: reportFooterLines({ freshness, incomplete, notes: notices }),
   };
 }
 
@@ -138,8 +151,10 @@ function renderedFailureReason(
   return null;
 }
 
+/** The rows a report reads: every row of a table that publishes them all, else what the viewport shows. */
 function reportRows(result: PaneScreenshotResult): DesktopPaneShotRenderedRow[] {
-  if (result.render.rows.length > 0) return result.render.rows;
+  const rows = result.render.reportRows ?? result.render.rows;
+  if (rows.length > 0) return rows;
   if (
     result.render.loadingStateDetected
     || result.render.errorStateDetected
@@ -161,29 +176,39 @@ export function buildDomPaneReportFromRender(
   result: PaneScreenshotResult,
 ): PaneFunctionReport {
   const rows = reportRows(result);
-  const hasStructuredRows = result.render.rows.length > 0;
-  const truncated = isDomReportTruncated({ ...result.render, rows });
-  const truncationReasons = [...result.render.truncationReasons];
+  const hasStructuredRows = (result.render.reportRows ?? result.render.rows).length > 0;
+  // A table that reported every row is whole, whatever the viewport cut from the capture.
+  const truncationReasons = [...(result.render.reportTruncationReasons ?? result.render.truncationReasons)];
   if (rowsContainEllipsis(rows) && !truncationReasons.includes("one or more cells are visibly clipped")) {
     truncationReasons.push("one or more cells are visibly clipped");
   }
+  const truncated = truncationReasons.length > 0
+    || (result.render.reportTruncationReasons ? false : result.render.truncated);
   const failureReason = renderedFailureReason(result, rows);
   const unavailableSymbols = failureReason && result.symbols.length > 0 ? result.symbols : [];
-  const textLines = [resolved.label, ""];
+  // What the view leaves out and how to see more, such as OMON's strikes outside its window.
+  const rendered = renderedReportNotices(result.render.semanticUi ?? []);
+  const notices = [...(resolved.pane.reportNotices?.(resolved.instance.settings ?? {}) ?? []), ...rendered.notices];
+  const textLines = [resolved.label, "", ...notices, ...(notices.length > 0 ? [""] : [])];
   if (hasStructuredRows) {
     textLines.push(...renderDomTables(rows));
   } else if (result.render.visibleText) {
-    textLines.push(result.render.visibleText);
+    textLines.push(result.render.accessGate === "sign-in" ? signInWallText(result.render.visibleText) : result.render.visibleText);
   } else {
     textLines.push(failureReason ?? "No rendered values were available.");
   }
   if (failureReason && rows.length > 0) textLines.push("", failureReason);
-  const freshness = deriveRenderedFreshness(resolved.pane.reportFreshness, {
+  // A pane that knows its feed dates the report; the footer and cell times fill in the rest.
+  const declared = { ...resolved.pane.reportFreshness, ...renderedReportFreshness(result.render.semanticUi ?? []) };
+  const freshness = deriveRenderedFreshness(declared, {
     footerText: result.render.footerText ?? "",
     cellTimes: rows.flatMap((row) => row.cells.flatMap((cell) => cell.instant ?? [])),
+    observed: renderedReportObservations(result.render.semanticUi ?? []),
   });
 
   const complete = failureReason === null && !truncated;
+  // Each table published its rows and nothing else was cut: the report is the whole view.
+  const everyRow = complete && result.render.reportRows !== undefined;
   return {
     data: {
       kind: "rendered-view",
@@ -199,8 +224,10 @@ export function buildDomPaneReportFromRender(
       visibleText: result.render.visibleText,
       truncated,
       truncationReasons,
-      limitation: DOM_LIMITATION,
+      ...(everyRow ? { everyRow } : {}),
+      limitation: everyRow ? DOM_EVERY_ROW : DOM_LIMITATION,
       ...(failureReason ? { reason: failureReason } : {}),
+      ...(notices.length > 0 ? { metadata: { ...rendered.facts, notices } } : {}),
       freshness,
     },
     text: textLines.join("\n").trimEnd(),
@@ -209,6 +236,7 @@ export function buildDomPaneReportFromRender(
       resolved.label,
       freshness,
       !complete && (failureReason ?? (truncationReasons.length > 0 ? truncationReasons.join("; ") : true)),
+      notices,
     ),
   };
 }
@@ -216,21 +244,30 @@ export function buildDomPaneReportFromRender(
 export function appendDomReportFooter(
   text: string,
   elapsedMs: number,
-  truncated: boolean,
+  view: DomReportView,
   freshness: ReportFreshness,
 ): string {
   return [
     text,
     "",
-    domReportNote(elapsedMs, truncated),
+    domReportNote(elapsedMs, view),
     cliStyles.muted(formatFreshnessLine(freshness)),
   ].join("\n");
 }
 
+/** How much of the pane a rendered-view report holds: cut, every row its tables publish, or what the viewport shows. */
+export type DomReportView = "clipped" | "every-row" | "visible";
+
+export function domReportView(data: Readonly<Record<string, unknown>>): DomReportView {
+  return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : "visible";
+}
+
 /** What a rendered-view report says about where its values come from. */
-export function domReportNote(elapsedMs: number, truncated: boolean): string {
-  const clipping = truncated ? "The rendered view is clipped." : "The rendered view may be clipped.";
-  return `Rendered view: values come from the visible pane. ${clipping} Render time: ${elapsedMs} ms.`;
+export function domReportNote(elapsedMs: number, view: DomReportView): string {
+  const source = view === "every-row"
+    ? "Rendered view: every row of the pane's table, including rows scrolled out of view."
+    : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
+  return `${source} Render time: ${elapsedMs} ms.`;
 }
 
 function failedDomReport(

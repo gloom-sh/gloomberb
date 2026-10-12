@@ -2,8 +2,10 @@ import type { PluginModule } from "../plugin-module";
 import { awardDetailCache, awardsCache } from "./client";
 import { awardsHeadless } from "./headless";
 import { AwardsPane } from "./pane";
+import { AWARD_SERIES } from "./series";
 
 export const awardsModule: PluginModule = {
+  series: AWARD_SERIES,
   setup(ctx) { awardsCache.attach(ctx.persistence); awardDetailCache.attach(ctx.persistence); },
   dispose() { awardsCache.reset(); awardDetailCache.reset(); },
   panes: [{ id: "awards", name: "Government Awards", icon: "A", component: AwardsPane, defaultPosition: "right", defaultMode: "floating",

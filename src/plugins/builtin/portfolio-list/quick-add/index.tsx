@@ -18,6 +18,7 @@ import type { TickerRecord } from "../../../../types/ticker";
 import { addTickerToPortfolio, addTickerToWatchlist } from "../mutations";
 import { captureAttentionAction } from "../../../../telemetry/attention-counts";
 import { publicTickerKey } from "../../../../utils/exchanges";
+import { tickerChangeLine } from "../../../../tickers/ticker-changes";
 import {
   IDLE_VALIDATION,
   isPlausibleTickerQuery,
@@ -30,6 +31,8 @@ import {
 } from "./resolution";
 
 const QUICK_ADD_DEBOUNCE_MS = 300;
+/** The pane key that opens the add row, as its footer hint shows it. */
+export const QUICK_ADD_KEY = "a";
 
 export type { QuickAddCollectionKind } from "./resolution";
 
@@ -80,15 +83,20 @@ function QuickAddPreview({
   const exchange = exchangeLabelFromValidation(validation);
   const showSymbol = normalizeQuickAddQuery(validation.symbol) !== validation.query;
   const symbolPrefix = showSymbol ? `${validation.symbol} ` : "";
+  // A symbol whose company moved on says where it went before it is added, ahead of the
+  // name of what lists there now; the add notice prints the whole line.
+  const change = validation.change?.kind === "moved" ? validation.change : null;
+  const moved = change?.listed ? `${change.issuer ?? `the former ${change.symbol}`} trades as ${change.tradesAs}` : change?.note;
 
   return (
     <Box flexDirection="row" overflow="hidden">
-      <Text fg={colors.textDim}>{`${symbolPrefix}${priceText} `}</Text>
-      <Text fg={changeValue == null ? colors.textDim : priceColor(changeValue)}>
+      <Text fg={colors.textDim} flexShrink={0}>{`${symbolPrefix}${priceText} `}</Text>
+      <Text fg={changeValue == null ? colors.textDim : priceColor(changeValue)} flexShrink={0}>
         {formatPercentRaw(changeValue)}
       </Text>
-      {name ? <Text fg={colors.textMuted}>{`  ${name}`}</Text> : null}
-      {exchange ? <Text fg={colors.textDim}>{`  ${exchange}`}</Text> : null}
+      {moved ? <Text fg={colors.warning} flexShrink={0}>{`  ${moved}`}</Text> : null}
+      {name && (!change || change.listed) ? <Text fg={colors.textMuted}>{`  ${name}`}</Text> : null}
+      {exchange && !change ? <Text fg={colors.textDim}>{`  ${exchange}`}</Text> : null}
     </Box>
   );
 }
@@ -101,6 +109,7 @@ export function QuickAddTickerInput({
   width,
   onAdded,
   onFocusChange,
+  focusRequest = 0,
 }: {
   collectionId: string;
   collectionKind: QuickAddCollectionKind;
@@ -109,6 +118,12 @@ export function QuickAddTickerInput({
   width: number;
   onAdded: (symbol: string) => void;
   onFocusChange?: (focused: boolean) => void;
+  /**
+   * Bumped by a control outside the row, such as the empty table's
+   * "+ ticker" button, to open it. A click there focuses the pane in the same
+   * press, so the row opens once the pane is focused.
+   */
+  focusRequest?: number;
 }) {
   const dispatch = useAppDispatch();
   const { notify } = usePluginAppActions();
@@ -131,6 +146,13 @@ export function QuickAddTickerInput({
   const blurInput = useCallback(() => {
     setInputFocused(false);
   }, []);
+
+  const handledFocusRequestRef = useRef(focusRequest);
+  useEffect(() => {
+    if (focusRequest === handledFocusRequestRef.current || !focused) return;
+    handledFocusRequestRef.current = focusRequest;
+    focusInput();
+  }, [focusInput, focusRequest, focused]);
 
   const resetInput = useCallback(() => {
     setInputValue("");
@@ -295,13 +317,13 @@ export function QuickAddTickerInput({
       }
 
       onAdded(result.ticker.metadata.ticker);
-      notify({
-        type: "success",
-        body: tf("Added {symbol} to {collection}.", {
-          symbol: result.ticker.metadata.ticker,
-          collection: collectionName,
-        }),
+      const added = tf("Added {symbol} to {collection}.", {
+        symbol: result.ticker.metadata.ticker,
+        collection: collectionName,
       });
+      // As `watchlist add` prints it: FB now lists another security, Meta trades as META.
+      const change = tickerChangeLine(currentValidation.change);
+      notify({ type: "success", body: change ? `${added} ${change}.` : added });
       resetInput();
       queueMicrotask(() => inputRef.current?.focus?.());
     } catch {
@@ -350,7 +372,7 @@ export function QuickAddTickerInput({
 
   // The row shows only its placeholder, so the footer says which key reaches it.
   usePaneFooter("portfolio-list:quick-add", () => ({
-    hints: inputFocused ? [] : [{ id: "add", key: "a", label: "dd", onPress: focusInput }],
+    hints: inputFocused ? [] : [{ id: "add", key: QUICK_ADD_KEY, label: "dd", onPress: focusInput }],
   }), [focusInput, inputFocused]);
 
   return (

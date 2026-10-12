@@ -3,10 +3,20 @@ import type { CreditDocumentsPayload } from "../../../api-client/credit-document
 import fixture from "./fico.fixture.json";
 import { creditIssuerSymbol, fetchCreditInstrument, validateCreditDocuments, validateCreditInstrument, validateCreditScreen } from "./client";
 import { getTableWidth } from "../../../components/ui/table-layout";
+import { creditEmptyReason } from "./headless";
 import { capitalColumns, capitalFigures, covenantColumns, creditMaturityRows, factValue, maturitySeries } from "./model";
 const payload = () => structuredClone(fixture) as CreditDocumentsPayload;
 
 describe("credit evidence boundary", () => {
+  test("an issuer with nothing on file gets one reason from the payload, never for locked or present rows", () => {
+    const empty = { ...payload(), instruments: [], covenants: [], maturities: [], changeOfControl: [], lockedRows: 0 };
+    expect(creditEmptyReason({ ...empty, issuer: { id: "sec:723612", name: "AVIS BUDGET GROUP, INC.", jurisdiction: "US" } }, "CAR"))
+      .toContain("AVIS BUDGET GROUP, INC. (CAR)");
+    expect(creditEmptyReason({ ...empty, issuer: null }, "CAR")).toContain("not an issuer");
+    // Rows the preview hides are not an empty issuer.
+    expect(creditEmptyReason({ ...empty, lockedRows: 3 }, "CAR")).toBeNull();
+    expect(creditEmptyReason(payload(), "FICO")).toBeNull();
+  });
   test("US venue aliases resolve to SEC symbols while foreign listing identity survives", () => {
     expect(creditIssuerSymbol("FICO:XNYS")).toBe("FICO");
     expect(creditIssuerSymbol("005930:KRX")).toBe("005930:KRX");

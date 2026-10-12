@@ -1,44 +1,30 @@
 import type { AppConfig } from "../../../types/config";
-import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
-import { convertCurrency } from "../../../utils/format";
+import { allocationTotal, type AllocationHolding } from "../portfolio-list/allocation";
 import { getCollectionTypeFromConfig } from "../portfolio-list/pane/data";
-import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue } from "../portfolio-list/position-metrics";
 
-export function getPortfolioPositionValue({
-  ticker,
-  financials,
-  portfolioId,
-  baseCurrency,
-  exchangeRates,
+/**
+ * What the portfolio is worth to bet with: its equity. A broker account's is
+ * its Net Liq. Otherwise it is the priced holdings at net value plus the cash
+ * entered for the portfolio, the portfolio header's Total. A broker portfolio
+ * with neither has no known equity: its positions alone are its gross, which
+ * margin puts above the equity, so it gives no bankroll.
+ */
+export function resolveKellyBankroll({
+  netLiquidation,
+  brokerPortfolio,
+  holdings,
+  cashValue,
 }: {
-  ticker: TickerRecord | null;
-  financials: TickerFinancials | null;
-  portfolioId: string | null;
-  baseCurrency: string;
-  exchangeRates: Map<string, number>;
+  netLiquidation: number | null;
+  brokerPortfolio: boolean;
+  holdings: readonly AllocationHolding[];
+  /** Cash entered by hand, in the bankroll currency; NaN when it cannot be converted. */
+  cashValue: number | null;
 }): number {
-  if (!ticker) return 0;
-  const scopedTicker: TickerRecord = portfolioId
-    ? {
-        ...ticker,
-        metadata: {
-          ...ticker.metadata,
-          positions: ticker.metadata.positions.filter((position) => position.portfolio === portfolioId),
-        },
-      }
-    : ticker;
-  const quote = financials?.quote;
-
-  const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
-  const metrics = getPortfolioPositionMetrics(scopedTicker, undefined, quoteCurrency, {
-    currency: baseCurrency, convert: (value, currency) => convertCurrency(value, currency, baseCurrency, exchangeRates),
-  }, quote);
-  const activeQuote = getPortfolioQuoteDisplay(metrics, quote);
-
-  return resolvePortfolioMarketValue(metrics, activeQuote
-    ? convertCurrency(activeQuote.price, quoteCurrency, baseCurrency, exchangeRates) : null)?.gross
-    ?? (metrics.positionCount > 0 ? Number.NaN : 0);
+  if (netLiquidation != null && Number.isFinite(netLiquidation)) return netLiquidation;
+  if (brokerPortfolio && cashValue == null) return 0;
+  return allocationTotal(holdings, cashValue) ?? 0;
 }
 
 export function resolveActivePortfolioId({

@@ -27,24 +27,32 @@ import {
 
 let dispatchRef: ((action: AppAction) => void) | null = null;
 let getStateRef: (() => { layout: LayoutConfig; termWidth: number; termHeight: number; focusedPaneId: string | null }) | null = null;
+let restoreHiddenRef: ((layout: LayoutConfig) => LayoutConfig) | null = null;
 
+/**
+ * `getState().layout` is the layout on screen. `restoreHidden` puts the panes
+ * it leaves out back into an edit of it before the edit is saved.
+ */
 export function setLayoutManagerDispatch(
   dispatch: (action: AppAction) => void,
   getState: () => { layout: LayoutConfig; termWidth: number; termHeight: number; focusedPaneId: string | null },
+  restoreHidden: (layout: LayoutConfig) => LayoutConfig,
 ) {
   dispatchRef = dispatch;
   getStateRef = getState;
+  restoreHiddenRef = restoreHidden;
 }
 
 function clearLayoutManagerDispatch() {
   dispatchRef = null;
   getStateRef = null;
+  restoreHiddenRef = null;
 }
 
 function persistLayout(layout: LayoutConfig) {
   if (!dispatchRef) return;
   dispatchRef({ type: "PUSH_LAYOUT_HISTORY" });
-  dispatchRef({ type: "UPDATE_LAYOUT", layout });
+  dispatchRef({ type: "UPDATE_LAYOUT", layout: restoreHiddenRef ? restoreHiddenRef(layout) : layout });
 }
 
 function getFocusedPane(layout: LayoutConfig, focusedPaneId: string | null) {

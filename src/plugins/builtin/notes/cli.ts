@@ -3,7 +3,7 @@ import { withCliServices, withConfigData } from "../../../cli/scoped-context";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, requireListingArg } from "../../../cli/listing-arg";
+import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
 import { createPluginPersistence } from "../../plugin-persistence";
 import type { CliCommandDef } from "../../../types/plugin";
 import { cliStyles } from "../../../utils/cli-output";
@@ -25,9 +25,14 @@ export const notesCliCommand: CliCommandDef = {
     const args = [...rawArgs];
     const exchange = takeOption(args, "--exchange");
     // A note belongs to one listing: SAN:EPA, or SAN with --exchange EPA.
-    const noteSymbol = async (usage: string) => (
-      await requireListingArg(requireArg(args[1], usage, ctx), exchange, ctx)
-    ).key;
+    // What a typed listing was read as (7203:TSE as 7203:JPX) is said beside the note.
+    let read: { warnings?: string[] } = {};
+    const noteSymbol = async (usage: string) => {
+      const listing = await requireListingArg(requireArg(args[1], usage, ctx), exchange, ctx);
+      const notes = listingReadNotes(listing);
+      if (notes.length > 0) read = { warnings: notes };
+      return listing.key;
+    };
     await withConfigData(ctx, async (config) => {
       const notes = new NotesFiles(config.dataDir);
       const action = args[0] ?? "list";
@@ -71,7 +76,7 @@ export const notesCliCommand: CliCommandDef = {
       }
       if (action === "show") {
         const symbol = await noteSymbol("Usage: gloomberb notes show <symbol>");
-        ctx.printResult({ data: { symbol, text: await notes.load(symbol) } }, {
+        ctx.printResult({ data: { symbol, text: await notes.load(symbol) }, ...read }, {
           text: (data) => data.text?.trim() ? data.text.trimEnd() : cliStyles.muted(`No note for ${symbol}.`),
         });
         return;
@@ -80,7 +85,7 @@ export const notesCliCommand: CliCommandDef = {
         const symbol = await noteSymbol("Usage: gloomberb notes set <symbol> <text...>");
         const text = args.slice(2).join(" ");
         if (!ctx.cliOptions.dryRun) await notes.save(symbol, text);
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol, bytes: text.length } }, {
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol, bytes: text.length }, ...read }, {
           text: (data) => `Saved the note for ${symbol}.${dryRunNote(data.dryRun)}`,
         });
         return;
@@ -90,7 +95,7 @@ export const notesCliCommand: CliCommandDef = {
         // Only picks the message; an unreadable note is still deleted.
         const existed = await notes.load(symbol).then((text) => !!text?.trim(), () => true);
         if (!ctx.cliOptions.dryRun) await notes.delete(symbol);
-        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol } }, {
+        ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, symbol }, ...read }, {
           text: (data) => existed
             ? `Deleted the note for ${symbol}.${dryRunNote(data.dryRun)}`
             : cliStyles.muted(`No note for ${symbol}.`),

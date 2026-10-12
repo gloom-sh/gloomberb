@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import type { CloudRiskReportListPayload } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
+import type { IssuerListingParams } from "../../../api-client/paths";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { attachRiskFactorsPersistence, resetRiskFactorsPersistence, loadRiskReportsWithClient, loadRiskReportWithClient } from "./data";
 import { list, report } from "./test-fixtures";
@@ -11,7 +12,7 @@ const options = { sourceKey: "risk-factors", schemaVersion: 1 };
 
 function client() {
   return {
-    getRiskReports: async (): Promise<CloudRiskReportListPayload> => list([2026]),
+    getRiskReports: async (_ticker: string, _listing?: IssuerListingParams): Promise<CloudRiskReportListPayload> => list([2026]),
     getRiskReport: async (_ticker: string, year: number) => report(year),
   };
 }
@@ -141,4 +142,29 @@ test("a report response for another ticker or year cannot be cached under the re
   // The server spells share classes the SEC way; BRK.B and BRK-B are one filer.
   api.getRiskReport = async () => ({ ...report(2025), ticker: "BRK-B" });
   await expect(loadRiskReportWithClient(api, "BRK.B", 2025)).resolves.toMatchObject({ ticker: "BRK-B" });
+});
+
+test("SAN in Paris never shares a list or report with SAN in New York", async () => {
+  const store = new MemoryPluginPersistence();
+  attachRiskFactorsPersistence(store);
+  const requests: Array<[string, IssuerListingParams | undefined]> = [];
+  const paris = { exchange: "EPA", name: "Sanofi" };
+  const api = client();
+  api.getRiskReports = async (ticker: string, listing?: IssuerListingParams) => {
+    requests.push([ticker, listing]);
+    return list(listing ? [2025] : [2026]);
+  };
+
+  expect((await loadRiskReportsWithClient(api, "SAN")).reports.map((entry) => entry.reportYear)).toEqual([2026]);
+  expect((await loadRiskReportsWithClient(api, "SAN", { listing: paris })).reports.map((entry) => entry.reportYear)).toEqual([2025]);
+  // The key's own venue, in any spelling, is the same listing and reads the same entry.
+  expect((await loadRiskReportsWithClient(api, "SAN:XPAR")).reports.map((entry) => entry.reportYear)).toEqual([2025]);
+  expect(requests).toEqual([["SAN", undefined], ["SAN", paris]]);
+  expect(store.getResource("reports", "SAN:EPA", options)).not.toBeNull();
+
+  // A listing abroad reads its registrant's report, filed under that registrant's US ticker.
+  api.getRiskReport = async (_ticker: string, year: number) => ({ ...report(year), ticker: "SNY" });
+  await expect(loadRiskReportWithClient(api, "SAN", 2025, { listing: paris })).resolves.toMatchObject({ ticker: "SNY" });
+  expect(store.getResource("report", "SAN:EPA:2025", options)).not.toBeNull();
+  await expect(loadRiskReportWithClient(api, "SAN", 2025)).rejects.toThrow("does not match SAN 2025");
 });

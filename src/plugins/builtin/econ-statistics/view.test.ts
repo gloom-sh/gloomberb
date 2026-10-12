@@ -41,3 +41,15 @@ test("an on-schedule print is not stale until its release is overdue", () => {
   expect(stale("real-gdp", "2026-04-01", "2026-10-29", 3)).toBe(false);
   expect(stale("real-gdp", "2026-04-01", "2026-11-30", 3)).toBe(true);
 });
+
+test("the latest print names the period it is a reading of, not the first day FRED dates it by", () => {
+  const reading = (id: string, dates: string[]) => {
+    const points = dates.map((date, index) => ({ date, value: index }));
+    return projectStat({ stat: resolveStatArg(id)!, points, trend: fitTrend(points, "linear") }, "5Y").reading;
+  };
+  const monthly = ["2026-04-01", "2026-05-01", "2026-06-01", "2026-07-01", "2026-08-01"];
+  expect(reading("cpi-yoy", monthly)).toBe("Aug 2026");
+  expect(reading("real-gdp", ["2025-07-01", "2025-10-01", "2026-01-01", "2026-04-01"])).toBe("Q2 2026");
+  expect(reading("initial-claims", ["2026-09-19", "2026-09-26", "2026-10-03"])).toBe("week ending 2026-10-03");
+  expect(reading("ten-year", ["2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"])).toBe("2026-10-09");
+});

@@ -4,7 +4,9 @@ import type {
   RevenueBreakdownPayload,
   RevenueBreakdownView,
 } from "../../../api-client/revenue-breakdown";
+import type { IssuerListingParams } from "../../../api-client/paths";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { secListingKey } from "../../../utils/sec";
 
 /**
  * Revenue by product, segment or region comes from Gloom Cloud, which reads
@@ -59,10 +61,12 @@ export async function fetchRevenueBreakdown(
   symbol: string,
   view: RevenueBreakdownView,
   client: Pick<typeof apiClient, "getCloudRevenueBreakdown"> = apiClient,
+  listing?: IssuerListingParams,
 ): Promise<RevenueBreakdownPayload> {
   try {
-    return validateRevenueBreakdown(await client.getCloudRevenueBreakdown(symbol, view));
+    return validateRevenueBreakdown(await client.getCloudRevenueBreakdown(symbol, view, listing));
   } catch (error) {
+    // 404 is also a listing abroad whose company the SEC does not know.
     if (error instanceof ApiRequestError && error.status === 404) throw new Error(NO_BREAKDOWN);
     throw error;
   }
@@ -74,8 +78,9 @@ export interface RevenueResource {
   refreshError: string | null;
 }
 
-const cacheKey = (symbol: string, view: RevenueBreakdownView, pro: boolean) =>
-  `${symbol.toUpperCase()}:${view}:${pro ? "full" : "preview"}`;
+// SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
+const cacheKey = (symbol: string, view: RevenueBreakdownView, pro: boolean, listing?: IssuerListingParams) =>
+  `${secListingKey(symbol, listing?.exchange)}:${view}:${pro ? "full" : "preview"}`;
 
 // Seeds the first paint while the mount load runs; cache age is not staleness,
 // and a failed refresh reports its own.
@@ -83,8 +88,9 @@ export function cachedRevenueBreakdown(
   symbol: string,
   view: RevenueBreakdownView,
   pro: boolean,
+  listing?: IssuerListingParams,
 ): RevenueResource | null {
-  const cached = revenueBreakdownCache.get(cacheKey(symbol, view, pro), { allowExpired: true });
+  const cached = revenueBreakdownCache.get(cacheKey(symbol, view, pro, listing), { allowExpired: true });
   if (!cached) return null;
   try {
     return { payload: validateRevenueBreakdown(cached.data), stale: false, refreshError: null };
@@ -98,10 +104,11 @@ export async function loadRevenueBreakdown(
   view: RevenueBreakdownView,
   pro: boolean,
   force = false,
+  listing?: IssuerListingParams,
 ): Promise<RevenueResource> {
   const result = await revenueBreakdownCache.load(
-    cacheKey(symbol, view, pro),
-    () => fetchRevenueBreakdown(symbol, view),
+    cacheKey(symbol, view, pro, listing),
+    () => fetchRevenueBreakdown(symbol, view, apiClient, listing),
     { force },
   );
   // A company that stopped reporting a breakdown must not keep showing an old one.

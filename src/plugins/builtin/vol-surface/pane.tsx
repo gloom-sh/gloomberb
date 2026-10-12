@@ -24,16 +24,19 @@ import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve,
 import { stableSurfaceSheet, SURFACE_LIVE_RELOAD_MS, surfaceFreshnessLabel, type SurfaceSheetAxes } from "./live";
 import { loadStoredSurface, loadSurfaceDates } from "../iv-history/client";
 import { useIvRank } from "../iv-history/rank";
-import { storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
+import { formatCaptureTime, storedSurfaceSnapshot, type DatedSurfaceSnapshot } from "./stored";
 import { useVolSurfaceEvidence } from "./evidence";
-import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, windowSurfaceGrid, type SurfaceExpiry, type SurfaceGridRow,
-  type SurfaceSettings, type SurfaceSnapshot } from "./model";
+import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, SURFACE_3D_DELTAS, surfaceFilterSummary, totalSurfaceFilterCounts, windowSurfaceGrid,
+  type SurfaceExpiry, type SurfaceGridRow, type SurfaceSettings, type SurfaceSnapshot } from "./model";
 import {
   DEFAULT_SURFACE3D_CAMERA, rotateSurface3DCamera, zoomSurface3DCamera, type Surface3DCamera,
 } from "../../../components/chart/surface3d/model";
 import { VolatilitySurface } from "./surface";
-import { expiryLabel, formatIv, formatPrice, SmileChart, TermChart } from "./charts";
+import { SmileChart, TermChart } from "./charts";
 import { surfaceCoordinateLabel } from "./headless";
+import { expiryLabel, formatIv, formatPrice, formatVolPoints, HIDDEN_SLOPE_TEXT, HIDDEN_YIELD_TEXT, selectSurfaceExpiry, surfaceForwardRow,
+  surfaceSkewRow } from "./tables";
+import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
 
 const TABS = [
   { value: "surface", label: "3D surface" }, { value: "table", label: "Table" },
@@ -41,9 +44,6 @@ const TABS = [
   { value: "skew", label: "Skew" }, { value: "forwards", label: "Forwards" },
 ];
 type Axis = "spot" | "forward" | "delta" | "strike";
-const DEFAULT_EXPIRY_MIN_DAYS = 28;
-/** Annualising a few days of parity carry produces meaningless yields. */
-const DIVIDEND_YIELD_MIN_DAYS = 30;
 
 export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const colors = useThemeColors();
@@ -176,14 +176,17 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   ] : [];
   const tableHeight = Math.max(3, height - 1 - tabRows - statGridRows(ivStats, width));
   const bitmapAvailable = !!useStaticChartBitmapSize(width, tableHeight);
+  // A typed date (`--expiration 2027-01-15`) is that day's UTC midnight; the
+  // catalogue may stamp the same expiry later in the day.
+  const pinned = expiration == null || !snapshot ? expiration : findListedExpiry(expiration, snapshot.catalogue) ?? expiration;
   useEffect(() => {
     // Existing slices only change selection. A new pin causes one load and then
     // remains in the request identity after its partial snapshots arrive.
-    if (expiration == null || expiration === requestedExpiration || resource.loading || !snapshot
-      || snapshot.expiries.some((entry) => entry.expiration === expiration)
-      || !snapshot.catalogue.includes(expiration)) return;
-    setRequestedExpiration(expiration);
-  }, [expiration, requestedExpiration, resource.loading, snapshot]);
+    if (pinned == null || pinned === requestedExpiration || resource.loading || !snapshot
+      || snapshot.expiries.some((entry) => entry.expiration === pinned)
+      || !snapshot.catalogue.includes(pinned)) return;
+    setRequestedExpiration(pinned);
+  }, [pinned, requestedExpiration, resource.loading, snapshot]);
   const grid = useMemo(() => snapshot ? buildSurfaceGrid(snapshot, { axis, tenors }) : null, [axis, snapshot, tenors]);
   // Delta columns give every expiry the same quoted wing span, so the 3D
   // surface is a full sheet; moneyness keeps each row within 2.5 ATM sigmas.
@@ -207,19 +210,16 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // Sheet rows may be constant maturities: pair them with the nearest listed expiry.
   const nearestRow = (years: number | undefined) => years == null || !denseGrid?.tenors.length ? -1
     : denseGrid.tenors.reduce((best, value, index) => Math.abs(value - years) < Math.abs(denseGrid.tenors[best]! - years) ? index : best, 0);
-  // A one-day front expiry is the noisiest smile on the board; the default
-  // selection is the first expiry at least four weeks out.
-  const defaultExpiry = snapshot?.expiries.find((entry) => entry.years * 365 >= DEFAULT_EXPIRY_MIN_DAYS) ?? snapshot?.expiries[0];
-  const selectedExpiry = snapshot?.expiries.find((entry) => entry.expiration === (expiration ?? defaultExpiry?.expiration)) ?? null;
+  const selectedExpiry = snapshot ? selectSurfaceExpiry(snapshot, expiration) : null;
   const openChain = useCallback(() => {
     if (!snapshot) return;
-    const selected = expiration ?? selectedExpiry?.expiration;
+    const selected = pinned ?? selectedExpiry?.expiration;
     createPaneFromTemplate("options-pane", { symbol: symbol ?? snapshot.symbol, ticker, instrument: target?.instrument,
       ...(ticker ? { listing: { name: ticker.metadata.name, exchange: ticker.metadata.exchange,
         currency: ticker.metadata.currency, type: ticker.metadata.assetCategory ?? "STK" } } : {}),
       values: selected == null ? {} : { expiration: String(selected) },
     });
-  }, [createPaneFromTemplate, expiration, selectedExpiry?.expiration, snapshot?.symbol, symbol, ticker, target?.instrument]);
+  }, [createPaneFromTemplate, pinned, selectedExpiry?.expiration, snapshot?.symbol, symbol, ticker, target?.instrument]);
   useVolSurfaceEvidence({ snapshot, view: activeTab, grid: activeTab === "surface" && bitmapAvailable ? denseGrid : grid,
     selectedExpiry, loading: active.loading, bitmapAvailable, axis: activeTab === "surface" && bitmapAvailable ? (deltaSurface ? "delta" : "forward") : axis,
     tenors: activeTab === "surface" && bitmapAvailable ? "listed" : tenors, overlaySmiles });
@@ -323,8 +323,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
     ...(!spotAvailable && symbol && !historyDate ? ["Underlying price unavailable or stale"] : []),
     ...(historyDate && !stored.loading && !stored.data && !stored.error ? [`No stored ${underlying} surface for ${historyDate}`] : []),
     ...(fallbackDate ? [`Live chain has no two-sided quotes; showing the ${fallbackDate} close`] : []),
-    ...(expiration != null && snapshot && !resource.loading && !snapshot.catalogue.includes(expiration)
-      ? [`${expiryLabel(expiration)}: selected expiration unavailable`] : []),
+    ...(pinned != null && snapshot && !resource.loading && !snapshot.catalogue.includes(pinned)
+      && !snapshot.failures.some((failure) => failure.expiration === pinned)
+      ? [`${expiryLabel(pinned)}: ${unlistedExpiryText(pinned, snapshot.catalogue)}`] : []),
     ...(active.error ? [active.error] : [])];
   // What the quotes are and when they were observed; a reload moves the time.
   const freshness = !snapshot ? null : snapshot.stored ? `stored close ${snapshot.stored.sessionDate}`
@@ -332,7 +333,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // The cell under the cursor on the views that have one: the quoted contract it came from, or the fitted value.
   const selectionStatus = !snapshot || !["surface", "table", "smile"].includes(activeTab) ? null
     : selectedCell?.point
-      ? `nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest} · residual ${formatIv(selectedCell.fitResidual)}`
+      ? `nearest ${selectedCell.point.contract.contractSymbol} · mid ${formatPrice(selectedCell.point.mid)} · spread ${formatPrice(selectedCell.point.spread)} · OI ${selectedCell.point.openInterest ?? "--"} · residual ${formatIv(selectedCell.fitResidual)}`
       : selectedCell?.volatility != null
         ? `${selectedRow?.label} · K ${selectedCell.strike == null ? "--" : formatPrice(selectedCell.strike)} · fitted IV ${formatIv(selectedCell.volatility)}`
         : "no clean quote at this cell";
@@ -403,7 +404,10 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         onMouseDown: () => { onSelectRow(row); setCoordinate(cell.coordinate); } };
     }} emptyStateTitle="No volatility observations." />;
   const content = !shownDate && liveEmpty ? <EmptyState title="No two-sided option quotes"
-    message={`${liveQuotes.zeroBid === liveQuotes.contracts ? "All" : `${liveQuotes.zeroBid.toLocaleString()} of`} ${liveQuotes.contracts.toLocaleString()} contracts across ${liveQuotes.expiries} expiries have a zero bid${liveQuotes.zeroBid === liveQuotes.contracts ? "" : ", and none of the rest passes the quote filters"}. The delayed feed publishes zero bids outside regular hours (09:30 to 16:00 New York); the surface fills in when quotes return.`} />
+    message={liveQuotes.zeroBid === liveQuotes.contracts
+      ? `All ${liveQuotes.contracts.toLocaleString()} contracts across ${liveQuotes.expiries} expiries have a zero bid. ${ZERO_BID_HOURS}`
+      : `None of the ${liveQuotes.contracts.toLocaleString()} contracts across ${liveQuotes.expiries} expiries passes the quote filters${
+        liveQuotes.removed ? `: ${liveQuotes.removed}` : ""}.${liveQuotes.zeroBidMost && liveQuotes.zeroBid ? ` ${ZERO_BID_HOURS}` : ""}`} />
     : activeTab === "surface" && denseGrid ? <VolatilitySurface width={width} height={tableHeight}
     grid={denseGrid} camera={camera} onCameraChange={setCamera} selected={{
       tenorIndex: nearestRow(selectedExpiry?.years),
@@ -415,7 +419,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         .reduce<SurfaceExpiry | undefined>((best, entry) => !best || Math.abs(entry.years - years) < Math.abs(best.years - years) ? entry : best, undefined);
       if (expiry) setExpiration(expiry.expiration);
       setSurfaceCoordinate(denseGrid.moneyness[selection.moneynessIndex] ?? (deltaSurface ? 0 : 1));
-    }} fallback={table} /> : activeTab === "smile" && snapshot ? <SmileChart snapshot={snapshot} expiry={selectedExpiry}
+    }} fallback={table} loading={active.loading} meshAvailable={bitmapAvailable} /> : activeTab === "smile" && snapshot ? <SmileChart snapshot={snapshot} expiry={selectedExpiry}
       overlay={overlaySmiles} axis={axis} width={width} height={tableHeight} focused={focused} />
       : activeTab === "term" && snapshot ? <TermChart snapshot={snapshot} width={width} height={tableHeight} focused={focused} />
       : ["skew", "forwards"].includes(activeTab) && snapshot ? <ExpiryTable snapshot={snapshot} selected={selectedExpiry}
@@ -429,7 +433,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
       <QueryBar width={width}
         filters={[
-          { id: "expiry", label: "Expiry", value: String(expiration ?? selectedExpiry?.expiration ?? ""),
+          { id: "expiry", label: "Expiry", value: String(pinned ?? selectedExpiry?.expiration ?? ""),
             options: snapshot?.catalogue.map((value) => ({ value: String(value), label: expiryLabel(value) })) ?? [],
             onChange: (value: string) => setExpiration(Number(value)) },
           ...(storedDates.length ? [{ id: "date", label: "Date", value: shownDate ?? "", defaultValue: "",
@@ -448,45 +452,53 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
 function noRefresh(): void {}
 
 const wholeNumber = (value: number | null) => value == null ? "--" : String(Math.round(value));
-const CAPTURE_TIME = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-function formatCaptureTime(iso: string): string {
-  const time = Date.parse(iso);
-  return Number.isFinite(time) ? CAPTURE_TIME.format(time) : "--";
-}
 /** Whether a settled live chain produced any clean quote, with the filter counts that explain why not. */
 function liveQuoteCoverage(snapshot: SurfaceSnapshot | null | undefined) {
   const expiries = snapshot?.expiries.filter((entry) => entry.state !== "loading") ?? [];
   const points = expiries.reduce((sum, entry) => sum + entry.points.length, 0);
   const contracts = expiries.reduce((sum, entry) => sum + Object.values(entry.filterCounts).reduce((a, b) => a + b, 0) + entry.points.length, 0);
-  const zeroBid = expiries.reduce((sum, entry) => sum + entry.filterCounts["zero-bid"], 0);
+  const counts = totalSurfaceFilterCounts(expiries);
+  const zeroBid = counts["zero-bid"];
   const settled = !!snapshot && snapshot.loaded >= snapshot.requested;
-  return { empty: settled && expiries.length > 0 && points === 0 && contracts > 0, points, expiries: expiries.length, contracts, zeroBid };
+  return { empty: settled && expiries.length > 0 && points === 0 && contracts > 0, points, expiries: expiries.length, contracts, zeroBid,
+    removed: surfaceFilterSummary(counts), zeroBidMost: Object.values(counts).every((count) => count <= zeroBid) };
 }
+const ZERO_BID_HOURS = "The delayed feed publishes zero bids outside regular hours (09:30 to 16:00 New York); the surface fills in when quotes return.";
 
 function ExpiryTable({ snapshot, selected, onSelect, forwards, width, height, focused, onKey, metadata }: {
   snapshot: DatedSurfaceSnapshot; selected: SurfaceExpiry | null; onSelect: (expiry: SurfaceExpiry) => void;
   forwards: boolean; width: number; height: number; focused: boolean;
   onKey: (event: DataTableKeyEvent) => boolean; metadata: () => unknown[][];
 }) {
-  const fields = forwards ? ["Forward", "Basis", "Div %", "Rate %", "Pairs", "As of"] : ["25d put", "25d call", "RR pts", "BF pts", "90/110 pts", "Slope/yr"];
+  // IVs in percent, IV differences in vol points; a missing 25-delta figure says why.
+  const fields = forwards ? ["Forward", "Basis", "Div %", "Rate %", "Pairs", "As of"] : ["25d put %", "25d call %", "RR pts", "BF pts", "90/110 pts", "Slope pts/yr"];
   const integerColumn = forwards ? "4" : null;
   const [sort, setSort] = useState<{ columnId: string; direction: SortDirection }>({ columnId: "expiry", direction: "asc" });
-  const value = (entry: SurfaceExpiry, id: string): number | string | null => id === "expiry" ? entry.expiration
-    : forwards ? [entry.forward, entry.forward == null ? null : entry.forward - snapshot.spot,
-      entry.dividendYield == null || entry.years * 365 < DIVIDEND_YIELD_MIN_DAYS ? null : entry.dividendYield * 100,
-      entry.rate == null ? null : entry.rate * 100, snapshot.stored ? null : entry.parity.pairs.length, entry.asOf?.slice(0, 10) ?? null][Number(id)] ?? null
-      : [entry.skew.put25, entry.skew.call25, entry.skew.riskReversal, entry.skew.butterfly, entry.skew.moneynessSkew, entry.termSlope][Number(id)] ?? null;
+  const rowsByExpiry = useMemo(() => new Map(snapshot.expiries.map((entry) => [entry.expiration,
+    { skew: surfaceSkewRow(entry), forward: surfaceForwardRow(entry, snapshot) }])), [snapshot]);
+  const value = (entry: SurfaceExpiry, id: string): number | string | null => {
+    if (id === "expiry") return entry.expiration;
+    const { skew, forward } = rowsByExpiry.get(entry.expiration)!;
+    return (forwards ? [forward.forward, forward.basis, forward.dividendYield == null ? null : forward.dividendYield * 100,
+      forward.rate == null ? null : forward.rate * 100, forward.pairs, entry.asOf?.slice(0, 10) ?? null]
+      : [skew.put25, skew.call25, skew.riskReversal, skew.butterfly, skew.moneynessSkew, skew.termSlope])[Number(id)] ?? null;
+  };
+  const missing = (entry: SurfaceExpiry, id: string) => {
+    const { skew, forward } = rowsByExpiry.get(entry.expiration)!;
+    if (forwards) return id === "2" && forward.dividendYieldHidden ? HIDDEN_YIELD_TEXT : "--";
+    return (id === "2" || id === "3" ? skew.gap : id === "4" ? skew.moneynessGap : id === "5" && skew.termSlopeHidden ? HIDDEN_SLOPE_TEXT : null) ?? "--";
+  };
   const rows = [...snapshot.expiries].sort((a, b) => {
     const x = value(a, sort.columnId), y = value(b, sort.columnId);
     const difference = typeof x === "number" && typeof y === "number" ? x - y : String(x ?? "").localeCompare(String(y ?? ""));
     return sort.direction === "asc" ? difference : -difference;
   });
   return <DataTableView<SurfaceExpiry> focused={focused} rootWidth={width} rootHeight={height} items={rows}
-    columns={[{ id: "expiry", label: "Expiry", width: 13, align: "left" }, ...fields.map((label, i) => ({ id: String(i), label, width: 13, align: "right" as const }))]}
+    columns={[{ id: "expiry", label: "Expiry", width: 13, align: "left" }, ...fields.map((label, i) => ({ id: String(i), label, width: 14, align: "right" as const }))]}
     getItemKey={(entry) => String(entry.expiration)} selection={{ kind: "id", selectedId: String(selected?.expiration), getId: (entry) => String(entry.expiration), onChange: (_id, entry) => onSelect(entry) }}
     onActivate={onSelect} onRootKeyDown={onKey} getExportMetadata={metadata} freezeFirstColumn
     sortColumnId={sort.columnId} sortDirection={sort.direction} onHeaderClick={(id) => setSort((current) => nextHeaderSort(current, id))}
     renderCell={(entry, column) => { const raw = value(entry, column.id); return { text: column.id === "expiry" ? expiryLabel(entry.expiration)
-      : raw == null ? "--" : typeof raw === "string" ? raw : column.id === integerColumn ? String(raw)
-        : forwards ? (column.id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : `${(raw * 100).toFixed(2)}` }; }} emptyStateTitle="No expiry observations." />;
+      : raw == null ? missing(entry, column.id) : typeof raw === "string" ? raw : column.id === integerColumn ? String(raw)
+        : forwards ? (column.id === "1" && raw > 0 ? `+${formatPrice(raw)}` : formatPrice(raw)) : formatVolPoints(raw) }; }} emptyStateTitle="No expiry observations." />;
 }

@@ -2,6 +2,7 @@ import { loadPortfolioOptionBook } from "./risk-options";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchPortfolioRiskMarket, RISK_HISTORY_LIMIT } from "./risk-client";
 import { parsePortfolioRiskEvidence } from "./risk-evidence";
+import { describeCollections } from "../../../portfolio/collection-name";
 import {
   BASKET_VIEWS,
   buildPortfolioRisk,
@@ -11,8 +12,10 @@ import {
   riskCoverageShortfall,
   riskCoverageText,
   RISK_VIEWS,
+  riskEvidence,
   riskPercentile,
   riskValue,
+  sinceFallbackNote,
   type PortfolioRiskModel,
   type RiskCoverage,
   type RiskDisplayRow,
@@ -27,6 +30,19 @@ const RISK_COLUMNS = [
   { key: "detail", header: "Evidence" },
 ];
 
+/** The error for a portfolio argument nothing matches: the names and ids there are, so the next call can use one. */
+function unknownPortfolio(raw: string, portfolios: readonly { id: string; name: string }[]): string {
+  return `Unknown local portfolio: ${raw}.${portfolios.length ? ` Portfolios: ${describeCollections(portfolios)}.` : ""}`;
+}
+
+/** The portfolio's name in a full result (its model) or a compact one. */
+function reportPortfolioName(metadata: Record<string, unknown> | undefined): string | undefined {
+  const model = metadata?.model as Partial<PortfolioRiskModel> | undefined;
+  const compact = metadata?.portfolio as { name?: unknown } | undefined;
+  const name = model?.portfolio?.name ?? compact?.name;
+  return typeof name === "string" ? name : undefined;
+}
+
 /** Rows of one view in the compact result; the pane and reports keep every row. */
 const COMPACT_ROW_LIMIT = 100;
 /** The correlation view is every pair of holdings; the compact result keeps the strongest. */
@@ -39,7 +55,8 @@ function displayRow(row: RiskDisplayRow) {
     value: riskValue(row),
     percentile: riskPercentile(row),
     asOf: row.asOf?.slice(0, 10) ?? null,
-    detail: row.detail,
+    detail: riskEvidence(row),
+    ...(row.amount != null ? { amount: row.amount, currency: row.amountCurrency ?? null } : {}),
   };
 }
 
@@ -110,7 +127,7 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     optional: true,
     placeholder: "portfolio-id",
     // Not "Defaults to the first portfolio": Gloom read that as an id and sent "default".
-    description: "Portfolio ID exactly as configured. Leave it out to use the first portfolio.",
+    description: "Portfolio ID or name, in any case. Leave it out to use the first portfolio.",
   },
   discovery: {
     aliases: ["PORT", "MARS"],
@@ -119,10 +136,10 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       "Explicit local evidence for account returns and attribution",
     ],
     limitations: [
-      `Fixed-current-weight USD equity basket over the holdings that qualify, largest ${RISK_HISTORY_LIMIT} by value; foreign listings convert to USD at daily FX closes; metadata.coverage states the covered share of market value and each holding left out`,
-      "No account performance inferred",
-      "ETF price-return factor proxies",
-      "Historical percentiles need 20 rolling samples",
+      `Fixed-current-weight USD equity basket over the holdings that qualify, largest ${RISK_HISTORY_LIMIT} by value; foreign listings convert to USD at daily FX closes; metadata.coverage states the covered share of market value and each holding left out.`,
+      "No account performance inferred.",
+      "ETF price-return factor proxies.",
+      "Historical percentiles need 20 rolling samples.",
     ],
   },
   options: [
@@ -130,55 +147,60 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       key: "view",
       type: "enum",
       settingKey: "riskView",
-      defaultValue: "risk",
+      // No default: left out, the report prints every view.
       values: RISK_VIEWS.map((value) => ({ value })),
-      description: "Portfolio risk view.",
+      description: "One portfolio risk view; every view when left out.",
+    },
+    {
+      key: "since",
+      type: "enum",
+      settingKey: "riskSince",
+      values: [{ value: "filed" }],
+      description: "Risk rows since the 13F filing date of a portfolio made with portfolio import --13f, instead of the trailing 60 sessions.",
     },
     {
       key: "evidence",
       type: "string",
       settingKey: "riskEvidence",
-      description: "Version 1 local account-evidence JSON.",
+      // "Version 1 local account-evidence JSON" alone had Gloom send evidence=filed, the value of since.
+      description: "A whole local account-evidence JSON document (schema version 1) that the user supplied, read only by the performance, attribution and greeks views. Leave it out otherwise; the 13F window is the since option.",
     },
     {
       key: "equity-shift",
       type: "integer",
       settingKey: "equityShift",
-      defaultValue: -10,
       minimum: -99,
       maximum: 100,
-      description: "Independent index shock in percent.",
+      description: "Independent index shock in percent (-10 when left out).",
     },
     {
       key: "rate-shift",
       type: "integer",
       settingKey: "rateShift",
-      defaultValue: 100,
       minimum: -500,
       maximum: 500,
-      description: "Independent 10Y yield shock in basis points.",
+      description: "Independent 10Y yield shock in basis points (100 when left out).",
     },
     {
       key: "vol-shift",
       type: "integer",
       settingKey: "volShift",
-      defaultValue: 10,
       minimum: -50,
       maximum: 100,
-      description: "Independent VIX shock in index points.",
+      description: "Independent VIX shock in index points (10 when left out).",
     },
   ],
-  describe: (args) =>
-    `Portfolio risk | ${args.rawArgument || "local portfolio"}`,
+  // The portfolio as configured, so `Family`, `family` and `FAMILY` head the report alike.
+  describe: (args, result) =>
+    `Portfolio risk | ${reportPortfolioName(result?.metadata) || args.rawArgument || "local portfolio"}`,
   async load(args, ctx) {
-    const id = args.rawArgument.trim() || ctx.config.portfolios[0]?.id;
-    if (!id || !ctx.resolvePortfolio)
+    // The host reads the argument by id or name, in any case; everything after goes by the configured id.
+    const requested = args.rawArgument.trim() || ctx.config.portfolios[0]?.id;
+    if (!requested || !ctx.resolvePortfolio)
       throw new Error("A local portfolio is required");
-    const local = await ctx.resolvePortfolio(id);
-    if (!local) {
-      const ids = ctx.config.portfolios.map((portfolio) => portfolio.id);
-      throw new Error(`Unknown local portfolio: ${id}.${ids.length ? ` Portfolio IDs: ${ids.slice(0, 12).join(", ")}${ids.length > 12 ? ` and ${ids.length - 12} more` : ""}.` : ""}`);
-    }
+    const local = await ctx.resolvePortfolio(requested);
+    if (!local) throw new Error(unknownPortfolio(requested, ctx.config.portfolios));
+    const id = local.portfolio.id;
     const tickers = portfolioRiskTickers(local.tickers, id);
     const evidence = parsePortfolioRiskEvidence(
       String(args.options.evidence ?? ctx.settings?.riskEvidence ?? ""),
@@ -191,7 +213,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       throw new Error(
         "Imported evidence belongs to a different portfolio or currency",
       );
-    const view = String(args.options.view ?? "risk");
+    const requestedView = isRiskView(args.options.view) ? args.options.view : null;
+    const view: string = requestedView ?? "risk";
     const localOnly =
       ["performance", "attribution", "greeks"].includes(view) &&
       evidence != null;
@@ -226,7 +249,17 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
         rates: Number(args.options["rate-shift"] ?? 100),
         volatility: Number(args.options["vol-shift"] ?? 10),
       },
+      args.options.since === "filed" ? { since: "filed" } : {},
     );
+    // Options for views the report does not print are named, not dropped silently; the fallback from --since opens the report.
+    const fallback = sinceFallbackNote(local.portfolio);
+    const shifted = ["equity-shift", "rate-shift", "vol-shift"].filter((key) => args.options[key] != null);
+    const notices = [
+      ...(model.window.kind === "since-filed" ? [`Risk rows since the 13F filing on ${model.window.filed}, against ${model.benchmark}`] : []),
+      ...(args.options.since === "filed" && model.window.kind !== "since-filed" ? [fallback] : []),
+      ...(requestedView && requestedView !== "stress" && shifted.length ? [`${shifted.map((key) => `--${key}`).join(", ")} change${shifted.length === 1 ? "s" : ""} the stress view only, not --view ${requestedView}`] : []),
+      ...(requestedView && args.options.since != null && requestedView !== "risk" ? [`--since changes the risk view only, not --view ${requestedView}`] : []),
+    ];
     // A basket view is complete only when the basket covers every holding.
     const covered = model.coverage.leftOut.length === 0;
     const complete =
@@ -246,13 +279,13 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
     return {
       complete,
       errors: [...(shortfall ? [shortfall] : []), ...model.warnings],
-      notes: [...riskCoverageNotices(model.coverage), ...model.notes],
-      sections: RISK_VIEWS.map((view) => ({
+      notes: [...riskCoverageNotices(model.coverage), ...model.notes.filter((note) => note !== fallback)],
+      sections: (requestedView ? [requestedView] : RISK_VIEWS).map((view) => ({
         title: view,
         columns: RISK_COLUMNS,
         rows: model.rows[view].map(displayRow),
       })),
-      metadata: { coverage: coverageSummary(model.coverage), model },
+      metadata: { coverage: coverageSummary(model.coverage), model, benchmark: model.benchmark, window: model.window, notices },
     };
   },
   compact(result, args) {
@@ -278,6 +311,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
           currency: model.portfolio.currency,
         },
         view,
+        benchmark: model.benchmark,
+        window: model.window,
         ...(basketView && model.coverage
           ? { coverage: coverageSummary(model.coverage, COMPACT_LEFT_OUT_LIMIT) }
           : {}),

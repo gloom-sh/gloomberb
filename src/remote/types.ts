@@ -62,6 +62,31 @@ export type RemoteControlRequest =
     include?: RemoteStateInclude[];
   };
 
+/**
+ * What an in-process caller adds to a request. Never read from the request
+ * itself, so a client of the local endpoint cannot claim a confirmation.
+ */
+export interface RemoteCallContext {
+  /**
+   * The `confirmKey` of the change the person already approved in this app
+   * for this call, from the operation's dry run (Ask Gloom, the terminal
+   * relay). The operation then writes without asking again, and asks anyway
+   * when what it would change no longer has that key.
+   */
+  confirmed?: string;
+  /** The caller gave up: a confirmation the operation opened closes as declined. */
+  signal?: AbortSignal;
+}
+
+/** One change the app asks the person to approve before it writes their data. */
+export interface RemoteChangePrompt {
+  title: string;
+  lines: Array<{ label: string; value: string }>;
+  confirmLabel: string;
+  /** A change that takes something away. */
+  destructive?: boolean;
+}
+
 export interface RemoteIncludedState {
   rev: string;
   included: RemoteStateInclude[];
@@ -151,6 +176,11 @@ export interface RemoteOperationSchema {
   writeTier: RemoteWriteTier;
   requiresConfirmation?: boolean;
   dryRun?: boolean;
+  /**
+   * The result carries a PNG in `image` ({ mimeType, data, width, height,
+   * bytes }). Text-only tool channels (Ask Gloom) leave such an operation out.
+   */
+  returnsImage?: boolean;
 }
 
 /** Stable operation metadata suitable for advertising outside the process. */
@@ -172,6 +202,8 @@ export interface RemoteControlSchema {
 export interface RemoteUiNodeSnapshot {
   id: string;
   role: string;
+  /** The pane instance the node is drawn in; absent outside panes. */
+  paneId?: string;
   label?: string;
   disabled?: boolean;
   actions: string[];

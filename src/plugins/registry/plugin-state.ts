@@ -1,7 +1,7 @@
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import { deletePaneSetting, setPaneSetting } from "../../pane-settings";
 import type { LayoutConfig } from "../../types/config";
-import type { PluginPaneSettingsState, PluginResumeState } from "../../types/plugin";
+import type { GloomPluginContext, PluginPaneSettingsState, PluginResumeState } from "../../types/plugin";
 import { deletePluginPaneStateValue, setPluginPaneStateValue } from "../../layout/pane-state";
 
 export class RegistryResumeStateListeners {
@@ -33,6 +33,30 @@ export class RegistryResumeStateListeners {
   clear(): void {
     this.listeners.clear();
   }
+}
+
+/** The parts of a plugin context that read and write under its state namespace. */
+export type NamespacedPluginContext = Pick<GloomPluginContext, "persistence" | "resume" | "configState" | "teamState">;
+
+const namespacedContexts = new WeakMap<GloomPluginContext, (stateId: string) => NamespacedPluginContext>();
+
+/** Lets `pluginContextInNamespace` rebuild this context's state parts for another namespace. */
+export function bindPluginContextNamespaces(
+  context: GloomPluginContext,
+  createNamespaced: (stateId: string) => NamespacedPluginContext,
+): GloomPluginContext {
+  namespacedContexts.set(context, createNamespaced);
+  return context;
+}
+
+/**
+ * The same plugin context with its persistence, resume, config and team state
+ * under another namespace. Contributions still register to the plugin that
+ * owns the context. A context the registry did not create comes back as is.
+ */
+export function pluginContextInNamespace(context: GloomPluginContext, stateId: string): GloomPluginContext {
+  const createNamespaced = namespacedContexts.get(context);
+  return createNamespaced ? { ...context, ...createNamespaced(stateId) } : context;
 }
 
 interface PluginResumeStateOptions {

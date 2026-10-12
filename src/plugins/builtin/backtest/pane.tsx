@@ -146,7 +146,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   }), [history.loading, result, view, paneId, symbol]);
 
   const { strip: tabStrip, rows: tabRows } = usePaneTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true } : null);
-  if (!symbol) return <EmptyState title="Choose a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
+  if (!symbol) return <EmptyState title="Select a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
   const bodyHeight = Math.max(4, height - 1 - tabRows);
   const wide = width - SUMMARY_WIDTH - 1 >= MIN_WIDE_CHART_COLS;
   const summaryTable = (tableWidth: number, tableHeight: number, before?: ReactNode) => (

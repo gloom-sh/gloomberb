@@ -1,8 +1,13 @@
 import type { RevenueBreakdownView } from "../../../api-client/revenue-breakdown";
-import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchRevenueBreakdown } from "./client";
-import { quarterLabel, reportedSpan } from "./model";
+import { growthPercent, quarterLabel, reportedSpan, revenueAmount, sharePercent } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
+import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
+
+/** Amounts compact and shares and growth in percent, as the pane prints them (15.97B, 83.7%, +10.8%); exports keep the whole number. */
+const number = (format: (value: number | null) => string) => (value: unknown) => format(typeof value === "number" ? value : null);
+const amountColumn = (key: string, header: string): HeadlessPaneColumn => ({ key, header, align: "right", textFormat: number(revenueAmount) });
 
 export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
@@ -16,10 +21,10 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["SEG"],
     dataRequirements: ["Gloom Cloud revenue breakdowns from 10-Q and 10-K XBRL"],
     limitations: [
-      "US filers only; 20-F filers report no quarterly breakdown",
-      "Rows are the members that add up to reported revenue; subtotals are dropped",
-      "Fiscal quarters; Q4 is the fiscal year less nine months",
-      "Free accounts get the two largest rows",
+      "US filers only; 20-F filers report no quarterly breakdown.",
+      "Rows are the members that add up to reported revenue; subtotals are dropped.",
+      "Fiscal quarters; Q4 is the fiscal year less nine months.",
+      "Free accounts get the two largest rows.",
     ],
   },
   options: [
@@ -34,10 +39,12 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
   ],
   describe: (args) => `Revenue breakdown | ${args.symbols[0]}`,
   async load(args, ctx) {
+    const symbol = args.symbols[0]!;
     const data = reportedSpan(await fetchRevenueBreakdown(
-      args.symbols[0]!,
+      symbol,
       (args.options.view as RevenueBreakdownView | undefined) ?? "product",
       ctx.apiClient,
+      await resolveHeadlessIssuerListing(ctx, symbol),
     ));
     return {
       complete: data.access === "full",
@@ -45,6 +52,13 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: [
         {
           title: `Quarterly revenue by ${data.view}`,
+          columns: [
+            { key: data.view, header: data.view[0]!.toUpperCase() + data.view.slice(1) },
+            ...data.periods.map((period) => amountColumn(quarterLabel(period), quarterLabel(period))),
+            amountColumn("ttm", "TTM"),
+            { key: "share", header: "Share", align: "right", textFormat: number(sharePercent) },
+            { key: "yoy", header: "YoY", align: "right", textFormat: number(growthPercent) },
+          ],
           rows: data.rows.map((row) => ({
             [data.view]: row.label,
             ...Object.fromEntries(data.periods.map((period, index) => [quarterLabel(period), row.values[index]])),
@@ -55,6 +69,7 @@ export const revenueBreakdownHeadless: HeadlessPaneDefinition<"bundle"> = {
         },
         {
           title: "Total revenue",
+          columns: [{ key: "quarter", header: "Quarter" }, { key: "end", header: "End" }, amountColumn("revenue", "Revenue")],
           rows: data.periods.map((period, index) => ({
             quarter: quarterLabel(period),
             end: period.end,

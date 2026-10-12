@@ -50,12 +50,27 @@ export function resolveHolderOwnershipPercent(row: Pick<HolderRecord, "percentHe
   return row.value / marketCap;
 }
 
-/** A stake too small for two decimals reads "<0.01%", not a zero. */
-export function formatHolderOwnershipPercent(value: number | undefined): string {
-  if (value == null) return "-";
+/**
+ * A stake or a change in percent (0.59 for 0.59%), as reports carry it. A
+ * source gives a fraction (0.0059) or, above 1, percent points; the pane reads
+ * them the same way. Six significant digits drop a source's float noise.
+ */
+export function holderPercent(value: number | null | undefined): number | null {
+  if (value == null || !Number.isFinite(value)) return null;
   const percent = Math.abs(value) <= 1 ? value * 100 : value;
+  return Number(percent.toPrecision(6));
+}
+
+/** A stake in percent too small for two decimals reads "<0.01%", not a zero. */
+export function formatPercentHeld(percent: number | null | undefined): string {
+  if (percent == null) return "-";
   if (percent > 0 && percent < 0.005) return "<0.01%";
   return `${percent.toFixed(2)}%`;
+}
+
+/** A stake too small for two decimals reads "<0.01%", not a zero. */
+export function formatHolderOwnershipPercent(value: number | undefined): string {
+  return formatPercentHeld(holderPercent(value));
 }
 
 export function formatHolderOwnershipLine(row: HolderRow, marketCap: number | undefined): string | null {

@@ -1,6 +1,7 @@
 /** @jsxImportSource react */
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent as ReactPointerEvent, type Ref } from "react";
-import type { Surface3DHostProps } from "../../../ui/host";
+import type { BoxRenderable, Surface3DHostProps } from "../../../ui/host";
+import { useLiveStretch } from "../../../ui/live-stretch";
 import {
   clampSurface3DCamera, DEFAULT_SURFACE3D_CAMERA, FLOOR, FLOOR_PROJECTION_ALPHA, hitTestSurface3D, projectSurface3D, surface3DBox, surface3DLayout, surface3DLighting,
   surface3DViewport, turbo, SURFACE3D_AMBIENT, SURFACE3D_DIFFUSE, SURFACE3D_SHININESS, SURFACE3D_SPECULAR,
@@ -284,6 +285,11 @@ function prefersReducedMotion(): boolean {
  * against uploaded buffers, and labels move by transform without re-rendering.
  */
 export function WebSurface3D(props: Surface3DHostProps) {
+  const boxRef = useRef<BoxRenderable | null>(null);
+  // While a resize has the pane ahead of this size, the box takes the size it
+  // will have and the drawing buffer follows it (below), crisp on every move.
+  // It keeps its cells at rest: the GPU path is not checked without a GPU.
+  useLiveStretch(boxRef, props.width, props.height, { fit: false });
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const labelLayerRef = useRef<HTMLDivElement | null>(null);
@@ -467,6 +473,9 @@ export function WebSurface3D(props: Surface3DHostProps) {
         marker.style.transform = `translate(${at.x}px, ${at.y}px) translate(-50%, -50%)`;
       } else marker.style.display = "none";
     }
+    // What a screenshot waits for and reports: this frame is on the canvas, whole.
+    const container = containerRef.current;
+    if (container) container.dataset.gloomSurfaceState = r.indexCount === 0 ? "blank" : s.morph ? "morphing" : "drawn";
   };
 
   const schedule = () => {
@@ -539,9 +548,9 @@ export function WebSurface3D(props: Surface3DHostProps) {
     };
   }, []);
 
-  // Geometry uploads once per scene. A refresh of the same mesh (new quotes on
-  // the same grid) morphs from what is on screen instead of jumping.
-  useEffect(() => {
+  // Upload before paint, including the first frame. A refresh of the same
+  // mesh (new quotes on the same grid) still morphs from what is on screen.
+  useLayoutEffect(() => {
     const r = resources.current;
     if (!r) return;
     const s = state.current;
@@ -562,10 +571,12 @@ export function WebSurface3D(props: Surface3DHostProps) {
       uploadSurfaceGeometry(r, s.shown);
     }
     r.layoutKey = "";
-    schedule();
+    draw();
+    if (s.morph) schedule();
   }, [props.scene, failed]);
 
-  useEffect(() => { schedule(); }, [props.colors, props.reserveRight]);
+  // Palette updates share the DOM commit, not the next animation frame.
+  useLayoutEffect(() => { draw(); }, [props.colors, props.reserveRight]);
 
   // External camera changes (keyboard, reset, restored state) tween in.
   useEffect(() => {
@@ -629,12 +640,13 @@ export function WebSurface3D(props: Surface3DHostProps) {
     return `rgb(${Math.round(color.r * 255)}, ${Math.round(color.g * 255)}, ${Math.round(color.b * 255)}) ${index * 10}%`;
   }).join(", ");
   return (
-    <WebBox width={props.width} height={props.height} data-gloom-role="surface-3d"
+    <WebBox ref={boxRef as Ref<HTMLDivElement>} width={props.width} height={props.height} data-gloom-role="surface-3d"
       style={{ position: "relative", overflow: "hidden", touchAction: "none", overscrollBehavior: "none" }}>
     <div
       ref={containerRef as Ref<HTMLDivElement>}
       aria-label={props.ariaLabel}
       role="img"
+      data-gloom-surface-renderer="webgl"
       style={{ position: "absolute", inset: 0, overflow: "hidden", touchAction: "none", cursor: "grab", userSelect: "none" }}
       onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
         if (event.button !== 0) return;

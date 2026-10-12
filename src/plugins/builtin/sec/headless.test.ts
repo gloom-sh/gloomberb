@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { SecFilingItem } from "../../../types/data-provider";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { ETF_FILING_FORMS, SEC_FILING_FETCH_LIMIT } from "./forms";
-import { createSecHeadless } from "./headless";
+import { createSecHeadless, fundFilingsEmpty } from "./headless";
 import { buildSecFilingRows, getFilingColumnText, secAcceptanceTimestamp } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
@@ -121,4 +121,21 @@ test("the fund view filters every issuer filing it loaded, amendments included, 
 
   issuerFilings.push(...Array.from({ length: SEC_FILING_FETCH_LIMIT - issuerFilings.length }, (_, index) => fund("4", 100 + index)));
   expect((await headless.load(args(2), createTestHeadlessContext())).complete).toBe(false);
+});
+
+test("a fund that files none of the fund forms, such as a grantor trust, says so and where its filings are", async () => {
+  const trust = (form: string): SecFilingItem => ({ ...filings[1]!, form });
+  let issuerFilings = [trust("10-Q"), trust("8-K"), trust("424I")];
+  const headless = createSecHeadless({ loadFilings: async () => issuerFilings }, { forms: ETF_FILING_FORMS, empty: fundFilingsEmpty });
+  const load = () => headless.load({ ...args(50), rawArgument: "IBIT", argument: "IBIT", symbols: ["IBIT"] }, createTestHeadlessContext());
+
+  expect(await load()).toMatchObject({ rows: [], empty: "IBIT files none of the fund forms ETF lists (prospectus, shareholder reports, N-CEN, N-PORT). "
+    + "Fund facts (fee, NAV, premium) are not available yet; try fn SEC IBIT." });
+  // A capped page may hide older fund forms; no filings at all leaves nothing to point at.
+  issuerFilings = Array.from({ length: SEC_FILING_FETCH_LIMIT }, () => trust("10-Q"));
+  expect((await load()).empty).toStartWith(`None of IBIT's latest ${SEC_FILING_FETCH_LIMIT} SEC filings is a fund form ETF lists`);
+  issuerFilings = [];
+  expect((await load()).empty).toBe("No SEC filings found for IBIT. Fund facts (fee, NAV, premium) are not available yet.");
+  issuerFilings = [trust("485BPOS")];
+  expect((await load()).empty).toBeUndefined();
 });

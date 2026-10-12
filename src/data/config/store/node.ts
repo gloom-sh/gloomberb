@@ -102,19 +102,40 @@ async function loadConfigState(dataDir: string): Promise<{ config: AppConfig; ne
   }
 }
 
-export async function saveConfig(config: AppConfig): Promise<void> {
-  const configPath = configFileFor(config.dataDir);
-  await mkdir(dirname(configPath), { recursive: true });
+/** The save in flight or queued last for each config file; it never rejects. */
+const saveQueues = new Map<string, Promise<void>>();
+let tempFileCounter = 0;
 
-  const persisted = normalizeConfigForSave(config);
-  const tempPath = `${configPath}.${process.pid}.${Date.now()}.tmp`;
+async function writeConfigFile(configPath: string, contents: string): Promise<void> {
+  await mkdir(dirname(configPath), { recursive: true });
+  // Unique per call: a clock tick is not, and two saves can land in one.
+  const tempPath = `${configPath}.${process.pid}.${Date.now()}.${tempFileCounter++}.tmp`;
   try {
-    await writeFile(tempPath, JSON.stringify(persisted, null, 2), "utf-8");
+    await writeFile(tempPath, contents, "utf-8");
     await rename(tempPath, configPath);
   } catch (error) {
     await rm(tempPath, { force: true }).catch(() => {});
     throw error;
   }
+}
+
+/**
+ * Saves to one file run one after another in call order, so the last call is
+ * the one on disk and none is lost. A failed save rejects only its own caller
+ * and the next one still runs.
+ */
+export async function saveConfig(config: AppConfig): Promise<void> {
+  const configPath = configFileFor(config.dataDir);
+  // Written as it was when called, however the caller's object changes while
+  // earlier saves are still running.
+  const contents = JSON.stringify(normalizeConfigForSave(config), null, 2);
+  const result = (saveQueues.get(configPath) ?? Promise.resolve()).then(() => writeConfigFile(configPath, contents));
+  const settled = result.catch(() => {});
+  saveQueues.set(configPath, settled);
+  void settled.then(() => {
+    if (saveQueues.get(configPath) === settled) saveQueues.delete(configPath);
+  });
+  return result;
 }
 
 export async function initDataDir(dataDir: string): Promise<AppConfig> {

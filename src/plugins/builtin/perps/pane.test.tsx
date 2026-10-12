@@ -1,27 +1,32 @@
-import { act, useReducer } from "react";
+import { act, useReducer, type Dispatch } from "react";
 import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import type { PerpBoardPayload, PerpRankingsPayload } from "../../../api-client/perps";
 import { PaneFooterBar, PaneFooterKeys, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { appReducer, createInitialState } from "../../../state/app/context";
+import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
+import type { PaneInstanceConfig } from "../../../types/config";
 import { Box } from "../../../ui";
 import { perpsCache, perpsHistoryCache, perpsMarketCache, perpsRankingsCache } from "./client";
+import { perpsInstance } from "./index";
 import { PerpsPane } from "./pane";
-import { longShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
+import { equityBoard, longShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 const tui = createOpenTuiTestHarness();
 const reset = () => { setCloudApiFetchTransport(null); perpsCache.reset(); perpsHistoryCache.reset(); perpsMarketCache.reset(); perpsRankingsCache.reset(); };
 afterEach(reset);
 /** A second pane in the same test starts from empty caches. */
 async function remount() { await tui.destroy(); reset(); }
-async function mount(settings: Record<string, unknown>) {
-  const id = "perps:test";
-  const state = createInitialState(createTestPaneConfig("/tmp/perps-pane-test", { paneId: "perps", instanceId: id, settings }));
+/** The mounted app state and its dispatch, for a test that changes the instance the way the app does. */
+let app: { state: AppState; dispatch: Dispatch<AppAction> } | null = null;
+async function mount(settings: Record<string, unknown>, instance: Partial<PaneInstanceConfig> = {}, runtime = createTestPluginRuntime()) {
+  const id = instance.instanceId ?? "perps:test";
+  const state = createInitialState(createTestPaneConfig("/tmp/perps-pane-test", { paneId: "perps", instanceId: id, settings, ...instance }));
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
-    return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="market-overview" runtime={createTestPluginRuntime()}>
+    app = { state: current, dispatch };
+    return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="market-overview" runtime={runtime}>
       <PaneFooterProvider>{(footer) => <Box width={110} height={25} flexDirection="column"><Box height={24}><PerpsPane width={110} height={24} focused /></Box><PaneFooterBar footer={footer} width={110} focused /><PaneFooterKeys paneId={id} footer={footer} focused /></Box>}</PaneFooterProvider>
     </TestPaneProvider>;
   }
@@ -56,6 +61,40 @@ test("no market opens the board in its preview; a named market still opens its h
   const history = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
   expect(history).toContain("Funding / 8h");
   expect(history).toContain("Upgrade for full history");
+});
+
+test("asking for a market again brings its pane back to that market from the board, and d opens its stock's DES", async () => {
+  const stock = equityBoard({ symbol: "AAPL", exchange: "NASDAQ" }).rows[0]!;
+  serve({ board: perpBoard({ access: "preview", locked: 5, rows: [perpRow(), stock] }) });
+  const opened: Array<[string, string | undefined]> = [];
+  const first = perpsInstance(stock.marketId);
+  await mount(first.settings!, { instanceId: first.instanceId, params: first.params },
+    createTestPluginRuntime({ pinTicker: (symbol, options) => { opened.push([options?.paneType ?? "", symbol]); } }));
+  await tui.waitForFrameToContain("Full history requires Gloom Pro.");
+  await tui.clickFrameText("Board");
+  await tui.waitForFrameToContain("Search markets");
+  // A stock's perpetual row pressed again: the workflow finds this pane by its id and stamps the new request on it.
+  await Bun.sleep(2);
+  const again = perpsInstance(stock.marketId);
+  expect(again.instanceId).toBe(first.instanceId!);
+  const { state, dispatch } = app!;
+  const layout = state.config.layout;
+  await act(async () => { dispatch({ type: "SET_CONFIG", config: { ...state.config, layout: { ...layout,
+    instances: layout.instances.map((entry) => entry.instanceId === again.instanceId ? { ...entry, params: { ...entry.params, ...again.params } } : entry) } } }); });
+  const frame = await tui.waitForFrameToContain("Full history requires Gloom Pro.");
+  expect(frame).toContain(stock.marketId);
+  expect(frame).not.toContain("Search markets");
+  await tui.emitKeypress({ name: "d" });
+  // DES of the listing, the way a ticker link opens it: the stock's own research pane comes forward when it is open.
+  expect(opened).toEqual([["ticker-research", "AAPL"]]);
+});
+
+test("a named market opened on another tab, as `shot PERP <market> --tab evidence` does, stays on that tab", async () => {
+  const stock = equityBoard({ symbol: "AAPL", exchange: "NASDAQ" }).rows[0]!;
+  serve({ board: perpBoard({ rows: [stock] }) });
+  const request = perpsInstance(stock.marketId);
+  await mount({ ...request.settings, tab: "evidence" }, { instanceId: request.instanceId, params: request.params });
+  expect(await tui.waitForFrameToContain("Funding 8h / APR")).not.toContain("Series");
 });
 
 test("free long/short history keeps the row's latest reading beside the same Pro lock as every series", async () => {
@@ -96,12 +135,15 @@ test("rankings read as five sections of at most ten markets, with the preview's 
   expect(await tui.waitForFrameToContain("Upgrade for the full rankings")).toContain("M2 ");
 });
 
-test("compare spreads 8h funding between the venues it shows, and one venue shows no spread", async () => {
-  serve({ compare: perpBoard({ rows: [venueRow("binance", { fundingRate8h: 0.00003 }), venueRow("bybit", { fundingRate8h: 0.0001 })] }) });
+test("compare spreads 8h funding between the venues it shows, dates each venue, and one venue shows no spread", async () => {
+  serve({ compare: perpBoard({ rows: [venueRow("binance", { fundingRate8h: 0.00003, observedAt: "2026-10-03T23:11:40Z" }), venueRow("bybit", { fundingRate8h: 0.0001 })] }) });
   await mount({ market: "", tab: "compare" });
   const two = await tui.waitForFrameToContain("Funding spread 8h");
   expect(two).toContain("0.0070pp");
   expect(two).toContain("Bybit over Binance");
+  // The footer dates each venue by its own row, as `fn PERP` does, and the table keeps when each was observed.
+  expect(two).toContain("Binance 23:11 · Bybit 23:20 UTC · oldest");
+  expect(two).toContain("10-03 23:11");
   await remount();
   serve({ compare: perpBoard({ access: "preview", locked: 3, rows: [perpRow()] }) });
   await mount({ market: "", tab: "compare" });

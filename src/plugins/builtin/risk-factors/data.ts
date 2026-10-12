@@ -4,7 +4,9 @@ import {
   type CloudRiskReportPayload,
 } from "../../../api-client";
 import { ApiRequestError, isPermanentClientError } from "../../../api-client/errors";
+import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
 import type { HeadlessPaneApiClient, PluginPersistence } from "../../../types/plugin";
+import { secListingKey } from "../../../utils/sec";
 
 /** Annual reports are immutable; discovery of newly produced reports is not. */
 const LIST_KIND = "reports";
@@ -88,12 +90,20 @@ function loadCached<T extends object>(
   return request.promise;
 }
 
-export function loadRiskReportsWithClient(client: RiskApiClient, ticker: string, options?: { force?: boolean }): Promise<RiskReportsResult> {
-  const key = ticker.trim().toUpperCase();
+interface RiskLoadOptions {
+  force?: boolean;
+  /** The listing's venue and company, for a listing outside the US. */
+  listing?: IssuerListingParams;
+}
+
+export function loadRiskReportsWithClient(client: RiskApiClient, ticker: string, options?: RiskLoadOptions): Promise<RiskReportsResult> {
+  const symbol = ticker.trim().toUpperCase();
+  // SAN in Paris is not SAN in New York: a listing abroad is cached under its venue.
+  const key = secListingKey(symbol, options?.listing?.exchange);
   return loadCached(client, LIST_KIND, key, activeListFetches, LIST_CACHE_POLICY, options?.force ?? false, async () => {
     let payload: CloudRiskReportListPayload;
     try {
-      payload = await client.getRiskReports(key);
+      payload = await client.getRiskReports(symbol, options?.listing);
     } catch (error) {
       // The list answers 404 when no 10-K risk report is on file (20-F filers, funds).
       if (error instanceof ApiRequestError && error.status === 404) return { company: null, reports: [] };
@@ -104,12 +114,16 @@ export function loadRiskReportsWithClient(client: RiskApiClient, ticker: string,
   });
 }
 
-export function loadRiskReportWithClient(client: RiskApiClient, ticker: string, year: number, options?: { force?: boolean }): Promise<RiskReportResult> {
+export function loadRiskReportWithClient(client: RiskApiClient, ticker: string, year: number, options?: RiskLoadOptions): Promise<RiskReportResult> {
   const symbol = ticker.trim().toUpperCase();
-  return loadCached(client, REPORT_KIND, `${symbol}:${year}`, activeReportFetches, REPORT_CACHE_POLICY, options?.force ?? false, async () => {
-    const payload = await client.getRiskReport(symbol, year);
+  const abroad = listingAbroad(symbol, options?.listing?.exchange) !== null;
+  const key = `${secListingKey(symbol, options?.listing?.exchange)}:${year}`;
+  return loadCached(client, REPORT_KIND, key, activeReportFetches, REPORT_CACHE_POLICY, options?.force ?? false, async () => {
+    const payload = await client.getRiskReport(symbol, year, options?.listing);
     // SEC rows spell share classes BRK-B; a BRK.B request is the same company.
-    const sameTicker = (value: string | undefined) => value?.toUpperCase().replace(/\./g, "-") === symbol.replace(/\./g, "-");
+    // A listing abroad reads its registrant's rows, filed under that
+    // registrant's US ticker (Sanofi's SNY for SAN in Paris).
+    const sameTicker = (value: string | undefined) => abroad || value?.toUpperCase().replace(/\./g, "-") === symbol.replace(/\./g, "-");
     if (!payload || !sameTicker(payload.ticker) || payload.reportYear !== year) {
       throw new Error(`Risk report response does not match ${symbol} ${year}.`);
     }
@@ -117,5 +131,5 @@ export function loadRiskReportWithClient(client: RiskApiClient, ticker: string, 
   });
 }
 
-export const loadRiskReports = (ticker: string, options?: { force?: boolean }) => loadRiskReportsWithClient(apiClient, ticker, options);
-export const loadRiskReport = (ticker: string, year: number, options?: { force?: boolean }) => loadRiskReportWithClient(apiClient, ticker, year, options);
+export const loadRiskReports = (ticker: string, options?: RiskLoadOptions) => loadRiskReportsWithClient(apiClient, ticker, options);
+export const loadRiskReport = (ticker: string, year: number, options?: RiskLoadOptions) => loadRiskReportWithClient(apiClient, ticker, year, options);

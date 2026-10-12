@@ -46,6 +46,7 @@ export class ASKGConversationListStore {
   private persistence: PluginPersistence | null = null;
   private transport: ASKGTransport | null = null;
   private inFlight: Promise<void> | null = null;
+  private openConversationId: string | null = null;
 
   getSnapshot(): ASKGConversationListSnapshot {
     return this.snapshot;
@@ -126,6 +127,7 @@ export class ASKGConversationListStore {
   async delete(id: string): Promise<void> {
     const transport = this.transport;
     if (!transport) return;
+    if (this.openConversationId === id) this.openConversationId = null;
     const previous = this.snapshot.conversations;
     this.remove(id);
     try {
@@ -178,11 +180,30 @@ export class ASKGConversationListStore {
     this.persistence?.setState(WIDTH_STATE_KEY, width);
   }
 
+  /**
+   * The conversation an Ask Gloom pane last showed. Closing the pane (Esc Esc
+   * is two keys) must not lose the answer on screen, so the next pane this
+   * app session opens picks it up again. Kept in memory only: a fresh launch
+   * starts a fresh conversation, and every older one is in the list.
+   */
+  rememberOpen(id: string | null): void {
+    this.openConversationId = id;
+  }
+
+  rememberedOpen(): string | null {
+    const id = this.openConversationId;
+    if (!id) return null;
+    // A conversation deleted since is not brought back.
+    if (this.snapshot.loaded && !this.snapshot.conversations.some((conversation) => conversation.id === id)) return null;
+    return id;
+  }
+
   /** Test hook: drops the persisted handle, the transport and the rows. */
   reset(): void {
     this.persistence = null;
     this.transport = null;
     this.inFlight = null;
+    this.openConversationId = null;
     this.snapshot = EMPTY;
   }
 

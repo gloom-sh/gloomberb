@@ -1,9 +1,14 @@
 import { Box, Text, TextAttributes, useRendererHost } from "../../../../ui";
 import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
-import { formatInlinePreview, getMessageBodyTokenLines } from "../layout";
+import { formatInlinePreview, getMessageBodyTokenLines, MESSAGE_ACTION_WIDTH } from "../layout";
 import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
+import { isQuotedAuthorManagedBot } from "../ghost-user";
+import { CHAT_AI_BADGE_WIDTH, ChatAiBadge } from "./ai-badge";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
+import { Button } from "../../../../components/ui";
+import { canReactToMessage } from "../reactions";
+import { TerminalChatReactions } from "./reactions";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { useSlowPendingSend } from "./pending-send";
 import { getChatMessageRenderState } from "./render-state";
@@ -21,6 +26,7 @@ export function TerminalChatMessage({
   messages,
   selectedIdx,
   hoveredIdx,
+  highlighted,
   canSend,
   contentWidth,
   messageBodyWidth,
@@ -37,21 +43,36 @@ export function TerminalChatMessage({
   latestEditableMessageId,
   retryMessage,
   setHoveredIdx,
+  reactionsEnabled = false,
+  currentUserId = null,
+  toggleReaction,
+  openReactionPicker,
 }: TerminalChatMessageProps) {
   const rendererHost = useRendererHost();
   const slowSend = useSlowPendingSend(msg);
+  const canReact = reactionsEnabled && canReactToMessage(msg);
   const state = getChatMessageRenderState({
     msg,
     index,
     messages,
     selectedIdx,
     hoveredIdx,
+    highlighted,
     canSend,
     canEdit: msg.id === latestEditableMessageId,
+    canReact: canReact && !!openReactionPicker,
     slowSend,
     host: "terminal",
   });
-  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage };
+  const reactAction = openReactionPicker ? (
+    <Button stopPropagation
+      label={t("React")}
+      width={MESSAGE_ACTION_WIDTH}
+      variant={state.isSelected ? "primary" : "secondary"}
+      onPress={() => openReactionPicker(index)}
+    />
+  ) : null;
+  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction };
   const attachments = msg.attachments ?? [];
   // An image-only message has no text row; its image rows start where the text would.
   const bodyLines = msg.content.length > 0 || attachments.length === 0
@@ -59,6 +80,7 @@ export function TerminalChatMessage({
     : [];
   const reviewNote = chatImageReviewNote(msg);
   const imageColor = state.isSelected ? state.selectedTextColor : colors.textDim;
+  const quotedAuthorIsBot = !!msg.replyTo && isQuotedAuthorManagedBot(msg.replyTo, userByUsername);
   const setHovered = () => setHoveredIdx((current) => (current === index ? current : index));
   const clearHovered = () => setHoveredIdx((current) => (current === index ? null : current));
   const messageRowProps = {
@@ -81,11 +103,20 @@ export function TerminalChatMessage({
           }}
         >
           <Text fg={state.replyMetaColor}>{`${t("reply")} `}</Text>
-          <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}: </Text>
+          {quotedAuthorIsBot ? (
+            // The badge stands where the colon would.
+            <>
+              <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}</Text>
+              <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
+              <Text fg={state.replyAuthorColor}> </Text>
+            </>
+          ) : (
+            <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}: </Text>
+          )}
           <Text fg={state.replyMetaColor}>
             {formatInlinePreview(
               chatReplyQuoteText(msg.replyTo),
-              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}: `.length, 0),
+              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}`.length - (quotedAuthorIsBot ? CHAT_AI_BADGE_WIDTH + 1 : 2), 0),
             )}
           </Text>
         </Box>
@@ -159,6 +190,14 @@ export function TerminalChatMessage({
           </Text>
         </Box>
       )}
+      <TerminalChatReactions
+        msg={msg}
+        currentUserId={currentUserId}
+        canReact={canReact && !!toggleReaction}
+        onToggle={toggleReaction ?? (() => {})}
+        rowProps={messageRowProps}
+        width={messageBodyWidth}
+      />
     </Box>
   );
 }

@@ -22,6 +22,8 @@ import {
 } from "./mouse";
 import { hideDragShield, showDragShield } from "./drag-shield";
 import { applyLiveFrame } from "./live-frame";
+import { observeCellSize } from "./size-observer";
+import { fitSurface, surfaceFollows, trackSurface } from "./surface-fit";
 import { cleanDomProps, commonStyle } from "./style";
 
 /** Farther than this from the pointer, in px, a predicted point is noise. */
@@ -88,6 +90,12 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
       handle.setLiveFrame = (frame) => {
         if (elementRef.current) applyLiveFrame(elementRef.current, frame, propsRef.current);
       };
+      handle.observeSize = (listener) => (elementRef.current ? observeCellSize(elementRef.current, listener) : () => {});
+      handle.trackSurface = () => (elementRef.current ? trackSurface(elementRef.current) : () => {});
+      handle.refitSurface = () => {
+        if (elementRef.current) fitSurface(elementRef.current);
+      };
+      handle.followsFrame = () => (elementRef.current ? surfaceFollows(elementRef.current) : { x: false, y: false });
       return handle as unknown as HTMLDivElement;
     }, []);
 
@@ -248,7 +256,7 @@ export const WebBox = forwardRef<HTMLDivElement, Record<string, unknown> & { chi
         if (current && !current.shielded) {
           if (dx * dx + dy * dy < 9) return;
           current.shielded = true;
-          showDragShield();
+          showDragShield(elementRef.current);
           // Captured once it is a drag (a click keeps its usual target), the
           // moves skip hit testing and leave every other element's hover state
           // alone: nothing under the pointer restyles or repaints while a pane,

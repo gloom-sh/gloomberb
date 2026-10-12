@@ -132,6 +132,8 @@ export interface CapabilityManifest {
 
 export interface CapabilityRegistryOptions {
   isPluginEnabled?(pluginId: string): boolean;
+  /** Names the plugin a switched-off capability belongs to, so the error can say what to turn on. */
+  pluginName?(pluginId: string): string | undefined;
   isCapabilityEnabled?(capability: PluginCapability, pluginId: string): boolean;
   connectionHealth?: ConnectionHealthRegistry;
 }

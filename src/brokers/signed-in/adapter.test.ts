@@ -34,7 +34,6 @@ describe("signedInBrokerAdapter", () => {
     const cases: Array<[number, string]> = [
       [401, "Sign in to Gloom first, then connect Interactive Brokers."],
       [404, "Interactive Brokers needs you to sign in again. Press Connect in Brokers."],
-      [409, "Interactive Brokers needs you to sign in again. Press Connect in Brokers."],
       [502, "Interactive Brokers is not responding. Try again shortly."],
     ];
     for (const [status, message] of cases) {
@@ -45,6 +44,39 @@ describe("signedInBrokerAdapter", () => {
       expect(requests).toEqual(["ibkr/snapshot"]);
       expect(adapter.getStatus!(instance)).toEqual({ state: "error", message, mode: "Sign in", updatedAt: 1_000 });
       expect(notified).toBe(1);
+    }
+  });
+
+  test("a sign-in the broker ended shows Gloom's own message, without its error code", async () => {
+    const message = "Interactive Brokers needs you to sign in again: Authorization grant has expired, re-authentication required. Reconnect it in Gloom.";
+    const shapes = [
+      // As the request client builds it: the body in `details`, the code appended to the message.
+      new ApiRequestError(`${message} reauth_required`, 409, undefined, "reauth_required", { error: "reauth_required", message }),
+      new ApiRequestError(`${message} reauth_required`, 409, undefined, "reauth_required"),
+    ];
+    for (const error of shapes) {
+      const { adapter } = adapterAnswering(() => error);
+      await expect(adapter.importPortfolioSnapshot!(instance)).rejects.toThrow(message);
+      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message });
+    }
+
+    // A 409 that says nothing keeps the app's own guidance.
+    const { adapter } = adapterAnswering(() => new ApiRequestError("", 409));
+    await expect(adapter.importPortfolioSnapshot!(instance)).rejects.toThrow("Interactive Brokers needs you to sign in again. Press Connect in Brokers.");
+  });
+
+  test("connect says why the broker ended the sign-in, and still works against a server that does not", async () => {
+    const connection = (lastError?: string | null) => ({ status: "reauth_required", ...(lastError === undefined ? {} : { lastError }) });
+    const reasons: Array<[ReturnType<typeof connection>, string]> = [
+      [connection("invalid_grant: Authorization grant has expired, re-authentication required"), "Interactive Brokers needs you to sign in again: Authorization grant has expired, re-authentication required. Press Connect in Brokers."],
+      [connection("The broker refused the refresh."), "Interactive Brokers needs you to sign in again: The broker refused the refresh. Press Connect in Brokers."],
+      [connection(null), "Press Connect in Brokers to sign in to Interactive Brokers."],
+      [connection(), "Press Connect in Brokers to sign in to Interactive Brokers."],
+    ];
+    for (const [answer, message] of reasons) {
+      const { adapter } = adapterAnswering(() => answer);
+      await expect(adapter.connect!(instance)).rejects.toThrow(message);
+      expect(adapter.getStatus!(instance)).toMatchObject({ state: "error", message });
     }
   });
 

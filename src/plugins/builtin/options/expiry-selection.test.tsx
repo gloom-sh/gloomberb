@@ -19,6 +19,8 @@ const PANE_ID = "options:expiry-selection";
 const EXPIRIES = [Date.UTC(2026, 8, 18), Date.UTC(2026, 9, 16), Date.UTC(2026, 10, 20)].map((ms) => ms / 1000);
 const EXPIRY_CODES = ["260918", "261016", "261120"];
 const tui = createOpenTuiTestHarness();
+/** The body names a selected expiry the chain cannot serve, with the dates nearest it. */
+const UNAVAILABLE = /No (?:option contracts returned for )?expiry \d{4}-\d{2}-\d{2}/;
 const realNow = Date.now;
 
 afterEach(() => {
@@ -190,12 +192,12 @@ test.each([48, 80, 120])("a removed selected expiry cannot seed another contract
   await f.refresh([EXPIRIES[0]!, EXPIRIES[2]!]);
   const missing = await f.capture("selected-removed");
   expect(missing.launch).toBeUndefined();
-  expect(missing.frame).toContain("Selected expiration unavailable.");
+  expect(missing.frame).toMatch(UNAVAILABLE);
   expect(missing.csv.split("\n")).toHaveLength(1);
   await f.refresh(EXPIRIES);
   const recovered = await f.capture("selected-recovered");
   expect(recovered.launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
-  expect(recovered.frame).not.toContain("Selected expiration unavailable.");
+  expect(recovered.frame).not.toMatch(UNAVAILABLE);
 });
 
 test("a new underlying initializes its held expiry after a researcher chose another date", async () => {
@@ -255,7 +257,7 @@ test("late and wrong-expiry responses cannot replace a newly selected contract",
   await f.refresh(EXPIRIES, EXPIRIES[2]);
   const wrong = await f.capture("wrong-expiry");
   expect(wrong.launch).toBeUndefined();
-  expect(wrong.frame).toContain("Selected expiration unavailable.");
+  expect(wrong.frame).toMatch(UNAVAILABLE);
   expect(wrong.csv.split("\n")).toHaveLength(1);
 });
 
@@ -265,7 +267,7 @@ test("same-millisecond catalogue refresh retains a removed selection as unavaila
   await f.refresh([EXPIRIES[0]!, EXPIRIES[2]!], undefined, false);
   const removed = await f.capture("equal-time-removal");
   expect(removed.launch).toBeUndefined();
-  expect(removed.frame).toContain("Selected expiration unavailable.");
+  expect(removed.frame).toMatch(UNAVAILABLE);
   await f.refresh(EXPIRIES, undefined, false);
   expect((await f.capture("equal-time-recovery")).launch?.marketReference?.expiration).toBe(EXPIRIES[1]);
 });
@@ -281,7 +283,7 @@ test("visiting a cached expiry cannot restore an older catalogue, and an empty r
   await f.refresh([], EXPIRIES[2]);
   const empty = await f.capture("empty-catalogue");
   expect(empty.launch).toBeUndefined();
-  expect(empty.frame).toContain("Selected expiration unavailable.");
+  expect(empty.frame).toMatch(UNAVAILABLE);
   expect(empty.csv.split("\n")).toHaveLength(1);
 });
 
@@ -294,7 +296,7 @@ test("the existing expiry selector can leave an unavailable date for an explicit
   const selected = await f.capture("explicit-selection-after");
   expect(selected.launch?.marketReference?.expiration).toBe(EXPIRIES[2]);
   expect(selected.launch?.marketPrice).toBe(30);
-  expect(selected.frame).not.toContain("Selected expiration unavailable.");
+  expect(selected.frame).not.toMatch(UNAVAILABLE);
 });
 
 
@@ -333,6 +335,6 @@ test.each([false, true])("empty and removed catalogues survive failed refreshes 
     const remounted = await f.capture(`remount-${label}-${cached}`);
     expect(remounted.launch).toBeUndefined();
     expect(remounted.csv.split("\n")).toHaveLength(1);
-    expect(remounted.frame).toContain("Selected expiration unavailable.");
+    expect(remounted.frame).toMatch(UNAVAILABLE);
   }
 });

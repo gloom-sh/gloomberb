@@ -25,7 +25,7 @@ import { formatPercent } from "../../../utils/format";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery } from "../../../market-data/hooks";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneTicker } from "../../../state/app/context";
-import { isUsEquityTicker } from "../../../utils/sec";
+import { mayBeUsEquityTicker } from "../../../utils/sec";
 import { useAssetData, usePluginPaneState } from "../../runtime";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -283,8 +283,11 @@ export function buildEventDetail({
   if (row.status !== "Earnings") return sections;
 
   const comparison: EventDetailBlock[] = [
-    detailRow("Actual", earningsInput(row.epsActual, row.epsCurrency)),
-    detailRow("Consensus", earningsInput(row.epsEstimate, row.epsCurrency)),
+    ...(row.dateStatus && row.dateStatus !== "reported" ? [detailRow("Report date", row.date, row.dateStatus)] : []),
+    detailRow("Actual", earningsInput(row.epsActual, row.epsCurrency),
+      row.epsBasis === "unknown" ? "basis unknown" : row.epsBasis),
+    detailRow("Consensus", earningsInput(row.epsEstimate, row.epsCurrency),
+      row.epsAnalysts != null ? `${row.epsAnalysts} analysts` : undefined),
   ];
   if (row.epsDifference != null) comparison.push(detailRow("Difference", earningsInput(row.epsDifference, row.epsCurrency)));
   if (row.surprisePercent != null) {
@@ -496,7 +499,7 @@ export function CorporateActionsView({
     : null;
   const instrument = useMemo(() => instrumentFromTicker(ticker, symbol), [symbol, ticker]);
   const secFilingsEntry = useSecFilingsQuery(
-    openRow?.status === "Earnings" && instrument && isUsEquityTicker(ticker)
+    openRow?.status === "Earnings" && instrument && mayBeUsEquityTicker(ticker)
       ? { instrument, count: SEC_EVENT_FILING_LIMIT }
       : null,
   );

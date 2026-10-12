@@ -656,6 +656,7 @@ function buildCursorValues(
       unit: entry.source.unit,
       value: projected?.value ?? null,
       point: projected?.point ?? gap?.point ?? null,
+      ...(cursorDate && projected && projected.timestamp < cursorTime ? { carried: true } : {}),
     };
   }));
 }
@@ -681,7 +682,7 @@ export function applyCompositeChartCursor(
     ...scene,
     cursorDate,
     cursorXRatio,
-    cursorValues: buildCursorValues(scene.panels, cursorDate, scene),
+    cursorValues: buildCursorValues(scene.cursorPanels ?? scene.panels, cursorDate, scene),
   };
 }
 

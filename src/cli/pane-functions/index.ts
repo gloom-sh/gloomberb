@@ -6,24 +6,38 @@ import { cliStyles, renderStats, type CliStatEntry } from "../../utils/cli-outpu
 import {
   filterPaneCatalogEntries,
   renderPaneCatalogReport,
+  selectPaneCatalogMatches,
   type PaneFunctionCatalog,
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
+import { findCatalogSeries } from "../series-search";
 import {
   parsePaneCatalogArgs,
   parsePaneFunctionArgs,
   type ParsedPaneFunctionArgs,
 } from "./options";
-import { applyListingArgument, resolvePaneFunction, type ResolvedPaneFunction } from "./resolver";
+import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
-import { defaultScreenshotPath, renderDesktopShot } from "./screenshot";
+import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings, shotStatusIssues } from "./screenshot";
 import {
   buildPaneCatalogEntries,
 } from "./catalog";
-import { accessGateStatus, incompleteReportGateMessage } from "./access-gate";
+import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
-import { loadForListing } from "../listing-arg";
+import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceNotes } from "../listing-arg";
+import { knownGapMessage, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
+import { cliOutputWritten } from "../result";
+import { CLI_EXIT_CODES } from "../exit-codes";
+import {
+  GLOSSARY,
+  glossaryRecord,
+  lookupGlossary,
+  renderGlossaryEntries,
+  renderGlossaryIndex,
+  renderReportGlossary,
+  reportGlossary,
+} from "../glossary";
 
 async function withPaneRuntime<T>(
   ctx: CliCommandContext,
@@ -34,13 +48,13 @@ async function withPaneRuntime<T>(
     registry: PaneFunctionCatalog;
     resolved: ResolvedPaneFunction;
   }) => Promise<T>,
-  settings: { strictHeadlessOptions?: boolean; tableSection?: boolean } = {},
+  settings: { strictHeadlessOptions?: boolean; tableSection?: boolean; command?: "fn" | "shot" } = {},
 ): Promise<T> {
   return withMarketData(ctx, async (market) => {
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
-      const parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions));
+      const parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions), settings.command);
       const resolved = await resolvePaneFunction(registry, context, parsed, settings);
       return await run({ parsed, context, registry, resolved });
     } finally {
@@ -52,6 +66,9 @@ async function withPaneRuntime<T>(
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     await withPaneRuntime(ctx, args, async ({ parsed, context, resolved }) => {
+      if (parsed.strict) {
+        throw new Error("--strict is an option of shot. fn takes --require-bot-safe to fail on a report that is not complete.");
+      }
       if (parsed.requireBotSafe && (
         !resolved.capability.botSafe || resolved.capability.reportReadiness !== "ready"
       )) {
@@ -65,6 +82,9 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         throw new Error("--section picks one table of --csv or --ndjson output.");
       }
       if (resolved.tableSection === true) throw new Error("--section needs a section title or number.");
+      // A report's title names the function and the symbol, never the listing a bare one was read on,
+      // so it gets `quote`'s line for that. Looked up beside the report, so it costs no wait.
+      const choice = parsed.listing ? quotedListingChoiceNotes(parsed.listing, context) : null;
       // A report that fails or comes back empty for an exchange the symbol is not listed on says so.
       const report = await withPersistedCloudSession(
         context,
@@ -86,15 +106,37 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           `${resolved.token} did not produce a complete bot-safe report.${unavailable}`,
         );
       }
-      ctx.printResult({ data: report.data }, {
-        text: () => report.text,
+      // --explain follows the report with the terms it shows; JSON lists them under `glossary`.
+      const glossary = parsed.explain ? reportGlossary(resolved.token, report.text) : null;
+      const data = glossary
+        ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
+        : report.data;
+      const warnings = [...parsed.listingNotes ?? [], ...await choice ?? []];
+      // The report states its own freshness in its data and text; JSON cites it as `source` too.
+      ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}) }, {
+        text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });
     }, { strictHeadlessOptions: true, tableSection: true });
   });
 }
 
+/** How long a capture's process may stay up after its output, for a report it stopped waiting for. */
+const STALLED_REPORT_EXIT_MS = 1_000;
+
 export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) {
+  let stalledReport = false;
+  try {
+    await capturePaneScreenshot(args, ctx, () => { stalledReport = true; });
+  } finally {
+    // The capture is written and dated without the report it stopped waiting
+    // for; a loader that ignores its abort must not hold the process open
+    // until it settles. Unref'd, so a process with nothing left exits first.
+    if (stalledReport) setTimeout(() => void cliOutputWritten().then(() => process.exit()), STALLED_REPORT_EXIT_MS).unref();
+  }
+}
+
+async function capturePaneScreenshot(args: string[], ctx: CliCommandContext, onStalledReport: () => void) {
   await runPaneCliCommand(ctx, async () => {
     await withPaneRuntime(ctx, args, async ({ parsed, context, resolved }) => {
       if (parsed.requireBotSafe && (
@@ -118,39 +160,65 @@ export async function runPaneScreenshot(args: string[], ctx: CliCommandContext) 
         theme: parsed.theme,
         scale: parsed.scale,
         watermark: parsed.watermark,
+        statusLine: parsed.status !== false,
+        fitRows: parsed.heightGiven !== true,
         options: parsed.options,
+        onStalledReport,
       });
       if (parsed.requireBotSafe && !result.usable) {
         throw new Error(
           `${resolved.token} did not produce a usable bot-safe screenshot: ${result.unusableReason ?? "unknown reason"}`,
         );
       }
-      ctx.printResult({ data: result }, {
+      // Text prints a warning on stderr, out of the way of piped output; JSON carries it in the envelope.
+      const read = parsed.listing ? listingReadNotes(parsed.listing) : [];
+      const warnings = [...read, ...parsed.listingNotes ?? [], ...shotSizeWarnings(parsed.clamped, parsed)];
+      ctx.printResult({ data: result, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: (data) => {
-          const issues = [
-            data.render.accessGate && (data.empty || !data.usable) ? accessGateStatus(data.render.accessGate) : data.empty ? "empty" : null,
-            data.complete ? null : "incomplete",
-            data.semanticMismatch ? "does not match the data" : null,
-            data.usable ? null : "not usable",
-          ].filter((issue): issue is string => issue != null);
+          const issues = shotStatusIssues(data);
           const stats: CliStatEntry[] = [
             ["Rows", String(data.rowCount)],
             ["Status", issues.length > 0 ? cliStyles.warning(issues.join(", ")) : cliStyles.success("complete")],
           ];
+          if (data.render.statusLine) stats.push(["Status line", data.render.statusLine]);
           if (data.unusableReason) stats.push(["Reason", data.unusableReason]);
+          if (data.notices?.length) stats.push(["Notes", data.notices.join(" ")]);
           if (data.unavailableSymbols.length > 0) stats.push(["No data for", data.unavailableSymbols.join(", ")]);
           if (data.render.emptyStateMarkers.length > 0) stats.push(["Empty states", data.render.emptyStateMarkers.join(", ")]);
           if (data.render.missingExpectedText.length > 0) stats.push(["Missing text", data.render.missingExpectedText.join(", ")]);
           return [`Saved ${displayPath(data.outputPath)}`, renderStats(stats)].join("\n");
         },
       });
-    });
+      // The image is saved and the reason printed; --strict tells a script it should not be used.
+      if (parsed.strict && !result.usable) process.exitCode = CLI_EXIT_CODES.unusableShot;
+    }, { command: "shot" });
   });
 }
+
+/** `catalog glossary [term]` and `catalog explain <term>`, which need no market data. */
+function runGlossary(term: string, ctx: CliCommandContext): void {
+  if (!term) {
+    ctx.printResult({ data: GLOSSARY.map(glossaryRecord) }, { text: renderGlossaryIndex });
+    return;
+  }
+  const { exact, partial } = lookupGlossary(term);
+  const entries = [...exact, ...partial];
+  if (entries.length === 0) {
+    ctx.fail(`No glossary entry for "${term}".`, "gloomberb catalog glossary lists every term.");
+  }
+  ctx.printResult({ data: entries.map(glossaryRecord) }, { text: () => renderGlossaryEntries(entries).join("\n") });
+}
+
+const GLOSSARY_ACTIONS = new Set(["glossary", "explain"]);
 
 export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     const parsed = parsePaneCatalogArgs(args);
+    const [action = "", ...term] = parsed.query.split(/\s+/);
+    if (GLOSSARY_ACTIONS.has(action.toLowerCase())) {
+      runGlossary(term.join(" "), ctx);
+      return;
+    }
     const effectiveParsed = {
       ...parsed,
       limit: ctx.cliOptions.limit ?? parsed.limit,
@@ -162,9 +230,24 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const botSafeEntries = effectiveParsed.botSafeOnly
           ? entries.filter((entry) => entry.capability.botSafe)
           : entries;
-        const filtered = filterPaneCatalogEntries(botSafeEntries, parsed.query);
-        ctx.printResult({ data: filtered.slice(0, effectiveParsed.limit) }, {
-          text: () => renderPaneCatalogReport(filtered, effectiveParsed),
+        // A topic no function covers is answered by its pointer, not by the loose matches its words find.
+        const pointer = topicPointer(parsed.query);
+        const filtered = pointer ? [] : filterPaneCatalogEntries(botSafeEntries, parsed.query);
+        // A search also finds the terms it names; text only, the JSON stays a list of functions.
+        const glossary = lookupGlossary(parsed.query);
+        // Data no source carries yet is said once: in the text, else as the envelope's warning.
+        const gap = knownGapMessage(parsed.query);
+        // The data catalog series the query names, which `fn G` charts.
+        const series = findCatalogSeries(ctx.plugins, parsed.query);
+        const listed = pointer
+          ? pointer.codes.flatMap((code) => entries.filter((entry) => entry.token === code))
+          : selectPaneCatalogMatches(filtered, parsed.query, effectiveParsed.limit).shown;
+        ctx.printResult({
+          data: listed,
+          ...series.length ? { metadata: { series } } : {},
+          ...gap && ctx.cliOptions.format !== "text" ? { warnings: [gap] } : {},
+        }, {
+          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series),
         });
       } finally {
         registry.destroy();
@@ -177,6 +260,8 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
   try {
     await run();
   } catch (error) {
+    // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
+    if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details);
     const message = error instanceof Error ? error.message : String(error);
     ctx.fail(message);
   }

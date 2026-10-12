@@ -1,5 +1,6 @@
 import { publicTickerBindingSymbol } from "../../../tickers/selection";
 import type { PluginModule } from "../plugin-module";
+import { holdsActiveTicker } from "../../../shares/pane-image";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { normalizeTickerInput } from "../../../tickers/search";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -7,9 +8,10 @@ import { FinancialAnalysisPane } from "./financials/pane";
 import { HistoricalPricesPane } from "./data-panes/historical-prices";
 import { ReturnsPane } from "./data-panes/returns-pane";
 import { TickerResearchPane } from "./pane";
+import { futuresContractCache } from "./overview/futures-contract";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { QuoteMonitorPane } from "./quote-monitor";
-import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless } from "./headless";
+import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
 import {
   buildQuoteMonitorSettingsDef,
   buildQuoteMonitorPaneTitle,
@@ -24,10 +26,12 @@ import {
 
 export const tickerDetailModule: PluginModule = {
   setup(ctx) {
+    futuresContractCache.attach(ctx.persistence);
     for (const tab of TICKER_RESEARCH_BUILTIN_TABS) {
       ctx.registerTickerResearchTab(tab);
     }
   },
+  dispose() { futuresContractCache.reset(); },
 
   panes: [
     {
@@ -37,6 +41,13 @@ export const tickerDetailModule: PluginModule = {
       component: TickerResearchPane,
       defaultPosition: "right",
       tickerFollower: true,
+      personalData: (context) => {
+        const settings = getTickerResearchPaneSettings(context.settings);
+        const tab = settings.hideTabs ? settings.lockedTabId : context.paneState.activeTabId;
+        // Notes and theses stay private even for a ticker the person does not hold.
+        if (tab === "notes") return "messages";
+        return tab === "thesis" || holdsActiveTicker(context) ? "holdings" : null;
+      },
       defaultMode: "floating",
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(
@@ -89,6 +100,7 @@ export const tickerDetailModule: PluginModule = {
       name: "Returns",
       icon: "R",
       component: ReturnsPane,
+      headless: returnsHeadless,
       defaultPosition: "right",
       tickerFollower: true,
       defaultMode: "floating",
@@ -162,16 +174,19 @@ export const tickerDetailModule: PluginModule = {
           : null;
       },
     },
-    createTickerSurfacePaneTemplate({
-      id: "returns-pane",
-      paneId: "returns",
-      label: "Returns",
-      description: "Inspect interval and cumulative price returns over a selectable range and granularity.",
-      keywords: ["returns", "return", "performance", "change", "interval", "granularity"],
-      shortcut: "RETURN",
-      publicShare: true,
-      titlePrefix: "RETURN",
-    }),
+    {
+      ...createTickerSurfacePaneTemplate({
+        id: "returns-pane",
+        paneId: "returns",
+        label: "Returns",
+        description: "Inspect interval and cumulative price returns over a selectable range and granularity.",
+        keywords: ["returns", "return", "performance", "change", "interval", "granularity"],
+        shortcut: "RETURN",
+        publicShare: true,
+        titlePrefix: "RETURN",
+      }),
+      headless: returnsHeadless,
+    },
     {
       ...createTickerSurfacePaneTemplate({
         id: "historical-prices-pane",

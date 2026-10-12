@@ -120,8 +120,8 @@ function epsSeries(financials: TickerFinancials, period: "ttm" | "annual"): Time
  * by the shared statement series, which keeps declared gaps and broken runs
  * of quarters unavailable. A reported fiscal year is itself a trailing
  * twelve-month figure; at a fiscal year end it replaces the quarterly sum.
- * A figure with no publication date of its own is dated by the company's
- * report of that quarter, when `reports` has it.
+ * A figure is known no later than the company's report of that quarter, when
+ * `reports` has it, including one with no publication date of its own.
  */
 export function trailingEpsSteps(financials: TickerFinancials, reports: readonly ReportDate[] = []): EpsStep[] {
   const known = (row: FinancialStatement) => datedByReport(knownWhenFiled(row), reports);

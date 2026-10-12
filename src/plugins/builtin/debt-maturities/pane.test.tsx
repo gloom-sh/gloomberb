@@ -68,7 +68,7 @@ test("the maturity wall is an inline bar column scaled to the dated years", asyn
   const row = (label: string) => lines.find((line) => line.includes(label));
   expect(row("MATURITY")).toContain("WALL");
   // The chart above is the wall's near end across filings, not the six rows again.
-  expect(lines.some((line) => line.includes("● Due next 12 months"))).toBe(true);
+  expect(lines.some((line) => line.includes("• Due next 12 months"))).toBe(true);
   // 10M to 50M across the dated years: the longest dated bucket fills the scale.
   const dated = ["InNextTwelve", "InYearTwo", "InYearThree", "InYearFour", "InYearFive"].map((label) => bar(row(label)));
   expect(dated).toEqual([...dated].sort((left, right) => left - right));

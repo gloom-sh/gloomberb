@@ -2,6 +2,7 @@ import type { PaneTemplateContext, PaneTemplateCreateOptions } from "../../../ty
 import type { PluginModule } from "../plugin-module";
 import { DEFAULT_FLOATING_SIZE, KELLY_PANE_ID } from "./constants";
 import { KellySizerPane } from "./pane";
+import { kellyHeadless } from "./headless";
 
 function resolveTemplateSymbol(context: PaneTemplateContext, options?: PaneTemplateCreateOptions): string | null {
   return options?.symbol
@@ -18,6 +19,8 @@ export const positionSizerModule: PluginModule = {
       reportFreshness: { source: "Your inputs and Gloom Cloud", status: "not-a-feed", basis: "position sizing" },
       name: "Position Sizer",
       icon: "K",
+      // The bankroll is the account's value.
+      personalData: "holdings",
       component: KellySizerPane,
       defaultPosition: "right",
       defaultMode: "floating",
@@ -40,6 +43,7 @@ export const positionSizerModule: PluginModule = {
         const symbol = resolveTemplateSymbol(context, options);
         return symbol ? { params: { symbol }, placement: "floating" } : null;
       },
+      headless: kellyHeadless,
     },
   ],
 };

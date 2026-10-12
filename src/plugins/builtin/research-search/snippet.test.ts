@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import {
-  highlightTerms,
   parseMarkedSnippet,
   snippetMatchTerms,
   snippetPlainText,
@@ -60,19 +59,5 @@ describe("truncateSegments", () => {
   test("returns the segments untouched when they already fit", () => {
     const segments = parseMarkedSnippet("<mark>fits</mark>");
     expect(truncateSegments(segments, 10)).toBe(segments);
-  });
-});
-
-describe("highlightTerms", () => {
-  test("matches case-insensitively and prefers the longest term", () => {
-    expect(highlightTerms("Free cash flow and cash", ["cash", "free cash flow"])).toEqual([
-      { text: "Free cash flow", marked: true },
-      { text: " and ", marked: false },
-      { text: "cash", marked: true },
-    ]);
-  });
-
-  test("leaves text intact when no term is usable", () => {
-    expect(highlightTerms("plain body", [])).toEqual([{ text: "plain body", marked: false }]);
   });
 });

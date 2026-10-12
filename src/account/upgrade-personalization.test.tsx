@@ -1,0 +1,125 @@
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { act } from "react";
+import { apiClient } from "../api-client";
+import { getCurrentPluginTarget, setCurrentPluginTarget } from "../plugins/current-target";
+import type { ExperimentAnswer } from "../api-client/web-experiments";
+import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
+import { AppContext, createInitialState } from "../state/app/context";
+import { setAppVisible } from "../state/app/activity";
+import { createStaticAppStore } from "../test-support/app-store";
+import { createTestTicker } from "../test-support/ticker";
+import { createDefaultConfig } from "../types/config";
+import { currentTelemetryConfig, reportTelemetryConfig } from "../telemetry/live-config";
+import { resetUsageCountsForTests } from "../telemetry/usage-counts";
+import { Text } from "../ui";
+import { proStepRealtimeTitle } from "./upgrade-dialog";
+import { useUpgradePersonalization } from "./upgrade-personalization";
+
+const tui = createOpenTuiTestHarness({ width: 80, height: 20 });
+const originalExposure = apiClient.recordExperimentExposure;
+let originalNavigator: PropertyDescriptor | undefined;
+let originalTarget = getCurrentPluginTarget();
+let originalTelemetry: ReturnType<typeof currentTelemetryConfig>;
+const optOutEnv = ["GLOOMBERB_NO_TELEMETRY", "DO_NOT_TRACK"] as const;
+let originalOptOutEnv: Array<string | undefined>;
+
+beforeEach(() => {
+  originalTelemetry = currentTelemetryConfig(undefined);
+  originalOptOutEnv = optOutEnv.map((key) => process.env[key]);
+  for (const key of optOutEnv) delete process.env[key];
+  resetUsageCountsForTests();
+  reportTelemetryConfig({ usage: true });
+  originalNavigator = Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  originalTarget = getCurrentPluginTarget();
+  Object.defineProperty(globalThis, "navigator", { configurable: true, value: {} });
+  setCurrentPluginTarget("tui");
+  setAppVisible(true);
+  apiClient.setSessionToken(null);
+});
+
+function signIn() {
+  act(() => {
+    apiClient.setSessionToken("personalization-test-session");
+    apiClient.restoreCachedUser({ id: `personalization-render-${crypto.randomUUID()}`, email: "test@example.com", emailVerified: true, plan: "free" });
+  });
+}
+
+function Probe({ shown }: { shown: boolean }) {
+  return <Text>{proStepRealtimeTitle(useUpgradePersonalization("onboarding-pro", shown))}</Text>;
+}
+
+async function render({ shown = true, held = true } = {}) {
+  const state = createInitialState(createDefaultConfig(`${process.env.HOME}/.cache/gloom-smoke/glo357/unit`));
+  state.tickers.set("NVDA", createTestTicker("NVDA", "Nvidia", {
+    watchlists: [state.config.watchlists[0]!.id],
+    positions: held ? [{ portfolio: "main", shares: 10, marketValue: 1000, broker: "manual" }] : [],
+  }));
+  await act(async () => {
+    await tui.render(<AppContext value={createStaticAppStore(state)}><Probe shown={shown} /></AppContext>);
+  });
+  await tui.waitForFrameToContain("Real-time");
+}
+
+afterEach(() => {
+  resetUsageCountsForTests();
+  reportTelemetryConfig(originalTelemetry?.telemetry);
+  optOutEnv.forEach((key, index) => {
+    const value = originalOptOutEnv[index];
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  });
+  apiClient.recordExperimentExposure = originalExposure;
+  setCurrentPluginTarget(originalTarget);
+  if (originalNavigator) Object.defineProperty(globalThis, "navigator", originalNavigator);
+  else Reflect.deleteProperty(globalThis, "navigator");
+  act(() => {
+    apiClient.setSessionToken(null);
+    apiClient.restoreCachedUser(null);
+    setAppVisible(true);
+  });
+});
+
+test("hidden, signed-out, seed-only and opted-out viewers keep generic copy without exposure", async () => {
+  let requests = 0;
+  apiClient.recordExperimentExposure = async () => {
+    requests++;
+    return { accepted: true, variant: "personalized" };
+  };
+  await render();
+  expect(tui.frame()).toContain("Real-time market data");
+  await tui.destroy();
+  signIn();
+  await render({ shown: false });
+  await render({ held: false });
+  act(() => setAppVisible(false));
+  await render();
+  expect(tui.frame()).toContain("Real-time market data");
+  expect(requests).toBe(0);
+  act(() => {
+    reportTelemetryConfig({ usage: false });
+    setAppVisible(true);
+  });
+  await render();
+  expect(tui.frame()).toContain("Real-time market data");
+  expect(requests).toBe(0);
+});
+
+test("the same visible eligibility enrolls both arms; changing accounts never reuses the previous copy", async () => {
+  for (const variant of ["control", "personalized"] as const) {
+    await tui.destroy();
+    signIn();
+    const response = Promise.withResolvers<ExperimentAnswer>();
+    let requests = 0;
+    apiClient.recordExperimentExposure = () => { requests++; return response.promise; };
+    await render();
+    expect(tui.frame()).toContain("Real-time market data");
+    expect(requests).toBe(1);
+    await act(async () => response.resolve({ accepted: true, variant }));
+    await tui.waitForFrameToContain(variant === "personalized" ? "Real-time quotes for NVDA" : "Real-time market data");
+    await render();
+    expect(requests).toBe(1);
+  }
+  act(() => apiClient.restoreCachedUser(null));
+  await render();
+  expect(tui.frame()).toContain("Real-time market data");
+});

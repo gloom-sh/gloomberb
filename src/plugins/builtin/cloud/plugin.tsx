@@ -12,14 +12,20 @@ import { cloudTweetsModule } from "../cloud-tweets";
 import { composeBuiltinPlugin, type PluginModule } from "../plugin-module";
 import { askgConversationListStore } from "./askg/conversation-store";
 import { ASKG_PANE_ID, ASKGPane } from "./askg/pane";
-import { askGloomQuestion } from "./askg/pending-question";
+import { askGloomQuestion, requestASKGPaneAttachment } from "./askg/pending-question";
+import { registerAskGloomPaneHandler } from "../../../ask-gloom/pane-request";
 import { registerCloudAuthCommands } from "./auth-commands";
+import { registerMcpConnectCommand } from "./mcp-connect/command";
 import { registerCloudUpgradeCommand } from "./upgrade-command";
 import { CloudUpgradeStatusWidget } from "./upgrade-status-widget";
 import { registerTrialOfferCommand, TrialOfferStatusWidget } from "./trial-offer-status-widget";
 import { CloudVerificationStatusWidget } from "./verification-status-widget";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { teamModule } from "./team/module";
+import { registerMcpConnectSection } from "./mcp-connect/sections";
+import { TerminalControlSection } from "./terminal-relay/connect-section";
+import { terminalRelayGrants } from "./terminal-relay/grants";
+import { TerminalRelayStatusWidget } from "./terminal-relay/indicator";
 import { thesisModule } from "./thesis/module";
 
 function createCloudDataModule(): PluginModule {
@@ -39,7 +45,7 @@ function createCloudDataModule(): PluginModule {
   };
 }
 
-/** Sign-in and upgrade commands, and the email verification, upgrade and trial prompts. */
+/** Sign-in, upgrade and MCP setup commands, and the email verification, upgrade and trial prompts. */
 const cloudAccountModule: PluginModule = {
   slots: {
     "status:widget": () => (
@@ -54,19 +60,36 @@ const cloudAccountModule: PluginModule = {
     registerCloudAuthCommands(ctx);
     registerCloudUpgradeCommand(ctx);
     registerTrialOfferCommand(ctx);
+    registerMcpConnectCommand(ctx);
   },
 };
+
+const ASKG_TEMPLATE_ID = "askg-pane";
+
+/** While Ask Gloom is on, every pane offers to be asked about. */
+let removeAskGloomPaneHandler: (() => void) | null = null;
 
 const askgModule: PluginModule = {
   setup(ctx) {
     // Only the dragged sidebar width is per device; the conversations
     // themselves belong to the account and are read from the cloud.
     askgConversationListStore.attach(ctx.persistence);
+    removeAskGloomPaneHandler?.();
+    removeAskGloomPaneHandler = registerAskGloomPaneHandler((attachment) => {
+      // The pane takes it once it is open: a new conversation with the pane attached.
+      requestASKGPaneAttachment(attachment);
+      ctx.createPaneFromTemplate(ASKG_TEMPLATE_ID);
+    });
+  },
+  dispose() {
+    removeAskGloomPaneHandler?.();
+    removeAskGloomPaneHandler = null;
   },
   panes: [{
     id: ASKG_PANE_ID,
     reportFreshness: { status: "not-a-feed", basis: "generated answer" },
     name: "Ask Gloom",
+    personalData: "messages",
     icon: "K",
     component: ASKGPane,
     defaultPosition: "right",
@@ -78,7 +101,7 @@ const askgModule: PluginModule = {
     },
   }],
   paneTemplates: [{
-    id: "askg-pane",
+    id: ASKG_TEMPLATE_ID,
     paneId: ASKG_PANE_ID,
     label: "Ask Gloom",
     description: "Ask a question about your panes and watch the tools Gloom runs",
@@ -93,6 +116,34 @@ const askgModule: PluginModule = {
       return { placement: "floating", instanceId: "askg:main" };
     },
   }],
+};
+
+/**
+ * Remote control from the Gloom Cloud MCP: which assistants were approved
+ * live with the profile, and the status chip shows one at work. The relay
+ * itself is mounted by the app (terminal-relay/host.tsx) and stays off while
+ * this plugin is.
+ */
+let removeTerminalControlSection: (() => void) | null = null;
+
+const terminalRelayModule: PluginModule = {
+  slots: {
+    "status:widget": () => <TerminalRelayStatusWidget />,
+  },
+  setup(ctx) {
+    terminalRelayGrants.attach(ctx.persistence);
+    removeTerminalControlSection?.();
+    removeTerminalControlSection = registerMcpConnectSection({
+      id: "terminal-control",
+      order: 10,
+      Component: TerminalControlSection,
+    });
+  },
+  dispose() {
+    removeTerminalControlSection?.();
+    removeTerminalControlSection = null;
+    terminalRelayGrants.detach();
+  },
 };
 
 const congressTradesModule: PluginModule = {
@@ -141,6 +192,7 @@ export function createGloomberbCloudPlugin(extraModules: readonly PluginModule[]
       accountManagementModule,
       cloudAccountModule,
       askgModule,
+      terminalRelayModule,
       ...extraModules,
       congressTradesModule,
       cloudTweetsModule,

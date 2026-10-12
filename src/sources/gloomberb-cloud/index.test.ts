@@ -4,7 +4,7 @@ import type { NewsCapability } from "../../capabilities";
 import { apiClient, type CloudNewsPayload } from "../../api-client";
 import { cloudNewsParams } from "./news";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
-import { ProviderMissError } from "../provider-errors";
+import { ProviderMissError, providerMissReason } from "../provider-errors";
 import { verifiedUser } from "../../test-support/cloud-api";
 
 const originalEnsureVerifiedSession = apiClient.ensureVerifiedSession.bind(apiClient);
@@ -130,6 +130,55 @@ describe("GloomberbCloudProvider", () => {
     }
   });
 
+  test("an empty answer carries the service's reason into the provider miss, cleaned, or none when it gave none", async () => {
+    const provider = new GloomberbCloudProvider();
+    const sentence = "Spot gold is not quoted; GC=F is the front-month future.";
+    const fixtures: Array<[string, unknown, string | undefined]> = [
+      ["present", sentence, sentence],
+      ["absent", undefined, undefined],
+      ["blank", "  \n ", undefined],
+      ["multi-line", `  ${sentence}\r\nSecond line\u001b[31m.\n`, `${sentence} Second line.`],
+      ["over-long", `${sentence} ${"More detail. ".repeat(40)}`, `${sentence} ${"More detail. ".repeat(40)}`.slice(0, 199).trimEnd() + "…"],
+    ];
+    for (const [name, message, expected] of fixtures) {
+      const empty = { status: "empty" as const, data: null, reasonCode: "NOT_FOUND", ...(message === undefined ? {} : { message: message as string }) };
+      apiClient.getCloudQuote = async () => empty;
+      apiClient.getCloudExchangeRate = async () => empty;
+      apiClient.getCloudQuotesBatch = async () => ({ status: "partial", data: { items: [{ symbol: "XAU/USD", exchange: "", ...empty }] } });
+      apiClient.getCloudFinancialsBatch = apiClient.getCloudQuotesBatch as unknown as typeof apiClient.getCloudFinancialsBatch;
+      const misses = [
+        await provider.getQuote("XAU/USD").catch((error) => error),
+        await provider.getExchangeRateSnapshot("XAU").catch((error) => error),
+        (await provider.getQuotesBatch([{ symbol: "XAU/USD" }]))[0]!.error,
+        (await provider.getTickerFinancialsBatch([{ symbol: "XAU/USD" }]))[0]!.error,
+      ];
+      for (const miss of misses) {
+        expect([name, miss instanceof ProviderMissError]).toEqual([name, true]);
+        expect([name, providerMissReason(miss)]).toEqual([name, expected]);
+      }
+    }
+    // An error status is a failure, not an empty answer: its text is not offered as a reason.
+    apiClient.getCloudQuote = async () => ({ status: "error", data: null, reasonCode: "UPSTREAM", message: sentence });
+    const failure = await provider.getQuote("XAU/USD").catch((error) => error);
+    expect(failure).not.toBeInstanceOf(ProviderMissError);
+    expect(failure.message).toBe("UPSTREAM");
+  });
+
+  test("only the NOT_FOUND reason code marks a miss as a symbol no listing carries", async () => {
+    const provider = new GloomberbCloudProvider();
+    const answer = (reasonCode: string, status: "empty" | "unsupported" = "empty") => ({ status, data: null, reasonCode });
+    for (const [reasonCode, notFound] of [["NOT_FOUND", true], ["NO_DATA", false], ["UNSUPPORTED_RANGE", false]] as const) {
+      const empty = answer(reasonCode);
+      apiClient.getCloudQuote = async () => empty;
+      apiClient.getCloudQuotesBatch = async () => ({ status: "partial", data: { items: [{ symbol: "APPLE", exchange: "", ...empty }] } });
+      const misses = [
+        await provider.getQuote("APPLE").catch((error) => error),
+        (await provider.getQuotesBatch([{ symbol: "APPLE" }]))[0]!.error,
+      ];
+      for (const miss of misses) expect([reasonCode, (miss as ProviderMissError).notFound]).toEqual([reasonCode, notFound]);
+    }
+  });
+
   test("uses host venue aliases at the cloud boundary without losing suffix or non-equity identity", async () => {
     const requests: Array<[string, string | undefined]> = [];
     apiClient.getCloudQuote = async (symbol, exchange) => {
@@ -155,6 +204,37 @@ describe("GloomberbCloudProvider", () => {
       expect((await provider.getQuote(symbol!, exchange)).symbol).toBe(symbol!);
       expect(requests.at(-1)).toEqual([requestSymbol, requestExchange]);
     }
+  });
+
+  test("asks for a Hong Kong listing by its four-digit code, as brokers report it without the zeros", async () => {
+    // IBKR reports Tencent as 700 on SEHK; Cloud only knows 0700.
+    const requests: Array<[string, string, string | undefined]> = [];
+    const quote = (symbol: string) => ({ symbol, price: 424.8, currency: "HKD", change: 0, changePercent: 0, lastUpdated: 1, listingExchangeName: "HKEX" });
+    apiClient.getCloudQuote = async (symbol, exchange) => {
+      requests.push(["quote", symbol, exchange]);
+      return { status: "success", data: quote(symbol) };
+    };
+    apiClient.getCloudQuotesBatch = async (targets) => {
+      for (const target of targets) requests.push(["batch", target.symbol, target.exchange]);
+      return { status: "success", data: { items: targets.map((target) => ({ ...target, status: "success" as const, data: quote(target.symbol) })) } };
+    };
+    apiClient.getCloudHistory = async (symbol, exchange) => {
+      requests.push(["history", symbol, exchange]);
+      return { status: "success", data: [{ date: "2026-10-09", close: 424.8 }] };
+    };
+    const provider = new GloomberbCloudProvider();
+    expect((await provider.getQuote("700", "SEHK")).price).toBe(424.8);
+    const targets = [{ symbol: "700", exchange: "SEHK" }, { symbol: "1211", exchange: "HKEX" }, { symbol: "7203", exchange: "TSEJ" }];
+    const batch = await provider.getQuotesBatch(targets);
+    // The four-digit answer still lands on the target that asked for 700.
+    expect(batch.find((result) => result.target === targets[0])?.quote?.price).toBe(424.8);
+    expect(batch.every((result) => result.quote)).toBe(true);
+    expect(await provider.getPriceHistory("5", "SEHK", "1M")).toHaveLength(1);
+    expect(requests).toEqual([
+      ["quote", "0700", "HKEX"],
+      ["batch", "0700", "HKEX"], ["batch", "1211", "HKEX"], ["batch", "7203", "JPX"],
+      ["history", "0005", "HKEX"],
+    ]);
   });
 
   test("rejects contradictory qualified listings before quote, research, history or auth transport", async () => {
@@ -234,7 +314,7 @@ describe("GloomberbCloudProvider", () => {
     expect([batchCalls, streamCalls, authCalls]).toEqual([2, 1, 1]);
   });
 
-  test("stale items in a successful quote batch cannot bypass single-quote freshness checks", async () => {
+  test("stale items in a successful quote batch and a stale single quote cannot pass as current", async () => {
     const targets = [{ symbol: "VOD", exchange: "NASDAQ" }, { symbol: "VOD:XLON", exchange: "LSE" }];
     const quote = { symbol: "VOD", price: 118, currency: "GBp", change: 1, changePercent: 0.85, lastUpdated: 1, stale: false };
     for (const status of ["success", "partial"] as const) {
@@ -250,7 +330,8 @@ describe("GloomberbCloudProvider", () => {
       expect(results[0]?.error?.message).toContain("stale");
       expect(results[1]?.target).toBe(targets[0]!);
       expect(results[1]?.quote).toMatchObject({ symbol: "VOD", currency: "USD", price: 15 });
-      await expect(provider.getQuote("VOD:XLON", "LSE")).rejects.toThrow("stale");
+      // A single stale answer comes back as the last price the service has, flagged stale.
+      expect(await provider.getQuote("VOD:XLON", "LSE")).toMatchObject({ price: 1.18, stale: true });
     }
   });
 

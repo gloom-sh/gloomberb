@@ -41,6 +41,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { formatGeoSeriesExpression } from "../chart-composer/series-expression";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { ENTITY_PAGE_SIZE, loadEntityDetail, loadEntityPage, loadWorldVenues } from "./client";
 import { EntityDetail } from "./entity-detail";
 import { useWorldMapEvidence } from "./evidence";
@@ -55,6 +56,7 @@ import {
   formatGeoValue,
   formatTickerLinks,
   isChangeColumn,
+  layerCoverageNote,
   LAYERS_SETTING_KEY,
   readVenuesSetting,
   sameGeoView,
@@ -63,9 +65,9 @@ import {
   WORLD_GEO_VIEW,
   type GeoView,
 } from "./layers";
-import { WorldVenueMap, type WorldMapFocus } from "./map";
+import { useMapKeyboard, WorldVenueMap, type WorldMapFocus } from "./map";
 import { usesClassTones } from "./map-symbols";
-import { filterWorldVenues } from "./model";
+import { filterWorldVenues, WORLD_MAP_HEIGHT_RATIO } from "./model";
 import { useGeoLayerFeed } from "./use-geo";
 import { SelectedVenueHeader } from "./venue-header";
 
@@ -88,8 +90,12 @@ type SortState = { key: string | null; dir: "asc" | "desc" };
 const NO_SORT: SortState = { key: null, dir: "asc" };
 /** How long the map rests before a table that follows it asks again. */
 const TABLE_VIEW_SETTLE_MS = 600;
-/** Layers go closer than venues: 64 times the world is the server's zoom 6, where flights and single ports show. */
-const LAYERED_MAX_ZOOM = 64;
+/**
+ * How close opening an entity frames its track: 64 times the world is the
+ * server's zoom 6, where flights and single ports show. The map itself goes much
+ * closer, by hand.
+ */
+const TRAIL_MAX_ZOOM = 64;
 
 function featureRow(feature: GeoFeature): GeoEntityRow {
   const [lon, lat] = featureAnchor(feature);
@@ -169,6 +175,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const dark = relativeLuminance(colors.text) > relativeLuminance(colors.bg);
   const { nativePaneChrome } = useUiCapabilities();
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const visible = usePaneVisible();
   const { hasProAccess } = usePlanAccess();
   const upgrade = useCloudUpgradeAction("map-layers");
@@ -216,6 +223,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   // Kept per pane, so docking, undocking, popping out or reloading reopens the map where it was.
   const [savedViewport, setSavedViewport] = usePluginPaneState<unknown>("map:viewport", null);
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
+  const mapKeys = useMapKeyboard(searchFocused);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
 
@@ -278,9 +286,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     });
   }, [setSelections, tableLayer.id]);
 
-  const openTicker = useCallback((link: GeoTickerLink) => {
-    createPaneFromTemplate("new-ticker-detail-pane", { symbol: tickerLinkKey(link) });
-  }, [createPaneFromTemplate]);
+  const openTicker = useCallback((link: GeoTickerLink) => openDescription(tickerLinkKey(link)), [openDescription]);
   const openSeries = useCallback((series: GeoSeriesInfo) => {
     createPaneFromTemplate("chart-composer-pane", { arg: formatGeoSeriesExpression(series.id) });
   }, [createPaneFromTemplate]);
@@ -312,7 +318,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     const lats = trail.map(([, lat]) => lat);
     const span = Math.max(Math.max(...lons) - Math.min(...lons), (Math.max(...lats) - Math.min(...lats)) * 2, 0.05);
     const last = trail.at(-1)!;
-    setFocus({ key: trailKey, longitude: last[0], latitude: last[1], zoom: Math.min(LAYERED_MAX_ZOOM, Math.max(entityOpenZoom(tableLayer), 360 / (span * 3))) });
+    setFocus({ key: trailKey, longitude: last[0], latitude: last[1], zoom: Math.min(TRAIL_MAX_ZOOM, Math.max(entityOpenZoom(tableLayer), 360 / (span * 3))) });
   }, [trailKey]);
   const overlay = useMemo<GeoMapOverlay>(() => ({ layers: mapLayers, selected: selection, trail }), [mapLayers, selection, trail]);
 
@@ -380,7 +386,7 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
   const listWidth = horizontal && !native ? Math.max(1, sidebarWidth - 1) : sidebarWidth;
   const mapWidth = horizontal ? Math.max(1, width - sidebarWidth) : width;
   // Stacked, the map takes the rows the world needs (plus the header and room to zoom), not half the pane.
-  const naturalMapRows = nativePaneChrome ? Math.ceil((width * 145) / 360 / 2.12) + 4 : Math.ceil((width * 145) / 360 / 2.25) + 3;
+  const naturalMapRows = nativePaneChrome ? Math.ceil((width * WORLD_MAP_HEIGHT_RATIO) / 2.12) + 4 : Math.ceil((width * WORLD_MAP_HEIGHT_RATIO) / 2.25) + 3;
   const mapSectionHeight = horizontal ? height : Math.max(8, Math.min(Math.floor(height * 0.52), naturalMapRows));
   const tableHeight = horizontal ? height : Math.max(4, height - mapSectionHeight);
   const mapHeight = Math.max(2, mapSectionHeight - 2);
@@ -422,10 +428,11 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
         value: tableLayer.id,
         options: layers.map((layer) => ({ value: layer.id, label: layer.name })),
         onChange: (id: string) => {
+          mapKeys.release();
           setTableLayer(id);
           setOpen(null);
         },
-        focused: focused && !searchFocused && !detailOpen,
+        focused: focused && !searchFocused && !detailOpen && !mapKeys.active,
       } : undefined}
     />
   );
@@ -437,13 +444,17 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
     : !tableReadable || pageStatus === "unavailable" ? `${tableLayer.name} unavailable.`
       : pages.error && !rows.length ? `${tableLayer.name} could not load.`
         : query.trim() ? "No matches." : `No ${tableLayer.name.toLowerCase()} in view.`;
+  // A one-country layer searched or panned outside its country is empty for that reason.
+  const coverage = layerCoverageNote(tableLayer);
   const emptyHint = tableLocked ? undefined
     : !tableReadable || pageStatus === "unavailable" ? unavailableNote
-      : pages.error && !rows.length ? pages.error.message : query.trim() ? "Clear search." : undefined;
+      : pages.error && !rows.length ? pages.error.message
+        : coverage ?? (query.trim() ? "Clear search." : undefined);
 
   const table = (
     <DataTableStackView<GeoEntityRow, EntityColumn>
-      focused={focused && !searchFocused}
+      focused={focused && !searchFocused && !mapKeys.active}
+      onTableMouseDown={mapKeys.release}
       selection={{
         kind: "id",
         selectedId: cursorId,
@@ -524,12 +535,12 @@ export function LayeredMapView({ focused, width, height, layers, tokens, plain =
           setHeaderSubject("venue");
         }}
         overlay={overlay}
-        maxZoom={LAYERED_MAX_ZOOM}
         onSelectGeo={onSelectGeo}
         onViewChange={onViewChange}
         focus={focus}
         savedViewport={savedViewport}
         onViewportSettled={setSavedViewport}
+        keyboard={mapKeys.keyboard}
       />
     </Box>
   );

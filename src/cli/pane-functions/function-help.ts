@@ -21,6 +21,9 @@ export interface FunctionHelpKey {
   label: string;
 }
 
+/** A function Free cannot fully open: Pro only, or a limited preview on Free. */
+export type FunctionAccess = "pro" | "preview";
+
 /** How fresh the function's data is on each plan, in the words a pane footer uses. */
 export interface FunctionFreshness {
   free: string;
@@ -36,14 +39,21 @@ export interface FunctionHelp {
   keys: readonly FunctionHelpKey[];
   /** Null when the function shows no market data (settings, your own notes). */
   data: FunctionFreshness | null;
+  /**
+   * What Free gets: `pro` when only Pro opens it, `preview` when Free sees a
+   * limited preview of the same data. Absent when Free gets the whole
+   * function, even where Pro makes it fresher.
+   */
+  access?: FunctionAccess;
   /** The Bloomberg mnemonics it stands in for; empty when Bloomberg has none. */
   bloomberg: readonly string[];
-  /** The docs entry when it is filed under another mnemonic (BTST under BT). */
+  /** The docs entry when it is filed under another mnemonic (BTST under BT), or the full URL of a page of its own. */
   docs?: string;
 }
 
-/** The docs page's anchor for a mnemonic, as the page builds heading ids. */
+/** The docs page's anchor for a mnemonic, as the page builds heading ids, or a full docs URL as is. */
 export function functionDocsUrl(code: string): string {
+  if (code.startsWith("https://")) return code;
   const anchor = code.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   return anchor ? `${FUNCTION_DOCS_URL}#${anchor}` : FUNCTION_DOCS_URL;
 }
@@ -109,7 +119,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["GP"],
   },
   GIP: {
-    summary: "One or five sessions of intraday candles with the session boundaries marked.",
+    summary: "One or five sessions of intraday candles, down to 1-minute bars, with the session boundaries marked.",
     usage: ["GIP TSLA"],
     keys: CHART_KEYS,
     data: QUOTES,
@@ -215,15 +225,17 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["RV"],
   },
   EQS: {
-    summary: "Screen covered stocks on valuation, growth, margins, liquidity, short interest, insider activity and 13F holders, then rank the matches by any metric.",
+    summary: "Screen covered stocks on valuation, growth, margins, liquidity, volatility, short interest, insider activity and 13F holders, then rank the matches by any metric. "
+      + "ATR% is the 14-session average true range as a percent of the last close. IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest.",
     usage: ["EQS"],
     keys: [key("a", "dd criterion"), key("m", "etric"), key("s", "ave screen"), key("o", "pen research")],
     data: same("Daily snapshot, statements as filed"),
     bloomberg: ["EQS"],
   },
   OMON: {
-    summary: "Calls and puts by expiry with bid, ask, volume, open interest, implied volatility and Greeks.",
-    usage: ["OMON NVDA"],
+    summary: "Calls and puts by expiry with bid, ask, spread, volume, open interest, implied volatility, Greeks, extrinsic per year and a put's cost as a percent of spot. "
+      + "The Strikes filter lists every strike, a count either side of the money, or a delta band such as .70 to .90 for deep in-the-money LEAPS.",
+    usage: ["OMON NVDA", "gloomberb fn OMON NVDA --expiration 2028-01-21"],
     keys: [key("c", "alc"), key("a", "dd to OSA"), key("s", "urface")],
     data: OPTIONS,
     bloomberg: ["OMON"],
@@ -251,22 +263,24 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["OVME", "OVML"],
   },
   OSA: {
-    summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise.",
-    usage: ["OSA AAPL"],
+    summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise. "
+      + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve.",
+    usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15",
+      "gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m"],
     keys: [key("a", "dd leg"), key("c", "hain"), key("d", "ate"), key("v", "ol shift")],
     data: OPTIONS,
     bloomberg: ["OSA"],
   },
   OVDV: {
     summary: "The implied volatility surface fitted from option quotes: 3D sheet, table, smiles, ATM term structure, 25-delta skew and forwards, live or on stored daily closes.",
-    usage: ["OVDV NVDA"],
+    usage: ["OVDV NVDA", "gloomberb fn OVDV NVDA --tab skew --expiration 2027-01-15", "gloomberb fn OVDV SPY --date 2026-10-09 --tab skew"],
     keys: [key("v", "iew"), key("c", "hain"), key("m", "ore expiries"), key("t", " stored dates")],
     data: { free: `${DELAYED}; stored dates at the close`, pro: "Real-time; stored dates at the close" },
     bloomberg: ["OVDV"],
   },
   HIVG: {
-    summary: "Daily 30- and 90-day at-the-money implied vol since February 2024 against realized vol, with each measure's 52-week rank and percentile.",
-    usage: ["HIVG AAPL"],
+    summary: "Daily 30-day, 90-day and one-year at-the-money implied vol since February 2024 against realized vol, with each measure's 52-week rank and percentile.",
+    usage: ["HIVG AAPL", "gloomberb fn HIVG SPY --lookback ALL --csv"],
     keys: [key("s", "urface")],
     data: IV_DAILY,
     bloomberg: ["HIVG", "GV"],
@@ -287,7 +301,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     docs: "HVT",
   },
   SEAS: {
-    summary: "Does this name have a calendar? Monthly returns for each year, every month's average, median and share of up years, and each year's path laid over one January-to-December axis.",
+    summary: "Does this name have a calendar? Monthly returns for each year, every month's average, median and share of up years, each year's path laid over one January-to-December axis, and each weekday's and the turn of the month's average session over five years of daily closes.",
     usage: ["SEAS AAPL"],
     keys: [],
     data: DAILY_CLOSES,
@@ -322,7 +336,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   VCA: {
-    summary: "IV rank, term slope, skew and IV against realized vol for up to 60 US tickers, flagged rich or cheap against each name's own year. Alone it screens index and sector ETFs.",
+    summary: "IV rank, one-year IV and its percentile, term slope, skew and IV against realized vol for up to 60 US tickers, flagged rich or cheap against each name's own year. Alone it screens index and sector ETFs.",
     usage: ["VCA", "VCA NVDA, AAPL, TSLA"],
     keys: [OPEN],
     data: IV_DAILY,
@@ -379,14 +393,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["ERN"],
   },
   DVD: {
-    summary: "Cash distributions, trailing yield, indicated rate when available, and payout growth. Future payments are not forecast.",
+    summary: "Cash distributions, trailing yield, the forward yield fundamentals show (latest distribution annualized), and payout growth. Future payments are not forecast.",
     usage: ["DVD KO"],
     keys: [STEP],
     data: same("Daily"),
     bloomberg: ["DVD"],
   },
   SI: {
-    summary: "FINRA short interest settlements with shares short, days to cover and average daily volume over time.",
+    summary: "FINRA short interest settlements with shares short, days to cover and average daily volume over time. Daily volume is the other tab.",
     usage: ["SI AAPL"],
     keys: [key("v", "iew"), STEP],
     data: same("Twice a month, as FINRA publishes"),
@@ -400,9 +414,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   SIV: {
-    summary: "FINRA daily off-exchange short volume as a share of volume, against its one-year range. Not short interest; SI has that.",
+    summary: "The short interest pane on Daily volume: FINRA off-exchange short volume as a share of volume, against its one-year range.",
     usage: ["SIV TSLA"],
-    keys: [STEP, OPEN_SOURCE],
+    keys: [key("v", "iew"), STEP, OPEN_SOURCE],
     data: same("Daily, the evening after each session"),
     bloomberg: [],
   },
@@ -411,6 +425,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["DIAG NVDA"],
     keys: [OPEN_SOURCE],
     data: { free: "A preview of the latest report, verified email", pro: "The full report, rerun on demand" },
+    access: "preview",
     bloomberg: [],
   },
   RISK: {
@@ -418,6 +433,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["RISK TSLA"],
     keys: [key("y", "ear"), key("o", "pen filing")],
     data: pro(AS_FILED.pro),
+    access: "pro",
     bloomberg: [],
   },
   EXEC: {
@@ -425,6 +441,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["EXEC NVDA"],
     keys: [key("y", "ear"), key("o", "pen filing")],
     data: pro(AS_FILED.pro),
+    access: "pro",
     bloomberg: ["MGMT"],
   },
   EK: {
@@ -432,6 +449,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["EK NVDA"],
     keys: [key("o", "pen filing")],
     data: pro(AS_FILED.pro),
+    access: "pro",
     bloomberg: ["CF"],
   },
   CALLS: {
@@ -439,6 +457,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["CALLS", "CALLS NVDA"],
     keys: [OPEN, key("/", "find"), OPEN_SOURCE],
     data: pro("Within hours of the call"),
+    access: "pro",
     bloomberg: ["EVT"],
   },
   JOBS: {
@@ -446,6 +465,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["JOBS", "JOBS NVDA"],
     keys: [key("1-4", " section"), key("o", "pen role"), key("c", "areers site")],
     data: pro("Daily"),
+    access: "pro",
     bloomberg: [],
   },
   SRCH: {
@@ -453,6 +473,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["SRCH data center capex"],
     keys: [SEARCH, key("Ctrl+S", " save search"), key("a", "lerts")],
     data: pro("As calls, stories and filings arrive"),
+    access: "pro",
     bloomberg: ["NSE"],
   },
   COVN: {
@@ -460,6 +481,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["COVN FICO"],
     keys: [TABS, OPEN, OPEN_SOURCE, key("f", "a"), key("m", "aturities")],
     data: { free: "As filed; three supported rows per section", pro: "As filed; all covenants, evidence and revisions" },
+    access: "preview",
     bloomberg: ["CAST"],
   },
   CRDOC: {
@@ -467,6 +489,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["CRDOC FICO", "COVN AAPL"],
     keys: [TABS, OPEN, OPEN_SOURCE, key("d", "es"), key("f", "a"), key("m", "aturities"), key("c", "ds")],
     data: { free: "As filed; three rows per section with supporting evidence", pro: "As filed; all stored terms, revisions and risk screens" },
+    access: "preview",
     bloomberg: ["CAST", "DDIS"],
   },
   ATTN: {
@@ -474,6 +497,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["ATTN", "ATTN 6758:JPX"],
     keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph"), key("n", "ews")],
     data: { free: "Three published rows per section and the latest history point", pro: "All published rows and hourly history; minimum one-hour publication lag" },
+    access: "preview",
     bloomberg: [],
   },
   HIRE: {
@@ -481,6 +505,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["HIRE", "HIRE NET", "HIRE 0700:HKEX"],
     keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph")],
     data: { free: "Latest values and three rows per section", pro: "Weekly history, all stored observations and evidence" },
+    access: "preview",
     bloomberg: [],
   },
   APPS: {
@@ -488,6 +513,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["APPS", "APPS META", "APPS 0700:HKEX"],
     keys: [TABS, OPEN, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("g", "raph")],
     data: { free: "Latest values and three rows per section", pro: "Daily observations, full history, countries and evidence" },
+    access: "preview",
     bloomberg: [],
   },
   CATL: {
@@ -495,6 +521,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["CATL", "CATL PFE", "CATL NOVN:SIX"],
     keys: [TABS, OPEN, OPEN_SOURCE, key("a", "lert"), key("d", "es")],
     data: { free: "Three events with primary-source evidence", pro: "All stored events, revision history and local alerts" },
+    access: "preview",
     bloomberg: [],
   },
   LITI: {
@@ -502,6 +529,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["LITI AAPL", "LITI MSFT"],
     keys: [TABS, OPEN, OPEN_SOURCE, key("t", "o calendar")],
     data: { free: "Three company events with evidence", pro: "All stored company dockets and history" },
+    access: "preview",
     bloomberg: ["LITI"],
   },
   KPIS: {
@@ -509,6 +537,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["KPIS CRM", "KPIS 005930:KRX"],
     keys: [TABS, OPEN, key("e", "vidence"), OPEN_SOURCE],
     data: { free: "Pro dataset; fixed latest preview with evidence", pro: "As disclosed; all stored observations and history" },
+    access: "preview",
     bloomberg: [],
   },
   GUIDE: {
@@ -516,6 +545,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["GUIDE DAL", "GUIDE CRM"],
     keys: [TABS, OPEN, key("e", "vidence"), OPEN_SOURCE],
     data: { free: "Pro dataset; fixed latest preview with evidence", pro: "As issued; full guidance history and actual matches" },
+    access: "preview",
     bloomberg: [],
   },
   EXPO: {
@@ -523,6 +553,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["EXPO AAPL=60% NVDA=40%", "EXPO PORT:portfolio-id", "EXPO WATCH:watchlist-id"],
     keys: [TABS, OPEN, key("s", "cenario and holdings"), key("e", "vidence"), key("a", "ll company disclosures"), key("v", "isibility"), key("o", "pen source")],
     data: { free: "One holding and one-hop evidence preview", pro: "Full holdings and up to four-hop paths, as filed" },
+    access: "preview",
     bloomberg: ["PORT", "SPLC"],
   },
   SPLC: {
@@ -530,6 +561,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["SPLC NVDA", "SUPPLY AAPL", "SPLC 005930.KS", "SPLC 8035.T"],
     keys: [OPEN, key("e", "vidence"), key("d", "es"), key("g", "raph")],
     data: { free: "Three relationships per role with evidence and a one-hop graph preview", pro: "Full evidence tiers, one-to-four-hop graphs and ranked paths" },
+    access: "preview",
     bloomberg: ["SPLC"],
   },
   AWARDS: {
@@ -537,6 +569,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["AWARDS", "AWARDS LMT", "AWARDS BA.:LSE"],
     keys: [TABS, OPEN, SEARCH, key("e", "vidence"), key("o", "pen source"), key("d", "es"), key("f", "a"), key("g", "raph"), key("s", "plc"), key("c", "alendar")],
     data: { free: "Pro preview: three rows per section", pro: "All collected awards, history, revisions and relationships" },
+    access: "preview",
     bloomberg: [],
   },
   SEG: {
@@ -544,6 +577,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["SEG AAPL"],
     keys: [],
     data: { free: "First two lines, about five weeks after each filing", pro: "Every line, about five weeks after each filing" },
+    access: "preview",
     bloomberg: [],
   },
   TAS: {
@@ -591,7 +625,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   ASKG: {
     summary: "Ask a question about what is on screen and watch the tools Gloom runs to answer it.",
     usage: ["ASKG why is NVDA down today"],
-    keys: [key("n", "ew conversation"), key("t", "ickers"), key("o", "pen pane")],
+    keys: [key("n", "ew conversation"), key("g", "ood answer"), key("b", "ad answer"), key("t", "ickers"), key("o", "pen pane")],
     data: null,
     bloomberg: ["ASKB"],
   },
@@ -691,7 +725,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["IMAP"],
   },
   FXC: {
-    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings.",
+    summary: "A cross-rate matrix for the major currencies, or for any of 45 chosen in its settings or with --currencies from the command line (gloomberb fn FXC --currencies USD,ZAR,NGN).",
     usage: ["FXC"],
     keys: [],
     data: FX,
@@ -702,6 +736,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["PERP", "PERP BTC", "PERP TSLA"],
     keys: [TABS, OPEN, SEARCH, key("e", "vidence"), key("a", "lert")],
     data: { free: "A fixed preview and any one market's latest values", pro: "Every market, full rankings and stored history; source timestamps retained" },
+    access: "preview",
     bloomberg: [],
   },
   CRYP: {
@@ -751,6 +786,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["POWER", "POWER NEE"],
     keys: [SEARCH, key("o", "pen source"), key("d", "es"), key("f", "a"), key("g", "raph"), key("s", "plc"), key("c", "ompute"), key("t", "BO")],
     data: { free: "Three rows per section; limited history", pro: "Snapshots as public registers update; coverage by region" },
+    access: "preview",
     bloomberg: [],
   },
   GPU: {
@@ -758,7 +794,16 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["GPU", "GPU H100", "GPU B200"],
     keys: [key("t", "BO")],
     data: same("Hourly asks and AWS spot; other published prices every 6 or 24 hours"),
+    access: "preview",
     bloomberg: [],
+  },
+  EPWR: {
+    summary: "Day-ahead power prices for 32 European markets in EUR/MWh, and the EU carbon allowance (EUA) auction price in EUR/tCO2. Each market shows its latest delivery day, the change on the day before, 7- and 30-day averages, a year ago and where it sits in its 52-week range, with its year charted and its history from 2015; the EUA shows its latest auction day, how the auction was covered, and its auctions since 2020. The Prices tab of POWER.",
+    usage: ["EPWR", "EPWR DE", "EPWR UK", "EPWR EUA"],
+    keys: [key("o", "pen Ember"), key("g", "raph"), key("c", "arbon")],
+    data: same("Daily; each market as of its latest published delivery day, usually a few days back; the EUA on each auction day"),
+    bloomberg: [],
+    docs: "POWER",
   },
   NGS: {
     summary: "Lower 48 working gas in storage and each region's, the week's injection or withdrawal against a year ago and the five-year average, charted over the year. The Gas Storage tab of DOE.",
@@ -794,6 +839,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     usage: ["FLOW"],
     keys: [OPEN],
     data: pro(REAL_TIME),
+    access: "pro",
     bloomberg: ["FLOW"],
   },
   HALT: {
@@ -813,7 +859,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   MAP: {
     summary: "Trading venues around the world with open or closed status, local time and time to the next session change. Layers add ships, chokepoints, ports, pipelines, fields, LNG terminals and airports to the same map, each with a table of what is in view and the companies it links to.",
     usage: ["MAP", "MAP ships", "MAP energy", "MAP air", "MAP ports"],
-    keys: [SEARCH, OPEN, key("d", "es"), key("+", " zoom in")],
+    keys: [SEARCH, key("d", "es"), key("m", " pan map"), key("+", " zoom in")],
     data: same("Venues live from exchange calendars; ships live, chokepoints and ports daily, the rest reference data"),
     bloomberg: [],
   },
@@ -848,7 +894,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["ECAN"],
   },
   CBR: {
-    summary: "Policy rates for the G20 central banks with the last move, its date and a one-year percentile; open one for its history.",
+    summary: "Policy rates for the G20 central banks, the SNB, Norges Bank, the Riksbank and the RBNZ with the last move, its date and a one-year percentile; open one for its history.",
     usage: ["CBR"],
     keys: [OPEN, OPEN_SOURCE],
     data: same("As each bank publishes, can lag a few days"),
@@ -869,15 +915,15 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["WIRP", "FFIP"],
   },
   CRD: {
-    summary: "ICE BofA US corporate option-adjusted spreads by rating bucket and high yield, with the day's change.",
-    usage: ["CRD"],
+    summary: "ICE BofA option-adjusted spreads: US investment grade and high yield by rating, and euro high yield, with the day's change.",
+    usage: ["CRD", "CRD --region euro"],
     keys: [OPEN],
     data: same("Daily close, published the next day"),
     bloomberg: ["CRD"],
   },
   AUCT: {
-    summary: "Bill, note, bond and TIPS auction results: high rate, bid-to-cover, indirect share and size, with the auctions announced next.",
-    usage: ["AUCT", "AUCT 10-year"],
+    summary: "Bill, note, bond and TIPS auction results: high rate, stop-out versus average, bid-to-cover, indirect, direct and dealer takedown and size, with the auctions announced next. Searchable by benchmark (10Y) or CUSIP; history reaches back 10 years.",
+    usage: ["AUCT", "AUCT 10Y", "AUCT 91282CRF0"],
     keys: [SEARCH, key("f", "ilter"), OPEN],
     data: same("Daily, after each auction"),
     bloomberg: ["AUCT"],
@@ -890,23 +936,23 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["BTMM"],
   },
   CDS: {
-    summary: "Single-name corporate CDS trades and 5Y spread history from DTCC public dissemination, by issuer with trade count and spread.",
+    summary: "Single-name corporate CDS from DTCC public dissemination. CDS alone lists the issuers traded in the last 5 days with trade count, last trade and 5Y spread, to rank them by; with a ticker or issuer, its 5Y spread (level, date, 1M change, range) and its trades.",
     usage: ["CDS", "CDS F"],
     keys: [OPEN, STEP],
     data: same("Delayed, as trades are disseminated"),
     bloomberg: ["CDS"],
   },
   CDX: {
-    summary: "CDX IG, HY and EM with iTraxx Main and Crossover on the run: the 5Y level, 1D and 1W moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY and EM in price.",
-    usage: ["CDX"],
-    keys: [OPEN],
+    summary: "CDX IG, HY and EM with iTraxx Main and Crossover on the run: the 5Y level, 1D, 1W and 1M moves, 1Y percentile and the day's print count. IG and iTraxx in spread, HY and EM in price. Naming an index adds its daily history. Sovereign CDS is the other tab.",
+    usage: ["CDX", "CDX XOVER"],
+    keys: [TABS, OPEN],
     data: same("Delayed, as trades are disseminated"),
     bloomberg: ["CDX"],
   },
   SOVR: {
-    summary: "Sovereign 5Y CDS ranked by the month's move, beside the local currency's move against the dollar, with each country's year of history.",
+    summary: "The CDS pane on Sovereign: 5Y CDS ranked by the month's move, beside the local currency's move against the dollar, with each country's year of history.",
     usage: ["SOVR"],
-    keys: [OPEN],
+    keys: [TABS, OPEN],
     data: same("Delayed, as trades are disseminated"),
     bloomberg: ["SOVR", "WCDS"],
   },
@@ -997,6 +1043,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [key("a", "dd"), OPEN, key("s", " grid")],
     data: QUOTES,
     bloomberg: [],
+    docs: "https://gloom.sh/docs/portfolio",
   },
   PORT: {
     summary: "Benchmark-relative risk, factor betas, and index, rate and VIX stress shifts for a portfolio. The Overview view in pane settings has P&L, Sharpe, beta and sector allocation.",
@@ -1014,7 +1061,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     docs: "PORT",
   },
   ALRT: {
-    summary: "Your price alerts with current price, distance to target and trigger state, plus market and filing event alerts.",
+    summary: "Your price alerts with current price, distance to target and trigger state, plus alerts days before earnings, CPI or FOMC and market and filing event alerts.",
     usage: ["ALRT"],
     keys: [key("a", "dd alert"), key("e", "dit"), key("d", "elete"), key("m", "re-arm")],
     data: QUOTES,
@@ -1127,6 +1174,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     data: null,
     bloomberg: [],
   },
+  MCP: {
+    summary: "Connects Claude Code, Codex, Cursor or any MCP client to Gloom's research tools: the command to copy, or a key to create.",
+    usage: ["MCP"],
+    keys: [key("c", "opy"), key("←/→", " client"), key("k", "ey")],
+    data: null,
+    bloomberg: [],
+    docs: "https://gloom.sh/docs/mcp",
+  },
   BR: {
     summary: "Broker profiles, account sync and connection status. Every broker is a plugin you install first.",
     usage: ["BR"],
@@ -1200,9 +1255,9 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   PL: {
-    summary: "The plugin directory: install from GitHub, and enable or disable the plugins you have.",
+    summary: "What Gloomberb is made of: switch built-ins on and off, one by one or by applying a starter pack, and install plugins from GitHub.",
     usage: ["PL"],
-    keys: [key("i", "nstall"), key("e", "nable"), key("s", "etup"), SEARCH],
+    keys: [key("e", "nable"), key("a", "pply pack"), key("i", "nstall"), SEARCH],
     data: null,
     bloomberg: [],
   },
@@ -1276,6 +1331,13 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     keys: [TABS, key("s", "end feedback")],
     data: null,
     bloomberg: ["HELP"],
+  },
+  DOCS: {
+    summary: "The docs and Academy lessons, searchable, inside the app. The ? on a pane opens that pane's entry; Back returns to where you were.",
+    usage: ["DOCS", "DOCS OMON", "DOCS options chain"],
+    keys: [SEARCH, OPEN, key("o", "pen in browser")],
+    data: null,
+    bloomberg: [],
   },
   FB: {
     summary: "A message and an optional screenshot, sent with scrubbed logs and app details; works signed out. FEEDBACK and BUG open it too.",

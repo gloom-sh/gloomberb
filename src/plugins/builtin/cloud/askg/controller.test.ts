@@ -5,10 +5,12 @@ import type {
   ASKGToolResultOutcome,
   ASKGTransport,
 } from "../../../../api-client/askg";
-import { ASKGSessionController } from "./controller";
+import { ASKGSessionController, CONFIRMATION_CLOSE_MARGIN_MS } from "./controller";
 import type { ASKGToolExecutor } from "./executor";
-import { pendingConfirmation } from "./model";
+import { canRateTurn, NOT_APPROVED_IN_TIME_NOTE, pendingConfirmation } from "./model";
 import type {
+  ASKGFeedback,
+  ASKGFeedbackRequest,
   ASKGSessionStartRequest,
   ASKGSessionStartResponse,
   ASKGSseEvent,
@@ -226,7 +228,7 @@ function negotiationHarness(accepted: unknown[]) {
   };
 }
 
-/** The conversation surface a turn-focused double never exercises. */
+/** The conversation and rating surface a turn-focused double never exercises. */
 const noConversations = {
   async listConversations() {
     return [];
@@ -239,6 +241,9 @@ const noConversations = {
   },
   async deleteConversation() {
     return false;
+  },
+  async sendFeedback() {
+    return null;
   },
 };
 
@@ -284,7 +289,7 @@ describe("ASKGSessionController", () => {
     await harness.controller.ask("second");
 
     expect(harness.sessionRequests).toHaveLength(1);
-    expect(harness.sessionRequests[0]?.capabilities).toEqual({ scripts: 1 });
+    expect(harness.sessionRequests[0]?.capabilities).toEqual({ scripts: 1, feedback: 1 });
     // Each turn decides alone, so each one repeats what the session accepted.
     expect(harness.turnRequests.map((request) => request.capabilities)).toEqual([
       { scripts: 1 },
@@ -296,7 +301,7 @@ describe("ASKGSessionController", () => {
     await harness.controller.ask("third");
 
     expect(harness.sessionRequests).toHaveLength(2);
-    expect(harness.sessionRequests[1]?.capabilities).toEqual({ scripts: 1 });
+    expect(harness.sessionRequests[1]?.capabilities).toEqual({ scripts: 1, feedback: 1 });
     expect(harness.turnRequests[2]).not.toHaveProperty("capabilities");
   });
 
@@ -348,6 +353,139 @@ describe("ASKGSessionController", () => {
     expect(harness.posted[0]).toMatchObject({ status: "ok" });
 
     harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
+  test("closes a prompt the server gave up on, and a late approval runs nothing", async () => {
+    const { executor, calls } = executorReturning({});
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    harness.emit(toolCallEvent(1, WRITE_TOOL));
+    harness.emit(toolCallEvent(2, WRITE_TOOL));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ toolCallId: "call-1" });
+
+    // The server stopped waiting for call-1: its prompt closes, call-2 still asks.
+    harness.emit({
+      seq: 3,
+      type: "tool-executed",
+      turnId: "turn-1",
+      toolCallId: "call-1",
+      name: WRITE_TOOL.name,
+      source: "remote-op",
+      status: "timeout",
+      summary: { elapsedMs: 60_000, truncated: false, note: "The client did not answer within 60000ms." },
+    });
+    await settle();
+    expect(harness.controller.getState().turns[0]?.tools[0]).toMatchObject({
+      status: "timeout",
+      note: NOT_APPROVED_IN_TIME_NOTE,
+    });
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ toolCallId: "call-2" });
+    // A click that arrives anyway writes nothing and tells the server nothing.
+    harness.controller.resolveConfirmation("call-1", true);
+    await settle();
+    expect(calls).toHaveLength(0);
+    expect(harness.posted).toHaveLength(0);
+
+    // The turn ends with call-2 still open: it closes the same way.
+    harness.emit({ seq: 4, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+    expect(pendingConfirmation(harness.controller.getState())).toBeNull();
+    harness.controller.resolveConfirmation("call-2", true);
+    await settle();
+    expect(calls).toHaveLength(0);
+    expect(harness.posted).toHaveLength(0);
+  });
+
+  test("closes a prompt on its own before the server stops waiting", async () => {
+    const { executor, calls } = executorReturning({});
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    // The frame's window, not the manifest's minute: an older server waits 10 s.
+    harness.emit(toolCallEvent(1, { ...WRITE_TOOL, timeoutMs: CONFIRMATION_CLOSE_MARGIN_MS + 20 }));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ toolCallId: "call-1" });
+
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toBeNull();
+    // Gloom hears why at once, while it still waits for the call.
+    expect(harness.posted).toEqual([expect.objectContaining({
+      toolCallId: "call-1",
+      status: "timeout",
+      note: NOT_APPROVED_IN_TIME_NOTE,
+    })]);
+
+    harness.controller.resolveConfirmation("call-1", true);
+    await settle();
+    expect(calls).toHaveLength(0);
+    expect(harness.posted).toHaveLength(1);
+
+    harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
+  test("asks about the change the app resolved, and the app does not ask again", async () => {
+    const executed: Array<{ confirmed?: boolean; confirmedChange?: string }> = [];
+    const executor: ASKGToolExecutor = {
+      async preview() {
+        return { kind: "change", summary: "Add MSFT (NASDAQ) to Tech", confirmKey: "add|tech|MSFT" };
+      },
+      async execute(call, options) {
+        executed.push({ confirmed: options?.confirmed, confirmedChange: options?.confirmedChange });
+        return { turnId: call.turnId, toolCallId: call.toolCallId, status: "ok", truncated: false, elapsedMs: 1 };
+      },
+      async undo() {
+        return { status: "ok", elapsedMs: 1 };
+      },
+    };
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    harness.emit(toolCallEvent(1, WRITE_TOOL));
+    await settle();
+    expect(pendingConfirmation(harness.controller.getState())).toMatchObject({ preview: "Add MSFT (NASDAQ) to Tech" });
+
+    harness.controller.resolveConfirmation("call-1", true);
+    await settle();
+    expect(executed).toEqual([{ confirmed: true, confirmedChange: "add|tech|MSFT" }]);
+
+    harness.emit({ seq: 2, type: "done", turnId: "turn-1", reason: "complete" });
+    await harness.streamed;
+  });
+
+  test("answers a refused or no-op change without asking", async () => {
+    const answers = [{ kind: "refusal", message: "Refused: \"Desk\" is a team watchlist." }, { kind: "no-change" }] as const;
+    const executed: Array<boolean | undefined> = [];
+    let next = 0;
+    const executor: ASKGToolExecutor = {
+      async preview() {
+        return answers[next++] ?? null;
+      },
+      async execute(call, options) {
+        executed.push(options?.confirmed);
+        return { turnId: call.turnId, toolCallId: call.toolCallId, status: "ok", truncated: false, elapsedMs: 1 };
+      },
+      async undo() {
+        return { status: "ok", elapsedMs: 1 };
+      },
+    };
+    const harness = createHarness({ script: [], executor });
+    await settle();
+
+    harness.emit(toolCallEvent(1, WRITE_TOOL));
+    harness.emit(toolCallEvent(2, WRITE_TOOL));
+    await settle();
+
+    expect(pendingConfirmation(harness.controller.getState())).toBeNull();
+    expect(harness.posted.map(({ toolCallId, status }) => [toolCallId, status])).toEqual([["call-1", "error"], ["call-2", "ok"]]);
+    expect(harness.posted[0]?.note).toContain("team watchlist");
+    expect(executed).toEqual([true]);
+
+    harness.emit({ seq: 3, type: "done", turnId: "turn-1", reason: "complete" });
     await harness.streamed;
   });
 
@@ -637,5 +775,164 @@ describe("ASKGSessionController", () => {
 
     expect(inputs).toEqual(["what is open"]);
     expect(controller.getState().turns).toHaveLength(1);
+  });
+});
+
+/**
+ * A controller whose every question is answered in full, on a server that
+ * takes ratings when `feedback` is set. `send` plays the rating route.
+ */
+function feedbackHarness(options: {
+  feedback?: boolean;
+  send?: (request: ASKGFeedbackRequest) => Promise<ASKGFeedback | null>;
+} = {}) {
+  const sent: Array<{ turnId: string; request: ASKGFeedbackRequest }> = [];
+  let turns = 0;
+  // Like the route: once sent, an answer stays sent.
+  let shared = false;
+  const transport: ASKGTransport = {
+    isStreamingSupported: () => true,
+    async startSession() {
+      return {
+        ...sessionResponse(),
+        ...(options.feedback === false ? {} : { capabilities: { feedback: 1 as const } }),
+      };
+    },
+    async streamTurn(_sessionId, request, streamOptions) {
+      const turnId = request.turnId;
+      streamOptions.onEvent({ seq: 1, type: "session", sessionId: "s1", turnId, model: "gloom-1", promptVersion: "v1", conversationId: "conv-1" });
+      streamOptions.onEvent({ seq: 2, type: "text-delta", turnId, delta: "Up 3% this week." });
+      streamOptions.onEvent({ seq: 3, type: "done", turnId, reason: "complete" });
+      return "complete";
+    },
+    async postToolResult() {
+      return "accepted";
+    },
+    async cancelTurn() {},
+    ...noConversations,
+    async sendFeedback(turnId, request) {
+      sent.push({ turnId, request });
+      if (options.send) return options.send(request);
+      shared = shared || request.share === true;
+      return { rating: request.rating, reason: request.reason ?? null, shared };
+    },
+  };
+  const controller = new ASKGSessionController({
+    transport,
+    loadManifest: async () => MANIFEST,
+    getExecutor: () => null,
+    client: { kind: "tui", version: "1" },
+    createId: () => `turn-${(turns += 1)}`,
+  });
+  return { controller, sent, turn: () => controller.getState().turns[0]! };
+}
+
+describe("ASKGSessionController answer ratings", () => {
+  test("a finished answer can be rated only on a server that said it takes ratings", async () => {
+    const older = feedbackHarness({ feedback: false });
+    await older.controller.ask("how is the fund doing");
+    expect(canRateTurn(older.controller.getState(), older.turn())).toBe(false);
+    await older.controller.rateAnswer(older.turn().id, "up");
+    expect(older.sent).toEqual([]);
+
+    const current = feedbackHarness();
+    await current.controller.ask("how is the fund doing");
+    expect(canRateTurn(current.controller.getState(), current.turn())).toBe(true);
+    await current.controller.rateAnswer(current.turn().id, "down");
+    expect(current.sent).toEqual([{ turnId: "turn-1", request: { rating: "down", reason: null } }]);
+    expect(current.turn().feedback).toEqual({ rating: "down", reason: null, shared: false, pending: null });
+  });
+
+  test("a reason rides on the thumbs down, sharing carries only consent, and a thumbs up drops the reason", async () => {
+    const { controller, sent, turn } = feedbackHarness();
+    await controller.ask("how is the fund doing");
+    await controller.rateAnswer(turn().id, "down");
+    await controller.chooseFeedbackReason(turn().id, "missing_data");
+    await controller.shareAnswer(turn().id);
+    // Already sent: a second send asks for nothing.
+    await controller.shareAnswer(turn().id);
+    await controller.rateAnswer(turn().id, "up");
+
+    expect(sent.map((entry) => entry.request)).toEqual([
+      { rating: "down", reason: null },
+      { rating: "down", reason: "missing_data" },
+      // No question, answer or tool in the request: the server copies its own.
+      { rating: "down", reason: "missing_data", share: true },
+      { rating: "up", reason: null },
+    ]);
+    expect(turn().feedback).toEqual({ rating: "up", reason: null, shared: true, pending: null });
+  });
+
+  test("a refused rating goes back quietly, and a refusal that means ratings cannot work hides them", async () => {
+    let failure: Error | null = new ASKGTransportError("network", "offline", { retryable: true });
+    const { controller, turn } = feedbackHarness({
+      send: async (request) => {
+        if (failure) throw failure;
+        return { rating: request.rating, reason: null, shared: false };
+      },
+    });
+    await controller.ask("how is the fund doing");
+
+    await controller.rateAnswer(turn().id, "up");
+    expect(turn().feedback).toBeUndefined();
+    expect(controller.getState().feedbackAvailable).toBe(true);
+
+    failure = null;
+    await controller.rateAnswer(turn().id, "up");
+    failure = new ASKGTransportError("unauthorized", "Sign in to Gloom Cloud to ask Gloom.");
+    await controller.rateAnswer(turn().id, "down");
+    expect(turn().feedback).toMatchObject({ rating: "up", pending: null });
+    expect(controller.getState().feedbackAvailable).toBe(false);
+    expect(canRateTurn(controller.getState(), turn())).toBe(false);
+  });
+
+  test("an answer the server does not know hides the control instead of failing on every click", async () => {
+    const { controller, turn } = feedbackHarness({ send: async () => null });
+    await controller.ask("how is the fund doing");
+    await controller.rateAnswer(turn().id, "down");
+
+    expect(turn().feedback).toBeUndefined();
+    expect(controller.getState().feedbackAvailable).toBe(false);
+  });
+
+  test("quick changes go out in order and the last choice is the one left showing", async () => {
+    const pending: Array<PromiseWithResolvers<ASKGFeedback | null>> = [];
+    const { controller, sent, turn } = feedbackHarness({
+      send: () => {
+        const next = Promise.withResolvers<ASKGFeedback | null>();
+        pending.push(next);
+        return next.promise;
+      },
+    });
+    await controller.ask("how is the fund doing");
+
+    const first = controller.rateAnswer(turn().id, "down");
+    const second = controller.rateAnswer(turn().id, "up");
+    await settle();
+    // The control shows the latest choice while both are out.
+    expect(turn().feedback).toMatchObject({ rating: "up", pending: "rating" });
+    expect(sent.map((entry) => entry.request.rating)).toEqual(["down"]);
+
+    pending[0]!.resolve({ rating: "down", reason: null, shared: false });
+    await first;
+    await settle();
+    // The older answer does not win, and the newer request only now goes out.
+    expect(turn().feedback).toMatchObject({ rating: "up", pending: "rating" });
+    expect(sent.map((entry) => entry.request.rating)).toEqual(["down", "up"]);
+
+    pending[1]!.resolve({ rating: "up", reason: null, shared: false });
+    await second;
+    expect(turn().feedback).toEqual({ rating: "up", reason: null, shared: false, pending: null });
+  });
+
+  test("a send the server could not complete says so on the answer", async () => {
+    const { controller, turn } = feedbackHarness({
+      send: async (request) => ({ rating: request.rating, reason: request.reason ?? null, shared: false }),
+    });
+    await controller.ask("how is the fund doing");
+    await controller.rateAnswer(turn().id, "down");
+    await controller.shareAnswer(turn().id);
+
+    expect(turn().feedback).toMatchObject({ rating: "down", shared: false, shareFailed: true });
   });
 });

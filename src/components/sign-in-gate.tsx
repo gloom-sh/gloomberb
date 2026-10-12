@@ -11,13 +11,13 @@ import { useState } from "react";
 import { t } from "../i18n";
 import { useAppLanguage } from "../i18n/react";
 import { matchesKeyChord, parseKeyChord } from "../app/keybindings";
-import { AuthForm, authFormTitle } from "../plugins/builtin/cloud/auth-form";
-import type { AccountMode } from "../plugins/builtin/cloud/auth-model";
+import { AuthForm, authFormTitle } from "../account/auth-form";
+import type { AccountMode } from "../account/auth-model";
 import {
   DeviceSignInPanel,
   isDeviceSignInRetryKey,
   useDeviceSignIn,
-} from "../plugins/builtin/cloud/device-signin-dialog";
+} from "../account/device-signin-dialog";
 import { useShortcut, useViewport } from "../react/input";
 import { useThemeColors } from "../theme/theme-context";
 import { Box, Text } from "../ui";

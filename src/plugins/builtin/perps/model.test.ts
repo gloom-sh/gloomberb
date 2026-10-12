@@ -1,6 +1,8 @@
 import { expect, test } from "bun:test";
-import { BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpCellText } from "./model";
-import { longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
+import { BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpCellText, perpDescription, readingTime,
+  underlyingTicker } from "./model";
+import { fundingNote } from "./freshness";
+import { equityBoard, longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
 
 test("paid funding normalizes each interval independently and stays separate from snapshots", () => {
   const time = "2026-10-03T01:00:00Z";
@@ -53,11 +55,15 @@ test("a narrow pane gives up figures before the venue, which alone tells one mar
   expect(ids(compareColumns(44))).toEqual(["venue", "symbol", "fundingRate8h"]);
 });
 
-test("the long share joins the board and compare without pushing off what a 100-column pane showed, and its history reads in points", () => {
+test("a 100-column board and comparison keep the long share beside when each venue was observed, and its history reads in points", () => {
   const ids = (columns: ReturnType<typeof boardColumns>) => columns.map((column) => column.id);
-  expect(ids(boardColumns(100))).toEqual(["market", "venue", "markPrice", "fundingRate", "premium", "openInterestUsd", "oiChange24h"]);
-  expect(ids(compareColumns(100))).toEqual(["venue", "symbol", "markPrice", "fundingRate", "fundingRate8h", "premium", "openInterestUsd"]);
-  expect(ids(compareColumns(110))).toContain("longShare");
+  expect(ids(boardColumns(100))).toEqual(["market", "venue", "markPrice", "fundingRate", "openInterestUsd", "longShare", "observedAt"]);
+  expect(ids(compareColumns(100))).toEqual(["venue", "symbol", "markPrice", "fundingRate8h", "openInterestUsd", "longShare", "observedAt"]);
+  // Venues are polled apart: a 720 px capture (about 90 columns) still says when each row was observed.
+  expect(ids(compareColumns(85)).at(-1)).toBe("observedAt");
+  // Wide enough for all of them, the annualised funding follows the long share and the observation time stays last.
+  expect(ids(boardColumns(200)).slice(-4)).toEqual(["longShare", "fundingApr", "priceChange24h", "observedAt"]);
+  expect(ids(compareColumns(200)).slice(-3)).toEqual(["longShare", "fundingApr", "observedAt"]);
   expect(perpCellText(venueRow("binance", { longShortRatio: longShort() }), "longShare")).toBe("61.8%");
   // A venue that publishes none, and a server older than the series, show a dash, never a number.
   expect(perpCellText(perpRow({ longShortRatio: null, longShortRatioReason: "unsupported" }), "longShare")).toBe("--");
@@ -78,4 +84,43 @@ test("the long share joins the board and compare without pushing off what a 100-
   expect(dayChange(rows.slice(1))).toBeNull();
   // Older servers send no long/short array: an empty series, not a failure.
   expect(historyRows(perpHistory(), "long-short")).toEqual([]);
+});
+
+test("a contract is described in plain words, on-chain only where the venue is", () => {
+  expect(perpDescription({ venue: "hyperliquid" })).toBe("Perpetual futures (24/7 on-chain market)");
+  expect(perpDescription({ venue: "binance" })).toBe("Perpetual futures (24/7 Binance market)");
+  expect(perpDescription({ venue: "okx" })).toBe("Perpetual futures (24/7 OKX market)");
+});
+
+test("a reading is dated only when it is not from today, in UTC", () => {
+  const now = Date.parse("2026-10-10T15:00:00Z");
+  expect(readingTime("2026-10-10T13:30:05.649Z", now)).toBe("13:30 UTC");
+  // 23:50 UTC yesterday is still yesterday however the local zone cuts the day.
+  expect(readingTime("2026-10-09T23:50:00Z", now)).toBe("2026-10-09 23:50 UTC");
+  expect(readingTime(null, now)).toBeNull();
+  expect(readingTime("not a time", now)).toBeNull();
+});
+
+test("funding reads as a current estimate with when it pays, naming venues only when they pay apart or report no time", () => {
+  const now = Date.parse("2026-10-11T02:24:00Z");
+  const eight = "2026-10-11T08:00:00Z";
+  expect(fundingNote([venueRow("binance", { nextFundingAt: eight }), venueRow("bybit", { nextFundingAt: eight })], now)).toBe("funding = current estimate, pays 08:00 UTC");
+  // Hyperliquid reports no next funding time, so it is not given Binance's.
+  expect(fundingNote([venueRow("binance", { nextFundingAt: eight }), perpRow()], now)).toBe("funding = current estimate, pays 08:00 UTC (Binance)");
+  expect(fundingNote([venueRow("binance", { nextFundingAt: "2026-10-12T00:00:00Z" })], now)).toBe("funding = current estimate, pays Mon 00:00 UTC");
+  expect(fundingNote([venueRow("deribit", { fundingKind: "continuous" }), venueRow("binance", { nextFundingAt: eight })], now))
+    .toBe("funding = current estimate (Binance), pays 08:00 UTC; accrues continuously (Deribit)");
+  expect(fundingNote([perpRow({ fundingRate: null, fundingRate8h: null })], now)).toBeNull();
+});
+
+test("a market opens the security it tracks on the listing its premium is read against, and crypto or an unlisted stock opens none", () => {
+  const quote = (symbol: string, listingExchange: string) => ({ symbol, listingExchange, price: 1, currency: "USD", asOf: "2026-10-11T12:00:00Z", marketState: "CLOSED", sourceUrl: "https://api.gloom.sh" });
+  // The listing the server matched wins over the reference quote's.
+  expect(underlyingTicker({ ...equityBoard({ symbol: "NET", exchange: "LSE" }).rows[0]!, underlying: quote("NET", "NYSE") })).toBe("NET:XLON");
+  // A US listing goes by its symbol, the key the stock's own DES is open under.
+  expect(underlyingTicker(equityBoard({ symbol: "AAPL", exchange: "NASDAQ" }).rows[0]!)).toBe("AAPL");
+  // A reference quote for another symbol lends it no listing.
+  expect(underlyingTicker(perpRow({ underlyingSymbol: "SHEL", underlying: quote("SHELL", "LSE") }))).toBe("SHEL");
+  expect(underlyingTicker(perpRow())).toBeNull();
+  expect(underlyingTicker(perpRow({ marketId: "hyperliquid:xyz:SKHX", assetClass: "stocks", underlyingSymbol: null }))).toBeNull();
 });

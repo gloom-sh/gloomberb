@@ -1,14 +1,24 @@
 const currencyFormatters = new Map<string, Intl.NumberFormat>();
 const numberFormatters = new Map<number, Intl.NumberFormat>();
 
-function getCurrencyFormatter(currency: string, maximumFractionDigits = 2): Intl.NumberFormat {
+/** Currencies whose minor unit is a thousandth (ISO 4217 exponent 3): an Omani share is OMR 1.366, not OMR 1.37.
+ * IQD is left out on purpose: it has the exponent in ISO 4217 but trades in whole units. */
+const THREE_DECIMAL_CURRENCIES = new Set(["BHD", "JOD", "KWD", "LYD", "OMR", "TND"]);
+
+/** Decimals a price or amount in this currency is shown to: 3 for the thousandth currencies, 2 for everything else. */
+export function currencyPriceDigits(currency: string | undefined): 2 | 3 {
+  return currency != null && THREE_DECIMAL_CURRENCIES.has(currency.trim().toUpperCase()) ? 3 : 2;
+}
+
+function getCurrencyFormatter(currency: string, maximumFractionDigits: number = currencyPriceDigits(currency)): Intl.NumberFormat {
   const key = `${currency}:${maximumFractionDigits}`;
   let formatter = currencyFormatters.get(key);
   if (!formatter) {
     formatter = new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
-      minimumFractionDigits: 2,
+      // Whole units (0) drop the cents rather than throw.
+      minimumFractionDigits: Math.min(currencyPriceDigits(currency), maximumFractionDigits),
       maximumFractionDigits,
     });
     currencyFormatters.set(key, formatter);
@@ -29,15 +39,36 @@ function getNumberFormatter(decimals: number): Intl.NumberFormat {
 }
 
 /** Format a number as currency (e.g., $1,234.56) */
-export function formatCurrency(value: number | undefined, currency = "USD", maximumFractionDigits = 2): string {
+/**
+ * An amount in a currency. A code the runtime cannot format as money (USDT, a
+ * stablecoin perpetual venues quote in) reads as the code before the amount,
+ * as a price in it does: USDT101.70.
+ */
+function formatMoney(value: number, currency: string, maximumFractionDigits: number): string {
+  try {
+    return getCurrencyFormatter(currency, maximumFractionDigits).format(value);
+  } catch {
+    const body = new Intl.NumberFormat("en-US", {
+      minimumFractionDigits: Math.min(currencyPriceDigits(currency), maximumFractionDigits),
+      maximumFractionDigits,
+    }).format(Math.abs(value));
+    return `${value < 0 && /[1-9]/.test(body) ? "-" : ""}${currency.trim().toUpperCase()}${body}`;
+  }
+}
+
+export function formatCurrency(
+  value: number | undefined,
+  currency = "USD",
+  maximumFractionDigits: number = currencyPriceDigits(currency),
+): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return getCurrencyFormatter(currency, maximumFractionDigits).format(value);
+  return formatMoney(value, currency, maximumFractionDigits);
 }
 
 /** Preserve fractional per-share distributions, including split-adjusted history. */
 export function formatDistributionAmount(value: number | undefined, currency = "USD"): string {
   if (value == null || !Number.isFinite(value)) return "—";
-  return getCurrencyFormatter(currency, 6).format(value);
+  return formatMoney(value, currency, 6);
 }
 
 /** Signs a fixed-decimal move; one that rounds to zero is unsigned (0.00, never +0.00 or -0.00). */

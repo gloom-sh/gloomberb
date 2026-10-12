@@ -1,10 +1,11 @@
 import type { AppConfig } from "../../../../types/config";
 import type { CliCommandContext } from "../../../../types/plugin";
-import type { TickerRecord } from "../../../../types/ticker";
-import { parseListingArg, type SavedListingName } from "../../../../cli/listing-arg";
-import { isUsListingExchange } from "../../../../utils/exchanges";
+import { parseListingArg } from "../../../../cli/listing-arg";
 import { findPortfolio, isManualPortfolio } from "../mutations";
 import { CASH_SYMBOL } from "../allocation";
+import { findNamedCollection } from "../../../../portfolio/collection-name";
+
+export { listingFields } from "../../../../cli/listing-arg";
 
 /** A command error with a hint printed under it. */
 export class PortfolioCliError extends Error {
@@ -23,9 +24,23 @@ export function failPortfolioCommand(ctx: CliCommandContext, error: unknown, fal
   return ctx.fail(fallback);
 }
 
-/** What add and remove report about the listing they changed, as JSON and as the sentence's subject. */
-export function listingFields(saved: SavedListingName) {
-  return { listing: saved.key, symbol: saved.symbol, exchange: saved.exchange || null, name: saved.name };
+/**
+ * The portfolio or watchlist the leading arguments name, and the arguments
+ * after it. The first argument is the name (quoted when it has spaces); an
+ * unquoted name with spaces still works, as the longest leading run of
+ * arguments that names a collection. Null when none does, so a symbol is never
+ * read as part of a name.
+ */
+export function takeCollectionName<T extends { id: string; name: string }>(
+  args: readonly string[],
+  collections: readonly T[],
+): { collection: T; rest: string[] } | null {
+  for (let length = args.length; length >= 1; length -= 1) {
+    const name = args.slice(0, length).join(" ");
+    const collection = findNamedCollection(collections, name);
+    if (collection) return { collection, rest: args.slice(length) };
+  }
+  return null;
 }
 
 export function parseFiniteNumber(rawValue: string | undefined, label: string): number {
@@ -71,16 +86,4 @@ export function rejectCashSymbol(symbol: string, exchange: string | undefined, p
     "CASH is the portfolio's cash line, not a ticker.",
     `Record cash with: gloomberb portfolio cash set "${portfolioName}" <amount> [currency]. For the stock that trades as CASH, name its exchange: CASH:NASDAQ.`,
   );
-}
-
-/** `VTI (Vanguard Total Stock Market ETF)`, with the venue and currency for a listing outside the US. */
-export function describeTicker(ticker: TickerRecord): string {
-  const { ticker: symbol, name, exchange, currency } = ticker.metadata;
-  const foreign = !!exchange && !isUsListingExchange(exchange);
-  const details = [
-    name?.trim(),
-    foreign ? exchange : undefined,
-    foreign && currency && currency.toUpperCase() !== "USD" ? currency.toUpperCase() : undefined,
-  ].filter((part): part is string => !!part);
-  return details.length > 0 ? `${symbol} (${details.join(", ")})` : symbol;
 }

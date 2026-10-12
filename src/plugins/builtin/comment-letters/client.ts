@@ -277,9 +277,7 @@ export type IssuerFilingsLoader = (ticker: string, force: boolean) => Promise<{
 
 export class CommentLettersClient {
   private async getJson(url: string, signal?: AbortSignal): Promise<unknown> {
-    const response = await lettersFetch.fetch(url, {
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT_MS)]) : undefined,
-    });
+    const response = await lettersFetch.fetch(url, { signal });
     if (!response.ok) throw new Error(`SEC full-text search failed (${response.status})`);
     return response.json();
   }

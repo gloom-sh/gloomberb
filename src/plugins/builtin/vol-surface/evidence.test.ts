@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { fitVolatilitySmile } from "../shared/volatility";
 import { buildSurfaceGrid, DEFAULT_SURFACE_SETTINGS, pendingSurfaceExpiry, type SurfaceExpiry,
   type SurfacePoint, type SurfaceSnapshot } from "./model";
-import { readVolSurfaceEvidence, volSurfaceSemanticEvidence, type VolSurfaceEvidenceInput } from "./evidence";
+import { readVolSurfaceEvidence, volSurfaceEvidenceMetadata, volSurfaceSemanticEvidence, type VolSurfaceEvidenceInput } from "./evidence";
 
 function input(view = "surface"): VolSurfaceEvidenceInput {
   const now = Date.UTC(2026, 8, 22);
@@ -70,4 +70,12 @@ test("smile and term evidence follow the active plotted series and reject a wron
   const empty = volSurfaceSemanticEvidence({ ...rendered,
     snapshot: { ...rendered.snapshot!, expiries: rendered.snapshot!.expiries.map((expiry) => ({ ...expiry, atmIV: null })) } });
   expect(readVolSurfaceEvidence(empty)).toBeNull();
+});
+
+test("a capture waits while an expiry is still loading and goes when every expiry has answered", () => {
+  const rendered = input();
+  expect(volSurfaceEvidenceMetadata(rendered).ready).toBe(true);
+  expect(volSurfaceEvidenceMetadata({ ...rendered, loading: true }).ready).toBe(false);
+  // Partial snapshot with a settled flag: one of two expiries has answered.
+  expect(volSurfaceEvidenceMetadata({ ...rendered, snapshot: { ...rendered.snapshot!, loaded: 1, phase: "partial" } }).ready).toBe(false);
 });

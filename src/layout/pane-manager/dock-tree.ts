@@ -261,6 +261,24 @@ export function getDockDividerLayouts(layout: LayoutConfig, bounds: LayoutBounds
   return collectDockGeometry(layout.dockRoot, bounds, [], [], [], options).dividers;
 }
 
+/**
+ * The leaves and dividers under the split at `path`, laid out in `bounds`
+ * (the split's own) as they will be once its ratio is `ratio`: what a divider
+ * drag moves, as `resizeSplitAtPath` will lay it out, without the rest of the
+ * tree. Null when no split is at `path`.
+ */
+export function getDockSplitGeometry(
+  layout: LayoutConfig,
+  path: Array<0 | 1>,
+  bounds: LayoutBounds,
+  ratio: number,
+  options?: DockGeometryOptions,
+): { leaves: DockLeafLayout[]; dividers: DockDividerLayout[] } | null {
+  const node = getNodeAtPath(layout.dockRoot, path);
+  if (!node || node.kind !== "split") return null;
+  return collectDockGeometry({ ...node, ratio: clampRatio(ratio) }, bounds, path, [], [], options);
+}
+
 function isPathPrefix(prefix: Array<0 | 1>, path: Array<0 | 1>): boolean {
   return prefix.length <= path.length && prefix.every((segment, index) => path[index] === segment);
 }

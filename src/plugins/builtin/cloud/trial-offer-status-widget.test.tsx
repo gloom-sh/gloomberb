@@ -21,6 +21,7 @@ const previousTarget = getCurrentPluginTarget();
 const originalPricing = apiClient.getCloudPricing;
 const inputHost: InputHost = {
   useShortcut() {},
+  useBeforeShortcut() {},
   useViewport: () => ({ width: 160, height: 40 }),
 };
 

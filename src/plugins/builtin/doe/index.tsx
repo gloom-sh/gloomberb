@@ -1,6 +1,7 @@
 import type { DoeTab } from "../../../api-client/doe";
 import type { PaneTemplateCreateOptions, PaneTemplateInstanceConfig } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
+import { DOE_SERIES } from "./series";
 import { doeBoardCache } from "./client";
 import { doeHeadless } from "./headless";
 import { DOE_SERIES_OPTIONS, doeSeriesOption } from "./model";
@@ -20,6 +21,7 @@ const shortcut = (prefix: string, tab: DoeTab | null) => ({
 });
 
 export const doeModule: PluginModule = {
+  series: DOE_SERIES,
   panes: [{ id: "doe", name: "Oil and Gas Inventories", icon: "D", component: DoePane,
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 96, height: 34 },
     tableExport: true, headless: doeHeadless("all") }],

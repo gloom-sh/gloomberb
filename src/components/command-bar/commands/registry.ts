@@ -148,6 +148,14 @@ export const commands: Command[] = [
   },
 
   {
+    id: "share-pane",
+    prefix: "",
+    aliases: ["share pane", "share to chat"],
+    label: "Share",
+    description: "Post a picture of the focused pane to chat or copy its link",
+    category: "Config",
+  },
+  {
     id: "pane-settings",
     prefix: "PS",
     label: "Pane Settings",
@@ -206,6 +214,13 @@ export const commands: Command[] = [
     execute: (dispatch) => {
       dispatch({ type: "TOGGLE_STATUS_BAR" });
     },
+  },
+  {
+    id: "toggle-presentation-mode",
+    prefix: "",
+    label: "Toggle Presentation Mode",
+    description: "Let the panes fill the window, without the header or the status bar",
+    category: "Config",
   },
   {
     id: "toggle-value-flashing",

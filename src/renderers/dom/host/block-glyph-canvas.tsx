@@ -1,5 +1,6 @@
 /** @jsxImportSource react */
-import { memo, useEffect, useRef, useState, type CSSProperties } from "react";
+import { memo, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useThemeId } from "../../../theme/theme-context";
 
 /**
  * Quadrant coverage for the 2x2 block glyphs the ascii fonts are built from,
@@ -84,11 +85,13 @@ export const BlockGlyphCanvas = memo(function BlockGlyphCanvas({
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const pixelRatio = useDevicePixelRatio();
+  // `color` can be inherited or a CSS variable whose string never changes.
+  const themeId = useThemeId();
   const columns = Math.max(0, ...lines.map((line) => [...line].length));
   const width = columns * cellWidth;
   const height = lines.length * cellHeight;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const context = canvas.getContext("2d");
@@ -103,7 +106,7 @@ export const BlockGlyphCanvas = memo(function BlockGlyphCanvas({
     // One path for every cell: a union has no anti-aliased seams between
     // neighbouring quadrants, separate fills would.
     context.fill(blockGlyphPath(lines, cellWidth, cellHeight));
-  }, [cellHeight, cellWidth, color, height, lines, pixelRatio, width]);
+  }, [cellHeight, cellWidth, color, height, lines, pixelRatio, style?.color, themeId, width]);
 
   return (
     <canvas

@@ -7,7 +7,7 @@ export const socialMentionsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", description: "Ticker with a searchable cashtag (up to six letters and digits).", placeholder: "ticker" },
   freshness: { source: "X posts", status: "not-a-feed", basis: "daily post counts" },
   discovery: { aliases: ["BUZZ"], dataRequirements: ["Gloom Cloud X mention history"],
-    limitations: ["Daily $cashtag posts on X in UTC days, spam included", "Top posts and stance cover days that were looked up", "Views exist from 2022-12-22"] },
+    limitations: ["Daily $cashtag posts on X in UTC days, spam included.", "Top posts and stance cover days that were looked up.", "Views exist from 2022-12-22."] },
   options: [
     { key: "range", type: "enum", description: "History window.", values: [{ value: "1y" }, { value: "5y" }, { value: "max" }], defaultValue: "1y", settingKey: "socialRange" },
   ],

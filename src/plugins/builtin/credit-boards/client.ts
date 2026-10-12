@@ -32,6 +32,7 @@ function validateCdxBoard(payload: CdxBoardPayload): CdxBoardPayload {
     !index || typeof index.id !== "string" || typeof index.name !== "string"
     || (index.quote !== "spread" && index.quote !== "price")
     || !finiteOrNull(index.level) || !finiteOrNull(index.change1D) || !finiteOrNull(index.change1W)
+    || (index.change1M !== undefined && !finiteOrNull(index.change1M))
     || !finiteOrNull(index.prints) || (index.date !== null && !isDate(index.date)) || !validPoints(index.points))) {
     throw new Error("The server returned an invalid index CDS board");
   }
@@ -50,8 +51,11 @@ function validateSovrBoard(payload: SovrBoardPayload): SovrBoardPayload {
 
 type BoardClient = Pick<typeof apiClient, "getCloudCdxBoard" | "getCloudSovrBoard">;
 
-export async function fetchCdxBoard(client: BoardClient = apiClient): Promise<CdxBoardPayload> {
-  try { return validateCdxBoard(await client.getCloudCdxBoard({ days: BOARD_DAYS })); }
+/** Days of history the server serves at most, for a history export. */
+export const CDX_MAX_DAYS = 1100;
+
+export async function fetchCdxBoard(client: BoardClient = apiClient, days = BOARD_DAYS): Promise<CdxBoardPayload> {
+  try { return validateCdxBoard(await client.getCloudCdxBoard({ days })); }
   catch (error) { throw unavailableOnServer(error, "Index CDS levels are not available yet."); }
 }
 

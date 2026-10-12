@@ -14,6 +14,7 @@ import {
   shotExpectedText,
   shotSemanticRowCount,
   shotUnavailableSymbols,
+  shownReportTab,
   stripDesktopShotCredentials,
   type PaneScreenshotExpectedChartEvidence,
   type PaneScreenshotExpectedSelection,
@@ -39,6 +40,7 @@ import { optionsCalculatorHeadless } from "../../plugins/builtin/options-calcula
 import { valueOption, solveImpliedVolatility } from "../../plugins/builtin/shared/volatility";
 import { loadSeasonalityHistory } from "../../plugins/builtin/seasonality/client";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
+import { MARGIN_PORTFOLIO, MARGIN_TICKERS, marginQuotes } from "../../test-support/margin-account";
 import type { FinancialStatement, PricePoint, TickerFinancials } from "../../types/financials";
 import { loadPeriodEndHistory } from "../../plugins/builtin/ticker-detail/financials/period-end-history";
 import {
@@ -657,6 +659,17 @@ describe("pane screenshot active-state verification", () => {
   });
 });
 
+test("a capture's report is the one for the tab it shows, when another was asked for", () => {
+  const doe = { headless: { options: [{ key: "tab", values: ["all", "crude", "products", "gas"].map((value) => ({ value })) }] } } as never as ResolvedPaneFunction;
+  const shows = (active: string): RemoteUiNodeSnapshot[] => [{ id: "tabs", role: "tabs", actions: [], metadata: { activeValue: active } }];
+  // `DOE --tab all` draws Crude: dated by the petroleum report, not the newest of the three.
+  expect(shownReportTab({ ...doe, options: { tab: "all" } }, shows("crude"))).toBe("crude");
+  expect(shownReportTab({ ...doe, options: { tab: "gas" } }, shows("gas"))).toBeUndefined();
+  // A tab strip the report has no option for, or a report without a tab option, changes nothing.
+  expect(shownReportTab({ ...doe, options: { tab: "all" } }, shows("history"))).toBeUndefined();
+  expect(shownReportTab({ headless: { options: [] }, options: {} } as never, shows("crude"))).toBeUndefined();
+});
+
 describe("pane screenshot chart-data verification", () => {
   const expected: PaneScreenshotExpectedChartEvidence = {
     kind: "price-comparison",
@@ -1110,4 +1123,46 @@ test("screenshot bridge fetches tape through Bun with the exact listing identity
   expect(await bridge.marketData("getCloudTape",["AAPL","NASDAQ"])).toMatchObject({trades:[{id:"18446744073709551615",timestamp:"2026-09-22T16:59:58.545074403Z"}]});
   expect(calls).toEqual([["AAPL","NASDAQ"]]);
   await expect(bridge.marketData("getCloudTape",["AAPL"])).rejects.toThrow("listing exchange");
+});
+
+describe("portfolio screenshot members", () => {
+  const request = {
+    pane: { id: "portfolio-list" }, capability: { id: "portfolio-list-pane", options: [] },
+    instance: { instanceId: "pf:test", paneId: "portfolio-list", binding: { kind: "none" }, settings: {} }, options: {},
+  } as unknown as ResolvedPaneFunction;
+  const option = MARGIN_TICKERS.find(({ metadata }) => metadata.assetCategory === "OPT")!;
+  const quotes = marginQuotes();
+  const capture = (provider: Partial<MarketContext["dataProvider"]> = {}, held = MARGIN_TICKERS) => buildDesktopShotPayload(request, {
+    config: { ...createDefaultConfig("/tmp/portfolio-shot-test"), portfolios: [MARGIN_PORTFOLIO] },
+    store: {
+      loadAllTickers: async () => held,
+      loadTicker: async (symbol: string) => held.find(({ metadata }) => metadata.ticker === symbol) ?? null,
+    },
+    dataProvider: createTestDataProvider({
+      getTickerFinancials: async (symbol) => {
+        const financials = quotes.get(symbol);
+        if (!financials) throw new Error(`Cloud financials are unavailable for ${symbol}`);
+        return financials;
+      },
+      ...provider,
+    }),
+  } as unknown as MarketContext, "", {}, 1200, 800, null, 1, null);
+
+  test("a holding no quote prices stays at its broker mark instead of failing the capture", async () => {
+    const shot = await capture();
+    expect(shot.tickers.map(({ metadata }) => metadata.ticker)).toEqual(["AAA", "BBB", option.metadata.ticker]);
+    expect(shot.financials.map(([symbol]) => symbol)).toEqual(["AAA", "BBB"]);
+    expect(shot.tickers.at(-1)!.metadata.positions[0]).toMatchObject({ markPrice: 100, multiplier: 100 });
+  });
+
+  test("still fails for a holding the broker never marked", async () => {
+    const [stock] = MARGIN_TICKERS;
+    const unmarked = { metadata: { ...stock!.metadata, positions: [{ ...stock!.metadata.positions[0]!, markPrice: undefined, marketValue: undefined }] } };
+    await expect(capture({
+      getTickerFinancials: async (symbol) => {
+        if (symbol === "AAA") throw new Error("Cloud financials are unavailable for AAA");
+        return quotes.get(symbol)!;
+      },
+    }, [unmarked, ...MARGIN_TICKERS.slice(1)])).rejects.toThrow("unavailable for AAA");
+  });
 });

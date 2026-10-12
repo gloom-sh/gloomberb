@@ -73,6 +73,9 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_KEYBINDINGS":
       return { ...state, config: updateKeybindingsConfig(state.config, action.keybindings) };
 
+    case "SET_STAR_PROMPT":
+      return { ...state, config: { ...state.config, starPrompt: action.starPrompt } };
+
     case "SET_TICKERS":
       return { ...state, tickers: action.tickers };
 
@@ -214,11 +217,11 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case "SET_UPDATE_NOTICE":
       return { ...state, updateNotice: action.notice };
 
-    case "TOGGLE_PLUGIN": {
-      const disabledPlugins = state.config.disabledPlugins.includes(action.pluginId)
-        ? state.config.disabledPlugins.filter((pluginId) => pluginId !== action.pluginId)
-        : [...state.config.disabledPlugins, action.pluginId];
-      return { ...state, config: { ...state.config, disabledPlugins } };
+    case "SET_DISABLED_PLUGINS": {
+      const config = { ...state.config, disabledPlugins: action.disabledPlugins };
+      return Object.prototype.hasOwnProperty.call(action, "focusedPaneId")
+        ? withFocusedPane(state, config, { focusedPaneId: action.focusedPaneId ?? null })
+        : { ...state, config };
     }
 
     case "SET_INPUT_CAPTURED":

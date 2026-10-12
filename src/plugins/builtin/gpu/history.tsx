@@ -92,8 +92,8 @@ function HistoryDetail({ row, peers, width, height, refreshVersion }: {
   </PaneStatusBody>;
 }
 
-export function GpuHistory({ rows, model, setModel, selectedId, onSelect, reloadBoard, width, height, focused }: {
-  rows: GpuBoardRow[]; model: string; setModel: (value: string) => void; selectedId: string; onSelect: (id: string) => void;
+export function GpuHistory({ rows, models: boardModels, model, setModel, selectedId, onSelect, reloadBoard, width, height, focused }: {
+  rows: GpuBoardRow[]; models: readonly string[]; model: string; setModel: (value: string) => void; selectedId: string; onSelect: (id: string) => void;
   reloadBoard: () => void; width: number; height: number; focused: boolean;
 }) {
   const colors = useThemeColors();
@@ -106,7 +106,7 @@ export function GpuHistory({ rows, model, setModel, selectedId, onSelect, reload
     notices: [references.error, references.data?.refreshError].filter((value): value is string => !!value) });
   const allRows = useMemo(() => [...rows, ...gpuReferenceRows(references.data?.payload.points ?? [])], [rows, references.data]);
   // History always reads one model: the one picked on the board, else the selected series\' model.
-  const models = useMemo(() => [...new Set(allRows.map((row) => row.gpuModel))].sort(), [allRows]);
+  const models = useMemo(() => [...new Set([...boardModels, ...allRows.map((row) => row.gpuModel)])].sort(), [boardModels, allRows]);
   const activeModel = model || allRows.find((row) => row.id === selectedId)?.gpuModel || (models.includes("H100") ? "H100" : models[0] ?? GPU_MODELS[0]!);
   const sections = useMemo(() => gpuBoardSections(allRows, activeModel).filter((section) => basis === "all" || section.basis === basis), [allRows, activeModel, basis]);
   const ordered = useMemo(() => sections.flatMap((section) => section.rows), [sections]);

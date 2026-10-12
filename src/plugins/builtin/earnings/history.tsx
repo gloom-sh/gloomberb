@@ -18,6 +18,7 @@ import { cachedEarningsHistory, loadEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { chartAxis, chartPoints, chartRows, historyFigures, historyRows, type HistoryRow } from "./history-model";
 import { historyColumns, renderHistoryCell, type HistoryColumn } from "./history-table";
+import { listingAbroadVenue } from "../../../utils/sec";
 
 const barDate = (row: HistoryRow) => (row.implied != null || row.move != null ? new Date(`${row.date}T00:00:00Z`) : null);
 
@@ -34,8 +35,10 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
   registrationId: string;
 }) {
   const dataProvider = useAssetData();
-  const loader = useCallback((force: boolean) => loadEarningsHistory(symbol, force), [symbol]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedEarningsHistory(symbol) });
+  // Past reports are the US board's, where SAN is not SAN:EPA's company: a listing abroad shows its next report alone.
+  const abroad = listingAbroadVenue(symbol) != null;
+  const loader = useCallback((force: boolean) => (abroad ? Promise.resolve(null) : loadEarningsHistory(symbol, force)), [abroad, symbol]);
+  const resource = useAsyncResource(loader, { initialData: () => (abroad ? null : cachedEarningsHistory(symbol)) });
   // Past the stored calendar's horizon, and for listings it does not carry, the per-ticker calendar has the next date.
   const upcomingLoader = useCallback(
     (force: boolean) => loadEarningsCalendar(dataProvider, [symbol], { force }).then((result) => result.events[0] ?? null),
@@ -74,7 +77,8 @@ export function EarningsHistoryView({ symbol, width, height, focused, registrati
     loading: resource.loading,
     error: resource.error,
     stale: !!resource.data?.stale,
-    info: payload && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
+    info: abroad ? [{ id: "us-listings", parts: [{ text: "past reports: US listings only", tone: "muted" as const }] }]
+      : payload && updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : [],
   });
 
   return (

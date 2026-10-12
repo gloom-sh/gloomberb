@@ -8,7 +8,7 @@ import {
   CREDIT_SERIES,
   normalizeCreditSeries,
   type CreditConditionRow,
-  type CreditSeriesId,
+  type CreditSeriesDefinition,
 } from "./model";
 
 export interface CreditConditionsLoadResult {
@@ -21,11 +21,11 @@ export interface CreditConditionsLoadResult {
 const HISTORY_LIMIT = 300;
 
 export type CreditSeriesLoader = (
-  seriesId: CreditSeriesId,
+  seriesId: string,
   options: { limit: number; sortOrder: "desc" },
 ) => Promise<CloudFredSeriesPayload>;
 
-function requestFor(seriesId: CreditSeriesId): FredSeriesRequest {
+function requestFor(seriesId: string): FredSeriesRequest {
   return { seriesId, limit: HISTORY_LIMIT, sortOrder: "desc" };
 }
 
@@ -33,15 +33,17 @@ function trimHistory(data: CloudFredSeriesPayload): CloudFredSeriesPayload {
   return { ...data, observations: data.observations.slice(0, HISTORY_LIMIT) };
 }
 
-function seriesError(seriesId: CreditSeriesId, error: unknown): string {
+function seriesError(seriesId: string, error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.startsWith(`${seriesId}:`) ? message : `${seriesId}: ${message}`;
 }
 
-export function getCachedCreditConditions(): CreditConditionsLoadResult | null {
+export function getCachedCreditConditions(
+  series: readonly CreditSeriesDefinition[] = CREDIT_SERIES,
+): CreditConditionsLoadResult | null {
   const rows: CreditConditionRow[] = [];
   const errors: string[] = [];
-  for (const definition of CREDIT_SERIES) {
+  for (const definition of series) {
     const cached = getCachedFredSeries(requestFor(definition.seriesId), { allowExpired: true });
     if (!cached) continue;
     try {
@@ -59,7 +61,7 @@ export function getCachedCreditConditions(): CreditConditionsLoadResult | null {
 }
 
 async function loadSeries(
-  definition: typeof CREDIT_SERIES[number],
+  definition: CreditSeriesDefinition,
   force: boolean,
   loader: CreditSeriesLoader,
 ) {
@@ -87,15 +89,16 @@ async function loadSeries(
 export async function loadCreditConditions(
   force = false,
   loader: CreditSeriesLoader = (seriesId, options) => apiClient.getCloudFredSeries(seriesId, options),
+  series: readonly CreditSeriesDefinition[] = CREDIT_SERIES,
 ): Promise<CreditConditionsLoadResult> {
   const settled = await Promise.allSettled(
-    CREDIT_SERIES.map((definition) => loadSeries(definition, force, loader)),
+    series.map((definition) => loadSeries(definition, force, loader)),
   );
   const rows: CreditConditionRow[] = [];
   const errors: string[] = [];
   settled.forEach((result, index) => {
     if (result.status === "rejected") {
-      const seriesId = CREDIT_SERIES[index]!.seriesId;
+      const seriesId = series[index]!.seriesId;
       errors.push(seriesError(seriesId, result.reason));
       return;
     }

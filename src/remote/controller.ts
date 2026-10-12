@@ -19,9 +19,13 @@ import {
 } from "../plugins/builtin/custom-view";
 import { findPaneInstance, getPlacedPaneInstanceIds, type PaneInstanceConfig, resolvePaneInstance } from "../types/config";
 import type { DesktopWindowBridge } from "../types/desktop-window";
+import { settleTypedListingKey } from "../tickers/listing-venues";
+import { isSharedExchangeCode, parsePublicTickerKey, typedExchangeCode } from "../utils/exchanges";
 import { applyJsonPatch } from "./json-patch";
 import { revisionFor } from "./revision";
 import type {
+  RemoteCallContext,
+  RemoteChangePrompt,
   RemoteControlRequest,
   RemoteControlResponse,
   RemoteJsonPatchOperation,
@@ -30,7 +34,8 @@ import type {
 } from "./types";
 import type { RemoteUiRegistry } from "./semantic-tree";
 import { commandBarResultsFromNodes, isCommandBarInputNode } from "./command-bar";
-import { REMOTE_AGENT_HELP, remoteControlSchema } from "./schema";
+import { findCommandBarResult, findMatchingUiNode } from "./matching";
+import { REMOTE_AGENT_HELP, REMOTE_OPERATIONS, remoteControlSchema } from "./schema";
 import {
   fail,
   mutationSummary,
@@ -38,8 +43,16 @@ import {
   ok,
   optionalNumber,
   optionalString,
+  RemoteOperationError,
   stringInput,
 } from "./controller-utils";
+import {
+  PANE_SCREENSHOT_MAX_BYTES,
+  PANE_SCREENSHOT_MAX_EDGE,
+  PANE_SCREENSHOT_MIN_WIDTH,
+  paneScreenshotScale,
+  type CapturePane,
+} from "./pane-screenshot";
 import {
   buildGridDockRoot,
   regionToDockPosition,
@@ -48,9 +61,16 @@ import {
 } from "./layout-helpers";
 import { createRemoteResources } from "./resources";
 import { dismissTopmostDialog, isDialogOpen as isAnyDialogOpen } from "../ui/dialog-stack";
-import { findFormNode } from "./form";
 import { asRecord } from "../utils/guards";
 import { runAutomated } from "../telemetry/usage-counts";
+import {
+  applyWatchlistChange,
+  declinedWatchlistResult,
+  describeWatchlistPlan,
+  planWatchlistChange,
+  unchangedWatchlistResult,
+  watchlistChangePrompt,
+} from "./watchlist";
 
 interface AppRemoteControllerOptions {
   dispatch: Dispatch<AppAction>;
@@ -63,7 +83,19 @@ interface AppRemoteControllerOptions {
   isDialogOpen?: () => boolean;
   /** Closes the dialog on top as Esc would; false when none is open. */
   closeTopmostDialog?: () => boolean;
+  /**
+   * Asks the person in the app to approve a change to their data; false when
+   * they decline or `signal` aborts. Without it such operations refuse.
+   */
+  confirmChange?: (prompt: RemoteChangePrompt, signal?: AbortSignal) => Promise<boolean>;
+  /** Paints one pane of this window as a PNG; absent where there are no pixels (the TUI). */
+  capturePane?: CapturePane;
 }
+
+/** Operations whose dry run resolves what they would change instead of echoing the input. */
+const PLANNED_OPERATIONS = new Set(["watchlist.add", "watchlist.remove"]);
+/** Reads change nothing, so their answer carries no layout or command-bar state. */
+const READ_OPERATIONS = new Set(REMOTE_OPERATIONS.filter((entry) => entry.sideEffectLevel === "none").map((entry) => entry.id));
 
 // A command with a wizard closes the bar and opens its form, so every call says whether one is open.
 const DEFAULT_MUTATION_INCLUDE: RemoteStateInclude[] = ["app", "layout", "panes", "commandBar", "form"];
@@ -97,6 +129,8 @@ export function createAppRemoteController({
   afterMutation = () => {},
   isDialogOpen = isAnyDialogOpen,
   closeTopmostDialog = dismissTopmostDialog,
+  confirmChange,
+  capturePane,
 }: AppRemoteControllerOptions) {
   const { buildIncludedState, getResource, patchTarget } = createRemoteResources({
     dispatch,
@@ -111,8 +145,26 @@ export function createAppRemoteController({
     return mutationSummary(getState(), extra);
   };
 
-  const queryMarketData = async (request: RemoteMarketDataRequest): Promise<unknown> => {
+  /**
+   * The listing a request names, a code that names several venues (7203:TSE,
+   * or 7203 with exchange TSE) read as the one its symbol trades on, as every
+   * command reads it.
+   */
+  const settledListing = async (rawSymbol: string, rawExchange: string | undefined) => {
+    const symbol = normalizedMarketDataSymbol(rawSymbol);
+    const exchange = normalizedOptionalExchange(rawExchange);
+    const typed = exchange && isSharedExchangeCode(exchange) && !parsePublicTickerKey(symbol).exchange ? `${symbol}:${exchange}` : symbol;
+    if (!isSharedExchangeCode(typedExchangeCode(typed))) return { symbol, exchange };
+    const settled = (await settleTypedListingKey(typed, {
+      store: pluginRegistry.tickerRepository,
+      dataProvider: pluginRegistry.marketData,
+    })).toUpperCase();
+    return settled === typed ? { symbol, exchange } : { symbol: settled, exchange: parsePublicTickerKey(settled).exchange };
+  };
+
+  const queryMarketData = async (named: RemoteMarketDataRequest): Promise<unknown> => {
     const marketData = pluginRegistry.marketData;
+    const request = "symbol" in named ? { ...named, ...await settledListing(named.symbol, named.exchange) } : named;
     switch (request.operation) {
       case "search":
         return (await marketData.search(requiredMarketDataText(request.query, "query")))
@@ -247,20 +299,7 @@ export function createAppRemoteController({
   };
 
   const activateCommandBarResult = async (input: Record<string, unknown>): Promise<unknown> => {
-    const nodeId = optionalString(input, "nodeId");
-    const index = optionalNumber(input, "index");
-    const itemId = optionalString(input, "itemId");
-    const label = optionalString(input, "label");
-    const results = commandBarResultsFromNodes(uiRegistry?.snapshot() ?? []);
-    const result = nodeId
-      ? results.find((entry) => entry.nodeId === nodeId)
-      : itemId
-        ? results.find((entry) => entry.itemId === itemId)
-        : label
-          ? results.find((entry) => entry.label === label)
-      : typeof index === "number"
-        ? results.find((entry) => entry.index === index)
-        : results.find((entry) => entry.selected) ?? results[0];
+    const result = findCommandBarResult(commandBarResultsFromNodes(uiRegistry?.snapshot() ?? []), input);
     if (!result) throw new Error("No matching command-bar result is visible.");
     if (!result.actions.includes("activate")) {
       throw new Error(`Command-bar result "${result.nodeId}" does not expose activate.`);
@@ -270,53 +309,97 @@ export function createAppRemoteController({
   };
 
   const invokeMatchingUiNode = async (input: Record<string, unknown>): Promise<unknown> => {
-    const role = optionalString(input, "role");
-    const label = optionalString(input, "label");
-    const contains = optionalString(input, "contains");
-    const index = optionalNumber(input, "index");
     const action = optionalString(input, "action") ?? "press";
-    const metadataFilter = asRecord(input.metadata);
-    const nodes = uiRegistry?.snapshot() ?? [];
-    // A dialog over the form (a listing picker, a sign-in) keeps its controls
-    // out of reach, as it does from the mouse.
-    const formCovered = findFormNode(nodes)?.metadata?.covered === true;
-    const candidates = nodes.filter((node) => {
-      if (formCovered && node.metadata?.scope === "form") return false;
-      if (role && node.role !== role) return false;
-      if (label && node.label !== label && node.metadata?.item && typeof node.metadata.item === "object") {
-        const item = node.metadata.item as Record<string, unknown>;
-        if (item.label !== label && item.id !== label) return false;
-      } else if (label && node.label !== label) {
-        return false;
-      }
-      if (contains) {
-        const haystack = [
-          node.label,
-          node.role,
-          JSON.stringify(node.metadata ?? {}),
-        ].filter((entry): entry is string => typeof entry === "string").join(" ").toLowerCase();
-        if (!haystack.includes(contains.toLowerCase())) return false;
-      }
-      for (const [key, value] of Object.entries(metadataFilter)) {
-        if (node.metadata?.[key] !== value) return false;
-      }
-      if (!node.actions.includes(action)) return false;
-      if (node.disabled) return false;
-      return true;
-    });
-    // An open form or confirm covers every pane, so its own controls come
-    // first: its Cancel, not a pane's Cancel behind it.
-    const inForm = candidates.filter((node) => node.metadata?.scope === "form");
-    const matches = inForm.length > 0 ? inForm : candidates;
-    const node = typeof index === "number" ? matches[index] : matches[0];
+    const node = findMatchingUiNode(uiRegistry?.snapshot() ?? [], input);
     if (!node) throw new Error("No matching semantic UI node is visible.");
     const result = await uiRegistry?.invoke(node.id, action, input.input);
     return getAfterMutationSummary({ invokedNode: node, result });
   };
 
+  /** The focused pane, or the one asked for, as the window draws it now. */
+  const screenshotPane = async (input: Record<string, unknown>): Promise<unknown> => {
+    if (!capturePane) {
+      throw new RemoteOperationError(
+        "unsupported",
+        "Pane screenshots need the Gloom desktop app: the terminal (TUI) app draws text, not pixels. Read the pane's content instead.",
+      );
+    }
+    const width = input.width;
+    if (width !== undefined && (
+      typeof width !== "number" || !Number.isInteger(width) || width < PANE_SCREENSHOT_MIN_WIDTH || width > PANE_SCREENSHOT_MAX_EDGE
+    )) {
+      throw new Error(`width must be a whole number of pixels from ${PANE_SCREENSHOT_MIN_WIDTH} to ${PANE_SCREENSHOT_MAX_EDGE}.`);
+    }
+    const state = getState();
+    const layout = state.config.layout;
+    const asked = optionalString(input, "paneId");
+    const instance = asked
+      ? resolvePaneInstance(layout, asked)
+      : state.focusedPaneId ? findPaneInstance(layout, state.focusedPaneId) : undefined;
+    if (!instance) {
+      throw new Error(asked ? `No pane "${asked}" is open in this layout. Read app://panes for the open ones.` : "No pane is focused. Pass paneId.");
+    }
+    if ((layout.detached ?? []).some((entry) => entry.instanceId === instance.instanceId)) {
+      throw new Error(`Pane "${instance.instanceId}" is in its own window; dock it to capture it.`);
+    }
+    const shot = await capturePane({
+      instanceId: instance.instanceId,
+      scaleFor: (screen) => paneScreenshotScale(screen, width as number | undefined),
+      maxBytes: PANE_SCREENSHOT_MAX_BYTES,
+      minWidth: PANE_SCREENSHOT_MIN_WIDTH,
+    });
+    return {
+      pane: {
+        instanceId: instance.instanceId,
+        paneId: instance.paneId,
+        ...(instance.title ? { title: instance.title } : {}),
+      },
+      image: { mimeType: "image/png", data: shot.pngBase64, width: shot.width, height: shot.height, bytes: shot.bytes },
+      screen: shot.screen,
+      ...(shot.reduced ? { reduced: true } : {}),
+    };
+  };
+
+  const workflowDeps = () => ({
+    dataProvider: pluginRegistry.marketData,
+    tickerRepository: pluginRegistry.tickerRepository,
+    pluginRegistry,
+    dispatch,
+    getState,
+  });
+
+  /**
+   * Adds or removes one ticker on a personal watchlist, after the person
+   * approves that exact change in the app. A caller that already showed them
+   * the dry run's summary and got a yes passes its confirmKey instead.
+   */
+  const changeWatchlist = async (
+    operation: string,
+    input: Record<string, unknown>,
+    dryRun: boolean | undefined,
+    context: RemoteCallContext,
+  ): Promise<unknown> => {
+    const action = operation === "watchlist.add" ? "add" : "remove";
+    const plan = await planWatchlistChange(action, {
+      symbol: stringInput(input, "symbol"),
+      exchange: optionalString(input, "exchange"),
+      watchlist: optionalString(input, "watchlist"),
+    }, workflowDeps());
+    if (dryRun) return describeWatchlistPlan(plan);
+    if (!plan.changes) return unchangedWatchlistResult(plan);
+    if (context.confirmed !== plan.confirmKey) {
+      if (!confirmChange) throw new Error("This window cannot ask for confirmation, so nothing changed.");
+      if (!await confirmChange(watchlistChangePrompt(plan), context.signal)) return declinedWatchlistResult(plan);
+    }
+    return runAutomated(() => applyWatchlistChange(plan, workflowDeps()));
+  };
+
   // What remote control opens is automation, not the user opening a function.
-  const call = (operation: string, rawInput: unknown, dryRun?: boolean): Promise<unknown> => (
-    runAutomated(() => callOperation(operation, rawInput, dryRun))
+  // A watchlist change waits on the person, so only its write is automated.
+  const call = (operation: string, rawInput: unknown, dryRun: boolean | undefined, context: RemoteCallContext): Promise<unknown> => (
+    PLANNED_OPERATIONS.has(operation)
+      ? changeWatchlist(operation, asRecord(rawInput), dryRun, context)
+      : runAutomated(() => callOperation(operation, rawInput, dryRun))
   );
 
   const callOperation = async (operation: string, rawInput: unknown, dryRun?: boolean): Promise<unknown> => {
@@ -357,6 +440,8 @@ export function createAppRemoteController({
         pluginRegistry.hidePane(paneId);
         return getAfterMutationSummary({ affectedPaneIds: [paneId] });
       }
+      case "pane.screenshot":
+        return screenshotPane(input);
       case "pane.createFromTemplate":
         await pluginRegistry.createPaneFromTemplateAsync(
           stringInput(input, "templateId"),
@@ -549,7 +634,8 @@ export function createAppRemoteController({
     }
   };
 
-  const handle = async (request: RemoteControlRequest): Promise<RemoteControlResponse> => {
+  /** `context` comes from in-process callers only; the local endpoint never passes one. */
+  const handle = async (request: RemoteControlRequest, context: RemoteCallContext = {}): Promise<RemoteControlResponse> => {
     try {
       switch (request.type) {
         case "help":
@@ -563,8 +649,9 @@ export function createAppRemoteController({
         case "data":
           return ok(await queryMarketData(request));
         case "call": {
-          const data = await call(request.operation, request.input, request.dryRun);
-          return ok(data, undefined, buildIncludedState(request.include, request.dryRun ? [] : DEFAULT_MUTATION_INCLUDE));
+          const data = await call(request.operation, request.input, request.dryRun, context);
+          const defaults = request.dryRun || READ_OPERATIONS.has(request.operation) ? [] : DEFAULT_MUTATION_INCLUDE;
+          return ok(data, undefined, buildIncludedState(request.include, defaults));
         }
         case "patch": {
           const target = patchTarget(request.resource);

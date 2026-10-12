@@ -2,7 +2,7 @@ import type { Portfolio, Watchlist } from "./ticker";
 import type { BrokerContractRef, TickerListingRef } from "./instrument";
 import type { LanguagePreference } from "../i18n/languages";
 
-export const CURRENT_CONFIG_VERSION = 24;
+export const CURRENT_CONFIG_VERSION = 26;
 
 type ChartRendererPreference = "auto" | "kitty" | "braille";
 
@@ -59,6 +59,30 @@ export interface PanePlacementMemory {
   detached?: DetachedPlacementMemory;
 }
 
+/**
+ * A ticker link Move to New Layout had to cut: the pane followed another one
+ * that stayed behind (or left with the moved pane) and was pinned on `symbol`.
+ * Move Back links it again while it is still pinned there.
+ */
+export interface PaneMovedLink {
+  instanceId: string;
+  sourceInstanceId: string;
+  symbol: string;
+  /** The title before the pin renamed it ("OPX" for "OPX NVDA"), when it did. */
+  title?: string;
+}
+
+/** Where Move to New Layout took a pane from, so Move Back can return it. */
+export interface PaneMovedFrom {
+  /** `SavedLayout.id` of the layout it left. */
+  layoutId: string;
+  /** Set when it was docked there: its place in the tree and its share of the split. */
+  docked?: DockedPlacementMemory & { ratio?: number };
+  /** Set when it was floating there. */
+  floating?: FloatingPlacementMemory;
+  links?: PaneMovedLink[];
+}
+
 export interface PaneInstanceConfig {
   instanceId: string;
   paneId: string;
@@ -69,6 +93,8 @@ export interface PaneInstanceConfig {
   placementMemory?: PanePlacementMemory;
   /** Pinned by the user: the keyboard close shortcuts leave this pane alone. */
   locked?: boolean;
+  /** Set by Move to New Layout and cleared by Move Back; never published. */
+  movedFrom?: PaneMovedFrom;
 }
 
 interface DockPaneNode {
@@ -204,6 +230,21 @@ export interface TelemetryConfig {
 }
 
 /**
+ * The one-time line in the terminal's status bar asking to star Gloomberb on
+ * GitHub. Absent means on and not shown yet. Kept on this machine only.
+ */
+export interface StarPromptConfig {
+  /** `false` turns the line off; absent means on. */
+  enabled?: boolean;
+  /** Local days (`YYYY-MM-DD`) the terminal app was opened on, oldest first, until the line shows. */
+  days?: string[];
+  /** When the line showed. Once set it never shows again. */
+  shownAt?: string;
+  /** How it ended: the repository was opened, the line was dismissed, or it timed out. */
+  outcome?: "opened" | "dismissed" | "expired";
+}
+
+/**
  * One recent command-bar run: `id` is `pane-template:<templateId>`, `label`
  * its name when it ran, and `arg` a ticker it ran with (never free text).
  */
@@ -255,6 +296,18 @@ export interface AppConfig {
   /** Key overrides for this machine. Absent means every default applies. */
   keybindings?: KeybindingsConfig;
   telemetry?: TelemetryConfig;
+  starPrompt?: StarPromptConfig;
+  /**
+   * The IANA zone (`Asia/Tokyo`) the CLI and function reports show a local
+   * time in, beside every UTC time. Absent prints UTC alone. Trading-day dates
+   * are never shifted by it.
+   */
+  timezone?: string;
+  /**
+   * Presentation mode: the panes fill the window, without the header or the
+   * status bar, for a screen that is shown rather than worked at. Absent is off.
+   */
+  presentationMode?: boolean;
 }
 
 export const TICKER_RESEARCH_PANE_ID = "ticker-research";
@@ -301,8 +354,10 @@ export const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "latency", label: "AGE", width: 6, align: "right" },
 ];
 
+// A portfolio dates each row by the price its value uses (AS OF), where a
+// watchlist shows the quote's age (AGE).
 export const DEFAULT_PORTFOLIO_COLUMN_IDS = [
-  ...DEFAULT_COLUMNS.map((column) => column.id),
+  ...DEFAULT_COLUMNS.map((column) => column.id === "latency" ? "as_of" : column.id),
   "sparkline",
   "shares",
   "avg_cost",
@@ -582,6 +637,17 @@ export function clonePlacementMemory(memory: PanePlacementMemory | undefined): P
   };
 }
 
+function clonePaneMovedFrom(movedFrom: PaneMovedFrom): PaneMovedFrom {
+  return {
+    layoutId: movedFrom.layoutId,
+    ...(movedFrom.docked ? {
+      docked: { ...movedFrom.docked, ...(movedFrom.docked.path ? { path: [...movedFrom.docked.path] } : {}) },
+    } : {}),
+    ...(movedFrom.floating ? { floating: { ...movedFrom.floating } } : {}),
+    ...(movedFrom.links ? { links: movedFrom.links.map((link) => ({ ...link })) } : {}),
+  };
+}
+
 function cloneUnknownValue<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((entry) => cloneUnknownValue(entry)) as T;
@@ -816,6 +882,7 @@ export function normalizePaneLayout(
       params: instance.params ? { ...instance.params } : undefined,
       settings: clonePaneSettings(instance.settings),
       placementMemory: clonePlacementMemory(instance.placementMemory),
+      ...(instance.movedFrom ? { movedFrom: clonePaneMovedFrom(instance.movedFrom) } : {}),
     })),
     floating: nextLayout.floating
       .filter((entry) => (
@@ -838,6 +905,7 @@ export function cloneLayout(layout: LayoutConfig): LayoutConfig {
       params: instance.params ? { ...instance.params } : undefined,
       settings: clonePaneSettings(instance.settings),
       placementMemory: clonePlacementMemory(instance.placementMemory),
+      ...(instance.movedFrom ? { movedFrom: clonePaneMovedFrom(instance.movedFrom) } : {}),
     })),
     floating: layout.floating.map((entry) => ({ ...entry })),
     detached: detached.map((entry) => ({ ...entry })),

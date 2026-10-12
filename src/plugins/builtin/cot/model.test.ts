@@ -2,7 +2,8 @@ import { expect, test } from "bun:test";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { CotClassSummary, CotContractPayload } from "../../../api-client/cot";
 import { fetchCotBoard, loadCotDetail, validateCotContract } from "./client";
-import { COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotLegendValue, cotNetPoints, cotScope } from "./model";
+import { COT_MAJOR_CODES, COT_ROOT_OPTIONS, cotChartSeries, cotContractCode, cotContractCodeForTicker, cotLegendValue, cotNetPoints, cotPriceMapping, cotScope, cotUnknownMarketMessage } from "./model";
+import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import { cotModule } from "./index";
 
 function position(): CotClassSummary {
@@ -64,8 +65,23 @@ test("price-source failure leaves report history readable and never substitutes 
     getCloudHistory: async (symbol, exchange) => { requested.push(`${symbol} ${exchange}`); return { status: "success", data: [] } as never; } });
   expect(requested).toEqual(["ZC=F CBT"]);
   expect(resultCorn.priceSymbol).toBe("ZC=F");
-  // A market code is never an equity alias: Soybean Meal's ZM stays Zoom's.
-  expect(cotContractCode("ZM")).toBeNull();
+});
+
+test("every FUT board root the CFTC reports opens by root as an argument; under the cursor a code a security keeps stays the security's", async () => {
+  for (const row of FUTURES_CONTRACTS) {
+    const code = cotContractCode(row.code);
+    // Each root opens its market, whose front price is that root's own future.
+    if (code) expect(cotPriceMapping(code)?.priceSymbol).toBe(row.symbol);
+    else expect(cotUnknownMarketMessage(row.code)).toBe(`${row.code} (${row.name}) is not reported in the CFTC COT.`);
+  }
+  expect(["NG", "ho", "RB", "BZ", "HG", "PL", "PA", "ZC", "ZM", "6E", "OJ", "NG=F"].map(cotContractCode))
+    .toEqual(["023651", "022651", "111659", "06765T", "085692", "076651", "075651", "002602", "026603", "099741", "040701", "023651"]);
+  expect(["TTF", "ALI"].map(cotContractCode)).toEqual([null, null]);
+  // Under the cursor, Zoom stays Zoom and NovaGold NovaGold; their futures symbols and a code no security uses claim the market.
+  expect(["ZM", "NG", "PL", "ZM=F", "NG=F", "ZW", "6E"].map(cotContractCodeForTicker))
+    .toEqual([null, null, null, "026603", "023651", "001602", "099741"]);
+  const template = cotModule.paneTemplates![0]!;
+  expect(await template.createInstance!({ activeTicker: null } as never, { arg: "NG" } as never)).toMatchObject({ title: "COT NG", params: { code: "023651" } });
 });
 
 test("CME crypto roots name their CFTC market, and only a typed argument or crypto ticker opens one", async () => {

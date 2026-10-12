@@ -30,7 +30,7 @@ import {
   holderValueCurrency,
   resolveHolderOwnershipPercent,
 } from "./format";
-import { holderShareBasisMarker } from "./report-header";
+import { holderPeriodsDiffer, holderShareBasisMarker } from "./report-header";
 import {
   buildColumns,
   hasHolderChanges,
@@ -40,9 +40,10 @@ import {
   sortRows,
   VIEW_TABS,
 } from "./table-model";
-import { loadHolderData } from "./client";
+import { classSharesToday, loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import { BeneficialOwnersView } from "./beneficial-view";
+import { useIssuerListing } from "../shared/ticker-request";
 import type { HolderColumn, HolderColumnId, HolderRow, SortPreference, ViewMode } from "./types";
 import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
 import { useSampledValue, useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
@@ -65,6 +66,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const fundMatchAbortRef = useRef<AbortController | null>(null);
 
   const exchange = ticker?.metadata.exchange ?? "";
+  const issuerListing = useIssuerListing(ticker);
   const loadHolders = useMemo(() => symbol ? async (forceRefresh: boolean) => {
     if (!dataProvider) throw new Error("Holder data unavailable");
     return loadHolderData(dataProvider, symbol, exchange, forceRefresh ? { cacheMode: "refresh" } : undefined);
@@ -82,7 +84,10 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   useTickerQuoteStream(ticker ? symbol : null, ticker, { surface: "detail", visible: false, weight: 30 });
   const liveMarketCap = holderStakeMarketCap(financials?.quote?.marketCap, financials?.quote?.currency, currency);
   const marketCap = useSampledValue(liveMarketCap, HOLDER_MARKET_CAP_SAMPLE_MS, `${symbol ?? ""}:${currency}`);
+  // Today's share count, which a 13D/13G report's own base is checked against.
+  const sharesOutstanding = classSharesToday(financials);
   const rows = useMemo(() => buildRows(data), [data]);
+  const periodsDiffer = useMemo(() => holderPeriodsDiffer(rows), [rows]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
   // Change columns only when the source reports a change; otherwise they read "-" on every row.
   const showChange = useMemo(() => hasHolderChanges(rows), [rows]);
@@ -269,7 +274,10 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     if (viewMode === "13dg") return null;
     return {
       info: [
-        ...(data?.asOf ? [{ id: "as-of", parts: [{ text: data.asOf, tone: "value" as const }] }] : []),
+        // One date only when every holder's row is of it; the PERIOD column dates each row.
+        ...(periodsDiffer
+          ? [{ id: "as-of", parts: [{ text: "latest period per holder", tone: "muted" as const }] }]
+          : data?.asOf ? [{ id: "as-of", parts: [{ text: data.asOf, tone: "value" as const }] }] : []),
         ...loadingErrorFooterInfo(loading, data ? error : null),
         ...(fundMatching ? [{ id: "fund-matching", parts: [{ text: "13F matching", tone: "muted" as const }] }] : []),
       ],
@@ -280,7 +288,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         ...(selectedFundMatch ? [{ id: "fund", key: "o", label: "pen 13F", onPress: () => openFundDetail(selectedRow) }] : []),
       ],
     };
-  }, [data, error, fundMatching, loading, openFundDetail, selectedFundMatch, selectedRow, viewMode]);
+  }, [data, error, fundMatching, loading, openFundDetail, periodsDiffer, selectedFundMatch, selectedRow, viewMode]);
 
   const selectView = useCallback((value: string) => setViewMode(value as ViewMode), [setViewMode]);
   // As a research tab, h/l move between research tabs; `s` switches the view.
@@ -337,8 +345,10 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
           focused={focused}
           width={width}
           symbol={symbol ?? null}
+          listing={issuerListing}
           holderRows={rows}
           fundMatches={fundMatches}
+          sharesOutstanding={sharesOutstanding}
           onCycleView={toggleView}
           onRefreshHolders={refresh}
         />

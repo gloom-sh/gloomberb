@@ -315,9 +315,17 @@ export function useSecFilingsQuery(request: SecFilingsRequest | null | undefined
 
 export function useSecFilingContent(filing: SecFilingItem | null | undefined): QueryEntry<string | null> | null {
   const key = filing ? buildSecContentKey(filing.accessionNumber) : null;
-  useCoordinatorKeysVersion(key ? [key] : []);
+  const version = useCoordinatorKeysVersion(key ? [key] : []);
   const coordinator = getSharedMarketDataCoordinator();
-  const entry = coordinator && filing ? coordinator.getSecContentEntry(filing.accessionNumber) : null;
+  // Read at the version React holds. A store write is announced a frame
+  // later; a render in between that changes no state is thrown away, and with
+  // it the effects of a reader that saw the new entry early, which then never
+  // see it change (a filing queue stalled on "loading").
+  const accession = filing?.accessionNumber ?? null;
+  const entry = useMemo(
+    () => coordinator && accession ? coordinator.getSecContentEntry(accession) : null,
+    [accession, coordinator, version],
+  );
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();

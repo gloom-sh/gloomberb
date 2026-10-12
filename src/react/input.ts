@@ -6,6 +6,7 @@ import {
   useRef,
   type ReactNode,
 } from "react";
+import { keySignature, mayRepeat } from "./key-repeat";
 
 export interface KeyEventLike {
   key: string;
@@ -17,8 +18,12 @@ export interface KeyEventLike {
   meta: boolean;
   super?: boolean;
   targetEditable?: boolean;
-  /** True for a held key's repeat, when the host reports it. */
-  repeated?: boolean;
+  /**
+   * The platform sent this press because the key is held down (DOM `repeat`,
+   * the kitty protocol's repeat event). Absent where the host cannot tell,
+   * such as a terminal that does not report event types.
+   */
+  readonly repeat?: boolean;
   readonly defaultPrevented?: boolean;
   readonly propagationStopped?: boolean;
   preventDefault(): void;
@@ -59,7 +64,18 @@ interface ShortcutEntry extends ShortcutRegistration {
 
 export interface ShortcutRegistry {
   register(registration: ShortcutRegistration): () => void;
+  /**
+   * Runs `listener` for every key, before any handler is picked for it. State
+   * it sets has rendered by the time the handlers run (when the host can
+   * flush), so they read it instead of what the last frame held.
+   */
+  beforeDispatch(listener: (event: KeyEventLike) => void): () => void;
   dispatch(event: KeyEventLike): void;
+}
+
+export interface ShortcutRegistryOptions {
+  /** The renderer's synchronous render flush, which `beforeDispatch` listeners run inside. */
+  flushSync?: (run: () => void) => void;
 }
 
 const SHORTCUT_PHASES: ReadonlyArray<ShortcutEntry["phase"]> = [
@@ -90,11 +106,12 @@ function orderShortcutEntries(entries: ShortcutEntry[]): ShortcutEntry[] {
   });
 }
 
-export function createShortcutRegistry(): ShortcutRegistry {
+export function createShortcutRegistry({ flushSync }: ShortcutRegistryOptions = {}): ShortcutRegistry {
   let nextOrder = 1;
   const entries = new Map<number, ShortcutEntry>();
+  const beforeListeners = new Set<(event: KeyEventLike) => void>();
 
-  return {
+  const registry: ShortcutRegistry = {
     register(registration) {
       const order = nextOrder++;
       entries.set(order, {
@@ -106,7 +123,20 @@ export function createShortcutRegistry(): ShortcutRegistry {
         entries.delete(order);
       };
     },
+    beforeDispatch(listener) {
+      beforeListeners.add(listener);
+      return () => {
+        beforeListeners.delete(listener);
+      };
+    },
     dispatch(event) {
+      if (beforeListeners.size > 0) {
+        const run = () => {
+          for (const listener of [...beforeListeners]) listener(event);
+        };
+        if (flushSync) flushSync(run);
+        else run();
+      }
       const eligible = orderShortcutEntries(
         [...entries.values()].filter((entry) => (
           entry.isEnabled() && shouldDeliverShortcut(event, entry.allowsEditable())
@@ -127,6 +157,31 @@ export function createShortcutRegistry(): ShortcutRegistry {
           }
           if (event.propagationStopped) return;
         }
+      }
+    },
+  };
+
+  // A held key repeats its press. Only the keys meant to repeat (key-repeat.ts)
+  // reach the handlers again; the rest already ran when the key went down.
+  // `lastPress` is that press: a repeat of a key the app claimed stays claimed,
+  // or the webview would act on it itself (a beep on macOS).
+  let lastPress: { signature: string; claimed: boolean } | null = null;
+  return {
+    ...registry,
+    dispatch(event) {
+      if (event.repeat === true && !mayRepeat(event)) {
+        if (lastPress?.claimed && lastPress.signature === keySignature(event)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+        return;
+      }
+      registry.dispatch(event);
+      if (event.repeat !== true) {
+        lastPress = {
+          signature: keySignature(event),
+          claimed: event.defaultPrevented === true || event.propagationStopped === true,
+        };
       }
     },
   };
@@ -153,11 +208,24 @@ export function useRegisteredShortcut(
   }), [options?.phase, options?.scope, registry]);
 }
 
+export function useRegisteredBeforeShortcut(
+  registry: ShortcutRegistry,
+  listener: (event: KeyEventLike) => void,
+): void {
+  const listenerRef = useRef(listener);
+  listenerRef.current = listener;
+  useLayoutEffect(
+    () => registry.beforeDispatch((event) => listenerRef.current(event)),
+    [registry],
+  );
+}
+
 export interface InputHost {
   useShortcut(
     handler: (event: KeyEventLike) => void,
     options?: ShortcutOptions,
   ): void;
+  useBeforeShortcut(listener: (event: KeyEventLike) => void): void;
   useViewport(): { width: number; height: number };
 }
 
@@ -186,6 +254,15 @@ export function useShortcut(
   options?: ShortcutOptions,
 ): void {
   useInputHost().useShortcut(handler, options);
+}
+
+/**
+ * Runs before every key reaches any shortcut handler, whatever its phase or
+ * scope, for state the handlers read: set it here and it has rendered by the
+ * time they run. Not for acting on the key.
+ */
+export function useBeforeShortcut(listener: (event: KeyEventLike) => void): void {
+  useInputHost().useBeforeShortcut(listener);
 }
 
 export function shouldDeliverShortcut(

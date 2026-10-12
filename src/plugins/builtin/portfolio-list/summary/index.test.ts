@@ -1,7 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { getLanguage, setLanguage } from "../../../../i18n";
+import { useRegularMarketSession } from "../../../../test-support/market-session";
+import {
+  MARGIN_EXCHANGE_RATES,
+  MARGIN_PORTFOLIO,
+  MARGIN_TICKERS,
+  createMarginAccount,
+  marginQuotes,
+} from "../../../../test-support/margin-account";
 import type { BrokerAccount } from "../../../../types/trading";
-import type { PortfolioSummaryTotals } from "../metrics";
+import { calculatePortfolioSummaryTotals, type PortfolioSummaryTotals } from "../metrics";
 import {
   buildPortfolioFooterSegments,
   buildPortfolioSummarySegments,
@@ -221,7 +229,7 @@ describe("buildPortfolioSummarySegments", () => {
     const segments = fitSummarySegments(buildPortfolioSummarySegments({
       totals,
       accountState: { account, sourceLabel: "Live" },
-    }), 26);
+    }), 28);
 
     expect(segments.map((segment) => segment.id)).toEqual(["netliq", "val"]);
   });
@@ -262,8 +270,8 @@ describe("buildPortfolioSummarySegments", () => {
       "cash",
       "day",
       "pnl",
+      "lev",
       "settled",
-      "avail",
     ]);
   });
 
@@ -273,7 +281,7 @@ describe("buildPortfolioSummarySegments", () => {
     const ids = (list: typeof segments) => list.map((segment) => segment.id);
 
     expect(ids(layout.row)).toEqual(["netliq", "val", "cash"]);
-    expect(ids(layout.detail)).toEqual(["day", "pnl", "settled"]);
+    expect(ids(layout.detail)).toEqual(["day", "pnl", "lev"]);
     expect(ids(layoutPortfolioSummaryHeader(segments, 56, { cashDrawer: true, hideHeader: true }).detail))
       .toEqual(["netliq", "val", "cash"]);
   });
@@ -290,5 +298,39 @@ describe("buildPortfolioSummarySegments", () => {
     });
 
     expect(segments.map((segment) => segment.parts[0]?.text)).toEqual(["Acct missing", "-"]);
+  });
+});
+
+describe("a margin account's header", () => {
+  useRegularMarketSession();
+
+  const header = (quotes: ReturnType<typeof marginQuotes>, account: BrokerAccount | null) => {
+    const totals = calculatePortfolioSummaryTotals(MARGIN_TICKERS, quotes, "USD", MARGIN_EXCHANGE_RATES, true, MARGIN_PORTFOLIO.id);
+    const segments = buildPortfolioSummarySegments({
+      totals,
+      accountState: account ? { account, sourceLabel: "Synced", snapshotBasis: "marks" } : null,
+      brokerPortfolio: true,
+    });
+    return { totals, text: segments.map((segment) => segment.parts.map((part) => part.text).join(" ")) };
+  };
+
+  test("leads with the equity and labels the positions' sum as gross", () => {
+    const { text } = header(marginQuotes(), createMarginAccount());
+    expect(text.slice(0, 3)).toEqual(["Net Liq 1.00M", "Gross 1.60M", "Cash -600.0k"]);
+    expect(text).toContain("Lev 1.6x");
+  });
+
+  test("live quotes for every position replace the gross, never the equity", () => {
+    const { totals, text } = header(marginQuotes({ move: 10, option: true }), createMarginAccount());
+    expect(totals.livePriced).toBe(true);
+    expect(text.slice(0, 2)).toEqual(["Net Liq 1.04M", "Gross 1.64M"]);
+    // Without the broker's day, the quotes' day is a return on the equity, not on the positions.
+    expect(text).toContain("Day +40.0k (+4.00%)");
+  });
+
+  test("without its account, the equity and cash read as unknown beside the gross", () => {
+    const { text } = header(marginQuotes(), null);
+    expect(text.slice(0, 3)).toEqual(["Net Liq —", "Gross 1.60M", "Cash —"]);
+    expect(text.some((segment) => segment.startsWith("Val") || segment.startsWith("Lev"))).toBe(false);
   });
 });

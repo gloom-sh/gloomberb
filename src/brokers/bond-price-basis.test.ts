@@ -4,7 +4,7 @@ import { createDefaultConfig } from "../types/config";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
 import { syncBrokerInstance } from "./sync-broker-instance";
-import { getPortfolioPositionMetrics } from "../plugins/builtin/portfolio-list/position-metrics";
+import { getPortfolioPositionMetrics } from "../portfolio/position-metrics";
 import { hydrateTickerMetadata } from "../tickers/metadata";
 
 test("bond basis survives import and SQLite; resync replaces declarations without inferring legacy units",async()=>{

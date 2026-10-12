@@ -1,4 +1,6 @@
 import type { PaneRuntimeState } from "../core/state/app/types";
+import { foldPaneLayout } from "../data/config/store/fold-panes";
+import { swapDefaultPortfolioAgeColumn } from "../data/config/store/portfolio-as-of-column";
 import { publicTickerBindingSymbol } from "../tickers/selection";
 import { pinFollowingPane } from "../layout/pane-follow";
 import {
@@ -641,28 +643,38 @@ export function materializeMarketplaceLayout(
     `${paneId.slice(0, 80)}:shared-${crypto.randomUUID().replaceAll("-", "").slice(0, 20)}`
   ),
 ): { layout: LayoutConfig; paneState: Record<string, PaneRuntimeState> } {
-  const ids = new Map(payload.layout.instances.map((instance, index) => [
+  // A layout or pane shared before SIV and SOVR folded into SI and CDX still
+  // names the old panes, and one shared before AS OF UTC still has a portfolio
+  // pane on the old default columns. It opens the way a saved layout migrates.
+  const folded = foldPaneLayout(swapDefaultPortfolioAgeColumn(payload.layout));
+  const source = {
+    layout: folded.layout,
+    paneState: Object.fromEntries(Object.entries(payload.paneState).flatMap(([id, state]) => (
+      folded.removed.has(id) ? [] : [[folded.idMap.get(id) ?? id, state]]
+    ))),
+  };
+  const ids = new Map(source.layout.instances.map((instance, index) => [
     instance.instanceId,
     createId(instance.paneId, index),
   ]));
   if (new Set(ids.values()).size !== ids.size) throw new Error("Could not create unique pane ids for this layout.");
   const layout: LayoutConfig = {
-    dockRoot: mapDockNode(payload.layout.dockRoot, ids),
-    instances: payload.layout.instances.map((instance) => ({
+    dockRoot: mapDockNode(source.layout.dockRoot, ids),
+    instances: source.layout.instances.map((instance) => ({
       ...structuredClone(instance),
       instanceId: ids.get(instance.instanceId)!,
       ...(instance.binding ? { binding: mapBinding(instance.binding, ids) } : {}),
     })),
-    floating: payload.layout.floating.map((entry) => ({
+    floating: source.layout.floating.map((entry) => ({
       ...entry,
       instanceId: ids.get(entry.instanceId) ?? entry.instanceId,
     })),
-    detached: payload.layout.detached.map((entry) => ({
+    detached: source.layout.detached.map((entry) => ({
       ...entry,
       instanceId: ids.get(entry.instanceId) ?? entry.instanceId,
     })),
   };
-  const paneState = Object.fromEntries(Object.entries(payload.paneState).flatMap(([id, state]) => {
+  const paneState = Object.fromEntries(Object.entries(source.paneState).flatMap(([id, state]) => {
     const materializedId = ids.get(id);
     return materializedId ? [[materializedId, structuredClone(state)]] : [];
   }));

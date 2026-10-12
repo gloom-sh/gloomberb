@@ -1,9 +1,12 @@
 import type {
   DetachedPlacementMemory,
+  DockedPlacementMemory,
   FloatingPlacementMemory,
   LayoutConfig,
   PaneBinding,
   PaneInstanceConfig,
+  PaneMovedFrom,
+  PaneMovedLink,
   PanePlacementMemory,
 } from "../../types/config";
 import type { BrokerContractRef, TickerListingRef } from "../../types/instrument";
@@ -93,30 +96,59 @@ function sanitizeDetachedPlacementMemory(value: unknown): DetachedPlacementMemor
   return { x, y, width, height };
 }
 
+function sanitizeDockedPlacementMemory(raw: unknown): DockedPlacementMemory | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const rawPath = (raw as { path?: unknown }).path;
+  const path = Array.isArray(rawPath)
+    ? rawPath.filter((segment): segment is 0 | 1 => segment === 0 || segment === 1)
+    : undefined;
+  const anchorInstanceId = typeof (raw as { anchorInstanceId?: unknown }).anchorInstanceId === "string"
+    ? (raw as { anchorInstanceId: string }).anchorInstanceId
+    : undefined;
+  const position = ["left", "right", "above", "below"].includes(String((raw as { position?: unknown }).position))
+    ? (raw as { position: "left" | "right" | "above" | "below" }).position
+    : undefined;
+  if (!path && !anchorInstanceId && !position) return undefined;
+  return {
+    path,
+    anchorInstanceId,
+    position,
+  };
+}
+
+function sanitizePaneMovedFrom(value: unknown): PaneMovedFrom | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (typeof raw.layoutId !== "string" || !raw.layoutId) return undefined;
+  const docked = sanitizeDockedPlacementMemory(raw.docked);
+  const rawRatio = (raw.docked as { ratio?: unknown } | undefined)?.ratio;
+  const ratio = typeof rawRatio === "number" && rawRatio > 0 && rawRatio < 1 ? rawRatio : undefined;
+  const floating = docked ? undefined : sanitizeFloatingPlacementMemory(raw.floating);
+  const links = Array.isArray(raw.links)
+    ? raw.links.flatMap((entry): PaneMovedLink[] => {
+      if (!entry || typeof entry !== "object") return [];
+      const link = entry as Record<string, unknown>;
+      if (typeof link.instanceId !== "string" || typeof link.sourceInstanceId !== "string" || typeof link.symbol !== "string") return [];
+      return [{
+        instanceId: link.instanceId,
+        sourceInstanceId: link.sourceInstanceId,
+        symbol: link.symbol,
+        ...(typeof link.title === "string" ? { title: link.title } : {}),
+      }];
+    })
+    : [];
+  return {
+    layoutId: raw.layoutId,
+    ...(docked ? { docked: ratio === undefined ? docked : { ...docked, ratio } } : {}),
+    ...(floating ? { floating } : {}),
+    ...(links.length > 0 ? { links } : {}),
+  };
+}
+
 function sanitizePlacementMemory(value: unknown): PanePlacementMemory | undefined {
   if (!value || typeof value !== "object") return undefined;
 
-  const docked = (() => {
-    const raw = (value as PanePlacementMemory).docked;
-    if (!raw || typeof raw !== "object") return undefined;
-    const rawPath = (raw as { path?: unknown }).path;
-    const path = Array.isArray(rawPath)
-      ? rawPath.filter((segment): segment is 0 | 1 => segment === 0 || segment === 1)
-      : undefined;
-    const anchorInstanceId = typeof (raw as { anchorInstanceId?: unknown }).anchorInstanceId === "string"
-      ? (raw as { anchorInstanceId: string }).anchorInstanceId
-      : undefined;
-    const position = ["left", "right", "above", "below"].includes(String((raw as { position?: unknown }).position))
-      ? (raw as { position: "left" | "right" | "above" | "below" }).position
-      : undefined;
-    if (!path && !anchorInstanceId && !position) return undefined;
-    return {
-      path,
-      anchorInstanceId,
-      position,
-    };
-  })();
-
+  const docked = sanitizeDockedPlacementMemory((value as PanePlacementMemory).docked);
   const floating = sanitizeFloatingPlacementMemory((value as PanePlacementMemory).floating);
   const detached = sanitizeDetachedPlacementMemory((value as PanePlacementMemory).detached);
   if (!docked && !floating && !detached) return undefined;
@@ -176,6 +208,7 @@ function sanitizePaneInstances(
       seen.add(instanceId);
       const binding = sanitizePaneBinding(entry.binding);
       const settings = sanitizePaneSettings(entry.settings);
+      const movedFrom = sanitizePaneMovedFrom(entry.movedFrom);
       return {
         instanceId,
         paneId,
@@ -189,6 +222,7 @@ function sanitizePaneInstances(
         settings: migrateChartPaneSettings(originalPaneId, binding, settings, chartMigration),
         placementMemory: sanitizePlacementMemory(entry.placementMemory),
         locked: entry.locked === true ? true : undefined,
+        ...(movedFrom ? { movedFrom } : {}),
       };
     });
   return instances;

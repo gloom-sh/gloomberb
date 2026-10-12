@@ -119,6 +119,7 @@ export function mapQuote(
       quote.postMarketChange,
       divisor,
     ),
+    extendedSessionPrint: typeof quote.extendedSessionPrint === "boolean" ? quote.extendedSessionPrint : undefined,
     listingExchangeName,
     listingExchangeFullName,
     exchangeName: listingExchangeName,
@@ -214,6 +215,8 @@ export function mapPricePoint(
     low: normalizePriceValueByDivisor(point.low, divisor),
     close: normalizePriceValueByDivisor(point.close, divisor) ?? point.close,
     volume: point.volume,
+    ...(point.partial === true ? { partial: true } : {}),
+    ...(point.filled === true ? { filled: true } : {}),
   };
 }
 
@@ -306,6 +309,9 @@ export function mapOptionsChain(
   };
 }
 
+/** The reason code Gloom Cloud gives an empty answer for a symbol no listing carries. */
+export const NOT_FOUND_REASON = "NOT_FOUND";
+
 export function isEmptyCloudStatus(
   status: CloudMarketResponse<unknown>["status"],
 ): boolean {
@@ -317,7 +323,7 @@ export function mapBatchError<T>(
   fallbackMessage: string,
 ): Error {
   if (isEmptyCloudStatus(item.status)) {
-    return createProviderMiss(item.reasonCode ?? fallbackMessage);
+    return createProviderMiss(item.reasonCode ?? fallbackMessage, item.message, { notFound: item.reasonCode === NOT_FOUND_REASON });
   }
   return new Error(item.reasonCode ?? fallbackMessage);
 }

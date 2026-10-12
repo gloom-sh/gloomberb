@@ -21,10 +21,14 @@ import { buildOptionQuoteKey, freshOptionQuote, OPTIONS_QUOTE_EXCHANGE } from ".
 import { liveScenarioPosition, scenarioLegContractSymbol } from "./live";
 import { ScenarioPayoffChart } from "./charts";
 import { ScenarioLegEditor, ScenarioSaveForm, ScenarioInputsForm } from "./editor";
-import { loadScenarioMarket, scenarioPositionFromSettings, scenarioControlsFromSettings, type ScenarioMarketSnapshot } from "./client";
-import { buildScenario, type ScenarioLeg, type ScenarioPosition, type ScenarioControls, validatePosition } from "./model";
+import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, type ScenarioMarketSnapshot } from "./client";
+import { buildScenario, currencyLabel, scenarioCurrency, scenarioValueUnit, UNKNOWN_CURRENCY, type ScenarioLeg, type ScenarioPosition,
+  type ScenarioControls, validatePosition } from "./model";
 import { EMPTY_SAVED_STRATEGIES, restoreSavedStrategies, type SavedScenarioStrategy } from "./state";
 import { useScenarioEvidence } from "./evidence";
+import { hedgeStatItems, scenarioHedgeBudget, type HedgeQuote } from "./hedge";
+import { readOptionExpiration } from "../../../utils/option-expiry";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 
 const EMPTY_ERRORS: string[] = [];
 const TABS = [{ value: "payoff", label: "Payoff" }, { value: "grid", label: "P&L grid" }, { value: "legs", label: "Legs" }];
@@ -44,9 +48,12 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const [snapshotErrors] = usePaneSettingValue<string[]>("scenarioSnapshotErrors", EMPTY_ERRORS);
   const [frozenMarket] = usePaneSettingValue<ScenarioMarketSnapshot | null>("scenarioMarketSnapshot", null);
   const target = resolveOptionsTarget(ticker);
-  const underlying = target?.effectiveTicker ?? symbol ?? String(settings.symbol ?? "");
-  const exchange = target?.effectiveExchange || undefined;
-  const [expiration, setExpiration] = usePluginPaneState<number | null>("chainExpiration", null);
+  // A listing is keyed "SPY:ARCX", both in the pane's binding and in the ticker record opened under it: split either.
+  const listed = parsePublicTickerKey(target?.effectiveTicker ?? symbol ?? String(settings.symbol ?? ""));
+  const underlying = listed.symbol;
+  const exchange = listed.exchange || target?.effectiveExchange || undefined;
+  // A strategy seeded for an expiry (`OSA SPY --strategy put --expiration 2027-01-15`) opens that expiry's chain.
+  const [expiration, setExpiration] = usePluginPaneState<number | null>("chainExpiration", readOptionExpiration(settings.expiration));
   const [tab, setTab] = usePluginPaneState("activeTabId", "payoff");
   const [detail, setDetail] = useState<"chain" | "leg" | "save" | "inputs" | null>(null);
   const [editingLeg, setEditingLeg] = useState<ScenarioLeg | null>(null);
@@ -62,9 +69,9 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const loadMarket = useCallback(async (force: boolean) => {
     controller.current?.abort();
     const abort = new AbortController(); controller.current = abort;
-    return loadScenarioMarket({ instrument: { symbol: underlying, exchange: target?.effectiveExchange },
+    return loadScenarioMarket({ instrument: { symbol: underlying, exchange },
       expiration: expiration ?? undefined, forceRefresh: force, signal: abort.signal });
-  }, [underlying, target?.effectiveExchange, expiration]);
+  }, [underlying, exchange, expiration]);
   // Fully specified calculations and screenshot snapshots never need a quote refresh.
   const needsMarket = !frozen && (!["spot", "rate", "dividendYield"].every((key) => settings[key] != null && settings[key] !== "") || detail === "chain");
   const resource = useAsyncResource(underlying && needsMarket ? loadMarket : null);
@@ -98,18 +105,20 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     if (!follow || !storedPosition) return null;
     const spotQuote = resolveEntryData(liveEntries.get(buildQuoteKey({ symbol: underlying, exchange: exchange ?? "" })));
     if (!spotQuote || spotQuote.stale || !(spotQuote.price > 0) || !Number.isFinite(spotQuote.price)
-      || (spotQuote.currency && storedPosition.currency !== "UNKNOWN" && spotQuote.currency !== storedPosition.currency)) return null;
+      || (spotQuote.currency && storedPosition.currency !== UNKNOWN_CURRENCY && spotQuote.currency !== storedPosition.currency)) return null;
     const freshness = { now: Math.max(freshnessNow, Date.now()), subscriptionStartedAt };
     const mids = new Map<string, number>();
+    const quotes = new Map<string, HedgeQuote>();
     let delayed = spotQuote.dataSource !== "live";
     for (const [id, symbol] of legSymbols) {
       const quote = freshOptionQuote(liveEntries.get(buildOptionQuoteKey(symbol)), freshness);
       const mid = quote && quote.bid != null && quote.ask != null ? optionMid({ bid: quote.bid, ask: quote.ask }) : null;
       if (mid == null) continue;
       mids.set(id, mid);
+      quotes.set(id, { bid: quote!.bid!, ask: quote!.ask! });
       delayed ||= quote!.dataSource !== "live";
     }
-    return { position: liveScenarioPosition(storedPosition, spotQuote.price, Date.now(), mids),
+    return { position: liveScenarioPosition(storedPosition, spotQuote.price, Date.now(), mids), quotes,
       observedAt: spotQuote.lastUpdated, basis: delayed ? "delayed" : "real-time" };
   }, [follow, storedPosition, liveEntries, underlying, exchange, legSymbols, freshnessNow, subscriptionStartedAt]);
   const position = live?.position ?? storedPosition;
@@ -132,7 +141,16 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   }, [frozen, position, controls, seeded.error, controlState, baseControls.error]);
   const scenario = result.scenario;
   const error = localError ?? result.error;
-  const baseline = (): ScenarioPosition => position ?? { symbol: underlying, exchange, currency: String(settings.currency ?? (market?.currency || "UNKNOWN")),
+  // The report's Hedge budget, from the same position and quotes; a live position sizes at its live quotes and spot.
+  const hedge = useMemo(() => {
+    if (!scenario) return { value: null, error: null };
+    try {
+      return { value: scenarioHedgeBudget(settings, scenario.position,
+        live ? { chain: market?.chain, liveQuotes: live.quotes } : market), error: null };
+    } catch (error) { return { value: null, error: error instanceof Error ? error.message : String(error) }; }
+  }, [settings, scenario, market, live]);
+  const baseline = (): ScenarioPosition => position ?? { symbol: underlying, exchange,
+    currency: scenarioCurrency(settings.currency, market?.currency || ticker?.metadata.currency, exchange ?? market?.exchange),
     spot: Number.isFinite(explicitSpot) ? explicitSpot : market?.spot ?? NaN,
     rate: settings.rate != null ? Number(settings.rate) / 100 : market?.rate ?? NaN,
     dividendYield: settings.dividendYield != null ? Number(settings.dividendYield) / 100 : market?.dividendYield ?? NaN,
@@ -215,9 +233,10 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   usePaneFooter("osa", () => ({ info: [
     ...(resource.loading ? [{ id: "loading", parts: [{ text: "loading chain", tone: "muted" as const }] }] : []),
     ...(error ? [{ id: "error", parts: [{ text: error, tone: "warning" as const }] }] : []),
+    ...(hedge.error ? [{ id: "hedge-error", parts: [{ text: hedge.error, tone: "warning" as const }] }] : []),
     ...(live ? [{ id: "asof", parts: [{ text: `${live.basis} · as of ${new Date(live.observedAt).toISOString().slice(11, 19)} UTC`, tone: "muted" as const }] }]
       : position ? [{ id: "asof", parts: [{ text: `${dateLabel(position.asOf)} · ${market?.source ? "market" : "input assumptions"}${midVolatility}`, tone: "muted" as const }] }] : []),
-  ], hints }), [hints, position, market?.source, resource.loading, error, live?.basis, live?.observedAt, midVolatility]);
+  ], hints }), [hints, position, market?.source, resource.loading, error, hedge.error, live?.basis, live?.observedAt, midVolatility]);
   useScenarioEvidence({ scenario, view: tab, loading: !!resource.loading && !scenario, error: error ?? (snapshotErrors.join("; ") || null), notices });
   // A choice dialog (scenario date, saved strategies) owns the keys while open.
   const dialogOpen = useDialogState((state) => state.isOpen);
@@ -238,11 +257,13 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
   const tabsFocused = focused && !volActive && !detail;
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: setTab, focused: tabsFocused, dense: true });
   const risk = scenario?.expiryRisk;
+  // Value and P&L add every contract; spot and entry prices are per share.
+  const valueUnit = scenario ? `${currencyLabel(scenario.position.currency)} ${scenarioValueUnit(scenario.position)}` : "";
   const stats: StatItem[] = scenario ? [
-    { id: "pnl", label: "P&L", value: money(scenario.valuation.pnl), detail: scenario.position.currency,
+    { id: "pnl", label: "P&L", value: money(scenario.valuation.pnl), detail: valueUnit,
       tone: cents(scenario.valuation.pnl) >= 0 ? "positive" : "negative" },
-    { id: "spot", label: "Spot", value: money(scenario.position.spot) },
-    { id: "value", label: "Value", value: money(scenario.valuation.price) },
+    { id: "spot", label: "Spot", value: money(scenario.position.spot), detail: "per share" },
+    { id: "value", label: "Value", value: money(scenario.valuation.price), detail: valueUnit },
     { id: "max-profit", label: "Max profit", value: risk?.unlimitedProfit ? "Unlimited" : money(risk?.maxProfit ?? null) },
     { id: "max-loss", label: "Max loss", value: risk?.unlimitedLoss ? "Unlimited" : money(risk?.maxLoss ?? null) },
     { id: "breakevens", label: "Breakevens", value: risk?.breakevens.map(money).join(", ") || "--" },
@@ -252,11 +273,13 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
     { id: "vega", label: "Vega", value: money(scenario.valuation.vegaPerPoint), detail: "per pt" },
     { id: "rho", label: "Rho", value: money(scenario.valuation.rhoPerPoint), detail: "per pt" },
   ] : [];
+  const hedgeItems = hedge.value ? hedgeStatItems(hedge.value) : [];
   // The query bar and the stat band sit above the content only once a scenario prices.
-  const bodyHeight = Math.max(3, height - tabRows - (scenario ? 1 + statGridRows(stats, width) : 0));
+  const bodyHeight = Math.max(3, height - tabRows - (scenario ? 1 + statGridRows(stats, width) : 0)
+    - (hedgeItems.length ? statGridRows(hedgeItems, width) : 0));
   const legColumns: DataTableColumn[] = [{ id: "quantity", label: "Contracts", width: 10, align: "right" },
     { id: "side", label: "Option", width: 7, align: "left" }, { id: "strike", label: "Strike", width: 11, align: "right" },
-    { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / unit", width: 13, align: "right" },
+    { id: "expiration", label: "Expiry", width: 12, align: "left" }, { id: "price", label: "Entry / share", width: 14, align: "right" },
     { id: "volatility", label: "IV %", width: 9, align: "right" }, { id: "multiplier", label: "Units", width: 7, align: "right" }];
   const activeContent = scenario && tab === "payoff" ? <ScenarioPayoffChart scenario={scenario} width={width} height={bodyHeight} focused={tabsFocused} />
     : scenario && tab === "grid" ? <DataTableView focused={focused && !volActive} rootWidth={width}
@@ -308,6 +331,7 @@ export function OptionsScenarioPane({ width, height, focused }: PaneProps) {
         ]}
       />
       <StatGrid items={stats} width={width} />
+      {hedgeItems.length > 0 && <StatGrid items={hedgeItems} width={width} />}
     </>}
     {!position?.legs.length && !scenario ? <PaneStatusBody loading={!!resource.loading && !market} error={seeded.error} subject="scenario inputs">
       <Box paddingX={1}><EmptyState title="Build an options position." actions={<Button label="Add leg" onPress={addTyped} />} /></Box>

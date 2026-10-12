@@ -48,6 +48,7 @@ const originalMarkChatNotificationsDelivered = apiClient.markChatNotificationsDe
 const originalSubscribeChatNotifications = apiClient.subscribeChatNotifications.bind(apiClient);
 const originalSubscribeChatPresence = apiClient.subscribeChatPresence.bind(apiClient);
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
+const originalSendMessage = apiClient.sendMessage.bind(apiClient);
 
 const SERVER_CHAT_CHANNELS: ChatChannel[] = [
   { id: "everyone", name: "everyone", created_at: "2026-03-26T12:10:05.684Z" },
@@ -138,6 +139,7 @@ afterEach(() => {
   apiClient.subscribeChatNotifications = originalSubscribeChatNotifications;
   apiClient.subscribeChatPresence = originalSubscribeChatPresence;
   apiClient.editMessage = originalEditMessage;
+  apiClient.sendMessage = originalSendMessage;
 });
 
 describe("ChatController", () => {
@@ -1053,6 +1055,37 @@ describe("ChatController", () => {
     expect(calls[1]?.opts?.after).toBe("m2");
   });
 
+  test("a page read before the session was restored is read again as the account, with its own reactions", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    const page = (me: boolean) => [chatMessage({
+      id: "m1",
+      content: "rates",
+      createdAt: "2026-03-28T00:00:00.000Z",
+      user: { id: "u2", username: "bob", displayName: "Bob" },
+      reactions: [{ emoji: "👍", count: 1, me, users: [] }],
+    })];
+    const calls: Array<string | undefined> = [];
+    let signedIn = false;
+    apiClient.getMessages = async (_channelId, opts) => {
+      calls.push(opts?.after);
+      return opts?.after ? [] : page(signedIn);
+    };
+
+    // The pane mounted and read the channel before the plugin restored the session.
+    await controller.refreshMessages();
+    expect(controller.getSnapshot().messages[0]?.reactions?.[0]?.me).toBe(false);
+
+    persistSession(persistence, { emailVerified: true });
+    controller.attachPersistence(persistence);
+    signedIn = true;
+    await controller.refreshMessages();
+    await controller.refreshMessages();
+
+    expect(calls).toEqual([undefined, undefined, "m1"]);
+    expect(controller.getSnapshot().messages[0]?.reactions?.[0]?.me).toBe(true);
+  });
+
   test("shows a pending message immediately and replaces it when the send succeeds", async () => {
     const persistence = new MemoryPersistence();
     const controller = createController();
@@ -1214,6 +1247,36 @@ describe("ChatController", () => {
     expect(notifications).toEqual([{ body: "Messages can only be edited within 15 minutes.", type: "error" }]);
   });
 
+  test("refuses to edit a message written on Discord without asking the server", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    const notifications: AppNotificationRequest[] = [];
+    const original: ChatMessage = chatMessage({
+      id: "m1",
+      content: "from the other side",
+      createdAt: recentChatTimestamp(),
+      origin: "discord",
+    });
+
+    persistSession(persistence, { emailVerified: true });
+    persistence.setResource(TRANSCRIPT_KIND, TRANSCRIPT_KEY, {
+      messages: [original],
+    }, {
+      sourceKey: TRANSCRIPT_SOURCE,
+      schemaVersion: TRANSCRIPT_SCHEMA_VERSION,
+      cachePolicy: { staleMs: 1_000, expireMs: 2_000 },
+    });
+    controller.setNotifier((notification) => { notifications.push(notification); });
+    controller.attachPersistence(persistence);
+    apiClient.editMessage = async () => {
+      throw new Error("should not call server");
+    };
+
+    await expect(controller.editChannelMessage("everyone", "m1", "edited")).resolves.toBe(false);
+
+    expect(notifications).toEqual([{ body: "This message was sent on Discord. Edit it there.", type: "error" }]);
+  });
+
   test("refuses to edit an older message from the current user", async () => {
     const persistence = new MemoryPersistence();
     const controller = createController();
@@ -1333,6 +1396,46 @@ describe("ChatController", () => {
     expect(sends[1]).toEqual(sends[0]!);
     expect(sends[0]!.clientMessageId).toBeTruthy();
     expect(controller.getSnapshot().messages).toEqual([stored]);
+  });
+
+  test("posts a shared pane as its own message, leaving the channel's draft and images alone", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    persistSession(persistence, { emailVerified: true });
+    controller.attachPersistence(persistence);
+    controller.setNotifier(() => {});
+    controller.setChannelDraft("everyone", "half written");
+
+    const uploaded: string[] = [];
+    controller.uploadAttachment = async (_channelId, upload) => {
+      uploaded.push(upload.name);
+      return { id: `img_${uploaded.length}`, mime: upload.type, width: 564, height: 600, size: 4, url: `https://api.example/img_${uploaded.length}` };
+    };
+    const sends: Array<{ channelId: string; content: string; attachmentIds?: string[] }> = [];
+    apiClient.sendMessage = async (channelId, content, _replyToId, clientMessageId, attachmentIds) => {
+      sends.push({ channelId, content, attachmentIds });
+      if (sends.length === 1) throw new Error("server offline");
+      return chatMessage({ id: "m7", content, createdAt: new Date().toISOString(), clientMessageId, attachments: [] });
+    };
+    const picture = { name: "portfolio-list.png", type: "image/png", data: new Uint8Array(4), previewUrl: "data:image/png;base64,AAAA" };
+
+    // A send that fails stays in the channel to retry, and the share says why.
+    await expect(controller.postImage("everyone", picture, " up 3% ")).rejects.toThrow("server offline");
+    expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+      content: "up 3%",
+      clientStatus: "failed",
+      attachments: [{ id: "img_1", url: "data:image/png;base64,AAAA" }],
+    });
+
+    const message = await controller.postImage("everyone", picture, "");
+    expect(message.id).toBe("m7");
+    expect(sends.map(({ content, attachmentIds }) => ({ content, attachmentIds }))).toEqual([
+      { content: "up 3%", attachmentIds: ["img_1"] },
+      { content: "", attachmentIds: ["img_2"] },
+    ]);
+    expect(controller.getSnapshot().messages.map((entry) => entry.id)).toContain("m7");
+    expect(controller.getSnapshot().draft).toBe("half written");
+    expect(controller.getSnapshot().draftAttachments).toEqual([]);
   });
 
   test("holds a send while images upload, takes four, and reports the server's refusal on the image", async () => {
@@ -1685,6 +1788,44 @@ describe("ChatController", () => {
       desktop: "when-inactive",
     }]);
     expect(deliveredIds).toEqual([["n1"]]);
+  });
+
+  test("mark all read reads each unread channel through its newest message, loading one not on this device first", async () => {
+    const persistence = new MemoryPersistence();
+    const controller = createController();
+    const readThrough: Array<[string, string | undefined]> = [];
+    persistSession(persistence, { emailVerified: true });
+    apiClient.updateChatChannelState = async (channelId, body) => {
+      readThrough.push([channelId, body.readThroughMessageId]);
+      return { channelId, notificationsEnabled: false, lastReadMessageId: body.readThroughMessageId ?? null, unreadCount: 0 };
+    };
+    const bob = { id: "u2", username: "bob", displayName: "Bob" };
+    apiClient.getMessages = async (channelId) => (channelId === "options"
+      ? [
+        chatMessage({ id: "o1", channelId: "options", content: "0DTE flow into the close", createdAt: "2026-03-28T00:01:00.000Z", user: bob }),
+        chatMessage({ id: "o2", channelId: "options", content: "SPX 5800 calls again", createdAt: "2026-03-28T00:02:00.000Z", user: bob }),
+      ]
+      : []);
+    controller.attachPersistence(persistence);
+    const everyone = (controller as any).ensureChannelState("everyone");
+    everyone.messages = [
+      chatMessage({ id: "e1", content: "the marker", createdAt: "2026-03-28T00:00:00.000Z", user: bob }),
+      chatMessage({ id: "e2", content: "@ada did you see CPI?", createdAt: "2026-03-28T00:03:00.000Z", user: bob }),
+    ];
+    everyone.lastViewedMessageId = "e1";
+    everyone.unreadCount = 1;
+    const options = (controller as any).ensureChannelState("options");
+    options.unreadCount = 2;
+    const help = (controller as any).ensureChannelState("help");
+    help.messages = [chatMessage({ id: "h1", channelId: "help", content: "read already", createdAt: "2026-03-28T00:00:00.000Z" })];
+    help.lastViewedMessageId = "h1";
+
+    controller.markAllChannelsRead();
+    await flushMicrotasks();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(readThrough).toEqual([["everyone", "e2"], ["options", "o2"]]);
+    expect(controller.getSnapshot().channelStates.filter((state) => state.unreadCount > 0)).toEqual([]);
   });
 
   test("toggles channel notifications optimistically and keeps the channel connected", async () => {

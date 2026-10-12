@@ -1,6 +1,6 @@
 import { PLUGIN_AUTO_UPDATE_SETTING } from "../../auto-update";
 import type { PluginModule } from "../plugin-module";
-import { PLUGIN_MARKETPLACE_PANE_ID } from "./ids";
+import { PLUGIN_MARKETPLACE_PANE_ID } from "../../marketplace/ids";
 import { PluginMarketplacePane } from "./pane";
 
 export const pluginMarketplaceModule: PluginModule = {

@@ -21,7 +21,8 @@ async function mount(tab: string, onNavigate: (id: string, symbol?: string | nul
   state.tickers.set("ADYEN:AMS", createTestTicker("ADYEN:AMS", "Adyen"));
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
-    return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="ticker-research" runtime={createTestPluginRuntime({ createPaneFromTemplate: (template, options) => onNavigate(template, options?.symbol) })}>
+    return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="ticker-research" runtime={createTestPluginRuntime({ createPaneFromTemplate: (template, options) => onNavigate(template, options?.symbol),
+      pinTicker: (symbol, options) => onNavigate(options?.paneType ?? "", symbol) })}>
       <PaneFooterProvider>{(footer) => <Box width={100} height={22} flexDirection="column"><Box height={21}><HiringPane width={100} height={21} focused /></Box><PaneFooterBar footer={footer} width={100} focused /><PaneFooterKeys paneId={id} footer={footer} focused /></Box>}</PaneFooterProvider>
     </TestPaneProvider>;
   }
@@ -38,7 +39,7 @@ test("evidence opens in the stack, keeps original title, and DES preserves the n
   await tui.emitKeypress({ name: "escape" });
   await tui.waitForFrameToContain("SENIORITY");
   await tui.emitKeypress({ name: "d" });
-  expect(navigations).toEqual([["new-ticker-detail-pane", "ADYEN:AMS"]]);
+  expect(navigations).toEqual([["ticker-research", "ADYEN:AMS"]]);
 });
 
 test("individual app history opens with the requested window", async () => {

@@ -1,8 +1,10 @@
 /** @jsxImportSource react */
 import { useEffect, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import {
   createShortcutRegistry,
   InputHostProvider,
+  useRegisteredBeforeShortcut,
   useRegisteredShortcut,
   type InputHost,
   type KeyEventLike,
@@ -37,7 +39,7 @@ function domKeyEventLike(
     meta: event.metaKey,
     super: event.metaKey,
     targetEditable: isEditableKeyboardTarget(event.target),
-    repeated: "repeat" in event && event.repeat,
+    repeat: "repeat" in event && event.repeat === true,
     get defaultPrevented() {
       return event.defaultPrevented;
     },
@@ -77,7 +79,7 @@ function getViewport() {
 }
 
 export function WebInputHostProvider({ children }: { children: ReactNode }) {
-  const shortcutRegistry = useMemo(() => createShortcutRegistry(), []);
+  const shortcutRegistry = useMemo(() => createShortcutRegistry({ flushSync }), []);
 
   useEffect(() => {
     // Windows fires the Menu key's contextmenu on keyup. When the app used the
@@ -144,6 +146,9 @@ export function WebInputHostProvider({ children }: { children: ReactNode }) {
   const host = useMemo<InputHost>(() => ({
     useShortcut(handler, options) {
       useRegisteredShortcut(shortcutRegistry, handler, options);
+    },
+    useBeforeShortcut(listener) {
+      useRegisteredBeforeShortcut(shortcutRegistry, listener);
     },
     useViewport() {
       return useSyncExternalStore(subscribeViewport, getViewport, getViewport);

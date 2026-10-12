@@ -267,6 +267,7 @@ function WebDataTableRowInner<
   if (sectionHeader) {
     // A header the cursor can land on (a collapsible group) shows it like a row.
     const headerColor = sectionHeader.color ?? (selected ? CSS_SELECTED_TEXT : CSS_TEXT_BRIGHT);
+    const action = sectionHeader.action;
     return (
       <div
         key={itemKey}
@@ -298,12 +299,37 @@ function WebDataTableRowInner<
             display: "flex",
             alignItems: "center",
             gap: 4,
+            // Kept to the columns in view, so a table wider than its pane does not push the action out of sight.
+            ...(action && viewportWidth > 0 ? { maxWidth: Math.max(0, viewportWidth * WEB_CELL_WIDTH - inlinePaddingPx(horizontalPadding) * 2) } : {}),
           }}
         >
           {sectionHeader.expanded !== undefined && (
             <DisclosureMarker expanded={sectionHeader.expanded} color={headerColor} />
           )}
-          {sectionHeader.text}
+          {action ? (
+            <>
+              <span style={{ flex: "0 1 auto", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{sectionHeader.text}</span>
+              <button
+                type="button"
+                data-gloom-role="data-table-section-action"
+                title={action.title ?? action.label}
+                aria-haspopup="dialog"
+                style={{ color: selected ? CSS_SELECTED_TEXT : CSS_TEXT }}
+                onMouseDown={(event) => {
+                  // The action, not the header's own press (a group's collapse).
+                  event.stopPropagation();
+                  focusPane();
+                }}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  action.onPress();
+                }}
+              >
+                {action.label}
+                <WebIcon name="chevron-down" size={9} />
+              </button>
+            </>
+          ) : sectionHeader.text}
         </div>
       </div>
     );
@@ -355,6 +381,8 @@ function WebDataTableRowInner<
             data-gloom-role="data-table-cell"
             // The instant behind a shortened time ("Wed 11:27"), so a rendered-view report can print it whole.
             data-gloom-cell-instant={cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? cell.value.toISOString() : undefined}
+            // The full-precision number behind a rounded cell (a trade of -9.4596 for -9.45963753), for the same reports.
+            data-gloom-cell-value={typeof cell.value === "number" && Number.isFinite(cell.value) ? String(cell.value) : undefined}
             style={{
               minWidth: 0,
               position: freezeFirstColumn && columnIndex === 0 ? "sticky" : undefined,
@@ -365,6 +393,7 @@ function WebDataTableRowInner<
               boxSizing: "border-box",
               height: WEB_CELL_HEIGHT,
               overflow: "hidden",
+              cursor: cell.onMouseDown ? "pointer" : undefined,
               backgroundColor: cell.backgroundColor ?? rowBg,
               boxShadow: freezeFirstColumn && columnIndex === 0 ? `-${inlinePaddingPx(horizontalPadding)}px 0 0 ${cell.backgroundColor ?? rowBg}, ${columnGap * WEB_CELL_WIDTH}px 0 0 ${cell.backgroundColor ?? rowBg}` : undefined,
             }}

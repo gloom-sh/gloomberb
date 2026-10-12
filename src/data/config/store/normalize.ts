@@ -21,8 +21,30 @@ import { isLanguagePreference } from "../../../i18n/languages";
 import { clampFontSize } from "../../../theme/font-scale";
 import { isLayoutConfig, sanitizeLayout } from "../layout";
 import { migrateSavedConfig, type ConfigMigrationHost } from "./migrations";
+import { encodeBuiltinDisabledPluginIds, expandBuiltinPluginGroups } from "../../../plugins/ownership";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
+import { debugLog } from "../../../utils/debug-log";
+import { DEFAULT_THEME, themes } from "../../../theme/themes";
+import { sanitizeStarPrompt } from "../../../app/star-prompt/model";
+
+const configLog = debugLog.createLogger("config");
+const reportedUnknownThemes = new Set<string>();
+
+/**
+ * A theme id this build does not know is kept, not replaced: a newer build on
+ * another device may have saved it, and writing the default back would undo
+ * that choice everywhere through sync. The app draws the default meanwhile,
+ * and says so once.
+ */
+function sanitizeTheme(value: unknown, fallback: string): string {
+  if (typeof value !== "string") return fallback;
+  if (!themes[value] && !reportedUnknownThemes.has(value)) {
+    reportedUnknownThemes.add(value);
+    configLog.warn(`Unknown theme "${value}" in config; showing ${DEFAULT_THEME}. gloomberb config themes lists the ids.`);
+  }
+  return value;
+}
 
 export function normalizeLoadedConfig(
   saved: Record<string, unknown>,
@@ -42,7 +64,10 @@ export function normalizeLoadedConfig(
       : entry
   ));
 
-  const disabledPlugins = sanitizeUniqueStringList(candidate.disabledPlugins ?? defaults.disabledPlugins);
+  // After the migrations, which read retired group ids as they were saved.
+  const disabledPlugins = expandBuiltinPluginGroups(
+    sanitizeUniqueStringList(candidate.disabledPlugins ?? defaults.disabledPlugins),
+  );
   const onboardingProgress = sanitizeOnboardingProgress(candidate.onboardingProgress);
   const onboardingComplete = onboardingProgress
     ? false
@@ -64,9 +89,11 @@ export function normalizeLoadedConfig(
     disabledPlugins,
     seededPlugins: sanitizeUniqueStringList(candidate.seededPlugins),
     ...(candidate.portfolioCurrenciesAdopted === true ? { portfolioCurrenciesAdopted: true } : {}),
+    ...(candidate.presentationMode === true ? { presentationMode: true } : {}),
+    ...(typeof candidate.timezone === "string" && candidate.timezone.trim() ? { timezone: candidate.timezone.trim() } : {}),
     disabledSources: sanitizeUniqueStringList(candidate.disabledSources ?? defaults.disabledSources),
     pluginConfig: sanitizePluginConfig(candidate.pluginConfig),
-    theme: typeof candidate.theme === "string" ? candidate.theme : defaults.theme,
+    theme: sanitizeTheme(candidate.theme, defaults.theme),
     chartPreferences: sanitizeChartPreferences(candidate.chartPreferences, defaults.chartPreferences),
     valueFlashingEnabled: typeof candidate.valueFlashingEnabled === "boolean" ? candidate.valueFlashingEnabled : defaults.valueFlashingEnabled,
     fontSize: sanitizeFontSize(candidate.fontSize, defaults.fontSize),
@@ -78,6 +105,7 @@ export function normalizeLoadedConfig(
     lastLaunchedVersion: typeof candidate.lastLaunchedVersion === "string" ? candidate.lastLaunchedVersion : undefined,
     ...withKeybindings(sanitizeKeybindings(candidate.keybindings)),
     ...withTelemetry(sanitizeTelemetry(candidate.telemetry)),
+    ...withStarPrompt(sanitizeStarPrompt(candidate.starPrompt)),
   };
 
   const needsSave =
@@ -122,7 +150,8 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
     layouts,
     activeLayoutIndex,
     brokerInstances: sanitizeBrokerInstances(config.brokerInstances),
-    disabledPlugins: sanitizeUniqueStringList(config.disabledPlugins),
+    // Older apps read the retired group ids, so a group that is all off is saved as one.
+    disabledPlugins: encodeBuiltinDisabledPluginIds(sanitizeUniqueStringList(config.disabledPlugins)),
     seededPlugins: sanitizeUniqueStringList(config.seededPlugins),
     disabledSources: sanitizeUniqueStringList(config.disabledSources),
     pluginConfig: sanitizePluginConfig(config.pluginConfig),
@@ -138,6 +167,8 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
   Object.assign(persisted, withKeybindings(sanitizeKeybindings(config.keybindings)));
   delete persisted.telemetry;
   Object.assign(persisted, withTelemetry(sanitizeTelemetry(config.telemetry)));
+  delete persisted.starPrompt;
+  Object.assign(persisted, withStarPrompt(sanitizeStarPrompt(config.starPrompt)));
 
   return persisted;
 }
@@ -148,6 +179,10 @@ function withKeybindings(keybindings: KeybindingsConfig | undefined): Pick<AppCo
 
 function withTelemetry(telemetry: TelemetryConfig | undefined): Pick<AppConfig, "telemetry"> {
   return telemetry ? { telemetry } : {};
+}
+
+function withStarPrompt(starPrompt: AppConfig["starPrompt"]): Pick<AppConfig, "starPrompt"> {
+  return starPrompt ? { starPrompt } : {};
 }
 
 /** Only the switches that are set survive; an empty object is the same as none. */
@@ -314,10 +349,14 @@ function sanitizePortfolios(value: unknown, fallback: Portfolio[]): Portfolio[] 
     .map(sanitizePortfolioAllocation);
 }
 
-/** Cash and target weights the portfolio commands write; anything else is dropped. */
+/** Cash, target weights and the import source the portfolio commands write; a malformed one is dropped. */
 function sanitizePortfolioAllocation(entry: Portfolio): Portfolio {
-  const { cash, targetWeights, ...portfolio } = entry;
+  const { cash, targetWeights, importedFrom, ...portfolio } = entry;
   const next: Portfolio = { ...portfolio };
+  if (isRecord(importedFrom) && importedFrom.kind === "13f"
+    && [importedFrom.cik, importedFrom.name, importedFrom.period, importedFrom.filed].every((value) => typeof value === "string" && value)) {
+    next.importedFrom = { kind: "13f", cik: importedFrom.cik, name: importedFrom.name, period: importedFrom.period, filed: importedFrom.filed };
+  }
   if (isRecord(cash) && typeof cash.amount === "number" && Number.isFinite(cash.amount)
     && typeof cash.currency === "string" && /^[A-Z]{3}$/.test(cash.currency)) {
     next.cash = { amount: cash.amount, currency: cash.currency };

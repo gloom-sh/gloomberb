@@ -11,6 +11,7 @@ import {
 } from "react";
 import { EmptyState } from "../../../components/ui/status";
 import { usePaneInstance } from "../../../state/app/context";
+import { useRegisterPaneScrollBox } from "../../../state/pane-scroll-registry";
 import { useRafCallback } from "../../../react/use-raf-callback";
 import { measurePerf } from "../../../utils/perf-marks";
 import type {
@@ -25,6 +26,7 @@ import {
   hasMeaningfulTableHorizontalOverflow,
 } from "../../../components/ui/table-layout";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { isLiveResizing, onLiveResizeEnd } from "../../../ui/live-resize";
 import { useScrollbarActivity } from "../scrollbar-activity";
 import { useHorizontalScrollEdges } from "../host/overflow-fade";
 import {
@@ -213,12 +215,29 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     scheduleVisibleRangeMeasure();
     const element = bodyElementRef.current;
     if (!element || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
+    const measure = () => {
       scheduleViewportWidthMeasure();
       scheduleVisibleRangeMeasure();
+    };
+    // While the pointer resizes the pane, its columns stretch by CSS and the
+    // pane renders the table at the new size a few times a second; measuring
+    // on every cell the body crosses would render it once per cell. It is
+    // measured once the resize ends, a frame after its layout lands.
+    let measureAfterResize = false;
+    const observer = new ResizeObserver(() => {
+      if (isLiveResizing()) measureAfterResize = true;
+      else measure();
+    });
+    const stopListening = onLiveResizeEnd(() => {
+      if (!measureAfterResize) return;
+      measureAfterResize = false;
+      measure();
     });
     observer.observe(element);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      stopListening();
+    };
   }, [measureViewportWidth, scheduleViewportWidthMeasure, scheduleVisibleRangeMeasure]);
 
   useEffect(() => {
@@ -284,6 +303,10 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     bodyVertical.bar,
     { viewportTopInsetPx: headerPx },
   );
+  // The terminal table body is a ScrollBox the pane scroll keys already reach;
+  // this is the same for the desktop one. A table with a cursor takes the keys
+  // first, so only a table without one is scrolled by them.
+  useRegisterPaneScrollBox(scrollRef, { enabled: true });
 
   useEffect(() => {
     headerHorizontal.bar.visible = false;
@@ -305,8 +328,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     const next = frozenCell && body
       ? Math.max(0, frozenCell.getBoundingClientRect().right - body.getBoundingClientRect().left + columnGap * WEB_CELL_WIDTH)
       : 0;
-    setFrozenEdgePx((current) => current === next ? current : next);
-  }, [columnGap, columns, freezeFirstColumn, overflowEdges.start, viewportWidth]);
+    // Set only on a change: a state update from a layout effect costs the render a second commit.
+    if (next !== frozenEdgePx) setFrozenEdgePx(next);
+  }, [columnGap, columns, freezeFirstColumn, frozenEdgePx, overflowEdges.start, viewportWidth]);
 
   const rootStyle: CSSProperties = {
     position: "relative",
@@ -318,6 +342,12 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     minHeight: 0,
     backgroundColor: CSS_BG,
     overflow: "hidden",
+    // Its width comes from where it sits, never from its columns. When the
+    // columns overflow, the content is laid out at their full width; in a box
+    // that sizes to its content (a pane's side beside a sidebar), that widened
+    // the box until they fit, which turned the scrolling off and narrowed it
+    // again: a measure and a render every frame, at rest.
+    contain: "inline-size",
   };
   const bodyScrollerStyle: CSSProperties = {
     width: "100%",
@@ -381,7 +411,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
             columns={columns}
             freezeFirstColumn={freezeFirstColumn}
             scrollLeft={frozenScrollLeft}
-            viewportWidth={viewportWidth}
+            viewportWidth={freezeFirstColumn ? viewportWidth : 0}
             columnGap={columnGap}
             horizontalPadding={horizontalPadding}
             focusPane={focusPane}
@@ -428,7 +458,9 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                     columns={columns}
                     freezeFirstColumn={freezeFirstColumn}
                     scrollLeft={frozenScrollLeft}
-                    viewportWidth={viewportWidth}
+                    // Only a frozen first column places itself by it: every
+                    // other row stays memoized when the viewport changes width.
+                    viewportWidth={freezeFirstColumn ? viewportWidth : 0}
                     columnGap={columnGap}
                     horizontalPadding={horizontalPadding}
                     focusPane={focusPane}

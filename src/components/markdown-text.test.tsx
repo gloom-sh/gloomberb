@@ -13,9 +13,9 @@ const COMPARISON = [
   "| Tax/distribution character | Distributions can vary and are not equivalent to bond interest | Mostly dividends and capital appreciation |",
 ].join("\n");
 
-async function render(text: string, width: number): Promise<string[]> {
+async function render(text: string, width: number, onOpenLink?: (href: string) => void): Promise<string[]> {
   await act(async () => {
-    await tui.render(<MarkdownText text={text} lineWidth={width} />, { width, height: 40 });
+    await tui.render(<MarkdownText text={text} lineWidth={width} onOpenLink={onOpenLink} />, { width, height: 40 });
   });
   await act(async () => {
     await tui.setup().renderOnce();
@@ -106,3 +106,28 @@ describe("MarkdownText tables", () => {
     expect(lines).toEqual(["Compare JEPQ | QQQ on yield", "---"]);
   });
 });
+
+describe("MarkdownText inline marks", () => {
+  test("an escaped star prints as a star, and an italic line keeps the bold inside it", async () => {
+    const lines = await render([
+      "\\*ASML is excluded from the basket.",
+      "*Risk covers **96.9%** of portfolio value.*",
+    ].join("\n"), 60);
+
+    expect(lines).toEqual([
+      "*ASML is excluded from the basket.",
+      "Risk covers 96.9% of portfolio value.",
+    ]);
+  });
+});
+
+describe("MarkdownText links", () => {
+  // Release notes and model answers keep their links as written; only a
+  // reader that handles links (DOCS) reads them as links.
+  test("a link reads as its label only for a reader that opens links", async () => {
+    const text = "See [the **keys**](/docs/layout-shortcuts) and | [x] stays.";
+    expect(await render(text, 80)).toEqual(["See [the keys](/docs/layout-shortcuts) and | [x] stays."]);
+    expect(await render(text, 80, () => {})).toEqual(["See the keys and | [x] stays."]);
+  });
+});
+

@@ -41,6 +41,7 @@ export function normalizeHistoryResult(
     ...(typeof result.sourceKey === "string" && /^(provider|broker):[^\r\n\0]+$/.test(result.sourceKey) ? { sourceKey: result.sourceKey } : {}),
     ...(isHistoryCoverageDate(result.coverageStart) ? { coverageStart: result.coverageStart } : {}),
     ...(result.extendedHours === true ? { extendedHours: true } : {}),
+    ...(result.savedCopyBehind === true ? { savedCopyBehind: true as const } : {}),
   };
 }
 

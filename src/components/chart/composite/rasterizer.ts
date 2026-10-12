@@ -1,5 +1,6 @@
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import {
+  blendAt,
   blendPixel,
   drawCircle,
   drawLine,
@@ -17,6 +18,7 @@ import { compositeGridRatios } from "./format";
 import { projectCompositeValue } from "./scene";
 import { paintVolumeProfile } from "./volume-profile-paint";
 import { paintExtendedHours } from "./session-shading";
+import type { SeriesLineCue } from "./series-cues";
 import type {
   CompositeAxisDomain,
   CompositeChartColors,
@@ -103,20 +105,61 @@ function fillAreaGradient(
   const reachAbove = Math.max(1, floor - Math.max(0, peakAbove));
   const reachBelow = Math.max(1, Math.min(height - 1, peakBelow) - floor);
 
+  // A pixel's opacity depends on its row alone, so each row's is worked out
+  // once; the pixels a fill covers are inside the bitmap and blend unchecked.
+  const colorAlpha = color.a / 255;
+  const rowAlpha = new Float64Array(height);
+  // Over an opaque pixel a blend is `colour * alpha + pixel * (1 - alpha)`:
+  // the first term and the factor are worked out per row too.
+  const rowRed = new Float64Array(height);
+  const rowGreen = new Float64Array(height);
+  const rowBlue = new Float64Array(height);
+  const rowKeep = new Float64Array(height);
+  for (let y = 0; y < height; y += 1) {
+    const strength = y <= floor ? (floor - y) / reachAbove : (y - floor) / reachBelow;
+    const alpha = clamp(colorAlpha * (AREA_FILL_MIN_OPACITY + (AREA_FILL_MAX_OPACITY - AREA_FILL_MIN_OPACITY) * strength), 0, 1);
+    rowAlpha[y] = alpha;
+    rowRed[y] = color.r * alpha;
+    rowGreen[y] = color.g * alpha;
+    rowBlue[y] = color.b * alpha;
+    rowKeep[y] = 1 - alpha;
+  }
+  // Each column fills from the line to the baseline. Walking the buffer row
+  // by row, in memory order, is several times faster than column by column.
+  const fillFrom = new Float64Array(width).fill(Number.POSITIVE_INFINITY);
+  const fillTo = new Float64Array(width).fill(Number.NEGATIVE_INFINITY);
+  let firstRow = floor + 1;
+  let lastRow = floor;
   for (let x = 0; x < width; x += 1) {
     const top = above[x]!;
-    if (!Number.isNaN(top)) {
-      for (let y = Math.max(0, Math.ceil(top)); y <= floor; y += 1) {
-        const strength = (floor - y) / reachAbove;
-        blendPixel(data, width, height, x, y, color, AREA_FILL_MIN_OPACITY + (AREA_FILL_MAX_OPACITY - AREA_FILL_MIN_OPACITY) * strength);
-      }
-    }
     const bottom = below[x]!;
+    if (!Number.isNaN(top)) {
+      fillFrom[x] = Math.max(0, Math.ceil(top));
+      firstRow = Math.min(firstRow, fillFrom[x]!);
+    }
     if (!Number.isNaN(bottom)) {
-      for (let y = floor + 1; y <= Math.min(height - 1, Math.floor(bottom)); y += 1) {
-        const strength = (y - floor) / reachBelow;
-        blendPixel(data, width, height, x, y, color, AREA_FILL_MIN_OPACITY + (AREA_FILL_MAX_OPACITY - AREA_FILL_MIN_OPACITY) * strength);
+      fillTo[x] = Math.min(height - 1, Math.floor(bottom));
+      lastRow = Math.max(lastRow, fillTo[x]!);
+    }
+  }
+  for (let y = firstRow; y <= lastRow; y += 1) {
+    const alpha = rowAlpha[y]!;
+    if (alpha <= 0) continue;
+    const keep = rowKeep[y]!;
+    const red = rowRed[y]!;
+    const green = rowGreen[y]!;
+    const blue = rowBlue[y]!;
+    const aboveBaseline = y <= floor;
+    for (let x = 0; x < width; x += 1) {
+      if (aboveBaseline ? y < fillFrom[x]! : y > fillTo[x]!) continue;
+      const index = (y * width + x) * 4;
+      if (data[index + 3] !== 255) {
+        blendAt(data, index, color, alpha);
+        continue;
       }
+      data[index] = Math.round(red + data[index]! * keep);
+      data[index + 1] = Math.round(green + data[index + 1]! * keep);
+      data[index + 2] = Math.round(blue + data[index + 2]! * keep);
     }
   }
 }
@@ -168,6 +211,55 @@ function fillBand(
   }
 }
 
+/**
+ * Strokes a line's segments with a dash pattern that runs on along the whole
+ * line, so a dense series with segments shorter than one dash still shows the
+ * pattern rather than restarting it at every point.
+ */
+class DashedStroke {
+  private index = 0;
+  private remaining: number;
+
+  constructor(
+    private readonly data: Uint8Array,
+    private readonly width: number,
+    private readonly height: number,
+    private readonly color: RgbaColor,
+    private readonly cue: SeriesLineCue,
+  ) {
+    this.remaining = cue.dash[0] ?? 0;
+  }
+
+  segment(x0: number, y0: number, x1: number, y1: number): void {
+    const { dash, thickness } = this.cue;
+    const length = Math.hypot(x1 - x0, y1 - y0);
+    if (dash.length === 0 || length === 0) {
+      drawLine(this.data, this.width, this.height, x0, y0, x1, y1, this.color, thickness);
+      return;
+    }
+    let travelled = 0;
+    while (travelled < length) {
+      const run = Math.min(this.remaining, length - travelled);
+      if (this.index % 2 === 0) {
+        const from = travelled / length;
+        const to = (travelled + run) / length;
+        drawLine(
+          this.data, this.width, this.height,
+          x0 + (x1 - x0) * from, y0 + (y1 - y0) * from,
+          x0 + (x1 - x0) * to, y0 + (y1 - y0) * to,
+          this.color, thickness,
+        );
+      }
+      travelled += run;
+      this.remaining -= run;
+      if (this.remaining <= 0) {
+        this.index = (this.index + 1) % dash.length;
+        this.remaining = dash[this.index]!;
+      }
+    }
+  }
+}
+
 function drawConnectedSeries(
   data: Uint8Array,
   width: number,
@@ -176,6 +268,7 @@ function drawConnectedSeries(
   domain: CompositeAxisDomain,
   color: RgbaColor,
   area: boolean,
+  cue?: SeriesLineCue,
 ): void {
   const points = series.points.map((point) => pixelPoint(point, width, height));
   if (points.length === 0) return;
@@ -184,11 +277,19 @@ function drawConnectedSeries(
 
   if (area) fillAreaGradient(data, width, height, series, points, baseline, step, color);
 
+  const stroke = cue ? new DashedStroke(data, width, height, color, cue) : null;
   for (let index = 1; index < points.length; index += 1) {
     const previous = points[index - 1]!;
     const current = points[index]!;
     if (series.points[index]?.breakBefore) continue;
-    if (step) {
+    if (stroke) {
+      if (step) {
+        stroke.segment(previous.x, previous.y, current.x, previous.y);
+        stroke.segment(current.x, previous.y, current.x, current.y);
+      } else {
+        stroke.segment(previous.x, previous.y, current.x, current.y);
+      }
+    } else if (step) {
       drawLine(data, width, height, previous.x, previous.y, current.x, previous.y, color, 1.4);
       drawLine(data, width, height, current.x, previous.y, current.x, current.y, color, 1.4);
     } else {
@@ -459,6 +560,7 @@ export function renderCompositePanelBitmap(
     if (!domain) continue;
     const color = parseHex(series.source.color);
     const negativeColor = series.source.negativeColor ? parseHex(series.source.negativeColor) : color;
+    const cue = panel.lineCues?.get(series.source.id);
     switch (series.source.style) {
       case "columns":
         drawColumns(
@@ -475,11 +577,11 @@ export function renderCompositePanelBitmap(
         );
         break;
       case "area":
-        drawConnectedSeries(data, width, height, series, domain, color, true);
+        drawConnectedSeries(data, width, height, series, domain, color, true, cue);
         break;
       case "band":
         fillBand(data, width, height, series, domain, color);
-        drawConnectedSeries(data, width, height, series, domain, color, false);
+        drawConnectedSeries(data, width, height, series, domain, color, false, cue);
         break;
       case "points":
         for (const point of series.points) {
@@ -494,7 +596,7 @@ export function renderCompositePanelBitmap(
         break;
       case "line":
       case "step":
-        drawConnectedSeries(data, width, height, series, domain, color, false);
+        drawConnectedSeries(data, width, height, series, domain, color, false, cue);
         break;
     }
   }

@@ -46,12 +46,14 @@ import {
   buildTimelineColumns,
   buildTimelineRows,
   inferBrowserTabFromQuery,
+  quartersBehindLatest,
   selectedIndexById,
   sortBrowserRows,
   sortFilingPositionRows,
   sortHoldingRows,
   sortTimelineRows,
 } from "./model";
+import { isOptionType, isStaleFiling, quartersOldText } from "./report-notes";
 import {
   renderBrowserCell,
   renderFilingPositionCell,
@@ -479,14 +481,21 @@ export function FundDetailView({
     }
   });
 
+  const quartersBehind = quartersBehindLatest(data?.latestForm?.periodOfReport);
+  const staleFiling = isStaleFiling(quartersBehind);
   const holdingStats: StatItem[] = [
     { id: "reported", label: "Reported", value: data?.latestForm?.periodOfReport ?? "--",
-      detail: `filed ${data?.latestForm?.filedAsOfDate || "--"}${data?.latestForm && amendmentKind(data.latestForm) === "restatement" ? ", restated" : ""}` },
+      detail: `filed ${data?.latestForm?.filedAsOfDate || "--"}${data?.latestForm && amendmentKind(data.latestForm) === "restatement" ? ", restated" : ""}${staleFiling ? `, ${quartersOldText(quartersBehind)}` : ""}`,
+      ...(staleFiling ? { tone: "warning" as const } : {}) },
     data && hasComparable13FQuarter(data)
       ? { id: "compared", label: "Compared with", value: data.previousForm!.periodOfReport }
       : { id: "compared", label: "Compared with", value: "No prior quarter", tone: "muted" },
     ...(data?.latestReport && data.latestReport.filings.length > 1
       ? [{ id: "combined", label: "Combined", value: `${data.latestReport.filings.length} filings` }]
+      : []),
+    // The value basis of option rows, like a unit: only for a fund that holds them.
+    ...(holdingRows.some((row) => isOptionType(row.putCall))
+      ? [{ id: "options", label: "CALL/PUT", value: "underlying value", tone: "muted" as const }]
       : []),
   ];
 

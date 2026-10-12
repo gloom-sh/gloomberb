@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { ReactNode } from "react";
 import { act, useReducer, useState } from "react";
 import type { PluginRegistry } from "../../../plugins/registry";
@@ -25,6 +25,9 @@ import {
   resolvePaneManagementShortcut,
 } from "./index";
 import { inputCaptureAllowsPaneManagementShortcut } from "./shortcuts";
+import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
+import { registerPaneDocsHandler } from "../../../docs/requests";
+import { registerAskGloomPaneHandler, type AskGloomPaneAttachment } from "../../../ask-gloom/pane-request";
 
 const tui = createOpenTuiTestHarness();
 
@@ -109,7 +112,8 @@ function floatingOverDockLayout(
 
 /** Click the "..." header action on the first row and return the frame with the menu open. */
 async function openPaneMenu() {
-  const actionCol = tui.frame().split("\n")[0]?.indexOf("...");
+  // The last one: a title cut short ends in "..." too.
+  const actionCol = tui.frame().split("\n")[0]?.lastIndexOf("...");
   expect(actionCol).toBeGreaterThanOrEqual(0);
   await act(async () => {
     await tui.setup().mockMouse.click(actionCol! + 1, 1);
@@ -198,6 +202,13 @@ function findUpdateLayout(actions: ShellTestAction[]) {
   return actions.find((action) => action.type === "UPDATE_LAYOUT");
 }
 
+/** A later, separate press of a one-shot shortcut: the key went up and the cooldown ran out. */
+function pressAgainLater() {
+  setSystemTime(new Date(Date.now() + ONE_SHOT_COOLDOWN_MS + 1));
+}
+
+afterEach(() => setSystemTime());
+
 describe("Shell", () => {
   test.each([false, true])("keeps both numeric edges visible under terminal focus borders (floating=%s)", async (floating) => {
     const config = createDefaultConfig("/tmp/gloomberb-pane-border-test");
@@ -265,6 +276,76 @@ describe("Shell", () => {
     expect(frame).not.toContain("CmdOrCtrl");
   });
 
+  test("the ? beside the menu asks for the pane's docs, docked and floating, and the menu lists Docs", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const asked: string[] = [];
+    const unregister = registerPaneDocsHandler((paneId) => asked.push(paneId));
+    try {
+      const { actions } = await renderShell(createShellStateWithLayout(
+        config,
+        floatingOverDockLayout(config, [{ instanceId: "ticker-detail:float", x: 30, y: 4 }]),
+        "portfolio-list:main",
+      ), { width: 80, height: 16 });
+      // The focused pane draws its ?; the unfocused one keeps the place blank and still takes the press.
+      const docked = tui.frame().split("\n")[0]!.indexOf(" ? ");
+      expect(docked).toBeGreaterThan(0);
+      const click = async (x: number, row: number) => {
+        await act(async () => {
+          await tui.setup().mockMouse.click(x, row + 1);
+        });
+        await tui.setup().renderOnce();
+      };
+      await click(docked + 1, 0);
+      // A 30-wide floating pane: its corner x, then the menu, then the ? at columns 17 to 19.
+      await click(30 + 18, 4);
+      expect(asked).toEqual(["portfolio-list:main", "ticker-detail:float"]);
+      // Neither press started a move.
+      expect(findUpdateLayout(actions)).toBeUndefined();
+      expect(await openPaneMenu()).toContain("Docs");
+    } finally {
+      unregister();
+    }
+  });
+
+  test("Ask Gloom: Alt+A and the pane menu hand the focused pane over with its own text, and a field with the keyboard keeps the key", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    const asked: AskGloomPaneAttachment[] = [];
+    const layout = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:float", x: 28, y: 1 }]);
+    const unregister = registerAskGloomPaneHandler((attachment) => asked.push(attachment));
+    try {
+      await renderShell(createShellStateWithLayout(config, layout, "portfolio-list:main"), { width: 60, height: 14 });
+      await emitKeypress({ name: "a", alt: true });
+      expect(asked.map((entry) => entry.paneId)).toEqual(["portfolio-list:main"]);
+      expect(asked[0]!.visibleText).toContain("Portfolio Body");
+      // The floating pane drawn over it is not this pane's to send.
+      expect(asked[0]!.visibleText ?? "").not.toContain("Ticker Research");
+
+      // The menu key, so the menu opens on this pane whatever floats beside it.
+      await emitKeypress({ name: "." });
+      const menu = await tui.waitForFrameToContain("Ask Gloom");
+      expect(menu).toContain("Alt+A");
+      // Settings, Docs, then Ask Gloom. The frame it reads still has the menu
+      // drawn over the pane, and none of the menu goes with it.
+      await emitKeypress([{ name: "down" }, { name: "down" }, { name: "return" }]);
+      expect(asked.map((entry) => entry.paneId)).toEqual(["portfolio-list:main", "portfolio-list:main"]);
+      expect(asked[1]!.visibleText).toContain("Portfolio Body");
+      expect(asked[1]!.visibleText ?? "").not.toMatch(/Settings|Share Pane|Close Pane/);
+    } finally {
+      unregister();
+    }
+
+    // Alt+A moves a terminal field's cursor, so a field with the keyboard keeps it.
+    const captured: AskGloomPaneAttachment[] = [];
+    const unregisterCaptured = registerAskGloomPaneHandler((attachment) => captured.push(attachment));
+    try {
+      await renderShell({ ...createShellStateWithLayout(config, layout, "portfolio-list:main"), inputCaptured: true }, { width: 60, height: 14 });
+      await emitKeypress({ name: "a", alt: true });
+      expect(captured).toEqual([]);
+    } finally {
+      unregisterCaptured();
+    }
+  });
+
   test("shows a Pop Out action in the pane menu when a desktop bridge is available", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
     await renderShell(createShellStateWithLayout(config, singleDockedPaneLayout(config)), {
@@ -297,6 +378,97 @@ describe("Shell", () => {
     expect(frame).not.toContain("Layout Actions");
   });
 
+  test("offers Move to New Layout with its shortcut for docked and floating panes, not for a layout's only pane", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-new-layout-menu-test");
+    const mainPane = requireLayoutInstance(config, "portfolio-list:main");
+    const detailPane = requireLayoutInstance(config, "ticker-detail:main");
+    const docked: LayoutConfig = {
+      dockRoot: {
+        kind: "split",
+        axis: "horizontal",
+        ratio: 0.5,
+        first: { kind: "pane", instanceId: mainPane.instanceId },
+        second: { kind: "pane", instanceId: detailPane.instanceId },
+      },
+      instances: [{ ...mainPane }, { ...detailPane }],
+      floating: [],
+      detached: [],
+    };
+    await renderShell(createShellStateWithLayout(config, docked, mainPane.instanceId), { width: 100, height: 30 });
+    let frame = await openPaneMenu();
+    expect(frame).toMatch(/Move to New Layout +Ctrl\+Shift\+N/);
+
+    await renderShell(
+      createShellStateWithLayout(config, floatingOverDockLayout(config, [{ instanceId: "ticker-detail:main", x: 0, y: 0 }]), "ticker-detail:main"),
+      { width: 100, height: 30 },
+    );
+    frame = await openPaneMenu();
+    expect(frame).toContain("Dock Pane");
+    expect(frame).toContain("Move to New Layout");
+
+    await renderShell(createShellStateWithLayout(config, singleDockedPaneLayout(config)), { width: 60, height: 30 });
+    frame = await openPaneMenu();
+    expect(frame).toContain("Float Pane");
+    expect(frame).not.toContain("Move to New Layout");
+  });
+
+  test("the new layout shortcut moves the focused pane to a layout of its own and back", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-new-layout-shortcut-test");
+    const mainPane = requireLayoutInstance(config, "portfolio-list:main");
+    const detailPane = requireLayoutInstance(config, "ticker-detail:main");
+    const docked: LayoutConfig = {
+      dockRoot: {
+        kind: "split",
+        axis: "horizontal",
+        ratio: 0.4,
+        first: { kind: "pane", instanceId: mainPane.instanceId },
+        second: { kind: "pane", instanceId: detailPane.instanceId },
+      },
+      instances: [{ ...mainPane }, { ...detailPane }],
+      floating: [],
+      detached: [],
+    };
+    const notices: string[] = [];
+    // Local state that only survives if the pane is moved rather than mounted again.
+    let mounts = 0;
+    const PortfolioBody = () => {
+      const [mount] = useState(() => ++mounts);
+      return <text>{`Portfolio Body ${mount}`}</text>;
+    };
+    const registry = createShellPluginRegistry({ portfolioListComponent: PortfolioBody });
+    registry.notify = (notification) => { notices.push(notification.body); };
+    const controls: {
+      dispatch?: (action: ShellTestAction) => void;
+      state?: ReturnType<typeof createInitialState>;
+      transientLayout: TransientLayoutState | null;
+    } = { transientLayout: null };
+    await tui.render(
+      <ShellTransientHarness
+        initialState={createShellStateWithLayout(config, docked, mainPane.instanceId)}
+        registry={registry}
+        controls={controls}
+      />,
+      { width: 100, height: 18 },
+    );
+
+    await emitKeypress({ name: "n", ctrl: true, shift: true });
+    expect(controls.state?.config.layouts.map((entry) => entry.name)).toEqual(["Default", "Main Portfolio"]);
+    expect(controls.state?.config.layout.dockRoot).toEqual({ kind: "pane", instanceId: mainPane.instanceId });
+    expect(tui.frame()).not.toContain("Ticker Research Body");
+    expect(tui.frame()).toContain("Portfolio Body 1");
+    expect(notices).toEqual(["Moved to a layout of its own. Ctrl+Shift+N moves it back."]);
+
+    pressAgainLater();
+    await emitKeypress({ name: "n", ctrl: true, shift: true });
+    expect(controls.state?.config.layouts.map((entry) => entry.name)).toEqual(["Default"]);
+    expect(controls.state?.config.layout.dockRoot).toEqual(docked.dockRoot);
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).toContain("Ticker Research Body");
+    expect(mounts).toBe(1);
+  });
+
   test("resolves pane management shortcuts", () => {
     const base = { ctrl: false, meta: true, super: true, shift: true, alt: false };
     expect(resolvePaneManagementShortcut({ ...base, name: ",", key: ",", shift: false })).toBe("settings");
@@ -312,7 +484,10 @@ describe("Shell", () => {
     expect(resolvePaneManagementShortcut({ ...base, name: "g", key: "g" })).toBe("gridlock-all");
     expect(resolvePaneManagementShortcut({ ...base, name: "m", key: "m" })).toBe("window-mode");
     expect(resolvePaneManagementShortcut({ ...base, name: "r", key: "r" })).toBe("window-resize-mode");
-    expect(resolvePaneManagementShortcut({ ...base, name: "n", key: "n" })).toBeNull();
+    expect(resolvePaneManagementShortcut({ ...base, name: "n", key: "n" })).toBe("new-layout");
+    expect(resolvePaneManagementShortcut({ ...base, name: "a", key: "a" })).toBe("ask");
+    expect(resolvePaneManagementShortcut({ name: "a", key: "a", ctrl: false, meta: false, super: false, shift: false, alt: true })).toBe("ask");
+    expect(resolvePaneManagementShortcut({ ...base, name: "j", key: "j" })).toBeNull();
     expect(resolvePaneManagementShortcut({ ...base, name: "d", key: "d", alt: true })).toBeNull();
     expect(resolvePaneManagementShortcut({ ...base, name: "d", key: "d", meta: false, super: false })).toBeNull();
   });
@@ -368,6 +543,7 @@ describe("Shell", () => {
     expect(frame).not.toContain("Ticker Research Body");
     expect(actions.some((action) => action.type === "UPDATE_LAYOUT")).toBe(false);
 
+    pressAgainLater();
     await emitKeypress({ name: "f", ctrl: true, shift: true });
     await act(async () => {
       await tui.setup().renderOnce();

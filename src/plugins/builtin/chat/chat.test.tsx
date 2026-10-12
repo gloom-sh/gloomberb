@@ -3,14 +3,16 @@ import { act } from "react";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
-import { colors } from "../../../theme/colors";
+import { colors, hoverBg } from "../../../theme/colors";
 import { createDefaultConfig } from "../../../types/config";
 import type { ChatMessage } from "../../../api-client";
 import { apiClient } from "../../../api-client";
 import { PluginRenderProvider } from "../../runtime";
 import { setSharedRegistryForTests } from "../../registry";
 import { ChatContent } from "./content";
+import { MESSAGE_HIGHLIGHT_MS } from "./content/row-activity";
 import { SLOW_SEND_THRESHOLD_MS } from "./message/pending-send";
+import { chatHighlightBg } from "./message/render-state";
 import { ChatStatusWidget } from "./status-widget";
 import {
   createChatTestHarness,
@@ -334,6 +336,21 @@ describe("ChatContent", () => {
     expect(headerLine).not.toContain("Edit");
   });
 
+  test("offers no edit for your latest message when it was written on Discord", async () => {
+    const controller = createController({
+      messages: [makeOwnMessage("from the app", recentChatTimestamp(120_000)), { ...makeOwnMessage("from the other side"), id: "m-own-dc", origin: "discord" }],
+    });
+
+    await mountChat(controller, { width: 72, height: 12 });
+
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await flushFrame();
+
+    const headerLine = tui.frame().split("\n").find((line) => line.includes("ada") && line.includes("Discord"));
+    expect(headerLine).toContain("Reply");
+    expect(headerLine).not.toContain("Edit");
+  });
+
   test("up arrow from an empty focused composer edits the latest own message", async () => {
     const ownMessage = makeOwnMessage();
     const controller = createController({
@@ -508,29 +525,208 @@ describe("ChatContent", () => {
     expect(bodySpan!.fg.toInts().join(",")).toBe(expectedSelectedFg);
   });
 
-  test("selects the exact message requested by a chat deep link", async () => {
-    const controller = createController({
-      messages: [makeMessage(1), makeMessage(2)],
+  describe("a message a chat deep link opened on", () => {
+    const bodyBg = (text: string) => {
+      const span = tui.setup().captureSpans().lines
+        .filter((line) => lineText(line).includes(text))
+        .flatMap((line) => line.spans)
+        .find((candidate) => candidate.text.includes(text));
+      return span?.bg.toInts().join(",");
+    };
+    const highlighted = hexToRgbaInts(chatHighlightBg());
+
+    async function openOnFirstMessage() {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2)] });
+      let handled = 0;
+      await mountChat(controller, {
+        width: 72,
+        height: 12,
+        targetMessageId: "m1",
+        onTargetMessageHandled: () => {
+          handled += 1;
+        },
+      });
+      expect(handled).toBe(1);
+      return controller;
+    }
+
+    test("is marked, not selected: a selection would stay until someone cleared it", async () => {
+      await openOnFirstMessage();
+
+      expect(bodyBg("message 1")).toBe(highlighted);
+      // The text keeps its usual colour: the selected look is the keyboard's cursor.
+      const bodySpan = tui.setup().captureSpans().lines
+        .filter((line) => lineText(line).includes("message 1"))
+        .flatMap((line) => line.spans)
+        .find((candidate) => candidate.text.includes("message 1"));
+      expect(bodySpan!.fg.toInts().join(",")).not.toBe(hexToRgbaInts(colors.selectedText));
     });
-    let handled = 0;
 
-    await mountChat(controller, {
-      width: 72,
-      height: 12,
-      targetMessageId: "m1",
-      onTargetMessageHandled: () => {
-        handled += 1;
-      },
+    test("goes back to normal on a key press", async () => {
+      await openOnFirstMessage();
+
+      await emitKeypress({ name: "x", sequence: "x" });
+      await flushFrame();
+
+      expect(bodyBg("message 1")).not.toBe(highlighted);
     });
 
-    const expectedSelectedFg = hexToRgbaInts(colors.selectedText);
-    const frame = tui.setup().captureSpans();
-    const bodyLine = frame.lines.find((line) => lineText(line).includes("message 1"));
-    const bodySpan = bodyLine?.spans.find((span) => span.text.includes("message 1"));
+    test("goes back to normal on a wheel turn over the list", async () => {
+      await openOnFirstMessage();
 
-    expect(handled).toBe(1);
-    expect(bodySpan).toBeDefined();
-    expect(bodySpan!.fg.toInts().join(",")).toBe(expectedSelectedFg);
+      await act(async () => {
+        await tui.setup().mockMouse.scroll(20, 4, "up");
+        await tui.setup().renderOnce();
+      });
+      await flushFrame();
+
+      expect(bodyBg("message 1")).not.toBe(highlighted);
+    });
+
+    test("goes back to normal when a message arrives", async () => {
+      const controller = await openOnFirstMessage();
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(3)]);
+      });
+      await flushFrame();
+
+      expect(bodyBg("message 1")).not.toBe(highlighted);
+    });
+
+    test("goes back to normal on its own", async () => {
+      await openOnFirstMessage();
+      expect(bodyBg("message 1")).toBe(highlighted);
+
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, MESSAGE_HIGHLIGHT_MS + 100));
+      });
+      await flushFrame();
+
+      expect(bodyBg("message 1")).not.toBe(highlighted);
+    });
+
+    test("leaves the list following new messages, which a selection would not", async () => {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2), makeMessage(3), makeMessage(4), makeMessage(5), makeMessage(6)] });
+      await mountChat(controller, { width: 60, height: 13, targetMessageId: "m6" });
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(7)]);
+      });
+      await flushFrame();
+
+      expect(tui.frame()).toContain("message 7");
+    });
+  });
+
+  describe("the row under the pointer", () => {
+    const bodyBg = (text: string) => {
+      const span = tui.setup().captureSpans().lines
+        .filter((line) => lineText(line).includes(text))
+        .flatMap((line) => line.spans)
+        .find((candidate) => candidate.text.includes(text));
+      return span?.bg.toInts().join(",");
+    };
+    const hovered = hexToRgbaInts(hoverBg());
+
+    async function hoverMessage(controller: ReturnType<typeof createController>, text: string) {
+      await mountChat(controller, { width: 72, height: 12 });
+      // The channel list draws once it has loaded, and moves the messages right.
+      // A busy CI machine takes longer than the default 600 ms to load it.
+      await tui.waitForFrameToContain("#everyone", 60);
+      const rows = tui.frame().split("\n");
+      const row = rows.findIndex((line) => line.includes(text));
+      expect(row).toBeGreaterThanOrEqual(0);
+      await act(async () => {
+        await tui.setup().mockMouse.moveTo(rows[row]!.indexOf(text) + 1, row);
+        await tui.setup().renderOnce();
+      });
+      await flushFrame();
+      expect(bodyBg(text)).toBe(hovered);
+    }
+
+    test("is let go when a message arrives, which moves every row after it", async () => {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2), makeMessage(3)] });
+      await hoverMessage(controller, "message 2");
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(4)]);
+      });
+      await flushFrame();
+
+      expect(bodyBg("message 2")).not.toBe(hovered);
+    });
+
+    test("is let go when a key is pressed", async () => {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2), makeMessage(3)] });
+      await hoverMessage(controller, "message 2");
+
+      await emitKeypress({ name: "x", sequence: "x" });
+      await flushFrame();
+
+      expect(bodyBg("message 2")).not.toBe(hovered);
+    });
+  });
+
+  describe("new messages while the reader is scrolled back", () => {
+    const manyMessages = () => Array.from({ length: 14 }, (_, index) => makeMessage(index + 1));
+
+    async function scrollBack(controller: ReturnType<typeof createController>) {
+      await mountChat(controller, { width: 60, height: 13 });
+      await act(async () => {
+        await tui.setup().mockMouse.scroll(20, 4, "up");
+        await tui.setup().mockMouse.scroll(20, 4, "up");
+        await tui.setup().renderOnce();
+      });
+      await flushFrame();
+    }
+
+    test("leave the view where it is and offer the newest message", async () => {
+      const controller = createController({ messages: manyMessages() });
+      await scrollBack(controller);
+      const before = tui.frame();
+      expect(before).not.toContain("1 new message");
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(15)]);
+      });
+      await flushFrame();
+
+      const frame = tui.frame();
+      expect(frame).toContain("1 new message");
+      expect(frame).not.toContain("message 15");
+    });
+
+    test("show the control, which takes the reader to the newest message when pressed", async () => {
+      const controller = createController({ messages: manyMessages() });
+      await scrollBack(controller);
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(15), makeMessage(16)]);
+      });
+      await flushFrame();
+      expect(tui.frame()).toContain("2 new messages");
+
+      await tui.clickFrameText("2 new messages");
+      await flushFrame();
+
+      const frame = tui.frame();
+      expect(frame).toContain("message 16");
+      expect(frame).not.toContain("new messages");
+    });
+
+    test("do not count as new for a reader who is at the bottom", async () => {
+      const controller = createController({ messages: manyMessages() });
+      await mountChat(controller, { width: 60, height: 13 });
+
+      await act(async () => {
+        (controller as any).mergeMessages([makeMessage(15)]);
+      });
+      await flushFrame();
+
+      const frame = tui.frame();
+      expect(frame).toContain("message 15");
+      expect(frame).not.toContain("new message");
+    });
   });
 
   test("grows the composer for multi-line drafts", async () => {
@@ -689,6 +885,34 @@ describe("ChatContent", () => {
     });
 
     expect(sentMessages).toEqual(["hello"]);
+  });
+
+  test("runs /discord commands instead of posting them to the channel", async () => {
+    const controller = createController({ sessionToken: "token-123" });
+    const sentMessages: string[] = [];
+    (controller as any).send = (content: string) => {
+      sentMessages.push(content);
+      return true;
+    };
+    const originalSetMirror = apiClient.setChatDiscordMirror;
+    const mirrorCalls: boolean[] = [];
+    apiClient.setChatDiscordMirror = async (enabled) => { mirrorCalls.push(enabled); };
+    try {
+      await renderFocusedComposerWithDraft(controller, "/discord mirror off");
+      await tui.waitForFrameToContain("> /discord mirror off");
+
+      await act(async () => {
+        tui.setup().mockInput.pressEnter();
+        await tui.setup().renderOnce();
+        await tui.setup().renderOnce();
+      });
+
+      expect(mirrorCalls).toEqual([false]);
+      expect(sentMessages).toEqual([]);
+      expect(tui.frame()).not.toContain("/discord mirror off");
+    } finally {
+      apiClient.setChatDiscordMirror = originalSetMirror;
+    }
   });
 
   test("keeps typed shortcut letters in the composer instead of moving message selection", async () => {
@@ -871,6 +1095,35 @@ describe("ChatContent", () => {
     expect(frame).not.toContain("message 1");
   });
 
+  test("selects nothing when scrolling to the top loads older messages", async () => {
+    const controller = createController({
+      messages: [makeMessage(4), makeMessage(5), makeMessage(6), makeMessage(7), makeMessage(8), makeMessage(9), makeMessage(10)],
+    });
+    let loadCount = 0;
+    controller.loadOlderMessages = async () => {
+      loadCount += 1;
+      (controller as any).mergeMessages([makeMessage(1), makeMessage(2), makeMessage(3)], { notifyMentions: false });
+    };
+
+    await mountChat(controller, { width: 60, height: 13 });
+    // By wheel, as a mouse reader does: no key puts a cursor on a message.
+    for (let turn = 0; turn < 12; turn += 1) {
+      await act(async () => {
+        await tui.setup().mockMouse.scroll(20, 4, "up");
+        await tui.setup().renderOnce();
+      });
+    }
+    await flushFrame();
+
+    expect(loadCount).toBeGreaterThan(0);
+    const rowBg = (text: string) => tui.setup().captureSpans().lines
+      .filter((line) => lineText(line).includes(text))
+      .flatMap((line) => line.spans)
+      .find((span) => span.text.includes(text))?.bg.toInts().join(",");
+    // The message that was at the top before the page came in, and the one the reader sees now.
+    expect(rowBg("message 4")).not.toBe(hexToRgbaInts(colors.selected));
+  });
+
   test("renders ticker badges and opens a floating Ticker Research pane on click", async () => {
     const controller = createController({
       messages: [{
@@ -1020,6 +1273,69 @@ describe("ChatContent", () => {
     const caption = rows.findIndex((row) => row.includes("my chart"));
     expect(rows[caption + 1]).toContain("[image 800x600 1.2 MB]");
     expect(rows[caption + 2]).toContain("Checking image...");
+  });
+
+  test("tags messages that came from Discord, and signs a ghost with its Discord name", async () => {
+    const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
+    const bob = { id: "u1", username: "bob", displayName: "Bob" };
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: "from the app", replyToId: null, createdAt: at(0), user: bob },
+        // The same person, writing from Discord a moment later: the tag needs a header of its own.
+        { id: "m2", channelId: "everyone", content: "from the other side", replyToId: null, createdAt: at(10), user: bob, origin: "discord" },
+        {
+          id: "m3", channelId: "everyone", content: "a guest speaking", replyToId: null, createdAt: at(20),
+          user: { id: "d1", username: null, displayName: "Grace H", accountType: "discord" }, origin: "discord",
+        },
+        // Values a newer server adds read as an app message from a human.
+        {
+          id: "m4", channelId: "everyone", content: "from somewhere new", replyToId: null, createdAt: at(30),
+          user: { id: "u4", username: "cy", displayName: "Cy", accountType: "bot" as never }, origin: "slack" as never,
+        },
+      ],
+    });
+
+    await mountChat(controller, { width: 60, height: 18 });
+
+    const rows = tui.frame().split("\n").map((row) => row.trimEnd());
+    const header = (author: string) => rows.find((row) => row.startsWith(` ${author} `))!;
+    expect(rows.filter((row) => row.startsWith(" bob "))).toHaveLength(2);
+    expect(header("bob")).not.toContain("Discord");
+    expect(rows.filter((row) => row.startsWith(" bob ") && row.includes("Discord"))).toHaveLength(1);
+    expect(header("Grace H")).toContain("Discord");
+    expect(header("cy")).not.toContain("Discord");
+
+    // Every name opens a card but a Discord ghost's: there is no profile and no one to message.
+    await tui.clickFrameText("Grace H");
+    await flushFrame();
+    expect(tui.frame().split("Grace H")).toHaveLength(2);
+    await tui.clickFrameText(" cy ");
+    await flushFrame();
+    expect(tui.frame()).toContain("@cy");
+  });
+
+  test("badges a managed assistant's messages as AI, never a person's or a Discord ghost's", async () => {
+    const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: "ask me anything", replyToId: null, createdAt: at(0), user: { id: "b1", username: "gloombot", displayName: "Gloombot", accountType: "managed_llm" } },
+        { id: "m2", channelId: "everyone", content: "from a person", replyToId: null, createdAt: at(10), user: { id: "u1", username: "bob", displayName: "Bob", accountType: "human" } },
+        { id: "m3", channelId: "everyone", content: "a guest speaking", replyToId: null, createdAt: at(20), user: { id: "d1", username: null, displayName: "Grace H", accountType: "discord" }, origin: "discord" },
+      ],
+    });
+
+    await mountChat(controller, { width: 60, height: 18 });
+
+    const rows = tui.frame().split("\n").map((row) => row.trimEnd());
+    const header = (author: string) => rows.find((row) => row.startsWith(` ${author} `))!;
+    expect(header("gloombot")).toContain(" AI ");
+    expect(header("bob")).not.toContain("AI");
+    expect(header("Grace H")).not.toContain("AI");
+
+    // The badge is not a target of its own: the name still opens the card, which says what the account is.
+    await tui.clickFrameText("gloombot");
+    await flushFrame();
+    expect(tui.frame()).toContain("AI bot run by Gloom");
   });
 
   test("shows a saved-login read-only footer when a session token is cached", async () => {

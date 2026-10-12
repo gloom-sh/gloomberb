@@ -4,7 +4,7 @@ import type { MarketDataRequestContext } from "../../types/data-provider";
 import type { Quote, TickerFinancials } from "../../types/financials";
 import { normalizeTickerFinancialsPriceHistory } from "../../utils/price-history";
 import { resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
-import { shouldLogProviderError } from "../provider-errors";
+import { noteProviderAnswer, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
 import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
 import {
   dropUnusableProviderQuote,
@@ -14,11 +14,18 @@ import {
   needsFinancialProfile,
   profileForSameListing,
   isProviderQuoteUsableForCurrentSession,
+  lastKnownProviderQuote,
   providerFinancialsMatchTarget,
   mergeMissingStatementArrays,
   mergeFinancials,
 } from "./financials";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
+
+/** What the providers of one quote request said when none had a current quote. */
+export interface ProviderQuoteMissNote extends ProviderMissNote {
+  /** The newest priced answer for the target that was not current for its session, flagged stale. */
+  lastKnownQuote?: Quote;
+}
 
 export class ProviderRouterPrimaryRoutes {
   constructor(private readonly options: ProviderRouterCoreDeps) {}
@@ -61,6 +68,7 @@ export class ProviderRouterPrimaryRoutes {
     ticker: string,
     exchange?: string,
     context?: MarketDataRequestContext,
+    misses?: ProviderMissNote,
   ): Promise<SourceResult<TickerFinancials> | null> {
     const entityKey = this.options.getEntityKey(ticker, context?.instrument);
     const variantKey = financialHistoryVariants(this.options.getTickerVariantCandidates(exchange), context)[0] ?? "";
@@ -70,11 +78,11 @@ export class ProviderRouterPrimaryRoutes {
     for (const provider of this.options.providersInPriorityOrder()) {
       try {
         const rawValue = await provider.getTickerFinancials(ticker, exchange, context);
-        if (rawValue && !context?.instrument && !providerFinancialsMatchTarget(rawValue, ticker, exchange)) continue;
+        if (rawValue && !context?.instrument && !providerFinancialsMatchTarget(rawValue, ticker, exchange)) { noteProviderAnswer(misses); continue; }
         const resolvedValue = resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(rawValue));
-        if (resolvedValue && !context?.instrument && !providerFinancialsMatchTarget(resolvedValue, ticker, exchange)) continue;
+        if (resolvedValue && !context?.instrument && !providerFinancialsMatchTarget(resolvedValue, ticker, exchange)) { noteProviderAnswer(misses); continue; }
         let value = resolvedValue ? dropUnusableProviderQuote(resolvedValue, exchange, { recentAnswer: true }) : null;
-        if (!value) continue;
+        if (!value) { noteProviderAnswer(misses); continue; }
         const sourceKey = this.options.providerSourceKey(provider);
         if (context?.statementHistory === "extended" && !hasReusableExtendedHistory(value)) {
           const previous = selectCachedResource<TickerFinancials>(this.options.resources, "financials", entityKey, [variantKey], [sourceKey], true);
@@ -131,6 +139,7 @@ export class ProviderRouterPrimaryRoutes {
           if (!needsFinancialProfile(primaryResult.value) && (context?.statementHistory === "extended" ? primaryResult.value.statementHistory?.status === "available" : hasDetailedStatementRows(primaryResult.value) && hasDeepStatementHistory(primaryResult.value))) return primaryResult;
         }
       } catch (error) {
+        noteProviderMiss(misses, error);
         if (shouldLogProviderError(error)) {
           this.options.logProviderError(`${provider.id} failed: ${error}`);
         }
@@ -181,13 +190,21 @@ export class ProviderRouterPrimaryRoutes {
     ticker: string,
     exchange?: string,
     context?: MarketDataRequestContext,
+    misses?: ProviderQuoteMissNote,
   ): Promise<SourceResult<Quote> | null> {
     const entityKey = this.options.getEntityKey(ticker, context?.instrument);
     const variantKey = this.options.getTickerVariantCandidates(exchange)[0] ?? "";
     for (const provider of this.options.providersInPriorityOrder()) {
       try {
         const quote = await provider.getQuote(ticker, exchange, context);
-        if (!isProviderQuoteUsableForCurrentSession(quote, exchange, ticker, { recentAnswer: true })) continue;
+        if (!isProviderQuoteUsableForCurrentSession(quote, exchange, ticker, { recentAnswer: true })) {
+          noteProviderAnswer(misses);
+          const lastKnown = misses && lastKnownProviderQuote(quote, exchange, ticker);
+          if (lastKnown && (misses.lastKnownQuote?.lastUpdated ?? -Infinity) < lastKnown.lastUpdated) {
+            misses.lastKnownQuote = lastKnown;
+          }
+          continue;
+        }
         const sourceKey = this.options.providerSourceKey(provider);
         this.options.cacheResource(
           "quote",
@@ -199,6 +216,7 @@ export class ProviderRouterPrimaryRoutes {
         );
         return { sourceKey, value: quote };
       } catch (error) {
+        noteProviderMiss(misses, error);
         if (shouldLogProviderError(error)) {
           this.options.logProviderError(`${provider.id} failed: ${error}`);
         }

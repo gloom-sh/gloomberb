@@ -1,5 +1,6 @@
 import type { PaneTemplateCreateOptions } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
+import { SINGLE_NAME_CDS_SERIES } from "./series";
 import { CDS_PANE_ID } from "./model";
 import { CdsPane } from "./pane";
 import { cdsHeadless } from "./headless";
@@ -12,6 +13,7 @@ function explicitSymbol(options?: PaneTemplateCreateOptions): string | null {
 }
 
 export const cdsModule: PluginModule = {
+  series: SINGLE_NAME_CDS_SERIES,
   panes: [{
     id: CDS_PANE_ID,
     name: "Single-Name CDS",
@@ -27,7 +29,7 @@ export const cdsModule: PluginModule = {
     id: "cds-pane",
     paneId: CDS_PANE_ID,
     label: "Single-Name CDS",
-    description: "Single-name corporate CDS trades and 5Y spread history from DTCC public dissemination.",
+    description: "Single-name corporate CDS from DTCC public dissemination: with no argument, the issuers traded in the last 5 days with their 5Y spread; with a ticker or issuer, its 5Y spread history and trades.",
     keywords: ["cds", "credit", "default", "swap", "spread", "single name", "issuer", "dtcc", "protection"],
     shortcut: { prefix: "CDS", argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
     headless: cdsHeadless,

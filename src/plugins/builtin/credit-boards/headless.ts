@@ -1,56 +1,130 @@
-import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { fetchCdxBoard, fetchSovrBoard, loadCurrencyMoves } from "./client";
-import { cdxRows, formatContract, formatCurrencyMove, formatLevel, formatMove, sovrRows } from "./model";
+import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
+import type { CdxBoardIndex, CreditIndexQuote } from "../../../api-client/credit-boards";
+import { CDX_MAX_DAYS, fetchCdxBoard, fetchSovrBoard, loadCurrencyMoves } from "./client";
+import { cdxRows, formatContract, formatCurrencyMove, formatLevel, formatMove, quoteUnits, sovrRows } from "./model";
 
 const percentile = (value: unknown) => value == null ? "--" : Number(value).toFixed(0);
+const numberOrNull = (value: unknown) => typeof value === "number" ? value : null;
+/** A row's quote, from the unit its level is in. */
+const rowQuote = (row: HeadlessPaneRow): CreditIndexQuote => row.unit === "bp" ? "spread" : "price";
 
-export const cdxHeadless: HeadlessPaneDefinition<"rows"> = {
+/**
+ * Levels and moves are numbers with their unit beside them (`unit`,
+ * `changeUnit`): text draws them as the board does (`58.3bp`, `106.69`,
+ * `+0.17`), exports write the number and name the unit.
+ */
+const levelColumn: HeadlessPaneColumn = {
+  key: "level", header: "5Y", align: "right", unitKey: "unit",
+  textFormat: (value, row) => formatLevel(rowQuote(row), numberOrNull(value)),
+};
+const moveColumn = (key: string, header: string, unitKey: string): HeadlessPaneColumn => ({
+  key, header, align: "right", unitKey,
+  textFormat: (value, row) => formatMove(rowQuote(row), numberOrNull(value)),
+});
+
+/** The publisher a board's payload names, spelled out: `DTCC PPD` is DTCC's public price dissemination. */
+function boardPublisher(source: string | null | undefined): string | undefined {
+  return source?.trim().replace(/\bPPD\b/, "Public Price Dissemination") || undefined;
+}
+
+/** `IG`, `cdx hy`, `itraxx main`, `crossover`: an index by its code, its name or the name's last word. */
+function findIndex(indexes: readonly CdxBoardIndex[], query: string): CdxBoardIndex | null {
+  const key = (text: string) => text.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const wanted = key(query) === "crossover" ? "xover" : key(query);
+  return indexes.find((index) => [index.id, index.name, index.name.split(" ").at(-1) ?? ""]
+    .some((name) => key(name) === wanted)) ?? null;
+}
+
+/**
+ * Each day's level on the contract on the run that day, newest first, over
+ * the last `days`: the chart as a table. Its key is `day`, not `date`, so the
+ * history is not read as the board's own observation dates.
+ */
+function historySection(index: CdxBoardIndex, days: number) {
+  const unit = quoteUnits(index.quote).level;
+  const latest = index.points.at(-1)?.date;
+  const from = latest ? new Date(Date.parse(`${latest}T00:00:00Z`) - days * 86_400_000).toISOString().slice(0, 10) : "";
+  return {
+    title: `${index.name} 5Y daily ${index.quote === "spread" ? "spread" : "price"}`,
+    columns: [
+      { key: "day", header: "Date" },
+      { ...levelColumn, header: index.quote === "spread" ? "Spread" : "Price" },
+      { key: "prints", header: "Prints", align: "right" as const },
+      { key: "maturity", header: "Contract", textFormat: (value: unknown) => formatContract(typeof value === "string" ? value : null) },
+    ],
+    rows: index.points.filter((point) => point.date > from).reverse()
+      .map((point) => ({ day: point.date, level: point.level, unit, prints: point.prints, maturity: point.maturity })),
+  };
+}
+
+const CDX_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "name", header: "Index" },
+  levelColumn,
+  moveColumn("change1D", "1D", "changeUnit"),
+  moveColumn("change1W", "1W", "changeUnit"),
+  moveColumn("change1M", "1M", "changeUnit"),
+  { key: "percentile", header: "Pctl 1Y", align: "right", format: percentile },
+  { key: "prints", header: "Prints", align: "right" },
+  { key: "contract", header: "Contract" },
+  { key: "date", header: "As of" },
+];
+
+export const cdxHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["CDX"], dataRequirements: ["Gloom Cloud index CDS endpoint"],
-    limitations: ["Daily medians of public DTCC prints on the on-the-run 5Y contract", "HY and EM quote in price"] },
-  shape: "rows",
+    limitations: ["Daily medians of public DTCC prints on the on-the-run 5Y contract.", "HY and EM quote in price, and move in points."] },
+  shape: "bundle",
   freshness: { source: "DTCC", status: "not-a-feed", basis: "daily medians of public trades", cadence: "daily", observedKey: "date" },
-  argument: { kind: "none" },
-  options: [],
-  columns: [
-    { key: "name", header: "Index" },
-    { key: "level", header: "5Y", align: "right" },
-    { key: "change1D", header: "1D", align: "right" },
-    { key: "change1W", header: "1W", align: "right" },
-    { key: "percentile", header: "Pctl 1Y", align: "right", format: percentile },
-    { key: "prints", header: "Prints", align: "right" },
-    { key: "contract", header: "Contract" },
-    { key: "date", header: "As of" },
-  ],
+  argument: { kind: "free-text", optional: true, placeholder: "index",
+    description: "An index (IG, HY, EM, MAIN, XOVER) for its daily history; omit for the board." },
+  options: [{ key: "days", type: "integer", minimum: 30, maximum: CDX_MAX_DAYS, defaultValue: 365,
+    description: "Days of a named index's daily levels." }],
   describe: "Index CDS",
-  async load(_args, ctx) {
-    const payload = await fetchCdxBoard(ctx.apiClient);
-    return {
-      rows: cdxRows(payload.indexes, payload.asOf).map((row) => ({
+  async load(args, ctx) {
+    const days = Number(args.options.days ?? 365);
+    // The 1Y rank always reads a full year, whatever history is asked for.
+    const payload = await fetchCdxBoard(ctx.apiClient, Math.max(days, 365));
+    const query = typeof args.argument === "string" ? args.argument.trim() : "";
+    const index = query ? findIndex(payload.indexes, query) : null;
+    if (query && !index) throw new Error(`No index ${query}. Use one of: ${payload.indexes.map((entry) => entry.id).join(", ")}.`);
+    const publisher = boardPublisher(payload.source);
+    const rows = cdxRows(index ? [index] : payload.indexes, payload.asOf).map((row) => {
+      const units = quoteUnits(row.index.quote);
+      return {
         name: row.label,
-        level: formatLevel(row.index.quote, row.index.level),
-        change1D: formatMove(row.index.quote, row.index.change1D),
-        change1W: formatMove(row.index.quote, row.index.change1W),
+        level: row.index.level,
+        unit: units.level,
+        change1D: row.index.change1D,
+        change1W: row.index.change1W,
+        change1M: row.index.change1M ?? null,
+        changeUnit: units.move,
         percentile: row.percentile,
         prints: row.index.prints,
         contract: formatContract(row.index.maturity),
         date: row.index.date,
-      })),
+      };
+    });
+    return {
+      sections: [
+        { title: "On the run, 5Y", columns: CDX_COLUMNS, rows },
+        ...(index ? [historySection(index, days)] : []),
+      ],
       metadata: { asOf: payload.asOf },
+      ...(publisher ? { freshness: { publisher } } : {}),
     };
   },
 };
 
 export const sovrHeadless: HeadlessPaneDefinition<"rows"> = {
   discovery: { aliases: ["SOVR", "WCDS"], dataRequirements: ["Gloom Cloud sovereign CDS endpoint"],
-    limitations: ["Daily 5Y levels from public DTCC prints; thinly traded names can miss days"] },
+    limitations: ["Daily 5Y levels from public DTCC prints; thinly traded names can miss days."] },
   shape: "rows",
   freshness: { source: "DTCC", status: "not-a-feed", basis: "daily levels of public trades", cadence: "daily", observedKey: "date" },
   argument: { kind: "none" },
   options: [],
   columns: [
     { key: "name", header: "Sovereign" },
-    { key: "level", header: "5Y", align: "right" },
-    { key: "change1M", header: "1M", align: "right" },
+    levelColumn,
+    moveColumn("change1M", "1M", "unit"),
     { key: "currency", header: "Ccy 1M", align: "right" },
     { key: "percentile", header: "Pctl 1Y", align: "right", format: percentile },
     { key: "date", header: "As of" },
@@ -60,16 +134,19 @@ export const sovrHeadless: HeadlessPaneDefinition<"rows"> = {
     const payload = await fetchSovrBoard(ctx.apiClient);
     const moves = await loadCurrencyMoves(payload.sovereigns.map((row) => row.currency),
       (symbol) => ctx.marketData.getPriceHistory(symbol, "", "3M"));
+    const publisher = boardPublisher(payload.source);
     return {
       rows: sovrRows(payload.sovereigns, payload.asOf, moves).map((row) => ({
         name: row.label,
-        level: formatLevel("spread", row.sovereign.level),
-        change1M: formatMove("spread", row.sovereign.change1M),
+        level: row.sovereign.level,
+        unit: quoteUnits("spread").level,
+        change1M: row.sovereign.change1M,
         currency: formatCurrencyMove(row.sovereign.currency, row.currencyMove),
         percentile: row.percentile,
         date: row.sovereign.date,
       })),
       metadata: { asOf: payload.asOf },
+      ...(publisher ? { freshness: { publisher } } : {}),
     };
   },
 };

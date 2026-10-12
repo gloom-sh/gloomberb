@@ -62,6 +62,38 @@ test("fund research keeps distribution yield and description through cache and m
   expect(sanitizeCachedFinancials({ ...fund, quote: { ...fund.quote!, instrumentType: "INDEX" } }, { includeStaleQuotes: true }).profile).toBeUndefined();
 });
 
+test("a cached quote alone does not answer a financials batch, which still fetches the listing's fundamentals", async () => {
+  // A watchlist quotes its rows first; its market cap column then asks for financials, which the quote never carries for a US listing.
+  const persistence = new AppPersistence(createTempDbPath("batch-quote-only"));
+  const quote = createTestQuote({ symbol: "AAPL", price: 336, currency: "USD", providerId: "gloomberb-cloud", exchangeName: "NASDAQ", lastUpdated: Date.now() });
+  const snapshot = createTestFinancials({
+    quote, profile: { description: "Apple Inc." }, fundamentals: { marketCap: 4.97e12, marketCapCurrency: "USD" },
+    annualStatements: Array.from({ length: 5 }, (_, i) => ({ date: `${2021 + i}-09-30`, currency: "USD", totalRevenue: 100 + i, inventory: 10 })),
+  });
+  let batches = 0;
+  const cloud = {
+    ...fallbackProvider, id: "gloomberb-cloud", priority: 100,
+    getQuote: async () => quote,
+    getTickerFinancialsBatch: async (targets: { symbol: string; exchange?: string }[]) => {
+      batches += 1;
+      return targets.map((target) => ({ target, financials: snapshot }));
+    },
+  };
+  const router = new AssetDataRouter(cloud, [], persistence.resources);
+  try {
+    await router.getQuote("AAPL", "NASDAQ");
+    const [first] = await router.getTickerFinancialsBatch([{ symbol: "AAPL", exchange: "NASDAQ" }]);
+    expect(first?.financials?.fundamentals?.marketCap).toBe(4.97e12);
+    expect(batches).toBe(1);
+    // Fetched once, the financials are a cache hit.
+    const [second] = await router.getTickerFinancialsBatch([{ symbol: "AAPL", exchange: "NASDAQ" }]);
+    expect(second?.financials?.fundamentals?.marketCap).toBe(4.97e12);
+    expect(batches).toBe(1);
+  } finally {
+    persistence.close();
+  }
+});
+
 describe("AssetDataRouter cached financials", () => {
   test("drops stale cached cloud quotes while preserving cached cloud fundamentals", () => {
     const dbPath = createTempDbPath("stale-cloud-cached-financials");

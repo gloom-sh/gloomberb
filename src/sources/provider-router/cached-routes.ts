@@ -4,7 +4,7 @@ import type { CachedAssetArgs, CachedAssetMethod, CachedAssetValue, DataProvider
 import type { AnalystResearchData, CorporateActionsData, HolderData } from "../../types/financials";
 import { canonicalExchange } from "../../utils/exchanges";
 import { nonUsSecListingVenue } from "../../utils/sec";
-import { shouldLogProviderError } from "../provider-errors";
+import { noProviderError, noteProviderMiss, shouldLogProviderError, type ProviderMissNote } from "../provider-errors";
 import { hasBrokerContext, withBrokerTimeout } from "./brokers";
 import { publicListingExchange } from "../listing-target";
 import { buildVariantKey, compactUrl, listCachedResources, resolveCachePolicy, type ProviderRouterCachePolicyKey } from "./cache";
@@ -18,6 +18,8 @@ interface Route {
   variants: string[];
   request: (provider: DataProvider, force: boolean) => Promise<unknown> | undefined;
   error: string;
+  /** The symbol the request is for, so an answer that no listing exists can name it. */
+  symbol?: string;
   rank?: (value: any, fetchedAt?: number) => number;
   acceptCached?: (value: any) => boolean;
   decode?: (value: any) => unknown;
@@ -111,6 +113,7 @@ export class ProviderRouterCachedRoutes {
         let best: CachedValue<unknown> | null = null;
         let bestRank = -1;
         let lastError: unknown;
+        const misses: ProviderMissNote = {};
         for (const provider of providers) {
           try {
             const request = route.request(provider, force);
@@ -123,6 +126,7 @@ export class ProviderRouterCachedRoutes {
             if (rank > bestRank) { best = result; bestRank = rank; }
           } catch (error) {
             lastError = error;
+            noteProviderMiss(misses, error);
             if (shouldLogProviderError(error)) this.deps.logProviderError(`${provider.id} failed: ${error}`);
           }
         }
@@ -133,7 +137,7 @@ export class ProviderRouterCachedRoutes {
           const policy = resolveCachePolicy(undefined, route.policy);
           return { value: route.empty(), fetchedAt, staleAt: fetchedAt + policy.staleMs, expiresAt: fetchedAt + policy.expireMs, source: "" };
         }
-        throw new Error(route.error);
+        throw noProviderError(route.error, misses, route.symbol);
       },
     });
     this.queries.set(key, query);
@@ -175,8 +179,8 @@ export class ProviderRouterCachedRoutes {
       && !hasBrokerContext(instrumentContext) && !instrumentContext?.instrument) {
       exchange = publicListingExchange(ticker, exchange);
     }
-    const tickerRoute = (kind: string, policy: ProviderRouterCachePolicyKey): Pick<Route, "kind" | "policy" | "entityKey" | "variants"> => ({
-      kind, policy, entityKey: this.deps.getEntityKey(ticker, instrumentContext?.instrument),
+    const tickerRoute = (kind: string, policy: ProviderRouterCachePolicyKey): Pick<Route, "kind" | "policy" | "entityKey" | "variants" | "symbol"> => ({
+      kind, policy, symbol: ticker, entityKey: this.deps.getEntityKey(ticker, instrumentContext?.instrument),
       variants: this.deps.getTickerVariantCandidates(exchange),
     });
     switch (method) {
@@ -207,7 +211,7 @@ export class ProviderRouterCachedRoutes {
         error: `No analyst research provider available for ${ticker}`,
       };
       case "getCorporateActions": return {
-        ...tickerRoute("corporateActions-v2", "corporateActions"), request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
+        ...tickerRoute("corporateActions-v3", "corporateActions"), request: (provider, force) => provider.getCorporateActions?.(ticker, exchange, force ? { ...extra, cacheMode: "refresh" } : extra),
         rank: (data: CorporateActionsData) => !hasCorporateActionsValue(data) ? 0 : data.stale || Object.values(data.coverage ?? {}).includes("unavailable") ? 1 : 2,
         acceptCached: (data: CorporateActionsData) => !data.stale && !Object.values(data.coverage ?? {}).includes("unavailable"), throwLastError: true,
         error: `No corporate actions provider available for ${ticker}`,

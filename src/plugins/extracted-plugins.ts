@@ -4,6 +4,7 @@ import { join } from "path";
 import type { AppConfig } from "../types/config";
 import { debugLog } from "../utils/debug-log";
 import { getPluginsDir } from "./loader";
+import { encodeBuiltinDisabledPluginIds } from "./ownership";
 import { pluginDirectoryNames } from "./plugin-names";
 
 const log = debugLog.createLogger("plugin-seed");
@@ -63,7 +64,12 @@ export async function seedExtractedPlugins(
   pluginsDir: string = getPluginsDir(),
 ): Promise<SeedResult> {
   const alreadySeeded = new Set(config.seededPlugins ?? []);
-  const disabled = new Set(config.disabledPlugins ?? []);
+  // A previous owner that is now a group of built-ins counts as off only while
+  // all of them are, which is when its id is saved.
+  const disabled = new Set([
+    ...config.disabledPlugins ?? [],
+    ...encodeBuiltinDisabledPluginIds(config.disabledPlugins ?? []),
+  ]);
 
   const result: SeedResult = { installed: [], failed: [], seeded: [...alreadySeeded] };
 

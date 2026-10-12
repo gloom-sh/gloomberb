@@ -36,9 +36,11 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["EQS"],
     dataRequirements: ["Gloom Cloud stored screener snapshot"],
     limitations: [
-      "Covered stored universe, not every listed equity",
-      "Ranks are cross-sectional and dates differ by field",
-      "Observed-subset insider activity cannot establish an absence",
+      "Covered stored universe, not every listed equity.",
+      "Ranks are cross-sectional and dates differ by field.",
+      "Observed-subset insider activity cannot establish an absence.",
+      "ATR% is the 14-session average true range as a percent of the last close, for US listings with at least 15 completed daily sessions.",
+      "IV rank is a rank, not an IV percentile: 0 is the lowest 30-day implied volatility of the past 52 weeks and 100 the highest.",
     ],
   },
   async load(args, ctx) {

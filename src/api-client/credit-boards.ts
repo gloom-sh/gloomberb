@@ -27,6 +27,8 @@ export interface CdxBoardIndex {
   /** In the quote's unit, on one contract across a roll. */
   change1D: number | null;
   change1W: number | null;
+  /** Absent from a server that predates it. */
+  change1M?: number | null;
   /** Oldest first, the on-the-run 5Y contract each day. */
   points: CreditBoardPoint[];
 }

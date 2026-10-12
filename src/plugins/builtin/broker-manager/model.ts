@@ -3,6 +3,7 @@ import type { AppConfig, BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount } from "../../../types/trading";
 import { formatCurrency } from "../../../utils/format";
 import { t } from "../../../i18n";
+import type { SignInEnds } from "./sign-in-end";
 
 export type BrokerDisplayState =
   | "disabled"
@@ -24,6 +25,8 @@ export interface BrokerProfileRow {
   accountCount: number;
   accountSummary: string;
   accountIds: string[];
+  /** When the broker ends this profile's sign-in, once Gloom says it is time to connect again. */
+  signInEndsAt: number | null;
   instance: BrokerInstanceConfig;
   adapter: BrokerAdapter | null;
 }
@@ -107,6 +110,7 @@ export function buildBrokerProfileRows(
   config: AppConfig,
   adapters: ReadonlyMap<string, BrokerAdapter | null>,
   brokerAccounts: Record<string, BrokerAccount[]>,
+  signInEnds: SignInEnds = new Map(),
 ): BrokerProfileRow[] {
   return config.brokerInstances.map((instance) => {
     const adapter = adapters.get(instance.brokerType) ?? null;
@@ -139,6 +143,10 @@ export function buildBrokerProfileRows(
       accountCount: accounts.length,
       accountSummary: summarizeBrokerAccounts(accounts),
       accountIds: accounts.map((account) => account.accountId),
+      // Say nothing next to a failure or a profile that does not connect.
+      signInEndsAt: state.state === "error" || state.state === "disabled" || state.state === "unavailable"
+        ? null
+        : signInEnds.get(instance.id) ?? null,
       instance,
       adapter,
     };

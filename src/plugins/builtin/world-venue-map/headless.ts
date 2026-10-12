@@ -6,7 +6,7 @@
 import { getGeoEntities, loadGeoCatalog, type GeoLayerInfo, type GeoRequest } from "../../../api-client/geo";
 import type { HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneRow, HeadlessRowsResult } from "../../../types/headless";
 import { REFERENCE_DATA } from "../shared/report-freshness";
-import { columnValue, parseLayerTokens, plainGeoValue, resolveActiveLayers, tickerLinkKey } from "./layers";
+import { columnValue, layerCoverageNote, parseLayerTokens, plainGeoValue, resolveActiveLayers, tickerLinkKey } from "./layers";
 import { filterWorldVenues, formatVenueLocalTime } from "./model";
 
 /**
@@ -126,9 +126,12 @@ export const mapHeadless = {
       lon: row.lon,
       lat: row.lat,
     }));
+    const coverage = layerCoverageNote(layer);
     return {
       columns: layerColumns({ ...layer, columns }),
       rows,
+      // A search outside a one-country layer finds nothing because the layer has nothing there.
+      ...(query.trim() && coverage ? { empty: `No ${layer.name.toLowerCase()} match "${query.trim()}". ${coverage}` } : {}),
       freshness: layerFreshness(layer),
       complete: layer.status === "ok",
       errors: layer.status === "unavailable" ? [`${layer.name}: ${layer.statusNote ?? "unavailable"}`] : [],

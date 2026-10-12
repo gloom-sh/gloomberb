@@ -30,9 +30,22 @@ export interface ThirteenFAction {
   value: number;
 }
 
+/** The stake a report's shares make of today's count, where the report's own base differs. */
+export interface StakeToday {
+  /** Percent of today's shares outstanding. */
+  percent: number;
+  sharesOutstanding: number;
+}
+
 export interface BeneficialOwnerRow {
   id: string;
   filing: BeneficialOwnerFiling;
+  /** Who the row is: the reporting person whose stake it shows. */
+  holderName: string;
+  /** The other reporting persons on the same report: a group's members, a fund's adviser or principal. */
+  otherPersons: number;
+  /** The report's shares over today's count, when that count is no longer the report's base. */
+  today: StakeToday | null;
   /** `13G/A`: the kind, and `/A` for an amendment. */
   formLabel: string;
   /** Percent points against the filer's report before this one. */
@@ -93,6 +106,71 @@ export function thirteenFAction(holder: HolderRecord | undefined): ThirteenFActi
   return null;
 }
 
+const ALL_CAPS = /^[^a-z]*[A-Z][^a-z]*$/;
+
+function sameEntity(left: string, right: string): boolean {
+  const key = (name: string) => name.toLowerCase().replace(/[^a-z0-9 ]+/g, " ")
+    .replace(/\b(the|inc|llc|ltd|lp|llp|corp|corporation|co|company|plc|n a|s a)\b/g, " ").replace(/\s+/g, " ").trim();
+  return key(left) === key(right);
+}
+
+/**
+ * The name a row goes by, one rule for every report: the reporting person
+ * whose stake the row shows (the highest percent, then shares, the filer's
+ * own entry on a tie), not the EDGAR filer, which only some reports name.
+ * When that person is the filer and the cover spells it in capitals, the
+ * filer's own spelling is kept (`SRS Investment Management, LLC`).
+ */
+export function beneficialHolderName(
+  filing: Pick<BeneficialOwnerFiling, "filerName" | "filerCik" | "reportingPersons">,
+): string {
+  let best: BeneficialOwnerFiling["reportingPersons"][number] | null = null;
+  for (const person of filing.reportingPersons) {
+    if (!person.name.trim()) continue;
+    if (!best) { best = person; continue; }
+    const percent = person.percentOfClass ?? -1;
+    const bestPercent = best.percentOfClass ?? -1;
+    if (percent !== bestPercent) { if (percent > bestPercent) best = person; continue; }
+    const shares = person.shares ?? -1;
+    const bestShares = best.shares ?? -1;
+    if (shares !== bestShares) { if (shares > bestShares) best = person; continue; }
+    if (filing.filerCik && person.cik === filing.filerCik && best.cik !== filing.filerCik) best = person;
+  }
+  const name = best?.name.trim();
+  if (!name) return filing.filerName;
+  const isFiler = (!!filing.filerCik && best?.cik === filing.filerCik) || sameEntity(name, filing.filerName);
+  return isFiler && ALL_CAPS.test(name) && !ALL_CAPS.test(filing.filerName) ? filing.filerName : name;
+}
+
+/** Today's count against the report's own base outside this range is another class or unit, not the same shares. */
+const BASE_RANGE = [2 / 3, 3 / 2] as const;
+
+/**
+ * The report's shares as a percent of today's shares outstanding, when the
+ * count the filer divided by (shares over the filed percent) is no longer
+ * today's. A filed percent is rounded, so a gap within that rounding (0.1
+ * point, or 2% of the stake) is not a new count. Null for an exit, a report
+ * without both figures, or a count that cannot be this class's.
+ */
+export function stakeToday(
+  filing: Pick<BeneficialOwnerFiling, "shares" | "percentOfClass">,
+  sharesOutstanding: number | null | undefined,
+): StakeToday | null {
+  const { shares, percentOfClass: filed } = filing;
+  if (sharesOutstanding == null || !(sharesOutstanding > 0) || shares == null || !(shares > 0) || filed == null || !(filed > 0)) return null;
+  const base = shares / (filed / 100);
+  const ratio = base / sharesOutstanding;
+  if (ratio < BASE_RANGE[0] || ratio > BASE_RANGE[1]) return null;
+  const percent = (shares / sharesOutstanding) * 100;
+  if (Math.abs(percent - filed) < Math.max(0.1, filed * 0.02)) return null;
+  return { percent, sharesOutstanding };
+}
+
+/** `about 49.4% on 35.26M sh today`. */
+export function formatStakeToday(today: StakeToday): string {
+  return `about ${formatClassPercent(today.percent)} on ${formatCompact(today.sharesOutstanding)} sh today`;
+}
+
 function beneficialFormLabel(filing: Pick<BeneficialOwnerFiling, "kind" | "amendment">): string {
   return `${filing.kind}${filing.amendment ? "/A" : ""}`;
 }
@@ -110,10 +188,14 @@ export function buildBeneficialRows(
   filings: readonly BeneficialOwnerFiling[],
   holders: readonly JoinableHolder[] = [],
   fundMatches: ReadonlyMap<string, Pick<Holder13FMatch, "cik">> = new Map(),
+  sharesOutstanding?: number | null,
 ): BeneficialOwnerRow[] {
   return filings.map((filing) => ({
     id: `${filing.accessionNumber}:${filing.filerCik ?? filing.filerName}`,
     filing,
+    holderName: beneficialHolderName(filing),
+    otherPersons: Math.max(0, filing.reportingPersons.length - 1),
+    today: stakeToday(filing, sharesOutstanding),
     formLabel: beneficialFormLabel(filing),
     changePoints: pointChange(filing),
     thirteenF: thirteenFAction(matchFilerToHolder(filing, holders, fundMatches)),
@@ -123,7 +205,7 @@ export function buildBeneficialRows(
 
 function sortValue(row: BeneficialOwnerRow, columnId: BeneficialColumnId): string | number | null {
   switch (columnId) {
-    case "filer": return row.filing.filerName;
+    case "filer": return row.holderName;
     case "form": return row.formLabel;
     case "percentOfClass": return row.filing.percentOfClass;
     case "change": return row.changePoints;
@@ -148,7 +230,7 @@ export function sortBeneficialRows(rows: readonly BeneficialOwnerRow[], preferen
   return [...rows].sort((left, right) => stakeGroup(left) - stakeGroup(right)
     || compareSortValues(sortValue(left, preference.columnId), sortValue(right, preference.columnId), preference.direction)
     || right.filing.filingDate.localeCompare(left.filing.filingDate)
-    || left.filing.filerName.localeCompare(right.filing.filerName));
+    || left.holderName.localeCompare(right.holderName));
 }
 
 // Widths as the table draws them: never narrower than the header and its sort marker.
@@ -249,14 +331,19 @@ export function formatOwnerShares(value: number | null): string {
 export function beneficialReportRow(row: BeneficialOwnerRow) {
   const { filing } = row;
   return {
-    filer: filing.filerName,
+    filer: row.holderName,
+    /** The other reporting persons on the report, which text marks `+N` after the name. */
+    otherPersons: row.otherPersons,
     filerCik: filing.filerCik,
     form: row.formLabel,
     formType: filing.form,
     kind: filing.kind,
     amendment: filing.amendment,
     amendmentNo: filing.amendmentNo,
+    /** As filed: the filer's shares over the share count it used. */
     percentOfClass: filing.percentOfClass,
+    /** The same shares over today's shares outstanding, only when that count is no longer the report's base. */
+    percentToday: row.today ? Number(row.today.percent.toFixed(2)) : null,
     previousPercent: filing.previousPercent ?? null,
     changePoints: row.changePoints,
     shares: filing.shares,

@@ -16,6 +16,19 @@ export function driverValue(row: ExposureExtensionObservation): string {
   if (row.range?.high != null) return `${row.qualifier === "less_than" ? "<" : "≤"} ${number(row.range.high)}`;
   return row.valueText ?? (row.status ? row.status.charAt(0).toUpperCase() + row.status.slice(1) : "Unknown");
 }
+/** The value with its unit in one cell, as the report prints it: 201.18B USD, ≈ 70%. Wording without a number stands alone. */
+export function driverAmount(row: ExposureExtensionObservation): string {
+  const value = driverValue(row);
+  if (row.value === null && row.range?.low == null && row.range?.high == null) return value;
+  const units = driverUnits(row);
+  return units === "%" || units === "x" ? `${value}${units}` : `${value} ${units}`;
+}
+const NAMED_DIMENSIONS = ["segment", "product", "geography", "region", "cohort"];
+/** What a figure covers, in words, the segment, product or geography it names first: Americas · geographic segment. */
+export function driverScope(row: ExposureExtensionObservation): string {
+  const rank = (key: string) => NAMED_DIMENSIONS.includes(key) ? 0 : key === "comparison" ? 2 : 1;
+  return Object.entries(row.dimensions ?? {}).sort(([a], [b]) => rank(a) - rank(b)).map(([, value]) => value.replaceAll("_", " ")).join(" · ");
+}
 export function driverRows(data: ExposurePayload): ExposureRow[] {
   return data.holdings.flatMap(holding => (holding.extensions ?? []).map(driver => ({
     id: `${holding.symbol}:${driver.id}`, symbol: holding.symbol, shockId: "", label: driver.label,

@@ -41,9 +41,10 @@ export const remoteCliCommand: CliCommandDef = {
       return;
     }
 
+    // No data folder means this profile never opened the app, so none is running to drive.
     const dataDir = await getDataDir();
     if (!dataDir) {
-      ctx.fail("No data directory configured.", "Run gloomberb once before using remote control.");
+      ctx.fail("No running Gloomberb app found.", "Open the desktop app or run gloomberb, then try again.");
       return;
     }
 

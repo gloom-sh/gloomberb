@@ -3,19 +3,39 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
+import type { HeadlessPaneColumn } from "../../../types/headless";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
+import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import { loadSectorRows, type SectorRowOutcome } from "./client";
 import { getSectorCollection, type SectorCollectionId, type SectorDef } from "./sector-data";
-import { DEFAULT_SORT_PREFERENCE, sectorRowIssues, sortRows, type SectorRow } from "./sector-model";
+import { DEFAULT_SORT_PREFERENCE, sectorExtendedSessions, sectorRowIssues, sortRows, type SectorRow } from "./sector-model";
 
-const COLUMNS = [
+const price = (value: unknown, row: Record<string, unknown>) => value == null ? "-" : formatCurrency(Number(value), String(row.currency));
+const percent = (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value));
+
+const LEAD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Sector" },
   { key: "etf", header: "ETF" },
-  { key: "price", header: "Last", align: "right" as const, format: (value: unknown, row: Record<string, unknown>) => value == null ? "-" : formatCurrency(Number(value), String(row.currency)) },
-  { key: "changePercent", header: "1D", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value)) },
-  { key: "return1M", header: "1M", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value)) },
-  { key: "return1Y", header: "1Y", align: "right" as const, format: (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value)) },
+  { key: "price", header: "Last", align: "right", format: price },
+  { key: "changePercent", header: "1D", align: "right", format: percent },
 ];
+const RETURN_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "return1M", header: "1M", align: "right", format: percent },
+  { key: "return1Y", header: "1Y", align: "right", format: percent },
+];
+const COLUMNS = [...LEAD_COLUMNS, ...RETURN_COLUMNS];
+
+/** The pre-market or after-hours print and its move from the regular close, for the funds that have one. */
+function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
+  return {
+    key: "extendedPrice",
+    header: EXTENDED_SESSION_LABELS[session],
+    align: "right",
+    format: (value, row) => row.extendedSession === session && typeof value === "number"
+      ? `${price(value, row)} ${percent(row.extendedChangePercent)}`
+      : "-",
+  };
+}
 
 export function projectSectorRows(
   definitions: readonly SectorDef[],
@@ -36,6 +56,10 @@ export function projectSectorRows(
     quoteDataSource: byEtf.get(definition.etf)?.quoteDataSource,
     quoteIssue: byEtf.get(definition.etf)?.quoteIssue ?? null,
     lastReportedPrice: byEtf.get(definition.etf)?.lastReportedPrice ?? null,
+    extendedSession: byEtf.get(definition.etf)?.extendedSession ?? null,
+    extendedPrice: byEtf.get(definition.etf)?.extendedPrice ?? null,
+    extendedChange: byEtf.get(definition.etf)?.extendedChange ?? null,
+    extendedChangePercent: byEtf.get(definition.etf)?.extendedChangePercent ?? null,
     returnIntegrity: byEtf.get(definition.etf)?.returnIntegrity ?? {},
     returnAsOfDate: byEtf.get(definition.etf)?.returnAsOfDate ?? null,
     return1MStartDate: byEtf.get(definition.etf)?.return1MStartDate ?? null,
@@ -82,7 +106,12 @@ export function createSectorsHeadless(
       const unavailableReturns = rows.filter((row) => row.return1M == null || row.return1Y == null).map((row) => row.etf);
       const unavailableDailyChanges = rows.filter((row) => row.changePercent == null).map((row) => row.etf);
       const unavailableSymbols = [...new Set([...unavailableQuotes, ...unavailableReturns, ...unavailableDailyChanges])];
+      // Last and 1D are the regular session; an extended print gets a column only when a fund has one.
+      const extendedSessions = sectorExtendedSessions(rows);
       return {
+        ...(extendedSessions.length > 0
+          ? { columns: [...LEAD_COLUMNS, ...extendedSessions.map(extendedColumn), ...RETURN_COLUMNS] }
+          : {}),
         unavailableSymbols: unavailableSymbols.length > 0 ? unavailableSymbols : undefined,
         errors: rows.flatMap((row) => sectorRowIssues(row).map((issue) => `${row.etf}: ${issue}.`)),
         // The quote behind each row says whether it is real-time or delayed, and how current it is.

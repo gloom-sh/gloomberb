@@ -14,9 +14,10 @@ function formattedColumns(rows: readonly HeadlessPaneRow[], formats: Record<stri
 
 export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", placeholder: "ticker", description: "US equity ticker." },
+  usListingsOnly: "Time and sales",
   options: [{ key: "limit", type: "integer", minimum: 1, maximum: 1000, defaultValue: 100, description: "Maximum recent prints in the report." }],
   discovery: { aliases: ["TAS", "QR"], dataRequirements: ["Gloom Cloud SIP trade and quote feed"],
-    limitations: ["Bounded observed window, not a complete session", "SIP is delayed fifteen minutes without realtime entitlement", "Quote sizes are round lots", "No Level 2 or inferred aggressor side"] },
+    limitations: ["Bounded observed window, not a complete session.", "SIP is delayed fifteen minutes without realtime entitlement.", "Quote sizes are round lots.", "No Level 2 or inferred aggressor side."] },
   describe: (args) => `Time and sales ${args.argument ?? ""}`,
   async load(args, ctx) {
     const symbol = args.symbols[0] ?? (typeof args.argument === "string" ? args.argument : "");

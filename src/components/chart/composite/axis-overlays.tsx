@@ -215,19 +215,25 @@ export function StaticXAxisLabels({
       flexDirection="row"
       position="relative"
       overflow="hidden"
+      // Desktop: the width the gutters beside it leave, so labels placed in
+      // percentages follow a resize that draws the chart at a new size
+      // between renders.
+      style={isDesktop ? { flex: "1 1 0px", width: "auto", minWidth: 0 } : undefined}
       data-gloom-role="chart-time-axis"
       data-gloom-label={(visiblePositionedLabels.length > 0
         ? visiblePositionedLabels.map((entry) => entry.label)
         : visibleLabels).join(" ")}
     >
       {visiblePositionedLabels.length > 0 && (isDesktop || visibleLabels.length === 0) ? (
-        <Box position="absolute" left={0} top={0} width={width} height={1}>
+        <Box position="absolute" left={0} top={0} width={width} height={1} style={isDesktop ? { width: "100%" } : undefined}>
           {positionedPlacements.map(({ entry, index, edgeStyle }) => {
             return (
               <Text
                 key={`${entry.label}:${entry.ratio}:${index}`}
                 fg={color}
                 selectable={false}
+                // The label against the right edge, which a floating pane's resize grip may cover.
+                data-gloom-edge={"right" in edgeStyle ? "end" : undefined}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -244,7 +250,12 @@ export function StaticXAxisLabels({
       ) : (
         <Box width={width} height={1} flexDirection="row">
           {visibleLabels.map((label, index) => (
-            <Box key={`${label}:${index}`} width={segmentWidths[index]} overflow="hidden">
+            <Box
+              key={`${label}:${index}`}
+              width={segmentWidths[index]}
+              overflow="hidden"
+              data-gloom-edge={index === visibleLabels.length - 1 && visibleLabels.length > 1 ? "end-segment" : undefined}
+            >
               <Text fg={color}>{flowText[index]}</Text>
             </Box>
           ))}
@@ -331,7 +342,7 @@ export function StaticXMarkerOverlay({
 
   if (nativePaneChrome) {
     return (
-      <Box position="absolute" left={0} top={0} width={width} height={height}>
+      <Box position="absolute" left={0} top={0} width={width} height={height} style={{ width: "100%", height: "100%" }}>
         {visibleMarkers.map((marker) => (
           <Box
             key={marker.id}

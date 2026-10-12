@@ -1,9 +1,7 @@
 import type { PaneInstanceConfig } from "../../../types/config";
 import type { PluginModule } from "../plugin-module";
-import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
+import { SHORT_VOLUME_SERIES } from "./series";
 import { shortVolumeCache } from "./client";
-import { shortVolumeHeadless } from "./headless";
-import { ShortVolumePane } from "./pane";
 
 export const shortVolumeSettings = [
   { key: "shortVolumeScope", label: "Reporting scope", type: "select" as const,
@@ -14,14 +12,9 @@ export const shortVolumeSettings = [
 export const followsWithoutFinraOverride = (pane: PaneInstanceConfig) => (
   typeof pane.settings?.finraSymbol !== "string" || !pane.settings.finraSymbol.trim()
 );
+/** The daily-volume cache. `SIV` opens the short interest pane, so this module has no pane of its own. */
 export const shortVolumeModule: PluginModule = {
-  panes: [{ id: "short-volume", name: "Daily Short Volume", icon: "S", component: ShortVolumePane,
-    defaultPosition: "right", tickerFollower: followsWithoutFinraOverride, defaultMode: "floating", defaultFloatingSize: { width: 92, height: 28 },
-    tableExport: true, headless: shortVolumeHeadless, settings: { title: "Daily Short Volume", fields: shortVolumeSettings } }],
-  paneTemplates: [{ ...createTickerSurfacePaneTemplate({ id: "short-volume-pane", paneId: "short-volume", label: "Daily Short Volume",
-    description: "FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities.",
-    shortcut: "SIV", keywords: ["daily", "short", "volume", "finra", "siv"], publicShare: true,
-  }), headless: shortVolumeHeadless }],
+  series: SHORT_VOLUME_SERIES,
   setup(ctx) { shortVolumeCache.attach(ctx.persistence); },
   dispose() { shortVolumeCache.reset(); },
 };

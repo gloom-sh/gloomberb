@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "fs/promises";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "fs/promises";
 import { join } from "path";
 import { tmpdir } from "os";
 import { exportConfig, importConfig, loadConfig, sanitizeLayout, saveConfig } from "./index";
@@ -59,6 +59,37 @@ async function writeConfigJson(dataDir: string, config: Record<string, unknown>)
   await writeFile(join(dataDir, "config.json"), JSON.stringify(config), "utf-8");
 }
 
+test("parallel saves land one after another, in the same millisecond too", async () => {
+  const dataDir = await createTempConfigDir();
+  const loaded = await loadConfig(dataDir);
+  const now = spyOn(Date, "now").mockReturnValue(1_700_000_000_000);
+  try {
+    await Promise.all([
+      saveConfig({ ...loaded, theme: "first" }),
+      saveConfig({ ...loaded, theme: "second" }),
+      saveConfig({ ...loaded, theme: "third" }),
+    ]);
+  } finally {
+    now.mockRestore();
+  }
+  expect((await loadConfig(dataDir)).theme).toBe("third");
+  expect(await readdir(dataDir)).toEqual(["config.json"]);
+});
+
+test("a failed save rejects its caller, leaves no temp file and does not block the next save", async () => {
+  const dataDir = await createTempConfigDir();
+  const loaded = await loadConfig(dataDir);
+  // A directory where the file belongs makes the final rename fail.
+  await mkdir(join(dataDir, "config.json"));
+  await expect(saveConfig({ ...loaded, theme: "lost" })).rejects.toThrow();
+  expect(await readdir(dataDir)).toEqual(["config.json"]);
+
+  await rm(join(dataDir, "config.json"), { recursive: true });
+  await saveConfig({ ...loaded, theme: "kept" });
+  expect((await loadConfig(dataDir)).theme).toBe("kept");
+  expect(await readdir(dataDir)).toEqual(["config.json"]);
+});
+
 test("recent panes survive a save and reload", async () => {
   const dataDir = await createTempConfigDir();
   const loaded = await loadConfig(dataDir);
@@ -78,19 +109,48 @@ test("recent panes survive a save and reload", async () => {
   ]);
 });
 
-test("a portfolio's cash and target weights survive a save and reload, and malformed ones are dropped", async () => {
+test("a portfolio's cash, target weights and 13F import source survive a save and reload, and malformed ones are dropped", async () => {
   const dataDir = await createTempConfigDir();
+  const importedFrom = { kind: "13f", cik: "0001067983", name: "BERKSHIRE HATHAWAY INC", period: "2026-06-30", filed: "2026-08-14" };
   await writeConfigJson(dataDir, createSavedConfig({
     portfolios: [
-      { id: "main", name: "Main", currency: "USD", cash: { amount: 500_000, currency: "USD" }, targetWeights: { VTI: 60, CASH: 40 } },
-      { id: "bad", name: "Bad", currency: "USD", cash: { amount: "lots", currency: "USD" }, targetWeights: { VTI: 140, GLD: -1, BIL: "ten" } },
+      { id: "main", name: "Main", currency: "USD", cash: { amount: 500_000, currency: "USD" }, targetWeights: { VTI: 60, CASH: 40 }, importedFrom },
+      { id: "bad", name: "Bad", currency: "USD", cash: { amount: "lots", currency: "USD" }, targetWeights: { VTI: 140, GLD: -1, BIL: "ten" }, importedFrom: { kind: "13f", cik: "1" } },
     ],
   }));
   const loaded = await loadConfig(dataDir);
   await saveConfig(loaded);
   const [main, bad] = (await loadConfig(dataDir)).portfolios;
-  expect(main).toEqual({ id: "main", name: "Main", currency: "USD", cash: { amount: 500_000, currency: "USD" }, targetWeights: { VTI: 60, CASH: 40 } });
+  expect(main).toEqual({ id: "main", name: "Main", currency: "USD", cash: { amount: 500_000, currency: "USD" }, targetWeights: { VTI: 60, CASH: 40 }, importedFrom });
   expect(bad).toEqual({ id: "bad", name: "Bad", currency: "USD" });
+});
+
+test("the star prompt's record and off switch survive a save and reload, and junk is dropped", async () => {
+  const dataDir = await createTempConfigDir();
+  await writeConfigJson(dataDir, createSavedConfig({
+    starPrompt: { enabled: false, days: ["2026-10-01", "2026-10-01", "yesterday", 3, "2026-10-02"], outcome: "starred" },
+  }));
+  const loaded = await loadConfig(dataDir);
+  expect(loaded.starPrompt).toEqual({ enabled: false, days: ["2026-10-01", "2026-10-02"] });
+
+  await saveConfig({ ...loaded, starPrompt: { shownAt: "2026-10-03T09:00:00.000Z", outcome: "dismissed" } });
+  expect((await loadConfig(dataDir)).starPrompt).toEqual({ shownAt: "2026-10-03T09:00:00.000Z", outcome: "dismissed" });
+
+  await saveConfig({ ...loaded, starPrompt: {} });
+  const saved = JSON.parse(await readFile(join(dataDir, "config.json"), "utf8")) as Record<string, unknown>;
+  expect("starPrompt" in saved).toBe(false);
+});
+
+test("presentation mode survives a save and reload, and anything but true leaves it off", async () => {
+  const dataDir = await createTempConfigDir();
+  await writeConfigJson(dataDir, createSavedConfig({ presentationMode: true }));
+  const loaded = await loadConfig(dataDir);
+  expect(loaded.presentationMode).toBe(true);
+  await saveConfig(loaded);
+  expect((await loadConfig(dataDir)).presentationMode).toBe(true);
+
+  await writeConfigJson(dataDir, createSavedConfig({ presentationMode: "yes" }));
+  expect("presentationMode" in await loadConfig(dataDir)).toBe(false);
 });
 
 test("fresh installs skip plugin restoration across config reloads", async () => {
@@ -807,18 +867,27 @@ describe("loadConfig", () => {
     const config = await loadConfig(dataDir);
 
     expect(config.disabledPlugins).toEqual([
-      "ticker-research",
-      "market-overview",
+      // Each module went with its pane when Ticker Research and Market
+      // Overview were split, so it no longer turns off the rest of its old
+      // plugin either.
+      "options-volatility",
+      "filings",
+      "ownership",
+      "global-markets",
       // Their own built-ins now, so a legacy id means the plugin of that name
       // rather than the built-in that used to contain it.
       "market-heatmap",
       "fear-greed",
-      "macro",
+      "ticker-core",
+      // The earnings calendar went to Earnings when Macro was split, while TV
+      // left for its own repository, so turning it off still means all of Macro.
+      "earnings",
+      "rates-macro",
+      "credit",
       "ibkr",
       "broker",
       "portfolio",
-      // Built in again, and off like the rest of Market Overview and Macro.
-      "market-halts",
+      // Built in again, and off like the rest of Macro.
       "ipo-calendar",
     ]);
   });
@@ -835,17 +904,19 @@ describe("loadConfig", () => {
     const saved = createSavedConfig({ configVersion: 22, disabledPlugins: ["market-overview"] });
     await writeConfigJson(dataDir, saved);
 
+    const marketOverview = ["global-markets", "screeners", "futures-commodities", "crypto", "alt-data", "quant"];
     const migrated = await loadConfig(dataDir);
-    expect(migrated.disabledPlugins).toEqual(["market-overview", "market-halts", "fear-greed"]);
+    expect(migrated.disabledPlugins).toEqual([...marketOverview, "market-halts", "fear-greed"]);
     // The web bundled all three whatever Market Overview said.
-    expect(normalizeLoadedConfig(saved, dataDir).config.disabledPlugins).toEqual(["market-overview"]);
+    expect(normalizeLoadedConfig(saved, dataDir).config.disabledPlugins).toEqual(marketOverview);
 
     // Switched on since, then saved by an older build, which writes its own
     // configVersion back: the migration runs again but leaves them on.
-    await saveConfig({ ...migrated, disabledPlugins: ["market-overview"] });
+    await saveConfig({ ...migrated, disabledPlugins: marketOverview });
     const persisted = JSON.parse(await readFile(join(dataDir, "config.json"), "utf-8")) as Record<string, unknown>;
+    expect(persisted.disabledPlugins).toEqual(["market-overview"]);
     await writeConfigJson(dataDir, { ...persisted, configVersion: 22 });
-    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["market-overview"]);
+    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(marketOverview);
   });
 
   /** The IPO Calendar was a Macro module, then a plugin the seeder skipped while Macro was off. */
@@ -853,7 +924,7 @@ describe("loadConfig", () => {
     await usePluginCheckouts();
     const dataDir = await createTempConfigDir();
     await writeConfigJson(dataDir, createSavedConfig({ configVersion: 22, disabledPlugins: ["macro"] }));
-    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["macro", "ipo-calendar"]);
+    expect((await loadConfig(dataDir)).disabledPlugins).toEqual(["rates-macro", "credit", "earnings", "ipo-calendar"]);
 
     // Saved at 23 by a build that absorbed only the Market Overview modules.
     const afterMarketOverview = await createTempConfigDir();
@@ -862,12 +933,12 @@ describe("loadConfig", () => {
       disabledPlugins: ["macro"],
       seededPlugins: ["absorbed:market-heatmap", "absorbed:market-halts", "absorbed:fear-greed"],
     }));
-    expect((await loadConfig(afterMarketOverview)).disabledPlugins).toEqual(["macro", "ipo-calendar"]);
+    expect((await loadConfig(afterMarketOverview)).disabledPlugins).toEqual(["rates-macro", "credit", "earnings", "ipo-calendar"]);
 
     await usePluginCheckouts("gloom-ipo-calendar");
     const installed = await createTempConfigDir();
     await writeConfigJson(installed, createSavedConfig({ configVersion: 22, disabledPlugins: ["macro"] }));
-    expect((await loadConfig(installed)).disabledPlugins).toEqual(["macro"]);
+    expect((await loadConfig(installed)).disabledPlugins).toEqual(["rates-macro", "credit", "earnings"]);
   });
 
   test("migrates grouped built-in plugin config keys", async () => {

@@ -15,10 +15,11 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type InputRenderable } from "../../../ui";
 import type { PluginModule } from "../plugin-module";
+import { GOVERNMENT_BOND_SERIES, TREASURY_SERIES } from "./series";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { formatPercentileRank } from "../../../utils/format";
-import { SERIES_COLORS } from "../../../time-series/resolve";
+import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { CurveSeries } from "../../../components/chart/curve";
 import { yieldCurveHeadless } from "./headless";
 import {
@@ -59,7 +60,7 @@ const AS_OF_COLUMN: DataTableColumn = { id: "asOf", label: "As of", width: 12, a
 const tenorKey = (row: YieldTenorRow) => row.id;
 // Left and Right step along the maturities, the way the curve reads.
 const tenorPosition = (row: YieldTenorRow) => new Date(row.years * 86_400_000);
-const RELATIVE_COMPARE = /^\d+[WMY]$/;
+const RELATIVE_COMPARE = /^\d+[DWMY]$/;
 /** A difference in basis points: `+7bp`, `-12bp`. */
 const formatBp = (value: number) => {
   const bp = Math.round(value);
@@ -328,7 +329,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
           onChange: setShowForward }] : []),
       ]}
       // The session actually shown; a requested date the field already shows is not repeated.
-      meta={asOf && asOf !== requestedDate ? `as of ${asOf}` : undefined}
+      asOf={asOf && asOf !== requestedDate ? `as of ${asOf}` : undefined}
     />
   );
   // The query bar stays above the status body so the curve or date can change
@@ -438,6 +439,7 @@ function WorldTab({ onOpen, focused, width, height }: {
 }
 
 export const yieldCurveModule: PluginModule = {
+  series: [...TREASURY_SERIES, ...GOVERNMENT_BOND_SERIES],
   panes: [{
     id: "yield-curve",
     name: "Yield Curves",

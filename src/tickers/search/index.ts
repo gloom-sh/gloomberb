@@ -1,14 +1,16 @@
 import type { SearchRequestContext, DataProvider } from "../../types/data-provider";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerRecord } from "../../types/ticker";
-import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { canonicalExchange, isSharedExchangeCode, isUsListingExchange, parsePublicTickerKey, publicTickerKey, typedExchangeCode } from "../../utils/exchanges";
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { assetClassMarketSymbol, parseAssetClassQuery } from "./asset-classes";
+import { bareFuturesCode, futuresContractByCode } from "../../market-data/futures-board";
 import { searchContractKey, searchInstrumentKey } from "./identity";
 import { tickerInstrumentLabel } from "../instrument-label";
 import {
+  answersOnlyByKeyword,
   buildSymbolAliases,
   classifyInstrumentKind,
   findExactTickerSearchMatch,
@@ -18,6 +20,7 @@ import {
   normalizeSearchText,
   normalizeTickerSymbol,
   rankTickerSearchItems,
+  themeQueryWord,
 } from "./ranking";
 import type {
   ResolvedTickerSearch,
@@ -28,6 +31,7 @@ import {
   isLowQualityTickerName,
 } from "./result";
 
+import { typedPerpetualListing } from "../perpetual-listing";
 export type {
   ResolvedTickerSearch,
   TickerSearchCandidate,
@@ -39,9 +43,21 @@ export {
 } from "./ranking";
 export { upsertTickerFromSearchResult } from "./upsert";
 
+const MAX_NAMED_LISTINGS = 6;
+
+/**
+ * Search rows a symbol's listings are read from, by the command bar's `SAN:`
+ * venue list and the CLI's venue list alike. A keystroke's ten stop short of a
+ * symbol several companies use: CAR's ASX line is its eleventh.
+ */
+export const LISTING_SEARCH_LIMIT = 30;
+
 export class AmbiguousTickerError extends Error {
   constructor(readonly query: string, readonly listings: readonly string[], readonly listingNames: Readonly<Record<string, string>> = {}) {
-    super(`Multiple listings match ${query}. Choose an exchange in search or use ${listings.slice(0, 3).join(", ")}.`);
+    // Every listing is a choice: a list cut short could leave out the one meant.
+    const more = listings.length - MAX_NAMED_LISTINGS;
+    const named = `${listings.slice(0, MAX_NAMED_LISTINGS).join(", ")}${more > 0 ? ` or one of ${more} more in search` : ""}`;
+    super(`Multiple listings match ${query}. Choose an exchange in search or use ${named}.`);
     this.name = "AmbiguousTickerError";
   }
 }
@@ -84,8 +100,9 @@ interface TickerSearchCandidateOptions {
   providerPopularity?: ReadonlyMap<string, number>;
 }
 
+/** The ticker typed, upper case; a perpetual's market id (`binance:BZUSDT`) as its listing (`BZUSDT:BINANCE`). */
 export function normalizeTickerInput(activeTicker: string | null, arg?: string): string | null {
-  const explicitTicker = arg?.trim().toUpperCase();
+  const explicitTicker = arg ? (typedPerpetualListing(arg)?.key ?? arg).trim().toUpperCase() : "";
   if (explicitTicker) return explicitTicker;
   return activeTicker;
 }
@@ -178,6 +195,7 @@ function createProviderTickerSearchCandidates(
       instrumentClass: classifyInstrumentKind(result.brokerContract?.secType || result.type),
       instrumentType: result.brokerContract?.secType || result.type,
       searchAliases: buildSearchResultAliases(result),
+      ...(searchResultKeywords(result) ? { searchKeywords: searchResultKeywords(result) } : {}),
       result,
     }];
   });
@@ -218,6 +236,7 @@ export async function searchTickerCandidates({
     query,
     searchContext,
     onPartial ? (results) => onPartial(assemble(results)) : undefined,
+    true,
   ));
 }
 
@@ -251,7 +270,7 @@ export function buildTickerSearchCandidates({
   );
   const providerItems = createProviderTickerSearchCandidates(filteredProviderResults, tickers, candidateOptions);
   const ranked = rankTickerSearchItems([...localItems, ...providerItems], query);
-  return limitTickerSearchCandidates(assignTickerSearchCategories(ranked), totalLimit, localLimit);
+  return limitTickerSearchCandidates(assignTickerSearchCategories(ranked, query), totalLimit, localLimit);
 }
 
 interface ResolveTickerSearchOptions {
@@ -262,9 +281,9 @@ interface ResolveTickerSearchOptions {
   searchContext?: SearchRequestContext;
 }
 
-/** `NET:` asks which NET. `NET:N` narrows that list. `NET:XNYS` already names one. */
-const LISTING_PICKER_QUERY = /^[A-Z0-9][A-Z0-9.\-]{0,20}:$/;
-const LISTING_CHOICE_QUERY = /^([A-Z0-9][A-Z0-9.\-]{0,20}):([A-Z0-9.\-]*)$/;
+/** `NET:` asks which NET. `NET:N` narrows that list. `NET:XNYS` already names one. An index (`^VIX:`) is asked the same way. */
+const LISTING_PICKER_QUERY = /^[A-Z0-9^][A-Z0-9.\-]{0,20}:$/;
+const LISTING_CHOICE_QUERY = /^([A-Z0-9^][A-Z0-9.\-]{0,20}):([A-Z0-9.\-]*)$/;
 
 function isListingPickerQuery(query: string): boolean {
   return LISTING_PICKER_QUERY.test(query.trim().toUpperCase());
@@ -289,7 +308,10 @@ export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promis
   if (!requested) return Promise.resolve(null);
   // `NET:` lists NET's venues instead of settling on one.
   const pickListing = isListingPickerQuery(requested);
-  const symbol = symbolSearchQuery(requested);
+  const typed = symbolSearchQuery(requested);
+  // A futures board code no security uses is its future (TTF is TTF=F), unless a saved ticker holds it.
+  const future = pickListing || options.tickers.has(typed) ? null : bareFuturesCode(typed);
+  const symbol = future?.symbol ?? typed;
   const literal = resolveTickerSymbol(symbol, options, pickListing ? requested : null);
   const alternatives = pickListing ? [] : dottedVenueQueries(symbol);
   // Most input has no venue code to retry: hand back the literal lookup
@@ -344,6 +366,9 @@ async function resolveTickerSymbol(
     publicTickerKey(item.symbol, listingExchange(item.result!)), item.result!.name,
   ])));
   if (pickerQuery && listings.size > 1) throw ambiguity(pickerQuery);
+  // A code that names several venues (TSE) the symbol trades on more than one of is a choice.
+  if (!saved && isSharedExchangeCode(typedExchangeCode(symbol))
+    && new Set(matches.map((item) => canonicalExchange(listingExchange(item.result!)))).size > 1) throw ambiguity(symbol);
   if (saved) return saved;
   if (listings.size > 1 && !parsePublicTickerKey(symbol).exchange && !tickerHasListingSuffix(symbol)) {
     // Search order is relevance, not a canonical listing identifier. Align bare
@@ -358,14 +383,14 @@ async function resolveTickerSymbol(
       const currency = resolveCurrencyUnit(quote.currency).currency;
       if (exchange && currency && Number.isFinite(quote.price) && quote.price !== 0
         && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0) {
-        verified = matches.filter((item) => {
+        const sameSecurity = matches.filter((item) => {
           const result = item.result!;
           const candidateCurrency = resolveCurrencyUnit(result.currency).currency;
-          return canonicalExchange(listingExchange(result)) === exchange
-            && (!candidateCurrency || candidateCurrency === currency)
+          return (!candidateCurrency || candidateCurrency === currency)
             && findExactTickerSearchMatch([{ label: quote.symbol, right: exchange, instrumentType: quote.instrumentType }], item.symbol)
             && (!isCryptoInstrumentType(result.type) || quote.price > 0);
-        }).map((item) => ({ ...item, result: { ...item.result!, currency } }));
+        });
+        verified = quotedListings(sameSecurity, exchange).map((item) => ({ ...item, result: { ...item.result!, currency } }));
       }
     } catch {
       // An unavailable quote cannot establish the default listing.
@@ -374,6 +399,8 @@ async function resolveTickerSymbol(
       throw ambiguity(symbol);
     }
     exactMatch = verified[0]!;
+    const chosen = publicTickerKey(exactMatch.symbol, listingExchange(exactMatch.result!));
+    return { kind: "provider", symbol: exactMatch.symbol, result: exactMatch.result!, otherListings: [...listings].filter((key) => key !== chosen) };
   }
 
   return {
@@ -381,6 +408,19 @@ async function resolveTickerSymbol(
     symbol: exactMatch.symbol,
     result: exactMatch.result!,
   };
+}
+
+/**
+ * The listings a bare symbol's own quote is on: those on the venue it names.
+ * The US exchanges share one symbol namespace, so a quote on any of them is
+ * the symbol's one US listing, whichever venue the feed labels it with (ET's
+ * NYSE line comes back as NYSE American).
+ */
+function quotedListings(items: TickerSearchCandidate[], exchange: string): TickerSearchCandidate[] {
+  const venue = (item: TickerSearchCandidate) => canonicalExchange(listingExchange(item.result!));
+  const named = items.filter((item) => venue(item) === exchange);
+  if (named.length > 0 || !isUsListingExchange(exchange)) return named;
+  return items.filter((item) => isUsListingExchange(venue(item)));
 }
 
 function listingExchange(result: InstrumentSearchResult): string {
@@ -430,6 +470,8 @@ async function searchProviderResults(
   rawQuery: string,
   searchContext?: SearchRequestContext,
   onPartial?: (results: InstrumentSearchResult[]) => void,
+  /** Also look for the funds of a sector word, for a list of matches rather than one resolved symbol. */
+  withThemeFunds = false,
 ): Promise<InstrumentSearchResult[]> {
   // "ES FUT" looks up ES, and ES=F as well: the catalogue answers a bare root
   // with stocks only. The ranking keeps the futures.
@@ -453,6 +495,10 @@ async function searchProviderResults(
   // number of spellings tried.
   const searchQueries = buildProviderSearchQueries(query);
   if (marketSymbol && !searchQueries.includes(marketSymbol)) searchQueries.push(marketSymbol);
+  // A futures board code also finds its future, which the catalogue files under
+  // the continuous symbol only: NG finds NovaGold and NG=F.
+  const boardFuture = assetClass ? null : futuresContractByCode(query)?.symbol;
+  if (boardFuture && !searchQueries.includes(boardFuture)) searchQueries.push(boardFuture);
   await Promise.all(searchQueries.map(async (searchQuery) => {
     try {
       const results = await dataProvider.search(searchQuery, {
@@ -508,6 +554,23 @@ async function searchProviderResults(
       } catch {
         // An unverified symbol stays unresolved; never substitute a fuzzy equity.
       }
+    }
+  }
+
+  // A sector word ("defense", which the server answers with rows tagged with it) lists its small companies by
+  // name; the server orders "defense ETF" by size, which a name search does not. Those funds lead the list.
+  const theme = withThemeFunds && !assetClass ? themeQueryWord([...byKey.values()], query) : null;
+  if (theme) {
+    try {
+      const { onPartial: _ignored, ...context } = searchContext ?? {};
+      const funds = await dataProvider.search(`${query.trim()} ETF`, context);
+      const named = [...byKey];
+      byKey.clear();
+      add(funds);
+      // A row both found keeps the funds' place and the name search's richer version of it (its theme).
+      for (const [key, result] of named) byKey.set(key, result);
+    } catch {
+      // The funds are an addition: the name results stand without them.
     }
   }
 
@@ -589,10 +652,22 @@ function getProviderHintScore(result: InstrumentSearchResult, preferredExchange?
   return getProviderHintRichness(result) + (matchesPreferredExchange ? 10_000 : 0);
 }
 
-function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[]): T[] {
+/** Older servers send none; anything malformed is ignored. */
+function searchResultKeywords(result: InstrumentSearchResult): string[] | undefined {
+  const keywords = Array.isArray(result.searchKeywords)
+    ? result.searchKeywords.filter((keyword): keyword is string => typeof keyword === "string" && !!keyword.trim())
+    : [];
+  return keywords.length > 0 ? keywords : undefined;
+}
+
+function assignTickerSearchCategories<T extends TickerSearchCandidate>(items: T[], query: string): T[] {
   let assignedPrimaryListing = false;
 
   return items.map((item) => {
+    // A company the theme's funds hold is not another listing of the one searched for.
+    if (!item.saved && item.kind === "search" && item.instrumentClass === "equity" && answersOnlyByKeyword(item, query)) {
+      return { ...item, category: "Related" };
+    }
     if (item.saved || item.kind === "ticker") {
       if (item.instrumentClass !== "fund" && item.instrumentClass !== "derivative") {
         assignedPrimaryListing = true;
@@ -668,6 +743,12 @@ function buildSearchResultAliases(result: InstrumentSearchResult): string[] {
   for (const alias of buildSymbolAliases(resolvedSymbol)) aliases.add(alias);
   if (result.brokerContract?.symbol) {
     for (const alias of buildSymbolAliases(result.brokerContract.symbol)) aliases.add(alias);
+  }
+  // Older servers send none. Anything else malformed is ignored.
+  if (Array.isArray(result.searchAliases)) {
+    for (const alias of result.searchAliases) {
+      if (typeof alias === "string" && alias.trim()) aliases.add(alias.trim());
+    }
   }
   return [...aliases];
 }

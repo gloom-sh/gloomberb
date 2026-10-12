@@ -10,6 +10,7 @@ import { buildTerminalMediaArgs, createTerminalMediaReaper, terminalMediaStateFi
 import { saveTextFileToDownloads } from "../../utils/save-text-file";
 import { installInteractionPerformanceRecorder } from "./interaction-performance";
 import { provideKittyServices } from "./kitty-services";
+import { captureRendererFrame } from "./frame-capture";
 import {
   createTimerFrameDriver,
   installMarketDataFrameDriver,
@@ -41,16 +42,16 @@ export function toKeyEventLike(event: {
   defaultPrevented?: boolean;
   propagationStopped?: boolean;
   sequence?: string;
-  repeated?: boolean;
   key?: string;
   super?: boolean;
+  /** Set only when the terminal reports key event types (kitty protocol); the app does not ask for them. */
+  repeated?: boolean;
 }): KeyEventLike {
   const key = event.name ?? event.key ?? "";
   return {
     key,
     name: key,
     sequence: event.sequence,
-    repeated: event.repeated ?? false,
     ctrl: event.ctrl ?? false,
     shift: event.shift ?? false,
     // OpenTUI follows terminal naming: `meta` is Alt/Option, while the
@@ -59,6 +60,7 @@ export function toKeyEventLike(event: {
     alt: event.alt === true || event.meta === true || event.option === true,
     meta: event.super === true,
     super: event.super === true,
+    repeat: event.repeated === true,
     get defaultPrevented() {
       return event.defaultPrevented ?? false;
     },
@@ -244,19 +246,12 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     addPostProcessFn: (processFn) => renderer.addPostProcessFn(processFn as any),
     removePostProcessFn: (processFn) => renderer.removePostProcessFn(processFn as any),
     copyToClipboardOSC52: (text) => renderer.copyToClipboardOSC52(text),
-    captureFrame() {
-      if (renderer.isDestroyed) return null;
-      const buffer = renderer.currentRenderBuffer;
-      return {
-        cols: buffer.width,
-        rows: buffer.height,
-        lines: buffer.getSpanLines().map((line) => line.spans.map((span) => ({
-          text: span.text,
-          fg: span.fg.toInts(),
-          bg: span.bg.toInts(),
-          attributes: span.attributes,
-        }))),
-      };
+    captureFrame: () => captureRendererFrame(renderer),
+    async capturePaneImage(rect) {
+      if (renderer.isDestroyed) throw new Error("The terminal has closed.");
+      // Loaded on first use: the glyph atlas is only needed for a picture.
+      const { captureTerminalPaneImage } = await import("./pane-image");
+      return captureTerminalPaneImage(renderer, nativeRenderer.nativeSurfaceManager, rect, colors.bg);
     },
     captureMouseRenderable(renderable) {
       const capture = (renderer as unknown as { setCapturedRenderable?: (target: unknown) => void }).setCapturedRenderable;

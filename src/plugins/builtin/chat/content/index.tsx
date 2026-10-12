@@ -1,6 +1,9 @@
-import { Box, Text, useContextMenu, useUiCapabilities } from "../../../../ui";
+import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import { PageStackView } from "../../../../components/ui";
+import { ChoiceDialog } from "../../../../components/ui/choice-dialog";
+import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
+import { canReactToMessage, terminalReactionChoices } from "../reactions";
 import { type ScrollBoxRenderable, type TextareaRenderable } from "../../../../ui";
 import { useAppDispatch, useAppSelector } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
@@ -33,12 +36,17 @@ import {
 } from "./layout-metrics";
 import { buildChatUserByUsername } from "./user-map";
 import { useChatComposerRuntime } from "./composer-runtime";
+import { runDiscordCommand } from "../discord-command";
+import type { DiscordComposerCommand } from "../composer-commands";
 import { useChatMessageSelection } from "./selection-runtime";
+import { useChatRowActivity } from "./row-activity";
+import { useUnseenMessageCount } from "./new-messages";
 import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 import { DesktopChatDropOverlay, DesktopChatDropTarget } from "../attachments/desktop";
 import { uploadFromTransferFile, type TransferFile } from "../attachments/transfer";
 import { readChatImageFiles } from "../attachments/files";
 import { NewDmDialog } from "./new-dm-dialog";
+import { takeChatPaneRequest, usePendingChatPaneRequest } from "../pane-requests";
 import {
   describeConversationStartError,
   directMessageAction,
@@ -93,9 +101,9 @@ export function ChatContent({
   channelIdRef.current = channelId;
   const initialSnapshot = controller.getSnapshot(channelId);
   const { nativePaneChrome } = useUiCapabilities();
+  const rendererHost = useRendererHost();
   const [inputFocused, setInputFocused] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(-1);
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const [editingMessage, setEditingMessage] = useState<ChatMessage | null>(null);
   const [followMessages, setFollowMessages] = useState(true);
   const [newDmOpen, setNewDmOpen] = useState(false);
@@ -209,7 +217,20 @@ export function ChatContent({
   const canAttach = imagesAvailable && !editingMessage;
   const selectionActive = selectedIdx >= 0 && selectedIdx < messages.length;
   const stickyTranscript = followMessages && !selectionActive;
-  const latestMessageId = messages[messages.length - 1]?.id ?? null;
+  const latestMessage = messages[messages.length - 1] ?? null;
+  const {
+    clearHighlight,
+    clearHover,
+    highlightMessage,
+    highlightedMessageId,
+    hoveredIdx,
+    onPointerMove,
+    setHoveredIdx,
+  } = useChatRowActivity({ channelId, focused, messages, nativePaneChrome });
+  // A selected row is the keyboard's cursor; a pane that no longer has the keyboard keeps none.
+  useEffect(() => {
+    if (!focused) setSelectedIdx(-1);
+  }, [focused]);
   const [editWindowNowMs, setEditWindowNowMs] = useState(() => Date.now());
   const latestOwnMessage = useMemo(() => {
     if (!user?.id) return null;
@@ -324,6 +345,49 @@ export function ChatContent({
     dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
   }, [dispatch]);
 
+  // Reactions are on offer once the server has shown it takes them: its
+  // message lists carry them on every message.
+  const reactionsEnabled = canSend && messages.some((message) => Array.isArray(message.reactions));
+  const dialog = useOptionalDialog();
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const currentUserIdRef = useRef(user?.id ?? null);
+  currentUserIdRef.current = user?.id ?? null;
+  const toggleReaction = useCallback((messageId: string, emoji: string) => {
+    void controller.toggleChannelReaction(channelIdRef.current, messageId, emoji);
+  }, [controller]);
+  const closeReactionPicker = useCallback(() => setReactionPickerMessageId(null), []);
+  // The desktop opens the picker beside the message's React action; the
+  // terminal asks in a dialog, which also names who reacted with each emoji.
+  const openReactionPicker = useCallback((index: number) => {
+    const message = messagesRef.current[index];
+    if (!message || !canReactToMessage(message)) return;
+    closeProfilePopover();
+    if (nativePaneChrome) {
+      setReactionPickerMessageId(message.id);
+      return;
+    }
+    if (!dialog) return;
+    void dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (context: PromptContext<string>) => (
+        <ChoiceDialog
+          {...context}
+          title="React"
+          choices={terminalReactionChoices(message, currentUserIdRef.current)}
+        />
+      ),
+    }).then((emoji) => {
+      if (emoji) toggleReaction(message.id, emoji);
+    }).catch(() => {});
+  }, [closeProfilePopover, dialog, nativePaneChrome, toggleReaction]);
+  useEffect(() => {
+    if (reactionPickerMessageId && !messages.some((message) => message.id === reactionPickerMessageId)) {
+      setReactionPickerMessageId(null);
+    }
+  }, [messages, reactionPickerMessageId]);
+
   useEffect(() => {
     onChannelTitleChange?.(activeChannelTitle);
   }, [activeChannelTitle, onChannelTitleChange]);
@@ -332,6 +396,7 @@ export function ChatContent({
     if (previousEditingChannelIdRef.current === channelId) return;
     previousEditingChannelIdRef.current = channelId;
     setEditingMessage(null);
+    setReactionPickerMessageId(null);
     // A card pinned in one channel does not follow into the next.
     closeProfilePopover();
   }, [channelId, closeProfilePopover]);
@@ -461,6 +526,10 @@ export function ChatContent({
     if (controller.attachToChannel(channelIdRef.current, files.map(uploadFromTransferFile)) > 0) focusInput();
   }, [canAttach, controller, focusInput, imagesAvailable, notify]);
 
+  const handleDiscordCommand = useCallback((command: DiscordComposerCommand) => {
+    void runDiscordCommand(command, { openUrl: (url) => rendererHost.openExternal(url) }).then(notify);
+  }, [notify, rendererHost]);
+
   // The terminal: a pasted or dropped path to an image file attaches the file
   // and leaves the composer. A path that is no file stays as typed.
   const handlePastedImagePaths = useCallback((paths: string[], pasted: string) => {
@@ -543,9 +612,9 @@ export function ChatContent({
     draftAttachmentCount: draftAttachments.length,
     onPastedImagePaths: !nativePaneChrome && canAttach ? handlePastedImagePaths : undefined,
     onConversationStartError: reportConversationStartError,
+    onDiscordCommand: handleDiscordCommand,
   });
   replaceComposerDraftRef.current = replaceComposerDraft;
-
   // A conversation just opened or started: selected in the sidebar, with the
   // composer ready to write in.
   const showConversation = useCallback((nextChannelId: string) => {
@@ -557,6 +626,17 @@ export function ChatContent({
     closeProfilePopover();
     if (canSend) focusComposer();
   }, [canSend, closeNewDmDialog, closeProfilePopover, expandDirectSection, focusComposer, selectSidebarChannel, setSidebarFocused]);
+
+  // Asked for from outside the pane (the command bar): once this pane has the
+  // keyboard on that conversation, the composer takes it, or New DM opens.
+  const pendingPaneRequest = usePendingChatPaneRequest();
+  useEffect(() => {
+    if (!pendingPaneRequest || !focused || commandBarOpen) return;
+    const request = takeChatPaneRequest(channelId);
+    if (!request || !canSend) return;
+    if (request.action === "new-dm") openNewDmDialog();
+    else showConversation(channelId);
+  }, [canSend, channelId, commandBarOpen, focused, openNewDmDialog, pendingPaneRequest, showConversation]);
 
   const openConversationFromDialog = useCallback(async (usernames: string[]) => {
     const channel = usernames.length === 1
@@ -670,11 +750,15 @@ export function ChatContent({
   ]);
 
   const {
+    atBottom,
     handleTranscriptScrollActivity,
     jumpToMessage,
     registerMessageElement,
     requestOlderMessages,
     requestOlderMessagesIfNeeded,
+    scrollToLatest,
+    setPinnedToBottom,
+    takeBackScrollPlace,
   } = useChatScrollRuntime({
     channelId,
     catalog,
@@ -683,7 +767,7 @@ export function ChatContent({
     focused,
     hasOlderMessages,
     height,
-    latestMessageId,
+    latestMessage,
     loadingOlderMessages,
     messageAreaHeight,
     messageElementsRef,
@@ -698,7 +782,11 @@ export function ChatContent({
     stickyTranscript,
     useDefaultControllerChannel,
     composerLayoutKey: editingMessage ? "" : draftAttachments.map((attachment) => attachment.status).join(","),
+    highlightMessage,
+    clearHover,
+    clearHighlight,
   });
+  const unseenCount = useUnseenMessageCount({ channelId, following: atBottom, messages, userId: user?.id });
 
   // A jump to a message (a notification, the unread list) shows the channel.
   useEffect(() => {
@@ -814,6 +902,8 @@ export function ChatContent({
     needsProfileSetup: !!user?.id && ownProfileConfigured === false,
     openProfileSetup,
     authorMessageAction,
+    reactionsEnabled,
+    openReactionPicker,
   });
 
   const chatContentBg = focused && showChannelSidebar && !sidebarFocused
@@ -870,7 +960,10 @@ export function ChatContent({
       flexGrow={nativePaneChrome ? 1 : undefined}
       backgroundColor={chatContentBg}
       position="relative"
-      onMouseDown={() => focusChatContent()}
+      onMouseDown={() => {
+        clearHighlight();
+        focusChatContent();
+      }}
       style={nativeFillStyle}
     >
       {/* In the stack, the Back row above takes the place of the top rule. */}
@@ -889,6 +982,7 @@ export function ChatContent({
         chatWidth={chatWidth}
         contentWidth={contentWidth}
         handleTranscriptScrollActivity={handleTranscriptScrollActivity}
+        highlightedMessageId={highlightedMessageId}
         hoveredIdx={hoveredIdx}
         jumpToMessage={jumpToMessage}
         loading={loading}
@@ -901,6 +995,8 @@ export function ChatContent({
         messageBodyWidth={messageBodyWidth}
         messages={messages}
         nativePaneChrome={nativePaneChrome}
+        onPointerMove={onPointerMove}
+        onStickyPinChange={setPinnedToBottom}
         latestEditableMessageId={latestEditableMessageId}
         openTicker={openTicker}
         profilePopoverUser={profilePopoverUser}
@@ -914,12 +1010,20 @@ export function ChatContent({
         toggleProfilePopover={toggleUserProfile}
         dismissProfilePopover={dismissProfilePopover}
         stickyTranscript={stickyTranscript}
+        unseenCount={unseenCount}
+        onJumpToLatest={scrollToLatest}
+        takeBackScrollPlace={takeBackScrollPlace}
         user={user}
         userByUsername={userByUsername}
         onSetUpProfile={openProfileSetup}
         onUserContextMenu={onUserContextMenu}
         profileMessageAction={profileMessageAction}
         profileMessageRefusal={profileDirectMessage?.refusal ?? null}
+        reactionsEnabled={reactionsEnabled}
+        toggleReaction={toggleReaction}
+        openReactionPicker={openReactionPicker}
+        reactionPickerMessageId={reactionPickerMessageId}
+        closeReactionPicker={closeReactionPicker}
       />
 
       {stackedNav ? null : newDmDialog}

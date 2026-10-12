@@ -46,8 +46,9 @@ test("fundamentals --csv writes Metric,Value tables with each unit in its label,
     "# section: Profile",
   ]);
   expect(lines).toContain("Description,\"A bank, \"\"pan-African\"\".");
-  expect(lines.at(-1)).toStartWith("# Source: ");
-  expect(lines.at(-2)).toBe("");
+  expect(lines.at(-6)).toBe("");
+  expect(lines.at(-5)).toStartWith("# Source: ");
+  expect(lines.at(-1)).toStartWith("# Retrieval time: ");
   expect(await run("fundamentals", ["--section", "profile"], "csv")).toEqual(expect.arrayContaining(["Metric,Value", "Symbol,SBK.JO", "Sector,Financial Services"]));
   expect((await run("fundamentals", [], "ndjson"))[0]).toBe("{\"section\":\"Fundamentals\",\"Metric\":\"Market Cap (ZAR)\",\"Value\":474045349888}");
 });
@@ -62,12 +63,15 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
     "Dividend Yield (forward) (%),6.14587987599",
     "",
   ]);
-  expect(await run("financials", [], "csv")).toEqual([
+  expect((await run("financials", [], "csv")).slice(0, -1)).toEqual([
     "Date,Revenue,Gross,Op Inc,Net Inc,EPS,Cur",
     "2024-12-31,189471000000,,,45818000000,26.179,ZAR",
     "2025-12-31,202080000000,,,51215000000,29.876,ZAR",
     "",
-    "# Source: Gloom Cloud | As of 2025-12-31 | Not a live feed (financial statements)",
+    "# Source: Gloom Cloud · Wed 31 Dec 2025 · not a live feed (financial statements)",
+    "# Publisher: not published",
+    "# Observation date: 2025-12-31",
+    "# Publication time: not published",
   ]);
   // NDJSON already wrote the statement rows flat, so it is unchanged.
   expect((await run("financials", [], "ndjson"))[0]).toBe(

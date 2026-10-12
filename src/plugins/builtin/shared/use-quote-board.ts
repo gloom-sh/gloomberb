@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
 import { useQuoteEntries } from "../../../market-data/hooks";
-import { marketStateColor, marketStateLabel } from "../../../market-data/market/status";
+import { getRegularSessionDisplay, marketStateColor, marketStateLabel } from "../../../market-data/market/status";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -466,10 +466,29 @@ export type QuoteBoardCellKind = "status" | "price" | "change" | "changePercent"
 export interface QuoteBoardCellFormat {
   /** Spell out the session instead of a colored dot. */
   sessionText?: boolean;
-  /** Called with a finite price. */
+  /** Called with the quote at its headline: a finite price. */
   formatPrice: (quote: Quote) => string;
-  /** Called with a finite change; the text carries its sign. */
+  /** Called with the quote at its headline: a finite change; the text carries its sign. */
   formatChange: (quote: Quote) => string;
+}
+
+/** Each quote's figures as the board shows them, cached so a held quote keeps one object. */
+const boardHeadlines = new WeakMap<Quote, Quote>();
+
+/**
+ * The quote with its regular session's price and move (getRegularSessionDisplay),
+ * as `ticker` reads it: after the close its close and move, never an extended
+ * print, which a board of these columns has nowhere to show.
+ */
+export function boardHeadlineQuote(quote: Quote): Quote {
+  const cached = boardHeadlines.get(quote);
+  if (cached) return cached;
+  const display = getRegularSessionDisplay(quote);
+  const headline = !display || (display.price === quote.price && display.change === quote.change && display.changePercent === quote.changePercent)
+    ? quote
+    : { ...quote, price: display.price, change: display.change ?? Number.NaN, changePercent: display.changePercent ?? Number.NaN };
+  boardHeadlines.set(quote, headline);
+  return headline;
 }
 
 /** A row is loading while it has no quote yet, so none of its cells shows a no-data dash. */
@@ -482,7 +501,7 @@ export function renderQuoteBoardCell(
   state: BoardQuoteState | undefined,
   format: QuoteBoardCellFormat,
 ): DataTableCell {
-  const quote = state?.quote;
+  const quote = state?.quote ? boardHeadlineQuote(state.quote) : state?.quote;
   // One row must not mix a loading marker with a no-data marker.
   if (isBoardRowLoading(state)) return { text: kind === "status" ? "" : "…", color: colors.textDim };
 
@@ -517,7 +536,8 @@ export function renderQuoteBoardCell(
     case "time":
       return {
         text: formatQuoteTime(quote?.lastUpdated),
-        value: quote?.lastUpdated ? new Date(quote.lastUpdated).toISOString().replace(".000Z", "Z") : null,
+        // A Date, so the export writes it whole and a rendered-view report dates the board by its quotes.
+        value: quote?.lastUpdated ? new Date(quote.lastUpdated) : null,
         color: colors.textDim,
       };
   }

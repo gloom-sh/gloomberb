@@ -6,13 +6,16 @@ import {
   compareDate, CURVE_OPTIONS, curveIdOf, curveOption, curveSpreadFigures, loadComparePoints, loadCurveData, parseCompareInput,
   parseCurveArgument, type CurveData, type CurveId,
 } from "./curves";
+import { yieldTenorRows, type YieldLookbackCurves } from "./chart";
 import { curveAsOf, type YieldPoint, yieldCurveErrors } from "./treasury-data";
-import { yieldCurveDate } from "./history";
+import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
 import { loadWorldRows, type WorldRow } from "./world";
+import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 
 const percent = (value: unknown) => value == null ? "-" : `${Number(value).toFixed(2)}%`;
-const basisPoints = (value: unknown) => value == null ? "-" : `${Number(value) > 0 ? "+" : ""}${Math.round(Number(value))}bp`;
-const COLUMNS = [
+/** A move already in basis points: `+3bp`, `-1bp`, `0bp`. */
+const basisPoints = (value: unknown) => value == null ? "-" : formatBasisPoints(Number(value) / 100);
+const MATURITY_COLUMNS = [
   { key: "maturity", header: "Maturity" },
   {
     key: "maturityYears",
@@ -21,11 +24,19 @@ const COLUMNS = [
     format: (value: unknown) => Number(value).toFixed(2).replace(/\.00$/, ""),
   },
   { key: "yield", header: "Yield", align: "right" as const, format: percent },
-  { key: "asOf", header: "As of" },
 ];
-const COMPARE_COLUMNS = [
-  ...COLUMNS,
-  { key: "compare", header: "Compare", align: "right" as const, format: percent },
+const AS_OF_COLUMN = { key: "asOf", header: "As of" };
+/** The move since the previous session with a yield, per tenor. */
+const COLUMNS = [
+  ...MATURITY_COLUMNS,
+  { key: "change1dBasisPoints", header: "1D bp", align: "right" as const, format: basisPoints },
+  AS_OF_COLUMN,
+];
+/** Both curves and the difference; the compare curve's own session heads its column, as it may be a day or a year back. */
+const compareColumns = (compareAsOf: string | null) => [
+  ...MATURITY_COLUMNS,
+  AS_OF_COLUMN,
+  { key: "compare", header: compareAsOf ? `vs ${compareAsOf}` : "Compare", align: "right" as const, format: percent },
   { key: "changeBasisPoints", header: "Chg bp", align: "right" as const, format: basisPoints },
 ];
 const WORLD_COLUMNS = [
@@ -41,12 +52,18 @@ const WORLD_COLUMNS = [
 export interface YieldCurveHeadlessDependencies {
   load(curve: CurveId, requestedDate: string, context: HeadlessPaneContext): Promise<CurveData>;
   compare?(curve: CurveId, date: string, context: HeadlessPaneContext): Promise<YieldPoint[]>;
+  /** The 1D, 1W and 1M curves of a session, for a curve loaded without them (the FRED fallback). */
+  lookbacks?(session: string, context: HeadlessPaneContext): Promise<YieldLookbackCurves>;
   world?(context: HeadlessPaneContext): Promise<WorldRow[]>;
 }
 
 const defaultDependencies: Required<YieldCurveHeadlessDependencies> = {
   load: (curve, requestedDate, context) => loadCurveData(curve, requestedDate, context.apiClient),
   compare: (curve, date, context) => loadComparePoints(curve, date, context.apiClient),
+  lookbacks: async (session, context) => Object.fromEntries(
+    (await loadYieldCurveLookbacks(session, (id, options) => context.apiClient.getCloudFredSeries(id, options)))
+      .map((lookback) => [lookback.id, lookback.points]),
+  ),
   world: (context) => loadWorldRows(context.apiClient),
 };
 
@@ -64,10 +81,23 @@ const CURVE_PUBLISHERS: Record<CurveId, string> = {
   ca: "Bank of Canada",
 };
 
+/** Whose business days each curve's dates are, so a report names the day it means. */
+const CURVE_MARKETS: Record<CurveId, string> = {
+  us: "US",
+  "us-real": "US",
+  "us-breakeven": "US",
+  "eu-aaa": "Euro area",
+  de: "Germany",
+  gb: "UK",
+  jp: "Japan",
+  ca: "Canada",
+};
+
 export function createYieldCurveHeadless(
   dependencies: YieldCurveHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   const loadCompare = dependencies.compare ?? defaultDependencies.compare;
+  const loadLookbacks = dependencies.lookbacks ?? defaultDependencies.lookbacks;
   const loadWorld = dependencies.world ?? defaultDependencies.world;
   return {
     shape: "rows",
@@ -76,7 +106,7 @@ export function createYieldCurveHeadless(
     options: [
       { key: "date", type: "string", description: "Historical as-of date (YYYY-MM-DD); uses the latest session on or before it." },
       { key: "curve", type: "string", description: "ust (default), tips, breakeven, euro, bund, gilt, jgb or canada." },
-      { key: "compare", type: "string", description: "Compare with a date (YYYY-MM-DD) or a span back from the curve's session (1W, 3M, 1Y)." },
+      { key: "compare", type: "string", description: "Compare with a date (YYYY-MM-DD) or a span back from the curve's session (1D, 1W, 1M, 3M, 1Y)." },
       { key: "view", type: "enum", values: [{ value: "curve" }, { value: "difference", aliases: ["diff"] }],
         description: "With a compare date: both curves, or the bp change by tenor as bars.",
         pluginState: { pluginId: "macro", key: "yield-curve:view" } },
@@ -87,7 +117,16 @@ export function createYieldCurveHeadless(
         pluginState: { pluginId: "macro", key: "yield-curve:tab" } },
     ],
     columns: COLUMNS,
-    describe: "Yield Curves",
+    // The title names the curve, as the pane's Curve select does.
+    describe: (args) => {
+      if (args.options.tab === "world") return "Yield Curves | World";
+      try {
+        const curve = curveIdOf(args.options.curve) ?? parseCurveArgument(args.argument).curve ?? "us";
+        return `Yield Curves | ${curveOption(curve).label}`;
+      } catch {
+        return "Yield Curves";
+      }
+    },
     async load(args, context) {
       if (args.options.tab === "world") {
         const rows = await loadWorld(context);
@@ -111,26 +150,40 @@ export function createYieldCurveHeadless(
       const points = data.points;
       const session = curveAsOf(points);
       const comparePoints = compareInput && session ? await loadCompare(curve, compareDate(compareInput, session), context) : null;
+      const compareAsOf = comparePoints ? curveAsOf(comparePoints) : null;
       const compareAt = (maturity: string) => comparePoints?.find((point) => point.maturity === maturity)?.yield ?? null;
+      // The stored curve brings its look-backs; the FRED fallback's load after it, and a failure leaves the move blank.
+      const lookbacks = data.lookbacks ?? (session ? await loadLookbacks(session, context).catch(() => ({})) : {});
+      const change1d = new Map(yieldTenorRows(points, lookbacks).map((row) => [row.id, row.change1d]));
       const rows = [...points].sort((a, b) => a.maturityYears - b.maturityYears);
-      const missingTenors = points.filter((point) => point.yield == null).map((point) => point.maturity);
-      const spreads = curveSpreadFigures(data, data.lookbacks ?? {});
+      const missing = points.filter((point) => point.yield == null);
+      const missingTenors = missing.map((point) => point.maturity);
+      // On a past date a tenor the publisher has no yield for was most likely not issued yet: a note, not an error.
+      const notIssued = requestedDate && missing.length < points.length ? missing.filter((point) => !point.error).map((point) => point.maturity) : [];
+      const unavailable = missingTenors.filter((maturity) => !notIssued.includes(maturity));
+      const spreads = curveSpreadFigures(data, lookbacks);
       const spread = (id: string) => bp(spreads.find((entry) => entry.id === id)?.value ?? null);
       const twosTens = spread("2s10s");
       return {
         // Each curve is its official publisher's daily close; a past date is a historical curve, not a feed.
-        freshness: { source: CURVE_PUBLISHERS[curve], status: "not-a-feed",
+        freshness: { source: CURVE_PUBLISHERS[curve], status: "not-a-feed", tradingDayMarket: CURVE_MARKETS[curve],
           ...(requestedDate ? { basis: "historical curve" } : { basis: "daily curve", cadence: "daily" }) },
-        ...(comparePoints ? { columns: COMPARE_COLUMNS } : {}),
+        ...(comparePoints ? { columns: compareColumns(compareAsOf) } : {}),
         rows: rows.map((point) => {
           const compare = compareAt(point.maturity);
-          return comparePoints
-            ? { ...point, compare, changeBasisPoints: point.yield != null && compare != null ? (point.yield - compare) * 100 : null }
-            : { ...point };
+          const change = change1d.get(point.maturity) ?? null;
+          return {
+            ...point,
+            change1dBasisPoints: change == null ? null : toBasisPoints(change, 1),
+            ...(comparePoints
+              ? { compare, changeBasisPoints: point.yield != null && compare != null ? (point.yield - compare) * 100 : null }
+              : {}),
+          };
         }),
+        ...(notIssued.length ? { notes: [`Not issued then: ${notIssued.join(", ")}`] } : {}),
         errors: [
           ...yieldCurveErrors(points),
-          ...(missingTenors.length ? [`Tenors unavailable: ${missingTenors.join(", ")}`] : []),
+          ...(unavailable.length ? [`Tenors unavailable: ${unavailable.join(", ")}`] : []),
           ...(!session ? ["Curve has mixed or unknown observation dates."] : []),
           ...(points.some((point) => point.stale) ? ["Some Treasury sources are stale cached data."] : []),
         ],
@@ -140,7 +193,7 @@ export function createYieldCurveHeadless(
           units: "Percent",
           requestedDate: requestedDate || null,
           asOf: session,
-          ...(comparePoints ? { compareAsOf: curveAsOf(comparePoints) } : {}),
+          ...(comparePoints ? { compare: compareInput, compareAsOf } : {}),
           inverted: twosTens == null ? null : twosTens < 0,
           spread2Y10YBasisPoints: twosTens,
           spread3M10YBasisPoints: spread("3m10y"),

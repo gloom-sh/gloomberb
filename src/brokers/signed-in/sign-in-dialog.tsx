@@ -13,14 +13,16 @@ import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import { useViewport } from "../../react/input";
 import { colors } from "../../theme/colors";
-import { Box, Text, TextAttributes } from "../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
+import { DialogHints } from "../../components/ui/dialog-actions";
 import { useDialog, useDialogKeyboard, type DialogApi, type PromptContext } from "../../ui/dialog";
 import { isPlainKey } from "../../utils/keyboard";
-import { DeviceSignInDialog } from "../../plugins/builtin/cloud/device-signin-dialog";
+import { DeviceSignInDialog } from "../../account/device-signin-dialog";
 import type { SignedInBroker } from "./client";
 import {
   BrokerSignInController,
   runBrokerSignIn,
+  type BrokerSignInOptions,
   type BrokerSignInOutcome,
   type BrokerSignInSnapshot,
 } from "./sign-in";
@@ -59,9 +61,10 @@ export function useBrokerSignInAttempt(
   broker: SignedInBroker,
   write: boolean,
   onOutcome: (outcome: "connected" | "signed-out") => void,
+  options: BrokerSignInOptions = {},
 ): { snapshot: BrokerSignInSnapshot; restart(): void; finish(): void } {
   const controllerRef = useRef<BrokerSignInController | null>(null);
-  if (!controllerRef.current) controllerRef.current = new BrokerSignInController(broker, write);
+  if (!controllerRef.current) controllerRef.current = new BrokerSignInController(broker, write, {}, options);
   const controller = controllerRef.current;
   const [snapshot, setSnapshot] = useState(controller.getSnapshot());
   const onOutcomeRef = useRef(onOutcome);
@@ -110,12 +113,14 @@ function BrokerSignInDialog({
   dismiss,
   broker,
   write,
-}: PromptContext<BrokerSignInOutcome> & { broker: SignedInBroker; write: boolean }) {
+  renew,
+}: PromptContext<BrokerSignInOutcome> & { broker: SignedInBroker; write: boolean; renew: boolean }) {
   useAppLanguage();
+  const { nativePaneChrome } = useUiCapabilities();
   const { height: termHeight } = useViewport();
   // Close after a beat so "Connected" is visible; enter skips the wait. Signed
   // out closes at once, for the host to sign in to Gloom.
-  const { snapshot, restart, finish } = useBrokerSignInAttempt(broker, write, resolve);
+  const { snapshot, restart, finish } = useBrokerSignInAttempt(broker, write, resolve, { renew });
 
   useDialogKeyboard((event) => {
     event.stopPropagation();
@@ -159,9 +164,13 @@ function BrokerSignInDialog({
         </>
       )}
       <Box height={1} />
-      <Box height={1}>
-        <Text fg={colors.textMuted}>{t("r for a new code · esc to cancel")}</Text>
-      </Box>
+      {nativePaneChrome ? (
+        <DialogHints keys={[{ key: "r", label: "new code" }, { key: "Esc", label: "cancel" }]} />
+      ) : (
+        <Box height={1}>
+          <Text fg={colors.textMuted}>{t("r for a new code · esc to cancel")}</Text>
+        </Box>
+      )}
     </Box>
   );
 }
@@ -170,6 +179,8 @@ export interface BrokerSignInRequest {
   broker: SignedInBroker;
   /** Ask for trading as well as reading. Defaults to whether the broker takes orders. */
   write?: boolean;
+  /** Sign in again although the broker is connected. */
+  renew?: boolean;
   resolve: (connected: boolean) => void;
 }
 
@@ -178,13 +189,17 @@ const requestListeners = new Set<(request: BrokerSignInRequest) => void>();
 /**
  * Connects a signed-in broker, signing in to Gloom first when needed.
  * Resolves true once the broker is connected, false when the user cancels or
- * no dialog host is mounted.
+ * no dialog host is mounted. A broker that is already connected is done at
+ * once unless `renew` asks for a new sign-in.
  */
-export function requestBrokerSignIn(broker: SignedInBroker, options: { write?: boolean } = {}): Promise<boolean> {
+export function requestBrokerSignIn(
+  broker: SignedInBroker,
+  options: { write?: boolean; renew?: boolean } = {},
+): Promise<boolean> {
   if (requestListeners.size === 0) return Promise.resolve(false);
   return new Promise((resolve) => {
     const write = options.write ?? Boolean(broker.capabilities.orders);
-    for (const listener of requestListeners) listener({ broker, write, resolve });
+    for (const listener of requestListeners) listener({ broker, write, renew: options.renew, resolve });
   });
 }
 
@@ -203,13 +218,18 @@ export function BrokerSignInDialogHost() {
       void runBrokerSignIn(request.broker, request.write, {
         isSignedIn: () => apiClient.isSignedIn(),
         signInToGloom: () => promptGloomSignIn(dialog),
-        connectBroker: async (broker, write) => await dialog.prompt<BrokerSignInOutcome>({
+        connectBroker: async (broker, write, renew) => await dialog.prompt<BrokerSignInOutcome>({
           size: "full",
           content: (context: unknown) => (
-            <BrokerSignInDialog {...(context as PromptContext<BrokerSignInOutcome>)} broker={broker} write={write} />
+            <BrokerSignInDialog
+              {...(context as PromptContext<BrokerSignInOutcome>)}
+              broker={broker}
+              write={write}
+              renew={renew}
+            />
           ),
         }) ?? "cancelled",
-      })
+      }, { renew: request.renew })
         .then(request.resolve, () => request.resolve(false))
         .finally(() => {
           openRef.current = false;

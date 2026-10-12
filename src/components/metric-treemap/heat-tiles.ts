@@ -11,11 +11,16 @@ export interface HeatTileLabel {
   /** Font sizes in px, for the desktop and the web. */
   tickerPx: number;
   valuePx: number;
+  /** The label runs up the tile: it fits only along a tall tile's length. */
+  vertical: boolean;
 }
 
 /** Advance of one monospace glyph, in em. */
 const MONO_CHAR_EM = 0.62;
+/** The margin either side of the text while it has room to grow. */
 const TILE_PAD_X_PX = 3;
+/** The margin it gives way to rather than drop below its smallest size. */
+const MIN_TILE_PAD_X_PX = 1;
 const TILE_PAD_Y_PX = 2;
 const MAX_TICKER_PX = 26;
 const MIN_TICKER_PX = 9;
@@ -27,34 +32,60 @@ const LINE_HEIGHT = 1.12;
 /** Text grows with the tile's area, not just its width, so a long thin tile stays calm. */
 const AREA_FONT_DIVISOR = 4.4;
 
-const NO_LABEL: HeatTileLabel = { tier: "none", tickerPx: 0, valuePx: 0 };
+const NO_LABEL: HeatTileLabel = { tier: "none", tickerPx: 0, valuePx: 0, vertical: false };
 
-export function heatTileLabelPx(width: number, height: number, ticker: string, value: string | null): HeatTileLabel {
-  const innerWidth = width - TILE_PAD_X_PX * 2;
+/**
+ * The largest font size at which text `ems` glyph advances long crosses
+ * `width` with the full margin. Rather than drop below `floor`, the text takes
+ * the margin, down to the narrowest one.
+ */
+function sizeAcross(width: number, ems: number, floor: number): number {
+  const size = (width - TILE_PAD_X_PX * 2) / ems;
+  if (size >= floor) return size;
+  return (width - MIN_TILE_PAD_X_PX * 2) / ems >= floor ? floor : size;
+}
+
+/** The label laid across a `width` by `height` box. */
+function fitLabel(width: number, height: number, ticker: string, value: string | null): HeatTileLabel {
+  const roomWidth = width - MIN_TILE_PAD_X_PX * 2;
   const innerHeight = height - TILE_PAD_Y_PX * 2;
-  if (innerWidth <= 0 || innerHeight <= 0 || ticker.length === 0) return NO_LABEL;
-  const byWidth = innerWidth / (ticker.length * MONO_CHAR_EM);
+  if (roomWidth <= 0 || innerHeight <= 0 || ticker.length === 0) return NO_LABEL;
   // Area caps big tiles only; a small one may still use the smallest readable size.
   const byArea = Math.max(MIN_FULL_TICKER_PX, Math.sqrt(width * height) / AREA_FONT_DIVISOR);
-  const cap = Math.min(MAX_TICKER_PX, byWidth, byArea);
+  const lines = innerHeight / LINE_HEIGHT;
 
   if (value) {
-    const valueByWidth = innerWidth / (value.length * MONO_CHAR_EM * VALUE_SCALE);
-    const byHeight = innerHeight / (LINE_HEIGHT * (1 + VALUE_SCALE));
-    const tickerPx = Math.min(cap, valueByWidth, byHeight);
+    const tickerPx = Math.min(
+      MAX_TICKER_PX,
+      byArea,
+      sizeAcross(width, ticker.length * MONO_CHAR_EM, MIN_FULL_TICKER_PX),
+      sizeAcross(width, value.length * MONO_CHAR_EM * VALUE_SCALE, MIN_FULL_TICKER_PX),
+      // Both lines stacked, with the move at its own floor when the ticker is small.
+      lines / (1 + VALUE_SCALE),
+      lines - MIN_VALUE_PX,
+    );
     const valuePx = Math.max(MIN_VALUE_PX, tickerPx * VALUE_SCALE);
-    if (
-      tickerPx >= MIN_FULL_TICKER_PX
-      && value.length * MONO_CHAR_EM * valuePx <= innerWidth
-      && (tickerPx + valuePx) * LINE_HEIGHT <= innerHeight
-    ) {
-      return { tier: "full", tickerPx, valuePx };
+    if (tickerPx >= MIN_FULL_TICKER_PX && value.length * MONO_CHAR_EM * valuePx <= roomWidth) {
+      return { tier: "full", tickerPx, valuePx, vertical: false };
     }
   }
 
-  const tickerPx = Math.min(cap, innerHeight / LINE_HEIGHT);
-  if (tickerPx >= MIN_TICKER_PX) return { tier: "ticker", tickerPx, valuePx: 0 };
+  const tickerPx = Math.min(MAX_TICKER_PX, byArea, sizeAcross(width, ticker.length * MONO_CHAR_EM, MIN_TICKER_PX), lines);
+  if (tickerPx >= MIN_TICKER_PX) return { tier: "ticker", tickerPx, valuePx: 0, vertical: false };
   return NO_LABEL;
+}
+
+/**
+ * The label is laid across the tile where it fits that way, and otherwise up
+ * a tall tile, so a tile the layout stood on end is labelled as it would be
+ * lying down: a tall tile narrower than its ticker still carries it. A flat
+ * strip too short for a line stays blank rather than show a letter on its side.
+ */
+export function heatTileLabelPx(width: number, height: number, ticker: string, value: string | null): HeatTileLabel {
+  const across = fitLabel(width, height, ticker, value);
+  if (across.tier !== "none" || height <= width) return across;
+  const along = fitLabel(height, width, ticker, value);
+  return along.tier === "none" ? NO_LABEL : { ...along, vertical: true };
 }
 
 /**

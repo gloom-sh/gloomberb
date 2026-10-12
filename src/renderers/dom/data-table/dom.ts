@@ -143,6 +143,24 @@ export function useScrollBoxHandle(
     get scrollWidth() {
       return toCellX(elementRef.current?.scrollWidth ?? 0);
     },
+    // Whole rows are rounded, so the scroll keys read the ends in pixels.
+    get scrollTopPx() {
+      return options.headerOnly ? 0 : Math.max(0, elementRef.current?.scrollTop ?? 0);
+    },
+    get scrollHeightPx() {
+      const element = elementRef.current;
+      if (!element) return 0;
+      return options.headerOnly ? tableHeaderPx() : Math.max(0, element.scrollHeight - (options.viewportTopInsetPx ?? 0));
+    },
+    get viewportPx() {
+      const element = elementRef.current;
+      return {
+        width: Math.max(0, element?.clientWidth ?? 0),
+        height: options.headerOnly
+          ? tableHeaderPx()
+          : Math.max(0, (element?.clientHeight ?? 0) - (options.viewportTopInsetPx ?? 0)),
+      };
+    },
     get viewport() {
       const element = elementRef.current;
       if (options.headerOnly) {
@@ -161,6 +179,19 @@ export function useScrollBoxHandle(
     },
     horizontalScrollBar,
     verticalScrollBar,
+    scrollToPixels(target: number | { x?: number; y?: number }, y?: number) {
+      const element = elementRef.current;
+      if (!element || options.headerOnly) return;
+      if (typeof target === "number") {
+        element.scrollTop = Math.max(0, target);
+        if (typeof y === "number") element.scrollLeft = Math.max(0, y);
+        return;
+      }
+      element.scrollTo({
+        left: Math.max(0, target.x ?? element.scrollLeft),
+        top: Math.max(0, target.y ?? element.scrollTop),
+      });
+    },
     scrollTo(target: number | { x?: number; y?: number }, y?: number) {
       const element = elementRef.current;
       if (!element) return;

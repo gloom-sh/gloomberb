@@ -1,6 +1,6 @@
 import type { MarketState } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import type { BoardQuoteMap } from "../shared/use-quote-board";
+import { boardHeadlineQuote, type BoardQuoteMap } from "../shared/use-quote-board";
 import { REGION_ORDER, type IndexEntry } from "./indices";
 
 export type WorldIndexTableRow =
@@ -40,7 +40,9 @@ function getSortValue(
   entry: IndexEntry,
   quotes: BoardQuoteMap,
 ): string | number | null {
-  const quote = quotes.get(entry.symbol)?.quote;
+  const sent = quotes.get(entry.symbol)?.quote;
+  // Sorted by the figures the rows show.
+  const quote = sent ? boardHeadlineQuote(sent) : sent;
 
   switch (columnId) {
     case "status":

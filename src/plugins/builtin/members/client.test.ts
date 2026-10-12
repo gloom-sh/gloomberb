@@ -8,8 +8,8 @@ const client = { getMemberFunds: async () => funds, getFundMembers: notFound, ge
 const NOT_YET = "Fund members are not available on this server yet.";
 
 test("a 404 for a fund outside the covered list names the covered funds, for holdings and changes alike", async () => {
-  await expect(fetchMembers("IBIT", client)).rejects.toThrow("IBIT is not a covered fund. Covered: IVV, IJH, IJR, IWM, IWB.");
-  await expect(fetchChanges("zzzzz", client)).rejects.toThrow("ZZZZZ is not a covered fund. Covered: IVV, IJH, IJR, IWM, IWB.");
+  await expect(fetchMembers("IBIT", client)).rejects.toThrow("IBIT is not a covered fund. Covered: IVV (SPX, SPY, ^GSPC), IJH, IJR, IWM, IWB.");
+  await expect(fetchChanges("zzzzz", client)).rejects.toThrow("ZZZZZ is not a covered fund. Covered: IVV (SPX, SPY, ^GSPC), IJH, IJR, IWM, IWB.");
 });
 
 test("a server without the route, or a covered fund that 404s, keeps the not-available message", async () => {

@@ -16,7 +16,8 @@ import {
   type DisplayNumber,
 } from "../utils/display-number";
 import { isEpochMilliseconds, parseReportTime } from "../utils/utc-time";
-import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
+import type { ReportFreshness } from "./pane-functions/freshness";
+import { exportSourceLines } from "./export-source";
 
 type CliReportValue = string | number;
 
@@ -43,6 +44,8 @@ export interface CliReportColumn<Row = Record<string, unknown>> {
   header: string;
   align?: "left" | "right" | "center";
   format?: (value: unknown, row: Row) => string;
+  /** The row field naming the unit of a number in this column; the number then exports as it is, with that unit. */
+  unitKey?: string;
 }
 
 /** A label/value line of a report. `unit` names the unit of a numeric `value` when `formatted` cannot say it. */
@@ -334,8 +337,13 @@ export function exportRowsTable<Row extends Record<string, unknown>>(
 ): CliReportTable {
   return assembleTable(title, columns.map((column) => resolveColumn(
     column.header,
-    rows.map((row) => {
-      const value = (row as Record<string, unknown> | undefined)?.[column.key];
+    rows.map((row): Cell => {
+      const record = row as Record<string, unknown> | undefined;
+      const value = record?.[column.key];
+      const unit = column.unitKey ? record?.[column.unitKey] : undefined;
+      if (typeof unit === "string" && unit && typeof value === "number" && Number.isFinite(value)) {
+        return { kind: "number", value: exportNumber(value), unit };
+      }
       return exportCell(value, column.format ? column.format(value, row) : null, column.key);
     }),
     !IDENTIFIER_KEY.test(column.key),
@@ -376,17 +384,24 @@ export function exportTextTable(
   )), rows.length);
 }
 
-/** The closing `#` lines: the text view's source and as-of line, then whatever kept the report from being whole. */
+/**
+ * The closing `#` lines: the text view's source and as-of line with the
+ * publisher, observation date, publication time and retrieval time
+ * (`exportSourceLines`), then whatever kept the report from being whole.
+ */
 export function reportFooterLines(input: {
   freshness?: ReportFreshness;
   /** `true`, or what is missing, such as "19 of 20 available". */
   incomplete?: boolean | string;
+  /** What Gloom Pro would unlock, which is not a failure. */
+  locked?: readonly string[];
   errors?: readonly string[];
   notes?: readonly string[];
 }): string[] {
   return [
-    ...(input.freshness ? [formatFreshnessLine(input.freshness)] : []),
+    ...(input.freshness ? exportSourceLines(input.freshness) : []),
     ...(input.incomplete ? [typeof input.incomplete === "string" ? `incomplete: ${input.incomplete}` : "incomplete"] : []),
+    ...(input.locked ?? []).map((lock) => `pro: ${lock}`),
     ...(input.errors ?? []).map((error) => `error: ${error}`),
     ...(input.notes ?? []).map((note) => `note: ${note}`),
   ];
@@ -439,8 +454,12 @@ export function renderReportCsv(report: CliReportTables): string {
     ...(marked ? [commentLine(`section: ${table.title}`)] : []),
     ...(table.columns.length > 0 ? [[table.columns, ...table.rows].map(csvLine).join("\n")] : []),
   ].join("\n"));
-  const footer = report.footer.map(commentLine).join("\n");
-  return [blocks.join("\n\n"), footer].filter(Boolean).join("\n\n");
+  return withCsvFooter(blocks.join("\n\n"), report.footer);
+}
+
+/** CSV with its closing `#` lines after a blank line. */
+export function withCsvFooter(csv: string, footer: readonly string[]): string {
+  return [csv, footer.map(commentLine).join("\n")].filter(Boolean).join("\n\n");
 }
 
 /** One JSON object per row, keyed by column; rows of a report with several tables name their section. */

@@ -1,12 +1,15 @@
 import { apiClient } from "../../../api-client";
 import type { GuidancePayload, KpiEvidence, KpiGuidance, KpiObservation, KpiPeriod, KpiQueryOptions, KpisPayload } from "../../../api-client/company-kpis";
+import { listingAbroad, type IssuerListingParams, type ListingAbroad } from "../../../api-client/paths";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 
 export type CompanyDataset = KpisPayload | GuidancePayload;
 export type CompanyMode = "kpis" | "guidance";
 export const KPI_UNAVAILABLE = "Company disclosures are not available yet.";
-export const companyKpisCache = createPluginCache<CompanyDataset>({ kind: "company-kpis", source: "gloom-cloud", schemaVersion: 1,
+// Version 2: keys name a listing abroad by venue and company, not by the symbol alone.
+export const companyKpisCache = createPluginCache<CompanyDataset>({ kind: "company-kpis", source: "gloom-cloud", schemaVersion: 2,
   policy: { staleMs: 60 * 60_000, expireMs: 30 * 86_400_000 } });
 const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 const text = (value: unknown): value is string => typeof value === "string";
@@ -75,18 +78,30 @@ export function validateCompanyData<T extends CompanyDataset>(data: T): T {
   return data;
 }
 type CompanyClient = Pick<typeof apiClient, "getCloudCompanyKpis" | "getCloudCompanyGuidance">;
-export async function fetchCompanyData(mode: CompanyMode, symbol: string, options: KpiQueryOptions = {}, client: CompanyClient = apiClient) {
+/** The server answers for the symbol it was asked about; for a listing abroad, its bare symbol or its venue key. */
+function answersFor(answered: string, symbol: string, abroad: ListingAbroad | null): boolean {
+  if (!abroad) return answered.toUpperCase() === symbol.trim().toUpperCase();
+  const parsed = parsePublicTickerKey(answered);
+  return parsed.symbol === abroad.symbol && (!parsed.exchange || parsed.exchange === abroad.exchange);
+}
+export async function fetchCompanyData(mode: CompanyMode, symbol: string, options: KpiQueryOptions = {}, client: CompanyClient = apiClient, listing: IssuerListingParams = {}) {
   try {
-    const data = validateCompanyData(await (mode === "kpis" ? client.getCloudCompanyKpis(symbol, options) : client.getCloudCompanyGuidance(symbol, options)));
-    if (("series" in data) !== (mode === "kpis") || data.symbol.toUpperCase() !== symbol.trim().toUpperCase()) throw new Error("Company disclosures do not match the requested company");
+    const data = validateCompanyData(await (mode === "kpis" ? client.getCloudCompanyKpis(symbol, options, listing) : client.getCloudCompanyGuidance(symbol, options, listing)));
+    if (("series" in data) !== (mode === "kpis") || !answersFor(data.symbol, symbol, listingAbroad(symbol, listing.exchange, listing.name))) throw new Error("Company disclosures do not match the requested company");
     return data;
   }
   catch (error) { throw unavailableOnServer(error, KPI_UNAVAILABLE, [404, 503]); }
 }
 export const companyQuery = (options: Record<string, unknown>): KpiQueryOptions => Object.fromEntries(["metric", "basis", "from", "to", "asOf"]
   .flatMap((key) => typeof options[key] === "string" && options[key] !== "all" ? [[key, options[key]]] : [])) as KpiQueryOptions;
+/** A listing abroad is its venue and company, so it never shares an entry with a US company of the same symbol. */
+function companyIdentity(symbol: string, listing: IssuerListingParams): string {
+  const abroad = listingAbroad(symbol, listing.exchange, listing.name);
+  return abroad ? JSON.stringify([abroad.symbol, abroad.exchange, abroad.name ?? null]) : symbol.toUpperCase();
+}
 // Partition paid history by both identity and entitlement, including screenshot snapshots.
-const cacheKey = (mode: CompanyMode, symbol: string, access: string) => `${mode}:${symbol.toUpperCase()}:${access}`;
-export const cachedCompanyData = (mode: CompanyMode, symbol: string, access: string) => cachedCloudResource(companyKpisCache, cacheKey(mode, symbol, access), validateCompanyData);
-export const loadCompanyData = (mode: CompanyMode, symbol: string, access: string, force = false) => loadCloudResource(companyKpisCache,
-  cacheKey(mode, symbol, access), () => fetchCompanyData(mode, symbol), { force, validate: validateCompanyData });
+const cacheKey = (mode: CompanyMode, symbol: string, access: string, listing: IssuerListingParams) => `${mode}:${companyIdentity(symbol, listing)}:${access}`;
+export const cachedCompanyData = (mode: CompanyMode, symbol: string, access: string, listing: IssuerListingParams = {}) =>
+  cachedCloudResource(companyKpisCache, cacheKey(mode, symbol, access, listing), validateCompanyData);
+export const loadCompanyData = (mode: CompanyMode, symbol: string, access: string, force = false, listing: IssuerListingParams = {}) => loadCloudResource(companyKpisCache,
+  cacheKey(mode, symbol, access, listing), () => fetchCompanyData(mode, symbol, {}, apiClient, listing), { force, validate: validateCompanyData });

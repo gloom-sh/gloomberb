@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { mapForm } from "./api";
 import { createThirteenFHeadless } from "./headless";
+import { AS_FILED_VALUE, OPTION_ROWS_NOTE, THIRTEENF_LIMITS } from "./report-notes";
 import type { FundDetailData } from "./types";
 import { createTestHeadlessContext } from "../../../test-support/headless";
 
@@ -84,6 +87,45 @@ describe("13F headless model", () => {
       action: "exit", previousShares: 632890, sharesChange: -632890,
       shares: null, value: null, estimatedPnl: null,
     });
+  });
+
+  test("dates holdings by their filing, flags a fund that stopped filing and marks option rows in text only", async () => {
+    const latest = { ...detail.forms[0]!, periodOfReport: "2020-09-30", filedAsOfDate: "2020-11-03" };
+    const previous = { ...detail.forms[1]!, periodOfReport: "2020-06-30", filedAsOfDate: "2020-08-14" };
+    const put = { ...detail.latestHoldings[0]!, cusip: "69608A108", ticker: "PLTR", putCall: "Put", value: 900, shares: 5 };
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows: [] }),
+      loadDetail: async () => ({ ...detail, forms: [latest, previous], latestForm: latest, previousForm: previous,
+        latestHoldings: [...detail.latestHoldings, put] }),
+    });
+    const result = await headless.load(args("holdings"), createTestHeadlessContext());
+    expect(result.metadata?.notices).toEqual([
+      "CIK 0001067983 | Period 30 Sep · filed 3 Nov 2020 (34 days after quarter end) | QoQ vs 30 Jun",
+      AS_FILED_VALUE,
+      expect.stringMatching(/^Latest filing is \d+ quarters old; nothing filed for a later quarter$/),
+    ]);
+    expect(result.notes).toEqual([THIRTEENF_LIMITS, OPTION_ROWS_NOTE]);
+    expect(result.freshness).toMatchObject({ asOf: "2020-11-03", basis: "13F filing for the quarter ended 30 Sep 2020" });
+    expect(result.rows.find((row) => row.ticker === "PLTR")?.type).toBe("PUT");
+    const text = renderHeadlessPaneText(headless, result, args("holdings"), "13F");
+    expect(text).toMatch(/PLTR\s+PUT\*\s/);
+    expect(text).toMatch(/AAPL\s+COM\s/);
+    expect(text).toContain("not a live feed (13F filing for the quarter ended 30 Sep 2020)");
+  });
+
+  test("says which quarters Gloom Cloud restated from thousands", async () => {
+    const latest = mapForm({
+      cik: detail.cik, accession_number: "0001536411-26-000006", period_of_report: "2026-06-30",
+      filed_as_of_date: "2026-08-14", submission_type: "13F-HR", table_value_total: 5_210_860_000,
+      value_note: "values restated from thousands",
+    })!;
+    const headless = createThirteenFHeadless({
+      loadBrowser: async () => ({ rows: [] }),
+      loadDetail: async () => ({ ...detail, forms: [latest, detail.forms[1]!], latestForm: latest }),
+    });
+    const note = "Values restated from thousands: 30 Jun 2026";
+    expect((await headless.load(args("holdings"), createTestHeadlessContext())).metadata?.notices).toContain(note);
+    expect((await headless.load(args("filings"), createTestHeadlessContext())).metadata?.notices).toContain(note);
   });
 
   test("requires an unambiguous manager even when the requested output has only one row", async () => {
@@ -199,5 +241,53 @@ describe("13F headless model", () => {
       expect(result.metadata).toMatchObject({ view: "byTicker" });
       await expect(headless.load({ ...args("ticker-holdings"), argument: "ZZZZ", rawArgument: "ZZZZ" }, createTestHeadlessContext())).rejects.toThrow(/No 13F CUSIP/);
     });
+  });
+});
+
+describe("13F overlap against an ETF and flags", () => {
+  const etfFunds = [{ ticker: "IVV", name: "S&P 500", aliases: ["SPY", "SPX"], changes: "sp500" as const, asOf: "2026-10-08" }, { ticker: "IWM", name: "Russell 2000", aliases: [], changes: "none" as const, asOf: "2026-10-08" }];
+  const etfFile = { fund: etfFunds[0]!, asOf: "2026-10-08", stale: false, members: [{ symbol: "AAPL", weight: 0.07 }, { symbol: "MSFT", weight: 0.93 }] } as never;
+  const searched: string[] = [];
+  const managers = [{ id: "spy", cik: "0000000009", name: "Spyglass Capital Management LLC", source: "funds" as const }];
+  const headless = createThirteenFHeadless({
+    loadBrowser: async (_tab, query) => { searched.push(query); return { rows: managers.filter((row) => row.name.toLowerCase().includes(query.toLowerCase())) }; },
+    loadDetail: async (cik) => cik === detail.cik ? detail : { ...detail, cik, name: "Spyglass Capital Management LLC" },
+    loadEtfFunds: async () => etfFunds,
+    loadEtfHoldings: async () => etfFile,
+  });
+  const load = (options: Record<string, string | number>, argument = "1067983") => headless.load({ rawArgument: argument, argument: argument || null, symbols: [], options: { view: "auto", limit: 50, ...options } }, createTestHeadlessContext());
+
+  test("a ticker MEMB covers compares with its holdings file, and --compare alone implies the overlap view", async () => {
+    searched.length = 0;
+    const result = await load({ compare: "spy" });
+    expect(searched).toEqual([]);
+    expect(result.metadata).toMatchObject({ view: "overlap", comparedWith: "etf", secondFund: "SPY", etf: { ticker: "IVV", asOf: "2026-10-08" }, comparedPeriod: "2026-06-30", filed: "2026-08-14" });
+    expect(result.metadata?.overlap).toBeCloseTo(0.07);
+    expect(result.metadata?.notices).toEqual(expect.arrayContaining([
+      "--compare implies --view overlap",
+      "SPY read as an ETF: S&P 500 holdings (IVV file), as fn MEMB SPY shows",
+      "Overlap 7.0% (sum of the smaller weight per name) | Active share 93.0%",
+      "Quarter compared: 30 Jun 2026, filed 14 Aug 2026 | SPY holdings as of 8 Oct 2026",
+      "SPY holds every position in the 13F",
+    ]));
+  });
+
+  test("an uncovered ticker names the covered ETFs and never falls back to a partial manager name", async () => {
+    await expect(load({ view: "overlap", compare: "VTV" })).rejects.toThrow(
+      'VTV is not an ETF MEMB covers (covered: IVV (also SPY, SPX), IWM), and no 13F manager is named "VTV". For a manager, use its CIK or full name.',
+    );
+    // A longer name is still a manager lookup.
+    const fund = await load({ compare: "Spyglass" });
+    expect(fund.metadata).toMatchObject({ comparedWith: "fund", secondFund: "Spyglass Capital Management LLC" });
+  });
+
+  test("overlap without --compare asks for it; --compare with another view fails; unused flags are named", async () => {
+    await expect(load({ view: "overlap" })).rejects.toThrow(/add --compare <fund name, CIK or ETF ticker>, as in fn 13F 1067983 --compare SPY/);
+    await expect(load({ view: "holdings", compare: "SPY" })).rejects.toThrow(/--view holdings does not use it/);
+    const holdings = await load({ rank: "exits", offset: 25 });
+    expect(holdings.metadata?.notices).toEqual(expect.arrayContaining([
+      "--rank orders --view crowding only; ignored here",
+      "--offset pages a ticker's holders only; ignored here",
+    ]));
   });
 });

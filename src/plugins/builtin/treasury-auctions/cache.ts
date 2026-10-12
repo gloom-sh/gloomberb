@@ -6,8 +6,11 @@ import type { TreasuryAuction } from "./types";
 
 const CACHE_KIND = "treasury-auctions";
 const CACHE_SOURCE = "treasury-fiscal-data";
-/** 3: every reported page was validated before this board was cached. */
-const CACHE_SCHEMA_VERSION = 3;
+/**
+ * 3: every reported page was validated before this board was cached.
+ * 4: boards carry direct takedown and bill discount rates, which a v3 board lacks.
+ */
+const CACHE_SCHEMA_VERSION = 4;
 export const TREASURY_FISCAL_DATA_CONNECTION_ID = "treasury-fiscal-data";
 /**
  * Refresh the auction board hourly; the week-long expiry keeps an offline

@@ -9,6 +9,7 @@ import { cleanTickerInput } from "./options";
 import { parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
 import type { ResolvedPaneFunction } from "./resolver";
 import { toMarketDataContext } from "../../market-data/selectors";
+import { quoteMetadataFromQuote } from "../../market-data/quotes/metadata";
 import { loadSeasonalityHistory, SEASONALITY_HISTORY_RESOLUTION } from "../../plugins/builtin/seasonality/client";
 import type { InstrumentRef } from "../../market-data/request-types";
 import { CORRELATION_HISTORY_RESOLUTION, loadCorrelationHistory } from "../../plugins/builtin/correlation/history";
@@ -17,10 +18,33 @@ import { loadPeriodEndHistory, PERIOD_END_HISTORY_RESOLUTION } from "../../plugi
 import { latestFinancialPeriodEnd } from "../../plugins/builtin/ticker-detail/financials/model";
 import { oldestRatioPeriodEnd, periodEndClose, ratioStatements } from "../../plugins/builtin/ticker-detail/financials/ratios";
 import { shotFinancialPeriod } from "./financial-ratio-shot";
+import { loadReturnSeries } from "../../plugins/builtin/ticker-detail/data-panes/returns-history";
+import type { ReturnRange } from "../../plugins/builtin/ticker-detail/data-panes/returns-model";
+import type { ManualChartResolution } from "../../time-series/resolution";
 
 const SHOT_PRICE_HISTORY_RANGE = "5Y" as const;
 const FINANCIAL_ANALYSIS_PANE_ID = "financial-analysis";
 const FINANCIAL_ANALYSIS_TEMPLATE_ID = "financial-analysis-pane";
+
+async function loadStoredShotTicker(context: MarketContext, symbol: string): Promise<TickerRecord | null> {
+  const normalized = cleanTickerInput(symbol);
+  const { symbol: bare } = parsePublicTickerKey(normalized);
+  return await context.store.loadTicker(normalized)
+    ?? (bare !== normalized ? await context.store.loadTicker(bare) : null);
+}
+
+/**
+ * A holding the pane can value without a quote: some position carries the
+ * broker's own mark or market value. An option contract no quote covers stays
+ * at that mark in the pane, so a failed quote lookup for it is not an error.
+ */
+export async function loadBrokerMarkedHolding(context: MarketContext, symbol: string): Promise<TickerRecord | null> {
+  const ticker = await loadStoredShotTicker(context, symbol);
+  const marked = ticker?.metadata.positions.some(({ shares, markPrice, marketValue }) => (
+    shares !== 0 && (Number.isFinite(markPrice) || Number.isFinite(marketValue))
+  ));
+  return marked ? ticker : null;
+}
 
 export async function fetchTickerFinancials(
   context: MarketContext,
@@ -32,8 +56,7 @@ export async function fetchTickerFinancials(
 }> {
   const normalized = cleanTickerInput(symbol);
   const instrument = parsePublicTickerKey(normalized);
-  const tickerFile = await context.store.loadTicker(normalized)
-    ?? (instrument.symbol !== normalized ? await context.store.loadTicker(instrument.symbol) : null);
+  const tickerFile = await loadStoredShotTicker(context, symbol);
   const exchange = instrument.exchange ?? tickerFile?.metadata.exchange ?? "";
   const financials = await context.dataProvider.getTickerFinancials(instrument.symbol, exchange);
   return { tickerFile, financials, instrument: { symbol: instrument.symbol, ...(exchange ? { exchange } : {}) } };
@@ -66,20 +89,50 @@ export async function withShotPriceHistory(
 }
 
 /**
- * SEAS reads monthly closes. Captured history answers every request, so the
- * weekly seed would stand in for them and price each month at a week's close.
- * The pane's own load fetches them, tagged so no other cadence is answered.
+ * SEAS reads monthly closes, and its Weekdays tab daily ones. Captured history
+ * answers every request, so the weekly seed would stand in for them and price
+ * each month at a week's close. The pane's own load fetches the shot tab's
+ * cadence, tagged so no other cadence is answered.
  */
 export async function withShotSeasonalityHistory(
   context: MarketContext,
   instrument: InstrumentRef,
+  resolved: ResolvedPaneFunction,
   financials: TickerFinancials,
 ): Promise<TickerFinancials> {
-  const monthly = await loadSeasonalityHistory({ instrument, forceRefresh: context.refresh }, context.dataProvider);
-  if (monthly.error || monthly.stale) {
-    throw new Error(`${instrument.symbol}: ${monthly.error ?? "monthly price history is stale"}`);
+  const cadence = resolved.options.tab === "weekdays" ? "daily" : "monthly";
+  const history = await loadSeasonalityHistory({ instrument, cadence, forceRefresh: context.refresh }, context.dataProvider);
+  if (history.error || history.stale) {
+    throw new Error(`${instrument.symbol}: ${history.error ?? `${cadence} price history is stale`}`);
   }
-  return { ...financials, priceHistory: monthly.history, priceHistoryResolution: SEASONALITY_HISTORY_RESOLUTION };
+  return { ...financials, priceHistory: history.history, priceHistoryResolution: SEASONALITY_HISTORY_RESOLUTION[cadence] };
+}
+
+/**
+ * RETURN reads bars of its interval over its range. Captured history answers
+ * every request, so the weekly seed stood in for its hourly bars, and a 5D
+ * window held none of them. The pane's own load fetches the bars it asks
+ * for, tagged so no other cadence is answered.
+ */
+export async function withShotReturnHistory(
+  context: MarketContext,
+  instrument: InstrumentRef,
+  exchange: string,
+  resolved: ResolvedPaneFunction,
+  financials: TickerFinancials,
+): Promise<TickerFinancials> {
+  const support = await Promise.resolve(context.dataProvider.getChartResolutionSupport?.(instrument.symbol, exchange) ?? [])
+    .catch(() => []);
+  const series = await loadReturnSeries(context.dataProvider, {
+    symbol: instrument.symbol,
+    exchange,
+    range: (resolved.options.range ?? "5D") as ReturnRange,
+    resolution: (resolved.options.interval ?? "1h") as ManualChartResolution,
+    support,
+    now: Date.now(),
+    forceRefresh: context.refresh,
+  });
+  return { ...financials, priceHistory: series.points, priceHistoryResolution: series.resolution };
 }
 
 /** Correlation and relationship panes read daily returns at every range. */
@@ -142,14 +195,26 @@ export function isFinancialAnalysisFunction(resolved: ResolvedPaneFunction): boo
     && resolved.instance.settings?.lockedTabId === "financials";
 }
 
-export function createFallbackTicker(symbol: string, financials: TickerFinancials | null, context: MarketContext): TickerRecord {
+/**
+ * The ticker a shot shows for a symbol that is not saved. Without a usable
+ * quote (a thin US listing after the close), the listing comes from the quote
+ * metadata kept when the quote was dropped, or else from asking the source
+ * for it, so the pane still knows a US stock from a listing abroad. What no
+ * source knows stays empty rather than guessed from the base currency.
+ */
+export async function createFallbackTicker(symbol: string, financials: TickerFinancials | null, context: MarketContext): Promise<TickerRecord> {
   const instrument = parsePublicTickerKey(symbol);
   const quote = financials?.quote;
+  const known = quote ? quoteMetadataFromQuote(quote) : financials?.quoteMetadata;
+  const listing = instrument.exchange || known?.listingExchangeName
+    ? known
+    : await context.dataProvider.getQuoteMetadata?.(instrument.symbol, "").catch(() => null) ?? known;
   return {
     metadata: {
-      ticker: instrument.symbol,
-      exchange: instrument.exchange ?? quote?.listingExchangeName ?? quote?.exchangeName ?? "",
-      currency: quote?.currency ?? context.config.baseCurrency,
+      // A listing key stays the key the pane is bound to (CAR:ASX), as a saved listing abroad is keyed.
+      ticker: instrument.exchange ? symbol : instrument.symbol,
+      exchange: instrument.exchange ?? listing?.listingExchangeName ?? "",
+      currency: listing?.currency ?? "",
       name: quote?.name ?? instrument.symbol,
       portfolios: [],
       watchlists: [],

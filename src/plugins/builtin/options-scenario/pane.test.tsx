@@ -16,7 +16,10 @@ import { type ScenarioEvidence } from "./evidence";
 import { buildScenario, parseLegs, type ScenarioPosition } from "./model";
 import { OptionsScenarioPane } from "./pane";
 import { type SavedScenarioStrategy } from "./state";
+import { formatHedgePrice, scenarioHedgeBudget } from "./hedge";
 import { createTestPaneConfig } from "../../../test-support/pane";
+import { createTestTicker } from "../../../test-support/ticker";
+import type { TickerRecord } from "../../../types/ticker";
 
 const ID = "options-scenario:test";
 const PLUGIN = "ticker-research";
@@ -40,9 +43,10 @@ function configFor(settings: Record<string, unknown> = {}, paneState: Record<str
   return config;
 }
 
-function Harness({ config }: { config: AppConfig }) {
+function Harness({ config, tickers = [] }: { config: AppConfig; tickers?: TickerRecord[] }) {
   const initial = createInitialState(config);
   initial.focusedPaneId = ID;
+  initial.tickers = new Map(tickers.map((ticker) => [ticker.metadata.ticker, ticker]));
   const [state, dispatch] = useReducer(appReducer, initial);
   useEffect(() => { latestState = state; }, [state]);
   return <AppContext value={createStaticAppStore(state, dispatch)}><PaneInstanceProvider paneId={ID}>
@@ -62,10 +66,10 @@ async function frame() {
   await act(async () => { await tui.setup().renderOnce(); });
 }
 
-async function mount(config = configFor(), restoredRuntime?: PluginRuntimeAccess) {
+async function mount(config = configFor(), restoredRuntime?: PluginRuntimeAccess, tickers?: TickerRecord[]) {
   registry = createRemoteUiRegistry();
   runtime = restoredRuntime ?? createStatefulTestPluginRuntime();
-  await act(async () => { await tui.render(<Harness config={config} />, { width: WIDTH, height: HEIGHT }); });
+  await act(async () => { await tui.render(<Harness config={config} tickers={tickers} />, { width: WIDTH, height: HEIGHT }); });
   await frame(); await frame();
 }
 
@@ -190,8 +194,8 @@ test("saved strategy snapshots stay independent from later edits and reload from
   expect((paneState().position as ScenarioPosition).legs[0]!.quantity).toBe(1);
 });
 
-test("a strategy seeded from older quotes names the last print beside the spot they imply", async () => {
-  // The close's same-day chain (spot 100, 30%) against a 100.25 after-hours print.
+/** The close's same-day chain (spot 100, 30%) against a 100.25 after-hours print. */
+function closeMarket(): ScenarioMarketSnapshot {
   const expiration = Date.UTC(2026, 8, 23) / 1000;
   const quotedAt = Date.UTC(2026, 8, 22, 20);
   const contract = (side: "call" | "put", strike: number) => {
@@ -201,19 +205,62 @@ test("a strategy seeded from older quotes names the last print beside the spot t
       impliedVolatility: 0, lastPrice: 0, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: quotedAt / 1000 };
   };
   const strikes = [97.5, 100, 102.5, 105];
-  const market: ScenarioMarketSnapshot = { symbol: "AAPL", spot: 100.25, currency: "USD", asOf: Date.UTC(2026, 8, 23),
+  return { symbol: "AAPL", spot: 100.25, currency: "USD", asOf: Date.UTC(2026, 8, 23),
     chain: { underlyingSymbol: "AAPL", expirationDates: [expiration], asOf: new Date(quotedAt).toISOString(),
       calls: strikes.map((strike) => contract("call", strike)), puts: strikes.map((strike) => contract("put", strike)) },
     expirationDates: [expiration], rate: 0.04, dividendYield: 0.005, source: "test", underlyingQuote: null, rateAsOf: [], warnings: [] };
+}
+
+const SEEDED = { spot: "", rate: "", dividendYield: "", asOf: "", legs: "" };
+
+test("a strategy seeded from older quotes names the last print beside the spot they imply", async () => {
+  const market = closeMarket();
   // Wide enough for the footer status beside its key hints.
   WIDTH = 220;
   try {
-    await mount(configFor({ spot: "", rate: "", dividendYield: "", asOf: "", legs: "", strategy: "vertical", scenarioMarketSnapshot: market }));
+    await mount(configFor({ ...SEEDED, strategy: "vertical", scenarioMarketSnapshot: market }));
     const scenario = evidence().scenario!;
     expect(scenario.position.spot).toBeCloseTo(100, 2);
     expect(Math.abs(scenario.valuation.pnl)).toBeLessThan(1e-6);
     expect(tui.frame()).toContain("2026-09-23 · market · IV from quote mid · last 100.25");
     // Float noise at the flat origin is not a red -0.00.
     expect(tui.frame()).toMatch(/P&L +0\.00 +USD/);
+  } finally { WIDTH = 100; }
+});
+
+test("a pane bound to a listing key reads the market for the bare symbol and keeps the listing", async () => {
+  // OMON opens OSA on "SPY:ARCX". The pane has no ticker record yet, then one keyed by the listing; the loader names the bare symbol.
+  const market = { ...closeMarket(), symbol: "SPY", exchange: "ARCA" };
+  for (const tickers of [[], [createTestTicker("SPY:ARCX", "SPY", { exchange: "ARCA" })]]) {
+    const config = configFor({ ...SEEDED, symbol: "SPY:ARCX", strategy: "vertical", scenarioMarketSnapshot: market });
+    config.layouts[0]!.layout.instances[0]!.binding = { kind: "fixed", symbol: "SPY:ARCX" };
+    await mount(config, undefined, tickers);
+    expect(tui.frame()).not.toContain("does not match");
+    expect(evidence().scenario!.position).toMatchObject({ symbol: "SPY", exchange: "ARCA" });
+    expect(evidence().scenario!.position.spot).toBeCloseTo(100, 2);
+    await tui.destroy();
+  }
+});
+
+test("a hedge budget shows the report's sizing under the scenario figures, and says why it cannot size", async () => {
+  const market = closeMarket();
+  WIDTH = 220;
+  try {
+    const settings = { strategy: "put", strike: "100", nav: "1m", budgetBps: "25", sleeve: "2m" };
+    await mount(configFor({ ...SEEDED, ...settings, scenarioMarketSnapshot: market }));
+    const report = scenarioHedgeBudget(settings, evidence().scenario!.position, market)!;
+    const put = market.chain!.puts.find((contract) => contract.strike === 100)!;
+    // Sized at the put's ask; notional at the print, not the spot the quotes imply.
+    expect(report).toMatchObject({ basis: "quote", spot: 100.25 });
+    expect(report.sizingPrice).toBeCloseTo(put.ask, 5);
+    const lines = tui.frame().split("\n");
+    expect(lines.find((line) => line.includes("Hedge budget"))).toMatch(/Hedge budget +2,500\.00 +25 bps of 1M/);
+    expect(tui.frame()).toMatch(new RegExp(`Contracts +${report.contracts} +ask ${formatHedgePrice(report.sizingPrice!)}`));
+    expect(tui.frame()).toMatch(new RegExp(`Coverage +${(report.coverage! * 100).toFixed(1)}% +of 2M sleeve`));
+
+    await tui.destroy();
+    await mount(configFor({ ...SEEDED, ...settings, budgetBps: "0.01", scenarioMarketSnapshot: market }));
+    expect(tui.frame()).not.toContain("Hedge budget");
+    expect(tui.frame()).toContain("budget of 1,000,000.00 USD NAV is 1.00 USD; one contract costs");
   } finally { WIDTH = 100; }
 });

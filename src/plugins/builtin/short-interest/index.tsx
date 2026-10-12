@@ -1,4 +1,5 @@
 import type { PluginModule } from "../plugin-module";
+import { SHORT_INTEREST_SERIES } from "./series";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   attachShortInterestHealth,
@@ -9,20 +10,23 @@ import { shortInterestHeadless } from "./headless";
 import { ShortInterestResearchTab, ShortInterestSurface } from "./surface";
 import { shortWatchHeadless } from "./watch-headless";
 import { SHORT_WATCH_SCOPE_OPTIONS, ShortWatchPane } from "./watch-pane";
+import { withCommandTab } from "../shared/command-tab";
 import { followsWithoutFinraOverride, shortVolumeSettings } from "../short-volume";
+import { shortVolumeHeadless } from "../short-volume/headless";
 import { isKnownNonUsListing } from "../../../utils/sec";
 
 
 let disposeConnection: (() => void) | null = null;
 
 export const shortInterestModule: PluginModule = {
+  series: SHORT_INTEREST_SERIES,
   setup(ctx) {
     attachShortInterestHealth(ctx.connectionHealth);
     disposeConnection = ctx.connectionHealth.registerSource({
       id: SHORT_INTEREST_CONNECTION_ID,
       name: "Gloom Short Interest",
       kind: "api",
-      ownerId: "ticker-research",
+      ownerId: "ownership",
       detail: "api.gloom.sh",
       priority: 300,
     });
@@ -75,16 +79,29 @@ export const shortInterestModule: PluginModule = {
 
   paneTemplates: [
     {
-      ...createTickerSurfacePaneTemplate({
+      ...withCommandTab(createTickerSurfacePaneTemplate({
         id: "short-interest-pane",
         paneId: "short-interest",
         label: "Short Interest",
         // The current snapshot only carries the current and prior settlement dates.
-        description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume.",
+        description: "Bi-monthly short interest settlements from FINRA with days to cover and average daily volume. Daily volume is the other tab.",
         keywords: ["short", "interest", "si", "shorts", "borrow", "days", "cover"],
         shortcut: "SI",
-      }),
+      }), "interest"),
       headless: shortInterestHeadless,
+    },
+    {
+      // The same pane on Daily volume. The template id stays, so an older share still restores.
+      ...withCommandTab(createTickerSurfacePaneTemplate({
+        id: "short-volume-pane",
+        paneId: "short-interest",
+        label: "Daily Short Volume",
+        description: "The short interest pane on Daily volume: FINRA daily off-exchange short-volume ratios, historical percentile and reported share quantities.",
+        keywords: ["daily", "short", "volume", "finra", "siv"],
+        shortcut: "SIV",
+        publicShare: true,
+      }), "volume"),
+      headless: shortVolumeHeadless,
     },
     {
       id: "short-watch-pane",

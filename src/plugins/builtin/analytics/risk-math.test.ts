@@ -6,6 +6,7 @@ import {
   regressReturns,
   rollingBasketRisk,
   rollingBeta,
+  sinceBasketRisk,
   subtractReturns,
 } from "./risk-math";
 import type { DatedReturn } from "./metrics";
@@ -76,6 +77,29 @@ test("rolling risk preserves missing intervals and computes same-horizon histori
   expect(rollingBeta(asset, asset, "Market", "market").rank.percentile).toBe(
     50,
   );
+});
+test("risk since a filing date runs from the last close on or before it, over the trailing unbroken sessions", () => {
+  // Weekday sessions only: 2025-05-10 is a Saturday, so the window starts at Friday's close.
+  const sessions = returns(200).filter((row) => ![0, 6].includes(new Date(row.dateKey).getUTCDay()));
+  const sample = pairedReturns(
+    sessions.map((row, index) => ({ ...row, startDateKey: sessions[index - 1]?.dateKey ?? row.startDateKey })),
+    sessions.map((row, index) => ({ ...row, startDateKey: sessions[index - 1]?.dateKey ?? row.startDateKey, value: 0.001 })),
+  );
+  const rows = sinceBasketRisk(sample, "2025-05-10");
+  const window = sample.filter((row) => row.dateKey > "2025-05-10");
+  const value = (id: string) => rows.find((row) => row.id === id)!;
+  expect(window[0]!.startDateKey).toBe("2025-05-09");
+  expect(value("return")).toMatchObject({ label: "Basket return since 2025-05-09", startDate: "2025-05-09", samples: window.length });
+  expect(value("return").value).toBeCloseTo(100 * (window.reduce((wealth, row) => wealth * (1 + row.value), 1) - 1), 10);
+  expect(value("benchmark").label).toBe("Benchmark return (SPY) since 2025-05-09");
+  expect(value("return").rank.percentile).toBeNull();
+  expect(value("return").history.at(-1)!.value).toBe(value("return").value);
+  // Fewer than 60 sessions: no tail estimate.
+  expect(window.length).toBeLessThan(60);
+  expect(value("var")).toMatchObject({ label: "1D VaR 95% (since 2025-05-09)", value: null });
+  // A missing session after the filing restarts the window after the gap.
+  const gapped = sample.filter((row) => row.dateKey !== window[3]!.dateKey);
+  expect(sinceBasketRisk(gapped, "2025-05-10")[0]!.startDate).toBe(window[4]!.startDateKey);
 });
 test("concentration uses gross signed exposure and never renormalizes an unvalued holding", () => {
   const result = concentration([

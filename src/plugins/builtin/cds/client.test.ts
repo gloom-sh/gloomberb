@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudCdsResponse } from "../../../api-client";
 import type { InstrumentSearchResult } from "../../../types/instrument";
-import { loadCdsActivity, loadCdsSpreadHistory } from "./client";
+import { loadCdsActivity, loadCdsSpreadHistory, loadCdsSpreadLevels } from "./client";
 
 function result(symbol: string, name: string): InstrumentSearchResult {
   return { providerId: "gloomberb-cloud", symbol, name, exchange: "NYSE", type: "STK" };
@@ -39,6 +39,20 @@ describe("loadCdsActivity", () => {
     expect(calls.requested).toEqual(["Oracle Corporation"]);
     // The pane body reads this back, so ORCL must not survive resolution.
     expect(activity.issuer).toBe("Oracle Corporation");
+  });
+
+  test("asks for the issuer a listing stands for, not its share class", async () => {
+    // The tape names issuers: "alphabet class a common stock" matches no trade.
+    for (const [symbol, listing, issuer] of [
+      ["GOOGL", "Alphabet Inc. Class A Common Stock", "Alphabet Inc."],
+      ["MSFT", "Microsoft Corporation Common Stock", "Microsoft Corporation"],
+      ["TSM", "Taiwan Semiconductor Manufacturing Company Ltd. American Depositary Shares", "Taiwan Semiconductor Manufacturing Company Ltd."],
+      ["BRK.B", "Berkshire Hathaway Inc. Class B", "Berkshire Hathaway Inc."],
+    ] as const) {
+      const calls = spy([result(symbol, listing)]);
+      await loadCdsActivity(symbol, calls.fetchCds, calls.searchInstruments);
+      expect(calls.requested).toEqual([issuer]);
+    }
   });
 
   test("prefers the primary US common stock when exchanges reuse a ticker", async () => {
@@ -124,5 +138,33 @@ describe("loadCdsSpreadHistory", () => {
     expect(requested).toEqual([{ issuer: "Oracle Corporation", days: 730 }]);
     expect(history.issuer).toBe("Oracle Corporation");
     expect(history.points.map((point) => point.date)).toEqual(["2026-09-24", "2026-09-25"]);
+  });
+});
+
+describe("loadCdsSpreadLevels", () => {
+  test("reads every issuer's level in one request and keys it as the list keys issuers", async () => {
+    let requests = 0;
+    const levels = await loadCdsSpreadLevels(async () => {
+      requests += 1;
+      return {
+        source: "DTCC PPD",
+        tenor: "5Y",
+        asOf: null,
+        levels: [
+          { issuer: "Amazon.com;Inc.", spreadBp: 73, date: "2026-10-09" },
+          { issuer: "Ford Motor Company", spreadBp: 157, date: "2026-10-09" },
+          // Two names the backend keeps apart fold into one row; the list's spelling keeps it.
+          { issuer: "ORACLE COP", spreadBp: 240, date: "2026-10-02" },
+          { issuer: "Oracle Corporation", spreadBp: 205, date: "2026-10-08" },
+          { issuer: "Broken Ltd", spreadBp: Number.NaN, date: "2026-10-09" },
+        ],
+      };
+    });
+    expect(requests).toBe(1);
+    expect(Object.fromEntries(levels)).toEqual({
+      "amazon com": { spreadBp: 73, date: "2026-10-09" },
+      "ford motor": { spreadBp: 157, date: "2026-10-09" },
+      oracle: { spreadBp: 205, date: "2026-10-08" },
+    });
   });
 });

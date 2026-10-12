@@ -14,16 +14,6 @@ const contextMenuActionScope = new DesktopContextMenuActionScope(
   CONTEXT_MENU_ACTION_TTL_MS,
 );
 
-export function startElectrobunWindowDrag(): void {
-  window.__electrobunInternalBridge?.postMessage(JSON.stringify([
-    JSON.stringify({
-      type: "message",
-      id: "startWindowMove",
-      payload: { id: window.__electrobunWindowId },
-    }),
-  ]));
-}
-
 export async function showDesktopContextMenu(items: ContextMenuItem[]): Promise<boolean> {
   if (!NATIVE_CONTEXT_MENU_SUPPORTED) return false;
   contextMenuActionScope.clear();

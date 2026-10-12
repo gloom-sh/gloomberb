@@ -90,6 +90,12 @@ export interface Quote extends DepositaryReceiptFacts {
   fullExchangeName?: string;
   listingExchangeName?: string;
   listingExchangeFullName?: string;
+  /**
+   * The board whose line priced the quote, when Gloom Cloud read another one
+   * than the listing asked for: a KOSDAQ code saved as 247540:KRX is quoted
+   * from KOSDAQ and still named KRX in the listing fields (quoteTradingExchange).
+   */
+  tradingExchangeName?: string;
   routingExchangeName?: string;
   routingExchangeFullName?: string;
   marketState?: MarketState;
@@ -100,6 +106,14 @@ export interface Quote extends DepositaryReceiptFacts {
   postMarketPrice?: number;
   postMarketChange?: number;
   postMarketChangePercent?: number;
+  /**
+   * Whether the quote holds a trade from the pre-market or after-hours
+   * session in progress (marketState PRE or POST). False when nothing has
+   * traded in it yet: the extended fields, or the price, are then the regular
+   * price carried forward, and their flat move is no move. Absent in the other
+   * sessions and when the source does not say.
+   */
+  extendedSessionPrint?: boolean;
   bid?: number;
   ask?: number;
   bidSize?: number;
@@ -123,6 +137,26 @@ export interface QuoteContribution extends Quote {
 
 export type QuoteContributionMap = Record<string, QuoteContribution>;
 
+/** How a fundamentals block's trailing figures were converted from the currency the company reports in. */
+export interface TtmConversion {
+  /** The reporting currency the figures were converted from. */
+  from: string;
+  /** Units of `financialCurrency` per unit of `from` for revenue, income and cash flow; absent when not measured. */
+  rate?: number;
+  /** YYYY-MM-DD the converted figures were fetched. */
+  asOf?: string;
+  /** EPS is converted at the rate of each report date, so a P/E on it divides a spot price by EPS at older rates. */
+  eps?: "report_date";
+}
+
+/** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */
+export interface TrailingPEConversion {
+  /** The currency of the trailing EPS. */
+  from: string;
+  /** Units of the quote's (major) currency per unit of `from`. */
+  rate: number;
+}
+
 export interface Fundamentals extends DepositaryReceiptFacts {
   /** Every share count here is on this basis, the basis of the listing's price and market cap; absent when unproven. */
   shareBasis?: ShareBasis;
@@ -131,8 +165,14 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   source?: "gloom";
   fetchedAt?: string;
   stale?: boolean;
-  /** Currency of reported revenue, income, and cash flows; may differ from the listing. */
+  /** Currency of the trailing revenue, income, cash flows and EPS (EPS unless `epsCurrency` says otherwise); may differ from the listing and the statements. */
   financialCurrency?: string;
+  /** Set when the trailing figures were converted from the reporting currency into `financialCurrency`. */
+  ttmConversion?: TtmConversion;
+  /** Set when the trailing EPS is in another currency than `financialCurrency`: the listing's, converted from the reporting currency at each report date's rate. */
+  epsCurrency?: string;
+  /** Set when `trailingPE` divides the price by the trailing EPS converted from another currency. */
+  trailingPEConversion?: TrailingPEConversion;
   /** Provider-reported issuer market cap; marketCapCurrency identifies its units when known. */
   marketCap?: number;
   marketCapCurrency?: string;
@@ -302,6 +342,16 @@ export interface SplitAction {
   toFactor?: number;
 }
 
+/**
+ * How a reported EPS relates to the company's statements: `gaap` is the
+ * quarter's diluted EPS as the statements report it; `adjusted` is the
+ * consensus-basis figure, which leaves out items the statements include.
+ */
+export type EarningsEpsBasis = "gaap" | "adjusted";
+
+/** A report that is out, a date the company announced, or a date projected from its past reports. */
+export type EarningsDateStatus = "reported" | "confirmed" | "projected";
+
 export interface EarningsAction {
   date: string;
   dateType?: "announcement" | "fiscal-period-end";
@@ -311,6 +361,13 @@ export interface EarningsAction {
   epsActual?: number;
   difference?: number;
   surprisePercent?: number;
+  /** Fiscal quarter end month, YYYY-MM, when the report's quarter is known. */
+  fiscalPeriod?: string;
+  /** Analysts behind `epsEstimate`, when known. */
+  epsAnalysts?: number;
+  /** Null when the basis cannot be determined; absent from sources that do not say. */
+  epsBasis?: EarningsEpsBasis | null;
+  dateStatus?: EarningsDateStatus;
 }
 
 export interface CorporateActionsData {
@@ -661,6 +718,10 @@ export interface PricePoint {
   low?: number;
   close: number;
   volume?: number;
+  /** The bar's period had not ended when it was served: its close is the latest price, and it may have no volume yet. */
+  partial?: boolean;
+  /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */
+  filled?: boolean;
 }
 
 export interface StatementHistoryAttempt {

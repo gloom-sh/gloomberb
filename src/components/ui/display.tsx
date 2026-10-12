@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import { t } from "../../i18n";
-import { blendHex } from "../../theme/colors";
+import { blendHex, hoverBg } from "../../theme/colors";
 import { blendForContrast, higherContrast } from "../../theme/color-utils";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
+import { usePaneLinkMenuEntry } from "./external-link";
 import { titleCase } from "./header-case";
 import { statToneColor, type StatTone } from "./stat-grid";
 
@@ -57,11 +58,24 @@ export interface KeyValueRowProps {
   labelWidth?: number;
   emphasis?: boolean;
   align?: "left" | "right";
+  /**
+   * Opens what the value names (a security's DES, a function): the whole row is the target, and inside a
+   * `PaneLinkMenu` the pane menu lists it as `link.label`, so the keyboard reaches what a click opens.
+   */
+  link?: { label: string; onOpen: () => void };
 }
 
 /** Aligned labels and values; a bounded row reserves room for an optional detail. */
-export function KeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, align = "left" }: KeyValueRowProps) {
+export function KeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, align = "left", link }: KeyValueRowProps) {
   const colors = useThemeColors();
+  usePaneLinkMenuEntry(link ? `key-value:${label}:${value}` : null, link?.label ?? "", () => link?.onOpen());
+  const target = link ? {
+    cursor: "pointer" as const,
+    hoverBackgroundColor: hoverBg(colors),
+    onMouseDown: (event?: { button?: number }) => { if ((event?.button ?? 0) === 0) link.onOpen(); },
+    "data-gloom-interactive": "true",
+    "data-gloom-label": link.label,
+  } : {};
   const rowWidth = width === undefined ? undefined : Math.max(0, Math.floor(width));
   const preferredLabelWidth = Math.max(0, labelWidth ?? (rowWidth === undefined ? 14 : Math.min(12, Math.max(8, Math.floor(rowWidth * 0.32)))));
   const labelColumns = rowWidth === undefined ? preferredLabelWidth : Math.min(preferredLabelWidth, Math.max(0, rowWidth - 1));
@@ -71,7 +85,7 @@ export function KeyValueRow({ label, value, detail, tone, color, width, labelWid
     : availableWidth;
   const detailWidth = availableWidth === undefined ? undefined : availableWidth - valueWidth!;
   return (
-    <Box height={1} width={rowWidth} flexDirection="row" overflow="hidden" data-gloom-ui="key-value-row">
+    <Box height={1} width={rowWidth} flexDirection="row" overflow="hidden" data-gloom-ui="key-value-row" {...target}>
       <Box width={labelColumns} flexShrink={0} overflow="hidden">
         <Text fg={colors.textDim}>{t(label)}</Text>
       </Box>

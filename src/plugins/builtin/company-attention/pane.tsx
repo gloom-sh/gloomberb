@@ -12,20 +12,18 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { humanLabel, listingCell, missingCell, shareCell, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
 import { AppRankView } from "./app-rank";
 import { useAttentionEvidence } from "./evidence";
 import { cachedAttention, fetchAttention, loadAttention, validateAttention, type AttentionPayload } from "./client";
-import { appsModel, attentionSeries, count, hiringModel, sortAttentionRows, type AttentionKind, type AttentionRow, type AttentionTab } from "./model";
+import { appsModel, attentionNumber, attentionSeries, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionRow, type AttentionTab } from "./model";
 
 type Size = Pick<PaneProps, "width" | "height" | "focused">;
 const rowId = (row: AttentionRow) => row.id;
 const rowDate = (row: AttentionRow) => row.date ? new Date(row.date) : null;
-/** Decimals per column: percentages and scores to one place, ratings and z-scores to two, counts whole. */
-const DECIMALS: Record<string, number> = { score: 1, remote: 1, share: 1, confidence: 0, velocity: 2, rating: 2, drift: 2, z: 2, change: 1 };
-const SIGNED_COLUMNS = new Set(["net", "change", "velocity", "drift", "growth"]);
 const SIGNAL_TONES: Record<string, StateTone> = { Surge: "positive", Freeze: "negative", Stale: "warning", Collecting: "muted", Uncovered: "muted", Ok: "text" };
 /** Columns left out while every row reads the same default: a first capture has no weekly change yet. */
 const QUIET_COLUMNS: Record<string, readonly string[]> = { net: [""], z: [""], change: [""], velocity: [""], drift: [""], growth: [""], added: [""], removed: [""], coverage: ["complete"], spread: [""] };
@@ -33,7 +31,7 @@ const LABEL_COLUMNS = new Set(["chart"]);
 function Evidence({ row, width, height }: Size & { row: AttentionRow }) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
-  return <ScrollBox width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
+  return <ScrollBox scrollY width={width} height={desktop ? undefined : height} flexGrow={1} flexBasis={0} contentOptions={{ paddingX: 1 }}>
     {(row.details ?? Object.entries(row.values).map(([label, value]) => ({ label, value: String(value ?? "--") }))).map((entry) => <KeyValueRow key={entry.label} label={entry.label} value={entry.value} labelWidth={22} />)}
     {row.url ? <Box paddingY={1}><Text fg={colors.textMuted}>{row.url}</Text></Box> : null}
   </ScrollBox>;
@@ -62,6 +60,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const host = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
@@ -131,7 +130,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
     ...(selected && !evidence && selected.details ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpenEvidence(selected.id) }] : []),
     ...(selected?.app && selectedSymbol && !symbol ? [{ id: "company", key: "c", label: "ompany", onPress: () => setOpenCompany(selectedSymbol) }] : []),
     ...(selectedSymbol ? [
-      { id: "description", key: "d", label: "es", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol: selectedSymbol }) },
+      { id: "description", key: "d", label: "es", onPress: () => openDescription(selectedSymbol) },
       { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: selectedSymbol }) },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: selectedSymbol }) },
       { id: "related", key: "a", label: kind === "hiring" ? "pps" : " hiring", title: kind === "hiring" ? "App attention" : "Hiring momentum", onPress: () => createPaneFromTemplate(kind === "hiring" ? "apps-pane" : "hiring-pane", { symbol: selectedSymbol }) },
@@ -139,7 +138,7 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
     ...(model?.preview ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : []),
   ];
   usePaneStatusFooter({ registrationId: `${kind}:status`, enabled: !openCompany && !app, loading: resource.loading || paged.loadingMore, error: data ? resource.error ?? paged.moreError?.message ?? paged.error?.message : null, stale: resource.data?.stale,
-    info: [...(model?.asOf ? [{ id: "observed", parts: [{ text: `as of ${model.asOf.slice(0, 10)}`, tone: "muted" as const }] }] : []), ...(model?.preview ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : [])], hints });
+    info: [...(model?.asOf ? [{ id: "observed", asOf: true, parts: [{ text: `as of ${model.asOf.slice(0, 10)}`, tone: "muted" as const }] }] : []), ...(model?.preview ? [{ id: "preview", parts: [{ text: "Pro preview", tone: "warning" as const }] }] : [])], hints });
   usePaneNoticeFooter({ registrationId: `${kind}:notices`, enabled: !openCompany && !app, focused, notices: [...(model?.notices ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement={kind === "hiring" ? "hiring-momentum-signin" : "app-attention-signin"} action={kind === "hiring" ? "view hiring momentum" : "view app attention"} needsVerification={session.needsVerification} />;
   const countryOptions = data && kind === "apps" ? (data as AppAttentionPayload).coverage.configuredCountries : [];
@@ -156,7 +155,8 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
         detailContent={openCompany ? <PaneFooterScope active><AttentionView key={openCompany} kind={kind} symbol={openCompany} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : app ? <AppRankView focus={app} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} /> : evidence ? <Evidence row={evidence} width={width} height={bodyHeight - 1} focused={focused} /> : null}
         rootContent={<DataTableView columns={columns} items={rows} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
           rootBefore={<ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns} query={query} figures={model.figures}
-            chart={tab === "chart" ? { series, ...chartSelection, formatValue: (value) => kind === "hiring" ? count(value) : value.toFixed(1), empty: series.length ? undefined : model.preview ? "Full history requires Pro." : "Collecting history", remoteKind: `${kind}-history` } : null} />}
+            chart={tab === "chart" ? { series, ...chartSelection, formatValue: (value) => kind === "hiring" ? count(value) : value.toFixed(1), empty: series.length ? undefined : model.preview ? "Full history requires Pro."
+              : model.chart.since ? `Collecting history since ${model.chart.since.slice(0, 10)}` : "Collecting history", remoteKind: `${kind}-history` } : null} />}
           selection={{ kind: "id", selectedId: selected?.id ?? null, getId: rowId, onChange: setSelected }} getItemKey={rowId}
           sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((old) => ({ column, direction: old.column === column && old.direction === "desc" ? "asc" : "desc" }))}
           onActivate={(row) => row.id.startsWith("locked:") ? void upgrade() : row.app ? setOpenApp(row.id) : row.symbol && row.symbol !== symbol && (tab === "peers" || !symbol) ? setOpenCompany(row.symbol) : row.details ? setOpenEvidence(row.id) : row.url ? void host.openExternal(row.url) : undefined}
@@ -170,8 +170,11 @@ function AttentionView({ kind, symbol, width, height, focused }: Size & { kind: 
             if (column.id === "symbol" && typeof value === "string") return listingCell(value, colors, state.selected);
             if (column.id === "signal" && typeof value === "string") return { text: value, color: toneColor(SIGNAL_TONES[value] ?? "text", colors), keepColorWhenSelected: value === "Surge" || value === "Freeze" };
             const numeric = typeof value === "number";
-            const decimals = DECIMALS[column.id] ?? 0;
-            const text = numeric ? `${SIGNED_COLUMNS.has(column.id) && value > 0 ? "+" : ""}${value.toLocaleString("en-US", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}` : LABEL_COLUMNS.has(column.id) ? humanLabel(value) : column.id === "title" ? value.trim() : value;
+            if (column.id === "remote" && numeric) {
+              const known = row.values.remoteKnown;
+              return { text: remoteText(value, typeof known === "number" ? known : null) ?? "", value, color: colors.text };
+            }
+            const text = numeric ? attentionNumber(column.id, value) : LABEL_COLUMNS.has(column.id) ? humanLabel(value) : column.id === "title" ? value.trim() : value;
             if (column.id === "share" && numeric && tab === "mix") return { ...shareCell(text, maxShare ? value / maxShare : null, column.width, colors, state.selected), value };
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };

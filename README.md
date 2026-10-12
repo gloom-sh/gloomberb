@@ -25,15 +25,9 @@ Desktop app for macOS and Windows. Terminal UI for macOS, Linux, and Windows.
 
 </div>
 
-- **Research companies:** quotes, charts, financials, filings, options, and analyst ratings.
-- **Follow markets:** news, global indices, FX, economic events, and market scanners.
-- **Manage your workspace:** portfolios, watchlists, broker connections, alerts, notes, and AI tools.
-
-The desktop app and TUI share the command language and plugin system. The [browser app](https://term.gloom.sh) offers a smaller feature set and requires a free Gloom Cloud account: free market data is rate-limited and delayed by 15 minutes; Pro provides realtime data. See [browser features and limits](docs/browser.md).
+Quotes, charts, financials, filings, options, news, portfolios and alerts in one workspace. Browse every function in the [function catalog](https://gloom.sh/docs/functions).
 
 ## Install
-
-### Desktop
 
 On **macOS (Apple Silicon)**:
 
@@ -41,109 +35,38 @@ On **macOS (Apple Silicon)**:
 brew install --cask gloomberb
 ```
 
-On **Windows 11**, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe). It supports x64, and ARM64 through x64 emulation.
+On **Windows 11**, [download the installer](https://github.com/gloom-sh/gloomberb/releases/latest/download/stable-win-x64-GloomberbSetup.exe). It is not code-signed yet, so SmartScreen may ask you to click **More info**, then **Run anyway**.
 
-Both desktop installers include the `gloomberb` terminal command.
-
-### Terminal
-
-On **macOS or Linux**:
+For the terminal on **macOS or Linux**:
 
 ```bash
 curl -fsSL gloom.sh/install | bash
 ```
 
-On Apple Silicon Macs, this installs the desktop app and TUI. On Intel Macs and Linux, it installs the standalone TUI.
+The script downloads the prebuilt release from GitHub and checks its SHA-256 against the digest GitHub lists. Apple Silicon Macs get the desktop app and the `gloomberb` command; Linux and Intel Macs get the standalone binary. It asks for `sudo` only if the destination isn't writable. Prefer to download it yourself? See the [installation guide](docs/installation.md).
 
-Or install with [Bun](https://bun.sh) on macOS, Linux, or Windows x64:
+With [Bun](https://bun.sh), on any supported OS:
 
 ```bash
 bun install -g gloomberb
 ```
 
-Run `gloomberb` to launch. For graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm. See the [installation guide](docs/installation.md) for direct downloads, install locations, and updates.
+Then run `gloomberb`. For chart graphics, use a Kitty-compatible terminal such as Ghostty, Kitty, or WezTerm. Windows Terminal draws charts as text; the desktop app draws them in full.
 
 ## Start
 
-Press `Ctrl+P` to open the command bar, or press `` ` `` to search for a ticker. Desktop also supports `Cmd/Ctrl+K`.
+Press `Ctrl+P` for the command bar, or `` ` `` to search for a ticker. Try `DES AAPL` for company details or `GP NVDA` for a price chart. `HELP` lists commands and shortcuts.
 
-| Try | Opens |
-|-----|-------|
-| `DES AAPL` | Company details |
-| `GP NVDA` | Price chart |
-| `OVDV AAPL` | Implied-volatility surface and options term structure |
-| `OPX SPY` / `GEX SPY` | Open interest by strike and expiry, max pain and dealer gamma ([method](docs/options-positioning.md)) |
-| `HVG AAPL` / `HVT AAPL` | Realized volatility and volatility cones |
-| `SEAS AAPL` | Seasonality: monthly returns by year and year overlays |
-| `RDCF AAPL` | Reverse DCF: the cash flow growth the price assumes |
-| `PEB AAPL` | P/E band: price against multiples of trailing EPS, and today's P/E in its own history |
-| `SIW` | Short squeeze watch: crowded shorts in your portfolios and watchlists that are moving up |
-| `RIPL` | Earnings Ripple: customers and suppliers of your holdings that report soon |
-| `MDAY SPY` | Macro-day reaction: how a name moves on CPI, jobs and FOMC days against a normal day |
-| `COT [code or root]` | CFTC positioning and cross-market extremes |
-| `DOE` / `NGS` | EIA weekly oil stocks and gas storage, with builds, draws and five-year ranges |
-| `CPI [component]` / `ECAN` | US consumer prices by component, with weights, contributions to the headline and the next release |
-| `TOP` | Market stories |
-| `WIRP` / `FFIP` | US rate path and conditional FOMC probabilities |
-| `BTMM` | Funding rates, bill curves and Federal Reserve liquidity |
-| `CTM [root]` | Futures contract curve, historical ghosts, roll yield and open interest, including `CTM VX` and CME crypto (`CTM BTC`) |
-| `MAP ships` / `CHOKE` | Ships, ports, energy and airports on one map, and chokepoint transits as chart series ([guide](docs/world-map.md)) |
-| `PF` | Portfolios and watchlists |
-| `HELP` | Commands and keyboard shortcuts |
+The [user guide](docs/usage.md) covers charts, broker setup, shortcuts, and the CLI (`gloomberb quote AAPL`).
 
-Use `Tab` to switch panes and `j` / `k` to navigate lists. The [user guide](docs/usage.md) covers charts, broker setup, keyboard shortcuts, and the full command reference. See [research data conventions](docs/research-data.md) for return definitions, financial sources, and model assumptions. [Supply chain evidence](docs/supply-chain.md) explains Pro SPLC trust tiers, source evidence, reverse relationships, flow diagrams and multi-hop graphs and path searches. [Credit documents](docs/credit-documents.md) covers CRDOC/COVN capital structure, covenant headroom and amendment evidence. [Research attention](docs/research-attention.md) covers the Pro ATTN dataset, privacy-qualified counts and Gloom Trending. [Hiring and app attention](docs/hiring-app-attention.md) covers HIRE/APPS observations, evidence and Pro previews.  [Government awards](docs/government-awards.md) covers AWARDS, procurement history and source coverage. [Distress records](docs/distress-monitor.md) covers DIST: 8-K filings, going-concern disclosures, listing designations and insolvency notices, with their dates and licences. [Power and grid capacity](docs/power-grid.md) covers POWER queues, large loads, utility exposure and source history. [Perpetual markets](docs/perpetuals.md) covers funding, open interest, premiums and Pro access.  [Exposure analysis](docs/exposure.md) covers EXPO scenario estimates, portfolio weights and evidence paths.
+## Data and privacy
 
-## CLI
+The app is MIT licensed. Market data and Ask Gloom use [Gloom Cloud](https://gloom.sh/cloud), our hosted service, which is not open source. Free market data is delayed 15 minutes; Pro adds real-time data. See [what is open and what is not](docs/open-source.md). The [browser app](https://term.gloom.sh) has a smaller feature set ([limits](docs/browser.md)).
 
-Run commands directly from your shell:
-
-```bash
-gloomberb quote AAPL
-gloomberb quote AAPL --json
-gloomberb help
-```
-
-Output is human-readable by default; use `--json`, `--csv`, or `--ndjson` for scripts. See the [CLI reference](docs/usage.md#cli) for commands and flags.
+Crash reports and usage counts can be turned off. See [what is sent and how to opt out](docs/telemetry.md).
 
 ## Plugins and contributing
 
-Plugins add panes, data providers, broker connections, and commands. Install one from GitHub:
+Plugins add panes, data providers, broker connections, and commands. Install one from GitHub with `gloomberb install gloom-sh/gloom-tv`. See the [plugin guide](PLUGINS.md) and the [contributing guide](CONTRIBUTING.md).
 
-```bash
-gloomberb install gloom-sh/gloom-tv
-```
-
-See the [plugin development guide](PLUGINS.md), [TV setup](docs/usage.md#live-tv), or [contributing guide](CONTRIBUTING.md) to get started.
-
-Available in English, Spanish, Simplified Chinese, Traditional Chinese, Japanese, and Korean. Use `LANG` in the command bar to switch; see [language settings](docs/usage.md#localized-interface).
-
-[MIT licensed](LICENSE). Built with [OpenTUI](https://opentui.com/).
-
-## Crash reports and usage counts
-
-When the app hits an uncaught error, a render crash, or a plugin that fails to load, it sends a crash report to Gloom's API (`api.gloom.sh`), which forwards it to error tracking. A report contains the error type, message and stack trace, the app version, the operating system, and which surface it came from (terminal, desktop or web); when a plugin failed, its id. Your home directory is replaced with `~` before sending. Reports are tied to your account only when you are signed in.
-
-The app also counts how often you open each function, from the command bar, a menu or a link in another pane, and which functions are on screen when a workspace is restored at launch. It sends each function's mnemonic (such as `DES` or `GP`) with those two counts, the surface, the app version and the operating system, a minute after the first count, then every 15 minutes, and when you quit. Functions from plugins other than the official gloom-sh ones are sent as `plugin`, so their names never leave your machine. The server adds your plan (signed out, Free or Pro); the counts are never tied to your account.
-
-Neither contains anything from your workspace: no tickers, arguments, portfolios, watchlists, layouts, settings or queries. Both carry a random install id stored in `install-id` in the data folder, `~/.gloomberb` by default (in the browser, in local storage).
-
-The usage setting also covers command bar searches. When you are signed in, a search you finish in the command bar (you pause typing or run something, never each keystroke) is stored with your account to improve search: its text, the AI suggestions it got and the result you picked. Searches are deleted with your account.
-
-To turn either off, run `Crash Reports` or `Usage Counts` from the command bar, or:
-
-```bash
-gloomberb config set telemetry.crashReports false
-gloomberb config set telemetry.usage false
-```
-
-Setting `GLOOMBERB_NO_TELEMETRY=1` or `DO_NOT_TRACK=1` in the environment turns all of it off. The browser app also honours Do Not Track and Global Privacy Control.
-
-**Attention Counts are separate and off by default.** Run `Attention Counts` in the command bar and review the consent dialog to share ticker research counts for Gloom Trending. This sends ticker symbols and the kind of explicit research action only while signed in with a verified account. It does not send holdings, watchlist names, queries or an install id. Consent stays on this device; cloud sync cannot enable it elsewhere. Turn the setting off to discard unsent counts, or run `gloomberb config set telemetry.attention false`. The environment and browser opt-outs above also disable Attention Counts. See the [attention privacy review](docs/attention-privacy.md) for the authenticated collection boundary, retention, aggregation and remaining risks.
-
-## Sponsors
-
-<a href="https://adjacent.markets/?ref=gloomberb"><img src="docs/assets/adjacent.svg" alt="Adjacent" width="56" /></a>
-
-[Adjacent](https://adjacent.markets/?ref=gloomberb) builds prediction-market indices, reference rates, and data. Thank you for backing Gloomberb's open-source work.
-
-To sponsor Gloomberb, see [gloom.sh/sponsor](https://gloom.sh/sponsor).
+[MIT licensed](LICENSE). Built with [OpenTUI](https://opentui.com/). [Sponsor Gloomberb](https://gloom.sh/sponsor).

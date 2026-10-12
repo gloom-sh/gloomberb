@@ -113,7 +113,7 @@ export function useCommandBarActionRuntime({
     });
   }, [pushRoute, skipTickerSearchDebounceRef]);
 
-  const notify = useCallback((body: string, options?: { type?: "info" | "success" | "error" }) => {
+  const notify = useCallback((body: string, options?: { type?: "info" | "success" | "error"; duration?: number }) => {
     pluginRegistry.notify({ body, ...options });
   }, [pluginRegistry]);
 

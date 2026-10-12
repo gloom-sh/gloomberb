@@ -44,7 +44,7 @@ test("a slow linked ticker applies its tab to the reused or new pane after hydra
         dispatch: (action) => { actions.push(action); },
         pluginRegistry: {
           panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]),
-          events: { emit() {} }, notify() {}, getTermSize: () => ({ width: 120, height: 40 }),
+          events: { emit() {} }, notify() {}, getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null,
         } as any,
         buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-detail:linked" }),
         persistLayout: (layout) => { layouts++; stateRef.current.config.layout = layout; },
@@ -100,7 +100,7 @@ test.each(["ambiguous", "missing"])("%s ticker feedback waits for current naviga
       }),
       tickerRepository: { createTicker: async () => { throw new Error("Must not create an ambiguous ticker"); } } as any,
       dispatch: (action) => { actions.push(action); },
-      pluginRegistry: { notify: ({ body }: { body: string }) => { notifications.push(body); } } as any,
+      pluginRegistry: { notify: ({ body }: { body: string }) => { notifications.push(body); }, getDisabledPaneOwner: () => null } as any,
       buildPaneInstance: () => null, persistLayout() {}, activatePane() {}, focusVisiblePane() {},
     });
     return <text>Research</text>;
@@ -138,7 +138,7 @@ test.each(["floating", "docked", "only-floating"])("ticker research opens visibl
   function Harness() {
     runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: createTestDataProvider(), tickerRepository: {} as any, dispatch() {},
       pluginRegistry: { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} },
-        getTermSize: () => ({ width: 120, height: 40 }) } as any,
+        getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null } as any,
       buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-detail:opened" }),
       persistLayout: (layout) => { stateRef.current.config.layout = layout; },
       activatePane: (paneId) => { activated.push(paneId); }, focusVisiblePane() {},
@@ -153,4 +153,87 @@ test.each(["floating", "docked", "only-floating"])("ticker research opens visibl
   expect(activated).toEqual(["ticker-detail:opened"]);
   if (mode !== "docked") expect(layout.floating.map((pane) => pane.instanceId)).toContain(source.instanceId);
   else expect(getDockedPaneIds(layout)).toContain(source.instanceId);
+});
+
+// `DES NEE` binds the public listing; a ticker link names no route. Both are the one security without a broker.
+test("a ticker link brings forward the DES the command bar opened on the public listing, binding untouched", async () => {
+  const config = createDefaultConfig(":memory:");
+  const des = createPaneInstance(TICKER_RESEARCH_PANE_ID, { instanceId: "ticker-research:nee", title: "NEE",
+    binding: { kind: "fixed", symbol: "NEE", instrument: null, listing: { name: "NextEra Energy Inc.", exchange: "NYSE", currency: "USD", type: "Common Stock" } } });
+  config.layout = { dockRoot: null, instances: [des], floating: [{ instanceId: des.instanceId, x: 2, y: 2, width: 80, height: 20, zIndex: 1 }], detached: [] };
+  const stateRef = { current: createInitialState(config) };
+  stateRef.current.tickers.set("NEE", createTestTicker("NEE", "NextEra Energy Inc.", { exchange: "NYSE" }));
+  const focused: string[] = [];
+  let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
+  function Harness() {
+    runtime = useAppTickerOpenRuntime({ stateRef, dataProvider: createTestDataProvider(), tickerRepository: {} as any, dispatch() {},
+      pluginRegistry: { panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]), events: { emit() {} }, notify() {},
+        getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null } as any,
+      buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-research:second" }),
+      persistLayout: (layout) => { stateRef.current.config.layout = layout; },
+      activatePane: (paneId) => { focused.push(paneId); }, focusVisiblePane: (paneId) => { focused.push(paneId); },
+    });
+    return <text>Research</text>;
+  }
+  const rendered = await tui.render(<Harness />);
+  await act(async () => { await rendered.renderOnce(); });
+  await act(async () => { await runtime.openPinnedTicker("NEE", { floating: true, paneType: TICKER_RESEARCH_PANE_ID }); });
+  expect(focused).toEqual([des.instanceId]);
+  expect(stateRef.current.config.layout.instances).toEqual([des]);
+});
+
+// With Ticker Research off, its pane would be added and then hidden.
+test("opening a ticker while its pane's plugin is off offers to turn it on instead", async () => {
+  const config = createDefaultConfig(":memory:");
+  config.disabledPlugins = ["ticker-research"];
+  const stateRef = { current: createInitialState(config) };
+  stateRef.current.tickers.set("AAPL", createTestTicker("AAPL", "Apple", { exchange: "NASDAQ" }));
+  const notifications: Array<{ body: string; action?: { label: string; onClick: () => void } }> = [];
+  const enabled: string[] = [];
+  const layouts: string[][] = [];
+  let runtime!: ReturnType<typeof useAppTickerOpenRuntime>;
+  function Harness() {
+    runtime = useAppTickerOpenRuntime({
+      stateRef,
+      dataProvider: createTestDataProvider(),
+      tickerRepository: { loadTicker: async () => null } as any,
+      dispatch() {},
+      pluginRegistry: {
+        panes: new Map([[TICKER_RESEARCH_PANE_ID, { id: TICKER_RESEARCH_PANE_ID }]]),
+        events: { emit() {} },
+        getTermSize: () => ({ width: 120, height: 40 }),
+        getDisabledPaneOwner: (_paneType: string, disabled: readonly string[]) => (
+          disabled.includes("ticker-research") ? { id: "ticker-research", name: "Ticker Research" } : null
+        ),
+        notify: (notification: (typeof notifications)[number]) => { notifications.push(notification); },
+        setPluginEnabled: (pluginId: string) => {
+          enabled.push(pluginId);
+          stateRef.current = { ...stateRef.current, config: { ...stateRef.current.config, disabledPlugins: [] } };
+        },
+      } as any,
+      buildPaneInstance: (paneId, options) => createPaneInstance(paneId, { ...options, instanceId: "ticker-detail:opened" }),
+      persistLayout: (layout) => {
+        layouts.push(layout.instances.map((pane) => pane.instanceId));
+        stateRef.current.config.layout = layout;
+      },
+      activatePane() {},
+      focusVisiblePane() {},
+    });
+    return <text>Research</text>;
+  }
+  const rendered = await tui.render(<Harness />);
+  await act(async () => { await rendered.renderOnce(); });
+
+  await act(async () => { await runtime.openPinnedTicker("AAPL"); });
+  expect(layouts).toEqual([]);
+  expect(notifications).toHaveLength(1);
+  expect(notifications[0]).toMatchObject({ body: "Turn on Ticker Research to open AAPL.", action: { label: "Turn on" } });
+
+  // The button turns it on and opens what was asked for.
+  await act(async () => {
+    notifications[0]!.action!.onClick();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  expect(enabled).toEqual(["ticker-research"]);
+  expect(layouts.at(-1)).toContain("ticker-detail:opened");
 });

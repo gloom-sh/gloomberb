@@ -62,41 +62,66 @@ export function impactIndicator(impact: EconImpact): { text: string; color: stri
   }
 }
 
-function dateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/** The UTC day of an instant, so a release sits under the same day on every machine. */
+export function dateKey(d: Date): string {
+  return d.toISOString().slice(0, 10);
 }
 
 /**
- * Rows are grouped by local day, so the time beside them is local too. The
- * payload's `time` is the UTC clock time and would put a 23:00 UTC release
- * under the next local day at "23:00".
+ * The release's UTC clock time. Rows group by UTC day and the column header
+ * names the zone, as `gloomberb econ` prints it; local time would move a 23:00
+ * UTC release under another day and read differently on every machine.
  */
 export function timeLabel(d: Date): string {
-  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  return d.toISOString().slice(11, 16);
+}
+
+/** The zone the calendar's times and days are in, for the column header. */
+export const CALENDAR_TIME_ZONE_LABEL = "UTC";
+
+/** "Fri Oct 9", the UTC day the calendar groups an instant under. */
+export function shortDayLabel(d: Date): string {
+  return `${DAY_NAMES[d.getUTCDay()]!} ${MONTH_NAMES[d.getUTCMonth()]!} ${d.getUTCDate()}`;
 }
 
 export function dayLabel(d: Date, today: Date): string {
   const dk = dateKey(d);
   const todayKey = dateKey(today);
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const dayMs = 24 * 60 * 60 * 1000;
+  const yesterday = dateKey(new Date(today.getTime() - dayMs));
+  const tomorrow = dateKey(new Date(today.getTime() + dayMs));
 
-  const dayName = DAY_NAMES[d.getDay()]!;
-  const monthName = MONTH_NAMES[d.getMonth()]!;
-  const dateNum = d.getDate();
-  const suffix = `${dayName} ${monthName} ${dateNum}`;
+  const suffix = shortDayLabel(d);
 
   if (dk === todayKey) return `TODAY · ${suffix}`;
-  if (dk === dateKey(tomorrow)) return `TOMORROW · ${suffix}`;
-  if (dk === dateKey(yesterday)) return `YESTERDAY · ${suffix}`;
+  if (dk === tomorrow) return `TOMORROW · ${suffix}`;
+  if (dk === yesterday) return `YESTERDAY · ${suffix}`;
   return suffix;
 }
 
 /**
+ * The calendar runs two weeks ahead. One that lists nothing a week past the
+ * start of the window (today, or a later first day asked for) stops short,
+ * as a feed that ends with its own week does, and says where it stops rather
+ * than reading as a quiet week.
+ */
+const MIN_DAYS_LISTED_AHEAD = 7;
+
+/**
+ * When the calendar stops short of a week past `windowStart`, the time of its
+ * last event; null when it reaches that far or lists nothing.
+ */
+export function shortCalendarEnd(events: readonly EconEvent[], windowStart: number): Date | null {
+  let last: Date | null = null;
+  for (const event of events) {
+    if (!last || event.date.getTime() > last.getTime()) last = event.date;
+  }
+  return last && last.getTime() < windowStart + MIN_DAYS_LISTED_AHEAD * 86_400_000 ? last : null;
+}
+
+/**
  * Events (already in time order; `eventIdx` indexes them) under a header per
- * local day, with NOW before the first event still to come. When that event is
+ * UTC day, with NOW before the first event still to come. When that event is
  * on a later day, NOW sits above that day's header, since the present is still
  * on the earlier day.
  */

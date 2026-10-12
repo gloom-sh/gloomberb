@@ -27,6 +27,23 @@ import { isResearchAlertKind } from "./research-rules";
 import { useAsyncResource } from "../../../public/react";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
+import { newYorkToday } from "../earnings/board-model";
+import { readScheduledRule, rearmScheduledAlert, scheduledAlertStatus } from "./scheduled";
+import { checkScheduledEventAlertsNow } from "./scheduled-check";
+import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } from "./targets";
+
+/** Earnings and macro event rules name the event day they wait for; the rest name what they follow. */
+function ruleTarget(rule: EventAlertRule): string {
+  const target = eventAlertTarget(rule);
+  if (!readScheduledRule(rule)) return target;
+  return `${target} · ${rule.eventDate ?? "date not known yet"}`;
+}
+
+function ruleState(rule: EventAlertRule, today: string): "Active" | "Paused" | "Alerted" {
+  const scheduled = readScheduledRule(rule);
+  const status = scheduled ? scheduledAlertStatus(rule, scheduled.leadDays, today) : rule.status;
+  return status === "paused" ? "Paused" : status === "triggered" ? "Alerted" : "Active";
+}
 
 const columnsFor = (width: number, lastCheck: boolean): DataTableColumn[] => [
   { id: "kind", label: "Event", width: 15, align: "left" },
@@ -52,7 +69,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       [...rules].sort((a, b) => {
         const value = (rule: EventAlertRule) =>
           sort.columnId === "target"
-            ? eventAlertTarget(rule)
+            ? ruleTarget(rule)
             : sort.columnId === "created"
               ? rule.createdAt
               : sort.columnId === "kind"
@@ -65,6 +82,10 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     [rules, sort],
   );
   const selectedRule = items[Math.min(selected, Math.max(0, items.length - 1))];
+  const today = newYorkToday();
+  const selectedFired = !!selectedRule && ruleState(selectedRule, today) === "Alerted";
+  const openTarget = useOpenAlertTarget();
+  const selectedTarget = useMemo(() => selectedRule ? alertTarget(eventRuleSubject(selectedRule)) : null, [selectedRule]);
   // Research rules keep a dated observation in the Cloud; show its value and percentile.
   const access = usePlanAccess();
   const session = useResearchCloudSession();
@@ -91,6 +112,21 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
               result.rules.map((entry) => (entry.id === rule.id ? toggleEventAlert(entry) : entry)),
             );
       });
+    },
+    [setJson],
+  );
+  // An earnings or macro alert that went off alerts again for the same event.
+  const rearm = useCallback(
+    (rule: EventAlertRule | undefined) => {
+      if (!rule) return;
+      setJson((current) => {
+        const result = readEventAlerts(current);
+        return result.error
+          ? current
+          : JSON.stringify(result.rules.map((entry) => (entry.id === rule.id ? rearmScheduledAlert(entry) : entry)));
+      });
+      // Once the write has landed, so it alerts now rather than at the next 15-minute check.
+      setTimeout(checkScheduledEventAlertsNow, 1_000);
     },
     [setJson],
   );
@@ -129,6 +165,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
       ],
       hints: [
         { id: "add", key: "a", label: "dd event", onPress: add, disabled: !!error },
+        ...alertViewHints(selectedTarget, openTarget),
         {
           id: "toggle",
           key: "p",
@@ -143,9 +180,12 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
           onPress: () => void remove(),
           disabled: !selectedRule,
         },
+        ...(selectedFired
+          ? [{ id: "rearm", key: "m", label: "re-arm", title: "Re-arm", onPress: () => rearm(selectedRule) }]
+          : []),
       ],
     }),
-    [status, error, selectedRule, add, toggle, remove],
+    [status, error, selectedRule, selectedFired, selectedTarget, add, toggle, rearm, remove, openTarget],
   );
   return (
     <DataTableView<EventAlertRule, DataTableColumn>
@@ -173,11 +213,9 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
                 ? ruleStateText(states.get(rule.id))
                 : ""
               : column.id === "target"
-              ? eventAlertTarget(rule)
+              ? ruleTarget(rule)
               : column.id === "status"
-                ? rule.status === "active"
-                  ? "Active"
-                  : "Paused"
+                ? ruleState(rule, today)
                 : new Date(rule.createdAt).toISOString().slice(0, 10),
         color: row.selected
           ? colors.selectedText
@@ -190,7 +228,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
         <PaneStatusBody
           empty
           emptyTitle="No event alerts"
-          emptyMessage="Follow filings, news, earnings, members, funds or market moves."
+          emptyMessage="Follow earnings and CPI or FOMC dates, filings, news, members, funds or market moves."
           actions={<Button label="Add event alert" compact onPress={add} />}
         />
       )}

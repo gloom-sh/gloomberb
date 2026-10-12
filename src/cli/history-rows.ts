@@ -8,6 +8,9 @@ import {
   RANGE_HISTORY_RESOLUTION,
   type ManualChartResolution,
 } from "../time-series/resolution";
+import { classifyInstrumentType } from "../tickers/instrument-kind";
+import { isRoundTheClockCoin } from "../utils/crypto-pair";
+import { currencyPairCode } from "../utils/currency-pair";
 import { currencyUnitLabel } from "../utils/currency-units";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
@@ -43,10 +46,25 @@ export interface HistoryRow {
   volume: number | null;
   /** Currency code of the prices; null for index points or when no source says. */
   currency: string | null;
+  /** What one price is, as `historyUnit` names it: `USD`, `index points`, `ZAR per USD`; null when no source says. */
+  unit: string | null;
   /** Bar size, in the codes of `resolution`: 5m, 1h, 1d, 1wk, 1mo. */
   interval: ManualChartResolution | null;
   /** Each way the bar's prices contradict each other, such as `high<open`; null when they agree. */
   flag: string | null;
+  /** The bar's period had not ended when it was served: the close is the latest price. */
+  partial?: true;
+  /** The bar's prices were rebuilt from hourly bars where the source left the day empty. */
+  filled?: true;
+  /** What the volume counts, when the history says: a coin's is traded value in its quote currency (`USD`). */
+  volumeUnit?: string;
+  /** Why a coin's bar has no volume: `day in progress`, `rebuilt from hourly bars`, `not reported`. */
+  volumeNote?: string;
+}
+
+/** A coin's volume: traded value in its quote currency, per UTC day on daily bars. */
+export interface HistoryVolume {
+  unit: string;
 }
 
 function decimalPlaces(value: number): number {
@@ -113,6 +131,8 @@ export function historyRows(
   points: readonly PricePoint[],
   resolution: ManualChartResolution | null,
   currency: string | null = null,
+  unit: string | null = null,
+  volume: HistoryVolume | null = null,
 ): HistoryRow[] {
   const times = points.map(getPricePointTimestamp);
   const intraday = resolution ? isIntradayResolution(resolution) : looksIntraday(times);
@@ -131,10 +151,63 @@ export function historyRows(
       close: price(values.close),
       volume: values.volume,
       currency,
+      unit,
       interval,
       flag: flags.length > 0 ? flags.join(",") : null,
+      ...(point.partial ? { partial: true as const } : {}),
+      ...(point.filled ? { filled: true as const } : {}),
+      ...(volume ? { volumeUnit: volume.unit } : {}),
+      // A coin trades every day, so a bar without volume says why.
+      ...(volume && values.volume == null
+        ? { volumeNote: point.partial ? "day in progress" : point.filled ? "rebuilt from hourly bars" : "not reported" }
+        : {}),
     };
   });
+}
+
+/**
+ * The volume of a coin's history: traded value in the quote currency the
+ * prices are in. Null for anything else, whose volume stays unlabelled.
+ */
+export function historyVolume(
+  unit: HistoryUnit,
+  market: { listing: string; exchange?: string; instrumentType?: string },
+): HistoryVolume | null {
+  const coin = isRoundTheClockCoin(market.listing, market.exchange) || classifyInstrumentType(market.instrumentType) === "crypto";
+  return coin && unit.kind === "currency" && unit.currency ? { unit: unit.currency } : null;
+}
+
+/** `volume in USD per UTC day` for a coin's daily bars; `volume in USD` for others. */
+export function historyVolumeText(volume: HistoryVolume, interval: ManualChartResolution | null): string {
+  return interval === "1d" ? `volume in ${volume.unit} per UTC day` : `volume in ${volume.unit}`;
+}
+
+function listDates(dates: readonly string[]): string {
+  const shown = dates.slice(-LISTED_GAPS);
+  const earlier = dates.length - shown.length;
+  const items = [...earlier > 0 ? [`${earlier} earlier`] : [], ...shown];
+  return items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "";
+}
+
+/**
+ * What the partial and filled bars are: "2026-10-12 is still forming
+ * (partial), with no volume until the day closes", and the bars rebuilt from
+ * hourly bars. Null when no bar is either.
+ */
+export function historyBarStatusNote(rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "volume">[]): string | null {
+  const partial = rows.filter((row) => row.partial);
+  const filled = rows.filter((row) => row.filled);
+  const notes = [
+    partial.length > 0
+      ? `${listDates(partial.map((row) => row.date))} ${partial.length === 1 ? "is" : "are"} still forming (partial)`
+        + (partial.every((row) => row.volume == null) ? ", with no volume until the day closes" : "")
+      : null,
+    filled.length > 0
+      ? `${listDates(filled.map((row) => row.date))} ${filled.length === 1 ? "was" : "were"} rebuilt from hourly bars (filled)`
+        + (filled.every((row) => row.volume == null) ? ", without volume" : "")
+      : null,
+  ].filter((note): note is string => note != null);
+  return notes.length > 0 ? notes.join("; ") : null;
 }
 
 function neededDecimals(value: number, cap: number): number {
@@ -196,15 +269,16 @@ export interface HistoryUnit {
 }
 
 /**
- * What the prices are in. An FX pair is named by its symbol (ZAR=X is ZAR per
- * USD, EURUSD=X is USD per EUR), an index is in points, and anything else is
- * in the currency its quote states, a sub-unit named as such. Without one the
- * unit is unknown rather than guessed from the exchange.
+ * What the prices are in. An FX pair is named by its listing (ZAR=X is ZAR per
+ * USD; EURUSD=X, EUR/USD and EURUSD:CCY are USD per EUR), an index is in
+ * points, and anything else is in the currency its quote states, a sub-unit
+ * named as such. Without one the unit is unknown rather than guessed from the
+ * exchange.
  */
-export function historyUnit(symbol: string, quote: { currency?: string; instrumentType?: string } | null | undefined): HistoryUnit {
-  const pair = /^([A-Z]{3})([A-Z]{3})?=X$/.exec(symbol.trim().toUpperCase());
+export function historyUnit(listing: string, quote: { currency?: string; instrumentType?: string } | null | undefined): HistoryUnit {
+  const pair = currencyPairCode(listing.trim().toUpperCase());
   if (pair) {
-    const [base, counter] = pair[2] ? [pair[1]!, pair[2]] : ["USD", pair[1]!];
+    const [base, counter] = [pair.slice(0, 3), pair.slice(3)];
     return { kind: "pair", currency: counter, unit: `${counter} per ${base}` };
   }
   if (quote?.instrumentType?.trim().toUpperCase() === "INDEX") return { kind: "points", currency: null, unit: "index points" };
@@ -257,6 +331,43 @@ export function historyNotes(
     }
   }
   return notes;
+}
+
+/** Gaps listed by date before the rest are only counted. */
+const LISTED_GAPS = 3;
+
+/**
+ * "No bar for 2026-10-10": the days a coin, which trades every day, has no
+ * daily bar for between its first and last bar. Days before the first bar are
+ * before the listing. A market that closes skips weekends and holidays, so its
+ * gaps say nothing and get no note.
+ */
+export function historyGapNote(
+  rows: readonly Pick<HistoryRow, "date" | "interval">[],
+  market: { listing: string; exchange?: string; instrumentType?: string },
+): string | null {
+  const everyDay = isRoundTheClockCoin(market.listing, market.exchange)
+    || classifyInstrumentType(market.instrumentType) === "crypto";
+  if (!everyDay || rows[0]?.interval !== "1d") return null;
+  const days = new Set(rows.map((row) => Date.parse(`${row.date.slice(0, 10)}T00:00:00Z`)).filter(Number.isFinite));
+  const sorted = [...days].sort((left, right) => left - right);
+  const gaps: Array<[number, number]> = [];
+  for (const [index, day] of sorted.slice(1).entries()) {
+    const previous = sorted[index]!;
+    if (day - previous > DAY_MS) gaps.push([previous + DAY_MS, day - DAY_MS]);
+  }
+  if (!gaps.length) return null;
+  const date = (time: number) => new Date(time).toISOString().slice(0, 10);
+  const length = (gaps: Array<[number, number]>) => gaps.reduce((count, [from, to]) => count + (to - from) / DAY_MS + 1, 0);
+  // The latest gaps by date, the rest as a count.
+  const shown = gaps.slice(-LISTED_GAPS);
+  const earlier = length(gaps) - length(shown);
+  const listed = [
+    ...earlier > 0 ? [`${earlier} earlier ${earlier === 1 ? "day" : "days"}`] : [],
+    ...shown.map(([from, to]) => from === to ? date(from) : `${date(from)} to ${date(to)}`),
+  ];
+  const list = listed.length > 1 ? `${listed.slice(0, -1).join(", ")} and ${listed.at(-1)}` : listed[0];
+  return `${length(gaps) === 1 ? "No bar" : "No bars"} for ${list}`;
 }
 
 /** "37 of 251 bars have high below open or close in the source data; ...", or null when every bar agrees. */

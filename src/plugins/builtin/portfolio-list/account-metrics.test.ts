@@ -238,11 +238,12 @@ describe("broker-linked header totals", () => {
     expect(metrics.dailyPnlPct).toBeCloseTo(80 / 4_970 * 100);
     expect(metrics.unrealizedPnl).toBe(200 + 150);
 
-    // A day P&L from an earlier session is not today's; the quotes' is.
+    // A day P&L from an earlier session is not today's; the quotes' is, as a
+    // return on the equity before it (Net Liq now less the day), not on the positions.
     const yesterday = snapshot({ updatedAt: Date.now() - 2 * 86_400_000 });
     const stale = resolvePortfolioAccountMetrics(totals, yesterday, undefined, "marks");
     expect(stale.dailyPnl).toBe(120 - 20);
-    expect(stale.dailyPnlPct).toBe(totals.dailyPnlPct);
+    expect(stale.dailyPnlPct).toBeCloseTo(100 / (5_000 + 100 - 50 - 100) * 100);
   });
 
   test("a short position moves the net figures against the gross value", () => {

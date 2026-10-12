@@ -15,6 +15,8 @@ interface ChatControllerMessageLoadingOptions {
   emit: (channelId?: string) => void;
   mergeMessages: (channelId: string, messages: ChatMessage[], options?: MergeMessagesOptions) => void;
   persistChannelState: (channelId: string) => void;
+  /** The signed-in account's id, or null. */
+  getReaderId?: () => string | null;
 }
 
 export class ChatControllerMessageLoading {
@@ -45,6 +47,7 @@ export class ChatControllerMessageLoading {
       persistChannelState: (nextChannelId) => {
         this.options.persistChannelState(nextChannelId);
       },
+      readerId: () => this.options.getReaderId?.() ?? null,
     })
       .catch((error: unknown) => {
         channel.messagesError = error instanceof Error && error.message.trim()

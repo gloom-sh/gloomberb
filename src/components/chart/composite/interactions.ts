@@ -181,13 +181,19 @@ function clampPositions(
   frame: CompositeNavigationFrame,
   range: PositionRange,
   paddingRatio: number,
+  from?: PositionRange,
 ): PositionRange {
   const dataSpan = Math.max(frame.dataEndPosition - frame.dataStartPosition, 0);
   const maximumSpan = Math.max(dataSpan * (1 + paddingRatio), frame.minimumSpanPositions);
   const span = clamp(range.end - range.start, frame.minimumSpanPositions, maximumSpan);
-  let start = Math.max(range.start, frame.dataStartPosition - span * paddingRatio);
+  // A view already past a limit stays where it is rather than being pulled
+  // back across it: the limits move when bars arrive or the source says it
+  // has no older ones, and that must not jump the view under the pointer.
+  const oldest = frame.dataStartPosition - span * paddingRatio;
+  let start = Math.max(range.start, from ? Math.min(oldest, from.start) : oldest);
   // The newest observation is the hard edge: nothing lies beyond it yet.
-  start = Math.min(start, frame.dataEndPosition - span);
+  const newest = frame.dataEndPosition - span;
+  start = Math.min(start, from ? Math.max(newest, from.start) : newest);
   return { start, end: start + span };
 }
 
@@ -216,6 +222,7 @@ export function panCompositeViewport(
     frame,
     { start: positions.start - shift, end: positions.end - shift },
     frame.historicalPaddingRatio,
+    positions,
   );
   return viewportFromPositions(frame, clamped);
 }

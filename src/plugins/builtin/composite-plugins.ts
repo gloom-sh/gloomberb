@@ -33,12 +33,13 @@ import { cotModule } from "./cot";
 import { doeModule } from "./doe";
 import { gpuModule } from "./gpu";
 import { fxMatrixModule } from "./fx-matrix";
+import { docsModule } from "./docs";
 import { helpModule } from "./help";
 import { positionSizerModule } from "./kelly-sizer";
 import { layoutManagerModule } from "./layout-manager";
 import { marketMoversModule } from "./market-movers";
 import { volatilityModule } from "./volatility";
-import { composeBuiltinPlugin } from "./plugin-module";
+import { composeBuiltinPlugin, type PluginModule } from "./plugin-module";
 import { portfolioListModule } from "./portfolio-list";
 import { scannerModule } from "./scanner";
 import { sectorsModule } from "./sectors";
@@ -58,6 +59,7 @@ import { socialMentionsModule } from "./social-mentions";
 import { timeSalesModule } from "./time-sales";
 import { estimateRevisionsModule } from "./estimate-revisions";
 import { chartComposerModule } from "./chart-composer";
+import { userSeriesModule } from "./chart-composer/user-series";
 import { congressResearchModule } from "./congress-trades";
 import { dividendYieldModule } from "./dividend-yield";
 import { executivesModule } from "./executives";
@@ -86,16 +88,26 @@ import { thirteenFModule } from "./thirteenf";
 import { tickerDetailModule } from "./ticker-detail";
 import { macroSharedResourcesModule } from "./macro-resources";
 import {
+  altDataPluginMeta,
   applicationPluginMeta,
-  macroPluginMeta,
-  marketOverviewPluginMeta,
+  creditPluginMeta,
+  cryptoPluginMeta,
+  earningsPluginMeta,
+  futuresCommoditiesPluginMeta,
+  globalMarketsPluginMeta,
   portfolioPluginMeta,
-  tickerResearchPluginMeta,
+  filingsPluginMeta,
+  optionsVolatilityPluginMeta,
+  ownershipPluginMeta,
+  quantPluginMeta,
+  ratesMacroPluginMeta,
+  screenersPluginMeta,
+  tickerCorePluginMeta,
 } from "./builtin-plugin-meta";
 
 export const applicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
-  modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule],
+  modules: [layoutManagerModule, pluginMarketplaceModule, helpModule, changelogModule, connectionsModule, docsModule],
 });
 
 export const portfolioPlugin = composeBuiltinPlugin({
@@ -103,51 +115,63 @@ export const portfolioPlugin = composeBuiltinPlugin({
   modules: [portfolioListModule, portfolioAnalyticsModule, positionSizerModule],
 });
 
-export const tickerResearchPlugin = composeBuiltinPlugin({
-  ...tickerResearchPluginMeta,
+// Ticker Research's modules are drawn in the renderer: the desktop backend
+// process runs none of them, and keeps only the identity of the plugins that
+// hold nothing else.
+const rendererOnly = (module: PluginModule) => ({ module, rendererOnly: true });
+const tickerResearchModule = (module: PluginModule) => ({ module, stateId: "ticker-research", rendererOnly: true });
+
+export const tickerCorePlugin = composeBuiltinPlugin({
+  ...tickerCorePluginMeta,
   modules: [
-    tickerDetailModule,
-    chartComposerModule,
-    congressResearchModule,
+    ...[
+      tickerDetailModule,
+      chartComposerModule,
+      researchModule,
+      estimateRevisionsModule,
+      companyKpisModule,
+      revenueBreakdownModule,
+      dividendYieldModule,
+      reverseDcfModule,
+      peBandModule,
+      executivesModule,
+      timeSalesModule,
+    ].map(rendererOnly),
+    // Reads the profile's series folder, so it runs where the disk is: the desktop backend too.
+    userSeriesModule,
+  ],
+});
+
+export const optionsVolatilityPlugin = composeBuiltinPlugin({
+  ...optionsVolatilityPluginMeta,
+  modules: [
     optionsModule,
     optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
-    seasonalityModule,
-    earningsRippleModule,
-    reverseDcfModule,
-    peBandModule,
-    macroDayModule,
     ivHistoryModule,
-    backtestModule,
-    estimateRevisionsModule,
-    researchModule,
-    shortVolumeModule,
-    socialMentionsModule,
-    debtMaturitiesModule,
-    revenueBreakdownModule,
-    supplyChainModule,
-    creditDocumentsModule,
-    companyAttentionModule,
-    catalystsModule,
-    companyKpisModule,
-    awardsModule,
-    exposureModule,
-    mnaModule,
-    dividendYieldModule,
+  ].map(rendererOnly),
+});
+
+export const ownershipPlugin = composeBuiltinPlugin({
+  ...ownershipPluginMeta,
+  description: "Holders, 13F funds, insider trades, short interest and volume, and congressional trades.",
+  modules: [
     holdersModule,
-    shortInterestModule,
-    timeSalesModule,
     thirteenFModule,
-    secModule,
     insiderModule,
-    jobsModule,
-    executivesModule,
-    riskFactorsModule,
-    filingEventsModule,
-  ],
+    shortInterestModule,
+    shortVolumeModule,
+    // The Congress research tab; the CONG pane is Gloom Cloud's.
+    congressResearchModule,
+  ].map(rendererOnly),
+});
+
+export const filingsPlugin = composeBuiltinPlugin({
+  ...filingsPluginMeta,
+  modules: [secModule, riskFactorsModule, filingEventsModule, catalystsModule, mnaModule].map(rendererOnly),
 });
 
 export const brokerPlugin = composeBuiltinPlugin({
@@ -159,35 +183,48 @@ export const brokerPlugin = composeBuiltinPlugin({
   modules: [brokerManagerModule, brokerTradingModule],
 });
 
-export const marketOverviewPlugin = composeBuiltinPlugin({
-  ...marketOverviewPluginMeta,
-  description: "Global indices, movers, scanners, sectors, FX, futures, and correlations.",
+export const globalMarketsPlugin = composeBuiltinPlugin({
+  ...globalMarketsPluginMeta,
+  modules: [worldIndicesModule, worldVenueMapModule, sectorsModule, fxMatrixModule, relativeRotationModule],
+});
+
+export const screenersPlugin = composeBuiltinPlugin({
+  ...screenersPluginMeta,
+  description: "Equity screener, top movers, session highs and lows, and unusual options flow.",
+  modules: [equityScreenerModule, marketMoversModule, scannerModule],
+});
+
+export const futuresCommoditiesPlugin = composeBuiltinPlugin({
+  ...futuresCommoditiesPluginMeta,
+  modules: [futuresModule, futuresCurveModule, cotModule, doeModule],
+});
+
+export const cryptoPlugin = composeBuiltinPlugin({
+  ...cryptoPluginMeta,
+  modules: [cryptoBoardModule, perpsModule],
+});
+
+export const altDataPlugin = composeBuiltinPlugin({
+  ...altDataPluginMeta,
   modules: [
-    correlationModule,
-    relativeRotationModule,
-    equityScreenerModule,
-    worldIndicesModule,
-    worldVenueMapModule,
-    marketMoversModule,
-    scannerModule,
-    sectorsModule,
-    fxMatrixModule,
-    futuresModule,
-    futuresCurveModule,
-    cotModule,
-    doeModule,
-    gpuModule,
-    attentionModule,
-    powerModule,
-    cryptoBoardModule,
-    perpsModule,
+    ...[attentionModule, gpuModule, powerModule].map((module) => ({ module, stateId: "market-overview" })),
+    ...[supplyChainModule, exposureModule, awardsModule, companyAttentionModule, jobsModule, socialMentionsModule].map(rendererOnly),
   ],
 });
 
-export const macroPlugin = composeBuiltinPlugin({
-  ...macroPluginMeta,
-  description: "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, Treasury auctions, and earnings.",
+export const quantPlugin = composeBuiltinPlugin({
+  ...quantPluginMeta,
   modules: [
+    { module: correlationModule, stateId: "market-overview" },
+    ...[backtestModule, seasonalityModule, macroDayModule].map(rendererOnly),
+  ],
+});
+
+export const ratesMacroPlugin = composeBuiltinPlugin({
+  ...ratesMacroPluginMeta,
+  modules: [
+    // The FRED cache the other panes and the chart composer read too. Every
+    // plugin is set up whether or not it is switched on, so it stays attached.
     macroSharedResourcesModule,
     economicCalendarModule,
     econStatisticsModule,
@@ -195,15 +232,27 @@ export const macroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,
-    bondCalculatorModule,
     centralBankRatesModule,
     volatilityModule,
-    creditConditionsModule,
     marketValuationModule,
+  ],
+});
+
+export const creditPlugin = composeBuiltinPlugin({
+  ...creditPluginMeta,
+  modules: [
     cdsModule,
     creditBoardsModule,
+    creditConditionsModule,
     treasuryAuctionsModule,
-    earningsModule,
-    earningsCallsModule,
+    bondCalculatorModule,
+    tickerResearchModule(creditDocumentsModule),
+    tickerResearchModule(debtMaturitiesModule),
   ],
+});
+
+export const earningsPlugin = composeBuiltinPlugin({
+  ...earningsPluginMeta,
+  description: "Earnings calendar with surprises and implied moves, call transcripts, and the earnings ripple through customers and suppliers.",
+  modules: [earningsModule, earningsCallsModule, tickerResearchModule(earningsRippleModule)],
 });

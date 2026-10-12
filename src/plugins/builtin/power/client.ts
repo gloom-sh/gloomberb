@@ -2,6 +2,8 @@ import { apiClient } from "../../../api-client";
 import type { PowerBoard, PowerDetail, PowerFilter, PowerHistory, PowerProject } from "../../../api-client/power";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { powerTickerScopes, type PowerTab, type PowerTickerScope } from "./model";
+import { powerQuery } from "./query";
 
 const cacheOptions = { source: "gloom-cloud", schemaVersion: 1, policy: { staleMs: 60 * 60_000, expireMs: 30 * 86_400_000 } };
 export const powerBoardCache = createPluginCache<PowerBoard>({ ...cacheOptions, kind: "power-board" });
@@ -87,6 +89,20 @@ export async function fetchAllPowerHistory(filter: PowerFilter, client: Pick<Pow
     points.push(...page.points);
   }
   return { ...first, points, hasMore: false, nextOffset: null };
+}
+/**
+ * How many records name a ticker on each other tab, for a tab that has none:
+ * one single-row page per scope, read for its total, which a free preview
+ * reports in full. A scope that fails to answer has no total rather than
+ * failing the tab it explains.
+ */
+export async function fetchPowerTickerScopes(symbol: string, tab: PowerTab, context: string,
+  client: Pick<PowerApi, "getCloudPowerBoard"> = apiClient, signal?: AbortSignal): Promise<PowerTickerScope[]> {
+  return Promise.all(powerTickerScopes(tab, context).map((scope) => {
+    const count = () => fetchPowerBoard({ ...powerQuery({ tab: scope.tab, context: scope.context }, symbol), limit: 1 }, client, signal).then((board) => board.total);
+    // One retry: a count is cheap, and the first of several at once is the one most often refused.
+    return count().catch(() => count()).then((total) => ({ ...scope, total }), () => ({ ...scope, total: null }));
+  }));
 }
 const key = (query: unknown, scope: string) => `${scope}:${JSON.stringify(query)}`;
 export const loadPowerBoard = (filter: PowerFilter, scope: string, force = false, signal?: AbortSignal) =>

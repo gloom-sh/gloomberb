@@ -3,6 +3,7 @@ import type {
   AuthUser,
   ChatMessage,
   ChatNotification,
+  ChatReactionsUpdate,
   CloudQuotePayload,
   QuoteStreamTarget,
   ScannerFeedEvent,
@@ -12,6 +13,7 @@ import type {
 import {
   normalizeChatMessage,
   normalizeChatNotification,
+  normalizeChatReactions,
   normalizeTeamNotification,
 } from "./normalizers";
 import { debugLog } from "../utils/debug-log";
@@ -33,12 +35,15 @@ const QUOTE_SUBSCRIPTION_FLUSH_MS = 25;
 const MARKET_BATCH_FEATURE = "market.batch";
 /** Chat frames carry `attachments`; without it the server writes images into the text. */
 export const CHAT_ATTACHMENTS_FEATURE = "chat.attachments";
-const CLIENT_SOCKET_FEATURES = [MARKET_BATCH_FEATURE, CHAT_ATTACHMENTS_FEATURE] as const;
+/** The app can run terminal tools relayed from a remote assistant; it still announces itself first. */
+export const TERMINAL_RELAY_FEATURE = "terminal.relay";
+const CLIENT_SOCKET_FEATURES = [MARKET_BATCH_FEATURE, CHAT_ATTACHMENTS_FEATURE, TERMINAL_RELAY_FEATURE] as const;
 const cloudApiLog = debugLog.createLogger("cloud-api");
 
 type ChannelListener = (message: ChatMessage) => void;
 type ChatNotificationListener = (notification: ChatNotification) => void;
 type ChatPresenceListener = (onlineCount: number) => void;
+type ChatReactionsListener = (update: ChatReactionsUpdate) => void;
 type TeamNotificationListener = (notification: TeamNotification) => void;
 type CloudEventListener = (data: unknown) => void;
 type QuoteListener = (
@@ -104,6 +109,7 @@ export class CloudApiSocket {
   private readonly chatNotificationListeners =
     new Set<ChatNotificationListener>();
   private readonly chatPresenceListeners = new Set<ChatPresenceListener>();
+  private readonly chatReactionsListeners = new Set<ChatReactionsListener>();
   private readonly teamNotificationListeners =
     new Set<TeamNotificationListener>();
   private readonly cloudEventListeners = new Map<
@@ -131,6 +137,7 @@ export class CloudApiSocket {
   /** What the last "ready" frame offered; kept across reconnects so a blip does not hide features. */
   private offeredFeatures: ReadonlySet<string> = new Set();
   private readonly offeredFeatureListeners = new Set<() => void>();
+  private readonly connectionListeners = new Set<(event: "ready" | "closed") => void>();
   private readonly tapeListeners = new Map<string, { symbol: string; exchange: string; listeners: Set<(event: TapeFeedEvent) => void> }>();
   private readonly scannerListeners = new Map<
     ScannerKind,
@@ -164,6 +171,7 @@ export class CloudApiSocket {
     const ws = this.ws;
     this.ws = null;
     if (ws) {
+      this.emitConnection("closed");
       cloudApiLog.info("teardown websocket");
       this.health.reportSocketState(
         GLOOM_CLOUD_SOCKET_CONNECTION_ID,
@@ -241,6 +249,14 @@ export class CloudApiSocket {
     };
   }
 
+  /** A message's reactions changed in a channel this socket reads. */
+  subscribeChatReactions(listener: ChatReactionsListener): () => void {
+    this.chatReactionsListeners.add(listener);
+    return () => {
+      this.chatReactionsListeners.delete(listener);
+    };
+  }
+
   subscribeChatPresence(listener: ChatPresenceListener): () => void {
     this.chatPresenceListeners.add(listener);
     return () => {
@@ -258,6 +274,29 @@ export class CloudApiSocket {
     return () => {
       this.offeredFeatureListeners.delete(listener);
     };
+  }
+
+  /** "ready" after each server hello (features negotiated), "closed" when that connection ends. */
+  subscribeConnection(listener: (event: "ready" | "closed") => void): () => void {
+    this.connectionListeners.add(listener);
+    return () => {
+      this.connectionListeners.delete(listener);
+    };
+  }
+
+  /** Sends one frame on the open connection; false when there is none. */
+  sendFrame(payload: Record<string, unknown>): boolean {
+    if (this.ws?.readyState !== WebSocket.OPEN) return false;
+    try {
+      this.ws.send(JSON.stringify(payload));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private emitConnection(event: "ready" | "closed"): void {
+    for (const listener of this.connectionListeners) listener(event);
   }
 
   subscribeTeamNotifications(listener: TeamNotificationListener): () => void {
@@ -470,8 +509,10 @@ export class CloudApiSocket {
     });
     this.channelListeners.clear();
     this.offeredFeatureListeners.clear();
+    this.connectionListeners.clear();
     this.chatNotificationListeners.clear();
     this.chatPresenceListeners.clear();
+    this.chatReactionsListeners.clear();
     this.teamNotificationListeners.clear();
     this.cloudEventListeners.clear();
     this.quoteSubscriptions.clear();
@@ -500,13 +541,15 @@ export class CloudApiSocket {
     if (parsed?.type === "ready") {
       recordServerClockSample(parsed.serverTime);
       this.negotiateSocketFeatures(parsed.features);
-      if (!parsed.user) return;
-      cloudApiLog.info("websocket ready", {
-        emailVerified: parsed.user.emailVerified === true,
-      });
-      this.delegate.updateCurrentUserFromSocket(
-        parsed.user as Partial<AuthUser>,
-      );
+      if (parsed.user) {
+        cloudApiLog.info("websocket ready", {
+          emailVerified: parsed.user.emailVerified === true,
+        });
+        this.delegate.updateCurrentUserFromSocket(
+          parsed.user as Partial<AuthUser>,
+        );
+      }
+      this.emitConnection("ready");
       return;
     }
 
@@ -541,6 +584,22 @@ export class CloudApiSocket {
       for (const listener of this.channelListeners.get(parsed.channelId) ??
         []) {
         listener(message);
+      }
+      return;
+    }
+
+    if (
+      parsed?.type === "chat.reactions" &&
+      typeof parsed.channelId === "string" &&
+      typeof parsed.data?.messageId === "string"
+    ) {
+      const update: ChatReactionsUpdate = {
+        channelId: parsed.channelId,
+        messageId: parsed.data.messageId,
+        reactions: normalizeChatReactions(parsed.data.reactions),
+      };
+      for (const listener of this.chatReactionsListeners) {
+        listener(update);
       }
       return;
     }
@@ -769,6 +828,7 @@ export class CloudApiSocket {
         tokenSource: usingWebSocketToken ? "websocket" : "session",
       });
       if (!activeSocket) return;
+      this.emitConnection("closed");
       this.health.reportSocketState(
         GLOOM_CLOUD_SOCKET_CONNECTION_ID,
         "closed",

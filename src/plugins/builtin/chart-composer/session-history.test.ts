@@ -71,12 +71,12 @@ describe("intraday price domains", () => {
       const { model } = await modelFor(points, reported);
       expect(model.chart.series.every(({ points }) => points.length === 0)).toBe(true);
       expect(model.complete).toBe(false);
-      expect(model.unavailableSymbols).toEqual(["CL=F:NYMEX"]);
+      expect(model.unavailableSymbols).toEqual(["CL=F:NYM"]);
       expect(model.errors?.join(" ")).toContain("nonpositive");
       const failure = model.snapshot.intradayHistories[0]!.priceDomainFailure!;
       expect(failure.sourcePoints.map(({ close }) => close)).toEqual([0, -37.63]);
       expect(failure.sourcePoints.map(({ date }) => date)).toEqual(points.slice(1, 3).map(({ date }) => date.toISOString()));
-      expect(model.metadata?.intradayPriceDomainFailures).toEqual([{ symbol: "CL=F", exchange: "NYMEX", ...failure }]);
+      expect(model.metadata?.intradayPriceDomainFailures).toEqual([{ symbol: "CL=F", exchange: "NYM", ...failure }]);
       expect(Object.isFrozen(failure.sourcePoints)).toBe(true);
       expect(Object.isFrozen(failure.sourcePoints[0])).toBe(true);
       points[1]!.close = 123;

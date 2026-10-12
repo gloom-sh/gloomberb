@@ -1,5 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/headless";
 import { FINANCIAL_PERIOD_OPTION, HISTORY_RANGE_VALUES } from "../shared/headless-options";
+import { RETURN_INTERVAL_VALUES, RETURN_RANGES } from "./data-panes/returns-model";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -62,6 +63,35 @@ export const paneSchemas = {
       id: "historical-prices",
       aliases: ["historical prices", "price history", "ohlcv", "daily prices"],
       screenshotReadiness: "partial",
+    },
+  },
+  "returns-pane": {
+    argument: { kind: "ticker" },
+    options: [
+      {
+        key: "range",
+        description: "Window the returns cover, ending now, or at the last session's close while the market is shut.",
+        type: "enum",
+        aliases: ["window", "period"],
+        values: RETURN_RANGES.map((value) => ({ value })),
+        defaultValue: "5D",
+        pluginState: { pluginId: "ticker-research" },
+      },
+      {
+        key: "interval",
+        description: "Bar size of each return; a range it does not reach uses the nearest longer bar the source keeps.",
+        type: "enum",
+        aliases: ["bar", "granularity", "resolution"],
+        values: RETURN_INTERVAL_VALUES,
+        defaultValue: "1h",
+        pluginState: { pluginId: "ticker-research" },
+      },
+    ],
+    discovery: {
+      id: "returns",
+      aliases: ["returns", "interval returns", "cumulative return", "performance"],
+      // A capture is read from the rendered table, as before the report existed.
+      screenshotReadiness: "live-dom",
     },
   },
 } satisfies Record<string, PaneSchema>;

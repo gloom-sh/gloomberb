@@ -1,16 +1,23 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { t } from "../../../../i18n";
+import { displayWidth } from "../../../../utils/format";
+import { chatAuthorName, isDiscordGhost, isManagedBot } from "../ghost-user";
 import { Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
+import { ChatAiBadge } from "./ai-badge";
 import type { ChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
 type ChatMessageActionProps = Pick<ChatMessageBaseProps, "index" | "beginReplyTo" | "beginEditMessage" | "retryMessage"> & {
   state: ChatMessageRenderState;
+  /** The React action, one action wide, where the message takes reactions. */
+  reactAction?: ReactNode;
+  /** The reaction picker is open from this message: its actions stay shown. */
+  reactionPickerOpen?: boolean;
 };
 
-/** Reply and Edit for one message, or Retry for a failed send: after the header, or floated over the first body line of a grouped message. */
+/** Reply, React and Edit for one message, or Retry for a failed send: after the header, or floated over the first body line of a grouped message. */
 export function ChatMessageActions({
   state,
   index,
@@ -18,6 +25,8 @@ export function ChatMessageActions({
   beginReplyTo,
   beginEditMessage,
   retryMessage,
+  reactAction,
+  reactionPickerOpen = false,
 }: ChatMessageActionProps & { floating?: boolean }) {
   const variant = state.isSelected ? "primary" : "secondary";
   if (state.showRetryAction && retryMessage) {
@@ -39,13 +48,16 @@ export function ChatMessageActions({
     );
   }
   if (!state.showReplyAction) return null;
+  const showReact = state.showReactAction && !!reactAction;
+  const actionCount = 1 + (showReact ? 1 : 0) + (state.showEditAction ? 1 : 0);
   return (
     <Box
       {...(floating ? { position: "absolute", top: 0, right: 0 } : {})}
-      width={MESSAGE_ACTION_WIDTH * (state.showEditAction ? 2 : 1)}
+      width={MESSAGE_ACTION_WIDTH * actionCount}
       height={1}
       flexDirection="row"
       data-gloom-role="chat-message-reply-action"
+      data-picker-open={reactionPickerOpen ? "true" : undefined}
     >
       <Button stopPropagation
         label={t("Reply")}
@@ -53,6 +65,7 @@ export function ChatMessageActions({
         variant={variant}
         onPress={() => beginReplyTo(index)}
       />
+      {showReact && reactAction}
       {state.showEditAction && (
         <Button stopPropagation
           label={t("Edit")}
@@ -82,7 +95,9 @@ export function ChatMessageHeader({
   /** The terminal sizes the author cell to its label. */
   fitAuthorWidth?: boolean;
 }) {
-  const authorLabel = msg.user.username ?? "anon";
+  const authorLabel = chatAuthorName(msg.user);
+  // A Discord ghost has no Gloom profile to open and no one to message.
+  const hasProfile = !isDiscordGhost(msg.user);
   const { nativeContextMenu } = useUiCapabilities();
   // The card opens beside the name the pointer is on.
   const nameRef = useRef<BoxRenderable | null>(null);
@@ -90,26 +105,32 @@ export function ChatMessageHeader({
     <Box {...rowProps} flexDirection="row" height={1} paddingLeft={1}>
       <Box
         ref={nameRef}
-        width={fitAuthorWidth ? authorLabel.length : undefined}
+        width={fitAuthorWidth ? displayWidth(authorLabel) : undefined}
         height={1}
-        onMouseOver={() => onUserHover(msg.user, nameRef.current)}
-        onMouseMove={() => onUserHover(msg.user, nameRef.current)}
-        onMouseOut={onUserHoverEnd}
-        data-gloom-context-menu-surface="true"
-        onMouseDown={(event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
-          event.preventDefault?.();
-          event.stopPropagation?.();
-          // A native menu opens on the right-click's contextmenu event instead.
-          if (event.button === 2 && nativeContextMenu === true) return;
-          onUserActivate?.(msg.user, nameRef.current);
-        }}
-        onContextMenu={(event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event, nameRef.current)}
-        style={{ cursor: "pointer" }}
+        {...(hasProfile
+          ? {
+            onMouseOver: () => onUserHover(msg.user, nameRef.current),
+            onMouseMove: () => onUserHover(msg.user, nameRef.current),
+            onMouseOut: onUserHoverEnd,
+            "data-gloom-context-menu-surface": "true",
+            onMouseDown: (event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
+              event.preventDefault?.();
+              event.stopPropagation?.();
+              // A native menu opens on the right-click's contextmenu event instead.
+              if (event.button === 2 && nativeContextMenu === true) return;
+              onUserActivate?.(msg.user, nameRef.current);
+            },
+            onContextMenu: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event, nameRef.current),
+            style: { cursor: "pointer" },
+          }
+          : {})}
       >
         <Text fg={state.authorColor} attributes={state.authorAttributes}>
           {authorLabel}
         </Text>
       </Box>
+      {isManagedBot(msg.user) && <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />}
+      {msg.origin === "discord" && <Text fg={state.originTagColor}> Discord</Text>}
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
       {(state.showReplyAction || (state.showRetryAction && actionProps.retryMessage)) && <Text fg={state.headerStatusColor}> </Text>}
       <ChatMessageActions state={state} {...actionProps} />

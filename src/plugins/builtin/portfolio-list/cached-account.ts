@@ -6,17 +6,16 @@ import type { BrokerAccount } from "../../../types/trading";
 import { resolvePortfolioAccountState } from "./summary";
 
 /**
- * The broker account a portfolio was last synced with, as saved on this
- * device, for reports that run without a broker connection. The pane reads
- * the same account from app state.
+ * Every profile's broker accounts as last synced on this device, by profile,
+ * for reports and screenshots that run without a broker connection. The pane
+ * reads the same accounts from app state.
  */
-export function findCachedPortfolioAccount(
-  config: AppConfig,
-  portfolio: Portfolio,
+export function peekCachedBrokerAccounts(
+  config: Pick<AppConfig, "brokerInstances">,
   resources: Pick<AppResourceStorePort, "list"> | null | undefined,
-): BrokerAccount | null {
-  if (!resources || !portfolio.brokerInstanceId) return null;
+): Record<string, BrokerAccount[]> {
   const brokerAccounts: Record<string, BrokerAccount[]> = {};
+  if (!resources) return brokerAccounts;
   for (const instance of config.brokerInstances) {
     try {
       const accounts = peekPersistedBrokerAccounts(resources, instance);
@@ -25,9 +24,19 @@ export function findCachedPortfolioAccount(
       // An unreadable snapshot leaves the portfolio without account figures.
     }
   }
+  return brokerAccounts;
+}
+
+/** The broker account a portfolio was last synced with, as saved on this device. */
+export function findCachedPortfolioAccount(
+  config: AppConfig,
+  portfolio: Portfolio,
+  resources: Pick<AppResourceStorePort, "list"> | null | undefined,
+): BrokerAccount | null {
+  if (!resources || !portfolio.brokerInstanceId) return null;
   return resolvePortfolioAccountState(
     portfolio,
-    { config, brokerAccounts },
+    { config, brokerAccounts: peekCachedBrokerAccounts(config, resources) },
     { status: null, accounts: [] },
   )?.account ?? null;
 }

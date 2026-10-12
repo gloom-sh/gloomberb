@@ -7,7 +7,7 @@ import {
   setPluginManager,
   type MarketplaceHost,
   type PluginManager,
-} from "../../plugins/builtin/plugin-marketplace/store";
+} from "../../plugins/marketplace/store";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
 import { WebDialogHostProvider } from "../../renderers/dom/dialog-host";
 import { WebInputHostProvider } from "../../renderers/dom/input-host";

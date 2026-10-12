@@ -457,6 +457,38 @@ export function useChartResolution(
     };
   }, [coordinator, liveFrameMs, liveKey, sources]);
 
+  // A plugin series that changes through the day asks to be loaded again on
+  // its own cadence; only its entries leave the cache, so nothing else refetches.
+  const capabilityRefreshMs = sources.capabilityRefreshMs;
+  const seriesRefreshMs = useMemo(() => {
+    if (snapshot || !capabilityRefreshMs) return 0;
+    let shortest = 0;
+    for (const series of spec.series) {
+      if (series.source.kind !== "capability" || series.visible === false) continue;
+      const refreshMs = capabilityRefreshMs(series.source) ?? 0;
+      if (refreshMs > 0 && (shortest === 0 || refreshMs < shortest)) shortest = refreshMs;
+    }
+    return shortest;
+    // The spec key is the series' identity; a new spec object alone must not restart the timer.
+  }, [capabilityRefreshMs, snapshot, specKey]);
+  useEffect(() => {
+    if (!seriesRefreshMs || !paneVisible || !capabilityRefreshMs) return;
+    const timer = setInterval(() => {
+      const cache = resolveCacheRef.current;
+      let dropped = false;
+      for (const key of [...cache.capabilitySeriesByRequest.keys()]) {
+        const [, capabilityId, seriesId] = JSON.parse(key) as [string, string, string];
+        if (!capabilityRefreshMs({ kind: "capability", capabilityId, seriesId })) continue;
+        cache.capabilitySeriesByRequest.delete(key);
+        dropped = true;
+      }
+      if (!dropped) return;
+      cache.revision += 1;
+      setSupportRevision((current) => current + 1);
+    }, seriesRefreshMs);
+    return () => clearInterval(timer);
+  }, [capabilityRefreshMs, paneVisible, seriesRefreshMs]);
+
   useEffect(() => {
     if (snapshot) return;
     generationRef.current += 1;

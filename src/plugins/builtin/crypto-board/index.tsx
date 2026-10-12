@@ -3,8 +3,10 @@ import { LIVE_STREAMING_QUICK_SETTING, withLiveStreamingSetting } from "../../..
 import { cryptoMarketsCache } from "./client";
 import { cryptoBoardHeadless } from "./headless";
 import { CryptoBoardPane } from "./pane";
+import { CRYPTO_SERIES } from "./series";
 
 export const cryptoBoardModule: PluginModule = {
+  series: CRYPTO_SERIES,
   panes: [
     {
       id: "crypto-board",

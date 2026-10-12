@@ -633,6 +633,81 @@ const rawThemes: Record<string, Theme> = {
     commandBg: "#000033",
     commandBorder: "#ff6600",
   },
+
+  // Gains, losses, warnings and chart series stay apart for deuteranopia,
+  // protanopia and tritanopia: up is blue, down is vermillion (the Okabe-Ito
+  // set), never red against green. The chrome is grey so hue only ever means
+  // data. themes.test.ts simulates the three deficiencies on these palettes.
+  colorblind: {
+    name: "Colorblind",
+    description: "Blue gains and vermillion losses, safe for color-blind eyes",
+    bg: "#0e1013",
+    panel: "#15181c",
+    border: "#3b4149",
+    borderFocused: "#d7dade",
+    text: "#e4e6e9",
+    textDim: "#a3a9b2",
+    textBright: "#ffffff",
+    textMuted: "#858c96",
+    positive: "#56b4e9",
+    negative: "#e66a1f",
+    neutral: "#9aa0a8",
+    warning: "#f0e442",
+    header: "#1c2026",
+    headerText: "#ffffff",
+    selected: "#2b3540",
+    selectedText: "#ffffff",
+    commandBg: "#15181c",
+    commandBorder: "#a3a9b2",
+  },
+
+  "colorblind-light": {
+    name: "Colorblind Light",
+    description: "Light, blue gains and vermillion losses, safe for color-blind eyes",
+    bg: "#ffffff",
+    panel: "#f5f6f8",
+    border: "#c8cdd4",
+    borderFocused: "#1f2328",
+    text: "#1f2328",
+    textDim: "#4d545e",
+    textBright: "#000000",
+    textMuted: "#646b75",
+    positive: "#0072b2",
+    negative: "#a84100",
+    neutral: "#5f6670",
+    warning: "#a27409",
+    header: "#e9ecef",
+    headerText: "#1f2328",
+    selected: "#d3e3f0",
+    selectedText: "#000000",
+    commandBg: "#f5f6f8",
+    commandBorder: "#1f2328",
+  },
+
+  // Every text role clears 7:1 (WCAG AAA) on the page, and the up, down and
+  // warning colours are the colour-blind safe ones.
+  "high-contrast": {
+    name: "High Contrast",
+    description: "White on black at AAA contrast, color-blind safe",
+    bg: "#000000",
+    panel: "#000000",
+    border: "#9a9a9a",
+    borderFocused: "#ffffff",
+    text: "#ffffff",
+    textDim: "#e0e0e0",
+    textBright: "#ffffff",
+    textMuted: "#c8c8c8",
+    positive: "#56b4e9",
+    negative: "#ff8c42",
+    neutral: "#c8c8c8",
+    warning: "#f0e442",
+    header: "#1a1a1a",
+    headerText: "#ffffff",
+    selected: "#3d3d3d",
+    selectedText: "#ffffff",
+    commandBg: "#000000",
+    commandBorder: "#ffffff",
+  },
 };
 
 export const themes: Record<string, Theme> = Object.fromEntries(
@@ -660,4 +735,78 @@ export function isDarkTheme(themeId: string): boolean {
 
 export function getTheme(id: string): Theme {
   return themes[id] ?? themes[DEFAULT_THEME]!;
+}
+
+type ThemeTrait = "colorblind-safe" | "high-contrast";
+
+const THEME_TRAITS: Readonly<Record<string, readonly ThemeTrait[]>> = {
+  colorblind: ["colorblind-safe"],
+  "colorblind-light": ["colorblind-safe"],
+  "high-contrast": ["high-contrast", "colorblind-safe"],
+};
+
+export interface ThemeSummary {
+  id: string;
+  name: string;
+  appearance: "dark" | "light";
+  traits: readonly ThemeTrait[];
+}
+
+/** Every theme in registry order: what `config themes`, help and the docs list. */
+export function listThemes(): ThemeSummary[] {
+  return getThemeIds().map((id) => ({
+    id,
+    name: themes[id]!.name,
+    appearance: isDarkTheme(id) ? "dark" : "light",
+    traits: THEME_TRAITS[id] ?? [],
+  }));
+}
+
+export type ThemeLookup =
+  | { ok: true; id: string }
+  | { ok: false; suggestion: string | null };
+
+/** `White Phosphor`, `white_phosphor` and `WHITE` all read as `white-phosphor` / `white`. */
+function themeKey(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_]+/g, "-");
+}
+
+function editDistance(left: string, right: string): number {
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= right.length; column += 1) {
+      const substitution = previous[column - 1]! + (left[row - 1] === right[column - 1] ? 0 : 1);
+      current.push(Math.min(previous[column]! + 1, current[column - 1]! + 1, substitution));
+    }
+    previous = current;
+  }
+  return previous[right.length]!;
+}
+
+/**
+ * The theme id a person meant. An id or a display name, in any case, is that
+ * theme; anything else is unknown, with the closest id when the input is a
+ * typo of one (or of a name), or names part of exactly one theme.
+ */
+export function resolveThemeId(input: string): ThemeLookup {
+  const key = themeKey(input);
+  const ids = getThemeIds();
+  const exact = ids.find((id) => id === key) ?? ids.find((id) => themeKey(themes[id]!.name) === key);
+  if (exact) return { ok: true, id: exact };
+  if (!key) return { ok: false, suggestion: null };
+
+  let best: { id: string; distance: number } | null = null;
+  for (const id of ids) {
+    for (const candidate of [id, themeKey(themes[id]!.name)]) {
+      const distance = editDistance(key, candidate);
+      if (!best || distance < best.distance) best = { id, distance };
+    }
+  }
+  const tolerance = Math.max(2, Math.floor(key.length / 3));
+  if (best && best.distance <= tolerance) return { ok: false, suggestion: best.id };
+  const partial = key.length >= 3
+    ? ids.filter((id) => id.includes(key) || themeKey(themes[id]!.name).includes(key))
+    : [];
+  return { ok: false, suggestion: partial.length === 1 ? partial[0]! : null };
 }

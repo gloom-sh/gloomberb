@@ -1,6 +1,6 @@
 import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
-import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
 import type { TimeRange } from "../../../time-series/range";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
@@ -30,6 +30,11 @@ import {
   loadHeadlessFinancials, loadHeadlessPriceHistory, loadHeadlessSymbols, resolveHeadlessInstrument,
 } from "../shared/headless-market-data";
 import { barHistoryFreshness, barResolutionFromDates, quoteFreshnessFields, REPORTED_DATA } from "../shared/report-freshness";
+import { cleanFloat32Price, historyPriceDecimals } from "../../../cli/history-rows";
+import { historyCoverageNotice } from "../../../sources/history-coverage";
+import { getChartResolutionLabel, isIntradayResolution, type ManualChartResolution } from "../../../time-series/resolution";
+import { buildReturnRows, closedMarketNote, type ReturnRange } from "./data-panes/returns-model";
+import { loadReturnSeries } from "./data-panes/returns-history";
 
 export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["financial-analysis-pane"],
@@ -195,18 +200,34 @@ function quoteAmount(value: unknown, row: Record<string, unknown>, signed = fals
   return amount === "—" ? amount : `${signed && value >= 0 ? "+" : ""}${amount}`;
 }
 
+function percentCell(value: unknown): string {
+  return formatPercentRaw(typeof value === "number" && Number.isFinite(value) ? value : undefined);
+}
+
+const QUOTE_MONITOR_COLUMNS: HeadlessPaneColumn[] = [
+  { key: "symbol", header: "Ticker" },
+  { key: "name", header: "Name" },
+  { key: "price", header: "Last", align: "right", format: (value, row) => quoteAmount(value, row) },
+  { key: "change", header: "Change", align: "right", format: (value, row) => quoteAmount(value, row, true) },
+  { key: "changePercent", header: "Change %", align: "right", format: percentCell },
+];
+
+/** The pre-market or after-hours print and its move from the regular close, for the rows that have one. */
+function extendedSessionColumn(session: ExtendedSession): HeadlessPaneColumn {
+  return {
+    key: "extendedPrice", header: EXTENDED_SESSION_LABELS[session], align: "right",
+    format: (value, row) => row.extendedSession === session
+      ? `${quoteAmount(value, row)} ${percentCell(row.extendedChangePercent)}`
+      : "—",
+  };
+}
+
 export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
   ...paneSchemas["quote-monitor-pane"],
   shape: "rows",
-  description: "Current quotes for one or more tickers: name, last price, change and percent change.",
+  description: "Current quotes for one or more tickers: name, the regular session's last price, change and percent change, and any pre-market or after-hours print.",
   describe: ({ symbols }) => `Quote Monitor | ${symbols.join(", ")}`,
-  columns: [
-    { key: "symbol", header: "Ticker" },
-    { key: "name", header: "Name" },
-    { key: "price", header: "Last", align: "right", format: (value, row) => quoteAmount(value, row) },
-    { key: "change", header: "Change", align: "right", format: (value, row) => quoteAmount(value, row, true) },
-    { key: "changePercent", header: "Change %", align: "right", format: (value) => formatPercentRaw(typeof value === "number" && Number.isFinite(value) ? value : undefined) },
-  ],
+  columns: QUOTE_MONITOR_COLUMNS,
   async load({ symbols }, ctx) {
     const loaded = await loadHeadlessSymbols(symbols, ctx, async (key) => {
       const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
@@ -215,19 +236,25 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
       if (!hasValidQuoteObservationTime(quote)) throw new Error(`Quote observation time is unavailable for ${key}`);
       return quote;
     });
+    const rows = loaded.entries.map(({ symbol, data: quote }) => {
+      // As the pane's cards show them: the regular session, then any extended print from its close.
+      const { price, change, changePercent, ...extended } = getQuoteSessionFields(quote);
+      return {
+        symbol, name: quote.name ?? "", price, currency: quote.currency,
+        ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
+        ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
+        change, changePercent, ...extended,
+        marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
+        ...quoteFreshnessFields(quote),
+      };
+    });
+    // An extended column only when a row has a print for it, so a closed board stays as narrow as before.
+    const extendedColumns = (["PRE", "POST"] as const)
+      .filter((session) => rows.some((row) => row.extendedSession === session))
+      .map(extendedSessionColumn);
     return {
-      rows: loaded.entries.map(({ symbol, data: quote }) => {
-        // The pane's cards show the live session's print, so the rows do too.
-        const display = getActiveQuoteDisplay(quote)!;
-        return {
-          symbol, name: quote.name ?? "", price: display.price, currency: quote.currency,
-          ...(quote.instrumentType ? { instrumentType: quote.instrumentType } : {}),
-          ...(quote.priceBasis ? { priceBasis: quote.priceBasis } : {}),
-          change: display.change, changePercent: display.changePercent,
-          marketCap: quote.marketCap ?? null, updatedAt: quote.lastUpdated,
-          ...quoteFreshnessFields(quote),
-        };
-      }),
+      rows,
+      ...(extendedColumns.length > 0 ? { columns: [...QUOTE_MONITOR_COLUMNS, ...extendedColumns] } : {}),
       unavailableSymbols: loaded.unavailableSymbols, errors: loaded.errors,
     };
   },
@@ -262,5 +289,86 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     // A bar history: dated by its last bar, stale once bars of its size stop arriving.
     const freshness = { ...barHistoryFreshness(barResolutionFromDates(rows.map((row) => row.date))), observedKey: "date", oldest: null };
     return { rows, freshness, ...(notice ? { complete: false } : {}), unavailableSymbols: rows.some((row) => row.close !== null) ? [] : [symbol], metadata: { symbol, range, ...(notice ? { notices: [notice] } : {}) } };
+  },
+};
+
+/** A percent with its sign, two decimals: `+0.63%`; a dash for a gap. */
+function signedPercentCell(value: unknown): string {
+  if (typeof value !== "number" || !Number.isFinite(value)) return "-";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+export const returnsHeadless: HeadlessPaneDefinition<"rows"> = {
+  ...paneSchemas["returns-pane"],
+  shape: "rows",
+  description: "Interval and cumulative price returns of one ticker's bars over a range: each bar's close, its move from the bar before, and its move from the bar before the window.",
+  describe: ({ symbols, options }) => `Returns | ${symbols[0]} | ${options.range ?? "5D"} | ${options.interval ?? "1h"}`,
+  async load({ symbols, options }, ctx) {
+    const key = symbols[0]!;
+    const { symbol, exchange } = await resolveHeadlessInstrument(ctx, key);
+    const range = (options.range ?? "5D") as ReturnRange;
+    const requested = (options.interval ?? "1h") as ManualChartResolution;
+    const support = await Promise.resolve(ctx.marketData.getChartResolutionSupport?.(symbol, exchange ?? "") ?? []).catch(() => []);
+    const series = await loadReturnSeries(ctx.marketData, {
+      symbol, exchange: exchange ?? "", range, resolution: requested, support, now: Date.now(), forceRefresh: ctx.refresh,
+    });
+    const returns = buildReturnRows(series.points, series.visibleFrom, series.visibleTo).reverse();
+    const decimals = historyPriceDecimals(returns.flatMap((row) => row.price === null ? [] : [{
+      open: null, high: null, low: null, close: cleanFloat32Price(row.price),
+    }]));
+    const rounded = (value: number | null) => value === null || !Number.isFinite(value) ? null : Number(value.toFixed(Math.min(20, decimals)));
+    const percent = (value: number | null) => value === null ? null : value * 100;
+    const intraday = isIntradayResolution(series.resolution);
+    // A daily or longer bar is a trading date; an intraday one its UTC open.
+    const rows = returns.map((row) => ({
+      time: intraday ? new Date(row.timestamp).toISOString() : new Date(row.timestamp).toISOString().slice(0, 10),
+      close: rounded(row.price),
+      intervalChange: rounded(row.intervalChange),
+      intervalReturnPct: percent(row.intervalPercent),
+      totalChange: rounded(row.cumulativeChange),
+      totalReturnPct: percent(row.cumulativePercent),
+      ...(row.inconsistent ? { inconsistent: true } : {}),
+    }));
+    const price = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value.toFixed(decimals) : "-";
+    const columns: HeadlessPaneColumn[] = [
+      { key: "time", header: intraday ? "Time (UTC)" : "Date", format: (value) => String(value).slice(0, 16).replace("T", " ") },
+      { key: "close", header: "Price", align: "right", format: price },
+      { key: "intervalChange", header: "Int $", align: "right", format: price },
+      { key: "intervalReturnPct", header: "Int %", align: "right", format: signedPercentCell },
+      { key: "totalChange", header: "Total $", align: "right", format: price },
+      { key: "totalReturnPct", header: "Total %", align: "right", format: signedPercentCell },
+    ];
+    // An interval the range is too long for is served in the nearest longer bar; say so rather than switch silently.
+    const notices = [
+      series.resolution !== requested
+        ? `${getChartResolutionLabel(requested)} bars do not reach back ${range}; these are ${getChartResolutionLabel(series.resolution)} bars.`
+        : null,
+      historyCoverageNotice(series.coverageStart, series.visibleFrom),
+      priceHistoryIntegrityNotice(rows.filter((row) => row.inconsistent).length) ?? null,
+    ].filter((notice): notice is string => !!notice);
+    return {
+      rows,
+      columns,
+      unavailableSymbols: rows.length ? [] : [key],
+      ...(rows.length ? {} : { errors: [`${key}: No bars in this window.`] }),
+      freshness: {
+        ...barHistoryFreshness(intraday ? null : series.resolution),
+        observedKey: "time",
+        oldest: null,
+        ...(series.venue ? { cadenceExchange: series.venue } : {}),
+        // The window ends at the last session while the market is shut, which the status line says.
+        ...(series.lastSession ? { note: closedMarketNote(series.lastSession, series.visibleTo) } : {}),
+      },
+      metadata: {
+        symbol: key,
+        range,
+        interval: series.resolution,
+        requestedInterval: requested,
+        window: { after: new Date(series.visibleFrom).toISOString(), through: new Date(series.visibleTo).toISOString() },
+        ...(series.lastSession ? { marketClosed: true, lastSession: series.lastSession } : {}),
+        basis: "Price returns of bar closes; dividends are not included",
+        ...(notices.length ? { notices } : {}),
+      },
+    };
   },
 };

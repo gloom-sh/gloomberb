@@ -23,6 +23,7 @@ import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChai
 import { mergeQuoteMetadata, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { NewsArticle, NewsQuery } from "../../news/types";
 import type { BrokerContractRef, InstrumentSearchResult } from "../../types/instrument";
+import type { TickerChanges } from "../../types/ticker-changes";
 import type { TimeRange } from "../../time-series/range";
 import type { ChartResolutionSupport, ManualChartResolution } from "../../time-series/resolution";
 import { debugLog } from "../../utils/debug-log";
@@ -109,7 +110,7 @@ export class AssetDataRouter implements DataProvider {
       getQuote: (ticker, exchange, context) => this.financialRoutes.getQuote(ticker, exchange, context),
       getTickerFinancials: (ticker, exchange, context) => this.financialRoutes.getTickerFinancials(ticker, exchange, context),
     });
-    this.historyRoutes = new ProviderRouterHistoryRoutes(routeDeps);
+    this.historyRoutes = new ProviderRouterHistoryRoutes({ ...routeDeps, revalidatesInBackground: () => this.revalidateInBackground });
     this.newsRoutes = new ProviderRouterNewsRoutes({
       newsSourcesInPriorityOrder: () => this.newsSourcesInPriorityOrder(),
       logProviderError: (message) => providerLog.error(message),
@@ -285,6 +286,19 @@ export class AssetDataRouter implements DataProvider {
 
   async getCorporateActions(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<CorporateActionsData> {
     return (await this.getCachedQuery("getCorporateActions", [ticker, exchange, context]).load({ force: context?.cacheMode === "refresh", background: this.revalidateInBackground })).value;
+  }
+
+  /** The first source that keeps symbol changes answers; one that fails is passed over. */
+  async getTickerChanges(symbol: string, options?: { signal?: AbortSignal }): Promise<TickerChanges | null> {
+    for (const provider of this.providersInPriorityOrder()) {
+      if (!provider.getTickerChanges) continue;
+      try {
+        return await provider.getTickerChanges(symbol, options);
+      } catch {
+        if (options?.signal?.aborted) return null;
+      }
+    }
+    return null;
   }
 
   async getEarningsCalendar(symbols: string[], context?: MarketDataRequestContext) {

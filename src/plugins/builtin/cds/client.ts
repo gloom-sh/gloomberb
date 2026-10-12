@@ -2,21 +2,33 @@ import {
   apiClient,
   type CloudCdsHistoryPointPayload,
   type CloudCdsHistoryResponse,
+  type CloudCdsLevelsResponse,
   type CloudCdsResponse,
 } from "../../../api-client";
 import type { CloudCdsHistoryParams } from "../../../api-client/paths";
 import type { InstrumentSearchResult } from "../../../types/instrument";
-import { normalizeCdsTrades, type CdsTrade } from "./model";
+import {
+  cdsReferenceEntity,
+  issuerNameOf,
+  normalizeCdsTrades,
+  spreadLevelsOf,
+  type CdsSpreadLevels,
+  type CdsTrade,
+} from "./model";
 
 /** One trading week of public dissemination is what "recent activity" means here. */
-const CDS_HISTORY_DAYS = 5;
+export const CDS_TRADE_DAYS = 5;
 const CDS_TRADE_LIMIT = 500;
 
 export interface CdsActivity {
   source: string;
   asOf: string | null;
+  /** What was asked for, as typed: a ticker or a name. Null for the market-wide view. */
+  query: string | null;
   /** The issuer name actually sent, after any symbol lookup. */
   issuer: string | null;
+  /** How many days of the tape the trades cover. */
+  days: number;
   trades: CdsTrade[];
 }
 
@@ -27,7 +39,8 @@ export type InstrumentSearch = (query: string, limit?: number) => Promise<Instru
 
 /**
  * A bare ticker with normal symbol punctuation and no spaces. Anything longer or
- * containing a space is already a company name and is sent to the backend as-is.
+ * containing a space is already a company name and is sent as the tape would
+ * name it.
  */
 const TICKER_LIKE = /^[A-Za-z0-9][A-Za-z0-9.^:-]{0,11}$/;
 const US_PRIMARY_EXCHANGES = new Set(["AMEX", "NASDAQ", "NYSE", "NYSEAMERICAN", "NYSEARCA"]);
@@ -42,22 +55,28 @@ function isPrimaryUsCommonStock(result: InstrumentSearchResult): boolean {
 
 /**
  * The backend matches DTCC issuer names, so a ticker has to become a company
- * name first. An untracked symbol has no local metadata to expand it, and its
- * quote name never arrives for a fixed binding, so the shared instrument search
- * is the only reliable expansion. A search outage falls back to the raw input
- * rather than taking the CDS request down with it.
+ * name first: its reference entity when the debt sits with another entity,
+ * else the listed company's name without its share class ("Alphabet Inc.",
+ * not "Alphabet Inc. Class A Common Stock"). An untracked symbol has no local
+ * metadata to expand it, and its quote name never arrives for a fixed
+ * binding, so the shared instrument search is the only reliable expansion. A
+ * search outage falls back to the raw input rather than taking the CDS
+ * request down with it.
  */
-async function resolveIssuerName(
+export async function resolveIssuerName(
   issuer: string,
   searchInstruments: InstrumentSearch,
 ): Promise<string> {
-  if (!TICKER_LIKE.test(issuer)) return issuer;
+  if (!TICKER_LIKE.test(issuer)) return issuerNameOf(issuer);
+  const referenceEntity = cdsReferenceEntity(issuer);
+  if (referenceEntity) return referenceEntity;
   try {
     const results = await searchInstruments(issuer);
     const symbol = issuer.toUpperCase();
     const exactMatches = results.filter((result) => result.symbol.toUpperCase() === symbol);
     const match = exactMatches.find(isPrimaryUsCommonStock) ?? exactMatches[0] ?? results[0];
-    return match?.name?.trim() || issuer;
+    const name = match?.name?.trim();
+    return name ? issuerNameOf(name) : issuer;
   } catch {
     return issuer;
   }
@@ -68,16 +87,19 @@ export async function loadCdsActivity(
   fetchCds: CdsFetch = (params) => apiClient.getCloudCds(params),
   searchInstruments: InstrumentSearch = (query, limit) => apiClient.searchInstruments(query, limit),
 ): Promise<CdsActivity> {
-  const resolved = issuer ? await resolveIssuerName(issuer, searchInstruments) : null;
+  const query = issuer?.trim() || null;
+  const resolved = query ? await resolveIssuerName(query, searchInstruments) : null;
   const response = await fetchCds({
     ...(resolved ? { issuer: resolved } : {}),
-    days: CDS_HISTORY_DAYS,
+    days: CDS_TRADE_DAYS,
     limit: CDS_TRADE_LIMIT,
   });
   return {
     source: response.source,
     asOf: response.asOf,
+    query,
     issuer: resolved,
+    days: CDS_TRADE_DAYS,
     trades: normalizeCdsTrades(response.trades ?? []),
   };
 }
@@ -106,4 +128,19 @@ export async function loadCdsSpreadHistory(
     .filter((point) => /^\d{4}-\d{2}-\d{2}$/.test(point.date) && Number.isFinite(point.spreadBp))
     .toSorted((left, right) => left.date.localeCompare(right.date));
   return { issuer: response.issuer, points };
+}
+
+export type CdsLevelsFetch = () => Promise<CloudCdsLevelsResponse>;
+export type CdsSpreadLevelsLoader = () => Promise<CdsSpreadLevels>;
+
+/**
+ * Every listed issuer's latest 5Y level, in one request: the last point of
+ * each name's line over the last month, the line the pane charts, so the list
+ * can be ranked by it. A name without one is not in the response.
+ */
+export async function loadCdsSpreadLevels(
+  fetchLevels: CdsLevelsFetch = () => apiClient.getCloudCdsLevels(),
+): Promise<CdsSpreadLevels> {
+  const response = await fetchLevels();
+  return spreadLevelsOf(response.levels ?? []);
 }

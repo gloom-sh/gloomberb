@@ -10,6 +10,10 @@ import { FINANCIALS_SCHEMA_VERSION } from "./cache";
 import { AppPersistence } from "../../data/app-persistence";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import type { QuoteSubscriptionTarget } from "../../types/data-provider";
+import type { Quote } from "../../types/financials";
+import { mapQuote } from "../gloomberb-cloud/normalizers";
+import { providerQuoteMatchesTarget } from "./financials";
+import { quoteTradingExchange } from "../../market-data/quotes/metadata";
 
 useRegularMarketSession();
 
@@ -72,6 +76,22 @@ test("old wrong-venue and unqualified caches cannot reintroduce Tokyo prices or 
   } finally { store.close(); rmSync(dir, { recursive: true, force: true }); }
 });
 
+test("a futures listing on its venue code takes the quote that names the venue, and no other venue's", async () => {
+  // Search and the futures board give the code (GC=F:CMX); the quote names the venue (COMEX).
+  const venues: Record<string, string> = { "GC=F": "COMEX", "CL=F": "NY MERCANTILE", "ZC=F": "CBOT" };
+  apiClient.getCloudQuote = (async (symbol: string) => ({ status: "success", data: {
+    ...quote(), symbol, currency: "USD", exchangeName: venues[symbol], listingExchangeName: venues[symbol], instrumentType: "FUTURE",
+  } })) as any;
+  const store = new AppPersistence(":memory:");
+  try {
+    const router = new AssetDataRouter(new GloomberbCloudProvider(), [], store.resources);
+    for (const [symbol, exchange] of [["GC=F", "CMX"], ["CL=F", "NYM"], ["ZC=F", "CBT"], ["CL=F", "NYMEX"]] as const) {
+      expect(await router.getQuote(symbol, exchange)).toMatchObject({ symbol, price: 3025 });
+    }
+    await expect(router.getQuote("GC=F", "NYM")).rejects.toThrow("No quote provider available");
+  } finally { store.close(); }
+});
+
 test("declared contract contexts retain exact venue, contract and independent cache identity", async () => {
   const calls: unknown[] = [];
   const provider = createTestDataProvider({ getQuote: async (symbol, exchange, context) => {
@@ -126,4 +146,51 @@ test("bare suffix aliases keep caller identity through reordered cloud batches a
     expect(seen[0]).toBe(targets[1]!);
     expect(seen[1]).toBe(targets[0]!);
   }
+});
+
+test("a row saved as 247540:KRX keeps Gloom Cloud's KOSDAQ quote, answered as KRX, by request, batch, stream and cache", async () => {
+  // Gloom Cloud's answer for EcoPro BM, a KOSDAQ code a row saved before search listed it on KOSDAQ asks for on KRX:
+  // its KOSDAQ quote under the listing asked for, naming the board it read. This listing check, and the cache's
+  // below, are those of every release since v0.15 (unchanged in this code), so installed apps keep the answer.
+  const answer = (listing = "KRX") => ({ symbol: "247540", name: "EcoPro BM Co., Ltd.", currency: "KRW", price: 128_800,
+    lastUpdated: Date.now(), marketState: "CLOSED", instrumentType: "EQUITY", listingExchangeName: listing,
+    listingExchangeFullName: listing, exchangeName: listing, fullExchangeName: listing, tradingExchangeName: "KOSDAQ" });
+  for (const key of ["247540:KRX", "247540"]) {
+    expect(providerQuoteMatchesTarget({ ...mapQuote(answer()), symbol: key }, key, "KRX"), key).toBe(true);
+    // Named KOSDAQ, the same quote would be dropped.
+    expect(providerQuoteMatchesTarget({ ...mapQuote(answer("KOSDAQ")), symbol: key }, key, "KRX"), key).toBe(false);
+  }
+  apiClient.getCloudQuote = (async () => ({ status: "success", data: answer() })) as any;
+  apiClient.getCloudQuotesBatch = async (requests) => ({ status: "success", data: { items: requests.map((request) => ({
+    ...request, status: "success" as const, data: answer() })) } });
+  apiClient.ensureVerifiedSession = async () => null;
+  apiClient.subscribeQuotes = (requests, onQuote) => {
+    for (const request of requests) onQuote(request, answer());
+    return () => {};
+  };
+  const saved = { price: 128_800, listingExchangeName: "KRX", tradingExchangeName: "KOSDAQ" };
+  const target: QuoteSubscriptionTarget = { symbol: "247540", exchange: "KRX", surface: "watchlist", visible: true };
+  const store = new AppPersistence(":memory:");
+  try {
+    const router = new AssetDataRouter(new GloomberbCloudProvider(), [], store.resources);
+    const quoted = await router.getQuote("247540", "KRX");
+    expect(quoted).toMatchObject(saved);
+    expect(quoteTradingExchange(quoted)).toBe("KOSDAQ");
+    expect((await router.getQuotesBatch([target]))[0]?.quote).toMatchObject(saved);
+    const streamed: Quote[] = [];
+    router.subscribeQuotes([target], (_target, quote) => streamed.push(quote))();
+    expect(streamed[0]).toMatchObject(saved);
+    // The cached answer is served again with the source gone.
+    apiClient.getCloudQuote = (async () => { throw new Error("Cloud is down"); }) as any;
+    apiClient.getCloudQuotesBatch = (async () => { throw new Error("Cloud is down"); }) as any;
+    expect((await new AssetDataRouter(new GloomberbCloudProvider(), [], store.resources).getQuotesBatch([target]))[0]?.quote)
+      .toMatchObject(saved);
+  } finally { store.close(); }
+  // The same quote named KOSDAQ is one the router drops.
+  apiClient.getCloudQuote = (async () => ({ status: "success", data: answer("KOSDAQ") })) as any;
+  const other = new AppPersistence(":memory:");
+  try {
+    await expect(new AssetDataRouter(new GloomberbCloudProvider(), [], other.resources).getQuote("247540", "KRX"))
+      .rejects.toThrow("No quote provider available");
+  } finally { other.close(); }
 });

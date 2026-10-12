@@ -6,6 +6,8 @@ import type { AppConfig } from "../../../types/config";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { createConfigBackedTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { deserializeAlerts, serializeAlerts } from "./alert-engine";
+import { EVENT_ALERTS_KEY, type EventAlertRule } from "./events";
+import { createResearchAlert } from "./research-builder";
 import { alertsPlugin } from "./index";
 import { AlertsPane } from "./pane";
 import type { AlertCondition, AlertRule, AlertStatus } from "./types";
@@ -42,7 +44,7 @@ function makeAlert(
   };
 }
 
-function createAlertsConfig(alerts: AlertRule[]): AppConfig {
+function createAlertsConfig(alerts: AlertRule[], eventRules: EventAlertRule[] = []): AppConfig {
   const baseConfig = createTestPaneConfig("/tmp/gloomberb-alerts", {
     instanceId: TEST_PANE_ID,
     paneId: "alerts",
@@ -55,6 +57,7 @@ function createAlertsConfig(alerts: AlertRule[]): AppConfig {
       ...baseConfig.pluginConfig,
       alerts: {
         alerts: serializeAlerts(alerts),
+        ...(eventRules.length ? { [EVENT_ALERTS_KEY]: JSON.stringify(eventRules) } : {}),
       },
     },
   };
@@ -69,16 +72,18 @@ function makeRuntime(overrides: Partial<PluginRuntimeAccess> = {}): PluginRuntim
 
 function AlertsHarness({
   alerts,
+  eventRules,
   width = 110,
   height = 12,
   runtime = makeRuntime(),
 }: {
   alerts: AlertRule[];
+  eventRules?: EventAlertRule[];
   width?: number;
   height?: number;
   runtime?: PluginRuntimeAccess;
 }) {
-  const initialState = createInitialState(createAlertsConfig(alerts));
+  const initialState = createInitialState(createAlertsConfig(alerts, eventRules));
   initialState.focusedPaneId = TEST_PANE_ID;
   const [state, dispatch] = useReducer(appReducer, initialState);
   harnessState = state;
@@ -235,6 +240,34 @@ describe("AlertsPane", () => {
   });
 });
 
+// Every tab gives its selected row the same `v`; one mapping decides what opens (targets.test.ts).
+test("v opens what the selected event rule follows: a security's DES, any other rule its own pane", async () => {
+  const opened: string[] = [];
+  const runtime = makeRuntime({
+    pinTicker: (symbol, options) => { opened.push(`${options?.paneType}:${symbol}`); },
+    createPaneFromTemplate: (templateId, options) => { opened.push(`${templateId}:${options?.arg ?? ""}`); },
+  });
+  const eventRules = [
+    createResearchAlert("unusual_volume", { "unusual_volume:symbol": "NVDA" }, 2),
+    createResearchAlert("perps_threshold", { "perps_threshold:marketId": "hyperliquid:xyz:AAPL", "perps_threshold:metric": "premium" }, 1),
+  ];
+  await tui.render(<AlertsHarness alerts={[]} eventRules={eventRules} runtime={runtime} />, { width: 110, height: 12 });
+  await renderSettled();
+  await clickFrameText("Events");
+  await tui.waitForFrameToContain("[v]iew");
+  await act(async () => {
+    await tui.setup().mockInput.typeText("v");
+    await tui.setup().renderOnce();
+  });
+  await act(async () => {
+    tui.setup().mockInput.pressArrow("down");
+    await tui.setup().renderOnce();
+  });
+  await renderSettled();
+  await clickFrameText("[v]");
+  expect(opened).toEqual(["ticker-research:NVDA", "perps-pane:hyperliquid:xyz:AAPL"]);
+});
+
 describe("alertsPlugin command", () => {
   test("registers a searchable add command with direct shortcut arguments", async () => {
     const store = new Map<string, unknown>();
@@ -264,7 +297,12 @@ describe("alertsPlugin command", () => {
           lastUpdated: Date.now(),
           dataSource: "live",
         }),
+        // 7203 trades in Tokyo only.
+        search: async (query: string) => query.startsWith("7203")
+          ? [{ providerId: "test", symbol: "7203", name: "Toyota Motor Corporation", exchange: "JPX", currency: "JPY", type: "EQUITY" }]
+          : [],
       },
+      tickerRepository: { loadTicker: async () => null, loadAllTickers: async () => [] },
       notify(notification: any) {
         notifications.push(notification);
       },
@@ -300,6 +338,10 @@ describe("alertsPlugin command", () => {
         status: "active",
       });
       expect(notifications[0]?.body).toContain("AAPL");
+
+      // An alert link's 7203:TSE is Tokyo, where 7203 trades, as `alerts add` reads it.
+      await command.execute({ symbol: "7203:TSE", condition: "above", price: "3000" });
+      expect(deserializeAlerts(String(store.get("alerts")))[1]).toMatchObject({ symbol: "7203:JPX", targetPrice: 3000 });
     } finally {
       alertsPlugin.dispose?.();
     }

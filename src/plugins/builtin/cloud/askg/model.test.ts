@@ -1,15 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import {
   askgReducer,
+  canRateTurn,
   canRetryASKGError,
   describeASKGError,
-  describeToolStatus,
   EMPTY_ASKG_CONVERSATION,
   requiresLocalConfirmation,
   rowSymbol,
   summarizeToolArguments,
   toolResultTables,
-  toolRowHeadline,
   turnsFromConversation,
   type ASKGConversationState,
 } from "./model";
@@ -79,6 +78,36 @@ describe("askgReducer", () => {
       status: "ok",
       rowCount: 6,
     });
+  });
+
+  test("a server tool row keeps the arguments its event carried, and has none from a server that sends none", () => {
+    const executed = (seq: number, extra: Record<string, unknown>) => ({
+      seq,
+      type: "tool-executed",
+      turnId: "turn-1",
+      toolCallId: `server-${seq}`,
+      name: "market.quotes",
+      source: "server",
+      status: "ok",
+      summary: { rowCount: 2, elapsedMs: 90, truncated: false, note: "1 requested quote was unavailable." },
+      ...extra,
+    }) as ASKGSseEvent;
+    const [withArgs, older, malformed] = apply(
+      withTurn(),
+      executed(1, { args: { symbols: ["NVDA", "AMD"], limit: 2 } }),
+      executed(2, {}),
+      executed(3, { args: ["NVDA"] }),
+    ).turns[0]!.tools;
+
+    expect(withArgs).toMatchObject({
+      origin: "server",
+      args: { symbols: ["NVDA", "AMD"], limit: 2 },
+      argumentSummary: "NVDA,AMD · limit=2",
+    });
+    // The same row as an older server sends it: no arguments, the note as the summary.
+    expect(older).toMatchObject({ origin: "server", argumentSummary: "1 requested quote was unavailable." });
+    expect(older).not.toHaveProperty("args");
+    expect(malformed).not.toHaveProperty("args");
   });
 
   test("drops events a resumed stream replays", () => {
@@ -219,23 +248,8 @@ describe("askgReducer", () => {
       undo: { status: "available" },
     });
     expect(serverCall).toMatchObject({ name: "news.search", origin: "server", status: "error" });
-    expect(toolRowHeadline(script!)).toEqual({ label: "Script", summary: "" });
-    expect(describeToolStatus(script!)).toBe("partial");
+    expect(script).toMatchObject({ name: "run_script", origin: "server", status: "partial" });
     expect(script?.note).toBe("2 calls, 1 failed, 1.2 s");
-
-    // A clean run says how it went on the row itself.
-    const clean = apply(withTurn(), {
-      seq: 1,
-      type: "tool-executed",
-      turnId: "turn-1",
-      toolCallId: "script-2",
-      name: "run_script",
-      source: "server",
-      status: "ok",
-      summary: { rowCount: 3, elapsedMs: 1_200, truncated: false, note: "3 calls, 1.2 s" },
-    }).turns[0]!.tools[0]!;
-    expect(toolRowHeadline(clean)).toEqual({ label: "Script", summary: "3 calls, 1.2 s" });
-    expect(describeToolStatus(clean)).toBe("done");
   });
 
   test("an error event describes the turn instead of leaving it streaming", () => {
@@ -306,25 +320,34 @@ describe("timeline row helpers", () => {
     expect(summarizeToolArguments({ resource: "app://panes" })).toBe("app://panes");
   });
 
-  test("reads the row count into the status once a tool returns", () => {
-    const base = {
-      toolCallId: "call-1",
-      name: "val",
-      argumentSummary: "",
-      writeTier: "read" as const,
-      origin: "client" as const,
-      requiresConfirmation: false,
-      expanded: false,
-    };
-    expect(describeToolStatus({ ...base, status: "running" })).toBe("running");
-    expect(describeToolStatus({ ...base, status: "ok", rowCount: 1 })).toBe("1 row");
-    expect(describeToolStatus({ ...base, status: "ok", rowCount: 12 })).toBe("12 rows");
-    expect(describeToolStatus({ ...base, status: "timeout" })).toBe("timed out");
-  });
-
   test("finds the symbol a result row is about", () => {
     expect(rowSymbol({ ticker: "aapl", note: "x" })).toBe("AAPL");
     expect(rowSymbol({ name: "Apple Inc" })).toBeNull();
+  });
+});
+
+describe("daily questions left", () => {
+  test("counts each turn the platform admits after the limits were read, and none once it refuses at the cap", () => {
+    const limits = {
+      requestsPerMinute: 20,
+      turnsPerDay: 300,
+      turnsRemainingToday: 12,
+      maxToolCallsPerTurn: 8,
+      turnWallClockMs: 60_000,
+      clientToolTimeoutMs: 10_000,
+    };
+    const session = (seq: number, turnId: string): ASKGSseEvent => ({
+      seq, type: "session", sessionId: "s1", turnId, model: "m", promptVersion: "v1",
+    });
+    let state = askgReducer(withTurn(), { type: "session-started", sessionId: "s1", model: "m", limits, acceptedTools: [], feedback: false });
+    state = apply(state, session(1, "remote-1"));
+    // A resumed stream replays its session frame; the turn is counted once.
+    state = apply(state, session(1, "remote-1"));
+    expect(state.limits?.turnsRemainingToday).toBe(11);
+
+    state = askgReducer(state, { type: "prompt", turnId: "turn-2", prompt: "and now?", at: 1 });
+    state = apply(state, { seq: 1, type: "error", turnId: "turn-2", code: "daily_turn_cap", message: "No questions left today.", retryable: false });
+    expect(state.limits?.turnsRemainingToday).toBe(0);
   });
 });
 
@@ -361,6 +384,13 @@ describe("failure handling", () => {
       message: "Connection lost",
       retryable: true,
     })).toBe("Connection lost.");
+    // The cap says when there will be more, in words, and never its code.
+    expect(describeASKGError({
+      code: "daily_turn_cap",
+      message: "The daily Ask Gloom turn limit is used up. daily_turn_cap",
+      retryable: false,
+      retryAfterMs: 79_188_000,
+    })).toBe("No questions left today. More in 22 h.");
   });
 
   test("a retried turn leaves no trace of the attempt it replaces", () => {
@@ -461,12 +491,13 @@ describe("stored conversations", () => {
       ],
     });
 
-    expect(turn?.tools.map((row) => [toolRowHeadline(row).label, describeToolStatus(row)])).toEqual([
-      ["fa", "8 rows"],
-      ["fa", "failed"],
-      ["Script", "timed out"],
+    expect(turn?.tools.map((row) => [row.name, row.status, row.rowCount])).toEqual([
+      ["fa", "ok", 8],
+      ["fa", "error", undefined],
+      ["run_script", "timeout", 2],
     ]);
-    expect(toolRowHeadline(turn!.tools[2]!).summary).toBe("");
+    // The arguments survive, so a reopened row names what it read.
+    expect(turn?.tools[1]?.args).toEqual({ symbol: "AMD" });
     expect(turn?.tools[2]?.note).toBe("Script timed out after 2 calls, 20.0 s");
   });
 
@@ -493,5 +524,60 @@ describe("stored conversations", () => {
     const started = askgReducer(opened, { type: "conversation-started" });
     expect(started.conversationId).toBeNull();
     expect(started.turns).toEqual([]);
+  });
+
+  test("a reopened conversation shows the ratings it was given, on a server that takes them", () => {
+    const at = "2026-09-20T10:00:00.000Z";
+    const conversation = {
+      id: "conv-3",
+      title: null,
+      messageCount: 6,
+      lastMessageAt: at,
+      createdAt: at,
+      updatedAt: at,
+      messages: [
+        { seq: 1, role: "user" as const, text: "q1", tools: [], turnId: "t1", createdAt: at },
+        {
+          seq: 2,
+          role: "assistant" as const,
+          text: "a1",
+          tools: [],
+          turnId: "t1",
+          createdAt: at,
+          feedback: { rating: "down" as const, reason: "wrong" as const, shared: true },
+        },
+        { seq: 3, role: "user" as const, text: "q2", tools: [], turnId: "t2", createdAt: at },
+        { seq: 4, role: "assistant" as const, text: "a2", tools: [], turnId: "t2", createdAt: at, feedback: null },
+        { seq: 5, role: "user" as const, text: "q3", tools: [], turnId: "t3", createdAt: at },
+        // An unknown thumb from a newer server is no rating rather than a wrong one.
+        {
+          seq: 6,
+          role: "assistant" as const,
+          text: "a3",
+          tools: [],
+          turnId: "t3",
+          createdAt: at,
+          feedback: { rating: "meh", reason: null, shared: false } as never,
+        },
+      ],
+    };
+
+    const older = askgReducer(EMPTY_ASKG_CONVERSATION, { type: "conversation-opened", conversation });
+    expect(older.feedbackAvailable).toBe(false);
+    expect(older.turns.some((turn) => canRateTurn(older, turn))).toBe(false);
+
+    const opened = askgReducer(EMPTY_ASKG_CONVERSATION, {
+      type: "conversation-opened",
+      conversation: { ...conversation, capabilities: { feedback: 1 } },
+    });
+    expect(opened.feedbackAvailable).toBe(true);
+    expect(opened.turns.map((turn) => turn.feedback)).toEqual([
+      { rating: "down", reason: "wrong", shared: true, pending: null },
+      undefined,
+      undefined,
+    ]);
+    expect(opened.turns.every((turn) => canRateTurn(opened, turn))).toBe(true);
+    // Starting over keeps what the server said about ratings; only the turns go.
+    expect(askgReducer(opened, { type: "conversation-started" }).feedbackAvailable).toBe(true);
   });
 });

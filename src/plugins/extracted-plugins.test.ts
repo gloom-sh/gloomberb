@@ -112,6 +112,20 @@ describe("seedExtractedPlugins", () => {
     }
   });
 
+  test("counts Macro as off only while all three of its successors are", async () => {
+    const tvRepo = EXTRACTED_PLUGINS.find((candidate) => candidate.id === "tv")!.repo;
+    for (const [disabledPlugins, restored] of [
+      [["rates-macro", "credit", "earnings"], false],
+      [["credit"], true],
+    ] as const) {
+      const installs: string[] = [];
+      await withPluginsDir((dir) => seedExtractedPlugins(
+        config({ disabledPlugins: [...disabledPlugins] }), async (ref) => { installs.push(ref); }, dir,
+      ));
+      expect(installs.includes(tvRepo)).toBe(restored);
+    }
+  });
+
   test("retries next launch instead of recording a failed install", async () => {
     const result = await withPluginsDir((dir) => seedExtractedPlugins(config(), async () => {
       throw new Error("offline");

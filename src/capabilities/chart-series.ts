@@ -202,7 +202,7 @@ function resolvedOutput(value: unknown): ResolvedSeries {
   const input = object(value, "resolve output");
   onlyKeys(input, "resolve output", [
     "id", "label", "color", "unit", "unitGroup", "nativeFrequency", "timestampMode", "dataShape", "style", "transform",
-    "axis", "panelId", "interpolation", "timeBasis", "latestChangePercent", "points", "warning", "hidden",
+    "axis", "panelId", "interpolation", "timeBasis", "latestChangePercent", "points", "warning", "hidden", "attribution",
   ]);
   if (!Array.isArray(input.points)) fail("resolve output points", "expected an array.");
   if (input.points.length > MAX_CHART_SERIES_POINTS) {
@@ -212,6 +212,9 @@ function resolvedOutput(value: unknown): ResolvedSeries {
   if (timeBasis) onlyKeys(timeBasis, "resolve output time basis", ["kind", "timeZone", "cadenceMs"]);
   const kind = timeBasis?.kind === undefined ? undefined : enumValue<"market">(timeBasis.kind, "time basis kind", new Set(["market"]));
   const warning = optionalString(input.warning, "resolve output warning", 500);
+  const attribution = input.attribution === undefined ? undefined : object(input.attribution, "resolve output attribution");
+  if (attribution) onlyKeys(attribution, "resolve output attribution", ["source", "publisher"]);
+  const publisher = attribution ? optionalString(attribution.publisher, "resolve output publisher", 160) : undefined;
   return {
     id: boundedString(input.id, "resolve output ID", 160),
     label: boundedString(input.label, "resolve output label", 160),
@@ -242,6 +245,10 @@ function resolvedOutput(value: unknown): ResolvedSeries {
       : {}),
     points: input.points.map(point),
     ...(warning !== undefined ? { warning } : {}),
+    ...(attribution ? { attribution: {
+      source: boundedString(attribution.source, "resolve output source", 160),
+      ...(publisher !== undefined ? { publisher } : {}),
+    } } : {}),
     ...(input.hidden !== undefined
       ? typeof input.hidden === "boolean" ? { hidden: input.hidden } : fail("resolve output hidden", "expected a boolean.")
       : {}),
@@ -253,8 +260,18 @@ export const chartSeriesCatalogOutputSchema: CapabilitySchema<ChartSeriesCatalog
 export const chartSeriesResolveRequestSchema: CapabilitySchema<ChartSeriesResolveRequest> = { parse: resolveRequest };
 export const chartSeriesResolveOutputSchema: CapabilitySchema<ResolvedSeries> = { parse: resolvedOutput };
 
+/**
+ * Set on the capabilities registered series resolve through. The composer
+ * searches those series in the series registry, so capability search skips them.
+ */
+export const REGISTERED_SERIES_SOURCE_ID = "registered-series";
+
 export function chartSeriesCapabilityManifests(invoker: CapabilityInvoker) {
   return invoker.capabilityManifests(CHART_SERIES_CAPABILITY_KIND);
+}
+
+function searchableChartSeriesManifests(invoker: CapabilityInvoker) {
+  return chartSeriesCapabilityManifests(invoker).filter((manifest) => manifest.sourceId !== REGISTERED_SERIES_SOURCE_ID);
 }
 
 export async function searchChartSeriesCapabilities(
@@ -263,7 +280,7 @@ export async function searchChartSeriesCapabilities(
   limit = 8,
   signal?: AbortSignal,
 ): Promise<Array<ChartSeriesCatalogItem & { capabilityId: string; capabilityName: string }>> {
-  const manifests = chartSeriesCapabilityManifests(invoker);
+  const manifests = searchableChartSeriesManifests(invoker);
   const results = await Promise.allSettled(manifests.map(async (manifest) => {
     const items = await invoker.invokeCapability<ChartSeriesCatalogItem[]>(
       manifest.id,

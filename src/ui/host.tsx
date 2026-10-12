@@ -59,8 +59,8 @@ export interface ChartCrosshairOverlay {
   /** Level line and focus dot; null when only the column is known, as with a keyboard cursor. */
   pixelY: number | null;
   color: string;
-  /** Per-series dots on the cursor column, in bitmap pixels. */
-  markers?: readonly { pixelY: number; color: string }[];
+  /** Per-series dots on the cursor column, in bitmap pixels; hollow for a value carried from an earlier observation. */
+  markers?: readonly { pixelY: number; color: string; hollow?: boolean }[];
 }
 
 /**
@@ -108,10 +108,17 @@ export interface SyntaxStyleLike {
   }): number;
 }
 
-/** Where a drag has a box this frame: an offset in cells from where it is laid out. */
+/** Where a drag has a box this frame, in cells. */
 export interface LiveBoxFrame {
-  dx: number;
-  dy: number;
+  /** Offset from where the box is laid out, carried on the box's own layer. */
+  dx?: number;
+  dy?: number;
+  /** Position in place of the laid-out one (left and top in its parent): laid out again, with no layer of its own. */
+  x?: number;
+  y?: number;
+  /** Size in place of the laid-out one: the box and what stretches inside it lay out again, nothing renders. */
+  width?: number;
+  height?: number;
 }
 
 export interface BoxRenderable {
@@ -126,9 +133,29 @@ export interface BoxRenderable {
   /**
    * Desktop only: draws the box at `frame` by restyling its own element, with
    * no render, until it is called with null. The offset rides the compositor,
-   * so it costs no layout or repaint.
+   * so it costs no layout or repaint; a size lays out the box's own subtree.
    */
   setLiveFrame?: (frame: LiveBoxFrame | null) => void;
+  /**
+   * Desktop only: calls `listener` with the box's size in cells each time the
+   * browser lays it out at a new one (a ResizeObserver, after layout and
+   * before paint). Returns the unsubscribe.
+   */
+  observeSize?: (listener: (size: { width: number; height: number }) => void) => () => void;
+  /**
+   * Desktop only, for a surface root (a chart, a heat map): fills the box the
+   * surface sits in where its cells leave a fraction of a cell, refits when
+   * that box changes size at rest, and takes part in every resize (see
+   * `followsFrame`). Returns the untrack.
+   */
+  trackSurface?: () => () => void;
+  /** Desktop only: fits a tracked surface to its box again, after it renders at new cells. */
+  refitSurface?: () => void;
+  /**
+   * Desktop only, during a resize: the axes on which CSS keeps a tracked
+   * surface on the frame's size by itself, to the pixel.
+   */
+  followsFrame?: () => { x: boolean; y: boolean };
   [key: string]: unknown;
 }
 
@@ -208,6 +235,29 @@ export interface NativeFrameSpan {
   attributes: number;
 }
 
+/** One cell of a captured frame, in the colours it shows (inverse and dim applied). */
+interface NativeFrameCell {
+  /** Empty for the second cell of a wide character. */
+  char: string;
+  fg: string;
+  bg: string;
+  bold: boolean;
+}
+
+/** A picture of part of the screen, as `capturePaneImage` draws it. */
+export interface NativePaneImage {
+  png: Uint8Array;
+  width: number;
+  height: number;
+  /** The same picture as RGBA pixels, for a preview drawn in cells. */
+  pixels: Uint8ClampedArray;
+  /**
+   * The cells it was drawn from, row by row, for a preview where they fit.
+   * Absent when kitty images were drawn in: the cells under them are blank.
+   */
+  cells?: { cols: number; rows: number; cells: NativeFrameCell[] };
+}
+
 /** The last frame the terminal renderer drew, as styled rows. */
 export interface NativeFrameCapture {
   cols: number;
@@ -245,6 +295,11 @@ export interface NativeRendererHost {
   removePostProcessFn?(processFn: NativePostProcessFn): void;
   /** Terminal renderers only. Kitty graphics are drawn out of band and come back as blank cells. */
   captureFrame?(): NativeFrameCapture | null;
+  /**
+   * Terminal renderers only: a PNG of a rectangle of the frame shown now, in
+   * cells, its characters drawn in a bundled font and its kitty images put back.
+   */
+  capturePaneImage?(rect: { x: number; y: number; width: number; height: number }): Promise<NativePaneImage>;
   copyToClipboardOSC52?(text: string): boolean;
   write?(data: string | Uint8Array): boolean;
   captureMouseRenderable?(renderable: unknown): void;
@@ -258,7 +313,7 @@ export interface NativeRendererHost {
   /** Terminal renderers only: keeps kitty images clear of the panes, menus and dialogs drawn over them. */
   nativeSurfaceManager?: Pick<
     import("../components/chart/native/surface/manager").NativeSurfaceManager,
-    "setWindowState" | "upsertLocalOccluder" | "removeLocalOccluder"
+    "setWindowState" | "upsertLocalOccluder" | "removeLocalOccluder" | "visibleImages"
   >;
 }
 
@@ -572,6 +627,9 @@ export interface UiHost {
   ListView?: ComponentType<any>;
   SegmentedControl?: ComponentType<any>;
   DialogFrame?: ComponentType<any>;
+  /** Props are `DialogActionsProps` / `DialogHintsProps` from components/ui/dialog-actions. */
+  DialogActions?: ComponentType<any>;
+  DialogHints?: ComponentType<any>;
   PageStackView?: ComponentType<any>;
   Tabs?: ComponentType<HostTabsProps>;
   Checkbox?: ComponentType<HostCheckboxProps>;

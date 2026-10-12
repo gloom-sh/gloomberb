@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { CompositeChartLevels } from "./levels";
+import type { SeriesLineCue } from "./series-cues";
 import type {
   ChartPanelSpec,
   PanelScale,
@@ -69,6 +70,12 @@ interface CompositeMarketTimeScale {
   endTime: number;
   anchorSeriesId: string;
   cadenceMs: number;
+  /**
+   * Wall-clock time one slot stands for before the first observation: the
+   * loaded bars' own average, closed sessions included. Absent means
+   * `cadenceMs`.
+   */
+  historyMsPerSlot?: number;
   anchors: Array<{
     timestamp: number;
     position: number;
@@ -134,6 +141,8 @@ export interface CompositePanelScene {
   extendedHours?: readonly CompositeExtendedHoursSpan[];
   /** The previous session's close on a one-day chart, drawn as a dotted reference line. */
   priorClose?: { axis: CompositeAxisSide; value: number; yRatio: number };
+  /** How each line tells itself apart besides colour, by series id; absent on a chart with one line. */
+  lineCues?: ReadonlyMap<string, SeriesLineCue>;
 }
 
 export interface CompositeCursorValue {
@@ -143,6 +152,12 @@ export interface CompositeCursorValue {
   unit: string;
   value: number | null;
   point: TimeSeriesPoint | null;
+  /**
+   * Under a cursor, the value is the series' last one before the cursor's
+   * time, which it has no observation at: another venue's hours, a coarser
+   * cadence, a dataset that lags.
+   */
+  carried?: boolean;
 }
 
 export interface CompositeChartScene {
@@ -158,6 +173,12 @@ export interface CompositeChartScene {
   cursorDate: Date | null;
   cursorXRatio: number | null;
   cursorValues: CompositeCursorValue[];
+  /**
+   * The panels before they were thinned to the plot's pixels, which the
+   * cursor reads values from: a thinned line or a bucket of candles has no
+   * point at most of the bars it stands for.
+   */
+  cursorPanels?: CompositePanelScene[];
   /** IANA zone the time axis and cursor read in: the venue's for intraday market bars, else UTC. */
   timeZone?: string;
 }

@@ -12,6 +12,7 @@ import { instrumentFromTicker, type ChartRequest, type TickerInstrumentOptions }
 import { buildChartKey } from "../../../market-data/selectors";
 import {
   resolvePortfolioAccountMetrics,
+  resolvePortfolioLeverage,
   resolvePortfolioMarketValue,
   resolvePortfolioNetLiquidation,
 } from "../portfolio-list/account-metrics";
@@ -69,8 +70,8 @@ function formatAccountFreshness(account: ResolvedPortfolioAccountState["account"
 }
 
 function formatMarginLeverage(netLiquidation: number | undefined, totalMarketValue: number): string | null {
-  if (!isFiniteNumber(netLiquidation) || netLiquidation <= 0 || !isFiniteNumber(totalMarketValue) || totalMarketValue < 0) return null;
-  return `${(totalMarketValue / netLiquidation).toFixed(1)}x`;
+  const leverage = resolvePortfolioLeverage(totalMarketValue, netLiquidation);
+  return leverage == null ? null : `${leverage.toFixed(1)}x`;
 }
 
 export function buildPortfolioChartTargets(
@@ -205,6 +206,7 @@ export function buildPortfolioBetaResult(portfolio: PortfolioReturnSeriesResult,
 
 export function buildAnalyticsSummaryRows({
   accountState,
+  activePortfolio,
   brokerPerformance,
   portfolioStats,
   convertAccountValue = (value) => value,
@@ -232,6 +234,8 @@ export function buildAnalyticsSummaryRows({
   const totalMarketValue = resolvePortfolioMarketValue(portfolioStats, account, convertAccountValue, basis);
   const netLiquidation = resolvePortfolioNetLiquidation(portfolioStats, account, convertAccountValue, basis);
   const hasMarketValue = portfolioStats.hasPositions || isFiniteNumber(account?.grossPositionValue);
+  // As in the portfolio header: a broker account is worth its equity, and its positions alone are its gross.
+  const broker = !!account || !!activePortfolio?.brokerInstanceId;
 
   if (portfolioStats.unavailableConversions?.length || (account && !Number.isFinite(convertAccountValue(1)))) {
     rows.push({
@@ -241,19 +245,19 @@ export function buildAnalyticsSummaryRows({
     });
   }
 
-  if (netLiquidation != null) {
+  if (netLiquidation != null || (broker && hasMarketValue)) {
     rows.push({
       id: "net-liquidation",
       label: "Net Liq",
-      value: money(netLiquidation),
-      color: colors.text,
+      value: money(netLiquidation ?? Number.NaN),
+      color: netLiquidation != null ? colors.text : colors.textDim,
     });
   }
 
   if (hasMarketValue) {
     rows.push({
       id: "total-value",
-      label: "Val",
+      label: broker || portfolioStats.hasShorts ? "Gross" : "Val",
       value: money(totalMarketValue),
       color: colors.text,
     });

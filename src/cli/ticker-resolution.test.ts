@@ -1,9 +1,13 @@
 import { afterEach, expect, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { TickerRepository } from "../data/ticker-repository";
-import { createTestDataProvider } from "../test-support/data-provider";
+import { createTestDataProvider, createTestQuote } from "../test-support/data-provider";
+import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
-import { resolveTickerForCli } from "./ticker-resolution";
+import type { TickerChanges } from "../types/ticker-changes";
+import { ListingArgError, savedListingName } from "./listing-arg";
+import { connectionHealth, GLOOM_CLOUD_HTTP_CONNECTION_ID } from "../core/connection-health";
+import { resolveCliTicker, resolveTickerForCli, resolveTickersForCli } from "./ticker-resolution";
 
 const persistences: AppPersistence[] = [];
 
@@ -36,4 +40,149 @@ test("names a new listing from its own quote, not a catalogue row filed under an
     expect(ticker.metadata).toMatchObject({ exchange: "LSE", name });
     expect((await store.loadTicker(ticker.metadata.ticker))?.metadata.name).toBe(name);
   }
+});
+
+function tickerStore() {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  return new TickerRepository(persistence.tickers);
+}
+
+const failed = (promise: Promise<unknown>) => promise.then(() => null, (error: unknown) => error as ListingArgError);
+
+test("a bare symbol no quote settles goes to the listing `quote` reads, and every listing a failure offers adds that listing", async () => {
+  const row = { providerId: "test", currency: "EUR", type: "Common Stock" };
+  const listings: Record<string, Array<{ name: string; exchange: string }>> = {
+    "123": [{ name: "Sassy Gold Corp.", exchange: "FWB2" }, { name: "Sassy Gold Corp", exchange: "XSTU" }],
+    "2222": [{ name: "Kotobuki Spirits Co., Ltd.", exchange: "JPX" }, { name: "Saudi Arabian Oil Co.", exchange: "TADAWUL" }],
+  };
+  const quoted = new Set(["123:XSTU", "123:FWB2", "2222:JPX", "2222:TADAWUL"]);
+  const dataProvider = createTestDataProvider({
+    search: async (query) => (listings[query.split(":")[0]!] ?? []).map((listing) => ({ ...row, symbol: query.split(":")[0]!, ...listing })),
+    // Neither bare code has a quote of its own, as the service answers both.
+    getQuote: async (symbol, exchange) => {
+      if (!quoted.has(symbol) && !quoted.has(`${symbol}:${exchange}`)) throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, currency: "EUR", listingExchangeName: exchange });
+    },
+  });
+  const store = tickerStore();
+  const retry = (key: string) => `gloomberb watchlist add Growth ${key}`;
+
+  // One company: its first listing in search order with a quote, as `quote 123` reads it.
+  const sassy = await resolveCliTicker("123", store, dataProvider, undefined, { retry });
+  expect(sassy.ticker.metadata.exchange).toBe("FWB2");
+  expect(sassy.notes).toEqual(["123 -> FWB2 (other listings: XSTU)"]);
+
+  // Several companies: no listing is the answer, and each one offered is one the command takes.
+  const choose = await failed(resolveCliTicker("2222", store, dataProvider, undefined, { retry }));
+  expect(choose).toBeInstanceOf(ListingArgError);
+  expect(choose?.message).toBe("Choose an exchange for 2222.");
+  const offered = [...(choose?.details ?? "").matchAll(/try: gloomberb watchlist add Growth (\S+)\)/g)].map((match) => match[1]!);
+  expect(offered).toEqual(["2222:JPX", "2222:TADAWUL"]);
+  for (const key of offered) {
+    expect(savedListingName((await resolveCliTicker(key, store, dataProvider)).ticker).key).toBe(key);
+  }
+});
+
+test("a symbol search no longer lists says it stopped trading, and a venue it is not on names the ones it is", async () => {
+  const twitter = createTestQuote({ symbol: "TWTR", price: 53.86, lastUpdated: Date.parse("2022-10-27T23:59:59.953Z"), stale: true });
+  const fund = { providerId: "test", symbol: "IEO", name: "iShares U.S. Oil & Gas Exploration & Production ETF", currency: "USD", type: "ETF" };
+  const dataProvider = createTestDataProvider({
+    search: async (query) => query.startsWith("IEO") ? [{ ...fund, exchange: "BATS" }, { ...fund, exchange: "IEX" }] : [],
+    getQuote: async (symbol, exchange) => symbol === "TWTR" ? twitter : createTestQuote({ symbol, listingExchangeName: exchange }),
+  });
+  const store = tickerStore();
+
+  expect((await failed(resolveCliTicker("TWTR", store, dataProvider)))?.message)
+    .toBe("TWTR: no longer trading since 2022-10-27 (last price $53.86).");
+  // A quote that is merely behind is no reason to say so.
+  expect((await failed(resolveCliTicker("TWTR", store, createTestDataProvider({
+    getQuote: async () => ({ ...twitter, lastUpdated: Date.now() - 10 * 24 * 60 * 60_000 }),
+  }))))?.message).toBe('No ticker match found for "TWTR".');
+
+  const arca = await failed(resolveCliTicker("IEO:ARCA", store, dataProvider));
+  expect(arca?.message).toBe("IEO does not trade on ARCA. IEO trades on: BATS, IEX.");
+  for (const exchange of ["BATS", "IEX"]) {
+    expect((await resolveCliTicker(`IEO:${exchange}`, store, dataProvider)).ticker.metadata.exchange).toBe(exchange);
+  }
+});
+
+test("a symbol whose search the service refused is looked up again, never reported as not found", async () => {
+  const nvda = { providerId: "test", symbol: "NVDA", name: "NVIDIA Corporation", exchange: "NASDAQ", currency: "USD", type: "Common Stock" };
+  const lookUp = async (refusals: number) => {
+    const persistence = new AppPersistence(":memory:");
+    persistences.push(persistence);
+    let refused = 0;
+    const dataProvider = createTestDataProvider({
+      // Search reads a refused request as no match; connection health is what saw it fail.
+      search: async (query) => {
+        if (query !== "NVDA") return [];
+        if (refused < refusals) {
+          refused += 1;
+          connectionHealth.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
+            operation: "GET /market/search", success: false, latencyMs: refused, error: new Error("Anonymous market rate limit exceeded"),
+          });
+          return [];
+        }
+        return [nvda];
+      },
+    });
+    const retries: number[] = [];
+    const results = await resolveTickersForCli(["NVDA", "XXXXX"], new TickerRepository(persistence.tickers), dataProvider, undefined, {
+      retryWaitsMs: [0, 0], onRetry: (count) => retries.push(count),
+    });
+    return { retries, outcomes: results.map((result) => result.ticker?.metadata.ticker ?? result.error?.message) };
+  };
+
+  expect(await lookUp(0)).toEqual({ retries: [], outcomes: ["NVDA", 'No ticker match found for "XXXXX".'] });
+  expect(await lookUp(1)).toEqual({ retries: [2], outcomes: ["NVDA", 'No ticker match found for "XXXXX".'] });
+  // Still refused after the last wait: neither symbol is called not found.
+  const refusedThroughout = await lookUp(3);
+  expect(refusedThroughout.retries).toEqual([2, 2]);
+  expect(refusedThroughout.outcomes.every((outcome) => outcome?.startsWith("Could not look up"))).toBe(true);
+});
+
+test("a symbol whose company moved says where it trades now, as watchlist and portfolio adds print it; the symbol renamed into prints nothing", async () => {
+  const fund = { providerId: "test", symbol: "FB", name: "ProShares S&P 500 Dynamic Daily Buffer ETF", exchange: "BATS", currency: "USD", type: "ETF" };
+  const changes: Record<string, TickerChanges> = {
+    FB: {
+      symbol: "FB",
+      moved: { symbol: "META", name: "Meta Platforms, Inc.", hops: [{ from: "FB", to: "META", date: "2022-06-09" }] },
+      formerly: null,
+      listedName: null,
+      changes: [{ from: "FB", to: "META", date: "2022-06-09" }],
+    },
+    TRCH: {
+      symbol: "TRCH",
+      moved: { symbol: "MMATQ", name: null, hops: [{ from: "TRCH", to: "MMAT", date: "2021-07-06" }, { from: "MMAT", to: "MMATQ", date: "2024-08-21" }] },
+      formerly: null,
+      listedName: null,
+      changes: [{ from: "TRCH", to: "MMAT", date: "2021-07-06" }],
+    },
+  };
+  const provider = (getTickerChanges: DataProvider["getTickerChanges"]) => createTestDataProvider({
+    search: async (query) => query === "FB" ? [fund] : [],
+    getQuote: async (symbol) => createTestQuote({ symbol, name: fund.name, listingExchangeName: "BATS", lastUpdated: Date.now() }),
+    getTickerChanges,
+  });
+  const online = provider(async (symbol) => changes[symbol] ?? null);
+
+  const fb = await resolveCliTicker("FB", tickerStore(), online);
+  expect(fb.notes).toEqual(["FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"]);
+  expect(fb.change).toMatchObject({ kind: "moved", tradesAs: "META", listed: "ProShares S&P 500 Dynamic Daily Buffer ETF" });
+  // Nothing lists the old symbol any more: the failure says where it went.
+  expect((await failed(resolveCliTicker("TRCH", tickerStore(), online)))?.message)
+    .toBe('No ticker match found for "TRCH". TRCH changed to MMAT on 2021-07-06, then to MMATQ on 2024-08-21.');
+
+  // A symbol with no change, an offline service, or a long list adds nothing and fails nothing.
+  const offline = provider(async () => { throw new Error("fetch failed"); });
+  for (const dataProvider of [offline, provider(async () => null)]) {
+    expect(await resolveCliTicker("FB", tickerStore(), dataProvider)).toMatchObject({ notes: [], change: null });
+  }
+  // The symbol a company renamed into is what was typed: the change is data, not a line.
+  const renamedInto = provider(async () => ({ ...changes.FB!, moved: null, formerly: [{ from: "OLDFB", to: "FB", date: "2022-06-09" }] }));
+  expect(await resolveCliTicker("FB", tickerStore(), renamedInto)).toMatchObject({ notes: [], change: { kind: "formerly" } });
+  const many = ["FB", ...Array.from({ length: 10 }, (_, index) => `ZZ${index}`)];
+  const [listed] = await resolveTickersForCli(many, tickerStore(), online, undefined, { retryWaitsMs: [] });
+  expect(listed).toMatchObject({ input: "FB", notes: [], change: null });
 });

@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
-import { TextAttributes, useRendererHost } from "../../../ui";
+import { Box, Text, TextAttributes, useRendererHost } from "../../../ui";
 import {
   DataTableView,
   EmptyState,
@@ -10,6 +10,7 @@ import {
   type DataTableKeyEvent,
 } from "../../../components";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import type { IssuerListingParams } from "../../../api-client/paths";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { colors, priceColor } from "../../../theme/colors";
@@ -29,6 +30,7 @@ import {
   formatOwnerShares,
   formatPercentOfClass,
   formatPointChange,
+  formatStakeToday,
   sortBeneficialRows,
   stakeMarker,
   type BeneficialColumn,
@@ -42,6 +44,24 @@ import type { HolderRow } from "./types";
 const STALE_SEGMENT = { id: "stale", parts: [{ text: "stale", tone: "warning" as const }] };
 
 /**
+ * A table line: a filer's row, or the line beneath it giving the same shares
+ * against today's count when the report's base is no longer today's.
+ */
+type BeneficialItem =
+  | { kind: "row"; id: string; row: BeneficialOwnerRow }
+  | { kind: "today"; id: string; row: BeneficialOwnerRow };
+
+const isFilerItem = (item: BeneficialItem) => item.kind === "row";
+
+/** What the figures are, in one line under the table: the percent is as filed, `+N` counts other reporting persons. */
+function beneficialLegend(rows: readonly BeneficialOwnerRow[]): string | null {
+  if (rows.length === 0) return null;
+  return rows.some((row) => row.otherPersons > 0)
+    ? "% class as filed · +N other reporting persons on the same report"
+    : "% class as filed";
+}
+
+/**
  * The 13D/G tab: who disclosed more than 5% of the class, the stake each
  * filer's latest report gives and how it moved, one row per filer, joined to
  * the Table tab's 13F holders for the quarter's action. A latest report is
@@ -53,14 +73,20 @@ export function BeneficialOwnersView({
   symbol,
   holderRows,
   fundMatches,
+  sharesOutstanding,
   onCycleView,
   onRefreshHolders,
+  listing,
 }: {
   focused: boolean;
   width: number;
   symbol: string | null;
+  /** The listing's venue and company, for a listing outside the US. */
+  listing?: IssuerListingParams;
   holderRows: readonly HolderRow[];
   fundMatches: ReadonlyMap<string, Holder13FMatch>;
+  /** Today's shares outstanding, which a report's shares are set against when its own base is out of date. */
+  sharesOutstanding?: number | null;
   onCycleView: () => void;
   onRefreshHolders: () => void;
 }) {
@@ -75,21 +101,27 @@ export function BeneficialOwnersView({
 
   // A session change retries a request the sign-in wall was shown for.
   const loader = useMemo(
-    () => symbol ? (force: boolean) => loadBeneficialOwners(symbol, force) : null,
-    [symbol, session.requestKey],
+    () => symbol ? (force: boolean) => loadBeneficialOwners(symbol, force, listing) : null,
+    [symbol, listing, session.requestKey],
   );
   const resource = useAsyncResource(loader, {
-    initialData: () => symbol ? cachedBeneficialOwners(symbol) : null,
+    initialData: () => symbol ? cachedBeneficialOwners(symbol, listing) : null,
     clearOnError: (error) => error instanceof Error && isCloudSessionRequired(error.message),
   });
   useAutoRefresh(resource.updatedAt, resource.load);
   const payload = resource.data?.payload ?? null;
 
   const rows = useMemo(
-    () => buildBeneficialRows(payload?.owners ?? [], holderRows, fundMatches),
-    [fundMatches, holderRows, payload],
+    () => buildBeneficialRows(payload?.owners ?? [], holderRows, fundMatches, sharesOutstanding),
+    [fundMatches, holderRows, payload, sharesOutstanding],
   );
   const sortedRows = useMemo(() => sortBeneficialRows(rows, sortPreference), [rows, sortPreference]);
+  // A stake set against today's count reads on the line beneath its row.
+  const items = useMemo<BeneficialItem[]>(() => sortedRows.flatMap((row) => [
+    { kind: "row" as const, id: row.id, row },
+    ...(row.today ? [{ kind: "today" as const, id: `${row.id}:today`, row }] : []),
+  ]), [sortedRows]);
+  const legend = useMemo(() => beneficialLegend(sortedRows), [sortedRows]);
   const columns = useMemo(() => buildBeneficialColumns(width), [width]);
   const selectedRow = sortedRows.find((row) => row.id === selectedId) ?? sortedRows[0] ?? null;
 
@@ -97,6 +129,7 @@ export function BeneficialOwnersView({
     if (!row || !symbol) return;
     openSecFilingInPane({ createPaneFromTemplate }, symbol, row.filing.accessionNumber);
   }, [createPaneFromTemplate, symbol]);
+  const activateItem = useCallback((item: BeneficialItem) => openFiling(item.row), [openFiling]);
 
   const openFilingUrl = useCallback(() => {
     const url = selectedRow?.filing.filingUrl;
@@ -125,12 +158,20 @@ export function BeneficialOwnersView({
     }));
   }, [setSortPreference]);
 
+  const renderTodayLine = useCallback((item: BeneficialItem) => (
+    item.kind === "today" && item.row.today
+      // Indented under its row's name; no-break spaces, which the desktop table does not collapse.
+      ? { text: `\u00a0\u00a0${formatStakeToday(item.row.today)}`, color: colors.textDim, attributes: TextAttributes.NONE }
+      : null
+  ), []);
+
   const renderCell = useCallback((
-    row: BeneficialOwnerRow,
+    item: BeneficialItem,
     column: BeneficialColumn,
     _index: number,
     rowState: { selected: boolean },
   ): DataTableCell => {
+    const { row } = item;
     const { filing } = row;
     // A report of zero reads as history; a stake under 5% is still a stake.
     const exited = row.stake === "exited";
@@ -138,8 +179,8 @@ export function BeneficialOwnersView({
     switch (column.id) {
       case "filer":
         return {
-          text: formatFilerName(filing.filerName, Math.max(0, filing.reportingPersons.length - 1), column.width),
-          value: filing.filerName,
+          text: formatFilerName(row.holderName, row.otherPersons, column.width),
+          value: row.holderName,
           color: exited ? colors.textMuted : rowState.selected ? colors.selectedText : colors.textBright,
           attributes: exited ? undefined : TextAttributes.BOLD,
         };
@@ -214,24 +255,31 @@ export function BeneficialOwnersView({
       empty={!!payload && sortedRows.length === 0}
       emptyTitle={`No 13D/13G filings in the last 4 years for ${symbol}.`}
     >
-      <DataTableView<BeneficialOwnerRow, BeneficialColumn>
+      <DataTableView<BeneficialItem, BeneficialColumn>
         focused={focused}
         selection={{
           kind: "id",
           selectedId: selectedRow?.id ?? null,
-          getId: (row) => row.id,
+          getId: (item) => item.id,
           onChange: (id) => setSelectedId(id),
         }}
-        onActivate={openFiling}
+        isNavigable={isFilerItem}
+        onActivate={activateItem}
         onRootKeyDown={handleKeyDown}
         resetScrollKey={symbol}
         rootWidth={width}
+        rootAfter={legend ? (
+          <Box paddingX={1} height={1} flexShrink={0}>
+            <Text fg={colors.textDim}>{legend}</Text>
+          </Box>
+        ) : undefined}
         columns={columns}
-        items={sortedRows}
+        items={items}
         sortColumnId={sortPreference.columnId}
         sortDirection={sortPreference.direction}
         onHeaderClick={handleHeaderClick}
-        getItemKey={(row) => row.id}
+        getItemKey={(item) => item.id}
+        renderSectionHeader={renderTodayLine}
         renderCell={renderCell}
         selectedTextOverridesCellColor
         emptyStateTitle={`No 13D/13G filings in the last 4 years for ${symbol}.`}

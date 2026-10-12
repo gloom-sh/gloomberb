@@ -7,6 +7,7 @@ import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-ru
 import { TestPaneFrame, createTestPaneConfig, createTestTicker } from "../../../test-support/pane";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import type { TickerRecord } from "../../../types/ticker";
 import { insiderModule } from "./index";
 
 const InsiderView = insiderModule.panes![0]!.component;
@@ -14,12 +15,13 @@ const tui = createOpenTuiTestHarness();
 function xml(amendment: boolean, owner = "SMITH ANNA B", cik = "111", explanationOnly = false) {
   return `<ownershipDocument><documentType>${amendment ? "4/A" : "4"}</documentType>${amendment ? "<dateOfOriginalSubmission>2026-08-20</dateOfOriginalSubmission>" : ""}<reportingOwner><reportingOwnerId><rptOwnerName>${owner}</rptOwnerName><rptOwnerCik>${cik}</rptOwnerCik></reportingOwnerId></reportingOwner>${explanationOnly ? "" : `<nonDerivativeTransaction><securityTitle><value>Class A</value></securityTitle><transactionDate><value>2026-08-19</value></transactionDate><transactionCoding><transactionCode>P</transactionCode></transactionCoding><transactionAmounts><transactionShares><value>${amendment ? 40 : 100}</value></transactionShares><transactionPricePerShare><value>10</value></transactionPricePerShare></transactionAmounts></nonDerivativeTransaction>`}${amendment ? "<footnotes><footnote id='F1'>Corrects the original disclosure.</footnote></footnotes>" : ""}</ownershipDocument>`;
 }
-function Harness({ width }: { width: number }) {
+function Harness({ width, ticker = createTestTicker("CONTROL") }: { width: number; ticker?: TickerRecord }) {
   const paneId = "insider:amendment:test";
-  const config = createTestPaneConfig("/tmp/unused-insider-pane-test", { instanceId: paneId, paneId: "insider", binding: { kind: "fixed", symbol: "CONTROL" } });
+  const symbol = ticker.metadata.ticker;
+  const config = createTestPaneConfig("/tmp/unused-insider-pane-test", { instanceId: paneId, paneId: "insider", binding: { kind: "fixed", symbol } });
   const [state, dispatch] = useReducer(appReducer, config, (initialConfig) => {
     const initial = createInitialState(initialConfig);
-    initial.tickers = new Map([["CONTROL", createTestTicker("CONTROL")]]);
+    initial.tickers = new Map([[symbol, ticker]]);
     initial.focusedPaneId = paneId;
     return initial;
   });
@@ -31,13 +33,15 @@ function Harness({ width }: { width: number }) {
 async function settle() {
   for (let i = 0; i < 8; i++) await act(async () => { await Bun.sleep(2); await tui.setup().renderOnce(); });
 }
-async function mount(width: number, explanationOnly = false) {
+async function mount(width: number, explanationOnly = false, ticker?: TickerRecord) {
   const filings = ["amendment", "original", "other"].map((accessionNumber) => ({ accessionNumber, form: accessionNumber === "amendment" ? "4/A" : "4",
     filingDate: new Date(`2026-08-${accessionNumber === "amendment" ? "21" : "20"}T00:00:00Z`), cik: "999", filingUrl: `https://www.sec.gov/${accessionNumber}` }));
-  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async () => filings,
+  const asked: string[] = [];
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getSecFilings: async (symbol) => { asked.push(symbol); return filings; },
     getSecFilingContent: async (filing) => filing.accessionNumber === "other" ? xml(false, "JONES BOB", "222") : xml(filing.accessionNumber === "amendment", "SMITH ANNA B", "111", explanationOnly && filing.accessionNumber === "amendment") })));
-  await act(async () => { await tui.render(<Harness width={width} />, { width, height: 30 }); });
+  await act(async () => { await tui.render(<Harness width={width} ticker={ticker} />, { width, height: 30 }); });
   await settle();
+  return asked;
 }
 async function mountWindow(inWindow: number) {
   const day = 24 * 60 * 60 * 1000;
@@ -66,6 +70,32 @@ test("narrow actual amendment detail retains corrected shares, explanation, stat
   expect(frame).toMatch(/Shares\s+40\s/);
   expect(frame).toContain("⚠");
   expect(frame).toContain("[o]pen");
+});
+
+// Venue and currency stay empty when an unsaved ticker's quote is unavailable,
+// as for a thin US listing after the close: unknown is not foreign.
+test("a ticker with no quote and no venue reads its filings; a listing abroad with no venue keeps the notice", async () => {
+  const notice = "Insider transactions are only shown for US equities.";
+  expect(await mount(80, false, createTestTicker("CRBG", "CRBG", { exchange: "", currency: "" }))).toEqual(["CRBG"]);
+  expect(tui.frame()).toMatch(/Anna B\. Smith\s+BUY/);
+  expect(tui.frame()).not.toContain(notice);
+  // The SEC lookup cannot place a listing abroad without its venue.
+  expect(await mount(80, false, createTestTicker("7203.T", "Toyota", { exchange: "", currency: "" }))).toEqual([]);
+  expect(tui.frame()).toContain(notice);
+});
+
+// A listing abroad is looked up by its company on its venue, as `filings CAR:ASX` and `fn INS CAR:ASX` read it.
+test("a listing abroad whose company files nothing with the SEC says so, as the CLI does", async () => {
+  const asked: Array<[string, string | undefined]> = [];
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getSecFilings: async (symbol, _count, exchange) => { asked.push([symbol, exchange]); return []; },
+  })));
+  const ticker = createTestTicker("CAR:ASX", "CAR Group Limited", { exchange: "ASX", currency: "AUD" });
+  await act(async () => { await tui.render(<Harness width={80} ticker={ticker} />, { width: 80, height: 30 }); });
+  await settle();
+  expect(asked.map(([, exchange]) => exchange)).toEqual(["ASX"]);
+  expect(tui.frame()).toContain("CAR Group (ASX) files no SEC reports.");
+  expect(insiderModule.paneTemplates![0]!.canCreate!({} as never, { ticker })).toBe(true);
 });
 
 test("owner filtering keeps explanation-only amendments and clears amendment status for independent owners", async () => {

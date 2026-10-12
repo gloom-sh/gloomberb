@@ -50,11 +50,12 @@ test.each(["single", "batch"] as const)("%s financials recover a stale embedded 
     expect((await load()).quote?.price).toBe(2994);
     expect(calls.fallbackQuote).toBe(1);
 
-    // Historical research remains usable when every current quote source fails.
+    // Historical research remains usable when no quote source has a current
+    // quote, and the quote is the last one there is, flagged stale.
     quoteFails = true;
     const withoutCache = new AssetDataRouter(gloom, [cloud]);
     const historical = await withoutCache.getTickerFinancials("7203", "TYO");
-    expect(historical.quote).toBeUndefined();
+    expect(historical.quote).toMatchObject({ price: 2980.5, lastUpdated: staleQuote.lastUpdated, stale: true });
     expect(historical.annualStatements).toEqual(snapshot.annualStatements);
   } finally {
     Date.now = originalNow;

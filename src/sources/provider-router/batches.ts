@@ -137,7 +137,10 @@ export class ProviderRouterBatchRoutes {
         this.deps.resources, this.deps.getEntityKey(target.symbol, context.instrument),
         financialHistoryVariants(this.deps.getTickerVariantCandidates(target.exchange), context)[0] ?? "", this.deps.getProviderSourceKeys(),
       );
-      if (cached.value?.quote && !forceRefresh && target.statementHistory !== "extended" && (!needsFinancialProfile(cached.value) || profileAttempted)) {
+      // The selection wraps a cached quote even when no financials were ever
+      // fetched; a quote alone has no fundamentals, so it is not a hit.
+      const fetched = cached.brokerRecord != null || (cached.providerRecords?.length ?? 0) > 0;
+      if (fetched && cached.value?.quote && !forceRefresh && target.statementHistory !== "extended" && (!needsFinancialProfile(cached.value) || profileAttempted)) {
         results[index] = { target, financials: cached.value };
         return;
       }

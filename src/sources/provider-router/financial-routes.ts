@@ -15,6 +15,7 @@ import {
   selectCachedResource,
   sortCachedRecords,
 } from "./cache";
+import { noProviderError, type ProviderMissNote } from "../provider-errors";
 import { withBrokerTimeout } from "./brokers";
 import {
   hasMeaningfulProfile,
@@ -31,7 +32,7 @@ import {
   type CachedFinancialsReadOptions,
   type CachedFinancialsSelection,
 } from "./financials";
-import type { ProviderRouterPrimaryRoutes } from "./primary";
+import type { ProviderQuoteMissNote, ProviderRouterPrimaryRoutes } from "./primary";
 import type { ProviderRouterCoreDeps, SourceResult } from "./route-types";
 
 export interface ProviderRouterFinancialRouteDeps extends Pick<
@@ -56,6 +57,7 @@ function withoutSessionState(quote: Quote): Quote {
   delete fallback.postMarketPrice;
   delete fallback.postMarketChange;
   delete fallback.postMarketChangePercent;
+  delete fallback.extendedSessionPrint;
   return fallback;
 }
 
@@ -178,13 +180,14 @@ export class ProviderRouterFinancialRoutes {
     }
 
     const brokerResult = await withBrokerTimeout(this.deps.primaryRoutes.fetchBrokerFinancials(ticker, exchange, context));
-    const fallback = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context);
+    const misses: ProviderMissNote = {};
+    const fallback = await this.deps.primaryRoutes.fetchProviderFinancials(ticker, exchange, context, misses);
     const merged = mergeFinancials(brokerResult?.value ?? null, fallback?.value ?? null);
     if (isOptionTicker && !merged?.quote) {
       return quoteOnlyFinancials(merged);
     }
     if (!merged) {
-      throw new Error(`No provider available for ${ticker}`);
+      throw noProviderError(`No provider available for ${ticker}`, misses, ticker);
     }
     return merged;
   }
@@ -221,12 +224,16 @@ export class ProviderRouterFinancialRoutes {
       );
     }
 
-    const providerQuote = await this.deps.primaryRoutes.fetchProviderQuote(ticker, exchange, context);
+    const misses: ProviderQuoteMissNote = {};
+    const providerQuote = await this.deps.primaryRoutes.fetchProviderQuote(ticker, exchange, context, misses);
     if (providerQuote) {
       return providerQuote.value;
     }
     if (cached) return cached.value;
-    throw new Error(`No quote provider available for ${ticker}`);
+    // No source has a current quote: the last price one answered with, flagged
+    // stale and dated by its own time, rather than none.
+    if (misses.lastKnownQuote) return misses.lastKnownQuote;
+    throw noProviderError(`No quote provider available for ${ticker}`, misses, ticker);
   }
 
   private async getProviderReferenceQuote(

@@ -1,3 +1,4 @@
+import { hostname } from "os";
 import { getGloomberbDirs } from "../../data/config/home";
 import { existsSync, mkdirSync } from "fs";
 import { App } from "../../app";
@@ -7,8 +8,8 @@ import * as nodeConfigStoreHost from "../../data/config/store/node";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import { pluginAutoUpdateEnabled } from "../../plugins/auto-update";
 import { startNodePluginAutoUpdates } from "../../plugins/auto-update-node";
-import { activateUpdatedPlugins } from "../../plugins/builtin/plugin-marketplace/activation";
-import { getMarketplaceHost, setPluginManager } from "../../plugins/builtin/plugin-marketplace/store";
+import { activateUpdatedPlugins } from "../../plugins/marketplace/activation";
+import { getMarketplaceHost, setPluginManager } from "../../plugins/marketplace/store";
 import { createNodePluginManager } from "../../plugins/manager-node";
 import { setCurrentPluginTarget } from "../../plugins/current-target";
 import { getLoadablePlugins } from "../../plugins/catalog";
@@ -26,7 +27,7 @@ import type { RemoteControlAdapter } from "../../remote/app-host";
 import { startRemoteControlServer, type RemoteControlServer } from "../../remote/server";
 import { createAppServices } from "../../core/app-services";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
-import { loadOfficialPluginIds } from "../../plugins/builtin/plugin-marketplace/feed";
+import { loadOfficialPluginIds } from "../../plugins/marketplace/feed";
 import { flushCrashReports, installCrashReporter } from "../../telemetry/crash-reports";
 import {
   CRASH_REPORT_EXIT_FLUSH_MS,
@@ -38,6 +39,8 @@ import {
 import { currentTelemetryConfig } from "../../telemetry/live-config";
 import { flushUsageCounts, installUsageCounter, usageCountsEnabled } from "../../telemetry/usage-counts";
 import { attentionCountsEnabled, installAttentionCounter } from "../../telemetry/attention-counts";
+import { starPromptEnvironmentAllows } from "../../app/star-prompt/model";
+import { allowStarPrompt } from "../../app/star-prompt/runtime";
 
 // Declared here rather than sniffed: the desktop view and the hosted browser
 // app are both browser contexts but differ in what plugins may do.
@@ -56,6 +59,7 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
   const appLog = debugLog.createLogger("app");
   appLog.info("Gloomberb starting");
   const remoteControlAdapter: RemoteControlAdapter = {
+    terminalDevice: { kind: "tui", name: hostname() },
     startServer: ({ dataDir, handle }) => {
       let closed = false;
       const serverPromise: Promise<RemoteControlServer> = startRemoteControlServer({
@@ -121,6 +125,11 @@ export async function startOpenTuiApp({ externalPlugins, cliLaunchRequest }: Sta
       officialPluginIds: loadOfficialPluginIds,
     });
     const stopAttention = installAttentionCounter(() => attentionCountsEnabled(currentTelemetryConfig(config), process.env));
+    allowStarPrompt(starPromptEnvironmentAllows({
+      env: process.env,
+      stdinIsTTY: process.stdin.isTTY,
+      stdoutIsTTY: process.stdout.isTTY,
+    }));
     host = await measurePerfAsync("startup.opentui.create-host", () => createOpenTuiHost());
     const renderer = host.renderer;
     renderer.once("destroy", stopAttention);

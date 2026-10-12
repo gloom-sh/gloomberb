@@ -31,4 +31,5 @@ export type ChatContentController = Pick<
   | "retryChannelAttachment"
   | "retryChannelMessage"
   | "refreshChannelImageLinks"
+  | "toggleChannelReaction"
 >;

@@ -5,7 +5,7 @@ import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../typ
 import type { MarketContext } from "../types";
 import type { PaneFunctionCatalog } from "./catalog";
 import { parsePaneFunctionArgs } from "./options";
-import { resolvePaneFunction } from "./resolver";
+import { resolvePaneFunction, UnknownPaneFunctionError } from "./resolver";
 
 const pane = (id: string): PaneDef => ({ id, name: id, component: () => null, defaultPosition: "right" });
 const template = (prefix: string, paneId: string, headless: HeadlessPaneDefinition): PaneTemplateDef => ({
@@ -37,5 +37,36 @@ test("--section picks a report table, unless the function has a section option o
   expect(transcript.options.section).toBe("qa");
   await expect(fn(["CALLS", "NVDA", "--section", "bogus"])).rejects.toThrow("Invalid --section value");
   // Screenshots have no tables to pick from.
-  await expect(fn(["WEI", "--section", "Europe"], false)).rejects.toThrow("does not support --section");
+  await expect(fn(["WEI", "--section", "Europe"], false)).rejects.toThrow("WEI does not support --section");
+});
+
+test("an option or argument a function refuses names the function code, never its template or pane id", async () => {
+  const refused = await fn(["WEI", "--range", "1Y"], false).catch((error: Error) => error.message);
+  expect(refused).toBe("WEI does not support --range. It has no options.");
+  expect(refused).not.toContain("world-indices");
+  const strict = await resolvePaneFunction(
+    registry, context, { ...parsePaneFunctionArgs(["CALLS"]), requireBotSafe: true }, { strictHeadlessOptions: true },
+  ).catch((error: Error) => error.message);
+  expect(strict).toBe("CALLS requires exactly one ticker.");
+});
+
+test("a name that opens nothing lists the closest functions and where to search, never an alphabetical list", async () => {
+  const surface: PaneTemplateDef = {
+    ...template("OVDV", "vol-surface", indices),
+    label: "Volatility Surface",
+    description: "Implied volatility surface and smiles.",
+  };
+  const withSurface: PaneFunctionCatalog = {
+    ...registry,
+    panes: new Map([...registry.panes, ["vol-surface", pane("vol-surface")]]),
+    paneTemplates: new Map([...registry.paneTemplates, ["vol-surface-pane", surface]]),
+  };
+  const unknown = (name: string) => resolvePaneFunction(withSurface, context, parsePaneFunctionArgs([name, "SPY"]))
+    .then(() => null, (error: unknown) => error as UnknownPaneFunctionError);
+
+  const close = await unknown("volsurf");
+  expect(close).toBeInstanceOf(UnknownPaneFunctionError);
+  expect(close?.message).toBe('Unknown function or pane "volsurf".');
+  expect(close?.details).toBe("Closest matches:\n  OVDV  Volatility Surface\nSearch the catalog: gloomberb catalog volsurf");
+  expect((await unknown("zzqxvb"))?.details).toBe("Search the catalog: gloomberb catalog zzqxvb");
 });

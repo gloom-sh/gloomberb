@@ -11,7 +11,7 @@ import {
 import { t } from "../../i18n";
 import { getThemeIds, isDarkTheme, themes as themeRegistry } from "../../theme/themes";
 import { Box, Text, TextAttributes } from "../../ui";
-import { truncateToDisplayWidth } from "../../utils/format";
+import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { ListView, type ListViewItem } from "../ui";
 import type { ListRowState } from "../ui/list-view";
 import type { ListJump } from "./list/model";
@@ -28,6 +28,8 @@ const THEME_PREVIEW_DEBOUNCE_MS = 120;
 const DARK_THEME_GLYPH = "☾";
 /** The glyph plus the space that keeps names on one left edge, dark or light. */
 const GLYPH_GUTTER_WIDTH = 2;
+/** Between a name and its config id. */
+const ID_GAP = 2;
 
 export interface ThemeOption {
   id: string;
@@ -38,6 +40,32 @@ export interface ThemeOption {
 const THEME_OPTIONS: ThemeOption[] = getThemeIds()
   .map((id) => ({ id, name: themeRegistry[id]!.name, dark: isDarkTheme(id) }))
   .sort((a, b) => a.name.localeCompare(b.name));
+/** Ids line up in one column after the longest name. */
+const LONGEST_THEME_NAME = Math.max(...THEME_OPTIONS.map((theme) => displayWidth(theme.name)));
+const CURRENT_LABEL = "current";
+
+interface ThemeRowLayout {
+  name: number;
+  /** Zero when the id has no room. */
+  id: number;
+  showCurrent: boolean;
+}
+
+/**
+ * A row's name, then the id `config set theme` and the docs use, in one
+ * column after the longest name. The id is copied, so it never shows cut:
+ * the current row gives up its "current" tag first (its name is bold), then
+ * the id goes, before any of a name does.
+ */
+function themeRowLayout(width: number, id: string, current: boolean): ThemeRowLayout {
+  const name = Math.min(LONGEST_THEME_NAME, width);
+  const idWidth = displayWidth(id);
+  const room = width - name - ID_GAP;
+  const currentWidth = displayWidth(CURRENT_LABEL) + 1;
+  if (current && room - currentWidth >= idWidth) return { name, id: idWidth, showCurrent: true };
+  if (room >= idWidth) return { name, id: idWidth, showCurrent: false };
+  return { name, id: 0, showCurrent: current && width - name >= currentWidth };
+}
 
 /**
  * Shared with the panel layout, which sizes the sheet to whatever this returns
@@ -227,10 +255,12 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
     onCommitRef.current(selected.id);
   }, [cancelPreview]);
 
-  const nameWidth = Math.max(1, labelWidth - GLYPH_GUTTER_WIDTH);
+  // The whole row past the glyph: the name, the id and, on the current row, its tag.
+  const rowWidth = Math.max(1, labelWidth - GLYPH_GUTTER_WIDTH + trailingWidth);
   const renderRow = useCallback((item: ListViewItem, state: ListRowState) => {
-    const label = truncateToDisplayWidth(item.label, nameWidth);
-    const trailing = item.current ? "current" : "";
+    const layout = themeRowLayout(rowWidth, item.id, item.current === true);
+    const label = truncateToDisplayWidth(item.label, layout.name);
+    const subtle = state.selected ? palette.selectedText : palette.subtle;
     return (
       <Box
         flexDirection="row"
@@ -241,11 +271,11 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
         style={nativePaneChrome ? { borderRadius: 6 } : undefined}
       >
         <Box width={GLYPH_GUTTER_WIDTH}>
-          <Text fg={state.selected ? palette.selectedText : palette.subtle}>
+          <Text fg={subtle}>
             {isDarkTheme(item.id) ? DARK_THEME_GLYPH : ""}
           </Text>
         </Box>
-        <Box width={nameWidth}>
+        <Box width={layout.name}>
           <Text
             fg={state.selected ? palette.selectedText : palette.text}
             attributes={item.current ? TextAttributes.BOLD : undefined}
@@ -253,19 +283,24 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
             {label}
           </Text>
         </Box>
-        <Box width={trailingWidth}>
-          <Text fg={state.selected ? palette.selectedText : palette.subtle}>
-            {truncateToDisplayWidth(trailing, trailingWidth)}
-          </Text>
-        </Box>
+        {layout.id > 0 ? (
+          <Box width={ID_GAP + layout.id} paddingLeft={ID_GAP}>
+            <Text fg={subtle}>{item.id}</Text>
+          </Box>
+        ) : null}
+        <Box flexGrow={1} />
+        {layout.showCurrent ? (
+          <Box width={displayWidth(CURRENT_LABEL) + 1} flexShrink={0}>
+            <Text fg={subtle}>{CURRENT_LABEL}</Text>
+          </Box>
+        ) : null}
       </Box>
     );
   }, [
     contentPadding,
-    nameWidth,
     nativePaneChrome,
     palette,
-    trailingWidth,
+    rowWidth,
   ]);
 
   return (

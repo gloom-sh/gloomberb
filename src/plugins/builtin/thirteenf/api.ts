@@ -179,6 +179,7 @@ export function mapForm(raw: any): ThirteenFFormSummary | null {
     tableEntryTotal: finiteOrNull(raw.table_entry_total),
     isAmendment: boolOrFalse(raw.is_amendment) || submissionType.includes("/A"),
     amendmentType: stringOrEmpty(raw.amendment_type) || undefined,
+    valueNote: stringOrEmpty(raw.value_note) || undefined,
   };
 }
 

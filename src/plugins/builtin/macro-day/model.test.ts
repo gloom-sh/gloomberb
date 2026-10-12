@@ -45,4 +45,52 @@ describe("macro-day alignment", () => {
       { symbol: "TEST", lookbackYears: 1, coveredThrough: "2026-12-31", releases: [{ kind: "cpi", date: "2026-04-01" }] });
     expect(stamped.events.map((event) => event.session)).toEqual(["2026-04-01"]);
   });
+
+  test("opens the window at the first session of a history that starts after the nominal start", () => {
+    // Five years of daily bars counted back from 2026-10-09 begin on 2021-10-11; the lists are covered through 2026-10-01.
+    const options = { symbol: "TEST", lookbackYears: 5, coveredThrough: "2026-10-01" };
+    const releases = [{ kind: "jobs", date: "2021-10-08" }, { kind: "cpi", date: "2021-10-13" }] as const;
+    const history = weekdays("2021-10-11", "2026-10-09", []);
+    const model = projectMacroDays(history, { ...options, releases });
+    expect(model.start).toBe("2021-10-11");
+    expect(model.asOf).toBe("2026-10-01");
+    expect(model.events.map((event) => [event.kind, event.date])).toEqual([["cpi", "2021-10-13"]]);
+    // Moves start the session after the first bar and stop at the covered end; the CPI session is not a normal day.
+    const moved = history.filter((point) => { const date = point.date.toISOString().slice(0, 10); return date > "2021-10-11" && date <= "2026-10-01"; });
+    expect(model.normal.count).toBe(moved.length - 1);
+
+    // A history that starts well before the nominal start keeps the nominal start.
+    const longer = projectMacroDays(weekdays("2020-06-01", "2026-10-09", []), { ...options, releases: [{ kind: "jobs", date: "2021-10-01" }, { kind: "cpi", date: "2021-10-13" }] });
+    expect(longer.start).toBe("2021-10-01");
+    expect(longer.events.map((event) => event.date)).toEqual(["2021-10-13"]);
+  });
+});
+
+describe("macro-day earnings overlap", () => {
+  test("marks a release day that is the company's own earnings reaction and counts it in no figure", () => {
+    const history = weekdays("2026-03-02", "2026-04-17", [], { "2026-03-06": 130, "2026-03-11": 90, "2026-04-13": 70 });
+    const options = { symbol: "TEST", lookbackYears: 1, coveredThrough: "2026-12-31", releases: [
+      { kind: "jobs", date: "2026-03-06" }, { kind: "cpi", date: "2026-03-11" }, { kind: "fomc", date: "2026-03-18" }, { kind: "cpi", date: "2026-04-10" },
+    ] } as const;
+    const plain = projectMacroDays(history, options);
+    const model = projectMacroDays(history, { ...options, earnings: [
+      { date: "2026-03-06", timing: "bmo" }, // before the open: reacts on the jobs day
+      { date: "2026-03-10", timing: "amc" }, // after the close the day before: reacts on the CPI day
+      { date: "2026-03-17", timing: null }, // no time on record: either session, so the FOMC day too
+      { date: "2026-04-10", timing: "amc", reactionSession: "2026-04-13" }, // after the close on a CPI day: the CPI day is clean
+    ] });
+    expect(model.events.map((event) => [event.kind, event.date, event.earnings])).toEqual([
+      ["cpi", "2026-04-10", false], ["fomc", "2026-03-18", true], ["cpi", "2026-03-11", true], ["jobs", "2026-03-06", true],
+    ]);
+    // Only the clean CPI day is left in the release figures; the others are in the Earnings row, still against the normal day.
+    expect(plain.byKind.cpi.count).toBe(2);
+    expect(model.byKind.cpi.count).toBe(1);
+    expect(model.byKind.cpi.mean).toBeCloseTo(model.events[0]!.move, 12);
+    expect([model.byKind.jobs.count, model.byKind.fomc.count, model.allEvents.count, model.earnings.count]).toEqual([0, 0, 1, 3]);
+    const flagged = model.events.filter((event) => event.earnings);
+    expect(model.earnings.meanAbs).toBeCloseTo(flagged.reduce((sum, event) => sum + Math.abs(event.move), 0) / 3, 12);
+    expect(flagged.every((event) => event.multiple != null && event.multiple > 0)).toBe(true);
+    // An earnings day is not a normal day either: the baseline is the one the plain study has.
+    expect(model.normal).toEqual(plain.normal);
+  });
 });

@@ -1,7 +1,11 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
+import { mkdtemp, rm } from "fs/promises";
+import { tmpdir } from "os";
+import { join } from "path";
 import { act, useReducer } from "react";
 import { requestKeybindingCapture } from "../../../app/keybindings";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
+import { flushPendingPersistence } from "../../../state/persist-scheduler";
 import { appReducer, createInitialState, type AppState } from "../../../state/app/context";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import type { KeybindingsConfig } from "../../../types/config";
@@ -11,10 +15,13 @@ import { helpModule } from "./index";
 const id = "help:test";
 const HelpPane = helpModule.panes![0]!.component;
 const tui = createOpenTuiTestHarness();
+// Polls of 50ms: a generous bound for a loaded runner, where a passing run returns on the first.
+const WAIT_ATTEMPTS = 60;
 let latestState: AppState | null = null;
+let dataDir = "";
 
 function Harness({ keybindings }: { keybindings?: KeybindingsConfig }) {
-  const config = createTestPaneConfig(`/tmp/gloom-help-keybindings-${process.pid}-${Date.now()}`, { instanceId: id, paneId: "help", binding: { kind: "none" } });
+  const config = createTestPaneConfig(dataDir, { instanceId: id, paneId: "help", binding: { kind: "none" } });
   config.keybindings = keybindings;
   const initial = createInitialState(config);
   initial.focusedPaneId = id;
@@ -39,12 +46,19 @@ async function openShortcutsTab() {
   await frame();
   await act(async () => { await tui.clickFrameText("Shortcuts"); });
   // The table measures its viewport before it can lay columns and rows out.
-  await frame();
-  await frame();
+  await tui.waitForFrameToContain("Global Keys (13)", WAIT_ATTEMPTS);
 }
 
-afterEach(() => {
+// Rebinding saves the config for real, so each test gets a directory of its own.
+beforeEach(async () => {
+  dataDir = await mkdtemp(join(tmpdir(), "gloom-help-keybindings-"));
+});
+
+afterEach(async () => {
   latestState = null;
+  // Let the saves a rebind started land before their directory goes.
+  await flushPendingPersistence();
+  await rm(dataDir, { recursive: true, force: true });
 });
 
 test("rebinding from the help pane captures the next chord, shows the way back, and resets", async () => {
@@ -72,12 +86,10 @@ test("rebinding from the help pane captures the next chord, shows the way back, 
   expect(text).toContain("Ctrl+Shift+Y");
   expect(text).toContain("custom, default `");
   expect(text).toContain("Bound to Ctrl+Shift+Y.");
-  // The footer spells out the selected row's note, which the column truncates.
+  // The table commits a step at once only after a pause, so the key pressed
+  // right after one still acts on the row under the cursor.
   await tui.emitKeypress({ name: "k" });
   await tui.emitKeypress({ name: "j" });
-  await frame();
-  expect(tui.frame()).toContain("custom, default `");
-
   await tui.emitKeypress({ name: "0" });
   await frame();
   expect(latestState?.config.keybindings).toBeUndefined();

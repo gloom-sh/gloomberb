@@ -280,7 +280,7 @@ export class OpenFdaClient {
   async listPage(dataset: OpenFdaDataset, query: string, offset: number, signal?: AbortSignal): Promise<OpenFdaPage> {
     const response = await openFdaFetch.fetch(buildOpenFdaUrl(dataset, query, offset), {
       headers: authorizationHeaders(),
-      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(DEFAULT_TIMEOUT_MS)]) : undefined,
+      signal,
     });
     // openFDA answers a search with no matches with a 404.
     if (response.status === 404) {

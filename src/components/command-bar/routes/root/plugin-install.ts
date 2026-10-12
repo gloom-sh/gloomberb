@@ -3,20 +3,20 @@ import type { PluginRegistry } from "../../../../plugins/registry";
 import { findAbsorbedPlugin } from "../../../../plugins/absorbed";
 import { isOfficialPluginRepo } from "../../../../plugins/auto-update";
 import { getCurrentPluginTarget, runsExternalPlugins } from "../../../../plugins/current-target";
-import { activateInstall } from "../../../../plugins/builtin/plugin-marketplace/activation";
-import { loadRegistry, registryPluginUrl } from "../../../../plugins/builtin/plugin-marketplace/feed";
+import { activateInstall } from "../../../../plugins/marketplace/activation";
+import { loadRegistry, registryPluginUrl } from "../../../../plugins/marketplace/feed";
 import {
   installConsent,
   registryPin,
   type RegistryPlugin,
   type RegistryPluginShortcut,
-} from "../../../../plugins/builtin/plugin-marketplace/model";
+} from "../../../../plugins/marketplace/model";
 import {
   getMarketplaceHost,
   getPluginManager,
   type MarketplaceHost,
   type PluginManager,
-} from "../../../../plugins/builtin/plugin-marketplace/store";
+} from "../../../../plugins/marketplace/store";
 import type { PluginTarget } from "../../../../types/plugin";
 import { requiredGloomberb } from "../../../../utils/semver";
 import { getCommandPrefixes, type Command } from "../../commands/registry";

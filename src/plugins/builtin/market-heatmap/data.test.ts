@@ -55,6 +55,22 @@ test("a board asks for at most 500 names, and an older server's shorter answer i
   expect(result.assets).toHaveLength(160);
 });
 
+test("a board records when its check succeeded, apart from the snapshot's own time, and how many listings it covers", async () => {
+  const listing = (symbol: string, exchange: string) => ({ symbol, exchange, size: 1 }) as any;
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: { universe: "us-equity", source: "gloom",
+    fetchedAt: 123, assets: [listing("AAA", "NASDAQ"), listing("KHC", "NASDAQ"), listing("KHC", "NYSE")] } });
+  restore = () => api.mockRestore();
+  const before = Date.now();
+  const board = await fetchMarketHeatmap("us-equity", { count: 100 });
+  expect(board).toMatchObject({ fetchedAt: 123, topCount: 3 });
+  expect(board.assets).toHaveLength(2);
+  expect(board.checkedAt).toBeGreaterThanOrEqual(before);
+  // A board from the cache is the same check, not a new one.
+  expect((await fetchMarketHeatmap("us-equity", { count: 100 })).checkedAt).toBe(board.checkedAt);
+  expect((await fetchMarketHeatmap("us-equity", { count: 2 })).topCount).toBe(2);
+  expect(api).toHaveBeenCalledTimes(2);
+});
+
 test("a company listed twice gets one tile, the larger listing, in its place", () => {
   const assets = [
     { symbol: "AAA", exchange: "NASDAQ", size: 300 },

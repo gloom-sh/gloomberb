@@ -2,9 +2,9 @@ import { expect, spyOn, test } from "bun:test";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { PerpMarketPayload } from "../../../api-client/perps";
-import { cachedPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpSelection, loadPerpSelection, loadPerpsBoard, loadPerpsEquity, loadPerpsHistoryForRange, perpsCache, perpsMarketCache, perpsHistoryCache,
-  validatePerpsBoard, validatePerpsHistory, validatePerpsRankings } from "./client";
-import { equityBoard, longShort, longShortPoint, okxLongShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
+import { cachedPerpSelection, fetchPerpsBoard, fetchPerpsCompare, fetchPerpSelection, loadPerpSelection, loadPerpsBoard, loadPerpsEquities, loadPerpsEquity, loadPerpsHistoryForRange,
+  perpsCache, perpsListCache, perpsMarketCache, perpsHistoryCache, validatePerpsBoard, validatePerpsEquities, validatePerpsHistory, validatePerpsRankings } from "./client";
+import { equitiesPayload, equityBoard, longShort, longShortPoint, okxLongShort, perpBoard, perpHistory, perpRankings, perpRow, venueRow } from "./test-fixture";
 const market = (patch: Partial<PerpMarketPayload> = {}): PerpMarketPayload => ({ ...perpBoard({ rows: [perpRow()] }), evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals", ...patch });
 
 test("boundary refuses invalid intervals, non-finite funding, wrong market and duplicate identities while retaining null baselines", () => {
@@ -68,6 +68,58 @@ test("symbol resolution prefers default crypto and xyz stocks, including individ
   expect(calls[0]).toBe(perpRow().marketId);
 });
 
+test("a Market column label resolves to the market it names and no free text reaches a market id", async () => {
+  const sp500 = perpRow({ marketId: "hyperliquid:xyz:SP500", dex: "xyz", baseAsset: "SP500", symbol: "xyz:SP500" });
+  const searches: unknown[] = [];
+  const ids: string[] = [];
+  const client = {
+    getCloudPerpsBoard: async (query: unknown) => { searches.push(query); return perpBoard({ rows: (query as { search: string }).search === "xyz:SP500" ? [sp500] : [] }); },
+    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ rows: id === sp500.marketId ? [sp500] : [] }); },
+  };
+  // The label the board prints and the identity typed by hand are one market.
+  for (const input of ["SP500 · XYZ", "SP500·XYZ", "xyz:SP500"]) expect((await fetchPerpSelection(input, client)).rows[0]!.marketId).toBe(sp500.marketId);
+  expect(searches).toEqual([{ search: "xyz:SP500" }, { search: "xyz:SP500" }, { search: "xyz:SP500" }]);
+  // Outside the board's preview, the builder dex names its own market; a label nothing carries, or free text, is no market and never a request.
+  ids.length = 0;
+  const preview = { ...client, getCloudPerpsBoard: async () => perpBoard({ access: "preview", rows: [], locked: 300 }) };
+  expect((await fetchPerpSelection("SP500 · XYZ", preview)).rows[0]!.marketId).toBe(sp500.marketId);
+  expect((await fetchPerpSelection("FOO · XYZ", preview)).rows).toEqual([]);
+  expect((await fetchPerpSelection("what is a perp", preview)).rows).toEqual([]);
+  expect(ids).toEqual(["hyperliquid:xyz:SP500", "hyperliquid:xyz:FOO"]);
+});
+
+test("a venue opens its own contract: from the board, by its identity when the free preview lacks it, and otherwise the usual one", async () => {
+  // The free preview lists Binance alone; every contract a venue carries can still be fetched by its identity.
+  const contracts = [venueRow("binance"), venueRow("bybit"), perpRow(), venueRow("okx", { marketId: "okx:BTC-USD-SWAP", symbol: "BTC-USD-SWAP" })];
+  const ids: string[] = [];
+  let boardRows = [contracts[0]!];
+  const client = {
+    getCloudPerpsBoard: async () => perpBoard({ rows: boardRows, access: "preview", locked: 13 }),
+    getCloudPerpsMarket: async (id: string) => { ids.push(id); return market({ access: "preview", rows: contracts.filter((row) => row.marketId === id) }); },
+  };
+  const venueOf = async (venue?: string) => (await fetchPerpSelection("BTC", client, venue)).rows[0]!.venue;
+  expect(await venueOf("hyperliquid")).toBe("hyperliquid");
+  expect(ids).toEqual(["hyperliquid:default:BTC"]);
+  ids.length = 0;
+  expect(await venueOf("bybit")).toBe("bybit");
+  expect(ids).toEqual(["bybit:BTCUSDT"]);
+  ids.length = 0;
+  // OKX lists the USDT contract first; the USD one is the next identity tried.
+  expect(await venueOf("okx")).toBe("okx");
+  expect(ids).toEqual(["okx:BTC-USDT-SWAP", "okx:BTC-USD-SWAP"]);
+  ids.length = 0;
+  // A venue Gloom Cloud does not collect has no contract to open, and no lookup is made for it.
+  expect(await venueOf("kraken")).toBe("binance");
+  expect(ids).toEqual(["binance:BTCUSDT"]);
+  ids.length = 0;
+  expect(await venueOf()).toBe("binance");
+  // A board that lists the venue's contract is enough.
+  boardRows = [contracts[0]!, contracts[1]!];
+  ids.length = 0;
+  expect(await venueOf("bybit")).toBe("bybit");
+  expect(ids).toEqual(["bybit:BTCUSDT"]);
+});
+
 test("paid caches are isolated per account/plan and failures preserve data except access refusal", async () => {
   perpsMarketCache.reset();
   const data = market();
@@ -118,6 +170,37 @@ test("equity caches separate listings and accounts from legacy rows, and validat
     request.mockResolvedValue({ ...data, listing: london });
     await expect(loadPerpsEquity(london, "account-a:pro", true)).rejects.toThrow("another listing");
   } finally { request.mockRestore(); perpsCache.reset(); }
+});
+
+test("a list's perpetuals take one request per hundred listings, cached per list and account, with each contract proven for its row", async () => {
+  perpsListCache.reset();
+  const listings = Array.from({ length: 230 }, (_, index) => ({ symbol: `S${index}`, exchange: "NASDAQ" }));
+  const pages: number[] = [];
+  const request = spyOn(apiClient, "getCloudPerpsEquities").mockImplementation(async (page) => {
+    pages.push(page.length);
+    return equitiesPayload(page, (listing) => listing.symbol === "S7" || listing.symbol === "S150");
+  });
+  try {
+    const first = await loadPerpsEquities(listings, "account-a:pro");
+    expect(pages).toEqual([100, 100, 30]);
+    expect(first.payload.results.map((result) => result.market?.marketId ?? null).filter(Boolean)).toEqual(["hyperliquid:xyz:S7", "hyperliquid:xyz:S150"]);
+    // Within a minute the same list reads its cache; a 30-row list is one request.
+    await loadPerpsEquities(listings, "account-a:pro");
+    await loadPerpsEquities(listings.slice(0, 30), "account-a:pro");
+    expect(pages).toEqual([100, 100, 30, 30]);
+    request.mockRejectedValue(new ApiRequestError("Gateway unavailable", 502));
+    expect(await loadPerpsEquities(listings, "account-a:pro", true)).toMatchObject({ payload: first.payload, stale: true });
+    request.mockRejectedValue(new ApiRequestError("Session expired", 401));
+    await expect(loadPerpsEquities(listings, "account-a:pro", true)).rejects.toThrow("Session expired");
+  } finally { request.mockRestore(); perpsListCache.reset(); }
+  // Answers follow the request's order, and a contract counts only with its proof for that row's listing.
+  const [apple, cloudflare] = [{ symbol: "AAPL", exchange: "NASDAQ" }, { symbol: "NET", exchange: "NYSE" }];
+  const answer = equitiesPayload([apple, cloudflare], () => true);
+  expect(validatePerpsEquities(answer, [apple, cloudflare]).results).toHaveLength(2);
+  expect(() => validatePerpsEquities(answer, [cloudflare, apple])).toThrow("another listing");
+  expect(() => validatePerpsEquities(answer, [apple])).toThrow("another listing");
+  expect(() => validatePerpsEquities({ ...answer, results: [answer.results[0]!, { listing: cloudflare, market: answer.results[0]!.market }] }, [apple, cloudflare])).toThrow("another listing");
+  expect(validatePerpsEquities(equitiesPayload([apple, cloudflare], () => false), [apple, cloudflare]).results.every((result) => !result.market)).toBe(true);
 });
 
 test("rankings may repeat a market across lists but not within one, and a comparison holds only its base asset", async () => {

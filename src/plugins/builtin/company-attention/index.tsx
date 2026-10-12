@@ -3,6 +3,7 @@ import type { PaneTemplateDef } from "../../../types/plugin";
 import { appRankCache, attentionCache } from "./client";
 import { attentionHeadless } from "./headless";
 import { AppsPane, HiringPane } from "./pane";
+import { COMPANY_ATTENTION_SERIES } from "./series";
 
 const definitions = [
   { id: "hiring", prefix: "HIRE", label: "Hiring Momentum", component: HiringPane, description: "Pro hiring momentum: observed weekly open roles, additions, removals, role and location mix, peer comparisons and primary posting evidence.", keywords: ["hiring", "workforce", "roles", "recruitment", "surge", "freeze"] },
@@ -18,6 +19,7 @@ const templates: PaneTemplateDef[] = definitions.map((def) => ({
   },
 }));
 export const companyAttentionModule: PluginModule = {
+  series: COMPANY_ATTENTION_SERIES,
   setup(ctx) {
     attentionCache.attach(ctx.persistence);
     appRankCache.attach(ctx.persistence);

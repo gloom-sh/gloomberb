@@ -25,6 +25,12 @@ import {
 
 const HEADLESS_TOOL_TIMEOUT_MS = 30_000;
 const REMOTE_TOOL_TIMEOUT_MS = 10_000;
+/**
+ * A tool that asks first waits for a person to read the prompt and click, so
+ * the server holds the call this long: the minute the terminal relay gives a
+ * confirmation. A server from before the window holds it 10 s.
+ */
+const CONFIRM_TOOL_TIMEOUT_MS = 60_000;
 const REMOTE_RESOURCE_TOOL_NAME = "app.get_resource";
 
 const TOOL_NAME_REGEX = new RegExp(TOOL_NAME_PATTERN);
@@ -74,6 +80,7 @@ function projectOptions(options: HeadlessPaneDefinition["options"]): ToolManifes
   return options.map(({
     settingKey: _settingKey,
     pluginState: _pluginState,
+    normalize: _normalize,
     values,
     aliases,
     defaultValue,
@@ -165,11 +172,14 @@ function headlessCandidates(registry: PaneFunctionCatalog): ManifestCandidate[] 
   return candidates;
 }
 
+/** Ask Gloom's tool results are text, so an operation that answers with a PNG is not offered there. */
+const ASKG_REMOTE_OPERATIONS = REMOTE_OPERATIONS.filter((operation) => !operation.returnsImage);
+
 function remoteCandidates(): ManifestCandidate[] {
-  const descriptors = remoteOperationDescriptors();
   const operationsByName = new Map(
-    REMOTE_OPERATIONS.map((operation) => [remoteOperationToolName(operation.id), operation]),
+    ASKG_REMOTE_OPERATIONS.map((operation) => [remoteOperationToolName(operation.id), operation]),
   );
+  const descriptors = remoteOperationDescriptors().filter((descriptor) => operationsByName.has(descriptor.name));
   const candidates = descriptors.map((descriptor): ManifestCandidate => ({
     token: descriptor.name,
     identity: `operation:${operationsByName.get(descriptor.name)?.id ?? descriptor.name}`,
@@ -180,10 +190,7 @@ function remoteCandidates(): ManifestCandidate[] {
       description: descriptor.description,
       writeTier: descriptor.writeTier,
       inputSchema: descriptor.inputSchema,
-      confirm: descriptor.writeTier === "user-data" || descriptor.writeTier === "broker"
-        ? "always"
-        : "never",
-      timeoutMs: REMOTE_TOOL_TIMEOUT_MS,
+      ...remoteConfirmation(descriptor.writeTier),
     },
   }));
 
@@ -214,6 +221,25 @@ function remoteCandidates(): ManifestCandidate[] {
   });
 
   return candidates;
+}
+
+/** Account and broker writes ask first, and get the minute that takes. */
+function remoteConfirmation(writeTier: ClientToolManifest["writeTier"]): Pick<ClientToolManifest, "confirm" | "timeoutMs"> {
+  return writeTier === "user-data" || writeTier === "broker"
+    ? { confirm: "always", timeoutMs: CONFIRM_TOOL_TIMEOUT_MS }
+    : { confirm: "never", timeoutMs: REMOTE_TOOL_TIMEOUT_MS };
+}
+
+/**
+ * How long a call may run once it starts. A tool that asks first declares the
+ * window for the person and the write together; the write itself keeps the
+ * budget of every app action, counted from the approval rather than from the
+ * call. The server's deadline for the call still bounds it.
+ */
+export function toolExecutionTimeoutMs(manifest: Pick<ClientToolManifest, "confirm" | "timeoutMs">): number {
+  return manifest.confirm === "always"
+    ? Math.min(manifest.timeoutMs, REMOTE_TOOL_TIMEOUT_MS)
+    : manifest.timeoutMs;
 }
 
 function compareManifests(left: ClientToolManifest, right: ClientToolManifest): number {
@@ -313,7 +339,7 @@ export async function buildASKGClientManifest(
 
 export function resolveRemoteToolBinding(name: string): RemoteToolBinding | null {
   if (name === REMOTE_RESOURCE_TOOL_NAME) return { kind: "resource" };
-  const operation = REMOTE_OPERATIONS.find((entry) => remoteOperationToolName(entry.id) === name);
+  const operation = ASKG_REMOTE_OPERATIONS.find((entry) => remoteOperationToolName(entry.id) === name);
   return operation ? { kind: "operation", operation: operation.id } : null;
 }
 

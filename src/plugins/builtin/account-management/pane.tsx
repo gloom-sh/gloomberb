@@ -12,6 +12,8 @@ import {
   type StatItem,
 } from "../../../components";
 import { useAppSelector, usePaneAppConfig } from "../../../state/app/context";
+import { useViewport } from "../../../react/input";
+import { displayWidth } from "../../../utils/format";
 import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
 import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
@@ -32,8 +34,10 @@ import { FRAMED_TEXTAREA_DESKTOP_STYLE } from "../../../components/ui/fields";
 import { apiClient, type AccountProfile, type CloudPricing } from "../../../api-client";
 import { chatController } from "../chat/controller";
 import { SignInWall } from "../cloud/auth-actions";
-import { loadUpgradeOffer } from "../cloud/upgrade-dialog";
+import { loadUpgradeOffer } from "../../../account/upgrade-dialog";
+import { openMcpConnectDialog } from "../cloud/mcp-connect/dialog";
 import { TeamsAccountTab } from "../cloud/team/acm-tab";
+import { AgentsAccountTab } from "../cloud/terminal-relay/acm-tab";
 import {
   CheckboxRow,
   FieldRow,
@@ -48,15 +52,17 @@ import {
   computeCumulativeReturn,
   countPortfolioHoldings,
   emptyToNull,
-  formatCloudMonthlyPrice,
   formatPlan,
-  formatTrialEnd,
-  formatTrialOffer,
   portfolioOptionIds,
   profileToDraft,
   type AccountDraft,
   type AccountFieldKey,
 } from "./model";
+import {
+  formatCloudMonthlyPrice,
+  formatTrialEnd,
+  formatTrialOffer,
+} from "../../../account/billing";
 import { PasswordChangeDialog } from "./password-dialog";
 import { CalendarAccountTab } from "./calendar-tab";
 import { useAccountManagementFooter } from "./footer";
@@ -87,6 +93,7 @@ const ACCOUNT_TAB_DEFS: Array<{ label: string; value: AccountManagementTab }> = 
   { label: "Calendar", value: "calendar" },
   { label: "Pro", value: "pro" },
   { label: "Teams", value: "teams" },
+  { label: "Agents", value: "agents" },
   { label: "Advanced", value: "advanced" },
 ];
 
@@ -114,7 +121,9 @@ const ACCOUNT_TAB_FIELD_ORDER: Record<AccountManagementTab, AccountFieldKey[]> =
   pro: ["upgradeAction"],
   // The Teams tab owns its own keyboard handling (a list, not form fields).
   teams: [],
-  advanced: ["passwordAction", "deleteAccountAction"],
+  // Remote assistants allowed to drive this terminal; a list with its own footer.
+  agents: [],
+  advanced: ["assistantsAction", "passwordAction", "deleteAccountAction"],
 };
 
 const PROFILE_PREVIEW_SAMPLE_MS = 10_000;
@@ -562,6 +571,12 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     }).catch(() => {});
   }, [busy, dialog]);
 
+  const viewport = useViewport();
+  const openAssistants = useCallback(() => {
+    setActiveField("assistantsAction");
+    void openMcpConnectDialog(dialog, { viewportWidth: viewport.width });
+  }, [dialog, viewport.width]);
+
   const openPortfolioPicker = useCallback(async () => {
     setActiveField("sharedPortfolioId");
     portfolioSelectRef.current?.open();
@@ -705,8 +720,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
 
   useAccountManagementFooter({
     busy,
-    // The Calendar tab saves nothing and shows its own status.
-    enabled: activeTab !== "calendar",
+    // The Calendar and Agents tabs save nothing and show their own status.
+    enabled: activeTab !== "calendar" && activeTab !== "agents",
     hasSession,
     message,
     saveProfile,
@@ -719,7 +734,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     draftRef,
     fieldOrder,
     // Behind the sign-in wall the fields are not there, and Enter is the wall's.
-    focused: focused && activeTab !== "teams" && activeTab !== "calendar" && (hasSession || apiClient.isSignedIn()),
+    focused: focused && activeTab !== "teams" && activeTab !== "calendar" && activeTab !== "agents" && (hasSession || apiClient.isSignedIn()),
+    openAssistants,
     openPasswordDialog,
     openPortfolioDialog: openPortfolioPicker,
     openUpgrade,
@@ -927,8 +943,21 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
           {activeTab === "teams" ? (
             <TeamsAccountTab focused={focused} width={contentWidth} />
           ) : null}
+          {activeTab === "agents" ? (
+            <AgentsAccountTab focused={focused} width={contentWidth} />
+          ) : null}
           {activeTab === "advanced" ? (
             <>
+              <Box ref={fieldNodeRef("assistantsAction")} flexDirection="row" gap={1} alignItems="center">
+                {/* The only label on the tab, so it takes the room it needs, with the terminal's "> " marker. */}
+                <FieldLabel label={t("Assistants (MCP)")} active={activeField === "assistantsAction"} width={displayWidth(t("Assistants (MCP)")) + 3} />
+                <Button
+                  label={t("Connect an AI Assistant")}
+                  active={activeField === "assistantsAction"}
+                  onPress={openAssistants}
+                  disabled={!!busy}
+                />
+              </Box>
               <Box flexDirection="row" gap={1}>
                 <Button
                   label={t("Change Password")}

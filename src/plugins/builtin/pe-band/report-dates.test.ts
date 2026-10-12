@@ -25,10 +25,11 @@ describe("report dates", () => {
     expect(knownBy(row("2025-12-27"), [report("2026-01-29", "2025-12"), report("2026-01-29", "2025-12")])).toBe("2026-01-29");
   });
 
-  test("date only what has no publication date, and a fiscal year by the report of its last quarter", () => {
+  test("date a figure by its report unless it is on record earlier, and a fiscal year by the report of its last quarter", () => {
     const reports = [report("2025-10-30", "2025-09")];
-    expect(knownBy(row("2025-09-27", { fieldAvailability: { eps: "2025-10-31" } }), reports)).toBe("2025-10-31");
-    expect(knownBy(row("2025-09-27", { availableAt: "2025-10-31" }), reports)).toBeUndefined();
+    expect(knownBy(row("2025-09-27", { fieldAvailability: { eps: "2025-10-31" } }), reports)).toBe("2025-10-30");
+    expect(knownBy(row("2025-09-27", { availableAt: "2025-11-03" }), reports)).toBe("2025-10-30");
+    expect(knownBy(row("2025-09-27", { fieldAvailability: { eps: "2025-10-29" } }), reports)).toBe("2025-10-29");
     expect(datedByReport(row("2025-09-27", { eps: undefined }), reports).fieldAvailability).toBeUndefined();
     // A map that dates other lines still leaves EPS undated, and keeps them.
     expect(datedByReport(row("2025-09-27", { fieldAvailability: { netIncome: "2025-10-31" } }), reports).fieldAvailability)

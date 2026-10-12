@@ -370,11 +370,6 @@ export const INDICATORS: readonly IndicatorDef[] = [
 
 export const DEFAULT_INDICATOR_ID = BUFFETT_INDICATOR.id;
 
-export function findIndicator(id: string | null | undefined): IndicatorDef {
-  const normalized = id?.trim().toLowerCase();
-  return INDICATORS.find((entry) => entry.id === normalized) ?? BUFFETT_INDICATOR;
-}
-
 /** Resolves shortcut arguments like `VAL cape` or `VAL buffett` onto an indicator. */
 export function resolveIndicatorArg(arg: string | null | undefined): IndicatorDef | null {
   const query = arg?.trim().toLowerCase();

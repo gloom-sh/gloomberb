@@ -15,6 +15,8 @@ import { formatExpDate } from "../../../utils/options";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { OptionsView } from "./view";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
+import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
+import { renderedReportFreshness, renderedReportNotices } from "../../../cli/pane-functions/report-notices";
 
 const TEST_PANE_ID = "ticker-detail:options-test";
 
@@ -72,6 +74,7 @@ function OptionsHarness({
   width = 122,
   height = 14,
   nestedInTabs = false,
+  settings,
 }: {
   ticker: TickerRecord;
   quotePrice?: number;
@@ -81,11 +84,13 @@ function OptionsHarness({
   width?: number;
   height?: number;
   nestedInTabs?: boolean;
+  settings?: Record<string, unknown>;
 }) {
   const config = createTestPaneConfig("/tmp/gloomberb-options-test", {
     instanceId: TEST_PANE_ID,
     paneId: "ticker-detail",
     binding: { kind: "fixed", symbol: ticker.metadata.ticker },
+    ...(settings ? { settings } : {}),
   });
 
   const [persistedState, dispatch] = useReducer(appReducer, config, createInitialState);
@@ -187,6 +192,44 @@ test("defaults the table around the nearest strike to the current quote", async 
   expect(frame).not.toContain(" 50 ");
 });
 
+test("reads a put's cost as a percent of spot from its quote midpoint, on the put side alone", async () => {
+  const chain = makeChain([700, 780], 780);
+  chain.puts = chain.puts.map((put) => put.strike === 700 ? { ...put, bid: 5.48, ask: 5.51 }
+    : { ...put, bid: 0, ask: 0.05 });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => chain })));
+  await act(async () => {
+    await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={778.57}
+      settings={{ optionColumnIds: ["bid", "ask", "costOfSpot"] }} />, { width: 124, height: 12 });
+  });
+  await renderSettled();
+
+  const lines = tui.frame().split("\n");
+  const header = lines.find((line) => line.includes("STRIKE"))!;
+  expect(header).toContain("P COST%");
+  expect(header).not.toContain("C COST%");
+  expect(lines.find((line) => /\b700\b/.test(line))).toContain("0.706%");
+  // A one-sided put quote has no midpoint, so no cost.
+  expect(lines.find((line) => /\b780\b/.test(line))).not.toMatch(/\d%/);
+});
+
+test("lists only the strikes in the saved window, and the query bar says a window narrows the chain", async () => {
+  const strikes = Array.from({ length: 25 }, (_, index) => 50 + index * 5);
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({
+    getOptionsChain: async () => makeChain(strikes, 120),
+  })));
+  await act(async () => {
+    await tui.render(<OptionsHarness ticker={makeTicker("AAPL")} quotePrice={121.2} height={16} settings={{ strikes: "1" }} />, { width: 124, height: 16 });
+  });
+  await renderSettled();
+
+  const frame = tui.frame();
+  expect(frame).toContain("Strikes ±1");
+  await exportPaneTable(TEST_PANE_ID, "window.csv");
+  const [header, ...rows] = takeSavedTextFile()!.text.trim().split(/\r?\n/).map((line) => line.split(","));
+  const strike = header!.indexOf("STRIKE");
+  expect(rows.map((row) => row[strike])).toEqual(["115", "120", "125"]);
+});
+
 test("keeps table geometry and scroll steady while a cold expiry loads", async () => {
   const firstExpiry = 1_782_345_600;
   const nextExpiry = firstExpiry + 7 * 86400;
@@ -217,6 +260,27 @@ test("keeps table geometry and scroll steady while a cold expiry loads", async (
   expect(tableHeight()).toBe(before);
   expect(tui.frame()).not.toContain("Loading strikes");
   expect((tui.setup().renderer.root.findDescendantById("options-table-body-scroll") as ScrollBoxRenderable).scrollTop).toBeGreaterThan(0);
+});
+
+test("a typed expiry date opens that expiry, and its report names it with the chain's as-of and delay", async () => {
+  const chain: OptionsChain = { ...makeChain([100, 101], 101, [1_781_049_600, 1_782_345_600]),
+    asOf: "2026-06-01T20:00:00.000Z", dataSource: "delayed", delayMinutes: 15 };
+  const provider = createTestDataProvider({ getOptionsChain: async () => chain });
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(provider));
+  const registry = createRemoteUiRegistry();
+  // `fn OMON --expiration 2026-06-25` leaves the date as text in the pane setting.
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} settings={{ expiration: "2026-06-25" }} />
+    </RemoteUiRegistryProvider>, { width: 124, height: 16 });
+  });
+  await renderSettled();
+  expect(tui.frame()).toMatch(/Expiry\s+2026-06-25\s+\(24d\)/);
+  expect(tui.frame()).not.toContain("NaN");
+  const report = renderedReportNotices(registry.snapshot());
+  expect(report.notices[0]).toBe("Expiry 2026-06-25 (24d)");
+  expect(report.facts.expiry).toEqual({ date: "2026-06-25", daysToExpiry: 24 });
+  expect(renderedReportFreshness(registry.snapshot())).toEqual({ asOf: "2026-06-01T20:00:00.000Z", status: "delayed", delayMinutes: 15 });
 });
 
 test("shows the spot, volatility statistics and the mirrored default fields", async () => {

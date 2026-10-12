@@ -7,7 +7,9 @@ import type { HeadlessPaneContext } from "../../../types/headless";
 import { loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings, type ScenarioLoaderDependencies } from "./client";
 import { daysToExpiryFrom, solveImpliedVolatility, valueOption } from "../shared/volatility";
 import { optionsScenarioHeadless } from "./headless";
+import { parseOptionExpiration } from "../../../utils/option-expiry";
 import { buildScenario, optionExpirationClose } from "./model";
+import { scenarioHedgeBudget } from "./hedge";
 
 const now = Date.UTC(2026, 8, 22, 14);
 const expiration = Date.UTC(2026, 11, 18) / 1000;
@@ -80,6 +82,27 @@ describe("scenario market loader", () => {
     } finally { coordinator.destroy(); }
   });
 
+  test("a typed date selects the chain's expiry of that day, and an unlisted one names the listed dates", async () => {
+    // A source that stamps the expiry at the New York close and keys its chains by that stamp.
+    const stamped = expiration + 20 * 3600;
+    const contract = (strike: number) => ({ contractSymbol: `AAPL${strike}`, strike, bid: 4, ask: 6, currency: "USD", expiration: stamped,
+      impliedVolatility: .25, lastPrice: 5, change: 0, percentChange: 0, inTheMoney: false, lastTradeDate: now / 1000 });
+    const requested: (number | undefined)[] = [];
+    const deps = dependencies({ loadOptions: async (request) => {
+      requested.push(request.expirationDate);
+      return ready({ ...chain, expirationDates: [stamped], calls: request.expirationDate === stamped ? [contract(100), contract(110)] : [] });
+    } });
+    const typed = parseOptionExpiration("2026-12-18")!;
+    const market = await loadScenarioMarket({ instrument: { symbol: "AAPL" }, expiration: typed }, deps);
+    expect(requested).toEqual([typed, stamped]);
+    expect(market.chain?.calls.map((call) => call.strike)).toEqual([100, 110]);
+    expect(market.missingExpiry).toBeUndefined();
+    const unlisted = await loadScenarioMarket({ instrument: { symbol: "AAPL" }, expiration: parseOptionExpiration("2026-12-19")! }, deps);
+    expect(unlisted.chain).toBeNull();
+    expect(() => scenarioPositionFromSettings({ symbol: "AAPL", strategy: "vertical" }, unlisted))
+      .toThrow("No expiry 2026-12-19 for AAPL; available: 2026-12-18");
+  });
+
   test("consumer cancellation does not wait for or cancel the shared chain request", async () => {
     const controller = new AbortController();
     let resolve!: (value: QueryEntry<OptionsChain>) => void;
@@ -105,7 +128,43 @@ describe("scenario headless inputs", () => {
     expect(result.metadata?.inputSource).toBe("user");
     expect(result.metadata?.position).toMatchObject({ spot: 100.5, rate: 0.04, dividendYield: 0.005, asOf: Date.UTC(2026, 8, 22) });
     expect(result.metadata?.controls).toEqual({ date: Date.UTC(2026, 9, 22), volShift: 0.02, spotRange: 0.25 });
-    expect(result.sections.find((section) => section.title === "Scenario grid")?.rows?.length).toBeGreaterThan(5);
+    expect(result.sections.find((section) => section.title.startsWith("Scenario grid"))?.rows?.length).toBeGreaterThan(5);
+  });
+
+  test("money figures name their currency and size: the underlying's currency, entry per share, value per contract", async () => {
+    const offline = { symbols: ["AAPL"], rawArgument: "AAPL", argument: "AAPL" };
+    const fail = () => { throw new Error("Unexpected market request"); };
+    const context = { marketData: new Proxy({}, { get: fail }), apiClient: new Proxy({}, { get: fail }),
+      signal: new AbortController().signal } as HeadlessPaneContext;
+    // No --currency: a US listing (a bare symbol is one) is in dollars, without a quote to ask.
+    const { currency: _currency, ...untyped } = explicit;
+    const result = await optionsScenarioHeadless.load({ ...offline, options: untyped }, context);
+    expect(result.metadata?.units).toEqual({ currency: "USD", price: "per share", value: "for 2 contracts" });
+    expect(result.sections.map((section) => section.title)).toEqual(["Position", "Inputs", "Valuation (USD for 2 contracts)",
+      "Expiry risk (USD for 2 contracts)", "Scenario grid (P&L, USD for 2 contracts)"]);
+    const entry = (key: string) => result.sections.flatMap((section) => section.entries ?? []).find((item) => item.key === key);
+    expect([entry("price")?.label, entry("spot")?.formatted, entry("thetaPerDay")?.label]).toEqual(["Value", "100.50 per share", "Theta (USD per day)"]);
+    expect(result.sections[0]!.columns!.find((column) => column.key === "price")?.header).toBe("Entry/share");
+    const single = await optionsScenarioHeadless.load({ ...offline, options: { ...untyped, legs: "call,100,2026-12-18,1,5,25" } }, context);
+    expect(single.metadata?.units).toMatchObject({ value: "per contract" });
+    // A listing abroad with nothing naming its currency says so, never a bare code.
+    const abroad = await optionsScenarioHeadless.load({ ...offline, symbols: ["SAP:XETRA"], options: untyped }, context);
+    expect(abroad.sections[2]!.title).toBe("Valuation (currency unknown for 2 contracts)");
+  });
+
+  test("a typed rate or yield clears the warning that the source had none", async () => {
+    const provider = { id: "scenario-test", getQuote: async () => quote, getTickerFinancials: async () => { throw new Error("Fundamentals offline"); },
+      getOptionsChain: async () => chain } as unknown as DataProvider;
+    const run = (options: Record<string, unknown>) => optionsScenarioHeadless.load({ symbols: ["AAPL"], rawArgument: "AAPL", argument: "AAPL",
+      options: { legs, ...options } }, { marketData: provider, signal: new AbortController().signal,
+      apiClient: { getCloudYieldCurve: dependencies().loadYieldCurve } } as unknown as HeadlessPaneContext);
+    setSystemTime(now);
+    try {
+      await expect(run({})).rejects.toThrow("Dividend yield unavailable");
+      const typed = await run({ dividendYield: "0" });
+      expect(typed.errors).not.toContain("Dividend yield unavailable; supply an explicit assumption");
+      expect(typed.sections.find((section) => section.title === "Inputs")?.entries?.find((item) => item.key === "dividendYield")?.formatted).toBe("0.00%");
+    } finally { setSystemTime(); }
   });
 
   test("strict numeric and calendar parsing rejects silent coercion", () => {
@@ -249,6 +308,11 @@ describe("scenario headless inputs", () => {
         expect(whatIf.legs.map((leg) => leg.volatility)).toEqual(position.legs.map((leg) => leg.volatility));
         if (strategy === "vertical" && print === 100.25) expect(buildScenario(whatIf).valuation.pnl).toBeGreaterThan(cost * 0.15);
       }
+      // A protective put seeds the same way, and a hedge budget reads its notional at the print, not the implied spot.
+      const put = scenarioPositionFromSettings({ symbol: "AAPL", strategy: "put" }, market)!;
+      expect(put.legs.map((leg) => [leg.side, leg.strike, leg.quantity, leg.volatilitySource])).toEqual([["put", 100, 1, "mid"]]);
+      expect(Math.abs(buildScenario(put).valuation.pnl)).toBeLessThan(1e-6);
+      expect(scenarioHedgeBudget({ nav: "1m", budgetBps: "100" }, put, market)!.spot).toBe(print);
     }
     // Headless output names the last print beside the origin, and leaves it out for a typed spot.
     setSystemTime(printAt);
@@ -260,12 +324,13 @@ describe("scenario headless inputs", () => {
         apiClient: { getCloudYieldCurve: dependencies().loadYieldCurve } } as unknown as HeadlessPaneContext);
       const seeded = await run({});
       expect([seeded.complete, seeded.errors]).toEqual([true, []]);
-      expect(seeded.sections.find((section) => section.title === "Spot")?.entries?.map((entry) => [entry.label, entry.formatted]))
-        .toEqual([["Implied by option quotes", "100.00"], ["Last price", "100.25"]]);
-      const pnl = seeded.sections.find((section) => section.title === "Valuation")?.entries?.find((entry) => entry.label === "pnl");
+      const spot = (result: typeof seeded) => result.sections.find((section) => section.title === "Inputs")?.entries
+        ?.filter((entry) => entry.key === "spot" || entry.key === "last").map((entry) => [entry.label, entry.formatted]);
+      expect(spot(seeded)).toEqual([["Spot implied by option quotes", "100.00 per share"], ["Last price", "100.25 per share"]]);
+      const pnl = seeded.sections.find((section) => section.title.startsWith("Valuation"))?.entries?.find((entry) => entry.key === "pnl");
       expect(Math.abs(Number(pnl?.value))).toBeLessThan(1e-6);
       expect(pnl?.formatted).toBe("0.00");
-      expect((await run({ spot: "100.25" })).sections.some((section) => section.title === "Spot")).toBe(false);
+      expect(spot(await run({ spot: "100.25" }))).toEqual([["Spot", "100.25 per share"]]);
     } finally { setSystemTime(); }
   });
 

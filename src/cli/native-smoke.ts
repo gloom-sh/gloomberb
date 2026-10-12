@@ -26,3 +26,16 @@ export async function smokePluginHost(): Promise<void> {
   const { smokePluginHostLoad } = await import("../plugins/host-smoke");
   await smokePluginHostLoad();
 }
+
+export const SHOT_VIEW_SMOKE_COMMAND = "__gloomberb-smoke-shot-view";
+
+/**
+ * Reads the page `shot` and rendered `fn` reports draw panes in. The release
+ * binary has no sources to build it from, so it carries a prebuilt copy; run
+ * from outside a checkout, this fails when that copy is missing or incomplete
+ * rather than on a user's first capture.
+ */
+export async function smokeShotView(): Promise<void> {
+  const { loadShotView } = await import("./desktop-pane-shot-view");
+  await loadShotView();
+}

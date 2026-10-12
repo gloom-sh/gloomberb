@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, setSystemTime, test } from "bun:test";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { createDefaultConfig } from "../../types/config";
@@ -19,11 +19,13 @@ import {
   buildHeadlessPaneLoadArgs,
   buildHeadlessFunctionReport,
   headlessReportTables,
+  reportGaps,
   renderHeadlessPaneText,
   serializeHeadlessPaneResult,
 } from "./headless";
 import { deriveHeadlessFreshness } from "./freshness";
 import { renderReportCsv, selectReportTables } from "../report-tables";
+import { setCliWidthOverride } from "../../utils/cli-output";
 
 const args: HeadlessPaneLoadArgs = {
   rawArgument: "",
@@ -58,6 +60,29 @@ describe("headless pane printer", () => {
     expect(report.data).toMatchObject({
       symbols: ["SPY"], unavailableSymbols: ["SPY"], empty: true, complete: false,
     });
+  });
+
+  test("--width wraps the notes, errors and source line under a table, and a column marked whole is never cut", () => {
+    const definition: HeadlessPaneDefinition<"rows"> = {
+      shape: "rows", argument: { kind: "none" }, options: [],
+      freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
+      columns: [{ key: "name", header: "Name" }, { key: "time", header: "Updated", shrink: false }],
+      load: () => ({ rows: [] }),
+    };
+    const result: HeadlessRowsResult = {
+      rows: [{ name: "A long index name that will not fit beside the time", time: "2026-10-09 20:15 UTC" }],
+      notes: ["A note of more than one line when the terminal is only forty columns wide."],
+      errors: ["Three words of error text that also run past forty columns of width"],
+    };
+    setCliWidthOverride(40);
+    try {
+      const lines = renderHeadlessPaneText(definition, result, args, "Board").split("\n");
+      expect(lines.every((line) => line.length <= 40)).toBe(true);
+      expect(lines.find((line) => line.startsWith("A long"))).toMatch(/…\s+2026-10-09 20:15 UTC$/);
+      expect(lines.filter((line) => line.startsWith("Notes:") || line.includes("terminal is only"))).toHaveLength(2);
+    } finally {
+      setCliWidthOverride(null);
+    }
   });
 
   test("renders rows as aligned text and preserves raw values in JSON", () => {
@@ -191,7 +216,7 @@ describe("headless pane printer", () => {
     };
 
     const text = renderHeadlessPaneText(definition, result, args, "News");
-    expect(text.split("\n").at(-1)).toContain("As of 2026-09-03 12:00 UTC");
+    expect(text.split("\n").at(-1)).toMatch(/Thu 3 Sep(?: 2026)? 12:00 UTC/);
     expect(text).toContain("Markets open");
     expect(jsonData(definition, result)).toMatchObject({
       ok: true,
@@ -205,19 +230,20 @@ describe("headless pane printer", () => {
 
 test("every report shape ends with its source, as-of and status line, and JSON carries the same facts", async () => {
   const results: Array<[HeadlessPaneDefinition, string]> = [
-    [{ shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [{ name: "AAPL", dataSource: "delayed", updatedAt: Date.parse("2026-10-08T19:59:00Z") }] }) }, "Delayed"],
+    [{ shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [{ name: "AAPL", dataSource: "delayed", updatedAt: Date.parse("2026-10-08T19:59:00Z") }] }) }, "delayed"],
     [{ shape: "bundle", argument: { kind: "none" }, options: [], freshness: { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" },
-      load: () => ({ sections: [{ title: "Filings", rows: [{ form: "10-K", asOf: "2026-09-30" }] }] }) }, "Not a live feed (filed data)"],
-    [{ shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [{ id: "x", label: "X", points: [{ date: "2026-10-08", value: 1 }] }] }) }, "Status not reported"],
-    [{ shape: "snapshot", argument: { kind: "none" }, options: [], load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Open" }] }) }, "Status not reported"],
+      load: () => ({ sections: [{ title: "Filings", rows: [{ form: "10-K", asOf: "2026-09-30" }] }] }) }, "not a live feed (filed data)"],
+    [{ shape: "series", argument: { kind: "none" }, options: [], load: () => ({ series: [{ id: "x", label: "X", points: [{ date: "2026-10-08", value: 1 }] }] }) }, "status not reported"],
+    [{ shape: "snapshot", argument: { kind: "none" }, options: [], load: () => ({ asOf: "2026-10-08T19:59:00Z", items: [{ headline: "Open" }] }) }, "status not reported"],
   ];
   for (const [definition, status] of results) {
     const report = await buildHeadlessFunctionReport({
       headless: definition, token: "TEST", label: "Test", options: {}, instance: {}, capability: { id: "test" },
     } as ResolvedPaneFunction, { config: createDefaultConfig("/tmp/gloomberb-headless-freshness") } as MarketContext, "");
     const last = report.text.split("\n").at(-1)!.replace(/\x1b\[[0-9;]*m/g, "");
-    expect(last).toStartWith(`Source: ${definition.freshness?.source ?? "Gloom Cloud"} | As of 2026-`);
-    expect(last).toEndWith(` | ${status}`);
+    expect(last).toStartWith(`Source: ${definition.freshness?.source ?? "Gloom Cloud"} · `);
+    expect(last).toMatch(/ · (?:Mon|Tue|Wed|Thu|Fri|Sat|Sun) \d{1,2} [A-Z][a-z]{2}\b/);
+    expect(last).toEndWith(` · ${status}`);
     expect(report.data.freshness).toMatchObject({ source: definition.freshness?.source ?? "Gloom Cloud", asOf: expect.stringMatching(/^2026-/), retrievedAt: expect.any(String) });
   }
 });
@@ -322,6 +348,20 @@ test("partial usable reports retain rows without marking their symbol wholly una
   expect(report.data).toMatchObject({ rowCount: 1, empty: false, complete: false, unavailableSymbols: [], rows: [{ date: "2025-06-30", margin: .46 }] });
 });
 
+test("an incomplete report's gaps read as its status line and `# incomplete` line do, and a complete one has none", () => {
+  const definition: HeadlessPaneDefinition<"rows"> = { shape: "rows", argument: { kind: "none" }, options: [], load: () => ({ rows: [] }) };
+  const now = Date.parse("2026-10-12T00:00:00Z");
+  const gaps = (result: HeadlessRowsResult) => reportGaps({ definition, args, result }, deriveHeadlessFreshness(definition, result, now));
+  const rows = [{ asOf: "2026-10-09" }];
+  expect(gaps({ rows })).toBeNull();
+  expect(gaps({ rows, complete: false, metadata: { requested: 20, available: 19 } })).toBe("19 of 20 available");
+  expect(gaps({ rows, symbols: ["IN"], unavailableSymbols: ["IN"] })).toBe("no data for IN");
+  // A Pro lock is named as the gate screenshots name it, not as a failure.
+  expect(gaps({ rows, errors: ["2,508 more markets need Gloom Pro"] })).toBe("locked");
+  expect(gaps({ rows, errors: ["Something failed"] })).toBeNull();
+  expect(gaps({ rows: [{ asOf: "2026-10-09", stale: true }, { asOf: "2026-10-09", stale: false }], errors: ["One row is stale"] })).toBe("1 stale");
+});
+
 test("headless text preserves applicable coverage notices once before the exported rows", () => {
   const text = renderHeadlessPaneText({ shape: "rows", columns: [{ key: "value", header: "Value" }] } as any,
     { rows: [{ value: 96_571_000_000 }], metadata: { notices: ["Historical versions unavailable.", "Historical versions unavailable.", null, ""] } },
@@ -332,13 +372,13 @@ test("headless text preserves applicable coverage notices once before the export
 });
 
 
-test("a report's caveats print as Notes, one per line, apart from the failures under Errors, and JSON carries both", async () => {
+test("a report's caveats print as Notes, what Pro unlocks under Pro, the failures under Errors, and JSON carries all three", async () => {
   const definition: HeadlessPaneDefinition<"rows"> = {
     shape: "rows", argument: { kind: "none" }, options: [], columns: [{ key: "value", header: "Value" }],
     load: () => ({
       rows: [{ value: 1 }], complete: false,
       notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],
-      errors: ["Treasury yield: Internal server error"],
+      errors: ["Treasury yield: Internal server error", "Full history requires Gloom Pro"],
     }),
   };
   const report = await buildHeadlessFunctionReport({
@@ -349,8 +389,10 @@ test("a report's caveats print as Notes, one per line, apart from the failures u
   expect(lines).toContain("  ETH-USD is excluded from the risk estimate.");
   expect(lines).toContain("  1 holding had no current quote; weighted at the latest completed close.");
   expect(lines).toContain("Errors: Treasury yield: Internal server error");
+  expect(lines).toContain("Pro: Full history requires Gloom Pro");
+  expect(report.tables.footer).toEqual(expect.arrayContaining(["pro: Full history requires Gloom Pro", "error: Treasury yield: Internal server error"]));
   expect(report.data).toMatchObject({
-    complete: false, errors: ["Treasury yield: Internal server error"],
+    complete: false, errors: ["Treasury yield: Internal server error", "Full history requires Gloom Pro"],
     notes: ["ETH-USD is excluded from the risk estimate.", "1 holding had no current quote; weighted at the latest completed close."],
   });
   // Notes alone leave a complete report complete.
@@ -400,6 +442,10 @@ function csvOf(report: Awaited<ReturnType<typeof reportOf>>, section?: string): 
 const FILED = { source: "SEC EDGAR", status: "not-a-feed", basis: "filed data" } as const;
 
 describe("fn --csv", () => {
+  // The status line names the year only when it is not the current one.
+  beforeAll(() => setSystemTime(new Date("2026-10-10T12:00:00Z")));
+  afterAll(() => setSystemTime());
+
   test("a bundle writes each section as its own table with the displayed headers, entries as Metric,Value", async () => {
     const report = await reportOf({
       shape: "bundle", argument: { kind: "none" }, options: [], freshness: FILED,
@@ -434,7 +480,11 @@ describe("fn --csv", () => {
       "Observed At,Detail",
       "2026-10-08,\"tenor: 2Y, bid: 4.1\"",
       "",
-      "# Source: SEC EDGAR | As of 2026-10-08 | Not a live feed (filed data)",
+      "# Source: SEC EDGAR · Thu 8 Oct 2026 · not a live feed (filed data)",
+      "# Publisher: not published",
+      "# Observation date: 2026-10-08",
+      "# Publication time: not published",
+      "# Retrieval time: 2026-10-10T12:00:00.000Z",
       "# incomplete: 19 of 20 available",
       "# error: ^KS11: No quote provider available for ^KS11",
       "# note: Showing world indices.",
@@ -448,7 +498,9 @@ describe("fn --csv", () => {
 
   test("a report over several symbols is one table with its symbol column; missing symbols close it", async () => {
     const report = await reportOf({
-      shape: "rows", argument: { kind: "tickers" }, options: [], freshness: { ...FILED, observedKey: "date" },
+      shape: "rows", argument: { kind: "tickers" }, options: [],
+      // A publisher and publication time the data states reach the closing lines.
+      freshness: { ...FILED, observedKey: "date", publisher: "U.S. Securities and Exchange Commission", publishedAt: "2026-10-02T16:05:00-04:00" },
       columns: [
         { key: "symbol", header: "Symbol" },
         { key: "date", header: "Date", format: (value) => String(value).slice(0, 10) },
@@ -467,7 +519,11 @@ describe("fn --csv", () => {
       "HP,2026-10-01,37614444",
       "SBK.JO,2026-10-01,1838873",
       "",
-      "# Source: SEC EDGAR | As of 2026-10-01 00:00 UTC | Not a live feed (filed data)",
+      "# Source: SEC EDGAR · Thu 1 Oct 2026 00:00 UTC · not a live feed (filed data)",
+      "# Publisher: U.S. Securities and Exchange Commission",
+      "# Observation date: 2026-10-01T00:00:00.000Z",
+      "# Publication time: 2026-10-02T20:05:00.000Z",
+      "# Retrieval time: 2026-10-10T12:00:00.000Z",
       "# incomplete: no data for XYZ",
     ]);
   });
@@ -510,7 +566,11 @@ describe("fn --csv", () => {
       "Headline,Tickers",
       "\"Markets open, \"\"calm\"\"\",SPY; QQQ",
       "",
-      "# Source: SEC EDGAR | As of 2026-10-08 19:59 UTC | Not a live feed (filed data)",
+      "# Source: SEC EDGAR · Thu 8 Oct 2026 19:59 UTC · not a live feed (filed data)",
+      "# Publisher: not published",
+      "# Observation date: 2026-10-08T19:59:00.000Z",
+      "# Publication time: not published",
+      "# Retrieval time: 2026-10-10T12:00:00.000Z",
     ]);
   });
 

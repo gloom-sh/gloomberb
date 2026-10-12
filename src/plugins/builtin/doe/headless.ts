@@ -56,15 +56,19 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
     options: [{ key: "tab", type: "enum", values: [{ value: "all" }, ...DOE_TABS.map(({ value }) => ({ value }))], defaultValue: defaultTab,
       description: "Crude, products, gas storage, or all three." }],
     discovery: { aliases: ["DOE", "NGS"], dataRequirements: ["Gloom Cloud EIA weekly history"],
-      limitations: ["Weekly data, published Wednesday (petroleum) and Thursday (gas) at 10:30 ET, moved by holidays",
-        "Five-year ranges read earlier years on the same calendar day", "A range holds fewer than five years where a series is younger"] },
+      limitations: ["Weekly data, published Wednesday (petroleum) and Thursday (gas) at 10:30 ET, moved by holidays.",
+        "Five-year ranges read earlier years on the same calendar day.", "A range holds fewer than five years where a series is younger."] },
     describe: "EIA weekly petroleum and natural gas storage",
     async load(args) {
       const data = await fetchDoeBoard();
-      // EIA's weekly reports; once the next one is a day overdue the tables have missed it.
-      const freshness = { source: "EIA", status: "not-a-feed" as const, basis: "weekly release",
-        asOf: newestReportTime(data.reports.map((report) => report.releasedAt)),
-        nextExpectedAt: oldestReportTime(data.reports.map((report) => report.nextReleaseAt)) };
+      // Each tab is dated by its own EIA report (petroleum Wednesday, gas Thursday);
+      // once the next one is a day overdue the tables have missed it.
+      const freshness = (tabs: readonly DoeTab[]) => {
+        const reports = [...new Set(tabs.flatMap((tab) => doeReport(data, tab) ?? []))];
+        return { source: "EIA", status: "not-a-feed" as const, basis: "weekly release",
+          asOf: newestReportTime(reports.map((report) => report.releasedAt)),
+          nextExpectedAt: oldestReportTime(reports.map((report) => report.nextReleaseAt)) };
+      };
       const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
       if (argument) {
         const option = doeSeriesOption(argument);
@@ -80,7 +84,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
               rows: seasonalRows(row) },
           ],
           errors: data.gaps,
-          freshness,
+          freshness: freshness([row.tab]),
           metadata: { ...data, series: [row], complete: data.status === "available" },
         };
       }
@@ -92,7 +96,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
           rows: doeRows(data, tab).map(reportRow),
         })),
         errors: data.gaps,
-        freshness,
+        freshness: freshness(tabs),
         metadata: { ...data, complete: data.status === "available" },
       };
     },

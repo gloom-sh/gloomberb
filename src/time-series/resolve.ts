@@ -3,7 +3,8 @@ import { hasValidQuoteObservationTime } from "../market-data/quotes/freshness";
 import { SnapshotHistoryUnavailableError } from "../market-data/snapshot-provider";
 import { financialPeriodCoverage, financialPeriodCoverageWarnings, limitSeriesObservations } from "./financial-period-coverage";
 import { HistoryCoverageError, historyCoverageNotice } from "../sources/history-coverage";
-import { HISTORY_RETENTION_MAX_AGE_MS, canonicalHistoryInterval, historyRetentionNotice, isHistoryRetentionError, parseHistoryRecoveryCandidate, type HistoryRecoveryCandidate, type HistoryRetention, type HistoryRetentionError } from "../sources/history-retention";
+import { ProviderMissError } from "../sources/provider-errors";
+import { HISTORY_RETENTION_MAX_AGE_MS, canonicalHistoryInterval, historyRetentionNotice, historyStartNotice, isHistoryRetentionError, parseHistoryRecoveryCandidate, type HistoryRecoveryCandidate, type HistoryRetention, type HistoryRetentionError } from "../sources/history-retention";
 import { getRouterEntityKey } from "../sources/provider-router/cache";
 import { publicListingTarget } from "../sources/listing-target";
 import { fetchHistoryResult } from "../sources/history-result";
@@ -77,9 +78,12 @@ import {
   resolveExchangeTimeZone,
 } from "../utils/exchanges";
 import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../utils/price-history";
+import { timeZoneLabel, zonedDateKey, zonedWallClockMs } from "../utils/zoned-date-time";
+import { formatShortDate } from "../utils/datetime-format";
 import { latestSessionStart, latestTradingSessionOpen, listingTimeZone, priorSessionClose } from "../market-data/market/trading-sessions";
 import { futuresGenericCaption, futuresGenericListing, futuresGenericPriceBasis } from "../utils/futures-generic";
 import { isOhlcSeriesStyle } from "./spec";
+import { SERIES_COLORS } from "../theme/series-colors";
 import type {
   ChartResolutionResult,
   ChartSeriesSpec,
@@ -87,20 +91,6 @@ import type {
   ResolvedSeries,
   TimeSeriesPoint,
 } from "./types";
-
-/** Colours for series told apart by name (compared tickers, markets). */
-export const SERIES_COLORS = [
-  "#4dabf7",
-  "#63e6be",
-  "#f6c85f",
-  "#b197fc",
-  "#ff8787",
-  "#ffa94d",
-  "#74c0fc",
-  "#e599f7",
-  "#8ce99a",
-  "#ffd43b",
-] as const;
 
 export interface ChartResolveSources {
   dataProvider: DataProvider | null;
@@ -115,6 +105,11 @@ export interface ChartResolveSources {
   liveSince?: number;
   /** Capture the resolved inputs, including the calculation buffer, for an export. */
   onSecurityData?: (series: ChartSeriesSpec, data: TickerFinancials, includesHistory: boolean) => void;
+  /**
+   * How often, in milliseconds, a plugin-owned series is loaded again while
+   * it is charted; nothing for a series that keeps what it loaded.
+   */
+  capabilityRefreshMs?: (source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>) => number | undefined;
   /** Provider-neutral boundary for plugin-owned chart series. */
   resolveCapabilitySeries?: (
     source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>,
@@ -227,6 +222,8 @@ interface LoadedPriceHistory extends PriceHistoryResult {
   expiresAt?: number;
   requestKey?: string;
   accumulationKey?: string | null;
+  /** The first bar the source has at this cadence, once it has said there is nothing older. */
+  historyStart?: number;
   recovery?: {
     sourceKey: string;
     /** First bar requested from the retained window. */
@@ -275,6 +272,24 @@ function instrumentKey(spec: Extract<ChartSeriesSpec["source"], { kind: "securit
 
 function instrumentLabel(spec: Extract<ChartSeriesSpec["source"], { kind: "security" }>): string {
   return publicTickerKey(spec.instrument.symbol, spec.instrument.exchange);
+}
+
+/**
+ * Shown while a current chart draws a saved copy that no refetch brought up
+ * to date: the last saved bar on the venue's clock, as the axis reads it.
+ */
+function behindHistoryNotice(
+  source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
+  points: TickerFinancials["priceHistory"],
+  now: number,
+): string | null {
+  const latest = points.findLast((point) => Number.isFinite(point.close) && Number.isFinite(getPricePointTimestamp(point)));
+  if (!latest) return null;
+  const zone = listingTimeZone(source.instrument.symbol, source.instrument.exchange) ?? "UTC";
+  const wall = new Date(zonedWallClockMs(getPricePointTimestamp(latest), zone)).toISOString();
+  const sameYear = wall.slice(0, 4) === zonedDateKey(now, zone).slice(0, 4);
+  const day = formatShortDate(wall.slice(0, 10), { utc: true, year: sameYear ? false : "numeric" });
+  return `${instrumentLabel(source)}: newer bars are unavailable; showing saved bars as of ${day} ${wall.slice(11, 16)} ${timeZoneLabel(zone)}.`;
 }
 
 // A series that fails to load keeps its place with no observations. Dropping it
@@ -483,6 +498,21 @@ function calculationBounds(
   return { start: Math.min(start, visibleBounds.start), end: visibleBounds.end };
 }
 
+/**
+ * How far past a view moved into the past its history reaches: half a view,
+ * as far as the interval's longest window allows with the view still in it.
+ * Those are the bars a pan forward meets first. Without them, a view whose
+ * bars were loaded for it alone (a zoom to finer bars, then a pan) ends where
+ * they do, and a pan forward stops there with nothing to ask for.
+ */
+function barsAhead(view: DateBounds, maxRange: TimeRange | null, now: number): number {
+  if (view.start === null || view.end === null || view.end >= now) return 0;
+  const room = maxRange && maxRange !== "ALL"
+    ? view.start - subtractTimeRange(new Date(view.end), maxRange).getTime()
+    : Number.POSITIVE_INFINITY;
+  return Math.max(0, Math.min((view.end - view.start) / 2, room, now - view.end));
+}
+
 function trailingRangeForStart(start: number | null, referenceDate: Date): TimeRange {
   if (start === null) return "ALL";
   for (const range of TIME_RANGES) {
@@ -534,12 +564,18 @@ function comparisonDisplayBounds(bounds: DateBounds, comparison: PriceComparison
   };
 }
 
+/**
+ * An untouched market chart ends at its newest bar. A quote that arrives just
+ * after the reference time moves it on; a closed market (a night, a weekend)
+ * moves it back, so the plot does not end in an empty stretch that the first
+ * pan would then collapse.
+ */
 function followLatestMarketObservation(
   bounds: DateBounds,
   series: readonly ResolvedSeries[],
 ): DateBounds {
   if (bounds.end === null) return bounds;
-  let latest = bounds.end;
+  let latest = Number.NEGATIVE_INFINITY;
   for (const entry of series) {
     if (entry.timeBasis?.kind !== "market") continue;
     for (const point of entry.points) {
@@ -547,12 +583,31 @@ function followLatestMarketObservation(
       if (Number.isFinite(timestamp) && timestamp > latest) latest = timestamp;
     }
   }
-  if (latest === bounds.end) return bounds;
+  if (!Number.isFinite(latest) || latest === bounds.end) return bounds;
   const shift = latest - bounds.end;
   return {
     start: bounds.start === null ? null : bounds.start + shift,
     end: latest,
   };
+}
+
+/**
+ * A chart of capability series alone (CHOKE's vessel transits) ends at its
+ * newest observation, not today: such data is published days late, and an
+ * axis running on to today would read as days with nothing in them. The
+ * start stays where the range put it, so no empty span opens on the left.
+ */
+function endAtNewestObservation(bounds: DateBounds, series: readonly ResolvedSeries[]): DateBounds {
+  if (bounds.end === null) return bounds;
+  let newest = Number.NEGATIVE_INFINITY;
+  for (const entry of series) {
+    for (const point of entry.points) {
+      const timestamp = point.date.getTime();
+      if (point.value !== null && Number.isFinite(timestamp) && timestamp > newest) newest = timestamp;
+    }
+  }
+  if (!Number.isFinite(newest) || newest >= bounds.end || (bounds.start !== null && newest <= bounds.start)) return bounds;
+  return { start: bounds.start, end: newest };
 }
 
 /**
@@ -857,6 +912,71 @@ function recoveryCandidates(
   return candidate ? [candidate] : [];
 }
 
+/** Requests for older bars one panned window may add when its source answers only the newest part. */
+const OLDER_BAR_REQUESTS = 3;
+/** A window may start this far before its first bar for closed sessions alone: weekends and holiday weeks. */
+const CLOSED_SESSION_GAP_MS = 10 * DAY_MS;
+/**
+ * An answer cut short at the source's cap holds thousands of bars. A shorter
+ * one that starts late is a young listing or a source that keeps less: it
+ * holds all there is, and an older request cannot change that.
+ */
+const CAPPED_ANSWER_MIN_BARS = 1_000;
+
+function firstBarTime(points: TickerFinancials["priceHistory"]): number {
+  for (const point of points) {
+    const time = getPricePointTimestamp(point);
+    if (Number.isFinite(time) && Number.isFinite(point.close)) return time;
+  }
+  return Number.NaN;
+}
+
+/**
+ * A source caps the bars one request returns and answers with the newest, so
+ * a panned window can come back starting weeks after it was asked to. The
+ * older part is asked for on its own, from the same source and session, until
+ * it is covered or the source has nothing older: then the first bar is where
+ * this listing's history at this cadence starts, and the chart stops there
+ * instead of asking again. So does an answer that starts late without being
+ * cut short, or one the source says its coverage starts with.
+ */
+async function withOlderBars(
+  provider: DataProvider,
+  source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
+  request: PriceHistoryRequest,
+  result: PriceHistoryResult,
+  context: MarketDataRequestContext,
+): Promise<LoadedPriceHistory> {
+  const start = request.bounds.start;
+  const end = request.bounds.end;
+  if (start === null || end === null || result.resolution !== request.resolution) return result;
+  const toleranceMs = Math.max(CLOSED_SESSION_GAP_MS, (end - start) / 5);
+  let current: LoadedPriceHistory = result;
+  let answerBars = result.points.length;
+  for (let attempt = 0; attempt < OLDER_BAR_REQUESTS; attempt += 1) {
+    const first = firstBarTime(current.points);
+    if (!Number.isFinite(first) || first - start <= toleranceMs) return current;
+    // An answer short of the cap that still starts late is everything the source has.
+    if (answerBars < CAPPED_ANSWER_MIN_BARS || current.coverageStart) return { ...current, historyStart: first };
+    let older: PriceHistoryResult | null;
+    try {
+      older = await fetchHistoryResult(provider, source.instrument.symbol, source.instrument.exchange ?? "",
+        { kind: "detail", start: new Date(start), end: new Date(first), interval: request.resolution }, context);
+    } catch (error) {
+      // The source keeps nothing that old, by its own account; anything else may pass.
+      return isHistoryRetentionError(error) || error instanceof ProviderMissError
+        ? { ...current, historyStart: first } : current;
+    }
+    if (!older || older.resolution !== current.resolution
+      || priceHistoryAcquisitionIdentity(older) !== priceHistoryAcquisitionIdentity(current)) return current;
+    const earlier = older.points.filter((point) => getPricePointTimestamp(point) < first);
+    if (!Number.isFinite(firstBarTime(earlier))) return { ...current, historyStart: first };
+    current = { ...current, points: [...earlier, ...current.points] };
+    answerBars = older.points.length;
+  }
+  return current;
+}
+
 async function loadPriceHistory(
   provider: DataProvider,
   source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
@@ -884,7 +1004,8 @@ async function loadPriceHistory(
         { kind: "detail", start: detailStart, end: detailEnd, interval: request.resolution }, context))!;
       const { points } = result;
       observeCoverage(result);
-      if (accepted(points)) return result;
+      // Authored dates chart what their source answers; a panned view reaches for the rest.
+      if (accepted(points)) return request.authoredWindow ? result : await withOlderBars(provider, source, request, result, context);
     } catch (error) { observeFailure(error); }
   }
   if (provider.getPriceHistoryForResolutionWithMetadata || provider.getPriceHistoryForResolution) {
@@ -933,7 +1054,7 @@ async function loadPriceHistory(
             { kind: "detail", start: new Date(start), end: new Date(end), interval: request.resolution }, { ...context, historyRecovery: candidate }))!;
           const { points } = result;
           observeCoverage(result);
-          if (accepted(points)) return { ...result, expiresAt: retryAt,
+          if (accepted(points)) return { ...result, expiresAt: retryAt, historyStart: firstBarTime(points),
             recovery: { sourceKey: candidate.sourceKey, start, end, requiredWarmupPoints: request.requiredWarmupPoints,
               usableWarmupPoints: retainedWarmup(points, request.visibleBounds.start), retention: candidate.retention } };
         } catch (error) { observeFailure(error); }
@@ -1138,6 +1259,7 @@ function baseCapabilitySeries(
     axis: spec.axis === "right" ? "right" : spec.axis === "left" ? "left" : loaded.axis,
     panelId: spec.panelId,
     interpolation: spec.interpolation,
+    observationKind: loaded.observationKind ?? "dataset",
     points,
   };
 }
@@ -1559,14 +1681,10 @@ async function resolveChartSpecPass(
     );
   }
   const requestVisibleBounds = requestBounds ?? initialVisibleBounds;
-  const initialCalculationBounds = calculationBounds(
-    spec,
-    requestVisibleBounds,
-    initialResolution,
-  );
   // A view the user panned or zoomed to, as opposed to authored dates.
   const movedWindow = requestBounds !== null && !sameBounds(requestBounds, initialVisibleBounds);
   const hasExplicitWindow = explicitBounds(spec) !== null || movedWindow;
+  const initialCalculationBounds = calculationBounds(spec, requestVisibleBounds, initialResolution);
 
   // Only US listings trade before and after the regular session; asking elsewhere costs a request for nothing.
   const extendedHoursFor = (source: Extract<ChartSeriesSpec["source"], { kind: "security" }>, resolution: ManualChartResolution) => (
@@ -1581,8 +1699,14 @@ async function resolveChartSpecPass(
   ) => {
     const support = await loadResolutionSupport(source, priceOnly);
     const maxRange = getSupportMaxRange(support, initialResolution);
-    const historyBounds = clampHistoryBoundsToSupport(initialCalculationBounds, maxRange,
-      rangeDurationBounds(spec, initialCalculationBounds).end);
+    const ahead = movedWindow ? barsAhead(requestVisibleBounds, maxRange, referenceNow.getTime()) : 0;
+    const durationEnd = rangeDurationBounds(spec, initialCalculationBounds).end;
+    const historyBounds = clampHistoryBoundsToSupport(
+      ahead > 0 && initialCalculationBounds.end !== null
+        ? { ...initialCalculationBounds, end: initialCalculationBounds.end + ahead } : initialCalculationBounds,
+      maxRange,
+      durationEnd === null ? null : durationEnd + ahead,
+    );
     const requestedFallbackRange = all
       ? "ALL"
       : trailingRangeForStart(historyBounds.start, referenceNow);
@@ -1641,33 +1765,63 @@ async function resolveChartSpecPass(
       return next;
     };
     pending ??= acquire();
-    let loaded = await pending;
+    let loaded: LoadedPriceHistory;
+    try {
+      loaded = await pending;
+    } catch (error) {
+      // Another series' refetch failed and put the saved copy back below.
+      const restored = cache.priceHistoryByRequest.get(key);
+      if (!restored || restored === pending) throw error;
+      pending = restored;
+      loaded = await pending;
+    }
     const now = () => referenceNow.getTime() + Math.max(0, Date.now() - resolutionStartedAt);
     const currentWindow = () => !request.explicitWindow
       || (request.bounds.end !== null && now() - (request.bounds.end + 1) < 60 * 60_000);
-    const staleCurrent = (value: LoadedPriceHistory) => currentWindow() && !!value.session
-      && isPriceHistoryStaleForCurrentWindow(value.points, now(), {
+    // A copy with a session record is judged here; any other says so itself,
+    // when the router answered it from a saved copy short of the latest session.
+    const staleCurrent = (value: LoadedPriceHistory) => currentWindow() && (value.savedCopyBehind === true
+      || (!!value.session && isPriceHistoryStaleForCurrentWindow(value.points, now(), {
         symbol: source.instrument.symbol, exchange: source.instrument.exchange, session: value.session,
         ...(value.resolution ? { intervalMs: CHART_RESOLUTION_STEP_MS[value.resolution] } : {}),
-      });
+      })));
+    // A copy behind the current session is fetched again at most every 30 s.
+    // Until a fetch answers a current one, the saved copy is drawn with a
+    // notice, as every other history path does, rather than an error.
+    let behind = false;
     if (staleCurrent(loaded)) {
+      const saved = pending;
+      const savedValue = loaded;
+      const latest = cache.priceHistoryByRequest.get(key);
+      let refresh: Promise<LoadedPriceHistory> | undefined;
       if (reused && (cache.priceHistoryRefreshAfter.get(key) ?? 0) <= Date.now()) {
         // Claim the refresh before awaiting it so price/volume/studies share one attempt.
         cache.priceHistoryRefreshAfter.set(key, Date.now() + 30_000);
-        if (cache.priceHistoryByRequest.get(key) === pending) pending = acquire();
-        else pending = cache.priceHistoryByRequest.get(key)!;
-        loaded = await pending;
-      } else if (cache.priceHistoryByRequest.get(key) !== pending) {
-        loaded = await cache.priceHistoryByRequest.get(key)!;
+        refresh = latest && latest !== pending ? latest : acquire();
+      } else if (latest && latest !== pending) {
+        refresh = latest;
       }
-      if (staleCurrent(loaded)) {
+      if (refresh) {
+        const attempt = refresh;
+        loaded = await attempt.catch(() => {
+          // A failed refetch leaves the saved copy in place until the next one is due.
+          if (cache.priceHistoryByRequest.get(key) === attempt) {
+            cache.priceHistoryByRequest.set(key, saved);
+            if (savedValue.expiresAt !== undefined) cache.priceHistoryExpiryByRequest.set(key, savedValue.expiresAt);
+            else cache.priceHistoryExpiryByRequest.delete(key);
+          }
+          return savedValue;
+        });
+      }
+      behind = staleCurrent(loaded);
+      if (behind) {
         const previousDeadline = cache.priceHistoryRefreshAfter.get(key) ?? 0;
-        const retryAt = previousDeadline > Date.now() ? previousDeadline : Date.now() + 30_000;
-        cache.priceHistoryRefreshAfter.set(key, retryAt);
-        throw new PriceHistoryAcquisitionError(`Current price history is unavailable for ${instrumentLabel(source)}.`, retryAt);
+        cache.priceHistoryRefreshAfter.set(key, previousDeadline > Date.now() ? previousDeadline : Date.now() + 30_000);
+        const notice = behindHistoryNotice(source, loaded.points, now());
+        if (notice) priorityWarnings.push(notice);
       }
     }
-    cache.priceHistoryRefreshAfter.delete(key);
+    if (!behind) cache.priceHistoryRefreshAfter.delete(key);
     const history = loaded.points;
     const coverageNotice = historyCoverageNotice(loaded.coverageStart, request.visibleBounds.start);
     if (coverageNotice) priorityWarnings.push(coverageNotice);
@@ -1703,7 +1857,9 @@ async function resolveChartSpecPass(
         previousHistory, history, loaded.resolution,
       );
       const tail = priceHistoryTailAcquisition(previous, loaded);
-      combined = { ...loaded, session: tail.session, sourceKey: tail.sourceKey, points: accumulated };
+      const historyStart = loaded.historyStart ?? previous?.historyStart;
+      combined = { ...loaded, session: tail.session, sourceKey: tail.sourceKey, points: accumulated,
+        ...(historyStart !== undefined ? { historyStart } : {}) };
       if (accumulationKey) {
         cache.accumulatedPriceHistory.set(accumulationKey, combined);
         cache.accumulatedFrom.set(accumulationKey, loaded);
@@ -1711,6 +1867,12 @@ async function resolveChartSpecPass(
       }
     }
     const accumulated = combined.points;
+    // A source that answered a panned view short, and then had nothing older, starts there.
+    if (combined.historyStart !== undefined && !loaded.recovery && !combined.coverageStart && request.visibleBounds.start !== null
+      && request.visibleBounds.start < combined.historyStart && combined.resolution) {
+      priorityWarnings.push(historyStartNotice(combined.historyStart, combined.resolution,
+        listingTimeZone(source.instrument.symbol, source.instrument.exchange), referenceNow.getTime()));
+    }
     if (accumulationKey && loaded.resolution && isIntradayResolution(loaded.resolution)
       && isMarketFieldId(source.fieldId) && currentWindow()) {
       liveTails.set(key, { source, resolution: loaded.resolution, accumulationKey,
@@ -1880,6 +2042,9 @@ async function resolveChartSpecPass(
         quoteMetadata,
       );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
+      if (marketField && history?.historyStart !== undefined && Number.isFinite(history.historyStart)) {
+        result.historyStart = new Date(history.historyStart);
+      }
       const reference = merged.quote;
       // A rolled generic's previous session can be another contract; its bars carry the roll.
       if (marketField && reference && hasValidQuoteObservationTime(reference) && reference.previousClose !== undefined
@@ -1926,9 +2091,12 @@ async function resolveChartSpecPass(
     ? latestSessionView(primaryRaw, rawSeries.filter((entry) => entry.observationKind === "market"),
       extendedHistories.has(primaryRaw?.id ?? ""), quoteReferences.get(primaryRaw?.id ?? ""))
     : null;
+  const capabilityOnly = spec.series.length > 0 && spec.series.every(({ source }) => source.kind === "capability");
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
-    : sessionView?.bounds ?? followLatestMarketObservation(initialVisibleBounds, rawSeries);
+    : sessionView?.bounds ?? (capabilityOnly
+      ? endAtNewestObservation(initialVisibleBounds, rawSeries)
+      : followLatestMarketObservation(initialVisibleBounds, rawSeries));
   if (sessionView?.priorClose != null && primaryRaw?.transform === "raw"
     && primaryRaw.unitGroup.startsWith("price") && primaryRaw.unitGroup !== "price:unknown") {
     const index = rawSeries.indexOf(primaryRaw);
@@ -2146,8 +2314,9 @@ export function reconcileChartTail(
     const refreshed = mergePriceHistoryWindows(loaded.points, points, tail.resolution);
     if (samePricePoints(refreshed, loaded.points)) return false;
     const acquisition = priceHistoryTailAcquisition(loaded, result);
+    // The merged bars are as current as the newer acquisition says.
     cache.priceHistoryByRequest.set(key, Promise.resolve({ ...loaded, points: refreshed,
-      session: acquisition.session, sourceKey: acquisition.sourceKey }));
+      session: acquisition.session, sourceKey: acquisition.sourceKey, savedCopyBehind: acquisition.savedCopyBehind }));
     if (accumulated) {
       const accumulatedAcquisition = priceHistoryTailAcquisition(accumulated, result);
       cache.accumulatedPriceHistory.set(tail.accumulationKey, { ...accumulated,

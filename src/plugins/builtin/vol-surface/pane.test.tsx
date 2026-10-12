@@ -220,7 +220,7 @@ test("a missing handoff after loading warns and cannot reuse the previous select
   expect(context.opened.at(-1)!.options!.values!.expiration).toBe(String(context.absentExpiry));
   await tui.emitKeypress({ name: "!", sequence: "!" }, { trackPropagation: true });
   await settle();
-  expect(tui.frame()).toContain("selected expiration unavailable");
+  expect(tui.frame()).toContain("not listed; nearest");
 });
 
 test("partial expiry progress settles without reloading or rendering indefinitely", async () => {

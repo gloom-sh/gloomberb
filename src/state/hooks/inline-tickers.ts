@@ -7,6 +7,8 @@ import {
   upsertTickerFromSearchResult,
 } from "../../tickers/search";
 import { collectUniqueTickerSymbols } from "../../tickers/tokenizer";
+import { resolveTickerOpenTarget } from "../../tickers/open-target";
+import { parsePublicTickerKey } from "../../utils/exchanges";
 import { useQuoteStreaming } from "./quote-streaming";
 import {
   inlineTickerQuoteFailures,
@@ -72,6 +74,20 @@ export const INLINE_TICKER_STREAM_WEIGHT = 20;
 const NO_INSTRUMENTS: InstrumentRef[] = [];
 const resolutionInFlight = new Map<string, Promise<void>>();
 const quoteInFlight = new Map<string, Promise<void>>();
+/**
+ * The ticker a cashtag that names a listing resolved to, when its key differs
+ * from the tag: $7203:TSE is the ticker 7203:JPX, as every command reads TSE.
+ */
+const listingKeys = new Map<string, string>();
+
+function tickerKey(symbol: string): string {
+  return listingKeys.get(symbol) ?? symbol;
+}
+
+/** The saved ticker a badge's symbol stands for: its own, or the listing its tag resolved to. */
+function badgeTicker(tickers: ReadonlyMap<string, TickerRecord>, symbol: string): TickerRecord | null {
+  return tickers.get(tickerKey(symbol)) ?? null;
+}
 
 function normalizeSymbols(texts: readonly string[]): string[] {
   return collectUniqueTickerSymbols(texts);
@@ -130,7 +146,7 @@ async function loadInlineQuotes(requests: Map<string, QuoteRequest>): Promise<vo
       const quote = entry ? resolveEntryValue(entry) : null;
       if (quote) {
         inlineTickerQuoteFailures.clear(symbol);
-        request.context.dispatch({ type: "MERGE_QUOTE", symbol, quote });
+        request.context.dispatch({ type: "MERGE_QUOTE", symbol: tickerKey(symbol), quote });
         return;
       }
       inlineTickerQuoteFailures.record(symbol, quoteFailureKind(entry));
@@ -145,7 +161,7 @@ async function loadInlineQuotes(requests: Map<string, QuoteRequest>): Promise<vo
     if (!provider) return;
     try {
       const quote = await provider.getQuote(
-        symbol,
+        instrument.symbol,
         instrument.exchange ?? "",
         instrument.instrument
           ? {
@@ -156,7 +172,7 @@ async function loadInlineQuotes(requests: Map<string, QuoteRequest>): Promise<vo
           : undefined,
       );
       inlineTickerQuoteFailures.clear(symbol);
-      context.dispatch({ type: "MERGE_QUOTE", symbol, quote });
+      context.dispatch({ type: "MERGE_QUOTE", symbol: tickerKey(symbol), quote });
     } catch {
       inlineTickerQuoteFailures.record(symbol, "error");
     }
@@ -277,8 +293,9 @@ export function useInlineTickers(
   const instruments = useMemo(() => {
     if (!liveQuotes) return NO_INSTRUMENTS;
     return symbols.flatMap((symbol) => {
-      const instrument = instrumentFromTicker(tickers.get(symbol) ?? null, symbol);
-      return instrument && tickers.has(symbol) ? [instrument] : [];
+      const ticker = badgeTicker(tickers, symbol);
+      const instrument = ticker ? instrumentFromTicker(ticker, tickerKey(symbol)) : null;
+      return instrument ? [instrument] : [];
     });
   }, [liveQuotes, symbolsKey, tickers]);
   const streamingTargets = useMemo(() => {
@@ -308,8 +325,8 @@ export function useInlineTickers(
   const quoteEntries = useQuoteEntries(badgeQuotes ? NO_INSTRUMENTS : observed);
   const quotePresence = useQuotePresence(badgeQuotes ? observed : NO_INSTRUMENTS);
   const readStreamedQuote = useCallback((symbol: string): Quote | null => {
-    const ticker = latestRef.current.tickers.get(symbol);
-    const instrument = ticker ? instrumentFromTicker(ticker, symbol) : null;
+    const ticker = badgeTicker(latestRef.current.tickers, symbol);
+    const instrument = ticker ? instrumentFromTicker(ticker, tickerKey(symbol)) : null;
     if (!instrument) return null;
     if (badgeQuotes) return readQuote(instrument);
     const entry = quoteEntries.get(buildQuoteKey(instrument));
@@ -333,9 +350,9 @@ export function useInlineTickers(
 
     for (const symbol of symbols) {
       const current = latestRef.current;
-      const currentTicker = current.tickers.get(symbol) ?? null;
+      const currentTicker = badgeTicker(current.tickers, symbol);
       const currentQuote = liveQuotes
-        ? readStreamedQuote(symbol) ?? current.financials.get(symbol)?.quote ?? null
+        ? readStreamedQuote(symbol) ?? current.financials.get(tickerKey(symbol))?.quote ?? null
         : null;
 
       if (currentTicker && (!liveQuotes || currentQuote)) {
@@ -352,6 +369,27 @@ export function useInlineTickers(
             const current = latestRef.current;
             const activeRegistry = current.registry;
             if (!activeRegistry) return;
+            if (parsePublicTickerKey(symbol).exchange) {
+              // $SAN:EPA and $7203:TSE name a listing: it opens as a link to it
+              // would, a shared code read as the venue its symbol trades on.
+              const target = await resolveTickerOpenTarget({
+                query: symbol,
+                tickers: current.tickers,
+                dataProvider: activeRegistry.marketData,
+                tickerRepository: activeRegistry.tickerRepository,
+              });
+              if (!target) {
+                inlineTickerResolutionFailures.record(symbol, "unknown");
+                return;
+              }
+              if (target.symbol !== symbol) listingKeys.set(symbol, target.symbol);
+              current.dispatch({ type: "UPDATE_TICKER", ticker: target.ticker });
+              if (target.created) {
+                activeRegistry.events.emit("ticker:added", { symbol: target.symbol, ticker: target.ticker });
+              }
+              inlineTickerResolutionFailures.clear(symbol);
+              return;
+            }
             const resolved = await resolveTickerSearch({
               query: symbol,
               activeTicker: null,
@@ -456,9 +494,9 @@ export function useInlineTickers(
   const catalog = useMemo(() => {
     const entries: Record<string, InlineTickerCatalogEntry> = {};
     for (const symbol of symbols) {
-      const ticker = tickers.get(symbol) ?? null;
+      const ticker = badgeTicker(tickers, symbol);
       const quote = liveQuotes
-        ? readStreamedQuote(symbol) ?? financials.get(symbol)?.quote ?? null
+        ? readStreamedQuote(symbol) ?? financials.get(tickerKey(symbol))?.quote ?? null
         : null;
       const resolutionFailure = ticker ? null : inlineTickerResolutionFailures.read(symbol);
       // A ticker the provider cannot price is still a ticker: it keeps its

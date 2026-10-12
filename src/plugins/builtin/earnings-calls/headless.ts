@@ -8,6 +8,9 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessRowsResult,
 } from "../../../types/plugin";
+import { cloudAccountNeed, cloudDeniedStatus, type CloudDeniedStatus } from "../shared/cloud-denied";
+import { countOf, freePreviewNote } from "../shared/free-preview";
+import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import {
   callStatusLabel,
   isPendingTranscript,
@@ -57,13 +60,32 @@ export interface EarningsCallsHeadlessDependencies {
 }
 
 const defaultDependencies: EarningsCallsHeadlessDependencies = {
-  loadCalls: (ticker, limit, context) => loadEarningsCallsWithClient(
+  loadCalls: async (ticker, limit, context) => loadEarningsCallsWithClient(
     context.apiClient,
     ticker,
-    { limit },
+    { limit, ...(ticker ? await resolveHeadlessIssuerListing(context, ticker) : {}) },
   ),
   loadTranscript: (callId, context) => loadTranscriptWithClient(context.apiClient, callId),
 };
+
+/** The whole feature is Pro, so a free account's lock line says there is no preview rather than the server's bare "Pro plan required". */
+const CALLS_PRO_NOTE = freePreviewNote({ shows: countOf(0, "earnings call"), adds: "every call with its transcript, speaker turns and analyst Q&A" });
+
+/**
+ * What a refused account needs, as the pane's walls say it: sign in, then
+ * verify the email, then Pro. The list itself is Pro, so a signed-out reader
+ * hears about Pro too rather than meeting it after signing in.
+ */
+function callsDeniedMessage(status: CloudDeniedStatus): string {
+  if (status === 401) return `CALLS needs ${cloudAccountNeed(status)} (log in or sign up free in the app), then Gloom Pro: earnings call transcripts are part of Gloom Cloud Pro.`;
+  if (status === 403) return `CALLS needs ${cloudAccountNeed(status)} (Resend Verification Email in the app).`;
+  return CALLS_PRO_NOTE;
+}
+
+function explainDenied(error: unknown): never {
+  const status = cloudDeniedStatus(error);
+  throw status ? new Error(callsDeniedMessage(status), { cause: error }) : error;
+}
 
 function callRow(call: CloudEarningsCallPayload) {
   return {
@@ -257,6 +279,11 @@ export function createEarningsCallsHeadless(
       },
     ],
     columns: CALL_COLUMNS,
+    // No aliases: the template's keywords stay the catalog's search terms.
+    discovery: {
+      dataRequirements: ["Gloom Cloud Pro account"],
+      limitations: ["Pro only, the list of calls included."],
+    },
     describe: (args) => {
       if (readsTranscript(args)) {
         return `Earnings Call Transcript | ${String(args.argument)} | ${String(args.options.quarter || "latest")}`;
@@ -265,7 +292,7 @@ export function createEarningsCallsHeadless(
     },
     async load(args, context) {
       const ticker = typeof args.argument === "string" ? args.argument : null;
-      const calls = await dependencies.loadCalls(ticker, 200, context);
+      const calls = await dependencies.loadCalls(ticker, 200, context).catch(explainDenied);
       if (!ticker || !readsTranscript(args)) {
         return projectEarningsCallsHeadless(calls, { ...args, options: { ...args.options, limit: args.options.limit ?? 50 } });
       }
@@ -279,7 +306,7 @@ export function createEarningsCallsHeadless(
         }
         throw new Error(`No ${quarter} earnings call found for ${ticker}.`);
       }
-      const transcript = await dependencies.loadTranscript(selected.id, context);
+      const transcript = await dependencies.loadTranscript(selected.id, context).catch(explainDenied);
       if (isPendingTranscript(transcript)) {
         throw new Error(`Transcript for ${ticker} ${quarter} is still being produced.`);
       }

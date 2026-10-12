@@ -81,7 +81,7 @@ export const paneSchemas = {
         description: "Intraday sampling interval. Auto uses 1m for 1D and 5m for 1W.",
         type: "enum",
         aliases: ["resolution"],
-        values: [{ value: "auto" }, { value: "5m" }, { value: "15m" }, { value: "1h" }],
+        values: [{ value: "auto" }, { value: "1m" }, { value: "5m" }, { value: "15m" }, { value: "1h" }],
         defaultValue: "auto",
       },
       {

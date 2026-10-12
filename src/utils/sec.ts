@@ -1,5 +1,7 @@
 import type { TickerRecord } from "../types/ticker";
-import { canonicalExchange, parsePublicTickerKey, US_LISTING_EXCHANGES } from "./exchanges";
+import { tickerHasListingSuffix } from "../sources/listing-symbols";
+import { canonicalExchange, exchangeLabel, parsePublicTickerKey, resolveExchangeTimeZone, US_LISTING_EXCHANGES } from "./exchanges";
+import { shortListingTitle } from "../tickers/company-name";
 
 /** Canonical US equity venues: the listing exchanges plus other lit and OTC venues. */
 const US_EQUITY_EXCHANGES = new Set([
@@ -8,8 +10,7 @@ const US_EQUITY_EXCHANGES = new Set([
   "IEX",
   "OTC",
   "PINK",
-  // Listing codes for Cboe BZX and the OTC Markets tiers.
-  "BTS",
+  // Listing codes for the OTC Markets tiers.
   "PNK",
   "OQB",
   "OQX",
@@ -30,7 +31,8 @@ function isUsExchange(value?: string): boolean {
 
 function isEquityType(value?: string): boolean {
   const normalized = normalize(value).replace(/[\s_-]/g, "");
-  return normalized.length === 0 || ["STK", "EQUITY", "ADR", "COMMONSTOCK", "DEPOSITARYRECEIPT"].includes(normalized);
+  return normalized.length === 0
+    || ["STK", "EQUITY", "ADR", "AMERICANDEPOSITARYRECEIPT", "COMMONSTOCK", "DEPOSITARYRECEIPT"].includes(normalized);
 }
 
 const FUND_TYPES = new Set(["ETF", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND", "CLOSEDENDFUND"]);
@@ -39,40 +41,51 @@ function isFundType(value?: string): boolean {
   return FUND_TYPES.has(normalize(value).replace(/[\s_-]/g, ""));
 }
 
-export function isUsEquityTicker(ticker: TickerRecord | null | undefined): boolean {
-  return isUsListingOfType(ticker, isEquityType);
-}
-
-/** A US equity, or a US-listed fund, which files fund forms with the SEC. */
-export function isUsEquityOrFundTicker(ticker: TickerRecord | null | undefined): boolean {
-  return isUsListingOfType(ticker, (type) => isEquityType(type) || isFundType(type));
-}
-
-function isUsListingOfType(
-  ticker: TickerRecord | null | undefined,
-  acceptsType: (type?: string) => boolean,
-): boolean {
-  if (!ticker) return false;
-
-  const primaryContract = ticker.metadata.broker_contracts?.[0];
-  const type = primaryContract?.secType ?? ticker.metadata.assetCategory;
-  const currency = normalize(primaryContract?.currency ?? ticker.metadata.currency);
-  const exchangeCandidates = [
-    primaryContract?.primaryExchange,
-    primaryContract?.exchange,
-    ticker.metadata.exchange,
-  ];
-
-  // A listing saved without a known currency counts by its venue.
-  return acceptsType(type)
-    && (currency === "USD" || !currency)
-    && exchangeCandidates.some((exchange) => isUsExchange(exchange));
+/**
+ * Whether an equity SEC pane (filings, insider transactions) can show the
+ * ticker: an equity, or a type not filled in yet, that is not known to be
+ * listed outside the US. A ticker whose venue and currency were never filled
+ * in, as when its quote is unavailable, is looked up as a US ticker, as the
+ * SEC issuer lookup does with a symbol that names no venue.
+ */
+export function mayBeUsEquityTicker(ticker: TickerRecord | null | undefined): boolean {
+  return mayBeUsListingOfType(ticker, isEquityType);
 }
 
 /**
- * The metadata places the listing outside the US: a non-USD currency, or
- * venues none of which is a US exchange. A missing currency or venue is
- * unknown rather than foreign. SEC filings, FINRA short interest, 13F and
+ * `mayBeUsEquityTicker`, or an equity listed abroad on a venue its metadata
+ * names. The SEC lookup takes such a listing by its company, which either
+ * files there (Sanofi, a foreign private issuer) or files nothing
+ * (`noSecReportsNotice`); without the venue it cannot place the listing.
+ */
+export function mayBeSecEquityListing(ticker: TickerRecord | null | undefined): boolean {
+  if (mayBeUsEquityTicker(ticker)) return true;
+  return isTickerOfType(ticker, isEquityType) && nonUsSecListingVenue(ticker!.metadata.ticker, ticker!.metadata.exchange) != null;
+}
+
+/** The same for a view that also lists a US-listed fund's filings, which funds file with the SEC. */
+export function mayBeUsEquityOrFundTicker(ticker: TickerRecord | null | undefined): boolean {
+  return mayBeUsListingOfType(ticker, (type) => isEquityType(type) || isFundType(type));
+}
+
+function isTickerOfType(ticker: TickerRecord | null | undefined, acceptsType: (type?: string) => boolean): boolean {
+  if (!ticker) return false;
+  const primaryContract = ticker.metadata.broker_contracts?.[0];
+  return acceptsType(primaryContract?.secType ?? ticker.metadata.assetCategory);
+}
+
+function mayBeUsListingOfType(
+  ticker: TickerRecord | null | undefined,
+  acceptsType: (type?: string) => boolean,
+): boolean {
+  return isTickerOfType(ticker, acceptsType) && !isKnownNonUsListing(ticker);
+}
+
+/**
+ * The metadata places the listing outside the US: a non-USD currency, venues
+ * none of which is a US exchange, or, with no venue, a symbol that names one
+ * abroad (SAN:EPA, VOD.L, 7203.T). A missing currency or venue is unknown
+ * rather than foreign. SEC filings, FINRA short interest, 13F and
  * congressional disclosures only cover US listings.
  */
 export function isKnownNonUsListing(ticker: TickerRecord | null | undefined): boolean {
@@ -83,23 +96,20 @@ export function isKnownNonUsListing(ticker: TickerRecord | null | undefined): bo
   const venues = [primaryContract?.primaryExchange, primaryContract?.exchange, ticker.metadata.exchange]
     .map(normalize)
     .filter((exchange) => exchange.length > 0 && !ROUTING_EXCHANGES.has(exchange));
-  return venues.length > 0 && !venues.some((exchange) => isUsExchange(exchange));
+  if (venues.length > 0) return !venues.some((exchange) => isUsExchange(exchange));
+  const symbol = parsePublicTickerKey(ticker.metadata.ticker ?? "");
+  if (symbol.exchange) return !ROUTING_EXCHANGES.has(symbol.exchange) && !isUsExchange(symbol.exchange);
+  return tickerHasListingSuffix(symbol.symbol);
 }
 
 /**
- * The metadata shows the ticker is not a US equity: a non-USD currency, a
- * non-equity type, or only non-US exchanges. A USD ticker with no exchange is
- * unknown rather than foreign, e.g. an unsaved symbol from a quote without a
- * listing exchange.
+ * The metadata shows the ticker is not a US equity: a non-equity type or a
+ * listing known to be outside the US. A ticker with no venue or currency is
+ * unknown rather than foreign, e.g. an unsaved symbol whose quote is
+ * unavailable.
  */
 export function isKnownNonUsEquityTicker(ticker: TickerRecord | null | undefined): boolean {
-  if (!ticker || isUsEquityTicker(ticker)) return false;
-  const primaryContract = ticker.metadata.broker_contracts?.[0];
-  const currency = normalize(primaryContract?.currency ?? ticker.metadata.currency);
-  if (currency && currency !== "USD") return true;
-  if (!isEquityType(primaryContract?.secType ?? ticker.metadata.assetCategory)) return true;
-  return [primaryContract?.primaryExchange, primaryContract?.exchange, ticker.metadata.exchange]
-    .some((exchange) => normalize(exchange).length > 0);
+  return !!ticker && !mayBeUsEquityTicker(ticker);
 }
 
 /**
@@ -112,6 +122,54 @@ export function nonUsSecListingVenue(ticker: string, exchange?: string): string 
   const venue = parsePublicTickerKey(ticker).exchange ?? canonicalExchange(exchange);
   if (!venue || ROUTING_EXCHANGES.has(venue) || isUsExchange(venue)) return null;
   return venue;
+}
+
+// The zones of the US exchanges; a venue in another is abroad.
+const US_TIME_ZONES = new Set(["America/New_York", "America/Chicago"]);
+
+/**
+ * The exchange abroad a listing key names, for data that covers US listings
+ * only (US options and trades, FINRA short interest, the US earnings board):
+ * EPA for SAN:EPA, JPX for 7203:JPX. Null for a US exchange, no exchange, and
+ * venues with no home market (futures, currency and crypto venues), which
+ * such data reads by symbol.
+ */
+export function listingAbroadVenue(key: string): string | null {
+  const venue = nonUsSecListingVenue(key);
+  const zone = venue ? resolveExchangeTimeZone(venue) : null;
+  return venue && zone && zone !== "UTC" && !US_TIME_ZONES.has(zone) ? venue : null;
+}
+
+/**
+ * The symbol data that covers US listings only reads a listing by: AAPL for
+ * AAPL:NASDAQ, ^SPX as it is. A listing abroad throws, naming what covers US
+ * listings only, rather than read its bare symbol, which can be another
+ * company's US ticker (SAN:EPA is Sanofi, SAN in New York Banco Santander).
+ */
+export function usListingSymbol(key: string, what: string): string {
+  const parsed = parsePublicTickerKey(key.trim());
+  const venue = listingAbroadVenue(key);
+  if (venue) throw new Error(`${what} covers US listings only, and ${parsed.symbol}:${venue} is listed on ${exchangeLabel(venue)}.`);
+  return parsed.symbol.toUpperCase();
+}
+
+/**
+ * "CAR Group (ASX) files no SEC reports.": what the SEC functions (filings,
+ * holders --form, insider and INS, in the CLI and the pane) say for a listing
+ * abroad whose company the SEC has nothing from.
+ */
+export function noSecReportsNotice(listing: { symbol: string; exchange: string; name: string | null }): string {
+  return `${shortListingTitle(listing)} files no SEC reports.`;
+}
+
+/**
+ * The key an issuer read is cached and deduplicated under: the ticker as given
+ * for a US listing or a symbol with no venue, SYMBOL:VENUE for a listing
+ * elsewhere, so SAN in Paris and SAN in New York never share an entry.
+ */
+export function secListingKey(ticker: string, exchange?: string): string {
+  const venue = nonUsSecListingVenue(ticker, exchange);
+  return venue ? `${parsePublicTickerKey(ticker).symbol}:${venue}` : normalize(ticker);
 }
 
 /**

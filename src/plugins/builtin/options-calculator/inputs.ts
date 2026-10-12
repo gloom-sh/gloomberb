@@ -1,3 +1,4 @@
+import { numberErrorMessage } from "../../../utils/decimal-comma";
 import { DEFAULT_OPTION_CALC_DRAFT, updateOptionCalcDraft, type OptionCalcDraft } from "./model";
 import type { CashDividend } from "./binomial";
 
@@ -5,7 +6,7 @@ const DECIMAL = /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?$/i;
 
 function numberInput(value: unknown, label: string): number {
   if (typeof value !== "number" && (typeof value !== "string" || !DECIMAL.test(value.trim()))) {
-    throw new Error(`${label} must be a finite number.`);
+    throw new Error(numberErrorMessage(`${label} must be a finite number.`, value));
   }
   const result = Number(value);
   if (!Number.isFinite(result)) throw new Error(`${label} must be a finite number.`);

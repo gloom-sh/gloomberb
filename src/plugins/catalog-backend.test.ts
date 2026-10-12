@@ -1,21 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import { getDesktopBackendPlugins } from "./catalog-backend";
 import { getLoadablePlugins } from "./catalog";
+import { paneStateNamespace } from "./test-fixture";
 
 describe("desktop backend plugin catalog", () => {
-  test("keeps plugin identity and order aligned without renderer-only contributions", () => {
+  test("keeps plugin identity and order aligned, and runs no Ticker Research module", () => {
     const backendPlugins = getDesktopBackendPlugins();
+    const rendererPlugins = getLoadablePlugins();
 
-    expect(backendPlugins.map((plugin) => plugin.id)).toEqual(
-      getLoadablePlugins().map((plugin) => plugin.id),
-    );
+    expect(backendPlugins.map((plugin) => plugin.id)).toEqual(rendererPlugins.map((plugin) => plugin.id));
 
-    for (const pluginId of ["ticker-research"]) {
+    // Ticker Research's modules, wherever they sit now, are renderer-only: the
+    // plugins holding nothing else keep their identity alone, and the others
+    // run what they had before.
+    for (const [index, plugin] of rendererPlugins.entries()) {
+      const backend = backendPlugins[index]!;
+      const kept = (plugin.panes ?? [])
+        .filter((pane) => paneStateNamespace(plugin, pane.id) !== "ticker-research")
+        .map((pane) => pane.id);
+      expect({ id: plugin.id, panes: (backend.panes ?? []).map((pane) => pane.id) }).toEqual({ id: plugin.id, panes: kept });
+    }
+    for (const pluginId of ["ticker-core", "options-volatility", "ownership", "filings"]) {
       const plugin = backendPlugins.find((candidate) => candidate.id === pluginId);
-      expect(plugin).toBeDefined();
-      expect(plugin?.panes).toBeUndefined();
-      expect(plugin?.paneTemplates).toBeUndefined();
-      expect(plugin?.slots).toBeUndefined();
+      expect(plugin).toMatchObject({ id: pluginId, stateId: "ticker-research", toggleable: true });
+      for (const key of ["panes", "paneTemplates", "slots", "capabilities", "cliCommands"] as const) {
+        expect(plugin?.[key]).toBeUndefined();
+      }
     }
   });
 

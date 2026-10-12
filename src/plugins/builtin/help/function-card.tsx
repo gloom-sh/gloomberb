@@ -2,8 +2,10 @@
  * The help card for one function, opened by `HELP <fn>` in the command bar
  * and F1 on a focused pane: what it answers, how to type it, the keys that
  * matter in its pane, how fresh its data is on each plan, its Bloomberg
- * equivalent and its docs entry. Enter or the link opens the docs; Esc, the
- * close button or a click outside closes it.
+ * equivalent and its docs entry. Enter reads the entry in DOCS, inside the
+ * app; the link beside it is the same entry on gloom.sh, in the browser. A
+ * popped-out window cannot open a pane, so there Enter opens the link. Esc,
+ * the close button or a click outside closes it.
  *
  * `useFunctionHelpHost` is mounted with the app's global shortcuts for the
  * life of the window and owns the dialog; `requestFunctionHelp` lets the
@@ -13,7 +15,9 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { functionDocsUrl, type FunctionFreshness, type FunctionHelpKey } from "../../../cli/pane-functions/function-help";
 import { requestFeedbackDialog } from "../../../components/feedback-dialog";
+import { Button } from "../../../components/ui/button";
 import { ExternalLink } from "../../../components/ui/external-link";
+import { DOCS_PANE_TEMPLATE_ID } from "../../../docs/content";
 import { DialogFrame } from "../../../components/ui/frame";
 import { ShortcutHint } from "../../../components/ui/shortcut-hint";
 import { t } from "../../../i18n";
@@ -21,10 +25,12 @@ import { useViewport } from "../../../react/input";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes, useRendererHost } from "../../../ui";
 import { useDialog, useDialogKeyboard, type AlertContext } from "../../../ui/dialog";
+import { getSharedRegistry } from "../../registry";
 import type { HelpFunction } from "./function-index";
 
 export type FunctionHelpRequest =
-  | { kind: "function"; fn: HelpFunction }
+  /** `inAppDocs: false` where DOCS cannot open (a popped-out window). */
+  | { kind: "function"; fn: HelpFunction; inAppDocs?: boolean }
   /** `HELP HELP`: the feedback dialog, which is how people reach us. */
   | { kind: "support" };
 
@@ -103,9 +109,10 @@ function FreshnessRows({ data, pro }: { data: FunctionFreshness; pro: boolean })
   );
 }
 
-function FunctionHelpCard({ fn, dismiss, dialogId, width, compact = false }: AlertContext & {
+function FunctionHelpCard({ fn, dismiss, dialogId, width, compact = false, inAppDocs = true }: AlertContext & {
   fn: HelpFunction;
   width: number;
+  inAppDocs?: boolean;
   /** A short terminal: no blank row between the summary and the rows. */
   compact?: boolean;
 }) {
@@ -117,6 +124,10 @@ function FunctionHelpCard({ fn, dismiss, dialogId, width, compact = false }: Ale
     void rendererHost.openExternal(url);
     dismiss();
   };
+  const readInApp = () => {
+    getSharedRegistry()?.createPaneFromTemplate(DOCS_PANE_TEMPLATE_ID, { arg: fn.code });
+    dismiss();
+  };
 
   useDialogKeyboard((event) => {
     if (event.ctrl || event.alt || event.meta || event.super) return;
@@ -124,7 +135,8 @@ function FunctionHelpCard({ fn, dismiss, dialogId, width, compact = false }: Ale
     if (name !== "enter" && name !== "return") return;
     event.preventDefault();
     event.stopPropagation();
-    openDocs();
+    if (inAppDocs) readInApp();
+    else openDocs();
   }, { scope: dialogId });
 
   const help = fn.help;
@@ -153,6 +165,11 @@ function FunctionHelpCard({ fn, dismiss, dialogId, width, compact = false }: Ale
             </CardRow>
           )}
           <CardRow label="Docs">
+            {inAppDocs && (
+              <Box flexDirection="row">
+                <Button label="Read in Docs" shortcut="Enter" compact onPress={readInApp} stopPropagation />
+              </Box>
+            )}
             <ExternalLink url={docsUrl} label={docsUrl.replace(/^https:\/\//, "")} onOpen={openDocs} />
           </CardRow>
         </Box>
@@ -189,7 +206,9 @@ export function useFunctionHelpHost({ closeCommandBar }: { closeCommandBar: () =
         closeOnClickOutside: true,
         // The terminal host defaults to 60 columns; the desktop sizes to the content.
         style: { width: width + TERMINAL_DIALOG_CHROME, ...(compact ? { paddingY: 0 } : {}) },
-        content: (context: AlertContext) => <FunctionHelpCard {...context} fn={request.fn} width={width} compact={compact} />,
+        content: (context: AlertContext) => (
+          <FunctionHelpCard {...context} fn={request.fn} width={width} compact={compact} inAppDocs={request.inAppDocs !== false} />
+        ),
       }).catch(() => {}).finally(() => {
         openRef.current = false;
       });

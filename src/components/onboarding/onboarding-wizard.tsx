@@ -19,9 +19,9 @@ import { useThemeColors } from "../../theme/theme-context";
 import { t, tf } from "../../i18n";
 import { useAppLanguage } from "../../i18n/react";
 import type { PluginRegistry } from "../../plugins/registry";
-import { formatCloudPrice, monthsFreeYearly } from "../../plugins/builtin/account-management/model";
-import { proStepCopy } from "../../plugins/builtin/cloud/upgrade-dialog";
-import { Button, SegmentedControl } from "../ui";
+import { formatCloudPrice, monthsFreeYearly } from "../../account/billing";
+import { proStepCopy, proStepRealtimeTitle } from "../../account/upgrade-dialog";
+import { Button, SegmentedControl, terminalButtonColumns } from "../ui";
 import { AccountStep, PortfolioStep } from "./onboarding-steps";
 import {
   ONBOARDING_DESKTOP,
@@ -32,8 +32,11 @@ import {
   OnboardingHeader,
   OnboardingModal,
   OnboardingTitle,
+  TERMINAL_CARD_INSET,
+  terminalCardSize,
   type OnboardingSectionId,
 } from "./onboarding-frame";
+import { planProStep } from "./pro-step-layout";
 import { useOnboardingAccount } from "./wizard-account";
 import { useOnboardingBrokerSync } from "./wizard-broker-sync";
 import { useOnboardingPositions } from "./wizard-positions";
@@ -77,7 +80,7 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
   const keybindings = useKeybindings();
   const dialogOpen = useDialogState((dialog) => dialog.isOpen);
   const commandBarOpen = useAppSelector((state) => state.commandBarOpen);
-  const { height: viewportHeight } = useViewport();
+  const { width: viewportWidth, height: viewportHeight } = useViewport();
   const dispatch = useAppDispatch();
   const stateRef = useAppStateRef();
   const config = useAppSelector((state) => state.config);
@@ -195,12 +198,6 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     researchOpenedRef.current = progress.tickerSymbol;
     recordResearchActivity("ticker_saved");
   }, [stage, progress.tickerSymbol]);
-  const {
-    offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree,
-  } = useOnboardingUpgrade({
-    stage, progress, saveProgressInBackground, persistProgress,
-  });
-
   const movePositionCursor = useCallback((delta: number) => {
     if (positionCursorIndex < 0) return;
     const next = Math.max(0, Math.min(positionCount - 1, positionCursorIndex + delta));
@@ -240,6 +237,12 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     ? findPaneInstance(config.layout, focusedPaneId)
     : null;
   const helpFocused = focusedInstance?.paneId === "help";
+  const {
+    offer, pricing, billingInterval, setBillingInterval, planAccess, primaryUpgradeAction, continueFree, personalTickers,
+  } = useOnboardingUpgrade({
+    stage, progress, saveProgressInBackground, persistProgress,
+    shown: !helpFocused && !dialogOpen && !commandBarOpen,
+  });
 
   const goToSection = useCallback((section: OnboardingSectionId) => {
     if (finishingRef.current || isBrokerCommitting) return;
@@ -289,8 +292,9 @@ function useOnboardingWizard({ pluginRegistry, importBrokerPositions, onComplete
     chooseBroker, activeBrokerFields, brokerFieldIdx, brokerSelectIdx, setBrokerSelectIdx, brokerValues,
     setBrokerFieldValue, isBrokerSyncing, brokerSyncError, persistenceError, positionCount,
     openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
-    setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportHeight, continueAccount,
+    setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
+    personalTickers,
   };
 }
 
@@ -303,8 +307,9 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     chooseBroker, activeBrokerFields, brokerFieldIdx, brokerSelectIdx, setBrokerSelectIdx, brokerValues,
     setBrokerFieldValue, isBrokerSyncing, brokerSyncError, persistenceError, positionCount,
     openBrokerConnect, continueFromPositions, backPortfolio, continuePortfolio, chosenDesks, deskCursor,
-    setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportHeight, continueAccount,
+    setDeskCursor, setChosenDesks, buildingDesks, finishDesks, account, viewportWidth, viewportHeight, continueAccount,
     offer, planAccess, pricing, billingInterval, setBillingInterval, continueFree, primaryUpgradeAction,
+    personalTickers,
   } = useOnboardingWizard(props);
 
   if (helpFocused) {
@@ -604,6 +609,33 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
     const monthsFree = monthsFreeYearly(pricing);
     const yearlyLabel = monthsFree > 0 ? tf("Yearly, {months} months free", { months: monthsFree }) : t("Yearly");
     const priceNote = billingInterval === "year" && monthsFree > 0 ? tf("{months} months free", { months: monthsFree }) : null;
+    const proNote = planAccess.hasProAccess
+      ? t("This account already has real-time Cloud data.")
+      : proCopy.note;
+    // Ranked: the data itself first, then what reads it.
+    const features = [
+      { title: proStepRealtimeTitle(personalTickers), description: t("Free is 15 minutes behind on quotes and 12 hours on news.") },
+      { title: t("MCP server"), description: t("Claude Code, Codex or Cursor call Gloom's research tools.") },
+      { title: t("Ask Gloom"), description: t("Answers cite filings, calls and news.") },
+      { title: t("Earnings calls"), description: t("Transcripts, summaries, guidance and scores.") },
+      { title: t("Equity Diagnostic"), description: t("Full report: red and green flags with evidence.") },
+      { title: t("Search, theses and flow"), description: t("Instant search with alerts, thesis monitoring, options flow, hiring and compensation data.") },
+    ];
+    // The terminal card is clamped to the viewport, so the list gets the rows
+    // the card leaves it. The DOM card grows with its content instead.
+    const card = terminalCardSize({ width: viewportWidth, height: viewportHeight }, 70, 28);
+    const layout = desktop ? null : planProStep({
+      rows: card.height - TERMINAL_CARD_INSET.rows,
+      columns: card.width - TERMINAL_CARD_INSET.columns,
+      note: proNote,
+      interval: !planAccess.hasProAccess,
+      error: persistenceError,
+      actions: [
+        ...(planAccess.hasProAccess ? [] : [terminalButtonColumns({ label: "Keep Free for now", shortcut: KEEP_FREE_KEY })]),
+        terminalButtonColumns({ label: primaryLabel }),
+      ],
+      descriptions: features.map((feature) => feature.description),
+    });
     return (
       <OnboardingModal width={70} height={28}>
         <OnboardingHeader
@@ -618,12 +650,11 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
           step={desktop ? undefined : t("GLOOM CLOUD PRO")}
           title={planAccess.hasProAccess ? t("Pro is active") : price}
           titleSuffix={!planAccess.hasProAccess && priceNote ? priceNote : undefined}
-          description={planAccess.hasProAccess
-            ? t("This account already has real-time Cloud data.")
-            : proCopy.note}
+          description={proNote}
+          compact={layout?.compact}
         />
         {!planAccess.hasProAccess ? (
-          <Box flexDirection="row" style={desktop ? { marginTop: 12 } : undefined} paddingTop={desktop ? undefined : 1}>
+          <Box flexDirection="row" style={desktop ? { marginTop: 12 } : undefined} paddingTop={desktop || layout?.compact ? undefined : 1}>
             <SegmentedControl
               options={[
                 { label: t("Monthly"), value: "month" },
@@ -636,32 +667,10 @@ export function OnboardingWizard(props: OnboardingWizardProps) {
             />
           </Box>
         ) : null}
-        {/* Ranked: the data itself first, then what reads it. */}
         <Box flexDirection="column" style={desktop ? { marginTop: ONBOARDING_DESKTOP.afterHeader, gap: 10 } : undefined}>
-          <OnboardingFeature
-            title={t("Real-time market data")}
-            description={t("Free is 15 minutes behind on quotes and 12 hours on news.")}
-          />
-          <OnboardingFeature
-            title={t("MCP server")}
-            description={t("Claude Code, Codex or Cursor call Gloom's research tools.")}
-          />
-          <OnboardingFeature
-            title={t("Ask Gloom")}
-            description={t("Answers cite filings, calls and news.")}
-          />
-          <OnboardingFeature
-            title={t("Earnings calls")}
-            description={t("Transcripts, summaries, guidance and scores.")}
-          />
-          <OnboardingFeature
-            title={t("Equity Diagnostic")}
-            description={t("Full report: red and green flags with evidence.")}
-          />
-          <OnboardingFeature
-            title={t("Search, theses and flow")}
-            description={t("Instant search with alerts, thesis monitoring, options flow, hiring and compensation data.")}
-          />
+          {features.map((feature, index) => layout?.featureRows[index] === 0 ? null : (
+            <OnboardingFeature key={index} {...feature} rows={layout?.featureRows[index]} />
+          ))}
         </Box>
         {persistenceError ? (
           <Text fg={colors.negative} wrapText style={desktop ? { marginTop: 10 } : undefined}>

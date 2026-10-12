@@ -118,7 +118,7 @@ describe("P/E band", () => {
     ];
     const reports: ReportDate[] = [
       { date: "2025-02-06", fiscalPeriod: "2024-12", reportedAt: "2025-02-06T21:30:00.000Z" },
-      // Earlier and later than the filing dates on record: the statements' own dates stand.
+      // Before a filing on record the report dates the figure; after one, the filing stands.
       { date: "2024-10-30", fiscalPeriod: "2024-09", reportedAt: null }, { date: "2025-05-20", fiscalPeriod: "2025-03", reportedAt: null },
     ];
     const data = financials(quarters, [], { price: 120, currency: "USD" });
@@ -139,11 +139,24 @@ describe("P/E band", () => {
     const known = (periodEnd: string) => steps.find((step) => step.periodEnd === periodEnd)!;
     expect(known("2024-12-31")).toMatchObject({ dated: true, eps: 5 });
     expect(known("2024-12-31").knownAt.toISOString()).toBe("2025-02-06T21:30:00.000Z");
-    expect(known("2024-09-30").knownAt.toISOString().slice(0, 10)).toBe("2024-11-01");
+    expect(known("2024-09-30").knownAt.toISOString().slice(0, 10)).toBe("2024-10-30");
     // A sum is known when its newest quarter is, never before the report of the older one.
     expect(known("2025-03-31")).toMatchObject({ dated: true, eps: 6 });
     expect(known("2025-03-31").knownAt.toISOString().slice(0, 10)).toBe("2025-05-01");
     expect(dated.rows.find((row) => row.periodEnd === "2024-12-31")).toMatchObject({ dated: true, price: 100 });
+  });
+
+  test("a figure restated onto a split's share count after its report steps at the report, not the restating filing", () => {
+    // AAPL's Q1 FY2019 as its SEC history served it: the 10-K that restated it for the 2020 split was its only date on record.
+    const restated = (date: string, eps: number): FinancialStatement => ({ ...quarter(date, eps, "2020-10-30"),
+      epsBasis: { status: "split-adjusted", source: "sec", originalValue: eps, originalFiled: "2020-10-30", basisDate: "2020-08-28", evidence: [], factor: 1 } });
+    const data = financials([
+      quarter("2018-03-31", 0.68, "2018-05-02"), quarter("2018-06-30", 0.59, "2018-08-01"), quarter("2018-09-29", 0.73, "2018-11-05"),
+      restated("2018-12-29", 1.05),
+    ]);
+    const knownAt = (reports: ReportDate[]) => trailingEpsSteps(data, reports).find((step) => step.periodEnd === "2018-12-29")!.knownAt.toISOString();
+    expect(knownAt([])).toBe("2020-10-30T00:00:00.000Z");
+    expect(knownAt([{ date: "2019-01-29", fiscalPeriod: "2018-12", reportedAt: "2019-01-29T21:30:18.000Z" }])).toBe("2019-01-29T21:30:18.000Z");
   });
 
   test("a sum with one quarter no report covers stays undated even when its newest quarter is dated", () => {

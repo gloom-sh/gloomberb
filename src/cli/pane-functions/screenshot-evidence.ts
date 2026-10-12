@@ -18,6 +18,7 @@ import { scenarioScreenshotEvidence } from "../../plugins/builtin/options-scenar
 import { realizedVolScreenshotEvidence } from "../../plugins/builtin/realized-vol/evidence";
 import { volSurfaceScreenshotEvidence } from "../../plugins/builtin/vol-surface/evidence";
 import { volatilityScreenshotEvidence } from "../../plugins/builtin/volatility/evidence";
+import { marketHeatmapScreenshotEvidence } from "../../plugins/builtin/market-heatmap/evidence";
 import { worldMapScreenshotEvidence } from "../../plugins/builtin/world-venue-map/evidence";
 
 /** The envelope every pane's rendered chart-data evidence carries. */
@@ -95,6 +96,7 @@ const PANE_SCREENSHOT_EVIDENCE: readonly PaneScreenshotEvidenceHook[] = [
   volSurfaceScreenshotEvidence,
   volatilityScreenshotEvidence,
   worldMapScreenshotEvidence,
+  marketHeatmapScreenshotEvidence,
 ];
 
 export function paneScreenshotEvidenceHook(resolved: ResolvedPaneFunction): PaneScreenshotEvidenceHook | null {

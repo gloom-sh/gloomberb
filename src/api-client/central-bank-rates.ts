@@ -29,7 +29,12 @@ export interface CentralBankRow {
   /** When the bank's own site last showed the same level as a lagging BIS observation. */
   confirmedAt?: string | null
   confirmationSourceUrl?: string | null
-  nextMeeting: { date: string; sourceUrl: string; verifiedAt: string } | null
+  /** The bank's next decision from its own published calendar, or China's next 1-year LPR fixing (`kind`). */
+  nextMeeting: { date: string; sourceUrl: string; verifiedAt: string; kind?: "decision" | "fixing" } | null
+  /** Why `nextMeeting` is null; older servers leave it out, and a null meeting then reads as not published. */
+  nextMeetingStatus?: "scheduled" | "not-published" | "not-verified" | "no-policy-rate"
+  /** The BIS series definition and breaks, also in `notes`: history a citation of the latest rate leaves out. */
+  seriesNotes?: string[]
 }
 
 export interface CentralBankRatesPayload {

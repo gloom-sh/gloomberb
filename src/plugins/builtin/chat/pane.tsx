@@ -77,6 +77,14 @@ export function ChatPane({ focused, width, height }: PaneProps) {
   }, [dispatch, paneId, stateRef]);
   const [channelId, setLocalChannelId] = useState(initialChannelIdRef.current);
   const pendingChannelIdRef = useRef<string | null>(null);
+  // A channel set from outside the pane (the command bar, the unread list)
+  // usually arrives with focus. Taking it in the same render keeps the pane
+  // from showing the old channel focused for a frame, which marks it read.
+  const [followedChannelId, setFollowedChannelId] = useState(persistedChannelId);
+  if (followedChannelId !== persistedChannelId) {
+    setFollowedChannelId(persistedChannelId);
+    if (!pendingChannelIdRef.current && channelId !== persistedChannelId) setLocalChannelId(persistedChannelId);
+  }
 
   useEffect(() => {
     if (rawPaneChannelId) return;

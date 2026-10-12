@@ -23,11 +23,15 @@ import { usePluginPaneState } from "../../runtime";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { deriveHeadlessFreshness, paneStatusLineVariants } from "../../../cli/pane-functions/freshness";
 import {
+  CDS_TRADE_DAYS,
   loadCdsActivity,
   loadCdsSpreadHistory,
+  loadCdsSpreadLevels,
   type CdsActivityLoader,
   type CdsSpreadHistoryLoader,
+  type CdsSpreadLevelsLoader,
 } from "./client";
 import {
   DEFAULT_ISSUER_SORT,
@@ -36,12 +40,14 @@ import {
   TRADE_SORT_COLUMN_IDS,
   buildIssuerColumns,
   buildTradeColumns,
-  formatAsOf,
+  cdsFreshness,
   formatBp,
   formatEventTime,
   formatMaturity,
   formatNotional,
   formatUpfront,
+  lastTradeOf,
+  noTradesMessage,
   resolveIssuerQuery,
   sortIssuers,
   sortTrades,
@@ -49,6 +55,7 @@ import {
   spreadFigures,
   summarizeIssuers,
   tradesForIssuer,
+  withSpreadLevels,
   type CdsIssuerSummary,
   type CdsTrade,
   type IssuerColumn,
@@ -77,8 +84,8 @@ function renderIssuerCell(
       return { text: formatEventTime(row.lastTradeAt), color: colors.textMuted };
     case "spread":
       return {
-        text: formatBp(row.latestSpreadBp),
-        color: row.latestSpreadBp == null ? colors.textDim : colors.text,
+        text: formatBp(row.spread5yBp),
+        color: row.spread5yBp == null ? colors.textDim : colors.text,
       };
   }
 }
@@ -129,6 +136,7 @@ function CdsTradeTable({
   onKeyDown,
   before,
   lineMaturity = null,
+  emptyMessage,
 }: {
   trades: CdsTrade[];
   focused: boolean;
@@ -142,6 +150,8 @@ function CdsTradeTable({
   before?: ReactNode;
   /** The contract the 5Y line follows today. */
   lineMaturity?: string | null;
+  /** What an empty table says: the window and the name searched. */
+  emptyMessage: string;
 }) {
   const columns = useMemo(() => buildTradeColumns(width), [width]);
   const renderTradeRow = useCallback((trade: CdsTrade, column: TradeColumn) => (
@@ -168,12 +178,13 @@ function CdsTradeTable({
       getItemKey={tradeKey}
       renderCell={renderTradeRow}
       selectedTextOverridesCellColor
-      emptyStateTitle="No reported trades."
+      emptyStateTitle={emptyMessage}
     />
   );
 }
 
 const NO_TRADES: CdsTrade[] = [];
+const NO_ISSUERS: CdsIssuerSummary[] = [];
 const NO_POINTS: CloudCdsHistoryPointPayload[] = [];
 /**
  * The 5Y line has one point per New York trade date, dated at UTC midnight, so
@@ -231,6 +242,18 @@ interface CdsPaneProps extends PaneProps {
   /** Injected by tests so the pane renders without the cloud backend. */
   loadActivity?: CdsActivityLoader;
   loadHistory?: CdsSpreadHistoryLoader;
+  loadLevels?: CdsSpreadLevelsLoader;
+}
+
+/**
+ * The line `fn CDS` and `shot CDS` end with, from the same declaration:
+ * `Source: DTCC · last trade 2026-10-09 · lag 2 days`.
+ */
+function cdsStatusSegments(lastTrade: number | string | null): PaneFooterSegment[] {
+  if (lastTrade == null) return [];
+  const freshness = deriveHeadlessFreshness({ shape: "rows" }, { rows: [], freshness: cdsFreshness(lastTrade) });
+  const [line, ...shorter] = paneStatusLineVariants(freshness).map((text) => [{ text, tone: "muted" as const }]);
+  return [{ id: "cds-freshness", asOf: true, parts: line!, variants: shorter }];
 }
 
 export function CdsPane({
@@ -240,6 +263,7 @@ export function CdsPane({
   height,
   loadActivity = loadCdsActivity,
   loadHistory = loadCdsSpreadHistory,
+  loadLevels = loadCdsSpreadLevels,
 }: CdsPaneProps) {
   const { symbol, ticker } = usePaneTickerIdentity();
   const issuerQuery = useMemo(() => resolveIssuerQuery(symbol, ticker), [symbol, ticker]);
@@ -260,9 +284,16 @@ export function CdsPane({
   useAutoRefresh(fetchedAt, load);
 
   const trades = activity?.trades ?? NO_TRADES;
+  const summaries = useMemo(() => (issuerQuery ? NO_ISSUERS : summarizeIssuers(trades)), [issuerQuery, trades]);
+  // Every listed issuer's latest 5Y level, one request beside the trades, so the list ranks by it as `fn CDS` does.
+  const loadLevelsRef = useRef(loadLevels);
+  loadLevelsRef.current = loadLevels;
+  const levelsRequest = useCallback(() => loadLevelsRef.current(), []);
+  const levels = useAsyncResource(issuerQuery ? null : levelsRequest);
+  useAutoRefresh(levels.updatedAt, levels.load);
   const issuers = useMemo(
-    () => (issuerQuery ? [] : sortIssuers(summarizeIssuers(trades), issuerSort)),
-    [issuerQuery, issuerSort, trades],
+    () => (issuerQuery ? [] : sortIssuers(withSpreadLevels(summaries, levels.data), issuerSort)),
+    [issuerQuery, issuerSort, levels.data, summaries],
   );
   const visibleTrades = useMemo(() => sortTrades(
     issuerQuery ? trades : selectedIssuerKey ? tradesForIssuer(trades, selectedIssuerKey) : [],
@@ -288,7 +319,10 @@ export function CdsPane({
   usePaneNoticeFooter({
     registrationId: `${paneId}:cds-history`,
     focused,
-    notices: historyIssuer && history.error && !history.data ? ["5Y spread history unavailable."] : [],
+    notices: [
+      ...(historyIssuer && history.error && !history.data ? ["5Y spread history unavailable."] : []),
+      ...(summaries.length && levels.error && !levels.data ? ["5Y spreads unavailable."] : []),
+    ],
   });
 
   useEffect(() => {
@@ -313,6 +347,7 @@ export function CdsPane({
 
   usePaneRefreshKey(() => {
     load();
+    if (!issuerQuery) levels.load();
     if (historyIssuer) history.load();
   }, { focused });
 
@@ -343,16 +378,23 @@ export function CdsPane({
       onSelect: () => (tradesInFront ? cycleTradeSort : cycleIssuerSort)(-1) },
   ], [cycleIssuerSort, cycleTradeSort, hasActivity, tradesInFront]);
 
-  const asOfLabel = formatAsOf(activity?.asOf ?? null);
-  const footerInfo = useMemo<PaneFooterSegment[]>(() => [
-    ...(asOfLabel ? [{ id: "as-of", parts: [{ text: `as of ${asOfLabel}`, tone: "muted" as const }] }] : []),
-    ...(activity ? [{ id: "delayed", parts: [{ text: "delayed", tone: "muted" as const }] }] : []),
-  ], [activity, asOfLabel]);
+  // Dated by the last trade of what is in front: the issuer's, or the whole tape's.
+  const lastTrade = tradesInFront
+    ? lastTradeOf(visibleTrades, spreadPoints)
+    : activity ? lastTradeOf(trades) : null;
+  const footerInfo = useMemo(() => cdsStatusSegments(lastTrade), [lastTrade]);
   usePaneStatusFooter({
     registrationId: paneId,
-    loading: status === "loading" || (!!historyIssuer && history.loading && !history.data),
+    loading: status === "loading"
+      || (!!historyIssuer && history.loading && !history.data)
+      || (!issuerQuery && levels.loading && !levels.data),
     error,
     info: footerInfo,
+  });
+  const emptyMessage = noTradesMessage({
+    query: issuerQuery ? activity?.query ?? issuerQuery : selectedSummary?.issuer ?? null,
+    issuer: issuerQuery ? activity?.issuer ?? null : selectedSummary?.issuer ?? null,
+    days: activity?.days ?? CDS_TRADE_DAYS,
   });
 
   if (status === "loading" && !activity) {
@@ -387,6 +429,7 @@ export function CdsPane({
         onKeyDown={handleTradeKey}
         before={header}
         lineMaturity={lineMaturity}
+        emptyMessage={emptyMessage}
       />
     );
   }
@@ -414,6 +457,7 @@ export function CdsPane({
           onSelect={setSelectedTradeId}
           onKeyDown={handleTradeKey}
           lineMaturity={lineMaturity}
+          emptyMessage={emptyMessage}
         />
       ) : null}
       onDetailKeyDown={handleTradeKey}
@@ -441,7 +485,7 @@ export function CdsPane({
       getItemKey={issuerKey}
       renderCell={renderIssuerCell}
       selectedTextOverridesCellColor
-      emptyStateTitle={error ? "CDS activity unavailable." : "No reported single-name CDS trades."}
+      emptyStateTitle={error ? "CDS activity unavailable." : emptyMessage}
     />
   );
 }

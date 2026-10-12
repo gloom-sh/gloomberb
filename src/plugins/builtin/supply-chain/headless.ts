@@ -1,10 +1,39 @@
+import type { SupplyRow } from "../../../api-client/supply-chain";
 import type { GraphPath, GraphPayload } from "../../../api-client/supply-chain-graph";
-import type { HeadlessBundleResult, HeadlessPaneDefinition } from "../../../types/plugin";
+import type { HeadlessBundleResult, HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { fetchSupplyChain } from "./client";
-import { evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, trustTier } from "./trust";
+import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, supplyOptions, trustTier } from "./trust";
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
 import { exposureLabel, pathLabel } from "./graph-model";
-import { supplyRoleCounts } from "./model";
+import { counterpartyName, disclosedValue, lockedDisclosures, nativeValue, roleLabel, shareParts, supplyPreviewNote, supplyRoleCounts } from "./model";
+
+/**
+ * The Table tab's columns, printed as the pane prints them: the share with
+ * what it is a share of (31.5% of AIRI revenue), the value in its disclosed
+ * currency and scale (53,412,000,000 USD), and Value only when a row has one.
+ * Each printed row reads the relationship it was exported from; the exported
+ * rows keep every field, quotes and evidence included.
+ */
+function tableColumns(rows: HeadlessPaneRow[], sources: ReadonlyMap<HeadlessPaneRow, SupplyRow>, focusId: string | undefined): HeadlessPaneColumn[] {
+  const cell = (read: (row: SupplyRow) => string | null) => (value: unknown, row: HeadlessPaneRow) => {
+    const source = sources.get(row);
+    return (source ? read(source) : value == null ? null : String(value)) ?? "-";
+  };
+  const valued = rows.some((row) => { const source = sources.get(row); return !!source && (nativeValue(source) !== null || source.usd !== null); });
+  return [
+    { key: "counterparty", header: "Counterparty", format: cell(counterpartyName) },
+    { key: "evidenceTier", header: "Evidence" },
+    { key: "ticker", header: "Ticker" },
+    { key: "role", header: "Role", format: cell((row) => roleLabel(row.role)) },
+    // Exports keep the share a number; the text says what it is a share of.
+    { key: "pct", header: "Share", format: cell((row) => shareParts(row, focusId)?.value ?? null),
+      textFormat: cell((row) => { const share = shareParts(row, focusId); return share ? `${share.value} ${share.basis}` : null; }) },
+    ...(valued ? [{ key: "usd", header: "Value", align: "right" as const,
+      format: cell((row) => nativeValue(row) === null && row.usd === null ? null : disclosedValue(row).replace(/ (disclosed|derived)$/, "")) }] : []),
+    { key: "period", header: "Period" },
+    { key: "filed", header: "Published", format: cell(evidenceDate) },
+  ];
+}
 
 const pathColumns = [
   { key: "route", header: "Route" }, { key: "hops", header: "Hops" },
@@ -58,11 +87,11 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { source: "Company filings, calls and news", status: "not-a-feed", basis: "disclosed relationships" },
   argument: { kind: "ticker", description: "Company ticker, exchange-qualified ticker, or id:<entity-id>.", placeholder: "ticker" },
   discovery: { aliases: ["SPLC", "SUPPLY"], dataRequirements: ["Gloom Cloud relationship evidence (Pro with free preview)"],
-    limitations: ["Filings, company announcements, earnings calls and news where evidence is available globally", "Japan filings await an API key and Taiwan report ingestion is disabled", "English glosses are machine translations, separate from original evidence", "Absence is not proof of no relationship",
-      "Table/Flow free preview: three relationships per role in each direction", "Pro: up to four hops; free graph preview: one hop and three results per section", "Reverse percentages belong to the reporting company",
-      "Path rank scores are not probabilities; chained percentages are estimates", "Search limits and incomplete reasons accompany every graph report",
-      "Unconfirmed leads are opt-in and excluded from flow and disclosed values", "Restricted publisher articles expose links only",
-      "Table and Flow evidence tiers differ from Graph and Path evidence tiers"] },
+    limitations: ["Filings, company announcements, earnings calls and news where evidence is available globally.", "Japan filings await an API key and Taiwan report ingestion is disabled.", "English glosses are machine translations, separate from original evidence.", "Absence is not proof of no relationship.",
+      "Table/Flow free preview: three relationships per role in each direction.", "Pro: up to four hops; free graph preview: one hop and three results per section.", "Reverse percentages belong to the reporting company.",
+      "Path rank scores are not probabilities; chained percentages are estimates.", "Search limits and incomplete reasons accompany every graph report.",
+      "Unconfirmed leads are opt-in and excluded from flow and disclosed values.", "Restricted publisher articles expose links only.",
+      "Table and Flow evidence tiers differ from Graph and Path evidence tiers."] },
   options: [
     { key: "view", type: "enum", settingKey: "view", defaultValue: "says", values: [{ value: "says" }, { value: "names" }], description: "Statements by the company, or other sources naming it." },
     { key: "tab", type: "enum", settingKey: "tab", defaultValue: "table", values: ["table", "flow", "graph", "path"].map(value => ({ value })), description: "Disclosures table, direct flow, multi-hop graph or routes to a target." },
@@ -89,12 +118,14 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
     }
     const options = supplyOptions(args.options.tiers);
     const data = await fetchSupplyChain(args.symbols[0]!, ctx.apiClient, options);
+    const sources = new Map<HeadlessPaneRow, SupplyRow>();
+    const sourced = (source: SupplyRow, row: HeadlessPaneRow) => { sources.set(row, source); return row; };
     // The pane's figures, per tab: Table shows one direction, Flow both.
     const figures = (key: "counterparties" | "locked") => Object.fromEntries(([["says", ["says"]], ["names", ["names"]], ["flow", ["says", "names"]]] as const)
       .map(([scope, views]) => [scope, Object.fromEntries(supplyRoleCounts(data, views, options).filter((entry) => entry[key] > 0).map((entry) => [entry.role, entry[key]]))]));
-    return { complete: !data.truncated, errors: data.truncated ? ["Additional relationships need Gloom Pro"] : [],
+    return { complete: !data.truncated, errors: data.truncated ? [data.access === "preview" ? supplyPreviewNote(data, lockedDisclosures(data, ["says", "names"])) : "Additional relationships need Gloom Pro"] : [],
       sections: (["says", "names"] as const).flatMap((view) => [false, true].map((leads) => ({ title: `${view === "says" ? `${data.symbol} says` : `Names ${data.symbol}`}${leads ? " | Unconfirmed" : ""}`,
-        rows: data[view].filter((row) => matchesSupplyOptions(row, options) && isUnconfirmed(row) === leads).map((row) => ({ counterparty: row.counterparty.name, ticker: row.counterparty.ticker, aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
+        rows: data[view].filter((row) => matchesSupplyOptions(row, options) && isUnconfirmed(row) === leads).map((row) => sourced(row, { counterparty: row.counterparty.name, ticker: row.counterparty.ticker, aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
           pct: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, fiscalYear: row.fiscalYear,
           nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
           jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null,
@@ -104,7 +135,8 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
           source: row.sourceKind, filed: row.filedDate, confidence: row.confidence, reportingCompany: row.reportingEntity.name,
           quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss ?? null, quoteGlossKind: row.quoteGloss ? "machine_translation" : null,
           quoteMatchMode: row.quoteMatchMode, sourceUrl: row.filingUrl, filingUrl: row.filingUrl, sectionRef: row.sectionRef ?? null, sourceAttribution: row.sourceAttribution ?? null,
-          evidence: row.evidence ?? [] })) })).filter((section) => section.rows.length > 0)),
+          evidence: row.evidence ?? [] })) })).filter((section) => section.rows.length > 0))
+        .map((section) => ({ ...section, columns: tableColumns(section.rows, sources, data.entity?.id) })),
       metadata: { symbol: data.symbol, asOf: data.asOf, counterparties: figures("counterparties"), locked: figures("locked"),
         counts: data.counts, tierCounts: data.tierCounts, tiers: options.tiers, disclaimer: data.disclaimer } };
   },

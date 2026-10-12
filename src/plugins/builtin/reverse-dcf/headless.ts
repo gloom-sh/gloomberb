@@ -36,7 +36,11 @@ export const reverseDcfHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...Object.fromEntries(row.implied.map((value, index) => [`t${index}`, implied(value)])) })) },
       ],
       complete: !inputs.stale && !inputs.error && !model.error,
-      ...(inputs.stale ? { freshness: { status: "stale" as const } } : {}),
+      // Dated by the price the enterprise value is marked at, not by when the report ran.
+      freshness: {
+        asOf: inputs.financials?.quote?.lastUpdated ?? null,
+        ...(inputs.stale ? { status: "stale" as const } : {}),
+      },
       unavailableSymbols: model.implied ? [] : [instrument.symbol],
       errors: [inputs.error, model.error].filter((value): value is string => !!value),
       metadata: { currency: model.currency, discountRate, terminalGrowth: TERMINAL_GROWTH, discountRates: DISCOUNT_RATES,

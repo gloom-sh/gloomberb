@@ -1,34 +1,34 @@
+import type { PaneTemplateContext, PaneTemplateInstanceConfig } from "../../../types/plugin";
+import { commandTabParams } from "../shared/command-tab";
 import type { PluginModule } from "../plugin-module";
-import { CdxPane } from "./cdx-pane";
 import { cdxBoardCache, sovrBoardCache } from "./client";
 import { cdxHeadless, sovrHeadless } from "./headless";
-import { CDX_PANE_ID, SOVR_PANE_ID } from "./model";
-import { SovrPane } from "./sovr-pane";
+import { CDX_PANE_ID } from "./model";
+import { CreditBoardsPane } from "./pane";
+import { CREDIT_BOARD_SERIES } from "./series";
+
+/** One board. A later command retargets this instance; a fresh id would open a second window. */
+function openCreditBoard(context: PaneTemplateContext, tab: "index" | "sovereign"): PaneTemplateInstanceConfig {
+  const existing = context.layout.instances.find((instance) => instance.paneId === CDX_PANE_ID);
+  return {
+    instanceId: existing?.instanceId ?? CDX_PANE_ID,
+    params: commandTabParams(tab),
+  };
+}
 
 export const creditBoardsModule: PluginModule = {
+  series: CREDIT_BOARD_SERIES,
   panes: [
     {
       id: CDX_PANE_ID,
-      name: "Index CDS",
+      // The single-name pane already opens titled "CDS".
+      name: "CDS Boards",
       icon: "X",
-      component: CdxPane,
-      defaultPosition: "right",
-      defaultMode: "floating",
-      // Five indexes under their history, like Credit Spreads.
-      defaultFloatingSize: { width: 92, height: 20 },
-      tableExport: true,
-      headless: cdxHeadless,
-    },
-    {
-      id: SOVR_PANE_ID,
-      name: "Sovereign CDS",
-      icon: "S",
-      component: SovrPane,
+      component: CreditBoardsPane,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 96, height: 28 },
       tableExport: true,
-      headless: sovrHeadless,
     },
   ],
   paneTemplates: [
@@ -36,19 +36,21 @@ export const creditBoardsModule: PluginModule = {
       id: "cdx-pane",
       paneId: CDX_PANE_ID,
       label: "Index CDS",
-      description: "CDX IG, HY, EM, iTraxx Main and Crossover on the run from DTCC public dissemination: level, 1D and 1W moves, 1Y rank.",
+      description: "CDX IG, HY, EM, iTraxx Main and Crossover on the run from DTCC public dissemination: level, 1D and 1W moves, 1Y rank. Sovereign CDS is the other tab.",
       keywords: ["cdx", "itraxx", "crossover", "xover", "index", "cds", "credit", "ig", "hy", "em", "spread", "dtcc"],
       shortcut: { prefix: "CDX" },
       headless: cdxHeadless,
+      createInstance: (context) => openCreditBoard(context, "index"),
     },
     {
       id: "sovr-pane",
-      paneId: SOVR_PANE_ID,
+      paneId: CDX_PANE_ID,
       label: "Sovereign CDS",
-      description: "Sovereign 5Y CDS from DTCC public dissemination, ranked by the month's move, beside each local currency's month.",
+      description: "The CDS pane on Sovereign: 5Y CDS from DTCC public dissemination, ranked by the month's move, beside each local currency's month.",
       keywords: ["sovr", "wcds", "sovereign", "country", "cds", "credit", "em", "emerging", "spread", "dtcc"],
       shortcut: { prefix: "SOVR", aliases: ["WCDS"] },
       headless: sovrHeadless,
+      createInstance: (context) => openCreditBoard(context, "sovereign"),
     },
   ],
   setup(ctx) {

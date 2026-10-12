@@ -1,3 +1,5 @@
+import type { EarningsDateStatus, EarningsEpsBasis } from "../types/financials";
+
 /** Before the open, during the session, after the close. */
 export type EarningsTiming = "bmo" | "dmh" | "amc";
 
@@ -44,6 +46,8 @@ export interface EarningsReport {
   revenueAnalysts: number | null;
   implied: EarningsImpliedMove | null;
   realized: EarningsRealizedMove | null;
+  /** Whether the date is out, announced or projected; absent from older servers. */
+  dateStatus?: EarningsDateStatus;
 }
 
 export interface EarningsCalendarReport extends EarningsReport {
@@ -61,6 +65,8 @@ export interface EarningsCalendarPayload {
 
 interface EarningsHistoryReport extends EarningsReport {
   revenueActual: number | null;
+  /** Null when the basis cannot be determined; absent from older servers. */
+  epsBasis?: EarningsEpsBasis | null;
 }
 
 export interface EarningsHistoryPayload {

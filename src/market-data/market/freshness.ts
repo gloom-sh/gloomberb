@@ -7,8 +7,14 @@ import { hasPublishedNseCalendar, isPublishedNseClosure } from "../published-nse
 import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
 import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
+import { PERPETUAL_EXCHANGES } from "../../tickers/perpetual-listing";
 
-const ALWAYS_OPEN_EXCHANGES = new Set(["CCC"]);
+const ALWAYS_OPEN_EXCHANGES = new Set(["CCC", ...PERPETUAL_EXCHANGES]);
+
+/** Spot crypto and perpetual futures venues have no equity open or close. */
+export function isAlwaysOpenExchange(exchange: string | undefined): boolean {
+  return ALWAYS_OPEN_EXCHANGES.has(canonicalExchange(exchange));
+}
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const OVERNIGHT_CLOSE_MAX_AGE_MS = 20 * 60 * 60 * 1000;
 const ALWAYS_OPEN_MAX_AGE_MS = 2 * 60 * 60 * 1000;
@@ -61,6 +67,15 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   B3: 10 * 60,
   BYMA: 11 * 60,
   JSE: 9 * 60,
+  // The opening auction ends at 10:00 and the feed stamps its first bar 09:59.
+  TASE: 9 * 60 + 59,
+  TADAWUL: 10 * 60,
+  QE: 9 * 60 + 30,
+  BHB: 9 * 60 + 30,
+  DFM: 10 * 60,
+  MSX: 10 * 60,
+  KUWAIT: 9 * 60,
+  EGX: 10 * 60,
 };
 // Local regular close with the closing auction, rounded up. A close taken too
 // early would let a copy fetched during the auction pass as final.
@@ -74,7 +89,79 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   JPX: 15 * 60 + 30, HKEX: 16 * 60 + 10, TWSE: 14 * 60 + 30, TPEX: 14 * 60 + 30,
   NSE: 16 * 60, BSE: 16 * 60, ASX: 16 * 60 + 15, SGX: 17 * 60 + 20, KRX: 16 * 60, KOSDAQ: 16 * 60,
   NZX: 17 * 60, SSE: 15 * 60 + 30, SZSE: 15 * 60 + 30,
-  BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15, TASE: 17 * 60 + 40,
+  BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15,
+  // Monday to Thursday: trading at last ends 17:30, after the closing auction.
+  // Not later: a complete 5-minute copy ends with its 17:09 bar, which must
+  // reach the close less the half hour a history copy may lag.
+  TASE: 17 * 60 + 30,
+  // Continuous trading to 15:00, the closing auction to 15:10 and trading at
+  // last to 15:20. A complete 5-minute copy ends with its 14:55 bar.
+  TADAWUL: 15 * 60 + 20,
+  // Continuous trading to 13:00, the closing auction to 13:10 and trading at
+  // last to 13:15. A complete 5-minute copy ends with its 13:05 or 13:10 bar.
+  QE: 13 * 60 + 15,
+  // Bahrain Bourse trades continuously to 13:00, with no closing auction.
+  BHB: 13 * 60,
+  // Continuous trading to 14:45, the closing auction to 14:55 and trading at
+  // the close to 15:00. A complete 5-minute copy ends with its 14:55 bar.
+  DFM: 15 * 60,
+  // The Muscat Stock Exchange since 1 Jun 2026: continuous trading to 14:45,
+  // the closing auction to 14:55 and trade at last to 15:00. A complete
+  // 5-minute copy ends with its 14:55 bar.
+  MSX: 15 * 60,
+  // Boursa Kuwait: continuous trading to 13:00, the closing auction to 13:10
+  // and trade at last to 13:15. Not later than the auction's end: a complete
+  // 5-minute copy ends with its 12:40 bar (the source still closes its
+  // period at 12:45), which must reach the close less the half hour a
+  // history copy may lag.
+  KUWAIT: 13 * 60 + 10,
+  // The Egyptian Exchange: continuous trading to 14:15, the closing auction
+  // to 14:25 and trading at the close to 14:30.
+  EGX: 14 * 60 + 25,
+};
+// Venues whose week is not Monday to Friday, as their days off (0 is Sunday).
+// Tadawul, Qatar, Boursa Kuwait and the Egyptian Exchange trade Sunday to
+// Thursday. Dubai's DFM has traded Monday to Friday since 2022, like the
+// venues not listed here.
+const WEEKEND_DAYS: Record<string, readonly number[]> = {
+  TADAWUL: [5, 6],
+  // Bahrain Bourse trades Sunday to Thursday.
+  BHB: [5, 6],
+  QE: [5, 6],
+  // The Muscat Stock Exchange trades Sunday to Thursday.
+  MSX: [5, 6],
+  KUWAIT: [5, 6],
+  EGX: [5, 6],
+};
+const DEFAULT_WEEKEND_DAYS: readonly number[] = [0, 6];
+// History only: venues whose chart source files their bars on another week,
+// as its days off. The chart source still files DFM Sunday to Thursday, the
+// week Dubai traded until 2022, and has no Friday bars, so DFM history ends
+// with Thursday's session from Friday until Monday's opens.
+const HISTORY_SOURCE_WEEKEND_DAYS: Record<string, readonly number[]> = {
+  DFM: [5, 6],
+};
+
+/**
+ * For history only, the days off of the sessions a venue's chart source has
+ * bars for, where its week differs from the venue's: the days both weeks
+ * trade (DFM Monday to Thursday, since Dubai does not trade the source's
+ * Sundays). Undefined for every other venue. Quotes and the calendar keep the
+ * venue's own week.
+ */
+export function historySourceWeekendDays(exchange: string | undefined): readonly number[] | undefined {
+  const canonical = canonicalExchange(exchange);
+  const source = HISTORY_SOURCE_WEEKEND_DAYS[canonical];
+  return source && [...new Set([...(WEEKEND_DAYS[canonical] ?? DEFAULT_WEEKEND_DAYS), ...source])];
+}
+// Venues whose regular session ends earlier on one weekday every week, as
+// local minutes by weekday (0 is Sunday); the other days close as above. TASE
+// has traded Monday to Friday since January 2026, and on Fridays trading at
+// last ends 13:50 (closing auction 13:44 to 13:45). A complete 5-minute copy
+// ends with its 13:29 bar. Holidays and the shortened days around Sukkot and
+// Pesach are not weekly and are not listed.
+const WEEKDAY_CLOSE_MINUTES: Record<string, Partial<Record<number, number>>> = {
+  TASE: { 5: 13 * 60 + 50 },
 };
 // Venues that pause at midday, as local minutes [start, end), with a zone for
 // those the session tables above do not cover. Jakarta pauses longer on Fridays.
@@ -189,20 +276,31 @@ function isPublishedClosure(exchange: string, date: string): boolean {
   return getPublishedUsEquityCalendarDay(exchange, date) === "closed";
 }
 
-function isLocalTradingDay(exchange: string, date: string): boolean {
-  const weekday = localWeekday(date);
-  return weekday != null && weekday !== 0 && weekday !== 6 && !isPublishedClosure(exchange, date);
+/** Whether `weekday` (0 is Sunday) is in the venue's trading week. */
+export function isTradingWeekday(exchange: string, weekday: number, weekendDays?: readonly number[]): boolean {
+  return !(weekendDays ?? WEEKEND_DAYS[exchange] ?? DEFAULT_WEEKEND_DAYS).includes(weekday);
 }
 
-/** Weekdays in (earlier, later], less published closures for venues with a calendar. */
-function localTradingDaysBetween(exchange: string, earlierDate: string, laterDate: string): number {
+/** `weekendDays` replaces the venue's days off (historySourceWeekendDays). */
+function isLocalTradingDay(exchange: string, date: string, weekendDays?: readonly number[]): boolean {
+  const weekday = localWeekday(date);
+  return weekday != null && isTradingWeekday(exchange, weekday, weekendDays) && !isPublishedClosure(exchange, date);
+}
+
+/** Days of the venue's trading week in (earlier, later], less published closures for venues with a calendar. */
+function localTradingDaysBetween(
+  exchange: string,
+  earlierDate: string,
+  laterDate: string,
+  weekendDays?: readonly number[],
+): number {
   const earlierDay = isoLocalDateToUtcDay(earlierDate);
   const laterDay = isoLocalDateToUtcDay(laterDate);
   if (earlierDay == null || laterDay == null || laterDay <= earlierDay) return 0;
 
   let sessions = 0;
   for (let day = earlierDay + 1; day <= laterDay; day += 1) {
-    if (isLocalTradingDay(exchange, new Date(day * MS_PER_DAY).toISOString().slice(0, 10))) sessions += 1;
+    if (isLocalTradingDay(exchange, new Date(day * MS_PER_DAY).toISOString().slice(0, 10), weekendDays)) sessions += 1;
   }
   return sessions;
 }
@@ -210,6 +308,12 @@ function localTradingDaysBetween(exchange: string, earlierDate: string, laterDat
 function localWeekday(date: string): number | null {
   const day = isoLocalDateToUtcDay(date);
   return day == null ? null : new Date(day * MS_PER_DAY).getUTCDay();
+}
+
+/** The local close of the venue's regular session on `date`, in minutes of the day. */
+function regularCloseMinutes(exchange: string, date: string): number | undefined {
+  const weekday = localWeekday(date);
+  return (weekday == null ? undefined : WEEKDAY_CLOSE_MINUTES[exchange]?.[weekday]) ?? REGULAR_CLOSE_MINUTES[exchange];
 }
 
 /** The zone a venue's session dates are read in, or null when unknown. */
@@ -221,13 +325,14 @@ export function sessionCalendarTimeZone(exchange: string | undefined): string | 
 
 /**
  * The latest regular session that closed at or before `time`: the published
- * calendar for US venues, otherwise local weekdays less published closures. A
- * venue without a known close hour is taken to close at local midnight. Null
- * for round-the-clock and unknown venues.
+ * calendar for US venues, otherwise the days of the venue's trading week less
+ * published closures. A venue without a known close hour is taken to close at
+ * local midnight. Null for round-the-clock and unknown venues.
  */
 export function latestRegularSessionClose(
   exchange: string | undefined,
   time: number,
+  weekendDays?: readonly number[],
 ): { date: string; close: number; timeZone: string } | null {
   const canonical = canonicalExchange(exchange);
   const timeZone = sessionCalendarTimeZone(canonical);
@@ -240,8 +345,8 @@ export function latestRegularSessionClose(
     let close: number | null = null;
     if (published) {
       if (published.kind === "session") close = published.close;
-    } else if (isLocalTradingDay(canonical, date)) {
-      const minutes = REGULAR_CLOSE_MINUTES[canonical] ?? 24 * 60;
+    } else if (isLocalTradingDay(canonical, date, weekendDays)) {
+      const minutes = regularCloseMinutes(canonical, date) ?? 24 * 60;
       close = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
         Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
     }
@@ -267,10 +372,14 @@ export function regularSessionCloseUtcMinute(exchange: string | undefined, time:
 /**
  * The open of the regular session `time` falls in, or of the latest one
  * before it: the published calendar for US venues, otherwise the venue's
- * local open on a weekday that is not a published closure. Null for
- * round-the-clock venues and venues without a known open hour.
+ * local open on a day of its trading week that is not a published closure.
+ * Null for round-the-clock venues and venues without a known open hour.
  */
-export function latestRegularSessionOpen(exchange: string | undefined, time: number): number | null {
+export function latestRegularSessionOpen(
+  exchange: string | undefined,
+  time: number,
+  weekendDays?: readonly number[],
+): number | null {
   const canonical = canonicalExchange(exchange);
   const timeZone = sessionCalendarTimeZone(canonical);
   if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
@@ -285,7 +394,7 @@ export function latestRegularSessionOpen(exchange: string | undefined, time: num
       if (published.kind === "session") open = published.open;
     } else if (minutes === undefined) {
       return null;
-    } else if (isLocalTradingDay(canonical, date)) {
+    } else if (isLocalTradingDay(canonical, date, weekendDays)) {
       open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
         Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
     }
@@ -295,21 +404,59 @@ export function latestRegularSessionOpen(exchange: string | undefined, time: num
 }
 
 /**
+ * The open of the first regular session after `time`, with its local date and
+ * the venue's zone: the published calendar for US venues, otherwise the
+ * venue's local open on the next day of its trading week that is not a
+ * published closure. Null for round-the-clock venues and venues without a
+ * known open hour.
+ */
+export function nextRegularSessionOpen(
+  exchange: string | undefined,
+  time: number,
+): { date: string; open: number; timeZone: string } | null {
+  const canonical = canonicalExchange(exchange);
+  const timeZone = sessionCalendarTimeZone(canonical);
+  if (!timeZone || ALWAYS_OPEN_EXCHANGES.has(canonical) || !Number.isFinite(time)) return null;
+  const minutes = REGULAR_OPEN_MINUTES[canonical];
+  const { year, month, day } = zonedDateTimeParts(time, timeZone);
+  const today = Date.UTC(year, month - 1, day) / MS_PER_DAY;
+  for (let offset = 0; offset <= SESSION_LOOKBACK_DAYS; offset++) {
+    const date = new Date((today + offset) * MS_PER_DAY).toISOString().slice(0, 10);
+    const published = getPublishedUsEquitySession(canonical, date);
+    let open: number | null = null;
+    if (published) {
+      if (published.kind === "session") open = published.open;
+    } else if (minutes === undefined) {
+      return null;
+    } else if (isLocalTradingDay(canonical, date)) {
+      open = zonedWallClockToUtcMs(timeZone, Number(date.slice(0, 4)), Number(date.slice(5, 7)),
+        Number(date.slice(8, 10)), Math.floor(minutes / 60), minutes % 60, 0);
+    }
+    if (open != null && open > time) return { date, open, timeZone };
+  }
+  return null;
+}
+
+/**
  * Whether `time` is inside a regular session: at or after its open and
  * before its close. Null for venues without known hours.
  */
-export function isRegularSessionTime(exchange: string | undefined, time: number): boolean | null {
-  const open = latestRegularSessionOpen(exchange, time);
+export function isRegularSessionTime(
+  exchange: string | undefined,
+  time: number,
+  weekendDays?: readonly number[],
+): boolean | null {
+  const open = latestRegularSessionOpen(exchange, time, weekendDays);
   if (open === null) return null;
   // Before this session's close, the latest close is still the one before it opened.
-  const close = latestRegularSessionClose(exchange, time);
+  const close = latestRegularSessionClose(exchange, time, weekendDays);
   return !close || close.close < open;
 }
 
 /**
  * True when the venue's full-day closures for the year of `date` are
  * published: US venues, JPX, NSE, BSE, SSE, SZSE, KRX, KOSDAQ, TWSE, TPEX,
- * HKEX, SGX and ASX. Elsewhere a local holiday reads as a weekday.
+ * HKEX, SGX, ASX and EGX. Elsewhere a local holiday reads as a trading day.
  */
 export function hasPublishedSessionCalendar(exchange: string | undefined, date: string): boolean {
   const canonical = canonicalExchange(exchange);
@@ -345,7 +492,7 @@ export function isMiddayBreakPrint(
   if (!pause || !timeZone || !Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now) return false;
   const { year, month, day } = zonedDateTimeParts(now, timeZone);
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  if (weekday === 0 || weekday === 6) return false;
+  if (!isTradingWeekday(canonical, weekday)) return false;
   const [start, end] = weekday === 5 && pause.friday ? pause.friday : pause.weekdays;
   const at = (minutes: number) => zonedWallClockToUtcMs(timeZone, year, month, day, Math.floor(minutes / 60), minutes % 60, 0);
   const breakStart = at(start);
@@ -443,20 +590,35 @@ export function isUsRegularCloseQuoteInPostSession(
 }
 
 /**
- * Whether a US print belongs to the after-hours session in progress: today's,
- * from the regular close. An earlier day's after-hours print is not.
+ * Whether a US print belongs to the extended-hours session the source labels,
+ * or to the regular session it extends. POST, after today's regular close (a
+ * published early close included) and before 20:00: a print from today's
+ * regular session or its after-hours. PRE, before today's open: a print from
+ * the previous regular session or since, so its after-hours or this morning's
+ * pre-market. An earlier print is not, and neither is any print on a day
+ * without a session.
  */
-export function isUsPostSessionPrint(
+export function isUsExtendedHoursSessionPrint(
   timestampMs: number,
   exchange: string | undefined,
+  marketState: MarketState | undefined,
   now = Date.now(),
 ): boolean {
   const canonical = canonicalExchange(exchange);
-  if (!isUsListingExchange(canonical)) return false;
+  if ((marketState !== "PRE" && marketState !== "POST") || !isUsListingExchange(canonical)) return false;
   if (!Number.isFinite(timestampMs) || !Number.isFinite(now) || timestampMs > now + quoteFutureToleranceMs()) return false;
-  if (!Number.isFinite(new Date(now).getTime()) || usSessionState(now) !== "POST") return false;
-  const currentDate = exchangeLocalDate(canonical, now);
-  return !!currentDate && exchangeLocalDate(canonical, timestampMs) === currentDate && usSessionState(timestampMs) === "POST";
+  if (!Number.isFinite(new Date(now).getTime())) return false;
+  const today = exchangeLocalDate(canonical, now);
+  const close = latestRegularSessionClose(canonical, now);
+  if (!today || !close || !isLocalTradingDay(canonical, today)) return false;
+  const session = usSessionState(now);
+  const closedToday = close.date === today;
+  if (marketState === "POST" ? !closedToday || (session !== "REGULAR" && session !== "POST") : closedToday || session !== "PRE") {
+    return false;
+  }
+  // The open of the session that closed last: today's after the close, the previous one before the open.
+  const open = latestRegularSessionOpen(canonical, close.close);
+  return open != null && timestampMs >= open;
 }
 
 export function isTimestampStaleForExchangeSession(
@@ -464,9 +626,10 @@ export function isTimestampStaleForExchangeSession(
   exchange?: string,
   now = Date.now(),
   marketState?: MarketState,
+  weekendDays?: readonly number[],
 ): boolean {
   try {
-    return isTimestampStaleForExchangeSessionUnsafe(timestampMs, exchange, now, marketState);
+    return isTimestampStaleForExchangeSessionUnsafe(timestampMs, exchange, now, marketState, weekendDays);
   } catch {
     return true;
   }
@@ -477,6 +640,7 @@ function isTimestampStaleForExchangeSessionUnsafe(
   exchange?: string,
   now = Date.now(),
   marketState?: MarketState,
+  weekendDays?: readonly number[],
 ): boolean {
   const canonical = canonicalExchange(exchange);
   if (!canonical || !Number.isFinite(timestampMs) || !Number.isFinite(now)) return false;
@@ -498,13 +662,13 @@ function isTimestampStaleForExchangeSessionUnsafe(
     }
   }
 
-  const sessionsBehind = localTradingDaysBetween(canonical, timestampDate, currentDate);
+  const sessionsBehind = localTradingDaysBetween(canonical, timestampDate, currentDate, weekendDays);
   if (sessionsBehind > 1) return true;
   if (sessionsBehind === 1 && now - timestampMs > OVERNIGHT_CLOSE_MAX_AGE_MS) {
     // When today is the first session after a weekend or exchange holiday,
     // the last close stays current until the provider reports the new session.
     const calendarDaysBehind = isoLocalDateToUtcDay(currentDate)! - isoLocalDateToUtcDay(timestampDate)!;
-    return !(isLocalTradingDay(canonical, currentDate) && (calendarDaysBehind > 1 || localWeekday(currentDate) === 1));
+    return !(isLocalTradingDay(canonical, currentDate, weekendDays) && (calendarDaysBehind > 1 || localWeekday(currentDate) === 1));
   }
   return false;
 }

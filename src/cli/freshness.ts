@@ -1,7 +1,8 @@
 import type { FinancialStatement, Quote, TickerFinancials } from "../types/financials";
 import type { HeadlessPaneFreshness, HeadlessPaneRow } from "../types/headless";
 import { deriveHeadlessFreshness, type ReportFreshness } from "./pane-functions/freshness";
-import { quoteFreshnessFields, REPORTED_DATA } from "../plugins/builtin/shared/report-freshness";
+import { fxPairObservation, fxRateObservations, type FxRateTiming } from "../plugins/builtin/shared/fx-rate-freshness";
+import { quoteObservation, REPORTED_DATA } from "../plugins/builtin/shared/report-freshness";
 import { latestFinancialPeriod } from "../utils/latest-financial-period";
 
 /**
@@ -24,19 +25,32 @@ export function rowsFreshness(
   );
 }
 
-/** One row per quote shown, as `fn` quote reports carry them: live, delayed or stale for its session. */
-function quoteFreshnessRow(quote: Quote): HeadlessPaneRow {
-  return { ...quoteFreshnessFields(quote), updatedAt: quote.lastUpdated };
-}
-
-/** Worst of across the quotes shown, dated by the newest. Quotes that failed to load say nothing. */
+/**
+ * Worst of across the quotes shown, dated by the newest, with their delay and
+ * where their markets stand. Quotes that failed to load say nothing.
+ */
 export function quotesFreshness(
   quotes: Iterable<Quote | null | undefined>,
   declared?: HeadlessPaneFreshness,
   now = Date.now(),
 ): ReportFreshness | undefined {
-  const rows = [...quotes].filter((quote): quote is Quote => quote != null).map(quoteFreshnessRow);
+  const rows = [...quotes].filter((quote): quote is Quote => quote != null).map((quote) => quoteObservation(quote, now));
   return rows.length > 0 ? rowsFreshness(rows, declared, undefined, now) : undefined;
+}
+
+/**
+ * A currency pair crossed from the loaded USD rates of its legs, dated as the
+ * FX matrix dates its rates (`fn FXC`): as old as its oldest dated leg, as
+ * held back as its most delayed, stale when any leg is, and read against the
+ * FX week. A pair with no loaded leg (a code priced in itself) cites nothing.
+ */
+export function fxPairFreshness(
+  legs: ReadonlyMap<string, { rate: number; timing: FxRateTiming }>,
+  now = Date.now(),
+): ReportFreshness | undefined {
+  const rates = new Map([...legs].map(([currency, leg]) => [currency, leg.rate] as const));
+  const observation = fxPairObservation(fxRateObservations([...legs.keys()], rates, (currency) => ({ entry: legs.get(currency)?.timing }), now));
+  return observation ? rowsFreshness([observation], undefined, undefined, now) : undefined;
 }
 
 /** The newest reported period end in the statements, the period the trailing figures run through. */

@@ -1,11 +1,13 @@
 import type { PriceBasis } from "../../types/instrument";
 import type { Quote } from "../../types/financials";
 import { resolvePriceBasis } from "./price-basis";
-import { formatCompact, formatCurrency } from "../../utils/format";
+import { currencyPriceDigits, formatCompact, formatCurrency } from "../../utils/format";
 
 export type AssetDisplayKind = "cash" | "crypto" | "equity" | "contract" | "other";
 
 export interface AssetDisplayContext {
+  /** The price's currency; the thousandth currencies (OMR, KWD) keep three decimals above one unit. */
+  currency?: string;
   isCashBalance?: boolean;
   assetCategory?: string;
   contractSecType?: string;
@@ -159,7 +161,7 @@ function integerDigits(value: number): number {
   return absolute >= 1 && Number.isFinite(absolute) ? Math.floor(Math.log10(absolute)) + 1 : 0;
 }
 
-function getBasePriceMaxFractionDigits(kind: AssetDisplayKind, value: number): number {
+function getBasePriceMaxFractionDigits(kind: AssetDisplayKind, value: number, currency?: string): number {
   switch (kind) {
     case "cash":
       // Six decimals, but no more than seven significant digits: providers send
@@ -172,14 +174,14 @@ function getBasePriceMaxFractionDigits(kind: AssetDisplayKind, value: number): n
       // provider's float tail on quotes like 109556.1640625.
       return Math.abs(value) >= 100 ? 2 : Math.abs(value) >= 1 ? 4 : 8;
     case "equity":
-      return Math.abs(value) >= 1 ? 2 : 4;
+      return Math.abs(value) >= 1 ? currencyPriceDigits(currency) : 4;
     case "contract":
       // Currency futures include five- and seven-decimal prices. This is a
       // display ceiling, not a declaration of the contract's minimum tick.
       return 8;
     case "other":
     default:
-      return Math.abs(value) >= 1 ? 2 : 4;
+      return Math.abs(value) >= 1 ? currencyPriceDigits(currency) : 4;
   }
 }
 
@@ -234,7 +236,10 @@ export function formatPriceObservation(
 /** The most decimals formatMarketPrice shows for this asset kind and magnitude,
  * for callers that render a whole column with one fixed decimal count. */
 export function marketPriceFractionDigitCeiling(value: number, context: AssetDisplayContext): number {
-  return Math.max(getBasePriceMaxFractionDigits(resolveAssetDisplayKind(context), value), tinyPriceFractionDigits(value));
+  return Math.max(
+    getBasePriceMaxFractionDigits(resolveAssetDisplayKind(context), value, context.currency),
+    tinyPriceFractionDigits(value),
+  );
 }
 
 function getPriceMaxFractionDigits(
@@ -243,17 +248,18 @@ function getPriceMaxFractionDigits(
   priceRange: number | undefined,
   precisionOffset: number,
   quotedUnitDigits = 0,
+  currency?: string,
 ): number {
   const baseMaxFractionDigits = kind === "other" && priceRange !== undefined
     ? 6
-    : getBasePriceMaxFractionDigits(kind, value) + quotedUnitDigits;
+    : getBasePriceMaxFractionDigits(kind, value, currency) + quotedUnitDigits;
   const adaptiveFractionDigits = getAdaptivePriceFractionDigits(priceRange, precisionOffset);
   return adaptiveFractionDigits === null
     ? baseMaxFractionDigits
     : Math.min(baseMaxFractionDigits, adaptiveFractionDigits);
 }
 
-function getCostMaxFractionDigits(kind: AssetDisplayKind): number {
+function getCostMaxFractionDigits(kind: AssetDisplayKind, currency?: string): number {
   switch (kind) {
     case "cash":
       return 6;
@@ -262,10 +268,9 @@ function getCostMaxFractionDigits(kind: AssetDisplayKind): number {
     case "contract":
       return 4;
     case "equity":
-      return 2;
     case "other":
     default:
-      return 2;
+      return currencyPriceDigits(currency);
   }
 }
 
@@ -356,7 +361,7 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
     const maxFractionDigits = kind === "other" && options.priceRange !== undefined
       ? 6
       : reference === undefined
-        ? getBasePriceMaxFractionDigits(kind, value) + quotedUnitDigits
+        ? getBasePriceMaxFractionDigits(kind, value, options.currency) + quotedUnitDigits
         : marketPriceFractionDigitCeiling(reference, options) + quotedUnitDigits;
     let digits = Math.max(0, Math.min(fixedFractionDigits, maxFractionDigits));
     // A live price keeps its instrument's decimals, but a trade finer than the
@@ -370,10 +375,10 @@ export function formatMarketPrice(value: number | undefined, options: MarketForm
   }
   const minimumFractionDigits = Math.max(
     0,
-    Math.min(options.minimumFractionDigits ?? 0, getBasePriceMaxFractionDigits(kind, value)),
+    Math.min(options.minimumFractionDigits ?? 0, getBasePriceMaxFractionDigits(kind, value, options.currency)),
   );
   const maxFractionDigits = Math.max(
-    getPriceMaxFractionDigits(kind, value, options.priceRange, options.precisionOffset ?? 0, quotedUnitDigits),
+    getPriceMaxFractionDigits(kind, value, options.priceRange, options.precisionOffset ?? 0, quotedUnitDigits, options.currency),
     minimumFractionDigits,
   );
   return formatPriceNumber(value, maxFractionDigits, options.maxWidth, minimumFractionDigits);
@@ -390,7 +395,7 @@ export function formatMarketCost(value: number | undefined, options: MarketForma
     return `${formatMarketCost(value, { ...options, priceBasis: "per-unit", maxWidth })}% par`;
   }
   const kind = resolveAssetDisplayKind(options);
-  const maxFractionDigits = getCostMaxFractionDigits(kind);
+  const maxFractionDigits = getCostMaxFractionDigits(kind, options.currency);
   const minimumFractionDigits = Math.max(0, Math.min(options.minimumFractionDigits ?? 0, maxFractionDigits));
   return formatVariableNumber(value, maxFractionDigits, options.maxWidth, minimumFractionDigits);
 }
@@ -435,14 +440,16 @@ export function formatMarketChangeWithCurrency(
     })}`;
   }
   // Cents hide the whole move of a sub-cent asset (-$0.00 for a SHIB day change).
-  if (Math.abs(value) < 0.005 && referencePrice != null && Number.isFinite(referencePrice)) {
-    const priceDigits = marketPriceFractionDigitCeiling(referencePrice, options);
-    if (priceDigits > 2 && Math.abs(value) >= 0.5 * 10 ** -priceDigits) {
+  const unitDigits = currencyPriceDigits(currency);
+  const smallestMove = 0.5 / 10 ** unitDigits;
+  if (Math.abs(value) < smallestMove && referencePrice != null && Number.isFinite(referencePrice)) {
+    const priceDigits = marketPriceFractionDigitCeiling(referencePrice, { ...options, currency });
+    if (priceDigits > unitDigits && Math.abs(value) >= 0.5 * 10 ** -priceDigits) {
       return `${value > 0 ? "+" : ""}${formatMarketPriceWithCurrency(value, currency, options)}`;
     }
   }
   // A move that rounds to zero cents is unsigned rather than -$0.00.
-  if (Math.abs(value) < 0.005) return formatCurrency(0, currency);
+  if (Math.abs(value) < smallestMove) return formatCurrency(0, currency);
   return `${value > 0 ? "+" : ""}${formatCurrency(value, currency)}`;
 }
 
@@ -455,11 +462,20 @@ export function currencyMinorDigits(currency: string | undefined): number {
   }
 }
 
+/** Decimals a money price is padded to: its minor unit up to two (USD 2, JPY 0), three for the thousandth currencies (OMR, KWD). */
+export function currencyPriceMinDigits(currency: string | undefined): number {
+  return currencyPriceDigits(currency) === 3 ? 3 : Math.min(2, currencyMinorDigits(currency));
+}
+
 /** Pads a money price to its currency's minor unit (two for USD, none for JPY),
  * so one card or column never mixes $309.9 with $339.75. Par-quoted prices are left as they are. */
 export function withCurrencyMinorDigits(options: MarketFormatOptions, currency: string | undefined): MarketFormatOptions {
   if (resolvePriceBasis(options.priceBasis, options.assetCategory) !== "per-unit") return options;
-  return { ...options, minimumFractionDigits: Math.max(options.minimumFractionDigits ?? 0, Math.min(2, currencyMinorDigits(currency))) };
+  return {
+    ...options,
+    ...(currency ? { currency } : {}),
+    minimumFractionDigits: Math.max(options.minimumFractionDigits ?? 0, currencyPriceMinDigits(currency)),
+  };
 }
 
 function positiveMagnitude(value: number | null | undefined): number | undefined {
@@ -522,7 +538,7 @@ export function stablePriceFractionDigits(context: StablePriceContext): number {
   } else if (kind === "equity" || kind === "other") {
     // A sub-unit price keeps four decimals of the major unit, pence lines
     // included; above one unit the currency's minor unit (and pence) apply.
-    digits = below(1) ? 4 : Math.min(2, currencyMinorDigits(context.currency)) + unitDigits;
+    digits = below(1) ? 4 : currencyPriceMinDigits(context.currency) + unitDigits;
   } else if (kind === "cash") {
     digits = below(10) ? 4 : 2;
   } else if (kind === "crypto") {
@@ -566,6 +582,7 @@ export function withStablePriceDigits(
   const referencePrice = quoteReferencePrice(prices);
   return {
     ...options,
+    ...(currency ? { currency } : {}),
     referencePrice,
     fixedFractionDigits: stablePriceFractionDigits({
       ...options,
@@ -599,7 +616,7 @@ export function formatMarketPriceWithCurrency(
   const numericWidth = options.maxWidth == null
     ? undefined
     : Math.max(1, options.maxWidth - sign.length - symbol.length);
-  const body = formatMarketPrice(Math.abs(value), { ...options, maxWidth: numericWidth });
+  const body = formatMarketPrice(Math.abs(value), { ...options, currency: normalizedCurrency, maxWidth: numericWidth });
   return `${hasNonZeroDigit(body) ? sign : ""}${symbol}${body}`;
 }
 
@@ -618,8 +635,9 @@ export function formatMarketCostWithCurrency(
     : Math.max(1, options.maxWidth - sign.length - symbol.length);
   // A money cost keeps its currency's minor unit: $189.20, not $189.2 (JPY has none).
   const body = formatMarketCost(Math.abs(value), {
-    minimumFractionDigits: Math.min(2, currencyMinorDigits(normalizedCurrency)),
+    minimumFractionDigits: currencyPriceMinDigits(normalizedCurrency),
     ...options,
+    currency: normalizedCurrency,
     maxWidth: numericWidth,
   });
   return `${sign}${symbol}${body}`;

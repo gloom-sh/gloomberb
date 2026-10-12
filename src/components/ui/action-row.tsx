@@ -22,7 +22,8 @@ export function ActionRow({ label, children, expanded, active, disabled, fg, ...
   const foreground = disabled ? colors.textMuted : fg ?? (active ? colors.textBright : colors.text);
   return (
     <Button {...props} label={label} active={active} disabled={disabled} expanded={expanded} variant="plain" compact flush stopPropagation>
-      <Box flexDirection="row" width="100%" alignItems="center" gap={1}>
+      {/* A label of two lines reads from the left; a desktop button would centre the shorter one. */}
+      <Box flexDirection="row" width="100%" alignItems="center" gap={1} style={{ textAlign: "left" }}>
         {expanded !== undefined && <DisclosureMarker expanded={expanded} color={foreground} width={2} />}
         <Text fg={foreground} attributes={active ? TextAttributes.BOLD : 0}>{t(label)}</Text>
         {children}

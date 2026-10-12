@@ -1,5 +1,5 @@
 import { apiClient } from "../../../api-client";
-import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { listingAbroadVenue, usListingSymbol } from "../../../utils/sec";
 import { getSharedMarketDataCoordinator, MarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import type { ChartRequest, InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
@@ -8,7 +8,7 @@ import type { PricePoint } from "../../../types/financials";
 import { realizedVolatility, realizedVolatilityCadenceIssue } from "../shared/volatility";
 
 export type IvMethod = "quote-mid" | "trade-close";
-type IvCoverageStatus = "ready" | "backfilling" | "queued" | "unavailable";
+export type IvCoverageStatus = "ready" | "backfilling" | "queued" | "unavailable";
 export interface IvPoint {
   sessionDate: string;
   method: IvMethod;
@@ -20,8 +20,12 @@ export interface IvPoint {
   iv90: number | null;
   iv180: number | null;
   iv365: number | null;
-  put25_30: number | null;
-  call25_30: number | null;
+  /**
+   * 30-day 25-delta put and call IV, on quote captures only. Optional: a
+   * server that leaves them out has no skew history to give.
+   */
+  put25_30?: number | null;
+  call25_30?: number | null;
 }
 export interface IvStats {
   value: number;
@@ -33,6 +37,10 @@ export interface IvStats {
   high: number | null;
   samples: number;
   windowStart: string | null;
+  /** Prior sessions the rank needs: 120, or 60 for IV1Y. Absent from older servers. */
+  minSamples?: number;
+  /** Why rank or percentile is empty, when one is. */
+  rankNote?: string | null;
 }
 interface IvReading {
   date: string;
@@ -51,17 +59,30 @@ export interface IvHistoryPayload {
   symbol: string;
   asOf: string;
   status: IvCoverageStatus;
-  coverage: { source: "seed" | "demand"; addedAt: string; backfilledThrough: string | null; since: string | null } | null;
-  stats: { iv30: IvStats | null; iv90: IvStats | null };
+  coverage: {
+    source: "seed" | "demand"; addedAt: string; backfilledThrough: string | null; since: string | null;
+    /** First trade close with a one-year reading; the 1Y series starts later and is sparser. */
+    iv365Since?: string | null;
+  } | null;
+  stats: { iv30: IvStats | null; iv90: IvStats | null; iv365?: IvStats | null };
   latest: IvReading | null;
   series: IvPoint[];
   warnings: string[];
 }
 export interface IvScreenRow {
   symbol: string;
+  /** Has readings, or none yet. All an older server says; `coverageStatus` is exact. */
   status: "ready" | "queued";
+  /** Where the symbol's history stands, as in `IvHistoryPayload.status`. Absent from older servers. */
+  coverageStatus?: IvCoverageStatus;
+  /** When the symbol was queued and how far its backfill has got; null when it is not covered. */
+  coverage?: { source: "seed" | "demand"; addedAt: string; backfilledThrough: string | null } | null;
+  /** Why it is not covered yet, such as demand coverage being full. */
+  warnings?: string[];
   iv30: IvStats | null;
   iv90: IvStats | null;
+  iv365?: IvStats | null;
+  iv365Since?: string | null;
   latest: IvReading | null;
   skew: { date: string; put25: number; call25: number; skew: number } | null;
 }
@@ -78,14 +99,17 @@ export interface StoredSurfacePayload {
 export type ImpliedVolatilityApi = Pick<typeof apiClient, "impliedVolatility">;
 const query = (params: Record<string, string>) => new URLSearchParams(params).toString();
 /** Stored IV is keyed by the bare US symbol; a listing key ("SPY:ARCX") drops its exchange. */
-export const ivSymbol = (symbol: string) => parsePublicTickerKey(symbol.trim()).symbol.toUpperCase();
+/** A US listing's symbol; a listing abroad is refused, since its bare symbol's options are another company's. */
+export const ivSymbol = (symbol: string) => usListingSymbol(symbol, "Implied volatility");
 
 export function loadIvHistory(symbol: string, options: { signal?: AbortSignal; days?: number } = {}, api: ImpliedVolatilityApi = apiClient) {
   return api.impliedVolatility<IvHistoryPayload>(`history?${query({ symbol: ivSymbol(symbol), days: String(options.days ?? 1100) })}`,
     { signal: options.signal });
 }
+/** A listing abroad has no row: its bare symbol's options are another company's. */
 export function loadIvScreen(symbols: readonly string[], options: { signal?: AbortSignal } = {}, api: ImpliedVolatilityApi = apiClient) {
-  return api.impliedVolatility<IvScreenPayload>(`screen?${query({ symbols: symbols.map(ivSymbol).join(",") })}`, { signal: options.signal });
+  const us = symbols.filter((symbol) => listingAbroadVenue(symbol) == null).map(ivSymbol);
+  return api.impliedVolatility<IvScreenPayload>(`screen?${query({ symbols: us.join(",") })}`, { signal: options.signal });
 }
 export function loadSurfaceDates(symbol: string, options: { signal?: AbortSignal } = {}, api: ImpliedVolatilityApi = apiClient) {
   return api.impliedVolatility<{ version: 1; symbol: string; dates: string[] }>(`surface-dates?${query({ symbol: ivSymbol(symbol) })}`,

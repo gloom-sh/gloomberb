@@ -6,7 +6,8 @@ import {
   type TeamUpdatedEvent,
 } from "../../../../api-client";
 import type { AppNotificationDelivery, AppNotificationRequest, PluginPersistence } from "../../../../types/plugin";
-import { describeTeamNotification, findTeam, teamIdFromChannelId } from "./model";
+import { markNotificationLogReadByRef } from "../../../../notifications/notification-log";
+import { describeTeamNotification, findTeam, teamIdFromChannelId, teamNotificationRefId } from "./model";
 
 export interface TeamStoreSnapshot {
   /** Teams the signed-in person belongs to, sorted by name. */
@@ -251,6 +252,8 @@ export class TeamStore {
     const remaining = this.snapshot.notifications.filter((entry) => !ids.includes(entry.id));
     this.update({ notifications: remaining });
     this.persistNotifications();
+    // A handled card is no longer missed in the Unread list either.
+    markNotificationLogReadByRef(ids.map(teamNotificationRefId));
     try {
       await this.client.markChatNotificationsDelivered([...ids]);
     } catch {
@@ -272,8 +275,9 @@ export class TeamStore {
       void this.refresh();
     }
     const { title, body } = describeTeamNotification(notification);
-    const action = this.actionFor(notification);
+    const action = this.notificationAction(notification);
     this.notifier?.({
+      refId: teamNotificationRefId(notification.id),
       title,
       body,
       type: "info",
@@ -282,7 +286,8 @@ export class TeamStore {
     });
   }
 
-  private actionFor(notification: TeamNotification): AppNotificationRequest["action"] | null {
+  /** Where a card's toast goes; the Unread list opens a missed card the same way. */
+  notificationAction(notification: TeamNotification): AppNotificationRequest["action"] | null {
     const data = notification.data;
     if (data.kind === "team-invite" && this.actions.openTeamInvites) {
       return { label: "Review", onClick: () => this.actions.openTeamInvites?.() };

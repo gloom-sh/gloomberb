@@ -5,9 +5,9 @@ import {
 } from "../../../sources/gloomberb-cloud/fred-series";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { loadCreditConditions } from "./client";
-import { CREDIT_SERIES, type CreditSeriesId } from "./model";
+import { CREDIT_SERIES } from "./model";
 
-function payload(seriesId: CreditSeriesId, count = 3) {
+function payload(seriesId: string, count = 3) {
   return {
     observations: Array.from({ length: count }, (_, index) => ({
       date: new Date(Date.UTC(2026, 6, 1) + index * 86_400_000).toISOString().slice(0, 10),
@@ -31,11 +31,11 @@ afterEach(resetFredSeriesPersistence);
 describe("loadCreditConditions", () => {
   test("returns available rows and reports partial failures", async () => {
     const result = await loadCreditConditions(false, async (seriesId) => {
-      if (seriesId !== CREDIT_SERIES[0].seriesId) throw new Error("unavailable");
+      if (seriesId !== CREDIT_SERIES[0]!.seriesId) throw new Error("unavailable");
       return payload(seriesId);
     });
 
-    expect(result.rows.map((row) => row.seriesId)).toEqual([CREDIT_SERIES[0].seriesId]);
+    expect(result.rows.map((row) => row.seriesId)).toEqual([CREDIT_SERIES[0]!.seriesId]);
     expect(result.errors).toHaveLength(CREDIT_SERIES.length - 1);
   });
 
@@ -48,9 +48,9 @@ describe("loadCreditConditions", () => {
   test("rejects another index before storing it under the requested FRED series", async () => {
     const persistence = new MemoryPluginPersistence();
     attachFredSeriesPersistence(persistence);
-    const aaa = CREDIT_SERIES[1].seriesId;
+    const aaa = CREDIT_SERIES[1]!.seriesId;
     const result = await loadCreditConditions(false, async (seriesId) =>
-      payload(seriesId === aaa ? CREDIT_SERIES[5].seriesId : seriesId));
+      payload(seriesId === aaa ? CREDIT_SERIES[5]!.seriesId : seriesId));
     expect(result.rows.some((row) => row.seriesId === aaa)).toBe(false);
     expect(result.errors).toEqual([`${aaa}: unexpected FRED metadata`]);
     expect(persistence.getResource("fred-series", `${aaa}:limit=300:sort=desc`,
@@ -60,7 +60,7 @@ describe("loadCreditConditions", () => {
   test("invalid metadata refresh retains the dated prior row and cache until valid recovery", async () => {
     const persistence = new MemoryPluginPersistence();
     attachFredSeriesPersistence(persistence);
-    const aaa = CREDIT_SERIES[1].seriesId;
+    const aaa = CREDIT_SERIES[1]!.seriesId;
     const readCached = () => persistence.getResource<ReturnType<typeof payload>>(
       "fred-series", `${aaa}:limit=300:sort=desc`, { sourceKey: "gloomberb-cloud", schemaVersion: 2 });
     await loadCreditConditions(false, async (seriesId) => payload(seriesId));
@@ -70,7 +70,7 @@ describe("loadCreditConditions", () => {
         const data = payload(seriesId);
         if (seriesId === aaa) {
           if (change === "units") data.info.units = "Index";
-          else data.info.id = CREDIT_SERIES[5].seriesId;
+          else data.info.id = CREDIT_SERIES[5]!.seriesId;
         }
         return data;
       });
@@ -101,7 +101,7 @@ describe("loadCreditConditions", () => {
       });
       expect(persistence.getResource<{ observations: unknown[] }>(
         "fred-series",
-        `${CREDIT_SERIES[0].seriesId}:limit=300:sort=desc`,
+        `${CREDIT_SERIES[0]!.seriesId}:limit=300:sort=desc`,
         { sourceKey: "gloomberb-cloud", schemaVersion: 2 },
       )?.value.observations).toHaveLength(300);
 

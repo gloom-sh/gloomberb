@@ -17,6 +17,8 @@ import {
   type LegacyChartMigrationContext,
 } from "../chart-settings";
 import { sanitizeLayout } from "../layout";
+import { foldSavedPanes } from "./fold-panes";
+import { migratePortfolioAsOfColumn } from "./portfolio-as-of-column";
 import { sanitizeSavedPaneState } from "./pane-state";
 import { isRecord } from "../../../utils/guards";
 
@@ -26,6 +28,8 @@ const ONBOARDING_BACKFILL_CONFIG_VERSION = 21;
 const UNREACHABLE_PANE_CLEANUP_CONFIG_VERSION = 22;
 const MARKET_OVERVIEW_ABSORBED_CONFIG_VERSION = 23;
 const IPO_CALENDAR_ABSORBED_CONFIG_VERSION = 24;
+const FOLDED_PANES_CONFIG_VERSION = 25;
+const PORTFOLIO_AS_OF_COLUMN_CONFIG_VERSION = 26;
 
 /** What a migration may ask of the machine the config is loaded on. */
 export interface ConfigMigrationHost {
@@ -79,6 +83,16 @@ const CONFIG_MIGRATIONS: readonly ConfigMigration[] = [
     name: "keep-ipo-calendar-off",
     toVersion: IPO_CALENDAR_ABSORBED_CONFIG_VERSION,
     migrate: keepAbsorbedPluginsOff("macro", ["ipo-calendar"]),
+  },
+  {
+    name: "fold-short-volume-and-sovereign-cds",
+    toVersion: FOLDED_PANES_CONFIG_VERSION,
+    migrate: foldSavedPanes,
+  },
+  {
+    name: "portfolio-as-of-column",
+    toVersion: PORTFOLIO_AS_OF_COLUMN_CONFIG_VERSION,
+    migrate: migratePortfolioAsOfColumn,
   },
 ];
 

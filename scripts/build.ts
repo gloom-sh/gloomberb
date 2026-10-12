@@ -6,9 +6,15 @@ import {
   OPEN_TUI_NATIVE_SMOKE_COMMAND,
   OPEN_TUI_RUNTIME_SMOKE_COMMAND,
   PLUGIN_HOST_SMOKE_COMMAND,
+  SHOT_VIEW_SMOKE_COMMAND,
 } from "../src/cli/native-smoke";
+import { buildShotView, packShotView } from "../src/cli/desktop-pane-shot-view";
 
 const rootDir = join(import.meta.dir, "..");
+const RELEASE_API_URL = "https://api.gloom.sh";
+/** The pane page's archive and the module that hands it to the CLI, shared by every target. */
+const SHOT_VIEW_ARCHIVE = ".gloomberb-shot-view.json.gz";
+const SHOT_VIEW_MODULE = ".gloomberb-shot-view.ts";
 
 interface BuildTarget {
   os: "darwin" | "linux" | "windows";
@@ -132,6 +138,10 @@ async function smokeTestBinary(outfile: string, os: string, arch: string) {
       failureMessage: `Packaged binary failed to load an external plugin against its own runtime: ${outfile}`,
     },
     {
+      args: [SHOT_VIEW_SMOKE_COMMAND],
+      failureMessage: `Packaged binary is missing the page shot and rendered fn reports draw panes in: ${outfile}`,
+    },
+    {
       args: ["help"],
       failureMessage: `Packaged binary failed to launch: ${outfile}`,
     },
@@ -164,9 +174,41 @@ async function smokeTestBinary(outfile: string, os: string, arch: string) {
 function buildCompileEntrySource(nativePackageName: string): string {
   return [
     `import ${JSON.stringify(nativePackageName)};`,
+    // Before the CLI, so the page is in place before any command runs.
+    `import "./${SHOT_VIEW_MODULE}";`,
     `import "../src/cli/entry.ts";`,
     "",
   ].join("\n");
+}
+
+/**
+ * `shot` and rendered `fn` reports draw a pane in a browser page, which a
+ * checkout builds from its sources on first use. A binary has no sources, so
+ * the page is built here, once for every target since it runs in Chrome, and
+ * embedded as one gzipped file the CLI reads when it draws a pane. Only the
+ * pane and its data change per capture, and those go in the page's HTML.
+ */
+async function writeShotViewModule() {
+  const distDir = join(rootDir, "dist");
+  const viewDir = join(distDir, ".gloomberb-shot-view");
+  rmSync(viewDir, { recursive: true, force: true });
+  try {
+    await buildShotView(viewDir, RELEASE_API_URL);
+    writeFileSync(join(distDir, SHOT_VIEW_ARCHIVE), await packShotView(viewDir));
+  } finally {
+    rmSync(viewDir, { recursive: true, force: true });
+  }
+  writeFileSync(join(distDir, SHOT_VIEW_MODULE), [
+    `import archive from "./${SHOT_VIEW_ARCHIVE}" with { type: "file" };`,
+    `import { usePrebuiltShotView } from "../src/cli/desktop-pane-shot-view.ts";`,
+    "usePrebuiltShotView(archive);",
+    "",
+  ].join("\n"));
+}
+
+function removeShotViewModule() {
+  rmSync(join(rootDir, "dist", SHOT_VIEW_ARCHIVE), { force: true });
+  rmSync(join(rootDir, "dist", SHOT_VIEW_MODULE), { force: true });
 }
 
 function compressGzip(path: string): string {
@@ -202,7 +244,7 @@ async function build(targetConfig: BuildTarget) {
       `--target=${target}`, compileEntry, `--outfile=${outfile}`,
     ],
     `Failed to build ${target}`,
-    { env: { ...process.env, GLOOMBERB_API_URL: "https://api.gloom.sh" } },
+    { env: { ...process.env, GLOOMBERB_API_URL: RELEASE_API_URL } },
     true,
   );
   rmSync(compileEntry, { force: true });
@@ -221,11 +263,8 @@ async function build(targetConfig: BuildTarget) {
   console.log(`  -> ${compressedPath}`);
 }
 
-if (buildAll) {
-  for (const t of targets) {
-    await build(t);
-  }
-} else {
+function selectedTargets(): BuildTarget[] {
+  if (buildAll) return targets;
   const os = process.platform === "darwin" ? "darwin" : process.platform === "win32" ? "windows" : "linux";
   const arch = process.arch === "arm64" ? "arm64" : "x64";
   const target = targets.find((candidate) => candidate.os === os && candidate.arch === arch);
@@ -233,5 +272,17 @@ if (buildAll) {
     console.error(`Unsupported build target: ${os}-${arch}`);
     process.exit(1);
   }
-  await build(target);
+  return [target];
+}
+
+const buildTargets = selectedTargets();
+mkdirSync(join(rootDir, "dist"), { recursive: true });
+console.log("Building the pane page...");
+await writeShotViewModule();
+try {
+  for (const t of buildTargets) {
+    await build(t);
+  }
+} finally {
+  removeShotViewModule();
 }

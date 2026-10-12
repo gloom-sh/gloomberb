@@ -1,7 +1,7 @@
 import type { BoxRenderable } from "@opentui/core";
 import { expect, test } from "bun:test";
 import { act, useState } from "react";
-import { Box, Text } from "../../ui";
+import { Box, Input, Text } from "../../ui";
 import { createOpenTuiTestHarness } from "./test-utils";
 
 const tui = createOpenTuiTestHarness();
@@ -116,4 +116,22 @@ test("a dropped padding edge falls back to the broader padding still passed", as
   });
   expect(tui.frame().split("\n")[0]?.indexOf("Z")).toBe(1);
   expect((inner as BoxRenderable | null)?.x).toBe(0);
+});
+
+test("a one-line field fuses pasted lines unless it joins them, and a list field keeps its words", async () => {
+  const values: string[] = [];
+  const paste = async (text: string) => {
+    await act(async () => { tui.setup().renderer.keyInput.processPaste(new TextEncoder().encode(text)); });
+  };
+
+  await tui.render(<Input focused width={30} onInput={(value: string) => values.push(value)} />, { width: 32, height: 2 });
+  await paste("NVDA\nAMD");
+  expect(values.at(-1)).toBe("NVDAAMD");
+
+  tui.destroy();
+  values.length = 0;
+  await tui.render(<Input focused joinPastedLines width={30} onInput={(value: string) => values.push(value)} />, { width: 32, height: 2 });
+  // Line ends, Windows line ends, tabs and the blank edges of a column copied from a sheet.
+  await paste("\nNVDA\r\n AMD\t\tMSFT\n\n");
+  expect(values.at(-1)).toBe("NVDA AMD MSFT");
 });

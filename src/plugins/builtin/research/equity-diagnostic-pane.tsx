@@ -558,7 +558,7 @@ export function EquityDiagnosticView({ focused, width, height }: {
   // Walls and empty states are drawn straight into the pane, like every other
   // pane's; only a report sits in the padded scroll area.
   if (!symbol) {
-    return <PaneStatusBody empty emptyTitle="No ticker selected." emptyMessage="Move the cursor in a list pane to populate this view." />;
+    return <PaneStatusBody empty emptyTitle="Select a ticker." emptyMessage="Move the cursor in a list pane to populate this view." />;
   }
   if (signInRequired || verificationRequired) {
     return <SignInWall placement="diag-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="run the Equity Diagnostic" needsVerification={verificationRequired} />;

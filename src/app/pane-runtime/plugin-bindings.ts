@@ -8,9 +8,16 @@ import { openFormModal } from "../../components/form-modal";
 import { t } from "../../i18n";
 import { openBrokerAddFlow } from "../../plugins/builtin/broker-manager/add-request";
 import { getPanelFocusTarget } from "../../core/state/app/layout";
+import { getVisiblePaneCycleOrder } from "../../components/layout/pane/cycle-order";
+import {
+  collectDisabledPaneIds,
+  resolveShellVisibleLayout,
+  restoreShellHiddenPanes,
+} from "../../components/layout/shell/visible-layout";
+import { applyPluginToggles } from "../../plugins/ownership";
 import { setLayoutManagerDispatch } from "../../plugins/builtin/layout-manager";
-import { setMarketplaceHost } from "../../plugins/builtin/plugin-marketplace/store";
-import type { InstalledPlugin } from "../../plugins/builtin/plugin-marketplace/model";
+import { setMarketplaceHost } from "../../plugins/marketplace/store";
+import type { InstalledPlugin } from "../../plugins/marketplace/model";
 import {
   listExternalPlugins,
   removeExternalPlugin,
@@ -25,6 +32,7 @@ import {
   removePane,
 } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
+import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import { reportCrash } from "../../telemetry/crash-reports";
 import { recordFunctionOpen, usageFunctionForPane } from "../../telemetry/usage-counts";
 import { captureAttentionAction } from "../../telemetry/attention-counts";
@@ -33,15 +41,16 @@ import {
   resolveTickerNavigationReplacementPane,
   shouldFocusTickerNavigationTarget,
 } from "../../layout/ticker-navigation";
-import type {
-  AppAction,
-  AppState,
+import {
+  resolveTickerForPane,
+  type AppAction,
+  type AppState,
 } from "../../state/app/context";
 import type {
   LayoutConfig,
   PaneInstanceConfig,
 } from "../../types/config";
-import { TICKER_RESEARCH_PANE_ID } from "../../types/config";
+import { findPaneInstance, TICKER_RESEARCH_PANE_ID } from "../../types/config";
 import type { DataProvider } from "../../types/data-provider";
 import type {
   PaneDef,
@@ -129,7 +138,33 @@ export function bindAppPanePluginRegistry({
   switchTickerResearchTab,
   tickerRepository,
 }: BindAppPanePluginRegistryOptions): void {
+  // Switching plugins never edits the layout: the shell hides a switched-off
+  // plugin's panes where they are and shows them again when it comes back.
+  // Only focus moves, off a pane that just went hidden.
+  const setPluginsEnabled = (changes: Readonly<Record<string, boolean>>) => {
+    const current = stateRef.current;
+    // Setting a state, not flipping it, so a second "Turn on" from an older
+    // toast cannot switch the plugin back off.
+    const disabledPlugins = applyPluginToggles(current.config.disabledPlugins ?? [], changes);
+    if (!disabledPlugins) return;
+    const focused = current.focusedPaneId ? findPaneInstance(current.config.layout, current.focusedPaneId) : undefined;
+    const focusHidden = !!focused && collectDisabledPaneIds(pluginRegistry, disabledPlugins).has(focused.paneId);
+    dispatch(focusHidden
+      ? {
+        type: "SET_DISABLED_PLUGINS",
+        disabledPlugins,
+        focusedPaneId: getVisiblePaneCycleOrder(current.config.layout, pluginRegistry, disabledPlugins)[0] ?? null,
+      }
+      : { type: "SET_DISABLED_PLUGINS", disabledPlugins });
+    const nextConfig = { ...current.config, disabledPlugins };
+    persistConfig(nextConfig);
+    pluginRegistry.events.emit("config:changed", { config: nextConfig });
+  };
+  const setPluginEnabled = (pluginId: string, enabled: boolean) => setPluginsEnabled({ [pluginId]: enabled });
+
   pluginRegistry.bindHost({
+    setPluginEnabled,
+    setPluginsEnabled,
     selectTicker: (symbol, paneId) => selectTickerInPane(symbol, paneId),
     switchPanel: (panel) => {
       if (isDetachedWindow) return;
@@ -196,10 +231,9 @@ export function bindAppPanePluginRegistry({
       const sharedPane = materialized.layout.instances[0];
       if (!sharedPane) throw new Error("This shared pane is invalid.");
       const paneDef = pluginRegistry.panes.get(sharedPane.paneId);
-      const ownerId = pluginRegistry.getPanePluginId(sharedPane.paneId);
-      if (!paneDef || (ownerId && stateRef.current.config.disabledPlugins.includes(ownerId))) {
-        throw new Error("This shared pane is unavailable in this version of Gloomberb.");
-      }
+      if (!paneDef) throw new Error("This shared pane is unavailable in this version of Gloomberb.");
+      const owner = pluginRegistry.getDisabledPaneOwner(sharedPane.paneId, stateRef.current.config.disabledPlugins);
+      if (owner) throw new PluginOffError(owner, "this shared pane");
       const instance = buildPaneInstance(sharedPane.paneId, sharedPane);
       if (!instance) throw new Error("This shared pane could not be created.");
       dispatch({
@@ -242,6 +276,15 @@ export function bindAppPanePluginRegistry({
         showPane(paneId);
         return;
       }
+      // In the layout but hidden with its plugin, as the research pane that
+      // follows a list is while Ticker Research is off.
+      const paneType = findPaneInstance(stateRef.current.config.layout, instanceId)?.paneId;
+      const owner = paneType ? pluginRegistry.getDisabledPaneOwner(paneType, stateRef.current.config.disabledPlugins) : null;
+      if (owner) {
+        const what = resolveTickerForPane(stateRef.current, instanceId) ?? pluginRegistry.panes.get(paneType!)?.name ?? paneType!;
+        notifyPluginOff(pluginRegistry, new PluginOffError(owner, what), () => pluginRegistry.focusPane(paneId, layout));
+        return;
+      }
 
       focusVisiblePane(instanceId, layout);
     },
@@ -254,6 +297,12 @@ export function bindAppPanePluginRegistry({
     },
     navigateTicker: (rawSymbol, options) => {
       if (isDetachedWindow) return;
+      // Navigation lands in a research pane, which stays hidden while its plugin is off.
+      const researchOwner = pluginRegistry.getDisabledPaneOwner(TICKER_RESEARCH_PANE_ID, stateRef.current.config.disabledPlugins);
+      if (researchOwner) {
+        notifyPluginOff(pluginRegistry, new PluginOffError(researchOwner, rawSymbol), () => pluginRegistry.navigateTicker(rawSymbol, options));
+        return;
+      }
       const recordAttention = captureAttentionAction();
       recordFunctionOpen(usageFunctionForPane(pluginRegistry, TICKER_RESEARCH_PANE_ID));
       const sourcePaneId = options?.sourcePaneId ?? stateRef.current.focusedPaneId;
@@ -334,12 +383,15 @@ export function bindAppPanePluginRegistry({
     },
   });
 
+  // Layout commands (Tidy, Swap, Float, Close) act on what is on screen, as
+  // the shell's own menus do, and leave a switched-off plugin's panes alone.
+  const disabledPaneIds = () => collectDisabledPaneIds(pluginRegistry, stateRef.current.config.disabledPlugins);
   setLayoutManagerDispatch(dispatch, () => ({
-    layout: state.config.layout,
+    layout: resolveShellVisibleLayout(state.config.layout, disabledPaneIds(), pluginRegistry.panes),
     termWidth: pluginRegistry.getTermSize().width,
     termHeight: pluginRegistry.getTermSize().height,
     focusedPaneId: state.focusedPaneId,
-  }));
+  }), (edited) => restoreShellHiddenPanes(stateRef.current.config.layout, edited, disabledPaneIds(), pluginRegistry.panes));
 
   setExternalPlugins(externalPlugins);
 
@@ -457,7 +509,7 @@ export function bindAppPanePluginRegistry({
         });
       const commands = [...pluginRegistry.commands.entries()]
         .filter(([id]) => pluginRegistry.getCommandPluginId(id) === pluginId && !id.endsWith(":setup"))
-        .map(([id, command]) => ({ id, label: command.label }));
+        .map(([id, command]) => ({ id, label: command.label, ...(command.shortcut ? { shortcut: command.shortcut } : {}) }));
       const capabilities = pluginRegistry.capabilities.manifests()
         .filter((manifest) => pluginRegistry.getCapabilityPluginId(manifest.id) === pluginId).length;
       const broker = [...pluginRegistry.brokers.keys()].some((type) => pluginRegistry.getBrokerPluginId(type) === pluginId);
@@ -466,19 +518,7 @@ export function bindAppPanePluginRegistry({
     notify: (notification) => {
       pluginRegistry.notify(notification);
     },
-    setPluginEnabled: (pluginId, enabled) => {
-      const current = stateRef.current.config;
-      if (!enabled) {
-        for (const paneId of pluginRegistry.getPluginPaneIds(pluginId)) pluginRegistry.hidePane(paneId);
-      }
-      dispatch({ type: "TOGGLE_PLUGIN", pluginId });
-      const disabled = current.disabledPlugins ?? [];
-      persistConfig({
-        ...current,
-        disabledPlugins: enabled
-          ? disabled.filter((entry) => entry !== pluginId)
-          : [...disabled, pluginId],
-      });
-    },
+    setPluginEnabled,
+    setPluginsEnabled,
   });
 }

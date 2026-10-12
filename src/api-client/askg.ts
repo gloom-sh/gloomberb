@@ -1,7 +1,10 @@
 import {
   ASKG_PROTOCOL_VERSION,
+  type ASKGCapabilities,
   type ASKGDoneReason,
   type ASKGErrorCode,
+  type ASKGFeedback,
+  type ASKGFeedbackRequest,
   type ASKGSessionStartRequest,
   type ASKGSessionStartResponse,
   type ASKGSseEvent,
@@ -90,10 +93,14 @@ interface ASKGConversationMessage {
   tools: ASKGConversationTool[];
   turnId: string | null;
   createdAt: string;
+  /** On an answer: the person's own rating, null when unrated. */
+  feedback?: ASKGFeedback | null;
 }
 
 export interface ASKGConversationDetail extends ASKGConversationSummary {
   messages: ASKGConversationMessage[];
+  /** `feedback: 1` when this server takes ratings; absent from an older one. */
+  capabilities?: ASKGCapabilities;
 }
 
 export interface ASKGTransport {
@@ -134,6 +141,16 @@ export interface ASKGTransport {
     id: string,
     options?: { signal?: AbortSignal },
   ): Promise<boolean>;
+  /**
+   * Rates one answer and returns the rating as stored. Null when the server
+   * has no answer of this person's under that id, which is also what a
+   * server without the route says.
+   */
+  sendFeedback(
+    turnId: string,
+    request: ASKGFeedbackRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<ASKGFeedback | null>;
 }
 
 /** One decoded server-sent event frame. */
@@ -659,6 +676,32 @@ export class CloudASKGApi implements ASKGTransport {
       return true;
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 404) return false;
+      throw classifyASKGRequestError(error);
+    }
+  }
+
+  async sendFeedback(
+    turnId: string,
+    request: ASKGFeedbackRequest,
+    options: { signal?: AbortSignal } = {},
+  ): Promise<ASKGFeedback | null> {
+    try {
+      const stored = await this.options.request<Partial<ASKGFeedback> | null>(
+        `/askg/turns/${encodeURIComponent(turnId)}/feedback`,
+        {
+          method: "PUT",
+          body: JSON.stringify(request),
+          signal: options.signal,
+        },
+      );
+      // What the server stored, read defensively: the control shows it.
+      return {
+        rating: stored?.rating === "down" ? "down" : stored?.rating === "up" ? "up" : request.rating,
+        reason: stored?.reason ?? null,
+        shared: stored?.shared === true,
+      };
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 404) return null;
       throw classifyASKGRequestError(error);
     }
   }

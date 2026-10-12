@@ -1,4 +1,5 @@
 import type { PluginModule } from "../plugin-module";
+import { DIVIDEND_SERIES } from "./series";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   attachDividendYieldHealth,
@@ -19,6 +20,7 @@ function createDividendYieldModule({
 } = {}): PluginModule {
   let disposeConnection: (() => void) | null = null;
   return {
+    series: DIVIDEND_SERIES,
     setup(ctx) {
       if (marketConnection) {
         attachDividendYieldHealth(ctx.connectionHealth);
@@ -26,7 +28,7 @@ function createDividendYieldModule({
           id: DIVIDENDS_CONNECTION_ID,
           name: "Gloom Dividends",
           kind: "api",
-          ownerId: "ticker-research",
+          ownerId: "ticker-core",
           detail: "api.gloom.sh",
           priority: 300,
         });
@@ -67,7 +69,7 @@ function createDividendYieldModule({
           id: "dividend-yield-pane",
           paneId: "dividend-yield",
           label: "Dividend Yield",
-          description: "Cash distribution history, trailing cash yield, indicated rates when available, and growth. Future payments are not forecast.",
+          description: "Cash distribution history, trailing cash yield, forward yield from the latest distribution, and growth. Future payments are not forecast.",
           keywords: ["dividend", "yield", "dvd", "income", "payout", "ex-date", "distribution"],
           shortcut: "DVD",
         }),

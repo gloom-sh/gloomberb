@@ -22,6 +22,7 @@ export function useAccountManagementKeyboard({
   draftRef,
   fieldOrder,
   focused,
+  openAssistants,
   openPasswordDialog,
   openPortfolioDialog,
   openUpgrade,
@@ -38,6 +39,7 @@ export function useAccountManagementKeyboard({
   /** The active tab's ring, in reading order. */
   fieldOrder: readonly AccountFieldKey[];
   focused: boolean;
+  openAssistants: () => void;
   openPasswordDialog: () => void;
   openPortfolioDialog: () => Promise<void>;
   openUpgrade: () => void;
@@ -52,6 +54,7 @@ export function useAccountManagementKeyboard({
     sharedPortfolioId: () => { void openPortfolioDialog(); },
     passwordAction: openPasswordDialog,
     upgradeAction: openUpgrade,
+    assistantsAction: openAssistants,
     deleteAccountAction: () => { void deleteAccount(); },
     emailAlertsOffAction: () => { void turnOffEmailAlerts(); },
   };

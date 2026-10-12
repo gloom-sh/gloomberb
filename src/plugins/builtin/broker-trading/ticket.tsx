@@ -171,7 +171,7 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
     }
     if (["return", "enter"].includes(event.name ?? "") || event.name === "space" && !textActive && !event.targetEditable) {
       event.preventDefault(); event.stopPropagation();
-      if (!event.repeated) activate();
+      if (!event.repeat) activate();
       return;
     }
     if (event.shift || event.targetEditable || textActive) return;

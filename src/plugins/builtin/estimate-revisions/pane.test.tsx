@@ -77,7 +77,7 @@ test("the period detail charts recorded and lookback EPS over its observations, 
   expect(lines[1]).toContain("← Back");
   expect(lines[2]).toMatch(/EPS\s+1\.71 USD/);
   // The legend names each line as the SOURCE column does, at the latest observation.
-  expect(lines.some((line) => /● Recorded 1\.71 ● Reported lookback 1\.62/.test(line))).toBe(true);
+  expect(lines.some((line) => /• Recorded 1\.71 \+ Reported lookback 1\.62/.test(line))).toBe(true);
   const header = lines.findIndex((line) => line.includes("OBSERVED"));
   expect(lines[header + 1]).toMatch(/2026-09-16\s+1\.71/);
   // The detail fills the body under the stack bar, down to the footer.
@@ -85,10 +85,10 @@ test("the period detail charts recorded and lookback EPS over its observations, 
 
   await tui.emitKeypress({ name: "down" });
   await settle(40);
-  expect(tui.frame()).toContain("● Recorded 1.7 ");
+  expect(tui.frame()).toContain("• Recorded 1.7 ");
   await tui.emitKeypress({ name: "left" });
   await settle(20);
-  expect(tui.frame()).toContain("● Recorded 1.69 ");
+  expect(tui.frame()).toContain("• Recorded 1.69 ");
 });
 
 test("a short detail keeps the observations and draws the chart as a strip", async () => {

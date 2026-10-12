@@ -19,7 +19,7 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
       { key: "detailTab", type: "enum", values: [{ value: "evidence" }, { value: "history" }], defaultValue: "evidence", description: "Detail section for screenshots." },
       { key: "event", type: "string", settingKey: "open", description: "Event ID for evidence and revision history." },
     ],
-    discovery: { aliases: [litigation ? "LITI" : "CATL"], dataRequirements: ["Gloom Cloud catalyst records"], limitations: ["Pro; free preview includes three events", "Only published dates and confidently resolved corporate parties are linked", "Coverage varies by jurisdiction and source; absence is not proof of no event"] },
+    discovery: { aliases: [litigation ? "LITI" : "CATL"], dataRequirements: ["Gloom Cloud catalyst records"], limitations: ["Pro; free preview includes three events.", "Only published dates and confidently resolved corporate parties are linked.", "Coverage varies by jurisdiction and source; absence is not proof of no event."] },
     describe: litigation ? "Company litigation, enforcement and antitrust dockets with evidence" : "Regulatory, clinical, legal and trade-policy catalyst calendar with provenance",
     async load(args, ctx) {
       if (typeof args.options.event === "string" && args.options.event) {

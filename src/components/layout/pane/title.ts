@@ -13,7 +13,7 @@ import { canFollowTickerSource, isTickerLinkPeer } from "../../../layout/ticker-
 const LINK_GLYPH = "\u29c9";
 
 /** The title without the link suffix. */
-function getBasePaneDisplayTitle(
+export function getBasePaneDisplayTitle(
   state: Pick<AppState, "config" | "paneState">,
   instance: PaneInstanceConfig,
   paneDef: PaneDef,

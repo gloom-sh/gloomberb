@@ -1,5 +1,6 @@
 import type { AnalystResearchData, Fundamentals, Quote } from "../../../types/financials";
 import { hasLikelyQuoteUnitMismatch } from "../../../utils/currency-units";
+import { priceEarningsEps } from "../../../utils/fundamentals";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../../utils/market-capitalization";
 import { priceEarningsOnEarnings, type PriceEarnings } from "../../../utils/price-earnings";
 
@@ -54,9 +55,12 @@ function repriceMultiple(
   return price / perShare;
 }
 
-/** Trailing P/E over the current price; not meaningful when the trailing EPS is zero or a loss. */
+/**
+ * Trailing P/E over the current price; not meaningful when the trailing EPS is zero or a loss. An EPS in another
+ * currency than the price is repriced at the rate the served P/E converted it at.
+ */
 export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
-  return priceEarningsOnEarnings(repriceMultiple(fundamentals?.trailingPE, fundamentals?.eps, quote, fundamentals), fundamentals?.eps);
+  return priceEarningsOnEarnings(repriceMultiple(fundamentals?.trailingPE, priceEarningsEps(fundamentals), quote, fundamentals), fundamentals?.eps);
 }
 
 /** Forward P/E over the current price; not meaningful when the forward EPS behind it is zero or a loss. */

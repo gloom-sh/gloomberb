@@ -12,14 +12,15 @@ export const shortWatchHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   freshness: { source: "FINRA", status: "not-a-feed", basis: "twice-monthly settlement", observedKey: "settlementDate", maxAgeMinutes: 30 * 24 * 60 },
   argument: { kind: "symbol-list", maximum: SHORT_WATCH_LIMIT, description: "US tickers; the pane defaults to your portfolios and watchlists." },
+  usListingsOnly: "FINRA short interest",
   options: [],
   describe: "Short squeeze watch",
   discovery: {
     aliases: ["SIW"],
     screenshotReadiness: "live-dom",
     dataRequirements: ["FINRA short interest settlements", "Float", "Daily closes"],
-    limitations: ["Percent of float uses the current float against the settlement's shares short",
-      "Crowded is a fixed threshold, not a squeeze forecast"],
+    limitations: ["Percent of float uses the current float against the settlement's shares short.",
+      "Crowded is a fixed threshold, not a squeeze forecast."],
   },
   columns: [
     { key: "symbol", header: "Symbol" },

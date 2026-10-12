@@ -6,6 +6,7 @@ import {
   saveConfig,
 } from "../../../../data/config/store";
 import type { UpdateProgress } from "../../../../updater";
+import { deleteBrokerAccountRecord, saveBrokerAccountRecord } from "../../../../brokers/account-cache";
 import type {
   DesktopBackendRequestResponse,
   DesktopCoreRequest,
@@ -104,6 +105,12 @@ export async function handleDesktopBackendRequest(
       return null;
     case "session.delete":
       backend.requireServices().persistence.sessions.delete(request.payload.sessionId);
+      return null;
+    case "resources.set":
+      saveBrokerAccountRecord(backend.requireServices().persistence.resources, request.payload.record);
+      return null;
+    case "resources.delete":
+      deleteBrokerAccountRecord(backend.requireServices().persistence.resources, request.payload.key);
       return null;
     default: {
       const exhaustive: never = request;

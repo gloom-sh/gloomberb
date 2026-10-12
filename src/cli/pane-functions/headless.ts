@@ -1,6 +1,7 @@
 import { getSharedRegistry } from "../../plugins/registry";
 import { findCachedPortfolioAccount } from "../../plugins/builtin/portfolio-list/cached-account";
 import { parsePublicTickerKey } from "../../utils/exchanges";
+import { findNamedCollection } from "../../portfolio/collection-name";
 import { apiClient } from "../../api-client";
 import type { MarketContext } from "../types";
 import type {
@@ -14,11 +15,12 @@ import type {
   HeadlessPaneOptionValues,
   HeadlessPaneResult,
   HeadlessPaneRow,
+  HeadlessRowsResult,
   HeadlessSeries,
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
-import { cliStyles, renderSection, renderStats, renderTable } from "../../utils/cli-output";
+import { cliStyles, renderSection, renderStats, renderTable, wrapToTerminal } from "../../utils/cli-output";
 import { humanizeCliKey } from "../result";
 import {
   exportEntriesTable,
@@ -35,8 +37,9 @@ import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
-import { formatUtcTime } from "../../utils/utc-time";
-import { deriveHeadlessFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
+import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
+import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
+import { accessGateStatus, errorsAccessGate, isProLock } from "./access-gate";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -44,6 +47,8 @@ interface SerializableHeadlessColumn {
   align?: "left" | "right" | "center";
   width?: number;
   description?: string;
+  /** The row field that names this column's unit. */
+  unitKey?: string;
 }
 
 export interface LoadedHeadlessPaneModel {
@@ -162,7 +167,7 @@ async function loadHeadlessPaneModel(
  */
 export async function loadResolvedHeadlessPaneModel(
   resolved: ResolvedPaneFunction,
-  context: Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence">> & {
+  context: Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
     dataProvider: HeadlessPaneContext["marketData"];
   },
   rawArgument: string,
@@ -178,17 +183,18 @@ export async function loadResolvedHeadlessPaneModel(
     signal,
     ...(context.refresh ? { refresh: true } : {}),
     settings: resolved.instance.settings,
-    capabilities: getSharedRegistry() ?? undefined,
+    capabilities: getSharedRegistry() ?? context.seriesCapabilities,
     resolveBroker: context.resolveBroker,
     async resolvePortfolio(id) {
-      const portfolio = context.config.portfolios.find(row => row.id === id);
+      const portfolio = findNamedCollection(context.config.portfolios, id);
       if (!portfolio) return null;
-      const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(id));
+      const tickers = (await context.store.loadAllTickers()).filter(row => row.metadata.portfolios.includes(portfolio.id));
       return { portfolio, tickers, account: findCachedPortfolioAccount(context.config, portfolio, context.persistence?.resources) };
     },
     async resolveWatchlist(id) {
-      if (!context.config.watchlists.some(row => row.id === id)) return null;
-      return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(id));
+      const watchlist = findNamedCollection(context.config.watchlists, id);
+      if (!watchlist) return null;
+      return (await context.store.loadAllTickers()).filter(row => row.metadata.watchlists.includes(watchlist.id));
     },
     async resolveInstrument(key) {
       const parsed = parsePublicTickerKey(key);
@@ -220,6 +226,7 @@ function serializableColumns(columns: HeadlessPaneColumn[]): SerializableHeadles
     ...(column.align ? { align: column.align } : {}),
     ...(column.width != null ? { width: column.width } : {}),
     ...(column.description ? { description: column.description } : {}),
+    ...(column.unitKey ? { unitKey: column.unitKey } : {}),
   }));
 }
 
@@ -249,6 +256,7 @@ function serializeBundleSection(
       title: section.title,
       columns: serializableColumns(columns),
       rows: section.rows,
+      ...(section.empty && section.rows.length === 0 ? { empty: section.empty } : {}),
     };
   }
   return { title: section.title, entries: section.entries };
@@ -265,9 +273,14 @@ export function serializeHeadlessPaneResult(
   };
   switch (definition.shape) {
     case "rows": {
-      const rowsResult = result as HeadlessPaneResult & { rows: HeadlessPaneRow[]; columns?: HeadlessPaneColumn[] };
+      const rowsResult = result as HeadlessRowsResult;
       const columns = columnsFor(rowsResult.rows, rowsResult.columns, definition.columns);
-      return { ...common, columns: serializableColumns(columns), rows: rowsResult.rows };
+      return {
+        ...common,
+        columns: serializableColumns(columns),
+        rows: rowsResult.rows,
+        ...(rowsResult.empty && rowsResult.rows.length === 0 ? { empty: rowsResult.empty } : {}),
+      };
     }
     case "bundle": {
       const bundle = result as HeadlessBundleResult;
@@ -318,7 +331,7 @@ function displayInstant(value: string): string {
   if (!Number.isFinite(time)) return value;
   const iso = new Date(time).toISOString();
   if (iso.slice(17, 23) === "00.000") return displayTime(time);
-  return `${iso.slice(0, iso.endsWith(".000Z") ? 19 : 23).replace("T", " ")} UTC`;
+  return `${iso.slice(0, iso.endsWith(".000Z") ? 19 : 23).replace("T", " ")} UTC${localTimeSuffix(time)}`;
 }
 
 /** Drops binary floating-point noise (4.019999999999996) without rounding real digits. */
@@ -375,19 +388,33 @@ function renderRows(
   rows: HeadlessPaneRow[],
   ownColumns: HeadlessPaneColumn[] | undefined,
   fallbackColumns: HeadlessPaneColumn[] | undefined,
+  empty?: string,
 ): string {
-  if (rows.length === 0) return "No data.";
-  const columns = columnsFor(rows, ownColumns, fallbackColumns);
+  if (rows.length === 0) return empty ?? "No data.";
+  const all = columnsFor(rows, ownColumns, fallbackColumns);
+  const columns = all.filter((column) => !column.underRow);
+  const under = all.filter((column) => column.underRow);
+  const cell = (row: HeadlessPaneRow, column: HeadlessPaneColumn) => {
+    const value = row[column.key];
+    const format = column.textFormat ?? column.format;
+    return format ? format(value, row) : displayValue(value);
+  };
   return renderTable(
     columns.map((column) => ({
-      header: humanizeCliKey(column.header),
+      header: displayedHeader(column),
       align: column.align,
       width: column.width,
+      shrink: column.shrink,
+      minWidth: column.minWidth,
+      stackPriority: column.stackPriority,
+      stackRows: column.stackRows,
     })),
-    rows.map((row) => columns.map((column) => {
-      const value = row[column.key];
-      return column.format ? column.format(value, row) : displayValue(value);
-    })),
+    rows.map((row) => columns.map((column) => cell(row, column))),
+    {
+      below: under.length === 0 ? undefined : rows.map((row) => under.flatMap((column) => (
+        row[column.key] == null || row[column.key] === "" ? [] : cell(row, column).split("\n")
+      ))),
+    },
   );
 }
 
@@ -408,7 +435,7 @@ function renderBundle(
     ...(index > 0 ? [""] : []),
     renderSection(section.title),
     "rows" in section && section.rows
-      ? renderRows(section.rows, section.columns, definition.columns)
+      ? renderRows(section.textRows ?? section.rows, section.textColumns ?? section.columns, definition.columns, section.empty)
       : renderEntries(section.entries),
   ]);
 }
@@ -428,7 +455,7 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
   });
   const columns: HeadlessPaneColumn[] = [
     { key: "series", header: "Series" },
-    { key: "latest", header: "Latest" },
+    { key: "latest", header: "Latest", shrink: false },
     { key: "value", header: "Value", align: "right" },
     ...(rows.some((row) => row.unit) ? [{ key: "unit", header: "Unit" }] : []),
     { key: "points", header: "Points", align: "right" },
@@ -440,9 +467,14 @@ function renderSeries(result: HeadlessSeriesResult): string[] {
   return lines;
 }
 
+/** A column's header as reports print it: title-cased unless the column keeps it literal. */
+function displayedHeader(column: HeadlessPaneColumn): string {
+  return column.literalHeader ? column.header : humanizeCliKey(column.header);
+}
+
 /** The headers the text table prints. */
 function displayedColumns(columns: HeadlessPaneColumn[]): HeadlessPaneColumn[] {
-  return columns.map((column) => ({ ...column, header: humanizeCliKey(column.header) }));
+  return columns.map((column) => ({ ...column, header: displayedHeader(column) }));
 }
 
 const SERIES_FIELDS = ["value", "open", "high", "low", "close", "volume"] as const;
@@ -481,6 +513,12 @@ function incompleteDetail(
     return `${available} of ${requested} available`;
   }
   return status.unavailableSymbols.length > 0 ? `no data for ${status.unavailableSymbols.join(", ")}` : true;
+}
+
+/** What Gloom Pro would unlock apart from what failed: a lock is not an error, though it stays in `errors` for JSON. */
+function splitErrors(result: HeadlessPaneResult): { locked: string[]; failed: string[] } {
+  const errors = result.errors ?? [];
+  return { locked: errors.filter(isProLock), failed: errors.filter((error) => !isProLock(error)) };
 }
 
 function textNotices(result: HeadlessPaneResult): string[] {
@@ -536,12 +574,14 @@ export function headlessReportTables(
       return _exhaustive;
     }
   }
+  const { locked, failed } = splitErrors(result);
   return {
     tables,
     footer: reportFooterLines({
       freshness,
       incomplete: incompleteDetail(result, status),
-      errors: result.errors,
+      locked,
+      errors: failed,
       notes: [...textNotices(result), ...(result.notes ?? [])],
     }),
   };
@@ -560,8 +600,8 @@ function reportTitle(
 /** One message stays on the label's line; several each get a line of their own, so none runs into the next. */
 function renderMessages(label: string, messages: readonly string[]): string[] {
   return messages.length === 1
-    ? [cliStyles.warning(`${label}: ${messages[0]}`)]
-    : [cliStyles.warning(`${label}:`), ...messages.map((message) => `  ${message}`)];
+    ? [cliStyles.warning(wrapToTerminal(`${label}: ${messages[0]}`))]
+    : [cliStyles.warning(`${label}:`), ...messages.map((message) => wrapToTerminal(`  ${message}`))];
 }
 
 /**
@@ -576,13 +616,14 @@ export function renderHeadlessPaneText(
   fallbackTitle: string,
   freshness: ReportFreshness = deriveHeadlessFreshness(definition, result),
 ): string {
-  const lines = [cliStyles.bold(reportTitle(definition, args, result, fallbackTitle)), ""];
+  // A long title wraps to a narrow --width like the text under a table; each line stays bold.
+  const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
   const notices = textNotices(result);
   if (notices.length) lines.push(...notices, "");
   switch (definition.shape) {
     case "rows": {
-      const rowsResult = result as HeadlessPaneResult & { rows: HeadlessPaneRow[]; columns?: HeadlessPaneColumn[] };
-      lines.push(renderRows(rowsResult.rows, rowsResult.columns, definition.columns));
+      const rowsResult = result as HeadlessRowsResult;
+      lines.push(renderRows(rowsResult.rows, rowsResult.columns, definition.columns, rowsResult.empty));
       break;
     }
     case "bundle":
@@ -603,8 +644,10 @@ export function renderHeadlessPaneText(
     }
   }
   if (result.notes?.length) lines.push("", ...renderMessages("Notes", result.notes));
-  if (result.errors?.length) lines.push("", ...renderMessages("Errors", result.errors));
-  return [lines.join("\n").trimEnd(), "", cliStyles.muted(formatFreshnessLine(freshness))].join("\n");
+  const { locked, failed } = splitErrors(result);
+  if (locked.length) lines.push("", ...renderMessages("Pro", locked));
+  if (failed.length) lines.push("", ...renderMessages("Errors", failed));
+  return [lines.join("\n").trimEnd(), "", cliStyles.muted(wrapToTerminal(formatFreshnessLine(freshness)))].join("\n");
 }
 
 function resultRowCount(definition: HeadlessPaneDefinition, result: HeadlessPaneResult): number {
@@ -626,18 +669,44 @@ function resultRowCount(definition: HeadlessPaneDefinition, result: HeadlessPane
   }
 }
 
+/**
+ * Whether a loaded report covers what was asked, and which inputs it has no
+ * data for. The one derivation behind `fn`'s `complete` and the status of a
+ * capture of the same report.
+ */
+export function reportCoverage(
+  { definition, args, result }: LoadedHeadlessPaneModel,
+): { complete: boolean; unavailableSymbols: string[]; rowCount: number; symbols: string[] } {
+  const rowCount = resultRowCount(definition, result);
+  const symbols = result.symbols ?? args.symbols;
+  const unavailableSymbols = result.unavailableSymbols ?? (rowCount === 0 ? symbols : []);
+  const complete = result.complete !== false && unavailableSymbols.length === 0 && !result.errors?.length;
+  return { complete, unavailableSymbols, rowCount, symbols };
+}
+
+/**
+ * What a report that is not complete leaves out, in the words its own status
+ * line and `# incomplete` line use: `2 stale`, `no data for IN`. Null when it
+ * is complete or does not say.
+ */
+export function reportGaps(loaded: LoadedHeadlessPaneModel, freshness: ReportFreshness): string | null {
+  const { complete, unavailableSymbols } = reportCoverage(loaded);
+  if (complete) return null;
+  const missing = incompleteDetail(loaded.result, { complete, unavailableSymbols });
+  const gate = errorsAccessGate(loaded.result.errors);
+  return [staleRowsText(freshness, true), typeof missing === "string" ? missing : null, gate ? accessGateStatus(gate) : null]
+    .filter(Boolean).join(", ") || null;
+}
+
 export async function buildHeadlessFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArgument: string,
 ): Promise<PaneFunctionReport> {
   const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
-  const rowCount = resultRowCount(loaded.definition, loaded.result);
-  const symbols = loaded.result.symbols ?? loaded.args.symbols;
-  const unavailableSymbols = loaded.result.unavailableSymbols ?? (rowCount === 0 ? symbols : []);
+  const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
   const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);
-  const complete = loaded.result.complete !== false && unavailableSymbols.length === 0 && !loaded.result.errors?.length;
   return {
     data: {
       kind: loaded.definition.shape,

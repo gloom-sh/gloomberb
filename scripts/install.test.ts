@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 
@@ -22,6 +22,8 @@ interface InstallRun {
   stderr: string;
   /** Every argument passed to the stubbed downloader, one per line. */
   downloadLog: string;
+  installed?: string;
+  temporaryFiles: string[];
 }
 
 let workDir = "";
@@ -41,18 +43,24 @@ function writeStub(binDir: string, name: string, body: string) {
 }
 
 /**
- * Runs the real install script against a fake machine. Downloads are stubbed
- * out and always fail, so the script never touches the network and the test
- * can assert on which asset it asked for.
+ * Runs the real install script against a fake machine without network or sudo.
+ * Unspecified downloads fail, allowing architecture checks to stop at download.
  */
-async function runInstall(machine: FakeMachine): Promise<InstallRun> {
+async function runInstall(machine: FakeMachine, options: {
+  downloads?: Record<string, string | Uint8Array>;
+  script?: string;
+  existingInstall?: string;
+} = {}): Promise<InstallRun> {
   const binDir = join(workDir, "bin");
   const installDir = join(workDir, "install");
   const appDir = join(workDir, "Applications");
   const downloadLog = join(workDir, "downloads.log");
+  const tempDir = join(workDir, "tmp");
   mkdirSync(binDir, { recursive: true });
   mkdirSync(installDir, { recursive: true });
   mkdirSync(appDir, { recursive: true });
+  mkdirSync(tempDir);
+  if (options.existingInstall) writeFileSync(join(installDir, "gloomberb"), options.existingInstall);
 
   writeStub(binDir, "uname", [
     'case "$1" in',
@@ -75,21 +83,43 @@ async function runInstall(machine: FakeMachine): Promise<InstallRun> {
     'printf "%s\\n" "$value"',
   ].join("\n"));
 
-  writeStub(binDir, "curl", [
+  const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  const downloads = Object.entries(options.downloads ?? {}).map(([url, contents], index) => {
+    const file = join(workDir, `download-${index}`);
+    writeFileSync(file, contents);
+    return `  ${quote(url)}) cp ${quote(file)} "$dest" ;;`;
+  });
+  const downloader = [
     'for arg in "$@"; do printf "%s\\n" "$arg" >> "$FAKE_DOWNLOAD_LOG"; done',
-    "exit 22",
-  ].join("\n"));
+    'while [ "$#" -gt 0 ]; do',
+    '  case "$1" in',
+    '    -o|-O) shift; dest="$1" ;;',
+    '    https://*) url="$1" ;;',
+    '  esac',
+    '  shift',
+    'done',
+    'case "$url" in',
+    ...downloads,
+    '  *) exit 22 ;;',
+    'esac',
+  ].join("\n");
+  writeStub(binDir, "curl", downloader);
+  writeStub(binDir, "wget", downloader);
+  writeStub(binDir, "sudo", 'echo "Unexpected sudo invocation" >&2; exit 1');
 
-  writeStub(binDir, "wget", [
-    'for arg in "$@"; do printf "%s\\n" "$arg" >> "$FAKE_DOWNLOAD_LOG"; done',
-    "exit 8",
-  ].join("\n"));
+  let script = installScript;
+  if (options.script !== undefined) {
+    script = join(workDir, "install.sh");
+    writeFileSync(script, options.script);
+  }
 
-  const proc = Bun.spawn(["sh", installScript], {
+  const proc = Bun.spawn(["sh", script], {
     cwd: workDir,
     env: {
       ...process.env,
       PATH: `${binDir}:${process.env.PATH ?? ""}`,
+      HOME: workDir,
+      TMPDIR: tempDir,
       GLOOMBERB_INSTALL_DIR: installDir,
       GLOOMBERB_APP_DIR: appDir,
       FAKE_UNAME_SYSTEM: machine.unameSystem,
@@ -113,6 +143,8 @@ async function runInstall(machine: FakeMachine): Promise<InstallRun> {
     stdout,
     stderr,
     downloadLog: existsSync(downloadLog) ? readFileSync(downloadLog, "utf8") : "",
+    installed: existsSync(join(installDir, "gloomberb")) ? readFileSync(join(installDir, "gloomberb"), "utf8") : undefined,
+    temporaryFiles: readdirSync(tempDir),
   };
 }
 
@@ -174,14 +206,117 @@ describe("install.sh architecture detection", () => {
     expect(run.downloadLog).toContain("gloomberb-linux-arm64.gz");
   });
 
-  test("rejects an unsupported operating system", async () => {
-    const run = await runInstall({
-      unameSystem: "FreeBSD",
-      unameMachine: "x86_64",
+
+});
+
+const linuxMachine = { unameSystem: "Linux", unameMachine: "x86_64" };
+const metadataUrl = "https://api.github.com/repos/gloom-sh/gloomberb/releases/latest";
+const assetName = "gloomberb-linux-x64.gz";
+const assetUrl = `https://github.com/gloom-sh/gloomberb/releases/download/v1.2.3/${assetName}`;
+const binary = "#!/bin/sh\necho installed\n";
+const compressed = Bun.gzipSync(binary);
+const digest = new Bun.CryptoHasher("sha256").update(compressed).digest("hex");
+
+function releaseMetadata(assetDigest: string | null, checksumName?: string): string {
+  return JSON.stringify({
+    name: 'Release with "quotes", {braces} and a backslash \\',
+    assets: [
+      { name: "other.gz", digest: `sha256:${"0".repeat(64)}`, browser_download_url: `${assetUrl}.other` },
+      { name: assetName, uploader: { name: "Uploader" }, digest: assetDigest, browser_download_url: assetUrl },
+      ...(checksumName ? [{ name: checksumName, browser_download_url: `${assetUrl}/${checksumName}` }] : []),
+    ],
+  });
+}
+
+describe("install.sh verification", () => {
+  test("verifies the selected release asset before installing without sudo", async () => {
+    const run = await runInstall(linuxMachine, { downloads: {
+      [metadataUrl]: releaseMetadata(`sha256:${digest}`),
+      [assetUrl]: compressed,
+    } });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.installed).toBe(binary);
+    expect(run.stdout).toContain(`Verified SHA-256 for ${assetName}`);
+    expect(run.stdout).toContain(assetUrl);
+    expect(run.stdout).toContain(join(workDir, "install", "gloomberb"));
+    expect(run.temporaryFiles).toEqual([]);
+  });
+
+  test("rejects a digest mismatch without replacing an existing install", async () => {
+    const run = await runInstall(linuxMachine, {
+      downloads: {
+        [metadataUrl]: releaseMetadata(`sha256:${"0".repeat(64)}`),
+        [assetUrl]: compressed,
+      },
+      existingInstall: "old binary",
     });
 
     expect(run.exitCode).not.toBe(0);
-    expect(run.stderr).toContain("Unsupported OS: FreeBSD");
+    expect(run.stderr).toContain("SHA-256 mismatch");
+    expect(run.installed).toBe("old binary");
+    expect(run.temporaryFiles).toEqual([]);
+  });
+
+  test("a macOS app digest mismatch aborts before extraction or terminal fallback", async () => {
+    const name = "stable-macos-arm64-Gloomberb.app.zip";
+    const url = `https://github.com/gloom-sh/gloomberb/releases/download/v1.2.3/${name}`;
+    const run = await runInstall({ unameSystem: "Darwin", unameMachine: "arm64" }, {
+      downloads: {
+        [metadataUrl]: JSON.stringify({ assets: [{ name, digest: `sha256:${"0".repeat(64)}`, browser_download_url: url }] }),
+        [url]: "corrupt archive",
+      },
+      existingInstall: "old binary",
+    });
+
+    expect(run.exitCode).not.toBe(0);
+    expect(run.stderr).toContain("SHA-256 mismatch");
+    expect(run.downloadLog).not.toContain("gloomberb-darwin-arm64.gz");
+    expect(run.installed).toBe("old binary");
+    expect(run.temporaryFiles).toEqual([]);
+  });
+
+  test.each([
+    ["SHA256SUMS", `${digest}  unrelated.gz\n${digest} *${assetName}\n`, true],
+    ["checksums.txt", `SHA256 (${assetName}) = ${digest}\n`, true],
+    [`${assetName}.sha256`, `${digest}\n`, true],
+    ["SHA256SUMS", `${"0".repeat(64)}  ${assetName}\n`, false],
+  ] as const)("uses %s when the asset digest is unavailable", async (name, contents, valid) => {
+    const run = await runInstall(linuxMachine, { downloads: {
+      [metadataUrl]: releaseMetadata(null, name),
+      [assetUrl]: compressed,
+      [`${assetUrl}/${name}`]: contents,
+    } });
+
+    expect(run.exitCode === 0).toBe(valid);
+    expect(run.installed).toBe(valid ? binary : undefined);
+    expect(valid ? run.stdout : run.stderr).toContain(valid ? "Verified SHA-256" : "SHA-256 mismatch");
+    expect(run.temporaryFiles).toEqual([]);
+  });
+
+  test.each([true, false])("warns when no checksum is obtainable (metadata available: %p)", async (metadataAvailable) => {
+    const url = metadataAvailable ? assetUrl : `https://github.com/gloom-sh/gloomberb/releases/latest/download/${assetName}`;
+    const run = await runInstall(linuxMachine, { downloads: {
+      ...(metadataAvailable ? { [metadataUrl]: releaseMetadata(null) } : {}),
+      [url]: compressed,
+    } });
+
+    expect(run.exitCode).toBe(0);
+    expect(run.installed).toBe(binary);
+    expect(run.stderr).toContain("Continuing without checksum verification.");
+    expect(run.temporaryFiles).toEqual([]);
+  });
+
+  test("a script truncated before the last invocation does not download or install", async () => {
+    const source = readFileSync(installScript, "utf8");
+    const run = await runInstall(linuxMachine, {
+      script: source.slice(0, source.lastIndexOf('main "$@"')),
+      existingInstall: "old binary",
+    });
+
+    expect(run.exitCode).toBe(0);
     expect(run.downloadLog).toBe("");
+    expect(run.installed).toBe("old binary");
+    expect(run.temporaryFiles).toEqual([]);
   });
 });

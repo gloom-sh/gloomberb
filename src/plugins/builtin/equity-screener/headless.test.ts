@@ -20,3 +20,17 @@ test("a full page with more matches is neither an error nor too large for an Ask
   const bounded = await equityScreenerHeadless.load({ argument: undefined, options: {} } as never, { apiClient } as never);
   expect(bounded.errors).toEqual(data.warnings);
 });
+
+test("ATR% can be the metric, and the help says what it is and that IV rank is a rank", async () => {
+  const data = screenFixture();
+  data.rows[0]!.metrics.atrPercent = { ...data.rows[0]!.metrics.atrPercent, value: 3.456, unit: "%", asOf: "2026-09-21", state: "available", scope: "derived" };
+  const apiClient = { equityScreener: async () => structuredClone(data) };
+  const result = await equityScreenerHeadless.load({ argument: undefined, options: { metric: "atrPercent" } } as never, { apiClient } as never);
+  const section = result.sections![0]!;
+  expect(section.columns!.find((column) => column.key === "value")!.header).toBe("ATR%");
+  expect(section.rows![0]).toMatchObject({ value: "3.5", unit: "%", asOf: "2026-09-21", state: "available" });
+  expect(equityScreenerHeadless.options.find((option) => option.key === "metric")!.values).toContainEqual({ value: "atrPercent" });
+  const limitations = equityScreenerHeadless.discovery!.limitations!.join(" ");
+  expect(limitations).toContain("ATR% is the 14-session average true range as a percent of the last close");
+  expect(limitations).toContain("IV rank is a rank, not an IV percentile");
+});

@@ -3,8 +3,12 @@ import { getCurrentPluginTarget } from "../plugins/current-target";
 import type { DesktopDeepLinkBridge } from "../types/desktop-deeplink";
 import { exposeExperiment, storedExperimentAssignments } from "./web-experiments";
 import { createWallExperimentSession, type WallExperiment, type WallExperimentContext, type WallTeaserVariant } from "./wall-experiments";
+import { createUpgradeExperimentSession, UPGRADE_PERSONALIZED, type UpgradeExperimentContext, type UpgradePersonalizedVariant } from "./upgrade-experiment";
 import { hasProAccess } from "./plan-rules";
 import { withDeadline } from "../utils/async-deadline";
+import { browserDoNotTrack } from "../telemetry/crash-reports-dom";
+import { currentTelemetryConfig } from "../telemetry/live-config";
+import { usageTelemetryAllowed } from "../telemetry/usage-counts";
 
 export type ResearchActivity =
   | "workspace_opened"
@@ -38,6 +42,7 @@ let anonymousId: string | undefined;
 let attribution: Record<string, string> = {};
 const wallExperiment = createWallExperimentSession();
 const signinWallExperiment = createWallExperimentSession("wall_teaser_signin");
+const upgradeExperiment = createUpgradeExperimentSession();
 const WALL_VIEWS_SESSION_KEY = "gloomberb.wall-teaser.views";
 
 const ATTRIBUTION_STORAGE_KEY = "gloomberb.web.attribution";
@@ -232,12 +237,7 @@ function stripHandoffParams(url: URL): void {
 /** Hosted web analytics only. Native local use never creates an identifier. */
 export function initializeBrowserResearchActivity(): void {
   try {
-    if (
-      navigator.doNotTrack === "1" ||
-      (navigator as Navigator & { globalPrivacyControl?: boolean })
-        .globalPrivacyControl
-    )
-      return;
+    if (!researchTelemetryAllowed()) return;
     const url = new URL(location.href);
     const incoming = readHandoffId(url);
     const stored = localStorage.getItem(ANONYMOUS_ID_STORAGE_KEY);
@@ -267,6 +267,7 @@ export function initializeBrowserResearchActivity(): void {
  */
 export function initializeDesktopResearchActivity(storage: StorageLike = localStorage): void {
   try {
+    if (!researchTelemetryAllowed()) return;
     const stored = storage.getItem(ANONYMOUS_ID_STORAGE_KEY);
     anonymousId = stored && ANONYMOUS_ID.test(stored) ? stored : undefined;
     attribution = readStoredAttribution(storage.getItem(ATTRIBUTION_STORAGE_KEY));
@@ -276,6 +277,7 @@ export function initializeDesktopResearchActivity(storage: StorageLike = localSt
 }
 
 export function adoptDesktopHandoff(href: string, storage: StorageLike = localStorage, now = Date.now()): boolean {
+  if (!researchTelemetryAllowed()) return false;
   if (!carriesHandoff(href)) return false;
   try {
     const url = new URL(href);
@@ -367,6 +369,7 @@ export function recordResearchActivity(
   tab?: string,
   { desks, placement: rawPlacement, teaser_kind, cta }: ResearchActivityDetails = {},
 ): void {
+  if (!researchTelemetryAllowed()) return;
   const target = getCurrentPluginTarget();
   const user = apiClient.getCurrentUser();
   const wallEvent = event === "wall_viewed" || event === "wall_cta_clicked";
@@ -449,6 +452,7 @@ function webExperimentAttribution(): { experiments?: string } {
  * Privacy Control) and not driven by automation are asked. See web-experiments.ts.
  */
 export function exposeWebExperiment(experiment: string): Promise<string | null> {
+  if (!researchTelemetryAllowed()) return Promise.resolve(null);
   if (getCurrentPluginTarget() !== "web") return Promise.resolve(null);
   try {
     return exposeExperiment(experiment, {
@@ -471,11 +475,13 @@ export function exposeWebExperiment(experiment: string): Promise<string | null> 
   }
 }
 
+/** Research milestones, attribution and exposures share the Usage off switch. */
+function researchTelemetryAllowed(): boolean {
+  return usageTelemetryAllowed(currentTelemetryConfig(undefined)) && !browserDoNotTrack();
+}
+
 function wallPrivacyBlocked(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return navigator.doNotTrack === "1"
-    || (navigator as Navigator & { globalPrivacyControl?: boolean }).globalPrivacyControl === true
-    || navigator.webdriver === true;
+  return !researchTelemetryAllowed() || (typeof navigator !== "undefined" && navigator.webdriver === true);
 }
 
 function wallExperimentContext(): WallExperimentContext {
@@ -524,6 +530,35 @@ export function exposeWallTeaser(experiment: WallExperiment = "wall_teaser"): Pr
   });
 }
 
+function upgradeExperimentContext(): UpgradeExperimentContext {
+  const { accountId, pro, optedOut, automated, session } = wallExperimentContext();
+  return { accountId, pro, optedOut, automated, session };
+}
+
+/** The `upgrade_personalized` arm this session already has, without asking; see upgrade-experiment.ts. */
+export function knownUpgradePersonalized(): UpgradePersonalizedVariant | null | undefined {
+  return upgradeExperiment.known(upgradeExperimentContext());
+}
+
+/**
+ * Asks for the `upgrade_personalized` arm when an upgrade surface is shown to
+ * a free account that has tickers to name, once per account and session. The
+ * request says where it showed and nothing about the holdings.
+ */
+export function exposeUpgradePersonalized(placement: string): Promise<UpgradePersonalizedVariant | null> {
+  const context = upgradeExperimentContext();
+  const surface = getCurrentPluginTarget();
+  return upgradeExperiment.expose(context, () => {
+    const controller = new AbortController();
+    return withDeadline(apiClient.recordExperimentExposure({
+      eventId: crypto.randomUUID(),
+      surface,
+      experiment: UPGRADE_PERSONALIZED,
+      ...(ACTIVITY_ID.test(placement) ? { placement } : {}),
+    }, controller.signal), 3_000, "Upgrade experiment request timed out", (error) => controller.abort(error));
+  });
+}
+
 /** Records the visible wall once per placement, including visitors outside the experiment. */
 export function recordWallViewed(placement: string, teaserKind?: "summary" | "sample" | "none"): void {
   recordResearchActivity("wall_viewed", undefined, undefined, { placement, teaser_kind: teaserKind });
@@ -537,6 +572,7 @@ export function recordWallCtaClicked(placement: string, cta: "login" | "signup")
 export function researchUpgradeUrl(returnTo?: string): string {
   const url = new URL("https://gloom.sh/cloud?upgrade=pro");
   if (returnTo) url.searchParams.set("returnTo", returnTo);
+  if (!researchTelemetryAllowed()) return url.href;
   if (anonymousId) url.searchParams.set(HANDOFF_ID_KEY, anonymousId);
   for (const [key, value] of Object.entries(attribution)) {
     if (/^(utm_(source|medium|campaign|content|term)|twclid)$/.test(key))

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { Box } from "../../../ui";
 import { PaneFooterScope, usePaneFooter, usePaneTabs } from "../../../components";
-import { usePluginPaneState } from "../../../public/react";
 import type { PaneProps } from "../../../types/plugin";
+import { useCommandTab } from "../shared/command-tab";
 import { ShortVolumePane } from "../short-volume/pane";
 import { ShortInterestView } from "./pane";
 
@@ -11,14 +11,14 @@ export function ShortInterestSurface({ nested = false, ...props }: Pick<PaneProp
   /** Inside Ticker Research, whose own tab strip keeps h/l and the arrows. */
   nested?: boolean;
 }) {
-  const [tab, setTab] = usePluginPaneState("short-interest:tab", "interest");
-  const [mounted, setMounted] = useState(() => new Set([tab]));
+  const [tab, setTab] = useCommandTab("short-interest", "short-interest:tab", ["interest", "volume"], "interest");
+  const [mounted, setMounted] = useState<Set<string>>(() => new Set([tab]));
   useEffect(() => { setMounted((current) => current.has(tab) ? current : new Set([...current, tab])); }, [tab]);
   // Nested in Ticker Research the title bar belongs to the research tabs, so
   // the desktop switches views from the query bar and the terminal strip
   // leaves h/l to the research tabs.
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({
-    tabs: TABS, activeValue: tab, onSelect: setTab, focused: props.focused, keyboardNavigation: !nested, dense: true, queryBarWidth: props.width,
+    tabs: TABS, activeValue: tab, onSelect: (value) => setTab(value === "volume" ? "volume" : "interest"), focused: props.focused, keyboardNavigation: !nested, dense: true, queryBarWidth: props.width,
   });
   // The strip answers h/l only where it is the pane's own strip; `v` switches
   // views everywhere, including under Ticker Research's strip.

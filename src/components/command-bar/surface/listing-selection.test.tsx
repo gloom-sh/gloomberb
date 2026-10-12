@@ -7,6 +7,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import type { AppState } from "../../../state/app/context";
 import { CommandBarHarness, createCommandBarTestControls } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
+import { LISTING_SEARCH_LIMIT } from "../../../tickers/search";
 
 const tui = createOpenTuiTestHarness();
 const { waitForFrameToContain } = createCommandBarTestControls(() => tui.setup());
@@ -196,4 +197,27 @@ test("other text in a bar opened from an add row runs as usual", async () => {
   await tui.setup().renderOnce();
   expect(opened).toEqual(["AAPL"]);
   expect(saved.filter((ticker) => ticker.metadata.watchlists.includes("watchlist"))).toEqual([]);
+});
+
+test("CAR: asks search for the rows the CLI reads, so CAR Group's ASX line is offered", async () => {
+  const limits: Array<number | undefined> = [];
+  // Carrefour's and Avis's ten listings come before CAR Group's, as the catalogue ranks them.
+  const rows = [
+    ...["XETRA", "XSTU", "HANOVER", "MUNICH", "XDUS", "FWB2"].map((exchange) => ({ exchange, name: "Carrefour SA", currency: "EUR" })),
+    ...["NASDAQ", "IEX", "BMV", "BYMA"].map((exchange) => ({ exchange, name: "Avis Budget Group Inc.", currency: "USD" })),
+    { exchange: "ASX", name: "CAR Group Limited", currency: "AUD" },
+  ].map((row) => ({ providerId: "test", symbol: "CAR", type: "EQUITY", ...row }));
+  await tui.render(<CommandBarHarness
+    query="CAR:"
+    live
+    dataProvider={createTestDataProvider({
+      search: async (_query, context) => {
+        limits.push(context?.limit);
+        return rows.slice(0, context?.limit ?? 10);
+      },
+    })}
+  />, { width: 100, height: 40 });
+  await waitForFrameToContain("CAR Group Limited");
+  expect(limits.length).toBeGreaterThan(0);
+  expect(limits.every((limit) => limit === LISTING_SEARCH_LIMIT)).toBe(true);
 });

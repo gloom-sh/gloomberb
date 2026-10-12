@@ -2,6 +2,7 @@ import { RGBA, StyledText as OpenTuiStyledText, SyntaxStyle, TextAttributes as O
 import { createElement, forwardRef, useEffect, useRef, useState, type ReactNode } from "react";
 import { TextAttributes, type UiHost, type TextProps } from "../../ui/host";
 import { renderAsciiText } from "../../ui/ascii-font";
+import { scrollBoxScrollsVertically } from "../../ui/scroll-box-axis";
 import { OpenTuiImageSurface } from "./image/surface";
 import { OpenTuiChartSurface } from "./chart-surface";
 
@@ -141,8 +142,41 @@ function mapTextContent(content: unknown): unknown {
 }
 
 const OpenTuiBox = createOpenTuiPrimitive("box");
-const OpenTuiScrollBox = createOpenTuiPrimitive("scrollbox");
-const OpenTuiInput = createOpenTuiPrimitive("input");
+const OpenTuiScrollBoxPrimitive = createOpenTuiPrimitive("scrollbox");
+// The native box scrolls vertically unless scrollY is false; the shared rule
+// also keeps the one-row horizontal strips from scrolling on that axis.
+const OpenTuiScrollBox = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiScrollBox(props, ref) {
+  return createElement(OpenTuiScrollBoxPrimitive, { ...props, scrollY: scrollBoxScrollsVertically(props), ref });
+});
+const OpenTuiInputPrimitive = createOpenTuiPrimitive("input");
+
+/** Pasted lines as one line: each break is a space, so `AAPL` over `MSFT` stays two words. */
+function joinPastedLines(text: string): string {
+  return text.replace(/^[\r\n]+|[\r\n]+$/g, "").replace(/[ \t]*[\r\n]+[ \t]*/g, " ").replace(/\t+/g, " ");
+}
+
+interface PasteEventLike {
+  bytes: Uint8Array;
+}
+
+/**
+ * A one-line field drops the line breaks of a paste, which fuses a pasted
+ * column of symbols into one word; a browser's field turns each break into a
+ * space. `joinPastedLines` does the same here, for the fields that read a list.
+ */
+const OpenTuiInput = forwardRef<unknown, OpenTuiPrimitiveProps>(function OpenTuiInput({ joinPastedLines: join, onPaste, ...props }, ref) {
+  const handlePaste = typeof onPaste === "function" ? onPaste as (event: PasteEventLike) => void : null;
+  return createElement(OpenTuiInputPrimitive, {
+    ...props,
+    ref,
+    onPaste: join === true || handlePaste
+      ? (event: PasteEventLike) => {
+        if (join === true) event.bytes = new TextEncoder().encode(joinPastedLines(new TextDecoder().decode(event.bytes)));
+        handlePaste?.(event);
+      }
+      : undefined,
+  });
+});
 const OpenTuiTextarea = createOpenTuiPrimitive("textarea");
 const OpenTuiMediaSurface = createOpenTuiPrimitive("box");
 

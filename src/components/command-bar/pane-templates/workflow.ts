@@ -29,6 +29,7 @@ import {
   type SharedWorkflowDeps,
 } from "../workflow/ops";
 import type { PluginRegistry } from "../../../plugins/registry";
+import { PluginOffError, notifyPluginOff } from "../../../plugins/plugin-off";
 import { shouldOpenPaneTemplateConfig } from "./workflow-route";
 
 type CloseAllFn = (options?: { revertThemePreview?: boolean }) => void;
@@ -107,6 +108,10 @@ export function useCommandBarPaneTemplateActions({
       await pluginRegistry.createPaneFromTemplateAsync(template.id, createOptions);
       closeAll({ revertThemePreview: false });
     } catch (error) {
+      if (error instanceof PluginOffError) {
+        notifyPluginOff(pluginRegistry, error, () => { void openPaneTemplateDirect(template, createOptions); });
+        return;
+      }
       const displayLabel = getPaneTemplateDisplayLabel(template);
       notify(
         error instanceof Error ? error.message : `Could not create ${displayLabel.toLowerCase()}.`,

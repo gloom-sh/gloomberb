@@ -5,6 +5,7 @@ import {
   findDockLeaf,
 } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
+import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import {
   findTickerResearchFollower,
   listVisibleTickerSourcePanes,
@@ -110,6 +111,15 @@ export function useAppTickerInspectorRuntime({
   }, [pluginRegistry, resolveInspectorPane, state.config.layout]);
 
   const switchTickerResearchTab = useCallback((tabId: string, preferredPaneId?: string | null) => {
+    // The tab lives in a research pane, which stays hidden while its plugin is
+    // off, and the tab itself is hidden while its own plugin is.
+    const owner = pluginRegistry.getDisabledPaneOwner(TICKER_RESEARCH_PANE_ID, state.config.disabledPlugins)
+      ?? pluginRegistry.getDisabledTickerResearchTabOwner(tabId, state.config.disabledPlugins);
+    if (owner) {
+      const tabName = pluginRegistry.tickerResearchTabs.get(tabId)?.name ?? "this tab";
+      notifyPluginOff(pluginRegistry, new PluginOffError(owner, tabName), () => pluginRegistry.switchTab(tabId, preferredPaneId ?? undefined));
+      return;
+    }
     const targetPaneId = (() => {
       const target = preferredPaneId ? resolvePaneInstance(state.config.layout, preferredPaneId) : null;
       if (target?.paneId === TICKER_RESEARCH_PANE_ID) return target.instanceId;
@@ -131,7 +141,9 @@ export function useAppTickerInspectorRuntime({
     dispatch,
     ensureInspectorPane,
     persistLayout,
+    pluginRegistry,
     resolveTickerSourcePaneId,
+    state.config.disabledPlugins,
     state.config.layout,
     state.focusedPaneId,
   ]);

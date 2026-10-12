@@ -1,5 +1,5 @@
 import type { BrokerAccount } from "../../../types/trading";
-import type { AppConfig, KeybindingsConfig, LayoutConfig, LayoutOrigin, OnboardingProgress } from "../../../types/config";
+import type { AppConfig, KeybindingsConfig, LayoutConfig, LayoutOrigin, OnboardingProgress, StarPromptConfig } from "../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../types/desktop-window";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
@@ -99,6 +99,8 @@ export interface AppState {
 export type AppAction =
   | { type: "SET_CONFIG"; config: AppConfig }
   | { type: "SET_KEYBINDINGS"; keybindings: KeybindingsConfig | undefined }
+  /** Only the star prompt's own record, so a background write never touches layouts or a theme preview. */
+  | { type: "SET_STAR_PROMPT"; starPrompt: StarPromptConfig | undefined }
   | {
       type: "SET_ONBOARDING_STATE";
       complete: boolean;
@@ -137,7 +139,8 @@ export type AppAction =
   | { type: "SET_UPDATE_PROGRESS"; progress: UpdateProgress | null }
   | { type: "SET_UPDATE_CHECK_IN_PROGRESS"; checking: boolean }
   | { type: "SET_UPDATE_NOTICE"; notice: string | null }
-  | { type: "TOGGLE_PLUGIN"; pluginId: string }
+  /** Plugins switched on or off; `focusedPaneId` moves focus off a pane that just went hidden. */
+  | { type: "SET_DISABLED_PLUGINS"; disabledPlugins: string[]; focusedPaneId?: string | null }
   | { type: "SET_INPUT_CAPTURED"; captured: boolean }
   /** @deprecated Only writes the unused `AppState.exchangeRates`. Use `useFxRatesMap`. */
   | { type: "SET_EXCHANGE_RATE"; currency: string; rate: number }
@@ -172,6 +175,14 @@ export type AppAction =
   | { type: "DELETE_LAYOUT"; index: number }
   | { type: "RENAME_LAYOUT"; index: number; name: string }
   | { type: "DUPLICATE_LAYOUT"; index: number }
+  /**
+   * Moves a pane out of the active layout into a new layout of its own, named
+   * `name` (made unique), which becomes active. `sourceLayoutId` names the
+   * layout it left when that one has no id yet, so Move Back can find it.
+   */
+  | { type: "MOVE_PANE_TO_NEW_LAYOUT"; paneId: string; name: string; sourceLayoutId: string }
+  /** Returns a pane Move to New Layout moved to the layout it came from, which becomes active. */
+  | { type: "MOVE_PANE_BACK"; paneId: string }
   | { type: "FOCUS_PANE"; paneId: string }
   | { type: "FOCUS_NEXT"; paneOrder: string[] }
   | { type: "FOCUS_PREV"; paneOrder: string[] }

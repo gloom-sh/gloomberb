@@ -3,7 +3,7 @@ import { Button, PaneStatusBody, PaneFooterScope, usePaneTabs } from "../../../c
 import { usePluginPaneState } from "../../runtime";
 import { EventAlertsPane } from "./events-pane";
 import { AlertHistoryPane } from "./history-pane";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   confirmDialog,
   DataTableView,
@@ -42,6 +42,8 @@ import { useQuoteEntries } from "../../../market-data/hooks";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { alertInstrument, streamedAlertQuote, syncAlertQuoteStream } from "./live";
 import { quoteAlertFields } from "./quotes";
+import { clearPriceAlertFocus, getPriceAlertFocus, subscribePriceAlertFocus } from "./focus";
+import { alertTarget, alertViewHints, priceRuleSubject, useOpenAlertTarget } from "./targets";
 
 type AlertColumnId =
   | "status"
@@ -79,6 +81,14 @@ const ALERT_TABS = [
 
 export function AlertsPane(props: PaneProps) {
   const [tab, setTab] = usePluginPaneState<string>("tab", "prices");
+  // A missed price alert opened from the Unread list selects its rule on Prices.
+  useEffect(() => {
+    const showPrices = () => {
+      if (getPriceAlertFocus()) setTab("prices");
+    };
+    showPrices();
+    return subscribePriceAlertFocus(showPrices);
+  }, [setTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({
     tabs: ALERT_TABS,
     activeValue: tab,
@@ -123,6 +133,15 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
       quoteError: parsed.find((alert) => alert.lastCheckError)?.lastCheckError ?? null,
     };
   }, [alertsJson]);
+
+  const focusedAlertId = useSyncExternalStore(subscribePriceAlertFocus, getPriceAlertFocus, getPriceAlertFocus);
+  useEffect(() => {
+    if (!focusedAlertId) return;
+    // A rule deleted since it fired leaves the selection where it was.
+    const index = rows.findIndex((row) => row.id === focusedAlertId);
+    if (index >= 0) setSelectedIdx(index);
+    clearPriceAlertFocus();
+  }, [focusedAlertId, rows]);
 
   // The store keeps the last checked price at a coarse cadence; while a
   // symbol streams the table shows its live price instead.
@@ -181,6 +200,10 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     if (selected) void deleteAlert(selected.id);
   }, [deleteAlert, rows, selectedIdx]);
 
+  const selectedRule = rows[selectedIdx];
+  const selectedTarget = useMemo(() => selectedRule ? alertTarget(priceRuleSubject(selectedRule)) : null, [selectedRule]);
+  const openTarget = useOpenAlertTarget();
+
   const rearmSelectedAlert = useCallback(() => {
     const selected = rows[selectedIdx];
     if (selected?.status === "triggered") rearmAlert(selected.id);
@@ -227,6 +250,7 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
         : [],
     hints: [
       { id: "add", key: "a", label: "dd alert", onPress: startAddAlert },
+      ...alertViewHints(selectedTarget, openTarget),
       {
         id: "edit",
         key: "e",
@@ -249,6 +273,8 @@ function PriceAlertsPane({ focused, width, height }: PaneProps) {
     deleteSelectedAlert,
     editSelectedAlert,
     rearmSelectedAlert,
+    selectedTarget,
+    openTarget,
     rows,
     selectedIdx,
     quoteError,

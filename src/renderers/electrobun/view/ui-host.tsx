@@ -2,11 +2,8 @@
 import type { RendererHost, UiHost } from "../../../ui/host";
 import { flushUsageCounts } from "../../../telemetry/usage-counts";
 import { backendRequest } from "./backend-rpc";
-import {
-  NATIVE_CONTEXT_MENU_SUPPORTED,
-  showDesktopContextMenu,
-  startElectrobunWindowDrag,
-} from "./host/native";
+import { NATIVE_CONTEXT_MENU_SUPPORTED, showDesktopContextMenu } from "./host/native";
+import { startElectrobunWindowDrag } from "./host/window-move";
 import { createDomUiHost } from "../../dom/dom-ui-host";
 
 export function createWebUiHost(desktopPlatform?: string): UiHost {

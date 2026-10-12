@@ -5,7 +5,7 @@ import { createValuationSeriesLoader, getCachedValuationBundle, loadValuationBun
 import { BUFFETT_INDICATOR, INDICATORS, EXCESS_CAPE_YIELD, SHILLER_CAPE, TOBINS_Q } from "./indicators";
 import type { DatedObservation, DatedSeries } from "./series";
 import { buildValuationSeries } from "./align";
-import { resolveValuationSeries } from "./chart-series";
+import { loadValuationIndicator, valuationSeriesDefinitions } from "./chart-series";
 import { createCloudSourceDeps, createSourceLoader, shillerObservations, sumFredSeries } from "./sources";
 
 function obs(values: Array<[string, number]>): DatedObservation[] {
@@ -178,16 +178,16 @@ describe("market-capitalization source basis", () => {
     for (const id of ["buffett", "market-cap-profits", "market-cap-m2"]) {
       const indicator = INDICATORS.find((entry) => entry.id === id)!;
       expect(buildValuationSeries(indicator, legs).points.at(-1)!.numeratorBillions).toBe(45_500);
-      const chart = await resolveValuationSeries(id, everyLeg);
+      const chart = await loadValuationIndicator(indicator, everyLeg);
       expect(chart.points.at(-1)!.value).toBeGreaterThan(0);
     }
-    const cape = await resolveValuationSeries("shiller-cape", everyLeg);
+    const series = new Map(valuationSeriesDefinitions(everyLeg).map((definition) => [definition.id, definition]));
+    const cape = await loadValuationIndicator(INDICATORS.find((entry) => entry.id === "shiller-cape")!, everyLeg);
     expect(cape.points.at(-1)!.value).toBe(38.1);
-    const allocation = await resolveValuationSeries("household-equity-allocation", everyLeg);
+    const allocation = await loadValuationIndicator(INDICATORS.find((entry) => entry.id === "household-equity-allocation")!, everyLeg);
     expect(allocation.points.at(-1)!.value).toBe(45.8);
-    expect(allocation.unit).toBe("%");
-    expect(allocation.unitGroup).toBe("valuation-percent");
-    expect(cape.unit).toBe("x");
+    expect(series.get("market-valuation:household-equity-allocation")!.unit).toBe("%");
+    expect(series.get("market-valuation:shiller-cape")!.unit).toBe("x");
   });
 });
 
@@ -279,5 +279,5 @@ test("cloud-declared stale legs remain usable and stale after a cache restart", 
   expect(calls).toBe(2);
   expect(cached.builds[0]!.sourceStale).toBe(true);
   expect(cached.sources!.TNWMVBSNNCB!.provider).toEqual(bundle.sources!.TNWMVBSNNCB!.provider);
-  expect((await resolveValuationSeries("tobins-q", loader)).warning).toContain("source data is stale");
+  expect((await loadValuationIndicator(TOBINS_Q, loader)).warning).toContain("source data is stale");
 });

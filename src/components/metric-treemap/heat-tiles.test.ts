@@ -25,6 +25,16 @@ describe("heat tile labels", () => {
     expect(heatTileLabelPx(600, 40, "NVDA", "-2.7%").tickerPx).toBeLessThan(big.tickerPx);
   });
 
+  test("a tall tile too narrow for its ticker carries it up the tile; a flat strip too short for a line stays blank", () => {
+    const tall = heatTileLabelPx(26, 49, "GOOGL", "+1.0%");
+    expect(tall.tier).toBe("ticker");
+    expect(tall.vertical).toBe(true);
+    expect(heatTileLabelPx(49, 26, "GOOGL", "+1.0%")).toMatchObject({ tier: "ticker", vertical: false });
+    expect(heatTileLabelPx(60, 12, "T", "+1.0%").tier).toBe("none");
+    // A wide, low tile shows the move at its floor under a smaller ticker rather than drop it.
+    expect(heatTileLabelPx(120, 27, "MSFT", "+2.4%")).toMatchObject({ tier: "full", valuePx: 9 });
+  });
+
   test("a missing move leaves the ticker alone", () => {
     expect(heatTileLabelPx(240, 180, "NVDA", null).tier).toBe("ticker");
   });

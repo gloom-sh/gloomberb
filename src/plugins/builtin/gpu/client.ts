@@ -4,7 +4,7 @@ import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQu
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataProvider } from "../../../types/data-provider";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
-import { equityFiveDayReturn, GPU_EQUITIES } from "./model";
+import { equityFiveDayReturn, GPU_EQUITIES, gpuPreviewRows, type GpuPreviewRow } from "./model";
 
 export const GPU_NOT_AVAILABLE = "GPU rental prices are not available yet.";
 const cacheOptions = { source: "gloom-cloud", schemaVersion: 3, policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 } };
@@ -116,6 +116,24 @@ export const loadGpuHistory = (seriesId: string, force = false) => loadCloudReso
   () => fetchGpuHistory({ seriesId, limit: 10_000 }), { force, validate: validateHistory });
 export const loadGpuReferences = (force = false) => loadCloudResource(gpuHistoryCache, scopedKey("reference-catalog"),
   () => fetchGpuHistory({ basis: "reference", limit: 10_000 }), { force, validate: validateHistory });
+/**
+ * The free board is three rows of one GPU. The rows it leaves out for the
+ * GPUs a reader asks about come from each GPU's own free preview, the latest
+ * rows the history serves without an account. A Pro board needs none.
+ */
+export function gpuPreviewModels(board: Pick<GpuBoardPayload, "access" | "rows">, models: readonly string[]): string[] {
+  if (!board.access?.locked) return [];
+  return [...new Set(models)].filter((model) => model && !board.rows.some((row) => row.gpuModel === model));
+}
+export async function fetchGpuModelPreviews(models: readonly string[], client: Pick<GpuApi, "getCloudGpuHistory"> = apiClient): Promise<GpuPreviewRow[]> {
+  const previews = await Promise.all(models.map((gpuModel) => fetchGpuHistory({ gpuModel, limit: 10 }, client)));
+  return previews.flatMap((payload) => gpuPreviewRows(payload.points));
+}
+export const loadGpuModelPreviews = async (models: readonly string[], force = false): Promise<GpuPreviewRow[]> => {
+  const previews = await Promise.all(models.map((gpuModel) => loadCloudResource(gpuHistoryCache, scopedKey(`preview:${gpuModel}`),
+    () => fetchGpuHistory({ gpuModel, limit: 10 }), { force, validate: validateHistory })));
+  return previews.flatMap((preview) => gpuPreviewRows(preview.payload.points));
+};
 export const loadGpuEvents = (gpuModel?: string, force = false) => loadCloudResource(gpuEventsCache, scopedKey(gpuModel ?? "all"),
   () => fetchGpuEvents(gpuModel), { force, validate: validateEvents });
 

@@ -7,6 +7,7 @@ import {
 } from "./cache";
 import { TreasuryAuctionsPane } from "./pane";
 import { TREASURY_AUCTIONS_PANE_ID } from "./types";
+import { AUCTION_HISTORY_WINDOWS, auctionHistoryLabel } from "./model";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { treasuryAuctionsHeadless } from "./headless";
 
@@ -22,12 +23,7 @@ function treasuryAuctionsSettings(): PaneSettingsDef {
         label: "History window",
         description: "How far back auction results are requested.",
         type: "select",
-        options: [
-          { value: "30", label: "30 days" },
-          { value: "90", label: "90 days" },
-          { value: "120", label: "120 days" },
-          { value: "365", label: "1 year" },
-        ],
+        options: AUCTION_HISTORY_WINDOWS.map((days) => ({ value: String(days), label: auctionHistoryLabel(days) })),
       },
     ],
   };
@@ -40,7 +36,7 @@ export const treasuryAuctionsModule: PluginModule = {
       id: TREASURY_FISCAL_DATA_CONNECTION_ID,
       name: "Treasury Fiscal Data",
       kind: "api",
-      ownerId: "macro",
+      ownerId: "credit",
       priority: 300,
       detail: "fiscaldata.treasury.gov",
     });
@@ -60,8 +56,9 @@ export const treasuryAuctionsModule: PluginModule = {
       component: TreasuryAuctionsPane,
       defaultPosition: "right",
       defaultMode: "floating",
-      defaultFloatingSize: { width: 92, height: 28 },
+      defaultFloatingSize: { width: 104, height: 28 },
       tableExport: true,
+      reportFreshness: { source: "US Treasury", status: "not-a-feed", basis: "auction results" },
       settings: treasuryAuctionsSettings(),
     },
   ],
@@ -72,7 +69,7 @@ export const treasuryAuctionsModule: PluginModule = {
       paneId: TREASURY_AUCTIONS_PANE_ID,
       label: "Treasury Auctions",
       description:
-        "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: auction rate, bid-to-cover, indirect share, and size.",
+        "Bill, note, bond, and TIPS auction results from Treasury Fiscal Data: rate, stop-out versus average, bid-to-cover, indirect, direct and dealer takedown, and size. Search by benchmark (10Y) or CUSIP.",
       keywords: [
         "treasury",
         "auction",
@@ -85,6 +82,12 @@ export const treasuryAuctionsModule: PluginModule = {
         "bid",
         "cover",
         "indirect",
+        "takedown",
+        "tail",
+        "stop-out",
+        "stop out",
+        "cusip",
+        "reopening",
         "issuance",
       ],
       shortcut: { prefix: "AUCT" },

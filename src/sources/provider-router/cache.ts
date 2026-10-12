@@ -15,12 +15,13 @@ export const FINANCIALS_SCHEMA_VERSION = 13;
 export const QUOTE_SCHEMA_VERSION = 3;
 export const MARKET_METADATA_SCHEMA_VERSION = 2;
 // Refresh persisted provider metadata through the managed backend on upgrade.
+// corporateActions-v3: earnings rows resolved against the earnings history.
 const SCHEMA_VERSIONS: Record<string, number> = {
   financials: FINANCIALS_SCHEMA_VERSION,
   quote: QUOTE_SCHEMA_VERSION,
   holders: MARKET_METADATA_SCHEMA_VERSION,
   "analystResearch-v2": MARKET_METADATA_SCHEMA_VERSION,
-  "corporateActions-v2": MARKET_METADATA_SCHEMA_VERSION,
+  "corporateActions-v3": MARKET_METADATA_SCHEMA_VERSION,
   "options-chain": MARKET_METADATA_SCHEMA_VERSION,
   "exchange-rate": MARKET_METADATA_SCHEMA_VERSION,
 };
@@ -34,7 +35,8 @@ const DEFAULT_CACHE_POLICIES = {
   news: { staleMs: 15 * 60_000, expireMs: 2 * 24 * 60 * 60_000 },
   holders: { staleMs: 24 * 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
   analystResearch: { staleMs: 24 * 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
-  corporateActions: { staleMs: 24 * 60 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
+  // Earnings rows carry report-day actuals and date changes; portfolios load these for every holding.
+  corporateActions: { staleMs: 6 * 60 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
   secFilings: { staleMs: 15 * 60_000, expireMs: 2 * 24 * 60 * 60_000 },
   secFilingDocuments: { staleMs: 30 * 24 * 60 * 60_000, expireMs: 365 * 24 * 60 * 60_000 },
   secFilingContent: { staleMs: 30 * 24 * 60 * 60_000, expireMs: 365 * 24 * 60 * 60_000 },

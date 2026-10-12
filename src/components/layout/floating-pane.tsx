@@ -1,6 +1,7 @@
-import { Box, Text, useUiCapabilities } from "../../ui";
-import type { ReactNode } from "react";
+import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../ui";
+import type { ReactNode, RefObject } from "react";
 import { colors, floatingPaneBg } from "../../theme/colors";
+import { useThemeColors } from "../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./pane/frame";
 import { PaneHeader, type PaneHeaderQuickSetting } from "./pane/header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./pane/header-tabs";
@@ -30,6 +31,9 @@ interface FloatingPaneWrapperProps {
   onHeaderMouseDragEnd?: (event: any) => void;
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
+  onHelpMouseDown?: (event: any) => void;
+  /** Ask Gloom about the pane, from the button beside the `?`. */
+  onAskMouseDown?: (event: any) => void;
   onCloseMouseDown?: (event: any) => void;
   onRestoreMouseDown?: (event: any) => void;
   fullscreen?: boolean;
@@ -37,6 +41,8 @@ interface FloatingPaneWrapperProps {
   onResizeMouseDrag?: (event: any) => void;
   onResizeMouseDragEnd?: (event: any) => void;
   footer?: CombinedPaneFooter | null;
+  /** The pane's frame, which a desktop resize sizes outside React; its header, body and footer stretch with it. */
+  frameRef?: RefObject<BoxRenderable | null>;
   children: ReactNode;
 }
 
@@ -81,6 +87,8 @@ export function FloatingPaneWrapper({
   onHeaderMouseDragEnd,
   onHeaderContextMenu,
   onActionMouseDown,
+  onHelpMouseDown,
+  onAskMouseDown,
   onCloseMouseDown,
   onRestoreMouseDown,
   fullscreen = false,
@@ -88,11 +96,13 @@ export function FloatingPaneWrapper({
   onResizeMouseDrag,
   onResizeMouseDragEnd,
   footer,
+  frameRef,
   children,
 }: FloatingPaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(nativePaneChrome === true);
-  const bg = floatingPaneBg(focused);
+  const palette = useThemeColors();
+  const bg = floatingPaneBg(focused, palette);
   const showFooter = hasPaneFooterContent(footer);
   const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
   const renderFooter = reserveFooter || showFooter;
@@ -100,6 +110,7 @@ export function FloatingPaneWrapper({
 
   return (
     <Box
+      ref={frameRef}
       position="absolute"
       top={y}
       left={x}
@@ -140,6 +151,8 @@ export function FloatingPaneWrapper({
         onHeaderMouseDragEnd={onHeaderMouseDragEnd}
         onHeaderContextMenu={onHeaderContextMenu}
         onActionMouseDown={onActionMouseDown}
+        onHelpMouseDown={onHelpMouseDown}
+        onAskMouseDown={onAskMouseDown}
         onCloseMouseDown={onCloseMouseDown}
         onRestoreMouseDown={onRestoreMouseDown}
         fullscreen={fullscreen}

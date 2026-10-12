@@ -1,6 +1,7 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { TestShellPaneKeys } from "../../../test-support/shell-pane-keys";
+import { ONE_SHOT_COOLDOWN_MS } from "../../../utils/one-shot";
 import {
   createChatTestHarness,
   createController,
@@ -52,6 +53,13 @@ async function focusComposer(draft = "") {
   await flushFrame();
 }
 
+/** The Esc stream of a held key is over: a pane that was just closed no longer swallows the next pair. */
+function releaseEsc() {
+  setSystemTime(new Date(Date.now() + ONE_SHOT_COOLDOWN_MS + 1));
+}
+
+afterEach(() => setSystemTime());
+
 describe("double Esc in the chat", () => {
   test("closes an idle chat, after the Esc that clears a selection", async () => {
     const closes = await mountChatPane();
@@ -60,6 +68,7 @@ describe("double Esc in the chat", () => {
     await emitKeypress(ESC);
     expect(closes.count).toBe(1);
 
+    releaseEsc();
     await emitKeypress({ name: "up", sequence: "\u001b[A" });
     const clearSelection = await emitKeypress(ESC);
     expect(clearSelection.propagationStopped).toBe(true);

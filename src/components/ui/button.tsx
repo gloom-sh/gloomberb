@@ -4,6 +4,7 @@ import { type ComponentType, type ReactNode } from "react";
 import type { ThemeColors } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { t } from "../../i18n";
+import { displayWidth } from "../../utils/format";
 import { useRemoteUiNode, useRemoteUiScope } from "../../remote/semantic-tree";
 import { useScopedButtonAction } from "./action-scope";
 
@@ -29,6 +30,11 @@ export interface ButtonProps {
   disabled?: boolean;
   active?: boolean;
   shortcut?: string;
+  /**
+   * The key that presses it, as a keycap on the desktop and the web only: for
+   * a dialog button whose key the terminal names in the footer line instead.
+   */
+  desktopShortcut?: string;
   /** Tooltip, when it should say more than the label. */
   title?: string;
   width?: number;
@@ -69,6 +75,15 @@ function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: 
   }
 }
 
+/**
+ * Terminal cells a button takes: the padded label, then its key. For a row that
+ * has to know whether its buttons fit before it lays them out.
+ */
+export function terminalButtonColumns({ label, displayLabel, shortcut, compact = false }: Pick<ButtonProps, "label" | "displayLabel" | "shortcut" | "compact">): number {
+  const text = displayLabel ?? t(label);
+  return displayWidth(compact ? text : ` ${text} `) + (shortcut ? 1 + displayWidth(shortcut) : 0);
+}
+
 export function Button({
   label: rawLabel,
   displayLabel,
@@ -80,6 +95,7 @@ export function Button({
   disabled = false,
   active = false,
   shortcut,
+  desktopShortcut,
   width,
   height,
   compact = false,
@@ -115,7 +131,7 @@ export function Button({
         tone={tone}
         disabled={disabled}
         active={active}
-        shortcut={shortcut}
+        shortcut={shortcut ?? desktopShortcut}
         title={title}
         width={width}
         height={height}

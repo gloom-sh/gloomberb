@@ -7,6 +7,11 @@ import type {
   RemoteSideEffectLevel,
   RemoteWriteTier,
 } from "./types";
+import {
+  PANE_SCREENSHOT_MAX_BYTES,
+  PANE_SCREENSHOT_MAX_EDGE,
+  PANE_SCREENSHOT_MIN_WIDTH,
+} from "./pane-screenshot";
 
 export const REMOTE_RESOURCES: RemoteResourceSchema[] = [
   { uri: "app://snapshot", description: "Current app snapshot including layout, focus, panes, command bar, and plugin/capability catalogs. app.activePanel is deprecated and always \"left\"; read app.focusedPaneId." },
@@ -49,6 +54,21 @@ function objectSchema(
 }
 
 const paneIdInput = objectSchema({ paneId: requiredStringSchema }, ["paneId"]);
+const watchlistChangeInput = objectSchema({
+  symbol: { type: "string", minLength: 1, maxLength: 32, description: "Ticker symbol, such as MSFT." },
+  exchange: {
+    type: "string",
+    minLength: 1,
+    maxLength: 16,
+    description: "Listing exchange, for a symbol that trades in several places, such as NASDAQ or LSE.",
+  },
+  watchlist: {
+    type: "string",
+    minLength: 1,
+    maxLength: 120,
+    description: "Watchlist id or name from app://config. Without it, the default watchlist: the first personal one.",
+  },
+}, ["symbol"]);
 
 export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op(
@@ -113,9 +133,31 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   op("pane.show", "Show or focus a pane type.", "{ paneId: string }", "local-write", paneIdInput),
   op("pane.focus", "Focus a pane instance or pane type.", "{ paneId: string }", "local-write", paneIdInput),
   op("pane.close", "Close a pane instance or pane type.", "{ paneId: string }", "local-write", paneIdInput),
+  {
+    ...op(
+      "pane.screenshot",
+      "Capture one pane as a PNG, as it looks on screen now: the focused pane, or paneId (an instance id or pane type from app://panes). "
+        + "It only reads what is already on the person's own screen. Desktop app only: the terminal (TUI) app draws text, not pixels. "
+        + `The image is twice the pane's on-screen size by default, at most ${PANE_SCREENSHOT_MAX_EDGE} px on its longer side and ${PANE_SCREENSHOT_MAX_BYTES / 1024} KB; `
+        + `width asks for another width (${PANE_SCREENSHOT_MIN_WIDTH} to ${PANE_SCREENSHOT_MAX_EDGE} px). `
+        + "A pane in its own window, behind another tab or in another layout is not drawn here and cannot be captured.",
+      "{ paneId?: string, width?: number }",
+      "none",
+      objectSchema({
+        paneId: { type: "string", minLength: 1, description: "Pane instance id or pane type. Defaults to the focused pane." },
+        width: {
+          type: "integer",
+          minimum: PANE_SCREENSHOT_MIN_WIDTH,
+          maximum: PANE_SCREENSHOT_MAX_EDGE,
+          description: "Image width in pixels; the height keeps the pane's proportions.",
+        },
+      }),
+    ),
+    returnsImage: true,
+  },
   op(
     "pane.createFromTemplate",
-    "Create a pane from a registered template.",
+    "Open a pane from a registered template. It only opens the pane: it adds nothing to a portfolio or watchlist.",
     "{ templateId: string, options?: object }",
     "local-write",
     objectSchema({ templateId: requiredStringSchema, options: openObjectSchema }, ["templateId"]),
@@ -151,7 +193,7 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "ticker.navigate",
-    "Navigate a ticker into the best available ticker research target.",
+    "Show any ticker in the ticker research pane the user is on, or the best available one, as in \"switch to MSFT\".",
     "{ symbol: string, sourcePaneId?: string }",
     "local-write",
     objectSchema({ symbol: requiredStringSchema, sourcePaneId: stringSchema }, ["symbol"]),
@@ -170,7 +212,8 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
   ),
   op(
     "ticker.select",
-    "Select a ticker in a target pane.",
+    "Move the cursor of a portfolio or watchlist pane to a ticker on its list, so the panes that follow the list show it. "
+      + "To show any ticker in a ticker pane, use ticker.navigate.",
     "{ symbol: string, paneId?: string }",
     "local-write",
     objectSchema({ symbol: requiredStringSchema, paneId: stringSchema }, ["symbol"]),
@@ -181,6 +224,24 @@ export const REMOTE_OPERATIONS: RemoteOperationSchema[] = [
     "{ tabId: string, paneId?: string }",
     "local-write",
     objectSchema({ tabId: requiredStringSchema, paneId: stringSchema }, ["tabId"]),
+  ),
+  op(
+    "watchlist.add",
+    "Add a ticker to one of the person's own watchlists. The app asks them first, naming the list, ticker and exchange. "
+      + "The result says what changed: added, already on the list, or declined. Team watchlists and portfolios are refused.",
+    "{ symbol: string, exchange?: string, watchlist?: string }",
+    "local-write",
+    watchlistChangeInput,
+    "user-data",
+  ),
+  op(
+    "watchlist.remove",
+    "Remove a ticker from one of the person's own watchlists. The app asks them first, naming the list, ticker and exchange. "
+      + "The result says what changed: removed, not on the list, or declined. Team watchlists and portfolios are refused.",
+    "{ symbol: string, exchange?: string, watchlist?: string }",
+    "local-write",
+    watchlistChangeInput,
+    "user-data",
   ),
   op(
     "layout.switch",
@@ -386,6 +447,8 @@ export const REMOTE_AGENT_HELP = {
     "While a dialog is open (form.open or form.otherDialogOpen), app.openCommandBar and app.search fail; close a form or confirm with { role: 'form', action: 'cancel' }, and any dialog on top with app.closeDialog.",
     "A form with covered: true has another dialog over it, such as a listing picker or a sign-in; its controls wait until that one is answered or closed with app.closeDialog.",
     "Pane settings open in their own dialog, not as command-bar rows; change one with pane.setSetting, read them from app://pane-settings/{paneId}, and close the dialog with app.closeDialog.",
+    "watchlist.add and watchlist.remove wait while the person answers a confirmation in the app and return what changed; with dryRun they return what would change without asking.",
+    "pane.screenshot returns the pane's PNG as base64 in image.data, with its pixel size; the terminal (TUI) app answers that it needs the desktop app.",
     "Use ui.invokeMatching only after checking app-level operations; it is intentionally generic and depends on visible semantic controls.",
   ],
 };

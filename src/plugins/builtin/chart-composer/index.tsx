@@ -13,6 +13,8 @@ import type { ChartSpec } from "../../../time-series/types";
 import { isPriceOnlyMarketFieldId } from "../../../time-series/field-catalog";
 import { ChartComposerPane, ChartComposerResearchTab } from "./pane";
 import { DataCatalogPane } from "./data-catalog-pane";
+import { listFieldSeries } from "./field-series";
+import { registeredSeriesName } from "./series-expression";
 import {
   CHART_COMPOSER_TEMPLATE_ID,
   DATA_CATALOG_PANE_ID,
@@ -104,7 +106,7 @@ function chartTitle(spec: ChartSpec, prefix = "G"): string {
       ? tickerInstrumentLabel(publicTickerKey(series.source.instrument.symbol, series.source.instrument.exchange), series.source.instrument.instrument)
       : series.source.kind === "economic"
         ? `FRED:${series.source.seriesId}`
-        : series.label?.trim() || series.source.seriesId
+        : series.label?.trim() || registeredSeriesName(series.source) || series.source.seriesId
   ));
   if (labels.length === 0) return "Custom Chart";
   const remaining = spec.series.length - labels.length;
@@ -199,10 +201,13 @@ function securityTemplate({
   argKind,
   minimumSymbols,
   build,
+  keywords = [],
 }: {
   id: Parameters<typeof chartHeadless>[0];
   prefix: "GP" | "GIP" | "CMP" | "GF" | "GE";
   aliases?: readonly string[];
+  /** Searches beyond the label that should find it. */
+  keywords?: readonly string[];
   label: string;
   description: string;
   /** What the report returns, when the description is about drawing the chart. */
@@ -217,7 +222,7 @@ function securityTemplate({
     headless: { ...chartHeadless(id), ...(returns ? { description: returns } : {}) },
     label,
     description,
-    keywords: ["chart", "graph", prefix.toLowerCase(), ...label.toLowerCase().split(" ")],
+    keywords: ["chart", "graph", prefix.toLowerCase(), ...label.toLowerCase().split(" "), ...keywords],
     shortcut: {
       prefix,
       ...(aliases ? { aliases } : {}),
@@ -319,7 +324,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     id: DATA_CATALOG_TEMPLATE_ID,
     paneId: DATA_CATALOG_PANE_ID,
     label: "Data Catalog",
-    description: "Browse and search the series Custom Chart already knows: securities, options, crypto, FRED, treasuries, and futures.",
+    description: "Browse and search every series a chart can draw: securities, rates, credit, economic data, volatility, sentiment, positioning and your own files.",
     keywords: [
       "catalog",
       "series",
@@ -331,6 +336,9 @@ const chartComposerTemplates: PaneTemplateDef[] = [
       "crypto",
       "options",
       "option",
+      "credit",
+      "sentiment",
+      "positioning",
     ],
     shortcut: { prefix: "CAT", argPlaceholder: "query", argKind: "text", argOptional: true },
     canCreate: () => true,
@@ -369,6 +377,8 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     label: "Intraday Price Graph",
     description: "Open an intraday price chart for one or five sessions.",
     returns: "Intraday price bars for one ticker over the last one or five sessions. Returns the data; it does not open or show a chart.",
+    // The finest bars there are; tick and second searches land here and on QR.
+    keywords: ["1 minute", "minute bars", "1m", "tick", "ticks", "second", "seconds", "trades"],
     argKind: "ticker",
     minimumSymbols: 1,
     build: (symbols) => buildIntradayPriceChartPreset(symbols[0]!),
@@ -424,6 +434,8 @@ function chartShowsOneSecurity(pane: PaneInstanceConfig): boolean {
 }
 
 export const chartComposerModule: PluginModule = {
+  // Every ticker field, asking for the ticker when charted.
+  series: listFieldSeries(),
   panes: [{
     id: CHART_COMPOSER_PANE_ID,
     name: "Chart",

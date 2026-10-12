@@ -2,8 +2,8 @@ import type { OptionContract, OptionsChain } from "../../../types/financials";
 import {
   daysToExpiryFrom, detectButterflyArbitrage, detectCalendarArbitrage, evaluateSmile, expectedMove,
   extractImpliedForward, fitVolatilitySmile, FIXED_VOLATILITY_TENORS,
-  interpolateTotalVariance, logForwardMoneyness, optionDelta, optionMid,
-  smileSkew, solveImpliedVolatility, valueOption, volatilityTermSlope,
+  interpolateTotalVariance, logForwardMoneyness, NO_PARITY_PAIRS, optionDelta, optionMid,
+  solveImpliedVolatility, valueOption, volatilityTermSlope,
   type ExpectedMove, type ImpliedForward, type OptionSide, type SkewMetrics, type SmileFit,
 } from "../shared/volatility";
 import type { YieldPoint } from "../yield-curve/treasury-data";
@@ -57,7 +57,8 @@ export interface SurfacePoint {
   price: number;
   spread: number;
   spreadRatio: number;
-  openInterest: number;
+  /** Null when the feed does not know it. */
+  openInterest: number | null;
   providerIV: number | null;
   volatility: number;
   fitResidual: number | null;
@@ -190,11 +191,40 @@ export interface CleanSurfaceQuotes {
   filterCounts: SurfaceFilterCounts;
 }
 
-/** Cleaning applies equally to provider IV and recomputed IV. Last trades never replace quotes. */
+/** The reasons a listed quote is left out of the smile, as a warning names them. */
+const CLEANING_FILTER_LABELS: Partial<Record<SurfaceFilterReason, string>> = {
+  "zero-bid": "zero bid or ask", "wide-spread": "wide spread", "no-interest": "zero open interest",
+  crossed: "crossed", "stale-duplicate": "stale duplicate", "invalid-contract": "invalid contract",
+};
+
+/** Every expiry's filter counts added together. */
+export function totalSurfaceFilterCounts(expiries: readonly Pick<SurfaceExpiry, "filterCounts">[]): SurfaceFilterCounts {
+  const total = emptyCounts();
+  for (const expiry of expiries) {
+    for (const reason of Object.keys(total) as SurfaceFilterReason[]) total[reason] += expiry.filterCounts[reason] ?? 0;
+  }
+  return total;
+}
+
+/** The cleaning filters that removed quotes, largest first: `187 zero open interest, 74 zero bid or ask`. */
+export function surfaceFilterSummary(counts: SurfaceFilterCounts): string | null {
+  const removed = (Object.keys(CLEANING_FILTER_LABELS) as SurfaceFilterReason[]).filter((reason) => counts[reason] > 0)
+    .sort((a, b) => counts[b] - counts[a]);
+  return removed.length ? removed.map((reason) => `${counts[reason]} ${CLEANING_FILTER_LABELS[reason]}`).join(", ") : null;
+}
+
+/**
+ * Cleaning applies equally to provider IV and recomputed IV. Last trades never replace quotes.
+ * Open interest cleans a side of an expiry only where the feed reports it: a
+ * known zero beside reported counts is a strike nobody holds, while a side
+ * with no counts at all (unknown, or zero throughout, as a feed that lost them
+ * or a new listing reports) keeps every two-sided quote.
+ */
 export function cleanSurfaceQuotes(chain: OptionsChain, expiration: number, settings: SurfaceSettings, now: number): CleanSurfaceQuotes {
   const filterCounts = emptyCounts();
   const clean = (contracts: readonly OptionContract[]) => {
     const freshest = new Map<number, number>();
+    const reportsInterest = contracts.some((contract) => contract.expiration === expiration && positive(contract.openInterest));
     for (const contract of contracts) {
       if (contract.expiration === expiration && positive(contract.strike) && positive(contract.lastTradeDate)) {
         freshest.set(contract.strike, Math.max(freshest.get(contract.strike) ?? 0, contract.lastTradeDate));
@@ -208,7 +238,7 @@ export function cleanSurfaceQuotes(chain: OptionsChain, expiration: number, sett
       else if (!positive(contract.bid) || !positive(contract.ask)) reason = "zero-bid";
       else if (contract.ask < contract.bid) reason = "crossed";
       else if ((contract.ask - contract.bid) / optionMid(contract)! > settings.maxRelativeSpread + 1e-12) reason = "wide-spread";
-      else if (!positive(contract.openInterest)) reason = "no-interest";
+      else if (reportsInterest && contract.openInterest === 0) reason = "no-interest";
       else if ((freshest.get(contract.strike) ?? 0) > (contract.lastTradeDate || 0)
         && (!positive(contract.lastTradeDate) || weekdaysBetween(contract.lastTradeDate, now) > settings.maxStaleSessions)) reason = "stale-duplicate";
       if (reason) { filterCounts[reason] += 1; continue; }
@@ -319,7 +349,10 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
   result.parity = extractImpliedForward(cleaned.calls, cleaned.puts, spot, result.years, rate.rate, chain.underlyingSymbol);
   result.forward = result.parity.forward;
   result.dividendYield = result.parity.dividendYield;
-  result.warnings.push(...result.parity.warnings);
+  // Without a pair the parity reason alone hides which cleaning filter emptied the expiry.
+  const removed = result.parity.method === "unavailable" ? surfaceFilterSummary(result.filterCounts) : null;
+  result.warnings.push(...result.parity.warnings.map((warning) =>
+    removed && warning === NO_PARITY_PAIRS ? `No paired two-sided quotes after cleaning: ${removed}` : warning));
   if (result.forward === null || result.dividendYield === null) return result;
   const forward = result.forward;
   for (const [side, contracts] of [["put", cleaned.puts], ["call", cleaned.calls]] as const) {
@@ -337,7 +370,7 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
       result.points.push({ contract, side, strike: contract.strike, moneyness: contract.strike / spot,
         logMoneyness: logForwardMoneyness(contract.strike, forward)!, mid, price,
         spread: contract.ask - contract.bid, spreadRatio: (contract.ask - contract.bid) / mid,
-        openInterest: contract.openInterest!, providerIV, volatility: solved, fitResidual: null });
+        openInterest: Number.isFinite(contract.openInterest) ? contract.openInterest! : null, providerIV, volatility: solved, fitResidual: null });
     }
   }
   result.points.sort((a, b) => a.strike - b.strike);
@@ -354,16 +387,7 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
   const smile = (strike: number) => evaluateSurfaceSmile(result, strike);
   for (const point of result.points) point.fitResidual = point.volatility - (smile(point.strike) ?? point.volatility);
   result.atmIV = smile(spot);
-  const skew = smileSkew({ spot, years: result.years, rate: rate.rate, dividendYield: result.dividendYield },
-    (strike) => evaluateSmile(fit, logForwardMoneyness(strike, forward)!));
-  const putCovered = deltaStrike(result, spot, -0.25) != null;
-  const callCovered = deltaStrike(result, spot, 0.25) != null;
-  const moneynessCovered = smile(spot * 0.9) != null && smile(spot * 1.1) != null;
-  result.skew = { ...skew, atm: result.atmIV, put25: putCovered ? skew.put25 : null, call25: callCovered ? skew.call25 : null,
-    putCallSkew: putCovered && callCovered ? skew.putCallSkew : null,
-    riskReversal: putCovered && callCovered ? skew.riskReversal : null,
-    butterfly: putCovered && callCovered && result.atmIV != null ? skew.butterfly : null,
-    moneynessSkew: moneynessCovered ? skew.moneynessSkew : null };
+  result.skew = surfaceExpirySkew(result, spot);
   result.expectedMove = expectedMove(cleaned.calls, cleaned.puts, spot, result.years, result.atmIV);
   const calls = result.points.map((point) => ({ strike: point.strike, callPrice: valueOption({
     side: "call", spot: forward, strike: point.strike,
@@ -374,6 +398,27 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
   if (fit.fallbackReason) result.warnings.push(fit.fallbackReason);
   result.state = "ready";
   return result;
+}
+
+/**
+ * A fitted expiry's skew in decimal IV: RR is the 25-delta call minus put, BF
+ * their average minus ATM, 90/110 the IV at 90% of spot minus 110%. The
+ * 25-delta strikes are found on the fit inside the quoted strikes, as the
+ * Table's delta columns find them, so a fit that cannot price a far wing it
+ * was never quoted at does not blank a quoted expiry's skew.
+ */
+export function surfaceExpirySkew(expiry: SurfaceExpiry, spot: number): SkewMetrics {
+  const smile = (strike: number) => evaluateSurfaceSmile(expiry, strike);
+  const at = (delta: number) => {
+    const strike = deltaStrike(expiry, spot, delta);
+    return strike == null ? null : smile(strike);
+  };
+  const put25 = at(-0.25), call25 = at(0.25), atm = expiry.atmIV;
+  const low = smile(spot * 0.9), high = smile(spot * 1.1);
+  const both = put25 != null && call25 != null;
+  return { atm, put25, call25, putCallSkew: both ? put25 - call25 : null, riskReversal: both ? call25 - put25 : null,
+    butterfly: both && atm != null ? (put25 + call25) / 2 - atm : null,
+    moneynessSkew: low != null && high != null ? low - high : null };
 }
 
 export function surfaceCalendarWarnings(expiries: readonly SurfaceExpiry[]): string[] {

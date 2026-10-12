@@ -1,34 +1,35 @@
 import type { ChartSurfaceProps } from "../../../ui";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import { compositeAxisTicks, formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
-import type { CompositeColumnLayout } from "./column-layout";
 import { projectCompositeValue, unprojectCompositeValue } from "./scene";
 import type { CompositeAxisDomain, CompositeChartScene, CompositePanelScene } from "./types";
 
+/**
+ * The crosshair, and a marker where it crosses each line: hollow where the
+ * line has no observation at the cursor's time and carries its last one.
+ * Columns are read off their own bars.
+ */
 export function resolvePanelCrosshair(
   panel: CompositePanelScene,
-  columnLayout: CompositeColumnLayout,
   bitmap: NativeChartBitmap | null,
-  cursorXRatio: number | null,
+  scene: Pick<CompositeChartScene, "cursorXRatio" | "cursorValues">,
   cursorYRatio: number | null,
   color: string,
 ): ChartSurfaceProps["crosshair"] {
+  const cursorXRatio = scene.cursorXRatio;
   if (!bitmap || cursorXRatio === null) return null;
+  const values = new Map(scene.cursorValues.map((entry) => [entry.seriesId, entry] as const));
   const markers = panel.series.flatMap((series) => {
-    // Column cohorts are drawn at their group center, not each observation's
-    // own timestamp, so match the position the bar actually occupies.
-    const cursorPoint = series.points.find((point) => {
-      const xRatio = series.source.style === "columns"
-        ? columnLayout.groupByPoint.get(point)?.xRatio ?? point.xRatio
-        : point.xRatio;
-      return Math.abs(xRatio - cursorXRatio) < 1e-9;
-    });
-    return cursorPoint
-      ? [{
-        pixelY: cursorPoint.yRatio * Math.max(bitmap.height - 1, 0),
-        color: series.source.color,
-      }]
-      : [];
+    const cursor = values.get(series.source.id);
+    const domain = panel.axes[series.source.axis];
+    if (!cursor || cursor.value === null || !domain || series.source.style === "columns" || series.source.profile) return [];
+    const yRatio = projectCompositeValue(cursor.value, domain);
+    if (yRatio === null || yRatio < 0 || yRatio > 1) return [];
+    return [{
+      pixelY: yRatio * Math.max(bitmap.height - 1, 0),
+      color: series.source.color,
+      ...(cursor.carried ? { hollow: true } : {}),
+    }];
   });
   return {
     pixelX: cursorXRatio * Math.max(bitmap.width - 1, 0),

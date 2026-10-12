@@ -3,6 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import type { CompositeChartXAxis } from "../../../components/chart/composite/types";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { freePreviewNote } from "../shared/free-preview";
 
 export type CompanyRow = KpiObservation | KpiGuidance;
 export const isGuidance = (row: CompanyRow): row is KpiGuidance => "issuedDate" in row;
@@ -29,7 +30,7 @@ export const rangeText = (row: KpiGuidance, withUnit = true) => row.status === "
   : row.low !== null ? `${row.hedge === "greater_than" ? ">" : "≥"} ${valueText(row, row.low, withUnit)}`
   : row.high !== null ? `${row.hedge === "less_than" ? "<" : "≤"} ${valueText(row, row.high, withUnit)}` : row.rangeText;
 /** The unit a value cell carries after its number; percent, bp and x are already in the number. */
-export function unitSuffix(row: Pick<CompanyRow, "unit" | "currency" | "dimensions">): string {
+function unitSuffix(row: Pick<CompanyRow, "unit" | "currency" | "dimensions">): string {
   if (row.unit === "currency") return row.currency ? ` ${row.currency}` : "";
   if (row.unit === "currency_per_share") return ` ${row.currency ?? ""}/sh`.replace(" /", " ");
   if (row.unit === "currency_per_unit" || row.unit === "volume") return ` ${unitLabel(row)}`;
@@ -68,7 +69,7 @@ export function observationChange(row: KpiObservation, observations: KpiObservat
   return { value: (row.value - prior.value) / Math.abs(prior.value) * 100, unit: "%" };
 }
 export const changeText = (change: { value: number | null; unit: string }) => change.value === null ? "--" : `${change.value > 0 ? "+" : ""}${formatNumber(change.value, 2)}${change.unit}`;
-export const fiscalLabel = (row: CompanyRow) => row.period.fiscalYear === null ? row.period.label
+export const fiscalLabel = (row: Pick<CompanyRow, "period">) => row.period.fiscalYear === null ? row.period.label
   : row.period.kind === "year" ? `FY${row.period.fiscalYear}`
   : row.period.fiscalQuarter !== null ? `Q${row.period.fiscalQuarter} FY${row.period.fiscalYear}${row.period.kind === "ytd" ? " YTD" : ""}` : row.period.label;
 export const periodOrder = (row: CompanyRow) => row.period.fiscalYear !== null
@@ -104,6 +105,19 @@ export function guidanceSeries(rows: KpiGuidance[], selected: KpiGuidance | unde
   if (actual && series.length) series.push(staticSeries(timeline.map((row) => scalarPoint(new Date(row.issuedDate), actual.value)), { id: "actual", label: "Later actual", color: colors.actual, calendarSpaced: true }));
   return series;
 }
+/** Columns that say nothing while every row is the company's consolidated, as-reported figure. */
+export const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
+/** The text of a table cell as the pane draws it; the report prints the same words. */
+export function companyCellText(row: CompanyRow, column: string, observations: KpiObservation[]): string {
+  const guide = isGuidance(row) ? row : null;
+  if (column === "change") return guide ? directionLabel(guide.direction) : changeText(observationChange(row as KpiObservation, observations));
+  return column === "metric" ? row.metric.name : column === "period" ? fiscalLabel(row) : column === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
+    : column === "unit" ? unitLabel(row)
+    : column === "basis" ? basisLabel(row.basis) : column === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
+    : column === "issued" ? guide?.issuedDate ?? "--" : column === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : "--"
+    : column === "outcome" ? guide ? outcomeLabel(guide) : "--" : column === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
+    : column === "confidence" ? `${Math.round(row.confidence * 100)}%` : column === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
+}
 export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false): DataTableColumn[] {
   const columns: DataTableColumn[] = [
     { id: "metric", label: "Metric", width: 27, flexGrow: 1, align: "left" },
@@ -121,4 +135,12 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
   const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "basis", "scope", "issued", "change"]
     : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;
   return order ? columns.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : columns;
+}
+
+/** The lock line of a free preview, in the same words in the pane and `fn KPIS` / `fn GUIDE`. */
+export function companyPreviewNote(data: Pick<KpisPayload, "lockedRows" | "totalRows" | "coverage">, guidance: boolean): string {
+  const count = (value: number) => value.toLocaleString("en-US");
+  const rows = `${count(data.totalRows)} ${guidance ? "guidance figures" : "KPI values"}`;
+  return freePreviewNote({ shows: data.lockedRows > 0 ? `${count(Math.max(0, data.totalRows - data.lockedRows))} of ${rows}` : rows,
+    adds: data.lockedRows > 0 ? `the other ${count(data.lockedRows)}` : null, historyFrom: data.coverage.firstPeriod });
 }

@@ -103,32 +103,3 @@ export function snippetMatchTerms(snippet: string): string[] {
 export function truncateSegments(segments: SnippetSegment[], width: number): SnippetSegment[] {
   return truncateTextSegments(segments, width, (ellipsis) => ({ text: ellipsis, marked: false }));
 }
-
-/** Splits plain text on the matched terms so a full chunk can show the same highlights. */
-export function highlightTerms(text: string, terms: readonly string[]): SnippetSegment[] {
-  const usable = terms.filter((term) => term.length > 0);
-  if (usable.length === 0) return [{ text, marked: false }];
-
-  const pattern = new RegExp(
-    `(${usable.map(escapeRegExp).sort((a, b) => b.length - a.length).join("|")})`,
-    "gi",
-  );
-  const segments: SnippetSegment[] = [];
-  let cursor = 0;
-  for (let match = pattern.exec(text); match; match = pattern.exec(text)) {
-    // A zero-width match would loop forever on the same index.
-    if (match[0].length === 0) {
-      pattern.lastIndex += 1;
-      continue;
-    }
-    pushSegment(segments, text.slice(cursor, match.index), false);
-    pushSegment(segments, match[0], true);
-    cursor = match.index + match[0].length;
-  }
-  pushSegment(segments, text.slice(cursor), false);
-  return segments.filter((segment) => segment.text.length > 0);
-}
-
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}

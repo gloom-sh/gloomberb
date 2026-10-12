@@ -2,7 +2,7 @@
 
 [Research data conventions](research-data.md) · [User guide](usage.md)
 
-`CDX` shows the on-the-run 5Y CDX IG, CDX HY, CDX EM, iTraxx Main and iTraxx Crossover. `SOVR` (also `WCDS`) shows sovereign 5Y CDS ranked by the month's move, beside the local currency's month against the dollar. Both are daily levels built from the trades DTCC publicly disseminates: the CFTC credit files for indexes and the SEC credit files for sovereigns. Intraday files update the current day as they land, so today's level is partial until the day's file closes it. History starts with the oldest daily file DTCC still serves (about two years).
+`CDX`, `SOVR` and `WCDS` open one CDS Boards pane. `CDX` opens Index, the on-the-run 5Y CDX IG, CDX HY, CDX EM, iTraxx Main and iTraxx Crossover. `SOVR` and `WCDS` open Sovereign, sovereign 5Y CDS ranked by the month's move, beside the local currency's month against the dollar. Both are daily levels built from the trades DTCC publicly disseminates: the CFTC credit files for indexes and the SEC credit files for sovereigns. Intraday files update the current day as they land, so today's level is partial until the day's file closes it. History starts with the oldest daily file DTCC still serves (about two years).
 
 ## Which prints count
 
@@ -11,6 +11,8 @@ A new trade counts only as an execution. Swaption exercises (which print at the 
 ## Quotes and units
 
 CDX IG, iTraxx Main and Crossover trade on spread and show in basis points. CDX HY and CDX EM trade on price and show as the price, as quoted. Moves and ranges stay in the same unit: basis points for the spread indexes, points of price for HY and EM. Wider spreads and lower prices are the adverse direction and show in red.
+
+`gloomberb fn CDX --json` gives each level and move as a number with its unit beside it: `level` with `unit` (`bp` or `price`) and `change1D`, `change1W` with `changeUnit` (`bp` or `pts`). `--csv` writes the numbers with a `5Y unit`, `1D unit` and `1W unit` column. `fn SOVR` does the same, every row in `bp`.
 
 Reporters disagree on the unit of the same field. Percentage notation is mostly written as a decimal fraction (0.0058 for 58bp, 0.0107 for a price of 107) and sometimes as a true percentage (0.58, or 1.07 for 107); basis-point notation is read as basis points and monetary notation as a price. A print whose value fits no unit (a spread outside 0.5bp to 5,000bp, a price outside 20 to 200) is dropped.
 
@@ -31,6 +33,10 @@ Sovereign levels start from the single-name CDS method (see [Single-name CDS](re
 The 1D, 1W and 1M moves are measured on one contract. In the weeks after a roll, when the new contract has no level back then, the move is chained through the previous contract from the first day both traded. When neither gives a baseline within a week of the start date, the move is left empty rather than mixing contracts.
 
 The chart and the 1Y percentile follow the contract that was on the run each day, so the line steps at each roll by the difference between the two contracts (about 6bp for CDX IG and 38bp for Crossover on the Sep 2026 roll). The percentile is the midrank of the latest level among the year's daily levels, of the price for HY and EM.
+
+## History export
+
+`gloomberb fn CDX XOVER` adds an index's daily levels, newest first, under the board: the date, the level, the prints behind it and the contract on the run that day. Name an index by its code (IG, HY, EM, MAIN, XOVER) or name. `--days` reaches back up to 1,100 days, as far as DTCC's files go, and `--csv --section 2` writes the history alone.
 
 ## Sovereigns and currencies
 

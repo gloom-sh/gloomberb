@@ -33,7 +33,7 @@ function PolicyDetail({ row, width, height, focused }: { row: CentralBankRow; wi
       detail: [row.publicationFrequency, row.lagDays == null ? null : `${row.lagDays}d lag`,
         row.confirmedAt ? `confirmed ${row.confirmedAt.slice(0, 10)}` : null, row.status === "stale" ? "stale" : null]
         .filter(Boolean).join(" · ") || undefined },
-    { id: "meeting", label: "Next meeting", value: row.nextMeeting?.date ?? "--" },
+    { id: "meeting", label: row.nextMeeting?.kind === "fixing" ? "Next fixing" : "Next meeting", value: row.nextMeeting?.date ?? "--" },
     { id: "source", label: "Source", value: row.source?.toUpperCase() ?? "--", detail: row.sourceSeriesIds.join(", ") || undefined },
     { id: "instrument", label: "Instrument", value: row.instrument, detail: row.centralBank ?? undefined, wide: true },
   ];

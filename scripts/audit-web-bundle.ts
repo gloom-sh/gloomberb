@@ -16,6 +16,10 @@ async function files(dir: string): Promise<string[]> {
 }
 
 const outputFiles = await files(root);
+// Pane pictures rasterize terminal cells only in OpenTUI. A bundled atlas would
+// add its entire compressed font coverage to every web download.
+const terminalGlyphs = JSON.parse(await readFile(join(process.cwd(), "src/renderers/opentui/pane-image/glyphs.json"), "utf8")) as { coverage: string };
+const terminalGlyphSignature = terminalGlyphs.coverage.slice(0, 128);
 /** Desktop, fork, and native-host code that must never reach a browser bundle. */
 const NATIVE_OR_FORK = /kohor\.st|__GLOOM_CLOUD_HOSTED|\/_gloomberb\/rpc|receiveMessageFromBun|__electrobun/;
 /**
@@ -50,8 +54,9 @@ const failures: string[] = [];
 for (const path of outputFiles) {
   const name = relative(root, path);
   if (name.endsWith(".map")) failures.push(`${name}: public source map`);
-  if (!/\.(?:html|js|css)$/.test(name)) continue;
+  if (!/\.(?:html|js|css|json)$/.test(name)) continue;
   const content = await readFile(path, "utf8");
+  if (content.includes(terminalGlyphSignature)) failures.push(`${name}: terminal glyph atlas in the web bundle`);
   if (/sourceMappingURL=/.test(content)) failures.push(`${name}: source map reference`);
   if (NATIVE_OR_FORK.test(content)) failures.push(`${name}: forbidden native or fork code`);
   if (NODE_POLYFILL.test(content)) failures.push(`${name}: bundled Node zlib or crypto polyfill`);

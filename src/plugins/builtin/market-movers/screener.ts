@@ -8,7 +8,9 @@ import type {
   CloudMarketScreenerCategory,
   CloudMarketScreenerItem,
   CloudMarketScreenerPayload,
+  CloudMoverSessionFields,
 } from "../../../api-client/types";
+import type { MarketState } from "../../../types/financials";
 import { hasProAccess } from "../../../api-client/plan-access";
 
 const CACHE_KIND = "market-screener";
@@ -184,6 +186,32 @@ export function convertScreenerPriceUnit(value: number | undefined, from: string
     ? value / source.divisor * target.divisor : undefined;
 }
 
+const MARKET_STATES = new Set<string>(["PRE", "REGULAR", "POST", "PREPRE", "POSTPOST", "CLOSED"] satisfies MarketState[]);
+const SESSION_NUMBERS = [
+  "regularClose", "regularChange", "regularChangePercent",
+  "preMarketPrice", "preMarketChange", "preMarketChangePercent",
+  "postMarketPrice", "postMarketChange", "postMarketChangePercent",
+] as const;
+const isSessionDate = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
+/**
+ * A row's quote sessions as the server sends them beside its live print, or
+ * undefined when it sends none (an older server), so the row reads as it came.
+ */
+function parseScreenerSessions(row: Record<string, unknown>): CloudMoverSessionFields | undefined {
+  if (typeof row.marketState !== "string" || !MARKET_STATES.has(row.marketState)) return undefined;
+  const sessions: CloudMoverSessionFields = { marketState: row.marketState as MarketState };
+  if (isSessionDate(row.changeSessionDate)) sessions.changeSessionDate = row.changeSessionDate;
+  for (const key of SESSION_NUMBERS) {
+    const value = screenerNumber(row[key]);
+    if (value != null) sessions[key] = value;
+  }
+  if (sessions.regularClose != null && isSessionDate(row.regularCloseSessionDate)) {
+    sessions.regularCloseSessionDate = row.regularCloseSessionDate;
+  }
+  return sessions;
+}
+
 /** Validate numeric fields at the API boundary so absent values stay unavailable. */
 export function parseScreenerResponse(data: unknown): ScreenerQuote[] {
   if (!data || typeof data !== "object" || !("quotes" in data) || !Array.isArray(data.quotes)) {
@@ -202,6 +230,7 @@ export function parseScreenerResponse(data: unknown): ScreenerQuote[] {
       dayHigh: screenerNumber(q.dayHigh) ?? undefined, dayLow: screenerNumber(q.dayLow) ?? undefined,
       previousClose: screenerNumber(q.previousClose) ?? undefined, exchange: typeof q.exchange === "string" ? q.exchange : "",
       lastUpdated: typeof q.lastUpdated === "number" && Number.isFinite(q.lastUpdated) && q.lastUpdated > 0 ? q.lastUpdated : undefined,
+      sessions: parseScreenerSessions(q),
     }];
   });
 }
@@ -274,6 +303,8 @@ function mergeCloudScreenerItem(
     dayLow: screenerNumber(item.dayLow) ?? metadataPrice(metadata?.dayLow),
     exchange: item.exchange || metadata?.exchange || "",
     lastUpdated: item.lastUpdated,
+    previousClose: screenerNumber(item.previousClose) ?? undefined,
+    sessions: parseScreenerSessions(item as unknown as Record<string, unknown>),
   };
 }
 

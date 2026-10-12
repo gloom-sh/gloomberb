@@ -1,9 +1,12 @@
 /**
- * Built-in module ids and the built-in plugin that owns each one. Every key
- * does two jobs: config, sync and session state saved under it is rewritten to
- * the owner, and it is reserved, because an external plugin using it would
- * have its state merged into the owner the same way. A module that moves out
- * to an external plugin leaves this map so that plugin can claim its id.
+ * Built-in module ids and the state namespace each one's state lives in now.
+ * Every key does two jobs: config, sync and session state saved under it is
+ * rewritten to that namespace, and it is reserved, because an external plugin
+ * using it would have its state merged in the same way. A module that moves
+ * out to an external plugin leaves this map so that plugin can claim its id.
+ *
+ * A switched-off module id in `disabledPlugins` follows this map too, unless
+ * BUILTIN_DISABLED_PLUGIN_ALIASES sends it somewhere else.
  */
 const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
   analytics: "portfolio",
@@ -42,6 +45,90 @@ const BUILTIN_PLUGIN_OWNER_ALIASES: Record<string, string> = {
   "world-indices": "market-overview",
 };
 
+/**
+ * Retired ids in `disabledPlugins` whose plugin is not the namespace their
+ * state moved to: once a plugin is split, a module's state stays where it was
+ * while its switch belongs to the successor that holds the module now.
+ */
+const BUILTIN_DISABLED_PLUGIN_ALIASES: Record<string, string> = {
+  "chart-composer": "ticker-core",
+  "company-research": "ticker-core",
+  "comparison-chart": "ticker-core",
+  correlation: "quant",
+  "crypto-board": "crypto",
+  "dividend-yield": "ticker-core",
+  "earnings-calendar": "earnings",
+  "earnings-calls": "earnings",
+  executives: "ticker-core",
+  "filing-events": "filings",
+  "fx-matrix": "global-markets",
+  holders: "ownership",
+  insider: "ownership",
+  jobs: "alt-data",
+  "market-movers": "screeners",
+  options: "options-volatility",
+  research: "ticker-core",
+  "risk-factors": "filings",
+  sec: "filings",
+  sectors: "global-markets",
+  "short-interest": "ownership",
+  "short-volume": "ownership",
+  "social-mentions": "alt-data",
+  thirteenf: "ownership",
+  "ticker-detail": "ticker-core",
+  "world-indices": "global-markets",
+  // `macro-tv` keeps meaning all of Macro: TV left for its own repository, so
+  // no successor holds it, and turning it off was turning Macro off.
+};
+
+/**
+ * Retired built-in plugin ids that now stand for a group of built-ins in
+ * `disabledPlugins`, reserved for good. Turning the old plugin off, here or in
+ * an older app through sync, turns off every successor holding one of its
+ * modules; the old id is written back only while all of them are off, so an
+ * older app shows it off exactly then, and turning it back on there brings
+ * them all back.
+ */
+const BUILTIN_PLUGIN_GROUPS: Readonly<Record<string, readonly string[]>> = {
+  macro: ["rates-macro", "credit", "earnings"],
+  "market-overview": ["global-markets", "screeners", "futures-commodities", "crypto", "alt-data", "quant"],
+  // Shares Credit & Bonds and Earnings with Macro, and Alt Data and Quant with
+  // Market Overview: each holds modules from both.
+  "ticker-research": ["ticker-core", "options-volatility", "ownership", "filings", "alt-data", "quant", "credit", "earnings"],
+};
+
+/** Every built-in that came out of a retired group: the plugins starter packs switch. */
+export function regroupedBuiltinPluginIds(): string[] {
+  return [...new Set(Object.values(BUILTIN_PLUGIN_GROUPS).flat())];
+}
+
+/** The built-ins a retired group id stands for, or null when the id is not a group. */
+export function builtinPluginGroupMembers(pluginId: string): readonly string[] | null {
+  return Object.prototype.hasOwnProperty.call(BUILTIN_PLUGIN_GROUPS, pluginId) ? BUILTIN_PLUGIN_GROUPS[pluginId]! : null;
+}
+
+/**
+ * `disabledPlugins` after switching plugins on or off in one go, or null when
+ * nothing changes. A retired group id switches every member, the way
+ * `gloomberb plugin enable|disable` does. Changes apply in order, so a later
+ * one wins for a plugin two groups share.
+ */
+export function applyPluginToggles(
+  disabledPlugins: readonly string[],
+  changes: Readonly<Record<string, boolean>>,
+): string[] | null {
+  let next = [...disabledPlugins];
+  for (const [pluginId, enabled] of Object.entries(changes)) {
+    for (const memberId of builtinPluginGroupMembers(pluginId) ?? [pluginId]) {
+      if (enabled) next = next.filter((entry) => entry !== memberId);
+      else if (!next.includes(memberId)) next.push(memberId);
+    }
+  }
+  const unchanged = next.length === disabledPlugins.length
+    && next.every((pluginId, index) => pluginId === disabledPlugins[index]);
+  return unchanged ? null : next;
+}
+
 /** The one built-in that cannot be disabled; its legacy module ids normalize to it. */
 const NON_TOGGLEABLE_BUILTIN_PLUGIN_ID = "application";
 
@@ -54,16 +141,72 @@ function normalizeBuiltinPluginOwnerId(pluginId: string): string {
   return BUILTIN_PLUGIN_OWNER_ALIASES[pluginId] ?? pluginId;
 }
 
-export function isReservedBuiltinPluginId(pluginId: string): boolean {
-  return Object.prototype.hasOwnProperty.call(BUILTIN_PLUGIN_OWNER_ALIASES, pluginId);
+/** Every retired built-in module id, for checks that each still lands on the right plugin. */
+export function retiredBuiltinModuleIds(): string[] {
+  return Object.keys(BUILTIN_PLUGIN_OWNER_ALIASES);
 }
 
+export function isReservedBuiltinPluginId(pluginId: string): boolean {
+  return Object.prototype.hasOwnProperty.call(BUILTIN_PLUGIN_OWNER_ALIASES, pluginId)
+    || builtinPluginGroupMembers(pluginId) !== null;
+}
+
+function normalizeBuiltinDisabledPluginId(pluginId: string): string {
+  return BUILTIN_DISABLED_PLUGIN_ALIASES[pluginId] ?? normalizeBuiltinPluginOwnerId(pluginId);
+}
+
+/**
+ * Rewrites retired module ids to the plugin that holds the module now. Group
+ * ids are left as they are: the configuration migrations after this one read
+ * them before `expandBuiltinPluginGroups` runs.
+ */
 export function normalizeBuiltinDisabledPluginIds(pluginIds: readonly string[]): string[] {
   return [...new Set(
     pluginIds
-      .map(normalizeBuiltinPluginOwnerId)
+      .map(normalizeBuiltinDisabledPluginId)
       .filter((pluginId) => pluginId !== NON_TOGGLEABLE_BUILTIN_PLUGIN_ID),
   )];
+}
+
+/**
+ * `disabledPlugins` as saved, in the ids the registry knows: a retired group
+ * id becomes every member. Applied on every load, after the migrations; it
+ * only ever adds switched-off plugins, and running it twice changes nothing.
+ */
+export function expandBuiltinPluginGroups(pluginIds: readonly string[]): string[] {
+  return [...new Set(pluginIds.flatMap((pluginId) => builtinPluginGroupMembers(pluginId) ?? [pluginId]))];
+}
+
+/**
+ * `disabledPlugins` as pulled. Another device may run an app from before
+ * modules were merged or plugins split, so retired module ids are rewritten
+ * as the migrations would, then groups expanded.
+ */
+export function decodeBuiltinDisabledPluginIds(pluginIds: readonly string[]): string[] {
+  return expandBuiltinPluginGroups(normalizeBuiltinDisabledPluginIds(pluginIds));
+}
+
+/**
+ * `disabledPlugins` as written to disk and pushed: a group whose members are
+ * all off is written as its retired id alone, where its first member stood,
+ * and a group partly off as the members that are. Expanding the result gives
+ * the list back.
+ */
+export function encodeBuiltinDisabledPluginIds(pluginIds: readonly string[]): string[] {
+  const disabled = new Set(pluginIds);
+  const fullyOff = Object.entries(BUILTIN_PLUGIN_GROUPS)
+    .filter(([, members]) => members.length > 0 && members.every((member) => disabled.has(member)));
+  if (fullyOff.length === 0) return [...disabled];
+  const groupAt = new Map<string, string[]>();
+  for (const [groupId, members] of fullyOff) {
+    const first = pluginIds.find((pluginId) => members.includes(pluginId))!;
+    groupAt.set(first, [...(groupAt.get(first) ?? []), groupId]);
+  }
+  const covered = new Set(fullyOff.flatMap(([, members]) => members));
+  return [...new Set(pluginIds.flatMap((pluginId) => [
+    ...(groupAt.get(pluginId) ?? []),
+    ...(covered.has(pluginId) ? [] : [pluginId]),
+  ]))];
 }
 
 export function normalizeBuiltinPluginStateMap(

@@ -1,7 +1,17 @@
-import { Children, isValidElement, type ReactElement } from "react";
+import { Children, createElement, isValidElement, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "bun:test";
-import type { GloomPluginContext } from "../../types/plugin";
+import { AppPersistence } from "../../data/app-persistence";
+import { TickerRepository } from "../../data/ticker-repository";
+import { AppContext, createInitialState, PaneInstanceProvider } from "../../state/app/context";
+import { createStaticAppStore } from "../../test-support/app-store";
+import { createTestDataProvider } from "../../test-support/data-provider";
+import { createDefaultConfig } from "../../types/config";
+import type { GloomPluginContext, PaneProps } from "../../types/plugin";
 import { debugLog, type LogEntry } from "../../utils/debug-log";
+import { PluginRegistry } from "../registry";
+import { usePluginConfigState, usePluginPaneState, usePluginState } from "../runtime";
+import { usePluginRenderContext } from "../runtime/context";
 import {
   composeBuiltinPlugin,
   type PluginModule,
@@ -85,5 +95,66 @@ describe("composeBuiltinPlugin", () => {
       "dispose:second",
       "dispose:first",
     ]);
+  });
+
+  test("a module that moved plugins keeps reading the state saved under its old namespace", async () => {
+    const persistence = new AppPersistence(":memory:");
+    const registry = new PluginRegistry(createTestDataProvider(), new TickerRepository(persistence.tickers), persistence);
+    try {
+      const state = createInitialState({
+        ...createDefaultConfig("/tmp/gloomberb-module-namespace-test"),
+        pluginConfig: { legacy: { unit: "bp" } },
+      });
+      state.paneState["moved:main"] = { pluginState: { legacy: { mode: "curve" } } };
+      registry.bindHost({ getConfig: () => state.config });
+      persistence.pluginState.set("legacy", "cache", "warm");
+      persistence.pluginState.set("legacy", "resume:view", "spread");
+
+      let cached: unknown = null;
+      const moved: PluginModule = {
+        panes: [{
+          id: "moved",
+          name: "Moved",
+          defaultPosition: "right",
+          component: () => {
+            const [mode] = usePluginPaneState("mode", "none");
+            const [view] = usePluginState("view", "none");
+            const [unit] = usePluginConfigState("unit", "none");
+            return `${mode}/${view}/${unit}`;
+          },
+        }],
+        setup(ctx) {
+          cached = ctx.persistence.getState("cache");
+          ctx.registerTickerResearchTab({ id: "moved-tab", name: "Moved", order: 1, component: () => usePluginRenderContext().pluginId });
+        },
+      };
+      const stays: PluginModule = {
+        panes: [{ id: "stays", name: "Stays", defaultPosition: "right", component: () => usePluginRenderContext().pluginId }],
+      };
+      await registry.register(composeBuiltinPlugin({
+        id: "successor",
+        name: "Successor",
+        version: "1.0.0",
+        modules: [stays, { module: moved, stateId: "legacy" }],
+      }));
+
+      const render = (component: (props: never) => unknown, paneId: string) => renderToStaticMarkup(
+        createElement(AppContext, { value: createStaticAppStore(state) }, createElement(PaneInstanceProvider, {
+          paneId,
+          children: createElement(component as (props: PaneProps) => null, {
+            paneId, paneType: paneId.split(":")[0]!, focused: true, width: 80, height: 20,
+          }),
+        })),
+      );
+      expect(render(registry.panes.get("moved")!.component, "moved:main")).toBe("curve/spread/bp");
+      expect(render(registry.tickerResearchTabs.get("moved-tab")!.component, "ticker-detail:main")).toBe("legacy");
+      expect(cached).toBe("warm");
+      // Everything else is still the successor's: its toggle, and the module beside it.
+      expect(registry.getPanePluginId("moved")).toBe("successor");
+      expect(render(registry.panes.get("stays")!.component, "stays:main")).toBe("successor");
+    } finally {
+      registry.destroy();
+      persistence.close();
+    }
   });
 });

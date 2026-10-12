@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
-import { PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { Box } from "../../../ui";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
@@ -64,12 +65,15 @@ async function renderPane(width: number) {
   await tui.render(
     <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
       <PaneFooterProvider>
-        {() => (
-          <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />
+        {(footer) => (
+          <Box width={width} height={25} flexDirection="column">
+            <EconPane paneId="econ-calendar" paneType="econ-calendar" focused width={width} height={24} />
+            <PaneFooterBar footer={footer} width={width} focused />
+          </Box>
         )}
       </PaneFooterProvider>
     </TestPaneProvider>,
-    { width, height: 24 },
+    { width, height: 25 },
   );
   await act(async () => {
     for (let index = 0; index < 6; index += 1) {
@@ -123,30 +127,49 @@ describe("EconCalendarPane", () => {
 
     expect(frame).toContain("Release 39 m/m");
     expect(frame).not.toContain("Release 0 m/m");
+    // Nothing is listed ahead, which the footer says rather than leaving a quiet week.
+    expect(frame).toMatch(/No events listed after \w{3} \w{3} \d+/);
   });
 
-  // The payload's `time` is the UTC clock; rows group by local day. The test
-  // runs in whatever zone the process has, so it places the release on the far
-  // side of local midnight from its UTC day: 00:30 tomorrow east of UTC, 23:30
-  // today west of it. Changing process.env.TZ here would leak into later files.
-  test("shows a release at its local time under its local day", async () => {
+  // NOW a few rows down would leave Friday's last releases on top of a Saturday.
+  test("opens on what is still to come, never on earlier days", async () => {
+    const persistence = new MemoryPluginPersistence();
+    const now = Date.now();
+    const release = (id: string, offsetHours: number) => ({
+      id, date: new Date(now + offsetHours * 3_600_000).toISOString(), time: "12:00", country: "US",
+      event: `Release ${id} m/m`, impact: "low", actual: null, forecast: "0.1%", prior: "0.1%",
+    });
+    persistence.seedResource("calendar", "global", [
+      ...Array.from({ length: 20 }, (_, i) => release(`past${i}`, -40 + i * 0.5)),
+      ...Array.from({ length: 10 }, (_, i) => release(`next${i}`, 30 + i * 24)),
+    ], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const frame = await renderPane(110);
+
+    expect(frame).toContain("NOW");
+    expect(frame).toContain("Release next0 m/m");
+    expect(frame).not.toContain("Release past19 m/m");
+    expect(frame).not.toContain("No events listed after");
+  });
+
+  // Rows group by UTC day and print the UTC clock, as `gloomberb econ` does,
+  // whatever zone the process runs in. The release sits at 23:30 UTC, which is
+  // after local midnight east of UTC; the test cannot change process.env.TZ
+  // without leaking into later files, so it checks the zone it has.
+  test("shows a release at its UTC time under its UTC day, with the zone in the header", async () => {
     const now = new Date();
-    const eastOfUtc = now.getTimezoneOffset() <= 0;
-    const at = eastOfUtc
-      ? new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 30)
-      : new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 30);
+    const at = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 23, 30));
     const iso = at.toISOString();
-    const utcClock = iso.slice(11, 16);
     const localClock = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
     const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
     const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-    const separator = `${eastOfUtc ? "TOMORROW" : "TODAY"} · ${days[at.getDay()]} ${months[at.getMonth()]} ${at.getDate()}`;
+    const separator = `TODAY · ${days[at.getUTCDay()]} ${months[at.getUTCMonth()]} ${at.getUTCDate()}`;
 
     const persistence = new MemoryPluginPersistence();
     persistence.seedResource("calendar", "global", [{
       id: "au",
       date: iso,
-      time: utcClock,
+      time: "23:30",
       country: "AU",
       event: "Flash Manufacturing PMI",
       impact: "medium",
@@ -157,8 +180,9 @@ describe("EconCalendarPane", () => {
     attachEconCalendarPersistence(persistence);
     const frame = await renderPane(110);
 
+    expect(frame).toContain("TIME (UTC)");
+    expect(frame).toContain("23:30");
+    if (localClock !== "23:30") expect(frame).not.toContain(localClock);
     expect(frame).toContain(separator);
-    expect(frame).toContain(localClock);
-    if (utcClock !== localClock) expect(frame).not.toContain(utcClock);
   });
 });

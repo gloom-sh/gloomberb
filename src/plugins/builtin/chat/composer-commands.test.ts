@@ -27,4 +27,20 @@ describe("parseChatComposerCommand", () => {
     expect(parseChatComposerCommand("/dm ab hi")).toBeNull();
     expect(parseChatComposerCommand("/group Infra desk")).toBeNull();
   });
+
+  test("parses /discord and its subcommands, ignoring case and spacing", () => {
+    expect(parseChatComposerCommand("/discord")).toEqual({ kind: "discord", action: "connect" });
+    expect(parseChatComposerCommand("/Discord  unlink")).toEqual({ kind: "discord", action: "unlink" });
+    expect(parseChatComposerCommand("/discord mirror on")).toEqual({ kind: "discord", action: "mirror", enabled: true });
+    expect(parseChatComposerCommand("/discord  MIRROR   off")).toEqual({ kind: "discord", action: "mirror", enabled: false });
+  });
+
+  test("answers a mistyped /discord with the usage instead of posting it to the channel", () => {
+    for (const draft of ["/discord mirror", "/discord mirror maybe", "/discord mirror on please", "/discord unlink now", "/discord help"]) {
+      expect(parseChatComposerCommand(draft)).toEqual({ kind: "discord", action: "usage" });
+    }
+    // A different word that merely starts with the command is ordinary text.
+    expect(parseChatComposerCommand("/discordant")).toBeNull();
+    expect(parseChatComposerCommand("see /discord")).toBeNull();
+  });
 });

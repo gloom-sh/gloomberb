@@ -280,7 +280,7 @@ export function registerGloomCloudConnectionSources(health: ConnectionHealthRegi
       id: GLOOM_CLOUD_FRED_CONNECTION_ID,
       name: "Gloom / FRED",
       kind: "api",
-      ownerId: "macro",
+      ownerId: "rates-macro",
       priority: 2,
       detail: "api.gloom.sh/cloud/econ/series",
     }),

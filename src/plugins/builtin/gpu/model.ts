@@ -1,6 +1,6 @@
 import type { GpuBasis, GpuBoardRow, GpuEvent, GpuObservation } from "../../../api-client/gpu";
 import { staticSeries } from "../../../components/chart/static/series";
-import { SERIES_COLORS } from "../../../time-series/resolve";
+import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PricePoint } from "../../../types/financials";
 
@@ -10,6 +10,43 @@ export type GpuTab = typeof GPU_TABS[number]["value"];
 export const gpuTab = (value: unknown): GpuTab => GPU_TABS.find((tab) => tab.value === value)?.value ?? "board";
 export const GPU_MODELS = ["H100", "H200", "B200", "B300", "GB200", "GB300", "A100", "MI300X", "MI355X", "L40S", "RTX PRO 6000"];
 export const gpuArgument = (value: string | null | undefined) => (value ?? "").trim().toUpperCase().replace(/\s+/g, " ");
+const gpuModelRank = (name: string) => GPU_MODELS.indexOf(name) < 0 ? 99 : GPU_MODELS.indexOf(name);
+/** Board order: the GPUs people rent most first, the rest by name. */
+const gpuModelOrder = (a: string, b: string) => gpuModelRank(a) - gpuModelRank(b) || a.localeCompare(b);
+
+/** Every GPU name a reader can ask for: the ones on this board and the ones the full board carries. */
+export const gpuFamilies = (rows: readonly Pick<GpuObservation, "gpuModel">[]) =>
+  [...new Set([...GPU_MODELS, ...rows.map((row) => row.gpuModel)])].sort(gpuModelOrder);
+
+/** A GPU name as typed, for comparison: case, spaces, dashes and underscores do not matter. */
+const gpuKey = (value: string) => value.toLowerCase().replace(/[\s_-]+/g, "");
+
+/**
+ * The GPU a typed name means, so "h100", "H-100" and "H100 80GB SXM" all
+ * read H100. A whole name wins over a longer one it begins ("A10" is not
+ * A100), and the most leading words that name a GPU win over fewer ("RTX PRO
+ * 6000"). Otherwise the first GPU, in board order, whose name begins with
+ * what was typed ("B2" is B200), or that begins it ("H100SXM"). Null when
+ * nothing matches.
+ */
+export function gpuFamily(query: string, families: readonly string[]): string | null {
+  const words = query.trim().split(/[\s_-]+/).filter(Boolean);
+  if (!words.length) return null;
+  const ordered = [...new Set(families)].sort(gpuModelOrder);
+  for (let count = words.length; count > 0; count -= 1) {
+    const key = gpuKey(words.slice(0, count).join(""));
+    const exact = ordered.find((family) => gpuKey(family) === key);
+    if (exact) return exact;
+  }
+  const key = gpuKey(query);
+  return ordered.find((family) => gpuKey(family).startsWith(key))
+    ?? [...ordered].sort((a, b) => gpuKey(b).length - gpuKey(a).length).find((family) => key.startsWith(gpuKey(family)))
+    ?? null;
+}
+
+/** The sentence for a name that matches no GPU, naming the ones that do. */
+export const gpuNoMatch = (query: string, families: readonly string[]) =>
+  `No GPU matches "${query.trim()}". GPUs: ${families.join(", ")}.`;
 export const gpuBasisLabel = (basis: GpuBasis, compact = false): string => compact
   ? ({ list: "List", spot: "Spot", ask: "Ask", reserved: "Rsvd", index: "Locked", reference: "Reference" })[basis]
   : ({ list: "List price", spot: "Provider-declared spot", ask: "Ask", reserved: "Reserved", index: "Index (licensed)", reference: "Reference" })[basis];
@@ -32,16 +69,25 @@ const PROVIDER_NAMES: Record<string, string> = {
   scaleway: "Scaleway", horizon: "Horizon", verda: "Verda", latitude: "Latitude", imwt: "IMWT",
 };
 
+/**
+ * The provider-class rows are chain-linked list indexes, not raw medians. Servers that predate the
+ * rename still send "list median"; both strings read as the index.
+ */
+const LIST_INDEX_PROVIDER = /^(Hyperscaler|Neocloud) list (?:index|median)$/;
+
 /** Cloud operators are the product being compared. The data collection intermediary stays invisible. */
 export function gpuSource(row: Pick<GpuObservation, "source" | "provider" | "skuKey">): string {
+  const listIndex = LIST_INDEX_PROVIDER.exec(row.provider);
+  if (listIndex) return `${listIndex[1]} list index`;
   if (row.source === "vast" || row.source === "vast-ai") return "Marketplace ask median";
   if (row.source === "akash") return "Decentralized ask median";
   if (row.source === "runpod") return /community/i.test(`${row.provider} ${row.skuKey}`) ? "Community cloud asks" : "Secure cloud asks";
   return PROVIDER_NAMES[row.provider.toLowerCase()] ?? row.provider;
 }
 
-/** A source inside its basis section: the section already says list or ask, so a median drops the word. */
-export const gpuShortSource = (row: Pick<GpuObservation, "source" | "provider" | "skuKey">) => gpuSource(row).replace(/ (?:list|ask) median$/, " median");
+/** A source inside its basis section: the section already says list or ask, so an index or median drops the word. */
+export const gpuShortSource = (row: Pick<GpuObservation, "source" | "provider" | "skuKey">) =>
+  gpuSource(row).replace(/ list index$/, " index").replace(/ ask median$/, " median");
 
 export function gpuTime(value: string | null | undefined, compact = false): string {
   if (!value) return "-";
@@ -51,13 +97,31 @@ export function gpuTime(value: string | null | undefined, compact = false): stri
   return compact ? `${day} ${time}` : `${day}, ${date.getUTCFullYear()} ${time} UTC`;
 }
 
-export function gpuRows(rows: readonly GpuBoardRow[], model = "", basis = "all"): GpuBoardRow[] {
+export function gpuRows<T extends GpuBoardRow>(rows: readonly T[], model = "", basis = "all"): T[] {
   const rank = (row: GpuBoardRow) => row.providerClass === "aggregate" ? 0 : row.basis === "list" ? 1 : row.basis === "spot" ? 2 : row.basis === "reserved" ? 3 : 4;
-  return rows.filter((row) => (!model || row.gpuModel === model) && (basis === "all" || row.basis === basis)).sort((a, b) => {
-    const modelRank = (name: string) => GPU_MODELS.indexOf(name) < 0 ? 99 : GPU_MODELS.indexOf(name);
-    return modelRank(a.gpuModel) - modelRank(b.gpuModel) || a.gpuModel.localeCompare(b.gpuModel) || rank(a) - rank(b)
-      || gpuSource(a).localeCompare(gpuSource(b)) || (b.memoryGb ?? 0) - (a.memoryGb ?? 0) || (a.formFactor ?? "").localeCompare(b.formFactor ?? "");
-  });
+  return rows.filter((row) => (!model || row.gpuModel === model) && (basis === "all" || row.basis === basis)).sort((a, b) =>
+    gpuModelOrder(a.gpuModel, b.gpuModel) || rank(a) - rank(b)
+      || gpuSource(a).localeCompare(gpuSource(b)) || (b.memoryGb ?? 0) - (a.memoryGb ?? 0) || (a.formFactor ?? "").localeCompare(b.formFactor ?? ""));
+}
+
+/** A row the free board leaves out, read from the free preview of its GPU: the latest price, with its moves left to Pro. */
+export type GpuPreviewRow = GpuBoardRow & { changesLocked: true };
+export const gpuChangesLocked = (row: GpuBoardRow): row is GpuPreviewRow => (row as Partial<GpuPreviewRow>).changesLocked === true;
+
+/**
+ * The free board carries three rows of one GPU. For another GPU, the latest
+ * rows its free history preview serves stand in, one per series; reference
+ * indexes stay out, as they do on the board.
+ */
+export function gpuPreviewRows(points: readonly GpuObservation[]): GpuPreviewRow[] {
+  const latest = new Map<string, GpuObservation>();
+  for (const point of points) {
+    if (point.basis === "reference" || point.provenance === "reference" || point.basis === "index") continue;
+    const id = `${point.source}:${point.skuKey}`;
+    if (!latest.has(id) || point.observedAt > latest.get(id)!.observedAt) latest.set(id, point);
+  }
+  return [...latest].map(([id, point]) => ({ ...point, id, label: gpuLabel(point), sourceLabel: gpuSource(point),
+    change1d: null, change7d: null, change30d: null, stale: false, lastError: null, changesLocked: true }));
 }
 
 /** The bases in board order. The licensed index never reaches the board. */
@@ -73,7 +137,7 @@ export function gpuBasisColor(basis: GpuBasis): string {
 export const gpuVariant = (row: Pick<GpuObservation, "formFactor" | "memoryGb">): string[] =>
   [row.formFactor, row.memoryGb ? `${row.memoryGb}GB` : null].filter((part): part is string => !!part);
 
-/** Medians lead their section: provider-class medians and the marketplace offer medians. */
+/** Indexes and medians lead their section: the provider-class list indexes and the marketplace offer medians. */
 export const gpuHeadline = (row: Pick<GpuObservation, "providerClass" | "source">) =>
   !row.source.startsWith("ref-") && (row.providerClass === "aggregate" || row.source === "vast" || row.source === "vast-ai" || row.source === "akash");
 
@@ -96,9 +160,8 @@ export interface GpuBoardSection { id: string; label: string; basis: GpuBasis; g
  * sections by basis alone; every model names the model in each heading.
  */
 export function gpuBoardSections(rows: readonly GpuBoardRow[], model = ""): GpuBoardSection[] {
-  const modelRank = (name: string) => GPU_MODELS.indexOf(name) < 0 ? 99 : GPU_MODELS.indexOf(name);
   const ordered = rows.filter((row) => (!model || row.gpuModel === model) && row.basis !== "index").sort((a, b) =>
-    modelRank(a.gpuModel) - modelRank(b.gpuModel) || a.gpuModel.localeCompare(b.gpuModel) || basisRank(a.basis) - basisRank(b.basis)
+    gpuModelOrder(a.gpuModel, b.gpuModel) || basisRank(a.basis) - basisRank(b.basis)
     || Number(gpuHeadline(b)) - Number(gpuHeadline(a)) || gpuSource(a).localeCompare(gpuSource(b))
     || (b.memoryGb ?? 0) - (a.memoryGb ?? 0) || (a.formFactor ?? "").localeCompare(b.formFactor ?? ""));
   const sections: GpuBoardSection[] = [];
@@ -312,18 +375,49 @@ export const GPU_EQUITY_GROUPS = [
   { label: "Neoclouds", roles: ["Neocloud"] }, { label: "Hosts and builders", roles: ["Host", "Server builder"] },
 ] as const;
 
-export function gpuEquityRows(rows: readonly GpuBoardRow[], selectedModel: string) {
+const equityModel = (symbol: string, selectedModel: string) => symbol === "AMD" && !selectedModel.startsWith("MI") ? "MI300X"
+  : symbol === "NVDA" && selectedModel.startsWith("MI") ? "H100" : selectedModel;
+
+/** The GPUs the Equities tab reads for one selected GPU: AMD reads its own chip, NVIDIA reads H100 beside an AMD chip. */
+export const gpuEquityModels = (selectedModel: string) => [...new Set(GPU_EQUITIES.map(({ symbol }) => equityModel(symbol, selectedModel)))];
+
+/**
+ * Each share beside the list series that ties it to GPU rents. A share with
+ * no series says why: `pro` when the free board leaves its series out,
+ * `unlisted` when the board has no such series at all.
+ */
+export function gpuEquityRows(rows: readonly GpuBoardRow[], selectedModel: string, locked = false) {
   return GPU_EQUITIES.map((equity) => {
-    const model = equity.symbol === "AMD" && !selectedModel.startsWith("MI") ? "MI300X"
-      : equity.symbol === "NVDA" && selectedModel.startsWith("MI") ? "H100" : selectedModel;
+    const model = equityModel(equity.symbol, selectedModel);
     const candidates = gpuRows(rows, model, "list");
-    const aggregates = candidates.filter((row) => row.providerClass === "aggregate").sort((a, b) =>
-      Number(b.formFactor === "SXM") - Number(a.formFactor === "SXM") || (b.stats?.n ?? 0) - (a.stats?.n ?? 0) || (b.memoryGb ?? 0) - (a.memoryGb ?? 0));
-    const reference = "provider" in equity ? candidates.find((row) => gpuSource(row) === equity.provider)
-      : aggregates.find((row) => row.provider === "Neocloud list median") ?? aggregates[0];
-    return { ...equity, gpuModel: model, reference: reference ?? null };
+    const reference = ("provider" in equity ? candidates.find((row) => gpuSource(row) === equity.provider) : gpuListIndex(candidates, model)) ?? null;
+    const gap: "pro" | "unlisted" | null = reference ? null : locked ? "pro" : "unlisted";
+    return { ...equity, gpuModel: model, reference, gap };
   });
 }
+export type GpuEquityRow = ReturnType<typeof gpuEquityRows>[number];
+
+/**
+ * A GPU's list index: of its main variant (SXM first, then the most
+ * providers, then the most memory), the neocloud index, else the hyperscaler
+ * one. The series a share reads in Equities, and the catalog's GPU list indexes.
+ */
+export function gpuListIndex<T extends GpuBoardRow>(rows: readonly T[], model: string): T | null {
+  const indexes = gpuRows(rows, model, "list").filter((row) => row.providerClass === "aggregate").sort((a, b) =>
+    Number(b.formFactor === "SXM") - Number(a.formFactor === "SXM") || (b.stats?.n ?? 0) - (a.stats?.n ?? 0) || (b.memoryGb ?? 0) - (a.memoryGb ?? 0));
+  return indexes.find((row) => row.provider.startsWith("Neocloud")) ?? indexes[0] ?? null;
+}
+
+/** The series a share would read, named when it has none: "AWS H100 list", "H100 list index". */
+const gpuEquitySeries = (row: Pick<GpuEquityRow, "gpuModel"> & { provider?: string }) =>
+  row.provider ? `${row.provider} ${row.gpuModel} list` : `${row.gpuModel} list index`;
+
+/**
+ * The series column of a share with no series: the one Pro unlocks (its price
+ * and move cells read Pro), or the one the board does not list.
+ */
+export const gpuEquityGap = (row: GpuEquityRow) => row.gap === "pro" ? gpuEquitySeries(row)
+  : row.gap === "unlisted" ? `No ${gpuEquitySeries(row)}` : null;
 
 export function equityFiveDayReturn(history: readonly PricePoint[]): { value: number | null; asOf: string | null } {
   const dates = new Map<string, { time: number; close: number }>();

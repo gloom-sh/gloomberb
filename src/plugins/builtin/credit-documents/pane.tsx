@@ -12,6 +12,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, useUiCapabilities } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCredit, creditIssuerSymbol, CREDIT_UNAVAILABLE, fetchCreditScreen, loadCredit, validateCreditDocuments } from "./client";
@@ -34,6 +35,7 @@ export function CreditDocumentsPane(props: PaneProps) {
 function CreditView({ symbol, width, height, focused, accessKey, needsVerification }: PaneProps & { symbol: string | null; accessKey: string; needsVerification: boolean }) {
   const colors = useThemeColors(), desktop = !!useUiCapabilities().nativePaneChrome;
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const openUpgrade = useCloudUpgradeAction("crdoc");
   const [openingTab] = usePaneSettingValue("tab", "capital");
   const [savedTab, setTab] = usePluginPaneState<string>("credit:tab", openingTab);
@@ -103,7 +105,7 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const target = activeSymbol ?? symbol ?? "";
   const allHints: PaneHint[] = [
     ...(symbol ? [
-      { id: "credit:des", key: "d", label: "es", title: "Description (DES)", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol: target }) },
+      { id: "credit:des", key: "d", label: "es", title: "Description (DES)", onPress: () => openDescription(target) },
       { id: "credit:fa", key: "f", label: "a", title: "Financial analysis (FA)", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: target }) },
       { id: "credit:graph", key: "g", label: "raph", title: "Price chart (G)", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: target }) },
       { id: "credit:ddis", key: "m", label: "aturities", title: "DDIS maturity schedule", onPress: () => createPaneFromTemplate("debt-maturities-pane", { symbol: target }) },

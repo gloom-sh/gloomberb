@@ -1,6 +1,9 @@
+import { apiClient } from "../../../api-client";
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isRecord } from "../../../utils/guards";
+import { resolveIssuerListing } from "../shared/headless-market-data";
 import { companyQuery, fetchCompanyData, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { allGuidance, allObservations } from "./model";
 
@@ -13,11 +16,15 @@ export function useCompanyEvidence(payload: CompanyDataset | null, mode: Company
 function screenshotEvidence(mode: CompanyMode): PaneScreenshotEvidenceHook<Evidence> {
   return {
     paneId: mode === "kpis" ? "company-kpis" : "company-guidance", kind: "company-disclosures", label: "company disclosures",
-    async prepare({ resolved }) {
+    async prepare({ resolved, context }) {
       const symbol = resolved.createOptions?.symbol ?? resolved.createOptions?.arg;
       if (!symbol) throw new Error("A company disclosure screenshot requires a ticker");
-      const payload = await fetchCompanyData(mode, symbol, companyQuery(resolved.options));
-      return { settings: { companySnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
+      // A bare symbol takes the saved listing's venue, as the pane does.
+      const saved = parsePublicTickerKey(symbol).exchange ? null : await context.store.loadTicker(symbol).catch(() => null);
+      const listing = await resolveIssuerListing(symbol, saved?.metadata.exchange, context.dataProvider);
+      const payload = await fetchCompanyData(mode, symbol, companyQuery(resolved.options), apiClient, listing);
+      // Keyed by the requested ticker: a listing abroad is answered under its bare symbol.
+      return { settings: { companySnapshot: payload }, financials: [[symbol.trim().toUpperCase(), { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
     },
     read(value) {
       if (!isRecord(value) || value.kind !== "company-disclosures" || value.version !== 1 || value.mode !== mode || !isRecord(value.payload)

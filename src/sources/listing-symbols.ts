@@ -21,9 +21,12 @@ const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   SFB: ".ST", Stockholm: ".ST", OMX: ".ST", CPH: ".CO", HEX: ".HE", HEL: ".HE", OSE: ".OL", OSL: ".OL", OMXNO: ".OL", ICEX: ".IC",
   VSE: ".VI", WSE: ".WA", GPW: ".WA", PRA: ".PR", BUX: ".BD", ATHEX: ".AT", BVB: ".RO", BIST: ".IS",
   TASE: ".TA",
+  MSX: ".OM",
   JSE: ".JO",
+  BHB: ".BH",
   BVMF: ".SA", MEXI: ".MX", BYMA: ".BA", BCS: ".SN",
-  TADAWUL: ".SAU", QSE: ".QA", DFM: ".AE",
+  TADAWUL: ".SR", QE: ".QA", DFM: ".AE", KUWAIT: ".KW",
+  EGX: ".CA",
 };
 
 const EXCHANGE_FALLBACKS: Record<string, string[]> = {
@@ -143,11 +146,17 @@ export function listingSuffixExchange(ticker: string): string | undefined {
   return venues.size === 1 ? [...venues][0] : undefined;
 }
 
+/**
+ * A Hong Kong listing's four-digit code. Brokers such as Interactive Brokers
+ * report Tencent as 700 and HSBC as 5; the exchange and market data know
+ * them as 0700 and 0005.
+ */
+export function hongKongListingCode(ticker: string, exchange: string): string {
+  return isHongKongExchange(exchange) && /^\d+$/.test(ticker) ? ticker.padStart(4, "0") : ticker;
+}
+
 function normalizeListingTicker(ticker: string, exchange: string): string {
-  if (isHongKongExchange(exchange) && /^\d+$/.test(ticker)) {
-    return ticker.padStart(4, "0");
-  }
-  return ticker.replace(/ /g, "-");
+  return hongKongListingCode(ticker, exchange).replace(/ /g, "-");
 }
 
 function isHongKongExchange(exchange: string): boolean {

@@ -1,5 +1,5 @@
-import type { PaneSettingsContext, PaneSettingsDef } from "../../../types/plugin";
-import { CURRENCY_SETS, FX_CURRENCIES, resolveCurrencies } from "./pairs";
+import type { PaneReportOptionDef, PaneSettingsContext, PaneSettingsDef } from "../../../types/plugin";
+import { CURRENCY_SETS, FX_CURRENCIES, MAJOR_CURRENCIES, isFxCurrency, resolveCurrencies } from "./pairs";
 
 const CUSTOM_SET = "custom";
 
@@ -59,4 +59,44 @@ export function fxMatrixSettings(context: PaneSettingsContext): PaneSettingsDef 
       return set ? { ...rest, currencies: [...set.currencies] } : rest;
     },
   };
+}
+
+const SET_NAMES = CURRENCY_SETS.map((set) => set.id).join(", ");
+
+/**
+ * `--currencies` as typed: codes and set names in any case, separated by
+ * commas or spaces, returned as the codes in order without repeats. A token
+ * that is neither fails, naming it and the codes the board carries, where the
+ * pane setting would drop it and quietly show the majors.
+ */
+function parseCurrenciesOption(value: string): string {
+  const tokens = value.split(/[\s,]+/).filter(Boolean);
+  const unknown = tokens.filter((token) => (
+    !isFxCurrency(token.toUpperCase()) && !CURRENCY_SETS.some((set) => set.id === token.toLowerCase())
+  ));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown ${unknown.length > 1 ? "currencies" : "currency"} ${unknown.join(", ")} for --currencies. `
+      + `Use codes from ${FX_CURRENCIES.join(", ")}, or a set: ${SET_NAMES}.`,
+    );
+  }
+  if (tokens.length === 0) throw new Error("--currencies needs at least one code, such as USD,ZAR,NGN.");
+  return resolveCurrencies(value).join(",");
+}
+
+/** `fn FXC --currencies USD,ZAR,NGN`: the board's currency list, as its settings choose it. */
+export const FX_MATRIX_REPORT_OPTIONS: readonly PaneReportOptionDef[] = [{
+  key: "currencies",
+  type: "string",
+  placeholder: "codes",
+  description: `The currencies to cross, in order: codes separated by commas, or a set (${SET_NAMES}). `
+    + `Without it, the ${MAJOR_CURRENCIES.length} majors. Codes: ${FX_CURRENCIES.join(", ")}`,
+  example: "--currencies USD,ZAR,NGN,SAR,ILS",
+  normalize: parseCurrenciesOption,
+}];
+
+/** A report of the default board says it is only the majors, and how to choose others. */
+export function fxMatrixReportNotices(settings: Readonly<Record<string, unknown>>): string[] {
+  if (settings.currencies != null) return [];
+  return [`Showing the ${MAJOR_CURRENCIES.length} majors. Choose others with --currencies USD,ZAR,NGN; gloomberb catalog FXC lists all ${FX_CURRENCIES.length}.`];
 }

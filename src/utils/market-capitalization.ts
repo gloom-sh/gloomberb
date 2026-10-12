@@ -56,3 +56,11 @@ export function convertMarketCapitalization(
   if (fromRate == null || toRate == null || !Number.isFinite(fromRate) || !Number.isFinite(toRate) || fromRate <= 0 || toRate <= 0) return null;
   return value * fromRate / toRate;
 }
+
+/**
+ * A capitalization a list can print. A venue that prices a contract rather than a company (a crypto-venue Brent
+ * line) reports 0 for it, which is no capitalization: null, so it reads as none.
+ */
+export function listedMarketCapitalization(value: number | null): number | null {
+  return value != null && Number.isFinite(value) && value > 0 ? value : null;
+}

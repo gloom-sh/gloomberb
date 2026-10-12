@@ -3,8 +3,10 @@ import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { debtMaturitiesCache } from "./client";
 import { debtMaturitiesHeadless } from "./headless";
 import { DebtMaturitiesPane } from "./pane";
+import { DEBT_MATURITY_SERIES } from "./series";
 
 export const debtMaturitiesModule: PluginModule = {
+  series: DEBT_MATURITY_SERIES,
   panes: [
     {
       id: "debt-maturities",

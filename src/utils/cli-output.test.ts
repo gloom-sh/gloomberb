@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderDefinitions, renderTable, setCliColorEnabledOverride, truncateDisplay, visibleLength } from "./cli-output";
+import { cliTerminalWidth, renderDefinitions, renderTable, setCliColorEnabledOverride, setCliWidthOverride, truncateDisplay, visibleLength } from "./cli-output";
 
 describe("renderTable", () => {
   test("fits a wide table by shortening text columns and keeps numeric columns whole", () => {
@@ -23,6 +23,84 @@ describe("renderTable", () => {
       setCliColorEnabledOverride(null);
     }
   });
+
+  test("optional columns go before a text column is cut, the highest drop priority first, and kept columns stay whole", () => {
+    setCliColorEnabledOverride(false);
+    try {
+      const columns = [
+        { header: "Symbol", shrink: false },
+        { header: "Name" },
+        { header: "Last", align: "right" as const },
+        { header: "Cur", shrink: false, optional: true, dropPriority: 1 },
+        { header: "Feed", shrink: false, optional: true, dropPriority: 2 },
+        { header: "Updated", shrink: false, optional: true, dropPriority: 3 },
+      ];
+      const rows = [["MSFT", "Microsoft Corporation", "$535.00", "USD", "delayed", "2026-10-09 23:59 UTC"]];
+      const shown = (maxWidth: number) => renderTable(columns, rows, { maxWidth }).split("\n")[0]!.split(/\s+/).filter(Boolean);
+      // Whole: 6 + 21 + 7 + 3 + 7 + 20 + 10 gaps.
+      expect(shown(74)).toEqual(["Symbol", "Name", "Last", "Cur", "Feed", "Updated"]);
+      expect(shown(60)).toEqual(["Symbol", "Name", "Last", "Cur", "Feed"]);
+      expect(shown(50)).toEqual(["Symbol", "Name", "Last", "Cur"]);
+      expect(shown(40)).toEqual(["Symbol", "Name", "Last"]);
+      // Name is cut only once nothing optional is left, and the figures beside it keep every cell.
+      const cut = renderTable(columns, rows, { maxWidth: 30 }).split("\n");
+      expect(cut[2]).toContain("Microsoft Co…");
+      expect(cut[2]!.endsWith("$535.00")).toBe(true);
+    } finally {
+      setCliColorEnabledOverride(null);
+    }
+  });
+
+  test("a table too wide at its narrowest moves columns under each row by stack priority, and never cuts a date or a figure", () => {
+    setCliColorEnabledOverride(false);
+    try {
+      const columns = [
+        { header: "Series" },
+        // Neither is marked whole: once columns have to move, dates and figures stay whole on their own.
+        { header: "Latest" },
+        { header: "Odds", stackPriority: 1, stackRows: 1 },
+        { header: "Value", align: "right" as const },
+        { header: "Status", stackPriority: 2 },
+        { header: "Samples", align: "right" as const, stackPriority: 3, stackRows: 0 },
+      ];
+      const rows = [
+        ["Euro area policy rate (deposit facility rate)", "2026-10-09 00:00 UTC", "3.875% 82% / 4.125% 18%", "2.50", "available", "366"],
+        ["US policy rate", "2026-10-11 00:00 UTC", "4.125% 97% / 4.375% 3%", "3.88", "stale", "249"],
+      ];
+      const lines = renderTable(columns, rows, { maxWidth: 40 }).split("\n");
+      expect(lines.every((line) => visibleLength(line) <= 40)).toBe(true);
+      expect(lines[0]!.split(/\s{2,}/)).toEqual(["Series", "Latest", "Value"]);
+      expect(lines.slice(2)).toEqual([
+        "Euro area …  2026-10-09 00:00 UTC   2.50",
+        "  Odds 3.875% 82% / 4.125% 18%",
+        "  Status available",
+        // Odds only for the first row; Samples left out.
+        "US policy …  2026-10-11 00:00 UTC   3.88",
+        "  Status stale",
+      ]);
+      // A table that fits by shortening its text is laid out as it always was: nothing moves.
+      expect(renderTable(columns, rows, { maxWidth: 90 }).split("\n")).toHaveLength(4);
+    } finally {
+      setCliColorEnabledOverride(null);
+    }
+  });
+});
+
+test("--width fits tables whether or not stdout is a terminal, and clearing it restores the terminal's own width", () => {
+  setCliColorEnabledOverride(false);
+  try {
+    const columns = [{ header: "Title" }, { header: "Volume", align: "right" as const }];
+    const rows = [["A very long headline that would run past a narrow terminal for sure", "1,200"]];
+    const natural = renderTable(columns, rows).split("\n")[2]!;
+    expect(visibleLength(natural)).toBeGreaterThan(60);
+    setCliWidthOverride(40);
+    expect(cliTerminalWidth()).toBe(40);
+    expect(renderTable(columns, rows).split("\n").every((line) => visibleLength(line) <= 40)).toBe(true);
+  } finally {
+    setCliWidthOverride(null);
+    setCliColorEnabledOverride(null);
+  }
+  expect(cliTerminalWidth()).toBeNull();
 });
 
 test("truncateDisplay keeps escape codes balanced and cuts on whole wide glyphs and emoji", () => {

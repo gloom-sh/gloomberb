@@ -231,6 +231,51 @@ test("money prices pad to the currency's minor unit without cutting crypto, FX o
   expect(pad(87, "USD", { assetCategory: "BOND", priceBasis: "percent-of-par" })).toBe("87% par");
 });
 
+describe("three-decimal currencies", () => {
+  const plain = { assetCategory: "EQUITY" };
+  const padded = (value: number, currency: string) =>
+    formatMarketPriceWithCurrency(value, currency, withCurrencyMinorDigits(plain, currency));
+
+  test("prices keep the mill whether or not the cell pads to the minor unit", () => {
+    for (const currency of ["OMR", "BHD", "KWD", "JOD", "TND"]) {
+      expect(formatMarketPriceWithCurrency(1.366, currency, plain)).toBe(`${currency}1.366`);
+      expect(padded(1.366, currency)).toBe(`${currency}1.366`);
+      expect(padded(1.37, currency)).toBe(`${currency}1.370`);
+      expect(padded(0.462, currency)).toBe(`${currency}0.462`);
+      expect(padded(1_234.5, currency)).toBe(`${currency}1,234.500`);
+    }
+    expect(formatMarketCostWithCurrency(1.366, "OMR", plain)).toBe("OMR1.366");
+    expect(formatMarketCostWithCurrency(1.37, "OMR", plain)).toBe("OMR1.370");
+  });
+
+  test("live quotes hold three decimals at and above one unit, and four below it", () => {
+    const live = (values: number[], previousClose: number, currency = "OMR") =>
+      values.map((value) => formatMarketPriceWithCurrency(value, currency, liveQuoteFormatOptions({ instrumentType: "EQUITY", previousClose }, currency)));
+    expect(live([1.366, 1.37, 12], 1.35)).toEqual(["OMR1.366", "OMR1.370", "OMR12.000"]);
+    expect(live([1.366], 1.35, "kwd")).toEqual(["KWD1.366"]);
+    expect(live([0.462, 0.4], 0.45)).toEqual(["OMR0.4620", "OMR0.4000"]);
+    expect(stablePriceFractionDigits({ assetCategory: "EQUITY", currency: "BHD", referencePrice: 1.1 })).toBe(3);
+  });
+
+  test("a change is signed at the mill, and a move below half a mill is unsigned", () => {
+    expect(formatMarketChangeWithCurrency(0.016, "OMR", plain)).toBe("+OMR\u00a00.016");
+    expect(formatMarketChangeWithCurrency(-0.004, "OMR", plain, 1.366)).toBe("-OMR\u00a00.004");
+    expect(formatMarketChangeWithCurrency(0.0002, "OMR", plain, 1.366)).toBe("OMR\u00a00.000");
+    expect(formatMarketChangeWithCurrency(0.004, "USD", plain, 150)).toBe("$0.00");
+  });
+
+  test("USD, EUR and JPY prices are unchanged", () => {
+    expect(formatMarketPriceWithCurrency(1.366, "USD", plain)).toBe("$1.37");
+    expect(padded(1.366, "USD")).toBe("$1.37");
+    expect(padded(309.9, "EUR")).toBe("€309.90");
+    expect(padded(3025, "JPY")).toBe("¥3,025");
+    expect(formatMarketCostWithCurrency(1.366, "USD", plain)).toBe("$1.37");
+    expect(formatMarketChangeWithCurrency(0.016, "USD", plain)).toBe("+$0.02");
+    expect(formatMarketChangeWithCurrency(1.366, "JPY", plain)).toBe("+¥1.37");
+    expect(formatMarketPriceWithCurrency(1.366, "USD", liveQuoteFormatOptions({ instrumentType: "EQUITY", previousClose: 1.35 }, "USD"))).toBe("$1.37");
+  });
+});
+
 // Streamed quotes re-render several times a second. Decimals chosen from each
 // tick made 150.10 print as 150.1 and a coin crossing $100 drop two digits, so
 // the numbers visibly jumped.

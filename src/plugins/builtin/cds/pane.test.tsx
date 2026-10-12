@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { act, useState } from "react";
-import { PaneFooterProvider } from "../../../components/layout/pane/footer";
+import { PaneFooterBar, PaneFooterProvider } from "../../../components/layout/pane/footer";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
-import type { CdsActivity, CdsSpreadHistory, CdsSpreadHistoryLoader } from "./client";
+import { Box } from "../../../ui";
+import type { CdsActivity, CdsSpreadHistory, CdsSpreadHistoryLoader, CdsSpreadLevelsLoader } from "./client";
 import { normalizeCdsTrades } from "./model";
 import { CdsPane } from "./pane";
 
@@ -16,10 +17,13 @@ const ACTIVITY: CdsActivity = {
   source: "DTCC PPD",
   asOf: "2026-08-25T15:00:00Z",
   // Market-wide: nothing was resolved because nothing was asked for.
+  query: null,
   issuer: null,
+  days: 5,
   trades: normalizeCdsTrades([
     trade("1", "Oracle Corporation", "2026-08-25T10:00:00Z", { reportedSpread: 0.009, spreadNotation: "3" }),
-    trade("2", "Oracle Corporation", "2026-08-25T12:00:00Z", { reportedSpread: null }),
+    // DTCC disseminates "Oracle Corporation" with no direction on the upfront.
+    trade("2", "Oracle Corporation", "2026-08-25T12:00:00Z", { reportedSpread: null, upfrontAmount: 762_500 }),
     trade("3", "Ford Motor Company", "2026-08-25T11:00:00Z", { reportedSpread: 250, spreadNotation: "4" }),
   ]),
 };
@@ -28,7 +32,7 @@ function trade(
   id: string,
   issuerName: string,
   executionTimestamp: string,
-  overrides: { reportedSpread: number | null; spreadNotation?: string | null },
+  overrides: { reportedSpread: number | null; spreadNotation?: string | null; upfrontAmount?: number },
 ) {
   return {
     disseminationId: id,
@@ -52,8 +56,8 @@ function trade(
     fixedRate: 0.01,
     reportedSpread: overrides.reportedSpread,
     spreadNotation: overrides.spreadNotation ?? null,
-    upfrontAmount: null,
-    upfrontCurrency: null,
+    upfrontAmount: overrides.upfrontAmount ?? null,
+    upfrontCurrency: overrides.upfrontAmount == null ? null : "USD",
   };
 }
 
@@ -81,13 +85,24 @@ async function settle() {
   }
 }
 
+// Each issuer's latest 5Y level, as the list reads them in one request.
+const LEVELS: CdsSpreadLevelsLoader = async () => new Map([
+  ["oracle", { spreadBp: 235, date: "2026-08-25" }],
+  ["ford motor", { spreadBp: 157, date: "2026-08-24" }],
+]);
+
 async function renderPane(options: {
   symbol?: string;
   height?: number;
   loadHistory?: CdsSpreadHistoryLoader;
+  loadLevels?: CdsSpreadLevelsLoader;
   activity?: CdsActivity;
+  /** Draw the footer bar under the pane, which then gets one row less. */
+  footer?: boolean;
 } = {}) {
-  const { symbol, height = 16, loadHistory = async () => HISTORY, activity = ACTIVITY } = options;
+  const {
+    symbol, height = 16, loadHistory = async () => HISTORY, loadLevels = LEVELS, activity = ACTIVITY, footer = false,
+  } = options;
   const paneId = symbol ? `cds:${symbol}` : "cds:market";
   const state = createInitialState(symbol
     ? createTestPaneConfig("/tmp/gloomberb-cds-test", {
@@ -103,16 +118,20 @@ async function renderPane(options: {
     return (
       <TestPaneProvider state={state} dispatch={dispatch} paneId={paneId} pluginId="macro" runtime={runtime}>
         <PaneFooterProvider>
-          {() => (
-            <CdsPane
-              paneId={paneId}
-              paneType="cds"
-              focused
-              width={92}
-              height={height}
-              loadActivity={async () => activity}
-              loadHistory={loadHistory}
-            />
+          {(footerState) => (
+            <Box width={92} height={height} flexDirection="column">
+              <CdsPane
+                paneId={paneId}
+                paneType="cds"
+                focused
+                width={92}
+                height={footer ? height - 1 : height}
+                loadActivity={async () => activity}
+                loadHistory={loadHistory}
+                loadLevels={loadLevels}
+              />
+              {footer ? <PaneFooterBar footer={footerState} focused width={92} /> : null}
+            </Box>
           )}
         </PaneFooterProvider>
       </TestPaneProvider>
@@ -125,17 +144,54 @@ async function renderPane(options: {
 }
 
 describe("CdsPane", () => {
-  test("groups market activity by issuer, keeping the newest available spread", async () => {
-    await renderPane();
+  test("lists issuers with their 5Y level, and dates the view by its last trade as fn and shot do", async () => {
+    let requests = 0;
+    await renderPane({
+      footer: true,
+      loadLevels: async () => {
+        requests += 1;
+        return LEVELS();
+      },
+    });
     const frame = tui.frame();
 
-    // Most active first: numeric notation 4 stays 250bp; decimal notation 3 becomes 90bp.
+    // Most active first, each with its 5Y level rather than whatever spread a trade reported.
     const oracle = frame.indexOf("Oracle Corporation");
     const ford = frame.indexOf("Ford Motor Company");
     expect(oracle).toBeGreaterThanOrEqual(0);
     expect(ford).toBeGreaterThan(oracle);
-    expect(frame).toContain("90bp");
-    expect(frame).toContain("250bp");
+    // One request for the whole list.
+    expect(requests).toBe(1);
+    expect(frame).toContain("5Y SPREAD");
+    expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+235bp/);
+    expect(frame).toMatch(/Ford Motor Company\s+1\s+2026-08-25 11:00\s+157bp/);
+    // The last trade, never the fetch time, with its age in days.
+    expect(frame).toMatch(/Source: DTCC · last trade 2026-08-25 · lag \d+ days/);
+    expect(frame).not.toContain("as of");
+  });
+
+  test("still lists issuers, without their 5Y level, when the levels request fails", async () => {
+    await renderPane({
+      footer: true,
+      loadLevels: async () => {
+        throw new Error("offline");
+      },
+    });
+    const frame = tui.frame();
+    expect(frame).toMatch(/Oracle Corporation\s+2\s+2026-08-25 12:00\s+--/);
+    expect(frame).toMatch(/Ford Motor Company\s+1\s+2026-08-25 11:00\s+--/);
+    // The failure is the footer's data warning, not an empty list.
+    expect(frame).toContain("⚠");
+  });
+
+  test("names the window and the entity a ticker became when it has no trades", async () => {
+    await renderPane({
+      symbol: "CHTR",
+      height: 12,
+      activity: { ...ACTIVITY, query: "CHTR", issuer: "CCO Holdings, LLC", trades: [] },
+      loadHistory: async () => ({ issuer: null, points: [] }),
+    });
+    expect(tui.frame()).toContain("No CDS trades for CCO Holdings, LLC (CHTR) in the last 5 days.");
   });
 
   test("opens the selected issuer's trades and shows -- for an unreported spread", async () => {
@@ -153,6 +209,11 @@ describe("CdsPane", () => {
     expect(frame).toContain("100bp");
     expect(frame).toContain("--");
     expect(frame).not.toContain("Ford Motor Company");
+    // ISO times, and an upfront with no side: unsigned, under an absolute header.
+    expect(frame).toContain("2026-08-25 12:00");
+    expect(frame).toContain("ABS UPFRONT");
+    expect(frame).toContain("762.5k USD");
+    expect(frame).not.toContain("+762.5k");
   });
 
   test("charts a bound issuer's 5Y spread above its trades", async () => {
@@ -199,7 +260,7 @@ describe("CdsPane", () => {
     lines = tui.frame().split("\n");
     const tableHeader = lines.findIndex((line) => line.includes("TIME UTC"));
     expect(lines[tableHeader - 1]).toContain("●");
-    expect(lines.filter((line) => /\d{2}\/\d{2} \d{2}:\d{2}/.test(line))).toHaveLength(3);
+    expect(lines.filter((line) => /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(line))).toHaveLength(3);
   });
 
   test("still lists trades when the history request fails", async () => {

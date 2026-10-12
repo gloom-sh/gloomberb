@@ -91,7 +91,7 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
 
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     <QueryBar width={width} filters={[{ id: "discount", label: "Discount", value: String(discount), options: DISCOUNT_OPTIONS, onChange: setDiscount }]} />
-    {!symbol ? <EmptyState title="Choose a ticker." /> : <PaneStatusBody subject="reverse DCF" loading={inputs.loading && !model}
+    {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="reverse DCF" loading={inputs.loading && !model}
       error={!model ? inputs.error ?? identityError ?? null : model.error} empty={false}>
       {model && !model.error ? <>
         <StatGrid items={stats} width={width} />

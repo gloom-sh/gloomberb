@@ -4,6 +4,7 @@ import { colors } from "../../../theme/colors";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import type { BrokerDisplayState, BrokerProfileRow } from "./model";
 import { t } from "../../../i18n";
+import { signInEndStatus } from "./sign-in-end";
 
 type BrokerColumnId = "profile" | "status" | "broker" | "mode" | "accounts" | "updated";
 export type BrokerColumn = DataTableColumn & { id: BrokerColumnId };
@@ -45,6 +46,10 @@ export function renderBrokerCell(row: BrokerProfileRow, column: BrokerColumn): D
         attributes: TextAttributes.BOLD,
       };
     case "status":
+      // A sign-in the broker is about to end replaces "Connected" until it is renewed.
+      if (row.signInEndsAt !== null) {
+        return { text: signInEndStatus(row.signInEndsAt), color: colors.warning };
+      }
       return {
         text: row.stateLabel,
         color: stateColor(row.state),

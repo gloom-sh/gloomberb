@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint, Quote } from "../../../types/financials";
-import { FUTURES_CONTRACTS } from "./contracts";
+import { FUTURES_CONTRACTS } from "../../../market-data/futures-board";
 import { frontContractCandidates, frontContractReturns, pickFrontContract } from "./returns";
 
 const contract = (code: string) => FUTURES_CONTRACTS.find((entry) => entry.code === code)!;

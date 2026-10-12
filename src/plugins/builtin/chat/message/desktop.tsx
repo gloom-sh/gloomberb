@@ -1,16 +1,20 @@
 import { memo } from "react";
 import { Box, Text } from "../../../../ui";
-import { hoverBg } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
 import { normalizeInlinePreview } from "../layout";
 import { DesktopChatMessageImages } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
+import { chatAuthorName, isQuotedAuthorManagedBot } from "../ghost-user";
+import { ChatAiBadge } from "./ai-badge";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
+import { MESSAGE_ACTION_WIDTH } from "../layout";
+import { canReactToMessage } from "../reactions";
+import { DesktopChatReactions, DesktopReactionAction } from "./reactions";
 import { ResponsiveTickerBadgeText } from "./inline-tokens";
 import { useSlowPendingSend } from "./pending-send";
-import { getChatMessageRenderState } from "./render-state";
+import { chatHighlightBg, getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
 const DESKTOP_MESSAGE_RIGHT_PADDING = 2;
@@ -21,6 +25,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   messages,
   selectedIdx,
   hoveredIdx,
+  highlighted,
   canSend,
   catalog,
   userByUsername,
@@ -36,24 +41,48 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   retryMessage,
   onImageLoadError,
   registerMessageElement,
+  reactionsEnabled = false,
+  currentUserId = null,
+  toggleReaction,
+  openReactionPicker,
+  reactionPickerMessageId = null,
+  closeReactionPicker,
 }: ChatMessageBaseProps & {
   registerMessageElement: (messageId: string, node: unknown | null) => void;
 }) {
   useAppLanguage();
   const themeColors = useThemeColors();
   const slowSend = useSlowPendingSend(msg);
+  const canReact = reactionsEnabled && canReactToMessage(msg) && !!toggleReaction;
   const state = getChatMessageRenderState({
     msg,
     index,
     messages,
     selectedIdx,
     hoveredIdx,
+    highlighted,
     canSend,
     canEdit: msg.id === latestEditableMessageId,
+    canReact,
     slowSend,
     host: "desktop",
   });
-  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage };
+  const reactionPickerOpen = canReact && reactionPickerMessageId === msg.id;
+  const reactAction = canReact && toggleReaction ? (
+    <DesktopReactionAction
+      msg={msg}
+      currentUserId={currentUserId}
+      open={reactionPickerOpen}
+      width={MESSAGE_ACTION_WIDTH}
+      variant={state.isSelected ? "primary" : "secondary"}
+      onOpenChange={(open) => {
+        if (open) openReactionPicker?.(index);
+        else closeReactionPicker?.();
+      }}
+      onToggle={toggleReaction}
+    />
+  ) : null;
+  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen };
   const attachments = msg.attachments ?? [];
   // An image-only message has no text row; its images start where the text would.
   const showBody = msg.content.length > 0 || attachments.length === 0;
@@ -76,7 +105,9 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
       data-gloom-role="chat-message"
       data-gloom-chat-message-id={msg.id}
       data-selected={state.isSelected ? "true" : "false"}
-      style={{ "--chat-hover-bg": hoverBg(themeColors), minWidth: 0 }}
+      data-hovered={state.isHovered ? "true" : "false"}
+      data-highlighted={state.isHighlighted ? "true" : "false"}
+      style={{ "--chat-highlight-bg": chatHighlightBg(themeColors), minWidth: 0 }}
     >
       {msg.replyTo && (
         <Box
@@ -91,7 +122,16 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         >
           {/* One line: the quoted text ends in an ellipsis, the whole message is a click away. */}
           <Text fg={state.replyMetaColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${t("reply")} `}</Text>
-          <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${msg.replyTo.user.username}: `}</Text>
+          {isQuotedAuthorManagedBot(msg.replyTo, userByUsername) ? (
+            // The badge stands where the colon would.
+            <>
+              <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{msg.replyTo.user.username}</Text>
+              <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
+              <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{" "}</Text>
+            </>
+          ) : (
+            <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${msg.replyTo.user.username}: `}</Text>
+          )}
           <Text
             fg={state.replyMetaColor}
             style={{
@@ -153,12 +193,22 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           <DesktopChatMessageImages
             attachments={attachments}
             caption={msg.content}
-            author={msg.user.username ?? "anon"}
+            author={chatAuthorName(msg.user)}
             review={msg.attachmentReview}
             dimmed={state.isSending || msg.clientStatus === "failed"}
             onLoadError={onImageLoadError}
           />
           {state.grouped && !showBody && <ChatMessageActions floating {...actionProps} />}
+        </Box>
+      )}
+      {(msg.reactions?.length ?? 0) > 0 && (
+        <Box {...rowProps} paddingLeft={3} flexDirection="row" style={{ minWidth: 0 }}>
+          <DesktopChatReactions
+            msg={msg}
+            currentUserId={currentUserId}
+            canReact={canReact}
+            onToggle={toggleReaction ?? (() => {})}
+          />
         </Box>
       )}
     </Box>

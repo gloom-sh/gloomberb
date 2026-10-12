@@ -1,4 +1,5 @@
 import { tokenizeInlineLinks } from "./link-tokenizer";
+import { isKnownExchangeCode } from "./exchanges";
 
 interface InlineContentTextToken {
   kind: "text";
@@ -29,16 +30,33 @@ export type InlineContentToken =
   | InlineContentTickerToken
   | InlineContentUsernameToken;
 
-const INLINE_SYMBOL_TOKEN_RE = /\$[A-Z][A-Z0-9.-]{0,9}|@[A-Za-z][A-Za-z0-9_]{2,29}/g;
+// A cashtag is $SYMBOL, or $SYMBOL:VENUE for a listing ($SAN:EPA, $7203:TSE).
+const INLINE_SYMBOL_TOKEN_RE = /\$[A-Z0-9][A-Z0-9.:-]{0,24}|@[A-Za-z][A-Za-z0-9_]{2,29}/g;
 const SYMBOL_CHAR_RE = /[A-Za-z0-9.-]/;
 const USERNAME_CHAR_RE = /[A-Za-z0-9_]/;
+const TICKER_SYMBOL_RE = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
 
 function trimTrailingTickerPunctuation(value: string): string {
   let trimmed = value;
-  while (trimmed.length > 2 && /[.-]$/.test(trimmed)) {
+  while (trimmed.length > 2 && /[.:-]$/.test(trimmed)) {
     trimmed = trimmed.slice(0, -1);
   }
   return trimmed;
+}
+
+/**
+ * The cashtag at the start of `value` ($NVDA, $SAN:EPA), or null. A venue
+ * after the colon counts only when it is one the app knows ($NVDA:AMD is
+ * $NVDA), and a symbol starting with a digit only with one ($7203:TSE; $100
+ * is money).
+ */
+function cashtag(value: string): string | null {
+  const colon = value.indexOf(":");
+  const symbol = colon > 0 ? value.slice(1, colon) : value.slice(1);
+  const venue = colon > 0 ? value.slice(colon + 1) : "";
+  if (!TICKER_SYMBOL_RE.test(symbol)) return null;
+  if (venue && /^[A-Z][A-Z0-9]{1,9}$/.test(venue) && isKnownExchangeCode(venue)) return `$${symbol}:${venue}`;
+  return /^[A-Z]/.test(symbol) ? `$${symbol}` : null;
 }
 
 function isValidTickerBoundary(text: string, start: number, end: number): boolean {
@@ -71,7 +89,8 @@ export function tokenizeInlineContent(text: string): InlineContentToken[] {
       const start = match.index;
       const rawEnd = start + rawValue.length;
       const isTicker = rawValue.startsWith("$");
-      const value = isTicker ? trimTrailingTickerPunctuation(rawValue) : rawValue;
+      const value = isTicker ? cashtag(trimTrailingTickerPunctuation(rawValue)) : rawValue;
+      if (!value) continue;
       const end = start + value.length;
       if (
         isTicker

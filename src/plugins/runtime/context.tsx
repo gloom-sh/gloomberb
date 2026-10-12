@@ -2,6 +2,7 @@ import {
   createContext,
   createElement,
   useContext,
+  useMemo,
   type ReactNode,
 } from "react";
 import type { BrokerAdapter } from "../../types/broker";
@@ -65,6 +66,34 @@ export function withPluginRender<P>(
       {createElement(component as (props: any) => ReactNode, props)}
     </PluginRenderProvider>
   );
+}
+
+function PluginStateNamespace({ stateId, children }: { stateId: string; children: ReactNode }) {
+  const outer = useContext(PluginRenderContext);
+  const runtime = outer?.runtime;
+  const value = useMemo(() => (runtime ? { pluginId: stateId, runtime } : null), [runtime, stateId]);
+  if (!value) return children;
+  return <PluginRenderContext value={value}>{children}</PluginRenderContext>;
+}
+
+/**
+ * Renders a component under another state namespace of the plugin render
+ * context it is already in. A built-in module that moved to another plugin
+ * keeps reading and writing the pane and plugin state it already has.
+ */
+export function withPluginStateNamespace<P>(
+  stateId: string,
+  component: (props: P) => ReactNode,
+): (props: P) => ReactNode {
+  const scoped = (props: P) => (
+    <PluginStateNamespace stateId={stateId}>
+      {createElement(component as (props: any) => ReactNode, props)}
+    </PluginStateNamespace>
+  );
+  // Names the namespace in React's tools, and to tests that check a moved
+  // module still reads the state it had.
+  scoped.displayName = `PluginStateNamespace(${stateId})`;
+  return scoped;
 }
 
 export function usePluginRenderContext(): PluginRenderContextValue {

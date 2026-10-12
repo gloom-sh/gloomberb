@@ -9,27 +9,38 @@ import type {
 import type { TickerRecord } from "../../../types/ticker";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
+  collectionQuoteHeadline,
+  dayMoveLine,
+  extendedQuoteFields,
+  extendedSessionsOf,
   findCollection,
+  listingLabel,
   loadCollectionQuotes,
+  portfolioDayMove,
+  valuationTimeText,
   valuePortfolioAllocation,
   valuePortfolioPositions,
   type CollectionMatch,
 } from "./cli/render";
+import { VALUATION_BASIS_LABELS, type PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
+import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
 import {
+  BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
   describeTargetSum,
   formatAllocationDrift,
   formatAllocationWeight,
   formatTradeUnits,
 } from "./allocation";
-import { currencyMinorDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
+import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
 import { quoteFreshnessFields } from "../shared/report-freshness";
+import { importedFromText } from "./imported-from";
+import { describeCollections } from "../../../portfolio/collection-name";
+import { currentListingName } from "../../../tickers/listing-name";
 
 const DEFAULT_ROW_LIMIT = 50;
 const MAX_ROW_LIMIT = 200;
-/** Collection ids an unknown-name error lists, so the caller can retry with one. */
-const LISTED_COLLECTION_IDS = 12;
 
 const amount = (value: unknown) => formatNumber(typeof value === "number" ? value : undefined, 2);
 /** Market values and trades in whole units, as `portfolio show` prints them. */
@@ -49,7 +60,7 @@ const tradeUnits = (value: unknown, row: HeadlessPaneRow) => (
 /** Money per unit at the currency's minor digits: $230.00, not 230. */
 const unitMoney = (currencyKey: string) => (value: unknown, row: HeadlessPaneRow) => (
   typeof value === "number"
-    ? formatMarketPrice(value, { assetCategory: textOf(row.assetCategory), minimumFractionDigits: Math.min(2, currencyMinorDigits(textOf(row[currencyKey]))) })
+    ? formatMarketPrice(value, { assetCategory: textOf(row.assetCategory), minimumFractionDigits: currencyPriceMinDigits(textOf(row[currencyKey])) })
     : formatNumber(undefined)
 );
 
@@ -60,6 +71,7 @@ function textOf(value: unknown): string | undefined {
 const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" },
   { key: "name", header: "Name" },
+  { key: "exchange", header: "Exchange" },
   { key: "shares", header: "Qty", align: "right", format: quantity },
   { key: "avgCost", header: "Avg Cost", align: "right", format: unitMoney("positionCurrency"), description: "Per unit, in the position's currency." },
   { key: "price", header: "Last", align: "right", format: unitMoney("priceCurrency"), description: "In the quote's currency." },
@@ -70,6 +82,16 @@ const POSITION_COLUMNS: HeadlessPaneColumn[] = [
   { key: "weight", header: "Weight", align: "right", format: weight, description: "Percent of the total value, cash included; unpriced holdings are left out." },
 ];
 
+/** Last, after the targets: when the price each row is valued at is from. */
+const VALUATION_TIME_COLUMN: HeadlessPaneColumn = {
+  key: "valuationAsOf",
+  header: "As of (UTC)",
+  // Exports keep the ISO time.
+  textFormat: (value) => valuationTimeText(value),
+  shrink: false,
+  description: "When the price the row is valued at is from: its print, or the regular close with --close.",
+};
+
 /** Shown once the portfolio has a target weight. */
 const TARGET_COLUMNS: HeadlessPaneColumn[] = [
   { key: "targetWeight", header: "Target", align: "right", format: weight, description: "Target weight, in percent." },
@@ -77,6 +99,26 @@ const TARGET_COLUMNS: HeadlessPaneColumn[] = [
   { key: "tradeShares", header: "Trade", align: "right", format: tradeUnits, description: "Units to buy (+) or sell (-) to reach the target at the current price." },
   { key: "tradeValue", header: "Trade Value", align: "right", format: signedAmount, description: "The trade in the portfolio's currency." },
 ];
+
+/** The pre-market or after-hours print and its move from the regular close, for the rows that have one. */
+function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
+  return {
+    key: "extendedPrice",
+    header: EXTENDED_SESSION_LABELS[session],
+    align: "right",
+    format: (value, row) => row.extendedSession === session && typeof value === "number"
+      ? `${unitMoney("priceCurrency")(value, row)} ${percent(row.extendedChangePercent)}`
+      : formatNumber(undefined),
+    description: "Measured from the regular close in Last.",
+  };
+}
+
+/** `columns` with an extended column after Chg for each session a row has a print for. */
+function withExtendedColumns(columns: HeadlessPaneColumn[], sessions: readonly ExtendedSession[]): HeadlessPaneColumn[] {
+  if (sessions.length === 0) return columns;
+  const at = columns.findIndex((column) => column.key === "changePercent") + 1;
+  return [...columns.slice(0, at), ...sessions.map(extendedColumn), ...columns.slice(at)];
+}
 
 const WATCHLIST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "symbol", header: "Ticker" },
@@ -86,6 +128,25 @@ const WATCHLIST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "priceCurrency", header: "Ccy" },
   { key: "changePercent", header: "Chg", align: "right", format: percent },
 ];
+
+/**
+ * `columns` with the text report's Ticker column naming each listing as
+ * `portfolio show` does (SAN:EPA, SAN:NYSE), not by the key it is stored under,
+ * which leaves two listings of one symbol looking alike. `textFormat` is text
+ * only: JSON and CSV keep the stored key in `symbol`, and the rows stay keyed
+ * by it.
+ */
+function withListingLabels(columns: HeadlessPaneColumn[], tickers: readonly TickerRecord[]): HeadlessPaneColumn[] {
+  const labels = new Map(tickers.map((ticker) => [ticker.metadata.ticker, listingLabel(ticker)]));
+  return columns.map((column) => column.key !== "symbol" ? column : {
+    ...column,
+    textFormat: (value, row) => {
+      // The cash line is not a listing, even when a ticker is called CASH; its row carries no exchange.
+      if (typeof value !== "string" || !("exchange" in row)) return textOf(value) ?? formatNumber(undefined);
+      return labels.get(value) ?? value;
+    },
+  });
+}
 
 function finite(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -116,11 +177,10 @@ function resolveTarget(rawArgument: string, ctx: HeadlessPaneContext): Collectio
   }
   const match = findCollection(config, raw);
   if (match) return match;
-  const ids = [...config.portfolios, ...config.watchlists].map(({ id }) => id);
-  const listed = ids.slice(0, LISTED_COLLECTION_IDS).join(", ");
+  const collections = [...config.portfolios, ...config.watchlists];
   throw new Error(
-    ids.length
-      ? `Unknown portfolio or watchlist "${raw}". IDs: ${listed}${ids.length > LISTED_COLLECTION_IDS ? ` and ${ids.length - LISTED_COLLECTION_IDS} more` : ""}.`
+    collections.length
+      ? `Unknown portfolio or watchlist "${raw}". Portfolios and watchlists: ${describeCollections(collections)}.`
       : `Unknown portfolio or watchlist "${raw}". No portfolios or watchlists are set up.`,
   );
 }
@@ -129,6 +189,7 @@ async function portfolioHoldings(
   target: Extract<CollectionMatch, { kind: "portfolio" }>,
   limit: number,
   ctx: HeadlessPaneContext,
+  basis: PortfolioValuationBasis,
 ): Promise<HeadlessRowsResult> {
   const resolved = await ctx.resolvePortfolio?.(target.id);
   if (!resolved) throw new Error(`Holdings for ${target.id} are not available here.`);
@@ -144,6 +205,7 @@ async function portfolioHoldings(
     currency,
     baseCurrency: ctx.config.baseCurrency,
     toBase,
+    basis,
   });
   const { allocation, cash } = await valuePortfolioAllocation({ valuation, portfolio: resolved.portfolio, account: resolved.account, toBase });
   ctx.signal.throwIfAborted();
@@ -153,8 +215,9 @@ async function portfolioHoldings(
   const gross = held.reduce((sum, entry) => sum + Math.abs(finite(entry.row.marketValue) ?? 0), 0);
   const sum = (key: string) => held.reduce((total, entry) => total + (finite(entry.row[key]) ?? 0), 0);
   const seen = new Set<string>();
+  const extendedSessions = extendedSessionsOf(held.map(({ extended }) => extended?.session));
   const rows = held
-    .map(({ ticker, activeQuote, row }) => {
+    .map(({ ticker, headline, extended, row, valuation: priced }) => {
       const marketValue = finite(row.marketValue);
       // A ticker held in several lots carries its allocation on its first row.
       const figures = seen.has(ticker.metadata.ticker) ? undefined : allocationBySymbol.get(ticker.metadata.ticker);
@@ -163,15 +226,18 @@ async function portfolioHoldings(
         ...quoteFreshnessFields(quotes.get(ticker.metadata.ticker)),
         updatedAt: quotes.get(ticker.metadata.ticker)?.lastUpdated ?? null,
         symbol: ticker.metadata.ticker,
-        name: ticker.metadata.name ?? null,
+        // The name the listing's quote gives now, as `quote` names it, else the saved one.
+        name: currentListingName(ticker, quotes.get(ticker.metadata.ticker)) ?? ticker.metadata.name ?? null,
         exchange: ticker.metadata.exchange || null,
         assetCategory: ticker.metadata.assetCategory ?? null,
         shares: finite(row.shares),
         avgCost: finite(row.avgCost),
         positionCurrency: row.positionCurrency ?? null,
+        // Last and Chg are the regular session; market value and P&L are at `valuationPrice`.
         price: finite(row.quotePrice),
         priceCurrency: row.quoteCurrency ?? null,
-        changePercent: finite(activeQuote?.changePercent),
+        changePercent: finite(headline?.changePercent),
+        ...extendedQuoteFields(extended),
         marketValue,
         unrealizedPnl: finite(row.unrealizedPnl),
         weight: figures?.weight ?? null,
@@ -179,6 +245,7 @@ async function portfolioHoldings(
         drift: figures?.drift ?? null,
         tradeShares: figures?.tradeUnits ?? null,
         tradeValue: figures?.tradeValue ?? null,
+        ...priced,
       };
     })
     // Largest exposure first; a position without a market value sorts last.
@@ -205,16 +272,31 @@ async function portfolioHoldings(
   const broker = !!(target.portfolio.brokerId || target.portfolio.brokerInstanceId);
   const showTargets = allocation.targetSum != null;
   const targetNote = describeTargetSum(allocation.targetSum);
+  const imported = importedFromText(target.portfolio);
+  const dayMove = basis === "regular-close" ? portfolioDayMove(valuation) : null;
   const notices = [
+    ...(imported ? [imported] : []),
+    // At the close, Mkt Val is Last times the shares; the day's move from the close before gets its own line.
+    ...(basis === "regular-close" ? [dayMoveLine(dayMove, currency)] : []),
     ...(rows.length > limit
       ? [`${rows.length - limit} more position${rows.length - limit === 1 ? "" : "s"} not shown; totals include every position.`]
       : []),
     ...(targetNote ? [targetNote] : []),
+    ...(target.portfolio.brokerInstanceId && !resolved.account ? [BROKER_ACCOUNT_MISSING_NOTE] : []),
   ];
 
   return {
-    freshness: { source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud" },
-    columns: showTargets ? [...POSITION_COLUMNS, ...TARGET_COLUMNS] : POSITION_COLUMNS,
+    // Dated by the prices the value uses, and the oldest of them in exports, with the basis in the closing line.
+    freshness: {
+      source: broker ? "Your broker account and Gloom Cloud" : "Local portfolio and Gloom Cloud",
+      observedKey: "valuationAsOf",
+      citeOldest: true,
+      note: `priced at ${VALUATION_BASIS_LABELS[basis]}`,
+    },
+    columns: withListingLabels(
+      withExtendedColumns([...POSITION_COLUMNS, ...(showTargets ? TARGET_COLUMNS : []), VALUATION_TIME_COLUMN], extendedSessions),
+      tickers,
+    ),
     rows: shown,
     complete: unavailable.length === 0,
     ...(unavailable.length
@@ -222,7 +304,9 @@ async function portfolioHoldings(
       : {}),
     metadata: {
       collection: { kind: "portfolio", id: target.id, name: target.name, broker },
+      ...(target.portfolio.importedFrom ? { importedFrom: target.portfolio.importedFrom } : {}),
       currency,
+      valuationBasis: basis,
       positions: rows.length,
       totals: {
         marketValue: sum("marketValue"),
@@ -231,6 +315,8 @@ async function portfolioHoldings(
         unrealizedPnl: valuation.totalPnl,
         cash: allocation.cash ? finite(allocation.cash.value) : null,
         total: allocation.total,
+        // At the regular close, the holdings' move from the close before.
+        ...(basis === "regular-close" ? { dayChange: dayMove?.change ?? null, dayChangePercent: dayMove?.changePercent ?? null } : {}),
       },
       ...(cash ? { cash } : {}),
       ...(showTargets ? { targetSum: allocation.targetSum } : {}),
@@ -252,21 +338,27 @@ async function watchlistHoldings(
   ctx.signal.throwIfAborted();
   const rows = tickers.map((ticker) => {
     const quote = quotes.get(ticker.metadata.ticker);
+    // As the watchlist pane shows it: the regular session, then any extended print from its close.
+    const { headline, extended } = collectionQuoteHeadline(quote);
     return {
       ...quoteFreshnessFields(quote),
       updatedAt: quote?.lastUpdated ?? null,
       symbol: ticker.metadata.ticker,
-      name: ticker.metadata.name ?? null,
+      name: currentListingName(ticker, quote) ?? ticker.metadata.name ?? null,
       exchange: ticker.metadata.exchange || null,
-      price: finite(quote?.price),
+      price: finite(headline?.price ?? quote?.price),
       priceCurrency: quote?.currency ?? null,
-      changePercent: finite(quote?.changePercent),
+      changePercent: finite(headline ? headline.changePercent : quote?.changePercent),
+      ...extendedQuoteFields(extended),
     };
   });
   const shown = rows.slice(0, limit);
   return {
     freshness: { source: "Local watchlist and Gloom Cloud" },
-    columns: WATCHLIST_COLUMNS,
+    columns: withListingLabels(
+      withExtendedColumns(WATCHLIST_COLUMNS, extendedSessionsOf(shown.map((row) => row.extendedSession))),
+      tickers,
+    ),
     rows: shown,
     metadata: {
       collection: { kind: "watchlist", id: target.id, name: target.name },
@@ -286,10 +378,10 @@ async function watchlistHoldings(
 export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   description:
-    "Positions held in a portfolio, broker or manual: symbol, quantity, average cost, last price, market value, unrealized P&L and weight of the total with cash, largest first, then the cash line and totals. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
+    "Positions held in a portfolio, broker or manual: symbol, exchange, shares, average cost, last price, market value, unrealized P&L, weight of the total with cash and when each row's price is from, largest first, then the cash line and totals. Values are at the latest print, extended hours included, or at the regular close with close. With target weights set, each row adds its target, drift and the trade to reach it. For a watchlist, its tickers with quotes. Takes a portfolio or watchlist ID; the first portfolio when omitted.",
   discovery: {
     dataRequirements: ["Local portfolios, watchlists and synced broker positions; current quotes"],
-    limitations: ["Unrealized P&L on current positions; excludes realized trades, distributions and cash flows"],
+    limitations: ["Unrealized P&L on current positions; excludes realized trades, distributions and cash flows."],
   },
   argument: {
     kind: "free-text",
@@ -306,6 +398,13 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
       maximum: MAX_ROW_LIMIT,
       description: "Largest positions, or first tickers, to list. Totals cover all of them.",
     },
+    {
+      key: "close",
+      type: "boolean",
+      defaultValue: false,
+      settingKey: "valueAtClose",
+      description: "Value the portfolio at the regular close, not the latest print: Value is Last times the shares.",
+    },
   ],
   columns: POSITION_COLUMNS,
   describe: (args) => (args.rawArgument ? `Holdings | ${args.rawArgument}` : "Holdings"),
@@ -313,7 +412,7 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
     const target = resolveTarget(args.rawArgument, ctx);
     const limit = rowLimit(args.options.limit);
     return target.kind === "portfolio"
-      ? portfolioHoldings(target, limit, ctx)
+      ? portfolioHoldings(target, limit, ctx, args.options.close === true ? "regular-close" : "latest-print")
       : watchlistHoldings(target, limit, ctx);
   },
 };

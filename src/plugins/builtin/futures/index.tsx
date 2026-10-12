@@ -13,6 +13,7 @@ import {
   type PaneFooterSegment,
 } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneVisible } from "../../../state/app/activity";
 import { usePaneInstance } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
@@ -22,7 +23,9 @@ import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search
 import { cycleSortPreference, nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
+import { FUTURES_SERIES } from "./series";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
+import { quoteObservation } from "../shared/report-freshness";
 import {
   boardErrorMessage,
   quoteBoardFooterInfo,
@@ -34,9 +37,10 @@ import {
 import {
   FUTURES_CONTRACTS,
   FUTURES_SECTOR_LABELS,
+  futuresBoardContract,
   getContractsBySector,
   type FuturesSector,
-} from "./contracts";
+} from "../../../market-data/futures-board";
 import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,
@@ -75,7 +79,8 @@ function FuturesPane({ focused, width, height }: PaneProps) {
   const liveStreaming = useLiveStreamingSetting();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [sortPreference, setSortPreference] = useState<FuturesSortPreference>(DEFAULT_FUTURES_SORT);
-  const [searchQuery, setSearchQuery] = useState("");
+  // `FUT TTF` opens the board searched for the contract it names.
+  const [searchQuery, setSearchQuery] = useState(() => paneInstance?.params?.query ?? "");
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const [collapsedSectors, setCollapsedSectors] = useState<ReadonlySet<FuturesSector>>(new Set());
   const [visibleRange, setVisibleRange] = useState<DataTableVisibleRange | null>(null);
@@ -196,6 +201,17 @@ function FuturesPane({ focused, width, height }: PaneProps) {
     return handlePaneKey(event);
   }, [focusSearch, handlePaneKey]);
 
+  // `fn FUT` and `shot FUT` are dated by the quotes the board shows, as `quote` dates them:
+  // the newest, its delay, and whether the markets are open.
+  useRemoteUiNode(quotes.size > 0 ? {
+    role: "report-freshness",
+    label: "Quote freshness",
+    getMetadata: () => {
+      const now = Date.now();
+      return { observations: [...quotes.values()].flatMap((state) => (state.quote ? [quoteObservation(state.quote, now)] : [])) };
+    },
+  } : null);
+
   const status = quoteBoardStatus(quotes);
   const errorMessage = boardErrorMessage(quotes);
   // Every load came back empty: a board of dashes reads as broken, so the
@@ -265,6 +281,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
       renderSectionHeader={renderSectorHeader}
       renderCell={renderCell}
       selectedTextOverridesCellColor
+      reportEveryRow
       emptyStateTitle={searchQuery.trim()
         ? "No matching contracts."
         : "No market data provider connected."}
@@ -288,6 +305,7 @@ function FuturesPane({ focused, width, height }: PaneProps) {
 }
 
 export const futuresModule: PluginModule = {
+  series: FUTURES_SERIES,
   panes: [
     {
       id: FUTURES_PANE_ID,
@@ -298,6 +316,7 @@ export const futuresModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 76, height: 34 },
       tableExport: true,
+      shotFitsRows: true,
       // Resolved per open so the dialog shows the full default set until the
       // user saves a narrower selection.
       settings: (context) => ({
@@ -341,11 +360,32 @@ export const futuresModule: PluginModule = {
         "lumber",
         "aluminum",
         "ttf",
+        "energy",
+        "natural gas",
+        "gas",
+        "lng",
+        "brent",
+        "wti",
+        "heating oil",
+        "gasoline",
         "treasuries",
         "contracts",
         "cme",
       ],
-      shortcut: { prefix: "FUT", aliases: ["GLCO"] },
+      shortcut: {
+        prefix: "FUT",
+        aliases: ["GLCO"],
+        argKind: "text",
+        argPlaceholder: "code or name",
+        argOptional: true,
+      },
+      // A board code or symbol searches for that contract alone (NG=F: a bare NG also matches Orange Juice); other text searches as typed.
+      createInstance: (_context, options) => {
+        const input = options?.arg?.trim();
+        if (!input) return {};
+        const query = futuresBoardContract(input)?.symbol ?? input;
+        return { title: `FUT ${input.toUpperCase()}`, params: { query } };
+      },
     },
   ],
 };

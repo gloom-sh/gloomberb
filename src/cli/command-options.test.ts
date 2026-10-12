@@ -46,6 +46,10 @@ test("an undeclared option fails with the command's options, a close match and i
   expect(failure(() => check(history, ["AAPL", "--rnage=5Y"])).details).toContain("Did you mean --range?");
   expect(failure(() => check(history, ["AAPL", "--all=yes"])).message).toBe("--all takes no value.");
   expect(failure(() => check({ ...history, help: {} }, ["--range", "1Y"])).details).toBe("history takes no options. See gloomberb help history.");
+  // --explain, which fn and portfolio show take, points at the glossary on a command without one.
+  expect(failure(() => check(history, ["AAPL", "--explain"])).details).toStartWith(
+    "--explain follows the reports of fn <function> and portfolio show. gloomberb catalog explain <term> prints what one term means; gloomberb catalog glossary lists every term.",
+  );
 });
 
 const tempDirs: string[] = [];

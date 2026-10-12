@@ -35,7 +35,7 @@ test("Electrobun's request timeout names the request without its payload", async
   expect(gloom!.message).toBe(`RPC request timed out: http.stream.open ${new URL(getCloudApiBaseUrl()).host}/cloud after ~120s`);
 });
 
-test("a timeout that fires hours late, after the machine slept, is not reported as a crash", async () => {
+test("a timeout that fires minutes or hours late, after the machine slept, is not reported as a crash", async () => {
   jest.useFakeTimers();
   const request = (maxRequestTime: number) => {
     const send = createRpcLoopback(() => new Promise(() => {}), { maxRequestTime });
@@ -50,11 +50,16 @@ test("a timeout that fires hours late, after the machine slept, is not reported 
   const slept = request(14_410_000);
   jest.advanceTimersByTime(14_410_000);
   const sleptError = await slept;
+  // A short nap: the same timer fires six and a half minutes in.
+  const nap = request(390_000);
+  jest.advanceTimersByTime(390_000);
+  const napError = await nap;
   jest.useRealTimers();
 
   expect(sleptError.message).toBe("RPC request timed out: desktop.syncMainState after ~14410s");
   expect(isSleepRpcTimeout(stalledError)).toBe(false);
   expect(isSleepRpcTimeout(sleptError)).toBe(true);
+  expect(isSleepRpcTimeout(napError)).toBe(true);
 
   const sent: string[] = [];
   installCrashReporter({

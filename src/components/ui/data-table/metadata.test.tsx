@@ -16,7 +16,7 @@ type Row = { id: string; name: string };
 // must still be published and selectable.
 const rows: Row[] = Array.from({ length: 250 }, (_, index) => ({ id: `row-${index}`, name: `Row ${index}` }));
 
-function Table({ selectedId, onSelect }: { selectedId: string | null; onSelect: (index: number) => void }) {
+function Table({ selectedId, onSelect, reportEveryRow }: { selectedId: string | null; onSelect: (index: number) => void; reportEveryRow?: boolean }) {
   const headerScrollRef = useRef<ScrollBoxRenderable>(null);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
 
@@ -35,11 +35,12 @@ function Table({ selectedId, onSelect }: { selectedId: string | null; onSelect: 
       onSelect={(_row, index) => onSelect(index)}
       renderCell={(row) => ({ text: row.name })}
       emptyStateTitle="No rows."
+      reportEveryRow={reportEveryRow}
     />
   );
 }
 
-async function renderTable(selectedId: string | null) {
+async function renderTable(selectedId: string | null, reportEveryRow?: boolean) {
   const registry = createRemoteUiRegistry();
   const selected: number[] = [];
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-table-metadata"));
@@ -47,7 +48,7 @@ async function renderTable(selectedId: string | null) {
     <RemoteUiRegistryProvider registry={registry}>
       <AppContext value={createStaticAppStore(state)}>
         <PaneInstanceProvider paneId="table-metadata">
-          <Table selectedId={selectedId} onSelect={(index) => selected.push(index)} />
+          <Table selectedId={selectedId} onSelect={(index) => selected.push(index)} reportEveryRow={reportEveryRow} />
         </PaneInstanceProvider>
       </AppContext>
     </RemoteUiRegistryProvider>,
@@ -72,6 +73,15 @@ describe("DataTable remote metadata", () => {
       rowCount: 250,
       selectedId: "row-230",
     });
+  });
+
+  test("a table that reports every row publishes each one as its cells read, past the viewport", async () => {
+    const { node } = await renderTable("row-230", true);
+    const reported = node?.metadata?.rows as Array<{ key: string; selected: boolean; cells: Array<{ columnId: string; text: string }> }>;
+
+    expect(reported).toHaveLength(250);
+    expect(reported[249]).toEqual({ key: "row-249", selected: false, cells: [{ columnId: "name", columnLabel: "Name", text: "Row 249" }] });
+    expect(reported[230]!.selected).toBe(true);
   });
 
   test("selects a row by the published selectedId", async () => {

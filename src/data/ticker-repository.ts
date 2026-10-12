@@ -33,6 +33,11 @@ export class TickerRepository {
     this.tickers.save(ticker.metadata.ticker, ticker.metadata);
   }
 
+  /** Saves several tickers in one write. */
+  async saveTickers(tickers: readonly TickerRecord[]): Promise<void> {
+    this.tickers.saveMany(tickers.map((ticker) => ({ symbol: ticker.metadata.ticker, metadata: ticker.metadata })));
+  }
+
   async createTicker(metadata: TickerMetadata): Promise<TickerRecord> {
     const ticker: TickerRecord = { metadata };
     await this.saveTicker(ticker);

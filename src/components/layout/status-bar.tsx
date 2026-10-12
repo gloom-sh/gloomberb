@@ -13,6 +13,7 @@ import { blendHex, hoverBg } from "../../theme/colors";
 import { t, tf } from "../../i18n";
 import { useThemeColors } from "../../theme/theme-context";
 import { useAppDispatch, useAppSelector } from "../../state/app/context";
+import { useAppChromeShown } from "./presentation";
 import { useViewport } from "../../react/input";
 import {
   advertisedChord,
@@ -53,6 +54,7 @@ import {
   useClaimedStatusWidgetColumns,
   usePublishStatusWidgetRoom,
 } from "./status-widget-space";
+import { StarPromptStatusLine } from "../../app/star-prompt/status-line";
 
 type StatusBarEvent = { stopPropagation?: () => void; preventDefault?: () => void };
 type HoveredControl = string | null;
@@ -145,7 +147,7 @@ export function StatusBar({ onOpenChangelog }: { onOpenChangelog?: (version: str
   const { width: termWidth } = useViewport();
   const layouts = useAppSelector((state) => state.config.layouts);
   const activeLayoutIdx = useAppSelector((state) => state.config.activeLayoutIndex);
-  const statusBarVisible = useAppSelector((state) => state.statusBarVisible);
+  const statusBarVisible = useAppChromeShown().statusBar;
   const layout = useAppSelector((state) => state.config.layout);
   const { transientLayout } = useTransientLayout();
   const [hoveredControl, setHoveredControl] = useState<string | null>(null);
@@ -498,6 +500,7 @@ function TerminalStatusBar({
       {showTidyWindows && <TerminalTidyWindows {...props} />}
       <Box flexGrow={1} minWidth={0} />
       <StatusBarSummary nativePaneChrome={false} {...props} />
+      <StarPromptStatusLine />
       <PluginSlot name="status:widget" />
       <StatusBarFeedback nativePaneChrome={false} {...props} />
     </Box>

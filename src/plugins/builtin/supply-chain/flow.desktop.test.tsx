@@ -14,7 +14,7 @@ const { render, window } = createDomTestHarness({ withUi: false });
 
 function flow(rows: SupplyRow[], height = 24) {
   return <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
-    <InputHostProvider host={{ useShortcut() {}, useViewport: () => ({ width: 160, height }) }}>
+    <InputHostProvider host={{ useShortcut() {}, useBeforeShortcut() {}, useViewport: () => ({ width: 160, height }) }}>
       <SupplyFlow rows={rows} symbol="FOCUS" focusId="FOCUS" width={160} height={height} focused={false} selectedId={null} onSelect={() => {}} onOpen={() => {}} onVisible={() => {}} />
     </InputHostProvider>
   </UiHostProvider>;

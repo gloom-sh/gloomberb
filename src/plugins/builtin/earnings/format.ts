@@ -55,8 +55,4 @@ export function moneyText(value: number | null | undefined): string {
   return value == null ? "--" : formatCompact(value, { fixedDecimals: true });
 }
 
-/** Actual over estimate minus one, against the estimate's size so a negative estimate reads the right way. */
-export function surprise(actual: number | null | undefined, estimate: number | null | undefined): number | null {
-  if (actual == null || estimate == null || estimate === 0) return null;
-  return (actual - estimate) / Math.abs(estimate);
-}
+export { epsSurprise as surprise } from "../shared/earnings-report";

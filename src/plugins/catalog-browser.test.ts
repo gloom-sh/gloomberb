@@ -43,7 +43,6 @@ describe("browser plugin catalog", () => {
       "buildout",
       "market-movers",
       "earnings-calendar",
-      "short-interest",
       "thirteenf-funds",
     ]) {
       expect(paneIds).not.toContain(forbidden);

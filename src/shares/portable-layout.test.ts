@@ -387,6 +387,46 @@ describe("layout marketplace payloads", () => {
     expect(materialized.paneState.p1).toBeUndefined();
   });
 
+  test("opens a share made before the fold on the pane and tab that replaced it", () => {
+    const volume = materializeMarketplaceLayout({
+      layout: {
+        dockRoot: null,
+        instances: [{ instanceId: "short-volume:AAPL", paneId: "short-volume", binding: { kind: "fixed", symbol: "AAPL" } }],
+        floating: [{ instanceId: "short-volume:AAPL", x: 0, y: 0, width: 92, height: 28 }],
+        detached: [],
+      },
+      paneState: { "short-volume:AAPL": { pluginState: { keep: true } } },
+    }, (paneId) => `${paneId}:copy`);
+    expect(volume.layout.instances).toEqual([{
+      instanceId: "short-interest:copy",
+      paneId: "short-interest",
+      binding: { kind: "fixed", symbol: "AAPL" },
+      params: { tab: "volume" },
+    }]);
+    expect(volume.layout.floating[0]?.instanceId).toBe("short-interest:copy");
+    expect(volume.paneState).toEqual({ "short-interest:copy": { pluginState: { keep: true } } });
+
+    const credit = materializeMarketplaceLayout({
+      layout: {
+        dockRoot: {
+          kind: "split", axis: "horizontal", ratio: 0.5,
+          first: { kind: "pane", instanceId: "cdx" },
+          second: { kind: "pane", instanceId: "sovr" },
+        },
+        instances: [
+          { instanceId: "cdx", paneId: "cdx-board" },
+          { instanceId: "sovr", paneId: "sovr-board" },
+        ],
+        floating: [],
+        detached: [],
+      },
+      paneState: { sovr: { pluginState: {} } },
+    }, (paneId) => `${paneId}:copy`);
+    expect(credit.layout.instances.map((instance) => instance.paneId)).toEqual(["cdx-board"]);
+    expect(credit.layout.dockRoot).toEqual({ kind: "pane", instanceId: "cdx-board:copy" });
+    expect(credit.paneState).toEqual({});
+  });
+
   test("accepts old structural entries and rejects malformed or private v2 responses", () => {
     const entry = validEntry();
     expect(parseMarketplaceLayoutList({ items: [entry] })).toEqual([entry]);

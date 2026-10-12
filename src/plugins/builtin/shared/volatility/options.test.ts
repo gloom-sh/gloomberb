@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { solveImpliedVolatility, valueOption } from "./pricing";
 import { expectedMove, extractImpliedForward, forwardFromCarry, logForwardMoneyness, optionDelta,
-  optionMid, smileSkew, strikeForDelta, strikeFromLogMoneyness, volatilityTermSlope } from "./options";
+  optionMid, strikeForDelta, strikeFromLogMoneyness, volatilityTermSlope } from "./options";
 
 const input = { spot: 100, years: 0.5, rate: 0.04, dividendYield: 0.015, volatility: 0.3 };
 function quote(strike: number, side: "call" | "put") {
@@ -111,17 +111,7 @@ test("expected move uses a same-strike ATM straddle and separate one-sigma estim
   expect(expectedMove([huge], [huge], 100, 0.5, 0.3).straddle).toBeNull();
 });
 
-test("skew signs distinguish put premium from conventional call-minus-put risk reversal", () => {
-  const flat = smileSkew(input, () => 0.3);
-  expect(flat.put25).toBeCloseTo(0.3, 8);
-  expect(flat.butterfly).toBe(0);
-  expect(smileSkew({ spot: 100, years: 1, rate: 0 }, () => 2).call25).toBeCloseTo(2, 8);
-  expect(Object.values(smileSkew({ ...input, spot: NaN }, () => 0.3)).every((value) => value === null)).toBe(true);
-  const smile = (strike: number) => 0.3 - 0.03 * Math.log(strike / 100);
-  const skew = smileSkew(input, smile);
-  expect(skew.putCallSkew!).toBeGreaterThan(0);
-  expect(skew.riskReversal).toBe(-skew.putCallSkew!);
-  expect(skew.moneynessSkew).toBeCloseTo(smile(90) - smile(110), 9);
+test("term slope is the IV change per year between two tenors", () => {
   expect(volatilityTermSlope({ years: 0.25, volatility: 0.4 }, { years: 0.5, volatility: 0.3 })).toBeCloseTo(-0.4, 9);
   expect(volatilityTermSlope({ years: 0.5, volatility: 0.4 }, { years: 0.5, volatility: 0.3 })).toBeNull();
 });

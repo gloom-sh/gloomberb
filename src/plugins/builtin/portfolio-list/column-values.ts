@@ -1,14 +1,14 @@
 // Public API: gloomberb/components re-exports getColumnValue, getSortValue and
 // ColumnContext from here, so external plugins depend on their names and shapes.
 import { comparablePriceEarnings, formatPriceEarnings } from "../../../utils/price-earnings";
-import { convertMarketCapitalization } from "../../../utils/market-capitalization";
+import { convertMarketCapitalization, listedMarketCapitalization } from "../../../utils/market-capitalization";
 import type { ColumnConfig } from "../../../types/config";
 import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../../../types/financials";
 import type { EarningsEvent } from "../../../types/data-provider";
 import type { TickerRecord } from "../../../types/ticker";
-import { priceColor } from "../../../theme/colors";
+import { colors, priceColor } from "../../../theme/colors";
 import { formatQuoteAgeWithSource, resolveQuoteAgeTimestamp } from "../../../market-data/quotes/time";
-import { formatShortDate, parseDisplayDate, type ShortDateOptions } from "../../../utils/datetime-format";
+import { formatFeedTime, formatShortDate, parseDisplayDate, type ShortDateOptions } from "../../../utils/datetime-format";
 import { convertCurrency, formatCompact, formatCompactAmount, formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
   formatMarketCost,
@@ -31,6 +31,9 @@ import {
   type ActiveQuoteDisplay,
 } from "../../../market-data/market/status";
 import { formatOptionTicker } from "../../../utils/options";
+import { classifyInstrumentType } from "../../../tickers/instrument-kind";
+import { perpetualDisplaySymbol, perpetualListing } from "../../../tickers/perpetual-listing";
+import { currentListingName } from "../../../tickers/listing-name";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
 import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../../../components/price-sparkline/model";
 import {
@@ -49,7 +52,12 @@ import {
   portfolioPnlPercent,
   signedPositionDirection,
   type PortfolioPositionPnl,
-} from "./position-metrics";
+} from "../../../portfolio/position-metrics";
+import {
+  getPortfolioValuationDisplay,
+  getPortfolioValuationTime,
+  type PortfolioValuationBasis,
+} from "../../../portfolio/valuation-basis";
 import { isFiniteNumber } from "../../../utils/guards";
 import {
   allocationFigures,
@@ -67,6 +75,8 @@ export interface ColumnContext {
   exchangeRates: Map<string, number>;
   /** Clock for quote age (per second while shown) and day-based columns. */
   now: number;
+  /** What market values, P&L, weights and the day's move are priced at; the latest print when absent. */
+  valuationBasis?: PortfolioValuationBasis;
   /**
    * The total a portfolio's weights divide by: its priced holdings at net
    * market value plus its cash (see allocation.ts). It may trail the rows by
@@ -79,6 +89,35 @@ export interface ColumnContext {
   analystResearch?: Map<string, AnalystResearchData | null>;
   corporateActions?: Map<string, CorporateActionsData | null>;
   earningsEvents?: Map<string, EarningsEvent | null>;
+  /** Each row's stock perpetual by ticker, null for none; a row is missing while its lookup loads. */
+  perpetuals?: ReadonlyMap<string, ListedPerpetual | null>;
+  /** Moves whenever `perpetuals` does. */
+  perpetualsVersion?: number;
+}
+
+/** A row's stock perpetual as PERP% and FUND 8H read it; rates are fractions. */
+interface ListedPerpetual {
+  marketId: string;
+  /** The mark over the stock's last price; null without a comparable reference. */
+  underlyingPremium: number | null;
+  /** Funding per eight hours, whatever interval the venue pays on. */
+  fundingRate8h: number | null;
+  /** The venue's latest reading is old. */
+  stale: boolean;
+}
+
+/** The two perpetual columns: what each reads from the row's contract. */
+const PERPETUAL_FIELDS = { perp_premium: "underlyingPremium", perp_funding: "fundingRate8h" } as const;
+
+/** A perpetual's rate in percent: two decimals for a premium, four for funding, as PERP shows them. */
+export function formatPerpetualRate(value: number, decimals: number): string {
+  const fixed = Math.abs(value * 100).toFixed(decimals);
+  return `${/[1-9]/.test(fixed) ? (value > 0 ? "+" : "-") : ""}${fixed}%`;
+}
+
+function perpetualValue(columnId: keyof typeof PERPETUAL_FIELDS, symbol: string, ctx: ColumnContext): { pending: boolean; data: ListedPerpetual | null; value: number | null } {
+  const perp = mapData(ctx.perpetuals, symbol);
+  return { ...perp, value: perp.data?.[PERPETUAL_FIELDS[columnId]] ?? null };
 }
 
 /** Position and calendar dates as "Jan 5", read in UTC. */
@@ -133,7 +172,7 @@ function targetValue(data: AnalystResearchData | null | undefined): number | nul
   return target?.average ?? target?.median ?? target?.high ?? target?.low ?? null;
 }
 
-function mapData<T>(map: Map<string, T | null> | undefined, symbol: string): { pending: boolean; data: T | null } {
+function mapData<T>(map: ReadonlyMap<string, T | null> | undefined, symbol: string): { pending: boolean; data: T | null } {
   if (!map) return { pending: false, data: null };
   if (!map.has(symbol)) return { pending: true, data: null };
   return { pending: false, data: map.get(symbol) ?? null };
@@ -193,7 +232,8 @@ function tradedQuoteDisplay(
  * from that close. Until the close, and wherever no close is reported (a
  * pre-market quote without it, venues without extended hours), the traded price
  * as above.
- * Valuation columns (DAY P&L, MKT VAL, weight, P&L) keep the live price.
+ * Valuation columns (DAY P&L, MKT VAL, weight, P&L) keep the latest print,
+ * unless the pane values at the regular close, which is this headline.
  * A watchlist's Avg Day averages this CHG%.
  */
 export function headlineQuoteDisplay(
@@ -241,6 +281,17 @@ function rowAllocation(
 /** A held position without a price says so where its allocation would be. */
 const UNPRICED = "n/a";
 
+/**
+ * The symbol the Ticker column shows after its market-state dot: an option reads as its contract (`AAPL C $300
+ * Dec'26`, from an OCC code or a broker's symbol), a perpetual as its venue writes it (`BZUSDT`, `xyz:BRENTOIL`),
+ * the venue being its exchange.
+ */
+export function tickerDisplayName(ticker: TickerRecord): string {
+  if (classifyInstrumentType(ticker.metadata.assetCategory) === "option") return formatOptionTicker(ticker.metadata.ticker);
+  const perpetual = perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange);
+  return perpetual ? perpetualDisplaySymbol(perpetual) : ticker.metadata.ticker;
+}
+
 export function resolvePortfolioPriceValue(
   activeQuote: ActiveQuoteDisplay | null,
   brokerMarkPrice: number | undefined,
@@ -265,15 +316,17 @@ export function getColumnValue(
   ticker: TickerRecord,
   financials: TickerFinancials | undefined,
   ctx: ColumnContext,
-): { text: string; color?: string; pnlBasis?: PortfolioPositionPnl["basis"] } {
+): { text: string; color?: string; value?: number | null; pnlBasis?: PortfolioPositionPnl["basis"] } {
   const quote = financials?.quote;
 
   const fundamentals = financials?.fundamentals;
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
-  const activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
-  const displayQuote = tradedQuoteDisplay(positionMetrics, activeQuote, quote);
+  // The latest print, which the quote columns read, and the price the position is valued at.
+  const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
+  const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis);
+  const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
   const headlineQuote = headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, multiplierHint, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
@@ -303,19 +356,19 @@ export function getColumnValue(
     case "ticker": {
       const marketState = quote?.marketState;
       const statusDot = marketStateDot(marketState);
-      const displayName = ticker.metadata.assetCategory === "OPT"
-        ? formatOptionTicker(ticker.metadata.ticker)
-        : ticker.metadata.ticker;
-      return { text: `${statusDot} ${displayName}` };
+      return { text: `${statusDot} ${tickerDisplayName(ticker)}` };
     }
     case "name":
-      return { text: compactText(ticker.metadata.name || quote?.name) };
+      // The name the listing's quote gives now, as `quote` and `portfolio show` name it, else the saved one.
+      return { text: compactText(currentListingName(ticker, quote) || ticker.metadata.name || quote?.name) };
     case "asset_type":
       return { text: compactText(ticker.metadata.assetCategory) };
     case "exchange":
       return {
         text: compactText(
-          quote?.listingExchangeName
+          // A row saved as 247540:KRX shows KOSDAQ, the board its quote is read on.
+          quote?.tradingExchangeName
+          || quote?.listingExchangeName
           || quote?.exchangeName
           || quote?.routingExchangeName
           || ticker.metadata.exchange,
@@ -375,7 +428,7 @@ export function getColumnValue(
     }
     case "market_cap": {
       const cap = liveMarketCapitalization(quote, fundamentals);
-      const value = cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
+      const value = cap ? listedMarketCapitalization(convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates)) : null;
       return { text: value == null ? "—" : formatCompact(value, { fixedDecimals: true }) };
     }
     case "pe":
@@ -423,7 +476,8 @@ export function getColumnValue(
       const allocation = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx);
       if (allocation.unpriced && allocation.targetWeight != null) return { text: UNPRICED };
       const text = formatTradeUnits(allocation.tradeUnits, { units: totalShares, assetCategory: ticker.metadata.assetCategory });
-      return { text, color: /[1-9]/.test(text) ? priceColor(allocation.tradeUnits!) : undefined };
+      // The cell shows the trade rounded; exports and rendered-view reports keep the full figure.
+      return { text, value: allocation.tradeUnits, color: /[1-9]/.test(text) ? priceColor(allocation.tradeUnits!) : undefined };
     }
     case "trade_value": {
       const allocation = rowAllocation(ticker, activeQuote, baseMetrics, toBaseQuote, ctx);
@@ -447,9 +501,9 @@ export function getColumnValue(
       return percent === null ? { text: "—" } : { text: formatPercentRaw(percent), color: priceColor(percent) };
     }
     case "mark_delta":
-      if (!activeQuote || brokerMarkPrice == null || activeQuote.price === 0 || positionMetrics.priceBasis !== (quote?.priceBasis ?? "per-unit") || positionCurrency !== quoteCurrency) return { text: "—" };
+      if (!liveQuote || brokerMarkPrice == null || liveQuote.price === 0 || positionMetrics.priceBasis !== (quote?.priceBasis ?? "per-unit") || positionCurrency !== quoteCurrency) return { text: "—" };
       {
-        const percent = ((brokerMarkPrice - activeQuote.price) / Math.abs(activeQuote.price)) * 100;
+        const percent = ((brokerMarkPrice - liveQuote.price) / Math.abs(liveQuote.price)) * 100;
         return { text: formatPercentRaw(percent), color: priceColor(percent) };
       }
     case "acq_date": {
@@ -493,8 +547,25 @@ export function getColumnValue(
       if (result.pending) return { text: "…" };
       return { text: formatShortDate(result.date, MONTH_DAY) };
     }
+    case "perp_premium":
+    case "perp_funding": {
+      const perp = perpetualValue(col.id, ticker.metadata.ticker, ctx);
+      if (perp.pending) return { text: "…" };
+      if (perp.value == null) return { text: "—" };
+      // An old venue reading keeps its figure, dimmed, as PERP shows a stale market.
+      return {
+        text: formatPerpetualRate(perp.value, col.id === "perp_funding" ? 4 : 2),
+        color: perp.data?.stale ? colors.textDim : priceColor(perp.value),
+      };
+    }
     case "latency":
       return { text: formatQuoteAgeWithSource(quote, ctx.now, { seconds: true }) };
+    case "as_of": {
+      const time = getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics);
+      if (!time) return { text: "—" };
+      // In UTC, as the header says; a close the venue's calendar gives no hour for is dated by its day.
+      return { text: time.dateOnly ? formatShortDate(time.time, MONTH_DAY) : formatFeedTime(time.time, ctx.now, "—", { utc: true }) };
+    }
     case PRICE_SPARKLINE_COLUMN_ID:
       return { text: "" };
     default:
@@ -514,8 +585,9 @@ export function getSortValue(
   const quoteCurrency = quote?.currency || ticker.metadata.currency || "USD";
 
   const positionMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, undefined, quote);
-  const activeQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
-  const displayQuote = tradedQuoteDisplay(positionMetrics, activeQuote, quote);
+  const liveQuote = getPortfolioQuoteDisplay(positionMetrics, quote);
+  const activeQuote = getPortfolioValuationDisplay(positionMetrics, quote, ctx.valuationBasis);
+  const displayQuote = tradedQuoteDisplay(positionMetrics, liveQuote, quote);
   const headlineQuote = headlineQuoteDisplay(displayQuote, quote);
   const { positionCurrency, totalShares, totalCost, totalCostUnits, totalPriceUnits, brokerMarkPrice } = positionMetrics;
   const baseMetrics = getPortfolioPositionMetrics(ticker, ctx.activeTab, quoteCurrency, {
@@ -532,11 +604,12 @@ export function getSortValue(
     case "ticker":
       return ticker.metadata.ticker;
     case "name":
-      return ticker.metadata.name || quote?.name || null;
+      return currentListingName(ticker, quote) || ticker.metadata.name || quote?.name || null;
     case "asset_type":
       return ticker.metadata.assetCategory ?? null;
     case "exchange":
-      return quote?.listingExchangeName
+      return quote?.tradingExchangeName
+        ?? quote?.listingExchangeName
         ?? quote?.exchangeName
         ?? quote?.routingExchangeName
         ?? ticker.metadata.exchange
@@ -582,7 +655,7 @@ export function getSortValue(
       return fiftyTwoWeekPosition(displayQuote, quote);
     case "market_cap": {
       const cap = liveMarketCapitalization(quote, fundamentals);
-      return cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
+      return cap ? listedMarketCapitalization(convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates)) : null;
     }
     case "pe":
       return comparablePriceEarnings(liveTrailingPE(quote, fundamentals));
@@ -622,8 +695,8 @@ export function getSortValue(
     case "pnl_pct":
       return portfolioPnlPercent(positionPnl.value, baseMetrics.totalCost);
     case "mark_delta":
-      return activeQuote && brokerMarkPrice != null && activeQuote.price !== 0 && positionMetrics.priceBasis === (quote?.priceBasis ?? "per-unit") && positionCurrency === quoteCurrency
-        ? ((brokerMarkPrice - activeQuote.price) / Math.abs(activeQuote.price)) * 100
+      return liveQuote && brokerMarkPrice != null && liveQuote.price !== 0 && positionMetrics.priceBasis === (quote?.priceBasis ?? "per-unit") && positionCurrency === quoteCurrency
+        ? ((brokerMarkPrice - liveQuote.price) / Math.abs(liveQuote.price)) * 100
         : null;
     case "acq_date":
       return earliestDateAcquired(ticker, ctx.activeTab)?.getTime() ?? null;
@@ -651,8 +724,13 @@ export function getSortValue(
       const result = nextEarningsDate(ticker.metadata.ticker, ctx);
       return result.pending ? null : result.date?.getTime() ?? null;
     }
+    case "perp_premium":
+    case "perp_funding":
+      return perpetualValue(col.id, ticker.metadata.ticker, ctx).value;
     case "latency":
       return quote ? ctx.now - (resolveQuoteAgeTimestamp(quote, ctx.now) ?? ctx.now) : null;
+    case "as_of":
+      return getPortfolioValuationTime(quote, ctx.valuationBasis, positionMetrics)?.time ?? null;
     case PRICE_SPARKLINE_COLUMN_ID: {
       // The trend the sparkline draws: its window, closed by the live price.
       const history = followLiveSparklinePrice(financials?.priceHistory ?? [], quote, {

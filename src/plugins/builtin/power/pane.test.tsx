@@ -20,7 +20,8 @@ async function mount(tab = "queue", navigate: (id: string, symbol: string | unde
   const state = createInitialState(createTestPaneConfig("/tmp/power-test", { paneId: "power", instanceId: id, settings: { tab } }));
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
-    return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="market-overview" runtime={createTestPluginRuntime({ createPaneFromTemplate: (template, options) => navigate(template, options?.symbol ?? undefined) })}>
+    return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="market-overview" runtime={createTestPluginRuntime({ createPaneFromTemplate: (template, options) => navigate(template, options?.symbol ?? undefined),
+      pinTicker: (symbol, options) => navigate(options?.paneType ?? "", symbol) })}>
       <PaneFooterProvider>{(footer) => <Box width={120} height={28} flexDirection="column">
         <Box height={27}><PowerPane paneId={id} paneType="power" width={120} height={27} focused /></Box>
         <PaneFooterBar footer={footer} width={120} focused /><PaneFooterKeys paneId={id} footer={footer} focused />
@@ -29,7 +30,7 @@ async function mount(tab = "queue", navigate: (id: string, symbol: string | unde
   }
   await act(async () => { await tui.render(<Harness />, { width: 120, height: 28 }); });
 }
-test("project opens supported evidence in a stack and ticker action preserves its exchange", async () => {
+test("project opens supported evidence in a stack and d opens the DES of its listing", async () => {
   const row = powerProject(); const board = powerBoard();
   const evidenceOffsets: number[] = [];
   setCloudApiFetchTransport(async (input) => {
@@ -43,7 +44,8 @@ test("project opens supported evidence in a stack and ticker action preserves it
   await mount("queue", (id, symbol) => opened.push([id, symbol]));
   await tui.waitForFrameToContain("Storage project");
   await tui.emitKeypress({ name: "d" });
-  expect(opened).toEqual([["new-ticker-detail-pane", "NEE:XNYS"]]);
+  // NEE:XNYS opens as NEE, the DES `DES NEE` opens, so that one comes forward when it is open.
+  expect(opened).toEqual([["ticker-research", "NEE"]]);
   await tui.emitKeypress({ name: "return" });
   const frame = await tui.waitForFrameToContain("Primary Evidence");
   expect(frame).toContain("Sheet 1 row 3");

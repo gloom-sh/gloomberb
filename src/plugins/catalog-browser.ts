@@ -12,6 +12,7 @@ import { debtMaturitiesModule } from "./builtin/debt-maturities";
 import { revenueBreakdownModule } from "./builtin/revenue-breakdown";
 import { mnaModule } from "./builtin/mna";
 import { cryptoBoardModule } from "./builtin/crypto-board";
+import { shortInterestModule } from "./builtin/short-interest";
 import { shortVolumeModule } from "./builtin/short-volume";
 import { socialMentionsModule } from "./builtin/social-mentions";
 import { timeSalesModule } from "./builtin/time-sales";
@@ -55,6 +56,7 @@ import { cotModule } from "./builtin/cot";
 import { doeModule } from "./builtin/doe";
 import { gpuModule } from "./builtin/gpu";
 import { fxMatrixModule } from "./builtin/fx-matrix";
+import { docsModule } from "./builtin/docs";
 import { helpModule } from "./builtin/help";
 import { positionSizerModule } from "./builtin/kelly-sizer";
 import { layoutManagerModule } from "./builtin/layout-manager";
@@ -93,16 +95,26 @@ import { moneyMarketsModule } from "./builtin/money-markets";
 import { ratePathModule } from "./builtin/rate-path";
 import {
   applicationPluginMeta,
-  macroPluginMeta,
-  marketOverviewPluginMeta,
+  creditPluginMeta,
+  earningsPluginMeta,
+  filingsPluginMeta,
+  optionsVolatilityPluginMeta,
+  ownershipPluginMeta,
+  ratesMacroPluginMeta,
+  tickerCorePluginMeta,
+  altDataPluginMeta,
+  cryptoPluginMeta,
+  futuresCommoditiesPluginMeta,
+  globalMarketsPluginMeta,
+  quantPluginMeta,
+  screenersPluginMeta,
   newsPluginMeta,
   portfolioPluginMeta,
-  tickerResearchPluginMeta,
 } from "./builtin/builtin-plugin-meta";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
-  modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule],
+  modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule, docsModule],
 });
 
 const browserPortfolioPlugin = composeBuiltinPlugin({
@@ -110,50 +122,55 @@ const browserPortfolioPlugin = composeBuiltinPlugin({
   modules: [portfolioListModule, portfolioAnalyticsModule, positionSizerModule],
 });
 
-const browserTickerResearchPlugin = composeBuiltinPlugin({
-  ...tickerResearchPluginMeta,
+// Ticker Research's successors with the modules it had on the web. Holders,
+// 13F funds and the Congress tab are terminal-only, so Ownership & Insiders
+// is smaller here.
+const browserTickerCorePlugin = composeBuiltinPlugin({
+  ...tickerCorePluginMeta,
   modules: [
     tickerDetailModule,
     chartComposerModule,
+    researchModule,
+    estimateRevisionsModule,
+    companyKpisModule,
+    revenueBreakdownModule,
+    browserDividendYieldModule,
+    reverseDcfModule,
+    peBandModule,
+    executivesModule,
+    timeSalesModule,
+  ],
+});
+
+const browserOptionsVolatilityPlugin = composeBuiltinPlugin({
+  ...optionsVolatilityPluginMeta,
+  modules: [
     optionsModule,
     optionsPositioningModule,
     optionsCalculatorModule,
     optionsScenarioModule,
     volSurfaceModule,
     realizedVolModule,
-    seasonalityModule,
-    earningsRippleModule,
-    reverseDcfModule,
-    peBandModule,
-    macroDayModule,
     ivHistoryModule,
-    backtestModule,
-    timeSalesModule,
-    estimateRevisionsModule,
-    researchModule,
-    shortVolumeModule,
-    socialMentionsModule,
-    debtMaturitiesModule,
-    revenueBreakdownModule,
-    supplyChainModule,
-    creditDocumentsModule,
-    companyAttentionModule,
-    catalystsModule,
-    companyKpisModule,
-    awardsModule,
-    exposureModule,
-    mnaModule,
-    browserDividendYieldModule,
-    earningsCallsModule,
-    executivesModule,
-    riskFactorsModule,
-    filingEventsModule,
-    // Filings and Form 4s come through Gloom Cloud, behind a sign-in wall.
-    secModule,
-    insiderModule,
-    // Hiring data is a Gloom Cloud Pro dataset.
-    jobsModule,
   ],
+});
+
+const browserOwnershipPlugin = composeBuiltinPlugin({
+  ...ownershipPluginMeta,
+  description: "Insider trades, and short interest and volume.",
+  modules: [
+    // Form 4s come through Gloom Cloud, behind a sign-in wall.
+    insiderModule,
+    // Daily volume shares open this pane.
+    shortInterestModule,
+    shortVolumeModule,
+  ],
+});
+
+const browserFilingsPlugin = composeBuiltinPlugin({
+  ...filingsPluginMeta,
+  // Filings come through Gloom Cloud, behind a sign-in wall.
+  modules: [secModule, riskFactorsModule, filingEventsModule, catalystsModule, mnaModule],
 });
 
 const browserNewsPlugin = composeBuiltinPlugin({
@@ -161,33 +178,51 @@ const browserNewsPlugin = composeBuiltinPlugin({
   modules: [tickerNewsModule, browserNewsWireModule],
 });
 
-const browserMarketOverviewPlugin = composeBuiltinPlugin({
-  ...marketOverviewPluginMeta,
-  description: "Global indices, scanners, sectors, FX, futures, and correlations.",
+// Market Overview's successors with the modules it had on the web: all of
+// them but top movers.
+const browserGlobalMarketsPlugin = composeBuiltinPlugin({
+  ...globalMarketsPluginMeta,
+  modules: [worldIndicesModule, worldVenueMapModule, sectorsModule, fxMatrixModule, relativeRotationModule],
+});
+
+const browserScreenersPlugin = composeBuiltinPlugin({
+  ...screenersPluginMeta,
+  description: "Equity screener, session highs and lows, and unusual options flow.",
+  modules: [equityScreenerModule, scannerModule],
+});
+
+const browserFuturesCommoditiesPlugin = composeBuiltinPlugin({
+  ...futuresCommoditiesPluginMeta,
+  modules: [futuresModule, futuresCurveModule, cotModule, doeModule],
+});
+
+const browserCryptoPlugin = composeBuiltinPlugin({
+  ...cryptoPluginMeta,
+  modules: [cryptoBoardModule, perpsModule],
+});
+
+const browserAltDataPlugin = composeBuiltinPlugin({
+  ...altDataPluginMeta,
   modules: [
-    correlationModule,
-    relativeRotationModule,
-    equityScreenerModule,
-    worldIndicesModule,
-    worldVenueMapModule,
-    scannerModule,
-    sectorsModule,
-    fxMatrixModule,
-    futuresModule,
-    futuresCurveModule,
-    cotModule,
-    doeModule,
-    gpuModule,
-    attentionModule,
-    powerModule,
-    cryptoBoardModule,
-    perpsModule,
+    ...[attentionModule, gpuModule, powerModule].map((module) => ({ module, stateId: "market-overview" })),
+    supplyChainModule,
+    exposureModule,
+    awardsModule,
+    companyAttentionModule,
+    // Hiring data is a Gloom Cloud Pro dataset.
+    jobsModule,
+    socialMentionsModule,
   ],
 });
 
-const browserMacroPlugin = composeBuiltinPlugin({
-  ...macroPluginMeta,
-  description: "Economic calendar, rates, volatility, credit spreads, single-name, index and sovereign CDS, and Treasury auctions.",
+const browserQuantPlugin = composeBuiltinPlugin({
+  ...quantPluginMeta,
+  modules: [{ module: correlationModule, stateId: "market-overview" }, backtestModule, seasonalityModule, macroDayModule],
+});
+
+// The same panes as on the terminal.
+const browserRatesMacroPlugin = composeBuiltinPlugin({
+  ...ratesMacroPluginMeta,
   modules: [
     macroSharedResourcesModule,
     economicCalendarModule,
@@ -196,14 +231,34 @@ const browserMacroPlugin = composeBuiltinPlugin({
     yieldCurveModule,
     ratePathModule,
     moneyMarketsModule,
-    bondCalculatorModule,
     centralBankRatesModule,
     volatilityModule,
-    creditConditionsModule,
     marketValuationModule,
+  ],
+});
+
+const browserCreditPlugin = composeBuiltinPlugin({
+  ...creditPluginMeta,
+  modules: [
     cdsModule,
     creditBoardsModule,
+    creditConditionsModule,
     treasuryAuctionsModule,
+    bondCalculatorModule,
+    { module: creditDocumentsModule, stateId: "ticker-research" },
+    { module: debtMaturitiesModule, stateId: "ticker-research" },
+  ],
+});
+
+// The web app has never carried the earnings calendar. The call transcripts
+// and the ripple ran with Ticker Research here, so their pane state is under
+// its namespace, not Macro's as on the terminal.
+const browserEarningsPlugin = composeBuiltinPlugin({
+  ...earningsPluginMeta,
+  description: "Earnings call transcripts, and the earnings ripple through customers and suppliers.",
+  modules: [
+    { module: earningsCallsModule, stateId: "ticker-research" },
+    { module: earningsRippleModule, stateId: "ticker-research" },
   ],
 });
 
@@ -215,10 +270,18 @@ const browserMacroPlugin = composeBuiltinPlugin({
 export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   browserGloomberbCloudPlugin,
   browserPortfolioPlugin,
-  browserTickerResearchPlugin,
+  browserTickerCorePlugin,
+  browserOptionsVolatilityPlugin,
+  browserOwnershipPlugin,
+  browserFilingsPlugin,
   browserApplicationPlugin,
   browserNewsPlugin,
-  browserMarketOverviewPlugin,
+  browserGlobalMarketsPlugin,
+  browserScreenersPlugin,
+  browserFuturesCommoditiesPlugin,
+  browserCryptoPlugin,
+  browserAltDataPlugin,
+  browserQuantPlugin,
   marketHeatmapPlugin,
   marketHaltsPlugin,
   fearGreedPlugin,
@@ -227,7 +290,9 @@ export const browserBuiltinPlugins: readonly GloomPlugin[] = [
   clinicalTrialsPlugin,
   commentLettersPlugin,
   openFdaPlugin,
-  browserMacroPlugin,
+  browserRatesMacroPlugin,
+  browserCreditPlugin,
+  browserEarningsPlugin,
   alertsPlugin,
   researchSearchPlugin,
 ];

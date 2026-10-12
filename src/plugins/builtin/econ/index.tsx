@@ -17,6 +17,7 @@ import type { PaneProps } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
 import type { EconEvent } from "./types";
+import { FRED_CATALOG_SERIES } from "./fred-catalog";
 import { EconDetailView } from "./detail-view";
 import {
   COUNTRY_CYCLE,
@@ -24,6 +25,8 @@ import {
   attachEconCalendarPersistence,
   actualColor,
   calendarDisplayRows,
+  CALENDAR_TIME_ZONE_LABEL,
+  dateKey,
   dayLabel,
   formatCountdown,
   formatStaleness,
@@ -33,6 +36,8 @@ import {
   matchesCountry,
   matchesImpact,
   resetEconCalendarPersistence,
+  shortCalendarEnd,
+  shortDayLabel,
   timeLabel,
   type CountryFilter,
   type DisplayRow,
@@ -42,6 +47,8 @@ import {
 } from "./calendar-model";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { tableColumnWidth } from "../../../components/ui/table-layout";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
 const IMPACT_LABELS: Record<ImpactFilter, string> = {
   all: "All",
@@ -100,17 +107,28 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // Day headers and the NOW marker between the past and the upcoming events.
   const today = new Date(now);
   const rows = calendarDisplayRows(filtered, now);
+  // Rows group by UTC day, so today starts at UTC midnight.
+  const todayStart = Math.floor(now / 86_400_000) * 86_400_000;
+  // A calendar that stops short of a week ahead says where it stops.
+  const listedEnd = shortCalendarEnd(events, todayStart);
+  const listedAfter = listedEnd ? `No events listed after ${shortDayLabel(listedEnd)}` : null;
 
   // Map from eventIdx to flat row index (for scroll tracking)
   const eventIdxToRowIdx = new Map<number, number>();
   let nowRowIdx = -1;
   let nextUpcomingEventIdx = -1;
   let nextUpcomingTime = Number.POSITIVE_INFINITY;
+  // The first row of today or later, with the day header and NOW band above it.
+  let todayRowIdx = -1;
   for (let r = 0; r < rows.length; r++) {
     const row = rows[r]!;
     if (row.kind === "event") {
       eventIdxToRowIdx.set(row.eventIdx, r);
       const eventTime = row.event.date.getTime();
+      if (todayRowIdx < 0 && eventTime >= todayStart) {
+        todayRowIdx = r;
+        while (todayRowIdx > 0 && rows[todayRowIdx - 1]!.kind !== "event") todayRowIdx -= 1;
+      }
       if (eventTime > now && eventTime < nextUpcomingTime) {
         nextUpcomingEventIdx = row.eventIdx;
         nextUpcomingTime = eventTime;
@@ -125,51 +143,63 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const selectedIdx = rememberedIdx >= 0 ? rememberedIdx
     : nextUpcomingEventIdx >= 0 ? nextUpcomingEventIdx : Math.max(0, filtered.length - 1);
 
-  // On initial load, scroll to NOW and select the first upcoming event
-  const initialScrollDone = useRef(false);
+  // The present at the top of the table: NOW a few rows down for context, but
+  // never above today, so a Saturday opens on NOW and Monday rather than on
+  // Friday's last releases. Asked for on open, on a filter change and on a
+  // forced reload; it holds until the user scrolls or moves the selection.
+  const presentRowIdx = nowRowIdx >= 0 ? Math.max(0, todayRowIdx, nowRowIdx - 3) : -1;
+  const [presentRequest, setPresentRequest] = useState(1);
+  const [presentAnchor, setPresentAnchor] = useState<{ index: number; version: number } | null>(null);
+  const servedPresentRequest = useRef(0);
   useEffect(() => {
-    if (initialScrollDone.current || filtered.length === 0) return;
-    if (nextUpcomingEventIdx >= 0) {
+    if (servedPresentRequest.current === presentRequest || filtered.length === 0) return;
+    // On open the selection moves to the next release as well.
+    if (servedPresentRequest.current === 0 && nextUpcomingEventIdx >= 0) {
       setSelectedKey(filtered[nextUpcomingEventIdx]?.id ?? null);
     }
-    const sb = scrollRef.current;
-    if (sb?.viewport && nowRowIdx >= 0) {
-      // Position NOW a few rows from the top so you can see context
-      const scrollTarget = Math.max(0, nowRowIdx - 3);
-      sb.scrollTo(scrollTarget);
-    }
-    initialScrollDone.current = true;
-  }, [filtered.length]);
+    servedPresentRequest.current = presentRequest;
+    setPresentAnchor(presentRowIdx >= 0 ? { index: presentRowIdx, version: presentRequest } : null);
+  }, [filtered.length, presentRequest]);
+  const returnToPresent = useCallback(() => setPresentRequest((request) => request + 1), []);
+  const leavePresent = useCallback(() => setPresentAnchor(null), []);
 
   const selectImpactFilter = useCallback((value: ImpactFilter) => {
     setImpactFilter(value);
     setSelectedKey(null);
-  }, [setImpactFilter, setSelectedKey]);
+    returnToPresent();
+  }, [returnToPresent, setImpactFilter, setSelectedKey]);
   const selectCountryFilter = useCallback((value: CountryFilter) => {
     setCountryFilter(value);
     setSelectedKey(null);
-  }, [setCountryFilter, setSelectedKey]);
+    returnToPresent();
+  }, [returnToPresent, setCountryFilter, setSelectedKey]);
   const cycleImpactFilter = useCallback((step: 1 | -1) => {
     setImpactFilter((prev) => FILTER_CYCLE[(FILTER_CYCLE.indexOf(prev) + step + FILTER_CYCLE.length) % FILTER_CYCLE.length]!);
     setSelectedKey(null);
-  }, [setImpactFilter, setSelectedKey]);
+    returnToPresent();
+  }, [returnToPresent, setImpactFilter, setSelectedKey]);
   const cycleCountryFilter = useCallback((step: 1 | -1) => {
     setCountryFilter((prev) => COUNTRY_CYCLE[(COUNTRY_CYCLE.indexOf(prev) + step + COUNTRY_CYCLE.length) % COUNTRY_CYCLE.length]!);
     setSelectedKey(null);
-  }, [setCountryFilter, setSelectedKey]);
+    returnToPresent();
+  }, [returnToPresent, setCountryFilter, setSelectedKey]);
 
   // A forced reload goes back to the present once it answers.
   const forcedResult = calendar.data?.forced ? calendar.data : null;
   useEffect(() => {
-    if (forcedResult) setSelectedKey(null);
-  }, [forcedResult, setSelectedKey]);
+    if (!forcedResult) return;
+    setSelectedKey(null);
+    returnToPresent();
+  }, [forcedResult, returnToPresent, setSelectedKey]);
 
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => (
     handleRefreshKey(event, () => void calendar.reload(), { stopPropagation: true })
   ), [calendar.reload]);
 
   const columns = useMemo<EconCalendarColumn[]>(() => {
-    const timeWidth = 6;
+    // The header names the zone, so the column is as wide as the header needs.
+    const timeLabelText = `TIME (${CALENDAR_TIME_ZONE_LABEL})`;
+    const timeWidth = tableColumnWidth({ width: 6, label: timeLabelText });
     const impactWidth = 4;
     const flagWidth = 3;
     const actualWidth = 9;
@@ -183,7 +213,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     const eventWidth = Math.max(minEventWidth, width - 3 - columnCount - fixedWidth);
 
     return [
-      { id: "time", label: "TIME", width: timeWidth, align: "left" },
+      { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
       { id: "impact", label: "IMP", width: impactWidth, align: "left" },
       { id: "country", label: "CTY", width: flagWidth, align: "left" },
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
@@ -209,11 +239,21 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const nextText = nextEvent && nextCountdown ? `next ${nextEvent.event} ${nextCountdown}` : null;
   // The cached first paint is being replaced; its age only counts once a load has answered.
   const showStale = stale && (!loading || calendar.updatedAt !== null);
+  // An empty list says it in its empty state instead.
+  const listedAfterStatus = listedAfter && !detailEvent && filtered.length > 0 ? listedAfter : null;
   const calendarStatus = useMemo<PaneFooterSegment[]>(() => [
     ...(nextText && !detailEvent ? [{ id: "next", parts: [{ text: nextText, tone: "muted" as const }] }] : []),
+    ...(listedAfterStatus ? [{ id: "listed-after", parts: [{ text: listedAfterStatus, tone: "warning" as const }] }] : []),
     ...(showStale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
     ...(staleness ? [{ id: "updated", parts: [{ text: staleness, tone: "muted" as const }] }] : []),
-  ], [detailEvent, nextText, showStale, staleness]);
+  ], [detailEvent, listedAfterStatus, nextText, showStale, staleness]);
+  // A report of the pane (`gloomberb fn ECO`) says it too.
+  const listedThrough = listedEnd ? dateKey(listedEnd) : null;
+  useRemoteUiNode(listedAfter && listedThrough ? {
+    role: "report-notice",
+    label: "Listed through",
+    getMetadata: () => ({ text: listedAfter, key: "listedThrough", value: listedThrough }),
+  } : null);
   usePaneStatusFooter({
     registrationId: "econ-calendar",
     loading,
@@ -336,8 +376,15 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         kind: "index",
         selectedIndex: eventIdxToRowIdx.get(selectedIdx) ?? selectedIdx,
         onChange: (_index, row) => {
+          leavePresent();
           if (row.kind === "event") setSelectedKey(row.event.id);
         },
+      }}
+      scrollToIndex={presentAnchor?.index}
+      scrollToIndexAlign={presentAnchor ? "start" : "nearest"}
+      scrollToIndexVersion={presentAnchor?.version ?? 0}
+      onBodyScrollActivity={(source) => {
+        if (source === "user") leavePresent();
       }}
       columns={columns}
       items={rows}
@@ -351,7 +398,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
       selectedTextOverridesCellColor
-      emptyStateTitle={loading ? "Loading economic events..." : "No events"}
+      emptyStateTitle={loading ? "Loading economic events..." : listedAfter ?? "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}
     />
@@ -359,6 +406,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
 }
 
 export const economicCalendarModule: PluginModule = {
+  series: FRED_CATALOG_SERIES,
   panes: [{
     id: "econ-calendar",
     reportFreshness: { status: "not-a-feed", basis: "calendar" },

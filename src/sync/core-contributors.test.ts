@@ -2,7 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { createInitialState } from "../core/state/app/state";
 import { MarketDataCoordinator, setSharedMarketDataCoordinator } from "../market-data/coordinator";
 import { createTestDataProvider } from "../test-support/data-provider";
-import { createDefaultConfig } from "../types/config";
+import { createDefaultConfig, createPaneInstance } from "../types/config";
+import { removePane, removeUnavailablePaneTypes, restoreHiddenPanes } from "../layout/pane-manager";
 import type { PricePoint } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
 import {
@@ -96,7 +97,7 @@ describe("core sync contributors", () => {
     const layouts = config.layouts.map((savedLayout) => savedLayout);
 
     const merged = __syncContributorInternalsForTests.mergeConfigPayload(config, {
-      disabledPlugins: ["analytics", "kelly-sizer", "changelog", "macro-tv"],
+      disabledPlugins: ["analytics", "kelly-sizer", "changelog"],
       pluginConfig: {
         analytics: { metric: "beta", shared: "legacy" },
         portfolio: { shared: "canonical" },
@@ -107,7 +108,7 @@ describe("core sync contributors", () => {
       activeLayoutIndex: config.activeLayoutIndex,
     });
 
-    expect(merged?.disabledPlugins).toEqual(["portfolio", "macro"]);
+    expect(merged?.disabledPlugins).toEqual(["portfolio"]);
     expect(merged?.pluginConfig).toEqual({
       portfolio: { metric: "beta", shared: "canonical" },
       application: { section: "shortcuts" },
@@ -192,6 +193,122 @@ describe("core sync contributors", () => {
     for (const pluginId of ["portfolio", "portfolio-list", "analytics", "kelly-sizer"]) {
       expect(payload.pluginConfig[pluginId]).toEqual(config.pluginConfig.portfolio);
     }
+  });
+
+  test("Macro round-trips through sync with apps from before it was split", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-group-test");
+    const pull = (disabledPlugins: string[]) => (
+      __syncContributorInternalsForTests.mergeConfigPayload(config, { disabledPlugins })?.disabledPlugins
+    );
+    const push = async (disabledPlugins: string[]) => (
+      (await coreConfigSyncContributor.collect({ state: createInitialState({ ...config, disabledPlugins }) }) as any).disabledPlugins
+    );
+    const all = ["rates-macro", "credit", "earnings"];
+
+    // An older app turns Macro off, under its own id or the one TV had inside it.
+    expect(pull(["macro"])).toEqual(all);
+    expect(pull(["macro-tv"])).toEqual(all);
+    // A module that was once a plugin of its own stays with the successor holding it.
+    expect(pull(["earnings-calendar"])).toEqual(["earnings"]);
+    // Turning Macro off there over one successor already off here.
+    expect(pull(["credit", "macro"])).toEqual(["credit", "rates-macro", "earnings"]);
+
+    // All three off goes out as the one id the older app knows; fewer go out as themselves.
+    expect(await push(all)).toEqual(["macro"]);
+    expect(await push(["credit"])).toEqual(["credit"]);
+    expect(await push(["credit", "earnings"])).toEqual(["credit", "earnings"]);
+    // So turning Macro back on there drops `macro`, and all three come back.
+    expect(pull((await push(all)).filter((pluginId: string) => pluginId !== "macro"))).toEqual([]);
+  });
+
+  test("Ticker Research round-trips through sync with apps from before it was split", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-ticker-research-test");
+    const pull = (disabledPlugins: string[]) => (
+      __syncContributorInternalsForTests.mergeConfigPayload(config, { disabledPlugins })?.disabledPlugins
+    );
+    const push = async (disabledPlugins: string[]) => (
+      (await coreConfigSyncContributor.collect({ state: createInitialState({ ...config, disabledPlugins }) }) as any).disabledPlugins
+    );
+    const all = ["ticker-core", "options-volatility", "ownership", "filings", "alt-data", "quant", "credit", "earnings"];
+    const allButCredit = all.filter((pluginId) => pluginId !== "credit");
+
+    // An older app turns Ticker Research off, or one of the modules it once had as plugins.
+    expect(pull(["ticker-research"])).toEqual(all);
+    expect(pull(["options", "holders", "sec"])).toEqual(["options-volatility", "ownership", "filings"]);
+    expect(pull(["macro", "ticker-research"])).toEqual(["rates-macro", "credit", "earnings", ...all.slice(0, 6)]);
+    expect(await push(all)).toEqual(["ticker-research"]);
+    expect(await push(["ownership"])).toEqual(["ownership"]);
+    // Credit & Bonds turned back on: the older app sees Ticker Research on, the rest stay off here.
+    expect(await push(allButCredit)).toEqual(allButCredit);
+    expect(pull(await push(allButCredit))).toEqual(allButCredit);
+    // And turning Ticker Research back on there brings all eight back.
+    expect(pull((await push([...all, "news"])).filter((pluginId: string) => pluginId !== "ticker-research"))).toEqual(["news"]);
+  });
+
+  test("Market Overview round-trips through sync with apps from before it was split", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-sync-market-overview-test");
+    const pull = (disabledPlugins: string[]) => (
+      __syncContributorInternalsForTests.mergeConfigPayload(config, { disabledPlugins })?.disabledPlugins
+    );
+    const push = async (disabledPlugins: string[]) => (
+      (await coreConfigSyncContributor.collect({ state: createInitialState({ ...config, disabledPlugins }) }) as any).disabledPlugins
+    );
+    const all = ["global-markets", "screeners", "futures-commodities", "crypto", "alt-data", "quant"];
+
+    expect(pull(["market-overview"])).toEqual(all);
+    expect(pull(["world-indices", "market-movers"])).toEqual(["global-markets", "screeners"]);
+    expect(pull(["quant", "market-overview"])).toEqual(["quant", ...all.slice(0, 5)]);
+    expect(await push(all)).toEqual(["market-overview"]);
+    expect(await push(["global-markets"])).toEqual(["global-markets"]);
+    expect(pull((await push([...all, "news"])).filter((pluginId: string) => pluginId !== "market-overview"))).toEqual(["news"]);
+  });
+
+  test("plugins a pull switches off and back on keep their panes through a local edit in between", async () => {
+    const hiddenTypes = new Set(["cds", "econ"]);
+    const config = createDefaultConfig("/tmp/gloomberb-sync-plugin-panes-test");
+    config.layout = {
+      dockRoot: {
+        kind: "split",
+        axis: "horizontal",
+        ratio: 0.4,
+        first: { kind: "split", axis: "vertical", ratio: 0.6, first: { kind: "pane", instanceId: "list" }, second: { kind: "pane", instanceId: "cds" } },
+        second: { kind: "pane", instanceId: "des" },
+      },
+      instances: [
+        createPaneInstance("portfolio-list", { instanceId: "list" }),
+        createPaneInstance("cds", { instanceId: "cds", binding: { kind: "fixed", symbol: "F" } }),
+        createPaneInstance("ticker-detail", { instanceId: "des", binding: { kind: "fixed", symbol: "AAPL" } }),
+        createPaneInstance("econ", { instanceId: "eco" }),
+      ],
+      floating: [{ instanceId: "eco", x: 40, y: 5, width: 50, height: 18, zIndex: 51 }],
+      detached: [],
+    };
+    config.layouts = [{ name: "Main", layout: config.layout }];
+    const local = createInitialState(config).config;
+    // The other device sends its whole config: the same layout, with plugins switched.
+    const pullFrom = async (remote: typeof local, disabledPlugins: string[]) => (
+      __syncContributorInternalsForTests.mergeConfigPayload(
+        remote,
+        await coreConfigSyncContributor.collect({ state: createInitialState({ ...remote, disabledPlugins }) }),
+      )!
+    );
+
+    const off = await pullFrom(local, ["credit", "rates-macro"]);
+    expect(off.disabledPlugins).toEqual(["credit", "rates-macro"]);
+    expect(off.layout).toEqual(local.layout);
+
+    // Closing a pane here saves the layout the shell shows, with the hidden panes put back.
+    const shown = removeUnavailablePaneTypes(off.layout, () => true, { disabledPaneIds: hiddenTypes });
+    const edited = {
+      ...off,
+      layout: restoreHiddenPanes(off.layout, removePane(shown, "des"), (instance) => hiddenTypes.has(instance.paneId)),
+    };
+
+    const on = await pullFrom(edited, []);
+    expect(on.disabledPlugins).toEqual([]);
+    expect(on.layout.instances.map((instance) => instance.instanceId)).toEqual(["list", "cds", "eco"]);
+    expect(on.layout.dockRoot).toMatchObject({ axis: "vertical", ratio: 0.6, first: { instanceId: "list" }, second: { instanceId: "cds" } });
+    expect(on.layout.floating).toEqual(local.layout.floating);
   });
 
   test("preserves local broker identity when applying sanitized portfolios", () => {

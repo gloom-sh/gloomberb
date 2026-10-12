@@ -6,7 +6,7 @@ import type { CloudWorldVenuePayload } from "../../../api-client";
 import type { GeoFeature } from "../../../api-client/geo";
 import type { GeoMapOverlay } from "./geo-draw";
 import type { WorldMapFocus } from "./map";
-import type { WorldMapViewport } from "./model";
+import { mercatorY, type WorldMapViewport } from "./model";
 import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 
 const { window: testWindow, render: renderDom } = createDomTestHarness();
@@ -78,11 +78,48 @@ test("a dense layer draws dots until zooming leaves few enough in view for icons
   expect(container.querySelectorAll('[data-geo-style="icons"] > path').length).toBe(1200);
 });
 
+test("a trackpad pinch zooms the map: Ctrl wheel steps in Chrome, gesture events in Safari and the desktop web view", async () => {
+  const gesture = (type: string, scale: number) => Object.assign(new testWindow.Event(type, { bubbles: true, cancelable: true }), { scale, clientX: 0, clientY: 0 });
+  const pinched = async (dispatch: (surface: HTMLElement) => Promise<Event[]>) => {
+    const container = await renderDom(<WorldVenueMap venues={[venue]} selectedMic={null} width={80} height={24} onSelect={() => {}} />);
+    const surface = container.querySelector('[data-gloom-role="world-venue-map"]') as HTMLElement;
+    const events = await dispatch(surface);
+    const scale = Number(container.querySelector('[data-gloom-role="basemap"]')!.getAttribute("transform")!.slice("matrix(".length).split(" ")[0]);
+    return { zoomed: surface.getAttribute("data-zoomed") === "true", scale, events };
+  };
+
+  // A pinch is many small steps; Ctrl marks them, and they zoom firmer than the same steps of a scroll.
+  const small = (ctrlKey: boolean) => pinched(async (surface) => {
+    const events: Event[] = [];
+    for (let step = 0; step < 20; step += 1) {
+      const wheel = new testWindow.WheelEvent("wheel", { deltaY: -8, bubbles: true, cancelable: true }) as unknown as Event;
+      // The test DOM's wheel event does not carry modifiers.
+      Object.defineProperty(wheel, "ctrlKey", { value: ctrlKey });
+      events.push(wheel);
+      await act(async () => { surface.dispatchEvent(wheel); });
+    }
+    return events;
+  });
+  const pinch = await small(true);
+  const scroll = await small(false);
+  expect(pinch.zoomed).toBe(true);
+  expect(pinch.scale).toBeGreaterThan(scroll.scale * 2);
+
+  const viaGestures = await pinched(async (surface) => {
+    const events = [gesture("gesturestart", 1), gesture("gesturechange", 1.4), gesture("gesturechange", 2.2)] as unknown as Event[];
+    for (const event of events) await act(async () => { surface.dispatchEvent(event); });
+    return events;
+  });
+  expect(viaGestures.zoomed).toBe(true);
+  // The web view would zoom the whole page unless the pinch is claimed.
+  expect(viaGestures.events.every((event) => event.defaultPrevented)).toBe(true);
+});
+
 /** Where the basemap puts a longitude and latitude, in view units. */
 function placed(container: HTMLElement, longitude: number, latitude: number): { x: number; y: number } {
   const transform = container.querySelector('[data-gloom-role="basemap"]')!.getAttribute("transform")!;
   const [a, , , , bx, by] = transform.slice("matrix(".length, -1).split(" ").map(Number);
-  return { x: a! * longitude + bx!, y: by! - a! * latitude };
+  return { x: a! * longitude + bx!, y: by! - a! * mercatorY(latitude) };
 }
 
 // GLO-355: a pane that is docked, undocked or popped out mounts a new map.

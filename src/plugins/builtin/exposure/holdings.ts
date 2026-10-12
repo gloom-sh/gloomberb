@@ -4,7 +4,7 @@ import type { Portfolio, TickerRecord } from "../../../types/ticker";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { convertCurrency } from "../../../utils/format";
-import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue } from "../portfolio-list/position-metrics";
+import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue } from "../../../portfolio/position-metrics";
 
 /** Explicit NAV preserves cash, shorts and leverage; net holdings are never used as NAV. */
 export async function portfolioHoldings(portfolio: Portfolio, tickers: TickerRecord[], nav: number, market: Pick<DataProvider, "getQuote" | "getExchangeRate">): Promise<ExposureHolding[]> {

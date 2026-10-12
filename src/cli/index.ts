@@ -19,10 +19,12 @@ import {
   TABLE_SECTION_OPTION,
   type CliHelpEntry,
 } from "./help";
-import { parsePaneFunctionArgs } from "./pane-functions/options";
+import { parsePaneFunctionArgs, SHOT_SIZE_LIMITS } from "./pane-functions/options";
 import { checkCliCommandOptions } from "./command-options";
-import { fail, inferCliErrorOptions, printCliError } from "./errors";
-import { setCliColorEnabledOverride } from "../utils/cli-output";
+import { CLI_EXIT_CODES } from "./exit-codes";
+import { asUsageError, fail, inferCliErrorOptions, printCliError } from "./errors";
+import { cliStyles, setCliColorEnabledOverride, setCliWidthOverride } from "../utils/cli-output";
+import { setDisplayTimeZone } from "../utils/utc-time";
 import { search, searchCandidatesForCli, buildSearchReport } from "./commands/search";
 import { ticker } from "./commands/ticker";
 import { requireOneArg, takeOption } from "./commands/command-utils";
@@ -36,6 +38,9 @@ import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
 import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import { catalogFredSeriesIds } from "./series-search";
+
+const { width: SHOT_WIDTH, height: SHOT_HEIGHT } = SHOT_SIZE_LIMITS;
 
 function createCoreCliCommands(
   helpEntries: () => CliHelpEntry[],
@@ -93,6 +98,7 @@ function createCoreCliCommands(
         await search(query, {
           initMarketData: ctx.initMarketData,
           fail: ctx.fail,
+          plugins: ctx.plugins,
           ...(ctx.cliOptions.format === "text" ? {} : { printResult: ctx.printResult }),
         });
       },
@@ -121,15 +127,21 @@ function createCoreCliCommands(
     {
       name: "catalog",
       aliases: ["functions", "capabilities"],
-      description: "Find market functions to run with fn or capture with shot",
+      description: "Find market functions to run with fn or capture with shot, or look up a term",
       help: {
         group: CLI_COMMAND_GROUPS.functions,
-        usage: ["catalog [query] [--all] [--bot-safe]"],
+        usage: ["catalog [query] [--all] [--bot-safe]", "catalog glossary [term]", "catalog explain <term>"],
         options: [
-          { flags: "--all", description: "List every match instead of the first 25" },
+          { flags: "--all", description: "List every match, not just the best ones" },
           { flags: "--bot-safe, --botsafe", description: "Only functions with a verified unattended report" },
         ],
-        examples: ["catalog", "catalog options", "catalog HP"],
+        sections: [{
+          title: "Glossary",
+          lines: [
+            "catalog glossary lists the rates, auction, energy, perpetual-futures, portfolio and fund terms the functions show, such as bid-to-cover, SOFR, TTF, funding rate, drift or NAV; with a term, or as catalog explain <term>, it prints what that term means. A search names the terms it matches too.",
+          ],
+        }],
+        examples: ["catalog", "catalog options", "catalog HP", "catalog glossary stop-out"],
       },
       execute: async (args, ctx) => {
         await runPaneCatalog(args, ctx);
@@ -145,6 +157,7 @@ function createCoreCliCommands(
         options: [
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
           { flags: "--require-bot-safe", description: "Fail unless the function has a verified, complete report" },
+          { flags: "--explain", description: "Follow the report with what its terms mean (text and JSON; CSV keeps the rows)" },
           {
             ...TABLE_SECTION_OPTION,
             description: `${TABLE_SECTION_OPTION.description} (CALLS keeps --section for the transcript part)`,
@@ -158,6 +171,7 @@ function createCoreCliCommands(
           "fn WEI --csv --section europe > europe.csv",
           "fn 13F AAPL --view=ticker-holdings",
           "fn OVME --spot 100 --strike 100 --days 30 --volatility 25",
+          "fn AUCT --explain",
         ],
       },
       execute: async (args, ctx) => {
@@ -174,11 +188,13 @@ function createCoreCliCommands(
         usage: ["shot <function> [argument] [options]"],
         options: [
           { flags: "--output <path>", description: "PNG to write; defaults to gloomberb-<function>-<argument>.png in this folder" },
-          { flags: "--width <px>", description: "Image width, 720 to 2400 (default 1280)" },
-          { flags: "--height <px>", description: "Image height, 360 to 1800 (default 720)" },
-          { flags: "--theme <id>", description: "Render with another theme, such as amber or green" },
+          { flags: "--width <px>", description: `Layout width, ${SHOT_WIDTH.min} to ${SHOT_WIDTH.max} (default 1280). The PNG is drawn at twice the size: ${SHOT_WIDTH.min * 2} to ${SHOT_WIDTH.max * 2} px wide` },
+          { flags: "--height <px>", description: `Layout height, ${SHOT_HEIGHT.min} to ${SHOT_HEIGHT.max} (default 720), so ${SHOT_HEIGHT.min * 2} to ${SHOT_HEIGHT.max * 2} px tall` },
+          { flags: "--theme <id>", description: "Render with another theme, such as amber or colorblind; gloomberb config themes lists them" },
           { flags: "--scale <n>", description: "Text scale from 0.5 to 4 (default 1)" },
           { flags: "--watermark <label>", description: "Label drawn in the pane title bar" },
+          { flags: "--no-status", description: "Leave out the dated status line (as-of, delay, market hours) drawn in the pane footer" },
+          { flags: "--strict", description: `Exit ${CLI_EXIT_CODES.unusableShot} when the pane is empty, shows an error, is still loading or is access-gated; the PNG and the Reason line are still written` },
           { flags: "--<option> <value>", description: "A function setting; gloomberb catalog <function> lists them" },
           EXCHANGE_OPTION,
         ],
@@ -187,6 +203,8 @@ function createCoreCliCommands(
           "shot HP BHP:ASX",
           "shot DDIS MSFT --tab history",
           "shot HP NVDA --width 1600 --theme green",
+          "shot QQ AAPL,MSFT --no-status",
+          "shot OVDV SPY --tab term --strict --output term.png",
         ],
       },
       execute: async (args, ctx) => {
@@ -222,6 +240,7 @@ function createCoreCliCommands(
         if (!ref) {
           fail("Usage: gloomberb install <user/repo>");
         }
+        console.error(cliStyles.warning("Runs with your full permissions. Read the source first."));
         await installListedPlugin(ref);
       },
     },
@@ -315,6 +334,8 @@ function listedCommands(registry: CliCommandRegistry) {
 
 async function createRegistry(options: DispatchCliOptions = {}): Promise<CliCommandRegistry> {
   const config = await loadCliConfigIfAvailable();
+  // Every time a command prints follows the reader's zone from here on.
+  setDisplayTimeZone(config?.timezone);
   let registry: CliCommandRegistry | null = null;
   const coreCommands = createCoreCliCommands(
     () => listedCommands(registry!).map(({ command, source }) => ({ command, source })),
@@ -336,11 +357,12 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
   try {
     parsed = parseCliGlobalArgs(args);
   } catch (error) {
-    printCliError(error, inferCliErrorOptions(args));
+    printCliError(asUsageError(error), inferCliErrorOptions(args));
     process.exitCode = 1;
     return { kind: "handled" };
   }
   setCliColorEnabledOverride(parsed.options.color);
+  setCliWidthOverride(parsed.options.width ?? null);
   const command = parsed.args[0] ?? (parsed.help ? "help" : undefined);
   if (!command) {
     return { kind: "unhandled" };
@@ -361,11 +383,12 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     if (!helpOnly && resolved.builtin) checkCliCommandOptions(resolved.command, commandArgs, parsed.literalStart - 1);
     const result = await target.command.execute(
       commandArgs,
-      createCliCommandContext(target.ownerId, registry, parsed.options),
+      createCliCommandContext(target.ownerId, registry, parsed.options, commandArgs),
     );
     return normalizeCliDispatchResult(result);
   } catch (error) {
-    printCliError(error, parsed.options, { command: resolved.command.name });
+    printCliError(error, parsed.options, { command: resolved.command.name, args: commandArgs,
+      isFredSeries: (id) => catalogFredSeriesIds(registry.plugins).has(id) });
     process.exitCode = 1;
     return { kind: "handled" };
   }

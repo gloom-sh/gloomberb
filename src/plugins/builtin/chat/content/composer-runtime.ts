@@ -5,12 +5,14 @@ import {
   COMPOSER_ACTION_WIDTH,
   formatInlinePreview,
 } from "../layout";
-import { parseChatComposerCommand } from "../composer-commands";
+import { parseChatComposerCommand, type DiscordComposerCommand } from "../composer-commands";
 import { t, tf } from "../../../../i18n";
 import type { ChatContentController } from "./types";
 import { getComposerCursorOffset, moveComposerCursorToOffset } from "./composer-cursor";
 import { insertedText, pastedImagePaths } from "../attachments/transfer";
 import { chatTextWithImages } from "../attachments/model";
+import { isManagedBot } from "../ghost-user";
+import { CHAT_AI_BADGE_WIDTH } from "../message/ai-badge";
 
 interface MutableRef<T> {
   current: T;
@@ -45,6 +47,7 @@ export function useChatComposerRuntime({
   draftAttachmentCount = 0,
   onPastedImagePaths,
   onConversationStartError,
+  onDiscordCommand,
 }: {
   applyingExternalDraftRef: MutableRef<boolean>;
   blurInput: () => void;
@@ -77,6 +80,8 @@ export function useChatComposerRuntime({
   onPastedImagePaths?: (paths: string[], pasted: string) => void;
   /** A `/dm` or `/group` command the server refused, with the names it asked for. */
   onConversationStartError?: (error: unknown, usernames: string[]) => void;
+  /** Runs a /discord command. Without it the command is sent as text. */
+  onDiscordCommand?: (command: DiscordComposerCommand) => void;
 }) {
   const replyToRef = useRef(replyTo);
   const draftAttachmentCountRef = useRef(draftAttachmentCount);
@@ -262,6 +267,11 @@ export function useChatComposerRuntime({
       }).catch((error: unknown) => onConversationStartError?.(error, [composerCommand.username]));
       return;
     }
+    if (composerCommand?.kind === "discord" && onDiscordCommand) {
+      replaceComposerDraft("");
+      onDiscordCommand(composerCommand);
+      return;
+    }
     if (composerCommand?.kind === "group") {
       void controller.openGroupChannel({
         usernames: composerCommand.usernames,
@@ -293,8 +303,10 @@ export function useChatComposerRuntime({
     inputValueRef,
     onChannelChange,
     onConversationStartError,
+    onDiscordCommand,
     expandDirectSection,
     persistDraft,
+    replaceComposerDraft,
     setEditingMessage,
     setFollowMessages,
     setSelectedIdx,
@@ -388,7 +400,10 @@ export function useChatComposerRuntime({
   const replyPreview = replyTo
     ? formatInlinePreview(
       chatTextWithImages(replyTo.content, replyTo.attachments?.length ?? 0),
-      Math.max(contentWidth - ` replying to @${replyTo.user.username}: `.length - COMPOSER_ACTION_WIDTH - 1, 0),
+      Math.max(
+        contentWidth - ` replying to @${replyTo.user.username}`.length - (isManagedBot(replyTo.user) ? CHAT_AI_BADGE_WIDTH + 1 : 2) - COMPOSER_ACTION_WIDTH - 1,
+        0,
+      ),
     )
     : "";
   const editingPreview = editingMessage

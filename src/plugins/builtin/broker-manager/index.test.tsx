@@ -5,6 +5,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { createSignedInBrokerAdapter } from "../../../brokers/signed-in/adapter";
 import { refreshSignedInBrokers, resetSignedInBrokerCatalog } from "../../../brokers/signed-in/catalog";
 import type { SignedInBroker } from "../../../brokers/signed-in/client";
+import * as signInDialog from "../../../brokers/signed-in/sign-in-dialog";
 import { FormModalHost } from "../../../components/form-modal";
 import type { PluginRegistry } from "../../registry";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
@@ -459,6 +460,43 @@ describe("BrokersPane", () => {
     await pressKey("RETURN");
     expect(frame()).toContain("signed-in-new");
   }, 15_000);
+
+  test("c renews a sign-in the pane knows is connected or ending, and is a plain connect otherwise", async () => {
+    const calls: string[] = [];
+    const asked: Array<{ renew?: boolean }> = [];
+    const connectedAt = new Date(Date.now() - 6.5 * 24 * 3_600_000).toISOString();
+    let connection: Record<string, unknown> = { status: "connected", connectedAt };
+    spies.push(spyOn(apiClient, "isSignedIn").mockReturnValue(true));
+    spies.push(spyOn(apiClient, "brokerRequest").mockImplementation((async (_broker: string, path: string) => (
+      path === "" ? connection : { accounts: [], positions: [] }
+    )) as typeof apiClient.brokerRequest));
+    spies.push(spyOn(signInDialog, "requestBrokerSignIn").mockImplementation(async (_broker, options) => {
+      asked.push({ renew: options?.renew });
+      return false;
+    }));
+    const profile = (id: string): BrokerInstanceConfig => ({ id, brokerType: "signed-in", label: id, connectionMode: "ibkr", config: {}, enabled: true });
+    // One adapter that has synced this session (connected) and a new one for each profile that has not.
+    const syncedAdapter = createSignedInBrokerAdapter({ findBroker: () => null });
+    await syncedAdapter.listAccounts!(profile("synced"));
+    const ending = { status: "connected", connectedAt, expiresAt: new Date(Date.now() + 5 * 3_600_000).toISOString(), expiresSoon: true };
+
+    for (const [id, answer, renews] of [
+      ["synced", { status: "connected", connectedAt }, true],
+      ["flagged", ending, true],
+      ["plain", { status: "connected", connectedAt }, false],
+    ] as const) {
+      asked.length = 0;
+      connection = answer;
+      const adapter = id === "synced" ? syncedAdapter : createSignedInBrokerAdapter({ findBroker: () => null });
+      await tui.render(<Harness calls={calls} instances={[profile(id)]} adapters={[testBroker, adapter]} height={30} />, { width: 92, height: 30 });
+      await settle();
+      await settle();
+      await pressKey("c");
+      await settle();
+      expect(asked).toEqual([{ renew: renews }]);
+      expect(frame()).toContain(renews ? "sign-in was not renewed." : "was not connected.");
+    }
+  });
 
   // The command bar's Add Broker Account and the File menu's go through here.
   test("Add Broker Account shows the pane and starts its add flow", async () => {

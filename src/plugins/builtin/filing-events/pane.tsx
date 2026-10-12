@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
+import type { IssuerListingParams } from "../../../api-client/paths";
 import {
   BulletList,
   EmptyState,
@@ -24,7 +26,7 @@ import {
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
-import { useBoundTicker, useTickerRequest } from "../shared/ticker-request";
+import { useBoundTicker, useIssuerListing, useTickerRequest } from "../shared/ticker-request";
 import {
   buildFilingEventsFeed,
   resolveFeedScrollTop,
@@ -100,6 +102,20 @@ function FilingEntry({
   );
 }
 
+/**
+ * The latest 8-Ks of a listing. The service answers 404 when it can tie no
+ * filer to the ticker, as for a listing abroad whose company files none:
+ * that is no 8-Ks, not a failure.
+ */
+async function fetchFilingEvents(ticker: string, listing: IssuerListingParams) {
+  try {
+    return await apiClient.getFilingEvents(ticker, 100, listing);
+  } catch (error) {
+    if (error instanceof ApiRequestError && error.status === 404) return { ticker, events: [] };
+    throw error;
+  }
+}
+
 interface FilingEventsPaneProps {
   focused: boolean;
   width: number;
@@ -116,14 +132,15 @@ function FilingEventsReader({
   width,
   guard,
 }: FilingEventsPaneProps & { guard: ReadGuard }) {
-  const { symbol, exchange } = useBoundTicker();
+  const { symbol, exchange, ticker: boundTicker } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
+  const { name } = useIssuerListing(boundTicker);
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
 
   const loadFilingEvents = useCallback(
-    (listing: string) => guard(apiClient.getFilingEvents(listing, 100)),
-    [guard],
+    (key: string, venue: string) => guard(fetchFilingEvents(key, { exchange: venue, name })),
+    [guard, name],
   );
   const { data, loading, error, reload } = useTickerRequest(loadFilingEvents, ticker, exchange);
   const events = data?.events ?? [];
@@ -227,7 +244,7 @@ function FilingEventsReader({
     return { info, hints };
   }, [loading, error, ticker, selected, openFiling]);
 
-  if (!ticker) return <EmptyState title="Pick a ticker to see its 8-K filings." />;
+  if (!ticker) return <EmptyState title="Select a ticker." />;
   if (loading && !data) {
     return <PaneStatusBody loading align="center" loadingLabel="Loading 8-Ks..." />;
   }

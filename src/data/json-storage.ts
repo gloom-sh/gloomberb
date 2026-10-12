@@ -47,4 +47,6 @@ export const BROWSER_STORAGE_KEYS = {
   tickers: "gloomberb.web.tickers.v1",
   pluginState: "gloomberb.web.plugin-state.v1",
   session: "gloomberb.web.session.v1",
+  /** Broker account snapshots; other caches stay in memory. */
+  resources: "gloomberb.web.resources.v1",
 } as const;

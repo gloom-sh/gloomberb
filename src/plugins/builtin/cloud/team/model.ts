@@ -32,6 +32,11 @@ export function teamIdFromChannelId(channelId: string): string | null {
   return teamId || null;
 }
 
+/** The ref a team card's notice carries, so the Unread list keeps it once the toast is gone. */
+export function teamNotificationRefId(id: string): string {
+  return `team:${id}`;
+}
+
 /** #general first, then the rest by name, whatever order the server used. */
 export function sortTeamChannels<T extends { id: string; name: string }>(channels: readonly T[]): T[] {
   return [...channels].sort((a, b) => {

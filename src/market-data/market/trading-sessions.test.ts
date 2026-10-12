@@ -47,6 +47,8 @@ describe("a one-day chart's session", () => {
     // On Thanksgiving the last bar is Wednesday's, so the chart shows Wednesday.
     expect(start("AAPL", "NASDAQ", "2026-11-25T20:59:00Z")).toBe("2026-11-25T14:30:00.000Z");
     expect(start("7203.T", "JPX", "2026-10-02T06:24:00Z")).toBe("2026-10-02T00:00:00.000Z");
+    // Tel Aviv's Friday session opened at 09:59 local, before its early close.
+    expect(start("LUMI", "TASE", "2026-10-09T10:29:00Z")).toBe("2026-10-09T06:59:00.000Z");
     // CME's day opened at 17:00 Central the evening before, across the change to standard time.
     expect(start("ES=F", "CME", "2026-10-02T18:35:00Z")).toBe("2026-10-01T22:00:00.000Z");
     expect(start("ES=F", "CME", "2026-11-02T15:00:00Z")).toBe("2026-11-01T23:00:00.000Z");
@@ -55,7 +57,7 @@ describe("a one-day chart's session", () => {
   test("keeps a rolling day for round-the-clock markets and venues without known hours", () => {
     expect(start("BTC-USD", "CCC", "2026-10-02T18:30:00Z")).toBeNull();
     expect(start("EURUSD=X", "CCY", "2026-10-02T18:30:00Z")).toBeNull();
-    expect(start("TEVA", "TASE", "2026-10-01T12:00:00Z")).toBeNull();
+    expect(start("SAN", "MCE", "2026-10-01T12:00:00Z")).toBeNull();
   });
 
   test("starts at 04:00 New York with extended hours, a pre-market bar opening the new day", () => {

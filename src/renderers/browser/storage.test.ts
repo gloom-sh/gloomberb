@@ -5,6 +5,9 @@ import { JsonPersistence } from "../../data/json-persistence";
 import { BROWSER_STORAGE_KEYS, SafeJsonStorage, type StorageLike } from "../../data/json-storage";
 import { JsonTickerRepository } from "../../data/json-ticker-repository";
 import { createTestTicker } from "../../test-support/ticker";
+import { createTestBrokerAdapter } from "../../test-support/broker";
+import { createMarginAccount } from "../../test-support/margin-account";
+import { isBrokerAccountSnapshotKey, loadPersistedBrokerAccounts, persistBrokerAccounts } from "../../brokers/account-cache";
 
 class MemoryStorage implements StorageLike {
   readonly values = new Map<string, string>();
@@ -53,5 +56,21 @@ describe("browser local persistence", () => {
     expect(restored.pluginState.get("alerts", "draft", 2)?.value).toEqual({ enabled: true });
     expect(restored.pluginState.get("alerts", "draft", 1)).toBeNull();
     expect(restored.sessions.get("app", 1)?.value).toEqual({ focusedPaneId: "portfolio-list:main" });
+  });
+
+  test("keeps a broker account snapshot across a reload, as it keeps the positions", () => {
+    const storage = new MemoryStorage();
+    const instance = { id: "signed-in-test", brokerType: "signed-in", label: "Test broker", config: { broker: "test" }, enabled: true };
+    const broker = createTestBrokerAdapter({ id: "signed-in", listAccounts: async () => [] });
+    const account = createMarginAccount();
+    const persistence = new JsonPersistence(storage, { keepResource: isBrokerAccountSnapshotKey });
+    persistBrokerAccounts(persistence.resources, instance, broker, [account]);
+    persistence.resources.set({ namespace: "plugin:signed-in", kind: "quote", entityKey: "AAA" }, { price: 1 }, {
+      cachePolicy: { staleMs: 1_000, expireMs: 60_000 },
+    });
+
+    const reloaded = new JsonPersistence(storage, { keepResource: isBrokerAccountSnapshotKey });
+    expect(loadPersistedBrokerAccounts(reloaded.resources, instance, broker)).toEqual([account]);
+    expect(reloaded.resources.get({ namespace: "plugin:signed-in", kind: "quote", entityKey: "AAA" })).toBeNull();
   });
 });

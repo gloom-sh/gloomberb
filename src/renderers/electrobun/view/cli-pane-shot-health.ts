@@ -1,31 +1,15 @@
 import {
-  ConnectionHealthRegistry,
-  GLOOM_CLOUD_HTTP_CONNECTION_ID,
-  GLOOM_CLOUD_SOCKET_CONNECTION_ID,
+  connectionHealth,
+  type ConnectionHealthRegistry,
   registerGloomCloudConnectionSources,
 } from "../../../core/connection-health";
 
-export function createCliPaneShotConnectionHealth(now = Date.now()): ConnectionHealthRegistry {
-  const health = new ConnectionHealthRegistry({ now: () => now });
-  registerGloomCloudConnectionSources(health);
-  health.reportRequest(GLOOM_CLOUD_HTTP_CONNECTION_ID, {
-    operation: "GET /market/quotes",
-    success: true,
-    latencyMs: 84,
-  });
-  health.reportSocketState(GLOOM_CLOUD_SOCKET_CONNECTION_ID, "open", "api.gloom.sh/cloud/ws");
-  health.registerSource({
-    id: "asset-data.gloomberb-cloud",
-    name: "Market data",
-    kind: "asset-data",
-    ownerId: "market-data",
-    priority: 20,
-  });
-  health.reportRequest("asset-data.gloomberb-cloud", {
-    operation: "getPriceHistory",
-    success: false,
-    latencyMs: 240,
-    error: "Rate limited",
-  });
-  return health;
+/**
+ * The capture's own connection health: the registry the page's API client
+ * reports to, with the Gloom Cloud sources listed. A `shot CONN` shows the
+ * requests this capture made, and idle sources as idle, never a sample.
+ */
+export function createCliPaneShotConnectionHealth(): ConnectionHealthRegistry {
+  registerGloomCloudConnectionSources(connectionHealth);
+  return connectionHealth;
 }

@@ -21,7 +21,7 @@ import { isPermanentClientError } from "../../../api-client/errors";
 import { usePluginPaneState } from "../../runtime";
 import { useFilingYearReader } from "../shared/filing-year-reader";
 import { useProFeatureWall, type ProFeatureWallCopy, type ReadGuard } from "../shared/pro-feature-wall";
-import { useBoundTicker } from "../shared/ticker-request";
+import { useBoundTicker, useIssuerListing } from "../shared/ticker-request";
 import { loadRiskReport, loadRiskReports } from "./data";
 
 export const RISK_FACTORS_PANE_ID = "risk-factors";
@@ -100,8 +100,9 @@ function RiskFactorsReader({
   nested = false,
   guard,
 }: RiskFactorsPaneProps & { guard: ReadGuard }) {
-  const { symbol } = useBoundTicker();
+  const { symbol, ticker: boundTicker } = useBoundTicker();
   const ticker = symbol ? symbol.toUpperCase() : null;
+  const listing = useIssuerListing(boundTicker);
   const nativePaneChrome = useUiCapabilities().nativePaneChrome === true;
   const rendererHost = useRendererHost();
 
@@ -109,13 +110,13 @@ function RiskFactorsReader({
   // one the pane opened with, so a restored year applies to it.
   const [selectedYear, setSelectedYear] = usePluginPaneState<number | null>("filingYear", null);
   const [selectedTicker, setSelectedTicker] = useState<string | null>(ticker);
-  const listLoader = useCallback((force: boolean) => guard(loadRiskReports(ticker!, { force })), [guard, ticker]);
+  const listLoader = useCallback((force: boolean) => guard(loadRiskReports(ticker!, { force, listing })), [guard, listing, ticker]);
   const list = useAsyncResource(ticker ? listLoader : null, { clearOnError: isPermanentClientError });
   const years = useMemo(() => (list.data?.reports ?? []).map((entry) => entry.reportYear).sort((a, b) => b - a), [list.data]);
   // Null follows the newest discovered filing; an explicit choice stays on that year.
   const year = selectedTicker === ticker && selectedYear !== null
     ? selectedYear : years[0] ?? null;
-  const reportLoader = useCallback((force: boolean) => guard(loadRiskReport(ticker!, year!, { force })), [guard, ticker, year]);
+  const reportLoader = useCallback((force: boolean) => guard(loadRiskReport(ticker!, year!, { force, listing })), [guard, listing, ticker, year]);
   const detail = useAsyncResource(ticker && year !== null ? reportLoader : null, { clearOnError: isPermanentClientError });
   const report = detail.data;
   const listError = list.error ?? list.data?.refreshError ?? null;
@@ -166,7 +167,7 @@ function RiskFactorsReader({
   const bodyWidth = Math.max(12, width - 2);
   const proseWidth = Math.min(bodyWidth, READING_WIDTH);
 
-  if (!ticker) return <EmptyState title="Pick a ticker to see its risk factors." />;
+  if (!ticker) return <EmptyState title="Select a ticker." />;
   if (!list.data && list.loading) return <PaneStatusBody loading align="center" loadingLabel="Loading risk factors..." />;
   if (!list.data && listError && year === null) return <PaneStatusBody error={listError} errorTitle="Could not load risk reports." />;
   if (year === null) return <EmptyState title={`No 10-K risk factors on file for ${ticker}.`} />;

@@ -1,6 +1,7 @@
 import { Box, useUiCapabilities } from "../../../ui";
 import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes } from "./frame";
 import { PaneHeader, type PaneHeaderQuickSetting } from "./header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./header-tabs";
@@ -14,6 +15,12 @@ interface PaneWrapperProps {
   windowModeSelected?: boolean;
   width?: number;
   height?: number | `${number}%` | "auto";
+  /**
+   * Desktop: fill the box it sits in instead of taking `width` and `height`,
+   * so a box restyled by a drag (a divider) sizes the pane without a render.
+   * `width` still fits the header and footer.
+   */
+  stretch?: boolean;
   flexGrow?: number;
   locked?: boolean;
   showActions?: boolean;
@@ -28,6 +35,9 @@ interface PaneWrapperProps {
   onHeaderMouseDragEnd?: (event: any) => void;
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
+  onHelpMouseDown?: (event: any) => void;
+  /** Ask Gloom about the pane, from the button beside the `?`. */
+  onAskMouseDown?: (event: any) => void;
   onRestoreMouseDown?: (event: any) => void;
   fullscreen?: boolean;
   footer?: CombinedPaneFooter | null;
@@ -41,6 +51,7 @@ export function PaneWrapper({
   windowModeSelected = false,
   width = 0,
   height,
+  stretch = false,
   flexGrow,
   locked = false,
   showActions = false,
@@ -54,6 +65,8 @@ export function PaneWrapper({
   onHeaderMouseDragEnd,
   onHeaderContextMenu,
   onActionMouseDown,
+  onHelpMouseDown,
+  onAskMouseDown,
   onRestoreMouseDown,
   fullscreen = false,
   footer,
@@ -61,7 +74,10 @@ export function PaneWrapper({
 }: PaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const { headerTabs, contextValue: headerTabsContext } = usePaneHeaderTabsHost(nativePaneChrome === true && !!title);
-  const bg = paneBg(focused);
+  // This frame can sit below a memoized layer. The body surface feeds canvas
+  // charts too, so subscribe rather than reading the non-reactive facade.
+  const colors = useThemeColors();
+  const bg = paneBg(focused, colors);
   const showFooter = hasPaneFooterContent(footer);
   const reserveFooter = !!title && shouldReservePaneFooter(nativePaneChrome, showFooter);
   const renderFooter = !!title && (reserveFooter || showFooter);
@@ -76,8 +92,8 @@ export function PaneWrapper({
   return (
     <Box
       flexDirection="column"
-      width={width}
-      height={height}
+      width={stretch ? "100%" : width}
+      height={stretch ? "100%" : height}
       flexGrow={flexGrow}
       backgroundColor={bg}
       overflow="hidden"
@@ -111,6 +127,8 @@ export function PaneWrapper({
           onHeaderMouseDragEnd={onHeaderMouseDragEnd}
           onHeaderContextMenu={onHeaderContextMenu}
           onActionMouseDown={onActionMouseDown}
+          onHelpMouseDown={onHelpMouseDown}
+          onAskMouseDown={onAskMouseDown}
           fullscreen={fullscreen}
           onRestoreMouseDown={onRestoreMouseDown}
         />

@@ -14,6 +14,7 @@ import { formatCurrency, truncateToDisplayWidth } from "../../../utils/format";
 import { t, tf } from "../../../i18n";
 import type { BrokerProfileRow } from "./model";
 import type { BrokerManagerMessage } from "./pane-actions";
+import { signInEndNote } from "./sign-in-end";
 import { stateColor } from "./table";
 
 export type BrokerEditKey = "label" | "enabled" | string;
@@ -277,6 +278,9 @@ export function BrokerDetailContent({
         >
           {detailStatusMessage}
         </Text>
+        {row.signInEndsAt !== null && (
+          <Text fg={colors.warning} width={width} wrapText>{signInEndNote(row.signInEndsAt)}</Text>
+        )}
         <Text fg={colors.textMuted}>{tf("Last sync {time}", { time: formatRelativeAge(row.lastSyncedAt) })}</Text>
         <Text fg={colors.textMuted}>{tf("Status updated {time}", { time: formatRelativeAge(row.updatedAt) })}</Text>
         <Box height={1} />

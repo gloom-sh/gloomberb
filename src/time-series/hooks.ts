@@ -3,6 +3,7 @@ import { apiClient } from "../api-client";
 import { loadCachedFredSeries } from "../sources/gloomberb-cloud/fred-series";
 import { instrumentFromTicker } from "../market-data/request-types";
 import { useAssetData, useCapabilityInvoker } from "../plugins/runtime";
+import { getSharedRegistry } from "../plugins/registry";
 import { createChartSeriesResolver } from "../capabilities";
 import { useAppSelector } from "../state/app/context";
 import type { FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
@@ -16,6 +17,13 @@ import {
 
 /** A scoped, immutable model for exports that must render exactly the loaded data. */
 export const ChartSnapshotContext = createContext<ChartResolutionResult | null>(null);
+
+/** A registered series' own reload cadence, when it has one. */
+function registeredSeriesRefreshMs(source: { capabilityId: string; seriesId: string }): number | undefined {
+  const found = getSharedRegistry()?.series.findLoaded(source.capabilityId, source.seriesId);
+  const definition = found?.series.definition;
+  return definition && "refreshMs" in definition ? definition.refreshMs : undefined;
+}
 
 async function loadFred(request: FredSeriesRequest) {
   return loadCachedFredSeries(
@@ -71,6 +79,7 @@ export function useResolvedChartSpec(
     dataProvider,
     loadFredSeries: loadFred,
     resolveCapabilitySeries: createChartSeriesResolver(capabilityInvoker),
+    capabilityRefreshMs: registeredSeriesRefreshMs,
   }), [capabilityInvoker, dataProvider]);
   return useChartResolution(hydratedSpec, sources, { ...options, snapshot });
 }

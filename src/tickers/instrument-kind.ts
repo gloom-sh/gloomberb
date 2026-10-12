@@ -2,6 +2,8 @@ import type { TickerFinancials } from "../types/financials";
 import type { TickerInstrumentKind } from "../types/instrument";
 import type { TickerRecord } from "../types/ticker";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { perpetualListing } from "./perpetual-listing";
+import { predictionMarketListing } from "./prediction-listing";
 
 const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
   STK: "equity",
@@ -43,6 +45,9 @@ const KIND_BY_TYPE: Record<string, TickerInstrumentKind> = {
   FUTURE: "future",
   FUTURES: "future",
   CONTFUT: "future",
+  PERP: "perpetual",
+  PERPETUAL: "perpetual",
+  KALSHI: "prediction",
   OPT: "option",
   OPTION: "option",
   OPTIONS: "option",
@@ -72,9 +77,11 @@ export function classifyInstrumentType(type: string | null | undefined): TickerI
   return null;
 }
 
-/** Market listing syntax: `CCC` coins, `^` indices, `=X` pairs, `=F` futures. */
+/** Market listing syntax: `CCC` coins, a perpetual venue's contracts, a prediction market, `^` indices, `=X` pairs, `=F` futures. */
 export function kindFromListingSyntax(listing: string, exchange?: string): TickerInstrumentKind | null {
   if (canonicalExchange(exchange) === "CCC") return "crypto";
+  if (perpetualListing(listing, exchange)) return "perpetual";
+  if (predictionMarketListing(listing, exchange)) return "prediction";
   const symbol = parsePublicTickerKey(listing).symbol;
   if (symbol.startsWith("^")) return "index";
   if (symbol.endsWith("=X")) return "currency";
@@ -129,4 +136,30 @@ export function resolveTickerInstrumentKind(
   return typed.find((kind) => kind !== null && kind !== "equity")
     ?? kindFromListing(ticker)
     ?? "equity";
+}
+
+/**
+ * A coin-typed listing named "<asset> (Derivatives)", such as NATGAS-USD
+ * "Natural Gas (Derivatives) USD": the price perpetual futures on that asset
+ * trade at on crypto venues, around the clock. It is neither the asset's
+ * exchange-listed future nor its spot price, though its type reads as a coin.
+ */
+export function isCryptoVenuePerpetual(type: string | null | undefined, name: string | null | undefined): boolean {
+  return classifyInstrumentType(type) === "crypto" && /\(derivatives\)/i.test(name ?? "");
+}
+
+/**
+ * A listing's type, in plain words where the provider's type misleads (a
+ * perpetual typed as a coin). `detail` says what it is not, for a report line.
+ */
+export function instrumentTypeLabel(
+  type: string | null | undefined,
+  name: string | null | undefined,
+  options: { detail?: boolean } = {},
+): string | undefined {
+  if (isCryptoVenuePerpetual(type, name)) {
+    return options.detail ? "Perpetual futures price (24/7 on crypto venues; not the listed future, not spot)" : "Perpetual futures price";
+  }
+  if (classifyInstrumentType(type) === "perpetual") return "Perpetual futures";
+  return type?.trim() || undefined;
 }

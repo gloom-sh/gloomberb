@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ScrollBoxRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
@@ -12,14 +12,22 @@ import {
   hasPixelScrollMetrics,
   isGroupedWithPrevious,
   isScrolledToBottom,
+  readScrollPlace,
+  restoreScrollPlace,
   runAfterLayout,
   scrollElementIntoScrollBoxView,
   scrollToBottom,
   scrollToPosition,
+  type ScrollPlace,
 } from "../layout";
 
 interface MutableRef<T> {
   current: T;
+}
+
+interface RequestOlderOptions {
+  /** The first message was selected a moment ago, by a key whose state has not been drawn yet. */
+  firstIsSelected?: boolean;
 }
 
 export interface ChatPrependAnchor {
@@ -37,7 +45,7 @@ interface ChatScrollRuntimeArgs {
   focused: boolean;
   hasOlderMessages: boolean;
   height: number;
-  latestMessageId: string | null;
+  latestMessage: ChatMessage | null;
   loadingOlderMessages: boolean;
   messageAreaHeight: number;
   messageElementsRef: MutableRef<Map<string, unknown>>;
@@ -56,6 +64,12 @@ interface ChatScrollRuntimeArgs {
    * changing its row count, such as the desktop's waiting images.
    */
   composerLayoutKey?: string;
+  /** Shows a message the reader was sent to (a notification, a quoted reply) for a moment. */
+  highlightMessage: (messageId: string) => void;
+  /** Drops the hover on a row: the list moved under the pointer. */
+  clearHover: () => void;
+  /** Drops the highlight on a message: the reader acted. */
+  clearHighlight: () => void;
 }
 
 export function useChatScrollRuntime({
@@ -66,7 +80,7 @@ export function useChatScrollRuntime({
   focused,
   hasOlderMessages,
   height,
-  latestMessageId,
+  latestMessage,
   loadingOlderMessages,
   messageAreaHeight,
   messageElementsRef,
@@ -81,8 +95,17 @@ export function useChatScrollRuntime({
   stickyTranscript,
   useDefaultControllerChannel,
   composerLayoutKey,
+  highlightMessage,
+  clearHover,
+  clearHighlight,
 }: ChatScrollRuntimeArgs) {
   const pendingJumpMessageIdRef = useRef<string | null>(null);
+  const latestMessageId = latestMessage?.id ?? null;
+  // Whether the reader is at the bottom of the list, which is where new messages
+  // show up. The desktop list reports it as it follows the bottom or is left;
+  // the terminal's list follows while `stickyTranscript` holds.
+  const [pinnedToBottom, setPinnedToBottom] = useState(true);
+  const atBottom = nativePaneChrome ? pinnedToBottom : stickyTranscript;
 
   const registerMessageElement = useCallback((messageId: string, node: unknown | null) => {
     if (node) {
@@ -92,7 +115,7 @@ export function useChatScrollRuntime({
     }
   }, [messageElementsRef]);
 
-  const requestOlderMessages = useCallback(() => {
+  const requestOlderMessages = useCallback((options?: RequestOlderOptions) => {
     const scrollBox = scrollRef.current;
     if (!scrollBox || loadingOlderMessages || !hasOlderMessages || messages.length === 0) return;
     const exactPixels = nativePaneChrome === true && hasPixelScrollMetrics(scrollBox);
@@ -101,7 +124,12 @@ export function useChatScrollRuntime({
       oldestMessageId: messages[0]?.id ?? null,
       scrollHeight: getScrollHeight(scrollBox, exactPixels),
       scrollTop: getScrollTop(scrollBox, exactPixels),
-      selectedMessageId: selectedIdx >= 0 ? messages[selectedIdx]?.id ?? null : messages[0]?.id ?? null,
+      // Only a selection there is follows the rows down. Nothing selected stays so: the
+      // oldest message used to be selected here, and kept the selected band and its Reply
+      // button until the reader pressed Esc, which a mouse reader never does.
+      selectedMessageId: selectedIdx >= 0
+        ? messages[selectedIdx]?.id ?? null
+        : options?.firstIsSelected ? messages[0]?.id ?? null : null,
     };
     setFollowMessages(false);
     const request = useDefaultControllerChannel
@@ -124,19 +152,46 @@ export function useChatScrollRuntime({
     useDefaultControllerChannel,
   ]);
 
-  const requestOlderMessagesIfNeeded = useCallback(() => {
+  const requestOlderMessagesIfNeeded = useCallback((options?: RequestOlderOptions) => {
     const scrollBox = scrollRef.current;
     if (!scrollBox || scrollBox.scrollTop > 1) return;
-    requestOlderMessages();
+    requestOlderMessages(options);
   }, [requestOlderMessages, scrollRef]);
+
+  // The thread is built again when the pane crosses the width the channel list
+  // stops fitting beside it, which would put a reader who scrolled back at the
+  // top or the bottom of a list that is otherwise the same. Where the reader was
+  // when they last scrolled is kept, and the new transcript takes it back as it
+  // comes. It is not read as the old one goes: by then the pane has been resized
+  // and the rows re-wrapped, before the list has put the reader's row back.
+  const placeRef = useRef<{ channelId: string; place: ScrollPlace } | null>(null);
+  const placeSourcesRef = useRef({ channelId, messages, nativePaneChrome });
+  placeSourcesRef.current = { channelId, messages, nativePaneChrome };
+  const rememberScrollPlace = useCallback(() => {
+    const sources = placeSourcesRef.current;
+    const place = sources.nativePaneChrome ? readScrollPlace(scrollRef.current, sources.messages, messageElementsRef.current) : null;
+    placeRef.current = place ? { channelId: sources.channelId, place } : null;
+  }, [messageElementsRef, scrollRef]);
+  const takeBackScrollPlace = useCallback(() => {
+    const remembered = placeRef.current;
+    if (!remembered || remembered.channelId !== placeSourcesRef.current.channelId) return;
+    restoreScrollPlace(scrollRef.current, remembered.place, messageElementsRef.current);
+  }, [messageElementsRef, scrollRef]);
 
   const handleTranscriptScrollActivity = useCallback((event?: { scroll?: { direction?: "up" | "down" | "left" | "right" } }) => {
     const direction = event?.scroll?.direction;
+    // Rows moved under a pointer that did not: whatever it was over is no longer
+    // under it. A wheel or touch move is the reader's own, so a message they
+    // were sent to has done its job; the scroll events a list raises when it
+    // repositions itself carry no direction.
+    clearHover();
+    if (event?.scroll) clearHighlight();
     runAfterLayout(() => {
       requestOlderMessagesIfNeeded();
 
       const scrollBox = scrollRef.current;
       if (!scrollBox) return;
+      rememberScrollPlace();
       const atBottom = isScrolledToBottom(scrollBox, nativePaneChrome);
       if (direction === "up" && !atBottom) {
         setFollowMessages(false);
@@ -145,32 +200,36 @@ export function useChatScrollRuntime({
 
       setFollowMessages(atBottom);
     });
-  }, [nativePaneChrome, requestOlderMessagesIfNeeded, scrollRef, setFollowMessages]);
+  }, [clearHighlight, clearHover, nativePaneChrome, rememberScrollPlace, requestOlderMessagesIfNeeded, scrollRef, setFollowMessages]);
 
   const scrollToLoadedMessage = useCallback((messageId: string) => {
     const targetIndex = messages.findIndex((message) => message.id === messageId);
     if (targetIndex < 0) return false;
 
-    setSelectedIdx(targetIndex);
+    // Shown for a moment, not selected: a selection stays until someone clears
+    // it, and holds the list off the bottom for as long.
+    highlightMessage(messageId);
     setFollowMessages(false);
     prependAnchorRef.current = null;
     runAfterLayout(() => {
-      if (nativePaneChrome && scrollElementIntoScrollBoxView(scrollRef.current, messageElementsRef.current.get(messageId))) return;
+      if (nativePaneChrome && scrollElementIntoScrollBoxView(scrollRef.current, messageElementsRef.current.get(messageId), { center: true })) return;
       const scrollBox = scrollRef.current;
       if (!scrollBox) return;
       scrollBox.scrollTo(getMessageTopOffset(messages, targetIndex, contentWidth, catalog));
+      // A message near the bottom leaves the reader at it, and following.
+      setFollowMessages(isScrolledToBottom(scrollBox, nativePaneChrome));
     });
     return true;
   }, [
     catalog,
     contentWidth,
+    highlightMessage,
     messageElementsRef,
     messages,
     nativePaneChrome,
     prependAnchorRef,
     scrollRef,
     setFollowMessages,
-    setSelectedIdx,
   ]);
 
   const jumpToMessage = useCallback((messageId: string) => {
@@ -198,10 +257,31 @@ export function useChatScrollRuntime({
     }
   }, [hasOlderMessages, loadingOlderMessages, messages, prependAnchorRef, requestOlderMessages, scrollToLoadedMessage]);
 
+  // The terminal's list follows the bottom itself while it is sticky; this
+  // covers what its own layout changes do not (a taller composer, a resize).
   useEffect(() => {
-    if (!stickyTranscript) return;
+    if (nativePaneChrome || !stickyTranscript) return;
     queueMicrotask(() => scrollToBottom(scrollRef.current, nativePaneChrome));
   }, [channelId, composerLayoutKey, contentWidth, height, latestMessageId, messageAreaHeight, nativePaneChrome, scrollRef, stickyTranscript]);
+
+  // The desktop list follows the bottom while the reader is at it, and keeps a
+  // reader who scrolled back where they are (see attachStickyScroll). Only three
+  // things take it to the bottom: opening a channel, a message of your own that
+  // is going out, and the jump control. Focusing the composer, a resize or an
+  // update to a message does not.
+  useLayoutEffect(() => {
+    if (!nativePaneChrome) return;
+    scrollToBottom(scrollRef.current, true);
+    setPinnedToBottom(true);
+  }, [channelId, nativePaneChrome, scrollRef]);
+  const lastLatestMessageIdRef = useRef(latestMessageId);
+  useLayoutEffect(() => {
+    if (lastLatestMessageIdRef.current === latestMessageId) return;
+    lastLatestMessageIdRef.current = latestMessageId;
+    if (!nativePaneChrome || !latestMessage?.clientStatus) return;
+    scrollToBottom(scrollRef.current, true);
+    setPinnedToBottom(true);
+  }, [latestMessage, latestMessageId, nativePaneChrome, scrollRef]);
 
   useEffect(() => {
     const anchor = prependAnchorRef.current;
@@ -215,14 +295,18 @@ export function useChatScrollRuntime({
       return;
     }
 
-    const previousOldestIndex = currentAnchor.oldestMessageId
-      ? messages.findIndex((message) => message.id === currentAnchor.oldestMessageId)
-      : -1;
-    const exactPixels = nativePaneChrome === true && hasPixelScrollMetrics(scrollBox);
-    const addedRows = !exactPixels && previousOldestIndex > 0
-      ? getMessageTopOffset(messages, previousOldestIndex, contentWidth, catalog)
-      : Math.max(0, getScrollHeight(scrollBox, exactPixels) - currentAnchor.scrollHeight);
-    scrollToPosition(scrollBox, currentAnchor.scrollTop + addedRows, exactPixels);
+    // The desktop list keeps the row the reader is looking at in place by
+    // itself, from where that row is when the page arrives rather than from where
+    // the list was when it was asked for: scrolling during the wait is kept.
+    if (!nativePaneChrome) {
+      const previousOldestIndex = currentAnchor.oldestMessageId
+        ? messages.findIndex((message) => message.id === currentAnchor.oldestMessageId)
+        : -1;
+      const addedRows = previousOldestIndex > 0
+        ? getMessageTopOffset(messages, previousOldestIndex, contentWidth, catalog)
+        : Math.max(0, getScrollHeight(scrollBox, false) - currentAnchor.scrollHeight);
+      scrollToPosition(scrollBox, currentAnchor.scrollTop + addedRows, false);
+    }
     if (currentAnchor.selectedMessageId) {
       const selectedMessageIndex = messages.findIndex((message) => message.id === currentAnchor.selectedMessageId);
       if (selectedMessageIndex >= 0) {
@@ -237,20 +321,25 @@ export function useChatScrollRuntime({
   }, [catalog, contentWidth, loadingOlderMessages, messages, nativePaneChrome, prependAnchorRef, scrollRef, setSelectedIdx]);
 
   useEffect(() => {
-    if (!focused || !stickyTranscript) return;
+    if (nativePaneChrome || !focused || !stickyTranscript) return;
     queueMicrotask(() => scrollToBottom(scrollRef.current, nativePaneChrome));
   }, [focused, nativePaneChrome, scrollRef, stickyTranscript]);
 
+  // The desktop list brings a message into view when the selection moves to it,
+  // and only then: a new message or an update to one must not pull a reader who
+  // scrolled away back to the selection.
+  const selectedMessageId = selectionActive ? messages[selectedIdx]?.id ?? "" : "";
+  useEffect(() => {
+    if (!nativePaneChrome || !selectedMessageId) return;
+    if (prependAnchorRef.current) return;
+    runAfterLayout(() => scrollElementIntoScrollBoxView(scrollRef.current, messageElementsRef.current.get(selectedMessageId)));
+  }, [messageElementsRef, nativePaneChrome, prependAnchorRef, scrollRef, selectedMessageId]);
+
   useEffect(() => {
     const sb = scrollRef.current;
-    if (!sb) return;
+    if (!sb || nativePaneChrome) return;
     if (!selectionActive) return;
     if (prependAnchorRef.current) return;
-    if (nativePaneChrome) {
-      const selectedMessageId = messages[selectedIdx]?.id ?? "";
-      runAfterLayout(() => scrollElementIntoScrollBoxView(scrollRef.current, messageElementsRef.current.get(selectedMessageId)));
-      return;
-    }
     const top = getMessageTopOffset(messages, selectedIdx, contentWidth, catalog);
     const rowHeight = estimateMessageHeight(messages[selectedIdx]!, contentWidth, isGroupedWithPrevious(messages, selectedIdx), catalog);
     const nextScrollTop = getSelectedMessageScrollTop({
@@ -274,11 +363,22 @@ export function useChatScrollRuntime({
     selectionActive,
   ]);
 
+  /** Takes the reader to the newest message and back to following it. */
+  const scrollToLatest = useCallback(() => {
+    scrollToBottom(scrollRef.current, nativePaneChrome);
+    setPinnedToBottom(true);
+    setFollowMessages(true);
+  }, [nativePaneChrome, scrollRef, setFollowMessages]);
+
   return {
+    atBottom,
     handleTranscriptScrollActivity,
     jumpToMessage,
     registerMessageElement,
     requestOlderMessages,
     requestOlderMessagesIfNeeded,
+    scrollToLatest,
+    setPinnedToBottom,
+    takeBackScrollPlace,
   };
 }

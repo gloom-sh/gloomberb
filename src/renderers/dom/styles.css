@@ -27,6 +27,12 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="desktop-button"][data-gloom-variant="plain"]:not(:disabled):hover {
   background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
 }
+/* A raised button sinks while it is held: its light flips and its shadow goes
+   (control-styles.ts, buttonRelief). */
+[data-gloom-raised="true"]:not(:disabled):active {
+  background-image: var(--gloom-pressed-image) !important;
+  box-shadow: var(--gloom-pressed-shadow) !important;
+}
 [data-gloom-hover-bg="true"]:hover {
   background-color: var(--gloom-box-hover-bg) !important;
 }
@@ -171,6 +177,7 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
    stream: a touch or pen press on them never starts a pan or zoom. */
 [data-gloom-role="pane-header"][data-drag-surface="pane"],
 [data-gloom-role="resize-handle"],
+[data-gloom-role="resize-edge"],
 [data-gloom-role="dock-divider"] {
   touch-action: none;
 }
@@ -178,17 +185,31 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
-[data-gloom-role="chat-message"]:hover [data-gloom-role="chat-message-row"][data-selected="false"] {
-  background-color: var(--chat-hover-bg);
-}
+/* A row's hover band is painted from the chat's own state (data-hovered), not
+   :hover, so it can be dropped when the list scrolls or fills under a pointer
+   that did not move. Its actions show with it. */
 [data-gloom-role="chat-message-reply-action"] {
   opacity: 0;
   pointer-events: none;
 }
-[data-gloom-role="chat-message"]:hover [data-gloom-role="chat-message-reply-action"],
-[data-gloom-role="chat-message"][data-selected="true"] [data-gloom-role="chat-message-reply-action"] {
+[data-gloom-role="chat-message"][data-hovered="true"] [data-gloom-role="chat-message-reply-action"],
+[data-gloom-role="chat-message"][data-selected="true"] [data-gloom-role="chat-message-reply-action"],
+[data-gloom-role="chat-message-reply-action"][data-picker-open="true"] {
   opacity: 1;
   pointer-events: auto;
+}
+/* The message a notification pointed at: marked, then fading out. */
+[data-gloom-role="chat-message"][data-highlighted="true"] [data-gloom-role="chat-message-row"] {
+  animation: gloom-chat-highlight 2s ease-out forwards;
+}
+@keyframes gloom-chat-highlight {
+  from { background-color: var(--chat-highlight-bg); }
+  to { background-color: transparent; }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-gloom-role="chat-message"][data-highlighted="true"] [data-gloom-role="chat-message-row"] {
+    animation: none;
+  }
 }
 /* Message text can be selected and copied, like any chat. */
 [data-gloom-role="chat-message-body"] {
@@ -241,6 +262,36 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   min-height: 0;
   max-height: 100%;
 }
+/* A chart or heat map takes the space its box gives it rather than the whole
+   cells it was given (host/surface-fit.ts): a fill at rest, and, while a
+   resize is under way, the boxes up to the pane that are exactly the space
+   their parent gives them follow the frame the same way. */
+[data-gloom-fill-x="stretch"], [data-gloom-follow-x="stretch"] {
+  width: auto !important;
+  align-self: stretch !important;
+}
+[data-gloom-fill-x="grow"], [data-gloom-follow-x="grow"] {
+  flex: 1 1 0px !important;
+  width: auto !important;
+  min-width: 0 !important;
+}
+[data-gloom-fill-y="stretch"], [data-gloom-follow-y="stretch"] {
+  height: auto !important;
+  align-self: stretch !important;
+}
+[data-gloom-fill-y="grow"], [data-gloom-follow-y="grow"] {
+  flex: 1 1 0px !important;
+  height: auto !important;
+  min-height: 0 !important;
+}
+/* A chart whose time axis reaches a floating pane's resize grip keeps its
+   last label clear of it. */
+[data-gloom-grip-clear] [data-gloom-role="chart-time-axis"] [data-gloom-edge="end"] {
+  right: calc(2 * var(--cell-w)) !important;
+}
+[data-gloom-grip-clear] [data-gloom-role="chart-time-axis"] [data-gloom-edge="end-segment"] {
+  padding-right: calc(2 * var(--cell-w)) !important;
+}
 /* The same chrome row as the pane header, query bar and table header. */
 [data-gloom-role="pane-footer"] {
   flex: 0 0 var(--chrome-h);
@@ -268,6 +319,23 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="resize-handle"] {
   cursor: nwse-resize;
+}
+/* The invisible strips around a floating pane that resize it from any edge or corner. */
+[data-gloom-role="resize-edge"][data-edge="left"],
+[data-gloom-role="resize-edge"][data-edge="right"] {
+  cursor: ew-resize;
+}
+[data-gloom-role="resize-edge"][data-edge="top"],
+[data-gloom-role="resize-edge"][data-edge="bottom"] {
+  cursor: ns-resize;
+}
+[data-gloom-role="resize-edge"][data-edge="top-left"],
+[data-gloom-role="resize-edge"][data-edge="bottom-right"] {
+  cursor: nwse-resize;
+}
+[data-gloom-role="resize-edge"][data-edge="top-right"],
+[data-gloom-role="resize-edge"][data-edge="bottom-left"] {
+  cursor: nesw-resize;
 }
 [data-gloom-role="window-mode-status"] {
   border: 1px solid color-mix(in srgb, var(--gloom-border-focused) 76%, transparent);
@@ -753,6 +821,19 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   box-shadow: inset 1px 0 0 var(--qb-hairline);
 }
 .gloom-qb-inline .gloom-qb-view { margin-left: 0; box-shadow: none; align-self: stretch; }
+/* A long inline choice (an expiry strip) scrolls by itself, as the terminal's
+   does, so its label and the controls beside it stay in view. */
+.gloom-qb-filters[data-strip="true"],
+.gloom-qb-inline[data-strip="true"] { flex: 0 1 auto; min-width: 0; }
+.gloom-qb-inline[data-strip="true"] .gloom-qb-segments {
+  flex: 0 1 auto;
+  min-width: 12ch;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.gloom-qb-inline[data-strip="true"] .gloom-qb-segments::-webkit-scrollbar { display: none; }
+.gloom-qb-inline[data-strip="true"] .gloom-qb-segments > button { flex: none; white-space: nowrap; }
+.gloom-qb-filters[data-strip="true"] > :not([data-strip="true"]) { flex: none; }
 .gloom-qb-view button {
   height: 100%;
   padding: 0 8px;
@@ -1105,6 +1186,29 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 
 /* ===== Data table: sortable headers ===== */
 
+/* A section header's action (the preset a group is set to) is quiet text at
+   the right end of the header; the pointer brings out that it is a control. */
+[data-gloom-role="data-table-section-action"] {
+  margin-left: auto;
+  flex: none;
+  height: var(--cell-h);
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: 400;
+  white-space: nowrap;
+  transition: background-color 120ms ease, color 120ms ease;
+}
+[data-gloom-role="data-table-section-action"] svg { color: var(--gloom-text-muted); }
+[data-gloom-role="data-table-section-action"]:hover {
+  color: var(--gloom-text-bright) !important;
+  background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
+}
+
 /* A header that sorts brightens under the pointer; plain headers (no
    onHeaderClick) are not interactive and stay put. Tinted headers keep
    their colour. */
@@ -1117,4 +1221,10 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 :where(button, a[href], summary, [role="button"], [role="radio"], [role="option"], input[type="checkbox"]):focus-visible {
   outline: 2px solid var(--gloom-border-focused);
   outline-offset: 1px;
+}
+
+/* Keycaps on buttons and in dialog hints are for a keyboard; a touch screen
+   has none to press them with. A note beside them (a deadline) stays. */
+@media (hover: none) and (pointer: coarse) {
+  .gloom-keycap, .gloom-key-hint { display: none !important; }
 }

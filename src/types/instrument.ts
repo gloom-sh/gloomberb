@@ -11,6 +11,10 @@ export type TickerInstrumentKind =
   | "currency"
   | "index"
   | "future"
+  /** A perpetual futures contract on a crypto or on-chain venue (BZUSDT:BINANCE): no expiry, trades around the clock. */
+  | "perpetual"
+  /** A binary event contract on a prediction-market venue (KALSHI:KXGREENLAND-29): no company, no financials, no options. */
+  | "prediction"
   | "option"
   | "bond"
   | "other";
@@ -59,4 +63,12 @@ export interface InstrumentSearchResult {
   /** How often the listing is searched, higher is more (the search service score,
    * sent by newer cloud servers). Only comparable within one response. */
   popularity?: number;
+  /** Trade names the row answers to ("Aramco" for Saudi Arabian Oil Co.), sent by
+   * newer cloud servers on a row a trade-name query added. The legal name does not
+   * contain them, so search matches the query against them too. */
+  searchAliases?: string[];
+  /** A theme the row answers to without its name saying so ("lithium" on
+   * Albemarle, which the lithium funds hold), sent by newer cloud servers on a
+   * row a theme query added. Matched like the name, ranked after name matches. */
+  searchKeywords?: string[];
 }

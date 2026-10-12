@@ -1,6 +1,6 @@
 import type { PricePoint, Quote } from "../../../types/financials";
 import { calendarMonthsBefore } from "../../../utils/calendar-date";
-import type { FuturesContract } from "./contracts";
+import type { FuturesContract } from "../../../market-data/futures-board";
 import { quotedContractMonth } from "./model";
 
 export type FuturesReturnHorizon = "1W" | "1M" | "YTD";

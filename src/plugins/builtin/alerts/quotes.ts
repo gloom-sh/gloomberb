@@ -1,6 +1,7 @@
 import type { DataProvider } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
 import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import type { AlertRule } from "./types";
 
 export function normalizeAlertSymbol(value: string | null | undefined): string {
@@ -21,6 +22,8 @@ export async function resolveAlertQuote(
   exchange = "",
 ): Promise<Quote> {
   const quote = await marketData.getQuote(symbol, exchange);
+  // A last known price is not the price now: it must neither trigger an alert nor set its baseline.
+  if (isQuoteStaleForCurrentSession(quote)) throw new Error(`The quote for "${symbol}" is stale.`);
   const display = getActiveQuoteDisplay(quote);
   if (!display || !Number.isFinite(display.price)) {
     throw new Error(`No quote found for "${symbol}".`);

@@ -1,4 +1,7 @@
 import type { MarketHeatmapAsset } from "../../../api-client/market-discovery";
+import { formatShortDate } from "../../../utils/datetime-format";
+import { displayWidth } from "../../../utils/format";
+import { zonedDateKey, zonedDateTimeParts } from "../../../utils/zoned-date-time";
 
 /**
  * The board's grouping and move arithmetic, shared by the pane and the `fn HM`
@@ -13,12 +16,108 @@ type HeatmapMoveAsset = Pick<MarketHeatmapAsset, "symbol" | "hasChange" | "chang
 /**
  * The move, or null when there is none: no change data is not a flat session.
  * A name without the last session's close still has the move of the open
- * pre-market or after-hours session it streams (`extendedSession`).
+ * pre-market or after-hours session it streams (`extendedSession`), or of the
+ * completed regular session its quote reports (`regularChangePercent`).
  */
-export function heatmapMove(asset: Pick<MarketHeatmapAsset, "hasChange" | "changePercent"> & { extendedSession?: string }): number | null {
-  return (asset.hasChange || asset.extendedSession != null) && typeof asset.changePercent === "number" && Number.isFinite(asset.changePercent)
+export function heatmapMove(
+  asset: Pick<MarketHeatmapAsset, "hasChange" | "changePercent" | "regularChangePercent"> & { extendedSession?: string },
+): number | null {
+  const moved = asset.hasChange || asset.extendedSession != null
+    || (typeof asset.regularChangePercent === "number" && Number.isFinite(asset.regularChangePercent));
+  return moved && typeof asset.changePercent === "number" && Number.isFinite(asset.changePercent)
     ? asset.changePercent
     : null;
+}
+
+/**
+ * What a market board's tiles are colored by. The active session, the
+ * default, follows an open pre-market or after-hours session; the regular
+ * session keeps the regular session's move through extended trading.
+ */
+export type HeatmapSessionBasis = "active-session" | "regular-session";
+
+/** A saved choice wins; a pane that never chose follows the active session. */
+export function heatmapSessionBasis(value: unknown): HeatmapSessionBasis {
+  return value === "regular-session" ? "regular-session" : "active-session";
+}
+
+/** How many of the largest names a market board asks for. */
+export const HEATMAP_NAME_COUNTS = [100, 150, 500] as const;
+export type HeatmapNameCount = typeof HEATMAP_NAME_COUNTS[number];
+
+/** A saved count, as the settings dialog stores it ("150") or as a number; anything else is the full 500. */
+export function heatmapNameCount(value: unknown): HeatmapNameCount {
+  const count = typeof value === "string" && value.trim() ? Number(value) : value;
+  return HEATMAP_NAME_COUNTS.find((option) => option === count) ?? 500;
+}
+
+/**
+ * A market board read by its regular session alone. Taken outside the regular
+ * session, a tile's move is that session's only when the server dates it as
+ * the completed session's (`regularChangePercent`); any other move there is
+ * from a session it does not name, so the tile shows none, and no price.
+ * Returns the same array when nothing changes.
+ */
+export function regularSessionHeatmapAssets<T extends Pick<MarketHeatmapAsset, "hasChange" | "price" | "regularChangePercent">>(
+  assets: readonly T[],
+  session: string | null | undefined,
+): readonly T[] {
+  if (session == null || session === "REGULAR") return assets;
+  let changed = false;
+  const next = assets.map((asset) => {
+    if (!asset.hasChange || (typeof asset.regularChangePercent === "number" && Number.isFinite(asset.regularChangePercent))) return asset;
+    changed = true;
+    return { ...asset, hasChange: false, price: 0 };
+  });
+  return changed ? next : assets;
+}
+
+const NEW_YORK = "America/New_York";
+const twoDigits = (value: number) => String(value).padStart(2, "0");
+/** A New York calendar day ("2026-10-09") as the footer names it: "Oct 9". */
+const dayLabel = (day: string) => formatShortDate(day, { year: false, utc: true, fallback: day });
+
+const isTimestamp = (value: number | null | undefined): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0;
+
+/**
+ * What a market board covers and when it is from, for the footer: how many of
+ * the largest names it holds, the completed regular session it shows outside
+ * that session, the time its figures are as of, in New York time, dated when
+ * that day is not the session's (or, while the session trades, today's), and
+ * when this client last checked, which is a separate figure. A board of a
+ * completed session is as of that session's close (`regularSessionClosedAt`);
+ * otherwise, or from a server that does not say, the time is when the server
+ * put the snapshot together. A footer narrower than `maxWidth` loses the check
+ * first, then that time, then the session; after a failed refresh (`failed`)
+ * the age of the last good check outlasts the time. Null when not even the
+ * count fits.
+ */
+export function heatmapBoardCaption(
+  board: { topCount: number; fetchedAt: number; regularSessionDate?: string | null; regularSessionClosedAt?: number | null },
+  { now, checked = null, failed = false, maxWidth = Number.POSITIVE_INFINITY }:
+    { now: number; checked?: string | null; failed?: boolean; maxWidth?: number },
+): string | null {
+  const sessionDate = board.regularSessionDate || null;
+  // Display order; `rank` is the order they give way in, highest first.
+  const parts: Array<{ text: string; rank: number }> = [{ text: `top ${board.topCount}`, rank: 0 }];
+  if (sessionDate) parts.push({ text: `${dayLabel(sessionDate)} session`, rank: 1 });
+  const closedAt = sessionDate && isTimestamp(board.regularSessionClosedAt) ? board.regularSessionClosedAt : null;
+  const time = closedAt ?? (isTimestamp(board.fetchedAt) ? board.fetchedAt : null);
+  if (time != null) {
+    const { hour, minute } = zonedDateTimeParts(time, NEW_YORK);
+    const clock = `${twoDigits(hour)}:${twoDigits(minute)} ET`;
+    const day = zonedDateKey(time, NEW_YORK);
+    const text = `${closedAt != null ? "as of" : "snapshot"} ${day === (sessionDate ?? zonedDateKey(now, NEW_YORK)) ? clock : `${dayLabel(day)} ${clock}`}`;
+    parts.push({ text, rank: failed ? 3 : 2 });
+  }
+  if (checked) parts.push({ text: `checked ${checked}`, rank: failed ? 2 : 3 });
+  const caption = () => parts.map((part) => part.text).join(" · ");
+  while (parts.length > 0 && displayWidth(caption()) > maxWidth) {
+    const weakest = parts.reduce((found, part, index) => (part.rank > parts[found]!.rank ? index : found), 0);
+    parts.splice(weakest, 1);
+  }
+  return parts.length > 0 ? caption() : null;
 }
 
 export type HeatmapGrouping = "sector-industry" | "sector" | "flat";

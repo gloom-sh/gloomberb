@@ -1,64 +1,27 @@
-import { chartSeriesProvider } from "../../../capabilities";
-import type { ChartSeriesCatalogItem, ChartSeriesCapability } from "../../../capabilities";
-import { colors } from "../../../theme/colors";
-import type { ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
+import type { SeriesDefinition, SeriesLoadResult } from "../../../series/types";
 import { buildValuationSeries } from "./align";
 import { defaultValuationSeriesLoader, type ValuationSeriesLoader } from "./client";
 import { indicatorUnavailableReason, indicatorSeries, type IndicatorDef } from "./defs";
-import { findIndicator, INDICATORS } from "./indicators";
+import { INDICATORS } from "./indicators";
 import type { DatedSeries } from "./series";
 
-export const MARKET_VALUATION_CAPABILITY_ID = "market-valuation";
+/** `CAP:market-valuation:<indicator>`, the expression charts saved before the catalog had these. */
+const MARKET_VALUATION_NAMESPACE = "market-valuation";
 
-function catalogItem(indicator: IndicatorDef): ChartSeriesCatalogItem {
-  return {
-    seriesId: indicator.id,
-    label: indicator.label,
-    description: indicator.description,
-    detail: "Market valuation",
-    style: "line",
-  };
-}
-
-function matches(indicator: IndicatorDef, query: string): boolean {
-  const haystack = `${indicator.id} ${indicator.label} ${indicator.shortLabel} ${indicator.description}`;
-  return haystack.toLowerCase().includes(query);
+/** Shiller's series move once a month; the Z.1 and GDP ratios once a quarter. */
+function indicatorFrequency(indicator: IndicatorDef): "monthly" | "quarterly" {
+  return indicatorSeries(indicator).some((def) => def.source.kind === "shiller") ? "monthly" : "quarterly";
 }
 
 /**
- * A ratio is not a series anyone can fetch, so the pane's own computation is what
- * makes it chartable. Exposing it here lets G overlay, say, the Buffett indicator
- * against CPI without the pane being involved.
+ * A ratio is not a series anyone can fetch, so the pane's own computation is
+ * what makes it chartable: overlaying the Buffett indicator on CPI needs no
+ * valuation pane on screen.
  */
-export function createValuationChartSeriesCapability(
+export async function loadValuationIndicator(
+  indicator: IndicatorDef,
   loader: ValuationSeriesLoader = defaultValuationSeriesLoader,
-): ChartSeriesCapability {
-  return chartSeriesProvider({
-    id: MARKET_VALUATION_CAPABILITY_ID,
-    name: "Market Valuation",
-    provider: {
-      catalog: ({ limit }) => INDICATORS.slice(0, limit ?? INDICATORS.length).map(catalogItem),
-      search: ({ query, limit }) => {
-        const needle = query?.trim().toLowerCase();
-        const hits = needle
-          ? INDICATORS.filter((indicator) => matches(indicator, needle))
-          : [...INDICATORS];
-        return hits.slice(0, limit ?? hits.length).map(catalogItem);
-      },
-      resolve: async ({ seriesId }) => resolveValuationSeries(seriesId, loader),
-    },
-  });
-}
-
-export async function resolveValuationSeries(
-  seriesId: string,
-  loader: ValuationSeriesLoader = defaultValuationSeriesLoader,
-): Promise<ResolvedSeries> {
-  const indicator = findIndicator(seriesId);
-  if (indicator.id !== seriesId.trim().toLowerCase()) {
-    throw new Error(`Unknown valuation series ${seriesId}`);
-  }
-
+): Promise<SeriesLoadResult> {
   const unavailable = indicatorUnavailableReason(indicator);
   if (unavailable) throw new Error(unavailable);
   const legs = new Map<string, DatedSeries>();
@@ -74,26 +37,23 @@ export async function resolveValuationSeries(
   if (built.points.at(-1)?.ratio == null) {
     warnings.push(`${indicator.label}: latest observation unavailable (${built.points.at(-1)!.date})`);
   }
-  const points: TimeSeriesPoint[] = built.points.map((point) => {
-    const date = new Date(point.date);
-    return { date, observedAt: date, value: point.ratio };
-  });
-
   return {
-    id: `market-valuation:${indicator.id}`,
-    label: indicator.label,
-    color: colors.textBright,
-    // Source percentages need the same units as ratios scaled into percentages.
-    unit: indicator.axisUnit === "%" ? "%" : "x",
-    unitGroup: indicator.axisUnit === "%" ? "valuation-percent" : "valuation-ratio",
-    nativeFrequency: "daily",
-    dataShape: "scalar",
-    style: "line",
-    transform: "raw",
-    axis: "left",
-    panelId: "main",
-    interpolation: "none",
+    points: built.points.map((point) => ({ date: point.date, value: point.ratio })),
     ...(warnings.length ? { warning: warnings.join("; ") } : {}),
-    points,
   };
+}
+
+export function valuationSeriesDefinitions(
+  loader: ValuationSeriesLoader = defaultValuationSeriesLoader,
+): SeriesDefinition[] {
+  return INDICATORS.map((indicator) => ({
+    id: `${MARKET_VALUATION_NAMESPACE}:${indicator.id}`,
+    name: indicator.label,
+    unit: indicator.axisUnit === "%" ? "%" : "x",
+    frequency: indicatorFrequency(indicator),
+    group: "Valuation",
+    tags: [indicator.shortLabel, "market valuation"],
+    description: indicator.description,
+    load: () => loadValuationIndicator(indicator, loader),
+  }));
 }

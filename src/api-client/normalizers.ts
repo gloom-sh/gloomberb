@@ -1,8 +1,13 @@
 import type {
+  ChatAccountType,
   ChatAttachment,
   ChatChannel,
+  ChatDiscordLink,
   ChatMessage,
+  ChatMessageOrigin,
   ChatNotification,
+  ChatReaction,
+  ChatReactionUser,
   ChatStateResponse,
   CloudSavedSearch,
   CloudSearchHit,
@@ -74,9 +79,20 @@ export function normalizeChatAttachments(value: unknown): ChatAttachment[] {
   });
 }
 
+const CHAT_ACCOUNT_TYPES: readonly string[] = ["human", "managed_llm", "discord"] satisfies ChatAccountType[];
+const CHAT_MESSAGE_ORIGINS: readonly string[] = ["app", "discord"] satisfies ChatMessageOrigin[];
+
+/** A value a newer server adds that this client does not know reads as absent: a human, a message from the app. */
+function chatUserWithKnownAccountType(user: ChatMessage["user"]): ChatMessage["user"] {
+  if (!user || user.accountType === undefined || CHAT_ACCOUNT_TYPES.includes(user.accountType)) return user;
+  const { accountType: _unknown, ...known } = user;
+  return known;
+}
+
 export function normalizeChatMessage(message: ChatMessage): ChatMessage {
   const normalized: ChatMessage = {
     ...message,
+    user: chatUserWithKnownAccountType(message.user),
     content: typeof message.content === "string" ? message.content : "",
     createdAt: normalizeTimestamp(message.createdAt),
     ...(message.editedAt
@@ -84,10 +100,53 @@ export function normalizeChatMessage(message: ChatMessage): ChatMessage {
       : {}),
   };
   if ("attachments" in message) normalized.attachments = normalizeChatAttachments(message.attachments);
+  if ("reactions" in message) normalized.reactions = normalizeChatReactions(message.reactions);
+  if (message.origin !== undefined && !CHAT_MESSAGE_ORIGINS.includes(message.origin)) delete normalized.origin;
   if (message.attachmentReview !== "pending" && message.attachmentReview !== "failed") {
     delete normalized.attachmentReview;
   }
   return normalized;
+}
+
+/** The link answer of a server that knows Discord: mirroring is on and linking available unless it says otherwise. */
+export function normalizeChatDiscordLink(value: unknown): ChatDiscordLink {
+  const raw = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const username = typeof raw.discordUsername === "string" ? raw.discordUsername.trim() : "";
+  return {
+    linked: raw.linked === true,
+    ...(username ? { discordUsername: username } : {}),
+    mirror: raw.mirror !== false,
+    available: raw.available !== false,
+  };
+}
+
+/** Reactions as the server sent them, dropping anything malformed. */
+export function normalizeChatReactions(value: unknown): ChatReaction[] {
+  if (!Array.isArray(value)) return [];
+  const reactions: ChatReaction[] = [];
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const raw = entry as Record<string, unknown>;
+    if (typeof raw.emoji !== "string" || !raw.emoji) continue;
+    const count = typeof raw.count === "number" && Number.isFinite(raw.count) ? Math.max(0, Math.floor(raw.count)) : 0;
+    if (count === 0) continue;
+    const users = Array.isArray(raw.users)
+      ? raw.users.flatMap((user): ChatReactionUser[] => {
+        if (!user || typeof user !== "object") return [];
+        const candidate = user as Record<string, unknown>;
+        if (typeof candidate.id !== "string") return [];
+        const accountType = candidate.accountType;
+        return [{
+          id: candidate.id,
+          username: typeof candidate.username === "string" ? candidate.username : null,
+          displayName: typeof candidate.displayName === "string" ? candidate.displayName : "User",
+          ...(accountType === "human" || accountType === "managed_llm" || accountType === "discord" ? { accountType } : {}),
+        }];
+      })
+      : [];
+    reactions.push({ emoji: raw.emoji, count, me: raw.me === true, users });
+  }
+  return reactions;
 }
 
 export function normalizeChatMessages(messages: ChatMessage[]): ChatMessage[] {

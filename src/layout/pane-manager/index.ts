@@ -10,6 +10,7 @@ export {
   getDockedPaneIds,
   getDockLeafLayouts,
   getDockResizeTargets,
+  getDockSplitGeometry,
   type DockDividerLayout,
   type DockGeometryOptions,
   type DockLeafLayout,
@@ -49,6 +50,7 @@ export {
   swapPanes,
 } from "./docking";
 
+export { restoreHiddenPanes } from "./hidden-panes";
 export {
   removeFloatingPanes,
   removePane,

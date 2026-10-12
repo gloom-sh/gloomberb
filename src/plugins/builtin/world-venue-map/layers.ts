@@ -150,6 +150,35 @@ function shortDate(iso: string): string | null {
   return new Date(time).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 }
 
+/**
+ * Where a layer's features are, when not worldwide, by the catalog's layer id:
+ * the energy layers come from US federal maps. The catalog does not say where
+ * a layer covers, so a search that finds nothing there says why.
+ */
+const LAYER_COVERAGE: Readonly<Record<string, string>> = {
+  terminals: "the United States",
+  pipelines: "the United States",
+  "oil-gas-fields": "the lower 48 US states",
+};
+
+/**
+ * Why a layer can have nothing for a search or a view outside its region:
+ * "Terminals cover the United States only (as of 31 Aug 2023)." Null for a
+ * worldwide layer.
+ */
+export function layerCoverageNote(layer: Pick<GeoLayerInfo, "id" | "name" | "asOf" | "cadence">): string | null {
+  const region = LAYER_COVERAGE[layer.id];
+  if (!region) return null;
+  const asOf = layer.cadence === "static" && layer.asOf ? asOfDate(layer.asOf) : null;
+  return `${layer.name} cover ${region} only${asOf ? ` (as of ${asOf})` : ""}.`;
+}
+
+function asOfDate(iso: string): string | null {
+  const time = Date.parse(iso);
+  if (!Number.isFinite(time)) return null;
+  return new Date(time).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+}
+
 /** Status and cadence in plain words, for the layer picker. */
 function describeLayer(layer: GeoLayerInfo): string {
   if (layer.status === "unavailable") return layer.statusNote ? `Unavailable: ${layer.statusNote}` : "Unavailable";

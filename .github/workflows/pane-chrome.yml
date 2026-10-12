@@ -1,0 +1,134 @@
+name: Pane chrome
+
+# Moves panes with real pointer input in headless Chrome (scripts/pane-chrome),
+# and checks that a pane's Copy Screenshot image shows its charts.
+# Only for changes that can break pane chrome: the shell and pane headers,
+# the dock, the DOM renderer, the desktop view, the pane screenshot, the
+# charts and heat maps that follow a resize, the keys held down (one-shot
+# shortcuts run once, arrows repeat), the chat message list, and these checks
+# themselves.
+# The pane drag frame budget is in the Performance workflow and runs for the
+# same pull_request paths (scripts/pane-chrome/scope.ts reads them from here).
+on:
+  pull_request:
+    branches:
+      - main
+    paths: &pane-chrome-paths
+      - "src/components/layout/**"
+      - "src/components/command-bar/**"
+      - "src/app/keybindings/**"
+      - "src/shares/**"
+      - "src/plugins/builtin/chat/share/**"
+      - "src/plugins/builtin/chat/index.tsx"
+      - "src/plugins/builtin/chart-composer/pane.tsx"
+      - "src/plugins/builtin/news/wire/news/footer.ts"
+      - "src/components/chart/composite/**"
+      - "src/components/chart/native/raster/**"
+      - "src/time-series/resolve.ts"
+      - "src/time-series/use-chart-resolution.ts"
+      - "src/components/metric-treemap/**"
+      - "src/components/ui/tabs.tsx"
+      - "src/components/ui/icon.tsx"
+      - "src/components/ui/data-table/**"
+      - "src/components/data-table/**"
+      - "src/layout/**"
+      - "src/plugins/builtin/chat/**"
+      - "src/react/input.ts"
+      - "src/react/key-repeat.ts"
+      - "src/ui/**"
+      - "src/renderers/dom/**"
+      - "src/renderers/electrobun/view/**"
+      - "src/state/app/**"
+      - "src/core/state/app/**"
+      - "src/theme/font-scale.ts"
+      - "src/utils/dom-screenshot*.ts"
+      - "src/utils/one-shot.ts"
+      - "src/utils/double-escape-close.ts"
+      - "src/utils/screenshot-watermark.ts"
+      - "src/remote/pane-screenshot.ts"
+      - "src/types/config.ts"
+      - "src/types/desktop-window.ts"
+      - "scripts/pane-chrome/**"
+      - "scripts/tui-benchmark-harness.ts"
+      - ".github/workflows/pane-chrome.yml"
+      - "package.json"
+      - "bun.lock"
+  push:
+    branches:
+      - main
+    paths: *pane-chrome-paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pane-chrome-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pointer-checks:
+    name: Pointer checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: chrome
+        name: Read the pinned Chrome version
+        run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
+          key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+      # Fails when a pane stops moving from its grip, title or bare header bar
+      # (docked, tabbed, failed, floating, fullscreen, popped out), when tabs
+      # stop selecting or reordering or start moving their pane, or when the
+      # resize corner or edges, a dock divider or a sidebar divider stop
+      # working or stop following the pointer during the drag. The summary
+      # names the step.
+      - name: Move panes with real pointer input
+        run: bun run check:pane-chrome
+
+      - name: Keep screenshots of failed steps
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pane-chrome-failures
+          path: ~/.cache/gloomberb-pane-chrome/failures
+          if-no-files-found: ignore
+
+  copy-screenshot:
+    name: Copy screenshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+
+      - id: chrome
+        name: Read the pinned Chrome version
+        run: echo "version=$(sed -n 's/^const CHROME_VERSION = "\(.*\)";$/\1/p' scripts/pane-chrome/browser.ts)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/chrome-headless-shell-${{ steps.chrome.outputs.version }}
+          key: chrome-headless-shell-${{ steps.chrome.outputs.version }}-${{ runner.os }}-${{ runner.arch }}
+
+      # Fails when a pane's Copy Screenshot image is missing what the screen
+      # shows in a chart region: an SVG gauge or chart, a canvas chart, or a
+      # CSS gradient or masked icon (GLO-493). The summary has the numbers.
+      - name: Compare pane copies with the screen
+        run: bun run check:pane-screenshot
+
+      - name: Keep the images of failed panes
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pane-screenshot-failures
+          path: ~/.cache/gloomberb-pane-chrome/failures
+          if-no-files-found: ignore

@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { createRoot } from "react-dom/client";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { TapeClientContext } from "../../../plugins/builtin/time-sales/use-tape";
 import { createSnapshotTapeClient } from "../../../plugins/builtin/time-sales/snapshot-client";
 import type { TapeSnapshot } from "../../../api-client/tape";
@@ -72,6 +72,8 @@ declare global {
     __GLOOM_CLI_SHOT_PENDING__?: number;
     __GLOOM_CLI_SHOT_ERROR__?: string;
     __GLOOM_CLI_SHOT_SEMANTIC_UI__?: RemoteUiNodeSnapshot[];
+    /** Redraws the pane this many cells tall and waits for it to settle again: a capture growing to fit its rows. */
+    __GLOOM_CLI_SHOT_RESIZE__?: (heightCells: number) => void;
   }
 }
 
@@ -229,6 +231,17 @@ function isShotLoadingTextVisible(): boolean {
   return document.querySelector(SHOT_LOADING_SELECTOR) !== null;
 }
 
+/**
+ * A WebGL surface still being drawn: its first frame is not on the canvas, or
+ * a refreshed mesh is mid-morph. A frame with no mesh counts as drawn, so an
+ * empty sheet fails the capture's checks instead of holding it until timeout.
+ */
+function hasUndrawnSurface(): boolean {
+  return document.querySelector(
+    '[data-gloom-surface-renderer="webgl"]:not([data-gloom-surface-state="drawn"]):not([data-gloom-surface-state="blank"])',
+  ) !== null;
+}
+
 /** A chart pane holds the capture by publishing `ready: false` on its chart-data node. */
 function hasUnresolvedChartData(): boolean {
   return (window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ ?? []).some((node) => (
@@ -259,6 +272,7 @@ function waitForShotReadiness(): () => void {
       pendingShotWork === 0
       && !isShotLoadingTextVisible()
       && !hasUnresolvedChartData()
+      && !hasUndrawnSurface()
       && !changedSinceLastFrame
     ) {
       stableFrames += 1;
@@ -397,6 +411,9 @@ function HydratePayload({
       tickers: new Map(payload.tickers.map((ticker) => [ticker.metadata.ticker, ticker])),
     });
     dispatch({ type: "HYDRATE_FINANCIALS", financials: new Map(payload.financials) });
+    for (const [instanceId, accounts] of Object.entries(payload.brokerAccounts ?? {})) {
+      dispatch({ type: "SET_BROKER_ACCOUNTS", instanceId, accounts });
+    }
     dispatch({ type: "SET_INITIALIZED" });
 
     return waitForShotReadiness();
@@ -435,10 +452,23 @@ function ShotPane({ payload, registry }: { payload: DesktopPaneShotPayload; regi
   } as Pick<AppState, "config" | "paneState">;
   const title = getPaneDisplayTitle(titleState, instance, pane, registry.panes);
   const width = payload.widthCells;
-  const height = payload.heightCells;
+  const [height, setHeight] = useState(payload.heightCells);
+  useEffect(() => {
+    let cancelReadiness: (() => void) | null = null;
+    window.__GLOOM_CLI_SHOT_RESIZE__ = (heightCells) => {
+      window.__GLOOM_CLI_SHOT_READY__ = false;
+      setHeight(heightCells);
+      cancelReadiness?.();
+      cancelReadiness = waitForShotReadiness();
+    };
+    return () => {
+      cancelReadiness?.();
+      delete window.__GLOOM_CLI_SHOT_RESIZE__;
+    };
+  }, []);
   // PORT keeps what its basket covers, so a capture never reads as the whole account.
   return (
-    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} preserveStatus={["time-sales", "gpu", "hiring", "apps", "catalysts", "litigation", "perps", "members", "analytics"].includes(pane.id)}>
+    <PaneShotFrame paneId={instance.instanceId} title={title} width={width} height={height} statusLine={payload.statusLine === true} preserveStatus={["time-sales", "gpu", "hiring", "apps", "catalysts", "litigation", "perps", "members", "analytics"].includes(pane.id)}>
       {(bodyFrame) => <PaneContent
         component={pane.component}
         paneId={instance.instanceId}

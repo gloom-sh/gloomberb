@@ -127,6 +127,71 @@ describe("CLI watchlist commands", () => {
   });
 });
 
+describe("CLI collection lists", () => {
+  test("watchlist add takes many symbols: one line each, a summary, and never a symbol read into the list's name", async () => {
+    const { dataDir } = await createCliFixture({
+      watchlists: [{ id: "growth", name: "Growth" }],
+      tickers: [makeTicker(), makeTicker({ ticker: "MSFT", name: "Microsoft Corporation" }), makeTicker({ ticker: "XOM", name: "Exxon Mobil", exchange: "NYSE", watchlists: ["growth"] })],
+    });
+
+    const added = await captureConsole(() => runCli(["watchlist", "add", "Growth", "nvda", "msft ,XXXXX", "xom ", "NVDA"]));
+    expect(added.exitCode).not.toBe(1);
+    expect(added.stdout).toContain("Added NVDA:NASDAQ (NVIDIA Corporation)");
+    expect(added.stdout).toContain("Already in the list: XOM:NYSE (Exxon Mobil)");
+    expect(added.stdout).toContain("Not found: XXXXX");
+    expect(added.stdout).toContain('Watchlist "Growth": 2 added, 1 already in the list, 1 not found: XXXXX; 1 repeat skipped.');
+    const persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
+    const store = new TickerRepository(persistence.tickers);
+    expect((await store.loadAllTickers()).filter((ticker) => ticker.metadata.watchlists.includes("growth")).map((ticker) => ticker.metadata.ticker).sort())
+      .toEqual(["MSFT", "NVDA", "XOM"]);
+    persistence.close();
+
+    const again = await captureConsole(() => runCli(["watchlist", "add", "Growth", "NVDA,MSFT", "--json"]));
+    const json = JSON.parse(again.stdout);
+    expect(json.data.map((row: { status: string; listing: string }) => [row.status, row.listing])).toEqual([["already_listed", "NVDA:NASDAQ"], ["already_listed", "MSFT:NASDAQ"]]);
+    expect(json.metadata).toMatchObject({ watchlist: "Growth", added: 0, alreadyListed: 2, notFound: 0 });
+
+    // Nothing resolving is a failure; so is a list name nothing matches, named as typed.
+    const none = await captureConsole(() => runCli(["watchlist", "add", "Growth", "FAKE1", "FAKE2"]));
+    expect(none.exitCode).toBe(1);
+    expect(none.stdout).toContain('Watchlist "Growth": 0 added, 2 not found: FAKE1, FAKE2.');
+    const glued = await captureConsole(() => runCli(["watchlist", "add", "Groth", "nvda", "xom "]));
+    expect(glued.exitCode).toBe(1);
+    expect(glued.stderr).toContain('Watchlist "Groth" was not found.');
+    expect(glued.stderr).toContain("Watchlists: Growth");
+
+    const removed = await captureConsole(() => runCli(["watchlist", "remove", "Growth", "NVDA", "MSFT", "AAPL"]));
+    expect(removed.stdout).toContain('Watchlist "Growth": 2 removed, 1 not found: AAPL.');
+
+    const shown = await captureConsole(() => runCli(["watchlist", "show", "Growth", "--csv"]));
+    const [header, ...rows] = shown.stdout.split("\n");
+    expect(header!.split(",").slice(0, 5)).toEqual(["symbol", "listing", "name", "exchange", "kind"]);
+    expect(rows.map((row) => row.split(",")[1])).toEqual(["XOM:NYSE"]);
+  });
+
+  test("portfolio add and remove take many symbols, and an unquoted name with spaces still names the portfolio", async () => {
+    const { dataDir } = await createCliFixture({
+      portfolios: [{ id: "research", name: "Research Book", currency: "USD" }],
+      watchlists: [],
+      tickers: [makeTicker(), makeTicker({ ticker: "MSFT", name: "Microsoft Corporation" })],
+    });
+
+    const added = await captureConsole(() => runCli(["portfolio", "add", "Research", "Book", "NVDA", "MSFT", "CASH"]));
+    expect(added.stdout).toContain("Added MSFT:NASDAQ (Microsoft Corporation)");
+    expect(added.stdout).toContain("Not added: CASH (CASH is the portfolio's cash line, not a ticker)");
+    expect(added.stdout).toContain('Portfolio "Research Book": 2 added; 1 not added: CASH.');
+
+    const removed = await captureConsole(() => runCli(["portfolio", "remove", "Research Book", "NVDA", "MSFT"]));
+    expect(removed.stdout).toContain('Portfolio "Research Book": 2 removed.');
+    const persistence = new AppPersistence(join(dataDir, ".gloomberb-cache.db"));
+    expect((await new TickerRepository(persistence.tickers).loadAllTickers()).some((ticker) => ticker.metadata.portfolios.includes("research"))).toBe(false);
+    persistence.close();
+
+    const glued = await captureConsole(() => runCli(["portfolio", "add", "Books", "NVDA", "MSFT"]));
+    expect(glued.stderr).toContain('Portfolio "Books" was not found.');
+  });
+});
+
 describe("CLI portfolio commands", () => {
   test("creates a manual portfolio and persists the generated id", async () => {
     const { dataDir } = await createCliFixture({
@@ -187,7 +252,7 @@ describe("CLI portfolio commands", () => {
     });
 
     const first = await captureConsole(() => runCli(["portfolio", "position", "set", "Research", "NVDA", "10", "400"]));
-    expect(first.stdout).toContain('Set position for NVDA (NVIDIA Corporation) in "Research".');
+    expect(first.stdout).toContain('Set position for NVDA:NASDAQ (NVIDIA Corporation) in "Research".');
     expect(first.stdout).toContain("Shares");
     expect(first.stdout).toContain("10");
 
@@ -339,7 +404,43 @@ describe("CLI search helpers", () => {
     expect(report).toContain("MSTR");
     expect(report).toContain("MicroStrategy Incorporated");
     expect(report).toContain("Saved");
-    expect(report).toContain("gloom");
+    // Where a row came from is a saved ticker or a broker, never the data service's internal id.
+    expect(report).not.toContain("gloom");
+  });
+
+  test("a bare symbol's listings go by the name its quote gives, as quote names them; another company keeps its own", async () => {
+    const listing = (exchange: string, name: string) => ({ providerId: "gloom", symbol: "VTI", name, exchange, type: "ETF", currency: "USD" });
+    const candidates = await searchCandidatesForCli({
+      query: "vti",
+      tickers: [],
+      dataProvider: createTestDataProvider({
+        // The catalogue still files VTI under its name from before the July 2026 rename.
+        search: async () => [listing("ARCA", "Vanguard Total Stock Market ETF"), listing("BMV", "Vanguard Total Stock Market ETF"), listing("TSX", "Vitality Products Inc")],
+        getQuote: async () => ({ symbol: "VTI", name: "Vanguard Morningstar Total Stock Market ETF", listingExchangeName: "ARCA", price: 381.94, currency: "USD", change: 0, changePercent: 0, lastUpdated: 0 }),
+      }),
+    });
+    const names = Object.fromEntries(candidates.map((candidate) => [candidate.result?.exchange, candidate.detail.split(" | ")[0]]));
+    expect(names).toEqual({
+      ARCA: "Vanguard Morningstar Total Stock Market ETF",
+      BMV: "Vanguard Morningstar Total Stock Market ETF",
+      TSX: "Vitality Products Inc",
+    });
+  });
+
+  test("an index code lists the index first as the primary listing, not behind the funds named for it", async () => {
+    const funds = ["159100", "SPVT11", "HIGH11", "LVOL11", "NSDV11", "NDIV11", "NBOV11", "SPUB11", "IBOVX", "BOVV11", "BOVB11"]
+      .map((symbol) => ({ providerId: "gloom", symbol, name: `${symbol} IBOV ETF`, exchange: "B3", type: "ETF" }));
+    const search = async () => [
+      { providerId: "gloom", symbol: "^BVSP", name: "Ibovespa", exchange: "B3", type: "INDEX", searchAliases: ["IBOV", "IBOV Index"] },
+      { providerId: "gloom", symbol: "IBOV11", name: "IBOV11 Fund", exchange: "B3", type: "Common Stock" },
+      ...funds,
+    ];
+    const candidates = await searchCandidatesForCli({ query: "IBOV", tickers: [], dataProvider: createTestDataProvider({ search }) });
+
+    expect(candidates).toHaveLength(10);
+    expect(candidates[0]).toMatchObject({ label: "^BVSP", category: "Primary Listing" });
+    const headings = buildSearchReport({ query: "IBOV", candidates }).split("\n").filter((line) => /^(Primary Listing|Other Listings|Funds & Derivatives)/.test(line));
+    expect(headings[0]).toContain("Primary Listing");
   });
 
   test("renders an empty state when no search results match", () => {
@@ -350,5 +451,11 @@ describe("CLI search helpers", () => {
 
     expect(report).toContain("Search: zzzz");
     expect(report).toContain("No matches found.");
+  });
+
+  test("an empty search points at the catalog, which holds functions and terms rather than tickers", () => {
+    const report = buildSearchReport({ query: "bitcoin perpetual", candidates: [] });
+
+    expect(report).toContain('Try: gloomberb catalog "bitcoin perpetual"');
   });
 });

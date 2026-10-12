@@ -101,8 +101,10 @@ describe("as-filed insider amendments", () => {
     const result = await report(entries);
     expect(result.data.complete).toBe(false);
     expect(rows(result)[0]).toMatchObject({ form: "4/A", shares: 40, originalFilingDate: "2026-08-20", transactionFootnoteIds: ["F1"], remarks: "Corrects 100 shares to 40 shares." });
-    expect(result.text).toContain("Corrects 100 shares to 40 shares.");
-    expect(result.text).toContain("4/A");
+    // The amendment's own words sit under its row, not above the table.
+    const lines = result.text.split("\n").map((line) => line.trim());
+    const row = lines.findIndex((line) => line.startsWith("4/A"));
+    expect(lines.slice(row + 1, row + 3)).toEqual(["Original filed 2026-08-20", "Remarks: Corrects 100 shares to 40 shares."]);
     const independentReport = await report(entries, "b. officer");
     expect(independentReport.data.complete).toBe(true);
     expect(rows(independentReport)).toHaveLength(1);

@@ -60,7 +60,7 @@ export function formatRate(rate: number, referenceRate = rate): string {
   return rate.toFixed(decimals);
 }
 
-function isFxCurrency(code: unknown): code is FxCurrency {
+export function isFxCurrency(code: unknown): code is FxCurrency {
   return typeof code === "string" && FX_CURRENCIES.includes(code as FxCurrency);
 }
 

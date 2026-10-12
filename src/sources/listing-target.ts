@@ -1,9 +1,13 @@
+import { predictionMarketListing } from "../tickers/prediction-listing";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
 import { createProviderMiss } from "./provider-errors";
 import { listingSuffixConflictsWithExchange, listingSuffixExchange } from "./listing-symbols";
 
 /** Explicit public qualifications must agree; bare suffixes outrank remembered metadata. */
 export function publicListingTarget(symbol: string, exchange?: string) {
+  // A prediction market is its market id on its venue, however it was saved.
+  const market = predictionMarketListing(symbol, exchange);
+  if (market) return market;
   const parsed = parsePublicTickerKey(symbol);
   if (parsed.exchange && listingSuffixConflictsWithExchange(parsed.symbol, parsed.exchange)) {
     throw createProviderMiss(`Listing suffix conflicts with exchange ${parsed.exchange}: ${symbol}`);

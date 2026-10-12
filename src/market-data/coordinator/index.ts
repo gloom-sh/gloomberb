@@ -22,7 +22,7 @@ import {
 import { resolveTickerFinancialsQuoteState } from "../quotes/resolution";
 import { measurePerf } from "../../utils/perf-marks";
 import { hasLikelyQuoteUnitMismatch } from "../../utils/currency-units";
-import { hasUsablePriceHistory } from "../../utils/price-history";
+import { hasUsablePriceHistory, normalizePriceHistory } from "../../utils/price-history";
 import { fxFreshUntil } from "../../utils/fx-market-hours";
 import {
   createBaselineChartRequest,
@@ -392,7 +392,7 @@ export class MarketDataCoordinator {
     const key = buildChartKey(request);
     this.chartRequests.set(key, request);
     const current = this.chartStore.get(key);
-    const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history);
+    const currentData = normalizeFreshChartData(resolveEntryData(current), request, current.history, current.fetchedAt);
     if (!options.forceRefresh && currentData.length > 0 && hasFreshEntryData(current, CHART_CACHE_TTL_MS)) {
       if (currentData !== resolveEntryData(current)) {
         return this.chartStore.update(key, (entry) =>
@@ -425,7 +425,9 @@ export class MarketDataCoordinator {
         const result = await load(requested) ?? await load({ kind: "range", range: request.bufferRange });
         if (!result) throw new Error("No chart history method is available");
         const { points, ...history } = result;
-        const data = normalizeFreshChartData(points, request, history);
+        // The router answers a copy short of the latest session only when a
+        // refetch failed, and that saved copy beats an empty chart.
+        const data = normalizePriceHistory(points);
         const source = result.sourceKey ?? this.dataProvider.id;
         const status = hasUsablePriceHistory(data) ? "success" : "empty";
         const attempts = [createAttempt(source, startedAt, status, status === "empty" ? "NO_DATA" : undefined)];
@@ -563,6 +565,7 @@ export class MarketDataCoordinator {
         fetchedAt: result?.fetchedAt ?? null,
         responseSequence: result?.responseSequence,
         asOf: result?.asOf,
+        delayMinutes: result?.delayMinutes,
         staleAt: result?.staleAt ?? null,
         error: classified ?? (!loading && empty ? { reasonCode: "NO_DATA", message: "No data available" } : null),
         attempts: result ? [createAttempt(result.source, result.fetchedAt, error ? "fatal_error" : empty ? "empty" : "success", classified?.reasonCode, classified?.message)] : [],

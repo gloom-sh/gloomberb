@@ -6,7 +6,7 @@ export const attentionHeadless: HeadlessPaneDefinition<"bundle"> = {
   options: [{ key: "tab", type: "enum", values: ATTENTION_TABS.map(({ value }) => ({ value })), defaultValue: "ranking", description: "Rankings, abnormal attention, groups, history or evidence." },
     { key: "window", type: "enum", values: WINDOWS.map(({ value }) => ({ value })), defaultValue: "now", description: "Latest completed publication hour, UTC day or trailing week." }],
   discovery: { aliases: ["ATTN"], dataRequirements: ["Privacy-qualified published research counts"],
-    limitations: ["Pro dataset with three-row preview and latest history point", "Suppressed hours are absent, never zero", "Activity is opt-in and is not representative of all investors"] },
+    limitations: ["Pro dataset with three-row preview and latest history point.", "Suppressed hours are absent, never zero.", "Activity is opt-in and is not representative of all investors."] },
   describe: "Gloom research attention (Pro)",
   async load(args, ctx) {
     const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;

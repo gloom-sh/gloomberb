@@ -64,6 +64,10 @@ describe("live valuation", () => {
     // EPS on another basis than the multiple (11x drift) and a minor-unit block stay stored.
     expect(liveTrailingPE(quote(), { ...fundamentals, eps: 0.5 })).toBe(20);
     expect(liveTrailingPE(quote({ currency: "GBP" }), { ...fundamentals, marketCapCurrency: "GBp" })).toBe(20);
+    // LIN on XETRA: a EUR price over USD EPS at the rate the P/E converted it at, never over the dollars themselves.
+    const lin: Fundamentals = { trailingPE: 432.4 / (14.61 * 0.8924), eps: 14.61, financialCurrency: "USD", marketCapCurrency: "EUR",
+      trailingPEConversion: { from: "USD", rate: 0.8924 } };
+    expect(liveTrailingPE(quote({ price: 440, currency: "EUR" }), lin)).toBeCloseTo(440 / (14.61 * 0.8924));
   });
 
   test("reprices forward P/E and yield only when the forward per-share figure is served", () => {

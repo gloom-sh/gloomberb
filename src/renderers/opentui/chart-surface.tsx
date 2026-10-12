@@ -101,6 +101,7 @@ export const OpenTuiChartSurface = forwardRef<unknown, ChartSurfaceProps>(functi
       markers: nativeCrosshair.markers?.map((marker) => ({
         pixelY: scaleLocalPixelCoordinate(marker.pixelY, nativeBitmap.height, size.pixelHeight) ?? 0,
         color: marker.color,
+        hollow: marker.hollow,
       })),
     });
     if (strips.length === 0) {

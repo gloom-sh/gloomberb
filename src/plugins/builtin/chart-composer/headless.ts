@@ -3,7 +3,7 @@ import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/f
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
 import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from "../../../time-series/market";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessSeries, HeadlessSeriesResult } from "../../../types/headless";
-import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSpec, ChartSpec, ChartViewportSpec } from "../../../time-series/types";
+import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
 import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
 import { GEO_SERIES_CAPABILITY_ID } from "./series-expression";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
@@ -19,6 +19,7 @@ import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
+import { inferSeriesFrequency } from "../../../series/csv";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -209,14 +210,78 @@ export async function loadChartPaneModel(
   };
 }
 
+const DAY_MS = 24 * 60 * 60_000;
+const PERIOD_MONTHS = { monthly: 1, quarterly: 3, annual: 12 } as const;
+type Periodicity = keyof typeof PERIOD_MONTHS;
+
+/**
+ * The period a series of period dates publishes in, from the spacing of its
+ * dates, when its newest date starts one (FRED dates August's CPI 1 Aug).
+ */
+function seriesPeriodicity(dates: readonly Date[]): Periodicity | null {
+  const frequency = inferSeriesFrequency(dates.map((date) => ({ date, value: 0 })));
+  if (frequency !== "monthly" && frequency !== "quarterly" && frequency !== "annual") return null;
+  const newest = dates.reduce((latest, date) => (date > latest ? date : latest));
+  return newest.getUTCDate() === 1 && newest.getUTCMonth() % PERIOD_MONTHS[frequency] === 0 ? frequency : null;
+}
+
+/**
+ * An economic chart's dates: each series observes a period or a day, never an
+ * instant, so the chart is dated by the day of its newest observation, with
+ * the oldest series' newest when they end apart, and by the period when every
+ * series publishes in the same one: `Aug 2026 (monthly)`, not `Sat 1 Aug 2026
+ * 00:00 UTC`. Nothing for a chart with any other series.
+ */
+export function economicChartDates(series: readonly HeadlessSeries[], spec: Pick<ChartSpec, "series">): Pick<HeadlessPaneFreshness, "asOf" | "oldest" | "periodicity"> {
+  if (!spec.series.length || spec.series.some(({ source }) => source.kind !== "economic")) return {};
+  const ends: string[] = [];
+  const periods = new Set<Periodicity | null>();
+  for (const entry of series) {
+    const dates = entry.points.flatMap((point) => (point.value ?? point.close) == null ? [] : [new Date(point.date)]);
+    if (!dates.length) continue;
+    // A date at midnight UTC is a day; anything else is an observation time and keeps it.
+    if (dates.some((date) => !Number.isFinite(date.getTime()) || date.getTime() % DAY_MS !== 0)) return {};
+    ends.push(dates.reduce((latest, date) => (date > latest ? date : latest)).toISOString().slice(0, 10));
+    periods.add(seriesPeriodicity(dates));
+  }
+  if (!ends.length) return {};
+  ends.sort();
+  const [periodicity] = periods.size === 1 ? [...periods] : [null];
+  return {
+    asOf: ends.at(-1)!,
+    ...(ends[0] !== ends.at(-1) ? { oldest: ends[0]! } : {}),
+    ...(periodicity ? { periodicity } : {}),
+  };
+}
+
+/**
+ * Who a chart cites when each of its series names its own dataset (CBR's
+ * policy rates: `FRED series ECBDFR`); nothing, so Gloom Cloud, otherwise.
+ */
+function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPaneFreshness, "source" | "publisher"> {
+  const cited = series.map((entry) => (entry as HeadlessSeries & Pick<ResolvedSeries, "attribution">).attribution);
+  if (!cited.length || cited.some((attribution) => !attribution)) return {};
+  const publishers = [...new Set(cited.map((attribution) => attribution!.publisher))];
+  return {
+    source: [...new Set(cited.map((attribution) => attribution!.source))].join(", "),
+    ...(publishers.every(Boolean) ? { publisher: publishers.join(", ") } : {}),
+  };
+}
+
 /**
  * Price series are bar histories, stale once bars of the coarsest size stop
- * arriving; fundamentals, valuations and economic series are reported data.
+ * arriving; fundamentals, valuations and economic series are reported data,
+ * economic series dated by their periods (`economicChartDates`). A chart of
+ * capability series alone (CHOKE's vessel transits) is a dataset, dated by its
+ * newest observation and how far behind that is.
  */
-function chartFreshness(series: readonly HeadlessSeries[]): HeadlessPaneFreshness {
+function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): HeadlessPaneFreshness {
   const order = ["1wk", "1mo"];
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
-  if (!series.length || resolutions.some((resolution) => !resolution)) return { ...REPORTED_DATA, basis: "reported and published data" };
+  const dataset = spec.series.length > 0 && spec.series.every(({ source }) => source.kind === "capability");
+  if (!series.length || resolutions.some((resolution) => !resolution)) {
+    return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}), ...economicChartDates(series, spec), ...seriesAttribution(series) };
+  }
   const coarsest = resolutions.reduce((worst, resolution) => (
     order.indexOf(resolution!) > order.indexOf(worst!) ? resolution : worst
   ), resolutions[0]);
@@ -296,7 +361,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
         }
       }
       model.snapshot.intradayHistories = intradayHistories;
-      model.freshness = chartFreshness(model.series);
+      model.freshness = chartFreshness(model.series, model.spec);
       const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
         priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);
       if (priceDomainFailures.length) {

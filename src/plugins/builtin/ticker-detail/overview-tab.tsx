@@ -16,6 +16,7 @@ import {
   marketStateLabel,
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
+import { fitFuturesContractLines, futuresContractLines, futuresSettleText, isFuturesInstrument, type FuturesContractLine } from "../../../market-data/futures-contract";
 import { useViewport } from "../../../react/input";
 import { useAppSelector } from "../../../state/app/context";
 import { colors, priceColor } from "../../../theme/colors";
@@ -36,10 +37,12 @@ import {
   rangeRowChrome,
   textGridColumns,
 } from "./overview/components";
+import { useFuturesContractTerms } from "./overview/futures-contract";
 import { buildOverviewStats, buildPositionRows, buildProfileFields } from "./overview/model";
-import type { OverviewFunctionLink } from "./overview/types";
+import type { OverviewFunctionLink, StatField } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-list/live-valuation";
+import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 
 /** Cells between the Day and 52W ranges when they share a row. */
 const RANGE_PAIR_GAP = 4;
@@ -48,9 +51,24 @@ const RANGE_INLINE_MIN_TRACK = 10;
 /** Desktop px between the logo and the name and price beside it. */
 const LOGO_GAP_PX = 6;
 
+/**
+ * Grid rows a futures Contract block may take. It sits above the chart, so a
+ * short pane keeps the chart in view by dropping the least useful terms.
+ */
+function contractRowBudget(height: number | undefined): number {
+  if (height == null || height >= 32) return Number.POSITIVE_INFINITY;
+  return height >= 24 ? 3 : 2;
+}
+
+function contractField(line: FuturesContractLine): StatField {
+  return { label: line.label, value: line.value, ...(line.warning ? { valueColor: colors.warning } : {}) };
+}
+
 interface OverviewTabProps {
   perpetuals?: ReactNode;
   width?: number;
+  /** The tab's height; a short one keeps fewer futures contract terms. */
+  height?: number;
   focused?: boolean;
   ticker: TickerRecord | null;
   financials: TickerFinancials | null;
@@ -65,7 +83,7 @@ export function OverviewTab(props: OverviewTabProps) {
   return <ResolvedOverviewTab {...props} ticker={props.ticker} />;
 }
 
-function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals }: OverviewTabProps & { ticker: TickerRecord }) {
+function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals }: OverviewTabProps & { ticker: TickerRecord }) {
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
   const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
@@ -78,6 +96,9 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const instrumentType = quote?.instrumentType?.trim()
     || financials?.quoteMetadata?.instrumentType?.trim()
     || ticker.metadata.assetCategory;
+  // A futures symbol's settlement and contract terms load beside the quote, never in its way.
+  const futuresSymbol = quote?.symbol || ticker.metadata.ticker;
+  const contractTerms = useFuturesContractTerms(isFuturesInstrument(futuresSymbol, instrumentType) ? futuresSymbol : null);
   const exchangeRates = useFxRatesMap([
     baseCurrency,
     ticker.metadata.currency,
@@ -92,7 +113,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const industry = ticker.metadata.industry ?? profile?.industry;
   const description = profile?.description?.trim();
   const listingVenue = exchangeShortName(
-    quote?.listingExchangeName ?? quote?.exchangeName,
+    quote?.tradingExchangeName ?? quote?.listingExchangeName ?? quote?.exchangeName,
     quote?.listingExchangeFullName ?? quote?.fullExchangeName,
   );
   const routingVenue = exchangeShortName(quote?.routingExchangeName, quote?.routingExchangeFullName);
@@ -163,6 +184,12 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const logoPx = quote ? logoBottomPx - logoTopPx : cellHeightPx * 2;
   const logoCells = hasLogo ? Math.ceil((logoPx + LOGO_GAP_PX) / cellWidthPx) : 0;
   const quoteTextWidth = Math.max(1, quoteSummaryWidth - logoCells);
+  // The exchange settlement, dated by its session: a futures price is its latest trade.
+  const settleLabel = t("Settle");
+  const settleText = contractTerms
+    ? truncateToDisplayWidth(futuresSettleText(contractTerms, quote),
+      Math.max(1, quoteTextWidth - displayWidth(settleLabel) - 1))
+    : "";
   const quoteChangeCells = figureCells(quoteChangeText, "sub") + 1 + figureCells(quotePercentText, "sub");
   const stackQuoteChange = quoteChangeCells > quoteTextWidth;
   const stackQuoteSummary = figureCells(quotePriceText) + 2 + quoteChangeCells > quoteTextWidth;
@@ -186,6 +213,10 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
   const rangeInline = hasDayRange && yearRange != null
     && rangeHalfWidth - rangeRowChrome(rangeLabelWidth, rangeEndpointCells) >= RANGE_INLINE_MIN_TRACK;
   const rangeWidth = rangeInline ? rangeHalfWidth : contentWidth;
+  const contractLines = contractTerms ? futuresContractLines(contractTerms, futuresSymbol) : [];
+  // Columns that keep every term whole; a narrow pane stacks them in one.
+  const contractColumns = textGridColumns(contractLines.map(contractField), contentWidth);
+  const contractFields = fitFuturesContractLines(contractLines, contractColumns * contractRowBudget(height)).map(contractField);
   const stats = buildOverviewStats({
     quote,
     fundamentals,
@@ -200,7 +231,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
     today: zonedDateKey(Date.now(), chartTimeZone ?? "America/New_York"),
   });
   const profileFields = buildProfileFields({
-    instrumentType,
+    instrumentType: instrumentTypeLabel(instrumentType, quote?.name || ticker.metadata.name),
     sector,
     industry,
     profile,
@@ -277,6 +308,12 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
                 </Text>
               </Box>
             )}
+            {settleText && (
+              <Box flexDirection="row" gap={1} minWidth={0} overflow="hidden">
+                <Text flexShrink={0} fg={colors.textDim}>{settleLabel}</Text>
+                <Text fg={colors.text}>{settleText}</Text>
+              </Box>
+            )}
             {metadataParts.length > 0 && (
               <Text fg={colors.textDim}>{metadataParts.join(" | ")}</Text>
             )}
@@ -288,7 +325,7 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
           )}
         </Box>
 
-        {perpetuals}
+        {perpetuals && <PaneLinkMenu>{perpetuals}</PaneLinkMenu>}
 
         {(hasDayRange || yearRange) && quote && (
           <Box flexDirection={rangeInline ? "row" : "column"} gap={rangeInline ? RANGE_PAIR_GAP : 0} width={contentWidth}>
@@ -320,6 +357,13 @@ function ResolvedOverviewTab({ width, focused = false, ticker, financials, onOpe
                 priceOptions={moneyOptions}
               />
             )}
+          </Box>
+        )}
+
+        {contractFields.length > 0 && (
+          <Box flexDirection="column">
+            <SectionHeading title={t("Contract")} />
+            <FundamentalsGrid fields={contractFields} width={contentWidth} columns={contractColumns} />
           </Box>
         )}
 

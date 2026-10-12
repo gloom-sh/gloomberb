@@ -27,16 +27,18 @@ gloomberb plugin disable my-plugin
 
 Plugins are installed to `~/.gloomberb/plugins/`, or under `$GLOOMBERB_HOME/plugins/` when that variable relocates the folder. A new Linux install without `~/.gloomberb` uses `~/.local/share/gloomberb/plugins/` (see [Where your data lives](docs/installation.md#where-your-data-lives)); `gloomberb plugins` prints the folder in use.
 
-A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) is installed at
-the tag and commit the registry reviewed, not at whatever the default branch
-holds that day, and `update` moves it to the next reviewed one. A plugin
-installed from a repository the registry does not list follows the remote's
-default branch instead. A plugin that builds on another, such as IBKR Gateway
-on Interactive Brokers, brings that one along from the registry, from the
-Plugins pane and the CLI alike.
+A plugin listed at [gloom.sh/plugins](https://gloom.sh/plugins) uses the
+registry's published tag or commit when available. If the registry supplies a
+commit hash, the installer checks that the checkout matches it. `update` uses
+the same pin. A registry listing does not mean a plugin has been reviewed or
+endorsed unless explicitly stated. Without a registry pin, including when
+the registry cannot be read and there is no cached listing, installation and
+updates follow the remote's default branch. A plugin that builds on another,
+such as IBKR Gateway on Interactive Brokers, brings that one along from the
+registry, from the Plugins pane and the CLI alike.
 
-Either way the Plugins pane says when an update is waiting. For a listed
-plugin that is the reviewed commit; for an unlisted one, including a private
+Either way the Plugins pane says when an update is waiting. For a pinned
+plugin that is the registry's commit; otherwise, including for a private
 repository, the pane asks the checkout's own remote where its default branch
 is, which is exactly where `update` would land it. `gloomberb plugins --check`
 answers the same question from the terminal. The check needs whatever
@@ -122,7 +124,7 @@ The plugin API changes by these rules:
   plugin the registry lists, at the ref it would install, against every pull
   request.
 
-`update` only moves a plugin forward. When the registry's reviewed tag is older
+`update` only moves a plugin forward. When the registry's published tag is older
 than what is checked out (an install from the default branch can be ahead of
 the newest tag), the plugin is kept as it is and the reason is shown. After an
 update of a plugin split across several files, the pane asks for a restart
@@ -220,6 +222,8 @@ An external plugin is a directory in `~/.gloomberb/plugins/`:
 ### Plugin ids
 
 Plugin IDs must not reuse current or retired built-in IDs. Retired module IDs remain reserved so saved configuration can be migrated safely to their current owning plugin.
+
+`ticker-research`, `macro` and `market-overview` are retired too: each now names the group of built-ins it was split into. In `disabledPlugins` the old id stands for all of its successors, and `gloomberb plugin enable|disable <id>` switches them together.
 
 A plugin that changes its id keeps the state its users already have by declaring the old one as `stateId`:
 
@@ -388,6 +392,8 @@ A pane with `headless` automatically gets:
 
 The definition is the only structured report contract. Optional `discovery` metadata supplies semantic aliases, a stable capability ID, limitations, and screenshot readiness; the catalog derives argument cardinality and options directly. No central pane capability map or report switch is needed.
 
+A pane without `headless` still answers `fn` and `shot` as a rendered view, read from the drawn pane. Every `--key value` becomes the pane setting of that key. To document and check the settings that matter, list them in the `PaneDef`'s `reportOptions` (the option schema above, plus `placeholder` for the value's name in the catalog, an `example` such as `--currencies USD,ZAR,NGN`, `normalize(value)`, which returns the setting or throws an `Error` naming what is wrong, and `settingKey` when the flag is named differently from the setting it sets). `reportNotices(settings)` returns lines the report prints above its table, such as what the default view leaves out; `--json` carries them in `data.metadata.notices`. OMON's `--strikes` is the example. A bounded table a reader needs whole sets `reportEveryRow` on its `DataTable`, so the report reads rows scrolled out of view too, and `shotFitsRows: true` on the `PaneDef` lets a `shot` without `--height` grow until every row shows (FUT does both).
+
 ### Definition contract
 
 ```typescript
@@ -429,7 +435,7 @@ The four supported shapes cover the pane catalog:
 - `series`: `{ series: [{ id, label, points }], stats? }` for charts and derived statistics
 - `snapshot`: `{ asOf, items }` for a point-in-time view of a stream
 
-All shapes may include `errors`, `metadata`, and `unavailableSymbols`. Set `unavailableSymbols` for partially missing inputs even when another symbol returns data; otherwise a partial report can incorrectly appear complete. Set `symbols` when the loader expands an expression or adds an implicit peer. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
+All shapes may include `errors`, `metadata`, and `unavailableSymbols`. An error that names what Gloom Pro unlocks (`Full history requires Gloom Pro`) is a lock, not a failure: the text report prints it under `Pro:` and keeps `Errors:` for the rest, and a bundle section that is empty because of it sets `empty: "Locked: Gloom Pro"` in place of the default `No data.`. Set `unavailableSymbols` for partially missing inputs even when another symbol returns data; otherwise a partial report can incorrectly appear complete. Set `symbols` when the loader expands an expression or adds an implicit peer. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
 
 ### Report and screenshot models
 
@@ -470,6 +476,7 @@ The `setup()` function receives a context object with these capabilities:
 | `ctx.registerPaneTemplate(template)` | Add a reusable pane template (see [Pane templates](#pane-templates)) |
 | `ctx.registerBroker(broker)` | Add a broker integration |
 | `ctx.registerCapability(capability)` | Add an asset-data, news, or plugin-service capability |
+| `ctx.registerSeries(series)` | Add a series to the data catalog (see [Data catalog series](#data-catalog-series)); returns a function that removes it |
 | `ctx.registerShortcut(shortcut)` | Add a global keyboard shortcut |
 | `ctx.registerTickerAction(action)` | Add a per-ticker action (shown via `a` key) |
 | `ctx.registerContextMenuProvider(provider)` | Add renderer-neutral context menu items |
@@ -566,7 +573,26 @@ setup(ctx) {
 }
 ```
 
-The command bar debounces each provider separately, aborts the request through `signal` as soon as the query moves on, and memoizes answers for as long as the bar is open. Provider rows are added below what the command bar already resolved, so a slow, failing, or empty provider never disturbs the local matches — return an empty array rather than an error row. Rows are capped at two extra lines and truncated to the panel width, and `emphasis` is styled by the theme, so never put markup in `text`.
+The command bar debounces each provider separately, aborts the request through `signal` as soon as the query moves on, and memoizes answers for as long as the bar is open. Provider rows are added below what the command bar already resolved, so a slow, failing, or empty provider never disturbs the local matches: return an empty array rather than an error row. Rows are capped at two extra lines and truncated to the panel width, and `emphasis` is styled by the theme, so never put markup in `text`. `badge` is a short tag left of the label (six characters at most) and `name` is drawn muted after it, such as a person's full name after their @username.
+
+Once a code claims the text (`CHAT gen`, `SEC AAPL`), providers stay quiet. A provider that has more to say after a code lists it in `shortcuts` and is then asked with the whole text; its rows sit below the code's own.
+
+When the rows come from what the plugin already holds in memory, such as the chat's own conversations, answer with `match` as well:
+
+```typescript
+ctx.registerCommandBarSearchProvider({
+  id: "my-plugin:boards",
+  category: "Boards",
+  minQueryLength: 0,
+  match: (query) => findBoards(query).map(toRow),
+  // Older versions of the app only know provide.
+  provide: async (query) => findBoards(query).map(toRow),
+});
+```
+
+The bar calls `match` instead of `provide`, as it renders and on every keystroke, so its rows land with the text that found them: no debounce, no Searching row, no memo. Keep it cheap: no request and nothing awaited. Its rows are ranked as one block among the bar's own matches, at the place of the block's best row and in the order `match` gave, and with `minQueryLength: 0` the empty bar shows them under Suggested, so return only a few there.
+
+Rows a command builds with `buildResults` take the same `badge` and `name`.
 
 The returned function withdraws the provider; otherwise it is removed with the plugin.
 
@@ -708,7 +734,7 @@ Plugins contribute data and services through capabilities. A capability declares
 
 - `asset-data` for quotes, financials, search, FX, price history, options, filings, holders, analyst research, corporate actions, earnings calendars, article summaries, and quote streams.
 - `news` for ticker and global news feeds.
-- `chart-series` for searchable provider-owned time series that resolve into normal chart data.
+- `chart-series` for searchable provider-owned time series that resolve into normal chart data. To put a series in the data catalog, register it as a [data catalog series](#data-catalog-series) instead; the registry gives it a `chart-series` capability of its own. A raw `chartSeriesProvider` is for an index too large to list, such as the map's place series, whose entries are found by search.
 - `plugin-service` for narrow renderer-safe service escape hatches.
 
 Capability operations can also include CLI manifest metadata. This is what makes the operation understandable to automation without plugin-specific documentation:
@@ -762,6 +788,62 @@ export const myPlugin: GloomPlugin = {
   },
 };
 ```
+
+### Data catalog series
+
+Everything the data catalog (`CAT`) lists, and the chart composer's series search finds, is a registered series: one definition per line that can be charted. Register yours and it can be drawn next to any built-in series, a FRED rate or a ticker's price.
+
+```typescript
+import type { GloomPlugin } from "gloomberb/types/plugin";
+import { defineSeries } from "gloomberb/time-series";
+import { httpFetch } from "gloomberb/utils";
+
+export default {
+  id: "shipping",
+  name: "Shipping",
+  version: "1.0.0",
+  hosts: ["api.example.com"],
+  series: [
+    defineSeries({
+      id: "shipping:container-rate",
+      name: "Container freight rate",
+      unit: "USD",
+      frequency: "weekly",
+      group: "Alternative data",
+      tags: ["freight", "containers"],
+      async load({ start, signal }) {
+        const response = await httpFetch(`https://api.example.com/rates?from=${start?.toISOString().slice(0, 10) ?? ""}`, { signal });
+        const rows: Array<{ day: string; usd: number }> = await response.json();
+        return rows.map((row) => ({ date: row.day, value: row.usd }));
+      },
+    }),
+  ],
+} satisfies GloomPlugin;
+```
+
+| Field | Meaning |
+|---|---|
+| `id` | `namespace:name`, unique in the app. The namespace is lower case and belongs to the plugin that registers its first loaded series; it charts as `CAP:namespace:name`. |
+| `name` | What the catalog and the chart legend show. |
+| `unit` | `%`, `bp`, `x`, `ratio`, `index`, `score` or `points`; a quantity (`count`, `shares`, `contracts`, `people`, `barrels`, ...) or a currency code, optionally after `thousand`, `million`, `billion` or `trillion`; or a currency per unit (`USD/barrel`). `describeSeriesUnits()` lists them all. Series in the same unit share a chart axis. |
+| `frequency` | `intraday`, `daily`, `weekly`, `monthly`, `quarterly`, `annual` or `irregular`. |
+| `group`, `tags`, `description` | The catalog tab the series is listed under, extra search words, and one sentence for search and automation. |
+| `publisher`, `url` | The official body publishing public data (a statistics agency, a central bank, a regulator) and its page for the series. |
+| `input` | `ticker`, `option` or `crypto`: the series is one per symbol. The catalog asks for the symbol, typing a ticker in the catalog fills it in, and `load` receives it as `ticker`. |
+| `load(request)` | Returns the points from `request.start` to `request.end` (either may be absent), as an array of `{ date, value }` or `{ points, warning, attribution }`. `attribution: { source, publisher? }` names the dataset a report of the series alone cites (`FRED series ECBDFR`, published by the European Central Bank) in place of Gloom Cloud. Dates may be `Date`s, `YYYY-MM-DD` strings or epoch milliseconds; a `null` value is a gap. More history than asked for is fine. |
+| `refreshMs` | For a series that moves during the day: how often a chart showing it loads it again, at least 60000. |
+| `style` | `line` (the default), `area`, `step`, `columns` or `points`. |
+| `expression` | Instead of `load`: a series the composer already draws, such as `FRED:UNRATE`, `FUT:CL` or `{ticker}:close`. Use it to list curated existing series. |
+
+A `load` that has nothing to return (signed out, a plan the account lacks, history still collecting) throws an `Error` that says why, in the words the plugin's pane uses; the chart shows the message where the line would be, instead of an empty plot.
+
+A definition is checked when it registers: a malformed id, an unknown unit or frequency, both or neither of `load` and `expression`, or a label that names a host or one of the services in the plugin's `hosts` (a catalog says what the data is, not who serves it) is refused. A bad entry in `series` is skipped and logged, so the plugin's other series and panes still load; `ctx.registerSeries` throws instead. `defineSeries` runs the same checks where the definition is written.
+
+`ctx.registerSeries` adds series after setup has started, for a list the plugin loads first or a folder it watches; it returns a function that removes the series again, and a plugin's series leave with it when it is switched off or removed.
+
+On the desktop, `load` runs where the series was registered. Static `series` are registered in both the view and the Bun process, so a loader that uses `httpFetch` works anywhere. A loader that reads files has to run in the Bun process: register it from the Bun entry's `setup()` (see [Plugins with a native half](#plugins-with-a-native-half)); the view lists it from there and charts it through the Bun process.
+
+To chart a CSV file without writing a plugin, drop it in the profile's `series` folder; the [user guide](docs/usage.md#your-own-series) describes the format. A plugin reading its own files can use the same parser: `parseSeriesCsv(text)` from `gloomberb/time-series` returns the metadata lines and one column of points per value column, and `inferSeriesFrequency(points)` reads a frequency off the dates.
 
 ### Plugin persistence and resume state
 
@@ -1067,7 +1149,31 @@ ctx.registerPane({
 });
 ```
 
-Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share Pane applies this projection automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
+Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share applies this projection to public links automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
+
+### Personal data in a pane's picture
+
+Share can post a picture of a pane as it looks or copy its public link. A pane that shows the person's own data declares it with `personalData`, and posting its picture asks first (`This shows your holdings. Post it?`): `"holdings"` for positions, balances, orders and P&L, `"account"` for account numbers, email and plan, `"messages"` for private conversations. A pane of a plugin that registers a broker and declares nothing is taken to show `holdings`; a broker plugin's pane of market data opts out with `personalData: () => null`. A function decides from what the instance shows now; it gets the pane's settings context plus `tickers`:
+
+```typescript
+ctx.registerPane({
+  id: "broker-orders",
+  name: "Orders",
+  component: OrdersPane,
+  defaultPosition: "right",
+  personalData: "holdings",
+});
+
+ctx.registerPane({
+  id: "position-detail",
+  name: "Position",
+  component: PositionPane,
+  defaultPosition: "right",
+  personalData: ({ activeTicker, tickers }) => (
+    tickers.get(activeTicker ?? "")?.metadata.positions.length ? "holdings" : null
+  ),
+});
+```
 
 ### Pane quick settings
 
@@ -1255,7 +1361,7 @@ Choose the existing control that owns the interaction you need:
 
 [The component exports](src/components/index.ts) are the complete public surface, including the entire basic UI kit. Built-in and external panes must use these components for basic UI. Shared components own appearance, theme updates, focus, keyboard/mouse behavior, disabled state, and automation semantics. A pane supplies its data and domain behavior.
 
-Use `Box` and `ScrollBox` to arrange content. Custom chart surfaces, order-book visualizations, rich inline ticker content, and specialized editors can use lower-level primitives. Do not recreate a button with a clickable `Box`, a section heading with styled `Text`, or a field with raw `Input`. Add a missing repeated pattern to the kit and migrate the callers together. Keep domain calculations and formatting with the pane.
+Use `Box` and `ScrollBox` to arrange content. A `ScrollBox` scrolls vertically unless it says `scrollY={false}`, and the focused pane's arrow keys, PageUp, PageDown, Home and End move it. Custom chart surfaces, order-book visualizations, rich inline ticker content, and specialized editors can use lower-level primitives. Do not recreate a button with a clickable `Box`, a section heading with styled `Text`, or a field with raw `Input`. Add a missing repeated pattern to the kit and migrate the callers together. Keep domain calculations and formatting with the pane.
 
 `Button` supports a compact layout and a separate `displayLabel` for short/icon actions; `label` remains the full accessible and automation name. Use `stopPropagation` for actions nested inside a row. `ActionRow` owns an expandable row's interaction and disclosure affordance. `SelectButton` opens the kit menu on the desktop and a choice dialog in the terminal; a `SelectControl` ref can open it without knowing the renderer.
 
@@ -1475,7 +1581,7 @@ interface TickerResearchTabProps {
 
 Call `onCapture(true)` when your tab needs exclusive keyboard input (e.g., a text editor or chat input) and `onCapture(false)` when done, so global shortcuts keep working.
 
-A tab only appears for tickers it has data for. Declare the instrument kinds it covers with `instruments`; the host resolves the ticker's kind from its quote, broker contract and saved type (`equity`, `fund`, `crypto`, `currency`, `index`, `future`, `option`, `bond`, `other`; `equity` when nothing says otherwise) and hides the tab for any other kind. Omit `instruments` for tabs every ticker has, such as a chart or notes. `isVisible` handles narrower conditions and receives the resolved `instrumentKind`:
+A tab only appears for tickers it has data for. Declare the instrument kinds it covers with `instruments`; the host resolves the ticker's kind from its quote, broker contract and saved type (`equity`, `fund`, `crypto`, `currency`, `index`, `future`, `perpetual`, `prediction`, `option`, `bond`, `other`; `equity` when nothing says otherwise) and hides the tab for any other kind. Omit `instruments` for tabs every ticker has, such as a chart or notes. `isVisible` handles narrower conditions and receives the resolved `instrumentKind`:
 
 ```typescript
 ctx.registerTickerResearchTab({
@@ -1554,7 +1660,7 @@ export default {
 Every pane has to work with no mouse, in the terminal and on the desktop. Most of it comes from the kit, as long as the pane uses it:
 
 - **Footer hints are key bindings.** `usePaneFooter("my-pane", () => ({ hints: [{ id: "add", key: "a", label: "dd", onPress: add }] }), [add])` both draws `[a]dd` and binds `a` while the pane is focused and no field owns the keyboard. A pane does not bind a hinted key a second time. If it must (the key does something slightly different in one mode), its handler calls `event.preventDefault()` when it acts, or the footer fires the hint again. Keys use the keybinding grammar: `a`, `!`, `/`, `Enter`, `Ctrl+S`.
-- **The pane menu lists everything.** `.`, `Shift+F10` or the Menu key (and the `...` button) open the focused pane's menu: every enabled footer hint with its key, then entries the pane's kit controls add, the zap quick settings as toggles, then Settings, Fullscreen, Float, Lock, Close and the window actions. Give a hint a `title` when its key is not the first letter of the action (`{ key: "x", label: "port all", title: "Export All" }`); otherwise the menu reads `[a]dd` as "Add".
+- **The pane menu lists everything.** `.`, `Shift+F10` or the Menu key (and the `...` button) open the focused pane's menu: every enabled footer hint with its key, then entries the pane's kit controls add, the zap quick settings as toggles, then Settings, Fullscreen, Move to New Layout (or Move Back), Float, Lock, Close and the window actions. Give a hint a `title` when its key is not the first letter of the action (`{ key: "x", label: "port all", title: "Export All" }`); otherwise the menu reads `[a]dd` as "Add".
 - **Actions without a key** go in the pane menu with `usePaneMenuItems(id, () => items, deps)`. The items follow `PaneFooterScope` like hints, so an inactive tab's items drop out.
 - **Kit controls register themselves.** A focused `DataTableView` whose headers sort (it has `onHeaderClick`) offers "Sort by…" and "Reverse Sort" (`isColumnSortable` leaves out a column its header click ignores; `onSortChange` makes Reverse Sort flip a header that also cycles through unsorted), and moves its cursor on `Home`/`End`/`PageUp`/`PageDown`. A `QueryBar` binds `/` to its search and lists every filter, the view and "Clear Filters". A focused `Tabs` strip lists New/Close/Move Tab for the handlers it has. The first kit `Button` in an `EmptyState` or `PaneStatusBody` `actions` answers `Enter` and shows it; every action there is in the pane menu.
 - An inline action that has to stay a body button (a Retry beside a failure) goes in `ButtonActionScope`, which gives its first kit `Button` Enter and lists every one in the pane menu. Links and ticker badges in a detail go in `PaneLinkMenu`, which lists each as "Open …" in the pane menu.

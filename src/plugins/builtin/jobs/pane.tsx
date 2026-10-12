@@ -750,7 +750,7 @@ function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps
   if (!access.hasProAccess) return <HiringProWall symbol={symbol} exchange={exchange} width={width} height={height} />;
 
   if (!symbol) {
-    if (companyOnly) return <EmptyState title="No ticker selected." message="Select a ticker to see its hiring." />;
+    if (companyOnly) return <EmptyState title="Select a ticker." />;
     return <HomeView width={width} height={height} focused={focused} registrationId={registrationId} />;
   }
   return (

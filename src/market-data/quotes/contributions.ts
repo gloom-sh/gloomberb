@@ -1,11 +1,14 @@
 import { resolvePriceBasis } from "../market/price-basis";
+import { isAlwaysOpenExchange } from "../market/freshness";
 import type {
+  MarketState,
   Quote,
   QuoteContribution,
   QuoteContributionMap,
   SessionConfidence,
   TickerFinancials,
 } from "../../types/financials";
+import { classifyInstrumentType } from "../../tickers/instrument-kind";
 import { quoteTradingDay, reconcileQuoteDayRange } from "./day-range";
 
 const RETAINED_DESCRIPTIVE_FIELDS = ["high52w", "low52w", "marketCap", "name", "instrumentType"] as const;
@@ -46,6 +49,17 @@ function inferSessionConfidence(
   if (providerId === "ibkr") return "unknown";
   if (quote.marketState) return providerId === "gloomberb-cloud" ? "derived" : "derived";
   return "unknown";
+}
+
+/**
+ * A CCC coin trades through the equity close. The live tape often leaves the
+ * session off, and a copied equity close would paint the coin shut.
+ */
+function alwaysOpenSession(quote: Pick<Quote, "listingExchangeName" | "exchangeName" | "instrumentType" | "marketState">): { marketState: MarketState; sessionConfidence: SessionConfidence } | null {
+  const open = isAlwaysOpenExchange(quote.listingExchangeName ?? quote.exchangeName)
+    || classifyInstrumentType(quote.instrumentType) === "crypto";
+  if (!open || quote.marketState === "REGULAR") return null;
+  return { marketState: "REGULAR", sessionConfidence: "derived" };
 }
 
 function normalizeListingExchange(
@@ -110,6 +124,7 @@ export function finalizeSessionFields(
       postMarketPrice: undefined,
       postMarketChange: undefined,
       postMarketChangePercent: undefined,
+      extendedSessionPrint: undefined,
     };
   }
 
@@ -128,6 +143,8 @@ export function normalizeQuoteContribution(
   const { listingExchangeName, listingExchangeFullName } = normalizeListingExchange(quote, providerId);
   const routingExchangeName = quote.routingExchangeName;
   const routingExchangeFullName = quote.routingExchangeFullName ?? routingExchangeName;
+  const exchangeName = listingExchangeName ?? quote.exchangeName;
+  const session = alwaysOpenSession({ ...quote, listingExchangeName, exchangeName });
 
   return finalizeSessionFields(reconcileQuoteDayRange({
     ...quote,
@@ -136,9 +153,10 @@ export function normalizeQuoteContribution(
     listingExchangeFullName,
     routingExchangeName,
     routingExchangeFullName,
-    exchangeName: listingExchangeName ?? quote.exchangeName,
+    exchangeName,
     fullExchangeName: listingExchangeFullName ?? quote.fullExchangeName,
-    sessionConfidence: inferSessionConfidence(quote, providerId),
+    ...session,
+    sessionConfidence: session?.sessionConfidence ?? inferSessionConfidence(quote, providerId),
   }));
 }
 
@@ -175,6 +193,10 @@ export function mergeQuoteContribution(
       postMarketChangePercent: next.postMarketChangePercent,
     } : {}),
     priceBasis: next.priceBasis,
+    // Said of this observation's price; a tick that does not say leaves it unknown.
+    extendedSessionPrint: next.extendedSessionPrint,
+    // The board this observation was read on; one read on the listing's own line names none.
+    tradingExchangeName: next.tradingExchangeName,
     regularClose: next.regularClose,
     regularCloseSessionDate: next.regularClose != null ? next.regularCloseSessionDate : undefined,
     regularChange: next.regularClose != null ? next.regularChange : undefined,

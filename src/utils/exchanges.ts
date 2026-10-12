@@ -20,12 +20,16 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   ARCA: "ARCA",
   ARCX: "ARCA",
   BATS: "BATS",
-  // Cboe's US equities listing venue (BZX); quotes label it "CBOE US".
+  // Cboe's US equities listing venue (BZX); quotes label it "CBOE US" or BTS.
   "CBOE US": "BATS",
+  BTS: "BATS",
   TYO: "JPX",
+  // Toronto, as brokers and quote sites spell it; typed after a symbol it can
+  // also be Tokyo (SHARED_EXCHANGE_CODES).
   TSE: "TSX",
   TSEJ: "JPX",
   JPX: "JPX",
+  XTKS: "JPX",
   HKG: "HKEX",
   HKEX: "HKEX",
   SEHK: "HKEX",
@@ -40,6 +44,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   TSXV: "TSXV",
   XTSX: "TSXV",
   VAN: "TSXV",
+  CVE: "TSXV",
   CN: "CSE",
   CNSX: "CSE",
   XCNQ: "CSE",
@@ -48,6 +53,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   XASX: "ASX",
   NZX: "NZX",
   XNZE: "NZX",
+  NZE: "NZX",
   SIX: "SWX",
   SWX: "SWX",
   EBS: "SWX",
@@ -60,6 +66,7 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   GER: "XETRA",
   FSE: "FWB2",
   FSX: "FWB2",
+  FRA: "FWB2",
   XFRA: "FWB2",
   FWB: "FWB2",
   FWB2: "FWB2",
@@ -112,14 +119,19 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   SSE: "SSE",
   XSHG: "SSE",
   SHH: "SSE",
+  SHA: "SSE",
   SZSE: "SZSE",
   XSHE: "SZSE",
   SHE: "SZSE",
+  SHZ: "SZSE",
+  // KOSPI; typed after a symbol it can also be KOSDAQ, which the Korea Exchange runs too.
   KRX: "KRX",
   XKRX: "KRX",
   KOSPI: "KRX",
+  KSC: "KRX",
   KOSDAQ: "KOSDAQ",
   XKOS: "KOSDAQ",
+  KOE: "KOSDAQ",
   SGX: "SGX",
   XSES: "SGX",
   BMV: "BMV",
@@ -127,13 +139,72 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   B3: "B3",
   BVMF: "B3",
   B3SA: "B3",
+  SAO: "B3",
   BUE: "BYMA",
   BCBA: "BYMA",
   JSE: "JSE",
   XJSE: "JSE",
   TLV: "TASE",
   XTAE: "TASE",
+  TADAWUL: "TADAWUL",
+  XSAU: "TADAWUL",
+  QE: "QE",
+  QSE: "QE",
+  DSMD: "QE",
+  // Bahrain Bourse, which Gloom Cloud names BHB.
+  BHB: "BHB",
+  XBAH: "BHB",
+  BAHRAIN: "BHB",
+  "BAHRAIN BOURSE": "BHB",
+  DFM: "DFM",
+  XDFM: "DFM",
+  // The Muscat Stock Exchange, which Gloom Cloud names MSX.
+  MSX: "MSX",
+  XMUS: "MSX",
+  MSM: "MSX",
+  MUSCAT: "MSX",
+  OMAN: "MSX",
+  // Boursa Kuwait, which Gloom Cloud names KUWAIT.
+  KUWAIT: "KUWAIT",
+  XKUW: "KUWAIT",
+  BOURSA: "KUWAIT",
+  "BOURSA KUWAIT": "KUWAIT",
+  // The Egyptian Exchange, which Gloom Cloud names EGX.
+  EGX: "EGX",
+  CAI: "EGX",
+  XCAI: "EGX",
+  EGYPT: "EGX",
+  CAIRO: "EGX",
   CCC: "CCC",
+  // Futures venues, by the code search gives each (GC=F on CMX). Quotes spell
+  // the venue out (COMEX, NY MERCANTILE); both spellings are one venue, or the
+  // quote for GC=F:CMX reads as another venue's and is dropped.
+  CME: "CME",
+  CBT: "CBT",
+  CBOT: "CBT",
+  NYM: "NYM",
+  NYMEX: "NYM",
+  "NY MERCANTILE": "NYM",
+  CMX: "CMX",
+  COMEX: "CMX",
+  NYB: "NYB",
+  NYBOT: "NYB",
+  "ICE FUTURES": "NYB",
+  CFE: "CFE",
+  "CBOE FUTURES": "CFE",
+  // The currency venue: EURUSD:CCY and EURUSD:FX are the pair EURUSD=X. Pairs
+  // saved from an older search answer are on PHYSICAL CURRENCY.
+  CCY: "CCY",
+  FX: "CCY",
+  "PHYSICAL CURRENCY": "CCY",
+  // Perpetual futures venues: a contract is a listing on its venue
+  // (BZUSDT:BINANCE), see tickers/perpetual-listing.
+  HYPERLIQUID: "HYPERLIQUID",
+  BINANCE: "BINANCE",
+  BYBIT: "BYBIT",
+  OKX: "OKX",
+  DERIBIT: "DERIBIT",
+  DYDX: "DYDX",
 };
 
 const PUBLIC_EXCHANGE_ALIASES: Record<string, string> = {
@@ -222,7 +293,20 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   BYMA: "America/Argentina/Buenos_Aires",
   JSE: "Africa/Johannesburg",
   TASE: "Asia/Jerusalem",
+  TADAWUL: "Asia/Riyadh",
+  QE: "Asia/Qatar",
+  BHB: "Asia/Bahrain",
+  DFM: "Asia/Dubai",
+  MSX: "Asia/Muscat",
+  KUWAIT: "Asia/Kuwait",
+  EGX: "Africa/Cairo",
   CCC: "UTC",
+  HYPERLIQUID: "UTC",
+  BINANCE: "UTC",
+  BYBIT: "UTC",
+  OKX: "UTC",
+  DERIBIT: "UTC",
+  DYDX: "UTC",
 };
 
 /**
@@ -275,6 +359,23 @@ const EXCHANGE_NAMES: Record<string, string> = {
   BYMA: "Bolsas y Mercados Argentinos",
   JSE: "Johannesburg Stock Exchange",
   TASE: "Tel Aviv Stock Exchange",
+  TADAWUL: "Saudi Exchange",
+  QE: "Qatar Stock Exchange",
+  BHB: "Bahrain Bourse",
+  DFM: "Dubai Financial Market",
+  MSX: "Muscat Stock Exchange",
+  KUWAIT: "Boursa Kuwait",
+  EGX: "Egyptian Exchange",
+  CBT: "CBOT",
+  NYM: "NYMEX",
+  CMX: "COMEX",
+  NYB: "ICE Futures U.S.",
+  CFE: "Cboe Futures Exchange",
+  HYPERLIQUID: "Hyperliquid",
+  BINANCE: "Binance",
+  BYBIT: "Bybit",
+  DERIBIT: "Deribit",
+  DYDX: "dYdX",
 };
 
 const KNOWN_EXCHANGE_CODES: ReadonlySet<string> = new Set([
@@ -311,6 +412,43 @@ export function canonicalExchange(value?: string): string {
 }
 
 /**
+ * Codes people type for more than one venue, the venue `canonicalExchange`
+ * reads them as first. TSE is the Tokyo Stock Exchange's own short name, and
+ * the code brokers and quote sites give Toronto; KRX is the Korea Exchange,
+ * which runs both KOSPI and KOSDAQ; EURONEXT runs Paris, Amsterdam, Brussels,
+ * Lisbon, Oslo and Milan. Data that arrives with one (a broker's contract)
+ * keeps the first venue; a listing typed with one is the venue its symbol
+ * trades on.
+ */
+const SHARED_EXCHANGE_CODES: Record<string, readonly string[]> = {
+  TSE: ["TSX", "JPX"],
+  KRX: ["KRX", "KOSDAQ"],
+  EURONEXT: ["AMS", "EPA", "BRU", "LIS", "OSL", "BIT"],
+};
+
+/** Whether a typed exchange code names more than one venue (TSE: Tokyo or Toronto). */
+export function isSharedExchangeCode(value?: string): boolean {
+  return normalizeExchange(value) in SHARED_EXCHANGE_CODES;
+}
+
+/**
+ * Every venue a typed exchange code can name, as canonical codes: TSE is
+ * TSX or JPX, PAR is EPA. Empty for no code.
+ */
+export function exchangeCodeVenues(value?: string): string[] {
+  const normalized = normalizeExchange(value);
+  if (!normalized) return [];
+  return [...(SHARED_EXCHANGE_CODES[normalized] ?? [canonicalExchange(normalized)])];
+}
+
+/** The exchange code after a listing key's colon, as typed: TSE for 7203:TSE; "" when there is none. */
+export function typedExchangeCode(key: string): string {
+  const normalized = normalizeSymbol(key);
+  const separator = normalized.lastIndexOf(":");
+  return separator > 0 ? normalized.slice(separator + 1) : "";
+}
+
+/**
  * The US primary listing venues, as canonical exchanges. All of them trade the
  * US regular and extended-hours sessions.
  */
@@ -330,8 +468,25 @@ export function publicExchange(value?: string): string {
   return PUBLIC_EXCHANGE_ALIASES[canonical] ?? canonical;
 }
 
+/**
+ * Prediction-market venues. A market is saved venue first, `KALSHI:KXGREENLAND-29`,
+ * the reverse of a listing key, so what follows the colon is its market id.
+ */
+const PREDICTION_MARKET_EXCHANGES: ReadonlySet<string> = new Set(["KALSHI"]);
+
+/** Whether an exchange code is a prediction-market venue's. */
+export function isPredictionMarketExchange(value?: string): boolean {
+  return PREDICTION_MARKET_EXCHANGES.has(canonicalExchange(value));
+}
+
 export function parsePublicTickerKey(value: string): { symbol: string; exchange?: string } {
   const normalized = normalizeSymbol(value);
+  const venueEnd = normalized.indexOf(":");
+  if (venueEnd > 0 && PREDICTION_MARKET_EXCHANGES.has(normalized.slice(0, venueEnd))) {
+    // What follows the colon is the market id, not an exchange.
+    const marketId = normalized.slice(venueEnd + 1);
+    if (marketId && !marketId.includes(":")) return { symbol: marketId, exchange: normalized.slice(0, venueEnd) };
+  }
   const separator = normalized.lastIndexOf(":");
   if (separator <= 0 || separator === normalized.length - 1) return { symbol: normalized };
   const exchange = canonicalExchange(normalized.slice(separator + 1));

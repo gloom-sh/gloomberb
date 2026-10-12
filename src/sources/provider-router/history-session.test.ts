@@ -66,12 +66,14 @@ test("session completion and next due bar expire fresh cache records without rel
   let acquired: PriceHistoryResult = { points: points(), resolution: "15m", session: session({ observedAt: Date.parse("2026-09-21T19:50:00Z") }) };
   const store = new AppPersistence(createTempDbPath("regular-boundaries"));
   const router = new AssetDataRouter(provider(() => acquired, calls), [], store.resources);
-  const request = () => router.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1M", "15m").catch(() => ({ points: [] }));
+  const request = () => router.getPriceHistoryForResolutionWithMetadata("AAPL", "NASDAQ", "1M", "15m");
+  // When the refetch is still unfinished, the saved copy answers with its own acquisition time.
+  const observedAt = async () => (await request()).session?.observedAt;
   try {
     setSystemTime(new Date("2026-09-21T19:50:00Z"));
     expect((await request()).points).toHaveLength(2);
     setSystemTime(new Date("2026-09-21T20:16:00Z"));
-    expect((await request()).points).toHaveLength(0);
+    expect(await observedAt()).toBe(Date.parse("2026-09-21T19:50:00Z"));
     expect(calls).toHaveLength(2);
     acquired = { ...acquired, session: session({ observedAt: Date.now() }) };
     expect((await request()).points).toHaveLength(2);
@@ -79,7 +81,7 @@ test("session completion and next due bar expire fresh cache records without rel
     expect((await request()).points).toHaveLength(2);
     expect(calls).toHaveLength(3);
     setSystemTime(new Date("2026-09-22T14:00:00Z"));
-    expect((await request()).points).toHaveLength(0);
+    expect(await observedAt()).toBe(Date.parse("2026-09-21T20:16:00Z"));
     expect(calls).toHaveLength(4);
     acquired = { points: points("2026-09-22T13:30:00Z"), resolution: "15m", session: session({ observedAt: Date.now() }) };
     expect((await request()).points).toHaveLength(2);
@@ -101,9 +103,12 @@ test("sessionless caches, foreign assets and contradictory session records never
       store.resources.set({ namespace: "market", kind: "price-history", entityKey: symbol, variantKey: variant, sourceKey: "provider:gloomberb-cloud" },
         { points: points("2026-09-18T19:45:00Z"), resolution: "15m" }, { cachePolicy: policy });
       const router = new AssetDataRouter(provider(() => ({ points: points(), resolution: "15m", session: metadata }), calls), [], store.resources);
-      const resolution = router.getPriceHistoryForResolutionWithMetadata(symbol, exchange, "1M", "15m");
-      if (answers) expect((await resolution).session).toBeUndefined();
-      else await expect(resolution).rejects.toThrow();
+      // A rejected answer leaves the saved sessionless copy, where the listing
+      // has one under this key, and that copy claims no session either.
+      const resolution = await router.getPriceHistoryForResolutionWithMetadata(symbol, exchange, "1M", "15m").catch(() => null);
+      expect(resolution?.session).toBeUndefined();
+      const lastBar = resolution && new Date(resolution.points.at(-1)!.date).toISOString();
+      if (answers || lastBar) expect(lastBar).toBe(answers ? "2026-09-21T19:45:00.000Z" : "2026-09-18T19:45:00.000Z");
       expect(calls).toEqual(["resolution"]);
       const historical = await router.getDetailedPriceHistoryWithMetadata(symbol, exchange, start, new Date("2026-09-21T20:00:00Z"), "15m");
       expect(historical.points).toEqual(metadata ? [] : points());

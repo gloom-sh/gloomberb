@@ -94,7 +94,7 @@ test("fiscal period ends stay labeled and unknown EPS currency stays unknown", (
   const [row] = buildEventRows({ symbol: "COST", currency: "USD", dividends: [], splits: [],
     earnings: [{ date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, difference: 0.01 }],
   }, null, null, "USD");
-  expect(row).toMatchObject({ dateType: "fiscal-period-end", detail: "Period end; +0.01 vs est" });
+  expect(row).toMatchObject({ dateType: "fiscal-period-end", detail: "Period end; basis unknown, +0.01 vs est" });
   expect(row?.epsCurrency).toBeUndefined();
 });
 
@@ -139,7 +139,37 @@ test("period aliases retain exact filing provenance and raw surprise inputs", ()
     { date: "2026-05-31", dateType: "fiscal-period-end", epsActual: 4.93, epsEstimate: 4.9231, difference: 0.0069, surprisePercent: 0.14 },
   ] }, null, { quarterlyStatements: [{ date: "2026-05-10", providerDate: "2026-05-31", dateSource: "sec", dateEvidence: evidence, totalRevenue: 70_527_000_000, currency: "USD" }] }, "USD");
   expect(row).toMatchObject({ date: "2026-05-10", providerPeriodDate: "2026-05-31", fiscalPeriodEnd: "2026-05-10", period: "May 2026", dateEvidence: evidence,
-    qRevenue: 70_527_000_000, epsEstimate: 4.9231, epsActual: 4.93, epsDifference: 0.0069, surprisePercent: 0.14, epsBasis: "provider-unspecified" });
+    qRevenue: 70_527_000_000, epsEstimate: 4.9231, epsActual: 4.93, epsDifference: 0.0069, surprisePercent: 0.14, epsBasis: "unknown" });
+});
+
+test("a resolved quarter shows ERN's figure, basis and fiscal quarter, and a pending report its date status and analysts", () => {
+  // CRWV as Gloom Cloud resolves it: the calendar's figures, labelled against the 10-Q diluted EPS.
+  const quarter = (date: string, fiscalPeriod: string, epsEstimate: number, epsActual: number) => ({
+    date, dateType: "announcement" as const, currency: "USD", time: "After Hours", fiscalPeriod, epsEstimate, epsActual,
+    difference: Math.round((epsActual - epsEstimate) * 100) / 100, epsBasis: "adjusted" as const, dateStatus: "reported" as const,
+  });
+  const rows = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
+    { date: "2026-11-09", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-09", epsEstimate: -1.52697, epsAnalysts: 18,
+      epsBasis: null, dateStatus: "projected" },
+    quarter("2026-08-11", "2026-06", -1.52, -1.32), quarter("2026-05-07", "2026-03", -1.17, -1.38),
+    quarter("2026-02-26", "2025-12", -0.61, -0.84), quarter("2025-11-10", "2025-09", -0.54, -0.31),
+  ] }, null, { financialCurrency: "USD", quarterlyStatements: [["2025-09-30", -0.22], ["2025-12-31", -0.89], ["2026-03-31", -1.4], ["2026-06-30", -1.14]]
+    .map(([date, eps]) => ({ date: date as string, eps: eps as number, totalRevenue: 2e9 })) }, "USD");
+  expect(rows.find((row) => row.date === "2026-08-11")).toMatchObject({ period: "Jun 2026", qEps: -1.32, qRevenue: 2e9, epsBasis: "adjusted",
+    detail: "adj, +0.20 vs est", value: "+13.16%", tone: "positive", fiscalPeriodEnd: "2026-06-30" });
+  expect(rows.find((row) => row.date === "2026-11-09")).toMatchObject({ earningsState: "pending", qEps: -1.52697, epsAnalysts: 18,
+    dateStatus: "projected", detail: "projected, 18 analysts" });
+  // The four quarters above it are adjusted, so their sum is too.
+  const ttm = rows.find((row) => row.status === "TTM");
+  expect(ttm?.annualEps).toBeCloseTo(-3.85, 10);
+  expect(ttm?.detail).toBe("adj sum");
+});
+
+test("a beat against a negative estimate reads as a beat", () => {
+  const [row] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
+    { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 },
+  ] }, null, null, "USD");
+  expect(row).toMatchObject({ surprisePercent: 22.45, value: "+22.45%", tone: "positive", detail: "basis unknown, +0.33 vs est" });
 });
 
 test("missing or ambiguous fiscal periods and announcements cannot borrow a previous quarter's revenue", () => {

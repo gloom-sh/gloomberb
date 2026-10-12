@@ -5,9 +5,11 @@
  * neither. Only the desktop and web builds say where they are; the terminal,
  * which draws its own outline, has nothing to load and bundles none of it.
  *
- * Paths are in degrees, x east and y south (minus the latitude), so the map
- * places every path with one transform and pan or zoom rebuilds nothing.
+ * Paths are in map units, x east in degrees of longitude and y south in
+ * Mercator degrees (minus `mercatorY` of the latitude), so the map places every
+ * path with one transform and pan or zoom rebuilds nothing.
  */
+import { mercatorY } from "./model";
 
 /** What a generated chunk exports: coordinates as integers of `STEP` degrees, polyline-encoded. */
 export interface BasemapChunk {
@@ -95,7 +97,8 @@ export function basemapPaths(chunk: BasemapChunk, box: GeoBox): BasemapPaths {
   const scale = Math.round(1 / chunk.STEP);
   const cut = box.map((value) => Math.round(value * scale));
   const x = (value: number) => value / scale;
-  const y = (value: number) => -value / scale;
+  // Five decimals is a metre at the equator: far finer than any zoom the map draws.
+  const y = (value: number) => Math.round(-mercatorY(value / scale) * 1e5) / 1e5;
   let land = "";
   let coast = "";
   for (const ring of decodeParts(chunk.LAND)) {

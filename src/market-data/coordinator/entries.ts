@@ -140,7 +140,7 @@ export function readyQuoteEntry(
   quote: Quote,
   source: string,
   attempts: ProviderAttempt[],
-  options: { keepNewerHeldQuote?: boolean } = {},
+  options: { keepNewerHeldQuote?: boolean; acceptLastKnown?: boolean } = {},
 ): QueryEntry<Quote> {
   const held = options.keepNewerHeldQuote ? heldQuoteSupersedes(current, quote) : null;
   if (held) {
@@ -148,6 +148,12 @@ export function readyQuoteEntry(
   }
   if (isQuoteStaleForCurrentSession(quote)) {
     const keepFreshQuote = hasFreshQuoteForCurrentSession([current.data, current.lastGoodData]);
+    // A request answers with a stale quote only when no source has a current
+    // one (`acceptLastKnown`). With nothing current held, that last known
+    // price, flagged stale, beats no price. Stream ticks never bring one in.
+    if (options.acceptLastKnown && !keepFreshQuote) {
+      return readyEntry(current, { ...quote, stale: true }, source, attempts, { keepLastGoodOnEmpty: true });
+    }
     return readyEntry(current, null, current.source ?? source, attempts, { keepLastGoodOnEmpty: keepFreshQuote });
   }
   return readyEntry(current, quote, source, attempts, { keepLastGoodOnEmpty: true });

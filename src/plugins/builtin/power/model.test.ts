@@ -2,8 +2,8 @@ import { expect, test } from "bun:test";
 import { powerQuery } from "./query";
 import { generationRows } from "./generation";
 import { validatePowerBoard, validatePowerHistory } from "./client";
-import { historyRows, historySeries, powerFigures, projectRows } from "./model";
-import { powerBoard, powerPoint, powerProject } from "./test-fixture";
+import { historyRows, historySeries, powerCoverageNote, powerFigures, powerLoadedSources, projectRows } from "./model";
+import { powerBoard, powerCoverage, powerPoint, powerProject } from "./test-fixture";
 
 test("history changes never bridge independent sources, fuels, statuses or historical benchmarks", () => {
   const points = [powerPoint({ observedAt: "2026-10-01T12:00:00Z", capacityMw: 100 }), powerPoint({ observedAt: "2026-10-02T12:00:00Z", capacityMw: 125 }),
@@ -55,4 +55,21 @@ test("capacity contexts discard inactive benchmarks and use their native metric 
   expect(powerQuery({ tab: "capacity", context: "generation", sourceId: "us-lbnl", historical: true })).toMatchObject({ sourceId: "us-eia923", kind: "capacity", historical: false, sort: "generationMwh" });
   expect(powerQuery({ tab: "capacity", context: "utility", sourceId: "us-lbnl-annual" })).toMatchObject({ sourceId: "us-eia861", kind: "utility", sort: "salesMwh" });
   expect(powerQuery({ tab: "capacity", context: "utility", sort: "winterPeakDemandMw", direction: "asc" })).toMatchObject({ sort: "winterPeakDemandMw", direction: "asc" });
+});
+
+test("unavailable US queues are one plain coverage line, never source errors, and the loaded registers are named", () => {
+  const coverage = [powerCoverage({ id: "us-pjm", region: "PJM", records: 8253 }),
+    powerCoverage({ id: "us-nyiso", region: "NYISO", status: "failed", reason: "The operator's site does not allow automated downloads.", records: 0 }),
+    powerCoverage({ id: "us-isone", region: "ISO-NE", status: "stale", records: 1569 }),
+    powerCoverage({ id: "us-spp", region: "SPP", status: "pending", records: 0 }),
+    powerCoverage({ id: "us-ercot-large-load", region: "ERCOT", kind: "load", status: "disabled", records: 0 }),
+    powerCoverage({ id: "us-lbnl", region: "LBNL", role: "benchmark", records: 38191 }),
+    powerCoverage({ id: "us-eia861", region: "EIA861", kind: "utility", role: "context", records: 1713 }),
+    powerCoverage({ id: "eirgrid", country: "IE", region: "EirGrid", records: 158 }),
+    powerCoverage({ id: "aemo", country: "AU", region: "AU", status: "disabled", records: 0 })];
+  expect(powerCoverageNote(coverage)).toBe("US queues: PJM, ISO-NE loaded; NYISO, SPP not available");
+  expect(powerCoverageNote(coverage.filter((c) => c.status !== "failed" && c.status !== "pending"))).toBeNull();
+  expect(powerLoadedSources("utilities", coverage)).toBe("PJM, ISO-NE, Ireland");
+  expect(powerLoadedSources("capacity", coverage)).toBe("US EIA generation and utility filings");
+  expect(powerLoadedSources("queue", coverage.filter((c) => c.role !== "direct"))).toBeNull();
 });

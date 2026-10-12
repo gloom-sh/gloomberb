@@ -4,9 +4,11 @@ import type { PricePoint } from "../../../../types/financials";
 import {
   availableReturnResolutions,
   buildReturnRows,
+  closedMarketNote,
   effectiveReturnResolution,
   returnLookbackMs,
   returnVisibleFrom,
+  returnWindowEnd,
   returnWindowStart,
 } from "./returns-model";
 
@@ -124,5 +126,59 @@ describe("return windows", () => {
     const end = Date.parse("2026-03-31T15:00:00Z");
     expect(new Date(returnWindowStart("1M", end)).toISOString()).toBe("2026-02-28T15:00:00.000Z");
     expect(new Date(returnWindowStart("6H", end)).toISOString()).toBe("2026-03-31T09:00:00.000Z");
+  });
+});
+
+describe("where a return window ends", () => {
+  // VTI's last session before the weekend of Oct 10-11, 2026 closed Fri 20:00 UTC (16:00 New York).
+  const FRIDAY_CLOSE = Date.parse("2026-10-09T20:00:00Z");
+
+  test.each([
+    ["an ETF on Sunday", { symbol: "VTI", exchange: "ARCA" }, "2026-10-11T15:00:00Z"],
+    ["an ETF a day after the close", { symbol: "VTI", exchange: "ARCA" }, "2026-10-12T00:37:00Z"],
+    ["a stock on Saturday", { symbol: "AAPL", exchange: "NASDAQ" }, "2026-10-10T09:00:00Z"],
+  ])("%s ends at Friday's close", (_case, market, now) => {
+    expect(returnWindowEnd(market, Date.parse(now))).toEqual({ end: FRIDAY_CLOSE, lastSession: "2026-10-09" });
+  });
+
+  test("a holiday ends the window at the session before it", () => {
+    // Thanksgiving, Thu 26 Nov 2026: the last session is Wednesday's, closed 21:00 UTC.
+    expect(returnWindowEnd({ symbol: "AAPL", exchange: "NASDAQ" }, Date.parse("2026-11-26T16:00:00Z")))
+      .toEqual({ end: Date.parse("2026-11-25T21:00:00Z"), lastSession: "2026-11-25" });
+  });
+
+  test("an open market and a coin end now", () => {
+    const tuesday = Date.parse("2026-10-13T15:00:00Z");
+    expect(returnWindowEnd({ symbol: "VTI", exchange: "ARCA" }, tuesday)).toEqual({ end: tuesday });
+    const sunday = Date.parse("2026-10-11T15:00:00Z");
+    expect(returnWindowEnd({ symbol: "BTC-USD", exchange: "CCC" }, sunday)).toEqual({ end: sunday });
+    // A bare coin pair names no venue and still trades around the clock.
+    expect(returnWindowEnd({ symbol: "BTC-USD", exchange: "" }, sunday)).toEqual({ end: sunday });
+  });
+
+  test("spot FX ends at 17:00 New York on Friday until the week reopens on Sunday", () => {
+    const saturday = Date.parse("2026-10-10T12:00:00Z");
+    expect(returnWindowEnd({ symbol: "EURUSD=X", exchange: "" }, saturday))
+      .toEqual({ end: Date.parse("2026-10-09T21:00:00Z"), lastSession: "2026-10-09" });
+    // Sunday 20:37 New York: the week has reopened.
+    const reopened = Date.parse("2026-10-12T00:37:00Z");
+    expect(returnWindowEnd({ symbol: "EURUSD=X", exchange: "" }, reopened)).toEqual({ end: reopened });
+  });
+
+  test("a 5D window on Sunday covers Monday to Friday, not Wednesday to Friday", () => {
+    const { end } = returnWindowEnd({ symbol: "VTI", exchange: "ARCA" }, Date.parse("2026-10-11T15:00:00Z"));
+    const hours = [13, 14, 15, 16, 17, 18, 19];
+    const days = ["2026-10-02", "2026-10-05", "2026-10-06", "2026-10-07", "2026-10-08", "2026-10-09"];
+    const bars = days.flatMap((date, day) => hours.map((hour, index) => point(`${date}T${hour}:30:00Z`, 380 + day + index / 10)));
+    const rows = buildReturnRows(bars, returnVisibleFrom("5D", "1h", end));
+    expect(rows).toHaveLength(35);
+    expect(new Date(rows.at(-1)!.timestamp).toISOString()).toBe("2026-10-05T13:30:00.000Z");
+    // Friday's last bar before the window is the base of the first return.
+    expect(rows.at(-1)!.intervalChange).toBeCloseTo(381 - 380.6, 9);
+  });
+
+  test("the footer names the last session, with its year once it is another year's", () => {
+    expect(closedMarketNote("2026-10-09", Date.parse("2026-10-11T15:00:00Z"))).toBe("market closed, last session Fri 9 Oct");
+    expect(closedMarketNote("2026-12-31", Date.parse("2027-01-01T15:00:00Z"))).toBe("market closed, last session Thu 31 Dec 2026");
   });
 });

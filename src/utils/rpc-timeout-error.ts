@@ -1,5 +1,9 @@
-/** A timeout this many times past its limit means the machine slept through it. */
-const SLEEP_TIMEOUT_FACTOR = 5;
+/**
+ * A timeout this many times past its limit means the page was suspended, not
+ * that the Bun process stalled. A page that is running fires the timer within
+ * a second or two of its limit, and a hidden one within a minute.
+ */
+const SLEEP_TIMEOUT_FACTOR = 2;
 
 /**
  * A call to the desktop's Bun process that did not complete in time: the

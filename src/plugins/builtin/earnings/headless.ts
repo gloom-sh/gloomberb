@@ -13,6 +13,11 @@ import { fetchEarningsCalendar, fetchEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows } from "./history-model";
+import { EPS_BASIS_NOTE, epsBasisName } from "../shared/earnings-report";
+import { isUsListingExchange } from "../../../utils/exchanges";
+import { listingAbroadVenue } from "../../../utils/sec";
+import { findUsListingOfCompany } from "../../../tickers/us-listing";
+import { shortCompanyName } from "../../../tickers/company-name";
 
 const right = "right" as const;
 const num = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
@@ -32,10 +37,13 @@ const BOARD_COLUMNS: HeadlessPaneColumn[] = [
 
 const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
+  { key: "dateStatus", header: "Status" },
   { key: "timing", header: "When" },
   { key: "fiscalPeriod", header: "Quarter" },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
+  { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
+  { key: "epsBasis", header: "Basis" },
   { key: "epsSurprise", header: "EPS surp", align: right, format: (value) => signedPercent(num(value)) },
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
   { key: "revenueActual", header: "Sales act", align: right, format: (value) => moneyText(num(value)) },
@@ -59,7 +67,23 @@ const defaultDependencies: EarningsHeadlessDependencies = {
 
 const NO_OWNERSHIP = new Map();
 
-async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies): Promise<HeadlessRowsResult> {
+/**
+ * EVTS with a ticker: the board is the market's whatever the ticker, so the
+ * report says so once, whether the ticker is on it and when, and where its
+ * own report dates are.
+ */
+function boardTickerNotice(symbol: string, board: ReadonlyArray<{ symbol: string; date: string }>, from: string, to: string): { notice: string; date: string | null } {
+  const [bare = symbol, venue] = symbol.toUpperCase().split(":");
+  // The board lists US tickers; a listing named abroad is never one of them.
+  const report = venue && !isUsListingExchange(venue) ? undefined : board.find((entry) => entry.symbol.toUpperCase() === bare);
+  const where = report ? `${symbol} reports on ${report.date}` : `${symbol} is not on it`;
+  return {
+    notice: `EVTS is the market's earnings board for ${from} to ${to}, not one company's: ${where}. For ${symbol}'s own report dates run \`gloomberb fn ERN ${symbol}\`.`,
+    date: report?.date ?? null,
+  };
+}
+
+async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies, highlight?: string): Promise<HeadlessRowsResult> {
   const today = newYorkToday();
   const named = args.symbols;
   const days = marketDays(today);
@@ -92,11 +116,13 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     impliedMove: report.impliedMove,
     averageMove: report.averageMove,
   }));
+  const ticker = highlight ? boardTickerNotice(highlight, all, query.from, query.to) : null;
   return {
     columns: BOARD_COLUMNS,
     rows,
     errors: cloud.status === "rejected" ? [String(cloud.reason instanceof Error ? cloud.reason.message : cloud.reason)] : undefined,
     metadata: {
+      ...(ticker ? { notices: [ticker.notice], highlight: { symbol: highlight, onBoard: ticker.date != null, date: ticker.date } } : {}),
       asOf: payload?.asOf ?? null,
       from: query.from,
       to: query.to,
@@ -108,19 +134,41 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   };
 }
 
+/**
+ * What ERN says for a listing abroad, whose next report is its own but whose
+ * past reports, surprises and implied moves only the US board has: that, and
+ * the company's US listing to read them on (Sanofi's SNY for SAN:EPA).
+ */
+async function abroadHistoryNotice(symbol: string, company: string | null, context: HeadlessPaneContext): Promise<string> {
+  const lead = `Past reports, surprises and implied moves cover US listings only, so ${symbol} shows its next report.`;
+  const us = await findUsListingOfCompany(context.marketData, company);
+  return us ? `${lead} ${shortCompanyName(company!)}'s US listing is ${us.symbol}: ERN ${us.symbol} has them.` : lead;
+}
+
 async function historyReport(symbol: string, context: HeadlessPaneContext, deps: EarningsHeadlessDependencies): Promise<HeadlessRowsResult> {
-  const [history, upcoming] = await Promise.allSettled([deps.history(symbol, context), deps.upcoming([symbol], context)]);
+  // The board is US listings'; SAN:EPA's past reports are not on it, and bare SAN there is another company.
+  const abroad = listingAbroadVenue(symbol) != null;
+  const [history, upcoming] = await Promise.allSettled([
+    abroad ? Promise.resolve(null) : deps.history(symbol, context),
+    deps.upcoming([symbol], context),
+  ]);
   if (history.status === "rejected" && upcoming.status === "rejected") throw history.reason;
   const payload = history.status === "fulfilled" ? history.value : null;
   const next = upcoming.status === "fulfilled" ? upcoming.value[0] ?? null : null;
+  const notice = abroad
+    ? await abroadHistoryNotice(symbol, next?.name ?? await context.marketData.getQuote(symbol, "").then((quote) => quote.name ?? null, () => null), context)
+    : null;
   const rows = historyRows(payload, newYorkToday(), next).map((row) => ({
     date: row.date,
     upcoming: row.upcoming,
+    dateStatus: row.dateStatus,
     timing: row.timing ? TIMING_LABEL[row.timing] : null,
     timingExpected: row.expectedTiming,
     fiscalPeriod: row.fiscalPeriod,
     epsEstimate: row.epsEstimate,
+    epsAnalysts: row.epsAnalysts,
     epsActual: row.epsActual,
+    epsBasis: row.epsActual == null ? null : epsBasisName(row.epsBasis),
     epsSurprise: row.epsSurprise,
     revenueEstimate: row.revenueEstimate,
     revenueActual: row.revenueActual,
@@ -133,14 +181,18 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     columns: HISTORY_COLUMNS,
     rows,
     errors: history.status === "rejected" ? [String(history.reason instanceof Error ? history.reason.message : history.reason)] : undefined,
-    metadata: { symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null },
+    metadata: {
+      symbol, name: payload?.name ?? next?.name ?? null, asOf: payload?.asOf ?? null,
+      epsBasis: EPS_BASIS_NOTE,
+      ...(notice ? { notices: [notice] } : {}),
+    },
   };
 }
 
 /** EVTS: the market board, whatever ticker is given. */
 const EARNINGS_CALENDAR: HeadlessPaneFreshness = { status: "not-a-feed", basis: "calendar" };
 
-function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+export function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: EARNINGS_CALENDAR,
@@ -151,12 +203,12 @@ function createEarningsBoardHeadless(deps: EarningsHeadlessDependencies = defaul
     columns: BOARD_COLUMNS,
     describe: () => "Earnings Calendar",
     load(args, context) {
-      return boardRows({ ...args, symbols: [] }, context, deps);
+      return boardRows({ ...args, symbols: [] }, context, deps, args.symbols[0]);
     },
   };
 }
 
-function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+export function createEarningsHeadless(deps: EarningsHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: EARNINGS_CALENDAR,

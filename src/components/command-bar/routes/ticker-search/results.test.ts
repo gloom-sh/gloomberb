@@ -65,6 +65,23 @@ test("crypto punctuation aliases never outrank the verified exact symbol in comm
   expect(mergePlainRootTickerResults("SHIB-USD", rows, [resultItem("pane", "Research", "", "action")])[0]?.id).toBe("exact");
 });
 
+test("an index typed by its code is the exact match; the fund named for it and a name search are not", () => {
+  const rows = (query: string) => mergeTickerSearchResultItems(query, [
+    { ...resultItem("index", "^BVSP", "B3", "search"), detail: "Ibovespa", category: "Primary Listing", instrumentType: "INDEX", searchAliases: ["^BVSP", "IBOV", "IBOV Index"] },
+    { ...resultItem("fund", "IBOV11", "B3", "search"), detail: "IBOV11 Fund", category: "Other Listings", instrumentType: "Common Stock", searchAliases: ["IBOV11"] },
+  ], []);
+  for (const query of ["IBOV", "ibov", "IBOV Index"]) {
+    expect(rows(query).map((item) => [item.id, item.category]), query).toEqual([["index", "Exact Match"], ["fund", "Other Listings"]]);
+  }
+  expect(rows("ibovespa")[0]?.category).toBe("Primary Listing");
+  const pane: ResultItem = { id: "pane:news", label: "News", detail: "", category: "Panes", kind: "action", action: () => {} };
+  expect(mergePlainRootTickerResults("IBOV", rows("IBOV"), [pane]).map((item) => [item.id, item.category])).toEqual([
+    ["index", "Exact Match"],
+    ["pane:news", "Panes"],
+    ["fund", "Instruments"],
+  ]);
+});
+
 test("folds a plain query's symbol hits into one capped Instruments section behind the local rows", () => {
   const pane: ResultItem = {
     id: "pane:news",
@@ -139,6 +156,12 @@ test("a colon dropdown is one exact venue per row, narrowed by the exchange pref
   expect(venueDropdownResults("NET", items, "N").map((item) => item.right)).toEqual(["NYSE"]);
   expect(venueDropdownResults("NET", items, "X").map((item) => item.right)).toEqual(["LSE", "NYSE"]);
   expect(venueDropdownResults("NET", items, "LON").map((item) => item.right)).toEqual(["LSE"]);
+  // EURUSD:FX and EURUSD:CCY pick the pair search lists on the currency venue.
+  const pairs = [resultItem("eurusd", "EURUSD=X", "CCY", "search"), resultItem("fund", "EURUSD", "LSE", "search")];
+  for (const suffix of ["FX", "CCY", ""]) {
+    expect(venueDropdownResults("EURUSD", pairs, suffix).map((item) => item.id), suffix).toEqual(suffix ? ["eurusd"] : ["eurusd", "fund"]);
+  }
+  expect(venueDropdownResults("USDJPY", [resultItem("jpy", "JPY=X", "CCY", "search")], "FX").map((item) => item.id)).toEqual(["jpy"]);
 });
 
 test("plain exact-symbol search retains venue choices while deduplicating the same listing", () => {

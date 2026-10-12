@@ -15,8 +15,8 @@ export const backtestHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["BT", "BTST"],
     screenshotReadiness: "live-dom",
     limitations: [
-      "Long-only, one instrument, daily bars; signals fill at the next session's open",
-      "Price returns: dividends, borrow and cash interest are not modelled",
+      "Long-only, one instrument, daily bars; signals fill at the next session's open.",
+      "Price returns: dividends, borrow and cash interest are not modelled.",
     ],
   },
   options: [

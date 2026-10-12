@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { ApplicationMenuItemConfig } from "electrobun/bun";
 import { buildDesktopApplicationMenu, ELECTROBUN_APPLICATION_MENU_ACTION } from "./index";
-import { applicationMenuCommand } from "./click";
+import { applicationMenuCommand, createApplicationMenuGate } from "./click";
 
 function menuCommands(items: ApplicationMenuItemConfig[]): unknown[] {
   return items.flatMap((item) => {
@@ -61,5 +61,36 @@ describe("buildDesktopApplicationMenu", () => {
     for (const actionId of ["new-portfolio", "new-watchlist", "set-portfolio-position", "add-broker-account"]) {
       expect(commands).toContainEqual({ type: "open-builtin-workflow", actionId });
     }
+  });
+});
+
+describe("createApplicationMenuGate", () => {
+  // A held accelerator reaches the Bun process as a stream of identical clicks with no repeat flag.
+  test("lets a held accelerator through once, however long it is held", () => {
+    let at = 1_000;
+    const mayRun = createApplicationMenuGate({ now: () => at });
+    const tidy = { type: "layout-gridlock" } as const;
+    let runs = 0;
+
+    for (let elapsed = 0; elapsed < 3_000; elapsed += 33) {
+      if (mayRun(tidy)) runs += 1;
+      at += 33;
+    }
+
+    expect(runs).toBe(1);
+  });
+
+  test("runs another command, and the same one after a pause", () => {
+    let at = 1_000;
+    const mayRun = createApplicationMenuGate({ now: () => at });
+
+    expect(mayRun({ type: "open-layout-gallery" })).toBe(true);
+    expect(mayRun({ type: "layout-gridlock" })).toBe(true);
+    expect(mayRun({ type: "open-command-bar", query: "DES " })).toBe(true);
+    expect(mayRun({ type: "open-command-bar", query: "TH " })).toBe(true);
+    expect(mayRun({ type: "open-layout-gallery" })).toBe(false);
+
+    at += 700;
+    expect(mayRun({ type: "open-layout-gallery" })).toBe(true);
   });
 });

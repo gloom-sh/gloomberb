@@ -20,6 +20,16 @@ export interface HolderReportFacts {
   listingCurrency?: string | null;
   /** Left out when the report's closing line already carries it. */
   asOf?: string | null;
+  /**
+   * What the list is as of, in place of `asOf`: `as of <date>` when every
+   * row shares one report date, `latest period per holder` when they differ.
+   */
+  period?: string | null;
+  /**
+   * False when the list is not the source's largest holders but the few
+   * filers that report the line at all (a home line abroad): no "top".
+   */
+  ranked?: boolean;
   /** Rows printed. */
   shown: number;
   /** Rows the source returned, before any limit. */
@@ -34,13 +44,37 @@ export function moneyColumnHeader(label: string, currency?: string | null): stri
   return unit ? `${label} (${unit})` : label;
 }
 
-function holderCountText(shown: number, reported: number, total?: number | null): string {
+function holderCountText(shown: number, reported: number, total?: number | null, ranked = true): string {
   if (total != null && Number.isFinite(total) && total >= reported) {
     return `${shown.toLocaleString("en-US")} of ${total.toLocaleString("en-US")} holders`;
   }
   if (reported === 0) return "none reported";
+  // A home line's few filers are all there is, not a top of anything.
+  if (!ranked) return shown < reported ? `${shown} of ${reported} reported` : `${reported} ${reported === 1 ? "holder" : "holders"} reported`;
   // Without a total the source's list is its largest holders, cut where it cuts it.
   return shown < reported ? `${shown} of top ${reported} reported` : `top ${reported} reported`;
+}
+
+/**
+ * What a holder list is as of. Each holder's row is its latest filed
+ * period, so one date is claimed only when every row has it; rows of
+ * different quarters read `latest period per holder`, and an empty list
+ * keeps the source's date.
+ */
+export function holderListPeriod(
+  rows: ReadonlyArray<{ reportDate?: unknown }>,
+  asOf?: string | null,
+): string | null {
+  const dates = new Set(rows.flatMap((row) => typeof row.reportDate === "string" && row.reportDate ? [row.reportDate] : []));
+  if (dates.size > 1) return "latest period per holder";
+  const [only] = dates;
+  const date = only ?? asOf;
+  return date ? `as of ${date}` : null;
+}
+
+/** Whether a holder list's rows are of more than one report date. */
+export function holderPeriodsDiffer(rows: ReadonlyArray<{ reportDate?: unknown }>): boolean {
+  return holderListPeriod(rows) === "latest period per holder";
 }
 
 /** A venue the app knows by its short name (NasdaqGS is NASDAQ); any other as the source wrote it. */
@@ -51,15 +85,15 @@ function venueLabel(exchange?: string | null): string {
 
 /** What the list is, after the listing is named: its unit, date and how much of it is shown. */
 export function holderListFacts(
-  facts: Pick<HolderReportFacts, "currency" | "listingCurrency" | "asOf" | "shown" | "reported" | "total">,
+  facts: Pick<HolderReportFacts, "currency" | "listingCurrency" | "asOf" | "period" | "shown" | "reported" | "total" | "ranked">,
 ): string[] {
   const unit = currencyUnitLabel(facts.currency);
   // Dollars on a London line: say they are the values' unit, not the listing's.
   const otherUnit = unit && facts.listingCurrency?.trim() && facts.listingCurrency.trim() !== facts.currency?.trim();
   return [
     otherUnit ? `values in ${unit}` : unit,
-    facts.asOf ? `as of ${facts.asOf}` : "",
-    holderCountText(facts.shown, facts.reported, facts.total),
+    facts.period ?? (facts.asOf ? `as of ${facts.asOf}` : ""),
+    holderCountText(facts.shown, facts.reported, facts.total, facts.ranked),
   ].filter(Boolean);
 }
 
@@ -132,5 +166,6 @@ export function nonUsHolderCaveat(exchange?: string | null, currency?: string | 
   if (!isNonUsHolderListing(exchange, currency)) return null;
   const canonical = canonicalExchange(exchange ?? "");
   const venue = resolveExchangeTimeZone(canonical) ? canonical : "local";
-  return `Positions come from institutional filings (mostly US 13F), not the ${venue} share register.`;
+  // Few filers report a line abroad, so a small position can lead the list.
+  return `Positions come from institutional filings (mostly US 13F), not the ${venue} share register, so the line's largest holders may be missing.`;
 }

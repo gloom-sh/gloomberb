@@ -103,4 +103,50 @@ export class MemoryResourceStore {
   delete(key: ResourceCacheKey): void {
     this.records.delete(buildMapKey(key));
   }
+
+  /** Puts back a record saved elsewhere, with its own times. */
+  protected restore(record: CachedResourceRecord): void {
+    this.records.set(buildMapKey(record), { ...record });
+  }
+}
+
+export function resourceRecordKey(key: ResourceCacheKey): string {
+  return buildMapKey(key);
+}
+
+/** Where a renderer without the cache database keeps the records that must outlive a restart. */
+export interface ResourceRecordSink {
+  set(record: CachedResourceRecord): void;
+  delete(key: ResourceCacheKey): void;
+}
+
+/**
+ * The in-memory store, except that the records `durable` picks are handed to
+ * a sink as they change and come back from it on the next start. The desktop
+ * view and the web app have no cache database: without this a broker
+ * account's snapshot lived only until the app closed, while its positions
+ * were saved.
+ */
+export class WriteThroughResourceStore extends MemoryResourceStore {
+  constructor(
+    saved: readonly CachedResourceRecord[],
+    private readonly sink: ResourceRecordSink,
+    private readonly durable: (key: ResourceCacheKey) => boolean,
+  ) {
+    super();
+    for (const record of saved) {
+      if (durable(record)) this.restore(record);
+    }
+  }
+
+  override set<T>(key: ResourceCacheKey, value: T, options: SetResourceOptions): CachedResourceRecord<T> {
+    const record = super.set(key, value, options);
+    if (this.durable(key)) this.sink.set(record);
+    return record;
+  }
+
+  override delete(key: ResourceCacheKey): void {
+    super.delete(key);
+    if (this.durable(key)) this.sink.delete(key);
+  }
 }

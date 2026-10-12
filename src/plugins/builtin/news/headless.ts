@@ -11,6 +11,7 @@ import {
   mapCloudNewsArticle,
 } from "../../../sources/gloomberb-cloud/news";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { cloudNewsFreshness, cloudRealtimeAccess } from "../shared/report-freshness";
 
 const NEWS_COLUMNS = [
   { key: "publishedAt", header: "Published" },
@@ -27,11 +28,14 @@ export interface NewsHeadlessDependencies {
     context: HeadlessPaneContext,
   ): Promise<CloudNewsListResponse>;
   now(): Date;
+  /** Whether the session has real-time news; without it the stories are held back. */
+  realtimeAccess?(): Promise<boolean | null>;
 }
 
 const defaultDependencies: NewsHeadlessDependencies = {
   loadNews: (query, context) => context.apiClient.getCloudNews(cloudNewsParams(query)),
   now: () => new Date(),
+  realtimeAccess: cloudRealtimeAccess,
 };
 
 function newsRow(article: NewsArticle) {
@@ -67,6 +71,7 @@ function projectNewsHeadless(
   response: CloudNewsListResponse,
   args: HeadlessPaneLoadArgs,
   now: Date,
+  realtime: boolean | null,
 ): HeadlessSnapshotResult {
   const sentiment = selectedSentiment(args);
   const minImportance = Number(args.options.minImportance ?? 0);
@@ -81,8 +86,8 @@ function projectNewsHeadless(
   return {
     asOf: now.toISOString(),
     items,
-    // Published stories, dated by the newest; the list is a history, so its last story is not stale data.
-    freshness: { status: "not-a-feed", basis: "published stories", observedKey: "publishedAt", oldest: null },
+    // Dated by the newest story, held back for an account without real-time news.
+    freshness: cloudNewsFreshness(realtime),
     metadata: {
       nextCursor: response.nextCursor,
       sentiment,
@@ -179,6 +184,7 @@ export function createNewsFeedHeadless(
         await dependencies.loadNews(queryFor(args, "latest"), context),
         args,
         dependencies.now(),
+        await dependencies.realtimeAccess?.() ?? null,
       );
     },
   };
@@ -205,6 +211,7 @@ export function createTickerNewsHeadless(
         ),
         args,
         dependencies.now(),
+        await dependencies.realtimeAccess?.() ?? null,
       );
     },
   };

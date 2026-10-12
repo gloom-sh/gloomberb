@@ -22,11 +22,13 @@ export type CoreKeybindingActionId =
   | "close-floating-panes"
   | "pane-settings"
   | "pane-fullscreen"
+  | "pane-new-layout"
   | "pane-float"
   | "pane-pop-out"
   | "pane-screenshot"
   | "pane-export-csv"
   | "pane-share"
+  | "pane-ask"
   | "layout-gallery"
   | "tidy-windows"
   | "window-move-mode"
@@ -52,11 +54,13 @@ export const PANE_ACTION_IDS = new Set<CoreKeybindingActionId>([
   "close-floating-panes",
   "pane-settings",
   "pane-fullscreen",
+  "pane-new-layout",
   "pane-float",
   "pane-pop-out",
   "pane-screenshot",
   "pane-export-csv",
   "pane-share",
+  "pane-ask",
   "layout-gallery",
   "tidy-windows",
   "window-move-mode",
@@ -187,6 +191,14 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
     defaults: ["CmdOrCtrl+Shift+F"],
   },
   {
+    id: "pane-new-layout",
+    category: "Pane Management",
+    description: "Move the focused pane to a new layout of its own, or back to the layout it came from.",
+    // N for new, and no app chord had it. Browsers keep Ctrl/Cmd+Shift+N for a
+    // private window, so on the web the pane menu and command bar carry it.
+    defaults: ["CmdOrCtrl+Shift+N"],
+  },
+  {
     id: "pane-float",
     category: "Pane Management",
     description: "Dock or float the focused pane.",
@@ -215,8 +227,17 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
   {
     id: "pane-share",
     category: "Pane Management",
-    description: "Share the focused pane.",
+    description: "Share the focused pane: post a picture to chat or copy its link.",
     defaults: ["CmdOrCtrl+Shift+S"],
+  },
+  {
+    id: "pane-ask",
+    category: "Pane Management",
+    description: "Ask Gloom about the focused pane, in a new conversation with the pane attached.",
+    // A for ask. Alt+A first, because it reaches most terminals, where
+    // Ctrl+Shift+A is often the terminal's own select all; the desktop app
+    // advertises the chord on its platform modifier.
+    defaults: ["Alt+A", "CmdOrCtrl+Shift+A"],
   },
   {
     id: "layout-gallery",

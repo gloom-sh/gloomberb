@@ -201,5 +201,5 @@ export function downsampleCompositeChartScene(
     if (next !== panel) changed = true;
     return next;
   });
-  return changed ? { ...scene, panels } : scene;
+  return changed ? { ...scene, panels, cursorPanels: scene.cursorPanels ?? scene.panels } : scene;
 }

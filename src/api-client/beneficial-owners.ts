@@ -85,6 +85,10 @@ export interface BeneficialOwnersPayload {
 
 export interface CloudBeneficialOwnersParams {
   ticker: string;
+  /** The listing's venue. Sent only for a venue outside the US, with `name`. */
+  exchange?: string;
+  /** The listing's company name, from its ticker or its own quote. */
+  name?: string;
   form?: BeneficialOwnersForm;
   history?: boolean;
   limit?: number;

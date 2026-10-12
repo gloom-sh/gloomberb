@@ -1,5 +1,5 @@
 import { resolveEntryValue } from "../../../market-data/coordinator";
-import { currencyMinorDigits } from "../../../market-data/market/format";
+import { currencyPriceMinDigits } from "../../../market-data/market/format";
 import type { QueryEntry } from "../../../market-data/result-types";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { Quote } from "../../../types/financials";
@@ -64,7 +64,7 @@ export function liveViewDecimalFloors(rows: readonly ViewRow[], fields: Readonly
 function rowsMinorDigits(rows: readonly ViewRow[]): number {
   const currencies = new Set(rows.map((row) => (typeof row.currency === "string" ? row.currency.trim() : "")));
   if (currencies.size === 0) return 2;
-  return Math.max(...[...currencies].map((currency) => Math.min(2, currencyMinorDigits(currency || undefined))));
+  return Math.max(...[...currencies].map((currency) => currencyPriceMinDigits(currency || undefined)));
 }
 
 export function viewRowSymbol(row: ViewRow, symbolKey: string | null): string | null {

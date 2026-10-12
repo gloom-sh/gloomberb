@@ -12,6 +12,7 @@ import { CountryFlag } from "../../../components/ui/country-flag";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { resolveEntryData } from "../../../market-data/selectors";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -19,6 +20,7 @@ import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { useAssetData } from "../../runtime";
 import { summarizeFxRates, fxStatusLabel } from "../../../utils/fx-status";
 import type { PluginModule } from "../plugin-module";
+import { fxRateObservations } from "../shared/fx-rate-freshness";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useAutoRefresh, useUpdatedAgo } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
@@ -27,6 +29,7 @@ import { CURRENCY_FLAG_REGIONS, FX_CURRENCIES, formatRate, resolveCurrencies, ty
 import { crossMovePercent, directionTint, nextTintLevel } from "./direction";
 import { fxMatrixSettings } from "./settings";
 import { createFxExportMetadata } from "./export";
+import { fxMatrixHeadless } from "./headless";
 
 const FX_MATRIX_PANE_ID = "fx-matrix";
 /** Stable identity: a fresh literal here would reload the board every render. */
@@ -114,6 +117,23 @@ function FxMatrixPane({ focused, width, height }: PaneProps) {
       ? { ...entry, error: entry.error ? { ...entry.error } : null }
       : undefined] as const;
   }));
+  // A report or capture of the board is dated by the rates it draws: when each
+  // was observed, whether it is delayed or stale, and where the FX market
+  // stands. The pane draws none of this; its footer keeps its own status.
+  useRemoteUiNode({
+    role: "report-freshness",
+    label: "Rate freshness",
+    getMetadata: () => {
+      const legQuotes = new Map(legs.map((leg) => [leg.currency, resolveEntryData(legEntries.get(fxLegQuoteKey(leg)))] as const));
+      return {
+        observations: fxRateObservations(currencies, rates, (currency) => ({
+          entry: rateEntries.get(currency),
+          // Only a rate that is the pair quote's own says what that quote says.
+          legQuote: liveEntries.has(currency) ? legQuotes.get(currency) : null,
+        })),
+      };
+    },
+  });
   const status = summarizeFxRates(currencies, rates, (currency) => rateEntries.get(currency));
   const statusText = fxStatusLabel(status);
   const snapshotFetchedAt = summarizeFxRates(currencies, snapshotRates, (currency) => (
@@ -264,6 +284,7 @@ export const fxMatrixModule: PluginModule = {
       description: "Currency cross-rate matrix for major FX pairs.",
       keywords: ["fx", "forex", "currency", "exchange", "rates", "cross", "matrix"],
       shortcut: { prefix: "FXC" },
+      headless: fxMatrixHeadless,
     },
   ],
 };

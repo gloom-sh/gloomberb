@@ -1,27 +1,19 @@
-import type { AppNotificationRequest } from "../types/plugin";
 import { createShare, openLiveShareUrl } from "./api";
 import type { SharePayload } from "./payload";
 
-/**
- * Every share is a live hand-off: the link opens the hosted terminal on the
- * same pane the sender is looking at. One implementation, so the shell
- * shortcut, the pane menu, and pane-level share hints cannot drift apart.
- */
-export async function copyLivePaneShare(
-  payload: Extract<SharePayload, { kind: "pane" }>,
-  host: {
-    copyText: (text: string) => Promise<void> | void;
-    notify: (notification: AppNotificationRequest) => void;
-  },
-): Promise<void> {
-  try {
-    const { id } = await createShare(payload);
-    await host.copyText(openLiveShareUrl(id));
-    host.notify({ body: "Share link copied to clipboard", type: "success" });
-  } catch (error) {
-    host.notify({
-      body: error instanceof Error ? error.message : "Could not share this pane.",
-      type: "error",
+/** One lazy link for the captured view. Retry failures, reuse successes across copy/post retries. */
+export function paneShareLink(payload: Extract<SharePayload, { kind: "pane" }>): () => Promise<string> {
+  let pending: Promise<string> | null = null;
+  return () => {
+    pending ??= createShare(payload).then(({ id }) => openLiveShareUrl(id)).catch((error) => {
+      pending = null;
+      throw error;
     });
-  }
+    return pending;
+  };
+}
+
+/** Keep the optional caption intact and put the reopenable view on its own line. */
+export function paneShareMessage(caption: string, link?: string): string {
+  return [caption.trim(), link].filter(Boolean).join("\n\n");
 }

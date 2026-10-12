@@ -1,6 +1,8 @@
 import type { NewsCapability } from "../../capabilities";
 import type { PaneRuntimeState } from "../../core/state/app/state";
 import type { LayoutMarketplacePayload } from "../../shares/portable-layout";
+import type { PaneImageCapture } from "../../shares/pane-image";
+import type { DialogOptions, PromptContext } from "../../ui/dialog";
 import type { AppConfig, BrokerInstanceConfig, LayoutConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
 import type { NewsQuery, NewsQueryState } from "../../types/news-source";
@@ -42,9 +44,20 @@ export interface PluginHostActions {
   /** `options.fieldKey` starts the cursor on that setting, as a setting picked in the command bar does. */
   openPaneSettings(paneId?: string, options?: { fieldKey?: string }): void;
   sharePane(paneId?: string): void;
+  /**
+   * A picture of a pane (the focused one when omitted) as it looks now, its
+   * footer reading as a dated status line. Not on the plugin API.
+   */
+  capturePaneImage(paneId?: string): Promise<PaneImageCapture>;
+  /** Opens a dialog from code outside a React tree, such as a command or a menu item. Not on the plugin API. */
+  promptDialog<T>(options: DialogOptions<PromptContext<T>>): Promise<T | undefined>;
   openWindowMode(paneId?: string, mode?: WindowEditMode): void;
   /** The shell's fullscreen toggle for a pane; false when there is nothing to fill the window with. */
   togglePaneFullscreen(paneId: string): boolean;
+  /** The shell's Move to New Layout for a pane; false when it did nothing. Not on the plugin API. */
+  movePaneToNewLayout(paneId: string): boolean;
+  /** Returns a pane Move to New Layout moved to where it came from; false when it did nothing. Not on the plugin API. */
+  movePaneBack(paneId: string): boolean;
   showPane(paneId: string): void;
   createPaneFromTemplate(templateId: string, options?: PaneTemplateCreateOptions): void;
   createPaneFromTemplateAsync(templateId: string, options?: PaneTemplateCreateOptions): Promise<void>;
@@ -62,6 +75,14 @@ export interface PluginHostActions {
   watchNewsQuery(query: NewsQuery, listener: (state: NewsQueryState) => void): () => void;
 
   notify(notification: AppNotificationRequest): AppNotificationDelivery | void;
+  /** Switches a plugin on or off the way the Plugins pane does. Not on the plugin API. */
+  setPluginEnabled(pluginId: string, enabled: boolean): void;
+  /**
+   * Switches several plugins on or off as one change: one config write and
+   * one save. A switched-off plugin's panes are hidden, never removed, so
+   * switching it back on shows them where they were. Not on the plugin API.
+   */
+  setPluginsEnabled(changes: Readonly<Record<string, boolean>>): void;
   getPaneRuntimeState(paneId: string): PaneRuntimeState | null;
   updatePaneRuntimeState(paneId: string, patch: Partial<PaneRuntimeState>): void;
   applyPaneSettingValue(paneId: string, field: PaneSettingField, value: unknown): Promise<void>;
@@ -93,8 +114,12 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
     openBuiltInWorkflow: () => {},
     openPaneSettings: () => {},
     sharePane: () => {},
+    capturePaneImage: async () => { throw new Error("Pictures of panes are not available here."); },
+    promptDialog: async () => undefined,
     openWindowMode: () => {},
     togglePaneFullscreen: () => false,
+    movePaneToNewLayout: () => false,
+    movePaneBack: () => false,
     showPane: () => {},
     createPaneFromTemplate: () => {},
     createPaneFromTemplateAsync: async () => {},
@@ -109,6 +134,8 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
     registerNewsCapability: () => () => {},
     watchNewsQuery: () => () => {},
     notify: () => {},
+    setPluginEnabled: () => {},
+    setPluginsEnabled: () => {},
     getPaneRuntimeState: () => null,
     updatePaneRuntimeState: () => {},
     applyPaneSettingValue: async () => {},

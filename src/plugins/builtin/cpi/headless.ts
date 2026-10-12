@@ -42,9 +42,9 @@ export const cpiHeadless: HeadlessPaneDefinition<"bundle"> = {
   argument: { kind: "free-text", optional: true, placeholder: "component", description: "A component such as shelter, core, gasoline or supercore; omit for the table." },
   options: [],
   discovery: { aliases: ["CPI", "ECAN"], dataRequirements: ["Gloom Cloud US consumer price history"],
-    limitations: ["Monthly data, published by BLS at 08:30 ET on its release schedule",
-      "Weights and contributions are BLS's for the month; services ex shelter is computed from two BLS series",
-      "No October 2025 index was published, so changes that need it are empty"] },
+    limitations: ["Monthly data, published by BLS at 08:30 ET on its release schedule.",
+      "Weights and contributions are BLS's for the month; services ex shelter is computed from two BLS series.",
+      "No October 2025 index was published, so changes that need it are empty."] },
   describe: "US consumer prices by component",
   async load(args) {
     const data = await fetchCpiBoard();

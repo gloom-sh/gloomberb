@@ -23,6 +23,7 @@ import { useAppStateRef } from "../../../state/app/context";
 import { listingChoiceQuery } from "../../../tickers/search";
 import { parseRootShortcutIntent } from "../routes/root/shortcuts";
 import { useRootPluginInstallItem } from "../routes/root/plugin-install";
+import { useRootPluginTurnOnItem } from "../routes/root/plugin-turn-on";
 import { useCommandBarThemePreview } from "../theme-preview";
 import { matchThemeOptions } from "../theme-picker";
 import { CommandBarPanel } from "../panel";
@@ -243,6 +244,15 @@ export function CommandBar({
     dispatch({ type: "SET_COMMAND_BAR", open: true, query, launch: { kind: "run-query", query } });
   }, [dispatch]);
   const closeBar = useCallback(() => closeAfterRun({ revertThemePreview: false }), [closeAfterRun]);
+  // A code whose plugin is switched off offers to turn it on. The install row
+  // never offers a code the app has, so the two never compete.
+  const pluginTurnOnItem = useRootPluginTurnOnItem({
+    enabled: !currentRoute && rootShortcutIntent.kind === "none",
+    query: rootQuery,
+    pluginRegistry,
+    disabledPlugins: state.config.disabledPlugins,
+    rerunQuery,
+  });
   const pluginInstallItem = useRootPluginInstallItem({
     enabled: !currentRoute && rootShortcutIntent.kind === "none",
     query: rootQuery,
@@ -374,12 +384,15 @@ export function CommandBar({
   const closeAfterProviderResult = useCallback(() => {
     closeAfterRun({ revertThemePreview: false });
   }, [closeAfterRun]);
-  const { providerResultItems, providerSearching } = useCommandBarSearchProviders({
+  const { providerResultItems, providerMatchItems, providerSearching } = useCommandBarSearchProviders({
     providers: searchProviders,
     query: rootQuery,
+    // A colon is the venue list.
+    enabled: !currentRoute && !listingChoice,
     // A resolved prefix means the user is running a command, so free-text
-    // providers neither ask the network nor add rows. A colon is the venue list.
-    enabled: !currentRoute && rootShortcutIntent.kind === "none" && !listingChoice,
+    // providers neither ask the network nor add rows, unless they asked to
+    // answer after that code.
+    claimedShortcut: rootShortcutIntent.kind === "none" ? null : rootShortcutIntent.prefix,
     context: searchProviderContext,
     onExecuted: closeAfterProviderResult,
   });
@@ -426,8 +439,9 @@ export function CommandBar({
     paneShortcutItems,
     pluginCommandItems,
     pluginCommandResultItems,
-    pluginInstallItem,
+    pluginInstallItem: pluginTurnOnItem ?? pluginInstallItem,
     providerResultItems,
+    providerMatchItems,
     providerCategoryPriorities,
     providerSearching,
     readTickerSearchCache,

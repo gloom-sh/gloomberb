@@ -147,6 +147,8 @@ export function createRootCommandItemBuilder({
         return command.description;
       case "toggle-value-flashing":
         return state.config.valueFlashingEnabled ? "Currently on" : "Currently off";
+      case "toggle-presentation-mode":
+        return state.config.presentationMode ? "Currently on" : "Currently off";
       case "toggle-crash-reports":
         return state.config.telemetry?.crashReports === false ? "Currently off" : "Currently on";
       case "toggle-usage-counts":

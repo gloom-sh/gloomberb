@@ -13,9 +13,10 @@ import {
 } from "../../../api-client/geo";
 import { chartSeriesProvider, type ChartSeriesCapability, type ChartSeriesCatalogItem } from "../../../capabilities";
 import { subtractTimeRange } from "../../../time-series/date-window";
-import { SERIES_COLORS } from "../../../time-series/resolve";
+import { SERIES_COLORS } from "../../../theme/series-colors";
 import type { ChartViewportSpec, ResolvedSeries, TimeSeriesPoint } from "../../../time-series/types";
-import { GEO_SERIES_CAPABILITY_ID } from "../chart-composer/series-expression";
+import { formatGeoSeriesExpression, GEO_SERIES_CAPABILITY_ID } from "../chart-composer/series-expression";
+import type { SeriesDefinition } from "../../../series/types";
 import { cloudGeoRequest } from "./client";
 
 function catalogItem(hit: GeoSeriesSearchHit): ChartSeriesCatalogItem {
@@ -105,6 +106,30 @@ function compact(value: string): string {
  * The busiest by count are local Asian straits, which say less about trade.
  */
 export const KEY_CHOKEPOINTS = ["SUEZ", "PANAMA", "HORMUZ", "BABELMANDEB", "MALACCA", "BOSPHORUS"];
+
+const CHOKEPOINT_NAMES: Readonly<Record<string, string>> = {
+  SUEZ: "Suez Canal",
+  PANAMA: "Panama Canal",
+  HORMUZ: "Strait of Hormuz",
+  BABELMANDEB: "Bab el-Mandeb",
+  MALACCA: "Strait of Malacca",
+  BOSPHORUS: "Bosphorus",
+};
+
+/**
+ * The key straits' daily transits in the catalog. The rest of the map's
+ * series stay a `GEO:` expression or a map click away: the server's index of
+ * them changes without a release.
+ */
+export const CHOKEPOINT_SERIES: readonly SeriesDefinition[] = KEY_CHOKEPOINTS.map((alias) => ({
+  id: `geo:${alias.toLowerCase()}`,
+  name: `${CHOKEPOINT_NAMES[alias] ?? alias} transits`,
+  unit: "count",
+  frequency: "daily",
+  group: "Alternative data",
+  tags: ["chokepoint", "shipping", "transits", "vessels", "trade"],
+  expression: formatGeoSeriesExpression(alias),
+}));
 
 /**
  * CHOKE's series as the short aliases G takes: the key straits the index

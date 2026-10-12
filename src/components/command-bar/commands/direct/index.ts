@@ -17,7 +17,7 @@ import { openBrokerAddFlow } from "../../../../plugins/builtin/broker-manager/ad
 import { isManualPortfolio } from "../../../../plugins/builtin/portfolio-list/mutations";
 import { CHART_RENDERER_PREFERENCES } from "../../../chart/core/types";
 import type { Command } from "../registry";
-import type { BrokerInstanceConfig } from "../../../../types/config";
+import type { AppConfig, BrokerInstanceConfig } from "../../../../types/config";
 import { requestFeedbackDialog } from "../../../feedback-dialog";
 import type { OpenInlineConfirm } from "../../routing/confirm";
 import {
@@ -106,6 +106,10 @@ export function runDirectCommandAction(options: {
     case "layout-marketplace":
       closeAll({ revertThemePreview: false });
       pluginRegistry.showPane("layout-marketplace");
+      return;
+    case "share-pane":
+      closeAll({ revertThemePreview: false });
+      pluginRegistry.sharePane(state.focusedPaneId ?? undefined);
       return;
     case "pane-settings":
       openPaneSettings(state.focusedPaneId);
@@ -285,6 +289,14 @@ export function runDirectCommandAction(options: {
       applyLanguagePreference(next);
       const languageLabel = next === "auto" ? t(LANGUAGE_DISPLAY_NAMES.auto) : LANGUAGE_DISPLAY_NAMES[next];
       notify(`${t("Language")}: ${languageLabel}`, { type: "success" });
+      closeAll({ revertThemePreview: false });
+      return;
+    }
+    case "toggle-presentation-mode": {
+      const { presentationMode, ...rest } = state.config;
+      const nextConfig: AppConfig = presentationMode ? rest : { ...rest, presentationMode: true };
+      dispatch({ type: "SET_CONFIG", config: nextConfig });
+      persistConfig(nextConfig);
       closeAll({ revertThemePreview: false });
       return;
     }

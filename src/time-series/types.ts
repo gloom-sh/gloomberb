@@ -1,6 +1,7 @@
 import type { ChartResolution, TimeRange } from "./range";
 import type { ChartResolutionSupport, ManualChartResolution } from "./resolution";
 import type { InstrumentRef } from "../market-data/request-types";
+import type { SeriesAttribution } from "../series/types";
 
 export const CHART_SPEC_VERSION = 2 as const;
 
@@ -162,6 +163,11 @@ export interface ResolvedSeries {
   nativeFrequency: SeriesPeriod;
   /** Acquired market-history cadence; null is explicitly unknown, undefined is legacy or nonmarket. */
   historyResolution?: ManualChartResolution | null;
+  /**
+   * When known, the first bar this listing has at `historyResolution`: the
+   * source keeps nothing older, so the chart stops there instead of asking.
+   */
+  historyStart?: Date;
   /** Authored time basis retained for layout and cursor semantics. */
   timestampMode?: SeriesTimestampMode;
   dataShape: SeriesDataShape;
@@ -178,13 +184,17 @@ export interface ResolvedSeries {
    */
   listing?: { symbol: string; exchange: string };
   /** Price/volume observations and their derived studies, including 24/7
-   * markets. Independent of whether the chart compresses exchange sessions. */
-  observationKind?: "market";
+   * markets. Independent of whether the chart compresses exchange sessions.
+   * `dataset`: a capability's published observations (vessel transits),
+   * whose values the legend dates because they arrive days late. */
+  observationKind?: "market" | "dataset";
   /** Regular-session move supplied with the latest market quote. */
   latestChangePercent?: number;
   /** The previous session's close, set on a one-day chart's price series and drawn as its reference line. */
   priorClose?: number;
   points: TimeSeriesPoint[];
+  /** Who a report of a loaded series cites, when its loader names the dataset and publisher. */
+  attribution?: SeriesAttribution;
   /** Rejected valuation price inputs, retained independently of usable observations. */
   valuationPriceIssues?: import("./valuation-price").ValuationPriceIssue[];
   warning?: string;

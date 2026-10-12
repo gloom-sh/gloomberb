@@ -57,26 +57,86 @@ test("price, volume and SMA200 share a current history acquisition and refresh e
   expect(calls).toBe(2);
 });
 
-test("unfinished closing acquisitions are rejected and retried on a finite shared cooldown without quote-tick storms", async () => {
+test("a behind 5-minute session copy is drawn with a notice while refetches fail, on a shared 30 s cooldown, until one recovers", async () => {
+  // 16:20 ET: the copy was observed at 15:50, before the close, so it does not hold the session.
   const closing = time("2026-09-21T20:20:00Z");
   setSystemTime(closing);
-  let calls = 0, recovered = false;
-  const dataProvider = provider(async () => { calls++; return result(recovered ? Date.now() : time("2026-09-21T19:50:00Z")); });
+  const copy = (observedAt: number, bars: number): PriceHistoryResult => ({ resolution: "5m", sourceKey: "provider:actual-history-source",
+    session: { ...session(observedAt), interval: "5min" },
+    points: Array.from({ length: bars }, (_, bar) => ({ date: new Date(time("2026-09-21T13:30:00Z") + bar * 300_000), close: 100 + bar, volume: 10 })) });
+  let state: "behind" | "offline" | "recovered" = "behind", calls = 0, fail = () => {};
+  const failed = new Promise<void>(resolve => { fail = resolve; });
+  const dataProvider = createTestDataProvider({ id: "preferred-router-id",
+    getQuoteMetadata: async symbol => ({ symbol, currency: "USD", instrumentType: "EQUITY" }),
+    getChartResolutionSupport: () => [{ resolution: "5m", maxRange: "ALL" }],
+    getPriceHistoryForResolutionWithMetadata: async () => {
+      calls++;
+      if (state === "offline") { await failed; throw new Error("fetch failed"); }
+      return state === "behind" ? copy(time("2026-09-21T19:50:00Z"), 76) : copy(Date.now(), 78);
+    },
+  });
   const cache = new ChartResolveCache(), spec = chart();
-  const resolve = () => resolveChartSpecData(spec, { dataProvider, now: new Date() }, cache);
-  expect((await resolve()).series.every(series => series.points.length === 0)).toBe(true);
-  for (const elapsed of [1000, 2000, 29_999]) { setSystemTime(closing + elapsed); expect((await resolve()).errors.length).toBeGreaterThan(0); }
+  spec.viewport = { range: "1D", resolution: "5m" };
+  spec.studies = [];
+  const notice = "AAPL:XNAS: newer bars are unavailable; showing saved bars as of Sep 21 15:45 ET.";
+  const resolve = async () => {
+    const resolved = await resolveChartSpecData(spec, { dataProvider, now: new Date() }, cache);
+    expect(resolved.errors).toEqual([]);
+    return { last: resolved.series.find(series => series.id === "close")!.points.at(-1)!, behind: resolved.warnings.includes(notice) };
+  };
+  expect(await resolve()).toMatchObject({ last: { value: 175 }, behind: true });
+  // The app goes offline. Quote ticks do not refetch before 30 s.
+  state = "offline";
+  for (const elapsed of [1000, 29_999]) {
+    setSystemTime(closing + elapsed);
+    expect(await resolve()).toMatchObject({ last: { value: 175 }, behind: true });
+  }
   expect(calls).toBe(1);
+  // A tick that arrives while the refetch is in flight shares it, and its failure keeps the saved copy for both.
   setSystemTime(closing + 30_000);
-  expect((await resolve()).errors.length).toBeGreaterThan(0);
+  const first = resolve();
+  while (calls < 2) await Bun.sleep(1);
+  const second = resolve();
+  await Bun.sleep(1);
+  fail();
+  for (const pass of await Promise.all([first, second])) expect(pass).toMatchObject({ last: { value: 175 }, behind: true });
+  for (const elapsed of [30_001, 59_999]) {
+    setSystemTime(closing + elapsed);
+    expect(await resolve()).toMatchObject({ last: { value: 175 }, behind: true });
+  }
   expect(calls).toBe(2);
-  setSystemTime(closing + 30_001);
-  await resolve();
-  expect(calls).toBe(2);
-  recovered = true;
+  state = "recovered";
   setSystemTime(closing + 60_000);
-  expect((await resolve()).errors).toEqual([]);
+  expect(await resolve()).toMatchObject({ last: { value: 177 }, behind: false });
   expect(calls).toBe(3);
+});
+
+test("a saved copy the router calls behind draws one notice, with a session record or without, until a refetch answers a current copy", async () => {
+  setSystemTime(NOW);
+  const notice = "AAPL:XNAS: newer bars are unavailable; showing saved bars as of Sep 21 15:45 ET.";
+  const saved = time("2026-09-21T19:50:00Z");
+  let calls = 0, behind = true;
+  // The Cloud session record covers US 1- and 5-minute bars only: this copy has none.
+  const bare = provider(async () => {
+    calls++;
+    const { session: _record, ...copy } = result(saved);
+    return behind ? { ...copy, savedCopyBehind: true } : copy;
+  });
+  const cache = new ChartResolveCache(), spec = chart();
+  const notices = async (dataProvider = bare, from = cache) => (await resolveChartSpecData(spec, { dataProvider, now: new Date() }, from))
+    .warnings.filter(warning => warning === notice).length;
+  expect(await notices()).toBe(1);
+  // Price, volume and the study share the one attempt, and quote ticks in between do not refetch.
+  setSystemTime(NOW + 29_999);
+  expect(await notices()).toBe(1);
+  expect(calls).toBe(1);
+  behind = false;
+  setSystemTime(NOW + 30_000);
+  expect(await notices()).toBe(0);
+  expect(calls).toBe(2);
+  // A copy with a session record the chart also judges behind is still one notice.
+  setSystemTime(time("2026-09-22T14:00:00Z"));
+  expect(await notices(provider(async () => ({ ...result(saved), savedCopyBehind: true })), new ChartResolveCache())).toBe(1);
 });
 
 test("explicit historical windows retain their captured observations across later sessions", async () => {
@@ -105,7 +165,10 @@ test("recent explicit windows revalidate across the opening boundary just like c
   expect((await resolveChartSpecData(spec, { dataProvider, now: new Date() }, cache)).errors).toEqual([]);
   expect(calls).toBe(1);
   setSystemTime(time("2026-09-22T14:00:00Z"));
-  expect((await resolveChartSpecData(spec, { dataProvider, now: new Date() }, cache)).series.every(series => series.points.length === 0)).toBe(true);
+  // The source answers the same bars, still behind the session: they are drawn, and the footer says so.
+  const behind = await resolveChartSpecData(spec, { dataProvider, now: new Date() }, cache);
+  expect(behind.series.find(series => series.id === "close")!.points).toHaveLength(234);
+  expect(behind.warnings).toContain("AAPL:XNAS: newer bars are unavailable; showing saved bars as of Sep 21 15:45 ET.");
   expect(calls).toBe(2);
 });
 

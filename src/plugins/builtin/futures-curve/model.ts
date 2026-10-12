@@ -3,7 +3,7 @@ import type { CurvePalette, CurveSeries } from "../../../components/chart/curve/
 import { spanDigits } from "../../../components/chart-table";
 import { compositeAxisTicks } from "../../../components/chart/composite/format";
 import type { CompositeAxisDomain } from "../../../components/chart/composite/types";
-import { FUTURES_CONTRACTS, tickDecimals } from "../futures/contracts";
+import { FUTURES_CONTRACTS, futuresBoardContractForTicker, futuresContractByCode, tickDecimals } from "../../../market-data/futures-board";
 import { formatPercentileRank } from "../../../utils/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { parseReportTime } from "../../../utils/utc-time";
@@ -21,7 +21,7 @@ const CRYPTO_CURVE_ROOTS: readonly { code: string; name: string; tick: number }[
 const rootLabel = (code: string, name: string) => name === code ? code : `${code} ${name}`;
 
 export const CURVE_ROOTS = [
-  ...FUTURES_CONTRACTS.filter((row) => row.curve !== false).map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
+  ...FUTURES_CONTRACTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
   { value: "VX", label: "VX VIX Futures" },
   ...CRYPTO_CURVE_ROOTS.map((row) => ({ value: row.code, label: rootLabel(row.code, row.name) })),
 ];
@@ -34,24 +34,40 @@ export function normalizeCurveRoot(value: unknown): string | null {
   return CURVE_ROOTS.some((row) => row.value === root) ? root : null;
 }
 
-/** What a root nothing lists is told, with roots that work. */
+/** What a root CTM does not list is told: the roots that work, with the FUT board's, VIX and CME crypto named by group. */
 export function unsupportedCurveRootMessage(value: unknown): string {
+  const typed = String(value).trim().toUpperCase().replace(/=F$/, "");
   const examples = ["ES", "CL", "GC", "ZN"].filter((root) => CURVE_ROOTS.some((row) => row.value === root));
-  return `Unsupported futures root: ${String(value)}. Try ${examples.join(", ")}.`;
+  return `No futures curve for ${typed || "that root"}: CTM covers the FUT board's roots, VIX and CME crypto, such as ${examples.join(", ")}.`;
 }
+
+/**
+ * Board roots whose bare code opens their curve from the ticker under the
+ * cursor. Several are also listed securities (ES Eversource, NG NovaGold, PL
+ * Planet Labs), but they followed the cursor before the board was checked
+ * against listed securities and keep doing so. A root added after that (ZM is
+ * Zoom, KE, LE, HE and ALI are tickers too) follows the cursor only as its
+ * `=F` symbol or a code no security answers to (`bareCode`: ZL, OJ, LBR), the
+ * rule FUT and COT apply, so a new board row defaults to the security.
+ */
+const CURSOR_BARE_ROOTS: ReadonlySet<string> = new Set(["ES", "CL", "BZ", "NG", "RB", "HO", "GC", "SI", "HG", "PL", "PA", "ZC", "ZS", "KC", "SB", "CC"]);
 
 /**
  * The root for the ticker under the cursor, when CTM is opened without an
  * argument. The crypto roots are also US ticker symbols (Grayscale's mini
  * trusts are BTC and ETH), so a bare one is the equity's, never the future's:
  * only a futures symbol (BTC=F) or a coin pair (BTC-USD) names the crypto curve.
+ * A typed argument is different: `CTM ZM` is soybean meal even though ZM is also Zoom.
  */
 export function curveRootForTicker(ticker: unknown): string | null {
   if (typeof ticker !== "string") return null;
   const coin = cryptoPairCoin(ticker);
   if (coin) return CRYPTO_CURVE_ROOTS.some((row) => row.code === coin) ? coin : null;
   const root = normalizeCurveRoot(ticker);
-  return root && CRYPTO_CURVE_ROOTS.some((row) => row.code === root) && !isFuturesSymbol(ticker) ? null : root;
+  if (!root) return null;
+  if (CRYPTO_CURVE_ROOTS.some((row) => row.code === root)) return isFuturesSymbol(ticker) ? root : null;
+  const isBoardRoot = futuresContractByCode(root) != null;
+  return isBoardRoot && !CURSOR_BARE_ROOTS.has(root) ? futuresBoardContractForTicker(ticker)?.code ?? null : root;
 }
 
 /**
@@ -67,7 +83,7 @@ function curvePriceDecimals(root: string): number {
   const rateTick = RATE_TICKS[root];
   if (rateTick != null) return tickDecimals(rateTick);
   if (root === "VX") return 4;
-  const tick = FUTURES_CONTRACTS.find((row) => row.code === root)?.tick ?? CRYPTO_CURVE_ROOTS.find((row) => row.code === root)?.tick;
+  const tick = futuresContractByCode(root)?.tick ?? CRYPTO_CURVE_ROOTS.find((row) => row.code === root)?.tick;
   return tick == null ? 5 : Math.max(2, tickDecimals(tick));
 }
 
@@ -82,6 +98,39 @@ export function curvePrice(value: number | null, root: string): string {
 export function curveChangeText(value: number | null, root: string): string {
   const text = curvePrice(value, root);
   return value != null && value > 0 && /[1-9]/.test(text) ? `+${text}` : text;
+}
+
+/** A price as a number at the root's display precision, for reports: 59.299805 reads 59.3, never float noise. */
+export function curveRoundedPrice(value: number | null | undefined, root: string): number | null {
+  return value == null || !Number.isFinite(value) ? null : Number(value.toFixed(curvePriceDecimals(root)));
+}
+
+/** The unit the catalogue gives a root whose contract terms the server does not send: "EUR / MWh" for Dutch TTF gas. */
+export function catalogueCurveUnit(root: string): string | null {
+  return futuresContractByCode(root)?.unit ?? null;
+}
+
+/**
+ * What a price counts: the exchange's unit ("USD / troy oz") where the root's
+ * terms are known, the catalogue's where they are not, else the quote unit.
+ */
+export function curveUnitLabel(data: Pick<FuturesCurvePayload, "root" | "spec" | "quoteUnit" | "currency">): string | null {
+  return data.spec?.unit ?? catalogueCurveUnit(data.root) ?? data.quoteUnit ?? data.currency ?? null;
+}
+
+/** A contract as traders write it: GCZ26.CMX is GCZ26; a VX symbol stays as Cboe lists it. */
+export function curveContractCode(symbol: string): string {
+  return symbol.replace(/\.[A-Z]+$/, "");
+}
+
+/**
+ * The front spread named by the contracts it subtracts, "GCF27-GCZ26": the
+ * next contract less the front one. The front is the first contract the
+ * market trades, which can be past a delivery month nobody holds, so a bare
+ * "M2-M1" would not say which rows it means.
+ */
+export function curveSpreadLabel(slope: Pick<FuturesCurvePayload["slope"], "frontSymbol" | "nextSymbol">): string {
+  return slope.frontSymbol && slope.nextSymbol ? `${curveContractCode(slope.nextSymbol)}-${curveContractCode(slope.frontSymbol)}` : "M2-M1";
 }
 
 /**
@@ -188,13 +237,14 @@ export function curveContractChanges(data: FuturesCurvePayload): CurveContractCh
 
 const CHANGE_COLUMNS: Readonly<Record<string, CurveLookback>> = { change1w: "1W", change1m: "1M" };
 
-type CurveSortKey = "symbol" | "expiration" | "price" | "change" | "openInterest" | "volume" | "percentile" | "asOf";
+type CurveSortKey = "symbol" | "expiration" | "price" | "settlement" | "firstNotice" | "change" | "openInterest" | "volume" | "percentile" | "asOf";
 
 const BASIS_COLUMNS: Readonly<Record<string, "vsSpotPct" | "annualisedBasisPct">> = { vsSpot: "vsSpotPct", annBasis: "annualisedBasisPct" };
 
 export function sortCurveContracts(rows: readonly FuturesContract[], id: string, direction: SortDirection,
   changes?: CurveContractChanges, basis?: CurveBasisRows): FuturesContract[] {
-  const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", change: "change", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
+  const keys: Record<string, CurveSortKey> = { symbol: "symbol", expiry: "expiration", price: "price", settle: "settlement", notice: "firstNotice",
+    change: "change", oi: "openInterest", volume: "volume", percentile: "percentile", asOf: "asOf" };
   const key = keys[id] ?? "expiration";
   const lookback = CHANGE_COLUMNS[id];
   const basisKey = BASIS_COLUMNS[id];
@@ -399,6 +449,9 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
       symbol: row.symbol, label: row.label, expiration: row.expiration, price: row.price, change: null, asOf: rowDate(row, stale),
       currency: curve.currency ?? "USD", quoteUnit: curve.quoteUnit ?? curve.currency ?? "USD", volume: row.volume,
       openInterest: row.openInterest, delayMinutes: null, stale, percentile: null, samples: 0, historyStart: null, historyEnd: null,
+      // Only a row the archive confirms is a settlement; an unconfirmed one is that session's last trade.
+      settlement: !stale && row.settled === true ? row.price : null,
+      lastTrade: row.lastTrade ?? row.expiration, firstNotice: row.firstNotice ?? null, inDelivery: row.inDelivery ?? false,
     }];
   }).sort((a, b) => a.expiration.localeCompare(b.expiration));
   const ghosts = (["1W", "1M"] as const).map((label) => {
@@ -407,8 +460,10 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
       points: past ? past.contracts.flatMap((row) => row.expiration
         ? [{ symbol: row.symbol, expiration: row.expiration, price: row.price, asOf: rowDate(row, archivedRowStale(row, past)) }] : []) : [] };
   });
-  // The front pair on the curve's own session; carried prices do not make a spread.
-  const [front, next] = contracts.filter((row) => !row.stale);
+  // The front pair on the curve's own session: settlements where the archive has them, else that session's
+  // last trades. Carried prices, and a last trade beside a settlement, do not make a spread.
+  const settled = contracts.filter((row) => row.settlement != null);
+  const [front, next] = settled.length >= 2 ? settled : settled.length ? [] : contracts.filter((row) => !row.stale);
   const value = front && next ? next.price! - front.price! : null;
   const days = front && next ? (Date.parse(next.expiration) - Date.parse(front.expiration)) / DAY_MS : 0;
   const roll = front && next && front.price! > 0 && next.price! > 0 && days > 0 ? (front.price! / next.price! - 1) * 365 / days * 100 : null;
@@ -419,6 +474,6 @@ export function archivedFuturesCurve(root: string, curve: FuturesCurveAsOfPayloa
     slope: { frontSymbol: front?.symbol ?? null, nextSymbol: next?.symbol ?? null, value, annualizedRollYield: roll, percentile: null,
       rollPercentile: null, samples: 0, historyStart: null, historyEnd: null, asOf: front && next ? curve.asOf : null,
       state: value == null ? "unavailable" : Math.abs(value) < 1e-10 ? "flat" : value > 0 ? "contango" : "backwardation" },
-    gaps: curve.gaps,
+    gaps: curve.gaps, spec: curve.spec ?? null, settlementDate: settled.length ? curve.asOf : null,
   };
 }

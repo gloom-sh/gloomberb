@@ -9,6 +9,29 @@ import type { ResultItem } from "../../list/model";
 
 const DEFAULT_MIN_QUERY_LENGTH = 3;
 const DEFAULT_DEBOUNCE_MS = 300;
+const PROVIDER_ROW_PREFIX = "search-provider:";
+
+/** A row a plugin search provider contributed, as opposed to one the bar resolved itself. */
+export function isProviderResultItem(item: Pick<ResultItem, "id">): boolean {
+  return item.id.startsWith(PROVIDER_ROW_PREFIX);
+}
+
+/**
+ * Whether a provider answers the text in the bar: free text, or text a code
+ * claimed that the provider asked to keep hearing.
+ */
+function answersQuery(provider: CommandBarSearchProvider, claimedShortcut: string | null): boolean {
+  if (!claimedShortcut) return true;
+  return provider.shortcuts?.some((code) => code.trim().toUpperCase() === claimedShortcut) ?? false;
+}
+
+function meetsMinQueryLength(provider: CommandBarSearchProvider, trimmedQuery: string): boolean {
+  return trimmedQuery.length >= (provider.minQueryLength ?? DEFAULT_MIN_QUERY_LENGTH);
+}
+
+function sortByPriority(providers: readonly CommandBarSearchProvider[]): CommandBarSearchProvider[] {
+  return [...providers].sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0));
+}
 
 export function getAvailableCommandBarSearchProviders(
   pluginRegistry: Pick<PluginRegistry, "commandBarSearchProviders" | "getCommandBarSearchProviderPluginId">,
@@ -31,15 +54,16 @@ export function toProviderResultItem(
   onExecuted: () => void,
 ): ResultItem {
   return {
-    id: `search-provider:${provider.id}:${result.id}`,
+    id: `${PROVIDER_ROW_PREFIX}${provider.id}:${result.id}`,
     label: result.label,
     detail: result.detail ?? "",
     category: result.category ?? provider.category,
     kind: "action",
     lines: result.lines,
     badge: result.badge,
+    name: result.name,
     right: result.right,
-    searchText: [result.label, result.detail ?? "", ...(result.keywords ?? [])].join(" "),
+    searchText: [result.label, result.detail ?? "", result.name ?? "", ...(result.keywords ?? [])].join(" "),
     disabled: result.disabled,
     action: async () => {
       if (result.disabled) return;
@@ -58,10 +82,53 @@ interface ProviderResults {
 interface UseCommandBarSearchProvidersOptions {
   providers: readonly CommandBarSearchProvider[];
   query: string;
-  /** False while a route is open or a prefix already claimed the query. */
+  /** False while a route is open or the venue list owns the query. */
   enabled: boolean;
+  /**
+   * The code that claimed the query (`CHAT`), upper case, or null for free
+   * text. Only providers that list it among their `shortcuts` still answer.
+   */
+  claimedShortcut?: string | null;
   context: CommandBarSearchContext;
   onExecuted: () => void;
+}
+
+/**
+ * Rows from providers that answer from memory (`match`), worked out as the bar
+ * renders so they land with the keystroke instead of a frame behind it. A
+ * provider that throws contributes nothing.
+ */
+function useProviderMatchItems({
+  providers,
+  query,
+  enabled,
+  claimedShortcut,
+  context,
+  onExecutedRef,
+}: {
+  providers: readonly CommandBarSearchProvider[];
+  query: string;
+  enabled: boolean;
+  claimedShortcut: string | null;
+  context: CommandBarSearchContext;
+  onExecutedRef: { current: () => void };
+}): ResultItem[] {
+  return useMemo(() => {
+    if (!enabled) return [];
+    const trimmed = query.trim();
+    return sortByPriority(providers).flatMap((provider) => {
+      if (!provider.match || !answersQuery(provider, claimedShortcut) || !meetsMinQueryLength(provider, trimmed)) {
+        return [];
+      }
+      let results: CommandBarResultDef[];
+      try {
+        results = provider.match(trimmed, context);
+      } catch {
+        return [];
+      }
+      return results.map((result) => toProviderResultItem(provider, result, () => onExecutedRef.current()));
+    });
+  }, [claimedShortcut, context, enabled, onExecutedRef, providers, query]);
 }
 
 /**
@@ -69,15 +136,19 @@ interface UseCommandBarSearchProvidersOptions {
  * aborts on its own, answers are memoized for the life of the bar, and rows are
  * only ever added to the static list: a provider that fails, hangs, or answers
  * late leaves what the command bar already resolved exactly as it was.
+ * Providers that answer from memory skip all of that and come back as
+ * `providerMatchItems`, for the bar to rank with its own matches.
  */
 export function useCommandBarSearchProviders({
   providers,
   query,
   enabled,
+  claimedShortcut = null,
   context,
   onExecuted,
 }: UseCommandBarSearchProvidersOptions): {
   providerResultItems: ResultItem[];
+  providerMatchItems: ResultItem[];
   providerSearching: boolean;
 } {
   const [resultsByProvider, setResultsByProvider] = useState<Record<string, ProviderResults>>({});
@@ -136,8 +207,12 @@ export function useCommandBarSearchProviders({
     }
 
     for (const provider of providers) {
-      const minLength = provider.minQueryLength ?? DEFAULT_MIN_QUERY_LENGTH;
-      if (!enabled || trimmed.length < minLength) {
+      if (
+        !enabled
+        || provider.match
+        || !answersQuery(provider, claimedShortcut)
+        || !meetsMinQueryLength(provider, trimmed)
+      ) {
         cancel(provider.id);
         setLoading(provider.id, false);
         continue;
@@ -179,7 +254,7 @@ export function useCommandBarSearchProviders({
         })();
       }, provider.debounceMs ?? DEFAULT_DEBOUNCE_MS));
     }
-  }, [enabled, providers, query]);
+  }, [claimedShortcut, enabled, providers, query]);
 
   useEffect(() => () => {
     for (const timer of timersRef.current.values()) clearTimeout(timer);
@@ -191,15 +266,23 @@ export function useCommandBarSearchProviders({
   const providerResultItems = useMemo(() => {
     const trimmed = query.trim();
     if (!enabled) return [];
-    return [...providers]
-      .sort((left, right) => (left.priority ?? 0) - (right.priority ?? 0))
-      .flatMap((provider) => {
-        const results = resultsByProvider[provider.id];
-        return results?.query === trimmed ? results.items : [];
-      });
-  }, [enabled, providers, query, resultsByProvider]);
+    return sortByPriority(providers).flatMap((provider) => {
+      if (provider.match || !answersQuery(provider, claimedShortcut)) return [];
+      const results = resultsByProvider[provider.id];
+      return results?.query === trimmed ? results.items : [];
+    });
+  }, [claimedShortcut, enabled, providers, query, resultsByProvider]);
+
+  const providerMatchItems = useProviderMatchItems({
+    providers,
+    query,
+    enabled,
+    claimedShortcut,
+    context,
+    onExecutedRef,
+  });
 
   const providerSearching = enabled && providers.some((provider) => loadingProviderIds.includes(provider.id));
 
-  return { providerResultItems, providerSearching };
+  return { providerResultItems, providerMatchItems, providerSearching };
 }

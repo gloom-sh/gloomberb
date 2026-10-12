@@ -4,7 +4,7 @@ import { setConfigStoreHost } from "../../../data/config/store";
 import * as nodeConfigStoreHost from "../../../data/config/store/node";
 import { ELECTROBUN_CONTEXT_MENU_ACTION } from "../shared/protocol";
 import { contextMenuSelectionMessage } from "./context-menu/click";
-import { applicationMenuCommand } from "./application-menu/click";
+import { applicationMenuCommand, createApplicationMenuGate } from "./application-menu/click";
 import { DesktopBackend } from "./desktop/backend";
 import {
   MAIN_WINDOW_MIN_SIZE,
@@ -61,9 +61,10 @@ Electrobun.events.on("open-url", (event: unknown) => {
   backend.openDeepLink(url);
 });
 
+const applicationMenuMayRun = createApplicationMenuGate();
 ApplicationMenu.on("application-menu-clicked", (event: unknown) => {
   const command = applicationMenuCommand(event);
-  if (!command) return;
+  if (!command || !applicationMenuMayRun(command)) return;
   backend.runApplicationMenuCommand(command);
 });
 

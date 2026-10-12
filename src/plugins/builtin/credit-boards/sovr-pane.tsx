@@ -76,14 +76,14 @@ function SovereignDetail({ row, width, height, focused }: { row: SovrRow; width:
   );
 }
 
-export function SovrPane({ paneId, focused, width, height }: PaneProps) {
+export function SovrPane({ focused, width, height }: PaneProps) {
   const theme = useThemeColors();
   const provider = useAssetData();
   const resource = useAsyncResource(loadSovrBoard, { initialData: getCachedSovrBoard });
   const { loading, load: refresh, reload } = resource;
   const payload = resource.data?.payload ?? null;
-  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selected", null);
-  const [openId, setOpenId] = usePluginPaneState<string | null>("open", null);
+  const [selectedId, setSelectedId] = usePluginPaneState<string | null>("sovr:selected", null);
+  const [openId, setOpenId] = usePluginPaneState<string | null>("sovr:open", null);
   useAutoRefresh(resource.updatedAt, refresh);
 
   // Each currency's month against the dollar, from the same daily closes the FX panes use.
@@ -107,7 +107,7 @@ export function SovrPane({ paneId, focused, width, height }: PaneProps) {
     ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
   ], [asOf, payload, resource.data?.stale]);
   usePaneStatusFooter({
-    registrationId: paneId,
+    registrationId: "sovr",
     loading: loading || moves.loading,
     error: resource.error ?? resource.data?.refreshError ?? null,
     info,

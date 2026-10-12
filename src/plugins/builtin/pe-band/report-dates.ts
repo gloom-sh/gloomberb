@@ -65,14 +65,18 @@ function reportedWhen(periodEnd: string, reports: readonly ReportDate[]): string
 }
 
 /**
- * The statement with its EPS dated by the company's report, only when it has no
- * publication date of its own: a date on record always wins. A fiscal year is
- * dated by the report of its last quarter, which shares its period end. A
- * trailing sum takes the latest of its four quarters from the shared series,
- * so it cannot be known before all four are.
+ * The statement with its EPS dated by the company's report when it has no
+ * publication date of its own or a later one: the figure was public once the
+ * period was reported, and a filing that repeats or restates it afterwards (a
+ * split onto a new share count, a comparative in a later 10-K) does not delay
+ * it. A fiscal year is dated by the report of its last quarter, which shares
+ * its period end. A trailing sum takes the latest of its four quarters from
+ * the shared series, so it cannot be known before all four are.
  */
 export function datedByReport(row: FinancialStatement, reports: readonly ReportDate[]): FinancialStatement {
-  if (!reports.length || typeof row.eps !== "number" || !Number.isFinite(row.eps) || statementFieldAvailability(row, "eps") !== undefined) return row;
+  if (!reports.length || typeof row.eps !== "number" || !Number.isFinite(row.eps)) return row;
   const known = reportedWhen(row.date, reports);
-  return known ? { ...row, fieldAvailability: { ...row.fieldAvailability, eps: known } } : row;
+  const onRecord = statementFieldAvailability(row, "eps");
+  if (!known || (onRecord !== undefined && Date.parse(onRecord) <= Date.parse(known))) return row;
+  return { ...row, fieldAvailability: { ...row.fieldAvailability, eps: known } };
 }

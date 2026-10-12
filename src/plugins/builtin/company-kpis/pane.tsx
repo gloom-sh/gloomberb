@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import type { KpiObservation } from "../../../api-client/company-kpis";
+import { listingAbroad } from "../../../api-client/paths";
 import { ChartTableHeader, DataTableStackView, DetailScrollBody, EmptyState, KeyValueRow, PaneStatusBody, QueryBar, SectionHeading,
   useChartTableSelection, usePaneMenuItems, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type PaneHint } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -12,21 +13,22 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedCompanyData, loadCompanyData, KPI_UNAVAILABLE, validateCompanyData, type CompanyDataset, type CompanyMode } from "./client";
 import { useCompanyEvidence } from "./screenshot-evidence";
-import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyColumns, dimensionLabel, directionLabel, directionTone, guideGroupKey, guidanceSeries, fiscalLabel,
-  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, rangeText, seriesLabel, unitLabel, unitSuffix, valueText, type CompanyRow } from "./model";
+import { allGuidance, allObservations, basisLabel, changeText, changeTone, companyCellText, companyColumns, dimensionLabel, directionLabel, directionTone, guideGroupKey, guidanceSeries, fiscalLabel,
+  isGuidance, exactObservation, observationValue, observationChange, observationChart, periodOrder, outcomeLabel, QUIET_COLUMNS, rangeText, seriesLabel, unitLabel, valueText, companyPreviewNote,
+  type CompanyRow } from "./model";
 import { PriceSparkline } from "../../../components/price-sparkline/view";
 import type { PricePoint } from "../../../types/financials";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 
-/** Columns that say nothing while every row is the company's consolidated, as-reported figure. */
-const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
-
-type Item = { id: string; row: CompanyRow } | { id: string; row: null };
+/** A locked placeholder, or with `note` the line above them saying what free shows and what Pro adds. */
+type Item = { id: string; row: CompanyRow } | { id: string; row: null; note?: string };
 const getId = (item: Item) => item.id;
+const isNote = (item: Item) => "note" in item && !!item.note;
 function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRow; sourceId: string | null; onSource: (id: string) => void; width: number }) {
   const colors = useThemeColors();
   const evidence = row.evidence.find((entry) => entry.id === sourceId) ?? row.evidence[0]!;
@@ -57,27 +59,35 @@ function DisclosureEvidence({ row, sourceId, onSource, width }: { row: CompanyRo
   </Box>;
 }
 
+/** The pane's ticker, with the venue and company a listing abroad is asked about by. */
+function useCompanyListing() {
+  const { symbol, ticker } = usePaneTickerIdentity();
+  const abroad = symbol ? listingAbroad(symbol, ticker?.metadata.exchange, ticker?.metadata.name) : null;
+  return { symbol, exchange: abroad?.exchange, name: abroad?.name, key: JSON.stringify([symbol, abroad?.exchange, abroad?.name]) };
+}
 export function CompanyKpisPane(props: PaneProps) {
-  const { symbol } = usePaneTickerIdentity();
-  return <CompanyView key={`${symbol}:kpis`} {...props} symbol={symbol} mode="kpis" />;
+  const { key, ...listing } = useCompanyListing();
+  return <CompanyView key={`${key}:kpis`} {...props} {...listing} mode="kpis" />;
 }
 export function CompanyGuidancePane(props: PaneProps) {
-  const { symbol } = usePaneTickerIdentity();
-  return <CompanyView key={`${symbol}:guidance`} {...props} symbol={symbol} mode="guidance" />;
+  const { key, ...listing } = useCompanyListing();
+  return <CompanyView key={`${key}:guidance`} {...props} {...listing} mode="guidance" />;
 }
-function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { symbol: string | null; mode: CompanyMode }) {
+function CompanyView({ symbol, exchange, name, mode, width, height, focused }: PaneProps & { symbol: string | null; exchange?: string; name?: string; mode: CompanyMode }) {
   const colors = useThemeColors();
   const host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const { createPaneFromTemplate } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
   const openUpgrade = useCloudUpgradeAction(mode === "kpis" ? "kpis" : "guide");
   const [snapshotSetting] = usePaneSettingValue<CompanyDataset | null>("companySnapshot", null);
   const snapshot = useMemo(() => { try { return snapshotSetting ? validateCompanyData(snapshotSetting) : null; } catch { return null; } }, [snapshotSetting]);
-  const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadCompanyData(mode, symbol!, accessKey, force), [mode, symbol, accessKey, snapshot]);
-  const resource = useAsyncResource(symbol ? loader : null, { initialData: () => symbol ? cachedCompanyData(mode, symbol, accessKey) : null, clearOnError: isAccessDenied });
+  const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null })
+    : loadCompanyData(mode, symbol!, accessKey, force, { exchange, name }), [mode, symbol, exchange, name, accessKey, snapshot]);
+  const resource = useAsyncResource(symbol ? loader : null, { initialData: () => symbol ? cachedCompanyData(mode, symbol, accessKey, { exchange, name }) : null, clearOnError: isAccessDenied });
   const data = resource.data?.payload;
   const kpis = data && "series" in data ? data : null;
   const guidance = data && "guidance" in data ? data : null;
@@ -124,7 +134,9 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
   const activeRow = openRow ?? selected;
   const preview = data?.access === "preview" && data.lockedRows > 0;
   const lockedCount = preview ? Math.min(3, data.lockedRows) : 0;
-  const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })), ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount]);
+  const previewNote = preview ? companyPreviewNote(data, mode === "guidance") : null;
+  const items = useMemo<Item[]>(() => [...rows.map((row) => ({ id: row.id, row })), ...(previewNote ? [{ id: "note:preview", row: null, note: previewNote }] : []),
+    ...Array.from({ length: lockedCount }, (_, index) => ({ id: `locked:${index}`, row: null }))], [rows, lockedCount, previewNote]);
   // One trend per series beside its latest value, once a series has three comparable points.
   const trends = useMemo(() => {
     const map = new Map<string, PricePoint[]>();
@@ -157,10 +169,10 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
     ...(preview ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: openUpgrade }] : []),
   ];
   usePaneMenuItems("company-disclosures:research", () => symbol ? [
-    { id: "description", label: "Description (DES)", onSelect: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol }) },
+    { id: "description", label: "Description (DES)", onSelect: () => openDescription(symbol) },
     { id: "financials", label: "Financial Analysis (FA)", onSelect: () => createPaneFromTemplate("financial-analysis-pane", { symbol }) },
     { id: "price-chart", label: "Price Chart (G)", onSelect: () => createPaneFromTemplate("chart-composer-pane", { arg: symbol }) },
-  ] : null, [symbol, createPaneFromTemplate]);
+  ] : null, [symbol, createPaneFromTemplate, openDescription]);
   usePaneStatusFooter({ registrationId: "company-kpis", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale,
     info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf.slice(0, 10)}`, tone: "muted" as const }] }] : [], hints });
   usePaneNoticeFooter({ registrationId: "company-kpis:notices", focused, notices: [resource.data?.refreshError,
@@ -175,6 +187,7 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
   const renderCell = (item: Item, column: (typeof columns)[number]): DataTableCell => {
     const row = item.row;
     if (!row) {
+      if (isNote(item)) return { text: "" };
       if (!desktop && column.id === "metric" && item.id === "locked:0") return { text: "Unlock with Pro", content: <UpgradeLabel text="Unlock with Pro" onPress={openUpgrade} />, onMouseDown: openUpgrade };
       return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === "metric" ? "Additional disclosure" : "Hidden"}</Text></Blurred> } : { text: "░░░░░", color: colors.textDim };
     }
@@ -191,12 +204,7 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
       const change = observationChange(row as KpiObservation, observations);
       return { text: changeText(change), value: change.value, color: toneColor(changeTone(row as KpiObservation, change.value), colors) };
     }
-    const text = column.id === "metric" ? row.metric.name : column.id === "period" ? fiscalLabel(row) : column.id === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
-      : column.id === "unit" ? unitLabel(row)
-      : column.id === "basis" ? basisLabel(row.basis) : column.id === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
-      : column.id === "issued" ? guide?.issuedDate ?? "--" : column.id === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : "--"
-      : column.id === "outcome" ? guide ? outcomeLabel(guide) : "--" : column.id === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
-      : column.id === "confidence" ? `${Math.round(row.confidence * 100)}%` : column.id === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
+    const text = companyCellText(row, column.id, observations);
     return { text, ...(column.id === "value" && !guide ? { value: exactObservation(row as KpiObservation) ? (row as KpiObservation).value : observationValue(row as KpiObservation) } : column.id === "actual" ? { value: guide?.actual?.value } : {}),
       color: column.id === "metric" ? colors.textBright : column.id === "value" || column.id === "actual" ? colors.textBright
         : column.id === "outcome" && guide?.actual ? guide.actual.favorable === "beat" ? colors.positive : guide.actual.favorable === "miss" ? colors.negative : colors.text
@@ -209,7 +217,8 @@ function CompanyView({ symbol, mode, width, height, focused }: PaneProps & { sym
       empty={!data && resource.error === KPI_UNAVAILABLE} emptyTitle={KPI_UNAVAILABLE} subject="company disclosures">
       {data ? <DataTableStackView<Item> focused={focused} rootWidth={width} rootHeight={bodyHeight} columns={columns} items={items} getItemKey={getId}
         selection={{ kind: "id", selectedId: selected?.id ?? null, getId, onChange: setSelected }}
-        onActivate={(item) => item.row ? setOpen(item.row.id) : openUpgrade()} renderCell={renderCell} freezeFirstColumn selectedTextOverridesCellColor showHorizontalScrollbar
+        onActivate={(item) => item.row ? setOpen(item.row.id) : isNote(item) ? undefined : openUpgrade()} renderCell={renderCell}
+        isNavigable={(item) => !isNote(item)} renderSectionHeader={(item) => "note" in item && item.note ? { text: item.note } : null} freezeFirstColumn selectedTextOverridesCellColor showHorizontalScrollbar
         detailOpen={!!openRow} onBack={() => setOpen(null)} detailTitle={openRow ? `${openRow.metric.name} · ${fiscalLabel(openRow)}` : undefined}
         detailScrollRef={detailScrollRef} detailContent={openRow ? <DetailScrollBody ref={detailScrollRef} resetScrollKey={openRow.id}><DisclosureEvidence row={openRow} sourceId={sourceId} onSource={setSource} width={width} /></DetailScrollBody> : null}
         sortColumnId={sort.column} sortDirection={sort.direction} onHeaderClick={(column) => setSort((previous) => ({ column, direction: previous.column === column && previous.direction === "desc" ? "asc" : "desc" }))}

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { renderedTextFragments } from "./dom-screenshot";
+import { ellipsized, renderedTextFragments } from "./dom-screenshot";
 
 function measuredLines(lines: { text: string; left: number; top: number }[]) {
   const value = lines.map((line) => line.text).join("");
@@ -49,4 +49,11 @@ test("range probes keep surrogate pairs intact and invisible text terminates", (
   });
   expect(result.map((fragment) => fragment.value)).toEqual(["USD 🧾 ", "evidence"]);
   expect(renderedTextFragments("hidden", () => [])).toEqual([]);
+});
+
+test("a label cut by its box ends in an ellipsis inside the box, never splitting a character", () => {
+  const monospace = (text: string) => Array.from(text).length * 8;
+  expect(ellipsized(monospace, "Dow Jones Industrial Average", 120)).toBe("Dow Jones Indu\u2026");
+  expect(ellipsized(monospace, "USD 🧾 evidence", 56)).toBe("USD 🧾 \u2026");
+  expect(ellipsized(monospace, "Nikkei", 4)).toBe("\u2026");
 });

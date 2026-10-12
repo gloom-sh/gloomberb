@@ -5,6 +5,7 @@ import type { PricePoint } from "../../../types/financials";
 import { formatPriceObservation } from "../../../market-data/market/format";
 import { cleanFloat32Price } from "../../../cli/history-rows";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
+import { FUTURES_CONTRACTS, futuresBoardContract, futuresBoardContractForTicker, type FuturesContract } from "../../../market-data/futures-board";
 
 export const COT_CLASSES: Record<CotFamily, Array<{ value: CotClass; label: string }>> = {
   legacy: [{ value: "noncommercial", label: "Noncommercial" }, { value: "commercial", label: "Commercial" }, { value: "nonreportable", label: "Nonreportable" }],
@@ -29,7 +30,7 @@ const ROOTS: Record<string, { code: string; exchange: string; priceSymbol: strin
   SOL: { code: "177741", exchange: "CME", priceSymbol: null, name: "Solana", crypto: true },
   XRP: { code: "176740", exchange: "CME", priceSymbol: null, name: "XRP", crypto: true },
 };
-/** The roots `cotContractCode` accepts, labeled "ZQ 30-Day Fed Funds". */
+/** The verified root aliases, labeled "ZQ 30-Day Fed Funds"; `cotContractCode` also takes every FUT board root the CFTC reports. */
 export const COT_ROOT_OPTIONS = Object.entries(ROOTS).map(([root, row]) => ({ value: root, label: root === row.name ? root : `${root} ${row.name}` }));
 /** The crypto roots named for a coin, which a coin pair (BTC-USD) can stand for. The micros have no pair. */
 const COIN_PAIR_ROOTS: ReadonlySet<string> = new Set(["BTC", "ETH", "SOL", "XRP"]);
@@ -37,9 +38,12 @@ const COIN_PAIR_ROOTS: ReadonlySet<string> = new Set(["BTC", "ETH", "SOL", "XRP"
  * Front-month price overlays for major markets without a root alias, each
  * checked to return five years of daily history (2026-09-24). Keyed by CFTC
  * code, never added to ROOTS: an alias would also claim the equity ticker under
- * the cursor (ZM, ZS, PL). No cash index stands in, so the dollar index has none.
- * Bitcoin and ether are in ROOTS, where `cotContractCodeForTicker` keeps the
- * same guard for their aliases.
+ * the cursor (ZM, ZS, PL). A FUT board root typed as an argument finds its
+ * market here through its price symbol (NG is NG=F, so 023651). No cash index
+ * stands in, so the dollar index has none. Orange juice and lumber were added
+ * on 2026-10-11 so their board roots open a market; lumber's contract (LBR)
+ * started in August 2022, so its price begins there. Bitcoin and ether are in
+ * ROOTS, where `cotContractCodeForTicker` keeps the same guard for their aliases.
  */
 const PRICE_OVERLAYS: Record<string, { exchange: string; priceSymbol: string }> = {
   "209742": { exchange: "CME", priceSymbol: "NQ=F" }, "239742": { exchange: "CME", priceSymbol: "RTY=F" },
@@ -60,9 +64,16 @@ const PRICE_OVERLAYS: Record<string, { exchange: string; priceSymbol: string }> 
   "007601": { exchange: "CBT", priceSymbol: "ZL=F" }, "026603": { exchange: "CBT", priceSymbol: "ZM=F" },
   "083731": { exchange: "NYB", priceSymbol: "KC=F" }, "080732": { exchange: "NYB", priceSymbol: "SB=F" },
   "033661": { exchange: "NYB", priceSymbol: "CT=F" }, "073732": { exchange: "NYB", priceSymbol: "CC=F" },
+  "040701": { exchange: "NYB", priceSymbol: "OJ=F" }, "058644": { exchange: "CME", priceSymbol: "LBR=F" },
   "057642": { exchange: "CME", priceSymbol: "LE=F" }, "054642": { exchange: "CME", priceSymbol: "HE=F" },
   "061641": { exchange: "CME", priceSymbol: "GF=F" },
 };
+/** The CFTC market a FUT board root reports under, by its price symbol; null for one the CFTC does not report (TTF). */
+function boardMarketCode(contract: FuturesContract): string | null {
+  return Object.values(ROOTS).find((row) => row.priceSymbol === contract.symbol)?.code
+    ?? Object.entries(PRICE_OVERLAYS).find(([, row]) => row.priceSymbol === contract.symbol)?.[0]
+    ?? null;
+}
 /**
  * The markets most readers mean by "positioning", verified against the live
  * CFTC boards on 2026-09-22. A code missing from a report family simply does
@@ -90,14 +101,26 @@ export const COT_SCOPES = [{ value: "major", label: "Major markets" }, { value: 
 export type CotScope = typeof COT_SCOPES[number]["value"];
 export function cotScope(value: unknown): CotScope { return value === "all" ? "all" : "major"; }
 
-/** A CFTC code or root typed as an argument or stored in a pane: every alias, crypto included. */
+const rootAlias = (input: string) => ROOTS[input === "VIX" ? "VX" : input]?.code ?? null;
+const marketCode = (input: string) => /^[0-9A-Z]{5}[0-9A-Z+]$/.test(input) ? input : null;
+/**
+ * A CFTC code or root typed as an argument or stored in a pane: every alias,
+ * crypto included, and every FUT board root the CFTC reports. A typed root is
+ * always the future, so ZM here is soybean meal, never Zoom.
+ */
 export function cotContractCode(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const input = value.trim().toUpperCase().replace(/=F$/, "");
-  return ROOTS[input === "VIX" ? "VX" : input]?.code ?? (/^[0-9A-Z]{5}[0-9A-Z+]$/.test(input) ? input : null);
+  const board = futuresBoardContract(value);
+  return rootAlias(input) ?? (board ? boardMarketCode(board) : null) ?? marketCode(input);
 }
-/** What a market that is neither a root nor a CFTC code is told, with ones that work. */
+/**
+ * What a market `cotContractCode` does not know is told: a FUT board root the
+ * CFTC does not report says so; anything else gets roots and a code that work.
+ */
 export function cotUnknownMarketMessage(value: unknown): string {
+  const board = futuresBoardContract(value);
+  if (board) return `${board.code} (${board.name}) is not reported in the CFTC COT.`;
   const roots = ["ES", "CL", "GC", "ZN"].filter((root) => ROOTS[root]);
   return `Unknown market "${String(value)}". Try ${roots.join(", ")} or a CFTC market code such as ${ROOTS.GC!.code}.`;
 }
@@ -106,18 +129,24 @@ export function cotUnknownMarketMessage(value: unknown): string {
  * argument. The crypto aliases are also US ticker symbols (Grayscale's mini
  * trusts are BTC and ETH, MetLife is MET), so a bare one is the equity's and
  * never claims the market: only a futures symbol (BTC=F) or a coin pair
- * (BTC-USD) does.
+ * (BTC-USD) does. A FUT board root claims it the same way: as its futures
+ * symbol (NG=F) or a code no security uses (ZW), never a bare code a security
+ * keeps (ZM is Zoom).
  */
 export function cotContractCodeForTicker(ticker: unknown): string | null {
   if (typeof ticker !== "string") return null;
   const coin = cryptoPairCoin(ticker);
   if (coin) return COIN_PAIR_ROOTS.has(coin) ? ROOTS[coin]!.code : null;
   const input = ticker.trim().toUpperCase().replace(/=F$/, "");
-  return ROOTS[input]?.crypto && !isFuturesSymbol(ticker) ? null : cotContractCode(ticker);
+  if (ROOTS[input]?.crypto && !isFuturesSymbol(ticker)) return null;
+  const board = futuresBoardContractForTicker(ticker);
+  return rootAlias(input) ?? (board ? boardMarketCode(board) : null) ?? marketCode(input);
 }
-/** The verified futures root a CFTC code belongs to, for titles readers recognize. */
+/** The futures root a CFTC code belongs to, for titles readers recognize: a verified alias, else its FUT board root. */
 export function cotRoot(code: string): string | null {
-  return Object.entries(ROOTS).find(([, row]) => row.code === code)?.[0] ?? null;
+  return Object.entries(ROOTS).find(([, row]) => row.code === code)?.[0]
+    ?? FUTURES_CONTRACTS.find((contract) => boardMarketCode(contract) === code)?.code
+    ?? null;
 }
 export function cotPriceMapping(code: string) { return Object.values(ROOTS).find((row) => row.code === code) ?? PRICE_OVERLAYS[code] ?? null; }
 export function cotClass(family: CotFamily, value: unknown): CotClass {

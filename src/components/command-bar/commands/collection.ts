@@ -20,6 +20,8 @@ import {
 } from "../helpers";
 import type { CommandBarRoute } from "../workflow/types";
 import { AmbiguousCollectionTickerError, resolveCollectionTicker } from "../workflow/collection-ticker";
+import { describeTickerChange, startTickerChangeLookup, tickerChangeLine } from "../../../tickers/ticker-changes";
+import { addPastedListToWatchlist, pastedSymbolList } from "./collection-list";
 
 type WorkflowDeps = Parameters<typeof resolveTickerInput>[3];
 
@@ -37,13 +39,28 @@ export async function executeCollectionCommandAction(options: {
   /** Join the named collection without the position form. */
   directMembership?: boolean;
   pushRoute: (route: CommandBarRoute) => void;
-  notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
+  notify: (body: string, options?: { type?: "info" | "success" | "error"; duration?: number }) => void;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
 }): Promise<void> {
   const stateForCommand = options.getState();
   const kind = getCollectionCommandKind(options.commandId);
   const action = getCollectionCommandAction(options.commandId);
   const deps = options.buildWorkflowDeps();
+  // AW takes a pasted list: every symbol that resolves joins the watchlist, and the others are named.
+  const list = options.commandId === "add-watchlist" && !options.selectedTicker ? pastedSymbolList(options.rawInput) : null;
+  const addList = (found: NonNullable<typeof list>) => addPastedListToWatchlist({
+    commandId: options.commandId,
+    rawInput: options.rawInput ?? "",
+    list: found,
+    explicitTargetId: options.explicitTargetId,
+    activeCollectionId: options.activeCollectionId,
+    getState: options.getState,
+    buildWorkflowDeps: options.buildWorkflowDeps,
+    pushRoute: options.pushRoute,
+    notify: options.notify,
+    closeAll: options.closeAll,
+  });
+  if (list?.separated && await addList(list)) return;
   const resolvedInput = options.selectedTicker
     ? { symbol: options.selectedTicker.metadata.ticker, ticker: options.selectedTicker }
     : await resolveTickerInput(
@@ -54,6 +71,8 @@ export async function executeCollectionCommandAction(options: {
     );
 
   if (!resolvedInput) {
+    // Spaces alone may be a company's name; addList says when it is not a list.
+    if (list && !list.separated && await addList(list)) return;
     options.openModeRoute("ticker-search", options.rawInput?.trim() || "", {
       action: "collection-command",
       commandId: options.commandId,
@@ -221,6 +240,7 @@ export async function executeCollectionCommandAction(options: {
       `${action === "add" ? "Added" : "Removed"} ${resolvedTicker.symbol} ${action === "add" ? "to" : "from"} "${targetName}".`,
       { type: "success" },
     );
+    if (action === "add") notifyTickerChange(deps.dataProvider, resolvedTicker.ticker, options.notify);
   } else {
     options.notify(
       action === "add"
@@ -230,4 +250,23 @@ export async function executeCollectionCommandAction(options: {
     );
   }
   options.closeAll({ revertThemePreview: false });
+}
+
+/** How long an added symbol's change lookup may take before its toast is dropped. */
+const CHANGE_TOAST_WAIT_MS = 3_000;
+
+/**
+ * The added symbol's change (FB is now META) as its own toast, as `watchlist
+ * add` prints it, once the lookup answers. Nothing waits on it.
+ */
+function notifyTickerChange(
+  dataProvider: WorkflowDeps["dataProvider"],
+  ticker: TickerRecord,
+  notify: (body: string, options?: { type?: "info" }) => void,
+): void {
+  const { ticker: symbol, exchange, name } = ticker.metadata;
+  void startTickerChangeLookup(dataProvider, symbol, exchange).settle(CHANGE_TOAST_WAIT_MS).then((payload) => {
+    const line = tickerChangeLine(describeTickerChange(symbol, payload, { name }));
+    if (line) notify(line, { type: "info" });
+  });
 }

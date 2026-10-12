@@ -86,6 +86,12 @@ export interface RootResultModelOptions {
    * user is aiming at, and only ever adds to what the bar already resolved.
    */
   providerResultItems?: ResultItem[];
+  /**
+   * Rows from providers that answer from memory, built with the keystroke. The
+   * empty bar shows them under Suggested; typed text ranks them as one block
+   * among the local matches, at the place of their best row.
+   */
+  providerMatchItems?: ResultItem[];
   runDirectCommand: (command: Command, arg: string) => void;
   runSecurityDescriptionShortcut: (query?: string) => void | Promise<void>;
   state: AppState;
@@ -132,6 +138,32 @@ function buildBindKeyItem(
     defaultSelectable: false,
     action: () => bindKey(query),
   };
+}
+
+/**
+ * Ranks a provider's in-memory rows with the local matches without reordering
+ * them: the provider decided which rows answer and in what order, so the block
+ * moves as one to where its best row would rank. A block none of whose rows
+ * the bar's own matching finds still shows, after the local matches.
+ */
+function rankMatchBlock(
+  localItems: ResultItem[],
+  blockItems: ResultItem[],
+  query: string,
+): ResultItem[] {
+  if (blockItems.length === 0) {
+    return fuzzyFilter(localItems, query, rootItemSearchText, (item) => item.label);
+  }
+  const block = new Set(blockItems);
+  const ranked = fuzzyFilter([...localItems, ...blockItems], query, rootItemSearchText, (item) => item.label);
+  const firstBlockIndex = ranked.findIndex((item) => block.has(item));
+  const local = ranked.filter((item) => !block.has(item));
+  if (firstBlockIndex < 0) return [...local, ...blockItems];
+  return [...local.slice(0, firstBlockIndex), ...blockItems, ...local.slice(firstBlockIndex)];
+}
+
+function rootItemSearchText(item: ResultItem): string {
+  return `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`;
 }
 
 /** Kept short: the empty bar is still a browse list of everything below. */
@@ -211,6 +243,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     rootQuery,
     rootShortcutIntent,
     providerResultItems = [],
+    providerMatchItems = [],
     runDirectCommand,
     runSecurityDescriptionShortcut,
     state,
@@ -316,6 +349,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
         recentTickers: state.recentTickers ?? [],
       }));
     }
+    items.push(...providerMatchItems);
     items.push(...paneShortcutItems());
     for (const command of availableCommands) {
       const item = commandToItem(command);
@@ -336,13 +370,7 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
       ...tickerActionItems(),
       ...pluginCommandItems(),
     ];
-    const matchedItems = fuzzyFilter(
-      allItems,
-      rootQuery,
-      (item) => `${item.label} ${item.searchText || ""} ${item.detail} ${item.right || ""}`,
-      (item) => item.label,
-    );
-    items.push(...matchedItems);
+    items.push(...rankMatchBlock(allItems, providerMatchItems, rootQuery));
   }
 
   const shortcutClaimedQuery = rootShortcutIntent.kind !== "none";
@@ -356,10 +384,12 @@ export function buildRootResultModel(options: RootResultModelOptions): RootResul
     items.push(buildBindKeyItem(rootShortcutIntent, bindKey));
   }
   // A resolved prefix means the user is speaking the command language, so
-  // free-text providers stay out of the way.
-  if (!shortcutClaimedQuery) {
-    items.push(...providerResultItems);
+  // only providers that asked to answer after that code add rows, below the
+  // code's own.
+  if (shortcutClaimedQuery) {
+    items.push(...providerMatchItems);
   }
+  items.push(...providerResultItems);
 
   // Built from the local matches, then placed above them: the AI turns the
   // typed sentence into commands, so its answer leads the list. Its Thinking

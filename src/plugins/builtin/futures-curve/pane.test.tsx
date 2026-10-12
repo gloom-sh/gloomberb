@@ -144,6 +144,23 @@ test("a short pane keeps the contracts and shrinks the curve to a strip, then dr
   expect(lines.join("\n")).toContain("ESZ26");
 });
 
+test("Dutch TTF gas reads in euros per MWh on the chart caption, the footer and the contract rows, with no dollar sign", async () => {
+  const months = ["X26", "Z26", "F27", "K27"];
+  const contracts = CONTRACTS.slice(0, months.length).map((row, index) => ({ ...row, symbol: `TTF${months[index]}.NYM`, currency: "EUR", quoteUnit: "EUR",
+    price: 81.434 - index * 0.088, settlement: 81.434 - index * 0.088, change: 2.585 }));
+  spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => ({ ...payload(contracts), root: "TTF", name: "Dutch TTF Natural Gas",
+    currency: "EUR", quoteUnit: "EUR", spec: null, settlementDate: "2026-09-22" }));
+  const curve = (await render(120, 30, "curve", { root: "TTF" })).join("\n");
+  expect(curve).toContain("EUR / MWh by contract month");
+  expect(curve).toContain("10m delayed · EUR / MWh");
+  expect(curve).toContain("TTFX26.NYM");
+  expect(curve).toMatch(/81\.434\s+81\.434/);
+  expect(curve).not.toMatch(/USD|\$/);
+  const table = (await render(120, 30, "contracts", { root: "TTF" })).join("\n");
+  expect(table).toMatch(/TTFZ26\.NYM.*81\.346\s+81\.346\s+\+2\.585/);
+  expect(table).not.toMatch(/USD|\$/);
+});
+
 describe("crypto basis against spot", () => {
   // Expiries sit a fixed number of days from the spot's UTC date, so the cells never depend on the date the suite runs.
   const NOW = Date.now();

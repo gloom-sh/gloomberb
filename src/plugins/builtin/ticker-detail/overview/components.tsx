@@ -7,7 +7,7 @@ import type { Quote } from "../../../../types/financials";
 import { Box, Text } from "../../../../ui";
 import { displayWidth, formatNumber, padTo, truncateToDisplayWidth } from "../../../../utils/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
-import { portfolioPnlLabel } from "../../portfolio-list/position-metrics";
+import { portfolioPnlLabel } from "../../../../portfolio/position-metrics";
 
 const STAT_COLUMN_GAP = 2;
 const STAT_LABEL_WIDTH = 12;

@@ -107,6 +107,7 @@ function outputSeries(
       && (options.unitGroup ?? input.unitGroup) === input.unitGroup ? input.priceAssetCategory : undefined,
     nativeFrequency: options.nativeFrequency ?? input.nativeFrequency,
     ...(historyResolution !== undefined ? { historyResolution } : {}),
+    ...(input.historyStart && historyResolution === input.historyResolution ? { historyStart: input.historyStart } : {}),
     dataShape: "scalar",
     style: options.style ?? "line",
     transform: "raw",

@@ -82,7 +82,7 @@ export function useChatContentShortcuts({
   profilePopoverOpen: boolean;
   replyTo: ChatMessage | null;
   requestOlderMessages: () => void;
-  requestOlderMessagesIfNeeded: () => void;
+  requestOlderMessagesIfNeeded: (options?: { firstIsSelected?: boolean }) => void;
   returnToComposer: () => void;
   /** Sends a failed message again. */
   retryMessage: (index: number) => void;
@@ -311,7 +311,7 @@ export function useChatContentShortcuts({
       setSelectedIdx(0);
       setFollowMessages(false);
       scrollRef.current?.scrollTo(0);
-      queueMicrotask(requestOlderMessagesIfNeeded);
+      queueMicrotask(() => requestOlderMessagesIfNeeded({ firstIsSelected: true }));
       return;
     }
     if (event.name === "g" && event.shift && !event.ctrl && !event.meta && !event.super && !event.alt) {

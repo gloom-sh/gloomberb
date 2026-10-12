@@ -10,6 +10,7 @@ import {
   isPaneInLayout,
 } from "../../layout/pane-manager";
 import type { PluginRegistry } from "../../plugins/registry";
+import { PluginOffError, notifyPluginOff } from "../../plugins/plugin-off";
 import type { LoadedExternalPlugin } from "../../plugins/loader";
 import {
   getFocusedCollectionId,
@@ -215,6 +216,12 @@ export function useAppPaneRuntime({
     const target = resolvePaneShowTarget(state.config.layout, paneId);
     const paneDef = pluginRegistry.panes.get(target.paneType);
     if (!paneDef) return;
+    // Its pane would be added, or focused, hidden.
+    const owner = pluginRegistry.getDisabledPaneOwner(target.paneType, stateRef.current.config.disabledPlugins);
+    if (owner) {
+      notifyPluginOff(pluginRegistry, new PluginOffError(owner, paneDef.name), () => pluginRegistry.showPane(paneId));
+      return;
+    }
 
     if (target.paneType === TICKER_RESEARCH_PANE_ID) {
       showTickerResearchPane();
@@ -241,6 +248,7 @@ export function useAppPaneRuntime({
     pluginRegistry,
     showTickerResearchPane,
     state.config.layout,
+    stateRef,
   ]);
 
   const { createPaneFromTemplate } = useAppPaneTemplateRuntime({

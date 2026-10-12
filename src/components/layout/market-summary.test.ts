@@ -1,6 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
-import { resolveMarketSummaryFit } from "./market-summary";
+import { resolveMarketSummaryFit, spySummary } from "./market-summary";
+import { getExtendedSessionDisplay, getRegularSessionDisplay } from "../../market-data/market/status";
+import { colors } from "../../theme/colors";
+import type { Quote } from "../../types/financials";
+import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
+import { formatPercentRaw } from "../../utils/format";
 
 /** "PRE-MKT · 1h 17m  SPY 762.43 -0.60%  USD", each part with its trailing gap. */
 const CLUSTER = {
@@ -77,5 +82,25 @@ describe("header market cluster", () => {
       showSpy: true,
       showState: false,
     });
+  });
+});
+
+describe("header SPY", () => {
+  const spy = sessionQuotes("SPY");
+  const text = (quote: Quote) => spySummary(quote, colors).spyText;
+
+  test("holds the regular close and its move once the market is closed, as `ticker SPY` headlines them", () => {
+    const close = getRegularSessionDisplay(spy.weekend)!;
+    expect(text(spy.weekend)).toBe(`SPY 198.78 ${formatPercentRaw(close.changePercent)}`);
+    expect(text(spy.regular)).toBe("SPY 199.10 +0.67%");
+  });
+
+  test("shows the open extended session's print and its move from the close beside AFTER-HRS or PRE-MKT", () => {
+    for (const quote of [spy.afterHours, spy.preMarket]) {
+      const extended = getExtendedSessionDisplay(quote)!;
+      expect(text(quote)).toBe(`SPY ${extended.price.toFixed(2)} ${formatPercentRaw(extended.changePercent).padStart(6)}`);
+    }
+    expect(text(spy.afterHours)).toBe("SPY 198.80 +0.01%");
+    expect(text(spy.preMarket)).toBe("SPY 199.50 +0.36%");
   });
 });

@@ -11,6 +11,8 @@ type RemoteUiAction = (input?: unknown) => unknown | Promise<unknown>;
 
 export interface RemoteUiNodeRegistration {
   role: string;
+  /** The pane instance the node is drawn in, set from RemoteUiPaneScope. */
+  paneId?: string;
   label?: string;
   disabled?: boolean;
   actions?: Record<string, RemoteUiAction | undefined>;
@@ -56,6 +58,7 @@ export function createRemoteUiRegistry(): RemoteUiRegistry {
             .map(([action]) => action)
             .sort(),
           metadata: registration.getMetadata?.() ?? registration.metadata,
+          ...(registration.paneId ? { paneId: registration.paneId } : {}),
         };
       });
     },
@@ -110,6 +113,13 @@ export function useRemoteUiScope(): string | null {
   return useContext(RemoteUiScopeContext);
 }
 
+const RemoteUiPaneContext = createContext<string | null>(null);
+
+/** Tags the nodes drawn below with the pane instance they belong to. */
+export function RemoteUiPaneScope({ paneId, children }: { paneId: string; children: ReactNode }) {
+  return <RemoteUiPaneContext value={paneId}>{children}</RemoteUiPaneContext>;
+}
+
 let nextRemoteNodeSequence = 0;
 
 /**
@@ -120,9 +130,12 @@ let nextRemoteNodeSequence = 0;
  */
 export function useRemoteUiNode(registration: RemoteUiNodeRegistration | null | undefined): string | null {
   const registry = useRemoteUiRegistry();
+  const paneId = useContext(RemoteUiPaneContext);
   const nodeIdRef = useRef<string | null>(null);
   const registrationRef = useRef(registration);
   registrationRef.current = registration;
+  const paneIdRef = useRef(paneId);
+  paneIdRef.current = paneId;
   const dynamicRegistrationRef = useRef<RemoteUiNodeRegistration | null>(null);
   const registered = registration != null;
   if (registered && !nodeIdRef.current) {
@@ -130,6 +143,7 @@ export function useRemoteUiNode(registration: RemoteUiNodeRegistration | null | 
     nodeIdRef.current = `ui:${nextRemoteNodeSequence.toString(36)}`;
     dynamicRegistrationRef.current = {
       get role() { return registrationRef.current?.role ?? "unknown"; },
+      get paneId() { return registrationRef.current?.paneId ?? paneIdRef.current ?? undefined; },
       get label() { return registrationRef.current?.label; },
       get disabled() { return registrationRef.current?.disabled; },
       get actions() { return registrationRef.current?.actions; },

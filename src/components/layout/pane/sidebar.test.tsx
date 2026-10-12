@@ -146,7 +146,7 @@ test("dragging the terminal divider reports a clamped width and commits once", a
 describe("desktop pane sidebar", () => {
   const { render, window: testWindow } = createDomTestHarness({ capabilities: { nativePaneChrome: true } });
 
-  test("the divider handle straddles the line so the pointer can grab it", async () => {
+  test("dragging the divider sizes the sidebar's box as the pointer moves and reports the width when it is let go", async () => {
     const widths: number[] = [];
     const committed: number[] = [];
     const container = await render(
@@ -162,8 +162,10 @@ describe("desktop pane sidebar", () => {
       </PaneSidebar>,
     );
 
+    // The handle straddles the 1px line so the pointer can grab it.
     const handle = container.querySelector('[style*="col-resize"]') as HTMLElement;
     expect(handle).toBeTruthy();
+    const sidebar = container.querySelector('[data-gloom-role="pane-sidebar"]') as HTMLElement;
 
     const mouse = (type: string, target: { dispatchEvent: (event: unknown) => unknown }, cells: number) => {
       target.dispatchEvent(new MouseEvent(type, {
@@ -176,13 +178,18 @@ describe("desktop pane sidebar", () => {
     };
     await act(async () => mouse("mousedown", handle, 20));
     await act(async () => {
-      mouse("mousemove", testWindow.document as never, 24);
+      mouse("mousemove", testWindow.document as never, 24.5);
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
-    await act(async () => mouse("mouseup", testWindow.document as never, 24));
+    // The box follows the pointer to the pixel, before the content renders at it.
+    expect(sidebar.style.width).toBe(`${24.5 * WEB_CELL_WIDTH}px`);
+    expect(widths).toEqual([]);
+    await act(async () => mouse("mouseup", testWindow.document as never, 24.5));
 
-    expect(widths.at(-1)).toBe(24);
-    expect(committed).toEqual([24]);
+    expect(committed).toEqual([25]);
+    expect(widths).toEqual([]);
+    // Handed back to React, which draws the width the caller now gives it.
+    expect(sidebar.style.width).toBe(`${20 * WEB_CELL_WIDTH}px`);
   });
 
   test("the list scrolls inside the sidebar instead of clipping", async () => {

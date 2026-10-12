@@ -4,22 +4,28 @@ import {
   type ASKGToolResultOutcome,
   type ASKGTransport,
 } from "../../../../api-client/askg";
-import type { ASKGToolExecutor } from "./executor";
+import { toolCallRemainingMs, type ASKGToolExecutor, type ASKGToolPreview } from "./executor";
 import {
   activeTurn,
   askgReducer,
+  canRateTurn,
   EMPTY_ASKG_CONVERSATION,
   isTurnRunning,
+  NOT_APPROVED_IN_TIME_NOTE,
   requiresLocalConfirmation,
   type ASKGAction,
   type ASKGConversationState,
   type ASKGErrorState,
+  type ASKGTurnFeedback,
 } from "./model";
 import {
   ASKG_CLIENT_CAPABILITIES,
   ASKG_PROTOCOL_VERSION,
   type ASKGCapabilities,
   type ASKGClientDescriptor,
+  type ASKGFeedbackRating,
+  type ASKGFeedbackReason,
+  type ASKGFeedbackRequest,
   type ASKGSessionContext,
   type ASKGSessionStartResponse,
   type ASKGSseEvent,
@@ -37,6 +43,18 @@ const MAX_HISTORY_TURNS = 8;
 const DEFAULT_TURN_WALL_CLOCK_MS = 120_000;
 /** Sessions are renegotiated a little before they expire. */
 const SESSION_EXPIRY_GRACE_MS = 5_000;
+/**
+ * A confirmation prompt closes this long before the server stops waiting for
+ * its call, so an approval still leaves time for the write and its result.
+ */
+export const CONFIRMATION_CLOSE_MARGIN_MS = 2_000;
+
+/**
+ * How a confirmation prompt ended. `expired` is this app's own deadline for
+ * the call; `abandoned` is the turn giving up on it (the call timed out on the
+ * server, the turn ended, was cancelled or lost its stream).
+ */
+type ConfirmationAnswer = "approved" | "declined" | "expired" | "abandoned";
 
 export interface ASKGControllerManifest {
   tools: ClientToolManifest[];
@@ -104,6 +122,16 @@ function turnCapabilities(session: ASKGSessionStartResponse): ASKGCapabilities |
   return session.capabilities?.scripts === 1 ? { scripts: 1 } : null;
 }
 
+/**
+ * Refusals that say ratings cannot work from here at all: signed out, no plan
+ * that reaches Ask Gloom, or a protocol this build does not speak. The control
+ * goes away rather than failing on every click.
+ */
+function feedbackUnavailable(error: unknown): boolean {
+  return error instanceof ASKGTransportError
+    && (error.code === "unauthorized" || error.code === "tier_required" || error.code === "protocol");
+}
+
 function errorState(error: unknown): ASKGErrorState {
   if (error instanceof ASKGTransportError) {
     return {
@@ -131,11 +159,13 @@ export class ASKGSessionController {
   private session: ASKGSessionStartResponse | null = null;
   private sessionRequest: Promise<ASKGSessionStartResponse> | null = null;
   private manifest: ASKGControllerManifest | null = null;
-  private readonly confirmations = new Map<string, (approved: boolean) => void>();
-  /** Calls whose turn ended while they were still waiting to be approved. */
-  private readonly abandonedCalls = new Set<string>();
+  private readonly confirmations = new Map<string, (answer: ConfirmationAnswer) => void>();
   private readonly toolTasks = new Set<Promise<void>>();
   private turnAbort: AbortController | null = null;
+  /** Ratings of one answer go out in the order they were made. */
+  private readonly feedbackQueues = new Map<string, Promise<void>>();
+  /** The latest rating request per answer; an older answer never wins. */
+  private readonly feedbackVersions = new Map<string, number>();
   private disposed = false;
   private readonly now: () => number;
   private readonly createId: () => string;
@@ -188,6 +218,7 @@ export class ASKGSessionController {
         model: session.model,
         limits: session.limits,
         acceptedTools: session.acceptedTools,
+        feedback: session.capabilities?.feedback === 1,
       });
       return session;
     })();
@@ -266,6 +297,8 @@ export class ASKGSessionController {
         signal: abort.signal,
         onEvent: (event) => this.handleEvent(event),
       });
+      // The stream is over, so no approval can reach this turn any more.
+      this.abandonPendingConfirmations();
       // Tool calls delivered late in the stream may still be running.
       await Promise.allSettled([...this.toolTasks]);
     } catch (error) {
@@ -311,14 +344,14 @@ export class ASKGSessionController {
   }
 
   /**
-   * Asks a failed question again. The failed turn is dropped rather than kept
-   * above the retry, so a transcript reads as the conversation the user had
-   * rather than as a list of attempts.
+   * Asks a failed or stopped question again. The attempt is dropped rather
+   * than kept above the retry, so a transcript reads as the conversation the
+   * user had rather than as a list of attempts.
    */
   async retryTurn(turnId: string): Promise<void> {
     if (this.disposed || isTurnRunning(this.state)) return;
     const turn = this.state.turns.find((entry) => entry.id === turnId);
-    if (!turn || turn.status !== "error") return;
+    if (!turn || (turn.status !== "error" && turn.status !== "cancelled")) return;
     this.dispatch({ type: "drop-turn", turnId });
     await this.ask(turn.prompt);
   }
@@ -328,6 +361,13 @@ export class ASKGSessionController {
     if (event.type === "done") {
       // Nothing is worth approving once the turn is over.
       this.abandonPendingConfirmations();
+      return;
+    }
+    // The server reports a delegated call it gave up on (timed out, or its
+    // script ended) like one it got a result for. A prompt still open for it
+    // closes: an approval could no longer reach the turn.
+    if (event.type === "tool-executed") {
+      this.settleConfirmation(event.toolCallId, "abandoned");
       return;
     }
     if (event.type !== "tool-call") return;
@@ -364,12 +404,43 @@ export class ASKGSessionController {
 
     try {
       let confirmed = false;
+      let confirmedChange: string | undefined;
       if (requiresLocalConfirmation(call)) {
-        this.dispatch({ type: "tool-awaiting-confirmation", toolCallId: call.toolCallId });
-        confirmed = await new Promise<boolean>((resolve) => {
-          this.confirmations.set(call.toolCallId, resolve);
-        });
-        if (this.abandonedCalls.delete(call.toolCallId)) return;
+        const preview = await this.previewCall(call, signal);
+        // The turn ended or moved on while the app looked.
+        if (signal?.aborted || this.toolRowStatus(call.toolCallId) !== "pending") return;
+        if (preview?.kind === "refusal") {
+          await this.deliver(failure(preview.message));
+          return;
+        }
+        if (preview?.kind === "change") confirmedChange = preview.confirmKey;
+        // Nothing to approve: the operation re-checks and asks in the app itself if that changed.
+        if (preview?.kind === "no-change") {
+          confirmed = true;
+        } else {
+          this.dispatch({
+            type: "tool-awaiting-confirmation",
+            toolCallId: call.toolCallId,
+            ...(preview?.kind === "change" ? { preview: preview.summary } : {}),
+          });
+          const answer = await this.awaitConfirmation(
+            call.toolCallId,
+            startedAt + toolCallRemainingMs(call, startedAt),
+          );
+          if (answer === "abandoned") return;
+          if (answer === "expired") {
+            await this.deliver({
+              turnId: call.turnId,
+              toolCallId: call.toolCallId,
+              status: "timeout",
+              truncated: false,
+              elapsedMs: Math.max(0, this.now() - startedAt),
+              note: NOT_APPROVED_IN_TIME_NOTE,
+            });
+            return;
+          }
+          confirmed = answer === "approved";
+        }
         if (!confirmed) {
           await this.deliver({
             turnId: call.turnId,
@@ -393,6 +464,7 @@ export class ASKGSessionController {
       }
       const payload = await executor.execute(call, {
         confirmed: confirmed || !requiresLocalConfirmation(call),
+        ...(confirmedChange ? { confirmedChange } : {}),
         ...(signal ? { signal } : {}),
       });
       await this.deliver(payload);
@@ -403,6 +475,28 @@ export class ASKGSessionController {
     } finally {
       this.confirmations.delete(call.toolCallId);
     }
+  }
+
+  /**
+   * The operation's own account of a call that needs approval, when it has
+   * one. Null keeps the server's description.
+   */
+  private async previewCall(call: ASKGToolCallEvent, signal?: AbortSignal): Promise<ASKGToolPreview | null> {
+    try {
+      const manifest = this.manifest ?? await this.options.loadManifest();
+      this.manifest = manifest;
+      return await this.options.getExecutor(manifest)?.preview?.(call, signal) ?? null;
+    } catch {
+      return null;
+    }
+  }
+
+  private toolRowStatus(toolCallId: string): string | undefined {
+    for (const turn of this.state.turns) {
+      const row = turn.tools.find((entry) => entry.toolCallId === toolCallId);
+      if (row) return row.status;
+    }
+    return undefined;
   }
 
   /** Records a tool result locally, then posts it to the turn loop. */
@@ -424,25 +518,131 @@ export class ASKGSessionController {
     }
   }
 
-  /** Answers a `user-data` or `broker` confirmation prompt. */
-  resolveConfirmation(toolCallId: string, approved: boolean): void {
+  /**
+   * Waits for the person's answer to one call. The prompt closes on its own
+   * a little before the server stops waiting (`deadlineAt`, by this clock),
+   * so an approval always has time to land; an older server that waits less
+   * than the call declared says so in the frame, and is honoured the same way.
+   */
+  private awaitConfirmation(toolCallId: string, deadlineAt: number): Promise<ConfirmationAnswer> {
+    return new Promise<ConfirmationAnswer>((resolve) => {
+      const timer = setTimeout(
+        () => this.settleConfirmation(toolCallId, "expired"),
+        Math.max(0, deadlineAt - CONFIRMATION_CLOSE_MARGIN_MS - this.now()),
+      );
+      this.confirmations.set(toolCallId, (answer) => {
+        clearTimeout(timer);
+        resolve(answer);
+      });
+    });
+  }
+
+  /** Ends one prompt. Only the first answer counts; a later one does nothing. */
+  private settleConfirmation(toolCallId: string, answer: ConfirmationAnswer): void {
     const resolve = this.confirmations.get(toolCallId);
     if (!resolve) return;
     this.confirmations.delete(toolCallId);
-    resolve(approved);
+    resolve(answer);
   }
 
-  private rejectPendingConfirmations(): void {
-    for (const [toolCallId, resolve] of [...this.confirmations]) {
-      this.confirmations.delete(toolCallId);
-      resolve(false);
-    }
+  /** Answers a `user-data` or `broker` confirmation prompt. */
+  resolveConfirmation(toolCallId: string, approved: boolean): void {
+    this.settleConfirmation(toolCallId, approved ? "approved" : "declined");
   }
 
   /** Drops confirmations whose answer can no longer reach the turn. */
   private abandonPendingConfirmations(): void {
-    for (const toolCallId of this.confirmations.keys()) this.abandonedCalls.add(toolCallId);
-    this.rejectPendingConfirmations();
+    for (const toolCallId of [...this.confirmations.keys()]) {
+      this.settleConfirmation(toolCallId, "abandoned");
+    }
+  }
+
+  /**
+   * Rates one answer. The control shows the choice at once; a refusal puts the
+   * previous one back without a word, because a rating is not worth an error.
+   * A thumbs down keeps the reason it already had, a thumbs up drops it.
+   */
+  rateAnswer(turnId: string, rating: ASKGFeedbackRating): Promise<void> {
+    const current = this.state.turns.find((turn) => turn.id === turnId)?.feedback;
+    const reason = rating === "down" && current?.rating === "down" ? current.reason : null;
+    return this.sendFeedback(turnId, { rating, reason }, {
+      rating,
+      reason,
+      shared: current?.shared ?? false,
+      pending: "rating",
+    });
+  }
+
+  /** Says why an answer got a thumbs down. */
+  chooseFeedbackReason(turnId: string, reason: ASKGFeedbackReason): Promise<void> {
+    const current = this.state.turns.find((turn) => turn.id === turnId)?.feedback;
+    return this.sendFeedback(turnId, { rating: "down", reason }, {
+      rating: "down",
+      reason,
+      shared: current?.shared ?? false,
+      pending: "rating",
+    });
+  }
+
+  /**
+   * Sends one answer to Gloom with its rating. Only the consent travels: the
+   * platform copies the question, the answer and which tools ran from its own
+   * transcript, so nothing else on this machine can go with it.
+   */
+  shareAnswer(turnId: string): Promise<void> {
+    const current = this.state.turns.find((turn) => turn.id === turnId)?.feedback;
+    if (!current?.rating || current.shared) return Promise.resolve();
+    return this.sendFeedback(
+      turnId,
+      { rating: current.rating, reason: current.reason, share: true },
+      { rating: current.rating, reason: current.reason, shared: false, pending: "share" },
+    );
+  }
+
+  private sendFeedback(
+    turnId: string,
+    request: ASKGFeedbackRequest,
+    optimistic: ASKGTurnFeedback,
+  ): Promise<void> {
+    const turn = this.state.turns.find((entry) => entry.id === turnId);
+    if (this.disposed || !turn || !canRateTurn(this.state, turn) || !turn.remoteTurnId) {
+      return Promise.resolve();
+    }
+    const remoteTurnId = turn.remoteTurnId;
+    const previous = turn.feedback ? { ...turn.feedback, pending: null } : null;
+    const version = (this.feedbackVersions.get(turnId) ?? 0) + 1;
+    this.feedbackVersions.set(turnId, version);
+    this.dispatch({ type: "feedback", turnId, feedback: optimistic });
+
+    const send = async () => {
+      const latest = () => this.feedbackVersions.get(turnId) === version;
+      try {
+        const stored = await this.options.transport.sendFeedback(remoteTurnId, request);
+        if (!latest()) return;
+        if (!stored) {
+          // No answer of this person's under that id: nothing here can rate it.
+          this.dispatch({ type: "feedback", turnId, feedback: previous });
+          this.dispatch({ type: "feedback-unavailable" });
+          return;
+        }
+        this.dispatch({
+          type: "feedback",
+          turnId,
+          feedback: {
+            ...stored,
+            pending: null,
+            ...(request.share && !stored.shared ? { shareFailed: true } : {}),
+          },
+        });
+      } catch (error) {
+        if (!latest()) return;
+        this.dispatch({ type: "feedback", turnId, feedback: previous });
+        if (feedbackUnavailable(error)) this.dispatch({ type: "feedback-unavailable" });
+      }
+    };
+    const queued = (this.feedbackQueues.get(turnId) ?? Promise.resolve()).then(send);
+    this.feedbackQueues.set(turnId, queued);
+    return queued;
   }
 
   setExpanded(toolCallId: string, expanded: boolean): void {

@@ -14,6 +14,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
+import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
 import { listingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
@@ -47,6 +48,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const access = usePlanAccess();
   const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
   const { createPaneFromTemplate, openPluginCommandWorkflow } = usePluginAppActions();
+  const openDescription = useOpenDescription();
   const openUpgrade = useCloudUpgradeAction("catl");
   const [initialTab] = usePaneSettingValue("tab", "calendar");
   const [savedTab, setTab] = usePluginPaneState("catalyst:tab", initialTab);
@@ -100,7 +102,7 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
   const { strip, rows: tabRows } = usePaneTabs(!openId ? { tabs: [...CATALYST_TABS].map((item) => litigation && item.value === "calendar" ? { ...item, label: "Dockets" } : item), activeValue: tab, onSelect: (value) => { setTab(value); setSelectedId(null); }, focused, dense: true } : null);
   const selectedSymbol = selected ? catalystSymbol(selected) : symbol;
   const hints: PaneHint[] = [
-    ...(!openId && selectedSymbol ? [{ id: "description", key: "d", label: "es", onPress: () => createPaneFromTemplate("new-ticker-detail-pane", { symbol: selectedSymbol }) },
+    ...(!openId && selectedSymbol ? [{ id: "description", key: "d", label: "es", onPress: () => openDescription(selectedSymbol) },
       { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: selectedSymbol }) },
       { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: selectedSymbol }) },
       { id: "related", key: "t", label: litigation ? "o calendar" : "o litigation", onPress: () => createPaneFromTemplate(litigation ? "catalysts-pane" : "litigation-pane", { symbol: selectedSymbol }) }] : []),

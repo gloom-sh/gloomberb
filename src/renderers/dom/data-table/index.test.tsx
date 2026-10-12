@@ -3,7 +3,9 @@ import { expect, test } from "bun:test";
 import { tableHeaderPx } from "./dom";
 import { act, useRef, useState } from "react";
 import type { ScrollBoxRenderable } from "../../../ui/host";
-import { AppContext, createInitialState } from "../../../state/app/context";
+import { AppContext, PaneInstanceProvider, createInitialState } from "../../../state/app/context";
+import { PaneKeyboardScrollController } from "../../../state/pane-scroll-registry";
+import { WebInputHostProvider } from "../input-host";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createDefaultConfig } from "../../../types/config";
 import type { DataTableVisibleRange } from "../../../components/ui/data-table";
@@ -219,4 +221,95 @@ test("artwork before a label is hidden decoration: the text keeps its selection 
   const art = container.querySelector('[data-art="row-b"]')!;
   await act(async () => { art.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }) as unknown as Event); });
   expect(selected).toEqual(["b"]);
+});
+
+test("the pane scroll keys scroll a table body, as they do in the terminal", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <PaneInstanceProvider paneId="table-keys:test">
+          <WebInputHostProvider>
+            <PaneKeyboardScrollController paneId="table-keys:test" focused />
+            <WebDataTable
+              items={items}
+              columns={[{ id: "row", label: "Row", width: 10, align: "right" }]}
+              sortColumnId={null}
+              sortDirection="asc"
+              onHeaderClick={() => {}}
+              headerScrollRef={headerScrollRef}
+              scrollRef={scrollRef}
+              syncHeaderScroll={() => {}}
+              getItemKey={String}
+              isSelected={() => false}
+              onSelect={() => {}}
+              renderCell={(item) => ({ text: String(item) })}
+              emptyStateTitle="No rows"
+              virtualize={false}
+            />
+          </WebInputHostProvider>
+        </PaneInstanceProvider>
+      </AppContext>
+    );
+  }
+
+  const container = await render(<Harness />);
+  const body = container.querySelector('[data-gloom-role="data-table-body-scroll"]') as HTMLElement;
+  // A header row plus ten body rows in a table of a hundred.
+  Object.defineProperty(body, "clientHeight", { configurable: true, value: tableHeaderPx() + WEB_CELL_HEIGHT * 10 });
+  Object.defineProperty(body, "scrollHeight", { configurable: true, value: tableHeaderPx() + WEB_CELL_HEIGHT * items.length });
+  const press = async (key: string) => {
+    const event = new testWindow.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true });
+    await act(async () => { testWindow.document.body.dispatchEvent(event); await Promise.resolve(); });
+  };
+
+  await press("PageDown");
+  expect(body.scrollTop).toBe(9 * WEB_CELL_HEIGHT);
+  await press("End");
+  expect(body.scrollTop).toBe(90 * WEB_CELL_HEIGHT);
+  await press("Home");
+  expect(body.scrollTop).toBe(0);
+});
+
+test("a section header's action is its own control: a click presses it, not the header", async () => {
+  const state = createInitialState(createDefaultConfig("/tmp/gloom-table-test"));
+  const pressed: string[] = [];
+  function Harness() {
+    const headerScrollRef = useRef<ScrollBoxRenderable | null>(null);
+    const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+    return (
+      <AppContext value={createStaticAppStore(state)}>
+        <WebDataTable
+          items={["research", "a"]}
+          columns={[{ id: "name", label: "Name", width: 10 }]}
+          sortColumnId={null}
+          sortDirection="asc"
+          headerScrollRef={headerScrollRef}
+          scrollRef={scrollRef}
+          syncHeaderScroll={() => {}}
+          onBodyScrollActivity={() => {}}
+          getItemKey={String}
+          isSelected={() => false}
+          onSelect={() => {}}
+          renderCell={(item) => ({ text: item })}
+          renderSectionHeader={(item) => item === "research"
+            ? { text: "Research (1)", onMouseDown: () => pressed.push("header"), action: { label: "Everything pack", onPress: () => pressed.push("action") } }
+            : null}
+          emptyStateTitle="No rows"
+          virtualize={false}
+        />
+      </AppContext>
+    );
+  }
+
+  const container = await render(<Harness />);
+  const action = container.querySelector('[data-gloom-role="data-table-section-action"]') as HTMLElement;
+  expect(action.textContent).toBe("Everything pack");
+  await act(async () => {
+    action.dispatchEvent(new testWindow.MouseEvent("mousedown", { bubbles: true, cancelable: true }) as unknown as Event);
+    action.dispatchEvent(new testWindow.MouseEvent("click", { bubbles: true, cancelable: true }) as unknown as Event);
+  });
+  expect(pressed).toEqual(["action"]);
 });

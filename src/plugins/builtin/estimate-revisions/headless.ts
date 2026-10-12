@@ -29,9 +29,9 @@ export const estimateRevisionsHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["EM", "GUID", "EEO"],
     dataRequirements: ["Gloom Cloud analyst snapshots"],
     limitations: [
-      "Actual collection days and provider backfills remain separate",
-      "Range dispersion is not standard deviation",
-      "Guidance has no inferred numeric comparison",
+      "Actual collection days and provider backfills remain separate.",
+      "Range dispersion is not standard deviation.",
+      "Guidance has no inferred numeric comparison.",
     ],
   },
   describe: (args) => `Estimate revisions ${args.symbols[0] ?? ""}`,

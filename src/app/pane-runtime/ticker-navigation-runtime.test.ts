@@ -35,7 +35,7 @@ function runtime() {
   const notifications: unknown[] = [];
   const requests = new Map<string, PromiseWithResolvers<TickerOpenTarget | null>>();
   const feedbackOwners = new Map<string, (() => boolean) | undefined>();
-  const registry = { panes: new Map(), getTermSize: () => ({ width: 120, height: 40 }),
+  const registry = { panes: new Map(), getTermSize: () => ({ width: 120, height: 40 }), getDisabledPaneOwner: () => null,
     notify: (message: unknown) => notifications.push(message),
     bindHost(actions: object) { Object.assign(this, actions); return () => {}; } } as any;
   const persistLayout = (layout: LayoutConfig) => {

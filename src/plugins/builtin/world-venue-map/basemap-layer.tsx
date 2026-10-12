@@ -18,6 +18,7 @@ import {
   type GeoBox,
 } from "./basemap";
 import { matrixTransform, type MapMatrix } from "./geo-svg";
+import { mercatorY } from "./model";
 import { WORLD_OUTLINES } from "./world-outlines";
 
 export interface BasemapPalette {
@@ -37,7 +38,7 @@ interface BasemapLayerProps {
 
 let outlinePath: BasemapPaths | null = null;
 
-/** The terminal's 1:110m outlines in degrees, shown for the moment before 1:50m arrives. */
+/** The terminal's 1:110m outlines in map units, shown for the moment before 1:50m arrives. */
 function fallbackPaths(): BasemapPaths {
   if (outlinePath) return outlinePath;
   let land = "";
@@ -45,7 +46,7 @@ function fallbackPaths(): BasemapPaths {
     let previous: number | null = null;
     for (const [longitude, latitude] of outline) {
       const lat = Math.max(-60, latitude);
-      land += `${previous === null || Math.abs(longitude - previous) > 180 ? "M" : "L"}${longitude} ${-lat}`;
+      land += `${previous === null || Math.abs(longitude - previous) > 180 ? "M" : "L"}${longitude} ${-mercatorY(lat)}`;
       previous = longitude;
     }
   }
@@ -55,8 +56,8 @@ function fallbackPaths(): BasemapPaths {
 
 const GRATICULE = (() => {
   let path = "";
-  for (let longitude = -180; longitude <= 180; longitude += 30) path += `M${longitude} 60L${longitude} -85`;
-  for (let latitude = -30; latitude <= 60; latitude += 30) path += `M-180 ${-latitude}L180 ${-latitude}`;
+  for (let longitude = -180; longitude <= 180; longitude += 30) path += `M${longitude} ${-mercatorY(-60)}L${longitude} ${-mercatorY(85)}`;
+  for (let latitude = -30; latitude <= 60; latitude += 30) path += `M-180 ${-mercatorY(latitude)}L180 ${-mercatorY(latitude)}`;
   return path;
 })();
 
@@ -147,7 +148,7 @@ export function BasemapLayer({ matrix, view, pxPerDegree, palette }: BasemapLaye
       {partial ? (
         <defs>
           <clipPath id={clipId}>
-            {missing.map((tile) => <rect key={tile.id} x={tile.box[0]} y={-tile.box[3]} width={tile.box[2] - tile.box[0]} height={tile.box[3] - tile.box[1]} />)}
+            {missing.map((tile) => <rect key={tile.id} x={tile.box[0]} y={-mercatorY(tile.box[3])} width={tile.box[2] - tile.box[0]} height={mercatorY(tile.box[3]) - mercatorY(tile.box[1])} />)}
           </clipPath>
         </defs>
       ) : null}

@@ -1,4 +1,5 @@
 import type { ChatChannel, ChatMessage } from "../../../api-client";
+import type { NotificationLogEntry } from "../../../notifications/notification-log";
 import { formatChatPaneTitle } from "./channel-labels";
 import { chatMessageMentionsUsername, normalizeChatUsername } from "./controller/utils";
 
@@ -88,4 +89,25 @@ export function listUnreadInboxItems(options: {
       || left.title.localeCompare(right.title)
     ))
     .map(({ latestAt: _latestAt, ...item }) => item);
+}
+
+/**
+ * A row of the Unread list: a channel with unread chat, or a missed price,
+ * catalyst or team notice from the device's log, read or not.
+ */
+export type UnreadListRow =
+  | { kind: "chat"; key: string; item: UnreadInboxItem }
+  | { kind: "notice"; key: string; notice: NotificationLogEntry };
+
+/** Unread chat first, as listed; then the missed notices, newest first. */
+export function buildUnreadListRows(
+  chat: readonly UnreadInboxItem[],
+  notices: readonly NotificationLogEntry[],
+): UnreadListRow[] {
+  return [
+    ...chat.map((item): UnreadListRow => ({ kind: "chat", key: `chat:${item.channelId}`, item })),
+    ...[...notices]
+      .sort((left, right) => right.at - left.at)
+      .map((notice): UnreadListRow => ({ kind: "notice", key: `notice:${notice.id}`, notice })),
+  ];
 }

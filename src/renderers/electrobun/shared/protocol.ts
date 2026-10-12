@@ -3,10 +3,11 @@ import type { PaneRuntimeState } from "../../../core/state/app/state";
 import type { DesktopDockPreviewState, DesktopSharedStateSnapshot, DesktopThemePreviewState } from "../../../types/desktop-window";
 import type { DesktopApplicationMenuCommand } from "../../../types/desktop-menu";
 import type { AppConfig } from "../../../types/config";
+import type { CachedResourceRecord, ResourceCacheKey } from "../../../data/resource-store";
 import type { TickerRecord } from "../../../types/ticker";
 import type { ReleaseInfo, UpdateCheckResult, UpdateProgress } from "../../../updater";
 import type { CapabilityManifest } from "../../../capabilities";
-import type { PluginOperationResult, PluginPin } from "../../../plugins/builtin/plugin-marketplace/store";
+import type { PluginOperationResult, PluginPin } from "../../../plugins/marketplace/store";
 import type { RemoteControlRequest, RemoteControlResponse } from "../../../remote/types";
 import type { HttpProxyRequestEnvelope, HttpProxyResponseEnvelope } from "../../../utils/http-proxy-response";
 
@@ -18,8 +19,12 @@ export interface ElectrobunBackendInit {
   desktopSnapshot: DesktopSharedStateSnapshot | null;
   desktopThemePreview: DesktopThemePreviewState;
   pluginState: Record<string, Record<string, unknown>>;
+  /** Saved broker account snapshots, which the view's in-memory store starts from. */
+  savedResources?: CachedResourceRecord[];
   capabilityManifests: CapabilityManifest[];
   desktopPlatform: string;
+  /** The machine name, which a remote assistant sees this desktop app under. */
+  hostName?: string;
   windowKind: "main" | "detached";
   paneId?: string;
   /** What the view needs to send crash reports and usage counts the same way the Bun process would. */
@@ -226,6 +231,9 @@ interface DesktopBackendRequestMap {
     response: null;
   };
   "session.delete": { request: { sessionId: string }; response: null };
+  /** Saves or drops a broker account snapshot in the cache database; nothing else is accepted. */
+  "resources.set": { request: { record: CachedResourceRecord }; response: null };
+  "resources.delete": { request: { key: ResourceCacheKey }; response: null };
 }
 
 export type DesktopBackendRequestMethod = keyof DesktopBackendRequestMap;
@@ -251,7 +259,10 @@ export type DesktopWorkspaceRequest = DesktopBackendRequestFor<Extract<DesktopBa
 export type DesktopPluginStateRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `pluginState.${string}`>>;
 export type DesktopHostRequest = DesktopBackendRequestFor<Extract<DesktopBackendRequestMethod, `host.${string}`>>;
 export type DesktopCoreRequest = DesktopBackendRequestFor<
-  Extract<DesktopBackendRequestMethod, `update.${string}` | `ticker.${string}` | `config.${string}` | `session.${string}`>
+  Extract<
+    DesktopBackendRequestMethod,
+    `update.${string}` | `ticker.${string}` | `config.${string}` | `session.${string}` | `resources.${string}`
+  >
 >;
 
 interface BackendRequestPayload {

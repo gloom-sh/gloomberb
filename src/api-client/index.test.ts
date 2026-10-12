@@ -1129,19 +1129,36 @@ describe("apiClient command assist", () => {
         name: "Change Theme",
         arg: {
           kind: "text",
-          // 41 values, but the one too long to run is dropped before counting.
-          options: [{ value: "amber", label: "A".repeat(80) }, { value: "x".repeat(41), label: "Long" }, ...values(39)],
+          // 65 values, but the one too long to run is dropped before counting.
+          options: [{ value: "amber", label: "A".repeat(80) }, { value: "x".repeat(41), label: "Long" }, ...values(63)],
         },
       },
-      { prefix: "CTM", name: "Futures Curve", arg: { kind: "text", optional: true, options: values(41) } },
+      { prefix: "CTM", name: "Futures Curve", arg: { kind: "text", optional: true, options: values(65) } },
     ]);
 
     const [theme, curve] = sent;
-    expect(theme?.arg?.options).toHaveLength(40);
+    expect(theme?.arg?.options).toHaveLength(64);
     expect(theme?.arg?.options?.[0]).toEqual({ value: "amber", label: "A".repeat(60) });
     expect(theme?.arg?.options?.some((option) => option.value.length > 40)).toBe(false);
     // A cut list would read as the whole set, so an oversized one is not sent.
     expect(curve?.arg).toEqual({ kind: "text", optional: true });
+  });
+
+  test("passes a 46-value list, the size of CTM's roots, through unchanged", async () => {
+    let sent: AssistCommandDescriptor[] = [];
+    apiClient.setSessionToken("session-token");
+    apiClient.restoreCachedUser(verifiedUser);
+    globalThis.fetch = mockFetch(async (_input, init) => {
+      sent = (JSON.parse(String(init?.body)) as { commands: AssistCommandDescriptor[] }).commands;
+      return Response.json({ candidates: [] });
+    });
+    const roots = Array.from({ length: 46 }, (_, index) => ({ value: `R${index}`, label: `R${index} Root ${index}` }));
+
+    await apiClient.assistCommand("copper curve", [
+      { prefix: "CTM", name: "Futures Curve", arg: { kind: "text", optional: true, options: roots } },
+    ]);
+
+    expect(sent[0]?.arg).toEqual({ kind: "text", optional: true, options: roots });
   });
 
   test("passes the caller's log choice through, false included", async () => {

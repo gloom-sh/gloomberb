@@ -148,6 +148,36 @@ describe("composite chart interactions", () => {
     expect(panCompositeViewport(frame, older, -slots)).toEqual(requested);
   });
 
+  test("a view panned into history not loaded yet holds as many bars once they load", () => {
+    // Thirty-minute bars on the weekdays of January and February 2025.
+    const points: TimeSeriesPoint[] = [];
+    for (let day = 1; day <= 59; day += 1) {
+      const sessionStart = Date.UTC(2025, 0, day, 14, 30);
+      if (new Date(sessionStart).getUTCDay() % 6 === 0) continue;
+      for (let slot = 0; slot < 13; slot += 1) {
+        const date = new Date(sessionStart + slot * 30 * 60_000);
+        points.push({ date, observedAt: date, value: 100 });
+      }
+    }
+    const market = (from: number): ResolvedSeries => ({
+      ...series([]),
+      nativeFrequency: "intraday",
+      timeBasis: { kind: "market", timeZone: "America/New_York", cadenceMs: 30 * 60_000 },
+      points: points.filter(({ date }) => date.getTime() >= from),
+    });
+    // The last two weeks are loaded; the view is the last week.
+    const loaded = market(Date.UTC(2025, 1, 14));
+    const visible = { start: new Date(Date.UTC(2025, 1, 21)), end: points.at(-1)!.date };
+    const frame = frameFor(loaded, { historicalPaddingRatio: 4 });
+    const slots = slotSpan(frame, visible);
+    // Two views back, past the first loaded bar, then everything arrives.
+    const older = panCompositeViewport(frame, visible, slots * 2);
+    expect(older.end.getTime()).toBeLessThan(loaded.points[0]!.date.getTime());
+    const ratio = slotSpan(frameFor(market(0)), older) / slots;
+    expect(ratio).toBeGreaterThan(0.75);
+    expect(ratio).toBeLessThan(1.35);
+  });
+
   test("fits a window that misses the data onto the loaded data", () => {
     const frame = frameFor(series([1, 2, 3, 4, 5, 6, 7, 8, 9]));
 

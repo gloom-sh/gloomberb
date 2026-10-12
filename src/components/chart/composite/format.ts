@@ -484,3 +484,32 @@ export function formatCompositeTimeAxisDate(date: Date, startTime: number, endTi
     ? `${utcTime(wall)} ${zone}`
     : `${utcDate(wall).slice(5)} ${utcTime(wall)} ${zone}`;
 }
+
+/**
+ * The crosshair's place on the time axis. Intraday bars keep their time of
+ * day however wide the chart is: a three-month chart of 30-minute bars has
+ * thirteen under each date, and the cursor sits on one of them.
+ */
+export function formatCompositeCursorAxisDate(
+  date: Date, startTime: number, endTime: number, timeZone: string | undefined, intradayBars: boolean,
+): string {
+  if (!intradayBars || isIntradaySpan(startTime, endTime)) return formatCompositeTimeAxisDate(date, startTime, endTime, timeZone);
+  const { wall, zone } = onClock(date, timeZone);
+  return `${utcDate(wall)} ${utcTime(wall)} ${zone}`;
+}
+
+const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
+
+/**
+ * When a value carried under the cursor was observed: its time when it is
+ * from the cursor's own day, else its date (`Sep 2`, with the year when that
+ * differs), and the time too for an intraday bar.
+ */
+export function formatCompositeCarriedStamp(observed: Date, cursor: Date, timeZone?: string): string {
+  const seen = onClock(observed, timeZone).wall;
+  const at = onClock(cursor, timeZone).wall;
+  const time = utcTime(seen);
+  if (utcDate(seen) === utcDate(at)) return time;
+  const date = `${MONTH_NAMES[seen.getUTCMonth()]} ${seen.getUTCDate()}${seen.getUTCFullYear() === at.getUTCFullYear() ? "" : ` ${seen.getUTCFullYear()}`}`;
+  return time === "00:00" ? date : `${date} ${time}`;
+}

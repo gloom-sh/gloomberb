@@ -36,6 +36,14 @@ export interface CloudCurveView {
   checkedAt: string | null;
 }
 
+/** One tenor of a stored curve over time, oldest first (`GET /cloud/econ/curves/:curve/history`). */
+export interface CloudCurveHistory {
+  curve: CloudCurveHeader;
+  tenor: string;
+  points: Array<{ date: string; value: number }>;
+  checkedAt: string | null;
+}
+
 export interface CloudWorldCurves {
   curves: Array<{
     curve: CloudCurveHeader;

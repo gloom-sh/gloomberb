@@ -56,6 +56,8 @@ import {
   riskCoverageShortfall,
   riskCoverageText,
   riskPercentile,
+  riskAmountBase,
+  riskEvidence,
   riskValue,
   RISK_VIEWS,
   type PortfolioRiskModel,
@@ -79,7 +81,7 @@ const titles = {
 };
 const tabs = RISK_VIEWS.map((value) => ({ value, label: titles[value] }));
 const getKey = (row: RiskDisplayRow) => row.id;
-/** The two return rows chart the basket against SPY over the window they measure. */
+/** The two return rows chart the basket against its benchmark over the window they measure. */
 const RETURN_ROW_IDS: ReadonlySet<string> = new Set(["return", "benchmark"]);
 const formatPercentValue = (value: number) => `${value.toFixed(2)}%`;
 const formatPlainAxis = spanAxisFormatter((value, digits) => value.toFixed(digits));
@@ -119,12 +121,15 @@ function holdingsSummaryItems(rows: RiskDisplayRow[]): StatItem[] {
   }));
 }
 /**
- * Cumulative return of the current-weight basket and of SPY across the last
- * window of paired sessions: the path behind the two return rows, whose
- * values the legend ends on. The series take the rows' names.
+ * Cumulative return of the current-weight basket and of its benchmark across
+ * the window of paired sessions the return rows measure (the last 60, or those
+ * since a 13F filing): the path behind the two rows, whose values the legend
+ * ends on. The series take the rows' names.
  */
 function basketReturnSeries(model: PortfolioRiskModel): ChartTableChart["series"] {
-  const sample = model.sample.slice(-60);
+  // A snapshot saved before the window existed covers the trailing 60.
+  const sessions = model.window?.sessions ?? 60;
+  const sample = sessions > 0 ? model.sample.slice(-sessions) : [];
   if (!sample.length) return [];
   const label = (id: string, fallback: string) => model.rows.risk.find((row) => row.id === id)?.label ?? fallback;
   let wealth = 1,
@@ -137,7 +142,7 @@ function basketReturnSeries(model: PortfolioRiskModel): ChartTableChart["series"
     ),
     staticSeries(
       [start, ...sample.map((row) => scalarPoint(new Date(row.dateKey), ((benchmark *= 1 + row.benchmark) - 1) * 100))],
-      { id: "benchmark", label: label("benchmark", "SPY return"), color: colors.textMuted },
+      { id: "benchmark", label: label("benchmark", `${model.benchmark ?? "SPY"} return`), color: colors.textMuted },
     ),
   ];
 }
@@ -178,7 +183,7 @@ function RiskDetail({
       detail: row.asOf?.slice(0, 10) ?? "Source date unavailable",
     },
     ...(row.percentile != null ? [{ id: "percentile", label: "Pctl 1Y", value: riskPercentile(row) }] : []),
-    { id: "evidence", label: "Evidence", value: row.detail, wide: true },
+    { id: "evidence", label: "Evidence", value: riskEvidence(row), wide: true },
   ];
   const statRows = statGridRows(items, width);
   const points = (row.history ?? []).map((point, index) => ({
@@ -263,7 +268,9 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
   );
   const [equity] = usePaneSettingValue("equityShift", -10),
     [rates] = usePaneSettingValue("rateShift", 100),
-    [volatility] = usePaneSettingValue("volShift", 10);
+    [volatility] = usePaneSettingValue("volShift", 10),
+    [since] = usePaneSettingValue("riskSince", "trailing");
+  const riskWindow = useMemo(() => (since === "filed" ? { since: "filed" as const } : {}), [since]);
   const [actionStatus, setActionStatus] = useState<string | null>(null);
   const [selected, setSelected] = usePluginPaneState<string | null>(
     "risk:selected",
@@ -323,12 +330,13 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
             rates: Number(rates),
             volatility: Number(volatility),
           },
+          riskWindow,
         ),
         error: null,
       };
     } catch (error) {
       return {
-        model: buildPortfolioRisk(portfolio, localTickers, market),
+        model: buildPortfolioRisk(portfolio, localTickers, market, null, undefined, riskWindow),
         error: error instanceof Error ? error.message : "Evidence invalid",
       };
     }
@@ -342,6 +350,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     equity,
     rates,
     volatility,
+    riskWindow,
   ]);
   const model = derived.model;
   const marketLoading = resource.loading && !resource.data;
@@ -458,7 +467,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
     : [
         ...(basketBody ? [] : [
           ...(asOfDate && sharedEvidence ? [sharedEvidence] : []),
-          model.portfolio.currency,
+          // The value the tail losses in money are taken on names the currency too.
+          rows.map(riskAmountBase).find(Boolean) ?? model.portfolio.currency,
           ...(asOfDate ? [asOfDate] : []),
           ...(EVIDENCE_VIEWS.has(view) && model.evidence ? [model.evidence.source] : []),
         ]),
@@ -576,7 +586,8 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
       {
         id: "value",
         label: valueHeader,
-        width: sharedUnit || attributionParts ? Math.max(9, valueHeader.length) : 16,
+        // A tail loss reads in money beside its percent: 2.60% ($5,735).
+        width: sharedUnit || attributionParts ? Math.max(9, valueHeader.length) : rows.some((row) => row.amount != null) ? 18 : 16,
         align: "right",
       },
       ...(attributionParts
@@ -601,7 +612,7 @@ export function PortfolioRiskPane({ focused, width, height }: PaneProps) {
           ]
         : []),
     ],
-    [width, view, valueHeader, sharedUnit, attributionParts, sharedEvidence, showPercentile, sharedDate],
+    [width, view, valueHeader, sharedUnit, attributionParts, sharedEvidence, showPercentile, sharedDate, rows],
   );
   const selectView = (value: string) => {
     setView(value);

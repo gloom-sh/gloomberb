@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
 import type { IvHistoryPayload, IvPoint, IvScreenRow } from "./client";
-import { midrankPercentile, projectIvHistory, projectRichCheap, verdictFor } from "./model";
+import { statSource } from "./format";
+import { midrankPercentile, projectIvHistory, projectRichCheap, richCheapDates, screenCoverage, screenPaneNotices, verdictFor } from "./model";
 
 const DAY = 86_400_000;
 const sessions = (count: number, end = "2026-09-22") => {
@@ -49,17 +50,60 @@ describe("IV history against realized", () => {
     expect(model.hv[0]!.date.getTime()).toBeGreaterThanOrEqual(model.iv30[0]!.date.getTime());
     expect(stat("term").value!).toBeCloseTo(0.2 / 0.21);
   });
-  test("a newer live reading gets its own unranked row", () => {
-    expect(stat("iv30-live")).toMatchObject({ value: 0.22, date: "2026-09-23", method: "quote-mid", rank: null, percentile: null });
-    expect(model.stats.map((row) => row.id)).toEqual(["iv30", "iv30-live", "iv90", "hv", "spread", "term"]);
+  test("a newer quote reading gets its own unranked row, never called live", () => {
+    expect(stat("iv30-quote")).toMatchObject({ label: "IV 30d quote", value: 0.22, date: "2026-09-23", method: "quote-mid", rank: null, percentile: null });
+    expect(model.stats.map((row) => row.id)).toEqual(["iv30", "iv30-quote", "iv90", "iv365", "hv", "spread", "term"]);
+    expect([stat("iv30-quote"), stat("hv"), stat("spread")].map((row) => statSource(row))).toEqual(["quote", "closes", "close"]);
   });
   test("a constant series ranks mid without a range", () => {
     expect(stat("spread").rank).toBeNull();
     expect(stat("spread").percentile).toBe(50);
   });
-  test("coverage states become warnings", () => {
-    expect(projectIvHistory(payload([], { status: "queued" }), []).warnings.join(" ")).toContain("queued");
-    expect(projectIvHistory(payload([], { status: "backfilling" }), prices(dates)).warnings[0]).toContain("backfilling");
+  test("coverage states become warnings, a queued one with when to look again", () => {
+    const queuedAt = Date.parse("2026-09-23T06:25:59Z");
+    const queued = (now: number) => projectIvHistory(payload([], { status: "queued",
+      coverage: { source: "demand", addedAt: "2026-09-23T06:25:59Z", backfilledThrough: null, since: null } }), [], { now }).warnings[0];
+    expect(queued(queuedAt + 60_000)).toBe("SPY queued for backfill since 06:25 UTC; "
+      + "a first backfill usually takes under 10 minutes, try again after 06:35 UTC.");
+    // Past the usual wait there is no estimate left to give.
+    expect(queued(queuedAt + 30 * 60_000)).toBe("SPY queued for backfill since 06:25 UTC; longer than the usual 10 minutes, try again shortly.");
+    expect(projectIvHistory(payload([], { status: "backfilling",
+      coverage: { source: "demand", addedAt: "", backfilledThrough: "2025-03-14", since: null } }), prices(dates)).warnings[0])
+      .toBe("SPY backfilling through 2025-03-14.");
+    expect(projectIvHistory(payload([], { status: "unavailable" }), prices(dates)).warnings[0]).toBe("No options history for SPY.");
+  });
+});
+
+describe("the one-year tenor", () => {
+  const dates = sessions(300);
+  const stats = (percentile: number | null, samples: number, date = dates.at(-1)!) => ({ value: 0.27, date, method: "trade-close" as const,
+    rank: percentile, percentile, low: 0.2, high: 0.3, samples, windowStart: dates[0]!, minSamples: 60, rankNote: null });
+  /** IV30 every session; IV1Y from session `from` on, every other session. */
+  const series = (from: number) => dates.map((date, index) => ({ ...point(date, 0.2), iv365: index >= from && index % 2 === 0 ? 0.27 : null }));
+  const project = (from: number, iv365: ReturnType<typeof stats> | null, coverage: Partial<NonNullable<IvHistoryPayload["coverage"]>> = {}) =>
+    projectIvHistory(payload(series(from), {
+      stats: { iv30: null, iv90: null, iv365 },
+      coverage: { source: "seed", addedAt: "", backfilledThrough: dates.at(-1)!, since: dates[0]!, ...coverage },
+    }), prices(dates), { lookback: "ALL" });
+
+  test("a short 1Y history says where it starts and how deep it is, without a rank", () => {
+    const model = project(250, stats(null, 24), { iv365Since: dates[250] });
+    expect(model.oneYearNote).toBe(`IV1Y from ${dates[250]}, 25 sessions`);
+    expect(model.iv365).toHaveLength(25);
+    expect(model.stats.find((row) => row.id === "iv365")).toMatchObject({ label: "IV 1Y ATM", value: 0.27, rank: null, samples: 24 });
+  });
+  test("a ranked 1Y history is noted only when it starts later than the rest", () => {
+    expect(project(0, stats(55, 140)).oneYearNote).toBeNull();
+    expect(project(40, stats(55, 120), { iv365Since: dates[40] }).oneYearNote).toBe(`IV1Y from ${dates[40]}`);
+  });
+  test("with no 1Y close, a stored quote gives the level unranked and the footer says so", () => {
+    const model = projectIvHistory(payload(series(Number.POSITIVE_INFINITY), {
+      stats: { iv30: null, iv90: null, iv365: null },
+      latest: { date: "2026-09-23", method: "quote-mid", capturedAt: "", spot: 100, iv7: null, iv30: 0.2, iv60: null, iv90: 0.21, iv180: null, iv365: 0.26 },
+    }), prices(dates));
+    expect(model.oneYearNote).toBe("no IV1Y history yet");
+    expect(model.iv365).toEqual([]);
+    expect(model.stats.find((row) => row.id === "iv365")).toMatchObject({ value: 0.26, date: "2026-09-23", method: "quote-mid", rank: null, percentile: null });
   });
 });
 
@@ -81,7 +125,95 @@ test("rich and cheap follow the IV percentile", () => {
     skew: { date: "2026-09-23", put25: 0.36, call25: 0.29, skew: 0.07 },
   };
   const [projected] = projectRichCheap([row, { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null }], new Map([["AAPL", 0.25]]));
-  expect(projected).toMatchObject({ iv30: 0.32, rankDate: "2026-09-22", verdict: "rich", skew: 0.07 });
+  expect(projected).toMatchObject({ iv30: 0.32, rankDate: "2026-09-22", verdict: "rich", skew: 0.07, iv1y: null, iv1yPercentile: null });
+  // IVP1Y shows only when the 1Y series was ranked on the close IVR and IVP are.
+  const oneYear = (date: string) => ({ ...row, latest: { ...row.latest!, iv365: 0.28 },
+    iv365: { ...row.iv30!, value: 0.27, percentile: 35, date } });
+  expect(projectRichCheap([oneYear("2026-09-22")])[0]).toMatchObject({ iv1y: 0.28, iv1yPercentile: 35 });
+  expect(projectRichCheap([oneYear("2026-09-19")])[0]).toMatchObject({ iv1y: 0.28, iv1yPercentile: null });
+  // A percentile never stands without the IV1Y it describes.
+  expect(projectRichCheap([{ ...oneYear("2026-09-22"), latest: row.latest }])[0]).toMatchObject({ iv1y: null, iv1yPercentile: null });
   expect(projected!.termSlope).toBeCloseTo(0.02);
   expect(projected!.ivHv).toBeCloseTo(1.28);
+});
+
+test("a queued symbol does not break a date every other row shares", () => {
+  const ready = (symbol: string, rankDate: string): IvScreenRow => ({
+    symbol, status: "ready", iv90: null, skew: null,
+    iv30: { value: 0.3, date: rankDate, method: "trade-close", rank: 70, percentile: 88, low: 0.2, high: 0.4, samples: 250, windowStart: "2025-09-22" },
+    latest: { date: "2026-09-23", method: "quote-mid", capturedAt: "", spot: 200, iv7: null, iv30: 0.32, iv60: null, iv90: 0.3, iv180: null, iv365: null },
+  });
+  const queued: IvScreenRow = { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null };
+  expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), queued, ready("B", "2026-09-22")])))
+    .toEqual({ reading: { date: "2026-09-23", method: "quote-mid" }, rank: "2026-09-22", rankApart: false, skewApart: false });
+  expect(richCheapDates(projectRichCheap([ready("A", "2026-09-22"), ready("B", "2026-09-21")])))
+    .toMatchObject({ rank: null, rankApart: true });
+});
+
+describe("VCA backfill states", () => {
+  const NOW = Date.parse("2026-10-11T08:04:00Z");
+  const reading = { date: "2026-10-09", method: "trade-close" as const, capturedAt: "", spot: 100, iv7: null, iv30: 0.3, iv60: null, iv90: 0.31,
+    iv180: null, iv365: null };
+  const ready: IvScreenRow = { symbol: "AAPL", status: "ready", coverageStatus: "ready", latest: reading, iv90: null, skew: null,
+    coverage: { source: "seed", addedAt: "2026-01-01T00:00:00Z", backfilledThrough: "2026-10-09" }, warnings: [],
+    iv30: { value: 0.3, date: "2026-10-09", method: "trade-close", rank: 70, percentile: 88, low: 0.2, high: 0.4, samples: 250, windowStart: "2025-10-09" } };
+  const pending = (symbol: string, coverageStatus: IvScreenRow["coverageStatus"], addedAt: string, backfilledThrough: string | null,
+    warnings: string[] = []): IvScreenRow => ({ symbol, status: coverageStatus === "unavailable" && !warnings.length ? "ready" : "queued",
+    coverageStatus, coverage: warnings.length ? null : { source: "demand", addedAt, backfilledThrough }, warnings,
+    iv30: null, iv90: null, latest: null, skew: null });
+  const rows = projectRichCheap([
+    ready,
+    pending("ZZZZ", "queued", "2026-10-11T07:58:12Z", null),
+    pending("YYYY", "queued", "2026-10-10T23:40:00Z", null),
+    pending("ABCD", "backfilling", "2026-10-11T07:31:00Z", "2025-03-14"),
+    pending("PFAI", "unavailable", "2026-10-11T04:09:51Z", "2026-10-09"),
+    pending("NEXE", "unavailable", "2026-10-11T00:45:22Z", "2026-10-09"),
+    pending("FULL", "unavailable", "", null, ["Coverage for new underlyings is full; try again later."]),
+  ]);
+
+  test("each state is dated, and only history still to come leaves the screen incomplete", () => {
+    expect(screenCoverage(rows, { now: NOW })).toEqual({
+      notes: [
+        // Ten minutes from the newest queued symbol; one queued on another day carries its date.
+        "Queued for backfill: ZZZZ since 07:58 UTC, YYYY since 2026-10-10 23:40 UTC; a first backfill usually takes under 10 minutes, try again after 08:08 UTC.",
+        "Backfilling: ABCD through 2025-03-14.",
+        "No options history: PFAI, NEXE.",
+        "Not queued: FULL. Coverage for new underlyings is full; try again later.",
+      ],
+      pending: ["ZZZZ", "YYYY", "ABCD", "FULL"],
+      missing: ["ZZZZ", "YYYY", "ABCD", "FULL"],
+    });
+    // Finished without options is final: nothing left to wait for.
+    expect(screenCoverage(rows.filter((row) => row.symbol === "AAPL" || row.symbol === "PFAI"), { now: NOW }))
+      .toEqual({ notes: ["No options history: PFAI."], pending: [], missing: [] });
+    // A backfill with readings so far is still incomplete, but not missing.
+    const partial = projectRichCheap([{ ...pending("ABCD", "backfilling", "", "2025-03-14"), latest: reading }]);
+    expect(screenCoverage(partial, { now: NOW })).toMatchObject({ pending: ["ABCD"], missing: [] });
+    // Past the usual wait it says so instead of a time.
+    expect(screenCoverage(rows.filter((row) => row.symbol === "YYYY"), { now: NOW }).notes)
+      .toEqual(["Queued for backfill: YYYY since 2026-10-10 23:40 UTC; longer than the usual 10 minutes, try again shortly."]);
+  });
+
+  test("the pane says the same without a time to come back at", () => {
+    expect(screenPaneNotices(rows, NOW).slice(0, 2)).toEqual([
+      "Queued for backfill: ZZZZ since 07:58 UTC, YYYY since 2026-10-10 23:40 UTC; a first backfill usually takes under 10 minutes.",
+      "Backfilling: ABCD through 2025-03-14.",
+    ]);
+    expect(screenPaneNotices(rows, NOW)).toHaveLength(4);
+  });
+
+  test("an older server's ready or queued reads as before in the pane", () => {
+    const old = projectRichCheap([
+      { symbol: "AAPL", status: "ready", iv30: ready.iv30, iv90: null, latest: reading, skew: null },
+      { symbol: "ZZZZ", status: "queued", iv30: null, iv90: null, latest: null, skew: null },
+      // Finished without options: an older server calls it ready, with nothing stored.
+      { symbol: "PFAI", status: "ready", iv30: null, iv90: null, latest: null, skew: null },
+    ]);
+    expect(old.map((row) => [row.symbol, row.status, row.queuedAt, row.backfilledThrough])).toEqual([
+      ["AAPL", "ready", null, null], ["ZZZZ", "queued", null, null], ["PFAI", "ready", null, null]]);
+    expect(screenPaneNotices(old, NOW)).toEqual([
+      "Queued for backfill: ZZZZ; a first backfill usually takes under 10 minutes.",
+      "1 symbol has no stored implied volatility yet.",
+    ]);
+  });
 });

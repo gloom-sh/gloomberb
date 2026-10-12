@@ -1,6 +1,6 @@
 import { updatePaneInstance } from "../../../pane-settings";
-import { removePane } from "../../../layout/pane-manager";
-import type { AppConfig } from "../../../types/config";
+import { isPaneInLayout, removePane } from "../../../layout/pane-manager";
+import type { AppConfig, LayoutConfig, PaneInstanceConfig } from "../../../types/config";
 import { LAST_VISITED_CHAT_CHANNEL_KEY, normalizeChannelId } from "./channels";
 
 type ChatPaneSettings = Record<string, unknown>;
@@ -30,6 +30,36 @@ export function clearChatPaneTargetMessage(
 ): ChatPaneSettings {
   const { targetMessageId: _targetMessageId, ...nextSettings } = settings ?? {};
   return nextSettings;
+}
+
+function paneChannelId(instance: PaneInstanceConfig): string | null {
+  return typeof instance.settings?.channelId === "string" ? normalizeChannelId(instance.settings.channelId) : null;
+}
+
+/**
+ * The Chat pane the command bar shows a conversation in: the one already on
+ * it, else the focused one, else the one in front. Null when none is open, so
+ * the caller opens one.
+ */
+export function pickChatPaneToReuse(
+  layout: LayoutConfig,
+  focusedPaneId: string | null,
+  channelId: string | null,
+): PaneInstanceConfig | null {
+  const chatPanes = layout.instances.filter((instance) => (
+    instance.paneId === "chat" && isPaneInLayout(layout, instance.instanceId)
+  ));
+  if (chatPanes.length === 0) return null;
+  const onChannel = channelId ? chatPanes.find((instance) => paneChannelId(instance) === channelId) : undefined;
+  if (onChannel) return onChannel;
+  const focused = chatPanes.find((instance) => instance.instanceId === focusedPaneId);
+  if (focused) return focused;
+  // A floating pane without a stacking order sits at the default of 50; docked panes sit below every one.
+  const zIndexOf = (instance: PaneInstanceConfig) => {
+    const entry = layout.floating.find((floating) => floating.instanceId === instance.instanceId);
+    return entry ? entry.zIndex ?? 50 : -1;
+  };
+  return [...chatPanes].sort((left, right) => zIndexOf(right) - zIndexOf(left))[0] ?? null;
 }
 
 function setChatPaneJump(

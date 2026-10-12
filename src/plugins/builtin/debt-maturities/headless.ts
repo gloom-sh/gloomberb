@@ -1,7 +1,12 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { fetchDebtMaturities } from "./client";
-import { bucketShare, debtNotices } from "./model";
+import { bucketShare, debtAmount, debtNotices, debtPercent } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
+import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
+
+/** Amounts and shares as the pane prints them (952.00M, 12.5%); exports keep the whole number. */
+const amount = (value: unknown) => debtAmount(typeof value === "number" ? value : null);
+const percent = (value: unknown) => debtPercent(typeof value === "number" ? value : null);
 
 export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
@@ -15,11 +20,11 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
     aliases: ["DDIS"],
     dataRequirements: ["Gloom Cloud SEC principal maturity schedules"],
     limitations: [
-      "Six relative fiscal maturity buckets; thereafter is open ended",
-      "Reported principal obligations, not carrying debt; scope can include short-term borrowing and hedges",
-      "Native currency; unsupported or missing facts remain null",
-      "No inferred weighted coupon or duration",
-      "Ten-year percentiles require five comparable annual observations",
+      "Six relative fiscal maturity buckets; thereafter is open ended.",
+      "Reported principal obligations, not carrying debt; scope can include short-term borrowing and hedges.",
+      "Native currency; unsupported or missing facts remain null.",
+      "No inferred weighted coupon or duration.",
+      "Ten-year percentiles require five comparable annual observations.",
     ],
   },
   options: [
@@ -38,7 +43,8 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
   ],
   describe: (args) => `Debt maturities | ${args.symbols[0]}`,
   async load(args, ctx) {
-    const data = await fetchDebtMaturities(args.symbols[0]!, ctx.apiClient);
+    const symbol = args.symbols[0]!;
+    const data = await fetchDebtMaturities(symbol, ctx.apiClient, await resolveHeadlessIssuerListing(ctx, symbol));
     return {
       complete: data.status === "available",
       errors: debtNotices(data),
@@ -47,9 +53,9 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
           title: "Principal maturity schedule",
           columns: [
             { key: "label", header: "Maturity" },
-            { key: "value", header: "Principal", align: "right" },
+            { key: "value", header: "Principal", align: "right", textFormat: amount },
             { key: "currency", header: "Currency" },
-            { key: "share", header: "% total", align: "right" },
+            { key: "share", header: "% total", align: "right", textFormat: percent },
             { key: "asOf", header: "As of" },
             { key: "filed", header: "Filed" },
           ],
@@ -66,18 +72,20 @@ export const debtMaturitiesHeadless: HeadlessPaneDefinition<"bundle"> = {
           title: "Annual filing history",
           columns: [
             { key: "asOf", header: "As of" },
-            { key: "totalPrincipal", header: "Principal", align: "right" },
-            { key: "next12MonthsShare", header: "Next 12m %", align: "right" },
-            { key: "next3YearsShare", header: "Next 3y %", align: "right" },
+            { key: "totalPrincipal", header: "Principal", align: "right", textFormat: amount },
+            { key: "next12MonthsShare", header: "Next 12m %", align: "right", textFormat: percent },
+            { key: "next3YearsShare", header: "Next 3y %", align: "right", textFormat: percent },
             {
               key: "interestExpense",
               header: "Interest expense",
               align: "right",
+              textFormat: amount,
             },
             {
               key: "borrowingCostPercent",
               header: "Cost proxy %",
               align: "right",
+              textFormat: percent,
             },
             { key: "currency", header: "Currency" },
             { key: "filed", header: "Filed" },

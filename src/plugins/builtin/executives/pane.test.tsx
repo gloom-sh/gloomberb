@@ -136,7 +136,7 @@ test("changing ticker waits for its own proxy years and discards a late previous
   expect(tui.frame()).not.toContain("ALPHA compensation");
   await act(async () => betaList.resolve({ company: statement("BETA", 2024).company, proxies: [statement("BETA", 2024)] }));
   await settle();
-  expect(detail.mock.calls.filter(([ticker]) => ticker === "BETA")).toEqual([["BETA", 2024]]);
+  expect(detail.mock.calls.filter(([ticker]) => ticker === "BETA").map(([ticker, year]) => [ticker, year])).toEqual([["BETA", 2024]]);
   expect(tui.frame()).toContain("BETA compensation 2024");
 });
 

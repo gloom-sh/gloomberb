@@ -1,7 +1,7 @@
 import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
-import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "./contracts";
+import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "../../../market-data/futures-board";
 import type { FuturesReturnHorizon } from "./returns";
 import type { FrontReturnsMap } from "./use-front-returns";
 

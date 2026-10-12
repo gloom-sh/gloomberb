@@ -1,4 +1,5 @@
 import type { QueryEntry } from "../../../market-data/result-types";
+import { isFxRateStale } from "../../../utils/fx-status";
 
 const iso = (time: number | null | undefined): string => {
   const date = new Date(time ?? NaN);
@@ -23,7 +24,7 @@ export function createFxExportMetadata(
       const status: string[] = [];
       if (!available) status.push("unavailable");
       if (entry?.phase === "loading" || entry?.phase === "refreshing") status.push("loading");
-      if (available && (entry?.error || (entry?.staleAt != null && entry.staleAt <= now))) status.push("stale");
+      if (available && isFxRateStale(entry, now)) status.push("stale");
       if (available && !iso(entry?.asOf)) status.push("time unknown");
       return [currency, available ? rate : "", iso(entry?.asOf), iso(entry?.fetchedAt),
         status.join("; ") || "current", entry?.error?.message ?? ""];

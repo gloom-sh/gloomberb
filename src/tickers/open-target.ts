@@ -11,8 +11,9 @@ import {
 import { tickerSelectionFromSearchResult } from "./selection";
 import { normalizeTickerSymbol } from "./search/ranking";
 import type { TickerOpenTarget } from "./search/types";
-import { parsePublicTickerKey } from "../utils/exchanges";
+import { isSharedExchangeCode, parsePublicTickerKey, typedExchangeCode } from "../utils/exchanges";
 import { getListingSymbol, tickerHasListingSuffix } from "../sources/listing-symbols";
+import { settleTypedListingKey } from "./listing-venues";
 
 export type { TickerOpenTarget } from "./search/types";
 
@@ -31,10 +32,18 @@ export async function resolveTickerOpenTarget({
   searchContext?: SearchRequestContext;
   publicOnly?: boolean;
 }): Promise<TickerOpenTarget | null> {
-  const symbol = normalizeTickerInput(null, query);
-  if (!symbol) return null;
+  const typed = normalizeTickerInput(null, query);
+  if (!typed) return null;
+  // A code that names several venues (7203:TSE, from a link, a chat message or
+  // the command bar) opens the one its symbol trades on, under that listing's
+  // own key (7203:JPX), as every command reads it. A symbol on several of them
+  // is a choice; one nothing could read is left to search.
+  const symbol = (await settleTypedListingKey(typed, {
+    store: { loadTicker: (key) => tickerRepository.loadTicker(key), loadAllTickers: async () => [...tickers.values()] },
+    dataProvider,
+  })).toUpperCase();
   const requested = parsePublicTickerKey(symbol);
-  const preserveListingKey = !!requested.exchange || tickerHasListingSuffix(symbol);
+  const preserveListingKey = (!!requested.exchange && !isSharedExchangeCode(typedExchangeCode(symbol))) || tickerHasListingSuffix(symbol);
 
   let resolved: Awaited<ReturnType<typeof resolveTickerSearch>> | null = null;
   try {

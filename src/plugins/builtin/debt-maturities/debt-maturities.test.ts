@@ -1,12 +1,18 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
 import type {
   DebtMaturitiesPayload,
   DebtMetric,
 } from "../../../api-client/debt-maturities";
 import { ApiRequestError } from "../../../api-client/errors";
+import type { IssuerListingParams } from "../../../api-client/paths";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import {
   BUCKET_IDS,
+  cachedDebtMaturities,
+  debtMaturitiesCache,
   fetchDebtMaturities,
+  loadDebtMaturities,
   validateDebtMaturities,
 } from "./client";
 import {
@@ -284,6 +290,40 @@ describe("debt maturity Cloud boundary", () => {
         },
       }),
     ).rejects.toBe(denied);
+  });
+
+  test("SAN in Paris is cached apart from SAN in New York and a 404 for it is no schedule", async () => {
+    const store = new MemoryPluginPersistence();
+    debtMaturitiesCache.attach(store);
+    const requests: Array<[string, IssuerListingParams | undefined]> = [];
+    const paris = { exchange: "XPAR", name: "Sanofi" };
+    // The server answers a listing abroad for its bare symbol.
+    const spy = spyOn(apiClient, "getCloudDebtMaturities").mockImplementation(async (symbol, listing) => {
+      requests.push([symbol, listing]);
+      return { ...fixture(), symbol: "SAN", entityName: listing ? "Sanofi" : "Banco Santander" };
+    });
+    try {
+      expect((await loadDebtMaturities("SAN")).payload.entityName).toBe("Banco Santander");
+      expect((await loadDebtMaturities("SAN", paris)).payload.entityName).toBe("Sanofi");
+      // The key's own venue is the same listing, so it reads the same entry.
+      expect((await loadDebtMaturities("SAN:EPA")).payload.entityName).toBe("Sanofi");
+      expect(cachedDebtMaturities("SAN", { exchange: "EPA" })?.payload.entityName).toBe("Sanofi");
+      expect(requests).toEqual([["SAN", undefined], ["SAN", paris]]);
+      expect(store.getResource("debt-maturities", "SAN:EPA", { sourceKey: "gloom-cloud" })).not.toBeNull();
+    } finally {
+      spy.mockRestore();
+      debtMaturitiesCache.reset();
+    }
+
+    const missing = {
+      getCloudDebtMaturities: async () => {
+        throw new ApiRequestError("missing", 404);
+      },
+    };
+    const none = await fetchDebtMaturities("AI", missing, { exchange: "EPA", name: "Air Liquide" });
+    expect(none).toMatchObject({ symbol: "AI", status: "unavailable", latest: null, history: [] });
+    expect(validateDebtMaturities(none, "AI")).toBe(none);
+    await expect(fetchDebtMaturities("AI", missing)).rejects.toThrow("not available yet");
   });
 });
 

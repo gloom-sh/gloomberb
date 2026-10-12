@@ -17,11 +17,13 @@ import type { PageStackViewProps } from "../../../components/ui/page-stack-view"
 import { StackHeaderContext, type StackHeaderSlot } from "./stack-header";
 import { releasePointerFocus } from "../host/focus-scope";
 import { WebIcon, WebIconButton } from "./icons";
+import { WebKeyHints, WebKeycap, ariaKeyShortcut, dialogSurface } from "./dialog-actions";
 import { NestedPaneTabs } from "../../../components/layout/pane/header-tabs";
 import type { SegmentedControlProps } from "../../../components/ui/toggle";
 import {
   CONTROL_RADIUS,
   buttonPalette,
+  buttonRelief,
   controlBorderColor,
   controlShadow,
   panelBorder,
@@ -50,12 +52,13 @@ export function WebButton({
 }: ButtonProps) {
   const colors = useThemeColors();
   const palette = buttonPalette({ variant, active, disabled, tone }, colors);
+  const relief = buttonRelief({ variant, active, disabled }, colors);
 
   return (
     <button
       type="button"
       aria-label={label}
-      aria-keyshortcuts={shortcut}
+      aria-keyshortcuts={ariaKeyShortcut(shortcut)}
       title={title}
       aria-expanded={expanded}
       disabled={disabled}
@@ -79,6 +82,7 @@ export function WebButton({
       data-gloom-role="desktop-button"
       data-gloom-variant={variant}
       data-gloom-interactive={disabled ? undefined : "true"}
+      data-gloom-raised={relief.backgroundImage ? "true" : undefined}
       style={{
         display: "inline-flex",
         flexShrink: 0,
@@ -89,23 +93,28 @@ export function WebButton({
         minWidth: 0,
         boxSizing: "border-box",
         backgroundColor: palette.bg,
+        backgroundImage: relief.backgroundImage,
+        backgroundOrigin: "border-box",
         color: palette.fg,
         font: "inherit",
         fontWeight: active || variant === "primary" ? 700 : 600,
-        border: flush ? "none" : `1px solid ${palette.border}`,
+        border: flush ? "none" : `1px solid ${relief.borderColor ?? palette.border}`,
         borderRadius: CONTROL_RADIUS,
         padding: flush ? 0 : compact ? "0 2px" : "0 8px",
-        boxShadow: variant === "plain" ? "none" : controlShadow(active, colors),
+        boxShadow: relief.boxShadow,
+        "--gloom-pressed-image": relief.pressedImage,
+        "--gloom-pressed-shadow": relief.pressedShadow,
         cursor: disabled ? "default" : "pointer",
-      }}
+      } as CSSProperties}
     >
       {children ?? displayLabel ?? label}
       {shortcut && (
-        <span
-          style={{ color: disabled ? colors.textMuted : colors.textDim, marginLeft: 8, fontSize: "0.92em" }}
-        >
-          {shortcut}
-        </span>
+        <WebKeycap
+          keyName={shortcut}
+          fg={palette.fg}
+          surface={palette.bg === "transparent" ? dialogSurface(colors) : palette.bg}
+          style={{ marginLeft: 7, marginRight: flush || compact ? 0 : -3 }}
+        />
       )}
     </button>
   );
@@ -560,6 +569,7 @@ export function WebDialogFrame({
   subtitle,
   children,
   footer,
+  desktopFooter,
   showTitleDivider = false,
   onClose,
   shrinkable = false,
@@ -578,7 +588,7 @@ export function WebDialogFrame({
         }}
       >
         <Box flexDirection="column" flexGrow={1} minWidth={0}>
-          <Text fg={colors.text} attributes={TextAttributes.BOLD} style={{ fontWeight: 700 }}>
+          <Text fg={colors.text} attributes={TextAttributes.BOLD} wrapText style={{ fontWeight: 700 }}>
             {title}
           </Text>
           {subtitle ? (
@@ -592,22 +602,19 @@ export function WebDialogFrame({
         ) : null}
       </Box>
       {children}
-      {footer && (
-        // Sized by its line, not one cell: a cell-high box with this padding
-        // left the key line hanging out of its bottom.
-        <Box
-          flexShrink={0}
-          style={{
-            borderTop: `1px solid ${panelBorder(colors)}`,
-            paddingTop: 8,
-            marginTop: 10,
-          }}
-        >
-          <Text fg={colors.textMuted}>
+      {/* No rule and no key list: the buttons carry their keys, so what is
+          left is a few quiet keycaps or a note at the end of the content. */}
+      {desktopFooter !== undefined ? (
+        desktopFooter ? (
+          <WebKeyHints keys={desktopFooter.keys} note={desktopFooter.note} style={{ flexShrink: 0, marginTop: 10, justifyContent: "flex-end" }} />
+        ) : null
+      ) : footer ? (
+        <Box flexShrink={0} style={{ marginTop: 10 }}>
+          <Text fg={colors.textMuted} wrapText style={{ fontSize: 11, lineHeight: "16px" }}>
             {footer}
           </Text>
         </Box>
-      )}
+      ) : null}
     </Box>
   );
 }

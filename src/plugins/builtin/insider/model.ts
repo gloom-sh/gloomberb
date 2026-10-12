@@ -3,6 +3,7 @@ import { formatCompact, formatCurrency } from "../../../utils/format";
 import { parseForm4Xml, parseForm4Disclosure, transactionTypeLabel, type InsiderTransaction, type InsiderFilingDisclosure, type InsiderReportingOwner } from "./insider-data";
 import { affectingInsiderAmendments, buildInsiderAmendmentScopes, isAmendedInsiderFiling } from "./amendments";
 import { formatInsiderName, isOpenMarketTrade, shortInsiderRole } from "./display";
+import { isOtherIssuerFiling } from "./issuer";
 
 const NINETY_DAYS_MS = 90 * 24 * 60 * 60 * 1000;
 
@@ -13,7 +14,9 @@ export interface ParsedInsiderFiling {
   disclosure?: InsiderFilingDisclosure | null;
 }
 
+/** The rows of one filing; none for a Form 4 the company filed as an owner of another issuer. */
 export function parseInsiderFiling(filing: SecFilingItem, content: string | null, isLoading = false): ParsedInsiderFiling[] {
+  if (isOtherIssuerFiling(filing, content)) return [];
   const transactions = content ? parseForm4Xml(content) : [];
   const disclosure = content ? parseForm4Disclosure(content) : null;
   return transactions.length

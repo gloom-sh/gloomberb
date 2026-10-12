@@ -131,6 +131,100 @@ describe("createThrottledFetch", () => {
   });
 });
 
+/** Like fetch: never answers, rejects with the signal's reason once it aborts. */
+function hangingTransport() {
+  return mock((_url: string, init?: RequestInit) =>
+    new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (signal?.aborted) { reject(signal.reason); return; }
+      signal?.addEventListener("abort", () => reject(signal.reason), { once: true });
+    }),
+  );
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+describe("createThrottledFetch timeouts and caller aborts", () => {
+  test("a hung host times out although the caller never aborts", async () => {
+    const transport = hangingTransport();
+    const caller = new AbortController();
+    const client = createThrottledFetch({ maxRetries: 0, timeoutMs: 20, transport });
+
+    const error = await client.fetch("https://api.example.com/hung", { signal: caller.signal }).catch((e) => e);
+
+    expect(error).toMatchObject({ name: "TimeoutError" });
+    expect(caller.signal.aborted).toBe(false);
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    ["with a caller signal", () => new AbortController().signal],
+    ["without a signal", () => undefined],
+  ] as const)("retries a timed-out attempt %s", async (_label, makeSignal) => {
+    const signals: Array<AbortSignal | null | undefined> = [];
+    const transport = mock((url: string, init?: RequestInit) => {
+      signals.push(init?.signal);
+      return signals.length === 1
+        ? hangingTransport()(url, init)
+        : Promise.resolve(new Response("ok", { status: 200 }));
+    });
+    const client = createThrottledFetch({ maxRetries: 1, timeoutMs: 20, backoffBaseMs: 0, transport });
+
+    const resp = await client.fetch("https://api.example.com/slow", { signal: makeSignal() });
+
+    expect(resp.status).toBe(200);
+    expect(transport).toHaveBeenCalledTimes(2);
+    // Every attempt carries its own timeout, not the caller's signal.
+    expect(signals.every((signal) => signal instanceof AbortSignal)).toBe(true);
+  });
+
+  test.each([
+    ["an error", () => new Error("pane closed")],
+    // A caller's own deadline looks like a retryable timeout but is not ours to retry.
+    ["its own timeout", () => new DOMException("deadline", "TimeoutError")],
+  ] as const)("a caller abort with %s rejects with its reason and neither retries nor backs off", async (_label, makeReason) => {
+    const transport = hangingTransport();
+    const caller = new AbortController();
+    const reason = makeReason();
+    const client = createThrottledFetch({ maxRetries: 2, timeoutMs: 5_000, backoffBaseMs: 60_000, transport });
+
+    const pending = client.fetch("https://api.example.com/abort", { signal: caller.signal });
+    await sleep(5);
+    const startedAt = performance.now();
+    caller.abort(reason);
+
+    await expect(pending).rejects.toBe(reason);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  test("an abort during the backoff wait makes no further attempt", async () => {
+    const transport = mock(() => Promise.resolve(new Response("busy", { status: 503 })));
+    const caller = new AbortController();
+    const client = createThrottledFetch({ maxRetries: 2, backoffBaseMs: 100, transport });
+
+    const pending = client.fetch("https://api.example.com/backoff", { signal: caller.signal });
+    await sleep(20);
+    expect(transport).toHaveBeenCalledTimes(1);
+    caller.abort();
+
+    await expect(pending).rejects.toBe(caller.signal.reason);
+    await sleep(250);
+    expect(transport).toHaveBeenCalledTimes(1);
+  });
+
+  test("a signal that is already aborted never reaches the transport", async () => {
+    const transport = mock(() => Promise.resolve(new Response("ok", { status: 200 })));
+    const reason = new Error("gone");
+    const client = createThrottledFetch({ transport });
+
+    await expect(
+      client.fetch("https://api.example.com/aborted", { signal: AbortSignal.abort(reason) }),
+    ).rejects.toBe(reason);
+    expect(transport).not.toHaveBeenCalled();
+  });
+});
+
 // Restore
 afterAll(() => {
   setHttpFetchTransport(null);

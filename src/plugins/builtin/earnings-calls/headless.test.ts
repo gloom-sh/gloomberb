@@ -3,6 +3,7 @@ import type {
   CloudEarningsCallPayload,
   CloudEarningsTranscriptPayload,
 } from "../../../api-client";
+import { ApiRequestError } from "../../../api-client/errors";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import {
   createEarningsCallsHeadless,
@@ -257,4 +258,18 @@ test("pending discovery is not reported as a complete empty export", async () =>
   const result = await createEarningsCallsHeadless(deps).load(callArgs({ limit: 200 }), context);
   expect(result.complete).toBe(false);
   expect(result.metadata).toMatchObject({ total: 0, pending: true, totalIsExact: false, sourceLimitReached: false });
+});
+
+test("a refused account reads as the pane's walls, for the list and for a transcript: sign in, verify, then what Pro adds", async () => {
+  const refused = (status: number) => Promise.reject(new ApiRequestError(status === 401 ? "Unauthorized" : "Refused", status));
+  const load = (status: number, args: HeadlessPaneLoadArgs, transcriptOnly = false) => createEarningsCallsHeadless({
+    ...dependencies(),
+    ...(transcriptOnly ? { loadTranscript: () => refused(status) } : { loadCalls: () => refused(status) }),
+  }).load(args, context);
+  await expect(load(401, callArgs({}))).rejects.toThrow(/^CALLS needs sign-in .*Gloom Cloud Pro/);
+  await expect(load(403, transcriptArgs({}))).rejects.toThrow(/^CALLS needs a verified email/);
+  await expect(load(402, callArgs({}))).rejects.toThrow("Free shows no earnings calls. Gloom Pro adds every call");
+  await expect(load(402, transcriptArgs({ section: "qa" }), true)).rejects.toThrow("Free shows no earnings calls.");
+  // Anything else keeps its own message.
+  await expect(load(500, callArgs({}))).rejects.toThrow("Refused");
 });

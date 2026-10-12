@@ -2,7 +2,7 @@ import type { BrokerContractRef, InstrumentSearchResult, TickerListingRef } from
 import type { TickerRecord } from "../../types/ticker";
 
 export type TickerSearchInstrumentClass = "equity" | "fund" | "derivative" | "other";
-type TickerSearchCategory = "Saved" | "Primary Listing" | "Other Listings" | "Funds & Derivatives";
+type TickerSearchCategory = "Saved" | "Primary Listing" | "Other Listings" | "Funds & Derivatives" | "Related";
 
 export interface TickerSearchRankableItem {
   id: string;
@@ -21,6 +21,8 @@ export interface TickerSearchRankableItem {
   providerRank?: number;
   popularity?: number;
   searchAliases?: string[];
+  /** Themes the row answers to that its name does not say (`InstrumentSearchResult.searchKeywords`). */
+  searchKeywords?: string[];
 }
 
 export interface TickerSearchCandidate extends TickerSearchRankableItem {
@@ -36,7 +38,13 @@ export interface TickerSearchCandidate extends TickerSearchRankableItem {
 
 export type ResolvedTickerSearch =
   | { kind: "local"; symbol: string; ticker: TickerRecord }
-  | { kind: "provider"; symbol: string; result: InstrumentSearchResult };
+  | {
+    kind: "provider";
+    symbol: string;
+    result: InstrumentSearchResult;
+    /** A bare symbol's other listings (SYM:EXCH) when its quote chose one of several. */
+    otherListings?: string[];
+  };
 
 export interface TickerOpenTarget {
   symbol: string;

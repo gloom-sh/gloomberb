@@ -10,6 +10,14 @@ import {
   connectionHealth as sharedConnectionHealth,
   type ConnectionHealthRegistry,
 } from "../../core/connection-health";
+import { chartSeriesResolveRequestSchema } from "../../capabilities/chart-series";
+import {
+  registeredSeriesCapability,
+  resolveRegisteredSeries,
+  seriesCatalogCapability,
+} from "../../series/capability";
+import { SeriesRegistry } from "../../series/registry";
+import type { SeriesDefinition } from "../../series/types";
 import { cloudSyncController } from "../../sync/controller";
 import type {
   RegisteredSyncContributor,
@@ -54,7 +62,13 @@ import {
   type ResolvedRegistryPaneQuickSetting,
   type ResolvedRegistryPaneSettings,
 } from "./pane-settings";
-import { RegistryResumeStateListeners, createPluginPaneSettingsState, createPluginResumeState } from "./plugin-state";
+import {
+  RegistryResumeStateListeners,
+  bindPluginContextNamespaces,
+  createPluginPaneSettingsState,
+  createPluginResumeState,
+  type NamespacedPluginContext,
+} from "./plugin-state";
 import { createPluginSetupCommand, isPluginConfigured } from "./setup-command";
 import {
   bindSharedRegistry,
@@ -76,6 +90,15 @@ interface PluginRegistryOptions {
 }
 
 export type { WindowEditMode } from "./host-actions";
+
+/** The owner the series catalog capability is registered under; no plugin can switch it off. */
+const SERIES_CATALOG_OWNER = "gloomberb";
+
+/** A switched-off plugin, named for a "Turn on" offer. */
+export interface DisabledPluginOwner {
+  id: string;
+  name: string;
+}
 export {
   getSharedMarketData,
   getSharedRegistry,
@@ -100,6 +123,9 @@ export class PluginRegistry implements PluginRuntimeAccess {
 
   readonly events: EventBus;
   readonly capabilities: CapabilityRegistry;
+  /** Every series plugins registered here: what the data catalog lists. */
+  readonly series: SeriesRegistry;
+  private readonly seriesNamespaceCapabilities = new Map<string, () => void>();
   readonly connectionHealth: ConnectionHealthRegistry;
   readonly marketData: DataProvider;
   readonly tickerRepository: AppTickerRepositoryPort;
@@ -124,11 +150,21 @@ export class PluginRegistry implements PluginRuntimeAccess {
     operationId: string,
     payload: unknown,
     options: { signal?: AbortSignal } = {},
-  ): Promise<T> => (
-    this.remoteCapabilityInvoke
+  ): Promise<T> => {
+    // A series registered in this process loads here, the desktop view
+    // included: its loaders fetch the way the panes that plot it do.
+    if (operationId === "resolve" && this.series.namespaceOwner(capabilityId)) {
+      const local = this.resolveLocalSeries(capabilityId, payload, options.signal);
+      if (local) return local as Promise<T>;
+    }
+    return this.remoteCapabilityInvoke
       ? this.remoteCapabilityInvoke<T>(capabilityId, operationId, payload, options)
-      : this.capabilities.invoke<T>(capabilityId, operationId, payload, { renderer: true, signal: options.signal })
-  );
+      : this.capabilities.invoke<T>(capabilityId, operationId, payload, { renderer: true, signal: options.signal });
+  };
+  /** True where capabilities run in another process (the desktop view), so a catalog asks that process too. */
+  get usesRemoteCapabilities(): boolean {
+    return !!this.remoteCapabilityInvoke;
+  }
   getBrokerAdapter = (brokerType: string) => this.contributions.brokersMap.get(brokerType) ?? null;
   listBrokerAdapters = () => [...this.contributions.brokersMap.values()];
 
@@ -167,12 +203,61 @@ export class PluginRegistry implements PluginRuntimeAccess {
     bindSharedRegistry(this, marketData);
     this.capabilities = new CapabilityRegistry({
       isPluginEnabled: (pluginId) => !this.getConfig().disabledPlugins.includes(pluginId),
+      pluginName: (pluginId) => this.plugins.get(pluginId)?.name,
       isCapabilityEnabled: (capability, pluginId) => {
         const disabledSources = this.getConfig().disabledSources ?? [];
         return !disabledSources.includes(capability.sourceId ?? capability.id) && !this.getConfig().disabledPlugins.includes(pluginId);
       },
       connectionHealth: this.connectionHealth,
     });
+    this.series = new SeriesRegistry({
+      pluginHosts: (pluginId) => this.plugins.get(pluginId)?.hosts,
+      onNamespaceChange: (namespace, pluginId) => this.updateSeriesNamespace(namespace, pluginId),
+    });
+    if (this.enableCapabilityHandlers) {
+      this.capabilities.register(SERIES_CATALOG_OWNER, seriesCatalogCapability(this.series));
+    }
+  }
+
+  private resolveLocalSeries(namespace: string, payload: unknown, signal?: AbortSignal) {
+    const request = chartSeriesResolveRequestSchema.parse(payload);
+    const found = this.series.findLoaded(namespace, request.seriesId);
+    if (!found) return null;
+    if (this.getConfig().disabledPlugins.includes(found.series.pluginId)) {
+      const name = this.plugins.get(found.series.pluginId)?.name ?? found.series.pluginId;
+      return Promise.reject(new Error(`Turn on ${name} to chart ${found.series.definition.name}.`));
+    }
+    return resolveRegisteredSeries(this.series, namespace, request.seriesId, request.viewport, signal)
+      .then((resolved) => {
+        if (!resolved) throw new Error(`No series ${namespace}:${request.seriesId} is registered.`);
+        return resolved;
+      });
+  }
+
+  /** Gives a namespace with loaded series its chart-series capability, for automation and other processes. */
+  private updateSeriesNamespace(namespace: string, pluginId: string | null): void {
+    this.seriesNamespaceCapabilities.get(namespace)?.();
+    this.seriesNamespaceCapabilities.delete(namespace);
+    if (!pluginId || !this.enableCapabilityHandlers) return;
+    try {
+      this.seriesNamespaceCapabilities.set(namespace, this.capabilities.register(
+        pluginId,
+        registeredSeriesCapability(this.series, namespace),
+      ));
+    } catch (error) {
+      // A capability of the same id already answers there; the series still resolve in this process.
+      this.registryLog.warn("Series namespace has no capability", {
+        namespace,
+        pluginId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private registerSeriesForPlugin(pluginId: string, series: SeriesDefinition, items: PluginItems): () => void {
+    const dispose = this.series.register(pluginId, series);
+    items.capabilityDisposers.push(dispose);
+    return dispose;
   }
 
   /**
@@ -407,6 +492,41 @@ export class PluginRegistry implements PluginRuntimeAccess {
     return this.contributions.paneTemplatesMap.owners.get(templateId);
   }
 
+  /**
+   * The plugin that owns this pane type when it is switched off. A pane of a
+   * switched-off plugin stays hidden, so callers offer to turn it on instead
+   * of adding one.
+   */
+  getDisabledPaneOwner(
+    paneType: string,
+    disabledPlugins: readonly string[] = this.getConfig().disabledPlugins,
+  ): DisabledPluginOwner | null {
+    return this.disabledOwner(this.getPanePluginId(paneType), disabledPlugins);
+  }
+
+  /** The same for a template: its own plugin, or the one owning the pane it opens. */
+  getDisabledPaneTemplateOwner(
+    templateId: string,
+    disabledPlugins: readonly string[] = this.getConfig().disabledPlugins,
+  ): DisabledPluginOwner | null {
+    const paneType = this.paneTemplates.get(templateId)?.paneId;
+    return this.disabledOwner(this.getPaneTemplatePluginId(templateId), disabledPlugins)
+      ?? (paneType ? this.getDisabledPaneOwner(paneType, disabledPlugins) : null);
+  }
+
+  /** The plugin behind a research tab when it is switched off, which hides the tab. */
+  getDisabledTickerResearchTabOwner(
+    tabId: string,
+    disabledPlugins: readonly string[] = this.getConfig().disabledPlugins,
+  ): DisabledPluginOwner | null {
+    return this.disabledOwner(this.getTickerResearchTabPluginId(tabId), disabledPlugins);
+  }
+
+  private disabledOwner(pluginId: string | undefined, disabledPlugins: readonly string[]): DisabledPluginOwner | null {
+    if (!pluginId || !disabledPlugins.includes(pluginId)) return null;
+    return { id: pluginId, name: this.plugins.get(pluginId)?.name ?? pluginId };
+  }
+
   getBrokerPluginId(brokerType: string): string | undefined {
     return this.contributions.brokersMap.owners.get(brokerType);
   }
@@ -429,10 +549,42 @@ export class PluginRegistry implements PluginRuntimeAccess {
     }
   }
 
+  /**
+   * The state parts of a plugin's context. `namespaceKey` is the plugin's id,
+   * or the namespace a composed module keeps; both resolve the way a render
+   * context's id does.
+   */
+  private createNamespacedContext(namespaceKey: string): NamespacedPluginContext {
+    const stateId = this.stateNamespace(namespaceKey);
+    return {
+      persistence: createPluginPersistence(
+        this.persistence.pluginState,
+        this.persistence.resources,
+        `plugin:${stateId}`,
+        stateId,
+      ),
+      resume: createPluginResumeState({
+        pluginId: stateId,
+        getResumeState: (key, version) => this.getResumeState(namespaceKey, key, version),
+        setResumeState: (key, value, version) => this.setResumeState(namespaceKey, key, value, version),
+        deleteResumeState: (key) => this.deleteResumeState(namespaceKey, key),
+        getPaneRuntimeState: (paneId) => this.getPaneRuntimeState(paneId),
+        updatePaneRuntimeState: (paneId, patch) => this.updatePaneRuntimeState(paneId, patch),
+      }),
+      teamState: createPluginTeamState(stateId),
+      configState: {
+        get: (key) => this.getConfigState(namespaceKey, key),
+        set: (key, value) => this.setConfigState(namespaceKey, key, value),
+        delete: (key) => this.deleteConfigState(namespaceKey, key),
+        keys: () => this.getConfigStateKeys(namespaceKey),
+      },
+    };
+  }
+
   private createContext(pluginId: string): GloomPluginContext {
     const contributions = this.contributions;
     const items = contributions.getOrCreatePluginItems(pluginId);
-    return {
+    return bindPluginContextNamespaces({
       registerPane: (pane) => contributions.registerPane(pluginId, pane),
       registerPaneTemplate: (template) => contributions.registerPaneTemplate(pluginId, template, true),
       registerCommand: (command) => contributions.registerCommand(pluginId, command),
@@ -446,6 +598,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       registerShortcut: (shortcut) => contributions.registerShortcut(pluginId, shortcut),
       registerTickerAction: (action) => contributions.registerTickerAction(pluginId, action),
       registerContextMenuProvider: (provider) => contributions.registerContextMenuProvider(pluginId, provider),
+      registerSeries: (series) => this.registerSeriesForPlugin(pluginId, series, items),
       registerSyncContributor: (contributor) => {
         const dispose = this.registerSyncContributorForPlugin(pluginId, contributor);
         items.eventDisposers.push(dispose);
@@ -469,33 +622,13 @@ export class PluginRegistry implements PluginRuntimeAccess {
       marketData: this.marketData,
       connectionHealth: this.connectionHealth,
       tickerRepository: this.tickerRepository,
-      persistence: createPluginPersistence(
-        this.persistence.pluginState,
-        this.persistence.resources,
-        `plugin:${this.stateNamespace(pluginId)}`,
-        this.stateNamespace(pluginId),
-      ),
+      ...this.createNamespacedContext(pluginId),
       log: debugLog.createLogger(pluginId),
-      resume: createPluginResumeState({
-        pluginId: this.stateNamespace(pluginId),
-        getResumeState: (key, version) => this.getResumeState(pluginId, key, version),
-        setResumeState: (key, value, version) => this.setResumeState(pluginId, key, value, version),
-        deleteResumeState: (key) => this.deleteResumeState(pluginId, key),
-        getPaneRuntimeState: (paneId) => this.getPaneRuntimeState(paneId),
-        updatePaneRuntimeState: (paneId, patch) => this.updatePaneRuntimeState(paneId, patch),
-      }),
-      teamState: createPluginTeamState(this.stateNamespace(pluginId)),
       paneSettings: createPluginPaneSettingsState({
         getLayout: () => this.getLayout(),
         updateLayout: (layout) => this.updateLayout(layout),
         resolvePaneTarget: (paneId) => this.resolvePaneTarget(paneId),
       }),
-      configState: {
-        get: (key) => this.getConfigState(pluginId, key),
-        set: (key, value) => this.setConfigState(pluginId, key, value),
-        delete: (key) => this.deleteConfigState(pluginId, key),
-        keys: () => this.getConfigStateKeys(pluginId),
-      },
       createBrokerInstance: (brokerType, label, values) => this.createBrokerInstance(brokerType, label, values),
       updateBrokerInstance: this.updateBrokerInstance,
       syncBrokerInstance: this.syncBrokerInstance,
@@ -520,7 +653,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
       // Every plugin event is also a host event; TypeScript cannot see that through the generic key.
       emit: (event, payload) => this.events.emit(event, payload as HostEvents[typeof event]),
       notify: (notification) => this.notify(notification),
-    };
+    }, (stateId) => this.createNamespacedContext(stateId));
   }
 
   private registryLog = debugLog.createLogger("registry");
@@ -553,6 +686,18 @@ export class PluginRegistry implements PluginRuntimeAccess {
       if (this.enableCapabilityHandlers && plugin.capabilities) {
         for (const capability of plugin.capabilities) {
           this.registerCapabilityForPlugin(plugin.id, capability, items);
+        }
+      }
+
+      for (const series of plugin.series ?? []) {
+        try {
+          this.registerSeriesForPlugin(plugin.id, series, items);
+        } catch (error) {
+          // One bad entry in a long list leaves the plugin's other series and panes working.
+          this.registryLog.error("Series skipped", {
+            pluginId: plugin.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
 

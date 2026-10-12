@@ -8,10 +8,11 @@ import { Box, ScrollBox, Text, useRendererHost, useUiHost } from "../../../ui";
 import { detectShortcutPlatform, formatPrimaryShortcut, getShortcutDisplayMode } from "../../../utils/shortcut-labels";
 import { getSharedRegistry } from "../../registry";
 import { apiClient, type CloudPricing } from "../../../api-client";
-import { trialDaysOf } from "../account-management/model";
+import { trialDaysOf } from "../../../account/billing";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
 import { requestFeedbackDialog } from "../../../components/feedback-dialog";
+import { DOCS_PANE_TEMPLATE_ID } from "../../../docs/content";
 import { FeedbackTab } from "./feedback-tab";
 import { FunctionsTable } from "./functions-table";
 import { KeybindingsEditor } from "./keybindings-editor";
@@ -36,7 +37,7 @@ function entry(id: string, badges: string[], description: string): ShortcutTable
 
 function HelpPane({ focused, width, height }: PaneProps) {
   const registry = getSharedRegistry();
-  const { openCommandBar, showPane } = usePluginAppActions();
+  const { openCommandBar, showPane, createPaneFromTemplate } = usePluginAppActions();
   // A key capture requested from the command bar belongs to the Shortcuts
   // tab, whether the pane is already open or is being opened for it.
   const [activeTabId, setActiveTabId] = usePluginPaneState<HelpTabId>("activeTab", "basics");
@@ -56,6 +57,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const windowMoveBadges = actionBadges("window-move-mode");
   const windowResizeBadges = actionBadges("window-resize-mode");
   const functionHelpBadges = actionBadges("function-help");
+  const askBadges = actionBadges("pane-ask");
   useEffect(() => subscribeKeybindingCapture(() => setActiveTabId("shortcuts")), []);
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
@@ -100,6 +102,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
     openCommandBar("PL ");
   }, [openCommandBar]);
 
+  const openDocs = useCallback(() => {
+    createPaneFromTemplate(DOCS_PANE_TEMPLATE_ID);
+  }, [createPaneFromTemplate]);
+
   const openIssues = useCallback(() => {
     void rendererHost.openExternal(GLOOMBERB_ISSUES_URL);
   }, [rendererHost]);
@@ -107,7 +113,10 @@ function HelpPane({ focused, width, height }: PaneProps) {
   // Each tab's actions. `l` moves between tabs, so layout actions take `a`.
   const tabHints = useMemo<PaneHint[]>(() => {
     if (activeTabId === "basics") {
-      return [{ id: "layout-actions", key: "a", label: " layout actions", title: "Layout Actions", onPress: openLayoutActions }];
+      return [
+        { id: "docs", key: "d", label: "ocs", title: "Open Docs", onPress: openDocs },
+        { id: "layout-actions", key: "a", label: " layout actions", title: "Layout Actions", onPress: openLayoutActions },
+      ];
     }
     if (activeTabId === "functions") {
       return [{ id: "plugins", key: "p", label: "lugins", title: "Manage Plugins", onPress: openPluginManager }];
@@ -120,7 +129,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
       ];
     }
     return [];
-  }, [activeTabId, openDebugLog, openIssues, openLayoutActions, openPluginManager]);
+  }, [activeTabId, openDebugLog, openDocs, openIssues, openLayoutActions, openPluginManager]);
 
   // The footer binds each hint's key; a search field keeps its typing.
   usePaneFooter("help:tab", () => tabHints.length > 0 ? { hints: tabHints } : null, [tabHints]);
@@ -152,7 +161,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
         : []),
       entry("des", ["DES", "<ticker>"], "Open security details for a specific ticker."),
       entry("help-card", ["HELP", "<function>"], "Open a function's help card: what it shows, its keys, how fresh its data is. HELP HELP reaches support."),
+      entry("docs", ["DOCS", "<function>"], "Read the docs and Academy lessons in the app. The ? on a pane opens its entry."),
       entry("upgrade", ["UPGRADE"], tf("Go Pro for real-time data at gloom.sh/cloud, free for {days} days.", { days: trialDays })),
+      entry("mcp", ["MCP"], "Connect Claude Code, Codex, Cursor or any MCP client to Gloom's research tools."),
       entry("move", ["Up/Down", "Ctrl+P/N"], "Move through command bar results."),
       entry("page", ["PageUp/PageDown", "Ctrl+Home/End"], "Jump a page, or to the first or last result."),
       entry("run", ["Enter", "Shift+Enter"], "Run the selected result or its secondary action."),
@@ -174,9 +185,13 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("back", ["Esc", "Backspace"], "Go back from a detail view."),
         entry("pane-menu", actionBadges("pane-menu"), "Open the focused pane's menu: every action in the pane with its key, sorting, filters, tabs, toggles and the pane actions."),
         ...(functionHelpBadges.length > 0
-          ? [entry("function-help", functionHelpBadges, "Open the focused pane's help card, with a link to its docs.")]
+          ? [entry("function-help", functionHelpBadges, "Open the focused pane's help card; Enter reads its docs.")]
+          : []),
+        ...(askBadges.length > 0
+          ? [entry("ask-gloom", askBadges, "Ask Gloom about the focused pane, in a new conversation with the pane attached. Also Ask Gloom in the pane menu.")]
           : []),
         entry("search", ["/"], "Search in the focused pane."),
+        entry("sidebar", ["<", ">"], "Narrow or widen the list beside the content, as in MAP and ASKG."),
         entry("warnings", ["!"], "Open the focused pane's data warnings."),
         entry("notification", [...actionBadges("notification-action"), ...actionBadges("notification-dismiss")], "Run or dismiss the newest notification."),
       ],
@@ -215,6 +230,14 @@ function HelpPane({ focused, width, height }: PaneProps) {
       ],
     },
     {
+      label: "Map",
+      items: [
+        entry("map-pan", ["m", "Arrows"], "Give the arrow keys to the map and pan it; Shift pans further, Esc gives them back to the list."),
+        entry("map-zoom", ["+/-", "0"], "Zoom the map in or out, or reset it."),
+        entry("map-pointer", ["Scroll", "Pinch"], "Zoom the map around the pointer; drag to pan, double-click to zoom in."),
+      ],
+    },
+    {
       label: "Clipboard",
       items: [
         entry("copy", copyBadges, "Copy the active terminal selection."),
@@ -245,7 +268,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("commit", ["Enter", "Esc"], "Commit pending changes or exit window mode."),
       ],
     },
-  ], [copyBadges, functionHelpBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
+  ], [askBadges, copyBadges, functionHelpBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
 
   const renderContent = () => {
     switch (activeTabId) {
@@ -266,11 +289,11 @@ function HelpPane({ focused, width, height }: PaneProps) {
               <SectionHeading title="How To Use Gloomberb" />
               <Box flexDirection="column">
                 <Text fg={colors.textDim}>{t("Gloomberb is command-bar first.")}</Text>
-                <Text fg={colors.textDim}>{t("Use the keyboard for speed, and the mouse for windows.")}</Text>
+                <Text fg={colors.textDim} wrapText>{t("Click anything to use it; the keys shown beside actions are shortcuts.")}</Text>
                 <Text fg={colors.textDim} wrapText>
                   {commandBarBadges[0]
-                    ? tf("Not sure of a code? Press {key} and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.", { key: commandBarBadges[0] })
-                    : t("Not sure of a code? Type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.")}
+                    ? tf("Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.", { key: commandBarBadges[0] })
+                    : t("Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.")}
                 </Text>
               </Box>
             </Box>

@@ -7,6 +7,8 @@ import {
   inferBrowserTabFromQuery,
   latestLikely13FQuarter,
   buildPeriodReports,
+  oneFundPerCik,
+  quartersBehindLatest,
   sortFilingPositionRows,
 } from "./model";
 import type { FundDetailData, ThirteenFFormSummary, ThirteenFHoldingRecord } from "./types";
@@ -67,6 +69,34 @@ describe("13F model", () => {
     expect(latestLikely13FQuarter(new Date("2026-04-20T00:00:00Z"))).toBe("2025Q4");
     expect(latestLikely13FQuarter(new Date("2026-01-15T00:00:00Z"))).toBe("2025Q3");
     expect(latestLikely13FQuarter(new Date("2026-02-20T00:00:00Z"))).toBe("2025Q4");
+  });
+
+  test("counts quarters behind the latest quarter filers have had time to report", () => {
+    const now = new Date("2026-10-11T00:00:00Z");
+    // Q2 2026 is the latest reported quarter in October; Scion last reported Q3 2025.
+    expect(quartersBehindLatest("2025-09-30", now)).toBe(3);
+    expect(quartersBehindLatest("2026-03-31", now)).toBe(1);
+    expect(quartersBehindLatest("2026-06-30", now)).toBe(0);
+    // A filing for a quarter inside the reporting buffer is not ahead of anything.
+    expect(quartersBehindLatest("2026-09-30", now)).toBe(0);
+    expect(quartersBehindLatest("2025-12-31", new Date("2026-02-20T00:00:00Z"))).toBe(0);
+    expect(quartersBehindLatest(undefined, now)).toBeNull();
+  });
+
+  test("lists a manager once under the name of its latest filing", () => {
+    const funds = [
+      { cik: "0001336528", name: "Pershing Square Capital Management, L.P." },
+      { cik: "0002026053", name: "PERSHING SQUARE HOLDCO, L.P." },
+      { cik: "0002026053", name: "PERSHING SQUARE INC." },
+    ];
+    expect(oneFundPerCik(funds).map((fund) => fund.name))
+      .toEqual(["Pershing Square Capital Management, L.P.", "PERSHING SQUARE HOLDCO, L.P."]);
+    const reports = new Map([["0002026053", buildPeriodReports([
+      form({ cik: "0002026053", companyName: "PERSHING SQUARE HOLDCO, L.P.", periodOfReport: "2025-12-31" }),
+      form({ cik: "0002026053", accessionNumber: "q2", companyName: "PERSHING SQUARE INC.", periodOfReport: "2026-06-30" }),
+    ])[0]!]]);
+    expect(oneFundPerCik(funds, reports).map((fund) => fund.name))
+      .toEqual(["Pershing Square Capital Management, L.P.", "PERSHING SQUARE INC."]);
   });
 
   test("reconciles additions and smaller full restatements without losing filing history", () => {

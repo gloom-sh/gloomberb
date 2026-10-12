@@ -11,6 +11,7 @@ import {
 import { colors as themeColors } from "../../../theme/colors";
 import { consumeChartMouseEvent, getGlobalMouseX, getLocalPlotPointer, type ChartMouseEvent } from "../core/pointer";
 import { useStaticChartBitmapSize } from "./bitmap";
+import { useMeasuredCells } from "../../../ui/measured-cells";
 import { PriceAxisLabels } from "./price-axis-labels";
 import { formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
 import {
@@ -20,7 +21,6 @@ import {
   type CompositeNavigationFrame,
   type CompositeViewportRange,
 } from "./interactions";
-import { buildCompositeColumnLayout } from "./column-layout";
 import {
   fitAxisLabels,
   hitTestLevel,
@@ -122,6 +122,8 @@ interface CompositePanelSurfaceProps {
   onSelectLevel: (id: string | null) => void;
 }
 
+const DESKTOP_PLOT_STYLE = { flex: "1 1 0px", width: "auto", minWidth: 0, height: "auto", alignSelf: "stretch" } as const;
+
 export function CompositePanelSurface({
   panel,
   scene,
@@ -190,20 +192,25 @@ export function CompositePanelSurface({
     | ChartToolDrag
     | null
   >(null);
-  const plotAspect = (plotWidth * cellWidthPx) / Math.max(panel.height * cellHeightPx, 1);
+  // The plot's box as the browser lays it out: on the desktop a chart that
+  // fills its box has it a fraction of a cell past its columns and rows. The
+  // bitmap is drawn at that size, so it is 1:1 at rest, and the pointer is
+  // read back into the scene's columns and rows. Elsewhere, and in the
+  // terminal, it is the plot's cells.
+  const plotSize = useMeasuredCells(plotRef, { width: plotWidth, height: panel.height });
+  const plotAspect = (plotSize.width * cellWidthPx) / Math.max(plotSize.height * cellHeightPx, 1);
   // The plot is wider than the viewport by the reserved right offset. Gestures
   // read the pointer in plot space, so they convert through this.
   const plotSpanFactor = 1 + compositeRightOffsetRatio(scene.timeScale);
-  const bitmapSize = useStaticChartBitmapSize(plotWidth, panel.height);
+  const bitmapSize = useStaticChartBitmapSize(plotSize.width, plotSize.height);
   const bitmap = useCompositePanelBitmap({ panel, bitmapSize, colors, isDesktopWeb });
-  const columnLayout = useMemo(() => buildCompositeColumnLayout(panel), [panel]);
   // The level line follows the pointer only. A keyboard or shared cursor knows
   // its column, and the series markers and axis readout already say the value.
   // A tool placed from the keyboard is the exception: its end is a level.
   const pointerCursorYRatio = scene.cursorXRatio === null ? null : heldCursorYRatio;
   const crosshair = useMemo(
-    () => resolvePanelCrosshair(panel, columnLayout, bitmap, scene.cursorXRatio, pointerCursorYRatio, colors.crosshair),
-    [bitmap, colors.crosshair, columnLayout, panel, pointerCursorYRatio, scene.cursorXRatio],
+    () => resolvePanelCrosshair(panel, bitmap, scene, pointerCursorYRatio, colors.crosshair),
+    [bitmap, colors.crosshair, panel, pointerCursorYRatio, scene],
   );
   const measureDomain = useMemo(() => resolveMeasureAxisDomain(panel), [panel]);
   const toolReadout = useMemo(() => {
@@ -489,18 +496,26 @@ export function CompositePanelSurface({
   const leftAxisMarkers = buildAxisMarkers("left");
   const rightAxisMarkers = buildAxisMarkers("right");
 
+  /** Where the pointer is over the plot, in the scene's columns and rows. */
+  const plotPointer = useCallback((event: ChartMouseEvent) => {
+    const pointer = getLocalPlotPointer(event, plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1], renderer);
+    if (!pointer || (plotSize.width === plotWidth && plotSize.height === panel.height)) return pointer;
+    return {
+      ...pointer,
+      cellX: plotSize.width > 0 ? pointer.cellX * (plotWidth / plotSize.width) : pointer.cellX,
+      cellY: plotSize.height > 0 ? pointer.cellY * (panel.height / plotSize.height) : pointer.cellY,
+    };
+  }, [panel.height, plotSize.height, plotSize.width, plotWidth, renderer]);
   const pointerRatios = useCallback((event: ChartMouseEvent) => {
-    const pointerTarget = plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1];
-    const pointer = getLocalPlotPointer(event, pointerTarget, renderer);
+    const pointer = plotPointer(event);
     if (!pointer) return null;
     return {
       xRatio: plotWidth <= 1 ? 0 : Math.max(0, Math.min(1, pointer.cellX / (plotWidth - 1))),
       yRatio: panel.height <= 1 ? 0.5 : Math.max(0, Math.min(1, pointer.cellY / (panel.height - 1))),
     };
-  }, [panel.height, plotWidth, renderer]);
+  }, [panel.height, plotPointer, plotWidth]);
   const updateCursor = useCallback((event: ChartMouseEvent): boolean => {
-    const pointerTarget = plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1];
-    const pointer = getLocalPlotPointer(event, pointerTarget, renderer);
+    const pointer = plotPointer(event);
     if (!pointer) return false;
     const nextDate = resolveCompositeCursorDate(scene, pointer.cellX);
     if (!nextDate) return false;
@@ -511,7 +526,7 @@ export function CompositePanelSurface({
     onCursorDateChange(nextDate);
     consumeChartMouseEvent(event);
     return true;
-  }, [onCursorDateChange, panel.height, renderer, scene]);
+  }, [onCursorDateChange, panel.height, plotPointer, scene]);
   const clearCursor = useCallback(() => {
     setCursorYRatio(null);
     onCursorDateChange(null);
@@ -525,7 +540,7 @@ export function CompositePanelSurface({
     if (isDesktopWeb) releaseEditableFocus(event);
     consumeChartMouseEvent(event);
     if (onPickTime) {
-      const pointer = getLocalPlotPointer(event, plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1], renderer);
+      const pointer = plotPointer(event);
       const date = pointer ? resolveCompositeCursorDate(scene, pointer.cellX) : null;
       if (date) onPickTime(date);
       return;
@@ -588,7 +603,7 @@ export function CompositePanelSurface({
     dragRef.current = startPanGesture(
       frame,
       viewport,
-      plotWidth,
+      plotSize.width,
       getGlobalMouseX(event, renderer),
       plotSpanFactor,
     );
@@ -606,6 +621,8 @@ export function CompositePanelSurface({
     panel,
     plotAspect,
     projectedLevels,
+    plotPointer,
+    plotSize.width,
     plotSpanFactor,
     plotWidth,
     pointerRatios,
@@ -658,7 +675,7 @@ export function CompositePanelSurface({
     if (drag.frame !== frame) {
       // Data refreshed mid-drag. The new frame maps positions differently, so
       // continue from where the plot is now instead of replaying the drag.
-      Object.assign(drag, startPanGesture(frame, viewport, plotWidth, globalX, plotSpanFactor));
+      Object.assign(drag, startPanGesture(frame, viewport, plotSize.width, globalX, plotSpanFactor));
     }
     onPanViewport(
       (globalX - drag.startGlobalX) * drag.positionsPerCell,
@@ -670,6 +687,7 @@ export function CompositePanelSurface({
     onEditDrawing,
     onPanViewport,
     panel,
+    plotSize.width,
     plotSpanFactor,
     plotWidth,
     pointerRatios,
@@ -745,8 +763,7 @@ export function CompositePanelSurface({
     if (!scroll) return;
     onActivate?.();
     consumeChartMouseEvent(event);
-    const pointerTarget = plotRef.current as unknown as Parameters<typeof getLocalPlotPointer>[1];
-    const pointer = getLocalPlotPointer(event, pointerTarget, renderer);
+    const pointer = plotPointer(event);
     updateCursor(event);
     const pending = pendingWheelRef.current ?? { panRatio: 0, zoomLog: 0, anchorRatio: 0.5 };
     if (event.modifiers.ctrl && pointer && isVerticalWheelDirection(scroll.direction)) {
@@ -758,7 +775,7 @@ export function CompositePanelSurface({
         pointer.cellX / Math.max(plotWidth - 1, 1) * plotSpanFactor,
       );
     } else {
-      pending.panRatio += resolveCompositeWheelPan(scroll, plotWidth * cellWidthPx);
+      pending.panRatio += resolveCompositeWheelPan(scroll, plotSize.width * cellWidthPx);
     }
     pendingWheelRef.current = pending;
     if (!isDesktopWeb || typeof webFrame.requestAnimationFrame !== "function") {
@@ -773,9 +790,10 @@ export function CompositePanelSurface({
     flushWheel,
     isDesktopWeb,
     onActivate,
+    plotPointer,
+    plotSize.width,
     plotSpanFactor,
     plotWidth,
-    renderer,
     updateCursor,
   ]);
 
@@ -785,6 +803,10 @@ export function CompositePanelSurface({
       height={panel.height}
       width={plotWidth + leftAxisWidth + rightAxisWidth + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0))}
       position="relative"
+      // Desktop: spans the chart's box and takes its share of the height, so
+      // when a resize draws the box at a new size between renders the plot
+      // follows it by CSS. At rest, the size the cells give it.
+      style={isDesktopWeb ? { width: "100%", flex: `${panel.height} 1 calc(${panel.height} * var(--cell-h))`, height: "auto", minHeight: 0 } : undefined}
     >
       {measureReadout ? (
         <Box
@@ -830,8 +852,11 @@ export function CompositePanelSurface({
       ) : null}
       <ChartSurface
         ref={plotRef}
-        width={plotWidth}
-        height={panel.height}
+        // Its measured box on the desktop, where pointer bounds read it; CSS lays it out.
+        width={plotSize.width}
+        height={plotSize.height}
+        // Desktop: the width the axes leave, and the row's height.
+        style={isDesktopWeb ? DESKTOP_PLOT_STYLE : undefined}
         flexDirection="column"
         bitmaps={bitmapLayers}
         crosshair={crosshair}

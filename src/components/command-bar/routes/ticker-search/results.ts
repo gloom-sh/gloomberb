@@ -10,17 +10,11 @@ import {
   parseAssetClassQuery,
 } from "../../../../tickers/search/asset-classes";
 import type { ResultItem } from "../../list/model";
-import { canonicalExchange, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
-import { compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
+import { currencyPairCode } from "../../../../utils/currency-pair";
+import { canonicalExchange, exchangeCodeVenues, parsePublicTickerKey, publicExchange } from "../../../../utils/exchanges";
+import { answersToIndexCode, compactSearchText, getIssuerGroupKey, isExplicitMarketSymbol } from "../../../../tickers/search/ranking";
 
 export const QUICK_LOOK_TICKER_SEARCH_OPTIONS = { includeOptionContracts: false } as const;
-
-/**
- * The command bar ranks a full page of symbol search (Cloud answers ten), so
- * a second security on the same symbol is still in hand when the root list
- * picks its exact rows.
- */
-export const COMMAND_BAR_TICKER_SEARCH_LIMIT = 10;
 
 export function buildTickerSearchCacheKey(
   query: string,
@@ -82,6 +76,8 @@ function isExactTickerResultMatch(item: ResultItem, rawQuery: string): boolean {
   return [assetClass?.symbolQuery ?? rawQuery, ...(marketSymbol ? [marketSymbol] : [])].some((query) => (
     findExactTickerSearchMatch([item], query) != null
     || parsePublicTickerKey(item.label).symbol === query.trim().toUpperCase()
+    // IBOV is how the Ibovespa is typed; its own symbol is ^BVSP.
+    || answersToIndexCode(item, query)
   ));
 }
 
@@ -174,8 +170,15 @@ function venueMatchesSuffix(item: ResultItem, suffix: string): boolean {
   const canonicalDisplayed = canonicalExchange(displayed);
   const targets = [displayed, canonicalDisplayed, fromLabel, publicExchange(canonicalDisplayed || displayed)];
   if (targets.some((value) => value.startsWith(suffix))) return true;
-  const aliased = canonicalExchange(suffix);
-  return aliased !== suffix && targets.some((value) => canonicalExchange(value) === aliased);
+  // Another spelling of the venue (XPAR, PAR), or a code that names several (TSE: Toronto or Tokyo).
+  const venues = exchangeCodeVenues(suffix).filter((venue) => venue !== suffix);
+  return targets.some((value) => venues.includes(canonicalExchange(value)));
+}
+
+/** On the currency venue a pair's code is the pair: EURUSD's CCY row is EURUSD=X. */
+function isCurrencyVenuePair(item: ResultItem, symbol: string): boolean {
+  const pair = currencyPairCode(symbol, "CCY");
+  return pair != null && canonicalExchange(item.right) === "CCY" && currencyPairCode(item.label) === pair;
 }
 
 /**
@@ -186,7 +189,7 @@ export function venueDropdownResults(symbol: string, items: ResultItem[], suffix
   const rows: ResultItem[] = [];
   for (const item of items) {
     if (item.kind !== "ticker" && item.kind !== "search") continue;
-    if (!isExactTickerResultMatch(item, symbol)) continue;
+    if (!isExactTickerResultMatch(item, symbol) && !isCurrencyVenuePair(item, symbol)) continue;
     if (!venueMatchesSuffix(item, suffix)) continue;
     rows.push(item.category === "Exact Match" ? item : { ...item, category: "Exact Match" });
   }
