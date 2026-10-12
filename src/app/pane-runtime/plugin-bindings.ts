@@ -177,6 +177,10 @@ export function bindAppPanePluginRegistry({
       if (isDetachedWindow || isDialogOpen()) return;
       dispatch({ type: "SET_COMMAND_BAR", open: true, query });
     },
+    runCommandBarQuery: (query) => {
+      if (isDetachedWindow || isDialogOpen()) return;
+      dispatch({ type: "SET_COMMAND_BAR", open: true, query, launch: { kind: "run-query", query } });
+    },
     // Forms submit through the main window's state, so a detached window says where to go.
     openPluginCommandWorkflow: (commandId) => {
       if (isDetachedWindow) {

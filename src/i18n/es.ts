@@ -505,9 +505,8 @@ export const es: Record<string, string> = {
 
   // ── Help pane ────────────────────────────────────────────────
   "How To Use Gloomberb": "Cómo usar Gloomberb",
-  "Gloomberb is command-bar first.": "Gloomberb se maneja ante todo con la barra de comandos.",
-  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "¿No sabes el código? Haz clic en la barra de búsqueda de arriba, o pulsa {key}, y escribe lo que quieres con tus palabras, como \"apple earnings\". La pestaña Funciones las lista todas.",
-  "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "¿No sabes el código? Haz clic en la barra de búsqueda de arriba y escribe lo que quieres con tus palabras, como \"apple earnings\". La pestaña Funciones las lista todas.",
+  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "¿No sabes el código? Haz clic en la barra de búsqueda de arriba, o pulsa {key}, y escribe lo que quieres con tus palabras, como \"top news\". La pestaña Funciones las lista todas.",
+  "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "¿No sabes el código? Haz clic en la barra de búsqueda de arriba y escribe lo que quieres con tus palabras, como \"top news\". La pestaña Funciones las lista todas.",
   "Click anything to use it; the keys shown beside actions are shortcuts.": "Haz clic en cualquier cosa para usarla; las teclas junto a las acciones son atajos.",
   "Open Help": "Abrir la ayuda",
   "Command Prefixes": "Prefijos de comandos",

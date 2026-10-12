@@ -29,7 +29,7 @@ export const BADGE_GAP = 1;
  */
 const SHORTCUT_PATTERN = /^[A-Z0-9][A-Z0-9-]{0,5}$/;
 
-type BadgeSource = Pick<ResultItem, "accent" | "badge" | "right" | "kind">;
+type BadgeSource = Pick<ResultItem, "accent" | "badge" | "right" | "kind" | "shortcutOnRight">;
 
 function looksLikeShortcut(value: string | undefined): value is string {
   return value !== undefined && SHORTCUT_PATTERN.test(value);
@@ -46,10 +46,11 @@ function resolveBadgeTone(item: BadgeSource): CommandBarBadgeTone {
  * there get it lifted into the badge column rather than every producer being
  * rewritten. Explicit `badge` always wins. Info rows never carry a badge: they
  * are placeholders, not things you can run. Plugin toggles show on/off on the
- * right instead of `right`, so nothing there is on screen to lift.
+ * right instead of `right`, so nothing there is on screen to lift. A row that
+ * asks for its shortcut on the right keeps it there.
  */
 export function resolveRowBadge(item: BadgeSource): CommandBarRowBadge | null {
-  if (item.kind === "info" || item.kind === "plugin") return null;
+  if (item.kind === "info" || item.kind === "plugin" || item.shortcutOnRight) return null;
   const text = item.badge || (looksLikeShortcut(item.right) ? item.right : null);
   if (!text) return null;
   return { text: text.toUpperCase(), tone: resolveBadgeTone(item) };

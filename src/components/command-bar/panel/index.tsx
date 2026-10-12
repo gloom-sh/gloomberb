@@ -1,5 +1,5 @@
-import { useLayoutEffect } from "react";
-import { t } from "../../../i18n";
+import { useLayoutEffect, useState } from "react";
+import { t, tf } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes } from "../../../ui";
 import { truncateToDisplayWidth } from "../../../utils/format";
@@ -11,19 +11,20 @@ import type { CommandBarRoute } from "../workflow/types";
 import { NATIVE_COMMAND_SURFACE, nativeCommandSurfaceBorder } from "./native-surface";
 import { useCommandBarPalette } from "./palette";
 import { publishCommandBarPrompt } from "./prompt-binding";
+import { takeCommandBarExample } from "./prompt-example";
 import type { CommandBarPanelProps } from "./types";
 
 const COMMAND_BAR_OVERLAY_Z_INDEX = 2_147_483_646;
 const COMMAND_BAR_PANEL_Z_INDEX = 2_147_483_647;
 
 /**
- * The root screen keeps the closed prompt's own words. Opening the bar puts the
- * caret in the same input the header was already showing, so changing the
- * placeholder underneath it read as the control being swapped out. Nested
- * screens are a different screen and say so.
+ * The closed prompt already says what the bar is for, so the open root screen
+ * shows something to type instead: plain words that work, picked once when the
+ * bar opens and kept until it closes. Nested screens are a different screen and
+ * say so.
  */
-function resolvePromptPlaceholder(listState: ListScreenState): string {
-  if (listState.kind === "root") return t("Search or run a command");
+function resolvePromptPlaceholder(listState: ListScreenState, example: string): string {
+  if (listState.kind === "root") return tf("Try: {example}", { example });
   if (listState.title === "Security Description") return t("Search tickers");
   return t("Filter");
 }
@@ -65,6 +66,8 @@ export function CommandBarPanel({
 }: CommandBarPanelProps) {
   const colors = useThemeColors();
   const palette = useCommandBarPalette(nativePaneChrome);
+  // The bar mounts on each opening, so each opening gets its own example.
+  const [example] = useState(takeCommandBarExample);
 
   useLayoutEffect(() => {
     const scrollBox = nativeListScrollRef.current;
@@ -88,11 +91,11 @@ export function CommandBarPanel({
     publishCommandBarPrompt({
       screenKey: `${visibleListState.kind}:${visibleListState.title}`,
       query: visibleListState.query,
-      placeholder: resolvePromptPlaceholder(visibleListState),
+      placeholder: resolvePromptPlaceholder(visibleListState, example),
       ghostSuffix: visibleListState.kind === "root" ? rootGhostSuffix : null,
       onQueryChange,
     });
-  }, [onQueryChange, rootGhostSuffix, visibleListState]);
+  }, [example, onQueryChange, rootGhostSuffix, visibleListState]);
   useLayoutEffect(() => () => publishCommandBarPrompt(null), []);
 
   useLayoutEffect(() => {

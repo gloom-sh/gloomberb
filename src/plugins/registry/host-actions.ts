@@ -38,6 +38,8 @@ export interface PluginHostActions {
   switchPanel(panel: "left" | "right"): void;
   switchTab(tabId: string, paneId?: string): void;
   openCommandBar(query?: string): void;
+  /** Submits `query` in the command bar as if typed and entered, as a key bound to it does. Not on the plugin API. */
+  runCommandBarQuery(query: string): void;
   openPluginCommandWorkflow(commandId: string): void;
   /** Opens one of the app's own forms, such as `new-portfolio`, or Add Broker in the Brokers pane. Not on the plugin API. */
   openBuiltInWorkflow(actionId: string): void;
@@ -112,6 +114,7 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
     switchPanel: () => {},
     switchTab: () => {},
     openCommandBar: () => {},
+    runCommandBarQuery: () => {},
     openPluginCommandWorkflow: () => {},
     openBuiltInWorkflow: () => {},
     openPaneSettings: () => {},
