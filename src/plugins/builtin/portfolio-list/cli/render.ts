@@ -32,7 +32,7 @@ import {
   type ExtendedSession,
   type ExtendedSessionDisplay,
 } from "../../../../market-data/market/status";
-import { headlineQuoteDisplay } from "../column-values";
+import { formatPerpetualRate, headlineQuoteDisplay } from "../column-values";
 import type { AppConfig } from "../../../../types/config";
 import type { DataProvider } from "../../../../types/data-provider";
 import type { CliCommandContext } from "../../../../types/plugin";
@@ -41,7 +41,9 @@ import type { Portfolio, TickerPosition, TickerRecord } from "../../../../types/
 import type { TickerFinancials } from "../../../../types/financials";
 import type { TickerInstrumentKind } from "../../../../types/instrument";
 import { resolveTickerInstrumentKind } from "../../../../tickers/instrument-kind";
-import { selectMarketCapitalization } from "../../../../utils/market-capitalization";
+import { perpetualListing } from "../../../../tickers/perpetual-listing";
+import { loadPerpetualMarket } from "../../../../sources/gloomberb-cloud/perpetuals";
+import { listedMarketCapitalization, selectMarketCapitalization } from "../../../../utils/market-capitalization";
 import { chunked, mapWithConcurrency } from "../../../../utils/concurrency";
 import { liveMarketCapitalization } from "../live-valuation";
 import { instrumentFromTicker } from "../../../../market-data/request-types";
@@ -789,7 +791,9 @@ async function showCollectionWithMarketData(
       return;
     }
     const extendedSessions = extendedSessionsOf(watched.map(({ extended }) => extended?.session));
-    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap }) => {
+    // Funding is the one column a list earns by holding perpetual markets; any other list's table is unchanged.
+    const showFunding = watched.some(({ funding }) => funding !== undefined);
+    const rows = watched.map(({ ticker, quote, headline, extended, venue, marketCap, funding }) => {
       const priceText = quote && headline
         ? colorBySign(formatListPrice(headline.price, quote, ticker.metadata.assetCategory), headline.change)
         : "—";
@@ -800,6 +804,7 @@ async function showCollectionWithMarketData(
         priceText,
         changeText,
         ...extendedCells(extendedSessions, extended, quote, ticker.metadata.assetCategory),
+        ...showFunding ? [funding == null ? "—" : colorBySign(formatPerpetualRate(funding, 4), funding)] : [],
         marketCap == null ? "—" : `${formatCompact(marketCap)} ${currency}`,
       ];
     });
@@ -811,6 +816,8 @@ async function showCollectionWithMarketData(
         { header: "Last", align: "right" },
         { header: "Chg", align: "right" },
         ...extendedSessions.map((session) => ({ header: EXTENDED_SESSION_LABELS[session], align: "right" as const, optional: true, dropPriority: 1 })),
+        // As the TUI's FUND 8H: per eight hours whatever interval the venue pays on.
+        ...showFunding ? [{ header: "Fund 8H", align: "right" as const, optional: true, dropPriority: 1 }] : [],
         // A narrow terminal drops these first.
         { header: "Mkt Cap", align: "right", optional: true, dropPriority: 2 },
       ],
@@ -833,6 +840,8 @@ interface WatchlistRowValue {
   /** The Exchange column: the quote's venue, else the saved one. */
   venue: string | null;
   marketCap: number | null;
+  /** A perpetual market's funding per eight hours, as a fraction; null when its market cannot be read, undefined for any other row. */
+  funding: number | null | undefined;
   row: Record<string, unknown>;
 }
 
@@ -872,6 +881,25 @@ async function loadMarketCapFinancials(
   return financials;
 }
 
+/** Perpetual markets read at once, the most the app asks for at a time. */
+const PERPETUAL_CONCURRENCY = 8;
+
+/**
+ * The funding per eight hours of each perpetual market in a list, by ticker, as `quote` reads it: null for a market
+ * that cannot be read. A list without perpetual markets reads nothing.
+ */
+async function loadPerpetualFunding(tickers: readonly TickerRecord[]): Promise<Map<string, number | null>> {
+  const markets = tickers.flatMap((ticker) => {
+    const listing = perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange);
+    return listing ? [{ symbol: ticker.metadata.ticker, listing }] : [];
+  });
+  const funding = new Map<string, number | null>();
+  await mapWithConcurrency(markets, PERPETUAL_CONCURRENCY, async ({ symbol, listing }) => {
+    funding.set(symbol, await loadPerpetualMarket(listing).then((market) => market?.row.fundingRate8h ?? null, () => null));
+  });
+  return funding;
+}
+
 /** Watchlist rows as `watchlist show` prints them, with the market cap the watchlist pane shows. */
 async function valueWatchlistRows({
   tickers,
@@ -886,8 +914,13 @@ async function valueWatchlistRows({
   currency: string;
   toBase: (value: number, fromCurrency: string) => Promise<number>;
 }): Promise<WatchlistRowValue[]> {
-  const financials = await loadMarketCapFinancials(tickers, quotes, dataProvider);
+  const [financials, perpetualFunding] = await Promise.all([
+    loadMarketCapFinancials(tickers, quotes, dataProvider),
+    loadPerpetualFunding(tickers),
+  ]);
   const known = (value: number | null | undefined): number | null => value != null && Number.isFinite(value) ? value : null;
+  // The export carries funding on the table's terms: only for a list that holds perpetual markets.
+  const hasPerpetuals = perpetualFunding.size > 0;
   const values: WatchlistRowValue[] = [];
   for (const ticker of tickers) {
     const symbol = ticker.metadata.ticker;
@@ -895,11 +928,12 @@ async function valueWatchlistRows({
     const snapshot = financials.get(symbol);
     const { headline, extended } = collectionQuoteHeadline(quote);
     const cap = liveMarketCapitalization(quote, snapshot?.fundamentals) ?? liveMarketCapitalization(snapshot?.quote, snapshot?.fundamentals);
-    const marketCap = cap ? known(await toBase(cap.value, cap.currency)) : null;
+    const marketCap = cap ? listedMarketCapitalization(known(await toBase(cap.value, cap.currency))) : null;
     const kind = resolveTickerInstrumentKind(ticker, { quote: quote ?? snapshot?.quote });
     const venue = exchangeShortName(quote?.tradingExchangeName || quote?.exchangeName, quote?.fullExchangeName) || ticker.metadata.exchange || null;
+    const funding = perpetualFunding.get(symbol);
     values.push({
-      ticker, quote, headline, extended, kind, venue, marketCap,
+      ticker, quote, headline, extended, kind, venue, marketCap, funding,
       row: {
         symbol,
         ...listingColumns(ticker, quote),
@@ -911,6 +945,7 @@ async function valueWatchlistRows({
         changePercent: known(headline?.changePercent),
         ...extendedQuoteFields(extended),
         volume: known(quote?.volume),
+        ...hasPerpetuals ? { fundingRate8h: known(funding) } : {},
         marketCap,
         marketCapCurrency: currency,
         quoteAsOf: known(quote?.lastUpdated),

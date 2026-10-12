@@ -1,7 +1,7 @@
 // Public API: gloomberb/components re-exports getColumnValue, getSortValue and
 // ColumnContext from here, so external plugins depend on their names and shapes.
 import { comparablePriceEarnings, formatPriceEarnings } from "../../../utils/price-earnings";
-import { convertMarketCapitalization } from "../../../utils/market-capitalization";
+import { convertMarketCapitalization, listedMarketCapitalization } from "../../../utils/market-capitalization";
 import type { ColumnConfig } from "../../../types/config";
 import type { AnalystResearchData, CorporateActionsData, MarketState, TickerFinancials } from "../../../types/financials";
 import type { EarningsEvent } from "../../../types/data-provider";
@@ -31,6 +31,7 @@ import {
   type ActiveQuoteDisplay,
 } from "../../../market-data/market/status";
 import { formatOptionTicker } from "../../../utils/options";
+import { classifyInstrumentType } from "../../../tickers/instrument-kind";
 import { perpetualDisplaySymbol, perpetualListing } from "../../../tickers/perpetual-listing";
 import { currentListingName } from "../../../tickers/listing-name";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
@@ -109,7 +110,7 @@ interface ListedPerpetual {
 const PERPETUAL_FIELDS = { perp_premium: "underlyingPremium", perp_funding: "fundingRate8h" } as const;
 
 /** A perpetual's rate in percent: two decimals for a premium, four for funding, as PERP shows them. */
-function formatPerpetualRate(value: number, decimals: number): string {
+export function formatPerpetualRate(value: number, decimals: number): string {
   const fixed = Math.abs(value * 100).toFixed(decimals);
   return `${/[1-9]/.test(fixed) ? (value > 0 ? "+" : "-") : ""}${fixed}%`;
 }
@@ -281,11 +282,12 @@ function rowAllocation(
 const UNPRICED = "n/a";
 
 /**
- * The symbol the Ticker column shows after its market-state dot: an option reads as its contract, a perpetual
- * as its venue writes it (`BZUSDT`, `xyz:BRENTOIL`), the venue being its exchange.
+ * The symbol the Ticker column shows after its market-state dot: an option reads as its contract (`AAPL C $300
+ * Dec'26`, from an OCC code or a broker's symbol), a perpetual as its venue writes it (`BZUSDT`, `xyz:BRENTOIL`),
+ * the venue being its exchange.
  */
 export function tickerDisplayName(ticker: TickerRecord): string {
-  if (ticker.metadata.assetCategory === "OPT") return formatOptionTicker(ticker.metadata.ticker);
+  if (classifyInstrumentType(ticker.metadata.assetCategory) === "option") return formatOptionTicker(ticker.metadata.ticker);
   const perpetual = perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange);
   return perpetual ? perpetualDisplaySymbol(perpetual) : ticker.metadata.ticker;
 }
@@ -426,7 +428,7 @@ export function getColumnValue(
     }
     case "market_cap": {
       const cap = liveMarketCapitalization(quote, fundamentals);
-      const value = cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
+      const value = cap ? listedMarketCapitalization(convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates)) : null;
       return { text: value == null ? "—" : formatCompact(value, { fixedDecimals: true }) };
     }
     case "pe":
@@ -653,7 +655,7 @@ export function getSortValue(
       return fiftyTwoWeekPosition(displayQuote, quote);
     case "market_cap": {
       const cap = liveMarketCapitalization(quote, fundamentals);
-      return cap ? convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates) : null;
+      return cap ? listedMarketCapitalization(convertMarketCapitalization(cap.value, cap.currency, ctx.baseCurrency, ctx.exchangeRates)) : null;
     }
     case "pe":
       return comparablePriceEarnings(liveTrailingPE(quote, fundamentals));

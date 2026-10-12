@@ -76,6 +76,22 @@ test("an exchange code the app does not know is refused unless the symbol trades
   expect((await resolveCliListing("SAN:NYSE", undefined, deps)).saved).toBeNull();
 });
 
+test("an index typed with the venue search files it under resolves as the bare symbol does", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const dataProvider = createTestDataProvider({
+    search: async () => [{ providerId: "test", symbol: "^VIX", name: "CBOE Volatility Index", exchange: "CXI", type: "INDEX", currency: "USD" }],
+  });
+  const deps = { store, dataProvider };
+  // CXI is no exchange code the app has a name for: it is the venue, and the only one, search lists for ^VIX.
+  expect(await resolveCliListing("^VIX:CXI", undefined, deps)).toMatchObject({ symbol: "^VIX", exchange: "CXI", request: { symbol: "^VIX:CXI", exchange: "CXI" } });
+  expect((await resolveCliListing("^VIX", "CXI", deps)).key).toBe("^VIX:CXI");
+  // Another code is still a typo, and says where the index is listed.
+  const refused = await resolveCliListing("^VIX:ZZZ", undefined, deps).catch((error: unknown) => error);
+  expect((refused as Error).message).toBe("Unknown exchange ZZZ for ^VIX. ^VIX trades on: CXI.");
+});
+
 test("a perpetual is a listing on its venue, typed by PERP's market id or Hyperliquid's dex name", async () => {
   expect(parseListingArg("binance:BZUSDT")).toEqual({ symbol: "BZUSDT", exchange: "BINANCE", key: "BZUSDT:BINANCE" });
   expect(parseListingArg("hyperliquid:xyz:BRENTOIL").key).toBe("XYZ-BRENTOIL:HYPERLIQUID");

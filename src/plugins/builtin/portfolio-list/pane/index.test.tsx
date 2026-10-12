@@ -1861,6 +1861,26 @@ describe("PortfolioListPane perpetual columns", () => {
     }
   });
 
+  test("an option saved from search reads as its contract in the Ticker column, whole, and is named by its terms", async () => {
+    const config = createManualCollectionConfig("watchlist");
+    const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID)!;
+    instance.settings = { ...instance.settings, columnIds: ["ticker", "name"] };
+    await tui.render(
+      <PortfolioHarness config={config} collectionId="watchlist" stateMutator={(state) => {
+        // Saved as Gloom Cloud serves it: the OCC code, typed OPTION, with that code for its name.
+        state.tickers = new Map([["AAPL261218C00300000", makeTicker({ ticker: "AAPL261218C00300000", name: "AAPL261218C00300000", exchange: "OPR",
+          assetCategory: "OPTION", portfolios: [], positions: [], watchlists: ["watchlist"] })]]);
+        state.paneState[TEST_PANE_ID] = { ...state.paneState[TEST_PANE_ID], cursorSymbol: "AAPL261218C00300000" };
+      }} />,
+      { width: 100, height: 16 },
+    );
+    await flushFrame();
+    const row = tui.frame().split("\n").find((line) => line.includes("AAPL"))!;
+    expect(row).toContain("AAPL C $300 Dec'26");
+    expect(row).toContain("AAPL Dec 18 '26");
+    expect(row).not.toContain("261218C");
+  });
+
   test("a list without stocks asks for nothing and shows a dash", async () => {
     const config = createManualCollectionConfig("watchlist");
     const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID)!;

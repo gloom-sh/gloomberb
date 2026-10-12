@@ -281,9 +281,9 @@ interface ResolveTickerSearchOptions {
   searchContext?: SearchRequestContext;
 }
 
-/** `NET:` asks which NET. `NET:N` narrows that list. `NET:XNYS` already names one. */
-const LISTING_PICKER_QUERY = /^[A-Z0-9][A-Z0-9.\-]{0,20}:$/;
-const LISTING_CHOICE_QUERY = /^([A-Z0-9][A-Z0-9.\-]{0,20}):([A-Z0-9.\-]*)$/;
+/** `NET:` asks which NET. `NET:N` narrows that list. `NET:XNYS` already names one. An index (`^VIX:`) is asked the same way. */
+const LISTING_PICKER_QUERY = /^[A-Z0-9^][A-Z0-9.\-]{0,20}:$/;
+const LISTING_CHOICE_QUERY = /^([A-Z0-9^][A-Z0-9.\-]{0,20}):([A-Z0-9.\-]*)$/;
 
 function isListingPickerQuery(query: string): boolean {
   return LISTING_PICKER_QUERY.test(query.trim().toUpperCase());

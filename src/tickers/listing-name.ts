@@ -1,6 +1,7 @@
 import type { Quote } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
 import { canonicalExchange, parsePublicTickerKey } from "../utils/exchanges";
+import { optionContractName } from "../utils/options";
 
 type NamingQuote = Pick<Quote, "name" | "listingExchangeName" | "exchangeName">;
 
@@ -19,7 +20,8 @@ export function quotedListingName(exchange: string, quote: NamingQuote | null | 
 
 /**
  * The name a saved listing goes by now: its own quote's, else the name it was
- * saved with. A name that is only the symbol is no name.
+ * saved with. A name that is only the symbol is no name; an option contract
+ * with none is named by its terms (AAPL Dec 18 '26 $300 Call).
  */
 export function currentListingName(ticker: Pick<TickerRecord, "metadata">, quote?: NamingQuote | null): string | null {
   const key = ticker.metadata.ticker;
@@ -28,5 +30,5 @@ export function currentListingName(ticker: Pick<TickerRecord, "metadata">, quote
     const text = name?.trim();
     return text && text !== symbol && text !== key ? text : null;
   };
-  return named(quotedListingName(ticker.metadata.exchange ?? "", quote)) ?? named(ticker.metadata.name);
+  return named(quotedListingName(ticker.metadata.exchange ?? "", quote)) ?? named(ticker.metadata.name) ?? optionContractName(symbol);
 }
