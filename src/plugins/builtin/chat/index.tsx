@@ -22,6 +22,9 @@ import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
 import { installPaneChatSharing } from "./share/flow";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
+import { watchUnreadBadge } from "./unread-badge";
+import { getAppBadgeHost } from "../../../notifications/app-badge";
+import { getNotificationLog, subscribeNotificationLog } from "../../../notifications/notification-log";
 
 /**
  * `CHAT general` or `CHAT #help` by id; failing that, `CHAT gen` or `CHAT alice`
@@ -48,6 +51,7 @@ function isPrivateConversation(channelId: unknown): boolean {
 }
 
 let disposePaneChatSharing: (() => void) | undefined;
+let disposeUnreadBadge: (() => void) | undefined;
 
 export const chatModule: PluginModule = {
   panes: [{
@@ -155,6 +159,16 @@ export const chatModule: PluginModule = {
     disposePaneChatSharing = installPaneChatSharing(ctx);
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
+    // The desktop app's Dock badge follows the Unread count; other hosts have no badge.
+    disposeUnreadBadge?.();
+    const badgeHost = getAppBadgeHost();
+    disposeUnreadBadge = badgeHost
+      ? watchUnreadBadge({
+        controller: chatController,
+        log: { get: getNotificationLog, subscribe: subscribeNotificationLog },
+        setBadge: (label) => badgeHost.setBadge(label),
+      })
+      : undefined;
     chatController.setNotifier(ctx.notify, (channelId, messageId) => {
       ctx.createPaneFromTemplate("new-chat-pane", { arg: channelId, values: { messageId } });
     });
@@ -184,6 +198,9 @@ export const chatModule: PluginModule = {
   dispose() {
     disposePaneChatSharing?.();
     disposePaneChatSharing = undefined;
+    // Before the controller drops its listeners, so the badge is cleared with the plugin.
+    disposeUnreadBadge?.();
+    disposeUnreadBadge = undefined;
     chatController.dispose();
   },
 };

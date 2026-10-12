@@ -5,22 +5,17 @@ import { usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import { Box, Span, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { usePluginAppActions } from "../../runtime";
-import { getNotificationLog, subscribeNotificationLog, unreadNotificationLogCount } from "../../../notifications/notification-log";
+import { getNotificationLog, subscribeNotificationLog } from "../../../notifications/notification-log";
 import { InlineAuthActions } from "../cloud/auth-actions";
 import {
   getPreferredChatOpenChannelId,
 } from "./channels";
 import { chatController, type ChatController } from "./controller";
 import { UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
+import { unreadTotal } from "./unread-badge";
 
 interface ChatStatusWidgetProps {
   controller?: Pick<ChatController, "getSnapshot" | "refreshSession" | "subscribe">;
-}
-
-type ChatStatusSnapshot = ReturnType<ChatController["getSnapshot"]>;
-
-function getTotalUnreadCount(snapshot: ChatStatusSnapshot) {
-  return snapshot.channelStates.reduce((total, state) => total + Math.max(0, state.unreadCount), 0);
 }
 
 function CloudStatusIcon() {
@@ -56,7 +51,7 @@ export function ChatStatusWidget({ controller = chatController }: ChatStatusWidg
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   // What the Unread list shows as unread: chat, then missed price, catalyst and team notices.
   const notices = useSyncExternalStore(subscribeNotificationLog, getNotificationLog, getNotificationLog);
-  const unreadCount = getTotalUnreadCount(snapshot) + unreadNotificationLogCount(notices);
+  const unreadCount = unreadTotal(snapshot, notices);
 
   const openChat = (event?: { preventDefault?: () => void; stopPropagation?: () => void }) => {
     event?.preventDefault?.();
