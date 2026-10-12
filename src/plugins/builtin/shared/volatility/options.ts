@@ -102,6 +102,9 @@ function maxParityCarryLogGap(years: number, underlying?: string): number {
   return 0.05 + Math.max(0, years);
 }
 
+/** The parity warning when no strike has a two-sided call and put. */
+export const NO_PARITY_PAIRS = "No paired two-sided quotes for put-call parity";
+
 const VOLATILITY_INDEX = /^\^?(VIX(1D|9D|3M|6M)?|VVIX|VXN|VXD|RVX|OVX|GVZ|VXEEM|VXEFA|VXTLT)$/i;
 
 /** Use the two nearest valid paired strikes on each side of spot, then their median. */
@@ -143,7 +146,7 @@ export function extractImpliedForward(
   const above = candidates.filter((pair) => pair.strike > spot).sort((a, b) => a.strike - b.strike).slice(0, 2);
   const pairs = [...below, ...above].sort((a, b) => a.strike - b.strike);
   if (!pairs.length) {
-    return unavailable(implausible ? "Parity forwards are inconsistent with spot" : "No paired two-sided quotes for put-call parity");
+    return unavailable(implausible ? "Parity forwards are inconsistent with spot" : NO_PARITY_PAIRS);
   }
   const forwards = pairs.map((pair) => pair.forward).sort((a, b) => a - b);
   const middle = Math.floor(forwards.length / 2);

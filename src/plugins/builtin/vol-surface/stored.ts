@@ -52,11 +52,11 @@ function storedExpiry(entry: StoredExpiry, spot: number, capturedAt: number, sou
     if (!isFiniteNumber(strike) || !isFiniteNumber(iv) || !isFiniteNumber(mid) || !(mid > 0) || !isFiniteNumber(entry.forward)) continue;
     const side = sideCode === 1 ? "call" as const : "put" as const;
     const contract: OptionContract = { contractSymbol, strike, currency: "USD", lastPrice: mid, change: 0, percentChange: 0,
-      openInterest: openInterest ?? undefined, bid: bid ?? 0, ask: ask ?? 0, impliedVolatility: iv,
+      openInterest: isFiniteNumber(openInterest) ? openInterest : undefined, bid: bid ?? 0, ask: ask ?? 0, impliedVolatility: iv,
       inTheMoney: side === "call" ? strike < spot : strike > spot, expiration: entry.expiration, lastTradeDate: Math.floor(capturedAt / 1000) };
     const spread = isFiniteNumber(bid) && isFiniteNumber(ask) ? ask - bid : 0;
     expiry.points.push({ contract, side, strike, moneyness: strike / spot, logMoneyness: logForwardMoneyness(strike, entry.forward)!,
-      mid, price: mid, spread, spreadRatio: spread / mid, openInterest: openInterest ?? 0, providerIV: null, volatility: iv, fitResidual: null });
+      mid, price: mid, spread, spreadRatio: spread / mid, openInterest: isFiniteNumber(openInterest) ? openInterest : null, providerIV: null, volatility: iv, fitResidual: null });
   }
   expiry.points.sort((a, b) => a.strike - b.strike);
   for (const point of expiry.points) point.fitResidual = point.volatility - (evaluateSurfaceSmile(expiry, point.strike) ?? point.volatility);
