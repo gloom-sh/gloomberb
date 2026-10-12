@@ -55,6 +55,11 @@ export function holdsActiveTicker(context: Pick<PanePersonalDataContext, "active
   return ticker?.metadata.positions.some((position) => position.shares !== 0) ?? false;
 }
 
+/** Whether the pane is on one of the person's portfolios: a watchlist is tickers they follow, a portfolio is what they hold. */
+export function isOnPortfolio(context: Pick<PanePersonalDataContext, "config" | "activeCollectionId">): boolean {
+  return context.config.portfolios.some((portfolio) => portfolio.id === context.activeCollectionId);
+}
+
 /** The confirmation a picture of personal data asks before it is posted. */
 export function personalDataQuestion(kind: PanePersonalData): string {
   switch (kind) {

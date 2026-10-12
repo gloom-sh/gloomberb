@@ -16,8 +16,8 @@ const MAX_QUERY_LENGTH = 120;
 
 /**
  * Whether what the pane shows goes with the question: a pane with nothing of
- * the user's in it goes as is; one with holdings, balances or account data
- * waits for a yes, and a no keeps its contents on the device.
+ * the user's in it goes as is; one that declares personal data (holdings,
+ * account details or messages) waits for a yes, and a no keeps its contents on the device.
  */
 type ASKGPaneConsent = "not-needed" | "pending" | "granted" | "declined";
 
@@ -77,7 +77,7 @@ export function attachedPaneContext(attached: ASKGAttachedPane): Pick<ASKGSessio
     ...(pane.code ? { function: pane.code } : {}),
     ...(symbol ? { symbol } : {}),
     ...(contents && Object.keys(pane.args).length > 0 ? { arguments: { ...pane.args } } : {}),
-    ...(contents ? {} : { contents: "not attached: the pane shows the user's own holdings or account data" }),
+    ...(contents ? {} : { contents: "not attached: the pane shows the user's own data (holdings, account details or messages)" }),
   };
   const layout = (shows: string | null): JsonValue => ({
     attachedPane: shows ? { ...description, shows } : description,

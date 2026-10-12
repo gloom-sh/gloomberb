@@ -1,3 +1,4 @@
+import { isOnPortfolio } from "../../../shares/pane-image";
 import type { PluginModule } from "../plugin-module";
 import { rotationCache } from "./client";
 import { rotationHeadless } from "./headless";
@@ -15,6 +16,8 @@ export const relativeRotationModule: PluginModule = {
       defaultFloatingSize: { width: 100, height: 36 },
       tableExport: true,
       headless: rotationHeadless,
+      // Linked to a portfolio, it plots what the person holds.
+      personalData: (context) => (context.settings.scope === "collection" && isOnPortfolio(context) ? "holdings" : null),
       settings: {
         title: "Relative Rotation",
         fields: [

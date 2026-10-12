@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getLoadablePlugins } from "../plugins/catalog";
-import { createPaneDiscoveryContext } from "../cli/pane-functions/discovery";
+import { loadBuiltinPanes } from "../test-support/builtin-panes";
 import { createTestTicker } from "../test-support/ticker";
 import { createDefaultConfig, type PaneInstanceConfig } from "../types/config";
 import type { PaneDef, PanePersonalDataContext } from "../types/plugin";
@@ -37,24 +37,17 @@ const followed = new Map([["NVDA", createTestTicker("NVDA", "NVIDIA", { watchlis
 
 describe("which panes ask before their picture is posted to chat", () => {
   test("every built-in pane with private portable data declares picture privacy", async () => {
-    const { panes, paneTemplates: _templates, ...discovery } = createPaneDiscoveryContext({
-      getConfig: () => context("discovery").config,
-      panes: new Map(paneDefs),
-    });
-    const started: ReturnType<typeof getLoadablePlugins> = [];
+    // Includes setup-registered panes, not just the catalogue's static definitions.
+    const { panes, dispose } = await loadBuiltinPanes();
     try {
-      // Include setup-registered panes, not just the catalogue's static definitions.
-      for (const plugin of getLoadablePlugins()) {
-        started.push(plugin);
-        await plugin.setup?.(discovery);
-      }
-      // No exceptions today. A future exception must name the pane and explain
-      // why its private portable fields cannot expose personal data in a picture.
+      // Share and Ask Gloom both read `personalData` alone, so a private pane without it asks
+      // about nothing. No exceptions today. A future exception must name the pane and explain
+      // why its private portable fields cannot expose personal data in a picture or an attachment.
       expect([...panes.values()]
         .filter((pane) => pane.portableShare?.private && pane.personalData === undefined)
         .map((pane) => pane.id).sort()).toEqual([]);
     } finally {
-      for (const plugin of started.reverse()) plugin.dispose?.();
+      dispose();
     }
   });
 

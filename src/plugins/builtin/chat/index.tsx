@@ -4,6 +4,7 @@ import { teamStore } from "../cloud/team/store";
 import { formatChatPaneTitle } from "./channel-labels";
 import {
   DEFAULT_CHAT_CHANNEL_ID,
+  LAST_VISITED_CHAT_CHANNEL_KEY,
   buildDmCommandResults,
   getPreferredChatOpenChannelId,
   hasOnlyDmUsernameArgs,
@@ -57,7 +58,12 @@ export const chatModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 80, height: 30 },
-    personalData: (context) => (isPrivateConversation(context.settings.channelId) ? "messages" : null),
+    // A pane with no channel yet opens the one last visited, a DM included.
+    personalData: ({ settings, config }) => (
+      isPrivateConversation(
+        typeof settings.channelId === "string" ? settings.channelId : config.pluginConfig["gloomberb-cloud"]?.[LAST_VISITED_CHAT_CHANNEL_KEY],
+      ) ? "messages" : null
+    ),
     portableShare: {
       private: { title: true, params: true, settings: true, state: true },
     },

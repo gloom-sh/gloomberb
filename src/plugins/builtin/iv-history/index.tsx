@@ -1,3 +1,4 @@
+import { isOnPortfolio } from "../../../shares/pane-image";
 import type { PluginModule } from "../plugin-module";
 import { IV_SERIES } from "./series";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -20,6 +21,8 @@ export const ivHistoryModule: PluginModule = {
     id: "iv-screen", name: "Volatility Rich/Cheap", icon: "V", component: IvScreenPane,
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 96, height: 32 },
     tableExport: true, headless: ivScreenHeadless,
+    // Linked to a portfolio, it lists what the person holds.
+    personalData: (context) => (context.settings.scope === "collection" && isOnPortfolio(context) ? "holdings" : null),
     settings: { title: "Volatility Rich/Cheap", fields: [
       { key: "scope", label: "Universe", type: "select", options: [...VCA_SCOPE_OPTIONS] },
       { key: "symbols", label: "Custom symbols", type: "text", placeholder: "AAPL, MSFT, SPY" },
