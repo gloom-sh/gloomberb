@@ -162,7 +162,8 @@ export const portfolioRiskHeadless: HeadlessPaneDefinition<"bundle"> = {
       key: "evidence",
       type: "string",
       settingKey: "riskEvidence",
-      description: "Version 1 local account-evidence JSON.",
+      // "Version 1 local account-evidence JSON" alone had Gloom send evidence=filed, the value of since.
+      description: "A whole local account-evidence JSON document (schema version 1) that the user supplied, read only by the performance, attribution and greeks views. Leave it out otherwise; the 13F window is the since option.",
     },
     {
       key: "equity-shift",

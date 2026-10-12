@@ -338,6 +338,7 @@ export const brokerManagerModule: PluginModule = {
     {
       id: "brokers",
       name: "Brokers",
+      personalData: "account",
       icon: "B",
       component: BrokersPane,
       defaultPosition: "right",

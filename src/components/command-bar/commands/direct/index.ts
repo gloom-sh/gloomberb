@@ -107,6 +107,10 @@ export function runDirectCommandAction(options: {
       closeAll({ revertThemePreview: false });
       pluginRegistry.showPane("layout-marketplace");
       return;
+    case "share-pane":
+      closeAll({ revertThemePreview: false });
+      pluginRegistry.sharePane(state.focusedPaneId ?? undefined);
+      return;
     case "pane-settings":
       openPaneSettings(state.focusedPaneId);
       return;

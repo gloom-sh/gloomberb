@@ -227,7 +227,7 @@ export const KEYBINDING_ACTIONS: readonly KeybindingActionDef[] = [
   {
     id: "pane-share",
     category: "Pane Management",
-    description: "Share the focused pane.",
+    description: "Share the focused pane: post a picture to chat or copy its link.",
     defaults: ["CmdOrCtrl+Shift+S"],
   },
   {

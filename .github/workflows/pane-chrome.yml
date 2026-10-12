@@ -15,6 +15,13 @@ on:
       - main
     paths: &pane-chrome-paths
       - "src/components/layout/**"
+      - "src/components/command-bar/**"
+      - "src/app/keybindings/**"
+      - "src/shares/**"
+      - "src/plugins/builtin/chat/share/**"
+      - "src/plugins/builtin/chat/index.tsx"
+      - "src/plugins/builtin/chart-composer/pane.tsx"
+      - "src/plugins/builtin/news/wire/news/footer.ts"
       - "src/components/chart/composite/**"
       - "src/components/metric-treemap/**"
       - "src/components/ui/tabs.tsx"

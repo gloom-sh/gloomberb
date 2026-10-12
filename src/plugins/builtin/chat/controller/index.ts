@@ -36,7 +36,8 @@ import {
   updateChatChannelDraft,
   updateChatChannelNotifications,
 } from "./channel-actions";
-import { retryChatMessageInChannel, sendChatMessageToChannel } from "./send";
+import { postImageMessageToChannel, retryChatMessageInChannel, sendChatMessageToChannel } from "./send";
+import { describeChatImageError } from "../attachments/model";
 import {
   addDraftAttachments,
   discardDraftAttachments,
@@ -597,6 +598,47 @@ export class ChatController {
       notify: (notification: AppNotificationRequest) => this.notifyFn(notification),
       nextLocalId: () => `draft-image:${this.draftAttachmentSeq += 1}`,
     };
+  }
+
+  /**
+   * Posts one picture with an optional caption as the user's own message, as
+   * Share to Chat does: uploads it, then sends it, leaving the channel's
+   * draft alone. Rejects with a sentence that says what went wrong.
+   */
+  async postImage(
+    channelId: string,
+    upload: ChatAttachmentUpload & { previewUrl?: string | null },
+    caption: string,
+    options: { signal?: AbortSignal; onProgress?: (fraction: number) => void } = {},
+  ): Promise<ChatMessage> {
+    const normalizedChannelId = normalizeChannelId(channelId);
+    const user = this.session.user;
+    if (!user?.emailVerified) throw new Error("Verify your email to post in chat.");
+    let attachment;
+    try {
+      attachment = await this.uploadAttachment(normalizedChannelId, upload, {
+        signal: options.signal ?? new AbortController().signal,
+        onProgress: options.onProgress ?? (() => {}),
+      });
+    } catch (error) {
+      throw new Error(describeChatImageError(error));
+    }
+    const channel = this.ensureChannelState(normalizedChannelId);
+    return postImageMessageToChannel({
+      channelId: normalizedChannelId,
+      channel,
+      content: caption,
+      attachment,
+      previewUrl: upload.previewUrl ?? null,
+      user,
+      getVisibleMessages: () => this.getVisibleMessages(normalizedChannelId),
+      nextPendingMessageId: () => `local:${Date.now()}:${this.pendingMessageSeq += 1}`,
+      emit: () => this.emit(normalizedChannelId),
+      mergeMessages: (messages) => this.mergeMessages(normalizedChannelId, messages),
+      send: (content, clientMessageId, attachmentIds) => (
+        apiClient.sendMessage(normalizedChannelId, content, undefined, clientMessageId, attachmentIds)
+      ),
+    });
   }
 
   /** Sends a failed message again with the same images and idempotency key. */

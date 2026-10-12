@@ -809,8 +809,10 @@ export async function captureAppScreenshotJpegBase64(options: {
  */
 export const capturePaneImage: CapturePane = async (request) => {
   if (typeof document === "undefined") throw new Error("Screenshots need a window.");
+  const id = escapeAttributeValue(request.instanceId);
+  // A popped-out desktop window draws its one pane as the window itself.
   const target = document.querySelector<HTMLElement>(
-    `[data-gloom-role='pane-window'][data-gloom-pane-id="${escapeAttributeValue(request.instanceId)}"]`,
+    `[data-gloom-role='pane-window'][data-gloom-pane-id="${id}"], [data-gloom-role='detached-pane-window'][data-gloom-pane-id="${id}"]`,
   );
   const rect = target?.getBoundingClientRect();
   if (!target || !rect || rect.width < 1 || rect.height < 1) {

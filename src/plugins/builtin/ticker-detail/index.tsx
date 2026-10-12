@@ -1,5 +1,6 @@
 import { publicTickerBindingSymbol } from "../../../tickers/selection";
 import type { PluginModule } from "../plugin-module";
+import { holdsActiveTicker } from "../../../shares/pane-image";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { normalizeTickerInput } from "../../../tickers/search";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
@@ -40,6 +41,13 @@ export const tickerDetailModule: PluginModule = {
       component: TickerResearchPane,
       defaultPosition: "right",
       tickerFollower: true,
+      personalData: (context) => {
+        const settings = getTickerResearchPaneSettings(context.settings);
+        const tab = settings.hideTabs ? settings.lockedTabId : context.paneState.activeTabId;
+        // Notes and theses stay private even for a ticker the person does not hold.
+        if (tab === "notes") return "messages";
+        return tab === "thesis" || holdsActiveTicker(context) ? "holdings" : null;
+      },
       defaultMode: "floating",
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(

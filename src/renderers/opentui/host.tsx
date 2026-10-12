@@ -247,6 +247,12 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     removePostProcessFn: (processFn) => renderer.removePostProcessFn(processFn as any),
     copyToClipboardOSC52: (text) => renderer.copyToClipboardOSC52(text),
     captureFrame: () => captureRendererFrame(renderer),
+    async capturePaneImage(rect) {
+      if (renderer.isDestroyed) throw new Error("The terminal has closed.");
+      // Loaded on first use: the glyph atlas is only needed for a picture.
+      const { captureTerminalPaneImage } = await import("./pane-image");
+      return captureTerminalPaneImage(renderer, nativeRenderer.nativeSurfaceManager, rect, colors.bg);
+    },
     captureMouseRenderable(renderable) {
       const capture = (renderer as unknown as { setCapturedRenderable?: (target: unknown) => void }).setCapturedRenderable;
       if (typeof capture === "function") {

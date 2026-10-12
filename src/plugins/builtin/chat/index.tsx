@@ -3,6 +3,7 @@ import { teamChannelId } from "../cloud/team/model";
 import { teamStore } from "../cloud/team/store";
 import { formatChatPaneTitle } from "./channel-labels";
 import {
+  DEFAULT_CHAT_CHANNEL_ID,
   buildDmCommandResults,
   getPreferredChatOpenChannelId,
   hasOnlyDmUsernameArgs,
@@ -18,6 +19,7 @@ import { ChatPane } from "./pane";
 import { chatSidebarStore } from "./sidebar-store";
 import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
+import { installPaneChatSharing } from "./share/flow";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
 
 /**
@@ -37,6 +39,15 @@ async function resolveTypedChannelId(rawArg: string): Promise<string> {
   }
 }
 
+/** A DM, a group or a team channel: what only its members read. */
+function isPrivateConversation(channelId: unknown): boolean {
+  const id = typeof channelId === "string" && channelId.trim() ? channelId.trim() : DEFAULT_CHAT_CHANNEL_ID;
+  const kind = chatController.getChannels().find((channel) => channel.id === id)?.kind;
+  return kind ? kind !== "public" : /^(dm|grp|group|team):/.test(id);
+}
+
+let disposePaneChatSharing: (() => void) | undefined;
+
 export const chatModule: PluginModule = {
   panes: [{
     id: "chat",
@@ -46,6 +57,7 @@ export const chatModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 80, height: 30 },
+    personalData: (context) => (isPrivateConversation(context.settings.channelId) ? "messages" : null),
     portableShare: {
       private: { title: true, params: true, settings: true, state: true },
     },
@@ -53,6 +65,8 @@ export const chatModule: PluginModule = {
     id: UNREAD_INBOX_PANE_ID,
     reportFreshness: { status: "not-a-feed", basis: "chat messages and missed alerts" },
     name: "Unread",
+    // Mentions and replies from every conversation, DMs included.
+    personalData: "messages",
     icon: "U",
     component: UnreadInboxPane,
     defaultPosition: "right",
@@ -131,6 +145,8 @@ export const chatModule: PluginModule = {
   },
   setup(ctx) {
     ctx.registerCommandBarSearchProvider(createChatSearchProvider(ctx));
+    disposePaneChatSharing?.();
+    disposePaneChatSharing = installPaneChatSharing(ctx);
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatController.setNotifier(ctx.notify, (channelId, messageId) => {
@@ -160,6 +176,8 @@ export const chatModule: PluginModule = {
     });
   },
   dispose() {
+    disposePaneChatSharing?.();
+    disposePaneChatSharing = undefined;
     chatController.dispose();
   },
 };

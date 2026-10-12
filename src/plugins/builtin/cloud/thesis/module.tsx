@@ -14,6 +14,7 @@ export const thesisModule: PluginModule = {
     id: THESIS_PANE_ID,
     reportFreshness: { source: "Your theses", status: "not-a-feed", basis: "your theses" },
     name: "Theses",
+    personalData: "holdings",
     icon: "Θ",
     component: ThesisBoardPane,
     defaultPosition: "right",

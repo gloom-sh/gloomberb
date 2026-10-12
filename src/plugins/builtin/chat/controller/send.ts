@@ -1,5 +1,5 @@
 import type { AppNotificationRequest } from "../../../../types/plugin";
-import type { ChatMessage } from "../../../../api-client";
+import type { ChatAttachment, ChatMessage } from "../../../../api-client";
 import { describeChatSendError } from "../attachments/model";
 import { readyDraftAttachments } from "./attachments";
 import {
@@ -145,6 +145,66 @@ export function sendChatMessageToChannel({
 
   deliverPendingMessage({ channel, connection, pendingMessage, emit, mergeMessages, notify });
   return true;
+}
+
+/**
+ * Posts a message that carries an image uploaded for it (a pane shared to
+ * chat), without touching the channel's draft. It shows as sending at once,
+ * like a typed message; a failed send stays in the channel to retry, and the
+ * returned promise rejects with the reason.
+ */
+export async function postImageMessageToChannel({
+  channelId,
+  channel,
+  content,
+  attachment,
+  previewUrl,
+  user,
+  getVisibleMessages,
+  nextPendingMessageId,
+  emit,
+  mergeMessages,
+  send,
+}: {
+  channelId: string;
+  channel: ChannelRuntimeState;
+  content: string;
+  attachment: ChatAttachment;
+  /** The local copy to show until the server's answer arrives. */
+  previewUrl: string | null;
+  user: ChatSessionUser;
+  getVisibleMessages: () => ChatMessage[];
+  nextPendingMessageId: () => string;
+  emit: () => void;
+  mergeMessages: (messages: ChatMessage[]) => void;
+  send: (content: string, clientMessageId: string, attachmentIds: string[]) => Promise<ChatMessage>;
+}): Promise<ChatMessage> {
+  const pendingMessage = createPendingMessage({
+    channelId,
+    content: content.trim(),
+    pendingId: nextPendingMessageId(),
+    user,
+    visibleMessages: getVisibleMessages(),
+    attachments: [{ ...attachment, url: previewUrl ?? attachment.url }],
+    clientMessageId: createClientMessageId(),
+  });
+  channel.pendingMessages = [...channel.pendingMessages, pendingMessage];
+  emit();
+  try {
+    const message = await send(pendingMessage.content, pendingMessage.clientMessageId!, [attachment.id]);
+    channel.pendingMessages = channel.pendingMessages.filter((entry) => entry.id !== pendingMessage.id);
+    mergeMessages([message]);
+    return message;
+  } catch (error) {
+    const errorMessage = describeChatSendError(error);
+    channel.pendingMessages = channel.pendingMessages.map((entry) => (
+      entry.id === pendingMessage.id
+        ? { ...entry, clientStatus: "failed", clientError: errorMessage }
+        : entry
+    ));
+    emit();
+    throw new Error(errorMessage);
+  }
 }
 
 /**

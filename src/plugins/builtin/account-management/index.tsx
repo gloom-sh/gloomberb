@@ -6,6 +6,7 @@ export const accountManagementModule: PluginModule = {
     id: "account-management",
     name: "ACM",
     icon: "A",
+    personalData: "account",
     component: AccountManagementPane,
     defaultPosition: "right",
     defaultMode: "floating",

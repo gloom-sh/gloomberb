@@ -33,6 +33,7 @@ export const connectionsModule: PluginModule = {
   panes: [{
     id: "connections",
     name: "Connections",
+    personalData: "account",
     icon: "C",
     component: ConnectionsPane,
     defaultPosition: "right",

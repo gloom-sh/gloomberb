@@ -1,4 +1,5 @@
 import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/financial-statements";
+import { usePaneSharePreparation } from "../../../shares/prepare";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, useUiCapabilities } from "../../../ui";
 import {
@@ -116,7 +117,6 @@ import { getActiveQuoteDisplay } from "../../../market-data/market/status";
 import { resolveEntryData } from "../../../market-data/selectors";
 import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKey } from "./price-levels";
 import { canonicalExchange } from "../../../utils/exchanges";
-import { isPlainKey } from "../../../utils/keyboard";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
 import type { InstrumentRef } from "../../../market-data/request-types";
@@ -258,7 +258,7 @@ function ChartComposerSurface({
 }: ChartComposerSurfaceProps) {
   const dialog = useDialog();
   const dispatch = useAppDispatch();
-  const { publicSharing, cellWidthPx = 8 } = useUiCapabilities();
+  const { cellWidthPx = 8 } = useUiCapabilities();
   const desktopWeb = useUiCapabilities().nativePaneChrome === true;
   const paneId = usePaneInstanceId();
   const liveStreaming = useLiveStreamingSetting();
@@ -396,7 +396,7 @@ function ChartComposerSurface({
     ),
     [resolution.bufferedSeries, resolution.legendSeries, resolution.series, spec],
   );
-  const { sharePane, notify } = usePluginAppActions();
+  const { notify } = usePluginAppActions();
   const { runtime } = usePluginRenderContext();
   const [levelStore, setLevelStore] = usePluginConfigState<unknown>(PRICE_LEVELS_KEY, null);
   const alertsJson = useAppSelector((state) => state.config.pluginConfig[PRICE_ALERTS_STORE.pluginId]?.[PRICE_ALERTS_STORE.key]);
@@ -472,10 +472,6 @@ function ChartComposerSurface({
       ...(alertsOn ? { action: { label: "alert", title: "Alert at Level", run: (level) => { void alertAtLevel(level.value); } } } : {}),
     };
   }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing]);
-  const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (shareTimerRef.current !== null) clearTimeout(shareTimerRef.current);
-  }, []);
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -699,19 +695,14 @@ function ChartComposerSurface({
       commitRuntimeViewport();
     }, AUTO_VIEWPORT_DEBOUNCE_MS);
   }, [authoredViewportKey, commitRuntimeViewport, spec.viewport.resolution]);
-  const shareChart = useCallback(() => {
-    // The share reads pane settings, so the gesture in flight lands there first.
+  usePaneSharePreparation(paneId, async () => {
     if (runtimeViewportTimerRef.current !== null) {
       clearTimeout(runtimeViewportTimerRef.current);
       runtimeViewportTimerRef.current = null;
       commitRuntimeViewport();
     }
-    if (shareTimerRef.current !== null) return;
-    shareTimerRef.current = globalThis.setTimeout(() => {
-      shareTimerRef.current = null;
-      sharePane(paneId);
-    }, SHARE_SETTLE_DELAY_MS);
-  }, [commitRuntimeViewport, paneId, sharePane]);
+    await new Promise((resolve) => setTimeout(resolve, SHARE_SETTLE_DELAY_MS));
+  });
 
   useRemoteUiNode({
     role: "chart-data",
@@ -800,12 +791,6 @@ function ChartComposerSurface({
   );
   useShortcut((event) => {
     if (interactionCaptureRef.current || dialogOpen) return;
-    if (publicSharing && isPlainKey(event, "y")) {
-      event.preventDefault();
-      event.stopPropagation();
-      shareChart();
-      return;
-    }
     const shortcut = resolveChartComposerShortcut(event, RANGES.length);
     if (!shortcut) return;
     event.preventDefault();
@@ -871,11 +856,10 @@ function ChartComposerSurface({
   });
 
   // Footer registrations compare presentation, so their callbacks must read current actions.
-  const currentActionsRef = useRef({ openSeriesEditor, openResolutionPicker, shareChart });
-  currentActionsRef.current = { openSeriesEditor, openResolutionPicker, shareChart };
+  const currentActionsRef = useRef({ openSeriesEditor, openResolutionPicker });
+  currentActionsRef.current = { openSeriesEditor, openResolutionPicker };
   const footerSeries = useCallback(() => { void currentActionsRef.current.openSeriesEditor(); }, []);
   const footerResolution = useCallback(() => { void currentActionsRef.current.openResolutionPicker(); }, []);
-  const footerShare = useCallback(() => { currentActionsRef.current.shareChart(); }, []);
   const openIndicators = useCallback((event?: PaneFooterPressEvent) => {
     indicatorsDialogRef.current?.open(footerAnchorPoint(event));
   }, []);
@@ -901,9 +885,8 @@ function ChartComposerSurface({
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
-      ...(publicSharing ? [{ id: "share", key: "y", label: " share", onPress: footerShare }] : []),
     ],
-  }), [resolution.loading, pickingAnchor, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor, publicSharing, footerShare]);
+  }), [resolution.loading, pickingAnchor, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {

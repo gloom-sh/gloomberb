@@ -1094,7 +1094,31 @@ ctx.registerPane({
 });
 ```
 
-Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share Pane applies this projection automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
+Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share applies this projection to public links automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
+
+### Personal data in a pane's picture
+
+Share can post a picture of a pane as it looks or copy its public link. A pane that shows the person's own data declares it with `personalData`, and posting its picture asks first (`This shows your holdings. Post it?`): `"holdings"` for positions, balances, orders and P&L, `"account"` for account numbers, email and plan, `"messages"` for private conversations. A pane of a plugin that registers a broker and declares nothing is taken to show `holdings`; a broker plugin's pane of market data opts out with `personalData: () => null`. A function decides from what the instance shows now; it gets the pane's settings context plus `tickers`:
+
+```typescript
+ctx.registerPane({
+  id: "broker-orders",
+  name: "Orders",
+  component: OrdersPane,
+  defaultPosition: "right",
+  personalData: "holdings",
+});
+
+ctx.registerPane({
+  id: "position-detail",
+  name: "Position",
+  component: PositionPane,
+  defaultPosition: "right",
+  personalData: ({ activeTicker, tickers }) => (
+    tickers.get(activeTicker ?? "")?.metadata.positions.length ? "holdings" : null
+  ),
+});
+```
 
 ### Pane quick settings
 

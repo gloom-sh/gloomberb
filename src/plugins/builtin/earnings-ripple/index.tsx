@@ -12,6 +12,8 @@ export const earningsRippleModule: PluginModule = {
     id: "earnings-ripple", name: "Earnings Ripple", icon: "E", component: EarningsRipplePane,
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 96, height: 20 },
     tableExport: true,
+    // Without named tickers it lists what is in the person's portfolios.
+    personalData: (context) => (typeof context.settings.symbols === "string" && context.settings.symbols.trim() ? null : "holdings"),
     settings: { title: "Earnings Ripple Settings", fields: [
       { key: "symbols", label: "Holdings", type: "text", placeholder: "Blank for your portfolios and watchlists" },
     ] },
