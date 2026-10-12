@@ -1,6 +1,7 @@
 import { canonicalExchange } from "../../utils/exchanges";
 import { futuresListingVenue } from "../../utils/futures-generic";
 import { regularSessionCloseUtcMinute } from "./freshness";
+import { PERPETUAL_EXCHANGES } from "../../tickers/perpetual-listing";
 
 interface SessionLeg {
   symbol: string;
@@ -11,8 +12,8 @@ interface SessionLeg {
 }
 
 const MINUTES_PER_DAY = 1440;
-/** Crypto and FX carry no regular session. */
-const ALWAYS_OPEN_EXCHANGES = new Set(["CCC", "CCY"]);
+/** Crypto, FX and perpetual futures carry no regular session. */
+const ALWAYS_OPEN_EXCHANGES = new Set(["CCC", "CCY", ...PERPETUAL_EXCHANGES]);
 
 const clock = (minute: number) => `${String(Math.floor(minute / 60) % 24).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`;
 

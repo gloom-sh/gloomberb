@@ -26,8 +26,11 @@ export type { QuoteFlashDirection };
 
 /** The market-state dot and the space after it, before each symbol in the Ticker column. */
 const TICKER_DOT_WIDTH = 2;
-/** The widest the Ticker column grows for its symbols; an option contract longer than that still clips. */
-const MAX_TICKER_COLUMN_WIDTH = 12;
+/**
+ * The widest the Ticker column grows for its symbols: a perpetual as its venue writes it (`xyz:BRENTOIL`) fits,
+ * an option contract longer than that still clips.
+ */
+const MAX_TICKER_COLUMN_WIDTH = 14;
 
 /** A cell recomputes only when its row's records or a context input it reads change. */
 function buildCellVersion(

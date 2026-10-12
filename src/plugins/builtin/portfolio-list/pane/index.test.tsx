@@ -29,8 +29,8 @@ import { AGE_CLOCK_MS } from "../use-column-clock";
 import { createTempDbPath, removeTempDbFiles } from "../../../../test-support/temp-db";
 import { apiClient } from "../../../../api-client";
 import type { PerpEquityListing } from "../../../../api-client/perps";
-import { perpsListCache } from "../../perps/client";
-import { equitiesPayload } from "../../perps/test-fixture";
+import { perpsListCache, perpsMarketCache } from "../../perps/client";
+import { equitiesPayload, perpBoard, venueRow } from "../../perps/test-fixture";
 
 const TEST_PANE_ID = "portfolio-list:test";
 
@@ -427,6 +427,7 @@ afterEach(() => {
   quoteClock?.mockRestore();
   quoteClock = undefined;
   perpsListCache.reset();
+  perpsMarketCache.reset();
 });
 
 describe("PortfolioListPane cash and margin UI", () => {
@@ -1812,6 +1813,51 @@ describe("PortfolioListPane perpetual columns", () => {
     } finally {
       batch.mockRestore();
       single.mockRestore();
+    }
+  });
+
+  test("a perpetual row is its own contract: its venue symbol and funding, and Enter opens PERP on its market", async () => {
+    const config = createManualCollectionConfig("watchlist");
+    const instance = config.layout.instances.find((entry) => entry.instanceId === TEST_PANE_ID)!;
+    instance.settings = { ...instance.settings, columnIds: ["ticker", "perp_funding"] };
+    const brent = venueRow("hyperliquid", { marketId: "hyperliquid:xyz:BRENTOIL", dex: "xyz", symbol: "xyz:BRENTOIL", baseAsset: "BRENTOIL",
+      assetClass: "energy", fundingRate8h: -0.0011983904, quoteCurrency: "USDC", marginCurrency: "USDC", fundingIntervalHours: 1 });
+    const markets = spyOn(apiClient, "getCloudPerpsMarket").mockImplementation(async (marketId) =>
+      ({ ...perpBoard({ rows: marketId === brent.marketId ? [brent] : [], access: "preview" }), evidence: [], methodologyUrl: "" }));
+    const batch = spyOn(apiClient, "getCloudPerpsEquities").mockImplementation(async (listings) => equitiesPayload(listings, () => false));
+    const opened: unknown[] = [];
+    try {
+      await tui.render(
+        <PortfolioHarness config={config} collectionId="watchlist"
+          stateMutator={(state) => {
+            state.tickers = new Map([
+              ["XOM", makeTicker({ ticker: "XOM", name: "Exxon Mobil", exchange: "NYSE", assetCategory: "STK", portfolios: [], positions: [], watchlists: ["watchlist"] })],
+              ["XYZ-BRENTOIL:HYPERLIQUID", makeTicker({ ticker: "XYZ-BRENTOIL:HYPERLIQUID", name: "Brent crude oil perpetual", exchange: "HYPERLIQUID",
+                currency: "USDC", assetCategory: "PERP", portfolios: [], positions: [], watchlists: ["watchlist"] })],
+            ]);
+            state.paneState[TEST_PANE_ID] = { ...state.paneState[TEST_PANE_ID], cursorSymbol: "XYZ-BRENTOIL:HYPERLIQUID" };
+          }}
+          runtime={createTestPluginRuntime({ createPaneFromTemplate: (templateId, options) => { opened.push([templateId, options]); } })} />,
+        { width: 100, height: 16 },
+      );
+      await tui.waitForFrameToContain("-0.1198%");
+      const row = tui.frame().split("\n").find((line) => line.includes("-0.1198%"))!;
+      // The venue writes it xyz:BRENTOIL; the listing key would not fit the column.
+      expect(row).toContain("xyz:BRENTOIL");
+      expect(row).not.toContain("HYPERLIQUID");
+      // The stock beside it asks the batch, which has no contract for it.
+      expect(batch.mock.calls.map(([listings]) => listings.map((listing) => listing.symbol))).toEqual([["XOM"]]);
+      expect(markets.mock.calls.map(([marketId]) => marketId)).toEqual(["hyperliquid:xyz:BRENTOIL"]);
+
+      await act(async () => {
+        tui.setup().mockInput.pressEnter();
+        await tui.setup().renderOnce();
+      });
+      await flushFrame();
+      expect(opened).toEqual([["perps-pane", { arg: "hyperliquid:xyz:BRENTOIL" }]]);
+    } finally {
+      markets.mockRestore();
+      batch.mockRestore();
     }
   });
 

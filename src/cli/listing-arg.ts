@@ -2,6 +2,7 @@ import type { DataProvider } from "../types/data-provider";
 import type { Quote } from "../types/financials";
 import type { CliCommandContext } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
+import { perpetualListingOfMarket, typedPerpetualListing } from "../tickers/perpetual-listing";
 import { listingVenues, quotedOnVenue, readSharedCode, type ListingDeps, type ListingStore, type ListingVenue } from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
 import { quotedListing, type CurrentListing } from "../tickers/ticker-changes";
@@ -74,7 +75,8 @@ export function parseListingArg(
 ): ListingArg {
   const optionCode = (exchangeOption ?? "").trim().toUpperCase();
   const option = canonicalExchange(optionCode);
-  let typed = raw.trim().replace(/^\$/, "").toUpperCase();
+  // A perpetual's market id (binance:BZUSDT, as PERP names it) is its listing on that venue (BZUSDT:BINANCE).
+  let typed = (typedPerpetualListing(raw)?.key ?? raw).trim().replace(/^\$/, "").toUpperCase();
   // `SAN:` asks which listing; with --exchange it has its answer.
   if (option && typed.endsWith(":")) typed = typed.slice(0, -1);
   const venueKey = parsePublicTickerKey(typed);
@@ -716,15 +718,36 @@ export interface CliListing extends ListingArg {
   request: { symbol: string; exchange: string };
 }
 
+/**
+ * `XYZ:BRENTOIL`, which reads as a symbol on an exchange no venue has, as Hyperliquid's name for a market on one
+ * of its builder dexes (`xyz:BRENTOIL`, its listing XYZ-BRENTOIL:HYPERLIQUID), when that market exists. Asked only
+ * after the exchange was not found, so a mistyped exchange still says so.
+ */
+async function builderDexMarket(listing: ListingArg, deps: ListingDeps): Promise<ListingArg | null> {
+  if (!/^[A-Z][A-Z0-9]{0,11}$/.test(listing.symbol) || !/^[A-Z0-9]{1,32}$/.test(listing.exchange)) return null;
+  const market = perpetualListingOfMarket(`hyperliquid:${listing.symbol.toLowerCase()}:${listing.exchange}`);
+  if (!market) return null;
+  const found = await deps.dataProvider.search(market.key).catch(() => []);
+  return found.some((result) => result.symbol.toUpperCase() === market.key)
+    ? { symbol: market.symbol, exchange: market.exchange, key: market.key }
+    : null;
+}
+
 export async function resolveCliListing(
   raw: string,
   exchangeOption: string | null | undefined,
   deps: ListingDeps,
   options: { ownExchangeWins?: boolean } = {},
 ): Promise<CliListing> {
-  const parsed = parseListingArg(raw, exchangeOption, options);
+  let parsed = parseListingArg(raw, exchangeOption, options);
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
-  await checkListingExchange(parsed, deps);
+  try {
+    await checkListingExchange(parsed, deps);
+  } catch (error) {
+    const market = error instanceof ListingArgError ? await builderDexMarket(parsed, deps) : null;
+    if (!market) throw error;
+    parsed = market;
+  }
   let listing = await settleSharedCode(parsed, deps);
   const saved = await loadSavedListing(deps.store, listing);
   // A code nothing could read stays the venue it is saved on.

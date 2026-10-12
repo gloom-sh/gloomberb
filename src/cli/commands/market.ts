@@ -129,6 +129,7 @@ import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { splitSymbolArgs } from "../symbol-args";
+import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
 import { subMinuteDataMessage } from "../known-gaps";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
@@ -185,6 +186,8 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   listing?: { name: string | null };
   /** A futures row's contract, terms and latest confirmed settlement, as `ticker` reads them. */
   futuresContract?: FuturesContractTermsPayload;
+  /** A perpetual row's market, funding per eight hours and open interest. */
+  perpetualContract?: PerpetualContractPayload;
   /** The symbol changed: its issuer moved to another symbol, or its holder had another before. */
   tickerChange?: TickerChange;
 };
@@ -559,6 +562,10 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const contracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliFuturesContract(result.quote.symbol || result.target.symbol, result.quote.instrumentType)
       : null));
+    // A perpetual adds its funding per eight hours and open interest, the figures PERP lists beside its mark.
+    const perpetualContracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
+      ? cliPerpetualContract(result.quote)
+      : null));
     // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
     const data = answers.map(({ result, listing, failure }, index) => ({
       target: result.target,
@@ -567,6 +574,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       ...getQuoteSessionFields(result.quote),
       quote: result.quote,
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
+      ...perpetualContracts[index] ? { perpetualContract: perpetualContracts[index] } : {},
       error: failure?.oneLine ?? errorMessage(result.error),
       ...yieldIndexFields(result),
       ...tickerChanges[index] ? { tickerChange: tickerChanges[index] } : {},
@@ -606,6 +614,10 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
  */
 function quoteFuturesContractText(data: QuoteCliRecord[]): string {
   return data.flatMap((row) => {
+    if (row.perpetualContract) {
+      const stats = perpetualContractStats(row.perpetualContract);
+      return [data.length > 1 ? `${renderSection(`${row.target.symbol} Contract`)}\n${renderStats(stats)}` : `${renderSection("Contract")}\n${renderStats(stats)}`];
+    }
     const terms = row.futuresContract;
     if (!terms || !row.quote) return [];
     const settle: [string, string] = ["Settle", futuresSettleText(terms, row.quote)];
@@ -1634,7 +1646,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
       group: CLI_COMMAND_GROUPS.research,
       usage: ["quote <symbol...>"],
       options: [EXCHANGE_OPTION],
-      examples: ["quote AAPL MSFT NVDA", "quote SAN:EPA BHP:ASX", "quote BTC-USD EURUSD=X", "quote AAPL --json"],
+      examples: ["quote AAPL MSFT NVDA", "quote SAN:EPA BHP:ASX", "quote BTC-USD EURUSD=X", "quote binance:BZUSDT", "quote AAPL --json"],
     },
     execute: (args, ctx) => runQuote(args, ctx, "quote"),
   },

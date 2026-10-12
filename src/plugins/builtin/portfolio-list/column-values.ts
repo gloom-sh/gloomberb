@@ -31,6 +31,7 @@ import {
   type ActiveQuoteDisplay,
 } from "../../../market-data/market/status";
 import { formatOptionTicker } from "../../../utils/options";
+import { perpetualDisplaySymbol, perpetualListing } from "../../../tickers/perpetual-listing";
 import { currentListingName } from "../../../tickers/listing-name";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
 import { followLiveSparklinePrice, resolveSparklineHistory, sparklineValues } from "../../../components/price-sparkline/model";
@@ -279,9 +280,14 @@ function rowAllocation(
 /** A held position without a price says so where its allocation would be. */
 const UNPRICED = "n/a";
 
-/** The symbol the Ticker column shows after its market-state dot: an option reads as its contract. */
+/**
+ * The symbol the Ticker column shows after its market-state dot: an option reads as its contract, a perpetual
+ * as its venue writes it (`BZUSDT`, `xyz:BRENTOIL`), the venue being its exchange.
+ */
 export function tickerDisplayName(ticker: TickerRecord): string {
-  return ticker.metadata.assetCategory === "OPT" ? formatOptionTicker(ticker.metadata.ticker) : ticker.metadata.ticker;
+  if (ticker.metadata.assetCategory === "OPT") return formatOptionTicker(ticker.metadata.ticker);
+  const perpetual = perpetualListing(ticker.metadata.ticker, ticker.metadata.exchange);
+  return perpetual ? perpetualDisplaySymbol(perpetual) : ticker.metadata.ticker;
 }
 
 export function resolvePortfolioPriceValue(
