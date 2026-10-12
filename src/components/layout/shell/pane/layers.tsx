@@ -43,6 +43,8 @@ interface ShellPaneLayersProps {
   handleNativePaneMouseDown: (paneId: string, event: any) => void;
   handlePaneAction: (paneId: string, rect: LayoutBounds, event: any) => void;
   handlePaneHelp: (paneId: string) => void;
+  /** Ask Gloom about the pane; null while nothing takes the question (its plugin is off). */
+  handlePaneAsk: ((paneId: string) => void) | null;
   hoveredPaneId: string | null;
   live: LiveDragStore;
   menuPaneId: string | null;
@@ -79,6 +81,8 @@ interface PaneLayerActions {
   menu: (paneId: string, rect: LayoutBounds, event: any) => void;
   /** The `?`: the pane's entry in DOCS. */
   help: (paneId: string) => void;
+  /** The button beside the `?`: Ask Gloom about the pane. */
+  ask: (paneId: string) => void;
   closeMouseDown: (paneId: string, event: any) => void;
   /** Also the failure card's Close: keep it stable, the pane body is memoized on it. */
   close: (paneId: string) => void;
@@ -101,6 +105,8 @@ interface PaneLayerProps {
   movable: boolean;
   nativePaneChrome: boolean;
   nativeContextMenu: boolean;
+  /** Ask Gloom takes questions about panes, so the header offers it. */
+  canAsk: boolean;
   getPaneQuickSettings: (paneId: string) => PaneHeaderQuickSetting[];
   actions: PaneLayerActions;
 }
@@ -153,6 +159,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
   movable,
   nativePaneChrome,
   nativeContextMenu,
+  canAsk,
   getPaneQuickSettings,
   actions,
   live,
@@ -218,6 +225,7 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
               onHeaderContextMenu={nativePaneChrome && nativeContextMenu ? (event) => actions.contextMenu(paneId, rect, event) : undefined}
               onActionMouseDown={(event) => actions.menu(paneId, rect, event)}
               onHelpMouseDown={() => actions.help(paneId)}
+              onAskMouseDown={canAsk ? () => actions.ask(paneId) : undefined}
               fullscreen={fullscreen}
               onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
             >
@@ -256,6 +264,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
   movable,
   nativePaneChrome,
   nativeContextMenu,
+  canAsk,
   getPaneQuickSettings,
   actions,
   zIndex,
@@ -305,6 +314,7 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
             onHeaderContextMenu={nativePaneChrome && nativeContextMenu ? (event) => actions.contextMenu(paneId, rect, event) : undefined}
             onActionMouseDown={(event) => actions.menu(paneId, rect, event)}
             onHelpMouseDown={() => actions.help(paneId)}
+            onAskMouseDown={canAsk ? () => actions.ask(paneId) : undefined}
             onCloseMouseDown={fullscreen ? undefined : (event) => actions.closeMouseDown(paneId, event)}
             onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
             fullscreen={fullscreen}
@@ -582,6 +592,7 @@ export function ShellPaneLayers({
   handleNativePaneMouseDown,
   handlePaneAction,
   handlePaneHelp,
+  handlePaneAsk,
   hoveredPaneId,
   live,
   menuPaneId,
@@ -633,6 +644,7 @@ export function ShellPaneLayers({
     handleNativePaneMouseDown,
     handlePaneAction,
     handlePaneHelp,
+    handlePaneAsk,
     setHoveredPaneIfChanged,
     startNativeDividerDrag,
     startNativeDockedDrag,
@@ -648,6 +660,7 @@ export function ShellPaneLayers({
     handleNativePaneMouseDown,
     handlePaneAction,
     handlePaneHelp,
+    handlePaneAsk,
     setHoveredPaneIfChanged,
     startNativeDividerDrag,
     startNativeDockedDrag,
@@ -665,6 +678,7 @@ export function ShellPaneLayers({
     contextMenu: (paneId, rect, event) => handlersRef.current.handleNativePaneContextMenu(paneId, rect, event),
     menu: (paneId, rect, event) => handlersRef.current.handlePaneAction(paneId, rect, event),
     help: (paneId) => handlersRef.current.handlePaneHelp(paneId),
+    ask: (paneId) => handlersRef.current.handlePaneAsk?.(paneId),
     closeMouseDown: (paneId, event) => handlersRef.current.handleFloatingCloseMouseDown(paneId, event),
     close: (paneId) => handlersRef.current.handleFloatingClose(paneId),
     restoreFullscreen: (event) => handlersRef.current.handleRestoreFullscreen(event),
@@ -688,6 +702,7 @@ export function ShellPaneLayers({
       movable: !transientFocusActive,
       nativePaneChrome,
       nativeContextMenu,
+      canAsk: handlePaneAsk !== null,
       getPaneQuickSettings,
       actions,
     };

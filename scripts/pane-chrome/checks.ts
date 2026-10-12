@@ -1,7 +1,7 @@
 import { appendFile, mkdir } from "fs/promises";
 import { join, resolve } from "path";
 import { positiveInteger, takeOption } from "../tui-benchmark-harness";
-import { cacheDir, click, drag, evaluate, frames, launchBrowser, mouse, waitFor, type Cdp, type Point } from "./browser";
+import { cacheDir, click, drag, evaluate, frames, launchBrowser, mouse, pressKey, waitFor, type Cdp, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
 
 /**
@@ -58,20 +58,20 @@ window.__check = {
   point(id, part) {
     if (part === "empty") return this.emptyBarPoint(id);
     const element = part === "resize" ? this.part(id, "resize-handle")
-      : part === "action" || part === "help" ? this.part(id, "pane-" + part)?.querySelector("button")
+      : part === "action" || part === "help" || part === "ask" ? this.part(id, "pane-" + part)?.querySelector("button")
       : this.part(id, "pane-" + part);
     const r = this.rect(element);
     return r && { x: r.x + Math.min(r.width / 2, 16), y: r.y + r.height / 2 };
   },
   /**
-   * Bare header bar: just left of the header's buttons (the docs ?, then the
-   * pane menu), where no title, tab or button is. Throws when something else
-   * is under that point, so a layout change fails loudly instead of testing
-   * the wrong spot.
+   * Bare header bar: just left of the header's buttons (Ask Gloom, the docs ?,
+   * then the pane menu), where no title, tab or button is. Throws when
+   * something else is under that point, so a layout change fails loudly
+   * instead of testing the wrong spot.
    */
   emptyBarPoint(id) {
     const header = this.part(id, "pane-header");
-    const action = this.part(id, "pane-help") ?? this.part(id, "pane-action");
+    const action = this.part(id, "pane-ask") ?? this.part(id, "pane-help") ?? this.part(id, "pane-action");
     if (!header || !action) return null;
     const h = header.getBoundingClientRect();
     const point = { x: action.getBoundingClientRect().left - 10, y: h.top + h.height / 2 };
@@ -81,6 +81,16 @@ window.__check = {
       throw new Error("no bare header bar left of the pane menu: " + (taken ?? hit)?.outerHTML?.slice(0, 120));
     }
     return point;
+  },
+  /**
+   * The header's parts left to right, in px: the title, then Ask Gloom, the ?,
+   * the menu and the close button when drawn. Null for a part it has none of.
+   */
+  headerParts(id) {
+    const header = this.rect(this.part(id, "pane-header"));
+    const title = this.rect(this.part(id, "pane-title"));
+    const button = (role) => this.rect(this.part(id, role)?.querySelector("button") ?? null);
+    return { header, title, ask: button("pane-ask"), help: button("pane-help"), action: button("pane-action"), close: button("pane-close") };
   },
   windowMoves() { return window.__paneChromeBridge.filter((message) => message.id === "startWindowMove" && message.payload?.id === 7).length; },
 };
@@ -220,6 +230,28 @@ async function topDivider(cdp: Cdp, leftId: string, atY?: number): Promise<Point
   })()`) ?? fail(`no divider right of ${leftId}`);
 }
 
+interface HeaderParts { header: Rect | null; title: Rect | null; ask: Rect | null; help: Rect | null; action: Rect | null; close: Rect | null }
+
+const headerParts = (cdp: Cdp, paneId: string) => evaluate<HeaderParts>(cdp, `__check.headerParts(${JSON.stringify(paneId)})`);
+
+/**
+ * The header's buttons sit in a row inside it, none over another or over the
+ * title: Ask Gloom left of the ?, the ? left of the menu, the menu left of the
+ * close button. A shift here is what pushes a neighbour out of place.
+ */
+function checkHeaderRow(paneId: string, parts: HeaderParts): void {
+  const { header, title } = parts;
+  if (!header || !title) fail(`${paneId} has no header or title`, parts);
+  const row = [parts.ask, parts.help, parts.action, parts.close].filter((rect): rect is Rect => !!rect);
+  let left = title.x + title.width;
+  for (const rect of row) {
+    if (rect.x < left - 0.5) fail(`${paneId}: a header button overlaps the part before it`, parts);
+    if (rect.y < header.y - 0.5 || rect.y + rect.height > header.y + header.height + 0.5) fail(`${paneId}: a header button leaves the header`, parts);
+    left = rect.x + rect.width;
+  }
+  if (left > header.x + header.width + 0.5) fail(`${paneId}: the header's buttons run past its edge`, parts);
+}
+
 const PRESS_POINTS = [["grip", "grip"], ["title", "title"], ["empty bar", "empty"]] as const;
 const EDGES = [
   { edge: "left", by: { x: -64, y: 0 }, moves: { x: 1, y: 0 }, grows: { x: -1, y: 0 } },
@@ -287,6 +319,113 @@ const steps: Step[] = [
       if ((await waitFor<string[] | null>(cdp, `window.__paneChrome.docs.length ? window.__paneChrome.docs : null`))?.join() !== "plain:float") {
         fail("the ? did not ask for this pane's docs");
       }
+    },
+  },
+  {
+    name: "docked pane: Ask Gloom asks about the pane and leaves it and its header's buttons in place",
+    scenario: "docked",
+    async run(cdp) {
+      const before = await rectOf(cdp, "tabs:a");
+      // Ask Gloom shows with the ? and the menu, on the focused or hovered pane.
+      await click(cdp, await pointOf(cdp, "tabs:a", "title"));
+      const shown = await headerParts(cdp, "tabs:a");
+      if (!shown.ask || !shown.help) fail("the focused pane shows no Ask Gloom beside its ?", shown);
+      checkHeaderRow("tabs:a", shown);
+      await click(cdp, await pointOf(cdp, "tabs:a", "ask"));
+      const asked = await waitFor<string[] | null>(cdp, `window.__paneChrome.asks.length ? window.__paneChrome.asks : null`);
+      if (asked?.join() !== "tabs:a") fail("Ask Gloom did not ask about this pane once", asked);
+      if (!near(before, await rectOf(cdp, "tabs:a"))) fail("pressing Ask Gloom moved the pane");
+      const after = await headerParts(cdp, "tabs:a");
+      for (const part of ["ask", "help", "action"] as const) {
+        if (!near(shown[part], after[part], 0.5)) fail(`pressing Ask Gloom moved the header's ${part} button`, { shown: shown[part], after: after[part] });
+      }
+      if (await evaluate<string[]>(cdp, "window.__paneChrome.docs").then((docs) => docs.length > 0)) fail("Ask Gloom also asked for the pane's docs");
+    },
+  },
+  {
+    name: "floating pane: a press dragged off Ask Gloom asks nothing and moves nothing; a click asks",
+    scenario: "floating",
+    async run(cdp) {
+      const before = await rectOf(cdp, "plain:float");
+      await click(cdp, await pointOf(cdp, "plain:float", "title"));
+      const ask = await pointOf(cdp, "plain:float", "ask");
+      await drag(cdp, ask, [{ x: ask.x - 200, y: ask.y + 150 }], 4);
+      const asked = await evaluate<string[]>(cdp, "window.__paneChrome.asks");
+      if (asked.length > 0) fail("a press dragged off Ask Gloom still asked", asked);
+      if (!near(before, await rectOf(cdp, "plain:float"))) fail("dragging from Ask Gloom moved the pane");
+      await click(cdp, await pointOf(cdp, "plain:float", "ask"));
+      if ((await waitFor<string[] | null>(cdp, `window.__paneChrome.asks.length ? window.__paneChrome.asks : null`))?.join() !== "plain:float") {
+        fail("Ask Gloom did not ask about this pane");
+      }
+      if (!near(before, await rectOf(cdp, "plain:float"))) fail("clicking Ask Gloom moved the pane");
+    },
+  },
+  {
+    name: "keyboard: the Ask Gloom key asks about the focused pane, and not twice",
+    scenario: "docked",
+    async run(cdp) {
+      const before = await rectOf(cdp, "plain:b");
+      await click(cdp, await pointOf(cdp, "plain:b", "title"));
+      await pressKey(cdp, "a", ["meta", "shift"]);
+      const asked = await waitFor<string[] | null>(cdp, `window.__paneChrome.asks.length ? window.__paneChrome.asks : null`);
+      if (asked?.join() !== "plain:b") fail("Cmd+Shift+A did not ask about the focused pane once", asked);
+      // Control is the primary modifier on Windows and Linux.
+      await click(cdp, await pointOf(cdp, "plain:a", "title"));
+      await pressKey(cdp, "a", ["ctrl", "shift"]);
+      const again = await waitFor<string[] | null>(cdp, `window.__paneChrome.asks.length > 1 ? window.__paneChrome.asks : null`);
+      if (again?.join() !== "plain:b,plain:a") fail("Ctrl+Shift+A did not ask about the newly focused pane", again);
+      if (!near(before, await rectOf(cdp, "plain:b"))) fail("the key moved a pane");
+    },
+  },
+  {
+    name: "Ask Gloom: a pane hands over the text it shows, not rows scrolled out of view",
+    scenario: "resize",
+    async run(cdp) {
+      // The floating news table: 160 stories, room for a couple of dozen.
+      await click(cdp, await pointOf(cdp, "news:float", "title"));
+      await pressKey(cdp, "a", ["meta", "shift"]);
+      type Attachment = { paneId: string; visibleText: string | null };
+      const [news] = await waitFor<Attachment[] | null>(cdp, `window.__paneChrome.attachments.length ? window.__paneChrome.attachments : null`) ?? [];
+      if (news?.paneId !== "news:float") fail("the key did not hand over the focused table", news);
+      const lines = news.visibleText?.split("\n") ?? [];
+      if (!/TIME\s+HEADLINE/.test(lines[0] ?? "") || !lines.some((line) => /^1\s/.test(line))) fail("the table's own text did not go", lines.slice(0, 4));
+      if (lines.some((line) => /^(100|159)\s/.test(line))) fail("a row scrolled out of view went with it", lines.length);
+    },
+  },
+  {
+    name: "Ask Gloom: a tabbed pane hands over the tab it has open",
+    scenario: "docked",
+    async run(cdp) {
+      const second = await evaluate<Rect | null>(cdp, `__check.rect(__check.tab("tabs:a", "Second"))`) ?? fail("no Second tab");
+      await click(cdp, center(second));
+      await pressKey(cdp, "a", ["meta", "shift"]);
+      type Attachment = { paneId: string; visibleText: string | null; args: Record<string, string> };
+      const [tabs] = await waitFor<Attachment[] | null>(cdp, `window.__paneChrome.attachments.length ? window.__paneChrome.attachments : null`) ?? [];
+      if (tabs?.paneId !== "tabs:a" || tabs.args.tab !== "Second") fail("the open tab did not go with the pane", tabs);
+      if (!tabs.visibleText?.includes("Showing Second")) fail("the pane's text did not go", tabs);
+    },
+  },
+  {
+    name: "narrow panes: Ask Gloom leaves a header too narrow for it and keeps to its own place at the width that fits",
+    scenario: "narrow",
+    async run(cdp) {
+      for (const paneId of ["plain:under", "plain:at", "tabs:wide"]) {
+        await click(cdp, await pointOf(cdp, paneId, "title"));
+        const parts = await headerParts(cdp, paneId);
+        if (!parts.help || !parts.action || !parts.close) fail(`${paneId} lost a header button`, parts);
+        if (paneId === "plain:under" ? !!parts.ask : !parts.ask) {
+          fail(paneId === "plain:under" ? "a pane narrower than Ask Gloom's width still draws it" : `${paneId} draws no Ask Gloom`, parts);
+        }
+        checkHeaderRow(paneId, parts);
+        if (parts.title!.width < 16) fail(`${paneId}: the title has no room left`, parts);
+      }
+      // Both docked panes keep theirs, hovered as well as focused.
+      const hovered = await pointOf(cdp, "plain:a", "title");
+      await mouse(cdp, "mouseMoved", hovered.x, hovered.y, false);
+      await frames(cdp, 2);
+      const docked = await headerParts(cdp, "plain:a");
+      if (!docked.ask) fail("a hovered docked pane shows no Ask Gloom", docked);
+      checkHeaderRow("plain:a", docked);
     },
   },
   {

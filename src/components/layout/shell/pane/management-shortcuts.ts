@@ -15,6 +15,7 @@ import {
 } from "../shortcuts";
 
 interface ShellPaneManagementShortcutOptions {
+  askAboutFocusedPane(): boolean;
   cancelActiveDrag(): void;
   closeAllFloatingPanes(): boolean;
   closeFocusedPane(): boolean;
@@ -37,6 +38,7 @@ interface ShellPaneManagementShortcutOptions {
 }
 
 export function useShellPaneManagementShortcuts({
+  askAboutFocusedPane,
   cancelActiveDrag,
   closeAllFloatingPanes,
   closeFocusedPane,
@@ -78,6 +80,18 @@ export function useShellPaneManagementShortcuts({
           event.stopPropagation();
           return;
         }
+      }
+    }
+
+    // Ask Gloom is a modifier chord no pane binds, so it goes ahead of the
+    // panes, whichever mounted last: one that read a plain `a` without
+    // checking modifiers would otherwise take Alt+A.
+    if (shortcut === "ask" && !overlayOpen && !hasActiveDrag()) {
+      if ((!inputCaptured || inputCaptureAllowsPaneManagementShortcut(shortcut, event)) && askAboutFocusedPane()) {
+        resetDoubleEscapeClose(doubleEscapeCloseRef.current);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
       }
     }
 

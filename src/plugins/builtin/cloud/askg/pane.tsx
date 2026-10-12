@@ -71,7 +71,21 @@ import {
 } from "./conversation-store";
 import { confirmDialog } from "../../../../components/ui/confirm-dialog";
 import { useDialog, type PromptContext } from "../../../../ui/dialog";
-import { subscribeASKGQuestions } from "./pending-question";
+import { subscribeASKGPaneAttachments, subscribeASKGQuestions } from "./pending-question";
+import type { AskGloomPaneAttachment } from "../../../../ask-gloom/pane-request";
+import { moveComposerCursorToOffset } from "../../chat/content/composer-cursor";
+import {
+  ASKG_PANE_QUESTION,
+  attachedPaneContext,
+  attachPane,
+  type ASKGAttachedPane,
+} from "./pane-attachment";
+import {
+  ATTACH_PANE_KEY,
+  AttachedPaneBlock,
+  attachedPaneBlockHeight,
+  LEAVE_OUT_PANE_KEY,
+} from "./attached-pane";
 import { buildASKGUserData } from "./user-data";
 import { ASKGConversationSidebar } from "./sidebar";
 import { ASKGUndoManager } from "./undo";
@@ -163,6 +177,8 @@ function askgExampleQuestions({
         : "What is on this week's economic calendar?",
   ];
 }
+
+const NO_EXAMPLES: string[] = [];
 
 /** Rate the answer the keyboard is on: the selected one, else the latest. */
 const GOOD_ANSWER_KEY = "g";
@@ -508,6 +524,15 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const getAppStateRef = useRef(getAppState);
   getAppStateRef.current = getAppState;
 
+  // The pane the conversation on screen is about, read whenever a question
+  // goes so every turn of it carries the pane.
+  const [attached, setAttachedState] = useState<ASKGAttachedPane | null>(null);
+  const attachedRef = useRef<ASKGAttachedPane | null>(null);
+  const setAttached = useCallback((next: ASKGAttachedPane | null) => {
+    attachedRef.current = next;
+    setAttachedState(next);
+  }, []);
+
   // Each call and each undo gets a fresh executor, so the tokens live here:
   // an executor's own manager would forget them as soon as its call returned.
   const undoManager = useMemo(() => new ASKGUndoManager((request) => {
@@ -541,6 +566,10 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         brokerAccounts: state.brokerAccounts,
         tickers: state.tickers.values(),
       });
+      const pane = attachedRef.current;
+      // An attached pane is what the question is about: its function, its
+      // symbol and, once that may go, what it shows.
+      if (pane) return { ...attachedPaneContext(pane), ...(userData ? { userData } : {}) };
       return {
         ...(contextRef.current.symbol ? { symbol: contextRef.current.symbol } : {}),
         paneId: contextRef.current.paneId,
@@ -608,6 +637,8 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
 
   const running = isTurnRunning(state);
   const confirmation = pendingConfirmation(state);
+  // A tool's approval goes first; the pane's question waits behind it.
+  const paneConsentPending = attached?.consent === "pending" && !confirmation;
 
   // Names the profile gives the ids tools take, so a row reads "Interactive
   // Brokers U1234567" rather than the id Gloom passed.
@@ -654,7 +685,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     return turn?.status === "error" && turn.error?.code === "tier_required";
   }, [state]);
 
-  const examples = useMemo(() => {
+  const profileExamples = useMemo(() => {
     const appState = getAppStateRef.current();
     return askgExampleQuestions({
       config: appState.config,
@@ -662,6 +693,8 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       activeSymbol,
     });
   }, [activeSymbol, config.portfolios, config.watchlists]);
+  // With a pane attached, the question in the field is about it; the examples are not.
+  const examples = attached ? NO_EXAMPLES : profileExamples;
 
   const ask = useCallback((question: string) => {
     const trimmed = question.trim();
@@ -720,15 +753,57 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       return;
     }
     resetTimeline();
+    setAttached(null);
     controller.openConversation(conversation);
-  }, [controller, focusInput, resetTimeline, state.conversationId]);
+  }, [controller, focusInput, resetTimeline, setAttached, state.conversationId]);
 
   const newConversation = useCallback(() => {
     resetTimeline();
+    setAttached(null);
     askgConversationListStore.rememberOpen(null);
     controller.startConversation();
     if (focusedRef.current) focusInput();
-  }, [controller, focusInput, resetTimeline]);
+  }, [controller, focusInput, resetTimeline, setAttached]);
+
+  // The question a pane opens with goes in the field, ready to edit or send.
+  const setComposerText = useCallback((text: string) => {
+    setInputValue(text);
+    const textarea = inputRef.current;
+    if (!textarea) return;
+    textarea.setText(text);
+    moveComposerCursorToOffset(textarea, text, text.length);
+  }, []);
+
+  // A pane asked about from its header, its menu or the key: a conversation
+  // of its own, added beside the ones already kept rather than in place of
+  // the one on screen, with the pane attached and its question in the field.
+  const startPaneConversation = useCallback((pane: AskGloomPaneAttachment) => {
+    resetTimeline();
+    setSidebarFocused(false);
+    setSidebarCursorId(null);
+    setResultFocused(false);
+    askgConversationListStore.rememberOpen(null);
+    controller.startConversation();
+    const next = attachPane(pane);
+    setAttached(next);
+    setComposerText(ASKG_PANE_QUESTION);
+    // A pane with the user's own data asks first, so its answer owns the keyboard.
+    if (next.consent === "pending") blurInput();
+    else if (focusedRef.current) focusInput();
+  }, [blurInput, controller, focusInput, resetTimeline, setAttached, setComposerText]);
+
+  const answerPaneConsent = useCallback((attach: boolean) => {
+    const current = attachedRef.current;
+    if (current?.consent !== "pending") return;
+    setAttached({ ...current, consent: attach ? "granted" : "declined" });
+    if (focusedRef.current) focusInput();
+  }, [focusInput, setAttached]);
+
+  // A question sent while the pane still asks goes without what it shows.
+  const settlePaneConsent = useCallback(() => {
+    const current = attachedRef.current;
+    if (current?.consent === "pending") setAttached({ ...current, consent: "declined" });
+  }, [setAttached]);
 
   // A transcript has no undo, so it is never one click from gone.
   const deleteConversation = useCallback(async (conversationId: string): Promise<boolean> => {
@@ -745,11 +820,12 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (!confirmed) return false;
     if (conversationId === state.conversationId) {
       resetTimeline();
+      setAttached(null);
       controller.startConversation();
     }
     void askgConversationListStore.delete(conversationId);
     return true;
-  }, [controller, conversations.conversations, dialog, resetTimeline, state.conversationId]);
+  }, [controller, conversations.conversations, dialog, resetTimeline, setAttached, state.conversationId]);
 
   // Typing lands in the composer as soon as the pane has the keyboard: when it
   // opens, when it is focused again, once the account is ready. Only this
@@ -759,7 +835,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   useEffect(() => {
     const gained = keyboardReady && !wasReadyRef.current;
     wasReadyRef.current = keyboardReady;
-    if (gained && !confirmation) focusInput();
+    if (gained && !confirmation && attachedRef.current?.consent !== "pending") focusInput();
   }, [confirmation, focusInput, keyboardReady]);
 
   useEffect(() => {
@@ -786,6 +862,22 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     ask(queuedQuestion);
   }, [ask, planAccess.emailVerified, queuedQuestion]);
 
+  // A pane asked about, opening this pane or landing in it while it is open.
+  // It waits for the account, and for an answer still coming in the
+  // conversation on screen, so that answer is never cut off.
+  const queuedPaneRef = useRef<AskGloomPaneAttachment | null>(null);
+  const [queuedPane, setQueuedPane] = useState<AskGloomPaneAttachment | null>(null);
+  useEffect(() => subscribeASKGPaneAttachments((pane) => {
+    queuedPaneRef.current = pane;
+    setQueuedPane(pane);
+  }), []);
+  useEffect(() => {
+    if (!queuedPane || !planAccess.emailVerified || running) return;
+    setQueuedPane(null);
+    queuedPaneRef.current = null;
+    startPaneConversation(queuedPane);
+  }, [planAccess.emailVerified, queuedPane, running, startPaneConversation]);
+
   // Closing the pane is two Escs away, so the conversation it showed comes
   // back with the next one this session opens. A question typed with the
   // command that opened it starts a new one instead.
@@ -794,10 +886,11 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     if (restoredRef.current || !planAccess.emailVerified) return;
     restoredRef.current = true;
     const remembered = askgConversationListStore.rememberedOpen();
-    if (!remembered || queuedQuestionRef.current || controller.getState().turns.length > 0) return;
+    if (!remembered || queuedQuestionRef.current || queuedPaneRef.current || controller.getState().turns.length > 0) return;
     void apiClient.askg.loadConversation(remembered).then((conversation) => {
       const current = controller.getState();
-      if (!conversation || current.turns.length > 0 || current.conversationId) return;
+      // A pane asked about meanwhile has the pane to itself.
+      if (!conversation || current.turns.length > 0 || current.conversationId || attachedRef.current || queuedPaneRef.current) return;
       controller.openConversation(conversation);
     }).catch(() => {});
   }, [controller, planAccess.emailVerified]);
@@ -859,8 +952,9 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     setInputValue("");
     inputRef.current?.editBuffer.setText?.("");
     resetTimeline();
+    settlePaneConsent();
     ask(trimmed);
-  }, [ask, controller, readDraft, resetTimeline]);
+  }, [ask, controller, readDraft, resetTimeline, settlePaneConsent]);
 
   // The terminal textarea reports edits only through `onContentChange`, and
   // the composer grows with what it holds, so the pane binds whichever
@@ -1067,6 +1161,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const expandedNeed = 3 + (expandedTables.length > 1 ? 1 : 0)
     + Math.max(0, ...expandedTables.map((table) => table.rows.length));
   const confirmationHeight = confirmation ? confirmationBlockHeight(confirmation) : 0;
+  const attachedHeight = attachedPaneBlockHeight(attached);
   const draftLines = useMemo(() => {
     const textWidth = Math.max(8, width - sidebarWidth - (nativePaneChrome ? 6 : 5));
     return Math.min(MAX_COMPOSER_LINES, Math.max(1, wrapTextLines(inputValue, textWidth).length));
@@ -1074,7 +1169,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const composerHeight = nativePaneChrome ? draftLines + 2 : draftLines;
   const composerBlockHeight = nativePaneChrome ? composerHeight : composerHeight + 2;
   // The conversation keeps a readable slice no matter what else is open.
-  const detailBudget = height - composerBlockHeight - confirmationHeight - 6;
+  const detailBudget = height - composerBlockHeight - confirmationHeight - attachedHeight - 6;
   const detailHeight = expandedRow && expandedHasRows && detailBudget >= MIN_DETAIL_HEIGHT
     ? Math.min(Math.floor(height / 2), detailBudget, Math.max(MIN_DETAIL_HEIGHT, expandedNeed))
     : 0;
@@ -1107,7 +1202,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
   const enterTimeline = useCallback(() => {
     blurInput();
     if (state.turns.length === 0) {
-      setExampleIndex(examples.length - 1);
+      if (examples.length > 0) setExampleIndex(examples.length - 1);
       return;
     }
     if (!selectedId && timelineIds.length > 0) setSelectedId(timelineIds[timelineIds.length - 1] ?? null);
@@ -1129,6 +1224,20 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       if (isPlainKey(event, "n", "escape")) {
         consume();
         controller.resolveConfirmation(confirmation.toolCallId, false);
+        return;
+      }
+    }
+    // A pane's contents wait on a yes or a no, unless the field was clicked
+    // into instead: then what is typed is the question.
+    if (paneConsentPending && !inputFocused) {
+      if (isPlainKey(event, ATTACH_PANE_KEY)) {
+        consume();
+        answerPaneConsent(true);
+        return;
+      }
+      if (isPlainKey(event, LEAVE_OUT_PANE_KEY, "escape")) {
+        consume();
+        answerPaneConsent(false);
         return;
       }
     }
@@ -1214,7 +1323,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
       rateAnswer(feedbackTarget, event.name === GOOD_ANSWER_KEY ? "up" : "down");
       return;
     }
-    if (state.turns.length === 0) {
+    if (state.turns.length === 0 && examples.length > 0) {
       if (isPlainKey(event, "j", "down")) {
         consume();
         setExampleIndex((index) => (index === null || index >= examples.length - 1 ? null : index + 1));
@@ -1318,6 +1427,11 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
         { id: "approve", key: "y", label: "es approve", title: "Approve", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, true) },
         { id: "decline", key: "n", label: "o decline", title: "Decline", onPress: () => controller.resolveConfirmation(confirmation.toolCallId, false) },
       );
+    } else if (paneConsentPending) {
+      list.push(
+        { id: "attach-pane", key: ATTACH_PANE_KEY, label: " attach", title: "Attach the Pane's Contents", onPress: () => answerPaneConsent(true) },
+        { id: "leave-out-pane", key: LEAVE_OUT_PANE_KEY, label: " leave out", title: "Leave Out the Pane's Contents", onPress: () => answerPaneConsent(false) },
+      );
     }
     if (showSidebar) {
       // While a write waits, n answers it.
@@ -1379,6 +1493,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     return list;
   }, [
     planAccess.emailVerified,
+    answerPaneConsent,
     answerTickers.length,
     canOpenPane,
     chooseAnswerTicker,
@@ -1398,6 +1513,7 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
     newConversation,
     openGroups,
     openPaneForTool,
+    paneConsentPending,
     paneRow,
     rateAnswer,
     resultActive,
@@ -1587,6 +1703,19 @@ export function ASKGPane({ paneId, focused, width, height }: PaneProps) {
             onOpenPane={() => openPaneForTool(expandedRow)}
           />
         </Box>
+      ) : null}
+
+      {attached ? (
+        <AttachedPaneBlock
+          attached={attached}
+          width={bodyWidth}
+          onAttach={() => answerPaneConsent(true)}
+          onLeaveOut={() => answerPaneConsent(false)}
+          onRemove={() => {
+            setAttached(null);
+            if (focusedRef.current) focusInput();
+          }}
+        />
       ) : null}
 
       <MessageComposer

@@ -104,6 +104,8 @@ export function menuForPane(
   layoutMove: PaneMenuLayoutMove = {},
   /** The pane's entry in DOCS, the same as the `?` in its header. */
   openDocs?: () => void,
+  /** A new Ask Gloom conversation with this pane attached, the same as the button beside the `?`. */
+  askGloom?: () => void,
 ): ContextMenuItem[] {
   const baseActions: ContextMenuItem[] = [...paneItems];
   if (baseActions.length > 0) baseActions.push(contextMenuDivider("pane:own-actions-divider"));
@@ -126,6 +128,9 @@ export function menuForPane(
   }
   if (openDocs) {
     baseActions.push({ id: "pane-docs", label: "Docs", onSelect: openDocs });
+  }
+  if (askGloom) {
+    baseActions.push({ id: "ask-gloom", label: "Ask Gloom", accelerator: accelerators.ask, onSelect: askGloom });
   }
   if (sharePane) {
     baseActions.push({

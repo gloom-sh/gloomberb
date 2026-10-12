@@ -31,6 +31,8 @@ interface FloatingPaneWrapperProps {
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
   onHelpMouseDown?: (event: any) => void;
+  /** Ask Gloom about the pane, from the button beside the `?`. */
+  onAskMouseDown?: (event: any) => void;
   onCloseMouseDown?: (event: any) => void;
   onRestoreMouseDown?: (event: any) => void;
   fullscreen?: boolean;
@@ -85,6 +87,7 @@ export function FloatingPaneWrapper({
   onHeaderContextMenu,
   onActionMouseDown,
   onHelpMouseDown,
+  onAskMouseDown,
   onCloseMouseDown,
   onRestoreMouseDown,
   fullscreen = false,
@@ -147,6 +150,7 @@ export function FloatingPaneWrapper({
         onHeaderContextMenu={onHeaderContextMenu}
         onActionMouseDown={onActionMouseDown}
         onHelpMouseDown={onHelpMouseDown}
+        onAskMouseDown={onAskMouseDown}
         onCloseMouseDown={onCloseMouseDown}
         onRestoreMouseDown={onRestoreMouseDown}
         fullscreen={fullscreen}

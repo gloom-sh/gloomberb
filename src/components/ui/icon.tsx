@@ -30,7 +30,8 @@ export type IconName =
   | "grip"
   | "image"
   | "thumbs-up"
-  | "thumbs-down";
+  | "thumbs-down"
+  | "ask";
 
 /** Terminal glyph for each icon; the desktop host draws SVG. */
 export const ICON_GLYPHS: Record<IconName, string> = {
@@ -62,6 +63,8 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   // show which thumb is chosen.
   "thumbs-up": "+1",
   "thumbs-down": "-1",
+  // Ask Gloom: a four-point spark.
+  ask: "✦",
 };
 
 export interface IconProps {

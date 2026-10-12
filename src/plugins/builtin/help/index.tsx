@@ -57,6 +57,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
   const windowMoveBadges = actionBadges("window-move-mode");
   const windowResizeBadges = actionBadges("window-resize-mode");
   const functionHelpBadges = actionBadges("function-help");
+  const askBadges = actionBadges("pane-ask");
   useEffect(() => subscribeKeybindingCapture(() => setActiveTabId("shortcuts")), []);
   const copyBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+C"] : [platformShortcut("C")];
   const pasteBadges = shortcutDisplayMode === "terminal" ? ["Ctrl+Shift+V"] : [platformShortcut("V")];
@@ -186,6 +187,9 @@ function HelpPane({ focused, width, height }: PaneProps) {
         ...(functionHelpBadges.length > 0
           ? [entry("function-help", functionHelpBadges, "Open the focused pane's help card; Enter reads its docs.")]
           : []),
+        ...(askBadges.length > 0
+          ? [entry("ask-gloom", askBadges, "Ask Gloom about the focused pane, in a new conversation with the pane attached. Also Ask Gloom in the pane menu.")]
+          : []),
         entry("search", ["/"], "Search in the focused pane."),
         entry("sidebar", ["<", ">"], "Narrow or widen the list beside the content, as in MAP and ASKG."),
         entry("warnings", ["!"], "Open the focused pane's data warnings."),
@@ -264,7 +268,7 @@ function HelpPane({ focused, width, height }: PaneProps) {
         entry("commit", ["Enter", "Esc"], "Commit pending changes or exit window mode."),
       ],
     },
-  ], [copyBadges, functionHelpBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
+  ], [askBadges, copyBadges, functionHelpBadges, pasteBadges, windowMoveBadges, windowResizeBadges]);
 
   const renderContent = () => {
     switch (activeTabId) {

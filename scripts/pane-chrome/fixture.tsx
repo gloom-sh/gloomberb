@@ -14,7 +14,8 @@
  * (chart panes for the copy screenshot check) or `resize` (a news table, a
  * chart, and a table in a sidebar beside a second table, docked, with a news
  * table floating over them; `&float=chart`, `&float=heat` or `&float=fear`
- * floats a chart, a heat map or the Fear & Greed pane instead).
+ * floats a chart, a heat map or the Fear & Greed pane instead) or `narrow`
+ * (floating panes either side of the width a header keeps Ask Gloom at).
  */
 import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
@@ -44,6 +45,8 @@ import { FearGreedPane } from "../../src/plugins/builtin/fear-greed/pane";
 import { loadFearGreed } from "../../src/plugins/builtin/fear-greed/cache";
 import type { FearGreedData } from "../../src/plugins/builtin/fear-greed/data";
 import { PriceSparkline } from "../../src/components/price-sparkline/view";
+import { registerAskGloomPaneHandler } from "../../src/ask-gloom/pane-request";
+import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/header";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -64,6 +67,10 @@ declare global {
       >;
       /** Panes whose `?` asked for their docs, in order. */
       docs: string[];
+      /** Panes handed to Ask Gloom (its button, menu entry or key), in order. */
+      asks: string[];
+      /** What each of those handed over: its text as drawn and its arguments. */
+      attachments: Array<{ paneId: string; visibleText: string | null; args: Readonly<Record<string, string>> }>;
     };
   }
 }
@@ -439,6 +446,25 @@ function resizeLayout(): LayoutConfig {
   };
 }
 
+/**
+ * Two docked panes under floating ones a cell either side of the narrowest
+ * header that keeps Ask Gloom, and one far wider.
+ */
+function narrowLayout(): LayoutConfig {
+  const ids = ["plain:a", "plain:b"];
+  const floating = [
+    { instanceId: "plain:under", x: 4, y: 4, width: PANE_HEADER_ASK_MIN_WIDTH - 1 },
+    { instanceId: "plain:at", x: 50, y: 4, width: PANE_HEADER_ASK_MIN_WIDTH },
+    { instanceId: "tabs:wide", x: 100, y: 4, width: 60 },
+  ];
+  return {
+    dockRoot: row(ids),
+    instances: [...ids, ...floating.map((entry) => entry.instanceId)].map(instance),
+    floating: floating.map((entry, index) => ({ ...entry, height: 10, zIndex: 60 + index })),
+    detached: [],
+  };
+}
+
 /** The Fear & Greed pane beside the charts pane, both tall enough to show their charts. */
 function screenshotLayout(): LayoutConfig {
   const ids = ["fear-greed:a", "charts:a"];
@@ -447,7 +473,11 @@ function screenshotLayout(): LayoutConfig {
 
 function config() {
   const base = createDefaultConfig("/pane-chrome-fixture");
-  const layout = scenario === "perf" ? perfLayout() : scenario === "screenshot" ? screenshotLayout() : scenario === "resize" ? resizeLayout() : chromeLayout();
+  const layout = scenario === "perf" ? perfLayout()
+    : scenario === "screenshot" ? screenshotLayout()
+    : scenario === "resize" ? resizeLayout()
+    : scenario === "narrow" ? narrowLayout()
+    : chromeLayout();
   return { ...base, layout, layouts: [{ name: "Fixture", layout: cloneLayout(layout) }], activeLayoutIndex: 0 };
 }
 
@@ -473,6 +503,8 @@ window.__paneChrome = {
   registry: paneRegistry,
   windowControls: [],
   docs: [],
+  asks: [],
+  attachments: [],
   capturePane: async (paneId) => `data:image/png;base64,${(await domScreenshot.capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
   captureForAssistant: async (paneId, scale, maxBytes, minWidth) => {
     try {
@@ -488,6 +520,11 @@ window.__paneChrome = {
     }
   },
 };
+// Ask Gloom takes pane questions, so the headers offer its button; the page records which pane asked.
+registerAskGloomPaneHandler(({ paneId, visibleText, args }) => {
+  window.__paneChrome.asks.push(paneId);
+  window.__paneChrome.attachments.push({ paneId, visibleText, args });
+});
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
 if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
 const rendererHost: RendererHost = {

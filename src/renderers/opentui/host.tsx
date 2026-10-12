@@ -10,6 +10,7 @@ import { buildTerminalMediaArgs, createTerminalMediaReaper, terminalMediaStateFi
 import { saveTextFileToDownloads } from "../../utils/save-text-file";
 import { installInteractionPerformanceRecorder } from "./interaction-performance";
 import { provideKittyServices } from "./kitty-services";
+import { captureRendererFrame } from "./frame-capture";
 import {
   createTimerFrameDriver,
   installMarketDataFrameDriver,
@@ -242,20 +243,7 @@ export async function createOpenTuiHost(): Promise<OpenTuiHost> {
     addPostProcessFn: (processFn) => renderer.addPostProcessFn(processFn as any),
     removePostProcessFn: (processFn) => renderer.removePostProcessFn(processFn as any),
     copyToClipboardOSC52: (text) => renderer.copyToClipboardOSC52(text),
-    captureFrame() {
-      if (renderer.isDestroyed) return null;
-      const buffer = renderer.currentRenderBuffer;
-      return {
-        cols: buffer.width,
-        rows: buffer.height,
-        lines: buffer.getSpanLines().map((line) => line.spans.map((span) => ({
-          text: span.text,
-          fg: span.fg.toInts(),
-          bg: span.bg.toInts(),
-          attributes: span.attributes,
-        }))),
-      };
-    },
+    captureFrame: () => captureRendererFrame(renderer),
     captureMouseRenderable(renderable) {
       const capture = (renderer as unknown as { setCapturedRenderable?: (target: unknown) => void }).setCapturedRenderable;
       if (typeof capture === "function") {

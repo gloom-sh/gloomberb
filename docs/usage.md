@@ -46,6 +46,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Ctrl+Shift+E` | Export focused pane table as CSV |
 | `Ctrl+Shift+L` | Layout actions |
 | `Ctrl+Shift+G` | Tidy windows |
+| `Alt+A` | Ask Gloom about the focused pane, in a new conversation with the pane attached |
 | `Tab` | Switch panes |
 | `j` / `k` | Navigate lists |
 | `Home` / `End`, `PageUp` / `PageDown` | Jump through lists and tables |
@@ -59,7 +60,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Alt+Backspace` | Dismiss the newest notification |
 | `q` | Quit (terminal) |
 
-Desktop builds also accept `Cmd/Ctrl+K` for the command bar, the matching `Cmd` shortcuts on macOS, `Cmd/Ctrl+Shift+O` to pop out a pane, `Cmd/Ctrl+Shift+C` to copy a focused pane screenshot, and `Cmd/Ctrl+Shift+Enter` / `Cmd/Ctrl+Shift+Backspace` for notifications.
+Desktop builds also accept `Cmd/Ctrl+K` for the command bar, the matching `Cmd` shortcuts on macOS, `Cmd/Ctrl+Shift+O` to pop out a pane, `Cmd/Ctrl+Shift+C` to copy a focused pane screenshot, `Cmd/Ctrl+Shift+A` to ask Gloom about the focused pane, and `Cmd/Ctrl+Shift+Enter` / `Cmd/Ctrl+Shift+Backspace` for notifications.
 
 The focused pane's footer shows its actions with their keys, such as `[a]dd`, and every one of them works from the keyboard. The pane menu (`.`, or the `...` button) lists them all, including any a narrow footer cuts off, followed by what the pane's table, filters and tabs offer (sort by a column, change a filter, close a tab), its quick toggles, and the pane and window actions. A retry or sign-in button in an empty pane answers `Enter`. In dialogs, `Enter` confirms and `Esc` closes; on the desktop `Tab` moves between a dialog's controls. A command that needs values or a confirmation (New Portfolio, Add Alert, Delete Watchlist) opens it as a centered dialog once the command bar closes: `Tab` and the arrows move between fields, `Enter` goes to the next field and sends the form from the last one, `Cmd/Ctrl+S` sends it from any field, and `y` or `n` answers a confirm. In pane settings the arrows move between settings, `Left` / `Right` change a choice or a toggle in place, and `Enter` opens a field's editor.
 
@@ -759,6 +760,10 @@ Under each question, every source Gloom used is one line: what it read, the port
 Ask Gloom can add a ticker to one of your own watchlists or take one off: the one you name, or else your first watchlist. Team watchlists and portfolios it leaves alone. It asks first in the pane, naming the list, the ticker and its exchange: `y` or Approve makes the change, `n` or Decline leaves the list as it was. The question stays open for about a minute; unanswered by then, it closes and nothing changes.
 
 Esc leaves the question field for the answer: `j`/`k` walk the sources, `t` lists the tickers in the answer, `c` stops an answer that is still coming, and `r` asks a failed or stopped question again. Enter goes back to the field. `n` starts a new conversation and Left (or Left in an empty field) lists earlier ones, beside the answer when the pane is wide enough and in its place when it is not. Closing the pane keeps the conversation: opening Ask Gloom again in the same session shows it, unless you open it with a question, which starts a new one. The remaining daily questions show in the footer once 20 or fewer are left.
+
+### Asking about a pane
+
+Every pane can be asked about the same way: the spark beside the `?` in its header on the desktop and the web, **Ask Gloom** in its pane menu, or `Alt+A` (`Cmd+Shift+A` or `Ctrl+Shift+A` on the desktop). Ask Gloom opens, or comes to the front, with a new conversation: the conversation already on screen stays in the list, and an answer still coming finishes first. The pane is attached above the question field (the x takes it off), and the field holds `What does this pane show?` to edit or send; nothing is asked until you press Enter. With the pane goes its function and how it is set (`DES AAPL` on its Financials tab, a chart's range) and the text it shows on screen at that moment, cut to a short summary, never data scrolled out of it or another pane drawn over it. A pane with your holdings, balances or account details (a portfolio, a broker or account pane, or research on a ticker you hold) asks first: `y` or Attach sends what it shows, `n` or Leave out sends only which function it is. A header too narrow for the spark leaves it out; the menu and the key still ask. While a text field has the keyboard in the terminal, `Alt+A` stays with the field.
 
 Rate an answer with the thumbs under it (`+1` and `-1` in the terminal), or, once Esc has left the question field, `g` and `b` for the answer the keyboard is on: the newest, or the one `j`/`k` moved to. A thumbs down offers why (`1` wrong, `2` too slow, `3` missing data, `4` other) and `Send this answer to Gloom` (`s`), which sends your question, the answer as written (it can mention your holdings) and which tools ran, not the data the tools returned; without it only the thumb and the reason are kept. Esc closes the reasons, and your rating shows again when you reopen the conversation.
 

@@ -35,6 +35,8 @@ interface PaneWrapperProps {
   onHeaderContextMenu?: (event: any) => void;
   onActionMouseDown?: (event: any) => void;
   onHelpMouseDown?: (event: any) => void;
+  /** Ask Gloom about the pane, from the button beside the `?`. */
+  onAskMouseDown?: (event: any) => void;
   onRestoreMouseDown?: (event: any) => void;
   fullscreen?: boolean;
   footer?: CombinedPaneFooter | null;
@@ -63,6 +65,7 @@ export function PaneWrapper({
   onHeaderContextMenu,
   onActionMouseDown,
   onHelpMouseDown,
+  onAskMouseDown,
   onRestoreMouseDown,
   fullscreen = false,
   footer,
@@ -121,6 +124,7 @@ export function PaneWrapper({
           onHeaderContextMenu={onHeaderContextMenu}
           onActionMouseDown={onActionMouseDown}
           onHelpMouseDown={onHelpMouseDown}
+          onAskMouseDown={onAskMouseDown}
           fullscreen={fullscreen}
           onRestoreMouseDown={onRestoreMouseDown}
         />

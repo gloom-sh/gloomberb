@@ -55,6 +55,7 @@ import {
   useShellPointerRuntime,
 } from "./drag/runtime";
 import { useShellPaneManagementShortcuts } from "./pane/management-shortcuts";
+import { useShellPaneAsk } from "./pane/ask";
 import {
   useShellResolvedPanes,
   useShellVisibleLayout,
@@ -128,7 +129,10 @@ export function Shell({
   const openCommandBar = useCallback(() => {
     dispatch({ type: "SET_COMMAND_BAR", open: true, query: "" });
   }, [dispatch]);
-  const paneAccelerators = useMemo(() => paneManagementAccelerators(keybindings), [keybindings]);
+  const paneAccelerators = useMemo(
+    () => paneManagementAccelerators(keybindings, shortcutDisplayMode),
+    [keybindings, shortcutDisplayMode],
+  );
   const { nativePaneChrome = false, nativeContextMenu, precisePointer, publicSharing, titleBarOverlay, cellHeightPx } = useUiCapabilities();
   const { showContextMenu } = useContextMenu();
   const { width, height } = useViewport();
@@ -507,6 +511,20 @@ export function Shell({
     (pane: ResolvedPane): string => getPaneDisplayTitle(titleState, pane.instance, pane.def, pluginRegistry.panes),
     [pluginRegistry.panes, titleState],
   );
+  const { canAsk, askAboutPane, askAboutFocusedPane } = useShellPaneAsk({
+    focusedPaneId,
+    getPaneTitle,
+    nativePaneChrome,
+    paneMap,
+    pluginRegistry,
+    screenDockLeafLayouts,
+    screenFloatingPanes,
+    shellRef,
+    stateRef,
+  });
+  // Where the terminal's kit menu last opened: Ask Gloom chosen from it reads
+  // the pane from a frame the menu is still drawn over.
+  const kitMenuRectRef = useRef<LayoutBounds | null>(null);
   const handlePaneQuickSetting = useCallback((paneId: string, key: string, event: any) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
@@ -576,6 +594,7 @@ export function Shell({
   }, [focusedPaneId, screenDockLeafLayouts, screenFloatingPanes, windowMode]);
 
   useShellPaneManagementShortcuts({
+    askAboutFocusedPane,
     cancelActiveDrag,
     closeAllFloatingPanes,
     closeFocusedPane,
@@ -668,6 +687,7 @@ export function Shell({
       paneFooterMenuItems(getPaneFooter(paneId)),
       paneLayoutMoveMenu(paneId),
       () => { openPaneDocs(paneId); },
+      canAsk ? () => { askAboutPane(paneId, { cover: kitMenuRectRef.current }); } : undefined,
     );
     const showKitMenu = () => {
       const pluginItems = pluginRegistry.getContextMenuItems?.(context) ?? [];
@@ -682,6 +702,12 @@ export function Shell({
       const menuX = Math.max(0, Math.min(width - menuWidth, rect.x + Math.max(0, rect.width - menuWidth)));
       // Under the pane's header, or higher when that leaves the menu no room.
       const menuY = Math.max(0, Math.min(rect.y + 1, contentHeight - 2 - fallbackItems.length, contentHeight - 3));
+      kitMenuRectRef.current = {
+        x: menuX,
+        y: menuY,
+        width: menuWidth,
+        height: Math.min(fallbackItems.length, Math.max(1, contentHeight - menuY - 2)) + 2,
+      };
       const firstId = fallbackItems.find((item) => !item.divider)?.id ?? null;
       const nextMenu: ActionMenuState = {
         paneId,
@@ -709,7 +735,7 @@ export function Shell({
     void showContextMenu(context, items, event).then((shown) => {
       if (!shown) showKitMenu();
     });
-  }, [canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [askAboutPane, canAsk, canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, paneState, persistLayout, pluginRegistry, publicSharing, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
   openPaneMenuRef.current = openPaneMenu;
 
 
@@ -890,6 +916,7 @@ export function Shell({
         handleNativePaneMouseDown={handleNativePaneMouseDown}
         handlePaneAction={handlePaneAction}
         handlePaneHelp={openPaneDocs}
+        handlePaneAsk={canAsk ? askAboutPane : null}
         hoveredPaneId={hoveredPaneId}
         live={live}
         menuPaneId={menuState?.paneId ?? null}

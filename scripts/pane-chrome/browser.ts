@@ -279,3 +279,20 @@ export async function drag(cdp: Cdp, from: Point, waypoints: Point[], steps = 12
   await mouse(cdp, "mouseReleased", at.x, at.y, false);
   await frames(cdp, 2);
 }
+
+/** DevTools modifier bits. */
+const MODIFIERS = { alt: 1, ctrl: 2, meta: 4, shift: 8 } as const;
+
+/**
+ * A real key press on the focused document: keydown and keyup for a letter
+ * with modifiers held, as a keyboard sends it, then a frame for the result.
+ */
+export async function pressKey(cdp: Cdp, letter: string, modifiers: Array<keyof typeof MODIFIERS> = []): Promise<void> {
+  const bits = modifiers.reduce((total, modifier) => total | MODIFIERS[modifier], 0);
+  const upper = letter.toUpperCase();
+  const key = modifiers.includes("shift") ? upper : letter.toLowerCase();
+  const base = { modifiers: bits, key, code: `Key${upper}`, windowsVirtualKeyCode: upper.charCodeAt(0), nativeVirtualKeyCode: upper.charCodeAt(0) };
+  await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", ...base });
+  await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", ...base });
+  await frames(cdp, 2);
+}
