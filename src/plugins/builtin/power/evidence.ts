@@ -1,10 +1,12 @@
-import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory } from "../../../api-client/europe-energy";
+import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory, GasStorageBoard, GasStorageSeasonal } from "../../../api-client/europe-energy";
 import type { PowerBoard, PowerHistory } from "../../../api-client/power";
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
 import { fetchPowerBoard, fetchAllPowerHistory, fetchPowerTickerScopes, validatePowerBoard, validatePowerHistory } from "./client";
 import { otherRows, powerTab, projectRows } from "./model";
+import { fetchGasSeasonal, fetchGasStorage, validateGasStorage } from "./gas-client";
+import { parseGasQuery } from "./gas-model";
 import { fetchCarbonHistory, fetchCarbonPrice, fetchPowerPriceHistory, fetchPowerPrices, validateCarbonPrice, validatePowerPrices } from "./prices-client";
 import { DEFAULT_PRICE_MARKET, isCarbonQuery, powerPriceMarket } from "./prices-model";
 import { powerQuery } from "./query";
@@ -19,6 +21,8 @@ interface PowerEvidence {
   /** The day-ahead board and the EUA board, on the Prices tab. */
   prices?: EuropePowerBoard | null;
   carbon?: CarbonBoard | null;
+  /** The gas storage board, on the Prices tab's gas board. */
+  gas?: GasStorageBoard | null;
   tab: string;
   rowIds: string[];
 }
@@ -29,6 +33,11 @@ export interface PowerPricesSnapshot {
   history: EuropePowerHistory | CarbonHistory | null;
   /** Null when the server has no EUA price yet; the tab then shows the board alone. */
   carbon: CarbonBoard | null;
+}
+/** What the gas board draws, frozen by `shot`: the board and the selected area's seasonal range. */
+export interface GasStorageSnapshot {
+  board: GasStorageBoard;
+  seasonal: GasStorageSeasonal | null;
 }
 export function usePowerEvidence(board: PowerBoard | undefined, history: PowerHistory | undefined, tab: string, rowIds: string[], loading: boolean) {
   useRemoteUiNode({ role: "chart-data", label: "Rendered power and grid observations", getMetadata: () => ({
@@ -42,12 +51,24 @@ export function usePowerPricesEvidence(prices: EuropePowerBoard | null, carbon: 
     plottedValueCount: rowIds.length, board: null, history: null, prices, carbon, tab: "prices", rowIds,
   }) });
 }
+export function useGasStorageEvidence(gas: GasStorageBoard | null, rowIds: string[], loading: boolean) {
+  useRemoteUiNode({ role: "chart-data", label: "Rendered European gas storage", getMetadata: () => ({
+    kind: "power", version: 1, complete: !!gas && !loading, ready: !!gas && !loading,
+    plottedValueCount: rowIds.length, board: null, history: null, gas, tab: "prices", rowIds,
+  }) });
+}
 const instanceSettings = (payload: Parameters<PaneScreenshotEvidenceHook["mismatches"]>[1]["payload"]) =>
   payload.config.layout.instances.find((entry) => entry.instanceId === payload.paneId)?.settings;
 export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> = {
   paneId: "power", kind: "power", label: "power and grid",
   async prepare({ resolved, settings }) {
     const tab = powerTab(settings.tab ?? resolved.options.tab);
+    if (tab === "prices" && parseGasQuery(resolved.createOptions?.arg)) {
+      const gas = await fetchGasStorage();
+      const area = parseGasQuery(resolved.createOptions?.arg)!.area.code;
+      const seasonal = gas.rows.some((row) => row.code === area && row.gasDay) ? await fetchGasSeasonal(area) : null;
+      return { settings: { gasStorageSnapshot: { board: gas, seasonal } satisfies GasStorageSnapshot }, financials: [] };
+    }
     if (tab === "prices") {
       const board = await fetchPowerPrices();
       // The carbon figures are captured when the server has them, and left out when it does not.
@@ -73,6 +94,11 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
       || !Array.isArray(value.rowIds) || !value.rowIds.every((id) => typeof id === "string") || value.plottedValueCount !== value.rowIds.length) return null;
     try {
       const tab = powerTab(value.tab);
+      if (tab === "prices" && isRecord(value.gas)) {
+        const gas = validateGasStorage(value.gas as unknown as GasStorageBoard);
+        if (value.rowIds.some((id) => !gas.rows.some((row) => row.code === id))) return null;
+        return value as unknown as PowerEvidence;
+      }
       if (tab === "prices") {
         if (!isRecord(value.prices)) return null;
         const prices = validatePowerPrices(value.prices as unknown as EuropePowerBoard);
@@ -91,7 +117,10 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
   mismatches(evidence, { resolved, payload }) {
     const settings = instanceSettings(payload);
     const errors: string[] = [];
-    if (evidence.tab === "prices") {
+    if (evidence.tab === "prices" && evidence.gas) {
+      const snapshot = settings?.gasStorageSnapshot;
+      if (!isRecord(snapshot) || JSON.stringify(snapshot.board) !== JSON.stringify(evidence.gas)) errors.push("Gas storage differs from the captured data.");
+    } else if (evidence.tab === "prices") {
       const snapshot = settings?.powerPricesSnapshot;
       if (!isRecord(snapshot) || JSON.stringify(snapshot.board) !== JSON.stringify(evidence.prices)
         || JSON.stringify(snapshot.carbon ?? null) !== JSON.stringify(evidence.carbon ?? null)) errors.push("Power prices differ from the captured data.");
@@ -104,6 +133,6 @@ export const powerScreenshotEvidence: PaneScreenshotEvidenceHook<PowerEvidence> 
     if (evidence.tab !== powerTab(resolved.options.tab ?? settings?.tab)) errors.push("Power tab does not match the requested view.");
     return errors;
   },
-  unavailable(evidence) { return evidence?.complete ? [] : [evidence?.tab === "prices" ? "power prices" : "power observations"]; },
+  unavailable(evidence) { return evidence?.complete ? [] : [evidence?.gas ? "gas storage" : evidence?.tab === "prices" ? "power prices" : "power observations"]; },
   symbols() { return []; },
 };

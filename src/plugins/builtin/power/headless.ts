@@ -10,6 +10,9 @@ import {
   historyRows, powerCoverageNote, powerLoadedSources, powerNumber, powerPercent, powerRegion, powerScopeOptions, powerTab, powerTickerEmpty, projectRows, tickerLabel, titleCase, UNMAPPED, type PowerTab,
 } from "./model";
 
+/** `GAS DE` and the like go to the gas board, which says so when it does not list the area. */
+const isGasQuery = (input: string | undefined) => /^(?:gas|storage)\b/i.test(input?.trim() ?? "");
+
 /** Bars the pane draws beside the numbers they are made of; the report has the numbers. */
 const GRAPHIC_COLUMNS = new Set(["outcome", "pipeline"]);
 /** Columns that only repeat a default on every row, as the pane leaves them out. */
@@ -62,7 +65,7 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const tab = powerTab(args.options.tab);
     const symbol = (Array.isArray(args.argument) ? args.argument.join(" ") : args.argument)?.trim();
     // Prices are their own board (EPWR); a typed market narrows it, a ticker does not apply.
-    if (tab === "prices") return loadPowerPricesReport(powerPriceMarket(symbol) || isCarbonQuery(symbol) ? symbol : undefined, ctx.apiClient);
+    if (tab === "prices") return loadPowerPricesReport(powerPriceMarket(symbol) || isCarbonQuery(symbol) || isGasQuery(symbol) ? symbol : undefined, ctx.apiClient);
     const filter = { ...powerQuery(args.options, symbol), limit: 500 };
     const board = await fetchPowerBoard(filter, ctx.apiClient);
     const projects = [...board.projects];

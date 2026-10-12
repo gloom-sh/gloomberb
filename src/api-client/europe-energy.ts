@@ -104,3 +104,94 @@ export interface CarbonHistory {
   /** Each auction day's price, oldest first. */
   points: Array<{ date: string; value: number }>;
 }
+
+/** Percent full, TWh in storage, GWh/day flows: as GIE AGSI+ publishes them. */
+interface GasStorageUnits {
+  full: "%";
+  storage: "TWh";
+  flow: "GWh/day";
+}
+
+/** The platform's own flag for a gas day. */
+type GasReadingStatus = "estimated" | "confirmed";
+
+/** Fullness on the same calendar day in the five years before the gas day's own; fewer where history is short. */
+interface GasFiveYear {
+  years: number[];
+  min: number;
+  max: number;
+  average: number;
+  /** Percentage points against the average. */
+  vsAverage: number;
+  /** 0 at the low, 100 at the high, beyond either outside the range; null under two years. */
+  position: number | null;
+}
+
+/** One area's latest gas day with a reading: the EU aggregate or a member state. */
+export interface GasStorageRow {
+  /** EU, or ISO 3166 alpha-2. */
+  code: string;
+  name: string;
+  /** The gas day, dated by its start. */
+  gasDay: string | null;
+  status: GasReadingStatus | null;
+  /** Percent of working gas volume. */
+  full: number | null;
+  /** TWh. */
+  gasInStorage: number | null;
+  workingGasVolume: number | null;
+  /** GWh/day. */
+  injection: number | null;
+  withdrawal: number | null;
+  previousGasDay: string | null;
+  /** Percentage points against the gas day before. */
+  change: number | null;
+  yearAgo: { gasDay: string; full: number; gasInStorage: number | null; change: number } | null;
+  fiveYear: GasFiveYear | null;
+  /** Fullness at the end of each week of the year to `gasDay`, oldest first. */
+  trail: Array<{ date: string; value: number }>;
+}
+
+export interface GasStorageBoard {
+  generatedAt: string;
+  status: "available" | "unavailable";
+  units: GasStorageUnits;
+  source: { name: string; url: string };
+  /** When every area was last read from the platform. */
+  checkedAt: string | null;
+  gaps: string[];
+  /** The EU aggregate first, then the member states by name. */
+  rows: GasStorageRow[];
+}
+
+export interface GasStorageHistory {
+  code: string;
+  name: string;
+  units: GasStorageUnits;
+  source: { name: string; url: string };
+  /** Every gas day with a reading, oldest first; a missing figure is null, never zero. */
+  points: Array<{
+    date: string;
+    status: GasReadingStatus;
+    full: number | null;
+    gasInStorage: number | null;
+    workingGasVolume: number | null;
+    injection: number | null;
+    withdrawal: number | null;
+  }>;
+}
+
+/** The latest gas day's calendar year against last year and the five years before, on that year's calendar. */
+export interface GasStorageSeasonal {
+  code: string;
+  name: string;
+  unit: "%";
+  source: { name: string; url: string };
+  year: number | null;
+  /** The band years holding any reading. */
+  years: number[];
+  current: Array<[string, number]>;
+  previous: Array<[string, number]>;
+  /** [date, min, average, max, years with a reading]. */
+  band: Array<[string, number | null, number | null, number | null, number]>;
+}

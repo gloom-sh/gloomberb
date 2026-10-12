@@ -75,8 +75,8 @@
           },
           {
             "code": "EPWR",
-            "name": "EU Power & Carbon",
-            "description": "Day-ahead power prices for 32 European markets in EUR/MWh and the EU carbon allowance (EUA) auction price in EUR/tCO2: the latest day, 7- and 30-day averages, a year ago and the 52-week range, with daily history."
+            "name": "EU Power, Carbon & Gas",
+            "description": "Day-ahead power prices for 32 European markets in EUR/MWh, the EU carbon allowance (EUA) auction price in EUR/tCO2, and European gas storage: % full, TWh and daily injection and withdrawal for the EU and each member state against a year ago and the five-year range."
           },
           {
             "code": "SPLC",

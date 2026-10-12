@@ -23,6 +23,11 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; message: string }> =
     message: "EU carbon (EUA): the auction price is in EPWR, chart CAP:carbon:eua. Traded proxies: CO2:LSE, KRBN.",
   },
   {
+    terms: ["EU gas storage", "European gas storage", "Europe gas storage", "EU gas inventories", "European gas inventories",
+      "AGSI", "AGSI+", "GIE AGSI", "gas storage Europe"],
+    message: "European gas storage: EPWR GAS, or EPWR GAS DE for one country; chart CAP:gas-storage:eu. US storage is NGS.",
+  },
+  {
     terms: ["tick", "ticks", "tick data", "tick bars", "tick by tick", "second", "seconds", "second bars", "1s", "1 second",
       "1 second bars", "sub-minute", "sub minute bars", "subsecond"],
     message: subMinuteDataMessage(),
