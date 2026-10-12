@@ -3,6 +3,8 @@ import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import { formatInlinePreview, getMessageBodyTokenLines, MESSAGE_ACTION_WIDTH } from "../layout";
 import { chatImageLabel, chatImageReviewNote, chatReplyQuoteText } from "../attachments/model";
+import { isQuotedAuthorManagedBot } from "../ghost-user";
+import { CHAT_AI_BADGE_WIDTH, ChatAiBadge } from "./ai-badge";
 import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { Button } from "../../../../components/ui";
 import { canReactToMessage } from "../reactions";
@@ -78,6 +80,7 @@ export function TerminalChatMessage({
     : [];
   const reviewNote = chatImageReviewNote(msg);
   const imageColor = state.isSelected ? state.selectedTextColor : colors.textDim;
+  const quotedAuthorIsBot = !!msg.replyTo && isQuotedAuthorManagedBot(msg.replyTo, userByUsername);
   const setHovered = () => setHoveredIdx((current) => (current === index ? current : index));
   const clearHovered = () => setHoveredIdx((current) => (current === index ? null : current));
   const messageRowProps = {
@@ -100,11 +103,20 @@ export function TerminalChatMessage({
           }}
         >
           <Text fg={state.replyMetaColor}>{`${t("reply")} `}</Text>
-          <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}: </Text>
+          {quotedAuthorIsBot ? (
+            // The badge stands where the colon would.
+            <>
+              <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}</Text>
+              <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
+              <Text fg={state.replyAuthorColor}> </Text>
+            </>
+          ) : (
+            <Text fg={state.replyAuthorColor}>{msg.replyTo.user.username}: </Text>
+          )}
           <Text fg={state.replyMetaColor}>
             {formatInlinePreview(
               chatReplyQuoteText(msg.replyTo),
-              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}: `.length, 0),
+              Math.max(messageBodyWidth - `reply ${msg.replyTo.user.username}`.length - (quotedAuthorIsBot ? CHAT_AI_BADGE_WIDTH + 1 : 2), 0),
             )}
           </Text>
         </Box>

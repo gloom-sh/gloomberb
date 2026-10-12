@@ -5,7 +5,8 @@ import { colors } from "../../../../theme/colors";
 import type { ChatUserSummary, PublicPortfolioAnalytics } from "../../../../api-client";
 import { displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
-import { isDiscordGhost } from "../ghost-user";
+import { t } from "../../../../i18n";
+import { isDiscordGhost, isManagedBot } from "../ghost-user";
 import type { ChatUserAnchor } from "./types";
 
 /**
@@ -25,6 +26,8 @@ function hasPortfolioAnalytics(analytics: PublicPortfolioAnalytics | null | unde
 }
 
 export function hasPublicChatProfileInfo(user: ChatUserSummary): boolean {
+  // Gloom runs a managed assistant and says so on its card, whatever the profile switch holds.
+  if (isManagedBot(user)) return true;
   if (user.profilePublic === false || isDiscordGhost(user)) return false;
   return Boolean(user.bio?.trim() || user.title?.trim() || user.company?.trim() || hasPortfolioAnalytics(user.portfolioAnalytics));
 }
@@ -246,6 +249,7 @@ export function UserProfilePopover({
         ) : null}
         <Box flexGrow={1} />
       </Box>
+      {isManagedBot(user) ? <Text fg={colors.textDim}>{truncateWithEllipsis(t("AI bot run by Gloom"), headerWidth)}</Text> : null}
       {meta ? <Text fg={colors.textDim}>{truncateWithEllipsis(meta, headerWidth)}</Text> : null}
       {bio ? (
         <Text fg={colors.text} wrapText width={headerWidth}>

@@ -11,6 +11,8 @@ import type { ChatContentController } from "./types";
 import { getComposerCursorOffset, moveComposerCursorToOffset } from "./composer-cursor";
 import { insertedText, pastedImagePaths } from "../attachments/transfer";
 import { chatTextWithImages } from "../attachments/model";
+import { isManagedBot } from "../ghost-user";
+import { CHAT_AI_BADGE_WIDTH } from "../message/ai-badge";
 
 interface MutableRef<T> {
   current: T;
@@ -398,7 +400,10 @@ export function useChatComposerRuntime({
   const replyPreview = replyTo
     ? formatInlinePreview(
       chatTextWithImages(replyTo.content, replyTo.attachments?.length ?? 0),
-      Math.max(contentWidth - ` replying to @${replyTo.user.username}: `.length - COMPOSER_ACTION_WIDTH - 1, 0),
+      Math.max(
+        contentWidth - ` replying to @${replyTo.user.username}`.length - (isManagedBot(replyTo.user) ? CHAT_AI_BADGE_WIDTH + 1 : 2) - COMPOSER_ACTION_WIDTH - 1,
+        0,
+      ),
     )
     : "";
   const editingPreview = editingMessage

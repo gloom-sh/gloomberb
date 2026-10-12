@@ -136,6 +136,11 @@ describe("profile popover", () => {
     expect(hasPublicChatProfileInfo(makeUser({ accountType: "human", bio: "Hello from Gloom" }))).toBe(true);
   });
 
+  test("a managed assistant always has a profile card, even with an empty or private profile", () => {
+    expect(hasPublicChatProfileInfo(makeUser({ accountType: "managed_llm", bio: null }))).toBe(true);
+    expect(hasPublicChatProfileInfo(makeUser({ accountType: "managed_llm", profilePublic: false }))).toBe(true);
+  });
+
   test("refreshes your cached chat identity from the current account profile", async () => {
     apiClient.setSessionToken("token-123");
     apiClient.getAccountProfile = async () => makeAccountProfile({
