@@ -2,7 +2,7 @@ import { notATickerSymbol } from "../sources/provider-errors";
 import { splitSymbolArgs } from "./symbol-args";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
-const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb search)/g;
+const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb (?:search|fred) )/g;
 
 /**
  * The symbol as the user typed it on the command line (`Apple`), not as the router saw it (`APPLE`).
@@ -28,13 +28,21 @@ function searchHint(typed: string): string {
   return `Try \`gloomberb search ${/\s/.test(query) ? JSON.stringify(query) : query}\`.`;
 }
 
+/** Whether an id is a FRED series the catalog charts (DFEDTARU), which `gloomberb fred` prints. */
+export type FredSeriesCheck = (seriesId: string) => boolean;
+
 /**
  * Adds the search hint after each "Not a ticker: APPLE." in text meant for a person. The router
- * only knows the symbol upper-cased, so the hint reads the user's own spelling from `args`.
+ * only knows the symbol upper-cased, so the hint reads the user's own spelling from `args`. A FRED
+ * series id (DFEDTARU) is no ticker search finds, so its hint is the `fred` command instead.
  */
-export function withSearchHints(text: string, args: readonly string[]): string {
+export function withSearchHints(text: string, args: readonly string[], isFredSeries: FredSeriesCheck = () => false): string {
   return text.includes("Not a ticker: ")
-    ? text.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => `${sentence} ${searchHint(typedSymbol(symbol, args))}`)
+    ? text.replace(NOT_A_TICKER_SENTENCE, (sentence, symbol: string) => {
+      const typed = typedSymbol(symbol, args);
+      const id = typed.toUpperCase();
+      return `${sentence} ${/^[A-Z0-9]+$/.test(id) && isFredSeries(id) ? `Try \`gloomberb fred ${id}\`.` : searchHint(typed)}`;
+    })
     : text;
 }
 

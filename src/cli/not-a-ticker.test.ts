@@ -28,6 +28,16 @@ test("the search hint repeats the user's own spelling, one hint per symbol", () 
   expect(withSearchHints("No quote provider available for APPLE", ["Apple"])).toBe("No quote provider available for APPLE");
 });
 
+test("a FRED series the catalog charts points to the fred command, not a search that finds no ticker", () => {
+  const isFred = (id: string) => id === "DFEDTARU";
+  expect(withSearchHints("Not a ticker: DFEDTARU.", ["HP", "dfedtaru"], isFred)).toBe("Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.");
+  expect(withSearchHints("Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.", ["DFEDTARU"], isFred))
+    .toBe("Not a ticker: DFEDTARU. Try `gloomberb fred DFEDTARU`.");
+  // A venue makes it a listing, which a search looks for.
+  expect(withSearchHints("Not a ticker: DFEDTARU:NYSE.", ["DFEDTARU:NYSE"], isFred))
+    .toBe("Not a ticker: DFEDTARU:NYSE. Try `gloomberb search DFEDTARU`.");
+});
+
 test("an error and a warning in text carry the hint, and JSON keeps the router's own words", () => {
   const spy = spyOn(console, "error").mockImplementation(() => {});
   const write = spyOn(process.stdout, "write").mockImplementation(() => true);

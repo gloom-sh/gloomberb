@@ -14,7 +14,7 @@ import {
 import { serializeCsv } from "../utils/csv";
 import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils/utc-time";
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
-import { withSearchHints } from "./not-a-ticker";
+import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { renderReportCsv, renderReportNdjson, withCsvFooter, type CliReportTables } from "./report-tables";
 import { exportSource, exportSourceLines, type ExportSource } from "./export-source";
 import { windowRows, type RowWindow, type RowWindowOptions } from "./row-window";
@@ -448,10 +448,11 @@ export function printCliResult<T, Row extends Record<string, unknown> = Record<s
   options: CliGlobalOptions,
   renderOptions: CliResultRenderOptions<T, Row> = {},
   args: readonly string[] = [],
+  isFredSeries?: FredSeriesCheck,
 ): void {
   if (options.quiet && options.format === "text") return;
   // JSON keeps the router's own words; everything else is for a person, so a "Not a ticker" gets its hint.
-  const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args);
+  const hinted = (text: string) => options.format === "json" ? text : withSearchHints(text, args, isFredSeries);
   const output = hinted(serializeCliResult(result, options, renderOptions));
   // Bun's console writer can truncate a large pipe write after stdout has been
   // initialized. The stream queues the remaining bytes until the reader drains.

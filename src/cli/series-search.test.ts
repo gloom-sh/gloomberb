@@ -18,6 +18,14 @@ const plugins: Array<{ series: SeriesDefinition[] }> = [{
   ],
 }];
 const strip = (text: string) => text.replace(/\x1b\[[0-9;]*m/g, "");
+const rates: Array<{ series: SeriesDefinition[] }> = [{
+  series: [
+    { id: "fred:DFEDTARU", name: "Fed funds target range, upper limit", unit: "%", frequency: "daily", group: "Rates",
+      tags: ["fed funds"], publisher: "FRED", expression: "FRED:DFEDTARU" },
+    { id: "policy-rate:ch", name: "Switzerland policy rate (SNB policy rate)", unit: "%", frequency: "daily", group: "Rates",
+      tags: ["central bank", "Swiss National Bank", "SNB"], publisher: "Swiss National Bank", load },
+  ],
+}];
 
 test("a query finds series by the words that start theirs, names first, and never a ticker's own field", () => {
   expect(findCatalogSeries(plugins, "german power").map((match) => match.expression)).toEqual(["CAP:day-ahead:de"]);
@@ -50,4 +58,26 @@ test("search lists a series the query names before the tickers, one it merely me
   expect(named.indexOf("Series for")).toBeLessThan(named.indexOf("Primary Listing"));
   const mentioned = strip(buildSearchReport({ query: "apple", candidates: [ticker as never], series: findCatalogSeries(plugins, "apple", "names") }));
   expect(mentioned.indexOf("Primary Listing")).toBeLessThan(mentioned.indexOf("Apple volatility index"));
+});
+
+test("a series id, its chart expression or a FRED id finds the series, and a FRED id points to the fred command", () => {
+  for (const query of ["DFEDTARU", "dfedtaru", "FRED:DFEDTARU", "fred:DFEDTARU"]) {
+    expect(findCatalogSeries(rates, query, "names").map((match) => [match.id, match.exact])).toEqual([["fred:DFEDTARU", true]]);
+  }
+  expect(findCatalogSeries(rates, "CAP:policy-rate:ch", "names").map((match) => match.id)).toEqual(["policy-rate:ch"]);
+  expect(findCatalogSeries(rates, "policy-rate:ch", "names").map((match) => match.id)).toEqual(["policy-rate:ch"]);
+  // Part of an id is no id.
+  expect(findCatalogSeries(rates, "DFEDTAR", "names")).toEqual([]);
+  const report = strip(buildSearchReport({ query: "DFEDTARU", candidates: [], series: findCatalogSeries(rates, "DFEDTARU", "names") }));
+  expect(report).toContain("Federal Reserve (United States): policy rate on the CBR board, gloomberb fn CBR.");
+  expect(report).toContain("Print it with gloomberb fred DFEDTARU; chart it with gloomberb fn G FRED:DFEDTARU.");
+  expect(report).not.toContain("No matches found");
+});
+
+test("a search naming a central bank says CBR has its rate, instead of finding nothing", () => {
+  const report = strip(buildSearchReport({ query: "Swiss National Bank", candidates: [],
+    series: findCatalogSeries(rates, "Swiss National Bank", "names") }));
+  expect(report).toContain("Swiss National Bank (Switzerland): policy rate on the CBR board, gloomberb fn CBR.");
+  expect(report).toContain("CAP:policy-rate:ch");
+  expect(report).not.toContain("No matches found");
 });

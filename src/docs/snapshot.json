@@ -1130,8 +1130,8 @@
   {
    "code": "CBR",
    "name": "Central bank rates",
-   "description": "G20 policy rates",
-   "detail": "Policy rates for the G20 central banks with the last move, its date, and a one-year percentile; open one for its history. ECFC and CBRT open it too.",
+   "description": "Central bank policy rates",
+   "detail": "Policy rates for the G20 central banks, the SNB, Norges Bank, the Riksbank and the RBNZ with the last move, its date, and a one-year percentile; open one for its history. ECFC and CBRT open it too.",
    "category": "macro",
    "shot": "https://gloom.sh/screenshots/fn/CBR.png",
    "lesson": "/academy/rates-bonds-credit/rates/central-banks"
@@ -7329,7 +7329,7 @@
   {
    "url": "/academy/rates-bonds-credit/rates/central-banks",
    "title": "Central bank rates around the world (CBR)",
-   "summary": "CBR lists the policy rates of the G20 central banks with the current level, the last move and its date, and where each rate sits in its past year.",
+   "summary": "CBR lists the policy rates of the G20 central banks, the SNB, Norges Bank, the Riksbank and the RBNZ with the current level, the last move and its date, and where each rate sits in its past year.",
    "chapter": "Rates, bonds and credit",
    "minutes": 4
   },

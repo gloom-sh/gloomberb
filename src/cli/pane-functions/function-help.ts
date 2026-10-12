@@ -893,7 +893,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["ECAN"],
   },
   CBR: {
-    summary: "Policy rates for the G20 central banks with the last move, its date and a one-year percentile; open one for its history.",
+    summary: "Policy rates for the G20 central banks, the SNB, Norges Bank, the Riksbank and the RBNZ with the last move, its date and a one-year percentile; open one for its history.",
     usage: ["CBR"],
     keys: [OPEN, OPEN_SOURCE],
     data: same("As each bank publishes, can lag a few days"),

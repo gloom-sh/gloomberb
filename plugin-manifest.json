@@ -1348,7 +1348,7 @@
           {
             "code": "CBR",
             "name": "Central Bank Rates",
-            "description": "G20 policy rates, last observed changes and dated historical context."
+            "description": "Policy rates of the G20, SNB, Norges Bank, Riksbank and RBNZ, last observed changes and dated historical context."
           },
           {
             "code": "VIX",

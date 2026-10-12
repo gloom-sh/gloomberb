@@ -3,7 +3,7 @@ import { ApiRequestError } from "../api-client/errors";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
 import { serializeCliError, type CliErrorObject } from "./result";
 import { cliStyles, cliTerminalWidth, wrapText } from "../utils/cli-output";
-import { withSearchHints } from "./not-a-ticker";
+import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 
 const USAGE_PREFIX = "Usage: ";
 /** The code of every error a command fails with: bad input, nothing found, an option it does not take. */
@@ -14,6 +14,8 @@ export interface CliErrorContext {
   command?: string;
   /** What the user typed after the command, so a hint can repeat their own spelling of a symbol. */
   args?: readonly string[];
+  /** Which symbols are FRED series the catalog charts, so their hint is `gloomberb fred`. */
+  isFredSeries?: FredSeriesCheck;
 }
 
 class CliFailure extends Error {
@@ -102,11 +104,11 @@ function formatCliErrorText(error: CliErrorObject, context: CliErrorContext): st
   ].join("\n");
 }
 
-function hintedError(error: CliErrorObject, args: readonly string[]): CliErrorObject {
+function hintedError(error: CliErrorObject, args: readonly string[], isFredSeries?: FredSeriesCheck): CliErrorObject {
   return {
     ...error,
-    message: withSearchHints(error.message, args),
-    ...(typeof error.details === "string" ? { details: withSearchHints(error.details, args) } : {}),
+    message: withSearchHints(error.message, args, isFredSeries),
+    ...(typeof error.details === "string" ? { details: withSearchHints(error.details, args, isFredSeries) } : {}),
   };
 }
 
@@ -114,6 +116,6 @@ export function printCliError(error: unknown, options: CliGlobalOptions, context
   if (options.quiet && options.format === "text") return;
   const errorObject = cliErrorObject(error);
   console.error(options.format === "text"
-    ? formatCliErrorText(hintedError(errorObject, context.args ?? []), context)
+    ? formatCliErrorText(hintedError(errorObject, context.args ?? [], context.isFredSeries), context)
     : serializeCliError(errorObject, options));
 }

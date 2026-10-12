@@ -38,6 +38,7 @@ import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
 import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import { catalogFredSeriesIds } from "./series-search";
 
 const { width: SHOT_WIDTH, height: SHOT_HEIGHT } = SHOT_SIZE_LIMITS;
 
@@ -386,7 +387,8 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
     );
     return normalizeCliDispatchResult(result);
   } catch (error) {
-    printCliError(error, parsed.options, { command: resolved.command.name, args: commandArgs });
+    printCliError(error, parsed.options, { command: resolved.command.name, args: commandArgs,
+      isFredSeries: (id) => catalogFredSeriesIds(registry.plugins).has(id) });
     process.exitCode = 1;
     return { kind: "handled" };
   }

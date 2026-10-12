@@ -28,6 +28,7 @@ import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { groupByCompany } from "../../tickers/company-name";
 import { findCatalogSeries, renderSeriesMatches, type SeriesMatch } from "../series-search";
+import { centralBankCiting, centralBankNamed, type CentralBank } from "../../utils/central-banks";
 import { createPaneCatalog } from "../pane-functions/discovery";
 import { buildPaneCatalogEntries, filterPaneCatalogEntries, selectPaneCatalogMatches } from "../pane-functions/catalog";
 
@@ -307,6 +308,16 @@ function indexRootNote(query: string, candidates: TickerSearchCandidate[]): stri
   return indexRootTryLine(root);
 }
 
+/** The bank on the CBR board a query names ("SNB", "Norges Bank"), or whose row reads the FRED series it names (DFEDTARU). */
+function searchedCentralBank(query: string): CentralBank | null {
+  return centralBankNamed(query) ?? centralBankCiting(query.replace(/^FRED:/i, ""));
+}
+
+/** "Swiss National Bank (Switzerland): policy rate on the CBR board, gloomberb fn CBR." */
+function centralBankLine(bank: CentralBank): string {
+  return `${bank.name} (${bank.place}): policy rate on the CBR board, gloomberb fn CBR.`;
+}
+
 /** Search finds tickers and companies; a function, a dataset or a term is in the catalog, so an empty search points there. */
 function catalogHint(query: string): string {
   return `Search finds tickers and company names. Try: gloomberb catalog "${query.replace(/"/g, "")}"`;
@@ -314,8 +325,9 @@ function catalogHint(query: string): string {
 
 /**
  * The notes beside the results: the index a bare root names, data the query
- * asks for that no source carries yet, and for an empty search the catalog,
- * unless a known gap or the functions listed already said where to look instead.
+ * asks for that no source carries yet, the central bank it names, and for an
+ * empty search the catalog, unless a known gap, the bank or the functions
+ * listed already said where to look instead.
  */
 function searchNotes(
   query: string,
@@ -324,8 +336,10 @@ function searchNotes(
   fate: SearchFate,
 ): string[] {
   const gap = knownGapMessage(query);
+  const bank = searchedCentralBank(query);
   const empty = candidates.length === 0 && !fate.stopped;
-  return [...fate.notes, indexRootNote(query, candidates), gap, empty && !gap && functions.length === 0 ? catalogHint(query) : null]
+  return [...fate.notes, indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null,
+    empty && !gap && !bank && functions.length === 0 ? catalogHint(query) : null]
     .filter((note): note is string => !!note);
 }
 
@@ -363,6 +377,8 @@ export function buildSearchReport({
   if (indexNote) lines.push("", indexNote);
   const gap = knownGapMessage(query);
   if (gap) lines.push("", gap);
+  const bank = searchedCentralBank(query);
+  if (bank) lines.push("", centralBankLine(bank));
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
   // A query that names the data ("carbon", "day-ahead") lists its series first; words that happen to
   // be in a series name ("apple") list them after the tickers.
@@ -374,7 +390,7 @@ export function buildSearchReport({
   if (candidates.length === 0) {
     if (fate.stopped) return lines.join("\n");
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
-    else if (!gap && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
+    else if (!gap && !bank && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
 
@@ -437,15 +453,17 @@ export async function search(query: string, dependencies: SearchCommandDependenc
     const fate = quote && changes ? await searchFate(symbol, candidates, await quote, dataProvider, changes) : NO_SEARCH_FATE;
 
     const series = findCatalogSeries(dependencies.plugins ?? [], trimmedQuery, "names");
-    // A query that names no ticker may name what a function does; a known gap already says where to look.
-    const functions = candidates.length === 0 && !fate.stopped && !knownGapMessage(trimmedQuery) && dependencies.plugins
+    const bank = searchedCentralBank(trimmedQuery);
+    // A query that names no ticker may name what a function does; a known gap or a central bank already says where to look.
+    const functions = candidates.length === 0 && !fate.stopped && !knownGapMessage(trimmedQuery) && !bank && dependencies.plugins
       ? await searchFunctionsForCli(trimmedQuery, dependencies.plugins, context)
       : [];
     if (dependencies.printResult) {
       const warnings = searchNotes(trimmedQuery, candidates, functions, fate);
       dependencies.printResult({
         data: [...fate.stopped ? [stoppedListingRow(fate.stopped)] : [], ...searchCandidateRows(candidates)],
-        metadata: { query: trimmedQuery, ...(series.length ? { series } : {}), ...(functions.length ? { functions } : {}) },
+        metadata: { query: trimmedQuery, ...(series.length ? { series } : {}), ...(functions.length ? { functions } : {}),
+          ...(bank ? { centralBank: { id: bank.id, name: bank.name, place: bank.place, function: "CBR" } } : {}) },
         warnings: warnings.length ? warnings : undefined,
       }, {
         columns: [

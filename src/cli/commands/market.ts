@@ -161,6 +161,7 @@ import {
   unvaluedHoldersNote,
 } from "../../plugins/builtin/holders/report-rows";
 import { fetchBeneficialOwners } from "../../plugins/builtin/holders/beneficial-client";
+import { centralBankEventsMessage } from "../central-bank-events";
 import { classSharesToday } from "../../plugins/builtin/holders/client";
 import { filingFormMatches, SEC_FILING_FETCH_LIMIT } from "../../plugins/builtin/sec/forms";
 import { loadParsedInsiderFilings } from "../../plugins/builtin/insider/client";
@@ -1372,6 +1373,9 @@ async function runAnalyst(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
 async function runEvents(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]>[1]) {
   const args = [...rawArgs];
   const exchangeOption = takeOption(args, "--exchange");
+  // A central bank's name means the bank, not a listing that shares it; a venue still reaches the listing.
+  const bank = exchangeOption ? null : centralBankEventsMessage(args.join(" "));
+  if (bank) ctx.fail(bank);
   const raw = requireOneArg(args, "events <symbol>", "symbol", ctx);
   await withMarketData(ctx, async (market) => {
     const listing = await requireCliListing(raw, exchangeOption, market, ctx);

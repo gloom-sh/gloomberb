@@ -11,6 +11,7 @@ import { initCliServices, initConfigData, initMarketData } from "./context";
 import { closeAndFail, fail } from "./errors";
 import { DEFAULT_CLI_OPTIONS, type CliGlobalOptions } from "./options";
 import { printCliResult } from "./result";
+import { catalogFredSeriesIds } from "./series-search";
 import {
   cliStyles,
   colorBySign,
@@ -170,7 +171,8 @@ export function createCliCommandContext(
       renderStats,
       renderTable,
     },
-    printResult: (result, options) => printCliResult(result, cliOptions, options, args),
+    printResult: (result, options) => printCliResult(result, cliOptions, options, args,
+      (id) => catalogFredSeriesIds(registry.plugins).has(id)),
     log: debugLog.createLogger(ownerId === "core" ? "cli" : ownerId),
   };
 }

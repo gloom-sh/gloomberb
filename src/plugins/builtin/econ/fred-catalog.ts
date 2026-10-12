@@ -19,6 +19,7 @@ const GROUPS: ReadonlyArray<{ group: string; rows: readonly FredRow[] }> = [
       ["IORB", "Interest on reserve balances", "%", "daily", ["IORB", "money markets"]],
       ["DFEDTARU", "Fed funds target range, upper limit", "%", "daily", ["fed funds", "policy rate"]],
       ["DFEDTARL", "Fed funds target range, lower limit", "%", "daily", ["fed funds", "policy rate"]],
+      ["ECBDFR", "ECB deposit facility rate", "%", "daily", ["ECB", "euro area", "policy rate"]],
       ["DPRIME", "Bank prime loan rate", "%", "daily"],
       ["DFII5", "5Y TIPS real yield", "%", "daily", ["treasury", "real yield"]],
       ["DFII10", "10Y TIPS real yield", "%", "daily", ["treasury", "real yield"]],
