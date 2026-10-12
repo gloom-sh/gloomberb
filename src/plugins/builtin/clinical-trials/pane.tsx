@@ -16,6 +16,7 @@ import {
   type RowPage,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import type { DetailFact } from "../../../components/reader/detail-reader";
 import {
   useDebouncedPluginPaneState,
   usePaneSettingValue,
@@ -70,6 +71,26 @@ function buildDetailMeta(trial: ClinicalTrial): string[] {
   ];
 }
 
+/**
+ * The study at a glance on the desktop and the web, label beside value, in
+ * the order a wide pane pairs them: status and phase, sponsor and size, then
+ * the dates.
+ */
+function buildDetailFacts(trial: ClinicalTrial): DetailFact[] {
+  return [
+    { label: "Status", value: formatStatus(trial.status) },
+    { label: "Phase", value: trial.studyType ? `${formatPhase(trial.phases)} · ${trial.studyType.toLowerCase()}` : formatPhase(trial.phases) },
+    { label: "Sponsor", value: trial.sponsorClass ? `${trial.sponsor} (${trial.sponsorClass.toLowerCase()})` : trial.sponsor },
+    { label: "Enrollment", value: trial.enrollment != null ? String(trial.enrollment) : "-" },
+    { label: "Start", value: formatDate(trial.startDate, trial.startDatePrecision, trial.startDateType) },
+    { label: "Posted", value: formatDate(trialTimestamp(trial)) },
+    { label: "Primary completion", value: formatDate(trial.primaryCompletionDate, trial.primaryCompletionDatePrecision, trial.primaryCompletionDateType) },
+    { label: "Completion", value: formatDate(trial.completionDate, trial.completionDatePrecision, trial.completionDateType) },
+    { label: "Conditions", value: trial.conditions.length > 0 ? trial.conditions.join(", ") : "None listed" },
+    { label: "Registry ID", value: trial.nctId },
+  ];
+}
+
 function toFeedItems(trials: ClinicalTrial[]): FeedDataTableItem[] {
   return trials.map((trial) => ({
     id: trial.nctId,
@@ -78,6 +99,7 @@ function toFeedItems(trials: ClinicalTrial[]): FeedDataTableItem[] {
     timestamp: trialTimestamp(trial),
     detailTitle: trial.title,
     detailMeta: buildDetailMeta(trial),
+    detailFacts: buildDetailFacts(trial),
     detailBody: trial.summary || "No summary was published for this study.",
   }));
 }

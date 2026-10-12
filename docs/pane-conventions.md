@@ -159,7 +159,11 @@ back button or clicking Back pops it. Rules:
 - `prefetchDetail` warms the cache once the cursor rests; it never mutates.
 - A detail read as text sits in a `DetailScrollBody` whose ref is the
   stack's `detailScrollRef`, so j/k step it a line at a time and the next
-  item starts at the top.
+  item starts at the top. An item's facts and text read through
+  `DetailReader` (`src/components/reader/detail-reader.tsx`): label and value
+  pairs, then the text in short paragraphs in the reader's type, across the
+  pane's width on the desktop and the web. `FeedDataTableStackView` takes the
+  facts as `detailFacts`; the Changelog and Trials details are the reference.
 - Any other scrolling body is a `ScrollBox`. Leaving `scrollY` out means it
   scrolls vertically, with the wheel and, while the pane is focused, with the
   arrows, j/k, PageUp, PageDown, Home and End; `scrollY={false}` turns that off.
@@ -495,7 +499,7 @@ template, or add it with its reason.
 11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
-14. On the desktop tables and charts fill with flex, not terminal row arithmetic; nothing ends in a dead band above the footer.
+14. On the desktop and the web nothing is sized in cells: boxes fill with flex, percentages or CSS units, text wraps in CSS at the width it sits in (a reading measure is a CSS `max-width` in `ch`), and sizes are read from the laid-out page. Nothing ends in a dead band above the footer or a gap at the right edge. `bun run check:pane-layout` measures every function; `src/architecture/dom-cell-metrics.test.ts` keeps cell metrics out of DOM-only code.
 15. A chart with a table uses `ChartTableHeader`: named series, one shared selection, `chartTableLayout` at every size, no repeated numbers.
 16. Opening the function again focuses its window (8b): identity in the spec, preferences out of it, a stable `instanceId` for a one-window function.
 
@@ -524,6 +528,7 @@ All under `src/plugins/builtin/` unless noted.
 | Status, notice, empty state | `src/components/ui/status.tsx` |
 | Load-more helpers | `src/components/table-view-shared.tsx`, `src/components/paged-rows.ts` |
 | Stack | `src/components/data-table/stack-view.tsx`, `ui/page-stack-view.tsx` |
+| Item detail: facts, then the text across the pane | `clinical-trials/pane.tsx`, `changelog/index.tsx`, `src/components/reader/detail-reader.tsx` |
 | Figures, chart and table, selection drives the cursor | `short-volume/pane.tsx` |
 | Board whose chart follows the selected row | `credit-conditions/index.tsx` |
 | Chart over table layout, strip, selection | `src/components/chart-table/` |

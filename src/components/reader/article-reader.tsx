@@ -1,27 +1,33 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useShortcut } from "../../react/input";
 import { scrollByLines } from "../../state/pane-scroll-registry";
 import { useThemeColors } from "../../theme/theme-context";
 import {
   Box,
   ScrollBox,
-  StyledText,
   Text,
-  TextAttributes,
   useNativeRenderer,
   useUiCapabilities,
   type ScrollBoxRenderable,
 } from "../../ui";
 import { t } from "../../i18n";
 import { isPlainKey } from "../../utils/keyboard";
-import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
+import { displayWidth } from "../../utils/format";
 import { wrapTextLines } from "../../utils/text-wrap";
 import { usePaneFooter, usePaneMenuItems, type PaneHint } from "../layout/pane/footer";
 import { TickerBadgeList } from "../ticker/badge/list";
 import { ActionRow } from "../ui/action-row";
 import { titleCase } from "../ui/header-case";
-import { splitFigures } from "../ui/prose";
 import { blockWords, markTerms, type ArticleBlock } from "./article-text";
+import {
+  READER_APP_FONT,
+  READER_COLUMN_FONT,
+  DESKTOP_LINE_HEIGHT,
+  ReaderBlock,
+  ReaderText,
+  figureSegments,
+  type ReaderGeometry,
+} from "./reader-text";
 
 /**
  * The longest line the reader sets, in characters. Past about 70 the eye
@@ -29,14 +35,6 @@ import { blockWords, markTerms, type ArticleBlock } from "./article-text";
  */
 const TERMINAL_MEASURE = 72;
 const DESKTOP_MEASURE_CH = 66;
-/**
- * The reading size on the desktop against the app's own (12px by default):
- * 17.4px, or 16.2px in a pane under 480px, where a phone sets its body.
- */
-const DESKTOP_FONT_EM = 1.45;
-const DESKTOP_NARROW_FONT_EM = 1.35;
-const DESKTOP_NARROW_CELLS = 60;
-const DESKTOP_LINE_HEIGHT = 1.65;
 /** Fewer hidden words than this are shown rather than tucked behind Read more. */
 const COLLAPSE_MIN_HIDDEN_WORDS = 80;
 const MAX_TICKERS = 6;
@@ -86,81 +84,84 @@ export function ArticleReader(props: ArticleReaderProps) {
   return <ArticleReaderView key={props.articleKey} {...props} />;
 }
 
-type Segment = { text: string; marked?: boolean; figure?: boolean };
+/** The desktop sets its type and wraps in CSS; the browser lays the column out. */
+const DESKTOP_GEOMETRY: ReaderGeometry = { desktop: true, measure: 0, margin: 0 };
 
-function figureSegments(text: string): Segment[] {
-  return splitFigures(text).map((run) => ({ text: run.text, figure: run.figure }));
-}
-
-interface ReaderGeometry {
-  desktop: boolean;
-  /** Desktop: the reading size, in em of the app's size. */
-  fontEm: number;
-  /** Terminal: characters per line. Desktop: an estimate, for deciding what Read more hides. */
-  measure: number;
-  /** Terminal only: columns left of the text column, which is centred in the pane. */
-  margin: number;
-}
-
-function readerGeometry(width: number, desktop: boolean): ReaderGeometry {
-  if (desktop) {
-    const fontEm = width < DESKTOP_NARROW_CELLS ? DESKTOP_NARROW_FONT_EM : DESKTOP_FONT_EM;
-    // A monospace glyph is about 0.6em wide; the column is inset 24px a side.
-    const columnPx = Math.max(160, width * 8 - 48);
-    return { desktop, fontEm, measure: Math.max(24, Math.min(DESKTOP_MEASURE_CH, Math.floor(columnPx / (fontEm * 12 * 0.6)))), margin: 0 };
-  }
+function terminalGeometry(width: number): ReaderGeometry {
   // The scrollbar holds the last column.
   const usable = Math.max(12, Math.floor(width) - 1);
   const measure = Math.min(TERMINAL_MEASURE, Math.max(10, usable - 4));
-  return { desktop, fontEm: 1, measure, margin: Math.max(2, Math.floor((usable - measure) / 2)) };
+  return { desktop: false, measure, margin: Math.max(2, Math.floor((usable - measure) / 2)) };
 }
 
-/** Rows of the app's 18px grid a desktop reading line takes, at the default size. */
-function rowsPerLine(geometry: ReaderGeometry): number {
-  return geometry.desktop ? (geometry.fontEm * DESKTOP_LINE_HEIGHT * 12) / 18 : 1;
+function textRows(text: string, measure: number): number {
+  return wrapTextLines(text, measure).length;
 }
 
-function textRows(text: string, measure: number, geometry: ReaderGeometry): number {
-  return wrapTextLines(text, measure).length * rowsPerLine(geometry);
-}
-
-function blockRows(block: ArticleBlock, geometry: ReaderGeometry): number {
-  const { measure } = geometry;
+function blockRows(block: ArticleBlock, measure: number): number {
   switch (block.kind) {
     case "paragraph":
     case "heading":
-      return textRows(block.text, measure, geometry) + 1;
+      return textRows(block.text, measure) + 1;
     case "list":
-      return block.items.reduce((sum, item) => sum + textRows(item, measure - 2, geometry), 0) + 1;
+      return block.items.reduce((sum, item) => sum + textRows(item, measure - 2), 0) + 1;
     case "table":
-      return block.rows.length * (geometry.desktop ? 1.4 : 1) + 1;
+      return block.rows.length + 1;
   }
 }
 
+/** Null when what would be hidden from `cut` on is too short to be worth a click. */
+function collapseWorthIt(body: readonly ArticleBlock[], cut: number | null): number | null {
+  if (cut === null) return null;
+  const hiddenWords = body.slice(cut).reduce((sum, block) => sum + blockWords(block), 0);
+  return hiddenWords >= COLLAPSE_MIN_HIDDEN_WORDS ? cut : null;
+}
+
 /**
- * How many body blocks fit in about a screen under the header, lead and
- * facts, or null when the whole article should show: it fits, or what would
- * be hidden is too short to be worth a click.
+ * Terminal: how many body blocks fit in about a screen under the header, lead
+ * and facts, counted in rows, or null when the whole article should show.
  */
 function visibleBlockCount(
   body: readonly ArticleBlock[],
   aboveRows: number,
   height: number,
-  geometry: ReaderGeometry,
+  measure: number,
 ): number | null {
   let used = aboveRows;
   let cut: number | null = null;
   for (const [index, block] of body.entries()) {
-    used += blockRows(block, geometry);
+    used += blockRows(block, measure);
     // At least one block of the body shows, whatever the header took.
     if (used > height && index >= 1) {
       cut = index;
       break;
     }
   }
-  if (cut === null) return null;
-  const hiddenWords = body.slice(cut).reduce((sum, block) => sum + blockWords(block), 0);
-  return hiddenWords >= COLLAPSE_MIN_HIDDEN_WORDS ? cut : null;
+  return collapseWorthIt(body, cut);
+}
+
+type DomNode = { getBoundingClientRect(): { bottom: number } };
+
+/**
+ * Desktop: the first body block that ends below the reader's viewport, read
+ * from the laid-out page in pixels, or null when the whole article shows.
+ */
+function measuredBlockCount(
+  body: readonly ArticleBlock[],
+  viewport: { y: number; height: number } | undefined,
+  blockNode: (index: number) => DomNode | null,
+): number | null {
+  if (!viewport || viewport.height <= 0) return null;
+  let cut: number | null = null;
+  for (let index = 1; index < body.length; index += 1) {
+    const node = blockNode(index);
+    if (!node) return null;
+    if (node.getBoundingClientRect().bottom > viewport.y + viewport.height) {
+      cut = index;
+      break;
+    }
+  }
+  return collapseWorthIt(body, cut);
 }
 
 /** A section label in the kit's casing: title case in English, a translation as it is written. */
@@ -174,21 +175,6 @@ function readingMinutes(blocks: readonly ArticleBlock[]): number {
   return Math.max(1, Math.round(blocks.reduce((sum, block) => sum + blockWords(block), 0) / 220));
 }
 
-/** Columns padded to their widest cell; figures right-aligned, the first column left. */
-function tableLines(rows: readonly string[][]): string[] {
-  const columns = Math.max(...rows.map((row) => row.length));
-  const widths = Array.from({ length: columns }, (_, column) => Math.max(...rows.map((row) => displayWidth(row[column] ?? ""))));
-  return rows.map((row) => widths.map((width, column) => {
-    const cell = row[column] ?? "";
-    const pad = " ".repeat(Math.max(0, width - displayWidth(cell)));
-    return column === 0 ? `${cell}${pad}` : `${pad}${cell}`;
-  }).join("   ").trimEnd());
-}
-
-/** A first row without a figure in it is the table's header. */
-function hasHeaderRow(rows: readonly string[][]): boolean {
-  return rows.length > 1 && rows[0]!.every((cell) => !/\d[\d,.]*\s*%?$/.test(cell) || /^(?:Q[1-4]|FY|H[12])\s?'?\d{2,4}$/i.test(cell));
-}
 
 function ArticleReaderView({
   title,
@@ -213,30 +199,49 @@ function ArticleReaderView({
   const nativeRenderer = useNativeRenderer();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const idPrefix = `reader-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
-  const geometry = useMemo(() => readerGeometry(width, desktop), [desktop, width]);
+  const geometry = useMemo(() => (desktop ? DESKTOP_GEOMETRY : terminalGeometry(width)), [desktop, width]);
   const shownTickers = useMemo(() => [...new Set(tickers)].slice(0, MAX_TICKERS), [tickers]);
   const metaText = meta.map((part) => part?.trim()).filter((part): part is string => !!part).join(" \u00b7 ");
 
+  // The terminal counts rows at its measure; the desktop measures the laid-out page below.
   const aboveRows = useMemo(() => {
-    const headline = title ? textRows(title, geometry.measure, geometry) * (geometry.desktop ? 1.3 : 1) : 0;
-    const leadRows = lead ? textRows(lead, geometry.measure, geometry) * (geometry.desktop ? 1.1 : 1) + 1 : 0;
+    if (desktop) return 0;
+    const headline = title ? textRows(title, geometry.measure) : 0;
+    const leadRows = lead ? textRows(lead, geometry.measure) + 1 : 0;
     const factRows = facts.length > 0
-      ? facts.reduce((sum, fact) => sum + textRows(fact, geometry.measure - 2, geometry), 0) + 2
+      ? facts.reduce((sum, fact) => sum + textRows(fact, geometry.measure - 2), 0) + 2
       : 0;
     return 2 + headline + 1 + (shownTickers.length > 0 ? 1 : 0) + 1 + leadRows + factRows;
-  }, [facts, geometry, lead, shownTickers.length, title]);
-  const collapseAt = useMemo(
-    () => visibleBlockCount(body, aboveRows, Math.max(12, height), geometry),
-    [aboveRows, body, geometry, height],
+  }, [desktop, facts, geometry, lead, shownTickers.length, title]);
+  const terminalCollapseAt = useMemo(
+    () => (desktop ? null : visibleBlockCount(body, aboveRows, Math.max(12, height), geometry.measure)),
+    [aboveRows, body, desktop, geometry, height],
   );
+  // Undefined until the desktop page is laid out and measured, before it paints.
+  const [measuredCollapseAt, setMeasuredCollapseAt] = useState<number | null | undefined>(undefined);
+  const collapseAt = desktop ? measuredCollapseAt ?? null : terminalCollapseAt;
   const revealIndex = revealSection == null ? -1 : body.findIndex((block) => block.section === revealSection);
   // A search that matched further down lands on the match, so that part is shown from the start.
-  const [expanded, setExpanded] = useState(() => collapseAt === null || (revealIndex > 0 && revealIndex >= collapseAt));
+  const [expanded, setExpanded] = useState(() => !desktop && (collapseAt === null || (revealIndex > 0 && revealIndex >= collapseAt)));
   const [raw, setRaw] = useState(false);
   const visibleBody = expanded || collapseAt === null ? body : body.slice(0, collapseAt);
   const hiddenCount = body.length - visibleBody.length;
 
   const blockId = useCallback((index: number) => `${idPrefix}-b${index}`, [idPrefix]);
+
+  // Desktop: lay the whole article out once, then keep about a screen of it
+  // by where its blocks actually end, before the first paint.
+  useLayoutEffect(() => {
+    if (!desktop || measuredCollapseAt !== undefined) return;
+    const documentRef = (globalThis as { document?: { getElementById(id: string): DomNode | null } }).document;
+    const cut = measuredBlockCount(
+      body,
+      scrollRef.current?.getBoundingClientRect?.(),
+      (index) => documentRef?.getElementById(blockId(index)) ?? null,
+    );
+    setMeasuredCollapseAt(cut);
+    if (cut === null || (revealIndex > 0 && revealIndex >= cut)) setExpanded(true);
+  }, [blockId, body, desktop, measuredCollapseAt, revealIndex]);
 
   /** Where block `index` starts, as an offset into the scrolled content, in the host's own units. */
   const blockTop = useCallback((index: number): { top: number; pixels: boolean } | null => {
@@ -356,7 +361,7 @@ function ArticleReaderView({
         </Box>
       ) : null}
       {shownTickers.length > 0 ? (
-        <Box style={desktop ? { marginTop: "0.6em", fontSize: `${1 / geometry.fontEm}em`, lineHeight: "normal" } : undefined}>
+        <Box style={desktop ? { marginTop: "0.6em", fontSize: READER_APP_FONT, lineHeight: "normal" } : undefined}>
           <TickerBadgeList symbols={shownTickers} width={desktop ? Math.max(20, width - 8) : geometry.measure} />
         </Box>
       ) : null}
@@ -388,7 +393,7 @@ function ArticleReaderView({
         </Box>
       ))}
       {!raw && hiddenCount > 0 ? (
-        <Box style={desktop ? { fontSize: `${1 / geometry.fontEm}em`, lineHeight: "normal", marginTop: "0.4em" } : undefined}>
+        <Box style={desktop ? { fontSize: READER_APP_FONT, lineHeight: "normal", marginTop: "0.4em" } : undefined}>
           <ActionRow label="Read more" expanded={false} onPress={() => setExpanded(true)}>
             <Text fg={colors.textDim}>{`${readingMinutes(body.slice(visibleBody.length))} min`}</Text>
           </ActionRow>
@@ -397,7 +402,7 @@ function ArticleReaderView({
       {children ? (
         <Box flexDirection="column" style={desktop ? { marginTop: lead || blocks.length > 0 ? "0.8em" : 0 } : undefined}>
           {childrenLabel ? <ReaderText text={readerLabel(childrenLabel)} geometry={geometry} color={colors.textDim} variant="label" /> : null}
-          <Box flexDirection="column" style={desktop ? { fontSize: `${1 / geometry.fontEm}em`, lineHeight: "normal" } : undefined}>
+          <Box flexDirection="column" style={desktop ? { fontSize: READER_APP_FONT, lineHeight: "normal" } : undefined}>
             {children}
           </Box>
         </Box>
@@ -412,10 +417,11 @@ function ArticleReaderView({
           <Box
             flexDirection="column"
             width="100%"
+            data-gloom-ui="reader-column"
             style={{
               // The measure plus the column's own inset on both sides.
               maxWidth: `calc(${DESKTOP_MEASURE_CH}ch + 48px)`,
-              fontSize: `${geometry.fontEm}em`,
+              fontSize: READER_COLUMN_FONT,
               lineHeight: DESKTOP_LINE_HEIGHT,
               padding: "1.2em 24px 3em",
               boxSizing: "border-box",
@@ -459,184 +465,3 @@ function RawText({ text, geometry }: { text: string; geometry: ReaderGeometry })
     </Box>
   );
 }
-
-type TextVariant = "headline" | "meta" | "lead" | "body" | "heading" | "label" | "fact" | "item";
-
-const DESKTOP_VARIANT_STYLE: Record<TextVariant, Record<string, string | number>> = {
-  headline: { fontSize: "1.45em", lineHeight: 1.22, letterSpacing: "-0.01em" },
-  meta: { fontSize: "0.78em", lineHeight: 1.5 },
-  lead: { fontSize: "1.1em", lineHeight: 1.55, marginBottom: "1.1em" },
-  body: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.9em" },
-  heading: { fontSize: "1.08em", lineHeight: 1.35, margin: "0.6em 0 0.35em" },
-  label: { fontSize: "0.8em", lineHeight: 1.6, marginBottom: "0.3em" },
-  fact: { fontSize: "0.95em", lineHeight: 1.55, marginBottom: "0.35em" },
-  item: { lineHeight: 1.6, marginBottom: "0.3em" },
-};
-
-function styled(segments: readonly Segment[], color: string, markColor: string, figureColor: string | undefined, attributes: number): StyledText {
-  return new StyledText(segments.map((segment) => ({
-    text: segment.text,
-    fg: segment.marked ? markColor : segment.figure && figureColor ? figureColor : color,
-    // A search match is marked by colour alone; a fact's figures are also set bold.
-    attributes: segment.figure && figureColor ? attributes | TextAttributes.BOLD : attributes,
-  })));
-}
-
-/**
- * Text at the reader's measure. The terminal draws it pre-wrapped, a row per
- * line; the desktop lets the browser wrap it at the reading size of its variant.
- * Facts and list items hang under a bullet.
- */
-function ReaderText({
-  text,
-  geometry,
-  color,
-  bold = false,
-  variant,
-  segments,
-  figureColor,
-}: {
-  text: string;
-  geometry: ReaderGeometry;
-  color: string;
-  bold?: boolean;
-  variant: TextVariant;
-  segments?: readonly Segment[];
-  figureColor?: string;
-}) {
-  const colors = useThemeColors();
-  const attributes = bold || variant === "heading" ? TextAttributes.BOLD : TextAttributes.NONE;
-  const bullet = variant === "fact" || variant === "item";
-  if (geometry.desktop) {
-    const content = segments
-      ? styled(segments, color, colors.warning, figureColor, attributes)
-      : undefined;
-    const textNode = (
-      <Text
-        fg={color}
-        attributes={attributes}
-        wrapText
-        width="100%"
-        style={{ display: "block", ...DESKTOP_VARIANT_STYLE[variant], ...(bullet ? { marginBottom: 0 } : {}) }}
-        content={content}
-      >
-        {content ? undefined : text}
-      </Text>
-    );
-    if (!bullet) return textNode;
-    return (
-      <Box flexDirection="row" width="100%" style={{ marginBottom: DESKTOP_VARIANT_STYLE[variant].marginBottom }}>
-        <Text fg={colors.textDim} style={{ fontSize: DESKTOP_VARIANT_STYLE[variant].fontSize, lineHeight: DESKTOP_VARIANT_STYLE[variant].lineHeight, width: "1.3em", flexShrink: 0 }}>{"\u2022"}</Text>
-        <Box flexGrow={1} minWidth={0}>{textNode}</Box>
-      </Box>
-    );
-  }
-  const prefix = bullet ? "\u2022 " : "";
-  const lines = wrapTextLines(text, Math.max(8, geometry.measure - prefix.length));
-  return (
-    <Box flexDirection="column">
-      {lines.map((line, index) => (
-        <Box key={index} height={1} flexDirection="row">
-          {prefix ? <Text fg={colors.textDim}>{index === 0 ? prefix : "  "}</Text> : null}
-          {/* Always styled content: a terminal text node cannot switch from content to children in place. */}
-          <Text content={styled(segments ? lineSegments(segments, line, lines, index, text) : [{ text: line }], color, colors.warning, figureColor, attributes)} />
-        </Box>
-      ))}
-    </Box>
-  );
-}
-
-/**
- * The segments that fall on one pre-wrapped line. Wrapping drops the spaces
- * it breaks at, so each line is found in the text by its position rather than
- * by counting characters.
- */
-function lineSegments(segments: readonly Segment[], line: string, lines: readonly string[], lineIndex: number, text: string): Segment[] {
-  let offset = 0;
-  for (let index = 0; index < lineIndex; index += 1) {
-    offset = text.indexOf(lines[index]!, offset) + lines[index]!.length;
-  }
-  const start = text.indexOf(line, offset);
-  const end = start + line.length;
-  const result: Segment[] = [];
-  let position = 0;
-  for (const segment of segments) {
-    const segmentEnd = position + segment.text.length;
-    const from = Math.max(start, position);
-    const to = Math.min(end, segmentEnd);
-    if (to > from) result.push({ ...segment, text: text.slice(from, to) });
-    position = segmentEnd;
-  }
-  return result.length > 0 ? result : [{ text: line }];
-}
-
-function ReaderBlock({
-  block,
-  geometry,
-  segments,
-}: {
-  block: ArticleBlock;
-  geometry: ReaderGeometry;
-  segments?: Segment[];
-}) {
-  const colors = useThemeColors();
-  switch (block.kind) {
-    case "heading":
-      return <ReaderText text={block.text} geometry={geometry} color={colors.textBright} variant="heading" />;
-    case "paragraph":
-      return <ReaderText text={block.text} geometry={geometry} color={colors.text} variant="body" segments={segments} />;
-    case "list":
-      return (
-        <Box flexDirection="column" style={geometry.desktop ? { marginBottom: "0.9em" } : undefined}>
-          {block.items.map((item, index) => (
-            <ReaderText key={index} text={item} geometry={geometry} color={colors.text} variant="item" />
-          ))}
-        </Box>
-      );
-    case "table":
-      return <ReaderTable rows={block.rows} geometry={geometry} />;
-  }
-}
-
-/**
- * A table set in columns. The app's type is monospace on every host, so
- * padding the cells lines them up; a table wider than the column scrolls
- * sideways on the desktop and is cut at the edge in the terminal.
- */
-function ReaderTable({ rows, geometry }: { rows: readonly string[][]; geometry: ReaderGeometry }) {
-  const colors = useThemeColors();
-  const lines = tableLines(rows);
-  const header = hasHeaderRow(rows);
-  if (geometry.desktop) {
-    return (
-      // At the app's own size, as its tables are: a reading-size table runs out of a narrow pane.
-      <Box flexDirection="column" width="100%" style={{ overflowX: "auto", margin: "0.2em 0 1.3em", fontSize: `${1 / geometry.fontEm}em`, lineHeight: 1.9 }}>
-        {lines.map((line, index) => (
-          <Text
-            key={index}
-            fg={index === 0 && header ? colors.textDim : colors.text}
-            attributes={index === 0 && header ? TextAttributes.BOLD : TextAttributes.NONE}
-            style={{ display: "block", lineHeight: "inherit", whiteSpace: "pre", borderBottom: index === 0 && header ? `1px solid ${colors.border}` : undefined }}
-          >
-            {line}
-          </Text>
-        ))}
-      </Box>
-    );
-  }
-  return (
-    <Box flexDirection="column">
-      {lines.map((line, index) => (
-        <Box key={index} height={1}>
-          <Text
-            fg={index === 0 && header ? colors.textDim : colors.text}
-            attributes={index === 0 && header ? TextAttributes.BOLD : TextAttributes.NONE}
-          >
-            {truncateToDisplayWidth(line, geometry.measure)}
-          </Text>
-        </Box>
-      ))}
-    </Box>
-  );
-}
-

@@ -23,7 +23,9 @@
  * or `cmp` (one chart composer pane on invented 30-minute bars, see
  * createInventedChartSource: `&chart=readout` three listings on two venues,
  * volume and two studies, `pan` one listing with years of bars, `edge` one
- * whose bars start 150 sessions back, `percent` three listings rebased).
+ * whose bars start 150 sessions back, `percent` three listings rebased), or
+ * `layout` (one pane that sets text or scrolls content, docked or floating,
+ * for the layout checks; see layout-fixture.tsx).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -71,6 +73,7 @@ import { PriceSparkline } from "../../src/components/price-sparkline/view";
 import { registerAskGloomPaneHandler } from "../../src/ask-gloom/pane-request";
 import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/header";
 import { ChatFixturePane, chatLayout } from "./chat-fixture";
+import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -830,6 +833,7 @@ const PANES = {
   heat: { name: "Heat map", component: HeatPane },
   chat: { name: "Chat", component: ChatFixturePane },
   "chart-composer": { name: "Chart", component: ChartComposerFixturePane },
+  ...LAYOUT_PANES,
 };
 
 function registry(): PluginRegistry {
@@ -1018,6 +1022,7 @@ function config() {
     : scenario === "nested" ? nestedLayout()
     : scenario === "stacked" ? stackedLayout()
     : scenario === "cmp" ? chartComposerLayout()
+    : scenario === "layout" ? layoutLayout(params)
     : chromeLayout();
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
   const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];
@@ -1078,6 +1083,7 @@ registerAskGloomPaneHandler(({ paneId, visibleText, args }) => {
 });
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
 if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
+if (scenario === "layout") installLayoutFetches();
 const rendererHost: RendererHost = {
   ...webRendererHost,
   controlWindow: (action) => { window.__paneChrome.windowControls.push(action); },

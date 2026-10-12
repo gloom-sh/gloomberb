@@ -4,6 +4,7 @@ import { positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, click, drag, evaluate, frames, holdKey, launchBrowser, mouse, pressKey, sleep, waitFor, type Cdp, type Chord, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
 import { chatSteps } from "./chat-checks";
+import { layoutSteps } from "./layout-checks";
 import { checkFirstPaint, checkThemePreview } from "./paint";
 
 /**
@@ -1297,6 +1298,7 @@ const steps: Step[] = [
     },
   })),
   ...chatSteps,
+  ...layoutSteps,
 ];
 
 async function openScenario(cdp: Cdp, page: FixturePage, scenario: string): Promise<void> {

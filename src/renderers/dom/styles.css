@@ -1228,3 +1228,28 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 @media (hover: none) and (pointer: coarse) {
   .gloom-keycap, .gloom-key-hint { display: none !important; }
 }
+
+/* Reading columns (src/components/reader) set their type from their own
+   width, not from a count of cells: 1.45em, or 1.35em under 480px. */
+[data-gloom-ui="article-reader"],
+[data-gloom-ui="detail-reader"] {
+  container-type: inline-size;
+}
+@container (max-width: 480px) {
+  [data-gloom-ui="reader-column"] {
+    --reader-em: 1.35;
+  }
+}
+/* A detail's facts: label and value pairs, two pairs to a row when the
+   reader is wide enough for them. */
+[data-gloom-ui="detail-facts"] {
+  grid-template-columns: max-content minmax(0, 1fr);
+}
+@container (min-width: 720px) {
+  [data-gloom-ui="detail-facts"] {
+    grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
+  }
+  [data-gloom-ui="detail-facts"] > :nth-child(4n + 3) {
+    padding-left: 1.2em;
+  }
+}

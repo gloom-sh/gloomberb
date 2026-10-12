@@ -10,7 +10,13 @@ import { useUiCapabilities } from "../ui";
 
 export interface MarkdownTextProps {
   text: string;
+  /**
+   * Columns the terminal wraps at, and the width tables are fitted to. The
+   * desktop and the web wrap text at the width of the box it sits in.
+   */
   lineWidth?: number;
+  /** Desktop and web: the space a blank line leaves between paragraphs, in CSS units; one line when unset. */
+  paragraphGap?: string;
   catalog?: Record<string, InlineTickerCatalogEntry>;
   textColor?: string;
   openTicker?: (symbol: string) => void;
@@ -405,12 +411,30 @@ function wrappedTextStyle() {
   } as const;
 }
 
+/**
+ * A wrapped line on the desktop and the web: a list item's later lines hang
+ * under its text rather than its marker, measured in characters of its own
+ * type.
+ */
+function nativeLineStyle(parsed: ParsedLine) {
+  const marker = parsed.segments[0]?.text ?? "";
+  const hang = parsed.heading || !/^([-*]|\d+\.) $/.test(marker) ? 0 : (parsed.indent ?? 0) + marker.length;
+  return {
+    ...wrappedTextStyle(),
+    display: "block",
+    ...(hang > 0 ? { paddingLeft: `${hang}ch`, textIndent: `-${hang}ch` } : {}),
+  } as const;
+}
+
 function wrappedInlineTextStyle() {
   return {
     ...wrappedTextStyle(),
     display: "inline",
   } as const;
 }
+
+/** Desktop and web: the width of the box the text sits in, beside a list marker too. */
+const NATIVE_FILL = { width: "100%", flexShrink: 1, minWidth: 0 } as const;
 
 function SegmentSpan({ segment, wrap = false, onOpenLink }: {
   segment: StyledSegment;
@@ -479,15 +503,17 @@ function MarkdownLine({
   onHover: (symbol: string | null) => void;
   onOpenLink?: (href: string) => void;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
   const indent = parsed.indent ?? 0;
   const indentStr = indent > 0 ? " ".repeat(indent) : "";
-  const shouldWrap = lineWidth != null;
+  // The desktop and the web always wrap, in CSS, across the box the text sits in.
+  const shouldWrap = lineWidth != null || nativePaneChrome === true;
   const textWrapProps = shouldWrap
     ? {
-        width: lineWidth,
+        width: nativePaneChrome ? "100%" : lineWidth,
         wrapText: true,
         wrapMode: "word",
-        style: wrappedTextStyle(),
+        style: nativePaneChrome ? nativeLineStyle(parsed) : wrappedTextStyle(),
       }
     : {};
 
@@ -511,7 +537,7 @@ function MarkdownLine({
   // Complex case: need to handle tickers within styled segments
   // Render as a flex row to allow badge elements
   return (
-    <Box flexDirection="row" flexWrap="wrap" {...(lineWidth != null ? { width: lineWidth } : {})}>
+    <Box flexDirection="row" flexWrap="wrap" {...(nativePaneChrome ? NATIVE_FILL : lineWidth != null ? { width: lineWidth } : {})}>
       {indentStr ? <Text fg={textColor}>{indentStr}</Text> : null}
       {parsed.segments.map((segment, segIdx) => {
         const tokens = tokenizeTickerText(segment.text);
@@ -568,13 +594,15 @@ export function MarkdownText({
   textColor = colors.text,
   openTicker = () => {},
   onOpenLink,
+  paragraphGap,
 }: MarkdownTextProps) {
+  const { nativePaneChrome } = useUiCapabilities();
   const links = onOpenLink !== undefined;
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   const blocks = parseMarkdownBlocks(text);
 
   return (
-    <Box flexDirection="column" {...(lineWidth != null ? { width: lineWidth } : {})}>
+    <Box flexDirection="column" {...(nativePaneChrome ? NATIVE_FILL : lineWidth != null ? { width: lineWidth } : {})}>
       {blocks.map((block, index) => {
         if (block.kind === "table") {
           return (
@@ -591,7 +619,9 @@ export function MarkdownText({
         }
         const line = block.text;
         if (line.trim() === "") {
-          return <Text key={index}>{" "}</Text>;
+          return nativePaneChrome && paragraphGap
+            ? <Box key={index} flexShrink={0} style={{ height: paragraphGap }} />
+            : <Text key={index}>{" "}</Text>;
         }
         const parsed = parseLine(line, links);
         return (

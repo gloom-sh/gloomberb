@@ -86,10 +86,11 @@ function DetailsBlock({ summary, blocks, width, onOpenLink }: {
   onOpenLink: (href: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const { nativePaneChrome } = useUiCapabilities();
   usePaneLinkMenuEntry(`docs-details:${summary}`, open ? tf("Hide {label}", { label: summary }) : tf("Show {label}", { label: summary }), () => setOpen((value) => !value));
   return (
     <Box flexDirection="column">
-      <ActionRow label={summary} expanded={open} onPress={() => setOpen((value) => !value)} width={width} />
+      <ActionRow label={summary} expanded={open} onPress={() => setOpen((value) => !value)} width={nativePaneChrome ? undefined : width} />
       {open && (
         <Box flexDirection="column" paddingLeft={2} paddingTop={1}>
           <DocsBlocks blocks={blocks} width={Math.max(12, width - 2)} onOpenLink={onOpenLink} />
@@ -108,7 +109,7 @@ function Picture({ src, alt, caption, width }: { src: string; alt: string; capti
   return (
     <Box flexDirection="column" gap={0}>
       <RemoteImage src={src} alt={alt || caption || "Screenshot"} width={width} height={pictureRows(width)} label={alt || "image"} />
-      {caption ? <Text fg={colors.textMuted} wrapText width={width}>{caption}</Text> : null}
+      {caption ? <Text fg={colors.textMuted} wrapText width="100%">{caption}</Text> : null}
     </Box>
   );
 }
@@ -123,7 +124,7 @@ function Block({ block, width, onOpenLink }: { block: DocsBlock; width: number; 
     case "heading":
       // A section reads bright; a step inside it, in the text colour.
       return (
-        <Text fg={block.level === 2 ? colors.textBright : colors.text} attributes={TextAttributes.BOLD} wrapText width={width}>
+        <Text fg={block.level === 2 ? colors.textBright : colors.text} attributes={TextAttributes.BOLD} wrapText width={nativePaneChrome ? "100%" : width}>
           {block.text.replace(/[*`]/g, "")}
         </Text>
       );

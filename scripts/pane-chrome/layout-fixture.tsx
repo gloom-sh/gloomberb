@@ -1,0 +1,187 @@
+/** @jsxImportSource react */
+/**
+ * Panes for the layout checks (layout-checks.ts): one per shared component
+ * that sets text or scrolls content (the stack detail reader, the article
+ * reader, markdown, prose paragraphs and a table), plus the real Trials and
+ * Changelog panes, whose open items read through the detail reader. Every
+ * study, release and article is invented, and nothing is fetched: the Trials
+ * registry and the release feed are answered in the page.
+ *
+ * Scenario options (query string, after `scenario=layout`): `pane=<id>`
+ * (trials, changelog, reader, markdown, prose or table) and `mode=dock` or
+ * `mode=float`; a floating pane takes most of the window at a size that is not
+ * a whole number of cells.
+ */
+import { useRef } from "react";
+import { DetailScrollBody } from "../../src/components/ui/detail-scroll-body";
+import { BulletList, Prose } from "../../src/components/ui/prose";
+import { MarkdownText } from "../../src/components/markdown-text";
+import { ArticleReader } from "../../src/components/reader/article-reader";
+import { parseArticle } from "../../src/components/reader/article-text";
+import { TrialsPane } from "../../src/plugins/builtin/clinical-trials/pane";
+import { changelogModule } from "../../src/plugins/builtin/changelog";
+import { PluginRenderProvider } from "../../src/plugins/runtime";
+import { createTestPluginRuntime } from "../../src/test-support/plugin-runtime";
+import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../src/theme/font-scale";
+import type { LayoutConfig } from "../../src/types/config";
+import type { PaneProps } from "../../src/types/plugin";
+import type { ScrollBoxRenderable } from "../../src/ui";
+import { Box } from "../../src/ui";
+import { setHttpFetchTransport } from "../../src/utils/http-transport";
+
+const SENTENCES = [
+  "The registry lists a two-arm study of a home exercise program for adults recovering from a long hospital stay.",
+  "Participants are assigned at random to the program or to the usual follow-up, and both groups keep their regular care.",
+  "The main outcome is the distance walked in six minutes at twelve weeks, measured by staff who do not know the assignment.",
+  "Secondary outcomes include grip strength, a quality of life questionnaire, readmissions and the number of falls reported.",
+  "The sponsor expects to enrol participants at four sites and to report results a year after the last visit.",
+  "Visits take place at the start, at six weeks and at twelve weeks, with a phone call between them.",
+];
+/** One long paragraph, then a list and a short closing paragraph: the shape a registry summary takes. */
+const SUMMARY = [
+  [...SENTENCES, ...SENTENCES].join(" "),
+  "The main questions it aims to answer are:",
+  "* Does the program lengthen the distance walked in six minutes?",
+  "* Does it change how often participants return to hospital?",
+  SENTENCES.slice(0, 3).join(" "),
+].join("\n\n");
+
+function inventedStudy(index: number) {
+  return {
+    protocolSection: {
+      identificationModule: { nctId: `NCT0900${String(index).padStart(4, "0")}`, briefTitle: `Home Exercise After a Long Hospital Stay, Study ${index + 1}`, officialTitle: "An invented study" },
+      statusModule: {
+        overallStatus: index % 2 ? "RECRUITING" : "NOT_YET_RECRUITING",
+        studyFirstPostDateStruct: { date: "2026-10-09" },
+        startDateStruct: { date: "2026-11-01", type: "ESTIMATED" },
+        primaryCompletionDateStruct: { date: "2027-11", type: "ESTIMATED" },
+        completionDateStruct: { date: "2028-03", type: "ESTIMATED" },
+      },
+      sponsorCollaboratorsModule: { leadSponsor: { name: "Lumen Clinical Workshop", class: "OTHER" } },
+      designModule: { studyType: "INTERVENTIONAL", phases: ["NA"], enrollmentInfo: { count: 120 + index } },
+      conditionsModule: { conditions: ["Deconditioning", "Hospital Readmission", "Frailty"] },
+      descriptionModule: { briefSummary: SUMMARY },
+    },
+  };
+}
+
+const RELEASE_BODY = [
+  "## Highlights",
+  "",
+  ...Array.from({ length: 6 }, (_, index) => `- **An invented change ${index + 1}.** ${SENTENCES[index % SENTENCES.length]} ${SENTENCES[(index + 1) % SENTENCES.length]} (#${1700 + index})`),
+  "",
+  "## Also in this release",
+  "",
+  ...Array.from({ length: 8 }, (_, index) => `- ${SENTENCES[(index + 2) % SENTENCES.length]} (#${1720 + index})`),
+].join("\n");
+
+const RELEASES = Array.from({ length: 6 }, (_, index) => ({
+  id: 9000 + index,
+  tag_name: `v0.9.${9 - index}`,
+  name: `v0.9.${9 - index} An invented release`,
+  body: RELEASE_BODY,
+  html_url: `https://example.invalid/releases/${index}`,
+  published_at: new Date(Date.UTC(2026, 9, 12 - index)).toISOString(),
+  draft: false,
+  prerelease: false,
+}));
+
+/** Answers the Trials registry and the release feed in the page; anything else fails. */
+export function installLayoutFetches(): void {
+  const answer = (url: string): Response | null => {
+    if (url.startsWith("https://clinicaltrials.gov/api/v2/studies")) {
+      return Response.json({ studies: Array.from({ length: 12 }, (_, index) => inventedStudy(index)) });
+    }
+    if (url.startsWith("https://api.github.com/repos/") && url.includes("/releases")) return Response.json(RELEASES);
+    return null;
+  };
+  setHttpFetchTransport(async (url) => answer(url) ?? new Response("Not in the fixture", { status: 404 }));
+  const pageFetch = window.fetch.bind(window);
+  const fixtureFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    return answer(url) ?? pageFetch(input, init);
+  };
+  window.fetch = Object.assign(fixtureFetch, { preconnect: pageFetch.preconnect }) as typeof fetch;
+}
+
+const RUNTIME = createTestPluginRuntime();
+
+function TrialsFixturePane(props: PaneProps) {
+  return (
+    <PluginRenderProvider pluginId="clinical-trials" runtime={RUNTIME}>
+      <TrialsPane {...props} />
+    </PluginRenderProvider>
+  );
+}
+
+const ChangelogPane = changelogModule.panes![0]!.component;
+
+function ChangelogFixturePane(props: PaneProps) {
+  return (
+    <PluginRenderProvider pluginId="changelog" runtime={RUNTIME}>
+      <ChangelogPane {...props} />
+    </PluginRenderProvider>
+  );
+}
+
+const ARTICLE = parseArticle([{ text: Array.from({ length: 8 }, (_, index) => SENTENCES.slice(index % 3).join(" ")).join("\n\n") }]);
+
+function ReaderFixturePane({ focused, width, height }: PaneProps) {
+  return (
+    <ArticleReader
+      articleKey="invented"
+      title="An invented story about a workshop that builds instruments"
+      meta={["Workshop News", "Oct 12, 2026"]}
+      lead={SENTENCES.slice(0, 2).join(" ")}
+      body={ARTICLE}
+      focused={focused}
+      width={width}
+      height={height}
+    />
+  );
+}
+
+function MarkdownFixturePane({ width }: PaneProps) {
+  const scrollRef = useRef<ScrollBoxRenderable>(null);
+  return (
+    <DetailScrollBody ref={scrollRef}>
+      <MarkdownText text={RELEASE_BODY} lineWidth={Math.max(12, width - 2)} />
+    </DetailScrollBody>
+  );
+}
+
+function ProseFixturePane({ width }: PaneProps) {
+  const scrollRef = useRef<ScrollBoxRenderable>(null);
+  return (
+    <DetailScrollBody ref={scrollRef}>
+      <Box flexDirection="column" gap={1}>
+        {Array.from({ length: 4 }, (_, index) => <Prose key={index} text={[...SENTENCES, ...SENTENCES].slice(index).join(" ")} width={Math.max(12, width - 2)} />)}
+        <BulletList items={SENTENCES} width={Math.max(12, width - 2)} />
+      </Box>
+    </DetailScrollBody>
+  );
+}
+
+export const LAYOUT_PANES = {
+  trials: { name: "Trials", component: TrialsFixturePane },
+  changelog: { name: "Changelog", component: ChangelogFixturePane },
+  reader: { name: "Reader", component: ReaderFixturePane },
+  markdown: { name: "Markdown", component: MarkdownFixturePane },
+  prose: { name: "Prose", component: ProseFixturePane },
+};
+
+/** One pane, docked alone or floating over an empty dock at a size off the cell grid. */
+export function layoutLayout(params: URLSearchParams): LayoutConfig {
+  const paneId = params.get("pane") ?? "trials";
+  const instanceId = `${paneId}:layout`;
+  const instance = { instanceId, paneId, binding: { kind: "none" as const } };
+  if (params.get("mode") !== "float") return { dockRoot: { kind: "pane", instanceId }, instances: [instance], floating: [], detached: [] };
+  const columns = window.innerWidth / WEB_CELL_WIDTH;
+  const rows = window.innerHeight / WEB_CELL_HEIGHT;
+  return {
+    dockRoot: null,
+    instances: [instance],
+    floating: [{ instanceId, x: 2.5, y: 2.25, width: Math.round(columns * 78) / 100 + 0.37, height: Math.round(rows * 78) / 100 + 0.41, zIndex: 50 }],
+    detached: [],
+  } as LayoutConfig;
+}
