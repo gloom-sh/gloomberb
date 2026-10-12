@@ -434,6 +434,47 @@ header, with the detail's height.
   to hard heights; subtract the tab strip and `rootBefore` rows before passing
   `rootHeight`.
 
+## 8b. Opening a function twice
+
+Opening a function that is already open focuses its window; a window is added
+only when none is open. That holds for every way in: the command bar, a
+notification or alert, a deep or share link, a shortcut, `pane.show` and
+`pane.createFromTemplate` from the Remote API, and an "Open" action in another
+pane. The host decides it in `createPaneTemplateOrThrow` from what the
+template's `createInstance` returns:
+
+- **One window per function** (Plugins, Unread, a board that takes no
+  argument): return no `instanceId` or a stable one (`"unread-inbox"`). Settings
+  the user changes later do not make it another window.
+- **One window per ticker or per query**: key the id by the argument
+  (`financial-analysis:AAPL`, `jobs:home`), put the ticker in `binding` and the
+  query in `settings`. The host also finds a pane that shows that ticker or
+  query under another id, such as one unlinked from a list.
+- **A window the user switches inside** (Chat changes channel in place) cannot
+  be named by an id: the id says what it was opened on, not what it shows. Its
+  `createInstance` reads `context.layout` and `context.focusedPaneId` and
+  returns the `instanceId` of the pane to reuse: the one already showing the
+  thing, else the focused one, else the one in front (`pickChatPaneToReuse`).
+  Only with none open does it return a new id.
+- **The spec holds identity, not preferences.** Binding, params and the
+  settings that say what the window shows (`channelId`, `symbols`, `board`);
+  never a view preference (live streaming, a range). The host matches a pane by
+  what the spec names and ignores the settings it leaves out, so a pane the user
+  has tuned is still found.
+- **Two functions on one pane type** name what tells them apart in `settings`
+  (EVTS sets `board`). A bare spec on a pane type with several templates only
+  matches a pane with no settings at all, because the host cannot tell whose
+  settings are whose.
+- **New on purpose**: a blank form that builds something (`VIEW`), a function
+  that creates a list (`PF`), "Open in new pane" (`forceNewPane`) and Duplicate
+  Pane. Charts and quotes for different tickers are different specs, so they
+  are different windows.
+
+`workflow/pane-reuse.test.ts` opens every function in the catalog twice, after
+its pane picked up a setting, and lists the ones that still add a window with
+the reason. A new function that lands on that list fails the test: fix the
+template, or add it with its reason.
+
 ## 9. Checklist for a new pane or tab
 
 1. The title is the only place the pane names itself; the body starts with the header zone (query bar, figures) or content.
@@ -451,6 +492,7 @@ header, with the detail's height.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
 14. On the desktop tables and charts fill with flex, not terminal row arithmetic; nothing ends in a dead band above the footer.
 15. A chart with a table uses `ChartTableHeader`: named series, one shared selection, `chartTableLayout` at every size, no repeated numbers.
+16. Opening the function again focuses its window (8b): identity in the spec, preferences out of it, a stable `instanceId` for a one-window function.
 
 ## Reference implementations
 

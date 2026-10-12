@@ -172,6 +172,7 @@ export function UnreadInboxPane({
       currentState.config,
       { channelId: item.channelId, messageId, paneTitle: item.title },
       inboxInstanceId,
+      currentState.focusedPaneId,
     );
     const syncedConfig = syncConfigActiveLayoutState(
       config,

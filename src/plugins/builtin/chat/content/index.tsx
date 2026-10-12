@@ -795,6 +795,9 @@ export function ChatContent({
 
   const handledTargetMessageRef = useRef<string | null>(null);
   useEffect(() => {
+    // A jump handled once is cleared from the pane; the same message named
+    // again (a second click on the notification) is a new jump.
+    if (!targetMessageId) handledTargetMessageRef.current = null;
     if (!targetMessageId || loading || messages.length === 0) return;
     const targetKey = `${channelId}:${targetMessageId}`;
     if (handledTargetMessageRef.current === targetKey) return;

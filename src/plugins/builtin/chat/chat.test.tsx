@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -604,6 +604,53 @@ describe("ChatContent", () => {
       await flushFrame();
 
       expect(bodyBg("message 1")).not.toBe(highlighted);
+    });
+
+    // The pane clears a handled target, so a notification for the same message
+    // clicked again names it anew: the open window has to jump a second time.
+    test("is marked again when the same message is named a second time", async () => {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2)] });
+      const state = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
+      let nameMessage: (messageId: string | undefined) => void = () => {};
+      let handled = 0;
+      function Pane() {
+        const [target, setTarget] = useState<string | undefined>("m1");
+        nameMessage = setTarget;
+        return (
+          <AppContext value={createStaticAppStore(state)}>
+            <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
+              <ChatContent
+                controller={controller}
+                width={72}
+                height={12}
+                focused
+                targetMessageId={target}
+                onTargetMessageHandled={() => {
+                  handled += 1;
+                  setTarget(undefined);
+                }}
+              />
+            </PluginRenderProvider>
+          </AppContext>
+        );
+      }
+      await act(async () => {
+        await tui.render(<Pane />, { width: 72, height: 12 });
+      });
+      await flushFrame();
+      expect(handled).toBe(1);
+      expect(bodyBg("message 1")).toBe(highlighted);
+
+      await emitKeypress({ name: "x", sequence: "x" });
+      await flushFrame();
+      expect(bodyBg("message 1")).not.toBe(highlighted);
+
+      await act(async () => {
+        nameMessage("m1");
+      });
+      await flushFrame();
+      expect(handled).toBe(2);
+      expect(bodyBg("message 1")).toBe(highlighted);
     });
 
     test("leaves the list following new messages, which a selection would not", async () => {

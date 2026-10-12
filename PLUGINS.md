@@ -1265,6 +1265,8 @@ Create pane instances programmatically:
 ctx.createPaneFromTemplate("my-chart-new", { symbol: "AAPL" });
 ```
 
+Opening a template again focuses the pane that already shows what it names and adds one only when there is none. Put what identifies the window in what `createInstance` returns (`binding`, `params`, the settings that say what it shows) and leave view preferences out of it; return a stable `instanceId` for a function that is one window. A pane the user switches inside, like Chat, names the pane to reuse from `context.layout` and `context.focusedPaneId` instead. The rules are in `docs/pane-conventions.md` (8b).
+
 ## Reusable components
 
 Import basic UI from `gloomberb/components`, layout and specialized rendering primitives from `gloomberb/ui`, hooks from `gloomberb/react`, colors from `gloomberb/theme`, and formatters from `gloomberb/utils`:

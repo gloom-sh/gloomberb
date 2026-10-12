@@ -24,6 +24,7 @@ import { automationActive, describeUsageFunction, recordFunctionOpen } from "../
 import { attentionActionForPane, captureAttentionAction } from "../../../telemetry/attention-counts";
 import { publicTickerKey } from "../../../utils/exchanges";
 import { keysClearedByChange } from "./fields";
+import { findReusablePaneInstance, retargetPaneInstance, withFreeTickerInstanceId } from "./pane-reuse";
 import {
   resolveTickerInputOrThrow,
   resolveTickerListInput,
@@ -88,102 +89,6 @@ function updateTickerListPane(
       ...(options.settings ?? {}),
     },
   }));
-}
-
-/** Key order in stored settings is not guaranteed, so compare on sorted keys. */
-function stableKey(value: unknown): string {
-  return JSON.stringify(value, (_key, entry) => (
-    entry && typeof entry === "object" && !Array.isArray(entry)
-      ? Object.fromEntries(Object.entries(entry as Record<string, unknown>).sort(
-        ([left], [right]) => left.localeCompare(right),
-      ))
-      : entry
-  ));
-}
-
-/**
- * A ticker pane's id names the ticker it opened on (`options:AAPL`), but a pane linked to a list
- * since then, or unlinked on another ticker, shows something else. Typing `OMON AAPL` must not
- * retarget it: a linked pane would silently stop following, and an unlinked one would be taken over.
- */
-function showsOtherTicker(owner: PaneInstanceConfig, spec: PaneTemplateInstanceConfig): boolean {
-  return spec.binding?.kind === "fixed" && (
-    owner.binding?.kind === "follow"
-    || (owner.binding?.kind === "fixed" && owner.binding.symbol !== spec.binding.symbol)
-  );
-}
-
-/**
- * When the pane holding a ticker template's id shows another ticker, the command opens its own
- * pinned pane under a further stable id (`options:AAPL:pinned`, then `:pinned-2`), so typing it
- * again lands on that pane rather than a new one (OMON keeps rewriting its settings, so the
- * whole-spec match below would miss it). A pinned pane that was linked or moved on since is
- * skipped the same way, so the ids never run out into unkeyed duplicates.
- */
-function withFreeTickerInstanceId(
-  instances: PaneInstanceConfig[],
-  paneId: string,
-  spec: PaneTemplateInstanceConfig,
-): PaneTemplateInstanceConfig {
-  const baseId = spec.instanceId;
-  if (!baseId) return spec;
-  const byId = new Map(instances.map((instance) => [instance.instanceId, instance]));
-  const owner = byId.get(baseId);
-  if (owner?.paneId !== paneId || !showsOtherTicker(owner, spec)) return spec;
-  let free: string | null = null;
-  // One more id than there are panes is always enough to find a free one.
-  for (let index = 1; index <= instances.length + 1; index += 1) {
-    const instanceId = index === 1 ? `${baseId}:pinned` : `${baseId}:pinned-${index}`;
-    const holder = byId.get(instanceId);
-    if (!holder) free ??= instanceId;
-    else if (holder.paneId === paneId && !showsOtherTicker(holder, spec)) return { ...spec, instanceId };
-  }
-  return { ...spec, instanceId: free ?? undefined };
-}
-
-/**
- * Find the pane a template would otherwise duplicate. A template that owns a
- * stable instance id (Chat keys one pane per channel) claims that instance even
- * after its settings drifted at runtime, as long as the id still belongs to the
- * same kind of pane and, for a ticker pane, still shows that ticker; everything
- * else has to match the whole create spec, so a different ticker, collection or
- * setting still opens its own pane.
- */
-function findReusablePaneInstance(
-  instances: PaneInstanceConfig[],
-  paneId: string,
-  spec: PaneTemplateInstanceConfig,
-): PaneInstanceConfig | null {
-  if (spec.instanceId) {
-    const owner = instances.find((instance) => instance.instanceId === spec.instanceId);
-    if (!owner || owner.paneId !== paneId) return null;
-    if (!showsOtherTicker(owner, spec)) return owner;
-  }
-  const specKey = stableKey([spec.binding ?? { kind: "none" }, spec.params ?? {}, spec.settings ?? {}]);
-  return instances.find((instance) => (
-    instance.paneId === paneId
-    && stableKey([instance.binding ?? { kind: "none" }, instance.params ?? {}, instance.settings ?? {}]) === specKey
-  )) ?? null;
-}
-
-/**
- * A stable-id pane outlives the spec that opened it (Chat rewrites its own
- * channelId as the user switches channels inside the pane), so reuse has to put
- * the pane back on the requested spec before focusing it, or the command lands
- * on a pane showing something else. Returns null when nothing has to change.
- */
-function retargetPaneInstance(
-  instance: PaneInstanceConfig,
-  spec: PaneTemplateInstanceConfig,
-): PaneInstanceConfig | null {
-  const next: PaneInstanceConfig = {
-    ...instance,
-    title: spec.title ?? instance.title,
-    binding: spec.binding ?? instance.binding,
-    params: spec.params ? { ...(instance.params ?? {}), ...spec.params } : instance.params,
-    settings: spec.settings ? { ...(instance.settings ?? {}), ...spec.settings } : instance.settings,
-  };
-  return stableKey(next) === stableKey(instance) ? null : next;
 }
 
 async function resolvePaneTemplateOptions(
@@ -339,7 +244,13 @@ export async function createPaneTemplateOrThrow(
 
   const instances = deps.getState().config.layout.instances;
   spec = withFreeTickerInstanceId(instances, template.paneId, spec);
-  const existing = findReusablePaneInstance(instances, template.paneId, spec);
+  const existing = findReusablePaneInstance(
+    instances,
+    template,
+    deps.pluginRegistry.paneTemplates,
+    spec,
+    deps.getState().focusedPaneId,
+  );
   if (existing) {
     const retargeted = retargetPaneInstance(existing, spec);
     const nextLayout = retargeted ? updatePaneInstance(

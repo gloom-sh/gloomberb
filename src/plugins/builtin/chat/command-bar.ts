@@ -17,10 +17,11 @@ import { requestChatPaneAction } from "./pane-requests";
 
 const CHAT_PANE_TEMPLATE_ID = "new-chat-pane";
 /**
- * Pane template value: show the conversation in a Chat pane that is already
- * open (switching it over) rather than in a pane of its own.
+ * Pane template value, for a template opened with no conversation: leave the
+ * open Chat pane on the conversation it shows instead of switching it to the
+ * one the bar would open.
  */
-export const CHAT_REUSE_PANE_VALUE = "reusePane";
+export const CHAT_KEEP_CONVERSATION_VALUE = "keepConversation";
 const CHAT_SEARCH_PROVIDER_ID = "chat:conversations";
 
 type OpenChatPane = Pick<GloomPluginContext, "createPaneFromTemplate">;
@@ -31,16 +32,13 @@ type OpenChatPane = Pick<GloomPluginContext, "createPaneFromTemplate">;
  */
 export function openChatConversation(ctx: OpenChatPane, channelId: string): void {
   requestChatPaneAction({ action: "compose", channelId });
-  ctx.createPaneFromTemplate(CHAT_PANE_TEMPLATE_ID, {
-    arg: channelId,
-    values: { [CHAT_REUSE_PANE_VALUE]: "1" },
-  });
+  ctx.createPaneFromTemplate(CHAT_PANE_TEMPLATE_ID, { arg: channelId });
 }
 
 /** The Chat pane's own New DM dialog, in the open Chat pane or a new one. */
 export function openChatNewDm(ctx: OpenChatPane): void {
   requestChatPaneAction({ action: "new-dm" });
-  ctx.createPaneFromTemplate(CHAT_PANE_TEMPLATE_ID, { values: { [CHAT_REUSE_PANE_VALUE]: "1" } });
+  ctx.createPaneFromTemplate(CHAT_PANE_TEMPLATE_ID, { values: { [CHAT_KEEP_CONVERSATION_VALUE]: "1" } });
 }
 
 const BADGES: Record<ChatConversationKind, string> = {
