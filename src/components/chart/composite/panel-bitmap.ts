@@ -36,6 +36,8 @@ export function useCompositePanelBitmap({
   const [desktopBitmap, setDesktopBitmap] = useState<NativeChartBitmap | null>(null);
   const desktopBitmapRef = useRef<NativeChartBitmap | null>(null);
   const desktopRenderedColorsRef = useRef<CompositeChartColors | null>(null);
+  /** A bitmap was drawn that the browser has not painted yet: a new size before that paint draws at once, not after the debounce. */
+  const desktopUnpaintedRef = useRef(false);
   const desktopRenderInputRef = useRef<{
     panel: CompositePanelScene;
     pixelWidth: number;
@@ -84,6 +86,14 @@ export function useCompositePanelBitmap({
       desktopRenderedColorsRef.current = input.colors;
       desktopBitmapRef.current = next;
       setDesktopBitmap(next);
+      // Painted by the end of the frame after next: a chart that fills its
+      // box takes its measured size in the first frame, before that paint.
+      desktopUnpaintedRef.current = true;
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => requestAnimationFrame(() => { desktopUnpaintedRef.current = false; }));
+      } else {
+        desktopUnpaintedRef.current = false;
+      }
     };
 
     if (!isDesktopWeb) {
@@ -115,7 +125,7 @@ export function useCompositePanelBitmap({
       && renderedSize.pixelWidth === pixelWidth
       && renderedSize.pixelHeight === pixelHeight;
 
-    if (!desktopBitmapRef.current || sizeAlreadyRendered || desktopRenderedColorsRef.current !== colors) {
+    if (!desktopBitmapRef.current || sizeAlreadyRendered || desktopRenderedColorsRef.current !== colors || desktopUnpaintedRef.current) {
       cancelRender();
       render();
       return;

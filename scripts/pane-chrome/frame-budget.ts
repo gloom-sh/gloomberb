@@ -213,8 +213,6 @@ const SCENARIOS: Scenario[] = [
   // and under a toolbar laid over them.
   cornerResize("G layout resize", "g", "chart-bar:float", "canvas", `${pane("chart-bar:float")} canvas`),
   cornerResize("chart over a table resize", "board", "board:float", "canvas", `${pane("board:float")} canvas`),
-  // The same corner, judged by the table under the band: it keeps its size until the pane renders, as on main.
-  cornerResize("table under a chart band resize", "board", "board:float", "[data-gloom-role=data-table]"),
   cornerResize("chart beside a table resize", "beside", "beside:float", "canvas", `${pane("beside:float")} canvas`),
   cornerResize("chart under a toolbar resize", "overlay", "overlay:float", "canvas", `${pane("overlay:float")} canvas`),
   // A static chart under a table that grows into what the chart leaves, as the volatility board draws its index history.

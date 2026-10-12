@@ -23,9 +23,9 @@ import { isLiveResizing, onLiveResizeEnd, onLiveResizeStart } from "../../../ui/
  * pane, a whole-cell rounding) leaves the surface on its cells on that axis,
  * as it was, and to `useLiveStretch`'s prediction during a resize. So does a
  * box that scrolls content larger than itself (a column of charts and text),
- * and a sized box that holds a data table (the chart-table kit's band over
- * its table): following the frame through either would lay all of that
- * content out on every frame, a table's rows up to 4 ms a frame.
+ * and a sized box whose data table would be resized with it (the chart-table
+ * kit's band over its table): following the frame through either would lay
+ * all of that content out on every frame, a table's rows up to 4 ms a frame.
  *
  * Nothing here changes a box's size at the moment it is marked: an exact box
  * is already the size CSS gives it, and a filled box only gains the fraction
@@ -183,9 +183,29 @@ function scrolls(pass: Pass, element: HTMLElement): boolean {
   return element.scrollHeight > element.clientHeight + 1 || element.scrollWidth > element.clientWidth + 1;
 }
 
-/** Whether a data table lays out inside `element`. */
-function holdsTable(element: HTMLElement): boolean {
-  return element.querySelector("[data-gloom-role=\"data-table\"]") !== null;
+/**
+ * Whether following the frame through `box` on `axis` would resize a data
+ * table in it: one whose boxes up to `box` all stretch or grow with it. A
+ * table in a box with a size of its own (a table of a fixed width beside a
+ * chart) stays put.
+ */
+function resizesTable(pass: Pass, box: HTMLElement, axis: Axis): boolean {
+  for (const table of box.querySelectorAll<HTMLElement>("[data-gloom-role=\"data-table\"]")) {
+    let element: HTMLElement | null = table;
+    while (element && element !== box) {
+      if (ownSize(element, axis) !== null || !inFlow(pass, element)) break;
+      const style = styleOf(pass, element);
+      const { mode } = placement(pass, element, axis);
+      const parentStyle = element.parentElement ? styleOf(pass, element.parentElement) : null;
+      const align = style.alignSelf === "auto" || style.alignSelf === "normal" ? parentStyle?.alignItems : style.alignSelf;
+      const stretches = mode === "stretch" && (align === "stretch" || align === "normal");
+      const grows = mode === "grow" && px(style.flexGrow) > 0;
+      if (!stretches && !grows) break;
+      element = element.parentElement;
+    }
+    if (element === box) return true;
+  }
+  return false;
 }
 
 /** Whether `element` is the only box laid out in its parent. */
@@ -248,7 +268,7 @@ function restFill(pass: Pass, surface: HTMLElement, axis: Axis): { mode: Mode; b
   // not follow keeps its cells, and the prediction keeps it on the frame.
   const links: Link[] = [];
   if (!trace(pass, parent, axis, links).follows) return null;
-  if (links.some(([element]) => holdsTable(element))) return null;
+  if (links.some(([element]) => resizesTable(pass, element, axis))) return null;
   return { mode: fit.mode, boxes: links.filter(([, , kind]) => kind === "short").map(([element, mode]) => [element, mode]) };
 }
 
