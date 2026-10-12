@@ -158,7 +158,8 @@ test("US Stocks draws sector blocks, and the arrows and Enter reach tiles across
   expect(frame).toContain("+1.2%");
   expect(api).toHaveBeenCalledWith("us-equity", 500);
   const selected = () => JSON.stringify(footer).match(/"text":"([A-Z]{4})","tone":"label"/)?.[1];
-  expect(selected()).toBe("AAAA");
+  // The tile with the biggest move, +2.1%, is the biggest, so the selection starts there.
+  expect(selected()).toBe("CCCC");
 
   for (let step = 0; step < 3 && !["CCCC", "DDDD"].includes(selected() ?? ""); step += 1) {
     await tui.emitKeypress({ name: "right", sequence: "\u001b[C" });
@@ -169,10 +170,37 @@ test("US Stocks draws sector blocks, and the arrows and Enter reach tiles across
   expect(pinned).toEqual([selected()!]);
 });
 
-test("the size quick setting reads square root until the pane saves a choice", () => {
+test("Size by reads the day's move on the market boards and the square root on a watchlist until the pane saves a choice", () => {
   const settings = marketHeatmapPlugin.panes![0]!.settings as (context: any) => { values?: Record<string, unknown> };
-  expect(settings({ settings: {} }).values?.sizeBy).toBe("sqrt-market-cap");
-  expect(settings({ settings: { sizeBy: "market-cap" } }).values?.sizeBy).toBe("market-cap");
+  const sizeBy = (values: Record<string, unknown>) => settings({ settings: values }).values?.sizeBy;
+  expect(sizeBy({})).toBe("day-move");
+  expect(sizeBy({ universe: "us-etf" })).toBe("day-move");
+  expect(sizeBy({ universe: "portfolio" })).toBe("sqrt-market-cap");
+  // A pane that chose keeps its choice, whatever the default became.
+  expect(sizeBy({ sizeBy: "market-cap" })).toBe("market-cap");
+  expect(sizeBy({ sizeBy: "sqrt-market-cap" })).toBe("sqrt-market-cap");
+  expect(sizeBy({ universe: "portfolio", sizeBy: "day-move" })).toBe("day-move");
+});
+
+test("the square-root control turns the size to the square root of market cap and back to the day's move", () => {
+  const pane = marketHeatmapPlugin.panes![0]!;
+  const quick = (settings: Record<string, unknown>) => {
+    const config = createTestPaneConfig(":memory:", { instanceId: pane.id, paneId: pane.id, settings });
+    const resolved = resolveRegistryPaneSettings({
+      config,
+      getConfigState: () => null,
+      getPaneRuntimeState: () => ({}),
+      layout: config.layout,
+      paneDefs: new Map([[pane.id, pane]]),
+      paneOwners: new Map(),
+      resolvePaneTarget: () => pane.id,
+      requestedPaneId: pane.id,
+    });
+    return resolveRegistryPaneQuickSettings(resolved).find((setting) => setting.key === "sizeBy");
+  };
+  expect(quick({ universe: "us-equity" })).toMatchObject({ value: false, nextValue: "sqrt-market-cap" });
+  expect(quick({ universe: "us-equity", sizeBy: "market-cap" })).toMatchObject({ value: false, nextValue: "sqrt-market-cap" });
+  expect(quick({ universe: "us-equity", sizeBy: "sqrt-market-cap" })).toMatchObject({ value: true, nextValue: "day-move" });
 });
 
 /** Renders the portfolio tab on the list the portfolio pane shows, and returns what the pane publishes as its kind. */
@@ -263,6 +291,34 @@ test("the pane publishes the tiles and sectors it drew, and nothing complete wit
   expect(await publishedEvidence("portfolio")).toMatchObject({ complete: false, plottedValueCount: 0, tab: "portfolio", ready: true });
 });
 
+/** The first tile in reading order is the biggest one, and the footer names the selected tile, which starts there. */
+async function biggestTile(settings: Record<string, unknown>, assets: MarketHeatmapAsset[]): Promise<string | undefined> {
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: fridayBoard(assets) });
+  restore = () => api.mockRestore();
+  const pane = await mountHeatmap({ liveStreaming: false, ...settings });
+  return pane.footer().match(/"text":"([A-Z]{4})","tone":"label"/)?.[1];
+}
+
+// A megacap that barely moved, a small name that jumped, and one in between.
+const moversBoard = () => [stock("MEGA", 5_000, 0.1), stock("JUMP", 20, 8.4), stock("MIDS", 600, -1.2)];
+
+test("US Stocks sizes tiles by the day's move until the pane chooses a size", async () => {
+  expect(await biggestTile({}, moversBoard())).toBe("JUMP");
+});
+
+test("a pane that chose market cap or its square root keeps the biggest company the biggest tile", async () => {
+  expect(await biggestTile({ sizeBy: "market-cap" }, moversBoard())).toBe("MEGA");
+  expect(await biggestTile({ sizeBy: "sqrt-market-cap" }, moversBoard())).toBe("MEGA");
+});
+
+test("the evidence says what the tiles are sized by, and a portfolio's tiles are sized by position value", async () => {
+  const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success", data: fridayBoard(moversBoard()) });
+  restore = () => api.mockRestore();
+  expect(await publishedEvidence("us-equity")).toMatchObject({ sizedBy: "day-move" });
+  expect(await publishedEvidence("us-etf")).toMatchObject({ sizedBy: "day-move" });
+  expect(await publishedEvidence("portfolio")).toMatchObject({ sizedBy: "position-value" });
+});
+
 test("the footer dates the session and the snapshot apart from the last check that succeeded, and a failed check keeps both", async () => {
   const api = spyOn(apiClient, "getMarketHeatmap").mockRejectedValueOnce(new Error("down"))
     .mockResolvedValue({ status: "success", data: fridayBoard([stock("AAAA", 400, -0.52), stock("BBBB", 200, 1.1)]) });
@@ -306,7 +362,8 @@ test("Names asks for that many, and the footer counts the board on screen until 
   expect(pane.footer()).toContain("top 500 ·");
 });
 
-test("Colour by moves a streaming tile between its after-hours move and the regular session's, without waiting for a tick", async () => {
+/** AAAA streams an after-hours print, +0.29% from the regular close, over a regular session that fell 0.52%. */
+function streamAfterHoursAaaa() {
   const afterHours: Quote = { symbol: "AAAA", currency: "USD", listingExchangeName: "NASDAQ", marketState: "POST", price: 99.77, change: -0.23,
     changePercent: -0.23, previousClose: 100, regularClose: 99.48, regularCloseSessionDate: "2026-10-09", regularChange: -0.52,
     regularChangePercent: -0.52, changeSessionDate: "2026-10-09", postMarketPrice: 99.77, postMarketChange: 0.29, postMarketChangePercent: 0.2915,
@@ -318,12 +375,17 @@ test("Colour by moves a streaming tile between its after-hours move and the regu
       ? entry
       : IDLE_COORDINATOR_QUOTES.getQuoteEntry()),
   } as never);
+}
+
+test("Colour by moves a streaming tile between its after-hours move and the regular session's, without waiting for a tick", async () => {
+  streamAfterHoursAaaa();
   const api = spyOn(apiClient, "getMarketHeatmap").mockResolvedValue({ status: "success",
     data: fridayBoard([{ ...stock("AAAA", 400, -0.52), price: 99.48 }, stock("BBBB", 200, 1.1)]) });
   restore = () => api.mockRestore();
   const selected = (footer: string) => footer.match(/"text":"AAAA","tone":"label"\},\{"text":"([^"]+)"/)?.[1];
 
-  const pane = await mountHeatmap({});
+  // Sized by market cap, so the tile this is about stays the first, and selected.
+  const pane = await mountHeatmap({ sizeBy: "market-cap" });
   expect(selected(pane.footer())).toBe("+0.29%");
   expect(pane.footer()).toContain('"text":"AH","tone":"muted"');
   expect(tui.frame()).toContain("+0.3%");
@@ -337,4 +399,12 @@ test("Colour by moves a streaming tile between its after-hours move and the regu
   await pane.setSetting("sessionBasis", "active-session");
   expect(selected(pane.footer())).toBe("+0.29%");
   expect(tui.frame()).toContain("+0.3%");
+});
+
+test("a tile sized by the day's move is sized by the move its colour shows, after-hours or regular", async () => {
+  streamAfterHoursAaaa();
+  const board = [{ ...stock("AAAA", 400, -0.52), price: 99.48 }, stock("BBBB", 200, 0.4)];
+  // After hours AAAA moved +0.29%, less than BBBB's regular +0.4%; the regular session's -0.52% outweighs it.
+  expect(await biggestTile({ liveStreaming: true }, board)).toBe("BBBB");
+  expect(await biggestTile({ liveStreaming: true, sessionBasis: "regular-session" }, board)).toBe("AAAA");
 });

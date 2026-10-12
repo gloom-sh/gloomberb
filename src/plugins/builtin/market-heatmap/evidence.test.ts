@@ -12,7 +12,7 @@ const asset = (symbol: string, sector: string | null, changePercent: number | nu
 const tile = (data: HeatmapBoardAsset) => ({ item: { id: data.symbol, data } });
 
 const assets = [asset("AAA", "Tech", 1), asset("BBB", "Tech", -1), asset("CCC", "Energy", null)];
-const board = { tab: "us-equity" as const, tiles: assets.map(tile), assets, grouped: true, loading: false, retained: false };
+const board = { tab: "us-equity" as const, sizedBy: "day-move" as const, tiles: assets.map(tile), assets, grouped: true, loading: false, retained: false };
 
 test("a loaded board counts its tiles and sectors, and is complete only once it settled with moves", () => {
   expect(marketHeatmapEvidence(board)).toMatchObject({ complete: true, plottedValueCount: 3, tiles: 3, sectors: 2, moved: 2 });
@@ -30,6 +30,8 @@ test("evidence that disagrees with itself is not trusted", () => {
   expect(hook.read({ ...evidence, sectors: 4 })).toBeNull();
   expect(hook.read({ ...evidence, moved: 0 })).toBeNull();
   expect(hook.read({ ...evidence, tab: "us-futures" })).toBeNull();
+  expect(hook.read({ ...evidence, sizedBy: "revenue" })).toBeNull();
+  expect(hook.read({ ...evidence, sizedBy: undefined })).toBeNull();
 });
 
 test("a capture of another tab than the one requested is refused, and an unfinished board is unavailable", () => {

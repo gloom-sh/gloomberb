@@ -24,7 +24,7 @@ function columns(universe: MarketHeatmapUniverseId, groupBy: HeatmapGroupBy, fla
       : [{ key: "group", header: "Sector" }]),
     { key: "names", header: "Names", align: "right" },
     { key: "size", header: universe === "us-etf" ? "Net assets" : "Mkt cap", align: "right", format: dollars },
-    ...(flat ? [] : [{ key: "sharePercent", header: "Share", align: "right" as const, format: share }]),
+    ...(flat ? [] : [{ key: "sharePercent", header: "Cap share", align: "right" as const, format: share }]),
     { key: "move", header: universe === "us-etf" ? "Move (asset-wtd)" : "Move (cap-wtd)", align: "right", format: percent },
     { key: "up", header: "Up", align: "right" },
     { key: "down", header: "Down", align: "right" },
@@ -74,7 +74,7 @@ function projectRow(summary: HeatmapGroupSummary, groupBy: HeatmapGroupBy, whole
 
 export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
-  description: "The heat map's sectors or industries: each group's size-weighted day move, how many names rose and fell, and its best and worst name, for the 500 largest US stocks or large US ETFs.",
+  description: "The heat map's sectors or industries: each group's market-cap-weighted day move, how many names rose and fell, and its best and worst name, for the 500 largest US stocks or large US ETFs.",
   argument: { kind: "none" },
   options: [
     {
@@ -101,7 +101,7 @@ export const marketHeatmapHeadless: HeadlessPaneDefinition<"rows"> = {
     dataRequirements: ["Gloom Cloud market heatmap snapshot"],
     limitations: [
       "The snapshot the pane starts from, refreshed about once a minute; the pane's live-streamed colors are not in the report.",
-      "Moves are weighted by market cap (net assets for ETFs), not by the pane's square-root tile area.",
+      "Sizes, shares and the weighted move use market cap (net assets for ETFs), not the pane's tile area, which follows its Size by setting (the day's move by default).",
     ],
   },
   // A board snapshot refreshed on a schedule, not a feed; the pane streams on top of it, the report does not.

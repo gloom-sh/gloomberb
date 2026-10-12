@@ -718,7 +718,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["RRG"],
   },
   HM: {
-    summary: "The largest US stocks and ETFs as a treemap sized by the square root of market cap or assets, or by plain market cap in its settings, and colored by the day's move.",
+    summary: "The largest US stocks and ETFs as a treemap sized by the day's move, or by market cap or its square root (assets for ETFs) in its settings, and colored by the day's move.",
     usage: ["HM"],
     keys: [OPEN],
     data: QUOTES,

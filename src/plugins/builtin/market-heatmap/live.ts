@@ -67,7 +67,8 @@ export function buildHeatmapQuoteTargets(
 /**
  * The tile area follows the live price: market cap scales with it until the
  * next snapshot brings a fresh cap. Boards sized by something else (a
- * position's value) already move with their own data.
+ * position's value) already move with their own data, and a market board sized
+ * by the day's move reads the live move instead (`heatmapSizeWeight`).
  */
 export function liveHeatmapWeight(snapshot: HeatmapBoardAsset, live: HeatmapBoardAsset): number {
   const base = sizeOf(snapshot);

@@ -8,6 +8,7 @@ import {
   type MetricTreemapItem,
 } from "../../../components/metric-treemap";
 import { createDomTestHarness } from "../../../renderers/dom/test-utils";
+import { dayMoveWeight } from "./portfolio";
 
 const dom = createDomTestHarness();
 
@@ -52,11 +53,12 @@ const TAIL: Array<[string, string, number]> = [
 ];
 
 /**
- * US Stocks as the pane lays it out (square root of market cap, sector, then
- * industry): the head above, then 480 names falling from $690B to $21B with
- * one- to five-letter tickers. Deterministic.
+ * US Stocks as the pane lays it out (sector, then industry), sized by the
+ * square root of market cap or by the day's move: the head above, then 480
+ * names falling from $690B to $21B with one- to five-letter tickers, and moves
+ * from a flat session to about 7.5%. Deterministic.
  */
-function usStocksBoard(): Array<MetricTreemapItem<null>> {
+function usStocksBoard(sizedBy: "sqrt-market-cap" | "day-move"): Array<MetricTreemapItem<null>> {
   const names = HEAD.map(([symbol, cap, sector, industry]) => ({ symbol, cap: cap * 1e9, sector, industry }));
   const slots = TAIL.flatMap(([sector, industry, count]) => Array.from({ length: count }, () => [sector, industry] as const));
   const used = new Set(names.map((name) => name.symbol));
@@ -71,21 +73,24 @@ function usStocksBoard(): Array<MetricTreemapItem<null>> {
     used.add(symbol);
     names.push({ symbol, cap: 690e9 * (21 / 690) ** ((rank - HEAD.length) / (499 - HEAD.length)), sector, industry });
   }
-  return names.map((name, rank) => ({
-    id: name.symbol,
-    label: name.symbol,
-    weight: Math.sqrt(name.cap),
-    group: name.sector,
-    subgroup: name.industry,
-    primaryText: formatHeatTileMove(Math.sin(rank * 1.7) * 2.5),
-    data: null,
-  }));
+  return names.map((name, rank) => {
+    const move = Math.sin(rank * 1.7) * 2.5 * (rank % 37 === 0 ? 3 : 1);
+    return {
+      id: name.symbol,
+      label: name.symbol,
+      weight: sizedBy === "day-move" ? dayMoveWeight(move) : Math.sqrt(name.cap),
+      group: name.sector,
+      subgroup: name.industry,
+      primaryText: formatHeatTileMove(move),
+      data: null,
+    };
+  });
 }
 
 // The pane of the report (600 by 234 px) and the default floating pane.
-for (const [columns, rows] of [[75, 13], [110, 35]] as const) {
-  test(`a ${columns}x${rows} desktop pane labels the largest names, and no blank tile is as big as a labelled one`, async () => {
-    const board = usStocksBoard();
+for (const [columns, rows, sizedBy] of [[75, 13, "sqrt-market-cap"], [110, 35, "sqrt-market-cap"], [75, 13, "day-move"], [110, 35, "day-move"]] as const) {
+  test(`a ${columns}x${rows} desktop pane sized by ${sizedBy} labels the largest tiles, and no blank tile is as big as a labelled one`, async () => {
+    const board = usStocksBoard(sizedBy);
     const scene = buildHeatTreemapScene(board, heatTreemapCanvas(columns, rows, { nativePaneChrome: true, cellWidthPx: 8, cellHeightPx: 18 }));
     const container = await dom.render(
       <HeatTreemapSurface scene={scene} items={board} width={columns} height={rows} selectedId={null} onSelect={() => {}} />,
@@ -100,7 +105,12 @@ for (const [columns, rows] of [[75, 13], [110, 35]] as const) {
     }));
     const labelled = new Set(tiles.filter((tile) => tile.labelled).map((tile) => tile.ticker));
 
-    expect(HEAD.slice(0, 10).map(([symbol]) => symbol).filter((symbol) => !labelled.has(symbol))).toEqual([]);
+    // Sized by the day's move no tile towers over the rest, so the small pane promises no named tile a label; the rule below holds in both.
+    const byArea = [...tiles].sort((left, right) => right.width * right.height - left.width * left.height).map((tile) => tile.ticker);
+    const biggest = sizedBy === "sqrt-market-cap"
+      ? HEAD.slice(0, 10).map(([symbol]) => symbol)
+      : columns < 100 ? [] : byArea.slice(0, 10);
+    expect(biggest.filter((symbol) => !labelled.has(symbol))).toEqual([]);
     // As it stands, or for a tall tile turned on its side: the layout's choice of
     // which way a tile stands must not decide whether it is labelled.
     const covers = (big: typeof tiles[number], small: typeof tiles[number]) =>

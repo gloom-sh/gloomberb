@@ -1,13 +1,18 @@
 /**
- * What `gloomberb shot HM` certifies: the tab the heat map drew, how many tiles
- * and sectors are plotted, and whether its snapshot had loaded. The heat map has
+ * What `gloomberb shot HM` certifies: the tab the heat map drew, what its tiles
+ * are sized by, how many tiles and sectors are plotted, and whether its
+ * snapshot had loaded. The heat map has
  * no table rows or labeled values, so this is how a capture counts as data.
  */
 import type { PaneScreenshotEvidenceHook } from "../../../cli/pane-functions/screenshot-evidence";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { isRecord } from "../../../utils/guards";
 import { heatmapMove } from "./model";
-import { heatmapTabId, type HeatmapBoardAsset, type HeatmapTabId } from "./portfolio";
+import { heatmapTabId, type HeatmapBoardAsset, type HeatmapSizeBy, type HeatmapTabId } from "./portfolio";
+
+/** What the tile areas follow: the pane's Size by, or a portfolio's position value, which it does not change. */
+type HeatmapSizedBy = HeatmapSizeBy | "position-value";
+const SIZED_BY: readonly HeatmapSizedBy[] = ["day-move", "market-cap", "sqrt-market-cap", "position-value"];
 
 interface MarketHeatmapEvidence {
   kind: "market-heatmap";
@@ -15,6 +20,7 @@ interface MarketHeatmapEvidence {
   complete: boolean;
   plottedValueCount: number;
   tab: HeatmapTabId;
+  sizedBy: HeatmapSizedBy;
   tiles: number;
   sectors: number;
   /** Tiles colored by a move, not left grey for want of one. */
@@ -23,6 +29,7 @@ interface MarketHeatmapEvidence {
 
 interface HeatmapEvidenceInput {
   tab: HeatmapTabId;
+  sizedBy: HeatmapSizedBy;
   tiles: readonly { item: { id: string; data: Pick<HeatmapBoardAsset, "sector"> } }[];
   /** The assets the tiles are colored by. */
   assets: readonly HeatmapBoardAsset[];
@@ -34,7 +41,7 @@ interface HeatmapEvidenceInput {
   retained: boolean;
 }
 
-export function marketHeatmapEvidence({ tab, tiles, assets, grouped, loading, retained }: HeatmapEvidenceInput): MarketHeatmapEvidence {
+export function marketHeatmapEvidence({ tab, sizedBy, tiles, assets, grouped, loading, retained }: HeatmapEvidenceInput): MarketHeatmapEvidence {
   const drawn = new Set(tiles.map((tile) => tile.item.id));
   const sectors = grouped
     ? new Set(tiles.flatMap((tile) => (tile.item.data.sector ? [tile.item.data.sector] : []))).size
@@ -46,6 +53,7 @@ export function marketHeatmapEvidence({ tab, tiles, assets, grouped, loading, re
     complete: !loading && !retained && moved > 0,
     plottedValueCount: tiles.length,
     tab,
+    sizedBy,
     tiles: tiles.length,
     sectors,
     moved,
@@ -71,6 +79,7 @@ export const marketHeatmapScreenshotEvidence: PaneScreenshotEvidenceHook<MarketH
     if (!isRecord(value) || value.kind !== "market-heatmap" || value.version !== 1 || typeof value.complete !== "boolean"
       || !isCount(value.plottedValueCount) || value.tiles !== value.plottedValueCount
       || value.tab !== heatmapTabId(typeof value.tab === "string" ? value.tab : null)
+      || !SIZED_BY.includes(value.sizedBy as HeatmapSizedBy)
       || !isCount(value.sectors) || value.sectors > value.tiles
       || !isCount(value.moved) || value.moved > value.tiles
       || (value.complete && value.moved === 0)) return null;

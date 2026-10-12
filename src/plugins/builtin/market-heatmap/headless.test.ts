@@ -59,6 +59,16 @@ describe("fn HM report", () => {
       .toBe("Source: Gloom Cloud · Mon 12 Oct 2026 15:41 UTC · delayed · markets open");
   });
 
+  test("sizes, shares and the weighted move stay market cap, whatever the pane's tiles are sized by", async () => {
+    // A megacap that barely moved and a small name that jumped: the map's tiles favour the second, the report does not.
+    const result = await load([asset("MEGA", 900, 0.1, "Tech"), asset("JUMP", 100, 9, "Energy")]);
+    expect(result.columns?.filter((column) => ["size", "sharePercent", "move"].includes(column.key)).map((column) => column.header))
+      .toEqual(["Mkt cap", "Cap share", "Move (cap-wtd)"]);
+    expect(result.rows.map((row) => [row.group, row.size, Math.round(row.sharePercent as number)])).toEqual([["Tech", 900, 90], ["Energy", 100, 10]]);
+    expect(result.rows[0]!.move).toBeCloseTo(0.1, 10);
+    expect(marketHeatmapHeadless.discovery?.limitations?.join(" ")).toContain("not the pane's tile area");
+  });
+
   test("a stale snapshot is incomplete and says so", async () => {
     const result = await load(board(0, 40), true);
     expect(result.complete).toBe(false);
