@@ -99,6 +99,7 @@ export function useCommandBarTickerSearchActions({
       ...tickerSelectionFromSearchResult(candidate.result),
       label: candidate.label,
       instrumentType: candidate.instrumentType,
+      searchAliases: candidate.searchAliases,
       detail,
       badge,
       name,

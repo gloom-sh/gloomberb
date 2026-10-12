@@ -649,6 +649,23 @@ function scoreSearchAlias(intent: SearchQueryIntent, alias: string): number {
   return score;
 }
 
+/**
+ * Whether the query is, letter for letter, one of the codes the server sent an
+ * index with: IBOV and "IBOV Index" for ^BVSP. A code is how that index is
+ * typed (the symbol itself carries a caret nobody types), so the index answers
+ * to it as to an exact symbol. Only an index does: a stock or a fund named by a
+ * code keeps the rank its own symbol gives it.
+ */
+export function answersToIndexCode(
+  item: Pick<TickerSearchRankableItem, "searchAliases" | "instrumentType">,
+  query: string,
+): boolean {
+  const code = (text: string) => text.trim().replace(/\s+/g, " ").toUpperCase();
+  const typed = code(query);
+  return !!typed && normalizeSearchText(item.instrumentType ?? "") === "INDEX"
+    && !!item.searchAliases?.some((alias) => code(alias) === typed);
+}
+
 function scoreSymbolMatchRank(
   intent: SearchQueryIntent,
   item: Pick<TickerSearchRankableItem, "label"> & Partial<TickerSearchRankableItem>,
@@ -656,6 +673,8 @@ function scoreSymbolMatchRank(
   if (normalizeTickerSymbol(item.symbol || item.label) === normalizeTickerSymbol(intent.rawQuery)) return 4;
   if (isQualifiedTickerQuery(intent.rawQuery)) return matchesQualifiedTicker(item, intent.rawQuery) ? 4 : 0;
   if (parsePublicTickerKey(item.symbol || item.label).symbol === normalizeTickerSymbol(intent.rawQuery)) return 4;
+  // Below a real symbol of that name (SPX Technologies), above every partial match (IBOV11).
+  if (answersToIndexCode(item, intent.rawQuery)) return 2;
   if (isCryptoInstrumentType(item.instrumentType)) return 0;
   if (isExplicitMarketSymbol(item.symbol || item.label)) return 0;
   if (!intent.normalizedQuery && !intent.compactQuery) return 0;

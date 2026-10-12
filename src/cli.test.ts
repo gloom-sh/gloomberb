@@ -427,6 +427,22 @@ describe("CLI search helpers", () => {
     });
   });
 
+  test("an index code lists the index first as the primary listing, not behind the funds named for it", async () => {
+    const funds = ["159100", "SPVT11", "HIGH11", "LVOL11", "NSDV11", "NDIV11", "NBOV11", "SPUB11", "IBOVX", "BOVV11", "BOVB11"]
+      .map((symbol) => ({ providerId: "gloom", symbol, name: `${symbol} IBOV ETF`, exchange: "B3", type: "ETF" }));
+    const search = async () => [
+      { providerId: "gloom", symbol: "^BVSP", name: "Ibovespa", exchange: "B3", type: "INDEX", searchAliases: ["IBOV", "IBOV Index"] },
+      { providerId: "gloom", symbol: "IBOV11", name: "IBOV11 Fund", exchange: "B3", type: "Common Stock" },
+      ...funds,
+    ];
+    const candidates = await searchCandidatesForCli({ query: "IBOV", tickers: [], dataProvider: createTestDataProvider({ search }) });
+
+    expect(candidates).toHaveLength(10);
+    expect(candidates[0]).toMatchObject({ label: "^BVSP", category: "Primary Listing" });
+    const headings = buildSearchReport({ query: "IBOV", candidates }).split("\n").filter((line) => /^(Primary Listing|Other Listings|Funds & Derivatives)/.test(line));
+    expect(headings[0]).toContain("Primary Listing");
+  });
+
   test("renders an empty state when no search results match", () => {
     const report = buildSearchReport({
       query: "zzzz",
