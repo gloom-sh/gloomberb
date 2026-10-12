@@ -84,12 +84,16 @@ function policyNextMeeting(row: CentralBankRow): PolicyNextMeeting {
   return { text, kind: null, sourceUrl: null, verifiedAt: null };
 }
 
-/** `next decision 2026-11-05 (https://..., verified 2026-10-12)`, `next LPR fixing ...`, or `next decision not published`. */
+/**
+ * `next decision 2026-11-05, calendar verified 2026-10-12 at https://...`,
+ * `next LPR fixing ...`, or `next decision not published`. The link comes
+ * last and bare, so a narrow terminal wraps it onto a line of its own, whole.
+ */
 export function policyNextMeetingText(row: CentralBankRow): string {
   const meeting = policyNextMeeting(row);
   if (meeting.text === "no policy rate") return meeting.text;
   const event = meeting.kind === "fixing" ? "LPR fixing" : "decision";
-  return meeting.sourceUrl ? `next ${event} ${meeting.text} (${meeting.sourceUrl}, verified ${meeting.verifiedAt})` : `next ${event} ${meeting.text}`;
+  return meeting.sourceUrl ? `next ${event} ${meeting.text}, calendar verified ${meeting.verifiedAt} at ${meeting.sourceUrl}` : `next ${event} ${meeting.text}`;
 }
 
 /**

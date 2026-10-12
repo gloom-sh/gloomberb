@@ -109,7 +109,9 @@ test("at 40 and 60 columns CBR, WIRP, BTMM and fred --list fit, keep every date 
     for (const [name, render] of Object.entries(reports)) {
       const text = await render();
       const lines = text.split("\n");
-      expect({ name, width, wide: lines.filter((line) => visibleLength(line) > width) }).toEqual({ name, width, wide: [] });
+      // A link is never broken: only a line holding a link alone may run past the width (CBR's sources and citations).
+      const loneLink = (line: string) => /^\s*\(?https:\/\/\S+$/.test(line);
+      expect({ name, width, wide: lines.filter((line) => visibleLength(line) > width && !loneLink(line)) }).toEqual({ name, width, wide: [] });
       // A cut date or figure ends in a digit, sign or unit before the ellipsis (`2026-10-…`, `3.8…`).
       expect({ name, width, cut: lines.filter((line) => /[\d%.,:+-]…/.test(line)) }).toEqual({ name, width, cut: [] });
     }

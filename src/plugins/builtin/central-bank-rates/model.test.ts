@@ -181,7 +181,7 @@ describe("citable central bank exports", () => {
     expect(result.metadata).toEqual({ generatedAt: "2026-10-12T10:00:00Z", status: "available", gaps: [], complete: true });
     expect((await load(board(), true)).metadata!.rows).toEqual(board().rows);
     expect(renderHeadlessPaneText(centralBankRatesHeadless, result, { rawArgument: "", argument: null, symbols: [], options: {} }, "CBR", freshness))
-      .toContain("Bank GB · next decision 2026-11-05 (https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates, verified 2026-10-12)");
+      .toContain("Bank GB · next decision 2026-11-05, calendar verified 2026-10-12 at https://www.bankofengland.co.uk/monetary-policy/upcoming-mpc-dates");
   });
 
   test("an older server's null meeting reads as not published, and a field it does not know is dropped, not fatal", async () => {
