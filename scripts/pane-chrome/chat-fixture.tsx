@@ -14,9 +14,10 @@
  * messages the channel starts with (default 90), `latency=<ms>` how long a
  * history page takes (default 400) and `anchoring=off` switches the engine's
  * own scroll anchoring off, as it is in browsers that have none. `chips=1`
- * ends the channel on a Gloom Wire calendar post, a share posted with its
- * picture and a bare share link, with an in-page stand-in for the share
- * service; `shares=held` holds its answers until `releaseShares()`.
+ * ends the channel on a Gloom Wire news post from before the wire dropped the
+ * publisher's address (it still ends in it), a Wire calendar post, a share
+ * posted with its picture and a bare share link, with an in-page stand-in for
+ * the share service; `shares=held` holds its answers until `releaseShares()`.
  */
 import { useState } from "react";
 import { apiClient, type ChatChannel, type ChatMessage, type ChatUserSummary } from "../../src/api-client";
@@ -104,11 +105,21 @@ const count = Number(params.get("count") ?? 90);
 const FIXTURE_SHARES = { posted: "5ea7c0de".repeat(4), bare: "b0a7c0de".repeat(4) };
 const shareLink = (id: string) => `https://term.gloom.sh/api/shares/${id}/open`;
 
+/** An invented news post as the wire wrote it before: headline, source, date, then the publisher's address. */
+const LEGACY_NEWS_TEXT = "Sample Corp expands packaging deal (Example Wire, Jan 8)";
+const LEGACY_NEWS_ADDRESS = "https://news.example.com/story/packaging";
+const LEGACY_NEWS_STORY = "story-sample";
+
 function withChips(messages: ChatMessage[]): ChatMessage[] {
   const at = (offset: number) => messages.length - offset;
   const replace = (offset: number, change: Partial<ChatMessage>) => {
     messages[at(offset)] = { ...messages[at(offset)]!, ...change };
   };
+  replace(4, {
+    user: MEMBERS.gloomwire!,
+    content: `${LEGACY_NEWS_TEXT}\n${LEGACY_NEWS_ADDRESS}`,
+    paneLink: { kind: "news-story", storyId: LEGACY_NEWS_STORY },
+  });
   replace(3, {
     user: MEMBERS.gloomwire!,
     content: "Macro calendar for Thu, Jan 8, high-impact releases (New York time, as of Jan 8)\n08:30 US Example Index m/m: forecast 0.2%, prior 0.1%",

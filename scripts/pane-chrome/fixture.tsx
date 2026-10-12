@@ -116,6 +116,8 @@ declare global {
       attachments: Array<{ paneId: string; visibleText: string | null; args: Readonly<Record<string, string>> }>;
       /** Sizes of the PNG images Copy Screenshot put on the clipboard, in order. */
       clipboardImages: number[];
+      /** Addresses handed to the system browser, in order. */
+      externalOpens: string[];
       /** Times the popped-out window was asked to close. */
       detachedCloses: number;
     };
@@ -1052,6 +1054,7 @@ window.__paneChrome = {
   asks: [],
   attachments: [],
   clipboardImages: [],
+  externalOpens: [],
   detachedCloses: 0,
   capturePane: async (paneId) => `data:image/png;base64,${(await domScreenshot.capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
   captureForAssistant: async (paneId, scale, maxBytes, minWidth) => {
@@ -1080,6 +1083,8 @@ const rendererHost: RendererHost = {
   controlWindow: (action) => { window.__paneChrome.windowControls.push(action); },
   // The system clipboard is not there to read; the check counts what Copy Screenshot sends it.
   copyPngImage: async (pngBase64) => { window.__paneChrome.clipboardImages.push(pngBase64.length); },
+  // There is no desktop process to open a browser; the check reads what it was asked to open.
+  openExternal: async (url) => { window.__paneChrome.externalOpens.push(url); },
 };
 
 const root = document.getElementById("root")!;

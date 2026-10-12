@@ -43,6 +43,7 @@ beforeEach(() => {
     attachChatPaneLinkPanes((paneId) => ({
       "ticker-research": { name: "Research", icon: "D" },
       "econ-calendar": { name: "Economic Calendar", icon: "E" },
+      "news-story": { name: "Story", icon: "A" },
     })[paneId]),
   ];
 });
@@ -75,4 +76,31 @@ test("the terminal draws a share link and a Wire post's link as one-row chips th
   await tui.clickFrameText("DES SAMPL Options");
   await tui.clickFrameText("Economic Calendar");
   expect(opened).toEqual([`share:${SHARE}`, "template:econ-calendar-pane"]);
+});
+
+test("a news post that still ends in the publisher's address draws the story chip only, and Open takes the story without asking", async () => {
+  const news: ChatMessage = {
+    ...makeMessage(2),
+    content: "Sample Corp expands packaging deal (Example Wire, Oct 9)\nhttps://news.example.com/story/packaging",
+    paneLink: { kind: "news-story", storyId: "story-1" },
+  };
+  const controller = createController({ messages: [makeMessage(1), news] });
+  const runtime = createTestPluginRuntime({
+    createPaneFromTemplate: (templateId, options) => { opened.push(`template:${templateId}:${options?.arg}`); },
+  });
+  await tui.mountChat(controller, { width: 72, height: 14, runtime, withFooter: true });
+
+  const frame = await tui.waitForFrameToContain(" A Story");
+  expect(frame).toContain("Sample Corp expands packaging deal (Example Wire, Oct 9)");
+  expect(frame).not.toContain("news.example.com");
+
+  // One target: Open (o) takes the story at once, with no list to choose from.
+  await tui.emitKeypress({ name: "up", sequence: "\u001b[A" });
+  await tui.waitForFrameToContain("[o]pen");
+  await tui.clickFrameText("[o]pen");
+  expect(opened).toEqual(["template:news-story-pane:story-1"]);
+  expect(tui.frame()).not.toContain("news.example.com");
+
+  await tui.clickFrameText("Story");
+  expect(opened).toEqual(["template:news-story-pane:story-1", "template:news-story-pane:story-1"]);
 });

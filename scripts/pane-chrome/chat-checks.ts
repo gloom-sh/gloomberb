@@ -146,6 +146,10 @@ window.__chat = {
       return { link: chip.getAttribute('data-gloom-pane-link'), text: chip.textContent, picture: !!chip.querySelector('img'), x: r.x + r.width / 2, y: r.y + r.height / 2, height: r.height };
     });
   },
+  /** Everything a message row draws, chips and controls included. */
+  rowText(id) {
+    return this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id)?.textContent ?? '';
+  },
   /** The words a message's body draws, without its chips. */
   bodyText(id) {
     const row = this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id);
@@ -292,6 +296,8 @@ interface Chip { link: string; text: string; picture: boolean; x: number; y: num
 /** The invented shares and the last three messages the `chips=1` channel ends on. */
 const SHARES = { posted: "5ea7c0de".repeat(4), bare: "b0a7c0de".repeat(4) };
 const CHIP_ROWS = { wire: "m87", posted: "m88", bare: "m89" };
+/** An invented Wire news post from before the wire dropped the publisher's address; it sits above the three. */
+const LEGACY_NEWS = { row: "m86", story: "story-sample", address: "news.example.com" };
 const chips = (cdp: Cdp, id: string) => evaluate<Chip[]>(cdp, `__chat.chips(${JSON.stringify(id)})`);
 
 async function oneChip(cdp: Cdp, id: string): Promise<Chip> {
@@ -792,6 +798,47 @@ export const chatSteps: ChatStep[] = [
       if (chosen.join() !== CHIP_ROWS.bare) fail("k did not select the newest message", chosen);
       await pressKey(cdp, "o", "KeyO", "o");
       if (!await waitFor(cdp, `window.__chatFake.opened.includes("share:${SHARES.bare}")`, 2_000)) fail("o did not open the selected message's chip", await evaluate(cdp, "window.__chatFake.opened"));
+    },
+  },
+  {
+    name: "chat chips: a news post that still ends in the publisher's address draws no address, and its chip opens the story in Gloom",
+    scenario: "chat&chips=1",
+    async run(cdp) {
+      await ready(cdp);
+      const row = JSON.stringify(LEGACY_NEWS.row);
+      const text = await evaluate<string>(cdp, `__chat.rowText(${row})`);
+      if (!text.includes("Sample Corp expands packaging deal")) fail("the news post lost its headline", text);
+      if (text.includes(LEGACY_NEWS.address) || text.includes("https://")) fail("the news post still draws the publisher's address", text);
+      const chip = await oneChip(cdp, LEGACY_NEWS.row);
+      if (chip.link !== "news-story" || !/Story/.test(chip.text)) fail("the news post's chip does not name the story", chip);
+      await click(cdp, chip);
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("template:news-story-pane:${LEGACY_NEWS.story}")`, 2_000)) {
+        fail("a click on the chip did not open the story in Gloom", await evaluate(cdp, "window.__chatFake.opened"));
+      }
+      const outside = await evaluate<string[]>(cdp, "window.__paneChrome.externalOpens");
+      if (outside.length > 0) fail("a click on the chip opened a page outside Gloom", outside);
+      const chosen = await selected(cdp);
+      if (chosen.length > 0) fail("a click on a chip selected its message", chosen);
+    },
+  },
+  {
+    name: "chat chips: o on that news post opens the story at once, with no publisher address to choose",
+    scenario: "chat&chips=1",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await pressKey(cdp, "Escape", "Escape");
+      // Newest first: the bare share, the posted share, the calendar post, then the news post.
+      for (let step = 0; step < 4; step += 1) await pressKey(cdp, "k", "KeyK", "k");
+      const chosen = await selected(cdp);
+      if (chosen.join() !== LEGACY_NEWS.row) fail("k did not reach the news post", chosen);
+      await pressKey(cdp, "o", "KeyO", "o");
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("template:news-story-pane:${LEGACY_NEWS.story}")`, 2_000)) {
+        fail("o did not open the story: it asked which of several targets instead", await evaluate(cdp, "document.body.innerText.slice(-400)"));
+      }
+      const outside = await evaluate<string[]>(cdp, "window.__paneChrome.externalOpens");
+      if (outside.length > 0) fail("o opened a page outside Gloom", outside);
+      if (await evaluate<boolean>(cdp, `document.body.innerText.includes(${JSON.stringify(LEGACY_NEWS.address)})`)) fail("the publisher's address is still on screen");
     },
   },
 ];

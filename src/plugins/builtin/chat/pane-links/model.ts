@@ -14,7 +14,10 @@ export type ChatMessagePaneLink =
 
 export interface ChatMessagePaneLinks {
   links: ChatMessagePaneLink[];
-  /** The text to draw: the message's own, less the share links its chips stand for. */
+  /**
+   * The text to draw: the message's own, less the share links its chips stand
+   * for and the publisher address an older news post still ends in.
+   */
   content: string;
 }
 
@@ -61,8 +64,21 @@ function withoutLinks(content: string, drop: ReadonlySet<number>): string {
   return kept.join("\n");
 }
 
+/**
+ * Gloom Wire news posts used to end in the publisher's article address, on a
+ * line of their own. A story opens in Gloom now, so for a post whose `paneLink`
+ * names one that line is neither drawn nor offered by Open. Only that last line
+ * goes, and only when it is nothing but one web address; the story is never
+ * read out of the address, and a message with no `paneLink` is left as written.
+ */
+function withoutLegacyArticleLink(content: string): string {
+  const lines = content.trimEnd().split("\n");
+  if (lines.length < 2 || !/^https?:\/\/\S+$/i.test(lines[lines.length - 1]!.trim())) return content;
+  return lines.slice(0, -1).join("\n").trimEnd() || content;
+}
+
 function computePaneLinks(message: Pick<ChatMessage, "content" | "paneLink">): ChatMessagePaneLinks {
-  const content = message.content;
+  const content = message.paneLink?.kind === "news-story" ? withoutLegacyArticleLink(message.content) : message.content;
   const links: ChatMessagePaneLink[] = [];
   const drop = new Set<number>();
   // Cheap guard: the tokenizer only runs on messages that could hold a share link.

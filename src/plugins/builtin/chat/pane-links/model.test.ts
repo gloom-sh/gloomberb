@@ -35,12 +35,43 @@ describe("chatMessagePaneLinks", () => {
 
   test("a Wire post keeps its text whole and gets the chip its field names", () => {
     const content = `Headline (Publisher, Oct 9) $NVDA\n${link(OTHER)}`;
-    const result = chatMessagePaneLinks({ content: "Headline\nhttps://example.com/story", paneLink: { kind: "news-story", storyId: "story-1" } });
-    expect(result).toEqual({
-      links: [{ kind: "wire", link: { kind: "news-story", storyId: "story-1" } }],
-      content: "Headline\nhttps://example.com/story",
+    const calendar = { kind: "economic-calendar", date: "2026-10-09" } as const;
+    expect(chatMessagePaneLinks({ content: "Macro calendar\nhttps://example.com/page", paneLink: calendar })).toEqual({
+      links: [{ kind: "wire", link: calendar }],
+      content: "Macro calendar\nhttps://example.com/page",
     });
-    expect(chatMessagePaneLinks({ content, paneLink: { kind: "economic-calendar", date: "2026-10-09" } }).links.map((entry) => entry.kind))
-      .toEqual(["share", "wire"]);
+    expect(chatMessagePaneLinks({ content, paneLink: calendar }).links.map((entry) => entry.kind)).toEqual(["share", "wire"]);
+  });
+
+  test("a news post that still ends in the publisher's address drops that line and keeps its story chip", () => {
+    const paneLink = { kind: "news-story", storyId: "story-1" } as const;
+    const legacy = "Sample Corp expands packaging deal (Example Wire, Oct 9) $SAMPL $EXMPL";
+    expect(chatMessagePaneLinks({ content: `${legacy}\nhttps://news.example.com/story/packaging?id=1`, paneLink })).toEqual({
+      links: [{ kind: "wire", link: paneLink }],
+      content: legacy,
+    });
+    // Cut off at the message limit, the address is still the last line.
+    expect(chatMessagePaneLinks({ content: `${legacy}\nhttps://news.example.com/story/pack…`, paneLink }).content).toBe(legacy);
+    // The text a post is made of today has no such line and is left as it is.
+    expect(chatMessagePaneLinks({ content: legacy, paneLink }).content).toBe(legacy);
+  });
+
+  test("only a last line that is nothing but an address goes", () => {
+    const paneLink = { kind: "news-story", storyId: "story-1" } as const;
+    for (const content of [
+      "see https://news.example.com/a for the story",
+      "Headline\nhttps://news.example.com/a\nmore words",
+      "Headline\nread it at https://news.example.com/a",
+      "https://news.example.com/a",
+    ]) {
+      expect(chatMessagePaneLinks({ content, paneLink }).content).toBe(content);
+    }
+  });
+
+  test("a message with no story link keeps a trailing address, whatever it looks like", () => {
+    const content = "Sample Corp expands packaging deal (Example Wire, Oct 9) $SAMPL\nhttps://news.example.com/story/packaging";
+    expect(chatMessagePaneLinks({ content })).toEqual({ links: [], content });
+    // Another kind of Wire post is not a news post.
+    expect(chatMessagePaneLinks({ content, paneLink: { kind: "ipo-calendar", date: "2026-10-09" } }).content).toBe(content);
   });
 });
