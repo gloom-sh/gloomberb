@@ -8,6 +8,29 @@ import type { CompositeChartColors, CompositePanelScene } from "./types";
 // live-data paints or depending on a foreground animation frame.
 const DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS = 32;
 
+const pendingResizes = new Set<() => void>();
+let resizeTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+
+/** All plots resized by a layout publish their bitmaps in one task, hence one React batch. */
+function scheduleResize(render: () => void): () => void {
+  pendingResizes.add(render);
+  if (resizeTimer === null) {
+    resizeTimer = globalThis.setTimeout(() => {
+      resizeTimer = null;
+      const renders = [...pendingResizes];
+      pendingResizes.clear();
+      for (const draw of renders) draw();
+    }, DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS);
+  }
+  return () => {
+    pendingResizes.delete(render);
+    if (pendingResizes.size === 0 && resizeTimer !== null) {
+      clearTimeout(resizeTimer);
+      resizeTimer = null;
+    }
+  };
+}
+
 function renderPanelBitmap(
   panel: CompositePanelScene,
   bitmapSize: StaticChartBitmapSize,
@@ -46,7 +69,7 @@ export function useCompositePanelBitmap({
   } | null>(null);
   const desktopRequestedSizeRef = useRef<{ pixelWidth: number; pixelHeight: number } | null>(null);
   const desktopRenderedSizeRef = useRef<{ pixelWidth: number; pixelHeight: number } | null>(null);
-  const desktopRenderTimerRef = useRef<ReturnType<typeof globalThis.setTimeout> | null>(null);
+  const desktopCancelRenderRef = useRef<(() => void) | null>(null);
   const desktopActiveRef = useRef(false);
   const pixelWidth = bitmapSize?.pixelWidth ?? null;
   const pixelHeight = bitmapSize?.pixelHeight ?? null;
@@ -66,9 +89,8 @@ export function useCompositePanelBitmap({
   // browser paints. Only a resize may keep the previous bitmap briefly.
   useLayoutEffect(() => {
     const cancelRender = () => {
-      if (desktopRenderTimerRef.current === null) return;
-      clearTimeout(desktopRenderTimerRef.current);
-      desktopRenderTimerRef.current = null;
+      desktopCancelRenderRef.current?.();
+      desktopCancelRenderRef.current = null;
     };
     const render = () => {
       if (!desktopActiveRef.current) return;
@@ -134,19 +156,17 @@ export function useCompositePanelBitmap({
       return;
     }
 
-    if (!requestedSizeChanged || desktopRenderTimerRef.current !== null) return;
-    desktopRenderTimerRef.current = globalThis.setTimeout(() => {
-      desktopRenderTimerRef.current = null;
+    if (!requestedSizeChanged || desktopCancelRenderRef.current !== null) return;
+    desktopCancelRenderRef.current = scheduleResize(() => {
+      desktopCancelRenderRef.current = null;
       render();
-    }, DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS);
+    });
   }, [colors, isDesktopWeb, panel, pixelHeight, pixelWidth]);
 
   useEffect(() => () => {
     desktopActiveRef.current = false;
-    if (desktopRenderTimerRef.current !== null) {
-      clearTimeout(desktopRenderTimerRef.current);
-      desktopRenderTimerRef.current = null;
-    }
+    desktopCancelRenderRef.current?.();
+    desktopCancelRenderRef.current = null;
   }, []);
 
   if (!bitmapSize) return null;

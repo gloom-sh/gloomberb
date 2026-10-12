@@ -205,7 +205,17 @@ const INVENTED_FEAR_GREED: FearGreedData = {
     previousClose: 58, previousWeek: 41, previousMonth: 35, previousYear: 52,
     history: inventedSeries(90, 50, 22),
   },
-  indicators: [],
+  // The real pane has eight plots, not just the index. Separate bitmap
+  // resize timers can split their updates into extra commits.
+  indicators: Array.from({ length: 7 }, (_, index) => ({
+    definition: {
+      id: `invented-${index}`, title: `Indicator ${index + 1}`, subtitle: "Invented history",
+      primaryKey: "fear_and_greed" as const, primaryLabel: "Invented index", valueFormat: "score" as const,
+    },
+    score: 45 + index * 3, rating: "neutral" as const, updatedAt: new Date(Date.UTC(2026, 2, 6, 21)),
+    points: inventedSeries(180, 45 + index * 3, 12 + index), secondaryPoints: [],
+    latestValue: 45 + index * 3, latestSecondaryValue: null,
+  })),
 };
 
 const PEN_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path d="M2.4 13.6 4 9.9 10.6 3.3a1.6 1.6 0 0 1 2.3 0a1.6 1.6 0 0 1 0 2.3L6.2 12Z" fill="none" stroke="#000" stroke-width="1.5"/></svg>`;

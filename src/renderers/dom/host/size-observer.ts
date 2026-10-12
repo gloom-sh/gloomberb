@@ -1,5 +1,6 @@
 import { flushSync } from "react-dom";
 import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
+import { isLiveResizing } from "../../../ui/live-resize";
 
 /**
  * The element's border box in cells each time the browser lays it out at a new
@@ -17,7 +18,11 @@ export function observeCellSize(element: HTMLElement, listener: (size: { width: 
     const box = entry.borderBoxSize?.[0];
     const width = box ? box.inlineSize : entry.contentRect.width;
     const height = box ? box.blockSize : entry.contentRect.height;
-    flushSync(() => listener({ width: width / WEB_CELL_WIDTH, height: height / WEB_CELL_HEIGHT }));
+    const size = { width: width / WEB_CELL_WIDTH, height: height / WEB_CELL_HEIGHT };
+    // Measured cells only store a pending size during a live resize. Their
+    // next catch-up owns the commit, so there is nothing to flush per plot.
+    if (isLiveResizing()) listener(size);
+    else flushSync(() => listener(size));
   });
   observer.observe(element);
   let observing = true;
