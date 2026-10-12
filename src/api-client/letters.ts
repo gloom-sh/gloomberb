@@ -6,6 +6,13 @@
  */
 export type LetterKind = "shareholder_letter" | "memo" | "commentary" | "annual_report";
 
+/**
+ * What a letter's date is: the date its publisher states, its EDGAR filing
+ * date, or the last change of its document file (for publishers whose pages
+ * give no date), which is not a publication date.
+ */
+export type LetterDateBasis = "published" | "filed" | "file_modified";
+
 export interface LettersParams {
   kind?: LetterKind;
   /** 1 to 200. */
@@ -18,8 +25,9 @@ export interface Letter {
   title: string;
   entity: string;
   kind: LetterKind;
-  /** The publication day, `YYYY-MM-DD`. */
+  /** `YYYY-MM-DD`; `date_basis` says what it is. */
   date: string;
+  date_basis: LetterDateBasis;
   /** The publisher's own page or file. */
   url: string;
 }

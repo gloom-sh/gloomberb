@@ -13,19 +13,24 @@ import {
 import { usePaneRefreshKey } from "../../../../../components/data-table/table-pane";
 import type { Letter } from "../../../../../api-client/letters";
 import { usePluginPaneState } from "../../../../../public/react";
+import { useRemoteUiNode } from "../../../../../remote/semantic-tree";
 import { colors } from "../../../../../theme/colors";
 import { Box, useRendererHost, type ScrollBoxRenderable } from "../../../../../ui";
 import { letterPageLoader } from "./client";
 import {
   ALL_KINDS,
+  BASIS_COLUMN_MIN_WIDTH,
   LETTER_KIND_OPTIONS,
   letterColumns,
+  letterDateBasisLabel,
   letterKindFilter,
   letterKindLabel,
   type LetterColumn,
 } from "./model";
 
 const LETTERS_FOOTER_ID = "news-industry:letters";
+/** What a report or capture of NI LTR says it lists, in place of NI's "published stories". */
+const LETTERS_REPORT_BASIS = "public letters";
 
 /**
  * The Letters code of Topic News: public fund and investor letters as links.
@@ -53,13 +58,22 @@ export function LettersBody({ focused, width, height, codeFilter }: {
   const columns = useMemo(() => letterColumns(width), [width]);
   const open = useCallback((letter: Letter) => { void rendererHost.openExternal(letter.url); }, [rendererHost]);
   usePaneRefreshKey(letters.reload, { focused });
+  // A report or capture of this code lists letters, not news stories.
+  useRemoteUiNode({
+    role: "report-freshness",
+    label: "Letters freshness",
+    getMetadata: () => ({ status: "not-a-feed", basis: LETTERS_REPORT_BASIS }),
+  });
 
   const loading = letters.loading && rows.length === 0;
   const error = letters.error?.message ?? null;
+  // Too narrow for the Date basis column: the footer says what the selected row's date is.
+  const basisInFooter = width < BASIS_COLUMN_MIN_WIDTH && selected ? letterDateBasisLabel(selected).toLowerCase() : null;
   const info = useMemo<PaneFooterSegment[]>(() => [
+    ...(basisInFooter ? [{ id: "date-basis", parts: [{ text: basisInFooter, tone: "muted" as const }] }] : []),
     ...(letters.loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
     ...(letters.moreError ? [{ id: "more-error", parts: [{ text: letters.moreError.message, tone: "warning" as const }] }] : []),
-  ], [letters.loadingMore, letters.moreError]);
+  ], [basisInFooter, letters.loadingMore, letters.moreError]);
   usePaneStatusLinkFooter({
     registrationId: LETTERS_FOOTER_ID,
     focused,
@@ -88,7 +102,10 @@ export function LettersBody({ focused, width, height, codeFilter }: {
   const renderCell = useCallback((letter: Letter, column: LetterColumn): DataTableCell => {
     switch (column.id) {
       case "date":
-        return { text: letter.date, value: letter.date, color: colors.textMuted };
+        // A file's last change is the weaker date: muted, as Distress mutes a first-seen date.
+        return { text: letter.date, value: letter.date, color: letter.date_basis === "file_modified" ? colors.textMuted : colors.text };
+      case "basis":
+        return { text: letterDateBasisLabel(letter), color: colors.textMuted };
       case "entity":
         return { text: letter.entity, color: colors.text };
       case "title":
