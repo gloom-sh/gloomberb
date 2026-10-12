@@ -1,6 +1,9 @@
 import { Box, Text, useContextMenu, useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useState, useEffect, useRef, useCallback, useMemo, useSyncExternalStore } from "react";
 import { PageStackView } from "../../../../components/ui";
+import { ChoiceDialog } from "../../../../components/ui/choice-dialog";
+import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
+import { canReactToMessage, terminalReactionChoices } from "../reactions";
 import { type ScrollBoxRenderable, type TextareaRenderable } from "../../../../ui";
 import { useAppDispatch, useAppSelector } from "../../../../state/app/context";
 import { useInlineTickers } from "../../../../state/hooks/inline-tickers";
@@ -328,6 +331,49 @@ export function ChatContent({
     dispatch({ type: "SET_INPUT_CAPTURED", captured: false });
   }, [dispatch]);
 
+  // Reactions are on offer once the server has shown it takes them: its
+  // message lists carry them on every message.
+  const reactionsEnabled = canSend && messages.some((message) => Array.isArray(message.reactions));
+  const dialog = useOptionalDialog();
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
+  const currentUserIdRef = useRef(user?.id ?? null);
+  currentUserIdRef.current = user?.id ?? null;
+  const toggleReaction = useCallback((messageId: string, emoji: string) => {
+    void controller.toggleChannelReaction(channelIdRef.current, messageId, emoji);
+  }, [controller]);
+  const closeReactionPicker = useCallback(() => setReactionPickerMessageId(null), []);
+  // The desktop opens the picker beside the message's React action; the
+  // terminal asks in a dialog, which also names who reacted with each emoji.
+  const openReactionPicker = useCallback((index: number) => {
+    const message = messagesRef.current[index];
+    if (!message || !canReactToMessage(message)) return;
+    closeProfilePopover();
+    if (nativePaneChrome) {
+      setReactionPickerMessageId(message.id);
+      return;
+    }
+    if (!dialog) return;
+    void dialog.prompt<string>({
+      closeOnClickOutside: true,
+      content: (context: PromptContext<string>) => (
+        <ChoiceDialog
+          {...context}
+          title="React"
+          choices={terminalReactionChoices(message, currentUserIdRef.current)}
+        />
+      ),
+    }).then((emoji) => {
+      if (emoji) toggleReaction(message.id, emoji);
+    }).catch(() => {});
+  }, [closeProfilePopover, dialog, nativePaneChrome, toggleReaction]);
+  useEffect(() => {
+    if (reactionPickerMessageId && !messages.some((message) => message.id === reactionPickerMessageId)) {
+      setReactionPickerMessageId(null);
+    }
+  }, [messages, reactionPickerMessageId]);
+
   useEffect(() => {
     onChannelTitleChange?.(activeChannelTitle);
   }, [activeChannelTitle, onChannelTitleChange]);
@@ -336,6 +382,7 @@ export function ChatContent({
     if (previousEditingChannelIdRef.current === channelId) return;
     previousEditingChannelIdRef.current = channelId;
     setEditingMessage(null);
+    setReactionPickerMessageId(null);
     // A card pinned in one channel does not follow into the next.
     closeProfilePopover();
   }, [channelId, closeProfilePopover]);
@@ -834,6 +881,8 @@ export function ChatContent({
     needsProfileSetup: !!user?.id && ownProfileConfigured === false,
     openProfileSetup,
     authorMessageAction,
+    reactionsEnabled,
+    openReactionPicker,
   });
 
   const chatContentBg = focused && showChannelSidebar && !sidebarFocused
@@ -940,6 +989,11 @@ export function ChatContent({
         onUserContextMenu={onUserContextMenu}
         profileMessageAction={profileMessageAction}
         profileMessageRefusal={profileDirectMessage?.refusal ?? null}
+        reactionsEnabled={reactionsEnabled}
+        toggleReaction={toggleReaction}
+        openReactionPicker={openReactionPicker}
+        reactionPickerMessageId={reactionPickerMessageId}
+        closeReactionPicker={closeReactionPicker}
       />
 
       {stackedNav ? null : newDmDialog}

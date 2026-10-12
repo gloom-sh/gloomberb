@@ -109,6 +109,15 @@ const ICONS: Record<IconName, ReactNode> = {
       <path d="M7 10l3.5-6.5a1.8 1.8 0 0 1 3.3 1.2L13 9.5h5.6a2 2 0 0 1 2 2.4l-1.4 6.5a2 2 0 0 1-2 1.6H7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </g>
   ),
+  // Ask Gloom: a four-point spark, outlined like the header's other glyphs.
+  ask: (
+    <path
+      d="M6 1.6C6.35 4.1 7.9 5.65 10.4 6 7.9 6.35 6.35 7.9 6 10.4 5.65 7.9 4.1 6.35 1.6 6 4.1 5.65 5.65 4.1 6 1.6Z"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinejoin="round"
+    />
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />

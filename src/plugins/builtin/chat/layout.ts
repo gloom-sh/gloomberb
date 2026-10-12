@@ -9,6 +9,7 @@ import {
   type TickerBadgeStatus,
 } from "../../../components/ticker/badge/format";
 import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
+import { terminalReactionRows } from "./reactions";
 
 const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
 const MESSAGE_SELECTION_BOTTOM_INSET = 1;
@@ -277,7 +278,8 @@ export function estimateMessageHeight(
       ? getMessageBodyTokenLines(message.content, contentLineWidth, catalog).length
       : getMessageBodyLines(message, width, catalog).length;
   const reviewNoteHeight = message.attachmentReview ? 1 : 0;
-  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + imageCount + reviewNoteHeight;
+  const reactionRows = message.reactions?.length ? terminalReactionRows(message.reactions, contentLineWidth).length : 0;
+  return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + imageCount + reviewNoteHeight + reactionRows;
 }
 
 export function estimateComposerHeight(text: string, width: number) {

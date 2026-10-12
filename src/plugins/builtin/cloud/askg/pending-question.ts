@@ -1,3 +1,4 @@
+import type { AskGloomPaneAttachment } from "../../../../ask-gloom/pane-request";
 import { createPaneRequestChannel } from "../../shared/pane-request";
 
 /**
@@ -14,3 +15,13 @@ export function askGloomQuestion(question: string): void {
 }
 
 export const subscribeASKGQuestions = questions.subscribe;
+
+/**
+ * Hand-off for a pane asked about from its header, its menu or the pane-ask
+ * key: the pane opens (or focuses) and starts a new conversation with it.
+ * In memory only, for the same reason as a question.
+ */
+const panes = createPaneRequestChannel<AskGloomPaneAttachment>();
+
+export const requestASKGPaneAttachment = panes.request;
+export const subscribeASKGPaneAttachments = panes.subscribe;

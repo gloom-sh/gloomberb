@@ -4,6 +4,7 @@ import {
   normalizeChatDiscordLink,
   normalizeChatMessage,
   normalizeChatMessages,
+  normalizeChatReactions,
   normalizeChatState,
 } from "./normalizers";
 import { CHAT_ATTACHMENTS_FEATURE, type CloudApiSocket } from "./socket";
@@ -14,6 +15,7 @@ import type {
   ChatDiscordLink,
   ChatMessage,
   ChatNotification,
+  ChatReactionsUpdate,
   ChatStateResponse,
 } from "./types";
 import type { CloudApiRequest } from "./request";
@@ -256,6 +258,30 @@ export class CloudChatApi {
       },
     );
     return normalizeChatMessage(message);
+  }
+
+  /**
+   * Sets your reaction with one emoji on a message; setting what is already
+   * there changes nothing. Answers the message's reactions as they stand.
+   */
+  async setReaction(
+    channelId: string,
+    messageId: string,
+    emoji: string,
+    reacted: boolean,
+  ): Promise<ChatReactionsUpdate> {
+    const answer = await this.request<{ reactions?: unknown }>(
+      `/chat/channels/${channelId}/messages/${messageId}/reactions`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ emoji, reacted }),
+      },
+    );
+    return { channelId, messageId, reactions: normalizeChatReactions(answer?.reactions) };
+  }
+
+  subscribeReactions(listener: (update: ChatReactionsUpdate) => void): () => void {
+    return this.options.socket.subscribeChatReactions(listener);
   }
 
   /** Whether this account is tied to a Discord person. Throws a 404 or 501 `ApiRequestError` on a server without Discord sync. */

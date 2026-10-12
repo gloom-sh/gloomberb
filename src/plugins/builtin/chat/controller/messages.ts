@@ -49,10 +49,15 @@ function mergeStoredMessages(channel: ChannelRuntimeState, messages: ChatMessage
   const incoming = new Map<string, ChatMessage>();
   for (const message of channel.messages) merged.set(message.id, message);
   for (const message of messages) {
-    if (!merged.has(message.id)) {
+    const current = merged.get(message.id);
+    if (!current) {
       incoming.set(message.id, message);
     }
-    merged.set(message.id, message);
+    // A live copy (an edit) leaves reactions out; the ones held stay.
+    merged.set(
+      message.id,
+      current?.reactions && message.reactions === undefined ? { ...message, reactions: current.reactions } : message,
+    );
   }
   for (const message of messages) {
     for (const [id, current] of merged) {

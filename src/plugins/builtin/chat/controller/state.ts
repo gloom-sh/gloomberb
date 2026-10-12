@@ -92,6 +92,13 @@ export interface ChannelRuntimeState {
    * never be requested again; one uncursored fetch per session repairs it.
    */
   backfilled: boolean;
+  /**
+   * The account that backfill read the channel as (null signed out). Each
+   * message comes back with that reader's own reactions, so a different
+   * reader (a pane that mounted before the session was restored, a sign-in)
+   * reads the latest page again.
+   */
+  backfilledAs: string | null;
   messages: ChatMessage[];
   pendingMessages: ChatMessage[];
   draft: string;
@@ -129,6 +136,7 @@ export function createEmptyChannelState(): ChannelRuntimeState {
     loadOlderMessagesPromise: null,
     reachedOldestMessage: false,
     backfilled: false,
+    backfilledAs: null,
     messages: [],
     pendingMessages: [],
     draft: "",

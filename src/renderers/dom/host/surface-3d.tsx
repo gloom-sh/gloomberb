@@ -544,9 +544,9 @@ export function WebSurface3D(props: Surface3DHostProps) {
     };
   }, []);
 
-  // Geometry uploads once per scene. A refresh of the same mesh (new quotes on
-  // the same grid) morphs from what is on screen instead of jumping.
-  useEffect(() => {
+  // Upload before paint, including the first frame. A refresh of the same
+  // mesh (new quotes on the same grid) still morphs from what is on screen.
+  useLayoutEffect(() => {
     const r = resources.current;
     if (!r) return;
     const s = state.current;
@@ -567,10 +567,12 @@ export function WebSurface3D(props: Surface3DHostProps) {
       uploadSurfaceGeometry(r, s.shown);
     }
     r.layoutKey = "";
-    schedule();
+    draw();
+    if (s.morph) schedule();
   }, [props.scene, failed]);
 
-  useEffect(() => { schedule(); }, [props.colors, props.reserveRight]);
+  // Palette updates share the DOM commit, not the next animation frame.
+  useLayoutEffect(() => { draw(); }, [props.colors, props.reserveRight]);
 
   // External camera changes (keyboard, reset, restored state) tween in.
   useEffect(() => {

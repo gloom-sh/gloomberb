@@ -205,3 +205,103 @@ describe("modal and fallback phases", () => {
     expect(calls).toEqual(["after", "idle"]);
   });
 });
+
+describe("a held key", () => {
+  const press = (registry: ShortcutRegistry, overrides: Partial<KeyEventLike>, repeats = 0) => {
+    const events = [keyEvent({ ...overrides, repeat: false })];
+    for (let index = 0; index < repeats; index += 1) events.push(keyEvent({ ...overrides, repeat: true }));
+    for (const event of events) registry.dispatch(event);
+    return events;
+  };
+
+  test("runs a command chord once, however long it is held, and a second press runs it again", () => {
+    const registry = createShortcutRegistry();
+    let runs = 0;
+    registerShortcut(registry, (event) => {
+      runs += 1;
+      event.preventDefault();
+      event.stopPropagation();
+    });
+
+    const copyScreenshot = { name: "c", key: "c", meta: true, super: true, shift: true };
+    // 1.5 s at 30 repeats a second.
+    const held = press(registry, copyScreenshot, 45);
+    expect(runs).toBe(1);
+    // The webview still sees the repeats as handled, or it acts on them itself.
+    expect(held.every((event) => event.defaultPrevented && event.propagationStopped)).toBe(true);
+
+    press(registry, copyScreenshot);
+    expect(runs).toBe(2);
+  });
+
+  test("runs Esc, a function key and the menu key once", () => {
+    const registry = createShortcutRegistry();
+    const seen: string[] = [];
+    registerShortcut(registry, (event) => { seen.push(event.name ?? ""); });
+
+    press(registry, { name: "escape", key: "escape" }, 5);
+    press(registry, { name: "f1", key: "f1" }, 5);
+    press(registry, { name: "contextmenu", key: "contextmenu" }, 5);
+
+    expect(seen).toEqual(["escape", "f1", "contextmenu"]);
+  });
+
+  test("keeps moving, scrolling, deleting and typing keys repeating", () => {
+    const registry = createShortcutRegistry();
+    const seen: string[] = [];
+    registerShortcut(registry, (event) => { seen.push(event.name ?? ""); });
+
+    for (const name of ["down", "pagedown", "backspace", "tab", "j", "+", "return", "space"]) {
+      press(registry, { name, key: name }, 2);
+    }
+    // Ctrl+N and Ctrl+P step a list; Ctrl+Left jumps a word.
+    press(registry, { name: "n", key: "n", ctrl: true }, 2);
+    press(registry, { name: "left", key: "left", ctrl: true }, 2);
+
+    expect(seen.length).toBe(10 * 3);
+  });
+
+  test("lets a text field repeat its editing chords but not a command in it", () => {
+    const registry = createShortcutRegistry();
+    const seen: string[] = [];
+    registerShortcut(registry, (event) => { seen.push(event.name ?? ""); }, { allowEditable: true });
+
+    // Delete word held in the command bar.
+    press(registry, { name: "w", key: "w", ctrl: true, targetEditable: true }, 3);
+    // Ctrl+S submits a form from its field: once.
+    press(registry, { name: "s", key: "s", ctrl: true, targetEditable: true }, 3);
+
+    expect(seen.filter((name) => name === "w").length).toBe(4);
+    expect(seen.filter((name) => name === "s").length).toBe(1);
+  });
+
+  test("does not claim a repeat when its press went unused", () => {
+    const registry = createShortcutRegistry();
+    const held = press(registry, { name: "z", key: "z", meta: true, super: true }, 3);
+
+    expect(held.some((event) => event.defaultPrevented)).toBe(false);
+  });
+
+  test("does not queue the repeats it skipped", () => {
+    const registry = createShortcutRegistry();
+    const seen: string[] = [];
+    registerShortcut(registry, (event) => { seen.push(event.name ?? ""); });
+
+    press(registry, { name: "w", key: "w", meta: true, super: true }, 20);
+    const afterRelease = seen.length;
+    registry.dispatch(keyEvent({ name: "x", key: "x" }));
+
+    expect(afterRelease).toBe(1);
+    expect(seen).toEqual(["w", "x"]);
+  });
+
+  test("runs a terminal's presses as they come, since it cannot say which are repeats", () => {
+    const registry = createShortcutRegistry();
+    let runs = 0;
+    registerShortcut(registry, () => { runs += 1; });
+
+    for (let index = 0; index < 5; index += 1) registry.dispatch(keyEvent({ name: "w", key: "w", ctrl: true }));
+
+    expect(runs).toBe(5);
+  });
+});

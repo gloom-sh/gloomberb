@@ -54,7 +54,8 @@ export function resolveShellCursorOcclusionRects({
   });
 }
 
-function readRenderableBounds(renderable: unknown): LayoutBounds | null {
+/** Where a renderable sits on screen, in cells, from whichever coordinates its host reports. */
+export function readRenderableBounds(renderable: unknown): LayoutBounds | null {
   if (!renderable || typeof renderable !== "object") return null;
   const record = renderable as Record<string, unknown>;
   const getRect = record.getBoundingClientRect;

@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { displayWidth } from "../../../../utils/format";
@@ -10,9 +10,13 @@ import type { ChatMessageBaseProps } from "./types";
 
 type ChatMessageActionProps = Pick<ChatMessageBaseProps, "index" | "beginReplyTo" | "beginEditMessage" | "retryMessage"> & {
   state: ChatMessageRenderState;
+  /** The React action, one action wide, where the message takes reactions. */
+  reactAction?: ReactNode;
+  /** The reaction picker is open from this message: its actions stay shown. */
+  reactionPickerOpen?: boolean;
 };
 
-/** Reply and Edit for one message, or Retry for a failed send: after the header, or floated over the first body line of a grouped message. */
+/** Reply, React and Edit for one message, or Retry for a failed send: after the header, or floated over the first body line of a grouped message. */
 export function ChatMessageActions({
   state,
   index,
@@ -20,6 +24,8 @@ export function ChatMessageActions({
   beginReplyTo,
   beginEditMessage,
   retryMessage,
+  reactAction,
+  reactionPickerOpen = false,
 }: ChatMessageActionProps & { floating?: boolean }) {
   const variant = state.isSelected ? "primary" : "secondary";
   if (state.showRetryAction && retryMessage) {
@@ -41,13 +47,16 @@ export function ChatMessageActions({
     );
   }
   if (!state.showReplyAction) return null;
+  const showReact = state.showReactAction && !!reactAction;
+  const actionCount = 1 + (showReact ? 1 : 0) + (state.showEditAction ? 1 : 0);
   return (
     <Box
       {...(floating ? { position: "absolute", top: 0, right: 0 } : {})}
-      width={MESSAGE_ACTION_WIDTH * (state.showEditAction ? 2 : 1)}
+      width={MESSAGE_ACTION_WIDTH * actionCount}
       height={1}
       flexDirection="row"
       data-gloom-role="chat-message-reply-action"
+      data-picker-open={reactionPickerOpen ? "true" : undefined}
     >
       <Button stopPropagation
         label={t("Reply")}
@@ -55,6 +64,7 @@ export function ChatMessageActions({
         variant={variant}
         onPress={() => beginReplyTo(index)}
       />
+      {showReact && reactAction}
       {state.showEditAction && (
         <Button stopPropagation
           label={t("Edit")}

@@ -11,6 +11,7 @@ type ShellPaneKeyOptions = Parameters<typeof useShellPaneManagementShortcuts>[0]
 export function TestShellPaneKeys(options: Partial<ShellPaneKeyOptions> & { focusedPaneId: string }) {
   const none = () => false;
   useShellPaneManagementShortcuts({
+    askAboutFocusedPane: none,
     cancelActiveDrag: () => {},
     closeAllFloatingPanes: none,
     closeFocusedPane: none,

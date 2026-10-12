@@ -12,6 +12,8 @@ import { askgConversationListStore } from "./conversation-store";
 import { resetASKGClientManifestCache } from "./host";
 import type { ASKGToolRow } from "./model";
 import { ASKGPane } from "./pane";
+import { requestASKGPaneAttachment } from "./pending-question";
+import type { AskGloomPaneAttachment } from "../../../../ask-gloom/pane-request";
 import { describeToolRow } from "./tool-display";
 import { ToolTimelineRow } from "./tool-timeline";
 
@@ -356,6 +358,89 @@ describe("ASKGPane keyboard", () => {
     await flush();
     expect(tui.frame()).toContain("> and next week");
     expect(tui.frame()).toContain("What is on this week's economic calendar?");
+  });
+});
+
+/** A pane handed over from its header or menu, on invented data. */
+function askedPane(patch: Partial<AskGloomPaneAttachment> = {}): AskGloomPaneAttachment {
+  return {
+    paneId: "ticker-detail:main",
+    paneType: "ticker-detail",
+    title: "ACME",
+    code: "DES",
+    symbol: "ACME",
+    args: { tab: "Overview" },
+    visibleText: "Last 42.10  Chg +1.20\nMkt cap 3.1B",
+    personal: false,
+    ...patch,
+  };
+}
+
+function sessionLayout(index = 0): { attachedPane?: { shows?: string; contents?: string } } | undefined {
+  return (sessionBodies[index]?.context as { layout?: { attachedPane?: { shows?: string; contents?: string } } } | undefined)?.layout;
+}
+
+describe("ASKGPane asked about a pane", () => {
+  test("a new conversation opens beside the one on screen, with the pane attached and its question ready to edit", async () => {
+    sessionStatus = 503;
+    storedConversations = [conversation("conv-2", "Nvidia margins")];
+    storedTranscripts = { "conv-2": transcript("conv-2", "how are Nvidia margins", "Holding above 70%.") };
+    askgConversationListStore.rememberOpen("conv-2");
+    await renderPane(WIDE_PANE_WIDTH);
+    expect(tui.frame()).toContain("Holding above 70%");
+
+    await act(async () => {
+      requestASKGPaneAttachment(askedPane());
+    });
+    await flush();
+    const frame = tui.frame();
+    expect(frame).not.toContain("Holding above 70%");
+    expect(frame).toContain("DES ACME");
+    expect(frame).toContain("> What does this pane show?");
+    // Nothing was asked yet: the question waits in the field.
+    expect(requests).not.toContain("POST /askg/session");
+    // The conversation it left is still one of the list's, not replaced.
+    expect(askgConversationListStore.getSnapshot().conversations.map((row) => row.id)).toEqual(["conv-2"]);
+
+    await type(" Briefly.");
+    await pressEnter();
+    await flush();
+    expect(tui.frame()).toContain("What does this pane show? Briefly.");
+    const context = sessionBodies[0]?.context as Record<string, unknown> | undefined;
+    expect(context?.paneId).toBe("ticker-detail:main");
+    expect(context?.symbol).toBe("ACME");
+    expect(context?.query).toBe("DES ACME");
+    expect(sessionLayout()?.attachedPane?.shows).toContain("Last 42.10");
+  });
+
+  test("a pane with the user's holdings asks before what it shows goes, and a no keeps it on the device", async () => {
+    sessionStatus = 503;
+    await renderPane(PANE_WIDTH);
+    await act(async () => {
+      requestASKGPaneAttachment(askedPane({
+        paneId: "portfolio-list:main",
+        paneType: "portfolio-list",
+        title: "Example Portfolio",
+        code: "PF",
+        symbol: null,
+        visibleText: "ACME  120 shares  5,052.00",
+        personal: true,
+      }));
+    });
+    await flush();
+    expect(tui.frame()).toContain("Attach what PF Example Portfolio shows?");
+    expect(tui.frame()).toContain("[y] attach");
+
+    // The prompt has the keyboard: n is its answer, not a letter in the field.
+    await tui.emitKeypress({ name: "n" });
+    await flush();
+    expect(tui.frame()).toContain("without what it shows");
+    expect(tui.frame()).toContain("> What does this pane show?");
+
+    await pressEnter();
+    await flush();
+    expect(JSON.stringify(sessionBodies[0]?.context)).not.toContain("120 shares");
+    expect(sessionLayout()?.attachedPane?.contents).toContain("not attached");
   });
 });
 

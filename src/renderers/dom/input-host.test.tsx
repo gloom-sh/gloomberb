@@ -27,7 +27,7 @@ async function mountProbe(onKey?: (event: KeyEventLike) => void): Promise<KeyEve
 
 async function pressKey(
   key: string,
-  options: { target?: unknown; shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean } = {},
+  options: { target?: unknown; shiftKey?: boolean; metaKey?: boolean; ctrlKey?: boolean; repeat?: boolean } = {},
 ): Promise<{ defaultPrevented: boolean }> {
   const event = new testWindow.KeyboardEvent("keydown", {
     key,
@@ -36,6 +36,7 @@ async function pressKey(
     shiftKey: options.shiftKey ?? false,
     metaKey: options.metaKey ?? false,
     ctrlKey: options.ctrlKey ?? false,
+    repeat: options.repeat ?? false,
   });
   const target = (options.target ?? testWindow.document.body) as { dispatchEvent: (event: unknown) => void };
   await act(async () => {
@@ -101,4 +102,34 @@ test("delivers Cmd-digit from an editable field and lets a handler cancel the br
     .toEqual([{ name: "1", meta: true, editable: true }]);
   expect(result.defaultPrevented).toBe(true);
   input.remove();
+});
+
+// A held Cmd+Shift+C sends keydown with `repeat` set about thirty times a second.
+test("runs a held command chord once and keeps its repeats from the browser", async () => {
+  let runs = 0;
+  await mountProbe((event) => {
+    if (event.name !== "c" || !event.meta) return;
+    runs += 1;
+    event.preventDefault();
+  });
+
+  const first = await pressKey("C", { metaKey: true, shiftKey: true });
+  const repeats = [];
+  for (let index = 0; index < 45; index += 1) repeats.push(await pressKey("C", { metaKey: true, shiftKey: true, repeat: true }));
+
+  expect(runs).toBe(1);
+  expect(first.defaultPrevented).toBe(true);
+  expect(repeats.every((repeat) => repeat.defaultPrevented)).toBe(true);
+});
+
+test("keeps repeating the keys that move", async () => {
+  const seen = await mountProbe();
+
+  await pressKey("ArrowDown");
+  await pressKey("ArrowDown", { repeat: true });
+  await pressKey("j", { repeat: true });
+  await pressKey("Escape");
+  await pressKey("Escape", { repeat: true });
+
+  expect(seen.map((event) => event.name)).toEqual(["down", "down", "j", "escape"]);
 });

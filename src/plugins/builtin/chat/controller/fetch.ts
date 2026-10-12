@@ -11,6 +11,8 @@ import {
 interface ChatFetchDeps {
   mergeMessages(channelId: string, messages: ChatMessage[], options?: MergeMessagesOptions): void;
   persistChannelState(channelId: string): void;
+  /** Who is reading, as the request goes out: the signed-in account's id, or null. */
+  readerId?(): string | null;
 }
 
 export async function fetchLatestChannelMessages(
@@ -23,8 +25,10 @@ export async function fetchLatestChannelMessages(
   const countIncrementalUnread = hadMessages && hasIncrementalCursor;
   // The first fetch of a session drops the cursor so anything missed while the
   // socket was connected comes back. Merging is keyed by message id, so
-  // re-reading known messages changes nothing and counts no unread.
-  const backfillGaps = !channel.backfilled;
+  // re-reading known messages changes nothing and counts no unread. A new
+  // reader backfills too: the page carries each reader's own reactions.
+  const readerId = deps.readerId?.() ?? null;
+  const backfillGaps = !channel.backfilled || channel.backfilledAs !== readerId;
 
   try {
     const messages = await apiClient.getMessages(channelId, {
@@ -32,6 +36,7 @@ export async function fetchLatestChannelMessages(
       after: backfillGaps ? undefined : channel.lastCursor ?? undefined,
     });
     channel.backfilled = true;
+    if (backfillGaps) channel.backfilledAs = readerId;
     if ((!hasIncrementalCursor || backfillGaps) && messages.length < MESSAGE_PAGE_SIZE) {
       channel.reachedOldestMessage = true;
     }
@@ -44,6 +49,7 @@ export async function fetchLatestChannelMessages(
   } catch {
     const messages = await apiClient.getMessages(channelId, { limit: MESSAGE_PAGE_SIZE });
     channel.backfilled = true;
+    channel.backfilledAs = readerId;
     if (messages.length < MESSAGE_PAGE_SIZE) {
       channel.reachedOldestMessage = true;
     }

@@ -49,6 +49,33 @@ export interface ChatAttachment {
   url: string;
 }
 
+/** Someone who reacted, as a reaction lists the first few. */
+export interface ChatReactionUser {
+  id: string;
+  username: string | null;
+  displayName: string;
+  accountType?: ChatAccountType | null;
+}
+
+/**
+ * One emoji on a message: how many reacted, whether you did, and the first
+ * few who did, oldest first. `emoji` is the character, or `:name:` for a
+ * custom Discord server emoji.
+ */
+export interface ChatReaction {
+  emoji: string;
+  count: number;
+  me: boolean;
+  users?: ChatReactionUser[];
+}
+
+/** A message's reactions as they stand after a change, from the `chat.reactions` frame or a reaction request. */
+export interface ChatReactionsUpdate {
+  channelId: string;
+  messageId: string;
+  reactions: ChatReaction[];
+}
+
 export interface ChatMessage {
   id: string;
   channelId: string;
@@ -66,6 +93,12 @@ export interface ChatMessage {
   } | null;
   /** Images in display order. A server that predates them leaves this out. */
   attachments?: ChatAttachment[];
+  /**
+   * Emoji reactions in the order they first appeared. Message lists from a
+   * server that knows reactions always carry it; a live copy of a message
+   * (an edit) leaves it out, and the reactions held stay.
+   */
+  reactions?: ChatReaction[];
   /**
    * Only on the author's copy of a public message whose images are still being
    * checked ("pending") or could not be checked ("failed"). Nobody else has the

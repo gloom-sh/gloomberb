@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef } from "react";
 import { isTypingChord, matchesKeyChord, parseKeyChord, type KeyChord } from "../../../../app/keybindings/chord";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
+import { hintMayRepeat } from "../../../../react/key-repeat";
 import { useOptionalAppSelector } from "../../../../state/app/context";
 import type { CombinedPaneFooter } from "./model";
 
@@ -90,6 +91,8 @@ export function PaneFooterKeys({
     if (!press) return;
     event.preventDefault();
     event.stopPropagation();
+    // A held key pressed the hint when it went down; only a movement or zoom key presses it again.
+    if (event.repeat === true && !hintMayRepeat(event)) return;
     press();
   }, { phase: "after", enabled: focused });
   return null;

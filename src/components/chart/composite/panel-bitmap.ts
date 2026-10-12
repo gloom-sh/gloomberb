@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { NativeChartBitmap } from "../native/chart-rasterizer";
 import type { StaticChartBitmapSize } from "./bitmap";
 import { renderCompositePanelBitmap } from "./rasterizer";
@@ -35,6 +35,7 @@ export function useCompositePanelBitmap({
 }): NativeChartBitmap | null {
   const [desktopBitmap, setDesktopBitmap] = useState<NativeChartBitmap | null>(null);
   const desktopBitmapRef = useRef<NativeChartBitmap | null>(null);
+  const desktopRenderedColorsRef = useRef<CompositeChartColors | null>(null);
   const desktopRenderInputRef = useRef<{
     panel: CompositePanelScene;
     pixelWidth: number;
@@ -59,32 +60,30 @@ export function useCompositePanelBitmap({
     return renderPanelBitmap(panel, bitmapSize, colors, true);
   }, [bitmapSize, colors, isDesktopWeb, panel]);
 
-  useEffect(() => {
+  // A newly mounted plot, or a new palette, must have pixels before the
+  // browser paints. Only a resize may keep the previous bitmap briefly.
+  useLayoutEffect(() => {
     const cancelRender = () => {
       if (desktopRenderTimerRef.current === null) return;
       clearTimeout(desktopRenderTimerRef.current);
       desktopRenderTimerRef.current = null;
     };
-    const scheduleRender = (delay: number) => {
-      if (desktopRenderTimerRef.current !== null) return;
-      desktopRenderTimerRef.current = globalThis.setTimeout(() => {
-        desktopRenderTimerRef.current = null;
-        if (!desktopActiveRef.current) return;
-        const input = desktopRenderInputRef.current;
-        if (!input) return;
-        const next = renderPanelBitmap(
-          input.panel,
-          { pixelWidth: input.pixelWidth, pixelHeight: input.pixelHeight },
-          input.colors,
-        );
-        if (!desktopActiveRef.current) return;
-        desktopRenderedSizeRef.current = {
-          pixelWidth: input.pixelWidth,
-          pixelHeight: input.pixelHeight,
-        };
-        desktopBitmapRef.current = next;
-        setDesktopBitmap(next);
-      }, delay);
+    const render = () => {
+      if (!desktopActiveRef.current) return;
+      const input = desktopRenderInputRef.current;
+      if (!input) return;
+      const next = renderPanelBitmap(
+        input.panel,
+        { pixelWidth: input.pixelWidth, pixelHeight: input.pixelHeight },
+        input.colors,
+      );
+      desktopRenderedSizeRef.current = {
+        pixelWidth: input.pixelWidth,
+        pixelHeight: input.pixelHeight,
+      };
+      desktopRenderedColorsRef.current = input.colors;
+      desktopBitmapRef.current = next;
+      setDesktopBitmap(next);
     };
 
     if (!isDesktopWeb) {
@@ -116,14 +115,17 @@ export function useCompositePanelBitmap({
       && renderedSize.pixelWidth === pixelWidth
       && renderedSize.pixelHeight === pixelHeight;
 
-    if (!desktopBitmapRef.current || sizeAlreadyRendered) {
-      if (requestedSizeChanged) cancelRender();
-      scheduleRender(0);
+    if (!desktopBitmapRef.current || sizeAlreadyRendered || desktopRenderedColorsRef.current !== colors) {
+      cancelRender();
+      render();
       return;
     }
 
     if (!requestedSizeChanged || desktopRenderTimerRef.current !== null) return;
-    scheduleRender(DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS);
+    desktopRenderTimerRef.current = globalThis.setTimeout(() => {
+      desktopRenderTimerRef.current = null;
+      render();
+    }, DESKTOP_BITMAP_RESIZE_DEBOUNCE_MS);
   }, [colors, isDesktopWeb, panel, pixelHeight, pixelWidth]);
 
   useEffect(() => () => {
