@@ -201,6 +201,12 @@ export function pluginsMissingHostExports(): string[] {
   return [...missingHostExportFailures].sort();
 }
 
+/**
+ * Link failures of a new entry against files this process kept from the old
+ * commit: an export the old file lacks, or a package that was not there.
+ */
+const STALE_LINK_FAILURE = /Export named '[^']+' not found in module|No matching export in "[^"]+" for import|Cannot find (?:module|package) '/;
+
 /** Bun's wording when an import does not resolve, from a native import. */
 const UNRESOLVED_MODULE = /Cannot find (?:module|package) '([^']+)'/;
 
@@ -314,6 +320,15 @@ export async function loadExternalPlugin(
     // is all the plugin needs: not a crash.
     const unresolved = unresolvedSpecifier(err, message);
     if (unresolved && isLinkedPeerModule(pluginDir, unresolved)) {
+      loaderLog.info(`${directory} loads after a restart: ${message}`);
+      return { ...base, plugin: placeholder, needsRestart: true };
+    }
+    // An update that links against modules this process imported at the old
+    // commit, which Bun keeps until a restart. The row already asks for one,
+    // and the next launch imports everything fresh; a plugin that is really
+    // broken fails there, and is reported there. A host export the running
+    // Gloomberb lacks is a different failure and stays one.
+    if (restart.needsRestart && !findMissingHostExport(message) && STALE_LINK_FAILURE.test(message)) {
       loaderLog.info(`${directory} loads after a restart: ${message}`);
       return { ...base, plugin: placeholder, needsRestart: true };
     }

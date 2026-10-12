@@ -104,6 +104,65 @@ describe("loadExternalPlugin", () => {
 });
 
 /**
+ * An update that adds an export to a file the old version already imported:
+ * Bun keeps the old file, so the new entry cannot link against it. That is
+ * the restart the row already asks for, not a failure to report. Adjacent
+ * did this to every install that updated it in a running session.
+ */
+describe("a plugin updated in a running session to files its cached modules cannot satisfy", () => {
+  afterEach(() => resetCrashReporterForTests());
+
+  function stage() {
+    const dir = pluginAt(SHA, {
+      "index.ts": `import { tab } from "./types";\nexport default { id: "linked-update", name: "Linked", tab };\n`,
+      "types.ts": `export const tab = "old";\n`,
+    });
+    const sent: CrashReportsPayload[] = [];
+    resetCrashReporterForTests();
+    installCrashReporter({
+      surface: "terminal",
+      isEnabled: () => true,
+      getInstallId: () => "0f1e2d3c-4b5a-4968-8776-655443322110",
+      send: async (payload) => { sent.push(payload); },
+    });
+    const update = (files: Record<string, string>) => {
+      for (const [file, content] of Object.entries(files)) writeFileSync(join(dir, file), content);
+      writeFileSync(join(dir, ".git", "HEAD"), `${"1".repeat(40)}\n`);
+    };
+    return { dir, sent, update };
+  }
+
+  test("asks for a restart when the new entry imports an export the cached file lacks", async () => {
+    const { dir, sent, update } = stage();
+    expect((await loadExternalPlugin(dir))?.error).toBeUndefined();
+
+    update({
+      "index.ts": `import { tab, tabs } from "./types";\nexport default { id: "linked-update", name: "Linked", tab, tabs };\n`,
+      "types.ts": `export const tab = "new";\nexport const tabs = ["new"];\n`,
+    });
+    const loaded = await loadExternalPlugin(dir, "cli", { fresh: true });
+    await flushCrashReports({ timeoutMs: 500 });
+
+    expect({ needsRestart: loaded?.needsRestart, error: loaded?.error }).toEqual({ needsRestart: true, error: undefined });
+    expect(sent).toEqual([]);
+  });
+
+  test("still reports an update that throws for another reason", async () => {
+    const { dir, sent, update } = stage();
+    await loadExternalPlugin(dir);
+
+    update({ "index.ts": `throw new Error("broken on purpose");\n` });
+    const loaded = await loadExternalPlugin(dir, "cli", { fresh: true });
+    await flushCrashReports({ timeoutMs: 500 });
+
+    expect(loaded?.error).toContain("broken on purpose");
+    expect(sent.flatMap((payload) => payload.errors.map((error) => error.message))).toEqual([
+      expect.stringContaining("broken on purpose"),
+    ]);
+  });
+});
+
+/**
  * An import of IBKR Gateway that ran before Interactive Brokers was linked
  * fails, and Bun keeps that failure for the rest of the process. Loading the
  * gateway after the sibling arrives needs a restart, not a crash report. A
