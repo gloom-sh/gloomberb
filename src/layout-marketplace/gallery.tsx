@@ -11,7 +11,7 @@ import { useAppDispatch, useAppSelector } from "../state/app/context";
 import { useDialog, useDialogState, type PromptContext } from "../ui/dialog";
 import { useRendererHost, useUiCapabilities } from "../ui";
 import { apiClient, type TeamSummary } from "../api-client";
-import { requestAuthDialog } from "../plugins/builtin/cloud/auth-dialog";
+import { requestAuthDialog } from "../account/auth-dialog";
 import { teamStore } from "../team/store";
 import { usePlanAccess } from "../api-client/plan-access";
 import { getMarketplaceHost } from "../plugins/marketplace/store";

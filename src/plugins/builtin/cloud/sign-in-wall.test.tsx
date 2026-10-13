@@ -12,7 +12,7 @@ import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane"
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { Box } from "../../../ui";
 import { SignInWall } from "./auth-actions";
-import * as authDialog from "./auth-dialog";
+import * as authDialog from "../../../account/auth-dialog";
 
 const tui = createOpenTuiTestHarness({ width: 84, height: 20 });
 const restore: Array<() => void> = [];

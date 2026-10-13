@@ -16,7 +16,7 @@ import { usePluginAppActions } from "../../runtime";
 import { colors } from "../../../theme/colors";
 import { t, tf } from "../../../i18n";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { requestAuthDialog } from "./auth-dialog";
+import { requestAuthDialog } from "../../../account/auth-dialog";
 import type { AccountMode } from "../../../account/auth-model";
 import { recordWallCtaClicked } from "../../../api-client/research-activity";
 import { WallTeaser } from "../shared/wall-teaser";

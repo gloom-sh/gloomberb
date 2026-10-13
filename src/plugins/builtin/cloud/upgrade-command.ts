@@ -3,7 +3,7 @@ import type { GloomPluginContext } from "../../../types/plugin";
 import { requestAccountManagementTab } from "../account-management/navigation";
 import { openCloudUpgradeUrl } from "../shared/cloud-upgrade";
 import { resolvePlanAccess } from "../../../api-client/plan-access";
-import { requestAuthDialog } from "./auth-dialog";
+import { requestAuthDialog } from "../../../account/auth-dialog";
 
 export function registerCloudUpgradeCommand(ctx: GloomPluginContext): void {
   ctx.registerCommand({

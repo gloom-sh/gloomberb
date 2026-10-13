@@ -1,6 +1,6 @@
 import { apiClient } from "../../../../api-client";
 import type { CommandResultDef, GloomPluginContext } from "../../../../types/plugin";
-import { requestAuthDialog } from "../auth-dialog";
+import { requestAuthDialog } from "../../../../account/auth-dialog";
 import {
   canInviteToTeam,
   canManageTeam,

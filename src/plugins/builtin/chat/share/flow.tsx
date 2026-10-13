@@ -2,7 +2,7 @@ import { apiClient } from "../../../../api-client";
 import { pngDataUrl } from "../../../../shares/pane-image";
 import { registerPaneChatSharing } from "../../../../shares/chat";
 import type { GloomPluginContext } from "../../../../types/plugin";
-import { requestAuthDialog } from "../../cloud/auth-dialog";
+import { requestAuthDialog } from "../../../../account/auth-dialog";
 import { MAX_CHAT_IMAGE_BYTES } from "../attachments/model";
 import { LAST_VISITED_CHAT_CHANNEL_KEY } from "../channels";
 import { chatController } from "../controller";

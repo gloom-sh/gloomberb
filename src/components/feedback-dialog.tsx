@@ -19,7 +19,7 @@ import {
 } from "../feedback/types";
 import { t, tf } from "../i18n";
 import { useAppLanguage } from "../i18n/react";
-import { requestAuthDialog } from "../plugins/builtin/cloud/auth-dialog";
+import { requestAuthDialog } from "../account/auth-dialog";
 import { getSharedRegistry } from "../plugins/registry";
 import { useViewport } from "../react/input";
 import { useAppStateRef } from "../state/app/context";

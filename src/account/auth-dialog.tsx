@@ -6,13 +6,13 @@
  * hosted terminal's sign-in gate reuses.
  */
 import { useEffect, useRef, useState } from "react";
-import type { AuthUser } from "../../../api-client";
-import { DialogFrame } from "../../../components/ui/frame";
-import { useAppLanguage } from "../../../i18n/react";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
-import { AuthForm, authFormTitle } from "../../../account/auth-form";
-import type { AccountMode } from "../../../account/auth-model";
-import { CloudVerificationPanel } from "../../../account/verification-panel";
+import type { AuthUser } from "../api-client";
+import { DialogFrame } from "../components/ui/frame";
+import { useAppLanguage } from "../i18n/react";
+import { useDialog, type PromptContext } from "../ui/dialog";
+import { AuthForm, authFormTitle } from "./auth-form";
+import type { AccountMode } from "./auth-model";
+import { CloudVerificationPanel } from "./verification-panel";
 
 function AuthDialog({
   initialMode,

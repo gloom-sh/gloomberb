@@ -7,7 +7,7 @@ import { t } from "../../../i18n";
 import { colors } from "../../../theme/colors";
 import { Box, Text } from "../../../ui";
 import { formatRelativeTime } from "../../../utils/datetime-format";
-import { requestAuthDialog } from "../cloud/auth-dialog";
+import { requestAuthDialog } from "../../../account/auth-dialog";
 
 const STATUS_BADGES: Record<FeedbackStatus, { label: string; tone: "neutral" | "accent" | "positive" }> = {
   received: { label: "Received", tone: "neutral" },
