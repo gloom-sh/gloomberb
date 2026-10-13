@@ -1,13 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
   DetailScrollBody,
+  InlineTickerBadge,
   KeyValueRow,
   Notice,
   PaneStatusBody,
   Prose,
   QueryBar,
-  TickerBadgeList,
   usePagedRows,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
@@ -23,6 +23,7 @@ import {
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { getSharedMarketDataCoordinator, resolveEntryValue } from "../../../market-data/coordinator";
 import { useResolvedEntryValue, useSecFilingContent } from "../../../market-data/hooks";
+import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-tickers";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import {
   useDebouncedPluginPaneState,
@@ -73,6 +74,33 @@ function letterColumns(width: number, issuerView: boolean): LetterColumn[] {
       ...(width >= 52 ? [{ id: "ticker" as const, label: "Ticker", width: 8, align: "left" as const }] : []),
     ]),
   ];
+}
+
+/**
+ * EDGAR lists the filer's tickers, so the symbol is drawn as a badge as it is.
+ * A badge list looks each symbol up first and prints the ones whose lookup
+ * fails (often only a burst of lookups throttled) as plain text, so one
+ * column mixed chips and bare symbols.
+ */
+const LISTED_TICKER: InlineTickerCatalogEntry = { status: "ready", ticker: null, quote: null };
+
+function LetterTickerBadge({ symbol, width, onOpen }: { symbol: string; width: number; onOpen: (symbol: string) => void }) {
+  const [hovered, setHovered] = useState(false);
+  return (
+    <Box flexDirection="row" width={width} height={1} overflow="hidden">
+      <InlineTickerBadge
+        entry={LISTED_TICKER}
+        symbol={symbol}
+        liveQuote={false}
+        hovered={hovered}
+        maxTextWidth={Math.max(1, width - 2)}
+        trailingGap={false}
+        onHoverStart={() => setHovered(true)}
+        onHoverEnd={() => setHovered(false)}
+        onOpen={onOpen}
+      />
+    </Box>
+  );
 }
 
 const formatDate = (date: Date): string =>
@@ -197,7 +225,7 @@ export function CommentLettersPane({ width, height, focused }: PaneProps) {
     return false;
   }, [focusSearch]);
 
-  const renderCell = useCallback((letter: CommentLetter, column: LetterColumn, _index: number, state: { selected: boolean }): DataTableCell => {
+  const renderCell = useCallback((letter: CommentLetter, column: LetterColumn): DataTableCell => {
     switch (column.id) {
       case "filed":
         return { text: formatDate(letter.filingDate), value: letter.filingDate, color: colors.textMuted };
@@ -209,20 +237,14 @@ export function CommentLettersPane({ width, height, focused }: PaneProps) {
         return { text: companyLabel(letter), color: colors.textBright };
       case "ticker": {
         const ticker = letter.tickers[0] ?? "";
-        return {
-          text: ticker,
-          // A badge opens the company's DES on click, like a ticker anywhere else;
-          // the cell does too when the symbol shows as plain text.
-          onMouseDown: ticker ? () => openDescription(ticker) : undefined,
-          content: ticker ? (
-            <TickerBadgeList
-              symbols={[ticker]}
-              width={column.width}
-              liveQuote={false}
-              fallbackColor={state.selected ? colors.selectedText : colors.textBright}
-            />
-          ) : undefined,
-        };
+        // The badge opens the company's DES on click, like a ticker anywhere else; so does the rest of the cell.
+        return ticker
+          ? {
+            text: ticker,
+            onMouseDown: () => openDescription(ticker),
+            content: <LetterTickerBadge symbol={ticker} width={column.width} onOpen={openDescription} />,
+          }
+          : { text: "" };
       }
     }
   }, [colors, openDescription]);
