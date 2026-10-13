@@ -14,14 +14,18 @@ export type TrialStatusTone = "recruiting" | "upcoming" | "running" | "done" | "
 interface StatusInfo {
   /** The registry's wording. */
   label: string;
-  /** The same, short enough for the status column of a narrow pane. */
+  /**
+   * The same in one short word, for a status column too narrow for the
+   * registry's wording. Chosen per status, never cut from the label ("Not yet"
+   * for "Not yet recruiting" reads as unfinished), and no two statuses share one.
+   */
   short: string;
   tone: TrialStatusTone;
 }
 
 /** Every overall status the registry uses, in the order a study lives them. */
 const STATUSES: ReadonlyArray<[code: string, info: StatusInfo]> = [
-  ["NOT_YET_RECRUITING", { label: "Not yet recruiting", short: "Not yet", tone: "upcoming" }],
+  ["NOT_YET_RECRUITING", { label: "Not yet recruiting", short: "Upcoming", tone: "upcoming" }],
   ["RECRUITING", { label: "Recruiting", short: "Recruiting", tone: "recruiting" }],
   ["ENROLLING_BY_INVITATION", { label: "Enrolling by invitation", short: "By invite", tone: "running" }],
   ["ACTIVE_NOT_RECRUITING", { label: "Active, not recruiting", short: "Active", tone: "running" }],
@@ -32,8 +36,8 @@ const STATUSES: ReadonlyArray<[code: string, info: StatusInfo]> = [
   ["UNKNOWN", { label: "Unknown status", short: "Unknown", tone: "unknown" }],
   // Expanded access programs.
   ["AVAILABLE", { label: "Available", short: "Available", tone: "recruiting" }],
-  ["TEMPORARILY_NOT_AVAILABLE", { label: "Temporarily not available", short: "Unavailable", tone: "paused" }],
-  ["NO_LONGER_AVAILABLE", { label: "No longer available", short: "Unavailable", tone: "done" }],
+  ["TEMPORARILY_NOT_AVAILABLE", { label: "Temporarily not available", short: "Paused", tone: "paused" }],
+  ["NO_LONGER_AVAILABLE", { label: "No longer available", short: "Ended", tone: "done" }],
   ["APPROVED_FOR_MARKETING", { label: "Approved for marketing", short: "Approved", tone: "done" }],
   ["WITHHELD", { label: "Withheld", short: "Withheld", tone: "unknown" }],
 ];
@@ -50,6 +54,11 @@ export function trialStatus(code: string): StatusInfo {
   if (known) return known;
   const label = humanize(code) || "Unknown status";
   return { label, short: label, tone: "unknown" };
+}
+
+/** The status as a table cell of this width reads it: the registry's wording when it fits, else the short word. */
+export function trialStatusText(status: StatusInfo, width: number): string {
+  return status.label.length <= width ? status.label : status.short;
 }
 
 /** Theme colours only: a study that recruits reads as go, a stopped one as a warning, a finished one recedes. */
@@ -224,7 +233,7 @@ export type TrialColumn = DataTableColumn & { id: TrialColumnId };
 
 export interface TrialLayout {
   columns: TrialColumn[];
-  /** Status and phase in their short forms. */
+  /** The phase in its short form. */
   compact: boolean;
   /** The ticker column has room for a listing's venue. */
   showVenue: boolean;
