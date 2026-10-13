@@ -45,6 +45,10 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="desktop-button"][data-gloom-variant="plain"]:not(:disabled):hover {
   background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
 }
+/* Quiet quick actions share the text-button wash, including over an active fill. */
+[data-gloom-role="desktop-button"][data-gloom-variant="quiet"]:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent) !important;
+}
 /* A raised button sinks while it is held: its light flips and its shadow goes
    (control-styles.ts, buttonRelief). */
 [data-gloom-raised="true"]:not(:disabled):active {

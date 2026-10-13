@@ -25,6 +25,8 @@ export interface SegmentedControlProps {
   width?: number | "100%";
   wrap?: boolean;
   size?: "default" | "large";
+  /** One filled selection without an enclosing frame. */
+  variant?: "default" | "flat";
 }
 
 export function SegmentedControl({
@@ -38,6 +40,7 @@ export function SegmentedControl({
   width,
   wrap = false,
   size = "default",
+  variant = "default",
 }: SegmentedControlProps) {
   const colors = useThemeColors();
   const ui = useUiHost();
@@ -92,6 +95,7 @@ export function SegmentedControl({
         width={width}
         wrap={wrap}
         size={size}
+        variant={variant}
       />
     );
   }
@@ -110,7 +114,7 @@ export function SegmentedControl({
             key={option.value}
             flexGrow={size === "large" ? 1 : undefined}
             justifyContent="center"
-            backgroundColor={active && option.tone ? colors[option.tone] : active ? (focused ? colors.borderFocused : colors.selected) : colors.panel}
+            backgroundColor={option.disabled ? colors.panel : active && option.tone ? colors[option.tone] : active ? (focused ? colors.borderFocused : colors.selected) : colors.panel}
             onMouseDown={() => {
               if (!option.disabled) onChange?.(option.value);
             }}

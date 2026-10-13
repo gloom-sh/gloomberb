@@ -66,14 +66,14 @@ export function ResearchTradeWorkspace({ width, height, focused, symbol, tabId, 
       <Box visible={tabId !== "broker-trade" && !(visible && !docked && chartTab)} width={split ? width - panelWidth! : width} height={height} flexDirection="column" overflow="hidden" onMouseDown={() => setPanelFocused(false)}>
         <PaneFooterScope active={!visible || !panelFocused}>{children(split ? width - panelWidth! : width, focused && (!visible || !panelFocused))}</PaneFooterScope>
       </Box>
-      {mounted ? <Box visible={visible} onMouseDown={() => setPanelFocused(true)} width={split ? panelWidth! : width} height={height} flexShrink={0} flexDirection="column" paddingLeft={split && !nativePaneChrome ? 1 : 0}
-        style={split && nativePaneChrome ? { borderLeft: `3px solid ${edge}` } : undefined}>
-        {split && !nativePaneChrome ? <Box position="absolute" left={0} top={0} width={1} height={height} backgroundColor={edge} /> : null}
+      {mounted ? <Box visible={visible} onMouseDown={() => setPanelFocused(true)} width={split ? panelWidth! : width} height={height} flexShrink={0} flexDirection="column" paddingLeft={!nativePaneChrome ? 1 : 0}
+        style={nativePaneChrome ? { borderLeft: `3px solid ${edge}` } : undefined}>
+        {!nativePaneChrome ? <Box position="absolute" left={0} top={0} width={1} height={height} backgroundColor={edge} /> : null}
         <PaneFooterScope active={visible && panelFocused}>
           <Box flexDirection="row" paddingX={1} justifyContent="space-between" height={nativePaneChrome ? 1.5 : 1} flexShrink={0}>
             {split ? <Text fg={c.textBright}>{symbol}</Text> : <Box flexGrow={1} />}<Button label="Close trade panel" displayLabel="Close" variant="plain" onPress={close} />
           </Box>
-          <BrokerTradeTab width={split ? panelWidth! - 1 : width} height={height - (nativePaneChrome ? 1.5 : 1)} focused={focused && visible && panelFocused} onCapture={onCapture} docked={split} onClose={close} />
+          <BrokerTradeTab width={split ? panelWidth! - 1 : width - 1} height={height - (nativePaneChrome ? 1.5 : 1)} focused={focused && visible && panelFocused} onCapture={onCapture} docked={split} onClose={close} />
         </PaneFooterScope>
       </Box> : null}
     </Box>

@@ -2,7 +2,7 @@
 
 On wide hosts, a trading panel docks beside the chart inside Research's Chart and Overview tabs. Buy/Sell in the chart header, or `b`/`s` while the chart has focus, opens it. Review, results and Open orders stay inside the panel. Escape from outside a field or review, or Close, restores the full chart. At less than 100 terminal columns or about 900 desktop pixels, the full-screen Trade tab is the fallback; a 90x30 terminal does not squeeze a chart beside the ticket.
 
-The ticket uses the selected broker's quote, account, capabilities, and order preview. Trading must be enabled for the broker profile. When several accounts are available, choose one explicitly. Simulation and LIVE accounts are named in text as well as marked with a badge.
+The ticket uses the selected broker's quote, account, capabilities, and order preview. Trading must be enabled for the broker profile. When several accounts are available, choose one explicitly. SIM and LIVE appear beside the account name and have different whole-panel accent edges.
 
 Open the command bar with **Ctrl+P**. `BUY AAPL 10` or `SELL AAPL 10` opens Research with its trade panel (or the narrow Trade fallback), with the side and quantity filled in. An optional fourth argument supplies a limit price, for example `BUY AAPL 10 150`. The ticket focuses the primary Buy or Sell action; the command does not request a preview or submit an order. Without an explicit price, editable price defaults come from the broker's quote.
 
@@ -10,7 +10,7 @@ For a small terminal, run **Fullscreen Pane** from the command bar to give the f
 
 ## Review and confirmation
 
-1. Choose the account and check its SIMULATION or LIVE badge.
+1. Choose the account and check its SIM or LIVE mode.
 2. Check the broker quote, its age, and any delayed or stale warning.
 3. Enter the side, quantity, type, price, and time in force.
 4. Press the primary **Buy** or **Sell** action to review the exact order and the broker's preview, fees, account impact, and warnings. The side buttons only select a side.
@@ -82,16 +82,16 @@ The footer shows actions relevant to the current screen. Tab and Shift+Tab walk 
 
 Average position cost, working/partially filled orders and the edited limit/stop prices appear as labelled horizontal chart levels for the ticket's ticker. Buy is green and Sell is red in the default theme; draft levels are dashed. Levels outside the visible price range are clipped, and crowded labels yield rather than overlap. These are read-only overlays in Stage 1: use Open orders (`o`), select a row, change its price and review. Drag-to-modify is not implemented.
 
-Results retain the exact submitted preview as a receipt: cost, fees, commission and buying power after are broker-reported preview values, not a post-fill account balance. Missing figures say Not reported. Closing or resizing the panel does not discard a pending submission or an unknown-outcome lock.
+Results retain the exact submitted preview as a receipt. The “Estimates from order preview” section shows saved cost, fees, commission and buying power after, not settled charges or a current account balance. Missing preview figures say Not reported. After a lost placement acknowledgement, Filled and Remaining say Not confirmed. After an uncertain replacement or cancellation, retained quantities are labelled Last known until a matching broker response confirms them. Closing or resizing the panel does not discard a pending submission or an unknown-outcome lock.
 
 ## Accessibility
 
-Buy and Sell, account mode, delayed data, and order status are written as words. Colour adds emphasis but does not carry those meanings alone. The terminal marks the focused field with `>` and a brighter label; focused actions use a selected surface. Desktop fields and controls have visible focus borders.
+Buy and Sell, account mode, delayed data, and order status are written as words. Colour adds emphasis but does not carry those meanings alone. The terminal marks the focused field with `>` and a brighter label; focused actions use a selected surface. Desktop controls retain visible focus rings or selected surfaces; quiet numeric wells use a focus underline.
 
 Desktop inputs have accessible names even when their visible labels sit in a separate column. Side uses a named radio group with selected state. Order type and TIF use named selection buttons; numeric minus/plus buttons name their field. Account selection exposes a named button and a list of account choices, including the account mode. Callout warnings use a status role; negative callouts use an alert role. These semantics support assistive technology, but a DOM audit is not a substitute for testing with a particular browser and screen reader.
 
 The terminal draws a cell grid. It does not expose the desktop DOM roles or a native accessibility tree. Terminal screen-reader behaviour depends on the terminal and assistive software, and cursor movement or screen repainting may interrupt reading. No claim of terminal screen-reader compatibility or accessibility certification is made from a screenshot or keyboard smoke test.
 
-Contrast was measured using the rendered theme colours. White Phosphor has 4.79:1 for muted form-card labels, 9.26:1 for amber callouts, 5.44:1 for red callouts, and 5.77:1 for LIVE badge text. Monokai, the built-in theme described as high contrast, has 5.53:1 for form-card labels, 11.63:1 for amber callouts, 4.63:1 for red callouts, and 4.62:1 for LIVE badge text. Terminal and desktop cards use the same explicit fill, so labels retain these ratios inside focused floating panes. Callouts and badges adjust their text colour to meet the 4.5:1 normal-text target while preserving their semantic border or fill. The measured desktop field-focus borders exceed 3:1 in both themes. These checks do not cover OS forced-colour modes or certify all application chrome.
+Palette checks for the flat panel give label contrast of 4.96:1 in White Phosphor and 5.20:1 in Monokai against the theme background. Callout text remains above 4.5:1. Account-mode text is contrast-adjusted against that background to at least 4.5:1, including Monokai LIVE, without changing its semantic accent edge. Field-focus underlines exceed 3:1 against the well in both themes. These checks do not cover OS forced-colour modes, every surrounding surface, or certify all application chrome.
 
 The keyboard flow is verified at 90 columns by 30 rows with a disposable, synthetic broker profile. It includes command entry, editing, review, deliberate confirmation, result, Orders, replacement review, and cancellation confirmation. The synthetic broker acknowledges cancellation as Pending cancel; this proves the request flow, not completed cancellation. No pointer input is needed for those steps. This verification does not establish that every broker supports every order type or that an order will execute at the displayed quote.

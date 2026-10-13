@@ -84,7 +84,7 @@ export function buttonRelief(
   props: Pick<ButtonProps, "variant" | "active" | "disabled" | "tone">,
   palette: ThemeColors = colors,
 ): ButtonRelief {
-  if (props.variant === "plain" || props.variant === "ghost" || props.disabled) return { boxShadow: "none" };
+  if (props.variant === "plain" || props.variant === "quiet" || props.variant === "ghost" || props.disabled) return { boxShadow: "none" };
   const fill = buttonPalette(props, palette).bg;
   if (props.active) return raisedRelief(fill, SOLID_RELIEF, `0 0 0 1px ${withAlpha(palette.borderFocused, 0.18)}`);
   if (props.variant === "primary" || props.variant === "danger") {
@@ -97,6 +97,11 @@ export function buttonPalette(
   props: Pick<ButtonProps, "variant" | "active" | "disabled" | "tone">,
   palette: ThemeColors = colors,
 ) {
+  if (props.variant === "quiet") return {
+    fg: props.disabled ? palette.textMuted : props.active ? palette.textBright : palette.textDim,
+    bg: props.active ? selectedPanelFill(palette) : "transparent",
+    border: "transparent",
+  };
   if (props.variant === "plain") {
     return {
       fg: props.disabled ? palette.textMuted : props.active ? palette.textBright : palette.textDim,

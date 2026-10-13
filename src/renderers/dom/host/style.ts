@@ -18,6 +18,7 @@ function cellInset(value: unknown, axis: "x" | "y"): CSSProperties["paddingLeft"
 }
 
 export function commonStyle(props: Record<string, unknown>): CSSProperties {
+  const border = props.border;
   const hasFixedInlineSize = props.width != null || props.flexBasis != null;
   const hasFixedBlockSize = props.height != null;
   const gapUnit = props.flexDirection === "row" ? WEB_CELL_WIDTH : WEB_CELL_HEIGHT;
@@ -60,7 +61,11 @@ export function commonStyle(props: Record<string, unknown>): CSSProperties {
     ...(props.columnGap != null ? { columnGap: cellWidth(props.columnGap) as CSSProperties["columnGap"] } : {}),
     ...(props.rowGap != null ? { rowGap: cellHeight(props.rowGap) as CSSProperties["rowGap"] } : {}),
     overflow: props.overflow as CSSProperties["overflow"],
-    border: props.border ? `1px solid ${typeof props.borderColor === "string" ? props.borderColor : "var(--gloom-border)"}` : undefined,
+    // A requested divider or accent is not a frame. Use longhands consistently
+    // so switching between one edge, all edges and no border clears stale sides.
+    borderStyle: props.border ? "solid" : undefined,
+    borderColor: props.border ? typeof props.borderColor === "string" ? props.borderColor : "var(--gloom-border)" : undefined,
+    borderWidth: Array.isArray(border) ? ["top", "right", "bottom", "left"].map(side => border.includes(side) ? "1px" : "0px").join(" ") : border ? "1px" : undefined,
     boxSizing: "border-box",
     minInlineSize: zeroMinInlineSize ? 0 : undefined,
     minBlockSize: zeroMinBlockSize ? 0 : undefined,

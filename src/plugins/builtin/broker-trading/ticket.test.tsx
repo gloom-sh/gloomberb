@@ -31,7 +31,7 @@ async function mount(mode: "simulation" | "live", typed = "", outcome: DemoOrder
     const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
     const [confirmation, setConfirmation] = useState(typed);
     return <BrokerTicketView width={90} height={29} focused model={{ brokerName: demo.adapter.name, symbol: "AAPL", accounts: demo.accounts(), accountId: demo.draft.accountId, draft: snapshot.draft,
-      quote: snapshot.quote?.quote, quoteData: options.fresh ? "realtime" : "delayed", confirmOrders: snapshot.confirmOrders, phase: snapshot.phase, preview: snapshot.review?.preview ?? snapshot.receipt?.preview, warnings: snapshot.review?.warnings ?? [], result: snapshot.result, error: snapshot.error,
+      quote: snapshot.quote?.quote, quoteData: options.fresh ? "realtime" : "delayed", confirmOrders: snapshot.confirmOrders, phase: snapshot.phase, preview: snapshot.review?.preview ?? snapshot.receipt?.preview, warnings: snapshot.review?.warnings ?? [], result: snapshot.result, resultQuantities: snapshot.resultQuantities, error: snapshot.error,
       connected: true, tradingEnabled: options.enabled !== false, typedConfirmation: confirmation, capabilities: demo.adapter.getTradingCapabilities!(demo.instance), synthetic: true, position: 25, initialFocus: options.initialFocus }}
       onAccountChange={() => {}} onEdit={(key, value) => { if (key === "typedConfirmation") setConfirmation(String(value)); else if (key === "confirmOrders") controller.setConfirmOrders(value === true); else controller.setDraft(editTicketDraft(demo.adapter, demo.instance, controller.getSnapshot().draft!, key, value)); }}
       onAction={(action) => {
@@ -69,9 +69,25 @@ test("result retains broker preview values without pre-submit placeholders", asy
   expect(tui.frame()).toContain("$3,365.00");
   expect(tui.frame()).toContain("$0.35");
   expect(tui.frame()).toContain("$21,234.65");
+  expect(tui.frame()).toContain("Estimates from order preview");
   expect(tui.frame()).not.toContain("At review");
   expect(tui.frame()).not.toContain("checked at review");
   expect(f.mutations()).toHaveLength(1);
+});
+
+test.each(["unconfirmed", "last-known", "confirmed"] as const)("UNKNOWN quantities reflect %s provenance rather than fabricated zeroes", async (provenance) => {
+  const demo = createDemoBroker();
+  await tui.render(<BrokerTicketView width={90} height={30} focused model={{
+    brokerName: "Synthetic", symbol: "AAPL", accounts: demo.accounts(), accountId: demo.draft.accountId, draft: demo.draft,
+    phase: "result", result: { ...demo.order(demo.draft), status: "UNKNOWN", filled: 4, remaining: 6 }, resultQuantities: provenance,
+    warnings: [], connected: true, tradingEnabled: true,
+  }} onEdit={() => {}} onAction={() => {}} onAccountChange={() => {}} />);
+  await tui.waitForFrameToContain("Outcome unconfirmed");
+  const frame = tui.frame();
+  expect(frame.split("\n").find(line => line.trim().startsWith("Filled"))).toContain(provenance === "unconfirmed" ? "Not confirmed" : "4");
+  expect(frame.split("\n").find(line => line.trim().startsWith("Remaining"))).toContain(provenance === "unconfirmed" ? "Not confirmed" : "6");
+  expect(frame.includes("Last known quantities")).toBe(provenance === "last-known");
+  expect(frame).not.toContain("New order");
 });
 
 test("review opens on Edit, so a repeated Enter cannot submit the order", async () => {

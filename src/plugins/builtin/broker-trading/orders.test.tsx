@@ -98,6 +98,10 @@ test("docked activity excludes other contracts and distinguishes empty activity 
     {() => <BrokerOrdersView compact contract={demo.draft.contract} focused width={34} height={8} broker={demo.adapter} instance={demo.instance} accounts={demo.accounts()} accountId={demo.draft.accountId} onAccountChange={() => {}} onModify={() => {}} />}
   </TestPaneFrame>);
   await tui.waitForFrameToContain("Working");
+  // OpenTUI treats border:false plus borderColor as a full frame. An empty
+  // edge set must leave room for both two-line rows in a short dock.
+  expect(tui.frame()).toContain("Partial 4/10");
+  expect(tui.frame().split("\n").filter(line => line.includes("Modify") && line.includes("Cancel"))).toHaveLength(2);
   await tui.emitKeypress({ name: "v" });
   await tui.waitForFrameToContain("No recent activity.");
   expect(tui.frame()).not.toContain("999");

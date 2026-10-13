@@ -2,8 +2,9 @@ import { useCallback, useImperativeHandle, useMemo, useRef, useState, type Ref }
 import { Badge, Button, DialogFrame, DisclosureMarker, ListView, type SelectControl } from "../../../components";
 import { listCursorMove } from "../../../components/ui/list-view";
 import { useThemeColors } from "../../../theme/theme-context";
+import { blendForContrast, higherContrast } from "../../../theme/color-utils";
 import type { BrokerTradingMode } from "../../../types/trading";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useDialog, useDialogKeyboard, type PromptContext } from "../../../ui/dialog";
 
 export interface BrokerAccountChoice {
@@ -21,6 +22,7 @@ export interface BrokerAccountPickerProps {
   controlRef?: Ref<SelectControl>;
   active?: boolean;
   width?: number;
+  showMode?: boolean;
 }
 
 function accountMode(mode: BrokerTradingMode | undefined): string {
@@ -62,11 +64,13 @@ function BrokerAccountChoiceDialog({ accounts, value, resolve }: PromptContext<s
 }
 
 /** Keeps native and terminal choices visually identical, including account mode badges. */
-export function BrokerAccountPicker({ accounts, value, onChange, disabled = false, controlRef, active, width }: BrokerAccountPickerProps) {
+export function BrokerAccountPicker({ accounts, value, onChange, disabled = false, controlRef, active, width, showMode = false }: BrokerAccountPickerProps) {
+  const native = useUiCapabilities().nativePaneChrome;
   const dialog = useDialog();
   const colors = useThemeColors();
   const choices = useMemo(() => [...accounts].sort((a, b) => Number(b.tradingMode === "simulation") - Number(a.tradingMode === "simulation")), [accounts]);
   const current = accounts.find((account) => account.value === value);
+  const modeColor = blendForContrast(current?.tradingMode === "simulation" ? colors.positive : colors.negative, colors.bg, higherContrast("#000000", "#ffffff", colors.bg), 4.5);
   const choose = useRef<(next: string | undefined) => void>(() => {});
   choose.current = (next) => { if (!disabled && next && next !== value && accounts.some((account) => account.value === next)) onChange(next); };
   const opened = useRef(false);
@@ -77,9 +81,10 @@ export function BrokerAccountPicker({ accounts, value, onChange, disabled = fals
       .then((next) => choose.current(next)).catch(() => {}).finally(() => { opened.current = false; });
   }, [choices, dialog, disabled, value]);
   useImperativeHandle(controlRef, () => ({ open }), [open]);
-  return <Button label="Choose account" variant="ghost" active={active} disabled={disabled || !choices.length} width={width} onPress={open} stopPropagation>
-    <Box flexDirection="row" gap={1} paddingX={1} flexGrow={1} minWidth={0} alignItems="center">
-      <Text fg={disabled ? colors.textMuted : colors.text} truncate wrapMode="none" flexShrink={1} minWidth={0}>{current?.label ?? "Choose an account"}</Text>
+  return <Button label="Choose account" variant="quiet" flush active={active} disabled={disabled || !choices.length} width={width} onPress={open} stopPropagation>
+    <Box flexDirection="row" gap={1} flexGrow={1} minWidth={0} alignItems="center">
+      <Text fg={disabled ? colors.textMuted : colors.text} truncate wrapMode="none" flexShrink={1} minWidth={0}>{`${active && !native ? "> " : ""}${current?.label ?? "Choose an account"}`}</Text>
+      {showMode && current ? <Text fg={modeColor} attributes={TextAttributes.BOLD}>{current.tradingMode === "simulation" ? "SIM" : accountMode(current.tradingMode)}</Text> : null}
       <DisclosureMarker expanded color={colors.textDim} />
     </Box>
   </Button>;

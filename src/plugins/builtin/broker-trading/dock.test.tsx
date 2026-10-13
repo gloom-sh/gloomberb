@@ -62,7 +62,7 @@ test("Research opens beside either chart surface, falls back at 90 columns, and 
   await tui.waitForFrameToContain("Sell 1 AAPL");
   expect(tui.frame()).toContain("PRICE CONTEXT 106");
   await f.resize(90);
-  await tui.waitForFrameToContain("SIMULATION");
+  await tui.waitForFrameToContain("Order Details");
   expect(tui.frame()).not.toContain("PRICE CONTEXT");
   expect(f.demo.calls.filter((call) => ["previewOrder", "placeOrder"].includes(call.method))).toEqual([]);
 });

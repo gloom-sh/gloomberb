@@ -46,6 +46,8 @@ export interface BrokerTradingSnapshot {
   /** Read-only receipt of the consumed preview. Never authorizes another mutation. */
   receipt?: BrokerOrderReview;
   result?: BrokerOrder;
+  /** Quantity provenance, separate from the broker status. A lost acknowledgement confirms nothing. */
+  resultQuantities?: "confirmed" | "unconfirmed" | "last-known";
   cancelOrder?: BrokerOrder;
   error?: string;
   loadingQuote?: boolean;
@@ -342,9 +344,9 @@ export class BrokerTradingController {
     try {
       const result = gate.order ? await context.adapter.modifyOrder!(context.instance, gate.order.orderId, copy(request)) : await context.adapter.placeOrder!(context.instance, copy(request));
       if (!Number.isSafeInteger(result.orderId) || result.orderId <= 0 || (result.accountId && result.accountId !== request.accountId) || (result.brokerInstanceId && result.brokerInstanceId !== context.instance.id) || result.contract.brokerId !== context.adapter.id) throw new Error("The broker's order acknowledgement could not be verified.");
-      this.publish({ phase: "result", result: copy(result), review: undefined, receipt: review });
+      this.publish({ phase: "result", result: copy(result), resultQuantities: "confirmed", review: undefined, receipt: review });
     } catch {
-      this.publish({ phase: "result", review: undefined, receipt: review, result: this.unknown(request, gate.order), error: uncertainMessage });
+      this.publish({ phase: "result", review: undefined, receipt: review, result: this.unknown(request, gate.order), resultQuantities: gate.order ? "last-known" : "unconfirmed", error: uncertainMessage });
     } finally { this.mutationPending = false; }
   }
 
@@ -394,9 +396,9 @@ export class BrokerTradingController {
     this.publish({ phase: "cancelling", error: undefined });
     try {
       await context.adapter.cancelOrder(context.instance, order.orderId);
-      this.publish({ phase: "result", cancelOrder: undefined, result: { ...copy(order), status: "PENDING_CANCEL", updatedAt: this.now() } });
+      this.publish({ phase: "result", cancelOrder: undefined, resultQuantities: "last-known", result: { ...copy(order), status: "PENDING_CANCEL", updatedAt: this.now() } });
     } catch {
-      this.publish({ phase: "result", cancelOrder: undefined, result: { ...copy(order), status: "UNKNOWN", updatedAt: this.now() }, error: uncertainMessage });
+      this.publish({ phase: "result", cancelOrder: undefined, resultQuantities: "last-known", result: { ...copy(order), status: "UNKNOWN", updatedAt: this.now() }, error: uncertainMessage });
     } finally { this.mutationPending = false; }
   }
 
@@ -417,7 +419,7 @@ export class BrokerTradingController {
       : await context.adapter.listOpenOrders?.(context.instance) ?? [];
     if (this.disposed || fingerprint !== this.key() || this.snapshot.result !== result) return;
     const current = orders.find((order) => order.accountId === result.accountId && order.contract.symbol === result.contract.symbol && (result.brokerOrderId ? order.brokerOrderId === result.brokerOrderId : result.orderId !== 0 && order.orderId === result.orderId));
-    if (current) this.publish({ result: copy(current), error: current.status === "UNKNOWN" ? uncertainMessage : undefined });
+    if (current) this.publish({ result: copy(current), resultQuantities: "confirmed", error: current.status === "UNKNOWN" ? uncertainMessage : undefined });
     // Absence from open orders does not prove a fill, rejection or cancellation.
   }
 

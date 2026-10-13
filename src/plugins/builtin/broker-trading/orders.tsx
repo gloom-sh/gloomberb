@@ -8,7 +8,7 @@ import { colors } from "../../../theme/colors";
 import type { BrokerAdapter } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerAccount, BrokerExecution, BrokerOrder, BrokerOrderType } from "../../../types/trading";
-import { Box, ScrollBox, Text, TextAttributes } from "../../../ui";
+import { Box, ScrollBox, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useDialog, useDialogState } from "../../../ui/dialog";
 import { formatNumber } from "../../../utils/format";
 import { BrokerTradingController, type BrokerTradingContext } from "./controller";
@@ -101,6 +101,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
   const [keepOrder, setKeepOrder] = useState(false);
   const [inlineCancel, setInlineCancel] = useState(false);
   const [, connectionChanged] = useReducer((value: number) => value + 1, 0);
+  const native = useUiCapabilities().nativePaneChrome;
   const dialog = useDialog();
   const dialogOpen = useDialogState((state) => state.isOpen);
   const accountControl = useRef<SelectControl>(null);
@@ -265,15 +266,15 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
   const summaries = snapshot?.executionKind === "order-summaries";
   const executions = (snapshot?.executions ?? []).filter((execution) => !compact || !contract || ticketOrderMatches(execution, contract, instance.id, accountId));
 
-  if (compact || inlineCancel && trading.phase === "cancel-review") return <Box width={width} height={height} flexDirection="column" paddingX={1} border={["top"]} borderColor={colors.border} overflow="hidden">
-    <Box flexDirection="row" justifyContent="space-between"><SectionHeading title={view === "open" ? `Open orders (${rows.length})` : summaries ? "Order summaries" : "Activity"} /><Button label={view === "open" ? "Activity" : "Open orders"} variant="plain" disabled={busy} onPress={() => setView(view === "open" ? "activity" : "open")} /></Box>
-    <Box visible={focused && !busy} height={1}><BrokerAccountPicker accounts={accounts.map((item) => ({ value: item.accountId, label: item.name, tradingMode: item.tradingMode }))} value={accountId} onChange={onAccountChange} controlRef={accountControl} width={width - 4} /></Box>
-    {trading.phase === "cancel-review" ? <Box flexDirection="column" gap={0.5}>
+  if (compact || inlineCancel && trading.phase === "cancel-review") return <Box width={width} height={height} flexDirection="column" border={["top"]} borderColor={colors.border} overflow="hidden">
+    <Box flexDirection="row" paddingX={1} justifyContent="space-between"><SectionHeading title={view === "open" ? `Open orders (${rows.length})` : summaries ? "Order summaries" : "Activity"} /><Button label={view === "open" ? "Activity" : "Open orders"} variant="plain" disabled={busy} onPress={() => setView(view === "open" ? "activity" : "open")} /></Box>
+    <Box visible={focused && !busy} paddingX={1} height={1}><BrokerAccountPicker accounts={accounts.map((item) => ({ value: item.accountId, label: item.name, tradingMode: item.tradingMode }))} value={accountId} onChange={onAccountChange} controlRef={accountControl} width={width - 4} /></Box>
+    {trading.phase === "cancel-review" ? <Box flexDirection="column" paddingX={1} gap={0.5}>
       <Text fg={colors.textBright}>Cancel {trading.cancelOrder?.action} {trading.cancelOrder?.quantity} {trading.cancelOrder?.contract.symbol}?</Text>
       <Text fg={colors.textDim} wrapText>The order can still fill before cancellation is confirmed.</Text>
       <Box flexDirection="row" gap={1}>
-        <Button label="Cancel order" variant="danger" active={!keepOrder} onPress={() => { void confirmInline(true); }} />
-        <Button label="Keep order" active={keepOrder} onPress={() => { void confirmInline(false); }} />
+        <Button label="Cancel order" variant="primary" tone="negative" active={!keepOrder} onPress={() => { void confirmInline(true); }} />
+        <Button label="Keep order" variant="quiet" active={keepOrder} onPress={() => { void confirmInline(false); }} />
       </Box>
     </Box> : <ScrollBox flexGrow={1} scrollY>
       {status ? <Notice tone="warning">{status}</Notice> : null}
@@ -282,8 +283,9 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
         const key = brokerOrderKey(order), picked = selected === order;
         const allowed = broker.getTradingCapabilities?.(instance, order.contract);
         const disabled = !canRead || busy || !allowed?.enabled || !canChangeBrokerOrder(order);
-        return <Box key={key} flexDirection="column" marginBottom={0.4}>
-          <Button label={`${order.action} ${quantity(order.quantity)} ${order.contract.symbol}`} width={width - 4} active={focused && picked} variant="secondary" onPress={() => { selectedKeyRef.current = key; setSelectedKey(key); setPriceEdit(undefined); }}>
+        return <Box key={key} position="relative" flexDirection="column" paddingX={1} paddingY={native ? 0.2 : 0} border={native ? ["bottom"] : []} borderColor={colors.border} backgroundColor={picked ? colors.panel : undefined}>
+          {picked ? <Box position="absolute" left={0} top={0} width={1} height="100%" backgroundColor={focused ? colors.borderFocused : colors.border} style={native ? { width: 2 } : undefined} /> : null}
+          <Button label={`${order.action} ${quantity(order.quantity)} ${order.contract.symbol}`} width={width - 4} active={focused && picked} variant="quiet" flush onPress={() => { selectedKeyRef.current = key; setSelectedKey(key); setPriceEdit(undefined); }}>
             <Box flexDirection="row" justifyContent="space-between" width="100%"><Text fg={order.action === "BUY" ? colors.positive : colors.negative}>{`${order.action} ${quantity(order.quantity)}`}</Text><Text fg={colors.text}>{priceEdit?.key === key ? `Edit ${priceEdit.value}` : price(order.limitPrice ?? order.stopPrice)}</Text></Box>
           </Button>
           <Box flexDirection="row" justifyContent="space-between" alignItems="center">
@@ -291,7 +293,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
             <Box flexDirection="row" gap={1}><Button label="Modify" compact variant="plain" disabled={disabled || !broker.modifyOrder || !allowed?.modify} onPress={() => modifyOrder(order)} /><Button label="Cancel" compact variant="plain" disabled={disabled || !broker.cancelOrder || !allowed?.cancel} onPress={() => { void cancelOrder(order); }} /></Box>
           </Box>
         </Box>;
-      }) : executions.map((execution) => <Text key={execution.execId}>{`${execution.side} ${quantity(execution.shares)} @ ${price(execution.price)}`}</Text>)}
+      }) : executions.map((execution) => <Box key={execution.execId} paddingX={1} border={["bottom"]} borderColor={colors.border}><Text>{`${execution.side} ${quantity(execution.shares)} @ ${price(execution.price)}`}</Text></Box>)}
       {!resource.loading && (view === "open" ? !rows.length : !executions.length) ? <EmptyState title={view === "open" ? "No open orders for this ticker." : "No recent activity."} /> : null}
     </ScrollBox>}
   </Box>;

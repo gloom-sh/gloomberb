@@ -303,6 +303,7 @@ export function WebTextField({
   const renderer = useRendererHost();
   const { nativeContextMenu } = useUiCapabilities();
   const plain = variant === "plain";
+  const well = variant === "well";
   const comfortable = size === "comfortable";
 
   return (
@@ -338,9 +339,9 @@ export function WebTextField({
         data-gloom-role="desktop-text-field"
         style={{
           height: comfortable ? COMFORTABLE_FIELD_HEIGHT : undefined,
-          border: plain ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
-          borderRadius: plain ? 0 : CONTROL_RADIUS,
-          boxShadow: plain ? undefined : controlShadow(focused, colors),
+          border: plain || well ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
+          borderRadius: plain ? 0 : well ? 3 : CONTROL_RADIUS,
+          boxShadow: well ? focused ? `inset 0 -2px ${colors.borderFocused}` : undefined : plain ? undefined : controlShadow(focused, colors),
           overflow: "hidden",
         }}
       >
@@ -483,6 +484,7 @@ export function WebSegmentedControl({
   width,
   wrap = false,
   size = "default",
+  variant = "default",
 }: SegmentedControlProps) {
   const colors = useThemeColors();
   const enabled = options.filter((option) => !option.disabled);
@@ -506,9 +508,10 @@ export function WebSegmentedControl({
       role="radiogroup"
       aria-label={accessibleLabel}
       style={{
-        border: `1px solid ${focused ? colors.borderFocused : panelBorder(colors)}`,
+        border: variant === "flat" ? "none" : `1px solid ${focused ? colors.borderFocused : panelBorder(colors)}`,
         borderRadius: CONTROL_RADIUS,
-        padding: 1,
+        boxShadow: variant === "flat" && focused ? `0 0 0 2px ${colors.borderFocused}` : undefined,
+        padding: variant === "flat" ? 0 : 1,
       }}
     >
       {options.map((option) => {
@@ -520,7 +523,7 @@ export function WebSegmentedControl({
             alignItems="center"
             justifyContent="center"
             flexGrow={size === "large" ? 1 : undefined}
-            backgroundColor={active && option.tone ? colors[option.tone] : active ? colors.selected : "transparent"}
+            backgroundColor={option.disabled ? colors.panel : active && option.tone ? colors[option.tone] : active ? colors.selected : "transparent"}
             onMouseDown={() => {
               if (!option.disabled) onChange?.(option.value);
             }}

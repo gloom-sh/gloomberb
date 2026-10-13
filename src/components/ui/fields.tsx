@@ -63,7 +63,8 @@ export interface TextFieldProps {
   type?: "text" | "password" | "date" | "email";
   /** DOM autofill hint, e.g. "email" or "current-password"; terminal hosts ignore it. */
   autoComplete?: string;
-  variant?: "default" | "plain";
+  /** Well is a quiet filled field with an underline only while focused. */
+  variant?: "default" | "plain" | "well";
   /**
    * `comfortable` is the form-page size on the DOM renderer: a taller field
    * with a tight label gap, for dialogs a user fills in rather than dense pane
@@ -144,7 +145,7 @@ function TextFieldControl({
   onKeyDown,
 }: TextFieldProps) {
   const colors = useThemeColors();
-  backgroundColor ??= colors.bg;
+  backgroundColor ??= variant === "well" ? colors.panel : colors.bg;
   textColor ??= colors.text;
   placeholderColor ??= colors.textDim;
   useRemoteUiNode({
@@ -338,6 +339,9 @@ export function NumberField({
   max,
   ...props
 }: NumberFieldProps) {
+  const colors = useThemeColors();
+  const native = useUiCapabilities().nativePaneChrome;
+  const well = props.variant === "well";
   const valueRef = useRef(props.value ?? "");
   valueRef.current = props.value ?? "";
   const localInput = useRef<InputRenderable | null>(null);
@@ -368,6 +372,8 @@ export function NumberField({
   };
   const field = <TextField
     {...props}
+    variant={stepping && well ? "plain" : props.variant}
+    backgroundColor={well ? colors.panel : props.backgroundColor}
     label={stepping ? undefined : props.label}
     accessibleLabel={props.accessibleLabel ?? props.label}
     inputRef={inputRef}
@@ -386,14 +392,16 @@ export function NumberField({
   const name = props.accessibleLabel ?? props.label ?? "value";
   return <Box flexDirection="column" width={props.width}>
     {props.label ? <FieldLabel label={props.label} active={props.active} /> : null}
-    <Box flexDirection="row" alignItems="center" gap={1} onMouseScroll={(event: { scroll?: { direction?: string }; preventDefault(): void; stopPropagation(): void }) => {
+    <Box flexDirection="row" alignItems="center" gap={1} backgroundColor={well ? colors.panel : undefined}
+      style={native && well ? { borderRadius: 3, paddingLeft: 6, boxShadow: props.focused ? `inset 0 -2px ${colors.borderFocused}` : undefined } : undefined}
+      onMouseScroll={(event: { scroll?: { direction?: string }; preventDefault(): void; stopPropagation(): void }) => {
       if (props.disabled || !["up", "down"].includes(event.scroll?.direction ?? "")) return;
       event.preventDefault(); event.stopPropagation();
       advance(event.scroll?.direction === "up" ? 1 : -1);
     }}>
       {field}
-      <Button label={`Decrease ${name}`} displayLabel="-" width={3} compact disabled={props.disabled || next(-1) === undefined} onPress={() => { inputRef.current?.focus?.(); advance(-1); }} />
-      <Button label={`Increase ${name}`} displayLabel="+" width={3} compact disabled={props.disabled || next(1) === undefined} onPress={() => { inputRef.current?.focus?.(); advance(1); }} />
+      <Button label={`Decrease ${name}`} displayLabel="-" variant={well ? "plain" : undefined} width={3} compact disabled={props.disabled || next(-1) === undefined} onPress={() => { inputRef.current?.focus?.(); advance(-1); }} />
+      <Button label={`Increase ${name}`} displayLabel="+" variant={well ? "plain" : undefined} width={3} compact disabled={props.disabled || next(1) === undefined} onPress={() => { inputRef.current?.focus?.(); advance(1); }} />
     </Box>
   </Box>;
 }

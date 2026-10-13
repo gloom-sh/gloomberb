@@ -13,9 +13,10 @@ import { useScopedButtonAction } from "./action-scope";
  * still reads as a control next to a primary one. `plain` is text that happens
  * to be clickable: no border, no fill. Anything shaped like a row, a table
  * cell, a status bar chip or a link is `plain` — a box drawn around it reads as
- * a control nested in the surface instead of part of it.
+ * a control nested in the surface instead of part of it. Use `quiet` for text
+ * actions that also need a filled selection/focus state without a frame.
  */
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "plain";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "plain" | "quiet";
 
 export interface ButtonProps {
   label: string;
@@ -51,6 +52,7 @@ export interface ButtonProps {
 }
 
 function resolveButtonColors(variant: ButtonVariant, active: boolean, disabled: boolean, colors: ThemeColors, tone?: ButtonProps["tone"]): { bg?: string; fg: string } {
+  if (variant === "quiet") return { bg: active ? colors.selected : undefined, fg: disabled ? colors.textMuted : active ? colors.textBright : colors.textDim };
   if (variant === "plain") {
     return { fg: disabled ? colors.textMuted : active ? colors.textBright : colors.textDim };
   }

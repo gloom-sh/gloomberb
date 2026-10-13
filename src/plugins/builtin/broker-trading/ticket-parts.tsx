@@ -1,7 +1,6 @@
 import { FigureText } from "../../../components/ui/figure";
 import type { ReactNode } from "react";
-import { Badge, KeyValueRow, Notice, RatioBar, SectionHeading } from "../../../components";
-import { blendHex } from "../../../theme/colors";
+import { KeyValueRow, Notice, RatioBar, SectionHeading } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import type { TicketViewModel } from "./ticket";
@@ -9,11 +8,9 @@ import type { TicketViewModel } from "./ticket";
 export const ticketNumber = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "Unavailable" : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 export const ticketMoney = (value: number | undefined, currency = "USD") => value === undefined || !Number.isFinite(value) ? "Not reported" : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 export const ticketTypeName: Record<string, string> = { MKT: "Market", LMT: "Limit", STP: "Stop", "STP LMT": "Stop limit" };
-export function TicketCard({ children, width, accent, title, compact = false, dense = false, flat = false }: { children: ReactNode; width?: number; accent?: string; title?: string; compact?: boolean; dense?: boolean; flat?: boolean }) {
-  const c = useThemeColors(); const native = useUiCapabilities().nativePaneChrome;
-  return <Box width={width} flexDirection="column" flexShrink={0} backgroundColor={blendHex(c.bg, c.panel, 0.55)}
-    border={native && !flat ? true : false} borderColor={native && !flat ? accent ?? c.border : undefined} paddingX={native ? dense ? 1 : 2 : 1} paddingY={native ? dense ? 0.35 : compact ? 0.6 : 1 : 0}
-    gap={native ? dense ? 0.2 : 0.7 : 0} style={native && !flat ? { borderRadius: 8, border: `1px solid ${accent ?? c.border}` } : undefined}>
+export function TicketSection({ children, width, title }: { children: ReactNode; width?: number; title?: string }) {
+  const native = useUiCapabilities().nativePaneChrome;
+  return <Box width={width} flexDirection="column" flexShrink={0} gap={native ? 0.35 : 0}>
     {title ? <SectionHeading title={title} /> : null}{children}
   </Box>;
 }
@@ -43,8 +40,8 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
     <Text fg={sideColor} attributes={TextAttributes.BOLD}>{`${draft?.action ?? "BUY"} ${ticketNumber(draft?.quantity)} ${m.symbol}`}</Text>
     <Text fg={c.textBright} attributes={TextAttributes.BOLD}>{`Est. ${ticketMoney(total, currency)}`}</Text>
   </Box>;
-  const rowWidth = width - 6;
-  if (receipt) return <TicketCard width={width} title="Account impact">
+  const rowWidth = width;
+  if (receipt) return <TicketSection width={width} title="Account impact">
     <Text fg={c.textDim}>After this order fills</Text>
     <Box paddingY={1}><FigureText>{positionAfter === undefined ? "Unknown position" : `${ticketNumber(positionAfter)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`}</FigureText></Box>
     <TicketReceiptRow label="Current position" value={ticketNumber(m.position)} width={rowWidth} />
@@ -53,25 +50,27 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
     <TicketReceiptRow label="Before order" value={ticketMoney(m.preview?.buyingPowerBefore ?? account?.buyingPower, currency)} width={rowWidth} />
     <TicketReceiptRow label="Broker impact" value={ticketMoney(m.preview?.buyingPowerImpact, currency)} width={rowWidth} />
     <TicketReceiptRow label="After order" value={ticketMoney(m.preview?.buyingPowerAfter, currency)} width={rowWidth} />
-  </TicketCard>;
-  return <TicketCard width={width} title="Order summary">
+  </TicketSection>;
+  return <TicketSection width={width} title="Order summary">
     <TicketOrderHeadline model={m} large />
     <Text fg={c.textDim}>{`${ticketTypeName[draft?.orderType ?? "LMT"]} · ${draft?.tif ?? "DAY"}${draft?.outsideRth ? " · Extended hours" : ""}`}</Text>
     <Box flexDirection="column" paddingY={1}><Text fg={c.textDim}>Estimated order value</Text><FigureText style={{ fontSize: "30px" }}>{ticketMoney(total, currency)}</FigureText></Box>
     <TicketReceiptRow label="Quantity" value={`${ticketNumber(draft?.quantity)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`} width={rowWidth} />
     <TicketReceiptRow label="Price" value={draft?.orderType === "MKT" ? "At market" : ticketMoney(px, currency)} width={rowWidth} />
+    {m.phase === "result" ? <Text fg={c.textDim}>Estimates from order preview</Text> : null}
     <TicketReceiptRow label="Fees / commission" value={m.preview || m.phase === "result" ? `${ticketMoney(m.preview?.fees, currency)} / ${ticketMoney(m.preview?.commission, currency)}` : "At review"} width={rowWidth} />
     <TicketReceiptRow label="Broker power after" value={ticketMoney(powerAfter, currency)} width={rowWidth} />
     <TicketReceiptRow label="Position after" value={positionAfter === undefined ? "Not reported" : `${ticketNumber(positionAfter)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`} width={rowWidth} />
     {m.phase !== "result" ? <Box marginTop={1}><Notice variant="callout" tone="warning">{m.quoteData !== "realtime" ? "Delayed broker quote. Execution prices may differ." : "Final cost and availability are checked at review."}</Notice></Box> : null}
-  </TicketCard>;
+  </TicketSection>;
 }
 export function TicketStatus({ model: m, width }: { model: TicketViewModel; width: number }) {
+  const native = useUiCapabilities().nativePaneChrome;
   const c = useThemeColors(); const status = m.result?.status.toUpperCase() ?? "UNKNOWN";
   const filled = status === "FILLED"; const partial = status === "PARTIALLY_FILLED"; const active = !["UNKNOWN", "REJECTED", "CANCELLED", "CANCELED", "PENDING_CANCEL"].includes(status);
   const currentStep = filled ? 2 : ["SUBMITTED", "PENDING_NEW"].includes(status) ? 0 : 1;
-  return <Box flexDirection="column" gap={1}>
-    {active ? <Box flexDirection="row" gap={1} justifyContent="space-between">{["Submitted", "Working", "Filled"].map((label, index) => <Badge key={label} label={width < 38 ? label : `${index + 1}  ${label}`} tone={index <= currentStep ? "positive" : "neutral"} variant={index === currentStep ? "solid" : "subtle"} />)}</Box> : null}
+  return <Box flexDirection="column" gap={native ? 0.35 : 0}>
+    {active ? <Box flexDirection="row" gap={1}>{["Submitted", "Working", "Filled"].map((label, index) => <Text key={label} fg={index <= currentStep ? c.positive : c.textDim} attributes={index === currentStep ? TextAttributes.BOLD : undefined}>{`${index ? "· " : ""}${label}`}</Text>)}</Box> : null}
     {partial || filled ? <><RatioBar width={Math.max(10, width)} ratio={(m.result?.filled ?? 0) / Math.max(1, m.result?.quantity ?? 1)} color={c.positive} track thickness={6} /><Text fg={c.text} wrapText>{`${ticketNumber(m.result?.filled)} of ${ticketNumber(m.result?.quantity)} filled · Avg. ${ticketMoney(m.result?.avgFillPrice, m.draft?.contract.currency)}`}</Text></> : null}
     {status === "UNKNOWN" ? <Notice variant="callout" tone="warning">Outcome unconfirmed. Refresh and reconcile in Orders. No automatic retry.</Notice> : null}
     {status === "REJECTED" ? <Notice variant="callout" tone="negative">{m.error ?? m.result?.warningText ?? "The broker rejected this order. Check the order before trying again."}</Notice> : null}

@@ -473,6 +473,7 @@ describe("modification, cancellation and unknown outcomes", () => {
     await controller.review();
     await controller.confirm();
     expect(controller.getSnapshot().result?.status).toBe("UNKNOWN");
+    expect(controller.getSnapshot().resultQuantities).toBe("unconfirmed");
     await expect(controller.confirm()).rejects.toThrow("Outcome unknown");
     expect(() => controller.reset()).toThrow("Outcome unknown");
     await controller.refreshResult();
@@ -488,6 +489,29 @@ describe("modification, cancellation and unknown outcomes", () => {
     await controller.confirm();
     expect(controller.getSnapshot().result).toMatchObject({ status: "UNKNOWN", accountId: DEMO_SIM_ACCOUNT });
     expect(placements).toBe(1);
+  });
+
+  test.each(["modify", "cancel"] as const)("lost %s acknowledgement keeps quantities last known until an actual status response", async (operation) => {
+    const { demo, controller } = setup({ outcome: "unknown", realtime: true, quoteAgeMs: 0 });
+    const order = demo.order(demo.draft, "PARTIALLY_FILLED");
+    demo.seedOrder(order);
+    if (operation === "modify") {
+      controller.beginModify(order);
+      controller.setDraft({ ...controller.getSnapshot().draft!, quantity: order.quantity + 2 });
+      await controller.review();
+      await controller.confirm();
+    } else {
+      controller.requestCancel(order);
+      await controller.confirmCancel(true);
+    }
+    expect(controller.getSnapshot()).toMatchObject({ resultQuantities: "last-known", result: { status: "UNKNOWN", filled: order.filled, remaining: order.remaining } });
+    demo.adapter.getOrderStatus = async () => null;
+    demo.adapter.listOpenOrders = async () => [];
+    await controller.refreshResult();
+    expect(controller.getSnapshot().resultQuantities).toBe("last-known");
+    demo.adapter.getOrderStatus = async () => ({ ...order, status: "FILLED", filled: order.quantity, remaining: 0 });
+    await controller.refreshResult();
+    expect(controller.getSnapshot()).toMatchObject({ resultQuantities: "confirmed", result: { filled: order.quantity, remaining: 0 } });
   });
 
   test("uncertain cancellation stays unknown when open orders no longer contains it", async () => {

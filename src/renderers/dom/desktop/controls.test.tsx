@@ -154,13 +154,13 @@ test("TextField delivers normalized native keys before submit and respects cance
   expect(submitted).toEqual(["draft"]);
 });
 
-test("numeric stepper owns only its wheel/key events, bounds and disabled state", async () => {
+test.each(["default", "well"] as const)("%s numeric stepper owns only its wheel/key events, bounds and disabled state", async (variant) => {
   let submits = 0, parentWheels = 0;
   function Fields() {
     const [price, setPrice] = useState("0.3");
     const [disabled, setDisabled] = useState(false);
     return <div onWheel={() => parentWheels++}>
-      <NumberField label="Limit price" focused value={price} onChange={setPrice} step={0.1} min={0.1} max={0.5} disabled={disabled} onSubmit={() => submits++} />
+      <NumberField variant={variant} label="Limit price" focused value={price} onChange={setPrice} step={0.1} min={0.1} max={0.5} disabled={disabled} onSubmit={() => submits++} />
       <NumberField label="Quantity" value="10" step={1} />
       <button onClick={() => setDisabled(true)}>Busy</button><span id="outside">Outside</span>
     </div>;

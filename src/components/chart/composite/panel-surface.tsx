@@ -878,8 +878,8 @@ export function CompositePanelSurface({
       </ChartSurface>
         {fitAxisLabels(projectedLevels.filter((entry) => entry.level.label), [], (entry) => entry.yRatio * Math.max(1, panel.height - 1)).map(({ level, yRatio }) => (
           <Box key={`annotation:${level.id}`} position="absolute" left={leftAxisWidth + (leftAxisWidth ? axisGap : 0) + 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
-            width={Math.min(plotWidth - 2, (level.label?.length ?? 0) + 2)} backgroundColor={colors.background} zIndex={20}
-            style={isDesktopWeb ? { top: `calc(${yRatio * 100}% - ${yRatio} * var(--cell-h))`, pointerEvents: "none", paddingInline: 4, borderRadius: 3 } : undefined}
+            width={Math.min(plotWidth - 2, (level.label?.length ?? 0) + 2)} backgroundColor={isDesktopWeb ? undefined : colors.background} zIndex={20}
+            style={isDesktopWeb ? { top: `calc(${yRatio * 100}% - ${yRatio} * var(--cell-h))`, pointerEvents: "none", paddingInline: 4, borderRadius: 3, textShadow: `1px 0 ${colors.background}, -1px 0 ${colors.background}, 0 1px ${colors.background}, 0 -1px ${colors.background}, 0 0 3px ${colors.background}` } : undefined}
             data-gloom-role="chart-level-label">
             <Text fg={level.color} wrapMode="none">{level.label}</Text>
           </Box>
