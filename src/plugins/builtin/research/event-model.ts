@@ -14,6 +14,7 @@ import {
   formatPercentRaw,
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
+import { declaredDividends } from "../../../utils/declared-dividends";
 import {
   earningsDateStatus,
   earningsEpsBasis,
@@ -390,6 +391,19 @@ export function buildEventRows(
       status: "Dividend",
       period: "-",
       detail: "Ex-date",
+      value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
+      tone: "positive",
+    });
+  }
+
+  // Declared and unpaid: its own row at its ex-date, apart from the paid distributions above.
+  for (const dividend of declaredDividends(data)) {
+    rows.push({
+      id: `div-declared:${dividend.exDate}`,
+      date: dividend.exDate,
+      status: "Dividend",
+      period: "-",
+      detail: dividend.payDate ? `Declared, payable ${dividend.payDate}` : "Declared",
       value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
       tone: "positive",
     });

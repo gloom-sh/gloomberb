@@ -44,7 +44,9 @@ import {
 import { getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../../market-data/published-us-sessions";
 import { isQuoteStaleForCurrentSession } from "../../market-data/quotes/freshness";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../market-data/options-alternatives";
-import { cliFuturesContract, futuresContractMetrics, fundamentalsReportTables, renderFundamentalsReport } from "./ticker";
+import {
+  cliFuturesContract, futuresContractMetrics, fundamentalsReportTables, loadForwardYieldDeclarations, renderFundamentalsReport,
+} from "./ticker";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
 import {
@@ -65,6 +67,7 @@ import {
   type OptionsChainBasis,
 } from "./options-chain";
 import { missingExpiryMessage } from "../../utils/option-expiry";
+import { declaredDividends } from "../../utils/declared-dividends";
 import {
   DEFAULT_LEAPS_CRITERIA, LEAPS_EXTRA_COLUMNS, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions,
 } from "./options-leaps";
@@ -504,6 +507,13 @@ function corporateActionRows(data: CorporateActionsData) {
       date: event.exDate,
       detail: currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount),
     })),
+    // Declared and unpaid, at its ex-date beside the paid rows, never one of them.
+    ...declaredDividends(data).map((event) => ({
+      type: "dividend",
+      date: event.exDate,
+      detail: `declared ${currency ? formatDistributionAmount(event.amount, currency) : cleanDecimal(event.amount)}`
+        + (event.payDate ? `, payable ${event.payDate}` : ""),
+    })),
     ...data.splits.map((event) => ({
       type: "split",
       date: event.date,
@@ -937,6 +947,10 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
       const priced = atRegularSessionPrice(financials);
       const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
+      // A forward yield dated ahead names the declared distribution it annualizes, in the text and tables.
+      const report = ctx.cliOptions.format === "json" ? data : {
+        ...data, declaredDividends: await loadForwardYieldDeclarations(market.dataProvider, listing.request, financials.fundamentals),
+      };
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
         data: {
@@ -951,8 +965,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         freshness,
         ...(choice.length > 0 ? { warnings: choice } : {}),
       }, {
-        text: () => renderFundamentalsReport(data, view),
-        ...(tabular ? { tables: selectTables(fundamentalsReportTables(data, view, freshness)) } : {}),
+        text: () => renderFundamentalsReport(report, view),
+        ...(tabular ? { tables: selectTables(fundamentalsReportTables(report, view, freshness)) } : {}),
         exportIdentity: { symbolOrSeries: listing.key },
       });
       return;

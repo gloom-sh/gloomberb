@@ -32,7 +32,7 @@ import {
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms } from "../../market-data/futures-contract";
 import type { AppConfig } from "../../types/config";
-import type { FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
 import { atRegularSessionPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
@@ -69,6 +69,7 @@ import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../
 import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { forwardDividendBasis } from "../../utils/forward-dividend";
+import { declaredDividends } from "../../utils/declared-dividends";
 import { notTheCoinNote } from "./crypto-hints";
 
 const NEWS_ITEM_LIMIT = 5;
@@ -347,11 +348,38 @@ function percentFigure(fraction: number | null | undefined, format: (value: numb
   return fraction != null ? { text: format(fraction), value: fraction * 100, unit: "%" } : { text: "—" };
 }
 
-/** A forward yield says what it annualizes and when, as DVD does (a declared distribution by its ex-date); any other yield is the figure alone. */
-function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
+/** The declared, unpaid distributions a forward yield dated ahead is named from, in their own currency. */
+export interface ForwardYieldDeclarations {
+  rows: DeclaredDividendAction[];
+  currency?: string;
+}
+
+/**
+ * The listing's declared distributions, read only for a forward yield whose
+ * ex-date is still ahead (the one case its basis names one); null otherwise,
+ * and when they cannot be read, which leaves the basis to its dates.
+ */
+export async function loadForwardYieldDeclarations(
+  dataProvider: Pick<MarketContext["dataProvider"], "getCorporateActions">,
+  listing: { symbol: string; exchange: string },
+  fundamentals: TickerFinancials["fundamentals"],
+  now = new Date(),
+): Promise<ForwardYieldDeclarations | null> {
+  const exDate = fundamentals?.dividendYieldBasis === "forward" ? fundamentals.exDividendDate ?? "" : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(exDate) || exDate <= now.toISOString().slice(0, 10) || !dataProvider.getCorporateActions) return null;
+  try {
+    const actions = await dataProvider.getCorporateActions(listing.symbol, listing.exchange);
+    return { rows: declaredDividends(actions, now), ...(actions.currency ? { currency: actions.currency } : {}) };
+  } catch {
+    return null;
+  }
+}
+
+/** A forward yield says what it annualizes and when, as DVD does (a declared distribution by its ex-date and stated amount); any other yield is the figure alone. */
+function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], declared: ForwardYieldDeclarations | null): MetricFigure {
   const figure = percentFigure(fundamentals?.dividendYield, formatFractionPercentCell);
   return fundamentals?.dividendYieldBasis === "forward" && fundamentals.dividendYield != null
-    ? { ...figure, text: `${figure.text} (${forwardDividendBasis(fundamentals.exDividendDate)})` }
+    ? { ...figure, text: `${figure.text} (${forwardDividendBasis(fundamentals.exDividendDate, { declared: declared?.rows, currency: declared?.currency })})` }
     : figure;
 }
 
@@ -368,6 +396,7 @@ function fundamentalsMetrics(
   priceReturns: { return1Y?: number | null; return3Y?: number | null },
   reportingCurrency: string | undefined,
   enterpriseValue = reportedMoney(reportedEnterpriseValue(fundamentals), enterpriseValueCurrency(quote, fundamentals)),
+  declared: ForwardYieldDeclarations | null = null,
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
@@ -382,7 +411,7 @@ function fundamentalsMetrics(
     { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true) },
     {
       label: `Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`,
-      ...forwardYieldFigure(fundamentals),
+      ...forwardYieldFigure(fundamentals, declared),
     },
     { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, reportingCurrency) },
     { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, reportingCurrency) },
@@ -432,7 +461,7 @@ function fundamentalsNotes(
 
 const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
 
-type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string };
+type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string; declaredDividends?: ForwardYieldDeclarations | null };
 
 /**
  * What a fund's report cannot show yet, and for a US listing where its SEC
@@ -502,7 +531,8 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   const marketCap: MetricFigure = capitalization
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
-  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials));
+  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials),
+    undefined, snapshot.declaredDividends ?? null);
   if (view === "fundamentals") return metrics.filter((metric) => metric.text !== "—");
   const valuation = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield")) && text !== "—");
   // A listing with no valuation (a fund) says so rather than printing its price alone.
@@ -605,8 +635,11 @@ export async function buildTickerReport({
   recentNews = [],
   recentSecFilings = [],
   futuresContract = null,
+  declaredDividends: declared = null,
 }: {
   symbol: string;
+  /** The declared distributions a forward yield dated ahead is named from (loadForwardYieldDeclarations). */
+  declaredDividends?: ForwardYieldDeclarations | null;
   /** The exchange the command named, as a canonical code. */
   listingExchange?: string;
   /** A futures symbol's contract terms and latest confirmed settlement. */
@@ -732,7 +765,8 @@ export async function buildTickerReport({
     ]);
   }
 
-  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText });
+  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials),
+    { text: enterpriseValueText }, declared);
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
   for (const note of fundamentalsNotes(fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
@@ -948,6 +982,9 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
 
     const notesFiles = new NotesFiles(dataDir);
     const listingName = listingIdentity(listing, quote).name;
+    // The text report's yield basis, read beside the rest for a forward yield dated ahead only; it never fails the report.
+    const declarations = dependencies.printResult ? null
+      : loadForwardYieldDeclarations(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials.fundamentals);
     const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
       notesFiles.load(tickerFile?.metadata.ticker ?? normalized),
       dataProvider.getNews({
@@ -1013,6 +1050,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         recentNews,
         recentSecFilings,
         futuresContract,
+        declaredDividends: await declarations,
     }));
     if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
   });

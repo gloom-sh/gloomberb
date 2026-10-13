@@ -366,6 +366,20 @@ export interface DividendAction {
   amount: number;
 }
 
+/**
+ * A distribution the issuer has declared and not yet paid, as the source
+ * states it. Kept apart from the paid `dividends`: no history, yield or growth
+ * figure takes it.
+ */
+export interface DeclaredDividendAction {
+  exDate: string;
+  /** Per share, in the listing's dividend currency (`currency`). */
+  amount: number;
+  declarationDate?: string;
+  recordDate?: string;
+  payDate?: string;
+}
+
 export interface SplitAction {
   date: string;
   description?: string;
@@ -417,6 +431,8 @@ export interface CorporateActionsData {
   micCode?: string;
   exchangeTimezone?: string;
   dividends: DividendAction[];
+  /** Declared and unpaid, for the listings Gloom Cloud has them for; absent elsewhere and from older servers. */
+  declaredDividends?: DeclaredDividendAction[];
   splits: SplitAction[];
   earnings: EarningsAction[];
 }

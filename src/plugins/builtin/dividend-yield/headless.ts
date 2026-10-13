@@ -101,7 +101,8 @@ export function projectDividendYieldHeadless(
             : "Reference price time unavailable; cash yield may be out of date." }] : []),
           { label: "Trailing yield", value: metrics.trailingYield, formatted: formatDividendYield(metrics.trailingYield) },
           { label: "Forward yield", value: metrics.forwardYield, formatted: metrics.forwardYield == null ? formatDividendYield(null)
-            : `${formatDividendYield(metrics.forwardYield)} (${forwardDividendBasis(metrics.forwardRateAsOf, { payDate: forwardPayDate(metrics) })})` },
+            : `${formatDividendYield(metrics.forwardYield)} (${forwardDividendBasis(metrics.forwardRateAsOf,
+              { payDate: forwardPayDate(metrics), declared: data.declared, currency })})` },
           { label: "Trailing rate", value: metrics.trailingRate, formatted: currency ? formatDistributionAmount(metrics.trailingRate ?? undefined, currency) : "—" },
           { label: "Forward rate", value: metrics.forwardRate, formatted: currency ? formatDistributionAmount(metrics.forwardRate ?? undefined, currency) : "—" },
           { label: "Earnings Payout", value: metrics.payoutRatio, formatted: formatDividendYield(metrics.payoutRatio) },
@@ -138,6 +139,8 @@ export function projectDividendYieldHeadless(
       limitations: data.notes ?? [],
       yieldMethod: "Cash distributions with ex-dates in the preceding 12 months, one payment per period for a regular cadence, divided by the reference share price; excludes reinvestment and is not SEC yield or total return.",
       forwardRateAsOf: metrics.forwardRateAsOf,
+      // Declared and unpaid, apart from the paid history the table and every figure read.
+      declaredDividends: data.declared ?? [],
       forwardRateMethod: "Indicated annual cash rate, the one fundamentals use: the latest regular distribution annualized, or once the next one is declared that one, dated by its ex-date (forwardRateAsOf; a date still ahead is the declared distribution's). Only when its currency units are comparable with the share price.",
       paymentFrequencyMethod: "Cadence inferred from ex-dates in the last two years, unavailable when no cash was reported in the last year; not an announced payment schedule.",
     },

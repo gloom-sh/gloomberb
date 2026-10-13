@@ -8,6 +8,8 @@ import { inferCadence, trailingCashAt } from "./trailing-cash";
 import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
+import { declaredDividends } from "../../../utils/declared-dividends";
+import type { DeclaredDividendAction } from "../../../types/financials";
 
 export const DIVIDENDS_CONNECTION_ID = "gloom-dividends";
 export const INCOMPLETE_DIVIDEND_HISTORY = "Incomplete cash history; totals unavailable.";
@@ -55,6 +57,8 @@ export function toDividendPayment(
 
 export interface DividendData {
   payments: DividendPayment[];
+  /** Declared and unpaid, in `currency`; never in `payments` or any figure. Absent from older servers. */
+  declared?: DeclaredDividendAction[];
   metrics: DividendMetrics;
   price: number | null;
   currency?: string;
@@ -113,8 +117,11 @@ export async function fetchDividendData(
   if (!historyAvailable && !historyError && metrics.trailingRate == null && metrics.forwardRate == null) {
     throw new Error(`No dividend data found for ${symbol}`);
   }
+  // Stated in the cash history's units, read as its payments are.
+  const declared = actions && cashUnit.currency
+    ? declaredDividends(actions).map((row) => ({ ...row, amount: row.amount / cashUnit.divisor })) : [];
   return {
-    payments, metrics, price, currency: currency || undefined, historyAvailable,
+    payments, ...(declared.length > 0 ? { declared } : {}), metrics, price, currency: currency || undefined, historyAvailable,
     ...(suppliedPrice == null && price != null && quote ? dividendQuotePriceMetadata(quote) : {}),
     ...(historyError ? { historyError } : {}), ...(summaryError ? { summaryError } : {}),
     providerId: actions?.providerId ?? "gloom", fetchedAt: actions?.fetchedAt,
