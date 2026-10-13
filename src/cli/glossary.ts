@@ -351,7 +351,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "TTM", aliases: ["trailing twelve months", "trailing 12 months", "trailing four quarters", "ltm", "last twelve months"],
     functions: ["FA"],
     definition: "Trailing twelve months: the four latest quarters added up, a year that ends with the latest quarter rather than the fiscal year. "
-      + "FA's quarterly leverage ratios read their flows over it, and show < 4 quarters when fewer are on file.",
+      + "FA's quarterly leverage and valuation ratios (P/E, EV / EBITDA, P/S, FCF yield) read their flows over it, and show < 4 quarters when fewer are on file.",
   },
   // Funds (ETF). Named in what ETF says it cannot show yet.
   {

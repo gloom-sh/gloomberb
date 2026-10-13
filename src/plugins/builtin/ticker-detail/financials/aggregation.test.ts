@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import type { FinancialStatement } from "../../../../types/financials";
+import type { SecEpsBasis } from "../../../../utils/sec-eps-basis";
 import { computeTTM } from "./aggregation";
 import { buildFinancialTableModel } from "./model";
 
@@ -77,4 +78,19 @@ test("TTM share growth survives different currency windows while monetary growth
   expect(table.statements[0]!.date).toBe("TTM");
   expect(table.rows.find(({ summaryKey }) => summaryKey === "totalRevenue")!.cells[0]!.growth).toBeUndefined();
   expect(table.rows.find(({ key }) => key === "basicShares")!.cells[0]).toMatchObject({ value: 20, growth: 1 });
+});
+
+test("TTM EPS is withheld when a quarter declares it unavailable or its share basis is unresolved", () => {
+  const quarters = (override: Partial<FinancialStatement>): FinancialStatement[] => dates.map((date, index) => ({
+    date, currency: "USD", totalRevenue: 10, eps: 1, basicEps: 1, ...(index === 3 ? override : {}),
+  }));
+  expect(computeTTM(quarters({}))).toMatchObject({ eps: 4, basicEps: 4 });
+  // The quarter still carries a number; the year's EPS does not use it, and says so.
+  const gap = computeTTM(quarters({ unavailableEarnings: ["eps"] }))!;
+  expect(gap.eps).toBeUndefined();
+  expect(gap).toMatchObject({ basicEps: 4, totalRevenue: 40, unavailableEarnings: ["eps"] });
+  const basis: SecEpsBasis = { status: "unresolved", source: "sec", originalValue: 1, basisDate: dates[3]!, evidence: [] };
+  const unresolved = computeTTM(quarters({ epsBasis: basis }))!;
+  expect(unresolved.eps).toBeUndefined();
+  expect(unresolved).toMatchObject({ basicEps: 4, epsBasis: { status: "unresolved" } });
 });
