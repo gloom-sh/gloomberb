@@ -426,7 +426,7 @@ export function ResolvedFinancialsTab({
       return (close === undefined ? null : currencies?.priceInStatementUnits(statement, close)) ?? "no-price";
     };
     const expanded = new Set(ratioTab.ratios.map((ratio) => ratio.id).filter((id) => !collapsedGroups.has(id)));
-    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price), expanded);
+    return buildRatioTableModel(ratioTab, ratioPeriods(displayStatements, openings, resolvedPeriod, price, { annual: annualStatements, quarterly: quarterlyStatements }), expanded);
   }, [
     annualStatements, collapsedGroups, currencies, displayStatements, history.data, history.error, history.loading,
     isValuation, quarterlyStatements, ratioTab, resolvedPeriod,
