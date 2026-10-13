@@ -37,6 +37,8 @@ const PANES: Array<{ id: string; label: string; opens?: string }> = [
   { id: "markdown", label: "markdown in a detail body" },
   { id: "prose", label: "prose paragraphs in a detail body" },
   { id: "table", label: "table" },
+  { id: "inline", label: "page of a table as tall as its rows and label and value rows" },
+  { id: "chart-rows", label: "chart sized in rows under a query bar" },
 ];
 
 function fail(message: string, detail?: unknown): never {
@@ -65,7 +67,7 @@ async function measureOpen(cdp: Cdp, paneId: string, opens: string | undefined):
   const instanceId = `${paneId}:layout`;
   const pane = `document.querySelector('[data-gloom-pane-id="${instanceId}"]')`;
   const body = `${pane}?.querySelector("[data-gloom-role=pane-body]")`;
-  if (!await waitFor(cdp, `(${body}?.innerText?.length ?? 0) > 100`, 10_000)) {
+  if (!await waitFor(cdp, `(${body}?.innerText?.length ?? 0) > 100 || ${body}?.querySelector("canvas") != null`, 10_000)) {
     fail(`${paneId} drew no content`, await evaluate(cdp, `${pane}?.innerText?.slice(0, 200)`));
   }
   if (opens) {
@@ -97,6 +99,9 @@ export const layoutSteps: LayoutStep[] = PANES.flatMap(({ id, label, opens }) =>
         const measure = await measureOpen(cdp, id, opens);
         if (measure.missing) fail(`no ${id} pane at ${size.width}x${size.height}`);
         for (const failure of layoutFailures(measure)) problems.push(`${size.width}x${size.height}: ${failure}`);
+        // A value that fits the row's pixels shows whole: clipped in CSS where it ends, never cut at a count of columns.
+        const cut = await evaluate<string[]>(cdp, `[...document.querySelectorAll('[data-gloom-pane-id="${id}:layout"] [data-gloom-ui=key-value-row]')].map((row) => row.innerText.trim()).filter((text) => /(\\.\\.\\.|\\u2026)$/.test(text))`);
+        for (const text of cut) problems.push(`${size.width}x${size.height}: a label and value row cut its value at a column count ("${text.replace(/\s+/g, " ").slice(0, 60)}")`);
       }
     } finally {
       await cdp.send("Emulation.setDeviceMetricsOverride", { ...RESTORE, deviceScaleFactor: 1, mobile: false });

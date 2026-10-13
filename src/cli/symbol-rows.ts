@@ -122,7 +122,7 @@ export async function addSymbols({
   askWhenAmbiguous?: boolean;
   /** Rewrites the error a symbol failed with before it is reported, to say it as the caller's own surface does. */
   failure?: (error: Error) => Error;
-  /** A symbol search finds no listing for is given the nearest listing search knows, when it is a near match (USD-NGN, USDNGN=X). */
+  /** A symbol search finds no listing for is given the nearest listing search knows, when it is a near match (USD_NGN, USDNGN=X). */
   suggest?: boolean;
   /** May throw to refuse the listing (an alias of a holding in two records); that symbol fails alone. */
   add: (ticker: TickerRecord) => { changed: boolean; ticker: TickerRecord };

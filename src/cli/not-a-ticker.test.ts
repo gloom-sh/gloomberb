@@ -1,7 +1,7 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
 import { printCliError } from "./errors";
 import { DEFAULT_CLI_OPTIONS } from "./options";
-import { withSearchHints } from "./not-a-ticker";
+import { withListingSuggestion, withSearchHints } from "./not-a-ticker";
 import { printCliResult } from "./result";
 import { setCliColorEnabledOverride } from "../utils/cli-output";
 
@@ -56,4 +56,11 @@ test("an error and a warning in text carry the hint, and JSON keeps the router's
     spy.mockRestore();
     write.mockRestore();
   }
+});
+
+test("a suggestion stands in for the search hint, once", () => {
+  const hinted = withListingSuggestion("Not a ticker: USD_NGN.", "USDNGN=X (US Dollar/Nigerian Naira)");
+  expect(hinted).toBe("Not a ticker: USD_NGN. Did you mean USDNGN=X (US Dollar/Nigerian Naira)?");
+  expect(withListingSuggestion(hinted, "USDNGN=X")).toBe(hinted);
+  expect(withSearchHints(hinted, ["usd_ngn"])).toBe(hinted);
 });

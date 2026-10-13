@@ -3,7 +3,15 @@ import type { Quote } from "../types/financials";
 import type { CliCommandContext } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
 import { perpetualListingOfMarket, typedPerpetualListing } from "../tickers/perpetual-listing";
-import { listingVenues, quotedOnVenue, readSharedCode, type ListingDeps, type ListingStore, type ListingVenue } from "../tickers/listing-venues";
+import {
+  listingVenues,
+  quotedOnVenue,
+  readAmbiguousCurrencyPair,
+  readSharedCode,
+  type ListingDeps,
+  type ListingStore,
+  type ListingVenue,
+} from "../tickers/listing-venues";
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
 import {
   describeTickerChange,
@@ -33,6 +41,7 @@ import {
 import { withMarketData } from "./scoped-context";
 import { isNoProviderMessage } from "../sources/provider-errors";
 import { dashedCoinPair } from "../utils/crypto-pair";
+import { currencyPairSpelling } from "../utils/currency-pair";
 import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../market-data/market/format";
 import { zonedDateKey } from "../utils/zoned-date-time";
@@ -75,7 +84,11 @@ export interface ListingArg {
  * the command takes several symbols and `--exchange` only fills in the ones
  * without an exchange of their own. A code that names several venues (TSE)
  * agrees with any of them. A futures board code no listed security uses is
- * its future: TTF is TTF=F, while NG stays NovaGold.
+ * its future: TTF is TTF=F, while NG stays NovaGold. A currency pair is the
+ * one listing the service has for it, however it is written: EUR/USD,
+ * EURUSD:CCY and JPY=X are EURUSD=X and USDJPY=X, so every spelling asks for
+ * the same quote. USD-NGN and USDNGN could be a security's symbol, so
+ * `resolveCliListing` asks search before reading them as USDNGN=X.
  */
 export function parseListingArg(
   raw: string,
@@ -106,6 +119,8 @@ export function parseListingArg(
     // TSE and --exchange JPX agree on Tokyo.
     if (agreed.length === 1) [exchange, code] = [agreed[0]!, agreed[0]!];
   }
+  const pair = currencyPairSpelling(parsed.symbol, exchange);
+  if (pair && !pair.ambiguous) return { symbol: pair.symbol, exchange: "", key: pair.symbol };
   const shared = isSharedExchangeCode(code) ? { sharedCode: code } : {};
   if (exchange) return { symbol: parsed.symbol, exchange, key: `${parsed.symbol}:${exchange}`, ...shared };
   // A futures board code no security uses is its future: TTF is TTF=F.
@@ -855,6 +870,9 @@ export async function resolveCliListing(
 ): Promise<CliListing> {
   let parsed = parseListingArg(raw, exchangeOption, options);
   if (!parsed.symbol) throw new ListingArgError("Ticker symbol is required.");
+  // USD-NGN and USDNGN are the pair USDNGN=X unless a security is listed under those letters.
+  const pair = parsed.exchange ? null : await readAmbiguousCurrencyPair(parsed.symbol, deps);
+  if (pair) parsed = { symbol: pair, exchange: "", key: pair };
   try {
     await checkListingExchange(parsed, deps);
   } catch (error) {

@@ -21,7 +21,7 @@ import {
 } from "../../../components";
 import { t } from "../../../i18n";
 import { useThemeColors } from "../../../theme/theme-context";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { badgeCell, badgeColumnWidth } from "./table-cells";
 
 export interface ShortcutTableEntry {
@@ -52,6 +52,7 @@ export function ShortcutTable({
   descriptionLabel?: string;
 }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const rows = useMemo<ShortcutRow[]>(
     () => buildSectionedRows(sections, (entry) => entry.id),
     [sections],
@@ -93,7 +94,7 @@ export function ShortcutTable({
   const height = sectionedRowsHeight(rows);
 
   return (
-    <Box flexDirection="column" height={height}>
+    <Box flexDirection="column" height={nativePaneChrome ? undefined : height}>
       <DataTableView<ShortcutRow, ShortcutColumn>
         columns={columns}
         items={rows}
@@ -103,6 +104,7 @@ export function ShortcutTable({
         // The tab body owns the gutter, so the table does not add its own.
         horizontalPadding={0}
         virtualize={false}
+        fitRows
         sortColumnId={null}
         sortDirection="asc"
         getItemKey={(row) => row.key}

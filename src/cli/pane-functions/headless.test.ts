@@ -421,9 +421,12 @@ test("series text distinguishes explicit percent, basis-point and index units wi
   expect(text.split("\n").find(line => line.includes("Unknown unit"))).toMatch(/0\s+-/);
   expect(text.split("\n").find(line => line.includes("Missing value"))).toMatch(/-\s+%/);
   expect(jsonData(definition, result)).toMatchObject({ data: { series: result.series } });
-  const csv = renderReportCsv(headlessReportTables(definition, result, args, "Research", deriveHeadlessFreshness(definition, result), { complete: true, unavailableSymbols: [] }));
-  expect(csv).toContain("# section: Credit percent\nDate,Value (%)\n2026-09-10,2.7\n");
-  expect(csv).toContain("# section: Credit basis points\nDate,Value (bp)\n2026-09-10,270\n");
+  // The unit is each row's currency_or_unit, beside a bare Value.
+  const freshness = deriveHeadlessFreshness(definition, result);
+  const csv = renderReportCsv(headlessReportTables(definition, result, args, "Research", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+  const identity = "symbol_or_series,currency_or_unit,interval,source,as_of";
+  expect(csv).toContain(`# section: Credit percent\nDate,Value,${identity}\n2026-09-10,2.7,,%,,Gloom Cloud,2026-09-10\n`);
+  expect(csv).toContain(`# section: Credit basis points\nDate,Value,${identity}\n2026-09-10,270,,bp,,Gloom Cloud,2026-09-10\n`);
   expect(renderHeadlessPaneText(definition, { series: [result.series[3]!] }, args, "Unknown")).not.toContain("Unit");
 });
 
@@ -528,30 +531,37 @@ describe("fn --csv", () => {
     ]);
   });
 
-  test("a series writes every point with its date, one table per series, then its statistics", async () => {
+  test("a series writes every point with its date, one table per series, then its statistics, each row naming what it is", async () => {
     const report = await reportOf({
       shape: "series", argument: { kind: "none" }, options: [], freshness: FILED,
       load: () => ({
         series: [
-          { id: "aapl", label: "AAPL", unit: "USD", points: [{ date: "2026-10-07", open: 1, high: 2.5, low: 0.5, close: 2, volume: 900 }, { date: "2026-10-08", open: 2, high: 3, low: 1.5, close: 2.5, volume: 1000 }] },
+          { id: "aapl", label: "AAPL", unit: "USD", symbol: "AAPL", interval: "1d",
+            points: [{ date: "2026-10-07", open: 1, high: 2.5, low: 0.5, close: 2, volume: 900 }, { date: "2026-10-08", open: 2, high: 3, low: 1.5, close: 2.5, volume: 1000 }] },
           { id: "ratio", label: "Ratio", points: [{ date: Date.parse("2026-10-08T14:30:00Z"), value: 0.1 + 0.2 }] },
         ],
         stats: { correlation: 0.8123 },
       }),
     });
-    expect(csvOf(report).slice(0, 13)).toEqual([
+    // As `fn` writes it: the report cites its freshness, so every row ends with the fixed columns.
+    const csv = serializeCliResult({ data: report.data, exportFreshness: report.data.freshness }, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, {
+      text: () => report.text, tables: report.tables,
+    }).split("\n");
+    const identity = "symbol_or_series,currency_or_unit,interval,source,as_of";
+    const asOf = "SEC EDGAR,2026-10-08T14:30:00.000Z";
+    expect(csv.slice(0, 13)).toEqual([
       "# section: AAPL",
-      "Date,Open (USD),High (USD),Low (USD),Close (USD),Volume",
-      "2026-10-07,1,2.5,0.5,2,900",
-      "2026-10-08,2,3,1.5,2.5,1000",
+      `Date,Open,High,Low,Close,Volume,${identity}`,
+      `2026-10-07,1,2.5,0.5,2,900,AAPL,USD,1d,${asOf}`,
+      `2026-10-08,2,3,1.5,2.5,1000,AAPL,USD,1d,${asOf}`,
       "",
       "# section: Ratio",
-      "Time,Value",
-      "2026-10-08T14:30:00Z,0.3",
+      `Time,Value,${identity}`,
+      `2026-10-08T14:30:00Z,0.3,AAPL,,,${asOf}`,
       "",
       "# section: Statistics",
-      "Metric,Value",
-      "correlation,0.8123",
+      `Metric,Value,${identity}`,
+      `correlation,0.8123,AAPL,,,${asOf}`,
       "",
     ]);
   });

@@ -192,7 +192,7 @@ function FilterChip({ item, open, onOpenChange }: { item: HostQueryBarItem; open
   );
 }
 
-export function WebQueryBar({ search, items, view, onClearAll, meta, openRequest }: HostQueryBarProps) {
+export function WebQueryBar({ search, items, view, onClearAll, meta, leading, openRequest }: HostQueryBarProps) {
   const [openId, setOpenId] = useState<string | null>(null);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
@@ -306,6 +306,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, openRequest
           {stack.title ? <span className="gloom-qb-title" title={stack.title}>{stack.title}</span> : null}
         </>
       )}
+      {leading ? <div className="gloom-qb-leading">{leading}</div> : null}
       {searchNode}
       {items.length > 0 && (
         <div className="gloom-qb-filters" data-strip={items.some(isStrip) ? "true" : undefined}>

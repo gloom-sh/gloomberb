@@ -10,7 +10,8 @@ import type {
 } from "../../../api-client/geo";
 import { ActionRow, DetailScrollBody, KeyValueRow, Section, StatGrid, type StatItem } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
-import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
+import { NATIVE_CLIP_STYLE } from "../../../components/ui/display";
+import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { clipToDisplayWidth, displayWidth } from "../../../utils/format";
 import { formatGeoValue, isChangeColumn, tickerLinkKey } from "./layers";
 
@@ -82,9 +83,21 @@ const VIA_WORDS: Record<GeoTickerLink["via"], string> = {
   sector: "Sector",
 };
 
-/** One row, one line: a label and what it is, clipped so a long note never wraps over the next row. */
+/**
+ * One row, one line: a label and what it is, clipped so a long note never
+ * wraps over the next row: at the terminal's columns, or in CSS where the row
+ * ends on the desktop and the web.
+ */
 function LinkRow({ label, detail, width, onPress }: { label: string; detail: string; width: number; onPress: () => void }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
+  if (nativePaneChrome) {
+    return (
+      <ActionRow label={label} onPress={onPress}>
+        <Text fg={colors.textDim} style={{ ...NATIVE_CLIP_STYLE, flex: "1 1 0" }}>{detail}</Text>
+      </ActionRow>
+    );
+  }
   const room = Math.max(0, width - displayWidth(label) - 3);
   return (
     <ActionRow label={label} onPress={onPress} width={width}>

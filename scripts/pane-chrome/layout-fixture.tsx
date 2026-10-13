@@ -2,19 +2,24 @@
 /**
  * Panes for the layout checks (layout-checks.ts): one per shared component
  * that sets text or scrolls content (the stack detail reader, the article
- * reader, markdown, prose paragraphs and a table), plus the real Trials and
+ * reader, markdown, prose paragraphs, a table, and a page with a table as tall
+ * as its rows and label and value rows), plus the real Trials and
  * Changelog panes, whose open items read through the detail reader. Every
  * study, release and article is invented, and nothing is fetched: the Trials
  * registry and the release feed are answered in the page.
  *
  * Scenario options (query string, after `scenario=layout`): `pane=<id>`
- * (trials, changelog, reader, markdown, prose or table) and `mode=dock` or
+ * (trials, changelog, reader, markdown, prose, inline, or a pane of the main
+ * fixture such as table or chart-bar) and `mode=dock` or
  * `mode=float`; a floating pane takes most of the window at a size that is not
  * a whole number of cells.
  */
 import { useRef } from "react";
 import { DetailScrollBody } from "../../src/components/ui/detail-scroll-body";
 import { BulletList, Prose } from "../../src/components/ui/prose";
+import { KeyValueRow } from "../../src/components/ui/display";
+import { DataTableView } from "../../src/components/data-table/view";
+import { buildSectionedRows, isSectionedItemRow, renderSectionedRowHeader, sectionedRowsHeight, type SectionedRow } from "../../src/components/data-table/sections";
 import { MarkdownText } from "../../src/components/markdown-text";
 import { ArticleReader } from "../../src/components/reader/article-reader";
 import { parseArticle } from "../../src/components/reader/article-text";
@@ -26,7 +31,7 @@ import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../src/theme/font-scale";
 import type { LayoutConfig } from "../../src/types/config";
 import type { PaneProps } from "../../src/types/plugin";
 import type { ScrollBoxRenderable } from "../../src/ui";
-import { Box } from "../../src/ui";
+import { Box, useUiCapabilities } from "../../src/ui";
 import { setHttpFetchTransport } from "../../src/utils/http-transport";
 
 const SENTENCES = [
@@ -162,7 +167,62 @@ function ProseFixturePane({ width }: PaneProps) {
   );
 }
 
+type InlineRow = SectionedRow<{ id: string; key: string; does: string }>;
+const INLINE_ROWS: InlineRow[] = buildSectionedRows([
+  { label: "Start here", items: SENTENCES.slice(0, 4).map((does, index) => ({ id: `s${index}`, key: `K${index}`, does })) },
+  { label: "More keys", items: SENTENCES.slice(2).map((does, index) => ({ id: `m${index}`, key: `M${index}`, does })) },
+], (item) => item.id);
+const INLINE_COLUMNS = [
+  { id: "key", label: "KEY", width: 8, align: "left" as const },
+  { id: "does", label: "DOES", width: 20, align: "left" as const, flexGrow: 1 },
+];
+/** Words that run a few characters past a count of cells, and fit the pixels those cells take. */
+const valueFor = (columns: number, index: number) => `${SENTENCES[index % SENTENCES.length]} ${SENTENCES[(index + 1) % SENTENCES.length]}`.slice(0, Math.max(4, columns + 3)).trimEnd();
+
+/**
+ * A page that sets things inline, as Help, the account plans and executive
+ * pay do: prose, a table as tall as its rows, label and value rows, prose.
+ */
+function InlineFixturePane({ width }: PaneProps) {
+  const scrollRef = useRef<ScrollBoxRenderable>(null);
+  const { nativePaneChrome } = useUiCapabilities();
+  const inner = Math.max(12, width - 2);
+  const tableHeight = sectionedRowsHeight(INLINE_ROWS);
+  return (
+    <DetailScrollBody ref={scrollRef}>
+      <Box flexDirection="column" gap={1}>
+        <Prose text={SENTENCES.slice(0, 2).join(" ")} width={inner} />
+        <Box flexDirection="column" height={nativePaneChrome ? undefined : tableHeight}>
+          <DataTableView<InlineRow>
+            columns={INLINE_COLUMNS}
+            items={INLINE_ROWS}
+            selection={{ kind: "none" }}
+            rootWidth={inner}
+            rootHeight={tableHeight}
+            horizontalPadding={0}
+            virtualize={false}
+            fitRows
+            sortColumnId={null}
+            sortDirection="asc"
+            getItemKey={(row) => row.key}
+            renderSectionHeader={renderSectionedRowHeader}
+            renderCell={(row, column) => (isSectionedItemRow(row) ? { text: column.id === "key" ? row.item.key : row.item.does } : { text: "" })}
+            emptyStateTitle="Nothing"
+          />
+        </Box>
+        <Box flexDirection="column">
+          {Array.from({ length: 5 }, (_, index) => (
+            <KeyValueRow key={index} label={`Field ${index + 1}`} value={valueFor(inner - 12, index)} width={inner} labelWidth={12} />
+          ))}
+        </Box>
+        <Prose text={SENTENCES.slice(3).join(" ")} width={inner} />
+      </Box>
+    </DetailScrollBody>
+  );
+}
+
 export const LAYOUT_PANES = {
+  inline: { name: "Inline", component: InlineFixturePane },
   trials: { name: "Trials", component: TrialsFixturePane },
   changelog: { name: "Changelog", component: ChangelogFixturePane },
   reader: { name: "Reader", component: ReaderFixturePane },

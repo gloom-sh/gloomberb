@@ -31,7 +31,7 @@ import {
   type CliReportTable,
   type CliReportTables,
 } from "../report-tables";
-import { labelWithUnit } from "../../utils/display-number";
+import type { ExportIdentity } from "../export-source";
 import { observationDate } from "../../time-series/price-comparison";
 import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
@@ -268,6 +268,7 @@ export function serializeHeadlessPaneResult(
   const common = {
     ...(result.errors ? { errors: result.errors } : {}),
     ...(result.notes?.length ? { notes: result.notes } : {}),
+    ...(result.warnings?.length ? { warnings: result.warnings } : {}),
     ...(result.metadata ? { metadata: result.metadata } : {}),
   };
   switch (definition.shape) {
@@ -478,17 +479,22 @@ function displayedColumns(columns: HeadlessPaneColumn[]): HeadlessPaneColumn[] {
 
 const SERIES_FIELDS = ["value", "open", "high", "low", "close", "volume"] as const;
 
-/** Every point of a series: its date (the trading date for session bars) and its values, in the series' unit. */
+/**
+ * Every point of a series: its date (the trading date for session bars) and
+ * its values, in the series' unit, which the export's `currency_or_unit`
+ * column names beside the bare `Value`, `Open`... headers.
+ */
 function seriesTable(series: HeadlessSeries): CliReportTable {
   const fields = SERIES_FIELDS.filter((field) => series.points.some((point) => point[field] != null));
-  const unit = series.unit?.trim() ?? "";
   const dates = series.points.map((point) => seriesPointExportDate(series, point.date));
-  const header = (field: (typeof SERIES_FIELDS)[number]) => {
-    const name = `${field[0]!.toUpperCase()}${field.slice(1)}`;
-    return field === "volume" ? name : labelWithUnit(name, unit);
-  };
+  const header = (field: (typeof SERIES_FIELDS)[number]) => `${field[0]!.toUpperCase()}${field.slice(1)}`;
   return {
     title: series.label,
+    identity: {
+      ...(series.symbol?.trim() ? { symbolOrSeries: series.symbol.trim() } : {}),
+      ...(series.unit?.trim() ? { currencyOrUnit: series.unit.trim() } : {}),
+      ...(series.interval?.trim() ? { interval: series.interval.trim() } : {}),
+    },
     columns: [dates.every((date) => date.length <= 10) ? "Date" : "Time", ...fields.map(header)],
     rows: series.points.map((point, index) => [
       dates[index]!,
@@ -576,6 +582,7 @@ export function headlessReportTables(
   const { locked, failed } = splitErrors(result);
   return {
     tables,
+    identity: reportIdentity(definition, result, args),
     footer: reportFooterLines({
       freshness,
       incomplete: incompleteDetail(result, status),
@@ -584,6 +591,18 @@ export function headlessReportTables(
       notes: [...textNotices(result), ...(result.notes ?? [])],
     }),
   };
+}
+
+/**
+ * What a report's exported rows are of when it is about one symbol or series:
+ * the one a chart's series were asked as, else the one symbol asked for or
+ * resolved. A series table names its own symbol, unit and interval.
+ */
+function reportIdentity(definition: HeadlessPaneDefinition, result: HeadlessPaneResult, args: HeadlessPaneLoadArgs): ExportIdentity {
+  const series = definition.shape === "series" ? (result as HeadlessSeriesResult).series : [];
+  const charted = [...new Set(series.flatMap((entry) => entry.symbol?.trim() ? [entry.symbol.trim()] : []))];
+  const symbols = charted.length > 0 ? charted : args.symbols.length > 0 ? args.symbols : result.symbols ?? [];
+  return symbols.length === 1 ? { symbolOrSeries: symbols[0]! } : {};
 }
 
 function reportTitle(

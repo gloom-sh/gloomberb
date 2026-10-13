@@ -104,3 +104,12 @@ test("Auto keeps an earlier boundary after an empty default fallback", async () 
   expect(recovered.warnings.join(" ")).not.toContain(notice);
   expect(recovered.series[0]?.points.map((point) => point.value)).toEqual([4.095, 4.315]);
 });
+
+test("a boundary's reason travels with the history through the router, and an unprintable one is dropped", async () => {
+  const note = "old-shekel quotes before 1992 are not served";
+  for (const [given, kept] of [[note, note], [`${note}.`, note], ["\u001b[2Jwiped", undefined]] as const) {
+    apiClient.getCloudHistory = async () => ({ status: "success", data: served, coverage: { ...boundaries[1]!, note: given } });
+    const result = await new AssetDataRouter(cloud()).getPriceHistoryWithMetadata("ACME", "LSE", "ALL");
+    expect([result.coverageStart, result.coverageNote]).toEqual(["2005-07-21", kept]);
+  }
+});

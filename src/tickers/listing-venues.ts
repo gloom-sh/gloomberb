@@ -10,6 +10,7 @@ import {
   parsePublicTickerKey,
   typedExchangeCode,
 } from "../utils/exchanges";
+import { currencyPairSpelling } from "../utils/currency-pair";
 
 export interface ListingStore {
   loadTicker(symbol: string): Promise<TickerRecord | null>;
@@ -75,6 +76,27 @@ export async function quotedOnVenue(listing: { symbol: string; exchange: string 
     return Number.isFinite(quote.price) && quote.price !== 0 && quoteTradingExchange(quote) === listing.exchange;
   } catch {
     return false;
+  }
+}
+
+/**
+ * A currency pair typed the way a security could also be written, USD-NGN or
+ * USDNGN, read as the pair the service lists (USDNGN=X) when search, as the
+ * command bar reads the same text, finds no listing under those letters: MNT-USD
+ * stays the coin. Null for any other text, and for a listing.
+ */
+export async function readAmbiguousCurrencyPair(typed: string, { store, dataProvider }: ListingDeps): Promise<string | null> {
+  const pair = currencyPairSpelling(typed);
+  if (!pair?.ambiguous) return null;
+  try {
+    const tickers = new Map((await store.loadAllTickers()).map((ticker) => [ticker.metadata.ticker.toUpperCase(), ticker] as const));
+    const resolved = await resolveTickerSearch({ query: typed, activeTicker: null, tickers, dataProvider });
+    const exchange = !resolved ? undefined : resolved.kind === "local" ? resolved.ticker.metadata.exchange : resolved.result.exchange;
+    const listed = resolved ? currencyPairSpelling(resolved.symbol, exchange) : null;
+    return listed && !listed.ambiguous && listed.symbol === pair.symbol ? pair.symbol : null;
+  } catch {
+    // Several listings under those letters, or no search: the letters stay a symbol.
+    return null;
   }
 }
 

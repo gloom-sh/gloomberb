@@ -10,7 +10,7 @@ import {
   type PaneFunctionCatalog,
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
-import { findCatalogSeries } from "../series-search";
+import { catalogFredSeriesIds, findCatalogSeries } from "../series-search";
 import {
   parsePaneCatalogArgs,
   parsePaneFunctionArgs,
@@ -106,12 +106,17 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
           `${resolved.token} did not produce a complete bot-safe report.${unavailable}`,
         );
       }
+      // A chart or other series exported to CSV or NDJSON with no rows fails, rather than writing a header alone.
+      if (tabular && report.data.kind === "series" && report.data.empty) {
+        const empty = emptySeriesExport(resolved.token, parsed.arg, report.data, catalogFredSeriesIds(ctx.plugins), `--${ctx.cliOptions.format}`);
+        ctx.fail(empty.message, empty.details);
+      }
       // --explain follows the report with the terms it shows; JSON lists them under `glossary`.
       const glossary = parsed.explain ? reportGlossary(resolved.token, report.text) : null;
       const data = glossary
         ? { ...report.data, glossary: glossary.map(({ term, short, definition }) => ({ term, ...(short ? { short } : {}), definition })) }
         : report.data;
-      const warnings = [...parsed.listingNotes ?? [], ...await choice ?? []];
+      const warnings = [...parsed.listingNotes ?? [], ...await choice ?? [], ...report.data.warnings ?? []];
       // The report states its own freshness in its data and text; JSON cites it as `source` too.
       ctx.printResult({ data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}) }, {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
@@ -119,6 +124,41 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       });
     }, { strictHeadlessOptions: true, tableSection: true });
   });
+}
+
+/**
+ * What a series export that came back with no rows says: what was asked, why
+ * when the report knows, and what to run instead. A FRED series ID given where
+ * a ticker goes (`fn G DEXSFUS`) is charted with the `fred:` prefix.
+ */
+export function emptySeriesExport(
+  token: string,
+  arg: string,
+  data: { unavailableSymbols: readonly string[]; errors?: readonly string[] },
+  fredSeriesIds: ReadonlySet<string>,
+  formatFlag = "--csv",
+): { message: string; details: string } {
+  const asked = ["fn", token, arg.trim()].filter(Boolean).join(" ");
+  const fred = data.unavailableSymbols
+    .map((symbol) => symbol.split(":")[0]!.trim().toUpperCase())
+    .filter((id) => /^[A-Z0-9]+$/.test(id) && fredSeriesIds.has(id));
+  if (fred.length > 0) {
+    const ids = [...new Set(fred)];
+    return {
+      message: `${asked} has no data to export: ${ids.join(" and ")} ${ids.length === 1 ? "is a FRED series" : "are FRED series"}, not ${ids.length === 1 ? "a ticker" : "tickers"}.`,
+      details: `Chart it with the fred: prefix: gloomberb fn G ${ids.map((id) => `fred:${id}`).join(",")} ${formatFlag}`
+        + `${ids.length === 1 ? ` (or gloomberb fred ${ids[0]} ${formatFlag})` : ""}.`,
+    };
+  }
+  const missing = data.unavailableSymbols.length > 0 ? ` for ${data.unavailableSymbols.join(", ")}` : "";
+  const reasons = (data.errors ?? []).map((error) => error.replace(/^[a-z0-9-]+-\d+: /, ""));
+  return {
+    message: `${asked} has no data to export${missing}.`,
+    details: [
+      ...reasons,
+      `Check the symbol with gloomberb search, or run gloomberb ${asked} without ${formatFlag} to see the report.`,
+    ].join("\n"),
+  };
 }
 
 /** How long a capture's process may stay up after its output, for a report it stopped waiting for. */
@@ -263,7 +303,10 @@ async function runPaneCliCommand(ctx: CliCommandContext, run: () => Promise<void
     // A listing it cannot use says what to type instead; a name that opens nothing, what is close to it.
     if (error instanceof ListingArgError || error instanceof UnknownPaneFunctionError) ctx.fail(error.message, error.details);
     const message = error instanceof Error ? error.message : String(error);
-    ctx.fail(message);
+    // A failure the command already worded keeps its advice line.
+    const stated = error instanceof Error ? (error as Error & { details?: unknown }).details : undefined;
+    const details = typeof stated === "string" ? stated : undefined;
+    ctx.fail(message, details);
   }
 }
 

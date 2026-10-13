@@ -15,6 +15,7 @@ import { currencyUnitLabel } from "../utils/currency-units";
 import { getPricePointTimestamp } from "../utils/price-history";
 import { pricePointIntegrityFlags, pricePointValues } from "../utils/price-history-integrity";
 import { formatUtcTime } from "../utils/utc-time";
+import { historyCoverageNotice } from "../sources/history-coverage";
 
 const PRICE_KEYS = ["open", "high", "low", "close"] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -24,6 +25,13 @@ const INTRADAY_RESOLUTIONS = ["1m", "5m", "15m", "30m", "45m", "1h"] as const;
 /** A first bar later than this after the range's start is a late start, not a weekend or holiday. */
 const LATE_START_MIN_MS = 10 * DAY_MS;
 const LATE_START_MIN_BARS = 3;
+/** A bar with more than this many calendar periods (`barPeriod`) since the one before follows a gap in the series. */
+const BREAK_GAP_PERIODS = 3;
+/** A close more than this many times the close before it, or less than its hundredth, follows a jump. */
+const BREAK_JUMP_RATIO = 100;
+/** Flag codes for a break before a bar, whose prices stay as served; every other code blanks them. */
+const BREAK_FLAGS: ReadonlySet<string> = new Set(["gap", "jump"]);
+const FIRST_MONDAY_MS = Date.UTC(1970, 0, 5);
 
 const BAR_INTERVAL_LABELS: Record<ManualChartResolution, string> = {
   "1m": "1-minute",
@@ -50,7 +58,10 @@ export interface HistoryRow {
   unit: string | null;
   /** Bar size, in the codes of `resolution`: 5m, 1h, 1d, 1wk, 1mo. */
   interval: ManualChartResolution | null;
-  /** Each way the bar's prices contradict each other, such as `high<open`; null when they agree. */
+  /**
+   * Each way the bar's prices contradict each other, such as `high<open`, and
+   * `gap` or `jump` for a break in the series just before it; null when none.
+   */
   flag: string | null;
   /** The bar's period had not ended when it was served: the close is the latest price. */
   partial?: true;
@@ -123,9 +134,58 @@ function historyInterval(times: readonly number[], resolution: ManualChartResolu
 }
 
 /**
+ * The calendar period a bar falls in, numbered so that consecutive periods
+ * differ by one: its month for monthly bars, its week (Monday to Sunday, UTC)
+ * for weekly and anything finer. Daily and intraday bars are counted in weeks
+ * because a market's own closures leave holes that are no break in the
+ * series: nights, weekends, holidays (Lunar New Year and Golden Week close
+ * Chinese markets for up to nine days, Eid the Gulf markets about as long),
+ * and a thin listing that goes a week or two without a trade. A daily series
+ * then breaks exactly where its weekly bars would.
+ */
+function barPeriod(time: number, interval: ManualChartResolution): number {
+  if (interval !== "1mo") return Math.floor((time - FIRST_MONDAY_MS) / (7 * DAY_MS));
+  const date = new Date(time);
+  return date.getUTCFullYear() * 12 + date.getUTCMonth();
+}
+
+/**
+ * The breaks before each bar: `gap` after more than three calendar periods
+ * with no bar (`barPeriod`), `jump` when its close is over 100 times the last
+ * close before it, or under a hundredth of it. Closes that are blank, zero or
+ * negative are skipped.
+ */
+function historyBreakFlags(
+  times: readonly number[],
+  closes: readonly (number | null)[],
+  interval: ManualChartResolution | null,
+): string[][] {
+  let previousTime: number | null = null;
+  let previousClose: number | null = null;
+  return times.map((time, index) => {
+    const flags: string[] = [];
+    if (interval && Number.isFinite(time)) {
+      if (previousTime != null && barPeriod(time, interval) - barPeriod(previousTime, interval) > BREAK_GAP_PERIODS) flags.push("gap");
+      previousTime = time;
+    }
+    const close = closes[index];
+    if (close != null && close > 0) {
+      if (previousClose != null && Math.max(close / previousClose, previousClose / close) > BREAK_JUMP_RATIO) flags.push("jump");
+      previousClose = close;
+    }
+    return flags;
+  });
+}
+
+function flagCodes(row: Pick<HistoryRow, "flag">): string[] {
+  return row.flag ? row.flag.split(",") : [];
+}
+
+/**
  * Intraday bars keep their UTC time; daily and longer bars are trading dates.
  * A bar whose prices contradict each other is blanked exactly as HP blanks it,
- * and says why in `flag`.
+ * and says why in `flag`. A bar after a gap or a jump in the series keeps its
+ * prices and is flagged `gap` or `jump`.
  */
 export function historyRows(
   points: readonly PricePoint[],
@@ -137,7 +197,7 @@ export function historyRows(
   const times = points.map(getPricePointTimestamp);
   const intraday = resolution ? isIntradayResolution(resolution) : looksIntraday(times);
   const interval = historyInterval(times, resolution);
-  return points.map((point, index) => {
+  const rows = points.map((point, index) => {
     const time = times[index]!;
     const iso = Number.isFinite(time) ? new Date(time).toISOString() : "";
     const values = pricePointValues(point);
@@ -162,6 +222,11 @@ export function historyRows(
         ? { volumeNote: point.partial ? "day in progress" : point.filled ? "rebuilt from hourly bars" : "not reported" }
         : {}),
     };
+  });
+  const breaks = historyBreakFlags(times, rows.map((row) => row.close), interval);
+  return rows.map((row, index) => {
+    const flags = [...flagCodes(row), ...breaks[index]!];
+    return flags.length > 0 ? { ...row, flag: flags.join(",") } : row;
   });
 }
 
@@ -292,16 +357,28 @@ function historyDate(value: string): string {
   return value.length > 10 ? formatUtcTime(value) : value;
 }
 
-/** The facts line under a history heading: "Currency USD", "daily bars", "2025-10-09 to 2026-10-08", "251 bars". */
-export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, "date" | "interval">[]): string[] {
+/** The first bar after the series' last gap or jump, which reads on without a break; null when it has none. */
+export function historyUnbrokenFrom(rows: readonly Pick<HistoryRow, "date" | "flag">[]): string | null {
+  const last = rows.findLastIndex((row) => flagCodes(row).some((code) => BREAK_FLAGS.has(code)));
+  return last >= 0 ? rows[last]!.date : null;
+}
+
+/**
+ * The facts line under a history heading: "Currency USD", "daily bars",
+ * "2025-10-09 to 2026-10-08", "251 bars", and "unbroken from 1992-12-01"
+ * after a gap or jump.
+ */
+export function historyFacts(unit: HistoryUnit, rows: readonly Pick<HistoryRow, "date" | "interval" | "flag">[]): string[] {
   const first = rows[0]?.date;
   const last = rows.at(-1)?.date;
   const interval = rows[0]?.interval;
+  const unbroken = historyUnbrokenFrom(rows);
   return [
     unit.kind === "pair" ? unit.unit! : unit.kind === "points" ? "Index points" : `Currency ${unit.unit ?? "unknown"}`,
     interval ? `${BAR_INTERVAL_LABELS[interval]} bars` : "",
     first && last ? (first === last ? historyDate(first) : `${historyDate(first)} to ${historyDate(last)}`) : "",
     `${rows.length} ${rows.length === 1 ? "bar" : "bars"}`,
+    unbroken ? `unbroken from ${historyDate(unbroken)}` : "",
   ].filter(Boolean);
 }
 
@@ -333,22 +410,102 @@ export function historyNotes(
   return notes;
 }
 
+/**
+ * "Price history starts 1992-12-01; old-shekel quotes before 1992 are not
+ * served.": the source serves nothing before a date the range reaches back
+ * past, and why when it says. Null for a range that starts after it.
+ */
+export function historyCoverageWarning(
+  range: TimeRange,
+  coverage: { coverageStart?: string; coverageNote?: string },
+  now = Date.now(),
+): string | null {
+  return historyCoverageNotice(coverage.coverageStart, subtractTimeRange(new Date(now), range).getTime(), coverage.coverageNote);
+}
+
 /** Gaps listed by date before the rest are only counted. */
 const LISTED_GAPS = 3;
+
+function listItems(items: readonly string[]): string {
+  return items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items.at(-1)}` : items[0] ?? "";
+}
+
+function utcDay(time: number): string {
+  return new Date(time).toISOString().slice(0, 10);
+}
+
+/** The bars flagged `code`, each with the bar before it. */
+function breaksFlagged<Row extends Pick<HistoryRow, "flag">>(rows: readonly Row[], code: string): Array<[Row, Row]> {
+  return rows.flatMap((row, index) => index > 0 && flagCodes(row).includes(code) ? [[rows[index - 1]!, row] as [Row, Row]] : []);
+}
+
+/**
+ * "No bars for 1980-08 to 1992-11 (148 months)": the periods with no bar
+ * before each bar flagged `gap`, the latest few by date and the rest counted.
+ */
+function historyBreakGapNote(rows: readonly Pick<HistoryRow, "date" | "interval" | "flag">[]): string | null {
+  const interval = rows[0]?.interval;
+  const gaps = interval ? breaksFlagged(rows, "gap") : [];
+  if (!interval || gaps.length === 0) return null;
+  const monthly = interval === "1mo";
+  const spans = gaps.map(([before, after]) => {
+    const [from, to] = [Date.parse(before.date), Date.parse(after.date)];
+    const periods = barPeriod(to, interval) - barPeriod(from, interval) - 1;
+    const length = `${periods} ${monthly ? "month" : "week"}${periods === 1 ? "" : "s"}`;
+    if (monthly) {
+      const month = (time: number, step: number) => {
+        const date = new Date(time);
+        return utcDay(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + step, 1)).slice(0, 7);
+      };
+      return `${month(from, 1)} to ${month(to, -1)} (${length})`;
+    }
+    return `${utcDay(from + (interval === "1wk" ? 7 : 1) * DAY_MS)} to ${utcDay(to - DAY_MS)} (${length})`;
+  });
+  const shown = spans.slice(-LISTED_GAPS);
+  const earlier = spans.length - shown.length;
+  return `No bars for ${listItems([...earlier > 0 ? [`${earlier} earlier ${earlier === 1 ? "gap" : "gaps"}`] : [], ...shown])}`;
+}
+
+const closeFormat = new Intl.NumberFormat("en-US", { maximumSignificantDigits: 7, useGrouping: false });
+
+/**
+ * "Close rises 564x from 0.0049 on 1980-07-01 to 2.763 on 1992-12-01": each
+ * bar flagged `jump`, against the last close before it. Neutral on the cause,
+ * which can be a change of unit, a different series or a real collapse.
+ */
+export function historyJumpNote(rows: readonly Pick<HistoryRow, "date" | "close" | "flag">[]): string | null {
+  const jumps: string[] = [];
+  let previous: { date: string; close: number } | null = null;
+  for (const row of rows) {
+    if (row.close == null || !(row.close > 0)) continue;
+    if (previous && flagCodes(row).includes("jump")) {
+      const rises = row.close > previous.close;
+      const ratio = Math.round(rises ? row.close / previous.close : previous.close / row.close).toLocaleString("en-US");
+      jumps.push(`${rises ? "rises" : "falls"} ${ratio}x from ${closeFormat.format(previous.close)} on ${historyDate(previous.date)}`
+        + ` to ${closeFormat.format(row.close)} on ${historyDate(row.date)}`);
+    }
+    previous = { date: row.date, close: row.close };
+  }
+  if (jumps.length === 0) return null;
+  const shown = jumps.slice(-LISTED_GAPS);
+  const earlier = jumps.length - shown.length;
+  return `Close ${earlier > 0 ? `jumps over 100x at ${earlier} earlier ${earlier === 1 ? "bar" : "bars"}, then ` : ""}${listItems(shown)}`;
+}
 
 /**
  * "No bar for 2026-10-10": the days a coin, which trades every day, has no
  * daily bar for between its first and last bar. Days before the first bar are
  * before the listing. A market that closes skips weekends and holidays, so its
- * gaps say nothing and get no note.
+ * gaps say nothing on their own: for it, and for a coin's other bar sizes, the
+ * note names the gaps flagged `gap`, "No bars for 1980-08 to 1992-11 (148 months)".
  */
 export function historyGapNote(
-  rows: readonly Pick<HistoryRow, "date" | "interval">[],
+  rows: readonly Pick<HistoryRow, "date" | "interval" | "flag">[],
   market: { listing: string; exchange?: string; instrumentType?: string },
 ): string | null {
   const everyDay = isRoundTheClockCoin(market.listing, market.exchange)
     || classifyInstrumentType(market.instrumentType) === "crypto";
-  if (!everyDay || rows[0]?.interval !== "1d") return null;
+  if (!everyDay || rows[0]?.interval !== "1d") return historyBreakGapNote(rows);
   const days = new Set(rows.map((row) => Date.parse(`${row.date.slice(0, 10)}T00:00:00Z`)).filter(Number.isFinite));
   const sorted = [...days].sort((left, right) => left - right);
   const gaps: Array<[number, number]> = [];
@@ -366,15 +523,19 @@ export function historyGapNote(
     ...earlier > 0 ? [`${earlier} earlier ${earlier === 1 ? "day" : "days"}`] : [],
     ...shown.map(([from, to]) => from === to ? date(from) : `${date(from)} to ${date(to)}`),
   ];
-  const list = listed.length > 1 ? `${listed.slice(0, -1).join(", ")} and ${listed.at(-1)}` : listed[0];
-  return `${length(gaps) === 1 ? "No bar" : "No bars"} for ${list}`;
+  return `${length(gaps) === 1 ? "No bar" : "No bars"} for ${listItems(listed)}`;
 }
 
-/** "37 of 251 bars have high below open or close in the source data; ...", or null when every bar agrees. */
+/**
+ * "37 of 251 bars have high below open or close in the source data; ...", or
+ * null when every bar agrees. Bars flagged only for a gap or jump before them
+ * keep their prices and are not counted.
+ */
 export function historyFlagNote(rows: readonly Pick<HistoryRow, "flag">[]): string | null {
-  const flagged = rows.filter((row) => row.flag);
+  const contradictions = (row: Pick<HistoryRow, "flag">) => flagCodes(row).filter((code) => !BREAK_FLAGS.has(code));
+  const flagged = rows.filter((row) => contradictions(row).length > 0);
   if (flagged.length === 0) return null;
-  const codes = new Set(flagged.flatMap((row) => row.flag!.split(",")));
+  const codes = new Set(flagged.flatMap(contradictions));
   const kinds = [
     codes.has("high<open") || codes.has("high<close") ? "high below open or close" : "",
     codes.has("low>open") || codes.has("low>close") ? "low above open or close" : "",

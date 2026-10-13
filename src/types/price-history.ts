@@ -26,6 +26,8 @@ export interface PriceHistoryResult {
   sourceKey?: string;
   /** First date (YYYY-MM-DD) the source vouches for; it excluded earlier prices. */
   coverageStart?: string;
+  /** Why nothing before `coverageStart` is served, when the source says: "old-shekel quotes before 1992 are not served". */
+  coverageNote?: string;
   /** The source served the pre-market and after-hours bars the request asked for. */
   extendedHours?: boolean;
   /**

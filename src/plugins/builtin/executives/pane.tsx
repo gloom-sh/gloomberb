@@ -131,6 +131,7 @@ function ExecutiveRows({
   rows: CloudExecutiveRowPayload[];
   width: number;
 }) {
+  const isDesktopWeb = useUiCapabilities().nativePaneChrome === true;
   if (width < 52) {
     return <Box flexDirection="column">
       {rows.map((row) => <Prose
@@ -148,7 +149,7 @@ function ExecutiveRows({
   const columns = OFFICER_COLUMNS.map((column) => column.id === "name" ? { ...column, width: nameWidth } : column);
   const height = rows.length + 1;
   return (
-    <Box flexDirection="column" height={height} flexShrink={0}>
+    <Box flexDirection="column" height={isDesktopWeb ? undefined : height} flexShrink={0}>
       <DataTableView<CloudExecutiveRowPayload, OfficerColumn>
         columns={columns}
         items={rows}
@@ -158,6 +159,7 @@ function ExecutiveRows({
         // The scroll body owns the gutter, so the table does not add its own.
         horizontalPadding={0}
         virtualize={false}
+        fitRows
         sortColumnId={null}
         sortDirection="asc"
         getItemKey={(row, index) => `${row.name}-${row.total}-${index}`}

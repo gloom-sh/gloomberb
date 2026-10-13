@@ -2,6 +2,8 @@
  * Where exported data comes from, said the same way by every command that
  * writes CSV or JSON, so an export can go in an audit file as it is: CSV ends
  * with `#` lines and JSON carries a `source` object with the same fields.
+ * CSV and NDJSON rows also end with five fixed columns naming what each row
+ * is (`EXPORT_IDENTITY_COLUMNS`).
  */
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
 
@@ -36,6 +38,47 @@ export function exportSource(freshness: ReportFreshness): ExportSource {
     publicationTime: freshness.publishedAt ?? null,
     retrievalTime: freshness.retrievedAt,
   };
+}
+
+/**
+ * The columns every row of an export that ends with these lines carries,
+ * last and in this order, so a row says what it is after `head`, a filter or
+ * concatenating files: what was asked for, the unit of its values, the bar
+ * interval or observation frequency served, and the source and as-of date the
+ * closing lines give.
+ */
+export const EXPORT_IDENTITY_COLUMNS = ["symbol_or_series", "currency_or_unit", "interval", "source", "as_of"] as const;
+
+/** What a command knows about the rows it exports; source and as-of come from its freshness. */
+export interface ExportIdentity {
+  /** The symbol or series ID asked for: `USDZAR=X`, `SAN:EPA`, `DEXSFUS`. */
+  symbolOrSeries?: string | null;
+  /** The currency or unit the values are in: `ZAR`, `USD`, `bp`, `pct`, `index points`. */
+  currencyOrUnit?: string | null;
+  /** The bar interval or observation frequency actually returned: `1d`, `1mo`, `daily`, `monthly`. */
+  interval?: string | null;
+}
+
+/**
+ * The five cells of `EXPORT_IDENTITY_COLUMNS` for a row: blank where the
+ * command cannot say, and `as_of` the observation date of the closing lines,
+ * blank when they read `not published`.
+ */
+export function exportIdentityCells(freshness: ReportFreshness, identity: ExportIdentity = {}): string[] {
+  const source = exportSource(freshness);
+  return [
+    identity.symbolOrSeries?.trim() ?? "",
+    identity.currencyOrUnit?.trim() ?? "",
+    identity.interval?.trim() ?? "",
+    source.name,
+    source.observationDate ?? "",
+  ];
+}
+
+/** The same five as fields of an NDJSON row, null where blank. */
+export function exportIdentityFields(freshness: ReportFreshness, identity: ExportIdentity = {}): Record<string, string | null> {
+  const cells = exportIdentityCells(freshness, identity);
+  return Object.fromEntries(EXPORT_IDENTITY_COLUMNS.map((column, index) => [column, cells[index] || null]));
 }
 
 /**

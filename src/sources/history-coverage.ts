@@ -19,14 +19,32 @@ export function parseHistoryCoverageStart(coverage: unknown): string | undefined
   return dates.length ? dates.reduce((latest, date) => date > latest ? date : latest) : undefined;
 }
 
-function historyCoverageMessage(coverageStart: string): string {
-  return `Verified price history starts ${coverageStart}; earlier prices are excluded.`;
+/**
+ * Why a source serves nothing before its coverage, when it says, such as
+ * "old-shekel quotes before 1992 are not served": one line of plain text.
+ */
+export function parseHistoryCoverageNote(coverage: unknown): string | undefined {
+  if (!coverage || typeof coverage !== "object" || !parseHistoryCoverageStart(coverage)) return undefined;
+  return historyCoverageNoteText((coverage as Record<string, unknown>).note);
+}
+
+/** A coverage note fit to print: a short line without control characters, its closing full stop dropped. */
+export function historyCoverageNoteText(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const note = value.trim().replace(/\.$/, "");
+  return note && note.length <= 200 && !/[\u0000-\u001f\u007f]/.test(note) ? note : undefined;
+}
+
+function historyCoverageMessage(coverageStart: string, note?: string): string {
+  return note
+    ? `Price history starts ${coverageStart}; ${note}.`
+    : `Verified price history starts ${coverageStart}; earlier prices are excluded.`;
 }
 
 /** Shown while the visible window starts before the source's coverage. */
-export function historyCoverageNotice(coverageStart: string | undefined, visibleStart: number | null): string | null {
+export function historyCoverageNotice(coverageStart: string | undefined, visibleStart: number | null, note?: string): string | null {
   if (!coverageStart || (visibleStart !== null && visibleStart >= Date.parse(coverageStart))) return null;
-  return historyCoverageMessage(coverageStart);
+  return historyCoverageMessage(coverageStart, note);
 }
 
 /** The whole requested window lies before the source's declared coverage. */

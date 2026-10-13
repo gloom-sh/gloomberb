@@ -173,9 +173,10 @@ function PlanComparison({
     };
   }, [activePlan, proCellBg]);
   const height = PLAN_COMPARISON_ROWS.length + 1;
+  const { nativePaneChrome } = useUiCapabilities();
 
   return (
-    <Box flexDirection="column" width={width} height={height}>
+    <Box flexDirection="column" width={width} height={nativePaneChrome ? undefined : height}>
       <DataTableView<PlanRow, PlanColumn>
         columns={columns}
         items={[...PLAN_COMPARISON_ROWS]}
@@ -183,6 +184,7 @@ function PlanComparison({
         rootWidth={width}
         rootHeight={height}
         virtualize={false}
+        fitRows
         sortColumnId={null}
         sortDirection="asc"
         getItemKey={(row) => row.capability}

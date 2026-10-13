@@ -891,6 +891,14 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 }
 .gloom-qb-meta + .gloom-qb-view { margin-left: 0; }
 
+.gloom-qb-leading {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  padding: 0 4px 0 8px;
+}
+
 
 /* Detail header of a list/detail stack: the same band as the query bar, so
    Back and the item title read as the pane's toolbar. Grows when a long title

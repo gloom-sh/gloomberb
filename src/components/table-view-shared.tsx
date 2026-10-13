@@ -27,6 +27,8 @@ function listenToScrollBarChange(
 export interface TableViewFrameProps {
   width?: number;
   height?: number;
+  /** Desktop and web: as tall as the table's rows, not the space it is given (`fitRows`). */
+  fit?: boolean;
   backgroundColor?: string;
   before?: ReactNode;
   after?: ReactNode;
@@ -36,22 +38,24 @@ export interface TableViewFrameProps {
 export function TableViewFrame({
   width,
   height,
+  fit = false,
   backgroundColor,
   before,
   after,
   children,
 }: TableViewFrameProps) {
   const { nativePaneChrome } = useUiCapabilities();
-  const nativeFlexibleFrame = nativePaneChrome === true;
+  const nativeFlexibleFrame = nativePaneChrome === true && !fit;
+  const nativeFitFrame = nativePaneChrome === true && fit;
 
   return (
     <Box
       flexDirection="column"
-      flexGrow={nativeFlexibleFrame || height == null ? 1 : undefined}
-      flexShrink={nativeFlexibleFrame ? 1 : height == null ? undefined : 0}
+      flexGrow={nativeFitFrame ? 0 : nativeFlexibleFrame || height == null ? 1 : undefined}
+      flexShrink={nativeFitFrame ? 0 : nativeFlexibleFrame ? 1 : height == null ? undefined : 0}
       flexBasis={nativeFlexibleFrame ? 0 : undefined}
       width={width}
-      height={nativeFlexibleFrame ? undefined : height}
+      height={nativeFlexibleFrame || nativeFitFrame ? undefined : height}
       minWidth={nativeFlexibleFrame ? 0 : undefined}
       minHeight={nativeFlexibleFrame ? 0 : undefined}
       maxHeight={nativeFlexibleFrame ? "100%" : undefined}

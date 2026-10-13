@@ -46,11 +46,77 @@ export function getFilingDisplayTitle(filing: SecFilingItem): string {
   return description ? `${formLabel} | ${description}` : formLabel;
 }
 
-/** The adjacent FORM column already identifies the form. Keep its meaning here. */
+/**
+ * 8-K items in a few words, as a reader scans them: what happened, not the
+ * SEC's full caption. 9.01 (exhibits) comes with most reports and says little.
+ */
+const CURRENT_REPORT_ITEMS: Record<string, string> = {
+  "1.01": "Material agreement",
+  "1.02": "Agreement terminated",
+  "1.03": "Bankruptcy or receivership",
+  "1.04": "Mine safety",
+  "1.05": "Cybersecurity incident",
+  "2.01": "Acquisition or disposal",
+  "2.02": "Results of operations",
+  "2.03": "New financial obligation",
+  "2.04": "Obligation accelerated",
+  "2.05": "Exit or restructuring costs",
+  "2.06": "Impairment",
+  "3.01": "Listing standard notice",
+  "3.02": "Unregistered equity sale",
+  "3.03": "Shareholder rights modified",
+  "4.01": "Auditor change",
+  "4.02": "Non-reliance on financials",
+  "5.01": "Change in control",
+  "5.02": "Officer or director change",
+  "5.03": "Charter or bylaws amended",
+  "5.04": "Benefit plan trading suspension",
+  "5.05": "Code of ethics change",
+  "5.06": "Shell company status change",
+  "5.07": "Shareholder vote results",
+  "5.08": "Director nominations",
+  "7.01": "Regulation FD disclosure",
+  "8.01": "Other events",
+  "9.01": "Exhibits",
+};
+
+const isCurrentReport = (form: string) => /^(?:8-K|6-K)(?:\/A)?$/i.test(form.trim());
+
+/** `Results of operations; Exhibits` from `2.02,9.01`; exhibits only when nothing else is reported. */
+function currentReportItemsText(items: string | null | undefined): string | null {
+  const codes = (secFilingItemCodes(items) ?? "").split(",").filter(Boolean);
+  const named = codes.filter((code) => code !== "9.01" || codes.length === 1).map((code) => CURRENT_REPORT_ITEMS[code] ?? `Item ${code}`);
+  return named.length > 0 ? named.join("; ") : null;
+}
+
+/**
+ * The period a 10-K or 10-Q covers, read from its inline XBRL document name
+ * (`aapl-20260627.htm`), which by convention carries the period end. A date
+ * after the filing, or more than 15 months before it, is not taken.
+ */
+function periodicReportPeriod(filing: Pick<SecFilingItem, "form" | "primaryDocument" | "filingDate">): string | null {
+  if (!/^(?:10-K|10-Q|10-KT|10-QT|20-F|40-F)(?:\/A)?$/i.test(filing.form.trim())) return null;
+  const match = /^[a-z0-9.]+-(\d{4})(\d{2})(\d{2})(?:x\d+)?\.html?$/i.exec(filing.primaryDocument?.split("/").pop() ?? "");
+  if (!match) return null;
+  const end = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  const iso = `${match[1]}-${match[2]}-${match[3]}`;
+  const filed = new Date(filing.filingDate).getTime();
+  if (!Number.isFinite(end.getTime()) || end.toISOString().slice(0, 10) !== iso || !Number.isFinite(filed)) return null;
+  const days = (filed - end.getTime()) / 86_400_000;
+  return days >= 0 && days <= 460 ? iso : null;
+}
+
+/** The adjacent FORM column already identifies the form. Keep its meaning here: what the filing reports. */
 export function getFilingColumnText(filing: SecFilingItem): string {
   const description = getMeaningfulPrimaryDescription(filing);
   const meaning = getFormDescription(filing.form);
-  if (!description) return meaning || "Filing";
+  if (!description) {
+    const items = isCurrentReport(filing.form) ? currentReportItemsText(filing.items) : null;
+    if (items) return /\/A$/i.test(filing.form.trim()) ? `${items} (amended)` : items;
+    const period = periodicReportPeriod(filing);
+    if (period) return `${meaning || "Report"}, period ended ${period}`;
+    return meaning || "Filing";
+  }
   return meaning && normalizeComparableText(description) !== normalizeComparableText(meaning)
     ? `${description} | ${meaning}`
     : description;
@@ -99,11 +165,91 @@ export function getFormDescription(form: string): string {
     case "NPORT-P": return "Monthly Portfolio Holdings Report";
     case "NPORT-EX": return "Portfolio Holdings Exhibit";
     case "24F-2NT": return "Annual Notice of Securities Sold";
+    case "SD": return "Conflict Minerals Report";
+    case "S-3": return "Shelf Registration";
+    case "S-8": return "Employee Plan Registration";
+    case "FWP": return "Free Writing Prospectus";
+    case "DEFA14A": return "Additional Proxy Materials";
+    case "PX14A6G": return "Shareholder Exempt Solicitation";
+    case "11-K": return "Employee Plan Annual Report";
+    case "ARS": return "Annual Report to Shareholders";
+    case "NT 10-K": return "Late Annual Report Notice";
+    case "NT 10-Q": return "Late Quarterly Report Notice";
+    case "25-NSE": return "Delisting Notice";
+    case "6-K": return "Foreign Issuer Current Report";
+    case "40-F": return "Annual Report (Canadian)";
+    case "424B2":
+    case "424B3":
+    case "424B5": return "Prospectus";
     default: {
       const base = normalized.endsWith("/A") ? getFormDescription(normalized.slice(0, -2)) : "";
       return base ? `${base} (Amended)` : "";
     }
   }
+}
+
+/** The groups of the Form filter: a reader looks for reports, events or insiders, not one form code. */
+export interface FormGroup {
+  value: string;
+  label: string;
+  matches: (form: string) => boolean;
+}
+
+const upper = (form: string) => form.trim().toUpperCase().replace(/\/A$/, "");
+const oneOf = (...forms: string[]) => (form: string) => forms.includes(upper(form));
+
+export const ALL_FORMS = "all";
+
+export const COMPANY_FORM_GROUPS: readonly FormGroup[] = [
+  { value: "periodic", label: "Annual & quarterly", matches: oneOf("10-K", "10-Q", "10-KT", "10-QT", "20-F", "40-F", "NT 10-K", "NT 10-Q", "NT 20-F") },
+  { value: "current", label: "Current reports", matches: (form) => isCurrentReport(form) || upper(form) === "8-K12B" },
+  { value: "insider", label: "Insider", matches: oneOf("3", "4", "5", "144") },
+  { value: "ownership", label: "13D / 13G", matches: (form) => /^(?:SC|SCHEDULE) 13[DG]$/.test(upper(form)) },
+  { value: "proxy", label: "Proxy", matches: (form) => /^(?:DEF|DEFA|DEFM|PRE|PREM|DFAN)14[AC]$/.test(upper(form).replace(/\s+/g, "")) },
+  { value: "offerings", label: "Registrations & offerings", matches: (form) => /^(?:S-\d|F-\d|424B\d|FWP|S-8 POS|POS AM|425)/.test(upper(form)) },
+];
+
+export const FUND_FORM_GROUPS: readonly FormGroup[] = [
+  { value: "reports", label: "Shareholder reports", matches: oneOf("N-CSR", "N-CSRS", "N-30D") },
+  { value: "holdings", label: "Holdings", matches: oneOf("NPORT-P", "NPORT-EX") },
+  { value: "prospectus", label: "Prospectus & registration", matches: oneOf("N-1A", "N-2", "485APOS", "485BPOS", "485BXT", "497", "497J", "497K") },
+  { value: "census", label: "Flows & census", matches: oneOf("N-CEN", "24F-2NT") },
+];
+
+/** Filings in a group; `all` and an unknown group keep every filing. */
+export function filterFilingsByGroup<T extends { form: string }>(filings: readonly T[], groups: readonly FormGroup[], value: string): T[] {
+  const group = groups.find((entry) => entry.value === value);
+  return group ? filings.filter((filing) => group.matches(filing.form)) : [...filings];
+}
+
+export type FilingTone = "positive" | "negative" | "warning" | "accent" | "muted" | "text";
+
+/**
+ * How much a filing matters, in the tone every research pane gives a state:
+ * events that can sink a company (bankruptcy, delisting, non-reliance, a late
+ * report) red, an insider sale red and a purchase green, a planned sale, an
+ * activist stake, a management or auditor change amber, the periodic reports,
+ * earnings and fund shareholder reports in the accent, and routine paperwork
+ * quiet. A fund's annual notice of securities sold reads green for a year of
+ * net creations and red for net redemptions. The form text never changes, so
+ * the colour is not the only signal.
+ */
+export function filingTone(filing: Pick<SecFilingItem, "form" | "items">, insiderDirection?: "buy" | "sell" | null): FilingTone {
+  const form = upper(filing.form);
+  if (/^NT /.test(form)) return "negative";
+  if (isCurrentReport(filing.form)) {
+    const codes = (secFilingItemCodes(filing.items) ?? "").split(",");
+    if (codes.some((code) => code === "1.03" || code === "3.01" || code === "4.02")) return "negative";
+    if (codes.some((code) => ["2.05", "2.06", "4.01", "5.01", "5.02", "1.05"].includes(code))) return "warning";
+    if (codes.includes("2.02")) return "accent";
+    return "text";
+  }
+  if (form === "4" || form === "5" || form === "24F-2NT") return insiderDirection === "sell" ? "negative" : insiderDirection === "buy" ? "positive" : form === "24F-2NT" ? "muted" : "text";
+  if (form === "144") return "warning";
+  if (/13D$/.test(form)) return "warning";
+  if (/^(?:10-K|10-Q|10-KT|10-QT|20-F|40-F|N-CSR|N-CSRS|N-30D|N-1A|N-2)$/.test(form)) return "accent";
+  if (/^(?:3|SC 13G|SCHEDULE 13G|SD|497|497J|497K|485BPOS|485BXT|NPORT-P|NPORT-EX)$/.test(form)) return "muted";
+  return "text";
 }
 
 export function buildSecFilingRows(filings: readonly SecFilingItem[]) {

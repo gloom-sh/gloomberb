@@ -276,6 +276,12 @@ interface HeadlessPaneResultBase {
    * `complete: false` says when the report does not cover what was asked.
    */
   notes?: string[];
+  /**
+   * What the report could not do as it was asked and did instead, such as a
+   * bar size the source does not serve for the range: `fn` prints each on
+   * stderr and lists them under `warnings` in JSON. One sentence each.
+   */
+  warnings?: string[];
   metadata?: Record<string, unknown>;
   /** What this load knows about its data's source and age; overrides the definition's `freshness`. */
   freshness?: HeadlessPaneFreshness;
@@ -334,6 +340,10 @@ export interface HeadlessSeries {
   label: string;
   /** Explicit unit of the point values; report formatting does not rescale them. */
   unit?: string;
+  /** The symbol or series ID the series was asked for as (`USDZAR=X`, `DEXSFUS`), which exports name each row by. */
+  symbol?: string;
+  /** The bar interval or observation frequency the points are at (`1d`, `1mo`, `daily`), as served, not as asked. */
+  interval?: string;
   points: HeadlessSeriesPoint[];
 }
 

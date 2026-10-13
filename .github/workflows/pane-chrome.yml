@@ -7,8 +7,9 @@ name: Pane chrome
 # charts and heat maps that follow a resize, the keys held down (one-shot
 # shortcuts run once, arrows repeat), the chat message list, where text and
 # scrolled content stop against a pane's footer and edge (the detail and
-# article readers, markdown, prose, the Trials and Changelog panes), and these
-# checks themselves.
+# article readers, markdown, prose, tables set inline, label and value rows,
+# charts sized in rows, the Trials and Changelog panes), and these checks
+# themselves.
 # The pane drag frame budget is in the Performance workflow and runs for the
 # same pull_request paths (scripts/pane-chrome/scope.ts reads them from here).
 on:
@@ -36,6 +37,8 @@ on:
       - "src/components/ui/data-table/**"
       - "src/components/ui/detail-scroll-body.tsx"
       - "src/components/ui/prose.tsx"
+      - "src/components/ui/display.tsx"
+      - "src/components/table-view-shared.tsx"
       - "src/components/reader/**"
       - "src/components/markdown-text.tsx"
       - "src/components/feed-data-table/**"

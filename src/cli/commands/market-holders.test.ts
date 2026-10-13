@@ -108,8 +108,8 @@ test("holders writes HDS's rows: largest value first, percents in percent, and H
   expect(result.data).toEqual(hds.rows);
   const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
   expect(csv.slice(0, 3)).toEqual([
-    "Holder,Type,Mkt value (USD),Amount,Chg,Chg%,Held (%),Period",
-    '"Chevy Chase Trust Holdings, LLC",institution,188906753,14003466,187825,1.3595,0.09,2026-06-30',
-    "Northern Trust Corporation,institution,174942026,12968275,-403588,-3.0182,0.09,2026-06-30",
+    "Holder,Type,Mkt value (USD),Amount,Chg,Chg%,Held (%),Period,symbol_or_series,currency_or_unit,interval,source,as_of",
+    '"Chevy Chase Trust Holdings, LLC",institution,188906753,14003466,187825,1.3595,0.09,2026-06-30,SAN,,,SEC EDGAR,2026-06-30',
+    "Northern Trust Corporation,institution,174942026,12968275,-403588,-3.0182,0.09,2026-06-30,SAN,,,SEC EDGAR,2026-06-30",
   ]);
 });

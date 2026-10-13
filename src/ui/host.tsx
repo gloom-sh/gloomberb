@@ -520,6 +520,8 @@ export interface HostQueryBarProps {
   onClearAll?: () => void;
   /** Muted context at the right edge, e.g. the selected row's date. */
   meta?: string;
+  /** Drawn before the search and filters, e.g. the ticker the list is about. */
+  leading?: ReactNode;
   /** Opens one item's menu, e.g. from a pane shortcut. The token changes per request. */
   openRequest?: { id: string; token: number } | null;
 }

@@ -60,7 +60,7 @@ function candidateName(candidate: TickerSearchCandidate): string {
   return candidate.detail.split(" | ")[0]?.trim() ?? "";
 }
 
-/** 0 when the candidate is the typed symbol with other punctuation (`USD-NGN` for `USDNGN=X`) or named so, 1 for one slip of the keys, null for anything else. */
+/** 0 when the candidate is the typed symbol with other punctuation (`USD_NGN` for `USDNGN=X`) or named so, 1 for one slip of the keys, null for anything else. */
 function nearness(typed: string, candidate: TickerSearchCandidate): number | null {
   const wanted = compact(typed);
   if (!wanted) return null;
@@ -143,7 +143,7 @@ export function isPlainNoMatch(message: string | null | undefined): boolean {
 /**
  * The error a single symbol failed with, and when it is search finding no
  * listing for the symbol, that error with the nearest listing named in its
- * message: `No ticker match found for "USD-NGN"; did you mean USDNGN=X (US
+ * message: `No ticker match found for "USD_NGN"; did you mean USDNGN=X (US
  * Dollar/Nigerian Naira)?`. Any other error comes back as it is.
  */
 export async function withSuggestion(error: unknown, input: string, deps: SuggestionDeps): Promise<unknown> {
