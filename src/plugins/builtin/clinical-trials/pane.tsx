@@ -50,6 +50,7 @@ import {
   trialPhaseLabel,
   trialStatus,
   trialStatusColor,
+  trialStatusText,
   type TrialColumn,
   type TrialFilterOption,
   type TrialFilters,
@@ -302,7 +303,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
       case "status": {
         const status = trialStatus(trial.status);
         return {
-          text: layout.compact || column.width < status.label.length ? status.short : status.label,
+          text: trialStatusText(status, column.width),
           value: status.label,
           color: trialStatusColor(status.tone, colors),
           keepColorWhenSelected: keepsToneWhenSelected(status.tone),

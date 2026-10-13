@@ -1,4 +1,5 @@
 import type { DataProvider } from "../../../types/data-provider";
+import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { buildDividendMetrics, dividendReferencePrice, INCOMPLETE_DIVIDEND_HISTORY, MISSING_DIVIDEND_CURRENCY, toDividendPayment, type DividendData } from "./client";
 import { dividendQuotePriceMetadata } from "./reference-price";
@@ -29,7 +30,8 @@ export async function fetchProviderDividendData(
   }
   const historyAvailable = !historyError;
   const suppliedPrice = dividendReferencePrice(currentPrice, currentPriceCurrency, currency);
-  const price = suppliedPrice ?? dividendReferencePrice(quote?.price ?? null, quote?.currency, currency);
+  // The regular session's price, as the quote headlines it: after the close, the close rather than an after-hours print.
+  const price = suppliedPrice ?? dividendReferencePrice(regularSessionValuationPrice(quote), quote?.currency, currency);
   return {
     payments, currency: currency || undefined, price, historyAvailable,
     ...(historyError ? { historyError } : {}),

@@ -15,14 +15,14 @@ import {
   type ManualChartResolution,
 } from "../../../time-series/resolution";
 import type { ChartResolution } from "../../../time-series/range";
-import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
+import { intradaySessionDates, intradaySessionTimeZone, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
 import type { TickerFinancials, PricePoint, Quote } from "../../../types/financials";
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
-import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
@@ -420,7 +420,7 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
             target, symbol, exchange, points, bufferedPoints: data.priceHistory, start, end, session: data.priceHistorySession, sourceKey: data.priceHistorySourceKey,
             rangePreset: spec.viewport.range === "1W" ? "1W" : "1D",
             resolution: historyResolution, requestedSession: null,
-            sessionDates: intradaySessionDates(points, resolveExchangeTimeZone(exchange) ?? "UTC"),
+            sessionDates: intradaySessionDates(points, intradaySessionTimeZone(symbol, exchange)),
             unavailableReason: points.length ? null : model.chart.errors[0] ?? `No intraday price history is available for ${symbol} for the requested window.`,
           });
         }

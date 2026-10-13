@@ -26,8 +26,14 @@ interface PaneFunctionReportData {
   errors?: string[];
   /** What the report could not do as asked and did instead; `fn` prints them on stderr and in JSON's `warnings`. */
   warnings?: string[];
-  /** Source, as-of in UTC and live/delayed/stale/not-a-feed status; the last line of the text report. */
-  freshness: ReportFreshness;
+  /**
+   * Source, as-of in UTC and live/delayed/stale/not-a-feed status; the last
+   * line of the text report. Absent when a wall covered the pane (`locked`),
+   * since nothing was read.
+   */
+  freshness?: ReportFreshness;
+  /** The wall that covered the whole pane, so the report read nothing. */
+  locked?: "sign-in" | "pro";
   [key: string]: unknown;
 }
 

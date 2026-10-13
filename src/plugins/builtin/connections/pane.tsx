@@ -29,6 +29,15 @@ const STATUS_ORDER: Record<ConnectionHealthStatus, number> = {
   idle: 4,
 };
 
+function connectionKindLabel(kind: string): string {
+  if (kind === "asset-data") return "Market data";
+  if (kind === "news") return "News";
+  if (kind === "api") return "Request";
+  if (kind === "websocket") return "Live feed";
+  if (kind === "capability") return "Plugin";
+  return "Connection";
+}
+
 function statusLabel(status: ConnectionHealthStatus): string {
   if (status === "connected") return "Connected";
   if (status === "connecting") return "Connecting";
@@ -68,8 +77,7 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
     <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
       <Box flexDirection="column" width={lineWidth}>
         <KeyValueRow labelWidth={16} emphasis={false} label="Status" value={statusLabel(source.status)} color={statusColor(source.status)} />
-        <KeyValueRow labelWidth={16} emphasis={false} label="Type" value={source.kind} color={colors.textDim} />
-        {source.ownerId ? <KeyValueRow labelWidth={16} emphasis={false} label="Owner" value={source.ownerId} color={colors.textDim} /> : null}
+        <KeyValueRow labelWidth={16} emphasis={false} label="Type" value={connectionKindLabel(source.kind)} color={colors.textDim} />
         {source.socketState ? <KeyValueRow labelWidth={16} emphasis={false} label="Socket" value={source.socketState} color={statusColor(source.status)} /> : null}
         {source.lastTransitionAt ? (
           <KeyValueRow labelWidth={16} emphasis={false} label="Transition" value={formatRelativeAge(source.lastTransitionAt, now)} color={colors.textMuted} />

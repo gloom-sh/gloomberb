@@ -1,4 +1,5 @@
 import type { HeadlessPaneDefinition } from "../../../types/headless";
+import { isSubMinuteInterval, subMinuteDataMessage } from "../../../cli/known-gaps";
 import { FINANCIAL_PERIOD_OPTION, FINANCIAL_PERIOD_COUNT_OPTION, HISTORY_RANGE_VALUES } from "../shared/headless-options";
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
@@ -83,6 +84,7 @@ export const paneSchemas = {
         aliases: ["resolution"],
         values: [{ value: "auto" }, { value: "1m" }, { value: "5m" }, { value: "15m" }, { value: "1h" }],
         defaultValue: "auto",
+        invalidValueHint: (value, argument) => isSubMinuteInterval(value) ? subMinuteDataMessage(argument ?? undefined) : null,
       },
       {
         key: "session",

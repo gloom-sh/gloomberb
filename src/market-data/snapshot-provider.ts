@@ -229,9 +229,12 @@ export function createSnapshotDataProvider(snapshot: SnapshotMarketData, fallbac
       return seededBatch(targets, (target): QuoteBatchResult | undefined => {
         const quote = intraday(target.symbol, target.exchange, target.context)?.quote ?? financials(target.symbol, target.exchange, target.context)?.quote;
         return quote ? { target, quote } : undefined;
-      }, (missing) => fallback.getQuotesBatch?.(missing, settings) ?? Promise.all(missing.map(async (target) => ({
-        target, quote: await fallback.getQuote(target.symbol, target.exchange, target.context),
-      }))));
+      }, (missing) => fallback.getQuotesBatch?.(missing, settings)
+        // A cache-only read never reaches the network, one quote at a time either.
+        ?? (settings?.cacheOnly ? Promise.resolve(missing.map((target) => ({ target, quote: null })))
+          : Promise.all(missing.map(async (target) => ({
+            target, quote: await fallback.getQuote(target.symbol, target.exchange, target.context),
+          })))));
     },
     async getOptionsChain(symbol, exchange, expirationDate, context) {
       const captured = context?.instrument ? undefined : options(symbol, exchange, expirationDate);

@@ -35,6 +35,7 @@ import { usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { EXTENDED_SESSION_MARKS } from "../../../market-data/market/status";
 import { instrumentFromTicker, type InstrumentRef } from "../../../market-data/request-types";
 import {
   buildTrackedCurrencies,
@@ -162,11 +163,9 @@ function sizeLabel(asset: HeatmapBoardAsset): string | null {
   return `${label} ${formatMoneyCompact(asset.size, asset.sizeCurrency ?? asset.currency)}`;
 }
 
-/** Marks a pre-market or after-hours move, which is measured from the regular close. */
+/** Marks a pre-market, after-hours or overnight move, which is measured from the regular close. */
 function sessionMark(asset: HeatmapBoardAsset): string | null {
-  if (asset.extendedSession === "PRE") return "PM";
-  if (asset.extendedSession === "POST") return "AH";
-  return null;
+  return asset.extendedSession ? EXTENDED_SESSION_MARKS[asset.extendedSession] : null;
 }
 
 function formatMove(asset: HeatmapBoardAsset, change: number | null): string {

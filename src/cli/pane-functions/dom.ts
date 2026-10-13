@@ -1,5 +1,5 @@
 import type { DesktopPaneShotRenderedRow } from "../desktop-pane-shot";
-import { cliStyles, renderSection, renderTable } from "../../utils/cli-output";
+import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
 import { formatUtcTime } from "../../utils/utc-time";
 import type { MarketContext } from "../types";
 import type { PaneFunctionReport } from "./report";
@@ -14,6 +14,8 @@ const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
 const DOM_LIMITATION =
   "Only values visible in the rendered pane are returned; clipped or off-screen data may be omitted.";
+/** The widest a lock note wraps to, as the catalog's text. */
+const LOCK_NOTE_WIDTH = 100;
 const DOM_EVERY_ROW =
   "Every row of the pane's table is returned, including rows scrolled out of view.";
 
@@ -119,7 +121,7 @@ function renderDomTables(rows: DesktopPaneShotRenderedRow[]): string[] {
 function domReportTables(
   rows: DesktopPaneShotRenderedRow[],
   title: string,
-  freshness: ReportFreshness,
+  freshness: ReportFreshness | null,
   incomplete: boolean | string,
   notices: readonly string[],
 ): CliReportTables {
@@ -130,7 +132,7 @@ function domReportTables(
       table.columns.map((column) => column.header),
       table.rows.map((cells) => table.columns.map((column) => cells.get(column.key))),
     )),
-    footer: reportFooterLines({ freshness, incomplete, notes: notices }),
+    footer: reportFooterLines({ ...(freshness ? { freshness } : {}), incomplete, notes: notices }),
   };
 }
 
@@ -190,10 +192,19 @@ export function buildDomPaneReportFromRender(
   const rendered = renderedReportNotices(result.render.semanticUi ?? []);
   const notices = [...(resolved.pane.reportNotices?.(resolved.instance.settings ?? {}) ?? []), ...rendered.notices];
   const textLines = [resolved.label, "", ...notices, ...(notices.length > 0 ? [""] : [])];
+  // A wall in place of the whole pane: nothing was read, so the report says
+  // what is locked and how to reach it, and cites no source.
+  const gate = !hasStructuredRows ? result.render.accessGate ?? null : null;
+  const lockNote = gate ? resolved.pane.reportLockNote?.({ gate, symbol: result.symbols[0] ?? null }) ?? null : null;
+  const locked = gate === "sign-in" || lockNote ? gate : null;
+  // JSON and CSV say why the report is empty in the note's words, on one line.
+  const lockReason = lockNote?.replace(/\s*\n\s*/g, " ") ?? null;
   if (hasStructuredRows) {
     textLines.push(...renderDomTables(rows));
+  } else if (lockNote) {
+    textLines.push(...wrapText(lockNote, Math.min(cliTerminalWidth() ?? LOCK_NOTE_WIDTH, LOCK_NOTE_WIDTH)));
   } else if (result.render.visibleText) {
-    textLines.push(result.render.accessGate === "sign-in" ? signInWallText(result.render.visibleText) : result.render.visibleText);
+    textLines.push(gate === "sign-in" ? signInWallText(result.render.visibleText) : result.render.visibleText);
   } else {
     textLines.push(failureReason ?? "No rendered values were available.");
   }
@@ -226,45 +237,49 @@ export function buildDomPaneReportFromRender(
       truncationReasons,
       ...(everyRow ? { everyRow } : {}),
       limitation: everyRow ? DOM_EVERY_ROW : DOM_LIMITATION,
-      ...(failureReason ? { reason: failureReason } : {}),
+      ...(lockReason ?? failureReason ? { reason: lockReason ?? failureReason } : {}),
       ...(notices.length > 0 ? { metadata: { ...rendered.facts, notices } } : {}),
-      freshness,
+      ...(locked ? { locked } : { freshness }),
     },
     text: textLines.join("\n").trimEnd(),
     tables: domReportTables(
       rows,
       resolved.label,
-      freshness,
-      !complete && (failureReason ?? (truncationReasons.length > 0 ? truncationReasons.join("; ") : true)),
+      locked ? null : freshness,
+      !complete && (lockReason ?? failureReason ?? (truncationReasons.length > 0 ? truncationReasons.join("; ") : true)),
       notices,
     ),
   };
 }
 
+/** The report's closing lines; a locked view, which read nothing, cites no source. */
 export function appendDomReportFooter(
   text: string,
   elapsedMs: number,
   view: DomReportView,
-  freshness: ReportFreshness,
+  freshness: ReportFreshness | undefined,
 ): string {
   return [
     text,
     "",
     domReportNote(elapsedMs, view),
-    cliStyles.muted(formatFreshnessLine(freshness)),
+    ...(freshness ? [cliStyles.muted(formatFreshnessLine(freshness))] : []),
   ].join("\n");
 }
 
-/** How much of the pane a rendered-view report holds: cut, every row its tables publish, or what the viewport shows. */
-export type DomReportView = "clipped" | "every-row" | "visible";
+/** How much of the pane a rendered-view report holds: none behind a wall, cut, every row its tables publish, or what the viewport shows. */
+export type DomReportView = "locked" | "clipped" | "every-row" | "visible";
 
 export function domReportView(data: Readonly<Record<string, unknown>>): DomReportView {
+  if (data.locked) return "locked";
   return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : "visible";
 }
 
 /** What a rendered-view report says about where its values come from. */
 export function domReportNote(elapsedMs: number, view: DomReportView): string {
-  const source = view === "every-row"
+  const source = view === "locked"
+    ? "Rendered view: the pane is locked, so no values were read."
+    : view === "every-row"
     ? "Rendered view: every row of the pane's table, including rows scrolled out of view."
     : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
   return `${source} Render time: ${elapsedMs} ms.`;

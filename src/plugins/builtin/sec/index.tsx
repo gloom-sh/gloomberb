@@ -470,13 +470,13 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
   }
   if (!eligibleTicker) {
-    return renderFilingNotice(forms ? "Fund filings are only shown for US-listed funds and equities." : "SEC filings are only shown for US equities.", width);
+    return renderFilingNotice(forms ? "Fund filings are only shown for US-listed funds and equities." : "SEC filings are only shown for US equities.");
   }
   if (authWall) return <SignInWall placement="sec-signin" action="view SEC filings" needsVerification={cloudSession.needsVerification} />;
   if (loading && filings.length === 0) return <Spinner label="Loading SEC filings..." />;
   if (error && formFilings.length === 0) return <EmptyState title="SEC filings unavailable." message={error} />;
   if (formFilings.length === 0) {
-    return renderFilingNotice(forms ? `No fund filings for ${ticker.metadata.ticker}.` : `No recent SEC filings for ${ticker.metadata.ticker}.`, width);
+    return renderFilingNotice(forms ? `No fund filings for ${ticker.metadata.ticker}.` : `No recent SEC filings for ${ticker.metadata.ticker}.`);
   }
 
   return (

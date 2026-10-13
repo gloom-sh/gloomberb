@@ -1,6 +1,7 @@
 import type {
   CachedFinancialsTarget,
   MarketDataRequestContext,
+  QuoteBatchOptions,
   QuoteBatchResult,
   QuoteSubscriptionTarget,
   TickerFinancialsBatchResult,
@@ -48,8 +49,11 @@ export class ProviderRouterBatchRoutes {
 
   async getQuotesBatch(
     targets: QuoteSubscriptionTarget[],
-    options: { forceRefresh?: boolean } = {},
+    options: QuoteBatchOptions = {},
   ): Promise<QuoteBatchResult[]> {
+    if (options.cacheOnly) return targets.map((target) => ({ target, quote: this.cachedQuote(target) }));
+    // The signal is the caller's; providers are asked as before.
+    const providerOptions = { forceRefresh: options.forceRefresh };
     const forceRefresh = options.forceRefresh === true;
     const results = new Array<QuoteBatchResult | null>(targets.length).fill(null);
     const misses: Array<{ index: number; target: QuoteSubscriptionTarget }> = [];
@@ -91,7 +95,7 @@ export class ProviderRouterBatchRoutes {
         providerIndexes.set(key, bucket);
       }
       const uniqueTargets = [...providerIndexes.values()].map((bucket) => bucket[0]!.target);
-      const batchResults = await batchProvider.getQuotesBatch!(uniqueTargets, options).catch(() => []);
+      const batchResults = await batchProvider.getQuotesBatch!(uniqueTargets, providerOptions).catch(() => []);
       for (const item of batchResults) {
         if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) continue;
         const key = this.quoteBatchKey(item.target);
@@ -195,6 +199,18 @@ export class ProviderRouterBatchRoutes {
     }));
 
     return results.map((result, index) => result ?? { target: targets[index]!, financials: null });
+  }
+
+  /** The newest cached quote for a target from any source, however old: what a board paints first. */
+  private cachedQuote(target: QuoteSubscriptionTarget): Quote | null {
+    const context = target.context;
+    const entityKey = this.deps.getEntityKey(target.symbol, context?.instrument);
+    const variantKeys = this.deps.getTickerVariantCandidates(target.exchange);
+    const sourceKeys = [
+      ...this.deps.getBrokerCandidatesForContext(context, false).map((candidate) => this.deps.brokerSourceKey(candidate)),
+      ...this.deps.getProviderSourceKeys(),
+    ];
+    return selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, true)?.value ?? null;
   }
 
   private quoteBatchKey(target: QuoteSubscriptionTarget): string {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { getThemeColors } from "../../../theme/colors";
 import { DEFAULT_THEME, getThemeIds } from "../../../theme/themes";
-import { normalizeTrialFilters, trialLayout, trialPhaseLabel, trialStatus, trialStatusColor } from "./model";
+import { normalizeTrialFilters, trialLayout, trialPhaseLabel, trialStatus, trialStatusColor, trialStatusText } from "./model";
 
 describe("trial status", () => {
   test("reads in the registry's words with a tone per stage, and a new code still reads as words", () => {
@@ -18,6 +18,22 @@ describe("trial status", () => {
       ["Unknown status", "unknown"],
     ]);
     expect(trialStatus("ON_CLINICAL_HOLD")).toEqual({ label: "On clinical hold", short: "On clinical hold", tone: "unknown" });
+  });
+
+  test("a narrow status column gets a short word per status that fits and tells the statuses apart; a wide one the registry's words", () => {
+    const codes = ["NOT_YET_RECRUITING", "RECRUITING", "ENROLLING_BY_INVITATION", "ACTIVE_NOT_RECRUITING", "COMPLETED", "SUSPENDED", "TERMINATED", "WITHDRAWN", "UNKNOWN",
+      "AVAILABLE", "TEMPORARILY_NOT_AVAILABLE", "NO_LONGER_AVAILABLE", "APPROVED_FOR_MARKETING", "WITHHELD"];
+    for (const width of [66, 78, 98, 138]) {
+      const column = trialLayout(width).columns.find((entry) => entry.id === "status")!;
+      const texts = codes.map((code) => trialStatusText(trialStatus(code), column.width));
+      for (const text of texts) expect(text.length).toBeLessThanOrEqual(column.width);
+      expect(new Set(texts).size).toBe(codes.length);
+    }
+    const narrow = (code: string) => trialStatusText(trialStatus(code), trialLayout(78).columns.find((entry) => entry.id === "status")!.width);
+    expect(["NOT_YET_RECRUITING", "RECRUITING", "ENROLLING_BY_INVITATION", "ACTIVE_NOT_RECRUITING", "UNKNOWN"].map(narrow))
+      .toEqual(["Upcoming", "Recruiting", "By invite", "Active", "Unknown"]);
+    const wide = trialLayout(158).columns.find((entry) => entry.id === "status")!.width;
+    expect(codes.slice(0, 9).map((code) => trialStatusText(trialStatus(code), wide))).toEqual(codes.slice(0, 9).map((code) => trialStatus(code).label));
   });
 
   test("takes every colour from the theme, and the stages a reader acts on stay apart in each theme", () => {

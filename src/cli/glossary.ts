@@ -336,6 +336,23 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     shown: ["Drift"],
     definition: "The plain difference between two percentages. A 22% weight against a 20% target is 2pp over it, not 10%.",
   },
+  // Financial statements and ratios (FA).
+  {
+    term: "EBITDA", aliases: ["earnings before interest taxes depreciation and amortization", "ebitda ttm"], functions: ["FA"],
+    definition: "Earnings before interest, taxes, depreciation and amortization: operating income with depreciation and amortization "
+      + "added back, a rough measure of the cash a business earns before paying for its capital and its debt.",
+  },
+  {
+    term: "Net debt", aliases: ["net debt/ebitda", "net debt to ebitda", "net leverage"], functions: ["FA"], shown: ["Net Debt"],
+    definition: "Total debt less cash and short-term investments. Negative means more cash than debt. "
+      + "Net debt / EBITDA is how many years of EBITDA would repay it; FA divides by a year of EBITDA, the trailing four quarters in a quarterly column.",
+  },
+  {
+    term: "TTM", aliases: ["trailing twelve months", "trailing 12 months", "trailing four quarters", "ltm", "last twelve months"],
+    functions: ["FA"],
+    definition: "Trailing twelve months: the four latest quarters added up, a year that ends with the latest quarter rather than the fiscal year. "
+      + "FA's quarterly leverage ratios read their flows over it, and show < 4 quarters when fewer are on file.",
+  },
   // Funds (ETF). Named in what ETF says it cannot show yet.
   {
     term: "NAV", aliases: ["net asset value", "nav per share", "net asset value per share"], functions: ["ETF"],

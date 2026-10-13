@@ -114,8 +114,8 @@ async function runCommand(name: string, typed: string): Promise<Reading> {
   return { listing: requested[0]!, warnings: run.printed[0]?.result.warnings ?? [] };
 }
 
-async function runFunction(token: string, typed: string): Promise<Reading> {
-  const parsed = await applyListingArgument(registry, market, parsePaneFunctionArgs([token, typed], {}));
+async function runFunction(token: string, typed: string, ...options: string[]): Promise<Reading> {
+  const parsed = await applyListingArgument(registry, market, parsePaneFunctionArgs([token, typed, ...options], {}));
   const choice = parsed.listing ? await quotedListingChoiceNotes(parsed.listing, market) : [];
   return { listing: parsed.arg, warnings: [...parsed.listingNotes ?? [], ...choice] };
 }
@@ -227,8 +227,19 @@ test("a code that names two venues a symbol trades on both of asks which", async
 test("a function whose data covers US listings only names the company's US listing for a listing abroad, and leaves it out of a list", async () => {
   // Bare SAN in the US is Banco Santander: TAS SAN:EPA must not read its trades.
   await expect(runFunction("TAS", "SAN:EPA")).rejects.toThrow("Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).");
-  const refused = await runFunction("TAS", "SAN:EPA").catch((error: { details?: string }) => error.details);
-  expect(refused).toBe("Sanofi's US listing: SNY (try: gloomberb fn TAS SNY)");
+  // Time and sales also points at the finest bars the listing has, however the exchange is named.
+  const minuteBars = (key: string) => `No second or tick bars; 1-minute bars: fn GIP ${key}; trades exist for US listings only.`;
+  const refused = (token: string, typed: string, ...options: string[]) => runFunction(token, typed, ...options)
+    .then(() => null, (error: { message: string; details?: string }) => [error.message, error.details]);
+  for (const token of ["TAS", "QR"]) {
+    for (const typed of [["SAN:EPA"], ["SAN", "--exchange", "EPA"]]) {
+      expect(await refused(token, typed[0]!, ...typed.slice(1))).toEqual([
+        "Time and sales covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA).",
+        `Sanofi's US listing: SNY (try: gloomberb fn ${token} SNY)\n${minuteBars("SAN:EPA")}`,
+      ]);
+    }
+  }
+  expect((await refused("QR", "VOD", "--exchange", "LSE"))?.[1]).toBe(`No US listing of Vodafone Group was found.\n${minuteBars("VOD:LSE")}`);
 
   const list = await runFunction("SIW", "SAN:EPA,AAPL");
   expect(list.listing).toBe("AAPL");

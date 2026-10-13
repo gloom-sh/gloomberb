@@ -116,6 +116,8 @@ test("upside follows the live price only when it is quoted in the target's curre
   expect(live).toEqual({ price: 110, freshness: "real-time", live: true });
   expect(targetUpside(research.priceTarget, live.price)).toBeCloseTo(120 / 110 - 1);
   expect(analystReferencePrice(research, quote({ dataSource: "delayed" })).freshness).toBe("15m delayed");
+  // After the close the upside is from the close, not the after-hours print the quote's price carries.
+  expect(analystReferencePrice(research, quote({ price: 112, marketState: "POST", regularClose: 110, regularChange: 1 })).price).toBe(110);
   // An ADR quoted in another currency, a pence line or a stale quote keep the provider's reference.
   for (const other of [quote({ currency: "EUR" }), quote({ currency: "GBp" }), quote({ stale: true })]) {
     expect(analystReferencePrice(research, other)).toEqual({ price: 100, freshness: null, live: false });

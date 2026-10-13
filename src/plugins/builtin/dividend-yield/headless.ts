@@ -11,6 +11,7 @@ import { formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { forwardDividendBasis } from "../../../utils/forward-dividend";
 import { currencyPriceMinDigits, formatMarketPriceWithCurrency } from "../../../market-data/market/format";
 import type { Quote } from "../../../types/financials";
+import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 
 const PAYMENT_COLUMNS = [
@@ -35,7 +36,8 @@ const defaultDependencies: DividendYieldHeadlessDependencies = {
     const exchange = instrument?.exchange ?? "";
     try {
       const quote = await context.marketData.getQuote(symbol, exchange);
-      currentPrice = quote.price ?? null;
+      // The regular session's price: after the close, the close rather than an after-hours print.
+      currentPrice = regularSessionValuationPrice(quote);
       currentPriceCurrency = quote.currency;
       referenceQuote = quote;
     } catch {

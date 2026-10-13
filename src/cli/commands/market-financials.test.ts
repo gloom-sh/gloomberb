@@ -65,12 +65,17 @@ test("fundamentals --csv writes Metric,Value tables with each unit in its label,
 
 test("valuation --csv is one clean table; financials --csv writes raw amounts under the displayed columns", async () => {
   const valuation = await run("valuation", [], "csv");
-  expect(valuation.slice(0, 6)).toEqual([
+  // Measured at the quote's price, so dated by the quote, which it names first.
+  expect(valuation.slice(0, 8)).toEqual([
     `Metric,Value,${IDENTITY}`,
-    `Market Cap (ZAR),474045349888${FUNDAMENTALS_ROW}`,
-    `P/E (TTM),9.322304${FUNDAMENTALS_ROW}`,
-    `EPS (TTM) (ZAR),31.43${FUNDAMENTALS_ROW}`,
-    `Dividend Yield (forward) (%),6.14587987599${FUNDAMENTALS_ROW}`,
+    ...[
+      "Last (ZAR),292.1",
+      "Change (%),0.5",
+      "Market Cap (ZAR),474045349888",
+      "P/E (TTM),9.322304",
+      "EPS (TTM) (ZAR),31.43",
+      "Dividend Yield (forward) (%),6.14587987599",
+    ].map((row) => `${row}${FUNDAMENTALS_ROW}2026-10-09T13:57:00.000Z`),
     "",
   ]);
   expect((await run("financials", [], "csv")).slice(0, -1)).toEqual([

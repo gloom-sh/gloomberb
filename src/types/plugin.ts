@@ -157,6 +157,14 @@ export interface PaneDef {
    */
   reportNotices?(settings: Readonly<Record<string, unknown>>): string[];
   /**
+   * What a rendered-view report prints in place of the pane when a sign-in
+   * wall or the Pro lock covers all of it: what is locked, what can still be
+   * read without it and where, and how to unlock it. Without it the report
+   * prints the wall's own words. Either way it cites no source, since nothing
+   * was read.
+   */
+  reportLockNote?(lock: { gate: "sign-in" | "pro"; symbol: string | null }): string;
+  /**
    * What a rendered-view report needs before it shows anything, such as a
    * sign-in: `gloomberb catalog` lists it under Requires, as it does a
    * `headless` model's `discovery.dataRequirements`.

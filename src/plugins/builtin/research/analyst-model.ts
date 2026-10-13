@@ -5,6 +5,7 @@ import { formatRelativeTime } from "../../../utils/datetime-format";
 import { displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
+import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 
 function compactPeriod(period: string): string {
   return period
@@ -39,9 +40,11 @@ function quoteFreshness(quote: Quote): string | null {
 }
 
 /**
- * The price the upside is measured against: the live quote when it is priced
- * in the target's currency, otherwise the provider's reference from when the
- * research was fetched (an ADR or a pence line cannot be compared directly).
+ * The price the upside is measured against: the quote's regular session price
+ * (live while it trades, the close after it, never an extended print) when it
+ * is priced in the target's currency, otherwise the provider's reference from
+ * when the research was fetched (an ADR or a pence line cannot be compared
+ * directly).
  */
 export function analystReferencePrice(
   data: AnalystResearchData | null,
@@ -49,9 +52,10 @@ export function analystReferencePrice(
 ): AnalystReferencePrice {
   const fallback = { price: data?.priceTarget?.current, freshness: null, live: false };
   const currency = analystTargetCurrency(data);
-  if (!quote || quote.stale || !currency || !Number.isFinite(quote.price) || quote.price <= 0) return fallback;
+  const price = regularSessionValuationPrice(quote);
+  if (!quote || quote.stale || !currency || price == null) return fallback;
   if (quote.currency?.trim() !== currency) return fallback;
-  return { price: quote.price, freshness: quoteFreshness(quote), live: true };
+  return { price, freshness: quoteFreshness(quote), live: true };
 }
 
 function isCurrentMonthPeriod(period: string | undefined): boolean {

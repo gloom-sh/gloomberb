@@ -1,12 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
+import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
 import {
+  extendedSessionLineLabel,
   getActiveQuoteDisplay,
   getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
   getSessionMoveDisplay,
+  getTradedSessionMoveDisplay,
   marketStateCountdown,
+  quoteSessionLabel,
 } from "./status";
 
 describe("marketStateCountdown", () => {
@@ -156,5 +160,40 @@ describe("regular and extended session displays", () => {
     const noTrade = { ...pre, preMarketPrice: undefined, preMarketChange: undefined, preMarketChangePercent: undefined };
     expect(getExtendedSessionDisplay(noTrade)).toBeNull();
     expect(getSessionMoveDisplay(noTrade)).toEqual({ price: 162, change: 1.43, changePercent: 0.8906 });
+  });
+});
+
+describe("the overnight session", () => {
+  const { overnight, overnightMark, weekend } = sessionQuotes();
+
+  test("is its own extended line from Friday's close, while the headline stays the regular session", () => {
+    expect(getRegularSessionDisplay(overnight)).toEqual(getRegularSessionDisplay(weekend));
+    const extended = getExtendedSessionDisplay(overnight)!;
+    expect(extended).toMatchObject({ session: "OVERNIGHT", price: 198.95 });
+    expect(extended.change).toBeCloseTo(0.17, 8);
+    expect(extended.changePercent).toBeCloseTo((0.17 / 198.78) * 100, 8);
+    expect(extended.mark).toBeUndefined();
+    expect(extendedSessionLineLabel(extended)).toBe("Overnight");
+    // A position is worth the overnight price, from the daily reference.
+    expect(getActiveQuoteDisplay(overnight)).toEqual({ price: 198.95, change: 1.17, changePercent: 0.5916 });
+    expect(getSessionMoveDisplay(overnight)?.session).toBe("OVERNIGHT");
+    expect(quoteSessionLabel(overnight)).toBe("OVERNIGHT");
+    expect(quoteSessionLabel(weekend)).toBe("CLOSED");
+  });
+
+  test("says a bid and ask midpoint is one, and a board of moves leaves it out", () => {
+    const extended = getExtendedSessionDisplay(overnightMark)!;
+    expect(extended).toMatchObject({ session: "OVERNIGHT", price: 198.95, mark: true });
+    expect(extendedSessionLineLabel(extended)).toBe("Overnight mid");
+    expect(getTradedSessionMoveDisplay(overnightMark)).toEqual(getRegularSessionDisplay(overnightMark));
+    expect(getTradedSessionMoveDisplay(overnight)?.session).toBe("OVERNIGHT");
+  });
+
+  test("is no session of the exchange's own", () => {
+    for (const marketState of ["PRE", "REGULAR", "POST"] as const) {
+      const quote = { ...overnight, marketState };
+      expect(getExtendedSessionDisplay(quote)?.session).not.toBe("OVERNIGHT");
+      expect(quoteSessionLabel(quote)).not.toBe("OVERNIGHT");
+    }
   });
 });

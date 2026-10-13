@@ -156,6 +156,39 @@ describe("financial ratios", () => {
     expect(table.rows.filter((row) => row.kind === "input").length).toBe(12);
   });
 
+  test("quarterly leverage divides by the trailing year, not a quarter times four, and says when four quarters are not on file", () => {
+    // Newmont's EBITDA by quarter to June 2026, in bn; its FY2025 is reported too.
+    const quarter = (date: string, ebitda: number) => ({
+      date, ebitda, operatingIncome: ebitda / 2, interestExpense: 0.04, freeCashFlow: 2, totalRevenue: 6,
+      totalDebt: 5.08, cashCashEquivalentsAndShortTermInvestments: 9.01,
+    });
+    const financials = createTestFinancials({
+      annualStatements: [{ date: "2025-12-31", ebitda: 14.09, operatingIncome: 11.02, interestExpense: 0.229, freeCashFlow: 7.3, totalRevenue: 22 }],
+      quarterlyStatements: [
+        quarter("2025-06-30", 3.80), quarter("2025-09-30", 3.20), quarter("2025-12-31", 3.94),
+        quarter("2026-03-31", 5.25), quarter("2026-06-30", 3.64),
+      ],
+    });
+    const leverage = RATIO_TABS.find((tab) => tab.key === "leverage")!;
+    const table = ratioTableForFinancials(financials, leverage, "quarterly");
+    expect(table.periods.map(({ statement }) => statement.date)).toEqual(["2026-06-30", "2026-03-31", "2025-12-31", "2025-09-30", "2025-06-30"]);
+    const ebitda = table.cells.get("net-debt-ebitda")!.map((cell) => cell.inputs[1]);
+    // Four quarters summed, then the fiscal year that ends with the quarter, then too few quarters.
+    expect(ebitda[0]).toBeCloseTo(3.20 + 3.94 + 5.25 + 3.64);
+    expect(ebitda[1]).toBeCloseTo(3.80 + 3.20 + 3.94 + 5.25);
+    expect(ebitda.slice(2)).toEqual([14.09, "short-history", "short-history"]);
+    expect(table.cells.get("net-debt-ebitda")![0]!.value).toBeCloseTo(-3.93 / 16.03);
+    // Every leverage ratio that divides a flow reads it over the same year.
+    expect(table.cells.get("interest-coverage")![0]!.value).toBeCloseTo(8.015 / 0.16);
+    expect(table.cells.get("fcf-debt")!.map((cell) => cell.value)).toEqual([8 / 5.08, 8 / 5.08, 7.3 / 5.08, "short-history", "short-history"]);
+    expect(table.rows.filter((row) => row.kind === "input").map((row) => row.label)).toEqual([
+      "Net Debt", "÷ EBITDA TTM", "Total Debt", "÷ Equity", "EBIT TTM", "÷ Interest Exp TTM", "Free Cash Flow TTM", "÷ Total Debt",
+    ]);
+    // A year's column reads its own year, as before.
+    const annual = ratioTableForFinancials(financials, leverage, "annual");
+    expect(annual.rows.find((row) => row.id === "net-debt-ebitda:1")!.label).toBe("÷ EBITDA");
+  });
+
   test("ratio tab options resolve by key, name and alias", () => {
     expect(resolveFinancialSectionKey("valuation")).toBe("valuation");
     expect(resolveFinancialSectionKey("Leverage")).toBe("leverage");

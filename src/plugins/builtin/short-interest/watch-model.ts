@@ -76,8 +76,17 @@ export function oneMonthReturn(history: readonly PricePoint[]): { percent: numbe
   target.setUTCMonth(target.getUTCMonth() - 1);
   // 31 March less a month is 3 March; clamp to the month's last day.
   if (target.getUTCMonth() === last.date.getUTCMonth()) target.setUTCDate(0);
-  const base = closes.filter((point) => point.date.getTime() <= target.getTime()).at(-1);
-  if (!base || target.getTime() - base.date.getTime() > RETURN_BASE_TOLERANCE_DAYS * DAY_MS) return null;
+  const targetMs = target.getTime();
+  let base = closes[0]!;
+  for (let index = closes.length - 1; index >= 0; index -= 1) {
+    const point = closes[index]!;
+    if (point.date.getTime() <= targetMs) {
+      base = point;
+      break;
+    }
+  }
+  if (base.date.getTime() > targetMs) return null;
+  if (targetMs - base.date.getTime() > RETURN_BASE_TOLERANCE_DAYS * DAY_MS) return null;
   return { percent: (last.close / base.close - 1) * 100, date: isoDate(last.date) };
 }
 

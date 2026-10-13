@@ -156,7 +156,7 @@ function optionsSummaryItems({ spot, summary, enrichment, currency, ivRank }: {
     { id: "straddle", label: "Straddle", ...move(enrichment?.expectedMove.straddle, enrichment?.expectedMove.straddlePercent) },
     { id: "sigma", label: "1σ fit", ...move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },
     { id: "skew", label: "Skew", value: skew == null ? "--" : `${skew} pp`, detail: "25d P-C" },
-    { id: "slope", label: "Slope", value: slope == null ? "--" : `${slope} ${slopeAnnualized ? "pp/y" : "pts"}`, detail: slopeTo },
+    { id: "slope", label: "Slope", value: slope == null ? "--" : `${slope} ${slopeAnnualized ? "pp/y" : "pp"}`, detail: slopeTo },
     { id: "volume", label: "Volume", value: summary?.expirationVolume == null ? "--" : formatCompact(summary.expirationVolume, { fixedDecimals: true }) },
     { id: "pc-volume", label: "P/C vol", value: formatRatio(summary?.putCallVolumeRatio) },
     { id: "pc-oi", label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },

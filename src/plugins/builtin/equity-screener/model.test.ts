@@ -50,7 +50,7 @@ test("criteria preserve zero and finite bounds, reject blank, currency ambiguity
       ...DEFAULT_SCREEN,
       criteria: [{ field: "insiderPurchases90d", op: "eq", value: 0 }],
     }),
-  ).toThrow("supported operator");
+  ).toThrow('criteria[0] (insiderPurchases90d): op "eq" is not supported: insiderPurchases90d takes gte, gt, present, missing.');
 });
 test("boundaries reject fabricated dates and percentiles; pagination cannot cross snapshots", () => {
   const data = payload();

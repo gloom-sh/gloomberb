@@ -34,7 +34,7 @@ export function vcaUniverse(scope: string, symbolsText: string, collectionId: st
   }
   const valid = [...new Map(instruments.filter((instrument) => SYMBOL.test(instrument.symbol)).map((instrument) => [instrument.symbol, instrument])).values()];
   const error = !valid.length ? scope === "collection" ? "Link a watchlist or portfolio with US-listed symbols in pane settings." : "Add symbols in pane settings."
-    : valid.length > VCA_LIMIT ? `Showing the first ${VCA_LIMIT} of ${valid.length} symbols.`
+    : valid.length > VCA_LIMIT ? `Only the first ${VCA_LIMIT} symbols are screened.`
       : skipped ? `${skipped} non-US listing${skipped === 1 ? "" : "s"} left out: stored implied volatility covers US option underlyings.` : null;
   return { label, instruments: valid.slice(0, VCA_LIMIT), error };
 }

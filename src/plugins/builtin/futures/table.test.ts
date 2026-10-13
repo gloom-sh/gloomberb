@@ -7,6 +7,7 @@ import {
   type FuturesContract,
   type FuturesSector,
 } from "../../../market-data/futures-board";
+import { FUTURES_SERIES } from "./series";
 import type { FuturesColumnId, FuturesTableRow } from "./model";
 import {
   createFuturesColumns,
@@ -157,6 +158,14 @@ describe("contract tick precision", () => {
 });
 
 describe("futures catalog", () => {
+  test("catalog units match the printed quote, not a blanket dollar price", () => {
+    const units = Object.fromEntries(FUTURES_SERIES.map((series) => [series.id.slice(4), series.unit]));
+    expect(units).toMatchObject({
+      TTF: "EUR", LE: "USX", ZC: "USX", KC: "USX", ZM: "USD", CC: "USD",
+      ES: "points", ZN: "points", CL: "USD", GC: "USD", "6E": "USD", "6J": "USD",
+    });
+  });
+
   test("holds only available continuous symbols", () => {
     // DX=F is unavailable; the dollar index lives on the world indices board.
     expect(FUTURES_CONTRACTS.some((contract) => contract.symbol === "DX=F")).toBe(false);

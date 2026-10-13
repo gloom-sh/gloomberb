@@ -179,7 +179,8 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
       height={chartHeight}
       showLegend
       showTimeAxis
-      navigable={false}
+      focused={focused && view !== "trades"}
+      navigable={focused && view !== "trades"}
       formatAxisValue={(value, domain) => domain.seriesIds.includes("drawdown") ? `${value.toFixed(0)}%` : multiple(value)}
       formatValue={(value, series) => series.id === "drawdown" ? `${value.toFixed(1)}%` : multiple(value)}
       remoteKind="backtest-equity"

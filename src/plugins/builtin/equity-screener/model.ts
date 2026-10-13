@@ -307,75 +307,125 @@ export function criterionText(criterion: ScreenCriterion): string {
       : ` ${thresholdText(criterion.value)}`;
   return `${screenLabel(criterion.field)} ${symbols[criterion.op]}${value}`;
 }
+/** Insider activity is an observed subset: it can show activity, never prove its absence. */
+const OBSERVED_SUBSET_FIELDS: readonly string[] = ["insiderPurchases90d", "insiderSales90d"];
+const NUMERIC_OPERATORS: ScreenOperator[] = ["gte", "lte", "gt", "lt", "eq", "between", "present", "missing"];
+const OBSERVED_SUBSET_OPERATORS: ScreenOperator[] = ["gte", "gt", "present", "missing"];
+const CATEGORY_OPERATORS: ScreenOperator[] = ["in", "present", "missing"];
+
+/** The operators a definition may use on a field, or null for a field screens do not have. */
+function screenFieldOperators(field: string): ScreenOperator[] | null {
+  if (OBSERVED_SUBSET_FIELDS.includes(field)) return [...OBSERVED_SUBSET_OPERATORS];
+  if ((NUMERIC_FIELDS as readonly string[]).includes(field)) return [...NUMERIC_OPERATORS];
+  if ((CATEGORY_FIELDS as readonly string[]).includes(field)) return [...CATEGORY_OPERATORS];
+  return null;
+}
+
+/**
+ * The definition format in a paragraph: its parts, and the operators each kind
+ * of field takes with the value each operator wants.
+ */
+export function screenDefinitionSyntax(): string {
+  const single = NUMERIC_OPERATORS.filter((op) => !["between", "present", "missing"].includes(op));
+  return [
+    "JSON screen: version 1, criteria (up to 20 {field, op, value} conditions, [] for none),",
+    "sort {field, direction asc|desc} and currency (a three-letter code such as USD, or null when nothing compares money).",
+    `Operators by field: numeric fields (the --metric values) take ${single.join(", ")} with one number,`,
+    "between with [min, max], present and missing with no value;",
+    `${OBSERVED_SUBSET_FIELDS.join(" and ")} take only ${OBSERVED_SUBSET_OPERATORS.join(", ")};`,
+    `category fields (${CATEGORY_FIELDS.join(", ")}) take in with an array of 1-25 names, present, missing.`,
+  ].join(" ");
+}
+
+/** A worked definition: one criterion of each value shape. Tests parse it so it cannot drift from the validator. */
+export const EXAMPLE_SCREEN_DEFINITION: ScreenDefinition = {
+  version: 1,
+  currency: "USD",
+  criteria: [
+    { field: "industry", op: "in", value: ["Gold"] },
+    { field: "marketCap", op: "gte", value: 10_000_000_000 },
+    { field: "trailingPE", op: "between", value: [5, 30] },
+  ],
+  sort: { field: "marketCap", direction: "desc" },
+};
+
+const VALUE_SHAPES: Partial<Record<ScreenOperator, string>> = {
+  in: "an array of 1-25 names, such as [\"Gold\"]",
+  between: "[min, max] in ascending order, such as [5, 30]",
+};
+
+function definitionError(part: string, problem: string): Error {
+  return new Error(`Invalid screen definition: ${part} ${problem}`);
+}
+
+/** One criterion checked and normalized: names trimmed and deduplicated, keys in order. */
+function checkCriterion(criterion: unknown, index: number): ScreenCriterion {
+  const part = `criteria[${index}]`;
+  if (!criterion || typeof criterion !== "object" || Array.isArray(criterion))
+    throw definitionError(part, "must be an object {field, op, value}.");
+  const item = criterion as { field?: unknown; op?: unknown; value?: unknown };
+  const operators = typeof item.field === "string" ? screenFieldOperators(item.field) : null;
+  if (!operators)
+    throw definitionError(`${part}.field`, item.field === undefined
+      ? "is missing."
+      : `${JSON.stringify(item.field)} is not a screen field: use a numeric field such as marketCap, or one of ${CATEGORY_FIELDS.join(", ")}.`);
+  const named = `${part} (${item.field}):`;
+  if (typeof item.op !== "string" || !operators.includes(item.op as ScreenOperator))
+    throw definitionError(named, `${item.op === undefined ? "has no op" : `op ${JSON.stringify(item.op)} is not supported`}: ${item.field} takes ${operators.join(", ")}.`);
+  const op = item.op as ScreenOperator;
+  const hasValue = "value" in item;
+  const field = item.field as ScreenCriterion["field"];
+  if (op === "present" || op === "missing") {
+    if (hasValue) throw definitionError(named, `${op} takes no value.`);
+    return { field, op };
+  }
+  const value = item.value;
+  const shape = VALUE_SHAPES[op] ?? "one number, such as 10000000000";
+  const valid = op === "in"
+    ? Array.isArray(value) && value.length >= 1 && value.length <= 25
+      && value.every((entry) => typeof entry === "string" && entry.trim().length > 0 && entry.length <= 120)
+    : op === "between"
+      ? Array.isArray(value) && value.length === 2 && value.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+        && (value[0] as number) <= (value[1] as number)
+      : typeof value === "number" && Number.isFinite(value);
+  if (!valid) throw definitionError(named, `${op} takes ${shape}${hasValue ? `, not ${JSON.stringify(value)}` : ""}.`);
+  if (op === "in")
+    return { field: field as (typeof CATEGORY_FIELDS)[number], op, value: [...new Set((value as string[]).map((entry) => entry.trim()))] };
+  if (op === "between")
+    return { field: field as NumericField, op, value: [(value as number[])[0]!, (value as number[])[1]!] };
+  return { field: field as NumericField, op: op as "gte", value: value as number };
+}
+
 export function parseScreenDefinition(value: unknown): ScreenDefinition {
-  if (!value || typeof value !== "object")
-    throw new Error("Invalid screen definition.");
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Invalid screen definition: it must be a JSON object with version, criteria, sort and currency.");
   const item = value as ScreenDefinition;
   const fields = [...NUMERIC_FIELDS, ...CATEGORY_FIELDS] as string[];
-  if (
-    item.version !== 1 ||
-    !Array.isArray(item.criteria) ||
-    item.criteria.length > 20 ||
-    !item.sort ||
-    !fields.includes(item.sort.field) ||
-    !["asc", "desc"].includes(item.sort.direction) ||
-    (item.currency !== null &&
-      (typeof item.currency !== "string" || !/^[A-Z]{3}$/.test(item.currency)))
-  )
-    throw new Error("Invalid screen definition.");
-  const criteria = item.criteria.map((criterion) => {
-    if (!criterion || !fields.includes(criterion.field))
-      throw new Error("Unknown screen field.");
-    const numeric = (NUMERIC_FIELDS as readonly string[]).includes(
-      criterion.field,
-    );
-    const operators: ScreenOperator[] = numeric
-      ? ["gte", "lte", "gt", "lt", "eq", "between", "present", "missing"]
-      : ["in", "present", "missing"];
-    if (
-      criterion.field === "insiderPurchases90d" ||
-      criterion.field === "insiderSales90d"
-    )
-      operators.splice(0, operators.length, "gte", "gt", "present", "missing");
-    if (["present", "missing"].includes(criterion.op) && "value" in criterion)
-      throw new Error("Presence criteria have no value.");
-    const normalized = parseCriterion(
-      {
-        id: criterion.field,
-        label: "",
-        kind: numeric ? "number" : "category",
-        unit: "",
-        description: "",
-        operators,
-      },
-      criterion.op,
-      "value" in criterion
-        ? Array.isArray(criterion.value)
-          ? criterion.value.join(",")
-          : String(criterion.value)
-        : "",
-    );
-    if (JSON.stringify(normalized) !== JSON.stringify(criterion)) {
-      // Key order is not semantic. Validation above owns types and operator shape.
-      if (
-        "value" in normalized &&
-        "value" in criterion &&
-        JSON.stringify(normalized.value) !== JSON.stringify(criterion.value)
-      )
-        throw new Error("Invalid criterion value.");
-    }
-    return normalized;
-  });
-  if (
-    !item.currency &&
-    (MONETARY.has(item.sort.field as NumericField) ||
-      item.criteria.some(
-        (criterion) =>
-          MONETARY.has(criterion.field as NumericField) &&
-          !["present", "missing"].includes(criterion.op),
-      ))
-  )
-    throw new Error("Select one currency for monetary comparisons.");
+  // Every top-level part that is wrong, so one fix does not uncover the next.
+  const problems: string[] = [];
+  if (item.version !== 1)
+    problems.push(`version must be 1${"version" in item ? `, not ${JSON.stringify(item.version)}` : ""}`);
+  if (!Array.isArray(item.criteria))
+    problems.push(`criteria ${"criteria" in item ? "must be" : "is missing:"} a list of {field, op, value} conditions, [] for none`);
+  else if (item.criteria.length > 20)
+    problems.push(`criteria holds at most 20 conditions, not ${item.criteria.length}`);
+  const sort = item.sort as { field?: unknown; direction?: unknown } | undefined;
+  if (!sort || typeof sort !== "object")
+    problems.push(`sort ${"sort" in item ? "must be" : "is missing:"} {field, direction} with direction asc or desc`);
+  else {
+    if (typeof sort.field !== "string" || !fields.includes(sort.field))
+      problems.push(`sort.field ${sort.field === undefined ? "is missing" : `${JSON.stringify(sort.field)} is not a screen field`}`);
+    if (sort.direction !== "asc" && sort.direction !== "desc")
+      problems.push("sort.direction must be asc or desc");
+  }
+  if (item.currency !== null && (typeof item.currency !== "string" || !/^[A-Z]{3}$/.test(item.currency)))
+    problems.push(`currency ${"currency" in item ? `${JSON.stringify(item.currency)} must be` : "is missing:"} a three-letter code such as "USD", or null when nothing compares money`);
+  if (problems.length) throw new Error(`Invalid screen definition: ${problems.join("; ")}.`);
+  const criteria = item.criteria.map(checkCriterion);
+  const money = [item.sort.field, ...criteria.filter((criterion) => "value" in criterion).map((criterion) => criterion.field)]
+    .find((field) => MONETARY.has(field as NumericField));
+  if (!item.currency && money)
+    throw new Error(`Invalid screen definition: currency is null, but ${money} compares money; select one currency, such as "USD".`);
   return { version: 1, currency: item.currency, criteria,
     sort: { field: item.sort.field, direction: item.sort.direction } };
 }
