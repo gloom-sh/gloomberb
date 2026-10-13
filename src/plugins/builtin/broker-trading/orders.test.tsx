@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { TestPaneFrame, createTestPaneConfig } from "../../../test-support/pane";
@@ -26,6 +26,80 @@ async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string |
   await tui.waitForFrameToContain(selectedAccount === null ? "Choose an account" : "Working");
   return { demo, modifications, returnedToTicket: () => returnedToTicket, mutations: () => demo.calls.filter((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method)) };
 }
+
+test("docked rows step a selected order into review and keep cancel confirmation safe across resize", async () => {
+  const demo = createDemoBroker();
+  const config = createTestPaneConfig("/synthetic/docked-orders", { instanceId: paneId, paneId: "broker-orders", binding: { kind: "none" } });
+  config.brokerInstances = [demo.instance];
+  const state = createInitialState(config); state.focusedPaneId = paneId;
+  const modifications: Array<{ order: BrokerOrder; edit?: { price: number; review: boolean } }> = [];
+  let resize!: (compact: boolean) => void;
+  function Orders() {
+    const [compact, setCompact] = useState(true); resize = setCompact;
+    return <BrokerOrdersView compact={compact} focused width={compact ? 34 : 90} height={25} broker={demo.adapter} instance={demo.instance}
+      accounts={demo.accounts()} accountId={demo.draft.accountId} onAccountChange={() => {}} onModify={(order, edit) => modifications.push({ order, edit })} />;
+  }
+  await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={createTestPluginRuntime()} width={90} height={30}>{() => <Orders />}</TestPaneFrame>);
+  await tui.waitForFrameToContain("Working");
+  await tui.emitKeypress([{ name: "j" }, { name: "up" }, { name: "enter" }], { trackPropagation: true });
+  expect(modifications).toHaveLength(1);
+  expect(modifications[0]!.order.action).toBe("SELL");
+  expect(modifications[0]!.edit).toEqual({ review: true, price: Number((modifications[0]!.order.limitPrice! + 0.01).toFixed(2)) });
+  expect(demo.calls.filter((call) => ["placeOrder", "modifyOrder"].includes(call.method))).toEqual([]);
+  await tui.emitKeypress({ name: "c" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Cancel SELL");
+  await act(async () => resize(false));
+  await tui.waitForFrameToContain("Cancel SELL");
+  await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
+  expect(demo.calls.filter((call) => call.method === "cancelOrder")).toHaveLength(0);
+  await act(async () => resize(true));
+  await tui.emitKeypress({ name: "c" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Cancel SELL");
+  await tui.emitKeypress([{ name: "enter" }, { name: "enter" }], { trackPropagation: true });
+  await tui.waitForFrameToContain("Pending cancel");
+  expect(demo.calls.filter((call) => call.method === "cancelOrder")).toHaveLength(1);
+});
+
+test("the dock reflects a placement immediately and disables other mutations during an entry submission", async () => {
+  const demo = createDemoBroker({ seedOrders: false });
+  const config = createTestPaneConfig("/synthetic/docked-result", { instanceId: paneId, paneId: "broker-orders", binding: { kind: "none" } });
+  config.brokerInstances = [demo.instance];
+  const state = createInitialState(config); state.focusedPaneId = paneId;
+  const order = demo.order(demo.draft, "WORKING", 42);
+  const modifications: BrokerOrder[] = [];
+  let update!: (value: boolean) => void;
+  function Orders() {
+    const [blocked, setBlocked] = useState(true); update = setBlocked;
+    return <BrokerOrdersView compact blocked={blocked} latestOrder={order} focused width={34} height={25} broker={demo.adapter} instance={demo.instance}
+      accounts={demo.accounts()} accountId={demo.draft.accountId} onAccountChange={() => {}} onModify={(value) => modifications.push(value)} />;
+  }
+  await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={createTestPluginRuntime()} width={90} height={30}>{() => <Orders />}</TestPaneFrame>);
+  await tui.waitForFrameToContain("Open Orders (1)");
+  await tui.emitKeypress([{ name: "m" }, { name: "c" }, { name: "enter" }]);
+  expect(modifications).toEqual([]);
+  expect(demo.calls.filter((call) => call.method === "cancelOrder")).toEqual([]);
+  await act(async () => update(false));
+  await tui.emitKeypress({ name: "m" });
+  expect(modifications).toEqual([order]);
+});
+
+test("docked activity excludes other contracts and distinguishes empty activity from open orders", async () => {
+  const demo = createDemoBroker();
+  demo.adapter.listExecutions = async () => [{ execId: "synthetic-other", accountId: demo.draft.accountId, side: "BUY", shares: 999, price: 42, time: 1, contract: { ...demo.draft.contract, symbol: "OTHER" } }];
+  const config = createTestPaneConfig("/synthetic/docked-activity", { instanceId: paneId, paneId: "broker-orders", binding: { kind: "none" } });
+  config.brokerInstances = [demo.instance];
+  const state = createInitialState(config); state.focusedPaneId = paneId;
+  await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={createTestPluginRuntime()} width={90} height={30} footerKeys>
+    {() => <BrokerOrdersView compact contract={demo.draft.contract} focused width={34} height={8} broker={demo.adapter} instance={demo.instance} accounts={demo.accounts()} accountId={demo.draft.accountId} onAccountChange={() => {}} onModify={() => {}} />}
+  </TestPaneFrame>);
+  await tui.waitForFrameToContain("Working");
+  await tui.emitKeypress({ name: "v" });
+  await tui.waitForFrameToContain("No recent activity.");
+  expect(tui.frame()).not.toContain("999");
+  expect(tui.frame()).not.toContain("Enter Review");
+  await tui.emitKeypress({ name: "v" });
+  await tui.waitForFrameToContain("Working");
+});
 
 test("multiple accounts require an explicit choice before loading or offering a mutation", async () => {
   const f = await mount({ mode: "both" }, null);

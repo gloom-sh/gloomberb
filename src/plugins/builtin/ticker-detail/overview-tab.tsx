@@ -1,4 +1,6 @@
 import { TrendingSummary } from "../attention/trending";
+import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
+import { instrumentFromTicker } from "../../../market-data/request-types";
 import type { ReactNode } from "react";
 import { EmptyState, PaneLinkMenu, SectionHeading, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
@@ -84,6 +86,7 @@ export function OverviewTab(props: OverviewTabProps) {
 }
 
 function ResolvedOverviewTab({ width, height, focused = false, ticker, financials, onOpenChart, onOpenFunction, perpetuals }: OverviewTabProps & { ticker: TickerRecord }) {
+  const trade = useResearchTrading();
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const { width: termWidth } = useViewport();
   const { fractionalViewport = false, nativePaneChrome, cellWidthPx = 8, cellHeightPx = 18, pixelRatio = 1 } = useUiCapabilities();
@@ -367,6 +370,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
           </Box>
         )}
 
+        <Box flexDirection="row" justifyContent="flex-end"><ResearchTradeActions focused={focused} /></Box>
         {hasHistory && (
           <Box
             onMouseDown={onOpenChart
@@ -386,6 +390,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
               interactive={false}
               series={[priceSeries]}
               panels={[{ id: "price" }]}
+              levels={trade && researchTradeMatches(trade, instrumentFromTicker(ticker)) ? { seriesId: priceSeries.id, items: trade.levels } : undefined}
               axisWidth={8}
               showLegend={false}
             />

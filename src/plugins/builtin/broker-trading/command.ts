@@ -41,7 +41,7 @@ export function parseTradeShortcut(arg: string): Record<string, string> {
 }
 
 export function openTradeTicket(ctx: Pick<GloomPluginContext, "pinTicker">, symbol: string, intent: TradeIntent): void {
-  ctx.pinTicker(symbol, { tabId: "broker-trade", tabState: { brokerTradeIntent: createTradeIntent(intent) } });
+  ctx.pinTicker(symbol, { tabId: "chart", tabState: { brokerTradeIntent: createTradeIntent(intent) } });
 }
 
 export function createTradeCommand(ctx: Pick<GloomPluginContext, "pinTicker">, action: "BUY" | "SELL", supported: (symbol: string) => boolean = () => true): CommandDef {

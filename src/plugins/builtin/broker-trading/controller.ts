@@ -43,6 +43,8 @@ export interface BrokerTradingSnapshot {
   draft?: BrokerOrderRequest;
   quote?: BrokerTicketQuote;
   review?: BrokerOrderReview;
+  /** Read-only receipt of the consumed preview. Never authorizes another mutation. */
+  receipt?: BrokerOrderReview;
   result?: BrokerOrder;
   cancelOrder?: BrokerOrder;
   error?: string;
@@ -148,7 +150,7 @@ export class BrokerTradingController {
     this.publish({ confirmOrders: true });
     if (!this.mutationPending) {
       this.modifyOrder = undefined;
-      this.publish({ phase: "editing", modifying: false, review: undefined, result: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: "Profile, account or connection changed. Review the order again." });
+      this.publish({ phase: "editing", modifying: false, review: undefined, receipt: undefined, result: undefined, cancelOrder: undefined, quote: undefined, loadingQuote: false, error: this.snapshot.draft || this.snapshot.cancelOrder || this.snapshot.result ? "Profile, account or connection changed. Review the order again." : undefined });
     }
   }
 
@@ -167,7 +169,7 @@ export class BrokerTradingController {
     this.version++;
     this.gate = undefined;
     if (changedContract) { this.quoteVersion++; this.modifyOrder = undefined; }
-    this.publish({ phase: "editing", draft: copy(request), modifying: !!this.modifyOrder, review: undefined, cancelOrder: undefined, result: undefined, error: undefined,
+    this.publish({ phase: "editing", draft: copy(request), modifying: !!this.modifyOrder, review: undefined, receipt: undefined, cancelOrder: undefined, result: undefined, error: undefined,
       ...(changedContract ? { quote: undefined, loadingQuote: false } : {}) });
     this.contextKey = this.key();
     this.identityKey = this.key(true);
@@ -340,9 +342,9 @@ export class BrokerTradingController {
     try {
       const result = gate.order ? await context.adapter.modifyOrder!(context.instance, gate.order.orderId, copy(request)) : await context.adapter.placeOrder!(context.instance, copy(request));
       if (!Number.isSafeInteger(result.orderId) || result.orderId <= 0 || (result.accountId && result.accountId !== request.accountId) || (result.brokerInstanceId && result.brokerInstanceId !== context.instance.id) || result.contract.brokerId !== context.adapter.id) throw new Error("The broker's order acknowledgement could not be verified.");
-      this.publish({ phase: "result", result: copy(result), review: undefined });
+      this.publish({ phase: "result", result: copy(result), review: undefined, receipt: review });
     } catch {
-      this.publish({ phase: "result", review: undefined, result: this.unknown(request, gate.order), error: uncertainMessage });
+      this.publish({ phase: "result", review: undefined, receipt: review, result: this.unknown(request, gate.order), error: uncertainMessage });
     } finally { this.mutationPending = false; }
   }
 
@@ -376,7 +378,7 @@ export class BrokerTradingController {
     if (!capabilities.cancel || !context.adapter.cancelOrder) throw new Error("This broker does not support cancelling this order.");
     this.version++;
     this.gate = { context: this.key(), request: canonical(order), version: this.version, quoteRisk: "" };
-    this.publish({ phase: "cancel-review", cancelOrder: copy(order), review: undefined, error: undefined });
+    this.publish({ phase: "cancel-review", cancelOrder: copy(order), review: undefined, receipt: undefined, error: undefined });
   }
 
   async confirmCancel(confirmed: boolean): Promise<void> {
@@ -424,7 +426,7 @@ export class BrokerTradingController {
     this.version++;
     this.gate = undefined;
     this.modifyOrder = undefined;
-    this.publish({ phase: "editing", modifying: false, review: undefined, result: undefined, cancelOrder: undefined, error: undefined });
+    this.publish({ phase: "editing", modifying: false, review: undefined, receipt: undefined, result: undefined, cancelOrder: undefined, error: undefined });
   }
 
   dispose(): void { this.disposed = true; this.version++; this.quoteVersion++; this.gate = undefined; this.listeners.clear(); }

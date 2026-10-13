@@ -14,6 +14,9 @@ export interface CompositeChartLevel {
   editable: boolean;
   /** Whether the chart's level action applies to it. */
   actionable: boolean;
+  /** Optional read-only annotation, independent of drawing-tool selection. */
+  label?: string;
+  dashed?: boolean;
 }
 
 export type CompositeLevelEdit =
@@ -111,13 +114,17 @@ export function fitAxisLabels<T>(
   });
 }
 
+function levelSegments(dashed?: boolean): Array<[number, number]> {
+  return dashed ? Array.from({ length: 48 }, (_, i) => [i / 48, (i + 0.55) / 48]) : [[0, 1]];
+}
+
 export function levelVectors(levels: readonly ProjectedLevel[], selectedId: string | null): ChartVectorShape[] {
-  return levels.map(({ level, yRatio }) => ({
-    id: `level:${level.id}`,
-    points: [{ x: 0, y: yRatio }, { x: 1, y: yRatio }],
+  return levels.flatMap(({ level, yRatio }) => levelSegments(level.dashed).map(([start, end], index) => ({
+    id: `level:${level.id}:${index}`,
+    points: [{ x: start, y: yRatio }, { x: end, y: yRatio }],
     color: level.color,
     strokeWidth: level.id === selectedId ? 2.2 : 1.2,
-  }));
+  })));
 }
 
 /** Levels painted on a copy of the panel raster, the one layer the terminal uploads. */
@@ -131,7 +138,9 @@ export function paintLevels(
   const maxY = Math.max(base.height - 1, 0);
   for (const { level, yRatio } of levels) {
     const y = Math.round(yRatio * maxY);
-    drawLine(data, base.width, base.height, 0, y, maxX, y, parseHex(level.color), level.id === selectedId ? 2.2 : 1.2);
+    for (const [start, end] of levelSegments(level.dashed)) {
+      drawLine(data, base.width, base.height, start * maxX, y, end * maxX, y, parseHex(level.color), level.id === selectedId ? 2.2 : 1.2);
+    }
   }
   return { width: base.width, height: base.height, pixels: data };
 }
@@ -145,7 +154,7 @@ export function writeLevelText(lines: readonly string[], levels: readonly Projec
   const rows = lines.map((line) => Array.from(line));
   for (const { level, yRatio } of levels) {
     const row = rows[clamp(Math.round(yRatio * (rows.length - 1)), 0, rows.length - 1)]!;
-    const glyph = level.id === selectedId ? "━" : level.editable ? "─" : "┄";
+    const glyph = level.id === selectedId ? "━" : level.dashed || !level.editable ? "┄" : "─";
     for (let x = 0; x < row.length; x += 1) {
       if (row[x] === " " || row[x] === "·" || row[x] === "╌") row[x] = glyph;
     }

@@ -1386,6 +1386,23 @@ describe("CompositeChart", () => {
     expect(edits).toHaveLength(4);
   });
 
+  test("external level labels remain outside the bitmap surface and follow price updates", async () => {
+    let move!: (price: number) => void;
+    function Chart() {
+      const [value, setValue] = useState(104); move = setValue;
+      return <CaptureChartSurfaceProvider><CompositeChart width={60} height={12}
+        series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+        panels={[{ id: "main" }]} levels={{ seriesId: "price", items: [{ id: "external", value, label: `Draft ${value}`, dashed: true, color: "#00cc66", editable: false, actionable: false }] }} /></CaptureChartSurfaceProvider>;
+    }
+    await tui.render(<Chart />, { width: 62, height: 14 });
+    await tui.waitForFrameToContain("Draft 104");
+    // Bitmap hosts may omit their children. Labels must be siblings of the surface.
+    expect(JSON.stringify(capturedSurfaceProps?.children?.map((child: any) => child.props.children))).not.toContain("Draft");
+    await act(async () => move(106));
+    await tui.waitForFrameToContain("Draft 106");
+    expect(tui.frame()).not.toContain("Draft 104");
+  });
+
   test("a price level on the last price's row leaves the last price on the axis", async () => {
     const price: ResolvedSeries = {
       ...series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108]),

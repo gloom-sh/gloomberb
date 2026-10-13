@@ -876,6 +876,14 @@ export function CompositePanelSurface({
       >
         {textLines.map((line, index) => <Text key={index} fg={colors.text}>{line}</Text>)}
       </ChartSurface>
+        {fitAxisLabels(projectedLevels.filter((entry) => entry.level.label), [], (entry) => entry.yRatio * Math.max(1, panel.height - 1)).map(({ level, yRatio }) => (
+          <Box key={`annotation:${level.id}`} position="absolute" left={leftAxisWidth + (leftAxisWidth ? axisGap : 0) + 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
+            width={Math.min(plotWidth - 2, (level.label?.length ?? 0) + 2)} backgroundColor={colors.background} zIndex={20}
+            style={isDesktopWeb ? { top: `calc(${yRatio * 100}% - ${yRatio} * var(--cell-h))`, pointerEvents: "none", paddingInline: 4, borderRadius: 3 } : undefined}
+            data-gloom-role="chart-level-label">
+            <Text fg={level.color} wrapMode="none">{level.label}</Text>
+          </Box>
+        ))}
       {rightAxisWidth > 0 ? (
         <>
           <Box width={axisGap} />

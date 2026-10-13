@@ -9,11 +9,11 @@ import type { TicketViewModel } from "./ticket";
 export const ticketNumber = (value: number | undefined) => value === undefined || !Number.isFinite(value) ? "Unavailable" : value.toLocaleString("en-US", { maximumFractionDigits: 4 });
 export const ticketMoney = (value: number | undefined, currency = "USD") => value === undefined || !Number.isFinite(value) ? "Not reported" : new Intl.NumberFormat("en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(value);
 export const ticketTypeName: Record<string, string> = { MKT: "Market", LMT: "Limit", STP: "Stop", "STP LMT": "Stop limit" };
-export function TicketCard({ children, width, accent, title, compact = false, dense = false }: { children: ReactNode; width?: number; accent?: string; title?: string; compact?: boolean; dense?: boolean }) {
+export function TicketCard({ children, width, accent, title, compact = false, dense = false, flat = false }: { children: ReactNode; width?: number; accent?: string; title?: string; compact?: boolean; dense?: boolean; flat?: boolean }) {
   const c = useThemeColors(); const native = useUiCapabilities().nativePaneChrome;
   return <Box width={width} flexDirection="column" flexShrink={0} backgroundColor={blendHex(c.bg, c.panel, 0.55)}
-    border={native ? true : false} borderColor={accent ?? c.border} paddingX={native ? dense ? 1 : 2 : 1} paddingY={native ? dense ? 0.35 : compact ? 0.6 : 1 : 0}
-    gap={native ? dense ? 0.2 : 0.7 : 0} style={native ? { borderRadius: 8, border: `1px solid ${accent ?? c.border}` } : undefined}>
+    border={native && !flat ? true : false} borderColor={native && !flat ? accent ?? c.border : undefined} paddingX={native ? dense ? 1 : 2 : 1} paddingY={native ? dense ? 0.35 : compact ? 0.6 : 1 : 0}
+    gap={native ? dense ? 0.2 : 0.7 : 0} style={native && !flat ? { borderRadius: 8, border: `1px solid ${accent ?? c.border}` } : undefined}>
     {title ? <SectionHeading title={title} /> : null}{children}
   </Box>;
 }
@@ -31,7 +31,7 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
   const c = useThemeColors(); const draft = m.draft; const account = m.accounts.find((a) => a.accountId === m.accountId);
   const currency = draft?.contract.currency ?? account?.currency ?? "USD";
   const px = draft?.limitPrice ?? draft?.stopPrice ?? m.quote?.price;
-  const total = draft && px !== undefined ? px * draft.quantity * Number(draft.contract.multiplier ?? 1) : undefined;
+  const total = m.phase === "result" ? m.preview?.estimatedCost : draft && px !== undefined ? px * draft.quantity * Number(draft.contract.multiplier ?? 1) : undefined;
   const positionAfter = m.position !== undefined && draft ? m.position + (draft.action === "SELL" ? -draft.quantity : draft.quantity) : undefined;
   const powerAfter = m.preview?.buyingPowerAfter;
   const sideColor = draft?.action === "SELL" ? c.negative : c.positive;
@@ -60,10 +60,10 @@ export function TicketOrderSummary({ model: m, width, compact = false, receipt =
     <Box flexDirection="column" paddingY={1}><Text fg={c.textDim}>Estimated order value</Text><FigureText style={{ fontSize: "30px" }}>{ticketMoney(total, currency)}</FigureText></Box>
     <TicketReceiptRow label="Quantity" value={`${ticketNumber(draft?.quantity)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`} width={rowWidth} />
     <TicketReceiptRow label="Price" value={draft?.orderType === "MKT" ? "At market" : ticketMoney(px, currency)} width={rowWidth} />
-    <TicketReceiptRow label="Fees / commission" value={m.preview ? `${ticketMoney(m.preview.fees, currency)} / ${ticketMoney(m.preview.commission, currency)}` : "At review"} width={rowWidth} />
+    <TicketReceiptRow label="Fees / commission" value={m.preview || m.phase === "result" ? `${ticketMoney(m.preview?.fees, currency)} / ${ticketMoney(m.preview?.commission, currency)}` : "At review"} width={rowWidth} />
     <TicketReceiptRow label="Broker power after" value={ticketMoney(powerAfter, currency)} width={rowWidth} />
     <TicketReceiptRow label="Position after" value={positionAfter === undefined ? "Not reported" : `${ticketNumber(positionAfter)} ${draft?.contract.secType === "OPT" ? "contracts" : "shares"}`} width={rowWidth} />
-    <Box marginTop={1}><Notice variant="callout" tone="warning">{m.quoteData !== "realtime" ? "Delayed broker quote. Execution prices may differ." : "Final cost and availability are checked at review."}</Notice></Box>
+    {m.phase !== "result" ? <Box marginTop={1}><Notice variant="callout" tone="warning">{m.quoteData !== "realtime" ? "Delayed broker quote. Execution prices may differ." : "Final cost and availability are checked at review."}</Notice></Box> : null}
   </TicketCard>;
 }
 export function TicketStatus({ model: m, width }: { model: TicketViewModel; width: number }) {
@@ -71,9 +71,9 @@ export function TicketStatus({ model: m, width }: { model: TicketViewModel; widt
   const filled = status === "FILLED"; const partial = status === "PARTIALLY_FILLED"; const active = !["UNKNOWN", "REJECTED", "CANCELLED", "CANCELED", "PENDING_CANCEL"].includes(status);
   const currentStep = filled ? 2 : ["SUBMITTED", "PENDING_NEW"].includes(status) ? 0 : 1;
   return <Box flexDirection="column" gap={1}>
-    {active ? <Box flexDirection="row" gap={1} justifyContent="space-between">{["Submitted", "Working", "Filled"].map((label, index) => <Badge key={label} label={`${index + 1}  ${label}`} tone={index <= currentStep ? "positive" : "neutral"} variant={index === currentStep ? "solid" : "subtle"} />)}</Box> : null}
-    {partial || filled ? <><RatioBar width={Math.max(10, width)} ratio={(m.result?.filled ?? 0) / Math.max(1, m.result?.quantity ?? 1)} color={c.positive} track thickness={6} /><Text fg={c.text}>{`${ticketNumber(m.result?.filled)} of ${ticketNumber(m.result?.quantity)} filled · Avg. ${ticketMoney(m.result?.avgFillPrice, m.draft?.contract.currency)}`}</Text></> : null}
-    {status === "UNKNOWN" ? <Notice variant="callout" tone="warning">The broker has not confirmed the outcome. Refresh and reconcile in Orders. This order will not be retried automatically.</Notice> : null}
+    {active ? <Box flexDirection="row" gap={1} justifyContent="space-between">{["Submitted", "Working", "Filled"].map((label, index) => <Badge key={label} label={width < 38 ? label : `${index + 1}  ${label}`} tone={index <= currentStep ? "positive" : "neutral"} variant={index === currentStep ? "solid" : "subtle"} />)}</Box> : null}
+    {partial || filled ? <><RatioBar width={Math.max(10, width)} ratio={(m.result?.filled ?? 0) / Math.max(1, m.result?.quantity ?? 1)} color={c.positive} track thickness={6} /><Text fg={c.text} wrapText>{`${ticketNumber(m.result?.filled)} of ${ticketNumber(m.result?.quantity)} filled · Avg. ${ticketMoney(m.result?.avgFillPrice, m.draft?.contract.currency)}`}</Text></> : null}
+    {status === "UNKNOWN" ? <Notice variant="callout" tone="warning">Outcome unconfirmed. Refresh and reconcile in Orders. No automatic retry.</Notice> : null}
     {status === "REJECTED" ? <Notice variant="callout" tone="negative">{m.error ?? m.result?.warningText ?? "The broker rejected this order. Check the order before trying again."}</Notice> : null}
     {status === "PENDING_CANCEL" ? <Notice variant="callout" tone="warning">Cancellation requested. The order can still fill until the broker confirms.</Notice> : null}
   </Box>;

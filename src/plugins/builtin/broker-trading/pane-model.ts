@@ -1,3 +1,4 @@
+import { parsePublicTickerKey } from "../../../utils/exchanges";
 import type { PaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import type { BrokerAdapter, BrokerPosition } from "../../../types/broker";
 import type { BrokerInstanceConfig } from "../../../types/config";
@@ -99,8 +100,9 @@ export function resolveTicketContract(identity: PaneTickerIdentity, broker: Brok
     }
     return { contract: { ...identity.contract, brokerInstanceId: instance.id } };
   }
-  return { contract: { brokerId: broker.id, brokerInstanceId: instance.id, symbol: identity.symbol, localSymbol: identity.symbol,
-    secType: identity.ticker?.metadata.assetCategory ?? "STK", currency: identity.ticker?.metadata.currency ?? "USD", exchange: identity.ticker?.metadata.exchange } };
+  const listing = parsePublicTickerKey(identity.symbol);
+  return { contract: { brokerId: broker.id, brokerInstanceId: instance.id, symbol: listing.symbol, localSymbol: listing.symbol,
+    secType: identity.ticker?.metadata.assetCategory ?? "STK", currency: identity.ticker?.metadata.currency ?? "USD", exchange: listing.exchange ?? identity.ticker?.metadata.exchange } };
 }
 
 export function chooseTicketAccount(accounts: BrokerAccount[], previous?: string): string | undefined {

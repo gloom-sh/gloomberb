@@ -4,6 +4,11 @@ import { availableTicketPosition, buildTicketAccountChoices, chooseTicketAccount
 import { createDemoBroker } from "./test-fixture";
 
 describe("ticket profile and draft resolution", () => {
+  test("a qualified research ticker resolves the broker symbol and listing separately", () => {
+    const demo = createDemoBroker();
+    const result = resolveTicketContract({ symbol: "DEMO:XNAS", ticker: null, error: undefined, contract: undefined }, demo.adapter, demo.instance);
+    expect(result.contract).toMatchObject({ symbol: "DEMO", localSymbol: "DEMO", exchange: "NASDAQ" });
+  });
   test("a foreign broker or profile contract cannot be relabelled for the selected profile", () => {
     const demo = createDemoBroker();
     const identity: PaneTickerIdentity = { symbol: "AAPL", ticker: null, error: undefined, contract: demo.draft.contract };

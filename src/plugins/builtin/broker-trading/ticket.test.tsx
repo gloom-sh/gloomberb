@@ -31,7 +31,7 @@ async function mount(mode: "simulation" | "live", typed = "", outcome: DemoOrder
     const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
     const [confirmation, setConfirmation] = useState(typed);
     return <BrokerTicketView width={90} height={29} focused model={{ brokerName: demo.adapter.name, symbol: "AAPL", accounts: demo.accounts(), accountId: demo.draft.accountId, draft: snapshot.draft,
-      quote: snapshot.quote?.quote, quoteData: options.fresh ? "realtime" : "delayed", confirmOrders: snapshot.confirmOrders, phase: snapshot.phase, preview: snapshot.review?.preview, warnings: snapshot.review?.warnings ?? [], result: snapshot.result, error: snapshot.error,
+      quote: snapshot.quote?.quote, quoteData: options.fresh ? "realtime" : "delayed", confirmOrders: snapshot.confirmOrders, phase: snapshot.phase, preview: snapshot.review?.preview ?? snapshot.receipt?.preview, warnings: snapshot.review?.warnings ?? [], result: snapshot.result, error: snapshot.error,
       connected: true, tradingEnabled: options.enabled !== false, typedConfirmation: confirmation, capabilities: demo.adapter.getTradingCapabilities!(demo.instance), synthetic: true, position: 25, initialFocus: options.initialFocus }}
       onAccountChange={() => {}} onEdit={(key, value) => { if (key === "typedConfirmation") setConfirmation(String(value)); else if (key === "confirmOrders") controller.setConfirmOrders(value === true); else controller.setDraft(editTicketDraft(demo.adapter, demo.instance, controller.getSnapshot().draft!, key, value)); }}
       onAction={(action) => {
@@ -59,6 +59,19 @@ test("unreported buying power after is never invented by subtracting an order es
   await tui.waitForFrameToContain("Broker power after");
   expect(tui.frame()).not.toContain("$21,235.00");
   expect(tui.frame().split("\n").find((line) => line.includes("Broker power after"))).toContain("Not reported");
+});
+
+test("result retains broker preview values without pre-submit placeholders", async () => {
+  const f = await mount("simulation", "", "working", { fresh: true });
+  await tui.emitKeypress({ name: "tab" });
+  await tui.emitKeypress({ name: "enter" });
+  await tui.waitForFrameToContain("Working");
+  expect(tui.frame()).toContain("$3,365.00");
+  expect(tui.frame()).toContain("$0.35");
+  expect(tui.frame()).toContain("$21,234.65");
+  expect(tui.frame()).not.toContain("At review");
+  expect(tui.frame()).not.toContain("checked at review");
+  expect(f.mutations()).toHaveLength(1);
 });
 
 test("review opens on Edit, so a repeated Enter cannot submit the order", async () => {

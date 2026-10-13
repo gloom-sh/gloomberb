@@ -1,8 +1,10 @@
 # Trading
 
-The Trade tab uses the selected broker's quote, account, capabilities, and order preview. Trading must be enabled for the broker profile. When several accounts are available, choose one explicitly. Simulation and LIVE accounts are named in text as well as marked with a badge.
+On wide hosts, a trading panel docks beside the chart inside Research's Chart and Overview tabs. Buy/Sell in the chart header, or `b`/`s` while the chart has focus, opens it. Review, results and Open orders stay inside the panel. Escape from outside a field or review, or Close, restores the full chart. At less than 100 terminal columns or about 900 desktop pixels, the full-screen Trade tab is the fallback; a 90x30 terminal does not squeeze a chart beside the ticket.
 
-Open the command bar with **Ctrl+P**. `BUY AAPL 10` or `SELL AAPL 10` opens the shared Trade tab with the side and quantity filled in. An optional fourth argument supplies a limit price, for example `BUY AAPL 10 150`. The ticket focuses the primary Buy or Sell action; the command does not request a preview or submit an order. Without an explicit price, editable price defaults come from the broker's quote.
+The ticket uses the selected broker's quote, account, capabilities, and order preview. Trading must be enabled for the broker profile. When several accounts are available, choose one explicitly. Simulation and LIVE accounts are named in text as well as marked with a badge.
+
+Open the command bar with **Ctrl+P**. `BUY AAPL 10` or `SELL AAPL 10` opens Research with its trade panel (or the narrow Trade fallback), with the side and quantity filled in. An optional fourth argument supplies a limit price, for example `BUY AAPL 10 150`. The ticket focuses the primary Buy or Sell action; the command does not request a preview or submit an order. Without an explicit price, editable price defaults come from the broker's quote.
 
 For a small terminal, run **Fullscreen Pane** from the command bar to give the focused ticket the available window. The same command restores its previous size.
 
@@ -35,6 +37,9 @@ The footer shows actions relevant to the current screen. Tab and Shift+Tab walk 
 
 | Screen | Key | Action |
 |---|---|---|
+| Chart or Overview | `b`, `s` | Open the Buy or Sell panel, without submitting |
+| Docked Research | F6 | Move focus between chart and ticket, including from a text field |
+| Research Chart with trading available | Shift+S | Edit chart series (`s` opens Sell) |
 | Ticket editing | `b`, `s` | Buy, Sell |
 | Ticket editing | `r` | Open review, even when SIM one-click is enabled |
 | Numeric field | Up/Down | Increase/decrease by one editing step |
@@ -59,7 +64,9 @@ The footer shows actions relevant to the current screen. Tab and Shift+Tab walk 
 | Result | `r` | Refresh and reconcile status |
 | Rejected result | `e` | Edit the rejected order |
 | Result, except unknown or rejected | `n` | Start a new order |
-| Orders | Up/Down or `k`/`j` | Select an order |
+| Full-screen Orders | Up/Down or `k`/`j` | Select an order |
+| Docked Open orders | `k`/`j` | Select an order |
+| Docked Open orders | Up/Down, then Enter | Step its price, then request a replacement review, never submit directly |
 | Orders | `m` | Modify the selected order |
 | Orders | `c` | Request cancellation confirmation |
 | Orders | `a` | Choose account |
@@ -70,6 +77,12 @@ The footer shows actions relevant to the current screen. Tab and Shift+Tab walk 
 | Confirmation or picker | Escape | Go back without confirming |
 
 `r` is a deliberate Trade-tab exception to the usual refresh shortcut: it opens review while editing and refreshes status on the result screen. The footer identifies the current action. LIVE confirmation and broker capability checks apply equally to keyboard and pointer input.
+
+## Price context
+
+Average position cost, working/partially filled orders and the edited limit/stop prices appear as labelled horizontal chart levels for the ticket's ticker. Buy is green and Sell is red in the default theme; draft levels are dashed. Levels outside the visible price range are clipped, and crowded labels yield rather than overlap. These are read-only overlays in Stage 1: use Open orders (`o`), select a row, change its price and review. Drag-to-modify is not implemented.
+
+Results retain the exact submitted preview as a receipt: cost, fees, commission and buying power after are broker-reported preview values, not a post-fill account balance. Missing figures say Not reported. Closing or resizing the panel does not discard a pending submission or an unknown-outcome lock.
 
 ## Accessibility
 

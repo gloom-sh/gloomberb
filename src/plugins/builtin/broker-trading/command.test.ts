@@ -33,7 +33,7 @@ test("BUY and SELL root shortcuts route to an editable ticket with a one-use int
       expect(notifications).toEqual([]);
       const pin = pins.at(-1)!;
       expect(pin.symbol).toBe("AAPL");
-      expect(pin.options?.tabId).toBe("broker-trade");
+      expect(pin.options?.tabId).toBe("chart");
       expect(Object.keys(pin.options?.tabState ?? {})).toEqual(["brokerTradeIntent"]);
       const token = pin.options!.tabState!.brokerTradeIntent as string;
       expect(takeTradeIntent(token)).toEqual({ action, quantity: 10, ...(suffix.endsWith("150.25") ? { limitPrice: 150.25 } : {}) });

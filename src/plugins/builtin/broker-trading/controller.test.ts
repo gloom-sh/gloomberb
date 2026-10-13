@@ -18,6 +18,24 @@ function setup(options: DemoBrokerOptions = {}) {
     count: (method: string) => demo.calls.filter((call) => call.method === method).length };
 }
 
+test.each(["working", "filled", "partial", "rejected", "unknown"] as const)("%s retains the consumed exact preview as a receipt, never as authorization", async (outcome) => {
+  const f = setup({ realtime: true, quoteAgeMs: 0, outcome });
+  await f.controller.review();
+  const reviewed = f.controller.getSnapshot().review!;
+  await f.controller.confirm();
+  expect(f.controller.getSnapshot().review).toBeUndefined();
+  expect(f.controller.getSnapshot().receipt).toEqual(reviewed);
+  expect(Object.isFrozen(f.controller.getSnapshot().receipt?.preview)).toBe(true);
+  await expect(f.controller.confirm()).rejects.toThrow();
+  await f.controller.refreshResult();
+  expect(f.controller.getSnapshot().receipt).toEqual(reviewed);
+  expect(f.count("placeOrder")).toBe(1);
+  if (outcome !== "unknown") {
+    f.controller.setDraft(f.demo.draft);
+    expect(f.controller.getSnapshot().receipt).toBeUndefined();
+  }
+});
+
 describe("entry submission", () => {
   const fresh = { realtime: true, quoteAgeMs: 0 };
   test("confirmation defaults on; SIM opt-in previews and places the identical immutable draft once", async () => {
