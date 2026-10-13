@@ -40,7 +40,8 @@ assessment without disclosing doubt) and *Unclear*. The quote is the filing's
 own sentence; the reading and summary are generated from the note text, and
 the note in the filing governs. *Assessed over* is the period the filing says
 its assessment covers, usually one year after the statements are issued; it is
-not a date by which anything happens.
+not a date by which anything happens. With *All* chosen, the Disclosure column reads red for doubt
+disclosed, green for doubt alleviated and quiet for policy text only.
 
 ## Listings
 
@@ -69,6 +70,18 @@ label: the French judgment label, or the Gazette notice title with its section
 rectified or cancelled, and the list shows that status. Search matches the
 start of a company name. Notices are not linked to listed companies, so none
 offers a ticker.
+
+The Procedure column is coloured by how far a procedure has gone: a
+liquidation or a winding-up order red; administration, receivership, a
+winding-up petition or a French reorganisation (*redressement judiciaire*)
+amber; a safeguard or a restructuring plan in the accent; claims, creditors'
+meetings and closures quiet. A members' voluntary winding up is a solvent
+company closing and stays quiet, as does a notice later rectified or
+cancelled. The Notice column keeps the publisher's own wording, untranslated.
+In the 8-K list a bankruptcy or receivership item reads red and an obligation
+trigger or a listing notice amber; on Listings a delisting reads red, a
+suspension or a changed trading method amber, and a designation that left the
+list quiet. The words are always shown.
 
 ## Sources and licences
 

@@ -9,6 +9,7 @@ import type {
 } from "../../../../api-client/distress";
 import type { DataTableColumn } from "../../../../components";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
+import type { StateTone } from "../../shared/research-cells";
 
 export type DistressViewId = "filings" | "going-concern" | "listings" | "insolvency";
 
@@ -91,6 +92,12 @@ export function cikLabel(cik: string | null | undefined): string | null {
   return /^\d+$/.test(digits) ? digits : null;
 }
 
+/** A bankruptcy is the end of the road; an accelerated obligation or a listing notice is a warning. */
+export function filingTone(event: CloudFilingEventPayload): StateTone {
+  if (event.items.includes("1.03")) return "negative";
+  return event.items.some((item) => item === "2.04" || item === "3.01") ? "warning" : "text";
+}
+
 export function filingDate(event: CloudFilingEventPayload): string {
   return isoDay(event.filingDate ?? event.filedAt);
 }
@@ -104,6 +111,14 @@ export const VERDICT_LABELS: Record<GoingConcernVerdict, string> = {
   doubt_alleviated: "Substantial doubt alleviated",
   policy_only: "Policy text only",
   unclear: "Unclear",
+};
+
+/** Doubt disclosed reads red, doubt alleviated green; a note that only describes the policy is quiet. */
+export const VERDICT_TONES: Record<GoingConcernVerdict, StateTone> = {
+  doubt_raised: "negative",
+  doubt_alleviated: "positive",
+  policy_only: "muted",
+  unclear: "text",
 };
 
 export const VERDICT_OPTIONS: { value: GoingConcernVerdictFilter; label: string }[] = [
@@ -176,6 +191,12 @@ export function exchangeLabel(exchange: string): string {
 function humanize(value: string): string {
   const words = cellText(value.replace(/_/g, " ")).toLowerCase();
   return words ? words[0]!.toUpperCase() + words.slice(1) : MISSING;
+}
+
+/** Delisted is final; a suspension or a changed trading method is a warning; a designation since removed is quiet. */
+export function designationTone(row: Pick<DistressDesignation, "kind" | "ended_at">): StateTone {
+  if (row.ended_at) return "muted";
+  return row.kind === "delisted" ? "negative" : row.kind === "suspended" || row.kind === "changed_trading_method" ? "warning" : "text";
 }
 
 export function designationKindLabel(kind: string): string {
@@ -333,6 +354,35 @@ export function noticeStatusLabel(status: string): string {
   return humanize(status);
 }
 
+/**
+ * How far a procedure has gone: a liquidation or a winding-up order ends the
+ * company (red); administration, receivership, a winding-up petition or a
+ * French reorganisation puts it in the hands of a court or an officeholder
+ * (amber); a safeguard or a restructuring plan is a rescue (accent); claims,
+ * creditors' meetings and closures are steps inside one (quiet). A members'
+ * voluntary winding up is a solvent company closing, so it is quiet too, as
+ * is a notice later corrected or cancelled.
+ */
+const PROCEDURE_TONES: Record<string, StateTone> = {
+  liquidation: "negative",
+  winding_up_order: "negative",
+  administration: "warning",
+  receivership: "warning",
+  winding_up_petition: "warning",
+  reorganisation: "warning",
+  safeguard: "accent",
+  restructuring_plan: "accent",
+  claims_notice: "muted",
+  creditors_meeting: "muted",
+  closure: "muted",
+};
+
+export function insolvencyTone(row: Pick<InsolvencyNotice, "kind" | "status" | "country" | "raw_code">): StateTone {
+  if (row.status !== "active") return "muted";
+  if (row.country === "GB" && GAZETTE_CODES[row.raw_code.trim()]?.section === "mvl") return "muted";
+  return PROCEDURE_TONES[row.kind] ?? "text";
+}
+
 /** The procedure, and a word when the notice was later corrected or withdrawn. */
 export function insolvencyProcedureCell(row: InsolvencyNotice): string {
   const kind = insolvencyKindLabel(row.kind);
@@ -407,7 +457,8 @@ export function designationColumns(width: number): Column[] {
     { id: "code", label: "Code", width: 6, align: "left" },
     { id: "name", label: "Company", width: 16, align: "left", flexGrow: 1 },
     { id: "exchange", label: "Exch", width: 5, align: "left" },
-    { id: "status", label: "Status", width: 22, align: "left" },
+    // Room for "Trading suspended, ended 2026-10-06" once the pane is wide.
+    { id: "status", label: "Status", width: width >= 100 ? 36 : 22, align: "left" },
   ], ["exchange", "code"], width);
 }
 

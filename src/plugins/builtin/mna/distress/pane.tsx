@@ -31,6 +31,7 @@ import { useAutoRefresh, usePluginPaneState } from "../../../../public/react";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { Box, type ScrollBoxRenderable } from "../../../../ui";
 import { usePluginTickerActions } from "../../../runtime";
+import { toneColor, type StateTone } from "../../shared/research-cells";
 import {
   canPage,
   loadDesignations,
@@ -51,6 +52,7 @@ import {
   designationDate,
   designationKindLabel,
   designationName,
+  designationTone,
   designationTicker,
   DATE_BASIS_LABELS,
   DISTRESS_VIEWS,
@@ -62,6 +64,7 @@ import {
   filingDate,
   filingEventLabel,
   filingTicker,
+  filingTone,
   goingConcernColumns,
   goingConcernTitle,
   INSOLVENCY_KIND_OPTIONS,
@@ -69,11 +72,13 @@ import {
   insolvencyId,
   insolvencyNoticeLabel,
   insolvencyProcedureCell,
+  insolvencyTone,
   isoDay,
   MISSING,
   namePrefix,
   VERDICT_LABELS,
   VERDICT_OPTIONS,
+  VERDICT_TONES,
   venueTicker,
   type DistressViewId,
   type GoingConcernVerdictFilter,
@@ -99,7 +104,8 @@ interface RowSpec<Row> {
   title: (row: Row) => string;
   url: (row: Row) => string;
   ticker: (row: Row) => ListingTicker | null;
-  cell: (row: Row, columnId: string, muted: string, base: string) => DataTableCell;
+  /** `tone` colours a state word in the theme's tone for it. */
+  cell: (row: Row, columnId: string, muted: string, base: string, tone: (tone: StateTone) => string) => DataTableCell;
   detail: (row: Row, width: number, attributions: DistressAttribution[]) => ReactNode;
   /** Changing status the source date carries, e.g. the month the SEC data set covers. */
   footerInfo?: (rows: Row[]) => PaneFooterSegment[];
@@ -268,12 +274,12 @@ function FilingsList({ kind, ...props }: ListProps & { kind: DistressFilingKind 
       const symbol = filingTicker(event);
       return symbol ? { key: symbol, label: symbol } : null;
     },
-    cell: (event, column, muted, base) => {
+    cell: (event, column, muted, base, tone) => {
       switch (column) {
         case "filed": return { text: filingDate(event), color: muted };
         case "company": return { text: cellText(event.company.name), color: base };
         case "ticker": return { text: filingTicker(event) ?? MISSING, color: filingTicker(event) ? base : muted };
-        case "event": return { text: filingEventLabel(event), color: base };
+        case "event": return { text: filingEventLabel(event), color: tone(filingTone(event)) };
         case "headline": return { text: cellText(event.headline ?? ""), color: muted };
         default: return { text: "" };
       }
@@ -308,7 +314,7 @@ function GoingConcernList({ verdict, ...props }: ListProps & { verdict: GoingCon
     title: goingConcernTitle,
     url: (row) => row.filing_url,
     ticker: (row) => venueTicker(row.ticker),
-    cell: (row, column, muted, base) => {
+    cell: (row, column, muted, base, tone) => {
       switch (column) {
         case "filed": return { text: isoDay(row.filed_at), color: muted };
         case "company": return { text: goingConcernTitle(row), color: base };
@@ -318,7 +324,7 @@ function GoingConcernList({ verdict, ...props }: ListProps & { verdict: GoingCon
         }
         case "form": return { text: row.form, color: muted };
         case "period": return { text: isoDay(row.period_end), color: muted };
-        case "verdict": return { text: VERDICT_LABELS[row.verdict], color: row.verdict === "doubt_raised" ? base : muted };
+        case "verdict": return { text: VERDICT_LABELS[row.verdict], color: tone(VERDICT_TONES[row.verdict]) };
         default: return { text: "" };
       }
     },
@@ -360,7 +366,7 @@ function DesignationsList({ kind, exchange, ...props }: ListProps & { kind: stri
     title: (row) => `${designationName(row)} (${row.local_code})`,
     url: (row) => row.notice_url ?? row.source_url,
     ticker: designationTicker,
-    cell: (row, column, muted, base) => {
+    cell: (row, column, muted, base, tone) => {
       switch (column) {
         case "date": return { text: designationDate(row), color: row.date_basis === "first_observed" ? muted : base };
         case "basis": return { text: DATE_BASIS_LABELS[row.date_basis], color: muted };
@@ -369,9 +375,7 @@ function DesignationsList({ kind, exchange, ...props }: ListProps & { kind: stri
         case "exchange": return { text: exchangeLabel(row.exchange), color: muted };
         case "status": {
           const label = designationKindLabel(row.kind);
-          return row.ended_at
-            ? { text: `${label}, ended ${isoDay(row.ended_at)}`, color: muted }
-            : { text: label, color: base };
+          return { text: row.ended_at ? `${label}, ended ${isoDay(row.ended_at)}` : label, color: tone(designationTone(row)) };
         }
         default: return { text: "" };
       }
@@ -421,13 +425,13 @@ function InsolvencyList({ country, kind, namePrefix: prefix, search, searching, 
     url: (row) => row.notice_url,
     // No notice maps to a listed company yet.
     ticker: () => null,
-    cell: (row, column, muted, base) => {
+    cell: (row, column, muted, base, tone) => {
       switch (column) {
         case "published": return { text: isoDay(row.published_date), color: muted };
         case "company": return { text: cellText(row.entity_name), color: base };
         case "country": return { text: row.country, color: muted };
         case "registry": return { text: row.registry_id, color: muted };
-        case "procedure": return { text: insolvencyProcedureCell(row), color: row.status === "active" ? base : muted };
+        case "procedure": return { text: insolvencyProcedureCell(row), color: tone(insolvencyTone(row)) };
         case "notice": return { text: insolvencyNoticeLabel(row, "short"), color: muted };
         default: return { text: "" };
       }
@@ -553,7 +557,8 @@ function DistressTable<Row>({
   const renderCell = useCallback((row: Row, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     const muted = state.selected ? colors.selectedText : colors.textMuted;
     const base = state.selected ? colors.selectedText : colors.text;
-    return spec.cell(row, column.id, muted, base);
+    const tone = (value: StateTone) => (state.selected ? colors.selectedText : toneColor(value, colors));
+    return spec.cell(row, column.id, muted, base, tone);
   }, [colors, spec]);
 
   if (rows.length === 0 && (paged.loading || paged.error)) {

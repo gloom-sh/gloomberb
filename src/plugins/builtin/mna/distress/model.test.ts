@@ -7,6 +7,7 @@ import {
   filingEventLabel,
   goingConcernColumns,
   insolvencyNoticeLabel,
+  insolvencyTone,
   plainText,
   venueTicker,
 } from "./model";
@@ -34,6 +35,16 @@ test("a Gazette notice keeps its section: a members' voluntary winding up is not
   // France sends the official judgment label itself.
   expect(insolvencyNoticeLabel(insolvencyRow({ country: "FR", raw_code: "Jugement d'ouverture de liquidation judiciaire" }) as InsolvencyNotice))
     .toBe("Jugement d'ouverture de liquidation judiciaire");
+});
+
+test("a procedure is toned by how far it went: a members' voluntary winding up and a cancelled notice stay quiet", () => {
+  const tone = (fields: Partial<InsolvencyNotice>) => insolvencyTone(insolvencyRow(fields) as InsolvencyNotice);
+  expect(tone({ kind: "liquidation", raw_code: "2443" })).toBe("negative");
+  expect(tone({ kind: "liquidation", raw_code: "2432" })).toBe("muted");
+  expect(tone({ kind: "liquidation", status: "cancelled" })).toBe("muted");
+  expect(tone({ kind: "administration", raw_code: "2410" })).toBe("warning");
+  expect(tone({ kind: "safeguard", country: "FR", raw_code: "Jugement d'ouverture d'une procédure de sauvegarde" })).toBe("accent");
+  expect(tone({ kind: "claims_notice", raw_code: "2460" })).toBe("muted");
 });
 
 test("source text loses terminal escapes and controls but keeps its line breaks", () => {
