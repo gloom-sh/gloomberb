@@ -18,7 +18,19 @@ A story shows a ticker when the story itself names the company, by name, brand o
 
 `NI` codes are assigned from each story's category, the wire it came from, its sectors and the words in its headline and summary: `MNA` for deals, `CB` for central banks and rate decisions, `ENERGY` for oil, gas and power across every sector, `REG` for regulators and regulation, `CRYPTO`, `EARN` for results and guidance, `IPO` for listings. A story can carry several codes. The sector codes filter by the story's sectors.
 
-`NI LTR` is the one code that lists no stories. It lists public fund and investor letters as links: manager commentaries and memos, company shareholder letters and annual reports to shareholders, newest first, for the last 12 months. A row shows the date, what that date is, who wrote it, the title and the kind; Enter or a click opens the publisher's own page. The Kind filter opens on All but annual reports: shareholder letters, memos and commentary. Annual reports (filed with the SEC, up to five a day, many at once in proxy season) are one choice away, as are Shareholder letters, Memos and Commentary on their own, and Everything; clear returns to the default. The Date basis column says Published for the date the publisher states, Filed for an EDGAR filing date, and File updated for the last change of the document file, which is all some publishers' pages give: it is when the file changed, not when the letter came out, and is shown dimmer. A letter whose file carries no usable date is left out rather than dated by when it was first seen. Only those facts are kept, never the letter's text or a summary of it, and the list is not ranked. It needs no account. Annual reports are listed for companies with a ticker and do not all contain a letter from the chief executive.
+### Letters: `NI LTR`
+
+`NI LTR` is the one code that lists no stories. It lists public fund and investor letters as links, newest first, for the last 12 months: manager commentaries and memos, company shareholder letters and annual reports to shareholders. A row shows the date, its basis, who wrote it, the title and the kind; Enter or a click opens the publisher's own page.
+
+The Kind filter opens on All but annual reports: shareholder letters, memos and commentary. The other choices are Shareholder letters, Memos, Commentary, Annual reports and Everything; clear returns to the default.
+
+The Date basis column says what each date is:
+
+- Published: the date the publisher states.
+- Filed: the EDGAR filing date.
+- File updated: the last change of the document file, which is all some publishers' pages give. It is not when the letter came out, and is shown dimmer. A letter whose file carries no usable date is left out.
+
+Only those facts and the link are kept, never the letter's text or a summary of it, and the list is not ranked. It needs no account. Annual reports come from SEC filings, up to five a day for companies with a ticker, and not every one contains a letter from the chief executive.
 
 ## Filtering, mutes and pop-out
 
