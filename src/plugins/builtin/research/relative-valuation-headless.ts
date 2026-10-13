@@ -12,14 +12,17 @@ const price = (value: unknown, row: Record<string, unknown>) => (
 );
 const percent = (value: unknown) => value == null ? "-" : formatPercentRaw(Number(value));
 
-/** The pre-market or after-hours print and its move from the regular close in Last, for the peers that have one. */
+/**
+ * The pre-market, after-hours or overnight print and its move from the regular close in Last, for the peers that have
+ * one; "mid" when it is a bid and ask midpoint.
+ */
 function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
   return {
     key: "extendedPrice",
     header: EXTENDED_SESSION_LABELS[session],
     align: "right",
     format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? `${price(value, row)} ${percent(row.extendedChangePercent)}`
+      ? `${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`
       : "-",
   };
 }
@@ -69,7 +72,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
       ...staleFundamentalsSymbols.map((symbol) => `${symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}`),
     ];
     // Last and Chg% are the regular session; an extended print gets a column only when a peer has one.
-    const extendedSessions = (["PRE", "POST"] as const).filter((session) => rows.some((row) => row.extendedSession === session));
+    const extendedSessions = (["PRE", "POST", "OVERNIGHT"] as const).filter((session) => rows.some((row) => row.extendedSession === session));
     return {
       rows, unavailableSymbols, errors, complete: unavailableSymbols.length === 0 && errors.length === 0,
       ...(extendedSessions.length > 0 ? { columns: [...QUOTE_COLUMNS, ...extendedSessions.map(extendedColumn), ...VALUATION_COLUMNS] } : {}),
@@ -77,7 +80,7 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         staleSymbols,
         staleFundamentalsSymbols,
         quoteBasis: "Stale quote fields are excluded from comparison; reportedQuote retains the rejected observation and quoteAsOf retains its source timestamp.",
-        priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market or after-hours print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close. marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
+        priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close (extendedMark when it is a bid and ask midpoint). marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
         fundamentalsBasis: "Provider multiples and operating metrics retain independent fundamentalsProvenance. Retrieval time does not establish the valuation date.",
         notices: rows.some((row) => Object.keys(row.notMeaningful).length > 0
           || Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],

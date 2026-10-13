@@ -443,8 +443,8 @@ function fundFactsNote(
 /**
  * The price a valuation is measured at, as `quote` and `ticker` read it: Last
  * and Change are the regular session (after the close, its close and that
- * close's move), and a pre-market or after-hours print is a line of its own,
- * measured from that close.
+ * close's move), and a pre-market, after-hours or overnight print is a line
+ * of its own, measured from that close.
  */
 function valuationPriceMetrics(financials: FundamentalsReportData): FundamentalsMetric[] {
   const quote = financials.quote;
@@ -467,7 +467,8 @@ function valuationPriceMetrics(financials: FundamentalsReportData): Fundamentals
     ...extended ? [
       {
         label: extendedLabel,
-        text: colorBySign(`${price(extended.price)}${extended.changePercent != null ? ` (${formatPercentRaw(extended.changePercent)})` : ""}`, extended.change),
+        // "mid" when the overnight price is the session's bid and ask midpoint, as `quote` marks it.
+        text: colorBySign(`${price(extended.price)}${extended.mark ? " mid" : ""}${extended.changePercent != null ? ` (${formatPercentRaw(extended.changePercent)})` : ""}`, extended.change),
         value: extended.price,
         unit: quote.currency,
       },

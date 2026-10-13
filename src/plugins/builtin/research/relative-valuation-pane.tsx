@@ -19,7 +19,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { TickerFinancials } from "../../../types/financials";
 import { normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor } from "../../../theme/colors";
-import { marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
+import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
@@ -31,7 +31,8 @@ import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 
-type RelativeColumnId = "symbol" | "price" | "changePercent" | "preMarket" | "afterHours" | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
+type ExtendedColumnId = "preMarket" | "afterHours" | "overnight";
+type RelativeColumnId = "symbol" | "price" | "changePercent" | ExtendedColumnId | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
 type RelativeRow = ReturnType<typeof relativeValuationValues> & {
   symbol: string;
@@ -46,22 +47,22 @@ function relativeSymbolsFromPane(symbol: string | null, paneSettings: Record<str
   return symbol ? [symbol] : [];
 }
 
-const EXTENDED_COLUMN_IDS: Record<ExtendedSession, "preMarket" | "afterHours"> = { PRE: "preMarket", POST: "afterHours" };
+const EXTENDED_COLUMN_IDS: Record<ExtendedSession, ExtendedColumnId> = { PRE: "preMarket", POST: "afterHours", OVERNIGHT: "overnight" };
 
 /** The extended sessions some peer has a print for, in the order their columns go. */
 function extendedSessionsOf(rows: readonly RelativeRow[]): ExtendedSession[] {
-  return (["PRE", "POST"] as const).filter((session) => rows.some((row) => row.extendedSession === session));
+  return (["PRE", "POST", "OVERNIGHT"] as const).filter((session) => rows.some((row) => row.extendedSession === session));
 }
 
 /** A peer's move in the extended-session column `columnId`, from the close in LAST. */
-function extendedMove(row: RelativeRow, columnId: "preMarket" | "afterHours"): number | null {
+function extendedMove(row: RelativeRow, columnId: ExtendedColumnId): number | null {
   return row.extendedSession != null && EXTENDED_COLUMN_IDS[row.extendedSession] === columnId ? row.extendedChangePercent : null;
 }
 
 /**
- * LAST and CHG% are the regular session, as `quote` reads them; a PRE-MKT or
- * AFTER-HRS column, named as BI and MOST name it, follows CHG% for each
- * session in `extendedSessions`.
+ * LAST and CHG% are the regular session, as `quote` reads them; a PRE-MKT,
+ * AFTER-HRS or OVERNIGHT column, named as BI and MOST name it, follows CHG%
+ * for each session in `extendedSessions`.
  */
 function buildRelativeColumns(baseCurrency: string, extendedSessions: readonly ExtendedSession[]): RelativeColumn[] {
   const symbolWidth = 8;
@@ -74,7 +75,7 @@ function buildRelativeColumns(baseCurrency: string, extendedSessions: readonly E
     { id: "price", label: "LAST", width: priceWidth, align: "right" },
     { id: "changePercent", label: "CHG%", width: pctWidth, align: "right" },
     ...extendedSessions.map((session): RelativeColumn => ({
-      id: EXTENDED_COLUMN_IDS[session], label: marketStateLabel(session), width: 9, align: "right",
+      id: EXTENDED_COLUMN_IDS[session], label: extendedSessionStateLabel(session), width: 9, align: "right",
     })),
     { id: "marketCap", label: `MCAP ${baseCurrency}`, width: capWidth, align: "right" },
     { id: "trailingPE", label: "P/E", width: metricWidth, align: "right" },
@@ -96,7 +97,7 @@ const DEFAULT_RELATIVE_SORT: RelativeSortPreference = { columnId: "marketCap", d
 
 function relativeSortValue(row: RelativeRow, columnId: RelativeColumnId): string | number | null {
   if (columnId === "symbol") return row.symbol.toLocaleLowerCase();
-  if (columnId === "preMarket" || columnId === "afterHours") return extendedMove(row, columnId);
+  if (columnId === "preMarket" || columnId === "afterHours" || columnId === "overnight") return extendedMove(row, columnId);
   return row[columnId];
 }
 
@@ -224,7 +225,8 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "changePercent":
         return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: priceColor(row.changePercent ?? 0) };
       case "preMarket":
-      case "afterHours": {
+      case "afterHours":
+      case "overnight": {
         const move = extendedMove(row, column.id);
         return { text: move != null ? formatPercentRaw(move) : "-", value: move, color: move == null ? colors.textDim : priceColor(move) };
       }

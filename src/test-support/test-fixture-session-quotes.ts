@@ -34,6 +34,24 @@ export function sessionQuotes(symbol = "XLK", overrides: Partial<Quote> = {}) {
       ...base, ...CLOSE, price: 198.8, change: 1.02, changePercent: 0.5157,
       changeSessionDate: "2026-10-09", marketState: "CLOSED", lastUpdated: Date.parse("2026-10-09T23:58:08Z"),
     } as Quote,
+    /**
+     * Sunday 20:30 ET: the overnight session that opens Monday, its trade at
+     * 198.95 the price. As after hours, the change is from Thursday's close and
+     * the overnight move from Friday's; the exchange stays closed.
+     */
+    overnight: {
+      ...base, ...CLOSE, price: 198.95, change: 1.17, changePercent: 0.5916,
+      overnightPrice: 198.95, overnightChange: 0.17, overnightChangePercent: 0.0855, overnightPriceKind: "trade",
+      bid: 198.9, ask: 199, lastTradePrice: 198.95, lastTradeTime: Date.parse("2026-10-12T00:30:00Z"),
+      changeSessionDate: "2026-10-09", marketState: "CLOSED", dataSource: "live", lastUpdated: Date.parse("2026-10-12T00:30:00Z"),
+    } as Quote,
+    /** The same session with nothing traded in it: the price is its book's midpoint, the last trade Friday's. */
+    overnightMark: {
+      ...base, ...CLOSE, price: 198.95, change: 1.17, changePercent: 0.5916,
+      overnightPrice: 198.95, overnightChange: 0.17, overnightChangePercent: 0.0855, overnightPriceKind: "mark",
+      bid: 198.9, ask: 199, lastTradePrice: 198.8, lastTradeTime: Date.parse("2026-10-09T23:58:08Z"),
+      changeSessionDate: "2026-10-09", marketState: "CLOSED", dataSource: "live", lastUpdated: Date.parse("2026-10-12T00:30:00Z"),
+    } as Quote,
     /** Monday 08:00 ET: a pre-market print at 199.50, with Friday's close and its move. */
     preMarket: {
       ...base, ...CLOSE, price: 199.5, change: 0.72, changePercent: 0.3622, previousClose: 198.78,

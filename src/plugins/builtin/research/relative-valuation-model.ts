@@ -1,7 +1,7 @@
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
 import { reportedEnterpriseValue } from "../../../utils/fundamentals";
-import { getQuoteSessionFields } from "../../../market-data/market/status";
+import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures } from "../../../market-data/quotes/regular-session-valuation";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
@@ -22,6 +22,8 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   const fundamentals = financials?.fundamentals;
   const quoteStale = quote?.stale === true;
   const session = getQuoteSessionFields(quoteStale ? null : quote);
+  // An overnight price that is the session's bid and ask midpoint, nothing having traded in it.
+  const extendedMark = !quoteStale && getExtendedSessionDisplay(quote)?.mark === true;
   const capitalization = selectMarketCapitalization(quoteStale ? undefined : quote, fundamentals);
   const enterpriseValue = reportedEnterpriseValue(fundamentals);
   // A zero or non-finite enterprise value is the source's gap, and the ratio it serves beside it comes from the same observation.
@@ -40,6 +42,7 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
   };
   return {
     ...session,
+    extendedMark,
     quoteStale: quote?.stale ?? null,
     quoteAsOf: quote && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? quote.lastUpdated : null,
     // The observation as sent, apart from the values used for comparison: a rejected stale quote, or the print the source priced.
@@ -83,7 +86,7 @@ function scaled(value: number | undefined, ratio: number): number | undefined {
 const SESSION_FIELDS = [
   "marketState", "changeSessionDate", "regularClose", "regularCloseSessionDate", "regularChange", "regularChangePercent",
   "preMarketPrice", "preMarketChange", "preMarketChangePercent", "postMarketPrice", "postMarketChange", "postMarketChangePercent",
-  "extendedSessionPrint",
+  "extendedSessionPrint", "overnightPrice", "overnightChange", "overnightChangePercent", "overnightPriceKind",
 ] as const satisfies readonly (keyof Quote)[];
 
 /**

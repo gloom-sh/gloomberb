@@ -114,6 +114,19 @@ export interface Quote extends DepositaryReceiptFacts {
    * sessions and when the source does not say.
    */
   extendedSessionPrint?: boolean;
+  /**
+   * The overnight session's price (a US listing trading 20:00 to 04:00 New
+   * York, Sunday night to Friday morning, while its exchange is closed): set
+   * only while that session is in progress and `price` is an observation from
+   * it, beside the closed exchange's marketState. Like an after-hours print,
+   * the quote keeps the last regular session's close, move and range.
+   */
+  overnightPrice?: number;
+  /** overnightPrice against the completed regular session's close, as postMarketChange is. */
+  overnightChange?: number;
+  overnightChangePercent?: number;
+  /** A trade printed in the session, or the midpoint of its bid and ask while nothing has traded in it. */
+  overnightPriceKind?: "trade" | "mark";
   bid?: number;
   ask?: number;
   bidSize?: number;
