@@ -84,19 +84,27 @@ export interface ClippedTextProps {
   attributes?: number;
   /** How the text sits in a row on the desktop: by default it gives way to its siblings. */
   flex?: string;
+  /** Kept whole before the text in both renderers (an indent, a separator). */
+  lead?: string;
+  /** How the terminal cuts it; the caller's own cut keeps its frames as they were. */
+  cut?: (text: string, width: number) => string;
+  /** The desktop wraps it onto more lines instead (a message, a description); the terminal still cuts it. */
+  wrap?: boolean;
 }
 
 /**
  * One line of text cut where its room ends: in the terminal at `width` cells,
- * on the desktop and the web by CSS at its box's edge. Its box (or its row,
- * with the siblings that keep their room) has to bound it there.
+ * on the desktop and the web by CSS at its box's edge, or wrapped there with
+ * `wrap`. Its box (or its row, with the siblings that keep their room) has to
+ * bound it there.
  */
-export function ClippedText({ text, width, fg, attributes, flex = "0 1 auto" }: ClippedTextProps) {
+export function ClippedText({ text, width, fg, attributes, flex = "0 1 auto", lead = "", cut = truncateToDisplayWidth, wrap = false }: ClippedTextProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const ink = { ...(fg === undefined ? {} : { fg }), ...(attributes === undefined ? {} : { attributes }) };
-  return nativePaneChrome
-    ? <Text {...ink} style={{ ...NATIVE_CLIP_STYLE, flex }}>{text}</Text>
-    : <Text {...ink}>{truncateToDisplayWidth(text, width)}</Text>;
+  if (!nativePaneChrome) return <Text {...ink}>{`${lead}${cut(text, width)}`}</Text>;
+  return wrap
+    ? <Text {...ink} wrapText style={{ minWidth: 0, flex }}>{`${lead}${text}`}</Text>
+    : <Text {...ink} style={{ ...NATIVE_CLIP_STYLE, flex }}>{`${lead}${text}`}</Text>;
 }
 
 /** Aligned labels and values; a bounded row reserves room for an optional detail. */

@@ -31,6 +31,7 @@ import {
 } from "./model";
 import { promptChoice } from "./prompts";
 import { thesisStore } from "./store";
+import { ClippedText } from "../../../../components/ui/display";
 
 type Row =
   | { kind: "heading"; id: string; label: string; section: Section }
@@ -360,14 +361,14 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
     if (row.kind === "heading") {
       return (
         <Box flexDirection="row" width={contentWidth}>
-          <Text fg={colors.textDim} attributes={TextAttributes.BOLD}>{truncateToDisplayWidth(row.label, contentWidth)}</Text>
+          <ClippedText fg={colors.textDim} attributes={TextAttributes.BOLD} text={row.label} width={contentWidth} />
         </Box>
       );
     }
     if (row.kind === "empty" || row.kind === "text") {
       return (
         <Box flexDirection="row" width={contentWidth}>
-          <Text fg={colors.textDim}>{`   ${truncateToDisplayWidth(row.text, contentWidth - 3)}`}</Text>
+          <ClippedText fg={colors.textDim} lead="   " text={row.text} width={contentWidth - 3} />
         </Box>
       );
     }
@@ -449,13 +450,13 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
   // row stays one line and the list never has to re-measure.
   const stripLines = useMemo(() => {
     const row = selectedRow;
-    if (!row) return [] as Array<{ text: string; dim: boolean }>;
-    const lines: Array<{ text: string; dim: boolean }> = [];
+    if (!row) return [] as Array<{ text: string; dim: boolean; clip?: boolean }>;
+    const lines: Array<{ text: string; dim: boolean; clip?: boolean }> = [];
     if (row.kind === "signal") {
       const source = row.item.source;
       const sourceText = source?.title ?? (source?.kind === "user" ? "Filed by a teammate" : source?.kind ?? "");
       const when = source?.at ? ` · ${source.at.slice(0, 10)}` : "";
-      if (sourceText) lines.push({ text: truncateToDisplayWidth(`${sourceText}${when}`, contentWidth), dim: true });
+      if (sourceText) lines.push({ text: `${sourceText}${when}`, dim: true, clip: true });
       for (const line of wrap(row.item.reason, contentWidth, 3)) lines.push({ text: line, dim: false });
       if (row.item.confidence !== null) lines.push({ text: `confidence ${Math.round(row.item.confidence * 100)}%`, dim: true });
     } else if (row.kind === "pillar") {
@@ -475,11 +476,11 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
         {thesis.status !== "active" && <Badge label={thesis.status} tone="neutral" />}
         <Text fg={due ? colors.warning : colors.textDim}>{reviewLine}</Text>
         {nextDue && nextDays !== null && (
-          <Text fg={nextDays <= 14 ? colors.warning : colors.textDim}>{truncateToDisplayWidth(`Next: ${nextDue.text} ${describeDays(nextDays)}`, Math.max(10, contentWidth - 40))}</Text>
+          <ClippedText fg={nextDays <= 14 ? colors.warning : colors.textDim} text={`Next: ${nextDue.text} ${describeDays(nextDays)}`} width={Math.max(10, contentWidth - 40)} />
         )}
       </Box>
       <Box height={1}>
-        <Text fg={colors.textDim}>{truncateToDisplayWidth(meta, contentWidth)}</Text>
+        <ClippedText fg={colors.textDim} text={meta} width={contentWidth} />
       </Box>
       {summaryLines.map((line, index) => (
         <Box key={index} height={1}>
@@ -488,7 +489,7 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
       ))}
       {evidence && (
         <Box height={1}>
-          <Text fg={colors.textMuted}>{truncateToDisplayWidth(evidence, contentWidth)}</Text>
+          <ClippedText fg={colors.textMuted} text={evidence} width={contentWidth} />
         </Box>
       )}
       <Box height={1} />
@@ -526,7 +527,8 @@ export function ThesisDetail({ thesis, width, height, focused, footerId, onDelet
         <Box flexDirection="column" height={stripHeight} marginTop={1}>
           {stripLines.map((line, index) => (
             <Box key={index} height={1}>
-              <Text fg={line.dim ? colors.textDim : colors.text}>{line.text}</Text>
+              {line.clip ? <ClippedText fg={line.dim ? colors.textDim : colors.text} text={line.text} width={contentWidth} />
+                : <Text fg={line.dim ? colors.textDim : colors.text}>{line.text}</Text>}
             </Box>
           ))}
         </Box>

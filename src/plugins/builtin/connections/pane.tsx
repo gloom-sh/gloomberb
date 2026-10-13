@@ -9,7 +9,8 @@ import type {
 } from "../../../core/connection-health";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text } from "../../../ui";
+import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
+import { ClippedText } from "../../../components/ui/display";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { nextHeaderSort } from "../../../utils/sort-values";
@@ -73,6 +74,8 @@ function columnsForWidth(width: number): ConnectionColumn[] {
 
 function ConnectionDetail({ source, width, now }: { source: ConnectionHealthState; width: number; now: number }) {
   const lineWidth = Math.max(24, width - 2);
+  // The desktop's detail row cuts a long value where it ends, by CSS.
+  const desktop = !!useUiCapabilities().nativePaneChrome;
   return (
     <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
       <Box flexDirection="column" width={lineWidth}>
@@ -86,7 +89,7 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
         <KeyValueRow labelWidth={16} emphasis={false} label="Operation" value={source.lastOperation ?? "-"} color={colors.textDim} />
         <KeyValueRow labelWidth={16} emphasis={false} label="Latency" value={formatLatency(source.lastLatencyMs)} color={colors.textMuted} />
         {source.currentDetail ? (
-          <KeyValueRow labelWidth={16} emphasis={false} label="Detail" value={truncateToDisplayWidth(source.currentDetail, Math.max(8, lineWidth - 16))} color={source.status === "error" ? colors.negative : colors.textDim} />
+          <KeyValueRow labelWidth={16} emphasis={false} label="Detail" value={desktop ? source.currentDetail : truncateToDisplayWidth(source.currentDetail, Math.max(8, lineWidth - 16))} color={source.status === "error" ? colors.negative : colors.textDim} />
         ) : null}
         {source.lastSuccess ? (
           <KeyValueRow labelWidth={16} emphasis={false}
@@ -111,7 +114,7 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
                 <Box width={7}><Text fg={request.success ? colors.positive : colors.negative}>{request.success ? "ok" : "error"}</Text></Box>
                 <Box width={9}><Text fg={colors.textMuted}>{formatLatency(request.latencyMs)}</Text></Box>
                 <Box width={10}><Text fg={colors.textMuted}>{formatRelativeAge(request.at, now)}</Text></Box>
-                <Text fg={colors.textDim}>{truncateToDisplayWidth(request.error ?? request.operation, Math.max(8, lineWidth - 26))}</Text>
+                <ClippedText fg={colors.textDim} text={request.error ?? request.operation} width={Math.max(8, lineWidth - 26)} />
               </Box>
             ))}
           </>

@@ -1,11 +1,12 @@
 import { Section, TickerBadgeList } from "../../../../components";
+import { ClippedText } from "../../../../components/ui/display";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions } from "../../../../market-data/market/format";
 import { useInlineTickerQuote } from "../../../../state/hooks/inline-tickers";
 import { useTickerQuoteStream } from "../../../../state/hooks/live-ticker-financials";
 import { colors } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
-import { Box, Text } from "../../../../ui";
+import { Box } from "../../../../ui";
 import { formatCompact } from "../../../../utils/format";
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { activityLabel, criticalityColor, dateShort, metricColor, metricNumber, textOrNull, tickerSymbol } from "../format";
@@ -249,7 +250,7 @@ export function CompanyDetail({
             ].filter(Boolean);
             return (
               <Box key={`${site.name}-${index}`} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
-                <Text fg={colors.textMuted}>{truncateWithEllipsis(parts.join(" - "), bodyWidth)}</Text>
+                <ClippedText fg={colors.textMuted} text={parts.join(" - ")} width={bodyWidth} cut={truncateWithEllipsis} />
                 {site.involvementSummary ? (
                   <MarkdownBlock text={site.involvementSummary} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
                 ) : null}
@@ -262,7 +263,7 @@ export function CompanyDetail({
         <Section title="Recent Intel" width={bodyWidth}>
           {company.intelligence!.slice(0, 5).map((item, index) => (
             <Box key={`${item.headline ?? "intel"}:${index}`} flexDirection="column" marginTop={index === 0 ? 0 : 1}>
-              <Text fg={colors.textDim}>{truncateWithEllipsis(`${dateShort(item.publishedAt)} ${item.headline ?? ""}`, bodyWidth)}</Text>
+              <ClippedText fg={colors.textDim} text={`${dateShort(item.publishedAt)} ${item.headline ?? ""}`} width={bodyWidth} cut={truncateWithEllipsis} />
               <MarkdownBlock text={item.content} width={bodyWidth} catalog={catalog} openTicker={openTicker} marginTop={0} />
             </Box>
           ))}

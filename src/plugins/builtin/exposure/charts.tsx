@@ -1,4 +1,5 @@
 import { ActionRow } from "../../../components";
+import { ClippedText } from "../../../components/ui/display";
 import { Box, ChartSurface, Text, useUiCapabilities } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { ChartVectorShape } from "../../../ui/host";
@@ -53,14 +54,14 @@ export function ExposurePathDiagram({ component, width, height }: { component: E
   const vectors: ChartVectorShape[] = hops.map((hop, i) => ({ id: `${i}`, points: [{ x: (i + .5) / nodes.length, y: .5 }, { x: (i + 1.5) / nodes.length, y: .5 }], color: hop.pct === null ? colors.textDim : colors.warning, strokeWidth: 2, handles: true }));
   return <Box flexDirection="column" height={height} overflow="hidden">
     <Box paddingX={1} height={1} flexShrink={0}><Text fg={colors.textDim}>{hops.length} hop{hops.length === 1 ? "" : "s"} · {component.classification}{component.exposurePct ? ` · ${rangeText(component.exposurePct)}` : ""}</Text></Box>
-    <Box flexDirection="row" height={1} flexShrink={0} paddingX={1}>{nodes.map((node, i) => <Box key={`${node.id}:${i}`} width={nodeWidth} alignItems="center"><Text fg={colors.textBright}>{truncateToDisplayWidth(node.symbol ?? node.name, nodeWidth - 2)}</Text></Box>)}</Box>
+    <Box flexDirection="row" height={1} flexShrink={0} paddingX={1}>{nodes.map((node, i) => <Box key={`${node.id}:${i}`} width={nodeWidth} alignItems="center"><ClippedText fg={colors.textBright} text={node.symbol ?? node.name} width={nodeWidth - 2} /></Box>)}</Box>
     <Box height={1} flexShrink={0} paddingX={1}>
       {desktop ? <ChartSurface width={width - 2} height={1} vectors={vectors} /> : <Text fg={colors.textDim}>{nodes.map((_, i) => i < hops.length ? "─".repeat(Math.max(1, nodeWidth - 2)) + "→ " : "").join("")}</Text>}
     </Box>
-    {height >= 4 ? <Box flexDirection="row" height={1} flexShrink={0} paddingX={1}>{nodes.map((_, i) => <Box key={i} width={nodeWidth} alignItems="center"><Text fg={colors.warning}>{i === 0 ? "" : truncateToDisplayWidth(hops[i - 1]!.pct === null ? "Undisclosed share" : `${hops[i - 1]!.pct}% ${basisLabel(hops[i - 1]!.basis)}`, nodeWidth - 1)}</Text></Box>)}</Box> : null}
+    {height >= 4 ? <Box flexDirection="row" height={1} flexShrink={0} paddingX={1}>{nodes.map((_, i) => <Box key={i} width={nodeWidth} alignItems="center"><ClippedText fg={colors.warning} text={i === 0 ? "" : hops[i - 1]!.pct === null ? "Undisclosed share" : `${hops[i - 1]!.pct}% ${basisLabel(hops[i - 1]!.basis)}`} width={nodeWidth - 1} /></Box>)}</Box> : null}
     {height >= 5 ? <Box flexDirection="row" height={1} flexShrink={0} paddingX={1}>{nodes.map((_, i) => {
       const evidence = i > 0 ? hops[i - 1]!.evidence[0] : null;
-      return <Box key={i} width={nodeWidth} alignItems="center"><Text fg={colors.textDim}>{evidence ? truncateToDisplayWidth(`${evidence.tier} · ${evidence.asOf ?? "undated"}`, nodeWidth - 1) : ""}</Text></Box>;
+      return <Box key={i} width={nodeWidth} alignItems="center"><ClippedText fg={colors.textDim} text={evidence ? `${evidence.tier} · ${evidence.asOf ?? "undated"}` : ""} width={nodeWidth - 1} /></Box>;
     })}</Box> : null}
   </Box>;
 }

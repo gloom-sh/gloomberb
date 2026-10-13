@@ -45,6 +45,7 @@ import type { OverviewFunctionLink, StatField } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-list/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
+import { ClippedText } from "../../../components/ui/display";
 
 /** Cells between the Day and 52W ranges when they share a row. */
 const RANGE_PAIR_GAP = 4;
@@ -293,7 +294,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             {hasIdentityLine && (
               <Box flexDirection="row" minWidth={0} overflow="hidden">
                 {companyName && (
-                  <Text fg={colors.textDim}>{truncateToDisplayWidth(companyName, companyNameWidth)}</Text>
+                  <ClippedText fg={colors.textDim} text={companyName} width={companyNameWidth} />
                 )}
                 {venueText && <Text flexShrink={0} fg={colors.textDim}>{venueText}</Text>}
                 {quote?.marketState && (

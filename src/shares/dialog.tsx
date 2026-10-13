@@ -17,6 +17,7 @@ import { isPlainKey } from "../utils/keyboard";
 import { truncateWithEllipsis } from "../utils/text-wrap";
 
 import type { SharePost, ShareTarget } from "./chat";
+import { ClippedText } from "../components/ui/display";
 
 /** The widest the dialog gets, in cells; the preview is as wide as the form. */
 export const SHARE_DIALOG_COLUMNS = 72;
@@ -224,7 +225,7 @@ export function ShareDialog({
       <Box flexDirection="column" gap={1} {...(nativePaneChrome ? { style: { width: fitDialogWidth(SHARE_DIALOG_COLUMNS) } } : { width })}>
         <Box flexDirection="column">
           {preview}
-          <Text fg={colors.textDim}>{truncateWithEllipsis(meta, width)}</Text>
+          <ClippedText fg={colors.textDim} text={meta} width={width} cut={truncateWithEllipsis} />
         </Box>
         <SelectButton
           label={t("Destination")}

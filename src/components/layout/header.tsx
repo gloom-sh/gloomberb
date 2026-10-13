@@ -28,7 +28,8 @@ import { useAppDispatch, useAppSelector } from "../../state/app/context";
 import { useViewport } from "../../react/input";
 import { canRetryUpdate } from "../../app/global-shortcuts";
 import { t, tf } from "../../i18n";
-import { truncateToDisplayWidth } from "../../utils/format";
+import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
+import { ClippedText } from "../ui/display";
 import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { useWindowFullscreen } from "./window-fullscreen";
@@ -157,11 +158,17 @@ function HeaderPromptInput({
         placeholderColor={subtleColor}
         cursorColor={colors.textBright}
       />
-      {ghostSuffix && (
+      {ghostSuffix && (nativePaneChrome ? (
+        // The desktop sets the suggestion right after the typed text, one
+        // character per `ch` of the field's font, and cuts it where the field ends.
+        <Box position="absolute" top={0} height={1} flexDirection="row" style={{ left: `${displayWidth(query)}ch`, right: 0 }}>
+          <ClippedText fg={subtleColor} text={ghostSuffix} width={0} />
+        </Box>
+      ) : (
         <Box position="absolute" top={0} left={ghostLeft} width={Math.max(0, width - ghostLeft)} height={1}>
           <Text fg={subtleColor}>{truncateToDisplayWidth(ghostSuffix, Math.max(0, width - ghostLeft))}</Text>
         </Box>
-      )}
+      ))}
     </Box>
   );
 }

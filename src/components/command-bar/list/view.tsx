@@ -13,6 +13,7 @@ import {
 } from "../../../ui";
 import { displayWidth, truncateTextSegments, truncateToDisplayWidth } from "../../../utils/format";
 import { Spinner } from "../../ui";
+import { ClippedText } from "../../ui/display";
 import { useCommandBarPalette } from "../panel/palette";
 import { getRowPresentation } from "../view-model";
 import {
@@ -306,7 +307,7 @@ export const CommandBarListBody = memo(function CommandBarListBody({
         if (row.kind === "message") {
           return (
             <Box key={row.id} height={1} paddingLeft={labelEdgePadding} paddingRight={contentPadding} {...(!nativePaneChrome ? { onMouseScroll: onListScroll } : {})}>
-              <Text fg={palette.text}>{truncateToDisplayWidth(t(row.label), labelEdgeWidth)}</Text>
+              <ClippedText fg={palette.text} text={t(row.label)} width={labelEdgeWidth} />
             </Box>
           );
         }

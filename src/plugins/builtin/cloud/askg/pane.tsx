@@ -113,6 +113,7 @@ import {
   turnTimelineIds,
   UNDO_KEY,
 } from "./tool-timeline";
+import { ClippedText } from "../../../../components/ui/display";
 
 export const ASKG_PANE_ID = "askg";
 
@@ -345,7 +346,7 @@ function ConfirmationPrompt({
       </Box>
       {lines.map((line, index) => (
         <Box key={index} height={1}>
-          <Text fg={colors.text}>{truncateWithEllipsis(line, Math.max(10, width - 2))}</Text>
+          <ClippedText fg={colors.text} text={line} width={Math.max(10, width - 2)} cut={truncateWithEllipsis} />
         </Box>
       ))}
       <Box flexDirection="row" height={2} paddingTop={1}>
