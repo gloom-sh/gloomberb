@@ -12,6 +12,7 @@ import { activityLabel, criticalityColor, dateShort, metricColor, metricNumber, 
 import type { BuildoutCompany } from "../model/types";
 import { DetailListLine, DetailSpecGrid, MarkdownBlock, RelatedCompaniesLine, type DetailSpec, type InlineTickerCatalog } from "./ui";
 import { dateCell, detailListValues, recommendationColor, valueWithOriginal } from "./values";
+import { regularSessionValuationPrice } from "../../../../market-data/quotes/regular-session-valuation";
 
 interface LiveCompanyValues {
   price: string | null;
@@ -19,21 +20,23 @@ interface LiveCompanyValues {
 }
 
 /**
- * Price and market cap from the live quote. The dataset prints them in USD
+ * Price and market cap from the live quote, at its regular session price: the
+ * close once the session is over, never an extended print. The dataset prints them in USD
  * (with the local price in brackets for foreign listings), so the quote only
  * replaces them for a USD listing; the cap moves with the price, from the
  * dataset's own cap and price. Anything else keeps the dataset's strings.
  */
 function liveCompanyValues(company: BuildoutCompany, quote: Quote | null): LiveCompanyValues | null {
-  if (!quote || quote.stale || !(quote.price > 0) || quote.currency !== "USD") return null;
+  const price = regularSessionValuationPrice(quote);
+  if (!quote || quote.stale || price == null || quote.currency !== "USD") return null;
   if ((company.currency?.trim().toUpperCase() || "USD") !== "USD") return null;
   const datasetPrice = metricNumber(company.stockPrice);
   const datasetCap = metricNumber(company.marketCap);
   const liveCap = datasetPrice != null && datasetPrice > 0 && datasetCap != null && datasetCap > 0
-    ? datasetCap * (quote.price / datasetPrice)
+    ? datasetCap * (price / datasetPrice)
     : null;
   return {
-    price: formatMarketPriceWithCurrency(quote.price, quote.currency, liveQuoteFormatOptions(quote, quote.currency, "STK")),
+    price: formatMarketPriceWithCurrency(price, quote.currency, liveQuoteFormatOptions(quote, quote.currency, "STK")),
     marketCap: liveCap != null ? `$${formatCompact(liveCap, { fixedDecimals: true })}` : null,
   };
 }
