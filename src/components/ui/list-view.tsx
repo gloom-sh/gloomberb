@@ -20,6 +20,8 @@ export interface ListViewItem {
   checked?: boolean;
   current?: boolean;
   disabled?: boolean;
+  /** Tints the label, e.g. a status in its tone; the words carry the meaning. */
+  color?: string;
 }
 
 export interface ListRowState {
@@ -137,7 +139,7 @@ function DefaultRow({
           {selected ? "\u25b8 " : "  "}
         </Text>
         <Text
-          fg={selected ? colors.text : colors.textDim}
+          fg={item.color ?? (selected ? colors.text : colors.textDim)}
           attributes={selected ? TextAttributes.BOLD : 0}
           wrapMode="none"
           truncate

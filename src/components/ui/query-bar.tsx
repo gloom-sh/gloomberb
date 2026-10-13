@@ -391,6 +391,7 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf 
         disabled: option.disabled,
         selected: option.value === filter.value,
         hint: option.hint,
+        color: option.color,
       })),
       onSelect: (value: string) => { if (value !== filter.value) filter.onChange(value); },
       onToggle: () => {},

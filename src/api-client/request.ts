@@ -410,12 +410,14 @@ export class CloudApiRequestTransport {
     // Cloud outage in the connections pane. Nor must the map's probe for geo
     // layers, which a server without them answers with 404, or a ticker
     // change lookup: a note beside a quote, never one of the refused market
-    // requests a lookup of many symbols waits out and retries.
+    // requests a lookup of many symbols waits out and retries. Nor the
+    // tickers beside a list of organization names, which say so in place.
     if (
       path.startsWith("/telemetry/")
       || path === "/assist/searches"
       || path === "/cloud/geo/layers"
       || path.startsWith("/market/ticker-changes?")
+      || path === "/market/organization-tickers"
     ) return request();
     return this.connectionHealth.track(
       GLOOM_CLOUD_HTTP_CONNECTION_ID,

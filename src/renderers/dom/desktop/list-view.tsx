@@ -34,7 +34,7 @@ function DefaultDesktopRow({
     >
       <Box flexDirection="row" alignItems="center" minWidth={0} flexShrink={1} overflow="hidden">
         <Text
-          fg={selected ? colors.text : colors.textDim}
+          fg={item.color ?? (selected ? colors.text : colors.textDim)}
           attributes={selected ? TextAttributes.BOLD : 0}
           style={{
             // The base text style pins flexShrink to 0, which lets a long

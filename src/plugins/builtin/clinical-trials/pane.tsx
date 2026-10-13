@@ -1,50 +1,64 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
-  FeedDataTableStackView,
+  DataTableStackView,
+  PaneLinkMenu,
   PaneStatusBody,
   QueryBar,
   usePagedRows,
+  usePaneFooter,
   usePaneStatusLinkFooter,
   useQueryBarSearch,
   useTableLoadMore,
+  type DataTableCell,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
-  type FeedDataTableItem,
   type PageRequest,
   type PaneFooterSegment,
   type PaneHint,
+  type QueryBarFilter,
   type RowPage,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import type { DetailFact } from "../../../components/reader/detail-reader";
+import { DetailReader, type DetailFact } from "../../../components/reader/detail-reader";
+import { tf } from "../../../i18n";
 import {
   useDebouncedPluginPaneState,
   usePaneSettingValue,
   usePluginPaneState,
 } from "../../../public/react";
+import { useThemeColors } from "../../../theme/theme-context";
+import type { ThemeColors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, type ScrollBoxRenderable } from "../../../ui";
+import { Box, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { formatTimeAgo } from "../../../utils/datetime-format";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { useOpenDescription } from "../shared/open-description";
+import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { ClinicalTrialsClient, type ClinicalTrial, type DatePrecision, type TrialDateType } from "./client";
+import {
+  ALL,
+  PHASE_FILTER_OPTIONS,
+  SPONSOR_FILTER_OPTIONS,
+  STATUS_FILTER_OPTIONS,
+  keepsToneWhenSelected,
+  normalizeTrialFilters,
+  sponsorClassLabel,
+  trialFiltersNarrow,
+  trialFiltersQuery,
+  trialLayout,
+  trialPhaseDetail,
+  trialPhaseLabel,
+  trialStatus,
+  trialStatusColor,
+  type TrialColumn,
+  type TrialFilterOption,
+  type TrialFilters,
+} from "./model";
+import { useSponsorTickers, type SponsorTicker } from "./sponsor-tickers";
 import { CLINICAL_TRIALS_PANE_ID } from "./types";
 
 const SEARCH_DEBOUNCE_MS = 250;
 const DEFAULT_PAGE_SIZE = 50;
-
-function formatStatus(status: string): string {
-  const lower = status.toLowerCase().replace(/_/g, " ");
-  return lower.charAt(0).toUpperCase() + lower.slice(1);
-}
-
-function formatPhase(phases: string[]): string {
-  if (phases.length === 0) return "No phase";
-  if (phases.length === 1 && phases[0]!.toUpperCase() === "EARLY_PHASE1") return "Early phase 1";
-  const numbers = phases
-    .map((phase) => phase.toUpperCase().replace("EARLY_PHASE", "").replace("PHASE", "").trim())
-    .filter(Boolean)
-    .sort();
-  return `Phase ${numbers.join("/")}`;
-}
 
 /** As precise as the registry gave it, marked when it is the sponsor's estimate. */
 function formatDate(date: Date | null, precision: DatePrecision = "day", type?: TrialDateType): string {
@@ -58,79 +72,114 @@ function trialTimestamp(trial: ClinicalTrial): Date | null {
   return trial.firstPostDate ?? trial.firstSubmitDate;
 }
 
-function buildDetailMeta(trial: ClinicalTrial): string[] {
-  return [
-    `${trial.nctId} · ${formatStatus(trial.status)}`,
-    `${formatPhase(trial.phases)}${trial.studyType ? ` · ${trial.studyType.toLowerCase()}` : ""}`,
-    trial.sponsorClass ? `${trial.sponsor} (${trial.sponsorClass})` : trial.sponsor,
-    trial.conditions.length > 0 ? trial.conditions.join(", ") : "No conditions listed",
-    `Posted ${formatDate(trialTimestamp(trial))} · Start ${formatDate(trial.startDate, trial.startDatePrecision, trial.startDateType)}`,
-    `Primary completion ${formatDate(trial.primaryCompletionDate, trial.primaryCompletionDatePrecision, trial.primaryCompletionDateType)}`
-      + ` · Completion ${formatDate(trial.completionDate, trial.completionDatePrecision, trial.completionDateType)}`,
-    trial.enrollment != null ? `Enrollment: ${trial.enrollment}` : "Enrollment: -",
-  ];
+/** The ticker cell: the symbol, its venue when there is room; blank when there is none; `?` when it was not looked up. */
+function tickerCell(ticker: SponsorTicker | undefined, showVenue: boolean, colors: ThemeColors, selected: boolean, open: () => void): DataTableCell {
+  if (ticker?.kind === "listed") {
+    const venue = showVenue && ticker.exchange && !/^(NYSE|NASDAQ|AMEX|ARCA|BATS|CBOE)$/.test(ticker.exchange) ? ticker.exchange : "";
+    return {
+      text: venue ? `${ticker.ticker} ${venue}` : ticker.ticker,
+      content: (
+        <Box flexDirection="row" height={1} overflow="hidden">
+          <Text fg={selected ? colors.selectedText : colors.textBright} attributes={TextAttributes.BOLD}>{ticker.ticker}</Text>
+          {venue ? <Text fg={selected ? colors.selectedText : colors.textDim}>{` ${venue}`}</Text> : null}
+        </Box>
+      ),
+      onMouseDown: (event?: { button?: number }) => { if ((event?.button ?? 0) === 0) open(); },
+    };
+  }
+  if (ticker?.kind === "failed") return { text: "?", value: null, color: colors.textMuted };
+  return { text: "", value: null };
+}
+
+/** What the detail says about the sponsor's listing, in words. */
+function tickerDetail(ticker: SponsorTicker | undefined): string {
+  switch (ticker?.kind) {
+    case "listed": return ticker.exchange ? `${ticker.ticker} · ${ticker.exchange}` : ticker.ticker;
+    case "none":
+      if (ticker.ambiguous) return "Ambiguous: the name fits more than one company";
+      return ticker.entityName ? `None listed for ${ticker.entityName}` : "No listed company matched";
+    case "failed": return `Not looked up: ${ticker.reason}`;
+    default: return "Looking up…";
+  }
 }
 
 /**
- * The study at a glance on the desktop and the web, label beside value, in
- * the order a wide pane pairs them: status and phase, sponsor and size, then
- * the dates.
+ * The study at a glance, label beside value, in the order a wide pane pairs
+ * them: status and phase, sponsor and its ticker, size and registry id, then
+ * the dates; the summary follows across the pane.
  */
-function buildDetailFacts(trial: ClinicalTrial): DetailFact[] {
+function trialFacts(trial: ClinicalTrial, ticker: SponsorTicker | undefined, colors: ThemeColors, openTicker: () => void): DetailFact[] {
+  const status = trialStatus(trial.status);
+  const sponsorClass = sponsorClassLabel(trial.sponsorClass);
+  const studyType = trial.studyType ? trial.studyType.toLowerCase().replace(/_/g, " ") : "";
   return [
-    { label: "Status", value: formatStatus(trial.status) },
-    { label: "Phase", value: trial.studyType ? `${formatPhase(trial.phases)} · ${trial.studyType.toLowerCase()}` : formatPhase(trial.phases) },
-    { label: "Sponsor", value: trial.sponsorClass ? `${trial.sponsor} (${trial.sponsorClass.toLowerCase()})` : trial.sponsor },
-    { label: "Enrollment", value: trial.enrollment != null ? String(trial.enrollment) : "-" },
+    { label: "Status", value: status.label, color: trialStatusColor(status.tone, colors) },
+    { label: "Phase", value: studyType ? `${trialPhaseDetail(trial.phases)} · ${studyType}` : trialPhaseDetail(trial.phases) },
+    { label: "Sponsor", value: sponsorClass ? `${trial.sponsor} · ${sponsorClass}` : trial.sponsor },
+    ticker?.kind === "listed"
+      ? { label: "Ticker", value: tickerDetail(ticker), color: colors.textBright, link: { label: tf("Open {ticker}", { ticker: ticker.ticker }), onOpen: openTicker } }
+      : { label: "Ticker", value: tickerDetail(ticker), color: colors.textDim },
+    { label: "Enrollment", value: trial.enrollment != null ? trial.enrollment.toLocaleString("en-US") : "-" },
+    { label: "Registry ID", value: trial.nctId },
     { label: "Start", value: formatDate(trial.startDate, trial.startDatePrecision, trial.startDateType) },
     { label: "Posted", value: formatDate(trialTimestamp(trial)) },
     { label: "Primary completion", value: formatDate(trial.primaryCompletionDate, trial.primaryCompletionDatePrecision, trial.primaryCompletionDateType) },
     { label: "Completion", value: formatDate(trial.completionDate, trial.completionDatePrecision, trial.completionDateType) },
     { label: "Conditions", value: trial.conditions.length > 0 ? trial.conditions.join(", ") : "None listed" },
-    { label: "Registry ID", value: trial.nctId },
   ];
 }
 
-function toFeedItems(trials: ClinicalTrial[]): FeedDataTableItem[] {
-  return trials.map((trial) => ({
-    id: trial.nctId,
-    eyebrow: formatPhase(trial.phases),
-    title: `${formatStatus(trial.status)} · ${trial.title} · ${trial.sponsor}`,
-    timestamp: trialTimestamp(trial),
-    detailTitle: trial.title,
-    detailMeta: buildDetailMeta(trial),
-    detailFacts: buildDetailFacts(trial),
-    detailBody: trial.summary || "No summary was published for this study.",
-  }));
+function filterOptions(options: readonly TrialFilterOption[], colors: ThemeColors) {
+  return options.map(({ tone, ...option }) => (tone ? { ...option, color: trialStatusColor(tone, colors) } : option));
 }
 
 export function TrialsPane({ width, height, focused }: PaneProps) {
+  const colors = useThemeColors();
   const client = useMemo(() => new ClinicalTrialsClient(), []);
+  const openDescription = useOpenDescription();
+  const session = useResearchCloudSession();
 
   const [storedQuery] = usePaneSettingValue("query", "");
   const initialQuery = String(storedQuery ?? "").trim();
   const [query, setQuery] = usePluginPaneState("query", initialQuery);
+  // A function's options (`TRIAL obesity --phase 3`) set the filters the pane opens with.
+  const [storedStatus] = usePaneSettingValue("status", "");
+  const [storedPhase] = usePaneSettingValue("phase", "");
+  const [storedSponsorClass] = usePaneSettingValue("sponsorClass", "");
+  const initialFilters = useMemo(
+    () => normalizeTrialFilters({ status: storedStatus, phase: storedPhase, sponsorClass: storedSponsorClass }),
+    [storedPhase, storedSponsorClass, storedStatus],
+  );
+  const [savedFilters, setSavedFilters] = usePluginPaneState<TrialFilters>("filters", initialFilters);
+  const filters = useMemo(() => normalizeTrialFilters(savedFilters), [savedFilters]);
 
   const [selectedId, setSelectedId] = useDebouncedPluginPaneState<string | null>("selectedId", null);
   // The open study is what the pane shows, so a reload or a shared layout opens it again.
-  const [openItemId, setOpenItemId] = usePluginPaneState<string | null>("openItemId", null);
+  // `open` (a share, `gloomberb shot TRIAL obesity --open NCT07868939`) opens one study first.
+  const [initialOpen] = usePaneSettingValue("open", "");
+  const [openItemId, setOpenItemId] = usePluginPaneState<string | null>("openItemId", String(initialOpen ?? "").trim() || null);
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   // The registry pages by an opaque token, which the next page's offset keys.
-  // A new search makes a new loader and so starts over with no tokens.
+  // A new search or filter makes a new loader and so starts over with no tokens.
   const term = query.trim();
+  const filtersKey = `${filters.status}|${filters.phase}|${filters.sponsorClass}`;
   const loadPage = useMemo(() => {
     const tokens = new Map<number, string>();
+    const narrowing = trialFiltersQuery(filters);
     return async ({ offset, signal }: PageRequest): Promise<RowPage<ClinicalTrial>> => {
       const pageToken = offset > 0 ? tokens.get(offset) : undefined;
       if (offset > 0 && !pageToken) return { rows: [], hasMore: false };
-      const page = await client.listTrials({ term: term || undefined, pageSize: DEFAULT_PAGE_SIZE, pageToken }, signal);
+      const page = await client.listTrials({ term: term || undefined, ...narrowing, pageSize: DEFAULT_PAGE_SIZE, pageToken }, signal);
       const nextOffset = offset + page.trials.length;
       if (page.nextPageToken) tokens.set(nextOffset, page.nextPageToken);
       return { rows: page.trials, hasMore: !!page.nextPageToken, nextOffset };
     };
-  }, [client, term]);
+    // `filtersKey` stands for `filters`, which is rebuilt each render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [client, filtersKey, term]);
   const studies = usePagedRows(loadPage, { getId: (trial) => trial.nctId, keepPreviousRows: true });
   const trials = studies.rows;
   const error = studies.error?.message ?? null;
@@ -147,8 +196,12 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     return () => clearTimeout(timer);
   }, [hasMore, height, loadNextPage, loadingMore, openItemId, trials.length]);
 
+  // Tickers come from Gloom Cloud a page of sponsors at a time; rows never wait for them.
+  const sponsors = useMemo(() => [...new Set(trials.map((trial) => trial.sponsor))], [trials]);
+  const sponsorTickers = useSponsorTickers(sponsors, session.requestKey);
+  const tickerOf = useCallback((trial: ClinicalTrial) => sponsorTickers.tickers.get(trial.sponsor), [sponsorTickers.tickers]);
+
   const selectedTrial = trials.find((item) => item.nctId === selectedId) ?? trials[0] ?? null;
-  const selectedIdx = selectedTrial ? trials.indexOf(selectedTrial) : 0;
   const openTrial = openItemId
     ? trials.find((trial) => trial.nctId === openItemId) ?? null
     : null;
@@ -166,30 +219,64 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     setSelectedId(null);
     setOpenItemId(null);
   }, [setOpenItemId, setQuery, setSelectedId]);
+  const updateFilter = useCallback((key: keyof TrialFilters, value: string) => {
+    setSavedFilters({ ...filters, [key]: value });
+    setSelectedId(null);
+    setOpenItemId(null);
+  }, [filters, setOpenItemId, setSavedFilters, setSelectedId]);
 
+  const reload = useCallback(() => {
+    studies.reload();
+    sponsorTickers.retry();
+  }, [sponsorTickers, studies]);
   const loading = studies.loading && trials.length === 0;
-  const items = useMemo(() => toFeedItems(trials), [trials]);
-  usePaneRefreshKey(studies.reload, { focused, enabled: !searchFocused && !openItemId });
+  usePaneRefreshKey(reload, { focused, enabled: !searchFocused && !openItemId });
+
+  const detailTicker = detailTrial ? tickerOf(detailTrial) : undefined;
+  const listedTicker = detailTicker?.kind === "listed" ? detailTicker : null;
+  const openTicker = useCallback(() => {
+    if (listedTicker) openDescription(listedTicker.ticker, listedTicker.exchange ?? undefined);
+  }, [listedTicker, openDescription]);
 
   const detailUrl = detailTrial?.url || null;
   const info = useMemo<PaneFooterSegment[]>(() => [
     ...(studies.loadingMore ? [{ id: "loading-more", parts: [{ text: "loading more", tone: "muted" as const }] }] : []),
     ...(studies.moreError ? [{ id: "more-error", parts: [{ text: studies.moreError.message, tone: "warning" as const }] }] : []),
-  ], [studies.loadingMore, studies.moreError]);
-  const hints = useMemo<PaneHint[]>(
-    () => (openItemId ? [] : [{ id: "search", key: "/", label: "search", onPress: focusSearch }]),
-    [focusSearch, openItemId],
-  );
+    ...(sponsorTickers.failure && trials.length > 0
+      ? [{ id: "tickers", parts: [{ text: "tickers not looked up", tone: "muted" as const }] }]
+      : []),
+  ], [sponsorTickers.failure, studies.loadingMore, studies.moreError, trials.length]);
+  const hints = useMemo<PaneHint[]>(() => [
+    ...(openItemId ? [] : [{ id: "search", key: "/", label: "search", onPress: focusSearch }]),
+    ...(listedTicker ? [{ id: "description", key: "d", label: "es", title: "Description (DES)", onPress: openTicker }] : []),
+  ], [focusSearch, listedTicker, openItemId, openTicker]);
   usePaneStatusLinkFooter({
     registrationId: CLINICAL_TRIALS_PANE_ID,
     focused,
     url: detailUrl,
     loading: studies.loading,
-    error,
+    error: trials.length > 0 ? error : null,
     info,
     hints,
     showOpenHint: !!detailUrl,
   });
+
+  // Reading on: the next or previous study opens in place, and the list cursor
+  // follows it so Back lands on the last one read.
+  const openIndex = openTrial ? trials.indexOf(openTrial) : -1;
+  const openAdjacent = useCallback((step: 1 | -1) => {
+    const next = openIndex >= 0 ? trials[openIndex + step] : undefined;
+    if (!next) return;
+    setSelectedId(next.nctId);
+    setOpenItemId(next.nctId);
+  }, [openIndex, setOpenItemId, setSelectedId, trials]);
+  usePaneFooter(`${CLINICAL_TRIALS_PANE_ID}:reading`, () => (focused && openIndex >= 0 ? {
+    order: 1,
+    hints: [
+      { id: "trial-next", key: "n", label: "ext", title: "Next Study", disabled: openIndex >= trials.length - 1, onPress: () => openAdjacent(1) },
+      { id: "trial-previous", key: "p", label: "rev", title: "Previous Study", disabled: openIndex <= 0, onPress: () => openAdjacent(-1) },
+    ],
+  } : null), [focused, openAdjacent, openIndex, trials.length]);
 
   const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
     if (context.selectedIndex <= 0 && isPlainArrowUp(event)) {
@@ -199,6 +286,48 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     }
     return false;
   }, [focusSearch]);
+
+  const layout = useMemo(() => trialLayout(width), [width]);
+  const renderCell = useCallback((trial: ClinicalTrial, column: TrialColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
+    switch (column.id) {
+      case "time": {
+        const posted = trialTimestamp(trial);
+        // Exported as the ISO day, not an instant: when a study was posted does not date the search.
+        return { text: posted ? formatTimeAgo(posted) : "", value: posted ? posted.toISOString().slice(0, 10) : null, color: colors.textDim };
+      }
+      case "phase": {
+        const text = trialPhaseLabel(trial.phases, layout.compact);
+        return { text, color: text === "--" || text === "N/A" ? colors.textMuted : colors.text };
+      }
+      case "status": {
+        const status = trialStatus(trial.status);
+        return {
+          text: layout.compact || column.width < status.label.length ? status.short : status.label,
+          value: status.label,
+          color: trialStatusColor(status.tone, colors),
+          keepColorWhenSelected: keepsToneWhenSelected(status.tone),
+        };
+      }
+      case "title":
+        return { text: trial.title, color: colors.text, attributes: rowState.selected ? TextAttributes.BOLD : undefined };
+      case "sponsor":
+        return { text: trial.sponsor, color: trial.sponsorClass === "INDUSTRY" ? colors.textBright : colors.textDim };
+      case "ticker": {
+        const ticker = tickerOf(trial);
+        return tickerCell(ticker, layout.showVenue, colors, rowState.selected, () => {
+          if (ticker?.kind === "listed") openDescription(ticker.ticker, ticker.exchange ?? undefined);
+        });
+      }
+    }
+  }, [colors, layout, openDescription, tickerOf]);
+
+  const statusOptions = useMemo(() => filterOptions(STATUS_FILTER_OPTIONS, colors), [colors]);
+  const queryFilters = useMemo<QueryBarFilter[]>(() => [
+    { id: "status", label: "Status", value: filters.status, defaultValue: ALL, options: statusOptions, onChange: (value: string) => updateFilter("status", value) },
+    { id: "phase", label: "Phase", value: filters.phase, defaultValue: ALL, options: PHASE_FILTER_OPTIONS, onChange: (value: string) => updateFilter("phase", value) },
+    { id: "sponsorClass", label: "Sponsor", title: "Lead sponsor class", value: filters.sponsorClass, defaultValue: ALL, options: SPONSOR_FILTER_OPTIONS,
+      onChange: (value: string) => updateFilter("sponsorClass", value) },
+  ], [filters, statusOptions, updateFilter]);
 
   const searchBar = (
     <QueryBar
@@ -212,6 +341,7 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
         normalizeValue: (value) => value.trim(),
         ...searchProps,
       }}
+      filters={queryFilters}
     />
   );
 
@@ -224,24 +354,56 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     );
   }
 
+  const detail = openTrial ? (
+    <PaneLinkMenu>
+      <DetailReader
+        ref={detailScrollRef}
+        resetScrollKey={openTrial.nctId}
+        width={width}
+        facts={trialFacts(openTrial, tickerOf(openTrial), colors, openTicker)}
+        body={openTrial.summary || "No summary was published for this study."}
+      />
+    </PaneLinkMenu>
+  ) : null;
+
+  const narrowed = trialFiltersNarrow(filters);
   return (
-    <FeedDataTableStackView
-      width={width}
-      height={height}
+    <DataTableStackView<ClinicalTrial, TrialColumn>
       focused={focused && !searchFocused}
+      detailOpen={!!openTrial}
+      onBack={() => setOpenItemId(null)}
+      detailContent={detail}
+      detailTitle={openTrial?.title}
+      detailScrollRef={detailScrollRef}
       rootBefore={searchBar}
-      items={items}
-      selectedIdx={selectedIdx}
-      onSelect={(index) => setSelectedId(trials[index]?.nctId ?? null)}
-      openItemId={openItemId}
-      onOpenItemIdChange={setOpenItemId}
+      rootWidth={width}
+      rootHeight={height}
+      columns={layout.columns}
+      items={trials}
+      getItemKey={(trial) => trial.nctId}
+      renderCell={renderCell}
+      selection={{
+        kind: "id",
+        selectedId: selectedTrial?.nctId ?? null,
+        getId: (trial) => trial.nctId,
+        onChange: (id) => setSelectedId(id),
+      }}
+      onActivate={(trial) => {
+        setSelectedId(trial.nctId);
+        setOpenItemId(trial.nctId);
+      }}
       onRootKeyDown={handleRootKeyDown}
+      sortColumnId={null}
+      sortDirection="desc"
       scrollRef={scrollRef}
       onBodyScrollActivity={loadMore}
-      sourceLabel="Phase"
-      titleLabel="Status · Title · Sponsor"
-      emptyStateTitle={term ? `No trials match ${term}.` : "No trials loaded."}
-      emptyStateHint="Press / to search…"
+      resetScrollKey={`${term}|${filtersKey}`}
+      showHorizontalScrollbar={false}
+      selectedTextOverridesCellColor
+      emptyStateTitle={term
+        ? `No trials match ${term}${narrowed ? " with these filters" : ""}.`
+        : narrowed ? "No trials match these filters." : "No trials loaded."}
+      emptyStateHint={narrowed ? "Clear a filter to see more…" : "Press / to search…"}
     />
   );
 }

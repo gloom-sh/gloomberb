@@ -25,6 +25,7 @@ import {
 } from "./distress";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
+import type { OrganizationTickersResponse } from "./organization-tickers";
 import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -386,6 +387,15 @@ export class CloudDataApi {
       `/market/ticker-changes?${new URLSearchParams({ symbol: symbol.trim().toUpperCase() })}`,
       options.signal ? { signal: options.signal } : undefined,
     );
+  }
+
+  /** The listed company each organization name resolves to, if any: a trial's lead sponsors, a page at a time. */
+  async getCloudOrganizationTickers(names: readonly string[], signal?: AbortSignal): Promise<OrganizationTickersResponse> {
+    return this.request<OrganizationTickersResponse>("/market/organization-tickers", {
+      method: "POST",
+      body: JSON.stringify({ names }),
+      signal,
+    });
   }
 
   async getCloudHistory(

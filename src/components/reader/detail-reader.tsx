@@ -1,17 +1,26 @@
 import { forwardRef, useMemo } from "react";
 import { t } from "../../i18n";
+import { hoverBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../ui";
 import { wrapTextLines } from "../../utils/text-wrap";
 import { MarkdownText } from "../markdown-text";
 import { DetailScrollBody } from "../ui/detail-scroll-body";
-import { ExternalLink } from "../ui/external-link";
+import { KeyValueRow } from "../ui/display";
+import { ExternalLink, usePaneLinkMenuEntry } from "../ui/external-link";
 import { parseArticle } from "./article-text";
 import { DESKTOP_LINE_HEIGHT, READER_APP_FONT, READER_COLUMN_FONT, ReaderBlock, ReaderText, type ReaderGeometry } from "./reader-text";
 
 export interface DetailFact {
   label: string;
   value: string;
+  /** A domain colour for the value, such as a status in its tone; the words carry the meaning. */
+  color?: string;
+  /**
+   * Opens what the value names (a security's DES): a click on it, and inside a
+   * `PaneLinkMenu` an entry in the pane menu, so the keyboard reaches it too.
+   */
+  link?: { label: string; onOpen: () => void };
 }
 
 export interface DetailReaderProps {
@@ -24,7 +33,7 @@ export interface DetailReaderProps {
   /**
    * The item's facts as label and value pairs, laid out as a block on the
    * desktop and the web. The terminal keeps its compact `meta` lines; with no
-   * `meta`, it lists the facts one to a line.
+   * `meta`, it lists the facts one to a line, labels aligned.
    */
   facts?: readonly DetailFact[];
   body?: string | null;
@@ -97,7 +106,7 @@ function NativeDetail({ meta, facts, body, bodyFormat, note }: DetailContentProp
           <Box data-gloom-ui="detail-facts" style={FACTS_STYLE}>
             {facts.flatMap((fact, index) => [
               <Text key={`label-${index}`} fg={colors.textDim} style={FACT_TEXT_STYLE}>{t(fact.label)}</Text>,
-              <Text key={`value-${index}`} fg={colors.text} wrapText style={FACT_TEXT_STYLE}>{fact.value}</Text>,
+              <FactValue key={`value-${index}`} fact={fact} />,
             ])}
           </Box>
         ) : meta.length > 0 ? (
@@ -128,6 +137,24 @@ function NativeDetail({ meta, facts, body, bodyFormat, note }: DetailContentProp
   );
 }
 
+function FactValue({ fact }: { fact: DetailFact }) {
+  const colors = useThemeColors();
+  const { link } = fact;
+  usePaneLinkMenuEntry(link ? `detail-fact:${fact.label}:${fact.value}` : null, link?.label ?? "", () => link?.onOpen());
+  const target = link ? {
+    cursor: "pointer" as const,
+    hoverBackgroundColor: hoverBg(colors),
+    onMouseDown: (event?: { button?: number }) => { if ((event?.button ?? 0) === 0) link.onOpen(); },
+    "data-gloom-interactive": "true",
+    "data-gloom-label": link.label,
+  } : {};
+  return (
+    <Box minWidth={0} {...target}>
+      <Text fg={fact.color ?? colors.text} wrapText style={FACT_TEXT_STYLE}>{fact.value}</Text>
+    </Box>
+  );
+}
+
 function TerminalDetail({ width, meta, facts, body, bodyFormat, note }: DetailContentProps & { width: number }) {
   const colors = useThemeColors();
   const lineWidth = Math.max(width - 2, 12);
@@ -141,15 +168,21 @@ function TerminalDetail({ width, meta, facts, body, bodyFormat, note }: DetailCo
       </Box>
     );
   }
+  // Facts without meta lines read as aligned label and value rows, keeping their colour and link.
+  const labelWidth = Math.max(0, ...facts.map((fact) => t(fact.label).length)) + 1;
   return (
     <Box flexDirection="column">
-      {metaLines
-        .flatMap((entry) => wrapTextLines(entry, lineWidth, 2))
-        .map((line, index) => (
-          <Box key={`meta-${index}`} height={1}>
-            <Text fg={colors.textMuted}>{line}</Text>
-          </Box>
-        ))}
+      {meta.length === 0 && facts.length > 0
+        ? facts.map((fact, index) => (
+          <KeyValueRow key={`fact-${index}`} label={fact.label} value={fact.value} color={fact.color} link={fact.link} width={lineWidth} labelWidth={labelWidth} />
+        ))
+        : metaLines
+          .flatMap((entry) => wrapTextLines(entry, lineWidth, 2))
+          .map((line, index) => (
+            <Box key={`meta-${index}`} height={1}>
+              <Text fg={colors.textMuted}>{line}</Text>
+            </Box>
+          ))}
 
       <Box height={1} />
 

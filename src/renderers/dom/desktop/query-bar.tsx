@@ -82,6 +82,7 @@ function QueryMenu({ item, onClose }: { item: HostQueryBarItem; onClose: () => v
         disabled: option.disabled,
         selected: item.kind === "select" ? option.selected : undefined,
         checked: item.kind === "multi" ? option.selected : undefined,
+        color: option.color,
       }))}
       onSelect={(value) => {
         item.onSelect(value);

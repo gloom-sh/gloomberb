@@ -248,7 +248,7 @@
           {
             "code": "TRIAL",
             "name": "Clinical Trials",
-            "description": "Search ClinicalTrials.gov studies by condition, drug, or sponsor. Shows phase, status, and sponsor."
+            "description": "Search ClinicalTrials.gov studies by condition, drug, or sponsor. Filter by status, phase and sponsor class; listed sponsors show their ticker."
           }
         ]
       },
