@@ -243,7 +243,8 @@ export function trialLayout(width: number): TrialLayout {
   const compact = width < 90;
   const wide = width >= 140;
   const fixed: TrialColumn[] = [
-    { id: "time", label: "Time", width: compact ? 7 : 8, align: "left" },
+    // "10/15/26" once a study is a week old.
+    { id: "time", label: "Time", width: 8, align: "left" },
     { id: "phase", label: "Phase", width: compact ? 7 : 9, align: "left" },
     { id: "status", label: "Status", width: wide ? 23 : 11, align: "left" },
     { id: "sponsor", label: "Sponsor", width: wide ? 30 : compact ? 15 : 22, align: "left" },
