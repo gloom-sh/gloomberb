@@ -49,6 +49,9 @@ let installed = false;
 /** Below this, in px, two sizes are the same: the browser lays out in 1/64 px. */
 const EXACT_PX = 0.5;
 
+/** The pane's cell on `axis`, the unit the boxes a surface sits in were counted in. */
+const cellOn = (axis: Axis) => (axis === "x" ? WEB_CELL_WIDTH : WEB_CELL_HEIGHT);
+
 const SIZE = { x: "width", y: "height" } as const;
 const FILL_ATTRIBUTE = { x: "data-gloom-fill-x", y: "data-gloom-fill-y" } as const;
 const FOLLOW_ATTRIBUTE = { x: "data-gloom-follow-x", y: "data-gloom-follow-y" } as const;
@@ -161,7 +164,7 @@ function startsSpace(pass: Pass, element: HTMLElement, axis: Axis, space: number
 
 /**
  * How a box with a size of its own on `axis` sits in the space its parent
- * gives it: exactly, a fraction of a cell short of empty space, or neither.
+ * gives it: exactly, a fraction of a cell off empty space, or neither.
  */
 function sizedFit(pass: Pass, element: HTMLElement, axis: Axis, own: number): { mode: Mode; kind: "exact" | "short" } | null {
   const { mode, space } = placement(pass, element, axis);
@@ -169,9 +172,10 @@ function sizedFit(pass: Pass, element: HTMLElement, axis: Axis, own: number): { 
   const short = space - own;
   if (Math.abs(short) <= EXACT_PX) return { mode, kind: "exact" };
   // Whole cells floored from the pane's size leave less than a cell, give or
-  // take the layout's rounding of the pane's box.
-  const cell = axis === "x" ? WEB_CELL_WIDTH : WEB_CELL_HEIGHT;
-  if (short > 0 && short < cell + EXACT_PX && startsSpace(pass, element, axis, space)) return { mode, kind: "short" };
+  // take the layout's rounding of the pane's box. Counted around a bar the
+  // page draws taller than a row (a query bar), they run a fraction of a cell
+  // past it instead, into what the box clips: filling takes back only that.
+  if (Math.abs(short) < cellOn(axis) + EXACT_PX && startsSpace(pass, element, axis, space)) return { mode, kind: "short" };
   return null;
 }
 
@@ -259,9 +263,9 @@ function restFill(pass: Pass, surface: HTMLElement, axis: Axis): { mode: Mode; b
   // The pane's root takes the pane's whole box, however many cells it was given.
   if (isPaneContent(parent) && onlyInFlow(pass, surface)) {
     const { mode, space } = placement(pass, surface, axis);
-    return mode && own <= space + EXACT_PX ? { mode, boxes: [] } : null;
+    return mode && own < space + cellOn(axis) ? { mode, boxes: [] } : null;
   }
-  // Its cells reach within a cell of the space, never past it, and into space nothing else takes.
+  // Its cells reach within a cell of the space, short of it or past it, and into space nothing else takes.
   const fit = sizedFit(pass, surface, axis, own);
   if (!fit) return null;
   // Only where the boxes above it follow the frame too: a surface that could

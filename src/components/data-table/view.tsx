@@ -723,6 +723,7 @@ export function DataTableView<
     <TableViewFrame
       width={rootWidth}
       height={rootHeight}
+      fit={tableProps.fitRows}
       backgroundColor={rootBackgroundColor}
       before={rootBefore}
       after={rootAfter}

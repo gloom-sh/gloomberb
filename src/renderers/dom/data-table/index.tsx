@@ -105,6 +105,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   emptyStateTitle,
   emptyStateHint,
   virtualize = true,
+  fitRows = false,
   overscan = 3,
   columnGap = 1,
   horizontalPadding = 1,
@@ -336,7 +337,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     position: "relative",
     display: "flex",
     flexDirection: "column",
-    flex: "1 1 0px",
+    // A table set inline in a page is as tall as its header and rows.
+    flex: fitRows ? "0 0 auto" : "1 1 0px",
     width: "100%",
     minWidth: 0,
     minHeight: 0,
@@ -351,11 +353,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   };
   const bodyScrollerStyle: CSSProperties = {
     width: "100%",
-    flex: "1 1 0px",
+    flex: fitRows ? "0 0 auto" : "1 1 0px",
     minWidth: 0,
     minHeight: 0,
     overflowX: horizontalScrollEnabled ? "auto" : "hidden",
-    overflowY: "auto",
+    overflowY: fitRows ? "hidden" : "auto",
     backgroundColor: CSS_BG,
     // The table runs to the pane footer. A partly visible last row is how every
     // scrolling list reads; trimming the viewport to whole rows left a blank

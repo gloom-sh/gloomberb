@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
-import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
-import { DetailScrollBody, KeyValueRow } from "../../../components";
+import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { DetailScrollBody, KeyValueRow, Prose } from "../../../components";
 import { colors } from "../../../theme/colors";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import {
@@ -87,14 +87,18 @@ export function InsiderDetail({ row, width, scrollRef }: { row: InsiderTableRow;
   const fields = detailFields(row);
   const text = detailText(row);
   const toneColor = row.tone === "neutral" ? undefined : insiderToneColor(row.tone);
+  // The desktop and the web wrap the words at the pane's width; the terminal pre-wraps them at its columns.
+  const { nativePaneChrome } = useUiCapabilities();
   return (
     <DetailScrollBody ref={scrollRef} resetScrollKey={row.id}>
       <Box flexDirection="column">
-        {detailMeta(row).flatMap((entry) => wrapTextLines(entry, textWidth, 2)).map((line, index) => (
-          <Box key={`meta-${index}`} height={1}>
-            <Text fg={colors.textMuted}>{line}</Text>
-          </Box>
-        ))}
+        {nativePaneChrome
+          ? detailMeta(row).map((entry, index) => <Prose key={`meta-${index}`} text={entry} width={textWidth} color={colors.textMuted} figures={false} />)
+          : detailMeta(row).flatMap((entry) => wrapTextLines(entry, textWidth, 2)).map((line, index) => (
+            <Box key={`meta-${index}`} height={1}>
+              <Text fg={colors.textMuted}>{line}</Text>
+            </Box>
+          ))}
         {fields.length > 0 && <Box height={1} />}
         {fields.map((field, index) => (
           <KeyValueRow
@@ -108,11 +112,15 @@ export function InsiderDetail({ row, width, scrollRef }: { row: InsiderTableRow;
           />
         ))}
         {text && <Box height={1} />}
-        {text.split("\n").flatMap((line) => wrapTextLines(line, textWidth)).map((line, index) => (
-          <Box key={`text-${index}`} height={1}>
-            <Text fg={colors.text}>{line}</Text>
-          </Box>
-        ))}
+        {nativePaneChrome
+          ? text.split("\n").map((line, index) => (line.trim()
+            ? <Prose key={`text-${index}`} text={line} width={textWidth} color={colors.text} figures={false} />
+            : <Text key={`text-${index}`}>{" "}</Text>))
+          : text.split("\n").flatMap((line) => wrapTextLines(line, textWidth)).map((line, index) => (
+            <Box key={`text-${index}`} height={1}>
+              <Text fg={colors.text}>{line}</Text>
+            </Box>
+          ))}
       </Box>
     </DetailScrollBody>
   );

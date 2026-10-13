@@ -373,6 +373,31 @@ function ChartUnderBarPane({ focused, width, height }: PaneProps) {
   );
 }
 
+/**
+ * A chart sized in rows under a query bar, over a caption, as the
+ * correlation pane lays one out: the pane counts the bar as a row, which the
+ * page draws taller, so the chart's rows run past its clipping box.
+ */
+function ChartRowsPane({ focused, width, height }: PaneProps) {
+  // Whole rows for the chart; what is left of the pane's rows, less the bar and the caption, above it.
+  const chartRows = Math.max(4, Math.floor(height * 0.6));
+  const aboveRows = Math.max(1, height - 1 - chartRows - 1);
+  return (
+    <Box flexDirection="column" width={width} height={height} overflow="hidden">
+      <QueryBar width={width} meta="Invented closes" />
+      <Box height={aboveRows} flexShrink={0} paddingX={1}>
+        <Text>Invented figures above the chart</Text>
+      </Box>
+      <Box flexGrow={1} minHeight={0} overflow="hidden">
+        <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={Math.max(1, width)} height={chartRows} focused={focused} />
+      </Box>
+      <Box height={1} paddingX={1}>
+        <Text>An invented close, rebased to the first day</Text>
+      </Box>
+    </Box>
+  );
+}
+
 const BOARD_TABS = [{ value: "one", label: "Stocks" }, { value: "two", label: "Rates" }];
 const BOARD_ROWS = TABLE_ROWS.slice(0, 12);
 
@@ -825,6 +850,7 @@ const PANES = {
   news: { name: "Top News", component: NewsPane },
   chart: { name: "Chart", component: ChartPane },
   "chart-bar": { name: "G chart", component: ChartUnderBarPane },
+  "chart-rows": { name: "Chart in rows", component: ChartRowsPane },
   board: { name: "Board", component: ChartBoardPane },
   beside: { name: "Chart beside a table", component: ChartBesideTablePane },
   overlay: { name: "Chart under a toolbar", component: ChartOverlayPane },

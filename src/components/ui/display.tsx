@@ -63,8 +63,53 @@ export interface KeyValueRowProps {
   link?: { label: string; onOpen: () => void };
 }
 
+/**
+ * One line of text that ends in an ellipsis where its box ends, in CSS, on the
+ * desktop and the web: the browser clips it at the width it is laid out to,
+ * which a count of columns cannot match (a cell is wider than a glyph).
+ */
+export const NATIVE_CLIP_STYLE = { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" } as const;
+
 /** Aligned labels and values; a bounded row reserves room for an optional detail. */
-export function KeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, link }: KeyValueRowProps) {
+export function KeyValueRow(props: KeyValueRowProps) {
+  const { nativePaneChrome } = useUiCapabilities();
+  return nativePaneChrome ? <NativeKeyValueRow {...props} /> : <TerminalKeyValueRow {...props} />;
+}
+
+/**
+ * The desktop and the web: the label column at least as wide as the label
+ * width in characters, the value and detail taking the rest of the row and
+ * clipped in CSS where they run out of it.
+ */
+function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, link }: KeyValueRowProps) {
+  const colors = useThemeColors();
+  usePaneLinkMenuEntry(link ? `key-value:${label}:${value}` : null, link?.label ?? "", () => link?.onOpen());
+  const target = link ? {
+    cursor: "pointer" as const,
+    hoverBackgroundColor: hoverBg(colors),
+    onMouseDown: (event?: { button?: number }) => { if ((event?.button ?? 0) === 0) link.onOpen(); },
+    "data-gloom-interactive": "true",
+    "data-gloom-label": link.label,
+  } : {};
+  const rowWidth = width === undefined ? undefined : Math.max(0, Math.floor(width));
+  const labelChars = Math.max(0, labelWidth ?? (rowWidth === undefined ? 14 : Math.min(12, Math.max(8, Math.floor(rowWidth * 0.32)))));
+  return (
+    <Box width={width === undefined ? undefined : "100%"} flexDirection="row" overflow="hidden" data-gloom-ui="key-value-row" {...target}>
+      {/* At least the label width, in characters; a longer label keeps every character and moves its value along. */}
+      <Text fg={colors.textDim} style={{ ...NATIVE_CLIP_STYLE, flex: "0 0 auto", minWidth: `${labelChars}ch`, paddingRight: "1ch", boxSizing: "border-box" }}>{t(label)}</Text>
+      <Text
+        fg={color ?? statToneColor(tone, colors) ?? colors.text}
+        attributes={emphasis ? TextAttributes.BOLD : undefined}
+        style={{ ...NATIVE_CLIP_STYLE, flex: detail ? "0 1 auto" : "1 1 auto" }}
+      >
+        {value}
+      </Text>
+      {detail ? <Text fg={colors.textDim} style={{ ...NATIVE_CLIP_STYLE, flex: "1 1 0", paddingLeft: "2ch" }}>{detail}</Text> : null}
+    </Box>
+  );
+}
+
+function TerminalKeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, link }: KeyValueRowProps) {
   const colors = useThemeColors();
   usePaneLinkMenuEntry(link ? `key-value:${label}:${value}` : null, link?.label ?? "", () => link?.onOpen());
   const target = link ? {
