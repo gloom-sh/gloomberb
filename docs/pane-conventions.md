@@ -176,6 +176,14 @@ back button or clicking Back pops it. Rules:
   pairs, then the text in short paragraphs in the reader's type, across the
   pane's width on the desktop and the web. `FeedDataTableStackView` takes the
   facts as `detailFacts`; the Changelog and Trials details are the reference.
+- Reading text on the desktop and the web (the article reader, `DetailReader`,
+  Docs) takes one type scale, from `src/components/reader/reader-text.tsx`:
+  metadata, facts, tables and coverage at the app's own size (12px) and
+  dimmer; body 14px at line height 1.6; a lead 15px; section headings 16px
+  bold with space above them; a title 20px bold. In a column under 480px the
+  body is 13.2px and the levels above it follow. Levels differ by weight and
+  space as much as by size, so a reader sits beside the app's tables without
+  shouting. A pane does not set its own reading size.
 - Any other scrolling body is a `ScrollBox`. Leaving `scrollY` out means it
   scrolls vertically, with the wheel and, while the pane is focused, with the
   arrows, j/k, PageUp, PageDown, Home and End; `scrollY={false}` turns that off.

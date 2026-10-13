@@ -17,6 +17,8 @@ export interface MarkdownTextProps {
   lineWidth?: number;
   /** Desktop and web: the space a blank line leaves between paragraphs, in CSS units; one line when unset. */
   paragraphGap?: string;
+  /** Desktop and web: the size, weight and space of a heading line, such as a reader's section heading; the text's own when unset. */
+  headingStyle?: Readonly<Record<string, string | number>>;
   catalog?: Record<string, InlineTickerCatalogEntry>;
   textColor?: string;
   openTicker?: (symbol: string) => void;
@@ -86,9 +88,11 @@ function parseInlineMarkdown(text: string, links = false): StyledSegment[] {
   return segments;
 }
 
+const HEADING_RE = /^(#{1,3})\s+(.+)$/;
+
 function parseLine(line: string, links: boolean): ParsedLine {
   // Headings
-  const headingMatch = line.match(/^(#{1,3})\s+(.+)$/);
+  const headingMatch = line.match(HEADING_RE);
   if (headingMatch) {
     return {
       heading: true,
@@ -595,6 +599,7 @@ export function MarkdownText({
   openTicker = () => {},
   onOpenLink,
   paragraphGap,
+  headingStyle,
 }: MarkdownTextProps) {
   const { nativePaneChrome } = useUiCapabilities();
   const links = onOpenLink !== undefined;
@@ -620,12 +625,15 @@ export function MarkdownText({
         }
         const line = block.text;
         if (line.trim() === "") {
+          // Under a heading set in its own style, the heading's margin is the space: it sits with what it names.
+          const previous = blocks[index - 1];
+          if (nativePaneChrome && headingStyle && previous?.kind === "line" && HEADING_RE.test(previous.text)) return null;
           return nativePaneChrome && paragraphGap
             ? <Box key={index} flexShrink={0} style={{ height: paragraphGap }} />
             : <Text key={index}>{" "}</Text>;
         }
         const parsed = parseLine(line, links);
-        return (
+        const markdownLine = (
           <MarkdownLine
             key={index}
             parsed={parsed}
@@ -638,6 +646,10 @@ export function MarkdownText({
             onOpenLink={onOpenLink}
           />
         );
+        // A line's height comes from --cell-h, in em of its own size.
+        return nativePaneChrome && headingStyle && parsed.heading
+          ? <Box key={index} flexDirection="column" width="100%" style={{ ...headingStyle, "--cell-h": `${headingStyle.lineHeight ?? 1.35}em` }}>{markdownLine}</Box>
+          : markdownLine;
       })}
     </Box>
   );

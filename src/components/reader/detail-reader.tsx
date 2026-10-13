@@ -9,7 +9,7 @@ import { DetailScrollBody } from "../ui/detail-scroll-body";
 import { KeyValueRow } from "../ui/display";
 import { ExternalLink, usePaneLinkMenuEntry } from "../ui/external-link";
 import { parseArticle } from "./article-text";
-import { DESKTOP_LINE_HEIGHT, READER_APP_FONT, READER_COLUMN_FONT, ReaderBlock, ReaderText, type ReaderGeometry } from "./reader-text";
+import { DESKTOP_LINE_HEIGHT, READER_APP_FONT, READER_COLUMN_FONT, READER_HEADING_STYLE, ReaderBlock, ReaderText, type ReaderGeometry } from "./reader-text";
 
 export interface DetailFact {
   label: string;
@@ -50,14 +50,17 @@ const URL_LINE = /^https?:\/\/\S+$/;
 
 const COLUMN_STYLE = { fontSize: READER_COLUMN_FONT, lineHeight: DESKTOP_LINE_HEIGHT } as const;
 const META_STYLE = { marginBottom: "0.8em" } as const;
-/** Its columns come from styles.css: one pair to a row, or two in a wide reader. */
+/**
+ * At the app's own size, as metadata is in every reader. Its columns come from
+ * styles.css: one pair to a row, or two in a wide reader.
+ */
 const FACTS_STYLE = {
   display: "grid",
-  columnGap: "1.6em",
-  rowGap: "0.2em",
-  fontSize: "0.8em",
+  columnGap: "2em",
+  rowGap: "0.3em",
+  fontSize: READER_APP_FONT,
   lineHeight: 1.5,
-  marginBottom: "1.4em",
+  marginBottom: "1.6em",
 } as const;
 const FACT_TEXT_STYLE = { display: "block", lineHeight: "inherit", minWidth: 0 } as const;
 /** Markdown lines take the reader's line height (the host sets Text line height from --cell-h). */
@@ -118,7 +121,7 @@ function NativeDetail({ meta, facts, body, bodyFormat, note }: DetailContentProp
         ) : null}
         {bodyFormat === "markdown" && body ? (
           <Box flexDirection="column" width="100%" style={MARKDOWN_STYLE}>
-            <MarkdownText text={body} paragraphGap={PARAGRAPH_GAP} />
+            <MarkdownText text={body} paragraphGap={PARAGRAPH_GAP} headingStyle={READER_HEADING_STYLE} />
           </Box>
         ) : blocks.map((block, index) => (
           <Box key={index} flexDirection="column">

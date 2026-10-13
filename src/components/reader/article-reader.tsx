@@ -375,7 +375,7 @@ function ArticleReaderView({
         <ReaderText text={lead} geometry={geometry} color={colors.textBright} variant="lead" />
       ) : null}
       {!raw && facts.length > 0 ? (
-        <Box flexDirection="column" style={desktop ? { margin: "0.3em 0 1.3em" } : undefined}>
+        <Box flexDirection="column" style={desktop ? { margin: "0.3em 0 1em" } : undefined}>
           <ReaderText text={readerLabel("Key facts")} geometry={geometry} color={colors.textDim} variant="label" />
           {facts.map((fact, index) => (
             <ReaderText key={index} text={fact} geometry={geometry} color={colors.text} variant="fact" segments={figureSegments(fact)} figureColor={colors.textBright} />

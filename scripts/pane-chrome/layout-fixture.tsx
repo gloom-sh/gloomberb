@@ -131,7 +131,12 @@ function ChangelogFixturePane(props: PaneProps) {
   );
 }
 
-const ARTICLE = parseArticle([{ text: Array.from({ length: 8 }, (_, index) => SENTENCES.slice(index % 3).join(" ")).join("\n\n") }]);
+/** A document as Search opens one: sections under their headings, key facts above them, the match marked in one. */
+const ARTICLE = parseArticle([
+  { heading: "Results", text: Array.from({ length: 4 }, (_, index) => SENTENCES.slice(index % 3).join(" ")).join("\n\n") },
+  { heading: "Outlook", text: Array.from({ length: 4 }, (_, index) => SENTENCES.slice((index + 1) % 3).join(" ")).join("\n\n") },
+]);
+const FACTS = ["Enrolment of 240 participants at four sites", "Results expected 12 months after the last visit", "Distance walked up 18% at twelve weeks"];
 
 function ReaderFixturePane({ focused, width, height }: PaneProps) {
   return (
@@ -140,7 +145,9 @@ function ReaderFixturePane({ focused, width, height }: PaneProps) {
       title="An invented story about a workshop that builds instruments"
       meta={["Workshop News", "Oct 12, 2026"]}
       lead={SENTENCES.slice(0, 2).join(" ")}
+      facts={FACTS}
       body={ARTICLE}
+      highlight={{ section: 1, terms: ["outcome"] }}
       focused={focused}
       width={width}
       height={height}

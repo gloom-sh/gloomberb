@@ -1280,14 +1280,16 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 }
 
 /* Reading columns (src/components/reader) set their type from their own
-   width, not from a count of cells: 1.45em, or 1.35em under 480px. */
+   width, not from a count of cells: body text at 1.1667em of the app's size
+   (14px), or 1.1em (13.2px) under 480px. The rest of the reader's scale is in
+   em of it (reader-text.tsx). */
 [data-gloom-ui="article-reader"],
 [data-gloom-ui="detail-reader"] {
   container-type: inline-size;
 }
 @container (max-width: 480px) {
   [data-gloom-ui="reader-column"] {
-    --reader-em: 1.35;
+    --reader-em: 1.1;
   }
 }
 /* A detail's facts: label and value pairs, two pairs to a row when the

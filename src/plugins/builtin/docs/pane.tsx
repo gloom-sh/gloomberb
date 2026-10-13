@@ -54,6 +54,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { badgeCell } from "../help/table-cells";
+import { READER_COLUMN_FONT } from "../../../components/reader/reader-text";
 import { DocsBlocks } from "./blocks";
 import { useDocsFeed, useDocsLesson } from "./use-docs";
 
@@ -73,12 +74,12 @@ const STACK_LIMIT = 30;
 /** Prose reads best at about seventy columns, however wide the pane. */
 const MEASURE = 72;
 /**
- * On the desktop and the web the text reads a size up from the table text,
- * with more air between lines, at most 69 characters of it to the line (as
- * wide as a screenshot of the measure): the column fills a narrower pane and
- * stops there in a wider one.
+ * On the desktop and the web the text reads at the reader's body size, a step
+ * up from the table text, with more air between lines, at most 69 characters
+ * of it to the line (as wide as a screenshot of the measure): the column fills
+ * a narrower pane and stops there in a wider one.
  */
-const READING_STYLE = { fontSize: "1.1667em", "--cell-h": "1.7em", maxWidth: "69ch" } as const;
+const READING_STYLE = { fontSize: READER_COLUMN_FONT, "--cell-h": "1.7em", maxWidth: "69ch" } as const;
 /** The terminal wraps at `width` columns; the desktop and the web at the reading column's own width. */
 function useTextWidth(width: number): number | "100%" {
   return useUiCapabilities().nativePaneChrome ? "100%" : width;
