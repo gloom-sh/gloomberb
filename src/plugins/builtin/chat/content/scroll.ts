@@ -232,7 +232,7 @@ export function useChatScrollRuntime({
     setFollowMessages,
   ]);
 
-  const jumpToMessage = useCallback((messageId: string) => {
+  const jumpToLoadedOrOlderMessage = useCallback((messageId: string) => {
     if (scrollToLoadedMessage(messageId)) return;
     pendingJumpMessageIdRef.current = messageId;
     if (hasOlderMessages && !loadingOlderMessages) {
@@ -241,6 +241,11 @@ export function useChatScrollRuntime({
       pendingJumpMessageIdRef.current = null;
     }
   }, [hasOlderMessages, loadingOlderMessages, requestOlderMessages, scrollToLoadedMessage]);
+  // Every message row takes this: one that changed with the width or the list
+  // would draw every row again at each step of a resize and each new message.
+  const jumpSourceRef = useRef(jumpToLoadedOrOlderMessage);
+  jumpSourceRef.current = jumpToLoadedOrOlderMessage;
+  const jumpToMessage = useCallback((messageId: string) => jumpSourceRef.current(messageId), []);
 
   useEffect(() => {
     const pendingId = pendingJumpMessageIdRef.current;

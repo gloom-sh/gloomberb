@@ -8,7 +8,7 @@ import { DesktopChatMessageImages } from "../attachments/desktop";
 import { chatReplyQuoteText } from "../attachments/model";
 import { chatAuthorName, isQuotedAuthorManagedBot } from "../ghost-user";
 import { ChatBotIcon } from "./person-icons";
-import { ChatMessageActions, ChatMessageHeader } from "./header";
+import { ChatMessageActions, ChatMessageHeader, chatHeaderFitsEveryIcon } from "./header";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
 import { canReactToMessage } from "../reactions";
 import { DesktopChatReactions, DesktopReactionAction } from "./reactions";
@@ -20,6 +20,15 @@ import { chatHighlightBg, getChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
 const DESKTOP_MESSAGE_RIGHT_PADDING = 2;
+
+/**
+ * The list's width for a desktop row, or undefined when the row draws the same
+ * at any width: it only fits its author's icons by it. A row handed a width
+ * draws again at every step of a resize.
+ */
+export function desktopChatMessageWidth(msg: ChatMessageBaseProps["msg"], contentWidth: number): number | undefined {
+  return chatHeaderFitsEveryIcon(msg, contentWidth - DESKTOP_MESSAGE_RIGHT_PADDING) ? undefined : contentWidth;
+}
 
 export const DesktopChatMessage = memo(function DesktopChatMessage({
   msg,

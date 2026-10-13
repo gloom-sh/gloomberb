@@ -79,6 +79,26 @@ export function ChatMessageActions({
   );
 }
 
+/** The widest status a header shows ("just now edited", a date with " edited", "sending..."). */
+const WIDEST_HEADER_STATUS = Math.max(...["just now edited", "12/31/99 edited", "sending..."].map(displayWidth));
+/** Reply, React and Edit, after the cell before them. */
+const WIDEST_HEADER_ACTIONS = 1 + MESSAGE_ACTION_WIDTH * 3;
+
+/**
+ * Whether a header row `rowWidth` cells wide has room for every icon of its
+ * author whatever its status and actions: past that width the icons it shows
+ * no longer depend on the width, so a row need not draw again as it changes.
+ */
+export function chatHeaderFitsEveryIcon(msg: ChatMessageBaseProps["msg"], rowWidth: number): boolean {
+  const icons = chatPersonIcons(msg.user).length;
+  if (icons === 0) return true;
+  const spare = rowWidth - 1 - displayWidth(chatAuthorName(msg.user))
+    - (msg.origin === "discord" ? 8 : 0)
+    - 1 - WIDEST_HEADER_STATUS
+    - WIDEST_HEADER_ACTIONS;
+  return spare >= icons * CHAT_PERSON_ICON_WIDTH;
+}
+
 /**
  * Author, send status and inline actions for the first message of a group.
  *

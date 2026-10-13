@@ -21,6 +21,10 @@
  * `handle=placeholder` signs you in on a signup placeholder handle, so the
  * composer offers to choose one; saving `taken` is refused as taken, and
  * `solo=1` gives the chat the whole page.
+ * `loaded=<n>` opens with the latest n messages already in the list, as a
+ * reader who paged far back has them; `replies=1` makes every fifth message a
+ * reply that quotes the one before it; `float=1` floats the chat pane over
+ * the plain one instead of docking it beside it.
  */
 import { useState } from "react";
 import { apiClient, type AccountProfile, type AuthUser, type ChatChannel, type ChatMessage, type ChatUserSummary } from "../../src/api-client";
@@ -138,9 +142,16 @@ function withChips(messages: ChatMessage[]): ChatMessage[] {
   return messages;
 }
 
+const replies = params.get("replies") === "1";
 const initialMessages = Array.from({ length: count }, (_, index) => invented(index, index % 23 === 11 ? {
   attachments: [{ id: `img${index}`, mime: "image/svg+xml", width: 320, height: 180, size: 1000, url: IMAGE }],
 } : {}));
+if (replies) {
+  for (let index = 5; index < initialMessages.length; index += 5) {
+    const quoted = initialMessages[index - 1]!;
+    initialMessages[index] = { ...initialMessages[index]!, replyToId: quoted.id, replyTo: { content: quoted.content, user: { id: quoted.user.id, username: quoted.user.username ?? "" } } };
+  }
+}
 const fake: ChatFake = {
   messages: params.get("chips") === "1" ? withChips(initialMessages) : initialMessages,
   historyRequests: 0,
@@ -245,7 +256,7 @@ apiClient.getMessages = async (channelId, options) => {
     const start = all.findIndex((message) => message.id === options.after);
     return all.slice(start + 1);
   }
-  return all.slice(-limit);
+  return all.slice(-Math.max(limit, Number(params.get("loaded") ?? 0)));
 };
 apiClient.connectChannel = ((_channelId: string, onMessage: (message: ChatMessage) => void) => {
   socket.onMessage = onMessage;
@@ -318,11 +329,19 @@ export function ChatFixturePane({ focused, width, height }: PaneProps) {
   );
 }
 
-/** The chat pane beside a plain one, which the pointer can leave to. */
+/** The chat pane beside a plain one, which the pointer can leave to, or floating over it (`float=1`). */
 export function chatLayout(): LayoutConfig {
   const instance = (instanceId: string) => ({ instanceId, paneId: instanceId.split(":")[0]!, binding: { kind: "none" as const } });
   if (params.get("solo") === "1") {
     return { dockRoot: { kind: "pane", instanceId: "chat:a" }, instances: [instance("chat:a")], floating: [], detached: [] };
+  }
+  if (params.get("float") === "1") {
+    return {
+      dockRoot: { kind: "pane", instanceId: "plain:a" },
+      instances: [instance("chat:a"), instance("plain:a")],
+      floating: [{ instanceId: "chat:a", x: 12, y: 3, width: 112, height: 40, zIndex: 50 }],
+      detached: [],
+    };
   }
   return {
     dockRoot: {

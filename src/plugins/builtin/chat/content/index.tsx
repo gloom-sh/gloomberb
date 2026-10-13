@@ -995,6 +995,9 @@ export function ChatContent({
     : undefined;
   const chatLayoutHeight = nativePaneChrome ? "100%" : height;
   const nativeFillStyle = nativePaneChrome ? { minHeight: 0 } : undefined;
+  // The desktop sizes the chat by CSS: it follows a resize to the pixel, and
+  // the cell widths only catch up a few times a second (live-resize.ts).
+  const chatLayoutWidth = nativePaneChrome ? "100%" : width;
 
   const channelSidebar = (
     <ChannelSidebar
@@ -1039,7 +1042,8 @@ export function ChatContent({
   const threadPane = (
     <Box
       flexDirection="column"
-      width={chatWidth}
+      // Beside the channel list, the desktop thread takes the space the list leaves.
+      width={nativePaneChrome ? undefined : chatWidth}
       height={chatLayoutHeight}
       flexGrow={nativePaneChrome ? 1 : undefined}
       backgroundColor={chatContentBg}
@@ -1048,7 +1052,7 @@ export function ChatContent({
         clearHighlight();
         focusChatContent();
       }}
-      style={nativeFillStyle}
+      style={nativePaneChrome ? { minHeight: 0, minWidth: 0, ...(stackedNav ? {} : { flexBasis: 0 }) } : undefined}
     >
       {/* In the stack, the Back row above takes the place of the top rule. */}
       {!nativePaneChrome && !stackedNav && (
@@ -1185,7 +1189,7 @@ export function ChatContent({
     return (
       <Box
         flexDirection="column"
-        width={width}
+        width={chatLayoutWidth}
         height={chatLayoutHeight}
         flexGrow={nativePaneChrome ? 1 : undefined}
         position="relative"
@@ -1207,7 +1211,7 @@ export function ChatContent({
   return (
     <Box
       flexDirection="row"
-      width={width}
+      width={chatLayoutWidth}
       height={chatLayoutHeight}
       flexGrow={nativePaneChrome ? 1 : undefined}
       style={nativeFillStyle}

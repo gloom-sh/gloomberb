@@ -150,6 +150,25 @@ window.__chat = {
   rowText(id) {
     return this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id)?.textContent ?? '';
   },
+  /**
+   * How far left of the chat pane's right edge, in px, each row in view ends,
+   * with the text box of its body and the cut-off of its reply quote; and the
+   * widths of all rows, in view or not.
+   */
+  edges() {
+    const pane = document.querySelector('[data-gloom-pane-id="chat:a"] [data-gloom-role=pane-content]').getBoundingClientRect();
+    const view = this.scroller().getBoundingClientRect();
+    const rows = this.rows();
+    const inView = rows.filter((r) => { const b = r.getBoundingClientRect(); return b.bottom > view.top && b.top < view.bottom; });
+    const gap = (el) => pane.right - el.getBoundingClientRect().right;
+    return {
+      rows: inView.map(gap),
+      bodies: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-body]')].map(gap)),
+      quotes: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-row] [style*="text-overflow: ellipsis"]')].map(gap)),
+      widths: [...new Set(rows.map((r) => Math.round(r.getBoundingClientRect().width * 100) / 100))],
+      fromBottom: this.state().fromBottom,
+    };
+  },
   /** The words a message's body draws, without its chips. */
   bodyText(id) {
     const row = this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id);
@@ -250,6 +269,72 @@ async function backspace(cdp: Cdp, times: number): Promise<void> {
   }
   await frames(cdp, 3);
 }
+
+interface Edges { rows: number[]; bodies: number[]; quotes: number[]; widths: number[]; fromBottom: number }
+
+/** Each kind's single distance from the pane's right edge, or a failure when its rows do not share one. */
+function restGaps(edges: Edges, what: string): Record<"rows" | "bodies" | "quotes", number> {
+  const one = (values: number[], kind: string) => {
+    if (values.length === 0) fail(`${what}: no ${kind} in view`);
+    if (Math.max(...values) - Math.min(...values) > 0.5) fail(`${what}: the ${kind} in view do not end at one place`, values);
+    return values[0]!;
+  };
+  return { rows: one(edges.rows, "rows"), bodies: one(edges.bodies, "message bodies"), quotes: one(edges.quotes, "reply quotes") };
+}
+
+/**
+ * Resizes the chat pane with real pointer input, one move a frame, from
+ * `from` along `path` (t from 0 to 1), and reads the edges after every frame
+ * has laid out, just before the release, and once the release has settled.
+ */
+async function resizeChat(cdp: Cdp, from: Point, path: (t: number) => Point, moves = 45): Promise<{ during: Edges[]; held: Edges; released: Edges }> {
+  await mouse(cdp, "mouseMoved", from.x, from.y, false);
+  await mouse(cdp, "mousePressed", from.x, from.y, true);
+  await evaluate(cdp, `(() => {
+    window.__edges = [];
+    window.__sampling = true;
+    const tick = () => {
+      if (!window.__sampling) return;
+      setTimeout(() => { if (window.__sampling) window.__edges.push(__chat.edges()); }, 0);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  })()`);
+  let to = from;
+  for (let move = 1; move <= moves; move += 1) {
+    to = path(move / moves);
+    await mouse(cdp, "mouseMoved", to.x, to.y, true);
+    await frames(cdp);
+  }
+  await frames(cdp, 2);
+  const during = await evaluate<Edges[]>(cdp, "(() => { window.__sampling = false; return window.__edges; })()");
+  const held = await evaluate<Edges>(cdp, "__chat.edges()");
+  await mouse(cdp, "mouseReleased", to.x, to.y, false);
+  await frames(cdp, 8);
+  await pause(cdp, 250);
+  const released = await evaluate<Edges>(cdp, "__chat.edges()");
+  return { during, held, released };
+}
+
+/** Every row in view, its text and its quote end where they did at rest, on every frame of the drag and after the release. */
+function expectFollowed(rest: Edges, result: { during: Edges[]; held: Edges; released: Edges }, what: string): void {
+  const expected = restGaps(rest, `${what} at rest`);
+  let worst = { px: 0, kind: "", frame: -1 };
+  result.during.forEach((edges, frame) => {
+    for (const kind of ["rows", "bodies", "quotes"] as const) {
+      for (const gap of edges[kind]) {
+        const px = Math.abs(gap - expected[kind]);
+        if (px > worst.px) worst = { px: Math.round(px * 100) / 100, kind, frame };
+      }
+    }
+  });
+  if (worst.px > 0.5) fail(`${what}: the ${worst.kind} in view fell ${worst.px} px behind the pane's edge (frame ${worst.frame} of ${result.during.length})`);
+  const jump = Math.max(...(["rows", "bodies", "quotes"] as const).flatMap((kind) => [...result.held[kind], ...result.released[kind]].map((gap) => Math.abs(gap - expected[kind]))));
+  if (jump > 0.5) fail(`${what}: the rows in view moved ${Math.round(jump * 100) / 100} px when the pointer let go`, { held: result.held, released: result.released });
+}
+
+const dividerPoint = (cdp: Cdp) => evaluate<Point | null>(cdp, `(() => { const d = document.querySelector('[data-gloom-role=dock-divider]')?.getBoundingClientRect(); return d ? { x: d.x + d.width / 2, y: 300 } : null; })()`);
+const gripPoint = (cdp: Cdp) => evaluate<Point | null>(cdp, `(() => { const g = document.querySelector('[data-gloom-pane-id="chat:a"] [data-gloom-role=resize-handle]')?.getBoundingClientRect(); return g ? { x: g.x + g.width / 2, y: g.y + g.height / 2 } : null; })()`);
 
 const OPENED_ON = "m60";
 
@@ -750,6 +835,69 @@ export const chatSteps: ChatStep[] = [
       const offset = await evaluate<number | null>(cdp, `__chat.offsetOf(${JSON.stringify(before.id)})`);
       if (offset === null) fail("narrowing the pane took the message the reader was on out of the list", { before });
       expectPlace(before, { id: before.id, offset }, "narrowing the pane");
+    },
+  },
+  {
+    name: "chat resize: messages, reply quotes and wrapped text follow a divider drag to the pixel, and stay put when it lets go",
+    scenario: "chat&replies=1",
+    async run(cdp) {
+      await ready(cdp);
+      const rest = await evaluate<Edges>(cdp, "__chat.edges()");
+      const divider = await dividerPoint(cdp) ?? fail("no divider");
+      // In and back out, ending between cells rather than where it started.
+      const result = await resizeChat(cdp, divider, (t) => ({ x: divider.x - Math.sin(t * Math.PI * 0.8) * 230, y: divider.y }));
+      expectFollowed(rest, result, "a divider drag");
+      if (result.released.fromBottom > 4) fail("the list left the bottom", result.released);
+    },
+  },
+  {
+    name: "chat resize: messages, reply quotes and wrapped text follow a floating pane's corner to the pixel, and stay put when it lets go",
+    scenario: "chat&replies=1&float=1",
+    async run(cdp) {
+      await ready(cdp);
+      const rest = await evaluate<Edges>(cdp, "__chat.edges()");
+      const grip = await gripPoint(cdp) ?? fail("no resize grip");
+      const result = await resizeChat(cdp, grip, (t) => ({ x: grip.x - 181 * t, y: grip.y - 66 * t }));
+      expectFollowed(rest, result, "a corner drag");
+      if (result.released.fromBottom > 4) fail("the list left the bottom", result.released);
+    },
+  },
+  {
+    name: "chat resize: a reader who scrolled back stays on the message they are reading through a drag and its release",
+    scenario: "chat&count=300&loaded=300&replies=1",
+    async run(cdp) {
+      await ready(cdp);
+      await evaluate(cdp, `(() => { const s = __chat.scroller(); s.scrollTop = Math.round((s.scrollHeight - s.clientHeight) / 2); })()`);
+      await frames(cdp, 6);
+      const before = await anchor(cdp);
+      const divider = await dividerPoint(cdp) ?? fail("no divider");
+      await mouse(cdp, "mouseMoved", divider.x, divider.y, false);
+      await mouse(cdp, "mousePressed", divider.x, divider.y, true);
+      for (let move = 1; move <= 30; move += 1) {
+        await mouse(cdp, "mouseMoved", divider.x - move * 6, divider.y, true);
+        await frames(cdp);
+        if (move % 10 === 0) expectPlace(before, await anchor(cdp), `step ${move} of the drag`);
+      }
+      await mouse(cdp, "mouseReleased", divider.x - 180, divider.y, false);
+      await frames(cdp, 8);
+      await pause(cdp, 250);
+      expectPlace(before, await anchor(cdp), "the release");
+    },
+  },
+  {
+    name: "chat resize: over 500 loaded messages, every row in view follows a drag, every row takes the new width on release, and the list keeps its bottom",
+    scenario: "chat&count=500&loaded=500&replies=1",
+    async run(cdp) {
+      await ready(cdp);
+      const rest = await evaluate<Edges>(cdp, "__chat.edges()");
+      if (await evaluate<number>(cdp, "__chat.rows().length") < 500) fail("the list did not load 500 messages");
+      const divider = await dividerPoint(cdp) ?? fail("no divider");
+      const result = await resizeChat(cdp, divider, (t) => ({ x: divider.x - Math.sin(t * Math.PI * 0.8) * 230, y: divider.y }));
+      expectFollowed(rest, result, "a divider drag over 500 messages");
+      const behind = result.during.map((edges) => edges.fromBottom).filter((px) => px > 4);
+      if (behind.length > 0) fail("the list left the bottom during the drag", behind);
+      if (result.released.widths.length !== 1) fail("rows out of view kept another width after the release", result.released.widths);
+      if (result.released.fromBottom > 4) fail("the list left the bottom", result.released);
     },
   },
   {

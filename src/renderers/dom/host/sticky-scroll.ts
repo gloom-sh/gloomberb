@@ -1,4 +1,5 @@
 import { STICKY_BOTTOM_THRESHOLD_PX } from "../../../ui/sticky-scroll";
+import { attachResizeRows } from "./resize-rows";
 
 /** A shift under this, in px, is rounding in the layout, not content moving. */
 const ANCHOR_TOLERANCE_PX = 0.5;
@@ -42,6 +43,7 @@ export function attachStickyScroll(
   let anchor: Anchor | null = null;
   let knownTop = element.scrollTop;
   const observed = new Set<Element>();
+  const rows = attachResizeRows(element);
 
   const maxScrollTop = () => Math.max(0, element.scrollHeight - element.clientHeight);
   const atBottom = () => maxScrollTop() - element.scrollTop <= STICKY_BOTTOM_THRESHOLD_PX;
@@ -60,7 +62,8 @@ export function attachStickyScroll(
   const readPosition = () => {
     knownTop = element.scrollTop;
     const nowPinned = atBottom();
-    anchor = pickAnchor();
+    // A pinned list keeps its bottom, not a row.
+    anchor = nowPinned ? null : pickAnchor();
     if (nowPinned === pinned) return;
     pinned = nowPinned;
     onPinChange?.(pinned);
@@ -83,7 +86,20 @@ export function attachStickyScroll(
     readPosition();
   };
 
-  const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(settle);
+  // A change of width alone moves nothing: a row that wraps differently changes height too.
+  const heights = new WeakMap<Element, number>();
+  const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver((entries) => {
+    let changed = false;
+    for (const entry of entries) {
+      const height = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+      if (heights.get(entry.target) === height) continue;
+      heights.set(entry.target, height);
+      changed = true;
+    }
+    if (!changed) return;
+    settle();
+    rows.update();
+  });
   const observeChildren = () => {
     if (!resizeObserver) return;
     const current = new Set<Element>(Array.from(element.children));
@@ -109,7 +125,9 @@ export function attachStickyScroll(
   // The browser also reports a scroll when only the scrollport changed size
   // (the position stayed, the bottom moved): that is not the reader leaving it.
   const onScroll = () => {
-    if (element.scrollTop !== knownTop) readPosition();
+    if (element.scrollTop === knownTop) return;
+    readPosition();
+    rows.update();
   };
   element.addEventListener("scroll", onScroll, { passive: true });
   // Opens at the bottom of what is already there, or wherever it was left.
@@ -119,6 +137,7 @@ export function attachStickyScroll(
   return {
     sync: readPosition,
     dispose() {
+      rows.dispose();
       element.removeEventListener("scroll", onScroll);
       resizeObserver?.disconnect();
       mutationObserver?.disconnect();

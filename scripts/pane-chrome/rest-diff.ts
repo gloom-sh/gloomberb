@@ -34,6 +34,7 @@ const LAYOUTS: Array<{ name: string; query: string }> = [
   { name: "floating chart under a toolbar", query: "scenario=resize&float=overlay" },
   { name: "floating chart under a table", query: "scenario=resize&float=under" },
   { name: "chart under a table beside a chart, docked", query: "scenario=stacked" },
+  { name: "chat beside a plain pane", query: "scenario=chat" },
 ];
 
 interface PaneRect { id: string; x: number; y: number; width: number; height: number }

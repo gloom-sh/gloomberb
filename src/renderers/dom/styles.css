@@ -185,6 +185,16 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* A list row out of view keeps its width until a live resize ends (resize-rows.ts).
+   Not inherited: setting it on a row does not restyle everything inside the row. */
+@property --gloom-resize-held-width {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+[data-gloom-resize-held] {
+  width: var(--gloom-resize-held-width) !important;
+}
 /* A row's hover band is painted from the chat's own state (data-hovered), not
    :hover, so it can be dropped when the list scrolls or fills under a pointer
    that did not move. Its actions show with it. */
