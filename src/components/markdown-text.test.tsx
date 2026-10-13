@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { act } from "react";
 import { createOpenTuiTestHarness } from "../renderers/opentui/test-utils";
-import { MarkdownText } from "./markdown-text";
+import { MarkdownText, markdownLinks } from "./markdown-text";
 
 const tui = createOpenTuiTestHarness();
 
@@ -128,6 +128,24 @@ describe("MarkdownText links", () => {
     const text = "See [the **keys**](/docs/layout-shortcuts) and | [x] stays.";
     expect(await render(text, 80)).toEqual(["See [the keys](/docs/layout-shortcuts) and | [x] stays."]);
     expect(await render(text, 80, () => {})).toEqual(["See the keys and | [x] stays."]);
+  });
+
+  test("a picture stays as written even for a reader that opens links", async () => {
+    const text = "![Chart](https://gloom.sh/chart.png) and [the docs](https://gloom.sh/docs).";
+    expect(await render(text, 80, () => {})).toEqual(["![Chart](https://gloom.sh/chart.png) and the docs."]);
+  });
+
+  test("lists the links a text reads, whole labels in reading order", () => {
+    expect(markdownLinks([
+      "- Read [the **keys**](/docs/keys), not `[code](/no)`, and ![a picture](/shot.png).",
+      "",
+      "| Name | Where |",
+      "|---|---|",
+      "| Diff | [Full diff](https://example.com/diff) |",
+    ].join("\n"))).toEqual([
+      { label: "the keys", href: "/docs/keys" },
+      { label: "Full diff", href: "https://example.com/diff" },
+    ]);
   });
 });
 

@@ -48,9 +48,10 @@ interface ParsedLine {
 }
 
 // A backslash escapes the punctuation markdown would read ("\\*" is a star), and
-// an italic span may hold a bold one ("*covers **96%** of value*").
+// an italic span may hold a bold one ("*covers **96%** of value*"). A bracket
+// after a bang is a picture, which stays as written.
 const INLINE_RE =
-  /(\\(?<escaped>[\\`*_~#>[\]()-])|\[(?<linkLabel>[^\]]+)\]\((?<linkHref>[^)\s]+)\)|\*\*(?<bold>[^*]+)\*\*|(?<!\*)\*(?!\*)(?<italic>(?:[^*]|\*\*[^*]+\*\*)+?)\*(?!\*)|`(?<code>[^`]+)`|~~(?<strike>[^~]+)~~)/g;
+  /(\\(?<escaped>[\\`*_~#>[\]()-])|(?<!!)\[(?<linkLabel>[^\]]+)\]\((?<linkHref>[^)\s]+)\)|\*\*(?<bold>[^*]+)\*\*|(?<!\*)\*(?!\*)(?<italic>(?:[^*]|\*\*[^*]+\*\*)+?)\*(?!\*)|`(?<code>[^`]+)`|~~(?<strike>[^~]+)~~)/g;
 
 function parseInlineMarkdown(text: string, links = false): StyledSegment[] {
   const segments: StyledSegment[] = [];
@@ -212,6 +213,28 @@ function parseMarkdownBlocks(text: string): MarkdownBlock[] {
     blocks.push({ kind: "line", text: line });
   }
   return blocks;
+}
+
+/**
+ * The links a text reads as, in reading order, for a reader's pane menu: the
+ * terminal cannot press part of a line.
+ */
+export function markdownLinks(text: string): Array<{ label: string; href: string }> {
+  const links: Array<{ label: string; href: string }> = [];
+  // A label with bold in it is several segments of one link.
+  const read = (segments: StyledSegment[]) => {
+    let previous: string | undefined;
+    for (const { text: part, link } of segments) {
+      if (link && link === previous) links[links.length - 1]!.label += part;
+      else if (link) links.push({ label: part, href: link });
+      previous = link;
+    }
+  };
+  for (const block of parseMarkdownBlocks(text)) {
+    if (block.kind === "line") read(parseLine(block.text, true).segments);
+    else for (const cell of [block.table.header, ...block.table.rows].flat()) read(parseInlineMarkdown(cell, true));
+  }
+  return links;
 }
 
 function segmentsWidth(segments: StyledSegment[]): number {

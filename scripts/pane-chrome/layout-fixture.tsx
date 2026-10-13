@@ -80,6 +80,8 @@ const RELEASE_BODY = [
   "## Also in this release",
   "",
   ...Array.from({ length: 8 }, (_, index) => `- ${SENTENCES[(index + 2) % SENTENCES.length]} (#${1720 + index})`),
+  "",
+  "[Full diff](https://example.invalid/compare/v0.9.8...v0.9.9)",
 ].join("\n");
 
 const RELEASES = Array.from({ length: 6 }, (_, index) => ({

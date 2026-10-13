@@ -1,4 +1,4 @@
-import { evaluate, frames, sleep, waitFor, type Cdp } from "./browser";
+import { click, evaluate, frames, sleep, waitFor, type Cdp } from "./browser";
 import { LAYOUT_MEASURE, layoutFailures, type LayoutMeasure } from "./layout-measure";
 
 /**
@@ -100,6 +100,25 @@ export const layoutSteps: LayoutStep[] = PANES.flatMap(({ id, label, opens }) =>
         const measure = await measureOpen(cdp, id, opens);
         if (measure.missing) fail(`no ${id} pane at ${size.width}x${size.height}`);
         for (const failure of layoutFailures(measure)) problems.push(`${size.width}x${size.height}: ${failure}`);
+        // The release's last line is a link, not the markdown it was written as (GLO-740).
+        if (id === "changelog") {
+          const read = await evaluate<{ links: string[]; raw: boolean }>(cdp, `(() => {
+            const detail = document.querySelector('[data-gloom-pane-id="changelog:layout"] [data-gloom-role=page-stack-detail]');
+            return { links: [...detail.querySelectorAll("[role=link]")].map((link) => link.textContent), raw: detail.innerText.includes("](") };
+          })()`);
+          if (read.links.join("|") !== "Full diff" || read.raw) problems.push(`${size.width}x${size.height}: the release's markdown link did not read as a link (${JSON.stringify(read)})`);
+          else {
+            const spot = await evaluate<{ x: number; y: number }>(cdp, `(() => {
+              const link = document.querySelector('[data-gloom-pane-id="changelog:layout"] [data-gloom-role=page-stack-detail] [role=link]');
+              link.scrollIntoView({ block: "center" });
+              const r = link.getBoundingClientRect();
+              return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+            })()`);
+            await click(cdp, spot);
+            const opened = await evaluate<string[]>(cdp, "window.__paneChrome.externalOpens");
+            if (opened.join("|") !== "https://example.invalid/compare/v0.9.8...v0.9.9") problems.push(`${size.width}x${size.height}: a click on the release's link opened ${JSON.stringify(opened)}`);
+          }
+        }
         // A value that fits the row's pixels shows whole: clipped in CSS where it ends, never cut at a count of columns.
         const cut = await evaluate<string[]>(cdp, `[...document.querySelectorAll('[data-gloom-pane-id="${id}:layout"] [data-gloom-ui=key-value-row]')].map((row) => row.innerText.trim()).filter((text) => /(\\.\\.\\.|\\u2026)$/.test(text))`);
         for (const text of cut) problems.push(`${size.width}x${size.height}: a label and value row cut its value at a column count ("${text.replace(/\s+/g, " ").slice(0, 60)}")`);

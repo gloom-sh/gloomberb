@@ -3,6 +3,7 @@ import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { usePaneInstance } from "../../../state/app/context";
 import {
   DataTableStackView,
+  PaneLinkMenu,
   PaneStatusBody,
   useExternalLinkFooter,
   type DataTableCell,
@@ -66,14 +67,16 @@ function ChangelogDetail({
 }) {
   // The stack title already carries the version.
   return (
-    <DetailReader
-      ref={scrollRef}
-      resetScrollKey={release.id}
-      width={width}
-      meta={[formatShortDate(release.publishedAt, { fallback: "" })]}
-      body={release.body}
-      bodyFormat="markdown"
-    />
+    <PaneLinkMenu>
+      <DetailReader
+        ref={scrollRef}
+        resetScrollKey={release.id}
+        width={width}
+        meta={[formatShortDate(release.publishedAt, { fallback: "" })]}
+        body={release.body}
+        bodyFormat="markdown"
+      />
+    </PaneLinkMenu>
   );
 }
 
