@@ -2,11 +2,14 @@ import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import { estimateRevisionsCache } from "./client";
 import { estimateRevisionsHeadless } from "./headless";
+import { estimateRevisionsLockNote } from "./lock-note";
 import { EstimateRevisionsPane } from "./pane";
 export const estimateRevisionsModule: PluginModule = {
   panes: [
     {
       id: "estimate-revisions",
+      reportLockNote: estimateRevisionsLockNote,
+      reportRequirements: ["Free Gloom sign-in"],
       name: "Estimate Revisions",
       icon: "E",
       component: EstimateRevisionsPane,

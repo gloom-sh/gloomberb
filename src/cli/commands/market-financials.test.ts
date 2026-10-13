@@ -78,7 +78,8 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
     ].map((row) => `${row}${FUNDAMENTALS_ROW}2026-10-09T13:57:00.000Z`),
     "",
   ]);
-  expect((await run("financials", [], "csv")).slice(0, -1)).toEqual([
+  const statements = await run("financials", [], "csv");
+  expect([...statements.slice(0, 8), ...statements.slice(-2)]).toEqual([
     `Date,Revenue,Gross,Op Inc,Net Inc,EPS,Cur,${IDENTITY}`,
     "2024-12-31,189471000000,,,45818000000,26.179,ZAR,SBK.JO,ZAR,annual,Gloom Cloud,2025-12-31",
     "2025-12-31,202080000000,,,51215000000,29.876,ZAR,SBK.JO,ZAR,annual,Gloom Cloud,2025-12-31",
@@ -87,7 +88,11 @@ test("valuation --csv is one clean table; financials --csv writes raw amounts un
     "# Publisher: not published",
     "# Observation date: 2025-12-31",
     "# Publication time: not published",
+    // The years served are the ones it says it has: this report holds two, from 2024, and the line takes the year from them.
+    "# note: annual history from 2024; older years not served",
+    "# note: earlier years, one metric at a time: gloomberb fn GF SBK.JO --period annual --periods 40",
   ]);
+  expect(statements.at(-3)).toStartWith("# Retrieval time: ");
   // NDJSON writes the statement rows flat, each ending with the same five fields.
   expect((await run("financials", [], "ndjson"))[0]).toBe(
     "{\"date\":\"2024-12-31\",\"revenue\":189471000000,\"grossProfit\":null,\"operatingIncome\":null,\"netIncome\":45818000000,\"eps\":26.179,\"currency\":\"ZAR\","

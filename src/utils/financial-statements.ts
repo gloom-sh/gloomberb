@@ -3,6 +3,31 @@ import { copyIncomeField, incomeFieldOwner, INCOME_STATEMENT_FIELDS, isIncomeSta
 import { mergeStatementGaps } from "./statement-gaps";
 
 export const FINANCIAL_VINTAGE_NOTICE = "Latest available statements may include restatements. Historical as-of values are not reconstructed.";
+
+/**
+ * The closing lines of a statements report that say how far back it goes, from
+ * the oldest period it served: the report holds no older ones, and `GF` reads
+ * one metric over more periods, as far as its own history reaches. Empty when
+ * no period has a date, so a report with nothing in it says nothing.
+ */
+export function statementHistoryNotes(
+  period: "annual" | "quarterly",
+  dates: readonly string[],
+  symbol: string,
+): string[] {
+  const oldest = dates.filter((date) => /^\d{4}-\d{2}-\d{2}/.test(date)).map((date) => date.slice(0, 10)).sort()[0];
+  if (!oldest) return [];
+  return period === "annual"
+    ? [
+      `annual history from ${oldest.slice(0, 4)}; older years not served`,
+      `earlier years, one metric at a time: gloomberb fn GF ${symbol} --period annual --periods 40`,
+    ]
+    : [
+      `quarterly history from ${oldest}; older quarters not served`,
+      `earlier quarters, one metric at a time: gloomberb fn GF ${symbol} --period quarterly --periods 40`,
+    ];
+}
+
 export const SEC_EPS_BASIS_NOTICE = "SEC EPS uses corroborated split-adjusted share bases. Unverified bases are unavailable.";
 
 const STATEMENT_METADATA_KEYS = new Set(["date", "dateSource", "providerDate", "dateEvidence", "currency", "availableAt", "fieldAvailability", "epsBasis", "fieldSources", "unavailableFields", "withdrawnObservations", "operatingResult", "operatingResultAggregation", "earningsResult", "unavailableEarnings"]);

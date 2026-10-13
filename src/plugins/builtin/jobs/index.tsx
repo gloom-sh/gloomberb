@@ -3,6 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import { JOBS_SERIES } from "./series";
 import { resetJobsCache } from "./client";
 import { jobsHeadless } from "./headless";
+import { jobsLockNote } from "./lock-note";
 import { JOBS_PANE_ID, JobsPane, JobsResearchTab } from "./pane";
 
 
@@ -33,6 +34,7 @@ export const jobsModule: PluginModule = {
   panes: [
     {
       id: JOBS_PANE_ID,
+      reportLockNote: jobsLockNote,
       name: "Hiring",
       icon: "J",
       component: JobsPane,

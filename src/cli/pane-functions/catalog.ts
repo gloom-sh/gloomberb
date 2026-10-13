@@ -115,6 +115,43 @@ export function buildPaneFunctionLookup(registry: PaneFunctionCatalog): Map<stri
   return lookup;
 }
 
+/** What a function takes after its code, as the catalog writes it: `<ticker>`, `<fund, ticker, or CIK>`, or nothing. */
+function argumentHint({ argKind, argPlaceholder }: Pick<PaneCatalogEntry, "argKind" | "argPlaceholder">): string {
+  if (argPlaceholder) return `<${argPlaceholder}>`;
+  return argKind && argKind !== "none" ? `<${argKind}>` : "";
+}
+
+/** A command-line token that is the code or an alias of a function, with what the function takes. */
+export interface FunctionCode {
+  argument: string;
+}
+
+/**
+ * Whether `token` is the code or an alias of a function (`OVDV`, `EEO`), in any
+ * case: the function `fn` opens for it, not one it merely matches by a keyword
+ * or a label.
+ */
+export function findFunctionCode(registry: PaneFunctionCatalog, token: string): FunctionCode | null {
+  const wanted = normalizeLookupToken(token);
+  const found = wanted ? buildPaneFunctionLookup(registry).get(wanted) : undefined;
+  if (!found || !("paneId" in found && "description" in found)) return null;
+  const pane = registry.panes.get(found.paneId);
+  const headless = pane ? getHeadlessPaneDefinition(found, pane) : undefined;
+  const codes = [
+    found.shortcut?.prefix,
+    ...(found.shortcut?.aliases ?? []),
+    headless?.discovery?.id,
+    ...(headless?.discovery?.aliases ?? []),
+  ];
+  if (!codes.some((code) => code && normalizeLookupToken(code) === wanted)) return null;
+  return {
+    argument: argumentHint({
+      argKind: headless?.argument.kind ?? found.shortcut?.argKind,
+      argPlaceholder: headless?.argument.placeholder ?? found.shortcut?.argPlaceholder,
+    }),
+  };
+}
+
 function sampleArgForTemplate(template: PaneTemplateDef): string {
   switch (template.shortcut?.argKind) {
     case "ticker":
@@ -438,11 +475,6 @@ function readinessCell(readiness: PaneFunctionReadiness): string {
   return cliStyles.muted(label);
 }
 
-function catalogArgument(entry: PaneCatalogEntry): string {
-  if (entry.argPlaceholder) return `<${entry.argPlaceholder}>`;
-  return entry.argKind && entry.argKind !== "none" ? `<${entry.argKind}>` : "";
-}
-
 // Choices longer than this move from the flag into its description, where they can wrap.
 const MAX_INLINE_CHOICES = 24;
 
@@ -473,7 +505,7 @@ export function limitationSentence(text: string): string {
 function renderCatalogEntry(entry: PaneCatalogEntry): string {
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
   const capability = entry.capability;
-  const argument = catalogArgument(entry);
+  const argument = argumentHint(entry);
   const invocation = `${entry.token}${argument ? ` ${argument}` : ""}`;
   const lines = [
     `${cliStyles.accent(entry.token)}  ${cliStyles.bold(entry.label)}`,
@@ -586,7 +618,7 @@ export function renderPaneCatalogReport(
       shown.map((entry) => [
         cliStyles.command(entry.token),
         entry.label,
-        catalogArgument(entry),
+        argumentHint(entry),
         readinessCell(entry.capability.reportReadiness),
         entry.description,
       ]),

@@ -106,6 +106,18 @@ export interface PanePortableShareDef {
   prepare?(pane: PaneInstanceConfig, context: { tickers: ReadonlyMap<string, TickerRecord> }): PaneInstanceConfig;
 }
 
+/** What covers a pane when a report of it is refused: see `PaneDef.reportLockNote`. */
+export interface PaneLock {
+  /** Sign-in is the wall of a session that is missing or unverified; pro the one of a plan without access. */
+  gate: "sign-in" | "pro";
+  /** The first symbol the report was asked for, or null. */
+  symbol: string | null;
+  /** The function code the report was run for, for a pane that serves several (EM and GUID). */
+  token?: string;
+  /** The session is signed in and its email is not verified yet. */
+  verifyEmail?: boolean;
+}
+
 export interface PaneDef {
   id: string;
   name: string;
@@ -164,7 +176,7 @@ export interface PaneDef {
    * the report prints the wall's own words, or the refusal. Either way it cites
    * no source, since nothing was read.
    */
-  reportLockNote?(lock: { gate: "sign-in" | "pro"; symbol: string | null }): string;
+  reportLockNote?(lock: PaneLock): string;
   /**
    * What a rendered-view report needs before it shows anything, such as a
    * sign-in: `gloomberb catalog` lists it under Requires, as it does a

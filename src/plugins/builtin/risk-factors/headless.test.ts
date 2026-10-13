@@ -119,7 +119,7 @@ test("empty discovery does not fabricate the current annual report and invalid y
 test("a RISK read the server refuses behind a wall reports what is locked and the free route, with no source, and `locked` in JSON", async () => {
   for (const [status, message, gate, who] of [
     [401, "Unauthorized", "sign-in", "Signed out"],
-    [403, "Email verification required", "sign-in", "Signed out"],
+    [403, "Email verification required", "sign-in", "Until the email is verified"],
     [402, "Pro plan required", "pro", "On a free account"],
   ] as const) {
     transport(() => new Response(message, { status }));

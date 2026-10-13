@@ -37,7 +37,7 @@ import { createSystemCliCommands } from "./commands/system";
 import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
-import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import { functionCodeCommand, runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
 import { catalogFredSeriesIds } from "./series-search";
 
 const { width: SHOT_WIDTH, height: SHOT_HEIGHT } = SHOT_SIZE_LIMITS;
@@ -60,11 +60,11 @@ function createCoreCliCommands(
         usage: ["help [command]", "<command> --help"],
         examples: ["help", "help quote", "quote --help"],
       },
-      execute: (args, ctx) => {
+      execute: async (args, ctx) => {
         const topic = args[0];
         if (topic) {
           const command = lookupCommand(topic);
-          if (!command) failUnknownCommand(topic, allCommands());
+          if (!command) failUnknownCommand(topic, allCommands(), await functionCodeCommand(ctx, topic, []));
           printCommandHelp(command, ctx);
           return;
         }
@@ -306,7 +306,9 @@ function printCommandHelp(command: CliCommandDef, ctx: CliCommandContext): void 
   ctx.printResult({ data: { ...describeCliCommand(command), sections: command.help?.sections ?? [] } });
 }
 
-function failUnknownCommand(token: string, commands: CliCommandDef[]): never {
+/** `function` is what the word is when it is a function's code, and the command that runs it. */
+function failUnknownCommand(token: string, commands: CliCommandDef[], fn: { code: string; command: string } | null = null): never {
+  if (fn) fail(`${fn.code} is a function: ${fn.command}`);
   const suggestion = suggestCliCommand(
     normalizeCliCommandToken(token),
     commands.flatMap((command) => [command.name, ...(command.aliases ?? [])]),
@@ -397,14 +399,20 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
 /** Explains why dispatch found no command in `args`, suggesting the closest one. */
 export async function failUnknownCliCommand(args: string[], options: DispatchCliOptions = {}): Promise<never> {
   let token = args[0] ?? "";
+  let parsed: ReturnType<typeof parseCliGlobalArgs> | null = null;
   try {
     // Global flags may come first, so name the token dispatch actually looked up.
-    token = parseCliGlobalArgs(args).args[0] ?? token;
+    parsed = parseCliGlobalArgs(args);
+    token = parsed.args[0] ?? token;
   } catch {
     // dispatchCli already reported flags that do not parse.
   }
   const registry = await createRegistry(options);
-  return failUnknownCommand(token, listedCommands(registry).map((entry) => entry.command));
+  // A function's code typed as a command is pointed at `fn`, with the arguments the reader gave.
+  const fn = token && parsed
+    ? await functionCodeCommand(createCliCommandContext("core", registry, parsed.options, parsed.args.slice(1)), token, parsed.args.slice(1))
+    : null;
+  return failUnknownCommand(token, listedCommands(registry).map((entry) => entry.command), fn);
 }
 
 export async function runCli(args: string[], options: DispatchCliOptions = {}): Promise<boolean> {

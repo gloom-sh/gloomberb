@@ -5,7 +5,8 @@ import type { MarketContext } from "../types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { collectShotSymbols } from "./data";
-import { lockNoteLines, lockNoteReason } from "./lock-note";
+import { lockNoteLines } from "./lock-note";
+import { lockNoteReason } from "../../plugins/builtin/shared/pro-lock-note";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
@@ -21,13 +22,18 @@ const DOM_EVERY_ROW =
 /** The sign-in wall's buttons, which a rendered view reads as words: `Log in ↵ Sign up free`. */
 const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Email)(?:\s*\u21B5)?(?=\s|$)/g;
 
+/** Whether the wall asks for the account's email to be verified, not for a sign-in. */
+function asksToVerifyEmail(visibleText: string): boolean {
+  return /\bVerify your email\b/i.test(visibleText);
+}
+
 /**
  * A pane behind the sign-in wall, as a report reads it: the wall's headline
  * without its buttons, and what it needs in place of them.
  */
 function signInWallText(visibleText: string): string {
   const headline = visibleText.replace(SIGN_IN_WALL_BUTTONS, "").trim();
-  const needs = /\bVerify your email\b/i.test(visibleText)
+  const needs = asksToVerifyEmail(visibleText)
     ? "Requires a verified email on your Gloom account; resend the verification email in the app."
     : "Requires a free Gloom sign-in: log in or sign up in the app.";
   return headline ? `${headline} ${needs}` : needs;
@@ -194,7 +200,14 @@ export function buildDomPaneReportFromRender(
   // A wall in place of the whole pane: nothing was read, so the report says
   // what is locked and how to reach it, and cites no source.
   const gate = !hasStructuredRows ? result.render.accessGate ?? null : null;
-  const lockNote = gate ? resolved.pane.reportLockNote?.({ gate, symbol: result.symbols[0] ?? null }) ?? null : null;
+  const lockNote = gate
+    ? resolved.pane.reportLockNote?.({
+      gate,
+      symbol: result.symbols[0] ?? null,
+      token: resolved.token,
+      ...gate === "sign-in" && asksToVerifyEmail(result.render.visibleText ?? "") ? { verifyEmail: true } : {},
+    }) ?? null
+    : null;
   const locked = gate === "sign-in" || lockNote ? gate : null;
   const lockReason = lockNote ? lockNoteReason(lockNote) : null;
   if (hasStructuredRows) {

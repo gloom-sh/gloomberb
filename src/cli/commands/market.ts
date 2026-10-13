@@ -31,6 +31,7 @@ import {
   formatPriceRange,
 } from "../helpers";
 import { cliStyles, colorBySign, renderSection, renderStats } from "../../utils/cli-output";
+import { statementHistoryNotes } from "../../utils/financial-statements";
 import { formatPerShareNumber } from "../../utils/reported-money";
 import {
   analystTargetCurrency,
@@ -950,11 +951,13 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     const freshness = rowsFreshness(rows, {
       ...REPORTED_DATA, basis: "financial statements", observedKey: "date", oldest: null,
     });
+    // The rows are the annual years served; older ones are not, and the closing lines say so.
+    const historyNotes = statementHistoryNotes("annual", rows.map((row) => row.date), listing.key);
     // NDJSON keeps the raw statement rows it always wrote; CSV gets the table and its closing lines.
     const tables = tabular
       ? selectTables({
         tables: [exportRowsTable("Annual statements", STATEMENT_COLUMNS, rows)],
-        footer: reportFooterLines({ freshness }),
+        footer: reportFooterLines({ freshness, notes: historyNotes }),
       })
       : undefined;
     ctx.printResult({
@@ -966,6 +969,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         quarterlyStatements: financials.quarterlyStatements.length,
         fundamentals: exportedFundamentals(financials.fundamentals),
         profile: financials.profile,
+        ...(historyNotes.length > 0 ? { notes: historyNotes } : {}),
       },
       freshness,
       ...(choice.length > 0 ? { warnings: choice } : {}),
@@ -973,6 +977,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       heading: listingHeading(identity),
       rows: () => rows,
       columns: STATEMENT_COLUMNS,
+      ...(historyNotes.length > 0 ? { footnote: historyNotes.join("\n"), exportNotes: historyNotes } : {}),
       ...(tables && ctx.cliOptions.format === "csv" ? { tables } : {}),
       // Annual statements in the company's reporting currency.
       exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: rows.find((row) => row.currency)?.currency ?? null, interval: "annual" },

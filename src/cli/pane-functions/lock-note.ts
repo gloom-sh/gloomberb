@@ -1,7 +1,7 @@
-import { ApiRequestError } from "../../api-client/errors";
+import { refusedLock } from "../../plugins/builtin/shared/cloud-denied";
+import { lockNoteReason } from "../../plugins/builtin/shared/pro-lock-note";
 import { cliTerminalWidth, wrapText } from "../../utils/cli-output";
 import { reportFooterLines } from "../report-tables";
-import type { PaneAccessGate } from "./access-gate";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 
@@ -16,26 +16,13 @@ export function lockNoteLines(note: string): string[] {
   return wrapText(note, Math.min(cliTerminalWidth() ?? LOCK_NOTE_WIDTH, LOCK_NOTE_WIDTH));
 }
 
-/** JSON and CSV say why a locked report is empty in the note's words, on one line. */
-export function lockNoteReason(note: string): string {
-  return note.replace(/\s*\n\s*/g, " ");
-}
-
-/**
- * The wall a refused read stands for, as the pane's own wall puts it up: no
- * session or an unverified email is the sign-in wall, a plan without access
- * the Pro wall.
- */
-function refusalGate(error: unknown): PaneAccessGate | null {
-  const status = error instanceof ApiRequestError ? error.status : undefined;
-  return status === 401 || status === 403 ? "sign-in" : status === 402 ? "pro" : null;
-}
-
 /**
  * What a headless report prints when the server refused its read behind a
  * wall, as the rendered view of the same pane prints that wall: the pane's
- * `reportLockNote`, no source line and `locked` in JSON. Null when the error
- * is no such refusal or the pane has no note, and the error stands.
+ * `reportLockNote`, no source line and `locked` in JSON. The refusal may be
+ * the error itself or the cause of the one a headless read wrote for it
+ * (`explainRefusal`). Null when the error is no such refusal or the pane has
+ * no note, and the error stands.
  */
 export function lockedHeadlessReport(
   resolved: ResolvedPaneFunction,
@@ -43,10 +30,11 @@ export function lockedHeadlessReport(
   /** The symbols the report was asked for, read once the error is known to be a refusal. */
   symbolsOf: () => string[],
 ): PaneFunctionReport | null {
-  const gate = refusalGate(error);
-  if (!gate || !resolved.pane.reportLockNote) return null;
+  const refused = refusedLock(error);
+  if (!refused || !resolved.pane.reportLockNote) return null;
+  const gate = refused.gate;
   const symbols = symbolsOf();
-  const note = resolved.pane.reportLockNote({ gate, symbol: symbols[0] ?? null });
+  const note = resolved.pane.reportLockNote({ ...refused, symbol: symbols[0] ?? null, token: resolved.token });
   const reason = lockNoteReason(note);
   return {
     data: {

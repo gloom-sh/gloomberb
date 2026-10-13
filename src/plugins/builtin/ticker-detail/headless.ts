@@ -1,4 +1,4 @@
-import { FINANCIAL_VINTAGE_NOTICE } from "../../../utils/financial-statements";
+import { FINANCIAL_VINTAGE_NOTICE, statementHistoryNotes } from "../../../utils/financial-statements";
 import { hasValidQuoteObservationTime } from "../../../market-data/quotes/freshness";
 import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, type ExtendedSession } from "../../../market-data/market/status";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
@@ -107,6 +107,8 @@ export const financialStatementsHeadless: HeadlessPaneDefinition<"rows"> = {
     return {
       rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
       ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${requestedPeriod} financial statement coverage.`] } : {}),
+      // The report closes with how far back its periods go, and how to read further.
+      notes: statementHistoryNotes(requestedPeriod, dates.map(({ date }) => date), symbol),
       metadata: {
         symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null, unit: table?.unit ?? null, quoteCurrency: financials.quote?.currency ?? null,
         statement: table?.subTab.key ?? options.statement, statementLabel: table?.subTab.name ?? null,
@@ -177,6 +179,7 @@ async function loadRatioReport(
     rows, columns, unavailableSymbols: rows.length ? [] : [symbol],
     ...(!hasRequestedStatements ? { errors: [`${symbol}: No ${period} financial statement coverage.`] } : {}),
     ...(tab.key === "valuation" && hasRequestedStatements && !history?.length ? { complete: false } : {}),
+    notes: statementHistoryNotes(period, dates.map(({ date }) => date), symbol),
     metadata: {
       symbol, name: financials.quote?.name ?? symbol, currency: statementCurrency ?? null,
       quoteCurrency: financials.quote?.currency ?? null,

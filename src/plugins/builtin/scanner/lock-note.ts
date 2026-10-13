@@ -1,0 +1,17 @@
+import type { PaneLock } from "../../../types/plugin";
+import { proLockNote } from "../shared/pro-lock-note";
+
+/**
+ * FLOW is Pro whole: the one scanner with no delayed tier to fall back to.
+ * The options chain needs no account and lists each contract's day volume and
+ * open interest, the raw counts behind a sweep or a block, without the prints.
+ */
+export function flowLockNote(lock: PaneLock): string {
+  return proLockNote(lock, {
+    token: "FLOW",
+    argument: "none",
+    does: "it streams real-time sweeps, blocks and large premium prints across US options exchanges",
+    shows: "it",
+    free: (ticker, company) => `gloomberb options ${ticker} lists ${company}'s option chain, each contract with its volume and open interest.`,
+  });
+}

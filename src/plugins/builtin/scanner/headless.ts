@@ -1,3 +1,4 @@
+import { ApiRequestError } from "../../../api-client/errors";
 import type {
   ScannerFeedEvent,
   ScannerFlowPayload,
@@ -18,6 +19,8 @@ import {
   filterFlowEvents,
   type FlowFilters,
 } from "./flow-model";
+import { explainRefusal } from "../shared/cloud-denied";
+import { flowLockNote } from "./lock-note";
 import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
 
 type ScannerName = "hilo" | "flow";
@@ -66,7 +69,10 @@ function loadScannerSnapshot<T extends ScannerPayload>(
     signal.addEventListener("abort", onAbort, { once: true });
     unsubscribe = client.subscribeScanner(scanner, (event: ScannerFeedEvent) => {
       if (event.type === "denied") {
-        finish(() => reject(new Error(event.reason === "pro_required" ? "Pro access required" : "Sign in required")));
+        // The refusal a read gets from the server: 402 for a plan without access, 401 for no session.
+        finish(() => reject(event.reason === "pro_required"
+          ? new ApiRequestError("Pro access required", 402)
+          : new ApiRequestError("Sign in required", 401)));
         return;
       }
       const payload = event.payload as T;
@@ -277,7 +283,8 @@ function createFlowHeadless(
     ],
     describe: "Options Flow",
     async load(args, ctx) {
-      const payload = await dependencies.load(args, ctx.apiClient, ctx.signal);
+      const payload = await dependencies.load(args, ctx.apiClient, ctx.signal)
+        .catch((error: unknown) => { throw explainRefusal(error, flowLockNote, { symbol: null }); });
       return projectFlowSnapshot(payload, {
         ...DEFAULT_FLOW_FILTERS,
         ...(args.options as Partial<FlowFilters>),

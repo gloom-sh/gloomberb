@@ -248,7 +248,7 @@ export async function fetchEstimates(
     );
   } catch (error) {
     // The route answers a missing or unverified session with a bare 401/403; the pane's sign-in wall keys on the shared gate.
-    if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED);
+    if (isAccessDenied(error)) throw new Error(CLOUD_SESSION_REQUIRED, { cause: error });
     throw unavailableOnServer(error, "Estimate revisions are not available yet.");
   }
 }

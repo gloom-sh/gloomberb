@@ -5,6 +5,7 @@ import { withMarketData } from "../context";
 import { cliStyles, renderStats, type CliStatEntry } from "../../utils/cli-output";
 import {
   filterPaneCatalogEntries,
+  findFunctionCode,
   renderPaneCatalogReport,
   selectPaneCatalogMatches,
   type PaneFunctionCatalog,
@@ -61,6 +62,44 @@ async function withPaneRuntime<T>(
       registry.destroy();
     }
   });
+}
+
+/** A word that can be a function code: letters and digits, with the dots and dashes some codes carry. */
+const FUNCTION_CODE_WORD = /^[\w.$-]{1,24}$/;
+
+/** An argument as a shell reads it back: bare when it is one word, in quotes when it is not. */
+function commandWord(argument: string): string {
+  return /^[\w.:,=%+@/-]+$/.test(argument) ? argument : JSON.stringify(argument);
+}
+
+/**
+ * What to run when a command name is a function's code (`gloomberb OVDV KO`,
+ * `gloomberb help OVDV`): `fn` with the reader's own arguments, or the
+ * function's argument hint when they gave none. Null when the word is no
+ * function code or the catalog cannot be read, and the command stays unknown.
+ */
+export async function functionCodeCommand(
+  ctx: CliCommandContext,
+  token: string,
+  args: readonly string[],
+): Promise<{ code: string; command: string } | null> {
+  const word = token.trim();
+  if (!FUNCTION_CODE_WORD.test(word)) return null;
+  try {
+    const found = await withMarketData(ctx, async (market) => {
+      const registry = await createPaneCatalog(market, ctx.plugins);
+      try {
+        return findFunctionCode(registry, word);
+      } finally {
+        registry.destroy();
+      }
+    });
+    if (!found) return null;
+    const code = word.replace(/^\$/, "").toUpperCase();
+    return { code, command: ["gloomberb fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
+  } catch {
+    return null;
+  }
 }
 
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {

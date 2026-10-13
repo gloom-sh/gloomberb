@@ -260,16 +260,18 @@ test("pending discovery is not reported as a complete empty export", async () =>
   expect(result.metadata).toMatchObject({ total: 0, pending: true, totalIsExact: false, sourceLimitReached: false });
 });
 
-test("a refused account reads as the pane's walls, for the list and for a transcript: sign in, verify, then what Pro adds", async () => {
+test("a refused account reads as CALLS's lock note on one line, for the list and for a transcript, with the refusal as its cause", async () => {
   const refused = (status: number) => Promise.reject(new ApiRequestError(status === 401 ? "Unauthorized" : "Refused", status));
   const load = (status: number, args: HeadlessPaneLoadArgs, transcriptOnly = false) => createEarningsCallsHeadless({
     ...dependencies(),
     ...(transcriptOnly ? { loadTranscript: () => refused(status) } : { loadCalls: () => refused(status) }),
   }).load(args, context);
-  await expect(load(401, callArgs({}))).rejects.toThrow(/^CALLS needs sign-in .*Gloom Cloud Pro/);
-  await expect(load(403, transcriptArgs({}))).rejects.toThrow(/^CALLS needs a verified email/);
-  await expect(load(402, callArgs({}))).rejects.toThrow("Free shows no earnings calls. Gloom Pro adds every call");
-  await expect(load(402, transcriptArgs({ section: "qa" }), true)).rejects.toThrow("Free shows no earnings calls.");
+  await expect(load(401, callArgs({}))).rejects.toThrow(/^CALLS is part of Gloom Cloud Pro: .* Signed out it shows none of it\. Free, with no sign-in: gloomberb events <ticker> .*log in or sign up .*then upgrade.*; gloomberb fn CALLS then reads/);
+  await expect(load(403, transcriptArgs({}))).rejects.toThrow(/Until the email is verified it shows none of it\..*verify your email \(Ctrl\+P, Resend Verification Email\)/);
+  await expect(load(402, callArgs({}))).rejects.toThrow(/On a free account it shows none of it\..*upgrade in the app/);
+  await expect(load(402, transcriptArgs({ section: "qa" }), true)).rejects.toThrow(/^CALLS is part of Gloom Cloud Pro: /);
+  const failure = await Promise.resolve(load(401, callArgs({}))).catch((error: unknown) => error);
+  expect((failure as Error).cause).toBeInstanceOf(ApiRequestError);
   // Anything else keeps its own message.
   await expect(load(500, callArgs({}))).rejects.toThrow("Refused");
 });

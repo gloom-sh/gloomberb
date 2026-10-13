@@ -2,6 +2,7 @@ import type { PluginModule } from "../plugin-module";
 import { attachEarningsCallsPersistence, resetEarningsCallsPersistence } from "./data";
 import { EarningsCallsPane, EARNINGS_CALLS_PANE_ID } from "./pane";
 import { earningsCallsHeadless } from "./headless";
+import { callsLockNote } from "./lock-note";
 
 
 const description =
@@ -32,6 +33,7 @@ export const earningsCallsModule: PluginModule = {
   panes: [
     {
       id: EARNINGS_CALLS_PANE_ID,
+      reportLockNote: callsLockNote,
       name: "Earnings Calls",
       icon: "C",
       component: EarningsCallsPane,
