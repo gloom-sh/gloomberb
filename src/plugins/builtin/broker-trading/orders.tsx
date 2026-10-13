@@ -139,7 +139,7 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
   usePaneRefreshKey(refresh, { focused, enabled: active && !!account });
 
   const snapshot = resource.data;
-  const rows = useMemo(() => {
+  const reconciledRows = useMemo(() => {
     let source = snapshot && snapshot.accountId === accountId && snapshot.brokerInstanceId === instance.id
       ? snapshot.orders.filter((order) => !contract || ticketOrderMatches(order, contract, instance.id, accountId)) : [];
     if (latestOrder && latestOrder.accountId === accountId && (!contract || ticketOrderMatches(latestOrder, contract, instance.id, accountId))) {
@@ -147,7 +147,6 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
       const existing = source.find((order) => brokerOrderKey(order) === key);
       if (!existing || existing.updatedAt <= latestOrder.updatedAt) source = [latestOrder, ...source.filter((order) => brokerOrderKey(order) !== key)];
     }
-    if (compact) source = source.filter((order) => !terminalStatuses.has(brokerOrderStatus(order.status)));
     const result = trading.result;
     if (!result || result.accountId !== accountId || contract && !ticketOrderMatches(result, contract, instance.id, accountId)) return source;
     const status = brokerOrderStatus(result.status);
@@ -156,8 +155,10 @@ export function BrokerOrdersView({ broker, instance, accounts, accountId, onAcco
     const key = brokerOrderKey(result);
     return source.some((order) => brokerOrderKey(order) === key)
       ? source.map((order) => brokerOrderKey(order) === key ? result : order) : pending ? [result, ...source] : source;
-  }, [snapshot, trading.result, accountId, instance.id, contract, compact, latestOrder]);
-  useEffect(() => { onOrders?.(rows); }, [rows, onOrders]);
+  }, [snapshot, trading.result, accountId, instance.id, contract, latestOrder]);
+  // Keep terminal acknowledgements in the projection even after hiding their rows.
+  const rows = useMemo(() => compact ? reconciledRows.filter((order) => !terminalStatuses.has(brokerOrderStatus(order.status))) : reconciledRows, [compact, reconciledRows]);
+  useEffect(() => { onOrders?.(reconciledRows); }, [reconciledRows, onOrders]);
   const selected = rows.find((order) => brokerOrderKey(order) === selectedKey) ?? rows[0];
   const capabilities = broker.getTradingCapabilities?.(instance, selected?.contract);
   const ownBusy = trading.phase === "cancelling" || trading.phase === "cancel-review";

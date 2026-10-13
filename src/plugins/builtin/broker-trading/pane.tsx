@@ -260,12 +260,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const mode = accounts.find((account) => account.accountId === accountId)?.tradingMode;
   useEffect(() => {
     const orders = openOrders.filter((order) => ticketOrderMatches(order, ticketContract, instance.id, accountId));
-    const result = state.result;
-    if (result && ticketOrderMatches(result, ticketContract, instance.id, accountId)) {
-      const index = orders.findIndex((order) => order.orderId === result.orderId);
-      if (index < 0) orders.push(result); else orders[index] = result;
-    }
-    publish?.({ mode, busy, contract: ticketContract, levels: ticketChartLevels({ draft, editing: state.phase === "editing" && trade?.visible !== false, orders, avgCost: position?.avgCost, position: position?.quantity, colors }) });
+    const latestOrder = state.result && ticketOrderMatches(state.result, ticketContract, instance.id, accountId) ? state.result : undefined;
+    publish?.({ mode, busy, contract: ticketContract, levels: ticketChartLevels({ draft, editing: state.phase === "editing" && trade?.visible !== false, orders, latestOrder, avgCost: position?.avgCost, position: position?.quantity, colors }) });
   }, [publish, mode, busy, draft, trade?.visible, state.phase, state.result, openOrders, ticketContract, instance.id, accountId, position?.avgCost, position?.quantity, colors]);
   useEffect(() => () => publish?.({ levels: [] }), [publish]);
   const ordersHeight = docked ? Math.min(12, Math.max(7, Math.floor(height * 0.25))) : 0;

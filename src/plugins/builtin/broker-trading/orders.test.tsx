@@ -66,11 +66,12 @@ test("the dock reflects a placement immediately and disables other mutations dur
   config.brokerInstances = [demo.instance];
   const state = createInitialState(config); state.focusedPaneId = paneId;
   const order = demo.order(demo.draft, "WORKING", 42);
+  const published: BrokerOrder[][] = [];
   const modifications: BrokerOrder[] = [];
   let update!: (value: boolean) => void;
   function Orders() {
     const [blocked, setBlocked] = useState(true); update = setBlocked;
-    return <BrokerOrdersView compact blocked={blocked} latestOrder={order} focused width={34} height={25} broker={demo.adapter} instance={demo.instance}
+    return <BrokerOrdersView compact blocked={blocked} latestOrder={order} onOrders={(orders) => published.push(orders)} focused width={34} height={25} broker={demo.adapter} instance={demo.instance}
       accounts={demo.accounts()} accountId={demo.draft.accountId} onAccountChange={() => {}} onModify={(value) => modifications.push(value)} />;
   }
   await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={createTestPluginRuntime()} width={90} height={30}>{() => <Orders />}</TestPaneFrame>);
@@ -81,6 +82,10 @@ test("the dock reflects a placement immediately and disables other mutations dur
   await act(async () => update(false));
   await tui.emitKeypress({ name: "m" });
   expect(modifications).toEqual([order]);
+  demo.adapter.listOpenOrders = async () => [{ ...order, status: "CANCELED", updatedAt: order.updatedAt + 1 }];
+  await tui.emitKeypress({ name: "r" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("No open orders for this ticker.");
+  expect(published.at(-1)?.map((value) => value.status)).toEqual(["CANCELED"]);
 });
 
 test("docked activity excludes other contracts and distinguishes empty activity from open orders", async () => {

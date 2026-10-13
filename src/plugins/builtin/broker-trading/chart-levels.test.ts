@@ -31,6 +31,15 @@ test("chart order projection excludes another account, profile or derivative con
   }
   expect(ticketOrderMatches(order, f.draft.contract, f.instance.id, undefined)).toBe(false);
 });
+test("an older submission receipt cannot revive a line after a newer cancellation acknowledgement", () => {
+  const f = createDemoBroker();
+  const submitted = { ...f.order(f.draft, "WORKING", 1), updatedAt: 10 };
+  const cancelled = { ...submitted, status: "CANCELED", updatedAt: 20 };
+  expect(ticketChartLevels({ editing: false, orders: [cancelled], latestOrder: submitted, colors })).toEqual([]);
+  expect(ticketChartLevels({ editing: false, orders: [submitted], latestOrder: cancelled, colors })).toEqual([]);
+  expect(ticketChartLevels({ editing: false, orders: [], latestOrder: submitted, colors })).toHaveLength(1);
+});
+
 test("live draft levels are read-only, follow both prices, and terminal orders disappear", () => {
   const f = createDemoBroker();
   const orders = [f.order(f.draft, "WORKING", 1), f.order({ ...f.draft, action: "SELL" }, "PARTIALLY_FILLED", 2), f.order(f.draft, "FILLED", 3)];
