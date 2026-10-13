@@ -6,11 +6,37 @@ import {
 import { fetchScreen } from "./client";
 import {
   DEFAULT_SCREEN,
+  EXAMPLE_SCREEN_DEFINITION,
   formatScreenValue,
   metricDate,
   parseScreenDefinition,
+  screenDefinitionSyntax,
   SHORT_LABELS,
 } from "./model";
+import type { ScreenDefinition } from "../../../api-client/equity-screener";
+
+/** JSON with a space after each comma and colon, so a wrapped command line breaks between tokens and still pastes. */
+const spacedJson = (definition: ScreenDefinition) =>
+  JSON.stringify(definition).replace(/([,:])(?=["{[\d-])/g, "$1 ");
+
+/** The `--definition` value of the catalog's worked example, quoted for a shell. */
+export const EXAMPLE_DEFINITION_OPTION = `--definition '${spacedJson(EXAMPLE_SCREEN_DEFINITION)}'`;
+
+/** A typed `--definition`, checked; every error points at the worked example. */
+function readDefinition(text: string): ScreenDefinition {
+  const pointer = "The example in gloomberb catalog EQS is a valid definition to start from.";
+  let value: unknown;
+  try {
+    value = JSON.parse(text);
+  } catch (error) {
+    throw new Error(`--definition is not valid JSON (${error instanceof Error ? error.message : String(error)}). ${pointer}`);
+  }
+  try {
+    return parseScreenDefinition(value);
+  } catch (error) {
+    throw new Error(`${error instanceof Error ? error.message : String(error)} ${pointer}`);
+  }
+}
 
 export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle",
@@ -20,7 +46,13 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     {
       key: "definition",
       type: "string",
-      description: "Version 1 JSON screen criteria and sort definition.",
+      placeholder: "json",
+      description: screenDefinitionSyntax(),
+      example: EXAMPLE_DEFINITION_OPTION,
+      normalize: (value) => {
+        readDefinition(value);
+        return value;
+      },
     },
     {
       key: "metric",
@@ -45,7 +77,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
   },
   async load(args, ctx) {
     const definition = args.options.definition
-      ? parseScreenDefinition(JSON.parse(String(args.options.definition)))
+      ? readDefinition(String(args.options.definition))
       : DEFAULT_SCREEN;
     const data = await fetchScreen(definition, null, ctx.signal, ctx.apiClient);
     const metric = (args.options.metric ?? "marketCap") as NumericField;
