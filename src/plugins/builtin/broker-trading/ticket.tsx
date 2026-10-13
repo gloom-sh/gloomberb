@@ -306,11 +306,11 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           {m.preview?.errors?.map((error, index) => <Notice key={index} variant="callout" tone="negative">{error}</Notice>)}
           {live ? <TicketSection width={formInner}><Box ref={nodeRef("typedConfirmation")} onMouseDown={() => setActive("typedConfirmation")}><FieldLabel label={`Type ${confirmationSymbol} to confirm a LIVE order`} active={active === "typedConfirmation"} /><TextField variant="well" accessibleLabel={`Type ${confirmationSymbol} to confirm a LIVE order`} value={m.typedConfirmation ?? ""} onChange={(v) => onEdit("typedConfirmation", v)} focused={focused && active === "typedConfirmation"} active={active === "typedConfirmation"} width={formInner} onSubmit={() => setActive("confirm")} /></Box></TicketSection> : null}
           {m.error ? <Notice tone="negative">{m.error}</Notice> : null}
-          <Box flexDirection="column" gap={native && wide ? 0.6 : 0}>{action("back", "Edit order")}{action("confirm", busy ? "Submitting..." : m.modifying ? "Confirm replacement" : live ? "Place LIVE order" : "Place simulation order", !typedMatches || blockingPreview || !m.connected || !m.tradingEnabled, true, live ? "negative" : sideTone)}</Box>
+          <Box flexDirection="column" gap={native ? 0.5 : 0}>{action("back", "Edit order")}{action("confirm", busy ? "Submitting..." : m.modifying ? "Confirm replacement" : live ? "Place LIVE order" : "Place simulation order", !typedMatches || blockingPreview || !m.connected || !m.tradingEnabled, true, live ? "negative" : sideTone)}</Box>
         </TicketSection>{wide ? <TicketOrderSummary model={m} width={summaryWidth} receipt /> : null}</Box> : null}
         {m.phase === "cancel-review" || m.phase === "cancelling" ? <TicketSection width={formWidth} title="Cancel this order?">
           <TicketOrderHeadline model={m} large /><Notice variant="callout">The order can still fill before the broker confirms cancellation.</Notice>
-          {action("back", "Keep order")}{action("cancel", "Confirm cancellation", false, true, "negative")}
+          <Box flexDirection="column" gap={native ? 0.5 : 0}>{action("back", "Keep order")}{action("cancel", "Confirm cancellation", false, true, "negative")}</Box>
         </TicketSection> : null}
         {m.phase === "result" ? <Box flexDirection={wide ? "row" : "column"} gap={3}><TicketSection width={formWidth} title={title}>
           <TicketOrderHeadline model={m} large /><TicketStatus model={m} width={formInner} />
@@ -323,8 +323,10 @@ export function BrokerTicketView({ model: m, width, height, focused, onEdit, onA
           <TicketReceiptRow label="Commission" value={money(m.preview?.commission, m.preview?.commissionCurrency ?? currency)} width={formInner} />
           <TicketReceiptRow label="Buying power after" value={money(m.preview?.buyingPowerAfter, currency)} width={formInner} />
           {m.error && !["UNKNOWN", "REJECTED"].includes(resultStatus) ? <Notice variant="callout" tone="negative">{m.error}</Notice> : null}
-          {resultStatus === "REJECTED" ? action("back", "Edit order", false, true, "neutral") : resultStatus === "FILLED" ? action("new", "New order", false, true) : action("refresh", "Refresh status", false, true, resultStatus === "UNKNOWN" ? "warning" : "neutral")}
-          <Box flexDirection="row" flexWrap="wrap" gap={1}>{["REJECTED", "FILLED"].includes(resultStatus) ? action("refresh", "Refresh status") : null}{action("orders", "Open orders")}{!["UNKNOWN", "REJECTED", "FILLED"].includes(resultStatus) ? action("new", "New order") : null}</Box>
+          <Box flexDirection="column" gap={native ? 0.5 : 0}>
+            {resultStatus === "REJECTED" ? action("back", "Edit order", false, true, "neutral") : resultStatus === "FILLED" ? action("new", "New order", false, true) : action("refresh", "Refresh status", false, true, resultStatus === "UNKNOWN" ? "warning" : "neutral")}
+            <Box flexDirection="row" flexWrap="wrap" gap={1}>{["REJECTED", "FILLED"].includes(resultStatus) ? action("refresh", "Refresh status") : null}{action("orders", "Open orders")}{!["UNKNOWN", "REJECTED", "FILLED"].includes(resultStatus) ? action("new", "New order") : null}</Box>
+          </Box>
         </TicketSection>{wide ? <TicketOrderSummary model={m} width={summaryWidth} /> : null}</Box> : null}
       </Box>
     </ScrollBox>
