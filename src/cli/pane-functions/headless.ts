@@ -40,6 +40,7 @@ import { isRecord } from "../../utils/guards";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock } from "./access-gate";
+import { lockedHeadlessReport } from "./lock-note";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -721,7 +722,17 @@ export async function buildHeadlessFunctionReport(
   context: MarketContext,
   rawArgument: string,
 ): Promise<PaneFunctionReport> {
-  const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
+  let loaded: LoadedHeadlessPaneModel;
+  try {
+    loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
+  } catch (error) {
+    // A Pro pane the server refused reports what its wall covers, as its rendered view does.
+    const locked = lockedHeadlessReport(resolved, error, () => (
+      buildHeadlessPaneLoadArgs(resolved.headless!, resolved.token, rawArgument, resolved.options).symbols
+    ));
+    if (locked) return locked;
+    throw error;
+  }
   const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
   const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);

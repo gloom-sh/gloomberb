@@ -159,9 +159,10 @@ export interface PaneDef {
   /**
    * What a rendered-view report prints in place of the pane when a sign-in
    * wall or the Pro lock covers all of it: what is locked, what can still be
-   * read without it and where, and how to unlock it. Without it the report
-   * prints the wall's own words. Either way it cites no source, since nothing
-   * was read.
+   * read without it and where, and how to unlock it. A `headless` pane's report
+   * prints it when the server refuses the read (401, 402 or 403). Without it
+   * the report prints the wall's own words, or the refusal. Either way it cites
+   * no source, since nothing was read.
    */
   reportLockNote?(lock: { gate: "sign-in" | "pro"; symbol: string | null }): string;
   /**

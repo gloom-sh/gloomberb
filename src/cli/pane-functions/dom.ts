@@ -1,10 +1,11 @@
 import type { DesktopPaneShotRenderedRow } from "../desktop-pane-shot";
-import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
+import { cliStyles, renderSection, renderTable } from "../../utils/cli-output";
 import { formatUtcTime } from "../../utils/utc-time";
 import type { MarketContext } from "../types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { collectShotSymbols } from "./data";
+import { lockNoteLines, lockNoteReason } from "./lock-note";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
@@ -14,8 +15,6 @@ const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
 const DOM_LIMITATION =
   "Only values visible in the rendered pane are returned; clipped or off-screen data may be omitted.";
-/** The widest a lock note wraps to, as the catalog's text. */
-const LOCK_NOTE_WIDTH = 100;
 const DOM_EVERY_ROW =
   "Every row of the pane's table is returned, including rows scrolled out of view.";
 
@@ -197,12 +196,11 @@ export function buildDomPaneReportFromRender(
   const gate = !hasStructuredRows ? result.render.accessGate ?? null : null;
   const lockNote = gate ? resolved.pane.reportLockNote?.({ gate, symbol: result.symbols[0] ?? null }) ?? null : null;
   const locked = gate === "sign-in" || lockNote ? gate : null;
-  // JSON and CSV say why the report is empty in the note's words, on one line.
-  const lockReason = lockNote?.replace(/\s*\n\s*/g, " ") ?? null;
+  const lockReason = lockNote ? lockNoteReason(lockNote) : null;
   if (hasStructuredRows) {
     textLines.push(...renderDomTables(rows));
   } else if (lockNote) {
-    textLines.push(...wrapText(lockNote, Math.min(cliTerminalWidth() ?? LOCK_NOTE_WIDTH, LOCK_NOTE_WIDTH)));
+    textLines.push(...lockNoteLines(lockNote));
   } else if (result.render.visibleText) {
     textLines.push(gate === "sign-in" ? signInWallText(result.render.visibleText) : result.render.visibleText);
   } else {
