@@ -111,6 +111,7 @@ export function ReaderText({
         fg={color}
         attributes={attributes}
         wrapText
+        selectable
         width="100%"
         style={{ display: "block", ...DESKTOP_VARIANT_STYLE[variant], ...(bullet ? { marginBottom: 0 } : {}) }}
         content={content}
@@ -211,6 +212,7 @@ function ReaderTable({ rows, geometry }: { rows: readonly string[][]; geometry: 
             key={index}
             fg={index === 0 && header ? colors.textDim : colors.text}
             attributes={index === 0 && header ? TextAttributes.BOLD : TextAttributes.NONE}
+            selectable
             style={{ display: "block", lineHeight: "inherit", whiteSpace: "pre", borderBottom: index === 0 && header ? `1px solid ${colors.border}` : undefined }}
           >
             {line}

@@ -190,7 +190,7 @@ export function CalendarAccountTab({ width, sessionMarker }: { width: number; se
   return (
     <Box flexDirection="column" width={width} gap={1}>
       <StatGrid items={stats} width={width} />
-      {shownUrl ? <Notice tone="muted">{shownUrl}</Notice> : null}
+      {shownUrl ? <Box data-gloom-selectable="true"><Notice tone="muted">{shownUrl}</Notice></Box> : null}
     </Box>
   );
 }

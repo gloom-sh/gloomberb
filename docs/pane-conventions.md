@@ -437,6 +437,13 @@ header, with the detail's height.
   branch for a bar. Prefer `flexGrow`/`flexBasis={0}`/`overflow="hidden"`
   to hard heights; subtract the tab strip and `rootBefore` rows before passing
   `rootHeight`.
+- The desktop app and the web are an app, not a document: Ctrl/Cmd+A, a double
+  or triple click and a drag across panes select no text. Text people copy by
+  hand opts in: `<Text selectable>` for a run, `data-gloom-selectable="true"`
+  on the `Box` around a block (articles, answers, logs, code; `MarkdownText`
+  and the reader already do). Fields keep their own selection. Anything else
+  people need out of a pane is a copy action or an export, not a selection.
+  The terminal selects with the mouse as it always did.
 
 ## 8b. Opening a function twice
 

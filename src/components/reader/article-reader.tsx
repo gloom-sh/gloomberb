@@ -447,7 +447,7 @@ function RawText({ text, geometry }: { text: string; geometry: ReaderGeometry })
   const colors = useThemeColors();
   if (geometry.desktop) {
     return (
-      <Text fg={colors.text} wrapText width="100%" style={{ display: "block", whiteSpace: "pre-wrap", fontSize: "0.85em", lineHeight: 1.6 }}>
+      <Text fg={colors.text} wrapText selectable width="100%" style={{ display: "block", whiteSpace: "pre-wrap", fontSize: "0.85em", lineHeight: 1.6 }}>
         {text}
       </Text>
     );

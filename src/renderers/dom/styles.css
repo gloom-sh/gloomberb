@@ -11,6 +11,11 @@ body {
   line-height: var(--cell-h);
   color: var(--gloom-text, #f2f2f2);
   cursor: default;
+  /* The app is chrome, not a document: no text is selectable until it says so
+     (see "Selectable text" below). WebKit, the macOS app's WKWebView and
+     Safari, only knows the prefixed property and ignores the plain one, so every
+     user-select in this file and in the host is written with both. */
+  -webkit-user-select: none;
   user-select: none;
   color-scheme: dark;
   -webkit-font-smoothing: antialiased;
@@ -19,7 +24,20 @@ body {
 * { box-sizing: border-box; }
 #root > * { height: 100%; min-height: 100%; }
 input, textarea, button { font: inherit; }
-input, textarea { cursor: text; user-select: text; }
+/* Inherited "none" would also stop WebKit from typing into a field. */
+input, textarea, [contenteditable]:not([contenteditable="false"]) {
+  -webkit-user-select: text;
+  user-select: text;
+}
+input, textarea { cursor: text; }
+/* Selectable text: what a person may want to copy by hand. A host Text takes
+   the selectable prop; a block of text (a reader, markdown, a chat message, a
+   log) carries this attribute on its container, and everything inside it that
+   does not say otherwise can be selected. */
+[data-gloom-selectable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
 button, [data-gloom-interactive="true"] { cursor: pointer; }
 /* `plain` buttons drop the border, so hover is the only thing left that says
    the row or chip is clickable. A translucent wash reads the same on the
@@ -210,11 +228,6 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   [data-gloom-role="chat-message"][data-highlighted="true"] [data-gloom-role="chat-message-row"] {
     animation: none;
   }
-}
-/* Message text can be selected and copied, like any chat. */
-[data-gloom-role="chat-message-body"] {
-  -webkit-user-select: text;
-  user-select: text;
 }
 [data-gloom-role="chat-message-image"]:focus-visible {
   outline: 2px solid var(--gloom-border-focused, currentColor);
@@ -561,6 +574,7 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   margin: 0;
   white-space: pre-wrap;
   color: var(--gloom-negative, #ff5f5f);
+  -webkit-user-select: text;
   user-select: text;
 }
 .gloom-toast-viewport {

@@ -897,6 +897,7 @@ function DesktopWorldVenueMap(props: WorldVenueMapProps) {
           overflow: "hidden",
           touchAction: "none",
           userSelect: "none",
+          WebkitUserSelect: "none",
           cursor: dragging ? "grabbing" : hovered ? "pointer" : zoomed ? "grab" : "default",
           background: colors.bg,
         }}

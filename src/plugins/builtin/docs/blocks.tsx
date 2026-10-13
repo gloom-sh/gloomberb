@@ -124,7 +124,7 @@ function Block({ block, width, onOpenLink }: { block: DocsBlock; width: number; 
     case "heading":
       // A section reads bright; a step inside it, in the text colour.
       return (
-        <Text fg={block.level === 2 ? colors.textBright : colors.text} attributes={TextAttributes.BOLD} wrapText width={nativePaneChrome ? "100%" : width}>
+        <Text fg={block.level === 2 ? colors.textBright : colors.text} attributes={TextAttributes.BOLD} wrapText selectable width={nativePaneChrome ? "100%" : width}>
           {block.text.replace(/[*`]/g, "")}
         </Text>
       );

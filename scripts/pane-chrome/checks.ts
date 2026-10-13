@@ -5,6 +5,7 @@ import { cacheDir, click, drag, evaluate, frames, holdKey, launchBrowser, mouse,
 import { serveFixturePage, type FixturePage } from "./page";
 import { chatSteps } from "./chat-checks";
 import { layoutSteps } from "./layout-checks";
+import { selectionSteps } from "./selection-checks";
 import { checkFirstPaint, checkThemePreview } from "./paint";
 
 /**
@@ -1299,6 +1300,7 @@ const steps: Step[] = [
   })),
   ...chatSteps,
   ...layoutSteps,
+  ...selectionSteps,
 ];
 
 async function openScenario(cdp: Cdp, page: FixturePage, scenario: string): Promise<void> {

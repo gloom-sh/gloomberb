@@ -9,6 +9,7 @@ import {
 } from "../../../components/chart/surface3d/model";
 import { colorBarLabels, placeSurface3DLabels, surface3DColorBarGeometry } from "../../../components/chart/surface3d/software";
 import { WebBox } from "./box";
+import { selectionStyle } from "./style";
 
 // GLSL ES 1.00 so the same shaders run on WebGL2 and WebGL1 contexts.
 const PROJECT = `
@@ -647,7 +648,7 @@ export function WebSurface3D(props: Surface3DHostProps) {
       aria-label={props.ariaLabel}
       role="img"
       data-gloom-surface-renderer="webgl"
-      style={{ position: "absolute", inset: 0, overflow: "hidden", touchAction: "none", cursor: "grab", userSelect: "none" }}
+      style={{ position: "absolute", inset: 0, overflow: "hidden", touchAction: "none", cursor: "grab", ...selectionStyle(false) }}
       onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
         if (event.button !== 0) return;
         const s = state.current, at = local(event);

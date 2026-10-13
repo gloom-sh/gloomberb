@@ -11,7 +11,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 
 export function Blurred({ children }: { children: ReactNode }) {
   return (
-    <Box flexDirection="row" style={{ filter: "blur(5px)", userSelect: "none" }}>
+    <Box flexDirection="row" style={{ filter: "blur(5px)", userSelect: "none", WebkitUserSelect: "none" }}>
       {children}
     </Box>
   );

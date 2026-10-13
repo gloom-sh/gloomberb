@@ -602,7 +602,8 @@ export function MarkdownText({
   const blocks = parseMarkdownBlocks(text);
 
   return (
-    <Box flexDirection="column" {...(nativePaneChrome ? NATIVE_FILL : lineWidth != null ? { width: lineWidth } : {})}>
+    // Rendered prose: the desktop and web let a person select and copy it.
+    <Box flexDirection="column" data-gloom-selectable="true" {...(nativePaneChrome ? NATIVE_FILL : lineWidth != null ? { width: lineWidth } : {})}>
       {blocks.map((block, index) => {
         if (block.kind === "table") {
           return (

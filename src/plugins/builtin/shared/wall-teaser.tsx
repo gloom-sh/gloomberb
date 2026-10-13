@@ -139,7 +139,7 @@ function Placeholder({ row, column, width, native }: { row: number; column: numb
   const colors = useThemeColors();
   const fraction = placeholderFraction(row, column);
   return native
-    ? <Box style={{ background: colors.textMuted, opacity: 0.35, filter: "blur(3px)", width: `${fraction * 100}%`, height: "0.65em", marginTop: "0.2em", pointerEvents: "none", userSelect: "none" }} />
+    ? <Box style={{ background: colors.textMuted, opacity: 0.35, filter: "blur(3px)", width: `${fraction * 100}%`, height: "0.65em", marginTop: "0.2em", pointerEvents: "none", userSelect: "none", WebkitUserSelect: "none" }} />
     : <Text fg={colors.textMuted} dim>{"░".repeat(Math.max(2, Math.floor(width * fraction)))}</Text>;
 }
 
@@ -167,7 +167,7 @@ function FrozenWallSample({ placement, width, rows, native }: { placement: strin
         <Placeholder row={row} column={0} width={width} native={native} />
       </Box>)}
     </Box> :
-    <Box height={rows + 1} style={native ? { pointerEvents: "none", userSelect: "none" } : undefined}>
+    <Box height={rows + 1} style={native ? { pointerEvents: "none", userSelect: "none", WebkitUserSelect: "none" } : undefined}>
       <DataTableView
         columns={columns} items={SAMPLE_TICKERS.slice(0, rows)} rootWidth={width} rootHeight={rows + 1}
         focused={false} keyboardNavigation={false} selection={{ kind: "none" }} sortable={false}
