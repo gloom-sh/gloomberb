@@ -8,6 +8,7 @@ import {
   Badge, buildSectionedRows, DataTableView, EmptyState, isSectionedItemRow, PageStackView, renderSectionedRowHeader, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneNoticeFooter,
   usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type SectionedRow, type StatItem,
 } from "../../../components";
+import { ClippedText } from "../../../components/ui/display";
 import { RatioBar } from "../../../components/ui/ratio-bar";
 import { getTableWidth } from "../../../components/ui/table-layout";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -16,7 +17,7 @@ import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
-import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth } from "../../../utils/format";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -245,9 +246,10 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
         const kind = full && displayWidth(counterpartyLabel(row)) + displayWidth(full) + 4 <= column.width ? full : counterpartyKindLabel(row, true);
         const ticker = !columns.some((entry) => entry.id === "ticker") ? row.counterparty.ticker : null;
         const room = Math.max(8, column.width - (kind ? displayWidth(kind) + 4 : 0) - (ticker ? displayWidth(ticker) + 1 : 0));
-        return { text: cellText(row, "name"), content: <Box flexDirection="row" height={1} gap={ticker ? 1 : 2} overflow="hidden">
-          <Text fg={ink ?? (company ? colors.textBright : colors.textDim)}>{truncateToDisplayWidth(counterpartyLabel(row), room)}</Text>
-          {ticker ? <Text fg={ink ?? colors.textDim}>{ticker}</Text> : null}
+        // On the desktop the name gives way at the column's edge by CSS and the ticker and kind keep their room.
+        return { text: cellText(row, "name"), content: <Box flexDirection="row" height={1} gap={ticker ? 1 : 2} overflow="hidden" {...(desktop ? { flexShrink: 1, minWidth: 0 } : {})}>
+          <ClippedText fg={ink ?? (company ? colors.textBright : colors.textDim)} text={counterpartyLabel(row)} width={room} />
+          {ticker ? <Text fg={ink ?? colors.textDim} style={desktop ? { flex: "0 0 auto" } : undefined}>{ticker}</Text> : null}
           {kind ? desktop ? <Badge label={kind} /> : <Text fg={ink ?? colors.textMuted}>{kind}</Text> : null}
         </Box> };
       }

@@ -4,7 +4,8 @@ import type { SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
 import { Box, ChartSurface, Span, Text, TextAttributes, useUiCapabilities } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
-import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth } from "../../../utils/format";
+import { ClippedText } from "../../../components/ui/display";
 import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
@@ -201,10 +202,10 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
       onPress={() => selectNode(node)} onHover={(on) => setHovered(on ? node.id : null)} />)}
     {geometry.groupRow !== null ? <Box position="absolute" top={geometry.groupRow} left={1} width={width - 2} flexDirection="row" overflow="hidden">
       <Box width={RELATED_LABEL_CELLS} flexShrink={0}><Text fg={colors.textDim}>Groups</Text></Box>
-      <Text fg={colors.textDim}>{truncateToDisplayWidth(geometry.groups.map((row) => {
+      <ClippedText fg={colors.textDim} text={geometry.groups.map((row) => {
         const share = shareParts(row, focusId);
         return `${counterpartyLabel(row)}${share ? ` ${share.value} ${share.basis}` : ""}`;
-      }).join("  ·  "), width - RELATED_LABEL_CELLS - 3)}</Text>
+      }).join("  ·  ")} width={width - RELATED_LABEL_CELLS - 3} />
     </Box> : null}
     {legend ? <Box position="absolute" top={geometry.legendRow} left={1} width={width - 2} flexDirection="row" gap={2} overflow="hidden">
       {legend.map((entry) => <Box key={entry.id} flexDirection="row" gap={1} flexShrink={0}>
@@ -253,7 +254,7 @@ function FocusCard({ symbol, name, x, y, width, height, desktop }: { symbol: str
     backgroundColor={desktop ? colors.panel : undefined} border={!desktop} borderStyle="rounded" borderColor={colors.textMuted}
     style={desktop ? { border: `1px solid ${blendHex(colors.bg, colors.textBright, 0.35)}`, borderRadius: 6, boxShadow: `0 0 0 3px ${blendHex(colors.bg, colors.textBright, 0.06)}` } : undefined}>
     <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{symbol}</Text>
-    {showName ? <Text fg={colors.textDim}>{truncateToDisplayWidth(name!, width - 4)}</Text> : null}
+    {showName ? <ClippedText fg={colors.textDim} text={name!} width={width - 4} /> : null}
   </Box>;
 }
 
@@ -277,11 +278,11 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
     onMouseDown={onPress} onMouseOver={() => onHover(true)} onMouseOut={() => onHover(false)} data-gloom-role="supply-flow-node">
     <Box flexDirection="row" height={1} overflow="hidden">
       {!desktop ? <Text fg={node.more ? colors.textMuted : accent}>▍</Text> : null}
-      <Text fg={active && !desktop ? colors.selectedText : titleColor} attributes={company ? TextAttributes.BOLD : 0}>{truncateToDisplayWidth(name, nameWidth)}</Text>
+      <ClippedText fg={active && !desktop ? colors.selectedText : titleColor} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth} />
       {ticker && displayWidth(name) + displayWidth(ticker) + 1 <= inner ? <Text fg={colors.textDim}>{` ${ticker}`}</Text> : null}
     </Box>
     {metric ? <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden">
-      <Text fg={active && !desktop ? colors.selectedText : colors.textDim}>{truncateToDisplayWidth(metric, inner - (desktop ? 0 : 1))}</Text>
+      <ClippedText fg={active && !desktop ? colors.selectedText : colors.textDim} text={metric} width={inner - (desktop ? 0 : 1)} />
     </Box> : null}
   </Box>;
 }
@@ -289,13 +290,12 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
 function FlowChip({ node, desktop, active, onPress, onHover }: { node: PositionedNode; desktop: boolean; active: boolean; onPress: () => void; onHover: (on: boolean) => void }) {
   const colors = useThemeColors();
   const accent = node.role ? ROLE_COLORS[node.role] : colors.textMuted;
-  const label = truncateToDisplayWidth(flowChipLabel(node), node.width - 2);
   const background = active ? blendHex(colors.bg, accent, desktop ? 0.32 : 0.45) : node.more ? undefined : blendHex(colors.bg, accent, 0.14);
-  const text = <Text fg={node.more ? colors.textDim : active ? colors.textBright : accent}>{label}</Text>;
+  const text = <ClippedText fg={node.more ? colors.textDim : active ? colors.textBright : accent} text={flowChipLabel(node)} width={node.width - 2} />;
   return <Box position="absolute" left={node.x} top={node.y} width={node.width} height={1} justifyContent={desktop ? "center" : undefined}
     onMouseDown={onPress} onMouseOver={() => onHover(true)} onMouseOut={() => onHover(false)} data-gloom-role="supply-flow-chip">
     {/* The desktop chip leaves a hairline of row above and below, like ticker chips. */}
-    {desktop ? <Box paddingX={1} backgroundColor={background} justifyContent="center" style={{ height: "calc(100% - 4px)", borderRadius: 3, cursor: "pointer" }}>{text}</Box>
+    {desktop ? <Box paddingX={1} minWidth={0} backgroundColor={background} justifyContent="center" style={{ height: "calc(100% - 4px)", borderRadius: 3, cursor: "pointer" }}>{text}</Box>
       : <Box paddingX={1} height={1} backgroundColor={background}>{text}</Box>}
   </Box>;
 }
@@ -317,7 +317,7 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
     flexDirection="column" paddingX={1} backgroundColor={colors.panel} border={!desktop} borderColor={ROLE_COLORS[row.role]}
     style={desktop ? { border: `1px solid ${blendHex(colors.bg, ROLE_COLORS[row.role], 0.7)}`, borderRadius: 4, boxShadow: "0 6px 18px rgba(0,0,0,0.45)", zIndex: 20, pointerEvents: "none" } : undefined}
     data-gloom-role="supply-flow-tooltip">
-    <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{truncateToDisplayWidth(counterpartyLabel(row), tooltipWidth - 2)}</Text>
-    {lines.map((line, index) => <Text key={index} fg={index === 0 ? colors.text : colors.textDim}>{truncateToDisplayWidth(line, tooltipWidth - 2)}</Text>)}
+    <ClippedText fg={colors.textBright} attributes={TextAttributes.BOLD} text={counterpartyLabel(row)} width={tooltipWidth - 2} />
+    {lines.map((line, index) => <ClippedText key={index} fg={index === 0 ? colors.text : colors.textDim} text={line} width={tooltipWidth - 2} />)}
   </Box>;
 }

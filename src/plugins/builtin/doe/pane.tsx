@@ -18,8 +18,8 @@ import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text } from "../../../ui";
-import { truncateToDisplayWidth } from "../../../utils/format";
+import { Box } from "../../../ui";
+import { ClippedText } from "../../../components/ui/display";
 import { DOE_NOT_AVAILABLE, getCachedDoeBoard, loadDoeBoard } from "./client";
 import {
   DOE_TABS,
@@ -71,14 +71,15 @@ function SeasonalChart({ row, series, width, height }: { row: DoeSeriesRow; seri
   const latestWeek = row.seasonal?.current.at(-1)?.[0] ?? null;
   const viewport = useMemo(() => ({ start: doeWeekDate(1), end: doeWeekDate(weeks) }), [weeks]);
   const xAxis = useMemo(() => ({ ticks: doeWeekTicks(weeks), formatCursor: (ratio: number) => `W${Math.round(ratio * (weeks - 1)) + 1}` }), [weeks]);
-  const read = row.read ? truncateToDisplayWidth(row.read, Math.max(0, width - 2)) : "";
+  // The plain read under the axis; the desktop cuts it where its line ends.
+  const read = row.read && width > 2 ? row.read : "";
   return (
     <Box width={width} height={height} flexDirection="column">
       <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - (read ? 1 : 0))}
         focused={false} navigable={false} showLegend showTimeAxis viewport={viewport} clipToViewport xAxis={xAxis}
         cursorDate={latestWeek ? doeWeekDate(latestWeek) : null} formatValue={legendValue(row)} formatAxisValue={doeAxisFormatter(row.unit)}
         remoteKind="doe-seasonal" />
-      {read ? <Box height={1} paddingX={1}><Text fg={colors.textMuted}>{read}</Text></Box> : null}
+      {read ? <Box height={1} paddingX={1}><ClippedText fg={colors.textMuted} text={read} width={width - 2} /></Box> : null}
     </Box>
   );
 }
