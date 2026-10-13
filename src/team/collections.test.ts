@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { TeamCollection, TeamCollectionItem } from "../../../../api-client";
-import { createDefaultConfig } from "../../../../types/config";
-import type { TickerRecord } from "../../../../types/ticker";
+import type { TeamCollection, TeamCollectionItem } from "../api-client";
+import { createDefaultConfig } from "../types/config";
+import type { TickerRecord } from "../types/ticker";
 import {
   applyMembership,
   blankTickerRecord,

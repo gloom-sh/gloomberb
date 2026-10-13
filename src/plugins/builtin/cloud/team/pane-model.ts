@@ -10,8 +10,8 @@ import {
   deriveTeamShortName,
   normalizeTeamShortName,
   teamChannelId,
-} from "./model";
-import type { TeamPaneSection } from "./pane-request";
+} from "../../../../team/model";
+import type { TeamPaneSection } from "../../../../team/pane-request";
 
 export const TEAM_PANE_SECTIONS: readonly { value: TeamPaneSection; label: string }[] = [
   { value: "members", label: "Members" },

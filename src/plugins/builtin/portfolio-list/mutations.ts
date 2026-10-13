@@ -2,7 +2,7 @@ import type { AppConfig } from "../../../types/config";
 import type { Portfolio, PortfolioCash, TickerPosition, TickerRecord, Watchlist } from "../../../types/ticker";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { slugifyName } from "../../../utils/slugify";
-import { parseCollectionRef } from "../cloud/team/collections";
+import { parseCollectionRef } from "../../../team/collections";
 import { findNamedCollection } from "../../../portfolio/collection-name";
 
 export interface DeleteWatchlistResult {

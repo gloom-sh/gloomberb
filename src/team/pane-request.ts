@@ -1,4 +1,4 @@
-import { createPaneRequestChannel } from "../../shared/pane-request";
+import { createPaneRequestChannel } from "../plugins/builtin/shared/pane-request";
 
 export type TeamPaneSection = "members" | "invites" | "channels" | "settings";
 

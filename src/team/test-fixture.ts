@@ -1,4 +1,4 @@
-import type { TeamSummary } from "../../../../api-client";
+import type { TeamSummary } from "../api-client";
 
 /** The "Macro Desk" team as a plain member sees it; override the role or counts a test is about. */
 export function createTestTeam(overrides: Partial<TeamSummary> = {}): TeamSummary {

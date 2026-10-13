@@ -5,7 +5,7 @@ import {
   resetNotificationLogForTest,
   unreadNotificationLogCount,
 } from "../../../notifications/notification-log";
-import { teamStore } from "../cloud/team/store";
+import { teamStore } from "../../../team/store";
 import { listUnreadInboxItems, type UnreadInboxChannelState } from "./unread-inbox";
 import { markAllUnreadRead } from "./unread-inbox-pane";
 

@@ -1,6 +1,6 @@
 import { apiClient, type TeamPluginStateEntry, type TeamPluginStateEvent } from "../../../../api-client";
 import { setTeamStateHost, type TeamStateHost } from "../../../team-state";
-import { teamStore } from "./store";
+import { teamStore } from "../../../../team/store";
 
 type Listener = (entry: { value: unknown; revision: number; updatedBy: string; updatedAt: string } | null) => void
 

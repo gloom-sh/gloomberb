@@ -6,9 +6,9 @@ import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { usePluginAppActions } from "../../../runtime";
-import { describeTeam, teamAccentHex, teamLabel, userHandle } from "./model";
-import { openTeamPane } from "./pane-request";
-import { teamStore } from "./store";
+import { describeTeam, teamAccentHex, teamLabel, userHandle } from "../../../../team/model";
+import { openTeamPane } from "../../../../team/pane-request";
+import { teamStore } from "../../../../team/store";
 
 const NEW_TEAM_ID = "__new__";
 

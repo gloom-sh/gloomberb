@@ -41,7 +41,7 @@ import {
   teamIdFromChannelId,
   teamPrefix,
   userHandle,
-} from "./model";
+} from "../../../../team/model";
 import {
   TEAM_PANE_SECTIONS,
   cycleAccent,
@@ -61,7 +61,7 @@ import {
   subscribeRequestedTeamPaneView,
   type TeamPaneSection,
   type TeamPaneView,
-} from "./pane-request";
+} from "../../../../team/pane-request";
 import {
   ChannelsSection,
   CreateTeamForm,
@@ -70,7 +70,7 @@ import {
   SettingsSection,
 } from "./pane-sections";
 import { Muted, PaneButton, TeamPaneFocusContext, type TeamPaneFocus } from "./pane-ui";
-import { teamStore } from "./store";
+import { teamStore } from "../../../../team/store";
 
 type Message = { tone: "info" | "success" | "error"; text: string } | null;
 

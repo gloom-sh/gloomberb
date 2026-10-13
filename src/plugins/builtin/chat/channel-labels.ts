@@ -1,8 +1,8 @@
 import type { ChatChannel } from "../../../api-client";
 import { t } from "../../../i18n";
 import { normalizeChannelId } from "./controller/state";
-import { teamPrefix } from "../cloud/team/model";
-import { teamStore } from "../cloud/team/store";
+import { teamPrefix } from "../../../team/model";
+import { teamStore } from "../../../team/store";
 
 /** `MD·` for a team channel, empty otherwise. Team markers never depend on color. */
 function teamChannelPrefix(channel: ChatChannel | undefined, fallbackId: string): string {

@@ -1,6 +1,6 @@
 import type { TeamSummary } from "../../api-client";
 import type { SavedLayout } from "../../types/config";
-import type { TeamStoreSnapshot } from "../../plugins/builtin/cloud/team/store";
+import type { TeamStoreSnapshot } from "../../team/store";
 
 export type TabGroupId = "personal" | `team:${string}`;
 

@@ -1,6 +1,6 @@
-import type { TeamCollection, TeamCollectionItem } from "../../../../api-client";
-import type { AppConfig } from "../../../../types/config";
-import type { Portfolio, TickerRecord, Watchlist } from "../../../../types/ticker";
+import type { TeamCollection, TeamCollectionItem } from "../api-client";
+import type { AppConfig } from "../types/config";
+import type { Portfolio, TickerRecord, Watchlist } from "../types/ticker";
 
 const TEAM_COLLECTION_PREFIX = "team:";
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { TeamNotification } from "../../../../api-client";
+import type { TeamNotification } from "../api-client";
 import {
   canInviteToTeam,
   canManageTeam,

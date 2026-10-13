@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import type { MutableRefObject } from "react";
 import type { ChatChannel } from "../../../../api-client";
 import { useThrottledCommitValue } from "../../../../react/use-throttled-commit-value";
-import { teamStore } from "../../cloud/team/store";
+import { teamStore } from "../../../../team/store";
 import { chatSidebarStore } from "../sidebar-store";
 import {
   buildChatSidebarRows,

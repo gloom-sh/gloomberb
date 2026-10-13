@@ -5,8 +5,8 @@ import { QueryBar } from "../../../components/ui/query-bar";
 import { Box, Text } from "../../../ui";
 import type { DialogApi, PromptContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
-import { teamAccentHex, teamPrefix } from "../cloud/team/model";
-import { teamStore } from "../cloud/team/store";
+import { teamAccentHex, teamPrefix } from "../../../team/model";
+import { teamStore } from "../../../team/store";
 import { NoteConflictError, type NoteOwner, noteOwnerKey } from "./store";
 
 export function useNoteTeams(): TeamSummary[] {

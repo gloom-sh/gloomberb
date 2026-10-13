@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { apiClient } from "../api-client";
 import { rememberLayoutRequirements } from "../components/layout/missing-pane";
 import type { PluginRegistry } from "../plugins/registry";
-import { teamStore } from "../plugins/builtin/cloud/team/store";
+import { teamStore } from "../team/store";
 import { useAppDispatch, useAppSelector } from "../state/app/context";
 import { decideLinkedAction, linkedLayoutStatus, linkedLayoutUpdates, originFromEntry } from "./linked";
 import { materializeMarketplaceLayout } from "../shares/portable-layout";

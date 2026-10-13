@@ -5,8 +5,8 @@ import {
 } from "../../../plugins/builtin/portfolio-list/command-bar";
 import type { CommandBarFieldOption, CommandBarWorkflowField, CommandBarWorkflowRoute } from "./types";
 import { buildCommandBarWorkflowRoute } from "./route-builder";
-import { teamPrefix } from "../../../plugins/builtin/cloud/team/model";
-import { teamStore } from "../../../plugins/builtin/cloud/team/store";
+import { teamPrefix } from "../../../team/model";
+import { teamStore } from "../../../team/store";
 
 /**
  * Where a new collection lives: me, or one of my teams. Only asked when there

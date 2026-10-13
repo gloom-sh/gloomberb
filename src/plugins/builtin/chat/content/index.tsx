@@ -55,10 +55,10 @@ import {
 import type { ChatUserAnchor, ChatUserContextMenuEvent } from "../message/types";
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import { usePluginAppActions } from "../../../runtime";
-import { openTeamPane } from "../../cloud/team/pane-request";
+import { openTeamPane } from "../../../../team/pane-request";
 import { openChatPaneLink } from "../pane-links/open";
 import type { ChatMessagePaneLink } from "../pane-links/model";
-import { teamStore } from "../../cloud/team/store";
+import { teamStore } from "../../../../team/store";
 import { requestAccountManagementTab } from "../../account-management/navigation";
 import {
   CHAT_MESSAGE_EDIT_WINDOW_MS,

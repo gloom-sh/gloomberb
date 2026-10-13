@@ -8,8 +8,8 @@ import {
   setViewRefResolver,
   type ViewSpec,
 } from "../../custom-view";
-import { teamPrefix } from "./model";
-import { teamStore } from "./store";
+import { teamPrefix } from "../../../../team/model";
+import { teamStore } from "../../../../team/store";
 
 const CLOUD_VIEWS_CAPABILITY_ID = "cloud.views";
 

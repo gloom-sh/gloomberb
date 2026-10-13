@@ -4,9 +4,9 @@ import {
   type TeamReceivedInvitation,
   type TeamSummary,
   type TeamUpdatedEvent,
-} from "../../../../api-client";
-import type { AppNotificationDelivery, AppNotificationRequest, PluginPersistence } from "../../../../types/plugin";
-import { markNotificationLogReadByRef } from "../../../../notifications/notification-log";
+} from "../api-client";
+import type { AppNotificationDelivery, AppNotificationRequest, PluginPersistence } from "../types/plugin";
+import { markNotificationLogReadByRef } from "../notifications/notification-log";
 import { describeTeamNotification, findTeam, teamIdFromChannelId, teamNotificationRefId } from "./model";
 
 export interface TeamStoreSnapshot {

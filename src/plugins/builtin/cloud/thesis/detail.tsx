@@ -10,7 +10,7 @@ import { isPlainKey } from "../../../../utils/keyboard";
 import { usePluginAppActions } from "../../../runtime";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../../api-client/plan-access";
-import { teamStore } from "../team/store";
+import { teamStore } from "../../../../team/store";
 import * as flows from "./flows";
 import {
   catalystState,
