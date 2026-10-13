@@ -24,16 +24,22 @@ const num = (value: unknown) => (typeof value === "number" && Number.isFinite(va
 
 const BOARD_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
+  { key: "dateStatus", header: "Status" },
   { key: "timing", header: "When" },
   { key: "symbol", header: "Ticker" },
   { key: "name", header: "Name" },
   { key: "marketCap", header: "Mkt cap", align: right, format: (value) => moneyText(num(value)) },
   { key: "epsEstimate", header: "EPS est", align: right, format: (value) => epsText(num(value)) },
+  { key: "epsAnalysts", header: "Ests", align: right },
   { key: "epsActual", header: "EPS act", align: right, format: (value) => epsText(num(value)) },
+  { key: "epsBasis", header: "Basis" },
   { key: "revenueEstimate", header: "Sales est", align: right, format: (value) => moneyText(num(value)) },
   { key: "impliedMove", header: "Implied", align: right, format: (value) => impliedText(num(value)) },
   { key: "averageMove", header: "Avg move", align: right, format: (value) => moveSize(num(value)) },
 ];
+
+/** Where the board's caps come from and how old they can be, in its metadata. */
+const MARKET_CAP_NOTE = "Each company's market cap as RV shows it: its latest financials snapshot at the regular session's price (the close outside the session), from the newest quote Gloom Cloud holds for it. A company with no snapshot shows the earnings calendar's figure.";
 
 const HISTORY_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" },
@@ -105,13 +111,16 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
   const all = [...reports, ...extra].sort((left, right) => left.date.localeCompare(right.date) || (right.marketCap ?? 0) - (left.marketCap ?? 0));
   const rows = all.slice(0, limit).map((report) => ({
     date: report.date,
+    dateStatus: report.dateStatus,
     timing: report.timing ? TIMING_LABEL[report.timing] : null,
     timingExpected: report.expectedTiming,
     symbol: report.symbol,
     name: report.name,
     marketCap: report.marketCap,
     epsEstimate: report.epsEstimate,
+    epsAnalysts: report.epsAnalysts,
     epsActual: report.epsActual,
+    epsBasis: report.epsActual == null ? null : epsBasisName(report.epsBasis),
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.impliedMove,
     averageMove: report.averageMove,
@@ -127,6 +136,8 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
       from: query.from,
       to: query.to,
       averageMoveOver: `last 8 reports, at least ${MIN_AVERAGE_REPORTS}`,
+      epsBasis: EPS_BASIS_NOTE,
+      marketCap: MARKET_CAP_NOTE,
       total: all.length,
       returned: rows.length,
       truncated: rows.length < all.length,

@@ -1,7 +1,9 @@
 import type { EarningsCalendarReport, EarningsTiming } from "../../../api-client/earnings";
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { EarningsEvent } from "../../../types/data-provider";
+import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
+import { dateStatusFromEstimateFlag, earningsDateStatus, earningsEpsBasis } from "../shared/earnings-report";
 import { coherentEarningsValue } from "./estimate-basis";
 import { shortDate, weekday } from "./format";
 
@@ -16,9 +18,15 @@ export interface BoardReport {
   timing: EarningsTiming | null;
   /** Timing taken from the company's last reports, not announced yet. */
   expectedTiming: boolean;
+  /** Whether the date is out, announced or projected; null when the source does not say. */
+  dateStatus: EarningsDateStatus | null;
   marketCap: number | null;
   epsEstimate: number | null;
+  /** Analysts behind `epsEstimate`. */
+  epsAnalysts: number | null;
   epsActual: number | null;
+  /** Null when the reported figure's basis cannot be determined. */
+  epsBasis: EarningsEpsBasis | null;
   revenueEstimate: number | null;
   impliedMove: number | null;
   averageMove: number | null;
@@ -120,9 +128,12 @@ export function boardReport(report: EarningsCalendarReport, owned: ReadonlyMap<s
     date: report.date,
     timing: report.timing,
     expectedTiming: report.timingSource === "history",
+    dateStatus: earningsDateStatus(report.dateStatus),
     marketCap: report.marketCap,
     epsEstimate: report.epsEstimate,
+    epsAnalysts: report.epsAnalysts,
     epsActual: report.epsActual,
+    epsBasis: earningsEpsBasis(report.epsBasis),
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.implied?.move ?? null,
     averageMove: report.averageReports >= MIN_AVERAGE_REPORTS ? report.averageMove : null,
@@ -139,6 +150,7 @@ export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, 
     const currency = event.estimateBasis?.[field]?.currency;
     return currency && currency !== "USD" ? null : coherentEarningsValue(event, field);
   };
+  const epsEstimate = dollars("epsEstimate");
   return {
     key: `${event.symbol}:${date}`,
     symbol: event.symbol,
@@ -146,9 +158,13 @@ export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, 
     date,
     timing,
     expectedTiming: false,
+    dateStatus: dateStatusFromEstimateFlag(event.isDateEstimate),
     marketCap: null,
-    epsEstimate: dollars("epsEstimate"),
+    epsEstimate,
+    // The count belongs to the estimate beside it.
+    epsAnalysts: epsEstimate == null ? null : coherentEarningsValue(event, "epsAnalysts"),
     epsActual: null,
+    epsBasis: null,
     revenueEstimate: dollars("revenueEstimate"),
     impliedMove: null,
     averageMove: null,

@@ -38,7 +38,9 @@ export interface EarningsReport {
   reportedAt: string | null;
   /** Fiscal quarter end month, YYYY-MM. */
   fiscalPeriod: string | null;
+  /** The company's cap as RV reads it: its latest snapshot at the regular session's price. */
   marketCap: number | null;
+  /** For an upcoming report, the consensus every earnings view shows, with `epsAnalysts` behind it. */
   epsEstimate: number | null;
   epsActual: number | null;
   epsAnalysts: number | null;
@@ -48,6 +50,8 @@ export interface EarningsReport {
   realized: EarningsRealizedMove | null;
   /** Whether the date is out, announced or projected; absent from older servers. */
   dateStatus?: EarningsDateStatus;
+  /** The reported figure's basis, null when it cannot be determined; absent from older servers. */
+  epsBasis?: EarningsEpsBasis | null;
 }
 
 export interface EarningsCalendarReport extends EarningsReport {
@@ -65,8 +69,6 @@ export interface EarningsCalendarPayload {
 
 interface EarningsHistoryReport extends EarningsReport {
   revenueActual: number | null;
-  /** Null when the basis cannot be determined; absent from older servers. */
-  epsBasis?: EarningsEpsBasis | null;
 }
 
 export interface EarningsHistoryPayload {

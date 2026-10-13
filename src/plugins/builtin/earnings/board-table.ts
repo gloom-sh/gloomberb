@@ -2,10 +2,13 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
+import { epsBasisShort } from "../shared/earnings-report";
 import type { BoardRow, BoardSort } from "./board-model";
 import { epsText, impliedText, moneyText, moveSize, TIMING_LABEL, weekday } from "./format";
 
-type BoardColumnId = "owned" | "symbol" | "name" | "when" | "cap" | "epsEstimate" | "epsActual" | "revenueEstimate" | "implied" | "average";
+type BoardColumnId =
+  | "owned" | "symbol" | "name" | "when" | "status" | "cap" | "epsEstimate" | "analysts" | "epsActual" | "basis"
+  | "revenueEstimate" | "implied" | "average";
 
 export type BoardColumn = DataTableColumn & { id: BoardColumnId };
 
@@ -16,16 +19,19 @@ const ALL_COLUMNS: BoardColumn[] = [
   { id: "symbol", label: "TICKER", width: 6, align: "left" },
   { id: "name", label: "NAME", width: NAME_MIN_WIDTH, align: "left" },
   { id: "when", label: "WHEN", width: 7, align: "left" },
+  { id: "status", label: "STATUS", width: 9, align: "left" },
   { id: "implied", label: "IMPLIED", width: 7, align: "right" },
   { id: "average", label: "AVG MOVE", width: 8, align: "right" },
   { id: "epsEstimate", label: "EPS EST", width: 7, align: "right" },
+  { id: "analysts", label: "ESTS", width: 4, align: "right" },
   { id: "epsActual", label: "EPS ACT", width: 7, align: "right" },
+  { id: "basis", label: "BASIS", width: 5, align: "left" },
   { id: "revenueEstimate", label: "SALES EST", width: 9, align: "right" },
   { id: "cap", label: "MKT CAP", width: 8, align: "right" },
 ];
 
-/** Dropped first when narrow; the implied move and its average stay beside the name. */
-const DROP_ORDER: BoardColumnId[] = ["epsActual", "cap", "revenueEstimate", "epsEstimate", "owned"];
+/** Dropped first when narrow, the report's labels before its figures; the implied move and its average stay beside the name. */
+const DROP_ORDER: BoardColumnId[] = ["basis", "analysts", "status", "epsActual", "cap", "revenueEstimate", "epsEstimate", "owned"];
 
 /** Header clicks sort these; the rest keep the ranking. */
 export const SORTABLE: Partial<Record<BoardColumnId, BoardSort["column"]>> = {
@@ -66,14 +72,23 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn): DataTableCe
       // An expected time, from the company's last reports, reads quieter than an announced one.
       return { text: row.showDay ? `${weekday(report.date)} ${timing}` : timing, color: report.expectedTiming ? colors.textMuted : dim };
     }
+    case "status":
+      // A projected date reads quieter than an announced one, as an expected time does.
+      return { text: report.dateStatus ?? "--", color: report.dateStatus === "projected" ? colors.textMuted : dim };
     case "cap":
       return { text: moneyText(report.marketCap), color: dim };
     case "epsEstimate":
       return { text: epsText(report.epsEstimate), color: dim };
+    case "analysts":
+      return { text: report.epsAnalysts == null ? "--" : String(report.epsAnalysts), color: dim };
     case "epsActual": {
       const beat = report.epsActual != null && report.epsEstimate != null ? report.epsActual - report.epsEstimate : null;
       return { text: report.epsActual == null ? "" : epsText(report.epsActual), color: beat == null || beat === 0 ? colors.text : beat > 0 ? colors.positive : colors.negative };
     }
+    case "basis":
+      return report.epsActual == null
+        ? { text: "" }
+        : { text: epsBasisShort(report.epsBasis), color: report.epsBasis ? colors.textMuted : dim };
     case "revenueEstimate":
       return { text: moneyText(report.revenueEstimate), color: dim };
     case "implied":
