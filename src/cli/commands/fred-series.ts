@@ -144,3 +144,36 @@ export function fredEmptyMessage(startDate: string, latest: { date: string; valu
     ? `Latest observation: ${latest.date}${latest.value == null ? "" : ` (${latest.value})`}. Nothing on or after ${startDate}.`
     : "No results.";
 }
+
+/** A series as `fred --list` shows it. */
+export interface FredListRow {
+  id: string;
+  title: string;
+  group: string;
+}
+
+/** How well a word of the filter matches a series, best first: its id or group name, a word of its group or title, the start of its id, then any text. */
+function matchTier(term: string, row: FredListRow, words: readonly string[]): number {
+  if (row.id.toLowerCase() === term || row.group.toLowerCase() === term) return 0;
+  if (words.some((word) => word.startsWith(term))) return 1;
+  if (row.id.toLowerCase().startsWith(term)) return 2;
+  return 3;
+}
+
+/**
+ * The series that carry every word of the filter in their id, title or group,
+ * the ones it names first: a group or a word of the title ahead of the id that
+ * only has it inside (`fx` is the FX group, not FDEFX, whose id spells it).
+ * Catalog order breaks ties; an empty filter keeps the catalog as it is.
+ */
+export function filterFredSeries(rows: readonly FredListRow[], filter: string): FredListRow[] {
+  const terms = filter.toLowerCase().split(/\s+/).filter(Boolean);
+  const ranked = rows.flatMap((row, index) => {
+    const text = `${row.id} ${row.title} ${row.group}`.toLowerCase();
+    if (!terms.every((term) => text.includes(term))) return [];
+    const words = `${row.title} ${row.group}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const tiers = terms.map((term) => matchTier(term, row, words));
+    return [{ row, index, worst: Math.max(0, ...tiers), total: tiers.reduce((sum, tier) => sum + tier, 0) }];
+  });
+  return ranked.sort((a, b) => a.worst - b.worst || a.total - b.total || a.index - b.index).map((entry) => entry.row);
+}

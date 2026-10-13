@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import {
   basisPointsCell,
+  filterFredSeries,
   fredEmptyMessage,
   fredExportValue,
   fredHistoryNotes,
@@ -62,4 +63,28 @@ test("an empty window names the latest observation, or says no results when ther
 test("a lagging series carries its note, in any case", () => {
   expect(laggingSeriesNote("umcsent")).toContain("fn ECO");
   expect(laggingSeriesNote("DGS10")).toBeNull();
+});
+
+test("fred --list ranks the group and title words a filter names above an id that only contains it", () => {
+  const rows = [
+    { id: "FDEFX", title: "Federal Government: National Defense Consumption Expenditures and Gross Investment", group: "Defense & fiscal" },
+    { id: "DEXBZUS", title: "Brazilian Reals to U.S. Dollar Spot Exchange Rate (BRL per USD)", group: "FX" },
+    { id: "DEXJPUS", title: "Japanese Yen to U.S. Dollar Spot Exchange Rate (JPY per USD)", group: "FX" },
+    { id: "CPIAUCSL", title: "Consumer Price Index", group: "Prices" },
+    { id: "CORESTICKM159SFRBATL", title: "Sticky Price CPI", group: "Prices" },
+    { id: "EXFX", title: "Cross rates of the Swiss franc", group: "Rates" },
+  ];
+  const ids = (filter: string) => filterFredSeries(rows, filter).map((row) => row.id);
+  // The FX group, in catalog order, then the ids that spell fx.
+  expect(ids("fx")).toEqual(["DEXBZUS", "DEXJPUS", "FDEFX", "EXFX"]);
+  // A word of the title beats an id with the letters inside, and an exact id is found whole.
+  expect(ids("cpi")).toEqual(["CORESTICKM159SFRBATL", "CPIAUCSL"]);
+  expect(ids("cpiaucsl")).toEqual(["CPIAUCSL"]);
+  expect(ids("def")).toEqual(["FDEFX"]);
+  // Every word must match somewhere; the best match of each word ranks the row.
+  expect(ids("fx japanese")).toEqual(["DEXJPUS"]);
+  expect(ids("price sticky")).toEqual(["CORESTICKM159SFRBATL"]);
+  expect(ids("nothing")).toEqual([]);
+  // No filter keeps the catalog as it is.
+  expect(ids("")).toEqual(rows.map((row) => row.id));
 });

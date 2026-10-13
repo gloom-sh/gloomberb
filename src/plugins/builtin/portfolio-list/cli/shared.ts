@@ -43,6 +43,45 @@ export function takeCollectionName<T extends { id: string; name: string }>(
   return null;
 }
 
+/** What a pasted list of symbols with no list name in front of it fails with. */
+export interface MisplacedSymbolList {
+  message: string;
+  details: string;
+}
+
+/** How much of a pasted list an error quotes back. */
+const PASTE_PREVIEW = 40;
+
+/**
+ * Whether the only argument is a list of symbols given where the name goes: it
+ * names no collection (the caller looked) and holds separators (a comma, a
+ * semicolon, a blank, a newline), as `usdngn=x, USDZAR=X; usdsar=x` pasted
+ * from a sheet does. Null for anything else, and with `--file`, where the one
+ * argument is the name. The failure says what the command takes, and which
+ * lists there are.
+ */
+export function misplacedSymbolList(
+  args: readonly string[],
+  file: string | undefined,
+  options: { noun: "watchlist" | "portfolio"; verb: "add" | "remove"; collections: readonly { name: string }[]; usage: string },
+): MisplacedSymbolList | null {
+  const typed = args.length === 1 && file == null ? args[0]!.trim() : "";
+  if (!/[\s,;]/.test(typed)) return null;
+  const { noun, verb, collections, usage } = options;
+  const flat = typed.replace(/\s+/g, " ");
+  const preview = flat.length > PASTE_PREVIEW ? `${flat.slice(0, PASTE_PREVIEW - 1)}…` : flat;
+  const label = noun === "watchlist" ? "lists" : "portfolios";
+  const names = collections.slice(0, 12).map((entry) => entry.name);
+  const more = collections.length - names.length;
+  const existing = names.length > 0
+    ? `${label}: ${names.join(", ")}${more > 0 ? ` and ${more} more` : ""}`
+    : `no ${label} yet, create one with \`gloomberb ${noun} create <name>\``;
+  return {
+    message: `"${preview}" reads as a list of symbols, not a ${noun} name; did you mean \`gloomberb ${noun} ${verb} <name> <list>\`; ${existing}`,
+    details: usage,
+  };
+}
+
 export function parseFiniteNumber(rawValue: string | undefined, label: string): number {
   const value = Number(rawValue);
   if (!rawValue?.trim() || !Number.isFinite(value)) {

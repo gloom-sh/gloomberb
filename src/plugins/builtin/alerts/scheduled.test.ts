@@ -93,6 +93,17 @@ test("alerts add reads price, earnings and macro forms and names what it takes",
   expect(() => parseAlertAddArgs(["CRWV", "dividends"], undefined)).toThrow("earnings");
 });
 
+test("alerts add reads a price pasted from a sheet, and asks when a comma and three digits could be either reading", () => {
+  const price = (text: string) => (parseAlertAddArgs(["USDNGN=X", "above", text], undefined) as { price: number }).price;
+  expect(["1.350,5", "1,350.5", "1 350,5", "1\u00a0350,5", "1350,5", "1350.5"].map(price)).toEqual([1350.5, 1350.5, 1350.5, 1350.5, 1350.5, 1350.5]);
+  expect(["1,350,000", "1.350.000"].map(price)).toEqual([1350000, 1350000]);
+  // A plain dotted number keeps its meaning.
+  expect(price("1.350")).toBe(1.35);
+  expect(() => price("1,350")).toThrow("1,350 could be 1350 (thousands) or 1.35 (decimal comma); type 1350 or 1.35");
+  expect(() => price("abc")).toThrow("Alert price must be a finite number.");
+  expect(() => price("1,23,456")).toThrow("Alert price must be a finite number.");
+});
+
 test("the app alerts once when the lead time is reached and saves the event it alerted for", async () => {
   const rule = createScheduledAlert({ kind: "macro", event: "cpi" }, 1, null, 1_000);
   const store = new Map<string, string>([[EVENT_ALERTS_KEY, JSON.stringify([rule])]]);

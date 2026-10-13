@@ -40,6 +40,7 @@ import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import {
   basisPointsCell,
   DEFAULT_FRED_START,
+  filterFredSeries,
   fredEmptyMessage,
   fredExportValue,
   fredHistoryNotes,
@@ -346,13 +347,10 @@ async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execut
     if (error instanceof ApiRequestError && error.status === 404) ctx.fail("The list of supported FRED series is not available yet.");
     throw error;
   }
-  const terms = filter.toLowerCase().split(/\s+/).filter(Boolean);
-  const rows = catalog.series
-    .map((series) => ({ id: series.id, title: series.title?.trim() ?? "", group: series.group?.trim() ?? "" }))
-    .filter((series) => {
-      const text = `${series.id} ${series.title} ${series.group}`.toLowerCase();
-      return terms.every((term) => text.includes(term));
-    });
+  const rows = filterFredSeries(
+    catalog.series.map((series) => ({ id: series.id, title: series.title?.trim() ?? "", group: series.group?.trim() ?? "" })),
+    filter,
+  );
   ctx.printResult({ data: rows, metadata: { filter: filter || null, total: catalog.series.length } }, {
     columns: [
       { key: "id", header: "ID", shrink: false },

@@ -3,6 +3,7 @@ import type { TickerRecord } from "../types/ticker";
 import { listingFields, savedListingName } from "./listing-arg";
 import { StagedTickerRepository, type TickerSource } from "./staged-tickers";
 import { symbolInputKey } from "./symbol-args";
+import { describeSuggestion, isPlainNoMatch, suggestListings } from "./listing-suggestion";
 import { CoinListingError, resolveTickersForCli, TickerNotFoundError } from "./ticker-resolution";
 
 /** What became of one symbol of an add or remove. */
@@ -22,6 +23,8 @@ export interface SymbolRow extends Record<string, unknown> {
   message: string | null;
   /** What the single-symbol add says beside the listing: the venue a bare symbol went to, a listing that stopped trading. */
   notes: string | null;
+  /** A not-found symbol's nearest listing in search, as the line names it: `USDNGN=X (US Dollar/Nigerian Naira)`. Only when asked for and found. */
+  suggestion?: string;
   /**
    * A bare coin ticker read as something other than the coin (ETH as a fund, SOL as
    * Solvay), and the pair to use instead. Also in `notes` when the symbol was added.
@@ -106,6 +109,7 @@ export async function addSymbols({
   retry,
   askWhenAmbiguous,
   failure,
+  suggest,
 }: BulkSymbolsOptions & {
   dataProvider: DataProvider;
   /** Told when requests failed and the symbols that failed are about to be looked up again. */
@@ -118,6 +122,8 @@ export async function addSymbols({
   askWhenAmbiguous?: boolean;
   /** Rewrites the error a symbol failed with before it is reported, to say it as the caller's own surface does. */
   failure?: (error: Error) => Error;
+  /** A symbol search finds no listing for is given the nearest listing search knows, when it is a near match (USD-NGN, USDNGN=X). */
+  suggest?: boolean;
   /** May throw to refuse the listing (an alias of a holding in two records); that symbol fails alone. */
   add: (ticker: TickerRecord) => { changed: boolean; ticker: TickerRecord };
 }): Promise<SymbolRow[]> {
@@ -150,5 +156,16 @@ export async function addSymbols({
     rows.push(listingRow(input, result.changed ? "added" : "already_listed", result.ticker, { notes: resolution.notes, ended: resolution.ended, hint: resolution.coinNote }));
   }
   await staged.commit();
-  return rows;
+  return suggest ? withSuggestions(rows, staged, dataProvider) : rows;
+}
+
+/** The rows, each symbol search found no listing for with the nearest listing it did find, when that is a near match. */
+async function withSuggestions(rows: SymbolRow[], store: StagedTickerRepository, dataProvider: DataProvider): Promise<SymbolRow[]> {
+  const missing = rows.filter((row) => row.status === "not_found" && isPlainNoMatch(row.message));
+  const suggestions = await suggestListings(missing.map((row) => row.input), { store, dataProvider });
+  const byInput = new Map(missing.map((row, index) => [row, suggestions[index] ?? null] as const));
+  return rows.map((row) => {
+    const suggestion = byInput.get(row);
+    return suggestion ? { ...row, suggestion: describeSuggestion(suggestion) } : row;
+  });
 }

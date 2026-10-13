@@ -3,6 +3,7 @@ import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers, findWatchlist } from "../../../../cli/helpers";
 import { slugifyName } from "../../../../utils/slugify";
 import { resolveCliTicker } from "../../../../cli/ticker-resolution";
+import { withSuggestion } from "../../../../cli/listing-suggestion";
 import { takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, ListingArgError, loadSavedListing, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
 import {
@@ -21,7 +22,7 @@ import {
   removeTickerFromWatchlist as removeWatchlistMembership,
 } from "../mutations";
 import { showCollection } from "./render";
-import { listingFields, takeCollectionName } from "./shared";
+import { listingFields, misplacedSymbolList, takeCollectionName } from "./shared";
 import { addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
@@ -29,10 +30,20 @@ const ADD_USAGE = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--fi
 const REMOVE_USAGE = "Usage: gloomberb watchlist remove <watchlist> <symbols...> [--file <path>]";
 
 /** The watchlist the leading arguments name and the symbols after it; fails naming the watchlists there are. */
-function requireWatchlistArgs(config: AppConfig, args: readonly string[], usage: string, ctx: CliCommandContext): { watchlist: Watchlist; rest: string[] } {
+function requireWatchlistArgs(
+  config: AppConfig,
+  args: readonly string[],
+  file: string | undefined,
+  verb: "add" | "remove",
+  usage: string,
+  ctx: CliCommandContext,
+): { watchlist: Watchlist; rest: string[] } {
   if (args.length === 0) ctx.fail(usage);
   const match = takeCollectionName(args, config.watchlists);
   if (!match) {
+    // A pasted list in the place of the name is a list, not a watchlist that is missing.
+    const pasted = misplacedSymbolList(args, file, { noun: "watchlist", verb, collections: config.watchlists, usage });
+    if (pasted) ctx.fail(pasted.message, pasted.details);
     ctx.fail(
       `Watchlist "${args[0]}" was not found.`,
       config.watchlists.length > 0 ? `Watchlists: ${config.watchlists.map((entry) => entry.name).join(", ")}` : undefined,
@@ -96,7 +107,8 @@ async function addTickerToWatchlistCommand(watchlist: Watchlist, symbol: string,
 
     await store.saveTicker(result.ticker);
     ctx.printResult({ data, warnings }, { text: () => cliStyles.success(`Added ${saved.label} to "${watchlist.name}".`) });
-  } catch (error) {
+  } catch (caught) {
+    const error = await withSuggestion(caught, symbol, { store, dataProvider });
     ctx.fail(
       error instanceof Error ? error.message : `Failed to add ${symbol} to "${watchlist.name}".`,
       error instanceof ListingArgError ? error.details : undefined,
@@ -106,7 +118,7 @@ async function addTickerToWatchlistCommand(watchlist: Watchlist, symbol: string,
 
 async function addToWatchlistCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
   await withMarketData(ctx, async (market) => {
-    const { watchlist, rest } = requireWatchlistArgs(market.config, args, ADD_USAGE, ctx);
+    const { watchlist, rest } = requireWatchlistArgs(market.config, args, file, "add", ADD_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, ADD_USAGE);
     if (list.single) {
       await addTickerToWatchlistCommand(watchlist, list.single, exchange, ctx, market);
@@ -119,6 +131,7 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       dataProvider: market.dataProvider,
       onRetry: retryNotice(ctx),
       retry: (key) => `gloomberb watchlist add ${watchlist.name} ${key}`,
+      suggest: true,
       add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
     });
     printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated });
@@ -142,7 +155,7 @@ async function removeTickerFromWatchlist(watchlist: Watchlist, symbol: string, e
 
 async function removeFromWatchlistCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
   await withConfigData(ctx, async (context) => {
-    const { watchlist, rest } = requireWatchlistArgs(context.config, args, REMOVE_USAGE, ctx);
+    const { watchlist, rest } = requireWatchlistArgs(context.config, args, file, "remove", REMOVE_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, REMOVE_USAGE);
     if (list.single) {
       await removeTickerFromWatchlist(watchlist, list.single, exchange, ctx, context);
