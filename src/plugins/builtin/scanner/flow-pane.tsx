@@ -66,6 +66,12 @@ function buildColumns(width: number, dated: boolean): DataTableColumn[] {
   ];
 }
 
+function sideColor(side: ScannerFlowEvent["side"]): string {
+  if (side === "ask") return colors.positive;
+  if (side === "bid") return colors.negative;
+  return side === "mid" ? colors.text : colors.textDim;
+}
+
 // Stable table adapters so memoized rows survive feed ticks.
 const eventKey = (event: ScannerFlowEvent) => event.id;
 
@@ -90,7 +96,8 @@ function renderCell(
     case "expiry":
       return { text: formatFlowExpiry(event.expiry), color: colors.textDim };
     case "side":
-      return { text: formatFlowSide(event.side), color: colors.textDim };
+      // Bought at the ask reads green, sold at the bid red, as on every tape; the word stays.
+      return { text: formatFlowSide(event.side), color: sideColor(event.side) };
     case "size":
       return { text: formatCompact(event.size) };
     case "premium":
