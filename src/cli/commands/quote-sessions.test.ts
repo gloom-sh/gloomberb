@@ -133,25 +133,27 @@ const besidePrint: Quote = {
 };
 
 /**
- * Fundamentals as served beside `quote`: every price-derived figure, and the quote's cap, measured at one print,
- * `at` (the quote's price, or an older print), with 5B of net debt on the cap.
+ * Fundamentals as served beside `quote`: every price-derived figure measured at one print, `at` (the quote's price,
+ * or an older print), but the caps at `capAt`, with 5B of net debt.
  */
-function servedAt(quote: Quote, eps: number, at = quote.price): TickerFinancials {
-  const enterpriseValue = quote.marketCap! + 5e9;
+function servedAt(quote: Quote, eps: number, at = quote.price, capAt = at): TickerFinancials {
+  const shares = quote.marketCap! / capAt;
+  const enterpriseValue = shares * at + 5e9;
   return { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [], fundamentals: {
     eps, trailingPE: at / eps, dividendRate: 1.04, dividendYield: 1.04 / at, dividendYieldBasis: "forward",
-    marketCap: quote.marketCap, marketCapCurrency: "USD", enterpriseValue, revenue: 50e9, enterpriseToRevenue: enterpriseValue / 50e9,
+    marketCap: quote.marketCap, marketCapCurrency: "USD", sharesOutstanding: shares,
+    enterpriseValue, revenue: 50e9, enterpriseToRevenue: enterpriseValue / 50e9,
     financialCurrency: "USD", source: "gloom", fetchedAt: "2026-10-03T19:16:07Z",
   } };
 }
 
 test("quote, RV and valuation read the same close after hours, with the extended print in its own column", async () => {
-  // NEM's figures were measured at a print a little older than the quote's.
-  const financials = new Map([servedAt(printed, 7.93, 116.9), servedAt(besidePrint, 4.57), servedAt({ ...afterHours, marketCap: 4.987e12 }, 7.46)]
+  // NEM's figures were measured at a print a little older than the quote's; AAPL's cap is already the close's.
+  const financials = new Map([servedAt(printed, 7.93, 116.9), servedAt(besidePrint, 4.57), servedAt({ ...afterHours, marketCap: 4.987e12 }, 7.46, 336.08, 336.64)]
     .map((entry) => [entry.quote!.symbol, entry]));
   const symbols = [...financials.keys()];
   const closes = [117.15, 138.11, 336.64];
-  const measuredAt = [116.9, 138.11, 336.08];
+  const capMeasuredAt = [116.9, 138.11, 336.64];
   const saturday = Date.parse("2026-10-10T12:00:00Z");
 
   const quoted = await compare(symbols.map((symbol) => financials.get(symbol)!.quote!));
@@ -182,7 +184,7 @@ test("quote, RV and valuation read the same close after hours, with the extended
     // Every price-derived figure is measured at the close: P/E x EPS is the close, the cap, the yield and EV move with it.
     expect(Number(row.trailingPE) * fundamentals!.eps!).toBeCloseTo(close, 6);
     expect(valuation.metric("P/E (TTM)") * fundamentals!.eps!).toBeCloseTo(close, 6);
-    expect(Number(row.marketCap)).toBeCloseTo(quote!.marketCap! * close / measuredAt[index]!, 0);
+    expect(Number(row.marketCap)).toBeCloseTo(quote!.marketCap! * close / capMeasuredAt[index]!, 0);
     expect(valuation.metric("Market Cap (USD)")).toBeCloseTo(Number(row.marketCap), 0);
     expect(valuation.metric("Dividend Yield (forward) (%)")).toBeCloseTo(104 / close, 6);
     expect(valuation.metric("Enterprise Value (USD)")).toBeCloseTo(Number(row.marketCap) + 5e9, 0);
