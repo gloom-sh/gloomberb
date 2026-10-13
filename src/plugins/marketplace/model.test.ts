@@ -56,7 +56,7 @@ describe("mergeCatalog", () => {
   test("marks a bundled plugin installed even when the local catalog has not reported it", () => {
     // Happens whenever the feed ships an entry before the user upgrades.
     const [entry] = mergeCatalog({
-      registry: [registryPlugin({ id: "gloomberb-cloud", bundled: true, tier: "official" })],
+      registry: [registryPlugin({ id: "notes", bundled: true, tier: "official" })],
       installed: [],
       target: "tui",
     });
@@ -407,21 +407,45 @@ describe("statusOf", () => {
 });
 
 describe("sortEntries and buildRows", () => {
-  test("groups built in, then installed, then available, with headers", () => {
+  test("leads with Gloom Cloud and sponsors' plugins, then what can be added, built-ins last, with headers", () => {
     const entries = mergeCatalog({
       registry: [
+        registryPlugin({ id: "alerts", tier: "official", bundled: true }),
+        registryPlugin({ id: "ticker-core", tier: "official", bundled: true }),
         registryPlugin({ id: "popular-uninstalled", tier: "official", stars: 5000 }),
         registryPlugin({ id: "quiet-installed", tier: "community", stars: 0 }),
+        registryPlugin({ id: "sponsor-plugin", tier: "community", sponsored: true }),
+        // Only an installable plugin can be a sponsor's.
+        registryPlugin({ id: "notes", tier: "official", bundled: true, sponsored: true }),
         registryPlugin({ id: "cloud", tier: "official", featured: true, bundled: true }),
       ],
       installed: [installedPlugin({ id: "quiet-installed" })],
       target: "tui",
     });
 
-    const sorted = sortEntries(entries);
-    expect(sorted.map((entry) => entry.id)).toEqual(["cloud", "quiet-installed", "popular-uninstalled"]);
-    expect(buildRows(sorted).map((row) => (row.type === "header" ? `#${row.section}:${row.count}` : row.entry.id)))
-      .toEqual(["#builtin:1", "cloud", "#installed:1", "quiet-installed", "#available:1", "popular-uninstalled"]);
+    expect(buildRows(sortEntries(entries)).map((row) => (row.type === "header" ? `#${row.section}:${row.count}` : row.entry.id)))
+      .toEqual([
+        "#featured:1", "cloud",
+        "#sponsored:1", "sponsor-plugin",
+        "#installed:1", "quiet-installed",
+        "#available:1", "popular-uninstalled",
+        "#research:1", "ticker-core",
+        "#builtin:2", "alerts", "notes",
+      ]);
+  });
+
+  test("keeps Gloom Cloud first from this build's own editorial when the feed is out of reach", () => {
+    const entries = mergeCatalog({
+      registry: [],
+      installed: [
+        installedPlugin({ id: "alerts", source: "builtin", directory: undefined }),
+        installedPlugin({ id: "gloomberb-cloud", source: "builtin", directory: undefined }),
+      ],
+      target: "tui",
+    });
+
+    expect(sortEntries(entries).map((entry) => `${entry.section}:${entry.id}`))
+      .toEqual(["featured:gloomberb-cloud", "builtin:alerts"]);
   });
 
   test("keeps the curated order inside a section: featured, tier, stars", () => {

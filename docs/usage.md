@@ -649,7 +649,7 @@ A dataset pane, whose data is observed and published days later rather than quot
 
 ## Plugins pane
 
-Open it with `PL` in the command bar. It lists the [built-in plugins](#built-in-plugins) that can be switched off, research and markets first, then what you have installed and what the registry offers. A row shows how many panes the plugin adds, three of its codes, and how many of its functions need Pro or give Free a preview.
+Open it with `PL` in the command bar. Gloom Cloud comes first, then plugins from Gloom's sponsors (under Sponsored), what you have installed and what the registry offers, and last the [built-in plugins](#built-in-plugins) that can be switched off, research and markets first. A row shows how many panes the plugin adds, three of its codes, and how many of its functions need Pro or give Free a preview.
 
 The status reads `on`, `off`, `core` for Ticker Research, `update` when the registry has something newer, `needs setup` when a required setting is missing, `errors (n)` after failures this session, or `failed` when it did not load. Enter opens the detail: every function, Pro ones marked, and the panes.
 
