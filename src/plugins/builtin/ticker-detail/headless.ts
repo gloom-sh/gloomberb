@@ -212,7 +212,7 @@ const QUOTE_MONITOR_COLUMNS: HeadlessPaneColumn[] = [
   { key: "changePercent", header: "Change %", align: "right", format: percentCell },
 ];
 
-/** The pre-market or after-hours print and its move from the regular close, for the rows that have one. */
+/** The pre-market, after-hours or overnight print and its move from the regular close, for the rows that have one. */
 function extendedSessionColumn(session: ExtendedSession): HeadlessPaneColumn {
   return {
     key: "extendedPrice", header: EXTENDED_SESSION_LABELS[session], align: "right",
@@ -249,7 +249,7 @@ export const quoteComparisonHeadless: HeadlessPaneDefinition<"rows"> = {
       };
     });
     // An extended column only when a row has a print for it, so a closed board stays as narrow as before.
-    const extendedColumns = (["PRE", "POST"] as const)
+    const extendedColumns = (["PRE", "POST", "OVERNIGHT"] as const)
       .filter((session) => rows.some((row) => row.extendedSession === session))
       .map(extendedSessionColumn);
     return {

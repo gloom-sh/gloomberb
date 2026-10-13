@@ -7,7 +7,7 @@ import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryInteg
 import {
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
-  marketStateLabel,
+  extendedSessionStateLabel,
   type ExtendedSession,
 } from "../../../market-data/market/status";
 import {
@@ -359,7 +359,7 @@ export function buildSectorColumns(width: number, extendedSessions: readonly Ext
   const extendedColumns = extendedSessions.map((session): SectorColumn => ({
     id: session === "PRE" ? "preMarket" : "afterHours",
     // Named for the session it trades in, as the header labels it.
-    label: marketStateLabel(session),
+    label: extendedSessionStateLabel(session),
     width: EXTENDED_COLUMN_WIDTH,
     align: "right",
   }));

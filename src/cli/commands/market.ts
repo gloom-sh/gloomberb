@@ -16,7 +16,7 @@ import {
   getExtendedSessionDisplay,
   getQuoteSessionFields,
   getRegularSessionDisplay,
-  marketStateLabel,
+  quoteSessionLabel,
   type ExtendedSession,
 } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent, formatPercentRaw } from "../../utils/format";
@@ -251,6 +251,7 @@ const QUOTE_LEAD_COLUMNS = [
   // Text drops a column no row fills, so a table without an extended print stays as narrow as before.
   extendedColumn("PRE"),
   extendedColumn("POST"),
+  extendedColumn("OVERNIGHT"),
   { key: "session", header: "Session", shrink: false },
 ];
 
@@ -267,17 +268,21 @@ function yieldChangeCell(row: QuoteRow): string {
   return row.changeBasisPoints == null ? "" : colorBySign(formatBasisPoints(row.changeBasisPoints / 100, 1), row.changeBasisPoints);
 }
 
-/** The pre-market or after-hours print and its move from the regular close, in its own column. */
+/**
+ * The pre-market, after-hours or overnight print and its move from the
+ * regular close, in its own column; "mid" when it is a bid and ask midpoint.
+ */
 function extendedColumn(session: ExtendedSession) {
+  const price = (row: QuoteRow) => row.extendedMark ? `${row.extendedPrice} mid` : row.extendedPrice;
   return {
-    key: session === "PRE" ? "preMarket" : "afterHours",
+    key: session === "PRE" ? "preMarket" : session === "POST" ? "afterHours" : "overnight",
     header: EXTENDED_SESSION_LABELS[session],
     align: "right" as const,
     value: (row: QuoteRow) => row.extendedSession === session && row.extendedPrice
-      ? [row.extendedPrice, row.extendedChangePercent == null ? "" : formatPercentRaw(row.extendedChangePercent)].join(" ").trim()
+      ? [price(row), row.extendedChangePercent == null ? "" : formatPercentRaw(row.extendedChangePercent)].join(" ").trim()
       : "",
     format: (value: unknown, row: QuoteRow) => (
-      value ? [row.extendedPrice, formatChangePercentCell(row.extendedChangePercent)].join(" ").trim() : ""
+      value ? [price(row), formatChangePercentCell(row.extendedChangePercent)].join(" ").trim() : ""
     ),
   };
 }
@@ -367,7 +372,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       rawExtendedPrice: extended?.price ?? null,
       extendedChange: extended?.change ?? null,
       extendedChangePercent: roundedPercent(extended?.changePercent),
-      session: quote?.marketState ? marketStateLabel(quote.marketState) : "",
+      // The extended price is the session's bid and ask midpoint, nothing having traded in it.
+      extendedMark: extended?.mark === true,
+      session: quoteSessionLabel(quote) ?? "",
       // The close the shown move is measured from: the one before the session Last is.
       previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
       dayRange: quote?.low != null && quote.high != null

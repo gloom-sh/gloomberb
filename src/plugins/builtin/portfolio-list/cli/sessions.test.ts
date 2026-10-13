@@ -45,13 +45,18 @@ async function show(quote: Quote) {
 }
 
 test("portfolio and watchlist show headline the regular close beside the extended print, and value at the live price", async () => {
-  for (const state of ["weekend", "afterHours", "preMarket"] as const) {
+  for (const state of ["weekend", "afterHours", "preMarket", "overnight"] as const) {
     const quote = sessionQuotes()[state];
     const headline = getRegularSessionDisplay(quote)!;
     const extended = getExtendedSessionDisplay(quote)!;
     const { text, rows, json } = await show(quote);
-    const figures = state === "preMarket" ? /\$198\.78 +\+0\.51% +\$199\.50 \+0\.36%/ : /\$198\.78 +\+0\.51% +\$198\.80 \+0\.01%/;
-    expect(text).toContain(state === "preMarket" ? "Pre-Market" : "After Hours");
+    const figures = {
+      weekend: /\$198\.78 +\+0\.51% +\$198\.80 \+0\.01%/,
+      afterHours: /\$198\.78 +\+0\.51% +\$198\.80 \+0\.01%/,
+      preMarket: /\$198\.78 +\+0\.51% +\$199\.50 \+0\.36%/,
+      overnight: /\$198\.78 +\+0\.51% +\$198\.95 \+0\.09%/,
+    }[state];
+    expect(text).toContain({ weekend: "After Hours", afterHours: "After Hours", preMarket: "Pre-Market", overnight: "Overnight" }[state]);
     // The portfolio's row, then the watchlist's.
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(row).toMatch(figures);

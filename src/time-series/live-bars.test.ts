@@ -108,6 +108,17 @@ describe("LiveBarAccumulator", () => {
     expect(points[1]).toMatchObject({ date: new Date("2026-09-23T00:00:00Z"), open: 99, high: 101, low: 99, close: 101, volume: 2_600_000 });
   });
 
+  test("an overnight price moves no daily candle: no history covers that session", () => {
+    const history = [bar("00:00:00", 100, 104, 98, 103, 40_000_000)];
+    const options = (next: Quote) => ({ now: next.lastUpdated, resolution: "1d" as const, exchange: "NASDAQ" });
+    // Tuesday 22:30 New York, after the after-hours session.
+    const evening = { ...quote("00:00:00", 104.2, 40_000_000, { marketState: "POSTPOST", changeSessionDate: "2026-09-22" }),
+      lastUpdated: Date.parse("2026-09-23T02:30:00Z") };
+    expect(new LiveBarAccumulator().apply(history, evening, options(evening)).at(-1)).toMatchObject({ close: 104.2 });
+    const overnight: Quote = { ...evening, overnightPrice: 104.2, overnightPriceKind: "trade" };
+    expect(new LiveBarAccumulator().apply(history, overnight, options(overnight))).toEqual(history);
+  });
+
   test("a pre-market quote still carrying yesterday's count does not become today's volume", () => {
     const history = [bar("00:00:00", 100, 104, 98, 103, 40_000_000)];
     const bars = new LiveBarAccumulator();

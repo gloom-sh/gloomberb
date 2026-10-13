@@ -4,6 +4,7 @@ import type { Quote, TickerFinancials } from "../../types/financials";
 import type { HeadlessPaneContext } from "../../types/headless";
 import { createTestDataProvider } from "../../test-support/data-provider";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
+import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
 import { DEFAULT_CLI_OPTIONS } from "../options";
 import { serializeCliResult } from "../result";
 import { renderHeadlessPaneText } from "../pane-functions/headless";
@@ -111,4 +112,19 @@ test("ticker dates the bid and ask of a closed market as its last quote and leav
   expect(await report({ ...book, marketState: "REGULAR" })).toMatch(/Bid \/ Ask +\$202\.00 x 100 \/ \$208\.74 x 1,400\n/);
   // Without a quoted book there is nothing to date.
   expect(await report({ ...book, bid: undefined, ask: undefined })).not.toContain("last quote");
+});
+
+test("quote gives the overnight session its own column and names it, saying when its price is a midpoint", async () => {
+  const traded = sessionQuotes("XLK").overnight;
+  const marked = sessionQuotes("XLE").overnightMark;
+  const { rows, text } = await compare([traded, marked]);
+  expect(rows.map(({ rawPrice, changePercent, extendedSession, rawExtendedPrice, extendedChangePercent, extendedMark, session }) =>
+    ({ rawPrice, changePercent, extendedSession, rawExtendedPrice, extendedChangePercent, extendedMark, session }))).toEqual([
+    { rawPrice: 198.78, changePercent: 0.51, extendedSession: "OVERNIGHT", rawExtendedPrice: 198.95, extendedChangePercent: 0.09, extendedMark: false, session: "OVERNIGHT" },
+    { rawPrice: 198.78, changePercent: 0.51, extendedSession: "OVERNIGHT", rawExtendedPrice: 198.95, extendedChangePercent: 0.09, extendedMark: true, session: "OVERNIGHT" },
+  ]);
+  expect(text).toMatch(/Chg% +Overnight +Session/);
+  expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(/\$198\.78 +\+0\.51% +\$198\.95 \+0\.09% +OVERNIGHT/);
+  expect(text.split("\n").find((line) => line.startsWith("XLE"))).toMatch(/\$198\.95 mid \+0\.09% +OVERNIGHT/);
+  expect(text).not.toMatch(/After Hours|Pre-Market/);
 });

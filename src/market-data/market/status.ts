@@ -23,13 +23,30 @@ export interface ActiveQuoteDisplay {
   changePercent?: number;
 }
 
-export type ExtendedSession = "PRE" | "POST";
+/**
+ * A session outside the exchange's regular hours: its own pre-market and
+ * after-hours, and the overnight session a US listing trades in between on
+ * an alternative venue while its exchange is closed.
+ */
+export type ExtendedSession = "PRE" | "POST" | "OVERNIGHT";
 
 /** What reports call each extended session's line or column. */
-export const EXTENDED_SESSION_LABELS: Record<ExtendedSession, string> = { PRE: "Pre-Market", POST: "After Hours" };
+export const EXTENDED_SESSION_LABELS: Record<ExtendedSession, string> = { PRE: "Pre-Market", POST: "After Hours", OVERNIGHT: "Overnight" };
+
+/** The extended line's label under a quote's headline (a translation key), and its mark where a tile or card is narrow. */
+const EXTENDED_SESSION_LINE_LABELS: Record<ExtendedSession, string> = { PRE: "Pre-Market", POST: "After-Hours", OVERNIGHT: "Overnight" };
+export const EXTENDED_SESSION_MARKS: Record<ExtendedSession, string> = { PRE: "PM", POST: "AH", OVERNIGHT: "ON" };
 
 export interface ExtendedSessionDisplay extends ActiveQuoteDisplay {
   session: ExtendedSession;
+  /** The price is the midpoint of the session's bid and ask, nothing having traded in it; absent for a trade. */
+  mark?: true;
+}
+
+/** The extended line's label: the session's, saying "mid" when its price is a bid and ask midpoint rather than a trade. */
+export function extendedSessionLineLabel(display: ExtendedSessionDisplay, translate: (text: string) => string = (text) => text): string {
+  const label = translate(EXTENDED_SESSION_LINE_LABELS[display.session]);
+  return display.mark ? `${label} ${translate("mid")}` : label;
 }
 
 export function marketStateLabel(state: MarketState): string {
@@ -41,6 +58,11 @@ export function marketStateLabel(state: MarketState): string {
     case "POSTPOST":
     case "CLOSED": return "CLOSED";
   }
+}
+
+/** An extended session's column, named as marketStateLabel names its state. */
+export function extendedSessionStateLabel(session: ExtendedSession): string {
+  return session === "OVERNIGHT" ? "OVERNIGHT" : marketStateLabel(session);
 }
 
 export function marketStateCountdown(state: MarketState, now = Date.now()): string | null {
@@ -94,6 +116,39 @@ export function marketStateDot(state?: MarketState): string {
 
 function isClosedMarketState(state?: MarketState): boolean {
   return state === "CLOSED" || state === "PREPRE" || state === "POSTPOST";
+}
+
+/**
+ * The overnight session's price, while the quote's price is one (Gloom Cloud
+ * sends overnightPrice only then, beside the closed exchange's state),
+ * measured from the completed regular close the headline shows.
+ */
+function overnightSessionDisplay(quote: Quote): ExtendedSessionDisplay | null {
+  const price = quote.overnightPrice;
+  if (!isClosedMarketState(quote.marketState) || !isPositive(price)) return null;
+  const mark = quote.overnightPriceKind === "mark" ? { mark: true as const } : {};
+  const close = completedRegularClose(quote);
+  if (close != null) {
+    const change = price - close;
+    return { session: "OVERNIGHT", price, change, changePercent: (change / close) * 100, ...mark };
+  }
+  return { session: "OVERNIGHT", price, change: quote.overnightChange, changePercent: quote.overnightChangePercent, ...mark };
+}
+
+/**
+ * A quote's session as a status cell names it: the overnight session while
+ * the quote is priced by it, else its market state (marketStateLabel). The
+ * exchange stays closed overnight, so the state alone reads CLOSED.
+ */
+export function quoteSessionLabel(quote: Quote | null | undefined): string | null {
+  if (!quote?.marketState) return null;
+  return overnightSessionDisplay(quote) ? "OVERNIGHT" : marketStateLabel(quote.marketState);
+}
+
+/** The color of quoteSessionLabel: an extended session's while the overnight session prices the quote. */
+export function quoteSessionColor(quote: Quote | null | undefined, palette: ThemeColors = colors): string {
+  if (!quote?.marketState) return palette.textDim;
+  return overnightSessionDisplay(quote) ? marketStateColor("POST", palette) : marketStateColor(quote.marketState, palette);
 }
 
 /** Closed prices are final snapshots, so they should not look live or directional. */
@@ -239,6 +294,8 @@ export function getCompletedRegularSessionDisplay(quote: Quote | null | undefine
  */
 export function getExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
   if (!quote) return null;
+  const overnight = overnightSessionDisplay(quote);
+  if (overnight) return overnight;
   const state = quote.marketState;
   if (state === "PRE" || state === "PREPRE") {
     if (isFiniteNumber(quote.preMarketPrice)) {
@@ -286,9 +343,10 @@ export function getQuoteSessionFields(quote: Quote | null | undefined) {
   };
 }
 
-/** The extended display only while its session is open: the pre-market or the after-hours session. */
+/** The extended display only while its session is open: the pre-market, the after-hours or the overnight session. */
 function getOpenExtendedSessionDisplay(quote: Quote | null | undefined): ExtendedSessionDisplay | null {
-  return quote?.marketState === "PRE" || quote?.marketState === "POST" ? getExtendedSessionDisplay(quote) : null;
+  if (!quote) return null;
+  return quote.marketState === "PRE" || quote.marketState === "POST" ? getExtendedSessionDisplay(quote) : overnightSessionDisplay(quote);
 }
 
 /**
@@ -321,10 +379,13 @@ export function getSessionMoveDisplay(
  * getSessionMoveDisplay for a board that marks an extended move on each tile
  * (the heat map): while a quote says nothing has traded in the open session
  * yet (extendedSessionPrint false), its extended figures are the close
- * carried forward, not a flat print, so the regular session stands.
+ * carried forward, not a flat print, so the regular session stands, as it
+ * does while the overnight price is a bid and ask midpoint.
  */
 export function getTradedSessionMoveDisplay(
   quote: Quote | null | undefined,
 ): (ActiveQuoteDisplay & { session?: ExtendedSession }) | null {
-  return quote?.extendedSessionPrint === false ? getRegularSessionDisplay(quote) : getSessionMoveDisplay(quote);
+  return quote?.extendedSessionPrint === false || quote?.overnightPriceKind === "mark"
+    ? getRegularSessionDisplay(quote)
+    : getSessionMoveDisplay(quote);
 }

@@ -10,10 +10,11 @@ import { useFxRatesMap } from "../../../market-data/hooks";
 import { formatMarketPriceWithCurrency, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import {
   exchangeShortName,
+  extendedSessionLineLabel,
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
-  marketStateColor,
-  marketStateLabel,
+  quoteSessionColor,
+  quoteSessionLabel,
 } from "../../../market-data/market/status";
 import { appendQuoteToPriceReturnHistory, buildPriceReturnFields } from "../../../market-data/performance";
 import { fitFuturesContractLines, futuresContractLines, futuresSettleText, isFuturesInstrument, type FuturesContractLine } from "../../../market-data/futures-contract";
@@ -168,7 +169,8 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
   // The pane title already names the ticker, so the line leads with the company and drops a name that only repeats it.
   const companyName = [ticker.metadata.name, quote?.name].find((name) => name && name !== ticker.metadata.ticker) ?? "";
   const venueText = listingVenue ? (companyName ? ` (${listingVenue})` : listingVenue) : "";
-  const marketStateText = quote?.marketState ? t(marketStateLabel(quote.marketState)) : "";
+  const sessionLabel = quoteSessionLabel(quote);
+  const marketStateText = sessionLabel ? t(sessionLabel) : "";
   const hasIdentityLine = Boolean(companyName || venueText || marketStateText);
   // The desktop logo is a square from the top of the company name's capitals down to the
   // price's baseline, so its edges meet the text's and the three read as one block. The
@@ -277,7 +279,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
                 )}
                 {venueText && <Text flexShrink={0} fg={colors.textDim}>{venueText}</Text>}
                 {quote?.marketState && (
-                  <Text flexShrink={0} fg={marketStateColor(quote.marketState)}>
+                  <Text flexShrink={0} fg={quoteSessionColor(quote)}>
                     {companyName || venueText ? " " : ""}{marketStateText}
                   </Text>
                 )}
@@ -299,7 +301,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             )}
             {extendedQuote && (
               <Box flexDirection="row" gap={2}>
-                <Text fg={colors.textDim}>{extendedQuote.session === "PRE" ? t("Pre-Market") : t("After-Hours")}:</Text>
+                <Text fg={colors.textDim}>{extendedSessionLineLabel(extendedQuote, t)}:</Text>
                 <Text fg={priceColor(extendedQuote.change ?? 0)}>
                   {formatMarketPriceWithCurrency(extendedQuote.price, quote?.currency, moneyOptions)}
                 </Text>

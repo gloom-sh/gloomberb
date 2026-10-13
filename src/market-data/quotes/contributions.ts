@@ -83,6 +83,14 @@ function shouldProjectSessionPrice(quote: Quote | QuoteContribution): boolean {
   return quote.dataSource === "live";
 }
 
+/** The overnight session's fields cleared: a quote in a session of the exchange's own has none. */
+const NO_OVERNIGHT_PRICE = {
+  overnightPrice: undefined,
+  overnightChange: undefined,
+  overnightChangePercent: undefined,
+  overnightPriceKind: undefined,
+} as const;
+
 export function finalizeSessionFields(
   quote: QuoteContribution,
   options: { allowPriceProjection?: boolean } = {},
@@ -93,6 +101,7 @@ export function finalizeSessionFields(
   if (quote.marketState === "PRE") {
     return {
       ...quote,
+      ...NO_OVERNIGHT_PRICE,
       preMarketPrice: quote.preMarketPrice ?? (canProjectSessionPrice ? quote.price : undefined),
       preMarketChange: quote.preMarketChange ?? (canProjectSessionPrice ? quote.change : undefined),
       preMarketChangePercent: quote.preMarketChangePercent ?? (canProjectSessionPrice ? quote.changePercent : undefined),
@@ -105,6 +114,7 @@ export function finalizeSessionFields(
   if (quote.marketState === "POST") {
     return {
       ...quote,
+      ...NO_OVERNIGHT_PRICE,
       preMarketPrice: undefined,
       preMarketChange: undefined,
       preMarketChangePercent: undefined,
@@ -118,6 +128,7 @@ export function finalizeSessionFields(
   if (quote.marketState != null) {
     return {
       ...quote,
+      ...(quote.marketState === "REGULAR" ? NO_OVERNIGHT_PRICE : {}),
       preMarketPrice: undefined,
       preMarketChange: undefined,
       preMarketChangePercent: undefined,
@@ -195,6 +206,10 @@ export function mergeQuoteContribution(
     priceBasis: next.priceBasis,
     // Said of this observation's price; a tick that does not say leaves it unknown.
     extendedSessionPrint: next.extendedSessionPrint,
+    overnightPrice: next.overnightPrice,
+    overnightChange: next.overnightChange,
+    overnightChangePercent: next.overnightChangePercent,
+    overnightPriceKind: next.overnightPriceKind,
     // The board this observation was read on; one read on the listing's own line names none.
     tradingExchangeName: next.tradingExchangeName,
     regularClose: next.regularClose,
