@@ -1300,6 +1300,7 @@ Choose the existing control that owns the interaction you need:
 | Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean; `status` and `busy` show work the confirm started), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
+| A few rows of figures under their headers, or label and value pairs in columns, inside a section | `ColumnGrid` (`ColumnGridColumn`: cells, `growFrom`, `align`, `gapBefore`), `ColumnGridPair` |
 | Inline bars | `RatioBar` (a value against a scale: a count against the largest row, a move against a full-scale move), `RangeTrack` (where a value sits between a low and a high) |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
 | Loading, empty states, inline feedback | `Spinner`, `EmptyState`, `PaneStatusBody`, `Notice` |

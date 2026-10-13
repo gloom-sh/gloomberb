@@ -19,13 +19,14 @@
  * the charts that sit inside a pane's own layout), `nested` (the first four
  * docked), `stacked` (the chart under a table docked beside a chart),
  * `narrow` (floating panes either side of the width a header keeps Ask Gloom
- * at), `chat` (the chat view over an invented channel, see chat-fixture.tsx)
- * or `cmp` (one chart composer pane on invented 30-minute bars, see
+ * at), `chat` (the chat view over an invented channel, see chat-fixture.tsx),
+ * `cmp` (one chart composer pane on invented 30-minute bars, see
  * createInventedChartSource: `&chart=readout` three listings on two venues,
  * volume and two studies, `pan` one listing with years of bars, `edge` one
- * whose bars start 150 sessions back, `percent` three listings rebased), or
+ * whose bars start 150 sessions back, `percent` three listings rebased),
  * `layout` (one pane that sets text or scrolls content, docked or floating,
- * for the layout checks; see layout-fixture.tsx).
+ * for the layout checks; see layout-fixture.tsx), or `des` (DES's overview
+ * over an invented company, see DesPane).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -557,6 +558,58 @@ function OverviewPane({ width, height, focused }: PaneProps) {
 }
 
 /**
+ * DES's overview over an invented company (`scenario=des`): the quote book,
+ * fundamentals, positions in several accounts, profile and description.
+ * `positions=<n>` sets how many accounts hold it (3 by default), `scale=<n>`
+ * repeats the description, and `float=1` floats the pane over a plain one.
+ */
+const DES_ACCOUNTS = ["main", "Retirement", "Joint savings", "Trading", "Long term", "Education", "Family trust", "Margin", "Paper"];
+const desPositions = Number(params.get("positions") ?? 3);
+const DES_DESCRIPTION = Array.from({ length: Number(params.get("scale") ?? 1) }, () => "Example Industries builds small instruments for imaginary observatories. The team assembles each device in a bright studio beside the river, checks the lenses twice, and sends a hand written guide with every order. Longer runs use the same tools, but the instruments travel to classrooms, research stations and libraries across several regions.").join(" ");
+const DES_TICKER = createTestTicker("EXMPL", "Example Industries", {
+  exchange: "NASDAQ",
+  assetCategory: "STK",
+  portfolios: DES_ACCOUNTS.slice(0, desPositions),
+  positions: Array.from({ length: desPositions }, (_, index) => ({
+    portfolio: DES_ACCOUNTS[index % DES_ACCOUNTS.length]!, shares: 10 + index * 7, avgCost: 70 + index * 2.5, currency: "USD", broker: "manual",
+  })),
+});
+const DES_FINANCIALS = createTestFinancials({
+  financialCurrency: "USD",
+  quote: createTestQuote({
+    symbol: "EXMPL", name: "Example Industries", price: 105.25, change: 1.25, changePercent: 1.2, previousClose: 104, lastUpdated: Date.UTC(2026, 0, 2),
+    bid: 105.2, ask: 105.3, bidSize: 300, askSize: 500, high: 106, low: 103, high52w: 140, low52w: 80, volume: 1_200_000, marketCap: 5e9, marketState: "CLOSED",
+  }),
+  priceHistory: inventedSeries(120, 100, 18),
+  fundamentals: {
+    marketCap: 5e9, enterpriseValue: 5.5e9, trailingPE: 21.5, forwardPE: 19.4, eps: 4.89, dividendYield: 0.017, beta: 1.12, revenue: 2e9,
+    netIncome: 3e8, freeCashFlow: 2e8, profitMargin: 0.15, operatingMargin: 0.22, sharesOutstanding: 47_505_938, floatShares: 42e6,
+  },
+  profile: { description: DES_DESCRIPTION, sector: "Industrials", industry: "Instruments", employees: 12_345, website: "https://example.invalid", fiscalYearEnd: "12-31" },
+});
+function DesPane({ width, height, focused }: PaneProps) {
+  return <OverviewTab ticker={DES_TICKER} financials={DES_FINANCIALS} width={width} height={height} focused={focused} />;
+}
+
+/** DES beside a plain pane, or floating over it (`float=1`). */
+function desLayout(): LayoutConfig {
+  if (params.get("float") === "1") {
+    return {
+      dockRoot: leaf("plain:a"),
+      instances: [instance("des:a"), instance("plain:a")],
+      floating: [{ instanceId: "des:a", x: 10, y: 2, width: 112, height: 44, zIndex: 50 }],
+      detached: [],
+    };
+  }
+  return {
+    dockRoot: { kind: "split", axis: "horizontal", ratio: 0.66, first: leaf("des:a"), second: leaf("plain:a") },
+    instances: [instance("des:a"), instance("plain:a")],
+    floating: [],
+    detached: [],
+  };
+}
+
+/**
  * Real title-bar tabs mount each chart just as opening a research tab does.
  * `composer` is the research Chart tab itself: the chart composer on the
  * invented source, loading its bars after a delay the first time.
@@ -846,6 +899,7 @@ function chartComposerSpec(kind: string): ChartSpec {
 const PANES = {
   palette: { name: "Surface", component: PalettePane },
   overview: { name: "Overview", component: OverviewPane },
+  des: { name: "DES", component: DesPane },
   paint: { name: "Research", component: PaintPane },
   plain: { name: "Plain", component: PlainPane },
   tabs: { name: "Tabbed", component: TabsPane },
@@ -1054,6 +1108,7 @@ function config() {
     : scenario === "resize" ? resizeLayout()
     : scenario === "narrow" ? narrowLayout()
     : scenario === "chat" ? chatLayout()
+    : scenario === "des" ? desLayout()
     : scenario === "nested" ? nestedLayout()
     : scenario === "stacked" ? stackedLayout()
     : scenario === "cmp" ? chartComposerLayout()

@@ -4,6 +4,7 @@ import { positiveInteger, takeOption } from "../tui-benchmark-harness";
 import { cacheDir, click, drag, evaluate, frames, holdKey, launchBrowser, mouse, pressKey, sleep, waitFor, type Cdp, type Chord, type Point } from "./browser";
 import { serveFixturePage, type FixturePage } from "./page";
 import { chatSteps } from "./chat-checks";
+import { desSteps } from "./des-checks";
 import { layoutSteps } from "./layout-checks";
 import { selectionSteps } from "./selection-checks";
 import { checkFirstPaint, checkThemePreview } from "./paint";
@@ -1348,6 +1349,7 @@ const steps: Step[] = [
     },
   })),
   ...chatSteps,
+  ...desSteps,
   ...layoutSteps,
   ...selectionSteps,
 ];

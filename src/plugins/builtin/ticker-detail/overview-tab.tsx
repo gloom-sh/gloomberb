@@ -259,8 +259,22 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
         // On the desktop the header keeps half a row clear of the tab bar's edge.
         style={nativePaneChrome ? { paddingTop: Math.round(cellHeightPx / 2) } : undefined}
       >
-        <Box flexDirection={quoteBookInline ? "row" : "column"} gap={quoteBookInline ? 2 : 0} width={contentWidth}>
-          <Box flexDirection="row" width={quoteSummaryWidth} flexShrink={0} minWidth={0} overflow="hidden">
+        <Box
+          flexDirection={quoteBookInline ? "row" : "column"}
+          gap={quoteBookInline && !nativePaneChrome ? 2 : 0}
+          width={nativePaneChrome ? undefined : contentWidth}
+          style={nativePaneChrome && quoteBookInline ? { columnGap: "2ch" } : undefined}
+        >
+          <Box
+            flexDirection="row"
+            width={nativePaneChrome ? undefined : quoteSummaryWidth}
+            // On the desktop the summary takes what the book beside it leaves, so the book keeps to the pane's right edge.
+            flexGrow={nativePaneChrome && quoteBookInline ? 1 : undefined}
+            flexShrink={nativePaneChrome && quoteBookInline ? 1 : 0}
+            flexBasis={nativePaneChrome && quoteBookInline ? 0 : undefined}
+            minWidth={0}
+            overflow="hidden"
+          >
             <CompanyLogo
               symbol={ticker.metadata.ticker}
               assetCategory={ticker.metadata.assetCategory}
@@ -321,7 +335,13 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
           </Box>
 
           {quote && hasBidAsk && (
-            <QuoteBook quote={quote} assetCategory={moneyOptions.assetCategory} width={quoteBookWidth} />
+            <QuoteBook
+              quote={quote}
+              assetCategory={moneyOptions.assetCategory}
+              width={quoteBookWidth}
+              // The terminal's 30% of the width between 24 and 32 cells, in characters.
+              desktopWidth={quoteBookInline ? "clamp(24ch, 30%, 32ch)" : "min(100%, 32ch)"}
+            />
           )}
         </Box>
 
@@ -428,9 +448,10 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
 
         {/* Description — last, collapsed */}
         {description && (
-          <Box flexDirection="column" width={contentWidth}>
+          <Box flexDirection="column" width={nativePaneChrome ? undefined : contentWidth}>
             <SectionHeading title={t("Description")} />
-            <Text fg={colors.text} width={contentWidth} wrapMode="word" wrapText>{description}</Text>
+            {/* The desktop wraps it at the pane's own width, so it follows a resize to the pixel. */}
+            <Text fg={colors.text} width={nativePaneChrome ? undefined : contentWidth} wrapMode="word" wrapText>{description}</Text>
           </Box>
         )}
       </Box>

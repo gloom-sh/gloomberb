@@ -14,8 +14,10 @@ import { serveFixturePage, type FixturePage } from "./page";
  * dock divider between a news table and a chart and one between the G layout
  * and the chart beside a table (`nested`, each measured on both sides), the
  * divider of a table in a pane's sidebar, a chart composer's plot panned
- * back and forth (`cmp`), and the divider beside a chat whose messages wrap
- * to its width, with the first page of messages and with 500 loaded. It
+ * back and forth (`cmp`), the divider beside a chat whose messages wrap
+ * to its width, with the first page of messages and with 500 loaded, and the
+ * divider beside DES's overview, with three accounts and with nine and a
+ * description three times as long (`des`). It
  * reads what the page's main thread spent (Performance.getMetrics, in thread
  * time), the React commits and the animation frames the page ran, and for a
  * resize how far the frame's edge and the content's edge fell behind the
@@ -171,6 +173,17 @@ const chatDividerDrag = (name: string, fixture: string, prepare?: (cdp: Cdp) => 
   track: { frame: rightOf(pane("chat:a")), content: lastRightOf(`${pane("chat:a")} [data-gloom-role=chat-message]`) },
 });
 const NESTED_DIVIDER = dividerRightOf("chart-bar:dock");
+/** The positions table's last header, by its text, so a branch with padded columns finds it too. */
+const DES_LAST_COLUMN = `(() => { const span = [...document.querySelectorAll("[data-gloom-pane-id='des:a'] span")].find((e) => e.childElementCount === 0 && e.textContent.trim() === "Ret"); return span.getBoundingClientRect().right; })()`;
+/** DES beside a plain pane: its quote book, fundamentals, positions and description fill the width the divider gives it. */
+const desDividerDrag = (name: string, fixture: string): Scenario => ({
+  name,
+  fixture,
+  ready: `!!document.querySelector("[data-gloom-pane-id='des:a'] canvas")`,
+  grab: (cdp) => evaluate(cdp, dividerRightOf("des:a")),
+  path: (start, t) => ({ x: start.x - Math.sin(t * Math.PI * 2) * 200, y: start.y }),
+  track: { frame: rightOf(pane("des:a")), content: DES_LAST_COLUMN },
+});
 
 /** A floating pane's corner, dragged out, in past where it started and out again, as the chart and table resizes do. */
 const cornerResize = (name: string, float: string, paneId: string, content: string, canvas?: string): Scenario => ({
@@ -286,6 +299,9 @@ const SCENARIOS: Scenario[] = [
   chatDividerDrag("chat divider drag", "chat"),
   // A reader who paged far back: every page stays in the list.
   chatDividerDrag("chat divider drag, 500 messages", "chat&count=500&latency=0", loadWholeChat),
+  desDividerDrag("DES divider drag", "des"),
+  // Three times the accounts and the description.
+  desDividerDrag("DES divider drag, 3x", "des&positions=9&scale=3"),
   {
     name: "table column drag",
     fixture: "resize",
