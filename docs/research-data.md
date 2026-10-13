@@ -828,6 +828,34 @@ With `--nav` and `--budget-bps` (or the pane's Hedge NAV and Hedge budget settin
 
 At 5.51 (the ask), one SPY 700 put costs 551.00; 500,000 buys 907 of them, spending 499,757 (49.98 bps), and covers 907 x 100 x 778.57 = 70.6m, 70.6% of a 100m NAV. Entered at the 5.495 midpoint it buys 909. Amounts take `100m`, `2.5bn`, `250k`, `1,000,000` or `$100m`. The sizing fails, saying why, when one input is missing or not a positive amount, when the position holds no long option or takes in a net credit, and when the budget is below one contract (it names what one costs). `--strategy put` seeds the single long put for this: the put at `--strike` (nearest the money when omitted) of the `--expiration` chain, entered at its midpoint with the IV that midpoint implies, as the other seeds are. Fees, margin and the rolls a dated hedge needs are not modelled, nor is the cap a put spread puts on its protection; the scenario itself stays at the position as entered.
 
+#### Cash-secured put
+
+`--strategy csp` sells one put at `--strike` (nearest the money when omitted) of the `--expiration` chain, entered at its quote midpoint with the IV that midpoint implies, as the other seeds are. The report's **Cash-secured put** section and the pane's third row of figures read the position as entered:
+
+| Figure | Definition |
+|---|---|
+| Cash secured | strike x multiplier x contracts |
+| Premium received | entry price x multiplier x contracts; the seed's entry price is the quote midpoint, a typed leg's is as typed |
+| Yield on cash | premium / cash secured |
+| Annualised yield | yield on cash x 365 / days to expiry (simple, not compounded); none on the expiry day |
+| Out of the money | (spot - strike) / spot, against the scenario's spot, which the report names (`implied by option quotes`, `typed`, the last price) |
+| Break-even | strike - entry price, per share |
+| Days to expiry | calendar days from the valuation date in New York to the expiry date |
+| Earnings before expiry | `yes` when the earnings calendar's next report is on or before the expiry date, `no` when after, `unknown` when it has no date on or after the valuation date |
+
+KO's November 20, 2026 85 put at 0.67/0.72, valued on 2026-10-13: cash secured 85 x 100 = 8,500.00, premium 0.695 x 100 = 69.50, yield on cash 69.50 / 8,500 = 0.82%, annualised 0.8176% x 365 / 38 = 7.85%, break-even 85 - 0.695 = 84.305, and the October 27 report falls before expiry. Assignment, margin and the interest the cash earns are not modelled.
+
+### Greeks spot and time
+
+A chain's IV and Greeks (`options`, OMON) are valued at one spot and one instant, which the footer and every export name:
+
+- When the underlying's quote carries the official close of the regular session the chain's quotes were taken in, as it does before the next open and early in it while the chain is still the close's, the spot is that close and time to expiry runs from the chain's time. A pre-market or after-hours print does not move the delta of a chain still quoting the close.
+- Otherwise the spot is the underlying's latest price, and time runs from the chain's time once its quotes are over an hour old, else from now.
+
+The rate is 4% and the dividend yield the underlying's, so a delta can be checked by hand: KO's November 20, 2026 85 put on Monday 12 October's chain is -0.20 at the 89.79 close (IV 21.56%, dividend yield 2.34%, 39.04 days), where Tuesday's pre-market 90.65 would give -0.16. OSA values a seeded strategy at the spot its quote mids imply and names it beside the last price.
+
+The chain's open interest carries no date of its own. OPX's listed open interest is dated by the session whose close it counts, and that date is the chain's only when every contract with a count in both agrees; otherwise it reads `OI date not published` (with how many counts differ under `options`), never a borrowed date. VCA's IV readings are Gloom Cloud's: each row's Spot is the underlying price the reading was taken at, on the date the title gives.
+
 ## Options valuation models
 
 The American model uses a Cox-Ross-Rubinstein recombining log-spot lattice. Between dividend events, risk-neutral up/down expectations are discounted at the entered continuous rate, with continuous dividend yield retained as a separate carry input. Before each scheduled cash jump, the continuation value at `max(spot - cash, 0)` is interpolated linearly in spot on the after-dividend value grid. The intrinsic payoff competes with continuation at each exercise node, including immediately before a cash jump. This models an explicit stock-price jump rather than a spot-minus-present-value approximation. Same-time dividends are summed.

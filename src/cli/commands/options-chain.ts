@@ -5,6 +5,12 @@ import { cliStyles, cliTerminalWidth, wrapText } from "../../utils/cli-output";
 import { isFiniteNumber } from "../../utils/guards";
 import { calculateOptionGreeks, solveChainVolatilities } from "../../plugins/builtin/options/analytics";
 import { optionQuoteSide } from "../../plugins/builtin/options/market-reference";
+import {
+  formatModelSpotPrice, modelSpotLabel, optionModelSpot, type OptionModelSpot,
+} from "../../plugins/builtin/options/model-spot";
+import {
+  chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf,
+} from "../../plugins/builtin/options/open-interest-as-of";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
 import { expiryIsoDate, missingExpiryText, parseOptionExpiration } from "../../utils/option-expiry";
 
@@ -61,6 +67,8 @@ export function formatExpiryList(expirations: readonly number[], width = cliTerm
 export interface OptionModelInputs {
   /** The underlying's current price; absent when the quote is missing or stale. */
   spot?: number;
+  /** The quote `spot` is read from, for the spot the chain is valued at (`optionModelSpot`). */
+  quote?: Quote;
   dividendYield?: number;
   now?: number;
 }
@@ -119,7 +127,7 @@ export async function loadOptionModelInputs(
     .find((candidate) => candidate && candidate.stale !== true && isFiniteNumber(candidate.price) && candidate.price > 0);
   const dividendYield = financials?.fundamentals?.dividendYield;
   return {
-    ...(current ? { spot: current.price } : {}),
+    ...(current ? { spot: current.price, quote: current } : {}),
     ...(isFiniteNumber(dividendYield) && dividendYield >= 0 ? { dividendYield } : {}),
   };
 }
@@ -129,6 +137,72 @@ export function chainWithModelFigures(chain: OptionsChain, inputs: OptionModelIn
   const figures = optionModelFigures(chain, inputs);
   const add = (contract: OptionContract) => ({ ...contract, iv: figures.get(contract)?.iv ?? null, delta: figures.get(contract)?.delta ?? null });
   return { ...chain, calls: chain.calls.map(add), puts: chain.puts.map(add) };
+}
+
+/**
+ * What a chain's IV, delta and open interest are as of: the spot and instant
+ * they are valued at, and the session the open interest counts. The rows and
+ * the closing lines of every format say it.
+ */
+export interface OptionsChainBasis {
+  spot: OptionModelSpot | null;
+  dividendYield: number | null;
+  openInterest: OpenInterestAsOf | null;
+}
+
+/** The chain with `iv` and `delta` valued at the spot `optionModelSpot` picks for it, and that spot. */
+export function valueChainAtModelSpot(
+  chain: OptionsChain, inputs: OptionModelInputs, now: number, exchange?: string,
+): { chain: OptionsChain; spot: OptionModelSpot | null } {
+  const spot = optionModelSpot(inputs.quote, chain, now, exchange);
+  return {
+    chain: chainWithModelFigures(chain, spot ? { spot: spot.price, dividendYield: inputs.dividendYield, now: spot.valuationTime } : inputs),
+    spot,
+  };
+}
+
+/** The open-interest date of the chain's expiry, from OPX's listing of it; null when the listing cannot be read. */
+export async function loadOptionsChainOpenInterest(
+  symbol: string, chain: OptionsChain, listed?: ReturnType<typeof loadListedOpenInterest> | null,
+): Promise<OpenInterestAsOf | null> {
+  const expiration = [...chain.calls, ...chain.puts][0]?.expiration;
+  if (expiration == null) return null;
+  const payload = await (listed ?? loadListedOpenInterest(symbol, expiryIsoDate(expiration)));
+  return payload ? chainOpenInterestAsOf(chain, payload) : null;
+}
+
+/** OPX's listing of an expiry, requested while the chain loads. */
+export function requestListedOpenInterest(symbol: string, expiration: number) {
+  return loadListedOpenInterest(symbol, expiryIsoDate(expiration));
+}
+
+/**
+ * The line under the chain: `Greeks at spot 89.79 (close Mon 12 Oct 20:00 UTC), dividend yield 2.34%, rate 4% · OI as of Fri 9 Oct`.
+ * An open interest whose date cannot be established says why.
+ */
+export function optionsBasisFootnote(basis: OptionsChainBasis): string {
+  const parts: string[] = [];
+  if (basis.spot) {
+    parts.push(`Greeks at spot ${formatModelSpotPrice(basis.spot.price)} (${modelSpotLabel(basis.spot)}), `
+      + `dividend yield ${basis.dividendYield == null ? "0%" : `${Number((basis.dividendYield * 100).toFixed(2))}%`}, `
+      + `rate ${Number((OPTION_MODEL_RATE * 100).toFixed(2))}%`);
+  }
+  const oi = basis.openInterest;
+  parts.push(oi?.date ? openInterestAsOfLabel(oi)
+    : oi?.listedDate && oi.compared > 0
+      ? `OI date not published: the counts differ from OPX's ${oi.listedDate} counts on ${oi.compared - oi.matched} of ${oi.compared} contracts`
+      : openInterestAsOfLabel(null));
+  return parts.join(" · ");
+}
+
+/** The spot and open-interest fields every exported row carries. */
+export function optionsBasisFields(basis: OptionsChainBasis) {
+  return {
+    spot: basis.spot?.price ?? null,
+    spotBasis: basis.spot ? basis.spot.basis === "close" ? "close" : basis.spot.session ?? "last" : null,
+    spotAsOf: basis.spot ? new Date(basis.spot.observedAt).toISOString() : null,
+    openInterestAsOf: basis.openInterest?.date ?? null,
+  };
 }
 
 export function optionRows(chain: OptionsChain) {

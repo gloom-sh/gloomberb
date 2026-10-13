@@ -12,6 +12,7 @@ import { daysToExpiryFrom, extractImpliedForward, optionMid, solveImpliedVolatil
 import type { YieldPoint } from "../yield-curve/treasury-data";
 import { parseLegs, scenarioCurrency, validatePosition, type ScenarioControls, type ScenarioLeg, type ScenarioPosition } from "./model";
 import { abortable, abortError } from "../../../utils/async-deadline";
+import { extendedSession } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
 
 export interface ScenarioMarketSnapshot {
@@ -153,6 +154,26 @@ export async function loadScenarioMarket(
 
 const sentence = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
+const cents = (value: number) => value.toFixed(2);
+
+/**
+ * What the scenario's spot is, in words, for the labels that name it: `typed`
+ * for a what-if, `implied by option quotes` for a seeded strategy whose quote
+ * mids imply another spot than the last print, else the last price and its
+ * session (`pre-market`, `after hours`), or `input` without a market.
+ */
+export function scenarioSpotBasis(
+  settings: Record<string, unknown>,
+  position: Pick<ScenarioPosition, "spot" | "legs">,
+  market: Pick<ScenarioMarketSnapshot, "spot" | "underlyingQuote"> | null | undefined,
+): string {
+  if (supplied(settings.spot)) return "typed";
+  const marketSpot = market?.spot;
+  if (marketSpot == null) return "input";
+  if (position.legs.some((leg) => leg.volatilitySource === "mid") && cents(marketSpot) !== cents(position.spot)) return "implied by option quotes";
+  return (market?.underlyingQuote ? extendedSession(market.underlyingQuote) : null) ?? "last price";
+}
+
 function supplied(value: unknown): boolean { return value != null && value !== ""; }
 
 function numericSetting(settings: Record<string, unknown>, key: string): number | undefined {
@@ -204,9 +225,9 @@ export function scenarioPositionFromSettings(
   let legs = legText.trim() ? parseLegs(legText) : [];
   const strike = numericSetting(settings, "strike");
   if (strike != null && !(strike > 0)) throw new Error("strike must be positive");
-  if (strike != null && !supplied(settings.strategy)) throw new Error("strike picks the strike of --strategy; add --strategy put, vertical or straddle");
+  if (strike != null && !supplied(settings.strategy)) throw new Error("strike picks the strike of --strategy; add --strategy put, csp, vertical or straddle");
   if (!legs.length && supplied(settings.strategy)) {
-    if (!isScenarioStrategy(settings.strategy)) throw new Error("strategy must be vertical, straddle or put");
+    if (!isScenarioStrategy(settings.strategy)) throw new Error("strategy must be vertical, straddle, put or csp");
     if (!market?.chain || market.warnings.includes("Options chain is stale")) {
       throw new Error(market?.missingExpiry ?? "A current options chain is required to seed a strategy");
     }
@@ -242,8 +263,10 @@ export function scenarioPositionFromSettings(
   return position;
 }
 
-type ScenarioStrategy = "vertical" | "straddle" | "put";
-const isScenarioStrategy = (value: unknown): value is ScenarioStrategy => value === "vertical" || value === "straddle" || value === "put";
+/** The seeds `--strategy` builds: a call vertical, a straddle, one long put, or one short put (a cash-secured put). */
+export const SCENARIO_STRATEGIES = ["vertical", "straddle", "put", "csp"] as const;
+type ScenarioStrategy = typeof SCENARIO_STRATEGIES[number];
+const isScenarioStrategy = (value: unknown): value is ScenarioStrategy => SCENARIO_STRATEGIES.includes(value as ScenarioStrategy);
 
 interface StrategyPricing { spot: number; asOf: number; rate: number }
 
@@ -267,8 +290,9 @@ interface StrategyParity { forward: number; daysToExpiry: number }
  * scenario at the spot it implies.
  *
  * Each strategy is anchored at the strike nearest spot, or at `strike` when
- * one is given: a long put (a protective put), a call vertical from the
- * anchor to the next listed strike up, or a straddle at the anchor.
+ * one is given: a long put (a protective put), a short put (a cash-secured
+ * put, sold at the midpoint like every seed), a call vertical from the anchor
+ * to the next listed strike up, or a straddle at the anchor.
  */
 function scenarioStrategyLegs(
   chain: OptionsChain, spot: number, strategy: ScenarioStrategy, pricing: StrategyPricing | null, strike?: number,
@@ -304,13 +328,13 @@ function scenarioStrategyLegs(
     if (strike == null) return new Error("The selected chain has no complete quoted strategy with usable IV");
     const listed = [...new Set(candidates.map(({ contract }) => contract.strike))]
       .sort((a, b) => Math.abs(a - strike) - Math.abs(b - strike)).slice(0, 4).sort((a, b) => a - b);
-    return new Error(`The selected chain has no complete quoted ${strategy} at strike ${strike} with usable IV`
+    return new Error(`The selected chain has no complete quoted ${strategy === "csp" ? "put to sell" : strategy} at strike ${strike} with usable IV`
       + (listed.length ? `; nearest quoted strikes: ${listed.join(", ")}` : ""));
   };
-  if (strategy === "put") {
+  if (strategy === "put" || strategy === "csp") {
     const put = puts.find(anchored);
     if (!put) throw missing(puts);
-    return { legs: [{ id: put.contract.contractSymbol, side: "put", quantity: 1, strike: put.contract.strike,
+    return { legs: [{ id: put.contract.contractSymbol, side: "put", quantity: strategy === "csp" ? -1 : 1, strike: put.contract.strike,
       expiration: put.contract.expiration, price: put.mid, priceSource: "mid", volatility: put.volatility, multiplier: 100,
       ...(put.solved ? { volatilitySource: "mid" as const } : {}) }],
     parity: put.solved ? parityFor(put.contract.expiration) : null };

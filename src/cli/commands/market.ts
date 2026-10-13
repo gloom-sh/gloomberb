@@ -48,9 +48,9 @@ import type { FuturesContractTermsPayload } from "../../api-client/futures-curve
 import { futuresSettleText, isFuturesInstrument } from "../../market-data/futures-contract";
 import {
   chainHasExpiry,
-  chainWithModelFigures,
   formatExpiryList,
   loadOptionModelInputs,
+  loadOptionsChainOpenInterest,
   formatOptionDeltaCell,
   formatOptionIvCell,
   formatOptionQuoteCell,
@@ -58,7 +58,12 @@ import {
   OPTION_MODEL_RATE,
   OPTIONS_USAGE,
   optionRows,
+  optionsBasisFields,
+  optionsBasisFootnote,
   parseOptionExpiration,
+  requestListedOpenInterest,
+  valueChainAtModelSpot,
+  type OptionsChainBasis,
 } from "./options-chain";
 import { DEFAULT_LEAPS_CRITERIA, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions } from "./options-leaps";
 import type { CliResultColumn } from "../result";
@@ -1495,6 +1500,8 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const quotePromise = loadListingQuote(market.dataProvider, listing);
     const fate = listingFateLoader(listing, market, quotePromise);
     const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quotePromise, refresh);
+    // OPX's listing dates the chain's open interest; asked for alongside the chain when the expiry is known.
+    const listedOpenInterest = expirationDate != null ? requestListedOpenInterest(symbol, expirationDate) : null;
     const { result, chain: loaded } = await loadForListing(listing, market, ctx, async () => {
       const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
         .load({ force: refresh });
@@ -1524,7 +1531,13 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     }
     const quote = await quotePromise;
     const identity = listingIdentity(listing, quote);
-    const chain = chainWithModelFigures(loaded, inputs);
+    // IV and delta are valued at one spot and instant, named under the table and on every exported row.
+    const { chain, spot: modelSpot } = valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
+    const basis: OptionsChainBasis = { spot: modelSpot, dividendYield: inputs.dividendYield ?? null,
+      openInterest: await loadOptionsChainOpenInterest(symbol, chain, listedOpenInterest) };
+    const basisFields = optionsBasisFields(basis);
+    const currency = [...chain.calls, ...chain.puts].find((contract) => contract.currency?.trim())?.currency.trim().toUpperCase()
+      ?? quote?.currency ?? null;
     // A failed refresh falls back to the stored chain, which can be days old.
     const refreshWarning = result?.refreshError == null ? null
       : `Options refresh failed; showing the chain stored ${new Date(result.fetchedAt).toISOString()}`
@@ -1546,23 +1559,54 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       ...(chain.delayMinutes != null ? { delayMinutes: chain.delayMinutes } : {}),
       stale: refreshWarning != null,
     });
+    const contractCount = chain.calls.length + chain.puts.length;
     ctx.printResult({
       data: chain,
       metadata: {
         ...listingMetadata(identity),
         expirations: chain.expirationDates,
+        currency,
+        interval: OPTIONS_EXPORT_INTERVAL,
+        // `iv` is annualised volatility and `delta` the option's change per 1.00 move in the underlying, both decimals.
+        units: { iv: "annualized decimal", delta: "decimal per 1.00 move in the underlying" },
         // What `iv` and `delta` on each contract are valued from; the provider's own impliedVolatility is left as sent.
-        model: { spot: inputs.spot ?? null, dividendYield: inputs.dividendYield ?? null, rate: OPTION_MODEL_RATE },
+        model: {
+          spot: basisFields.spot, spotBasis: basisFields.spotBasis, spotAsOf: basisFields.spotAsOf,
+          valuationTime: modelSpot ? new Date(modelSpot.valuationTime).toISOString() : null,
+          dividendYield: inputs.dividendYield ?? null, rate: OPTION_MODEL_RATE,
+        },
+        openInterest: { asOf: basisFields.openInterestAsOf, listedAsOf: basis.openInterest?.listedDate ?? null,
+          compared: basis.openInterest?.compared ?? 0, matched: basis.openInterest?.matched ?? 0 },
       },
       ...(warnings.length > 0 ? { warnings } : {}),
       freshness,
     }, {
       heading: listingHeading(identity),
-      rows: optionRows,
+      rows: (data: OptionsChain) => optionRows(data).map((row) => ({ ...row, ...basisFields })),
       // Choosing an expiry needs the list; once one is chosen the table is that expiry.
       summary: (data: OptionsChain) => expirationDate == null ? formatExpiryList(data.expirationDates) : "",
       empty: `No option contracts for ${listingTitle(identity)}.`,
+      ...(contractCount > 0 ? { footnote: optionsBasisFootnote(basis) } : {}),
+      exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: currency, interval: OPTIONS_EXPORT_INTERVAL },
+      // Exports state each decimal's unit in its header and end every row with the spot and dates it is as of.
       columns: [
+        { key: "side", header: "Side" },
+        { key: "contract", header: "Contract" },
+        { key: "expiration", header: "Expiry" },
+        { key: "strike", header: "Strike" },
+        { key: "last", header: "Last" },
+        { key: "bid", header: "Bid" },
+        { key: "ask", header: "Ask" },
+        { key: "iv", header: "IV (annualized decimal)" },
+        { key: "delta", header: "Delta (decimal)" },
+        { key: "volume", header: "Vol" },
+        { key: "openInterest", header: "OI" },
+        { key: "spot", header: "Spot" },
+        { key: "spotBasis", header: "Spot basis" },
+        { key: "spotAsOf", header: "Spot as of" },
+        { key: "openInterestAsOf", header: "OI as of" },
+      ],
+      textColumns: [
         { key: "side", header: "Side" },
         { key: "contract", header: "Contract", shrink: false },
         // The contract symbol already carries the date, so this goes first when the table is narrow.
@@ -1579,6 +1623,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     });
   });
 }
+
+/** What an options chain export's `interval` says: one quote snapshot, not bars. */
+const OPTIONS_EXPORT_INTERVAL = "snapshot";
 
 const FX_USAGE = "fx <currency> | fx <base>/<quote>";
 

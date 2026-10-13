@@ -83,6 +83,7 @@ export const scenarioScreenshotEvidence: PaneScreenshotEvidenceHook<ScenarioEvid
       controls?: ScenarioControls | null;
       market?: unknown;
       inputSource?: string;
+      csp?: { earnings: { date: string | null } };
     } | undefined;
     const position = metadata?.position;
     const controls = metadata?.controls;
@@ -96,6 +97,8 @@ export const scenarioScreenshotEvidence: PaneScreenshotEvidenceHook<ScenarioEvid
         scenarioSnapshot: metadata?.scenario ?? null,
         scenarioMarketSnapshot: metadata?.market ?? null,
         scenarioSnapshotErrors: loaded.result.errors ?? [],
+        // A cash-secured put shows the earnings date the report read, not another lookup's.
+        ...(metadata?.csp ? { scenarioEarningsDate: metadata.csp.earnings.date } : {}),
         ...(position ? { seedPosition: position } : {}),
         ...(controls ? { date: new Date(controls.date).toISOString(), volShift: controls.volShift * 100,
           spotRange: controls.spotRange * 100 } : {}),

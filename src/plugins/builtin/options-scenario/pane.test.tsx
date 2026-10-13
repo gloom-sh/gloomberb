@@ -222,7 +222,7 @@ test("a strategy seeded from older quotes names the last print beside the spot t
     const scenario = evidence().scenario!;
     expect(scenario.position.spot).toBeCloseTo(100, 2);
     expect(Math.abs(scenario.valuation.pnl)).toBeLessThan(1e-6);
-    expect(tui.frame()).toContain("2026-09-23 · market · IV from quote mid · last 100.25");
+    expect(tui.frame()).toContain("spot 100.00 implied by option quotes · Wed 23 Sep 00:00 UTC · market · IV from quote mid · last 100.25");
     // Float noise at the flat origin is not a red -0.00.
     expect(tui.frame()).toMatch(/P&L +0\.00 +USD/);
   } finally { WIDTH = 100; }

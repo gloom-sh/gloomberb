@@ -143,7 +143,7 @@ describe("scenario headless inputs", () => {
     expect(result.sections.map((section) => section.title)).toEqual(["Position", "Inputs", "Valuation (USD for 2 contracts)",
       "Expiry risk (USD for 2 contracts)", "Scenario grid (P&L, USD for 2 contracts)"]);
     const entry = (key: string) => result.sections.flatMap((section) => section.entries ?? []).find((item) => item.key === key);
-    expect([entry("price")?.label, entry("spot")?.formatted, entry("thetaPerDay")?.label]).toEqual(["Value", "100.50 per share", "Theta (USD per day)"]);
+    expect([entry("price")?.label, entry("spot")?.formatted, entry("thetaPerDay")?.label]).toEqual(["Value", "100.50 per share (typed)", "Theta (USD per day)"]);
     expect(result.sections[0]!.columns!.find((column) => column.key === "price")?.header).toBe("Entry/share");
     const single = await optionsScenarioHeadless.load({ ...offline, options: { ...untyped, legs: "call,100,2026-12-18,1,5,25" } }, context);
     expect(single.metadata?.units).toMatchObject({ value: "per contract" });
@@ -330,7 +330,7 @@ describe("scenario headless inputs", () => {
       const pnl = seeded.sections.find((section) => section.title.startsWith("Valuation"))?.entries?.find((entry) => entry.key === "pnl");
       expect(Math.abs(Number(pnl?.value))).toBeLessThan(1e-6);
       expect(pnl?.formatted).toBe("0.00");
-      expect(spot(await run({ spot: "100.25" }))).toEqual([["Spot", "100.25 per share"]]);
+      expect(spot(await run({ spot: "100.25" }))).toEqual([["Spot", "100.25 per share (typed)"]]);
     } finally { setSystemTime(); }
   });
 

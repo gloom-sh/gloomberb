@@ -264,8 +264,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   OSA: {
     summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise. "
-      + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve.",
+      + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve. "
+      + "--strategy csp sells a cash-secured put: cash secured, premium, yield on cash and annualised, distance out of the money, break-even, days to expiry and an earnings flag.",
     usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15",
+      "gloomberb fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20",
       "gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m"],
     keys: [key("a", "dd leg"), key("c", "hain"), key("d", "ate"), key("v", "ol shift")],
     data: OPTIONS,

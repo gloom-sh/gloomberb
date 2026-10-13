@@ -27,7 +27,9 @@ export const optionsScenarioModule: PluginModule = {
   paneTemplates: [createTickerSurfacePaneTemplate({
     id: "options-scenario-pane", paneId: "options-scenario", label: "Options Scenario",
     description: "Build multi-leg positions and compare scenario P&L, payoff and aggregate Greeks.",
-    keywords: ["osa", "options", "scenario", "payoff", "strategy", "greeks", "hedge", "hedging", "collar", "protective put", "put spread"],
+    // OSA owns the phrases; OMON and VCA carry the same words without them, so a put-selling search finds all three, OSA first.
+    keywords: ["osa", "options", "scenario", "payoff", "strategy", "greeks", "hedge", "hedging", "collar", "protective put", "put spread",
+      "cash secured put", "csp", "put selling", "sell put", "short put", "wheel"],
     shortcut: "OSA", publicShare: true,
     settings: (symbol, _context, options) => ({ symbol, ...Object.fromEntries(scenarioSettingKeys
       .filter((key) => options?.values?.[key] != null).map((key) => [key, options!.values![key]])) }),
