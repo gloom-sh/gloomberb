@@ -5,6 +5,7 @@ import { createStaticAppStore } from "../../test-support/app-store";
 import { createDefaultConfig } from "../../types/config";
 import { act } from "react";
 import { Header } from "./header";
+import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { publishCommandBarPrompt } from "../command-bar/panel/prompt-binding";
 
 const tui = createOpenTuiTestHarness();
@@ -118,4 +119,76 @@ test("offers a clickable Restart for a downloaded desktop update, and only text 
   await tui.setup().renderOnce();
   expect(tui.frame()).toContain("Update ready, restart to apply");
   expect(tui.frame()).not.toContain("Restart ");
+});
+
+/**
+ * A failed update's message can be as long as whatever the updater threw. In the
+ * terminal the header counts its columns, so the banner is cut to what the Help
+ * pill and the market cluster leave it; it must never reach into either, at any
+ * width, and the retry key stays while the message still has room.
+ */
+test("cuts a failed update to the room the Help pill and the market summary leave it", async () => {
+  const error = "Desktop update did not finish downloading because the release server answered with an unexpected response while verifying the signature of the package";
+  const release = { version: "9.9.9", tagName: "v9.9.9", downloadUrl: "", publishedAt: "", updateAction: { kind: "desktop" as const } };
+  const state = {
+    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    updateAvailable: release,
+    updateProgress: { phase: "error" as const, error },
+  };
+  const seen = new Map<number, string>();
+  // 60 is the narrowest header that still shows the whole Help pill.
+  for (const width of [60, 70, 80, 100, 120, 160, 200, 240, 300]) {
+    await tui.render(
+      <AppContext value={createStaticAppStore(state)}>
+        <Header onOpenHelp={() => {}} />
+      </AppContext>,
+      { width, height: 1 },
+    );
+    await tui.setup().renderOnce();
+    const frame = tui.frame().split("\n")[0]!;
+    seen.set(width, frame);
+
+    const prompt = resolveHeaderPromptGeometry({ termWidth: width });
+    const helpX = frame.indexOf("Help ?");
+    expect(helpX).toBeGreaterThanOrEqual(0);
+    // Whatever sits between the prompt and the Help pill is the banner: it starts
+    // as the message, stops short of the pill, and its cut ends in an ellipsis.
+    const slot = frame.slice(prompt.left + prompt.width, helpX);
+    expect(slot.length).toBeGreaterThan(0);
+    expect(slot.endsWith(" ")).toBe(true);
+    const banner = slot.trim();
+    if (banner) {
+      expect(banner.startsWith("Update f")).toBe(true);
+      expect(banner).toContain("...");
+    }
+    // Nothing of it leaks into the prompt on its left or the cluster on its right.
+    expect(frame.slice(0, prompt.left + prompt.width)).not.toMatch(/Update|retry/);
+    expect(frame.slice(helpX)).not.toMatch(/Update|retry|\.\.\./);
+    // The market summary is right of the pill, whole, and not pushed off the row.
+    if (width >= 80) expect(frame.slice(helpX)).toMatch(/Help \? +SPY — USD/);
+  }
+
+  // Narrow: the slot is a few columns, so the banner keeps the message and drops the key.
+  expect(seen.get(70)).toContain("Update fa...");
+  expect(seen.get(70)).not.toContain("retry");
+  // Wide: the message is cut and the retry key stays after it.
+  expect(seen.get(240)).toMatch(/Update failed: Desktop update[^.]*\.\.\.  \S+ retry/);
+  expect(seen.get(300)).toMatch(/Update failed: Desktop update[^.]*\.\.\.  \S+ retry/);
+  // The longer window shows more of the same message.
+  expect(seen.get(300)!.indexOf("...")).toBeGreaterThan(seen.get(240)!.indexOf("..."));
+});
+
+test("shows a short failed update whole, on one line", async () => {
+  const state = {
+    ...createInitialState(createDefaultConfig("/tmp/gloomberb-header-test")),
+    updateProgress: { phase: "error" as const, error: "Checksum\n  mismatch" },
+  };
+  await tui.render(
+    <AppContext value={createStaticAppStore(state)}>
+      <Header onOpenHelp={() => {}} />
+    </AppContext>,
+    { width: 200, height: 1 },
+  );
+  await tui.setup().renderOnce();
+  expect(tui.frame()).toContain("Update failed: Checksum mismatch");
 });

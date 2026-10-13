@@ -10,12 +10,24 @@ import {
   performUpdate,
   type ReleaseInfo,
   type UpdateCheckResult,
+  type UpdateProgress,
 } from "../../updater";
 import { VERSION } from "../../version";
+import { debugLog } from "../../utils/debug-log";
 import { reportCrash } from "../../telemetry/crash-reports";
 import { runAutomated } from "../../telemetry/usage-counts";
 
 const UPDATE_CHECK_INTERVAL_MS = 60 * 60_000; // hourly
+
+const updateLog = debugLog.createLogger("update");
+
+/**
+ * The header and the command bar show a failed update's message, and the header
+ * cuts it to its room: the log keeps what the updater actually said.
+ */
+function logUpdateFailure(progress: UpdateProgress): void {
+  if (progress.phase === "error") updateLog.error("update failed", { error: progress.error });
+}
 
 /** An update is being downloaded, applied, or is downloaded and waiting for a restart. */
 function updateInFlight(progress: AppState["updateProgress"]): boolean {
@@ -53,6 +65,7 @@ export function useAppUpdateRuntime({
   const startUpdate = useCallback((release: ReleaseInfo) => {
     dispatch({ type: "SET_UPDATE_PROGRESS", progress: { phase: "downloading", percent: 0 } });
     void performUpdate(release, (progress) => {
+      logUpdateFailure(progress);
       dispatch({ type: "SET_UPDATE_PROGRESS", progress });
     });
   }, [dispatch]);
@@ -66,6 +79,7 @@ export function useAppUpdateRuntime({
     dispatch({ type: "SET_UPDATE_PROGRESS", progress: { phase: "replacing" } });
     void applyUpdate((progress) => {
       if (progress.phase === "error") restartingRef.current = false;
+      logUpdateFailure(progress);
       dispatch({ type: "SET_UPDATE_PROGRESS", progress });
     });
   }, [dispatch, enabled, isDetachedWindow, stateRef]);
@@ -90,6 +104,8 @@ export function useAppUpdateRuntime({
       }
       return { kind: "error", error: message || "Update check failed" };
     });
+
+    if (result.kind === "error") updateLog.warn("update check failed", { error: result.error });
 
     if (!manual) {
       if (result.kind === "available") {

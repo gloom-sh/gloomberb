@@ -34,9 +34,23 @@ import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
-import { Button } from "../ui/button";
+import { Button, terminalButtonColumns } from "../ui/button";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
+/**
+ * The failed-update message is cut to the room it has, but not below this many
+ * columns ("Update fa..."): narrower says nothing, so the banner is left out.
+ * The retry hint gives way before the message goes under it.
+ */
+const UPDATE_ERROR_MIN_COLUMNS = 12;
+/** Kept clear after the failed-update banner, so its last character never touches the Help pill. */
+const UPDATE_ERROR_GAP_COLUMNS = 1;
+/** Left padding of the update status's slot, in cells; the desktop's title-bar layout also pads its right. */
+const UPDATE_SLOT_PADDING_COLUMNS = 2;
+/** The Help pill's own props, shared by its button and the width the update status leaves it. */
+const helpButtonProps = () => ({ label: "Open Help", displayLabel: t("Help"), shortcut: "?", compact: true });
+/** The terminal pads the pill's right edge by a cell; the desktop pads it in px. */
+const TERMINAL_HELP_PADDING_COLUMNS = 1;
 
 type HeaderActionEvent = {
   key?: string;
@@ -251,8 +265,14 @@ function HeaderCommandPrompt({
   );
 }
 
-function UpdateStatus({ onRestart }: { onRestart?: () => void }) {
+/**
+ * What the header says about an update. In the terminal it is cut to `columns`,
+ * the room its slot is guaranteed (the desktop clips it in CSS where the slot
+ * ends), so it never runs into the Help pill or the market cluster beside it.
+ */
+function UpdateStatus({ columns, onRestart }: { columns: number; onRestart?: () => void }) {
   const colors = useThemeColors();
+  const { nativePaneChrome = false } = useUiCapabilities();
   const dispatch = useAppDispatch();
   const updateAvailable = useAppSelector((state) => state.updateAvailable);
   const updateProgress = useAppSelector((state) => state.updateProgress);
@@ -308,11 +328,20 @@ function UpdateStatus({ onRestart }: { onRestart?: () => void }) {
       return <Text fg={colors.headerText}>{t(updateProgress.message ?? "Update ready, restart to apply")}</Text>;
     }
     if (updateProgress.phase === "error") {
+      // One line: an error that carries a stack or a command's output must not grow the header.
+      const message = tf("Update failed: {error}", { error: (updateProgress.error ?? "Unknown error").replace(/\s+/g, " ").trim() });
       const retry = updateKey && canRetryUpdate({ updateAvailable, updateProgress, updateCheckInProgress });
+      const hint = retry ? `  ${updateKey} ${t("retry")}` : "";
+      const hintColumns = displayWidth(hint);
+      // The message goes first, and keeps its room before the hint takes any.
+      const room = columns - UPDATE_ERROR_GAP_COLUMNS;
+      const showHint = hintColumns > 0 && (nativePaneChrome || room - hintColumns >= UPDATE_ERROR_MIN_COLUMNS);
+      const messageColumns = room - (showHint ? hintColumns : 0);
+      if (!nativePaneChrome && messageColumns < UPDATE_ERROR_MIN_COLUMNS) return null;
       return (
-        <Box flexDirection="row">
-          <Text fg={colors.headerText}>{tf("Update failed: {error}", { error: updateProgress.error ?? "Unknown error" })}</Text>
-          {retry ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{`  ${updateKey} ${t("retry")}`}</Text> : null}
+        <Box flexDirection="row" overflow="hidden" paddingRight={UPDATE_ERROR_GAP_COLUMNS}>
+          <ClippedText fg={colors.headerText} text={message} width={messageColumns} />
+          {showHint ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{hint}</Text> : null}
         </Box>
       );
     }
@@ -411,11 +440,11 @@ function HeaderHelpButton({ nativePaneChrome, onPress }: { nativePaneChrome: boo
   return (
     <Box
       flexShrink={0}
-      paddingRight={nativePaneChrome ? undefined : 1}
+      paddingRight={nativePaneChrome ? undefined : TERMINAL_HELP_PADDING_COLUMNS}
       data-gloom-role="header-help-action"
       style={nativePaneChrome ? { marginRight: 8 } : undefined}
     >
-      <Button compact label="Open Help" displayLabel={t("Help")} shortcut="?" onPress={onPress} stopPropagation />
+      <Button {...helpButtonProps()} onPress={onPress} stopPropagation />
     </Box>
   );
 }
@@ -444,6 +473,14 @@ export function Header({
     windowFullscreen,
   });
   const shortcutLabel = useCommandBarShortcut();
+  // The terminal lays the header out by cell counts, so it works out what is left
+  // for the update status once the Help pill and the slot's padding are paid for.
+  const updateStatusColumns = Math.max(
+    0,
+    prompt.updateColumns
+      - (onOpenHelp ? terminalButtonColumns(helpButtonProps()) + TERMINAL_HELP_PADDING_COLUMNS : 0)
+      - UPDATE_SLOT_PADDING_COLUMNS * (titleBarOverlay ? 2 : 1),
+  );
   // Desktop has its own window chrome to sit on; the terminal has none, so the
   // bar itself wears the prompt's fill and reads as a single strip.
   const headerBg = nativePaneChrome ? colors.header : headerSurface(colors);
@@ -490,8 +527,8 @@ export function Header({
       >
         <Box width={prompt.left} />
         {commandPrompt}
-        <Box flexGrow={1} paddingLeft={2} paddingRight={2} minWidth={0}>
-          <UpdateStatus onRestart={onRestartForUpdate} />
+        <Box flexGrow={1} paddingLeft={UPDATE_SLOT_PADDING_COLUMNS} paddingRight={UPDATE_SLOT_PADDING_COLUMNS} minWidth={0}>
+          <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} />
         </Box>
         {onOpenHelp ? <HeaderHelpButton nativePaneChrome onPress={onOpenHelp} /> : null}
         {marketSummary}
@@ -512,8 +549,8 @@ export function Header({
     >
       <Box width={prompt.left} />
       {commandPrompt}
-      <Box flexGrow={1} minWidth={0} paddingLeft={2}>
-        <UpdateStatus onRestart={onRestartForUpdate} />
+      <Box flexGrow={1} minWidth={0} paddingLeft={UPDATE_SLOT_PADDING_COLUMNS}>
+        <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} />
       </Box>
       {onOpenHelp ? <HeaderHelpButton nativePaneChrome={nativePaneChrome} onPress={onOpenHelp} /> : null}
       {marketSummary}

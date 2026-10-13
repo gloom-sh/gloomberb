@@ -5,6 +5,7 @@ import { appReducer, createInitialState, type AppAction, type AppState } from ".
 import { createDefaultConfig } from "../../types/config";
 import { setUpdateHost, type ReleaseInfo, type UpdateProgress } from "../../updater";
 import { VERSION } from "../../version";
+import { debugLog, type LogEntry } from "../../utils/debug-log";
 import { useAppUpdateRuntime } from "./update";
 
 const tui = createOpenTuiTestHarness();
@@ -117,10 +118,15 @@ test("a failed apply shows the error and can be tried again", async () => {
   const host = installFakeHost();
   host.onApply = (report) => report({ phase: "error", error: "Failed to replace app" });
   const app = await mountRuntime();
+  const logged: LogEntry[] = [];
+  const unsubscribe = debugLog.subscribe((entry) => { if (entry.source === "update") logged.push(entry); });
 
   act(() => { app.runtime().restartToApplyUpdate(); });
   await app.settle();
+  unsubscribe();
   expect(app.state().updateProgress).toEqual({ phase: "error", error: "Failed to replace app" });
+  // The header cuts the message to its room; the log keeps all of it.
+  expect(logged).toMatchObject([{ level: "error", message: "update failed", data: { error: "Failed to replace app" } }]);
 
   // Retry downloads again and lands on ready, then Restart works once more.
   act(() => { app.runtime().startUpdate(release); });
