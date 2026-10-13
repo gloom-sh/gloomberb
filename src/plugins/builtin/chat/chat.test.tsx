@@ -1378,6 +1378,9 @@ describe("ChatContent", () => {
     await mountChat(controller, { width: 60, height: 24 });
 
     const { bot, team, pro } = ICON_GLYPHS;
+    // The renderer holds a pointer move that follows another within a frame and acts on it from a timer:
+    // the row or the card is not drawn on the first read, so each read waits for what it checks.
+    const POINTER_ATTEMPTS = 40;
     const anyIcon = new RegExp(`[${bot}${team}${pro}]`);
     const rows = () => tui.frame().split("\n").map((row) => row.trimEnd());
     const header = (author: string) => rows().find((row) => row.startsWith(` ${author} `))!;
@@ -1404,6 +1407,7 @@ describe("ChatContent", () => {
       await tui.setup().renderOnce();
     });
     await flushFrame();
+    await tui.waitForFrameToContain(`${team} ${pro}`, POINTER_ATTEMPTS);
     const pointed = header("wren");
     expect(pointed).toMatch(new RegExp(` ${team} ${pro} `));
     expect(pointed.indexOf(team)).toBeGreaterThan(resting.length - 1);
@@ -1416,8 +1420,7 @@ describe("ChatContent", () => {
       await tui.setup().renderOnce();
     });
     await flushFrame();
-    const card = tui.frame();
-    expect(card).toContain(`@wren ${team} ${pro}`);
+    const card = await tui.waitForFrameToContain(`@wren ${team} ${pro}`, POINTER_ATTEMPTS);
     expect(card).toContain("Gloom team · Pro");
     expect(card).toMatch(/Local time \d\d:\d\d/);
     expect(card).toContain("Trades Options, Futures");
@@ -1427,9 +1430,9 @@ describe("ChatContent", () => {
     await flushFrame();
     await tui.clickFrameText("gloombot");
     await flushFrame();
-    expect(tui.frame()).toContain(`@gloombot ${bot}`);
-    expect(tui.frame()).toContain("Bot run by Gloom");
-    expect(tui.frame()).not.toContain("Local time");
+    const botCard = await tui.waitForFrameToContain(`@gloombot ${bot}`, POINTER_ATTEMPTS);
+    expect(botCard).toContain("Bot run by Gloom");
+    expect(botCard).not.toContain("Local time");
   });
 
   test("at 70 columns the bot's icon fits beside its name, a quote and the reply being written, and a long staff row keeps its actions", async () => {
