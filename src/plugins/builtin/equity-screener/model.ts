@@ -314,7 +314,7 @@ const OBSERVED_SUBSET_OPERATORS: ScreenOperator[] = ["gte", "gt", "present", "mi
 const CATEGORY_OPERATORS: ScreenOperator[] = ["in", "present", "missing"];
 
 /** The operators a definition may use on a field, or null for a field screens do not have. */
-export function screenFieldOperators(field: string): ScreenOperator[] | null {
+function screenFieldOperators(field: string): ScreenOperator[] | null {
   if (OBSERVED_SUBSET_FIELDS.includes(field)) return [...OBSERVED_SUBSET_OPERATORS];
   if ((NUMERIC_FIELDS as readonly string[]).includes(field)) return [...NUMERIC_OPERATORS];
   if ((CATEGORY_FIELDS as readonly string[]).includes(field)) return [...CATEGORY_OPERATORS];

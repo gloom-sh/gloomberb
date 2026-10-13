@@ -20,7 +20,7 @@ const spacedJson = (definition: ScreenDefinition) =>
   JSON.stringify(definition).replace(/([,:])(?=["{[\d-])/g, "$1 ");
 
 /** The `--definition` value of the catalog's worked example, quoted for a shell. */
-export const EXAMPLE_DEFINITION_OPTION = `--definition '${spacedJson(EXAMPLE_SCREEN_DEFINITION)}'`;
+const EXAMPLE_DEFINITION_OPTION = `--definition '${spacedJson(EXAMPLE_SCREEN_DEFINITION)}'`;
 
 /** A typed `--definition`, checked; every error points at the worked example. */
 function readDefinition(text: string): ScreenDefinition {
