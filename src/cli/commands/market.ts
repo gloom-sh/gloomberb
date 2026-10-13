@@ -93,7 +93,9 @@ import { newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProb
 import { formatUtcTime } from "../../utils/utc-time";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
-import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness } from "../freshness";
+import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
+import { atRegularSessionPrice } from "../../market-data/quotes/regular-session-valuation";
+import { selectMarketCapitalization } from "../../utils/market-capitalization";
 import {
   barHistoryFreshness,
   barResolutionFromDates,
@@ -912,10 +914,22 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       ...financials,
     };
     if (view !== "statements") {
-      const freshness = fundamentalsFreshness(financials);
+      // A valuation is measured at the quote's regular session price, so the quote dates it.
+      const freshness = view === "valuation" ? valuationFreshness(financials) : fundamentalsFreshness(financials);
+      // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
+      const priced = atRegularSessionPrice(financials);
+      const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
-        data: { ...data, fundamentals: exportedFundamentals(data.fundamentals) },
+        data: {
+          ...data,
+          ...view === "valuation" ? {
+            ...getQuoteSessionFields(financials.quote),
+            marketCap: capitalization?.value ?? null,
+            marketCapCurrency: capitalization?.currency ?? null,
+          } : {},
+          fundamentals: exportedFundamentals(priced.fundamentals),
+        },
         freshness,
         ...(choice.length > 0 ? { warnings: choice } : {}),
       }, {

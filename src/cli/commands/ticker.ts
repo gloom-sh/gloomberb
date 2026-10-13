@@ -34,6 +34,7 @@ import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFutur
 import type { AppConfig } from "../../types/config";
 import type { FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
+import { atRegularSessionPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, isCryptoVenuePerpetual, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import type { SecFilingItem } from "../../types/data-provider";
@@ -324,6 +325,8 @@ interface FundamentalsMetric {
   text: string;
   value?: number | string | null;
   unit?: string;
+  /** A figure the text prints inside another line, which CSV gives a row of its own. */
+  exportOnly?: boolean;
 }
 
 type MetricFigure = Omit<FundamentalsMetric, "label">;
@@ -395,7 +398,7 @@ function fundamentalsMetrics(
 }
 
 function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, string]> {
-  return metrics.map((metric) => [metric.label, metric.text]);
+  return metrics.filter((metric) => !metric.exportOnly).map((metric) => [metric.label, metric.text]);
 }
 
 const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)", "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)"]);
@@ -437,8 +440,52 @@ function fundFactsNote(
   return !exchange || isUsListingExchange(exchange) ? `${note}; try fn SEC ${symbol}.` : `${note}.`;
 }
 
-/** The lines `fundamentals` or `valuation` reports, the ones with a value. */
-function fundamentalsReportMetrics(financials: FundamentalsReportData, view: "fundamentals" | "valuation"): FundamentalsMetric[] {
+/**
+ * The price a valuation is measured at, as `quote` and `ticker` read it: Last
+ * and Change are the regular session (after the close, its close and that
+ * close's move), and a pre-market or after-hours print is a line of its own,
+ * measured from that close.
+ */
+function valuationPriceMetrics(financials: FundamentalsReportData): FundamentalsMetric[] {
+  const quote = financials.quote;
+  const session = getRegularSessionDisplay(quote);
+  if (!quote || !session) return [];
+  const options = withCurrencyMinorDigits(quoteFormatOptions(quote, undefined, financials.quoteMetadata?.instrumentType), quote.currency);
+  const price = (value: number) => formatMarketPriceWithCurrency(value, quote.currency, options);
+  const extended = getExtendedSessionDisplay(quote);
+  const extendedLabel = extended ? EXTENDED_SESSION_LABELS[extended.session] : "";
+  return [
+    { label: "Last", text: price(session.price), value: session.price, unit: quote.currency },
+    session.changePercent != null && Number.isFinite(session.changePercent)
+      ? {
+        label: "Change",
+        text: colorBySign(`${formatMarketChangeWithCurrency(session.change, quote.currency, options, session.price)} (${formatPercentRaw(session.changePercent)})`, session.change),
+        value: session.changePercent,
+        unit: "%",
+      }
+      : { label: "Change", text: "—" },
+    ...extended ? [
+      {
+        label: extendedLabel,
+        text: colorBySign(`${price(extended.price)}${extended.changePercent != null ? ` (${formatPercentRaw(extended.changePercent)})` : ""}`, extended.change),
+        value: extended.price,
+        unit: quote.currency,
+      },
+      extended.changePercent != null
+        ? { label: `${extendedLabel} Change`, text: formatPercentRaw(extended.changePercent), value: extended.changePercent, unit: "%", exportOnly: true }
+        : { label: `${extendedLabel} Change`, text: "—" },
+    ] : [],
+  ];
+}
+
+/**
+ * The lines `fundamentals` or `valuation` reports, the ones with a value.
+ * Market cap, the P/E multiples and the dividend yield are measured at the
+ * regular session price (atRegularSessionPrice), which `valuation` names in
+ * its first lines.
+ */
+function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fundamentals" | "valuation"): FundamentalsMetric[] {
+  const financials = atRegularSessionPrice(snapshot);
   const quote = financials.quote;
   const fundamentals = financials.fundamentals;
   const capitalization = selectMarketCapitalization(quote, fundamentals);
@@ -446,9 +493,10 @@ function fundamentalsReportMetrics(financials: FundamentalsReportData, view: "fu
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
   const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials));
-  return (view === "valuation"
-    ? metrics.filter(({ label }) => VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield"))
-    : metrics).filter((metric) => metric.text !== "—");
+  if (view === "fundamentals") return metrics.filter((metric) => metric.text !== "—");
+  const valuation = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield")) && text !== "—");
+  // A listing with no valuation (a fund) says so rather than printing its price alone.
+  return valuation.length === 0 ? [] : [...valuationPriceMetrics(financials).filter((metric) => metric.text !== "—"), ...valuation];
 }
 
 /** Text for `gloomberb fundamentals` and `gloomberb valuation`: the ticker report's fundamentals without the rest. */
@@ -616,7 +664,9 @@ export async function buildTickerReport({
     lines.push(cliStyles.muted(membershipParts.join(METADATA_SEPARATOR)));
   }
 
-  const capitalization = selectMarketCapitalization(quote, fundamentals);
+  // Market cap and the multiples are measured at the regular session price the Quote section heads with.
+  const priced = atRegularSessionPrice(financials);
+  const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
   const convertedMarketCap = capitalization ? await toBase(capitalization.value, capitalization.currency) : Number.NaN;
   const marketCapText = capitalization
     ? Number.isFinite(convertedMarketCap)
@@ -624,7 +674,7 @@ export async function buildTickerReport({
       : `${formatCompact(capitalization.value)} ${capitalization.currency}`
     : "—";
   // Shown in the same currency as the market cap, so the two can be compared.
-  const enterpriseValue = reportedEnterpriseValue(fundamentals);
+  const enterpriseValue = reportedEnterpriseValue(priced.fundamentals);
   const evCurrency = enterpriseValueCurrency(quote, fundamentals);
   // A minor unit such as GBp stays as reported: the converter would read it as the major currency.
   const convertedEnterpriseValue = enterpriseValue != null && evCurrency && /^[A-Z]{3}$/.test(evCurrency)
@@ -672,7 +722,7 @@ export async function buildTickerReport({
     ]);
   }
 
-  const metrics = fundamentalsMetrics(quote, fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText });
+  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText });
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
   for (const note of trailingConversionNotes(fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
@@ -759,6 +809,8 @@ function buildTickerStructuredData({
   const quote = financials.quote;
   const priceReturns = computeTickerPriceReturns(financials, tickerFile?.metadata.assetCategory);
   const identity = listingIdentity(listing, quote);
+  // Market cap and the multiples at the regular session price, as the text report gives them.
+  const priced = atRegularSessionPrice(financials);
   return {
     symbol,
     listing: { symbol: identity.symbol, exchange: identity.exchange || null, name: identity.name },
@@ -770,7 +822,7 @@ function buildTickerStructuredData({
       ...getQuoteSessionFields(quote),
       priceBasis: quote.priceBasis ?? null,
       currency: quote.currency,
-      marketCap: quote.marketCap ?? null,
+      marketCap: priced.quote?.marketCap ?? null,
       volume: quote.volume ?? null,
       exchangeName: quote.exchangeName ?? "",
       fullExchangeName: quote.fullExchangeName ?? "",
@@ -794,7 +846,7 @@ function buildTickerStructuredData({
       positions: tickerFile.metadata.positions,
     } : null,
     fundamentals: financials.fundamentals || priceReturns.return1Y != null || priceReturns.return3Y != null ? exportedFundamentals({
-      ...financials.fundamentals,
+      ...priced.fundamentals,
       ...priceReturns,
     }) : undefined,
     profile: financials.profile,

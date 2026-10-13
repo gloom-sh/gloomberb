@@ -1,11 +1,13 @@
 import type { AnalystResearchData, Fundamentals, Quote } from "../../../types/financials";
+import { atRegularSessionPrice, regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { hasLikelyQuoteUnitMismatch } from "../../../utils/currency-units";
 import { priceEarningsEps } from "../../../utils/fundamentals";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../../utils/market-capitalization";
 import { priceEarningsOnEarnings, type PriceEarnings } from "../../../utils/price-earnings";
 
 /**
- * Price-derived statistics repriced from the current quote with the base
+ * Price-derived statistics repriced at the quote's regular session price
+ * (the live price while it trades, the close after it) with the base
  * values the server serves beside them (shares outstanding, EPS, dividend
  * rate). Each one falls back to its stored snapshot whenever the base value
  * cannot be shown to be on the quote's listing, currency and unit.
@@ -28,17 +30,22 @@ function positive(value: number | null | undefined): value is number {
   return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
-/** The price valuations follow: the quote's own price, as the server reprices
- * served statistics, rather than a separate pre- or post-market print. */
+/** The price valuations follow: the regular session's, live while it trades
+ * and its close after it, never a pre- or post-market print, even one the
+ * quote's own price carries (regularSessionValuationPrice). */
 function liveValuationPrice(quote: Quote | null | undefined): number | null {
-  if (!quote || quote.priceBasis === "percent-of-par") return null;
-  return positive(quote.price) ? quote.price : null;
+  return regularSessionValuationPrice(quote);
 }
 
 /** A per-share base value shares the quote's basis only when the block's
  * currency is the quote's (major-unit) currency. Mirrors the served check. */
 function sameCurrencyBasis(quote: Quote, fundamentals: Fundamentals): boolean {
   return !quote.currency || !fundamentals.marketCapCurrency || quote.currency === fundamentals.marketCapCurrency;
+}
+
+/** The served block with its price-derived figures moved to the regular session price, for when no base value reprices them. */
+function pricedFundamentals(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): Fundamentals | undefined {
+  return atRegularSessionPrice({ quote: quote ?? undefined, fundamentals }).fundamentals;
 }
 
 function repriceMultiple(
@@ -56,21 +63,23 @@ function repriceMultiple(
 }
 
 /**
- * Trailing P/E over the current price; not meaningful when the trailing EPS is zero or a loss. An EPS in another
+ * Trailing P/E over the regular session price; not meaningful when the trailing EPS is zero or a loss. An EPS in another
  * currency than the price is repriced at the rate the served P/E converted it at.
  */
 export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
-  return priceEarningsOnEarnings(repriceMultiple(fundamentals?.trailingPE, priceEarningsEps(fundamentals), quote, fundamentals), fundamentals?.eps);
+  const stored = pricedFundamentals(quote, fundamentals)?.trailingPE;
+  return priceEarningsOnEarnings(repriceMultiple(stored, priceEarningsEps(fundamentals), quote, fundamentals), fundamentals?.eps);
 }
 
-/** Forward P/E over the current price; not meaningful when the forward EPS behind it is zero or a loss. */
+/** Forward P/E over the regular session price; not meaningful when the forward EPS behind it is zero or a loss. */
 export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
-  return priceEarningsOnEarnings(repriceMultiple(fundamentals?.forwardPE, fundamentals?.forwardEps, quote, fundamentals), fundamentals?.forwardEps);
+  const stored = pricedFundamentals(quote, fundamentals)?.forwardPE;
+  return priceEarningsOnEarnings(repriceMultiple(stored, fundamentals?.forwardEps, quote, fundamentals), fundamentals?.forwardEps);
 }
 
-/** Forward dividend yield over the current price, as a ratio like the stored yield. */
+/** Forward dividend yield over the regular session price, as a ratio like the stored yield. */
 export function liveDividendYield(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): number | undefined {
-  const stored = fundamentals?.dividendYield;
+  const stored = pricedFundamentals(quote, fundamentals)?.dividendYield;
   const rate = fundamentals?.dividendRate;
   const price = liveValuationPrice(quote);
   if (price == null || !quote || !fundamentals || !positive(stored) || !positive(rate)) return stored;
@@ -95,7 +104,8 @@ function impliedPriceOnListing(implied: number, quote: Quote): boolean {
 }
 
 /**
- * Market capitalization at the current price. The stored capitalization keeps
+ * Market capitalization at the regular session price (the live price while it
+ * trades, the close after it). The stored capitalization keeps
  * its currency; shares outstanding only replace it when they reproduce it at
  * a price the listing traded at, so a count for another class or listing
  * never scales the price.
@@ -104,7 +114,9 @@ export function liveMarketCapitalization(
   quote: Quote | null | undefined,
   fundamentals: Fundamentals | undefined,
 ): LiveMarketCapitalization | null {
-  const stored = selectMarketCapitalization(quote ?? undefined, fundamentals);
+  // A stored cap is measured at the price served beside it; it moves to the regular session's like the rest.
+  const priced = atRegularSessionPrice({ quote: quote ?? undefined, fundamentals });
+  const stored = selectMarketCapitalization(priced.quote, priced.fundamentals);
   if (!stored) return null;
   const price = liveValuationPrice(quote);
   const shares = fundamentals?.sharesOutstanding;

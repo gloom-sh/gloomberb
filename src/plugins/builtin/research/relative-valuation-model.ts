@@ -1,15 +1,27 @@
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
 import { reportedEnterpriseValue } from "../../../utils/fundamentals";
+import { getQuoteSessionFields } from "../../../market-data/market/status";
+import { atRegularSessionPrice, movePriceDerivedFigures } from "../../../market-data/quotes/regular-session-valuation";
 import type { Quote, TickerFinancials } from "../../../types/financials";
 
 export const RELATIVE_VALUATION_STALE_QUOTE_NOTICE = "Quote stale: quote-based values unavailable";
 export const RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE = "Fundamentals stale: retained values may be out of date";
 
-export function relativeValuationValues(financials: TickerFinancials | null) {
+/**
+ * A peer's row. Last, its change and the extended print are the quote's
+ * sessions as `quote` reads them (getQuoteSessionFields): after the close,
+ * the close and its move, and the pre-market or after-hours print measured
+ * from it. Every figure measured at the price (market cap, P/E, forward P/E
+ * and through the cap the FCF yield) is at that regular session price too.
+ */
+export function relativeValuationValues(snapshot: TickerFinancials | null) {
+  const reported = snapshot?.quote;
+  const financials = snapshot ? atRegularSessionPrice(snapshot) : null;
   const quote = financials?.quote;
   const fundamentals = financials?.fundamentals;
   const quoteStale = quote?.stale === true;
+  const session = getQuoteSessionFields(quoteStale ? null : quote);
   const capitalization = selectMarketCapitalization(quoteStale ? undefined : quote, fundamentals);
   const enterpriseValue = reportedEnterpriseValue(fundamentals);
   // A zero or non-finite enterprise value is the source's gap, and the ratio it serves beside it comes from the same observation.
@@ -27,21 +39,20 @@ export function relativeValuationValues(financials: TickerFinancials | null) {
     ...(forwardNotMeaningful ? { forwardPE: forwardNotMeaningful } : {}),
   };
   return {
-    price: quoteStale ? null : quote?.price ?? null,
+    ...session,
     quoteStale: quote?.stale ?? null,
     quoteAsOf: quote && Number.isFinite(quote.lastUpdated) && quote.lastUpdated > 0 ? quote.lastUpdated : null,
-    // Retain the rejected observation separately from values used for comparison.
-    reportedQuote: quote ? {
-      price: quote.price, changePercent: quote.changePercent, marketCap: quote.marketCap ?? null,
-      currency: quote.currency, lastUpdated: quote.lastUpdated, stale: quote.stale ?? null,
-      providerId: quote.providerId ?? null, dataSource: quote.dataSource ?? null,
+    // The observation as sent, apart from the values used for comparison: a rejected stale quote, or the print the source priced.
+    reportedQuote: reported ? {
+      price: reported.price, changePercent: reported.changePercent, marketCap: reported.marketCap ?? null,
+      currency: reported.currency, lastUpdated: reported.lastUpdated, stale: reported.stale ?? null,
+      providerId: reported.providerId ?? null, dataSource: reported.dataSource ?? null,
     } : null,
     fundamentalsProvenance: fundamentals ? {
       source: fundamentals.source ?? null, retrievedAt: fundamentals.fetchedAt ?? null,
       stale: fundamentals.stale ?? null,
     } : null,
     currency: quote?.currency ?? null,
-    changePercent: quoteStale ? null : quote?.changePercent ?? null,
     marketCap: capitalization?.value ?? null,
     marketCapCurrency: capitalization?.currency ?? null,
     marketCapProvenance: capitalization?.provenance ?? null,
@@ -68,17 +79,27 @@ function scaled(value: number | undefined, ratio: number): number | undefined {
   return value != null && Number.isFinite(value) ? value * ratio : value;
 }
 
+/** What a quote says about its sessions; a newer quote's replaces the snapshot's whole, so a close never pairs with another day's print. */
+const SESSION_FIELDS = [
+  "marketState", "changeSessionDate", "regularClose", "regularCloseSessionDate", "regularChange", "regularChangePercent",
+  "preMarketPrice", "preMarketChange", "preMarketChangePercent", "postMarketPrice", "postMarketChange", "postMarketChangePercent",
+  "extendedSessionPrint",
+] as const satisfies readonly (keyof Quote)[];
+
 /**
- * The snapshot with a newer quote laid over it. Fundamentals stay from the
- * snapshot. Values measured against the price move by live price / snapshot
- * price, but only from a price they were measured at: the quote's market cap
- * (and through it the FCF yield) when the snapshot quote is not stale, and the
- * P/E multiples and the fundamentals' cap when the fundamentals are not stale
- * either. A stale snapshot quote drops its cap, so the row falls back to the
- * fundamentals' cap as it would without the live quote. EV/Sales stays at the
- * snapshot: only its equity part moves with the price, and the snapshot does
- * not say how large that part is. A quote in another currency, or a stale one,
- * leaves the snapshot alone.
+ * The snapshot with a newer quote laid over it, its sessions included, so
+ * relativeValuationValues reads the newer quote's regular session and
+ * extended print. Fundamentals stay from the snapshot. Values measured
+ * against the price move by live price / snapshot price (and from there to
+ * the regular session price in relativeValuationValues), but only from a
+ * price they were measured at: the quote's market cap (and through it the
+ * FCF yield) when the snapshot quote is not stale, and the fundamentals'
+ * price-derived figures (movePriceDerivedFigures: the P/E multiples, the cap,
+ * and the equity part of the enterprise value and EV/Sales) when the
+ * fundamentals are not stale either. A stale snapshot quote drops its cap, so
+ * the row falls back to the fundamentals' cap as it would without the live
+ * quote. A quote in another currency, or a stale one, leaves the snapshot
+ * alone.
  */
 export function withLiveQuote(financials: TickerFinancials | null, live: Quote | null | undefined): TickerFinancials | null {
   const base = financials?.quote;
@@ -91,6 +112,8 @@ export function withLiveQuote(financials: TickerFinancials | null, live: Quote |
     price: live.price,
     change: live.change,
     changePercent: live.changePercent,
+    previousClose: live.previousClose ?? base.previousClose,
+    ...Object.fromEntries(SESSION_FIELDS.map((key) => [key, live[key]])),
     lastUpdated: live.lastUpdated,
     stale: live.stale,
     ...(live.dataSource ? { dataSource: live.dataSource } : {}),
@@ -103,11 +126,6 @@ export function withLiveQuote(financials: TickerFinancials | null, live: Quote |
   return {
     ...financials,
     quote: { ...quote, marketCap: scaled(base.marketCap, ratio) },
-    fundamentals: fundamentals && fundamentals.stale !== true ? {
-      ...fundamentals,
-      trailingPE: scaled(fundamentals.trailingPE, ratio),
-      forwardPE: scaled(fundamentals.forwardPE, ratio),
-      marketCap: fundamentals.marketCapCurrency === live.currency ? scaled(fundamentals.marketCap, ratio) : fundamentals.marketCap,
-    } : fundamentals,
+    fundamentals: fundamentals && fundamentals.stale !== true ? movePriceDerivedFigures(fundamentals, live.currency, ratio) : fundamentals,
   };
 }

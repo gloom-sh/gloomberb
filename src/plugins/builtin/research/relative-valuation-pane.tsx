@@ -19,6 +19,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { TickerFinancials } from "../../../types/financials";
 import { normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor } from "../../../theme/colors";
+import { marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
@@ -30,7 +31,7 @@ import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
 import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 
-type RelativeColumnId = "symbol" | "price" | "changePercent" | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
+type RelativeColumnId = "symbol" | "price" | "changePercent" | "preMarket" | "afterHours" | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
 type RelativeColumn = DataTableColumn & { id: RelativeColumnId };
 type RelativeRow = ReturnType<typeof relativeValuationValues> & {
   symbol: string;
@@ -45,7 +46,24 @@ function relativeSymbolsFromPane(symbol: string | null, paneSettings: Record<str
   return symbol ? [symbol] : [];
 }
 
-function buildRelativeColumns(baseCurrency: string): RelativeColumn[] {
+const EXTENDED_COLUMN_IDS: Record<ExtendedSession, "preMarket" | "afterHours"> = { PRE: "preMarket", POST: "afterHours" };
+
+/** The extended sessions some peer has a print for, in the order their columns go. */
+function extendedSessionsOf(rows: readonly RelativeRow[]): ExtendedSession[] {
+  return (["PRE", "POST"] as const).filter((session) => rows.some((row) => row.extendedSession === session));
+}
+
+/** A peer's move in the extended-session column `columnId`, from the close in LAST. */
+function extendedMove(row: RelativeRow, columnId: "preMarket" | "afterHours"): number | null {
+  return row.extendedSession != null && EXTENDED_COLUMN_IDS[row.extendedSession] === columnId ? row.extendedChangePercent : null;
+}
+
+/**
+ * LAST and CHG% are the regular session, as `quote` reads them; a PRE-MKT or
+ * AFTER-HRS column, named as BI and MOST name it, follows CHG% for each
+ * session in `extendedSessions`.
+ */
+function buildRelativeColumns(baseCurrency: string, extendedSessions: readonly ExtendedSession[]): RelativeColumn[] {
   const symbolWidth = 8;
   const priceWidth = 10;
   const pctWidth = 8;
@@ -55,6 +73,9 @@ function buildRelativeColumns(baseCurrency: string): RelativeColumn[] {
     { id: "symbol", label: "TICKER", width: symbolWidth, align: "left" },
     { id: "price", label: "LAST", width: priceWidth, align: "right" },
     { id: "changePercent", label: "CHG%", width: pctWidth, align: "right" },
+    ...extendedSessions.map((session): RelativeColumn => ({
+      id: EXTENDED_COLUMN_IDS[session], label: marketStateLabel(session), width: 9, align: "right",
+    })),
     { id: "marketCap", label: `MCAP ${baseCurrency}`, width: capWidth, align: "right" },
     { id: "trailingPE", label: "P/E", width: metricWidth, align: "right" },
     { id: "forwardPE", label: "FWD", width: metricWidth, align: "right" },
@@ -74,7 +95,9 @@ interface RelativeSortPreference {
 const DEFAULT_RELATIVE_SORT: RelativeSortPreference = { columnId: "marketCap", direction: "desc" };
 
 function relativeSortValue(row: RelativeRow, columnId: RelativeColumnId): string | number | null {
-  return columnId === "symbol" ? row.symbol.toLocaleLowerCase() : row[columnId];
+  if (columnId === "symbol") return row.symbol.toLocaleLowerCase();
+  if (columnId === "preMarket" || columnId === "afterHours") return extendedMove(row, columnId);
+  return row[columnId];
 }
 
 function sortRelativeRowIndices(
@@ -153,7 +176,12 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
     };
   }), [liveQuotes, peers]);
   const fxRates = useFxRatesMap([baseCurrency, ...rows.map((row) => row.marketCapCurrency)]);
-  const columns = useMemo(() => buildRelativeColumns(baseCurrency), [baseCurrency]);
+  // A pre-market or after-hours print gets its own column when a peer has one.
+  const extendedSessionsKey = extendedSessionsOf(rows).join(",");
+  const columns = useMemo(
+    () => buildRelativeColumns(baseCurrency, extendedSessionsKey ? extendedSessionsKey.split(",") as ExtendedSession[] : []),
+    [baseCurrency, extendedSessionsKey],
+  );
 
   const comparableRows = useMemo(() => rows.map((row) => ({
     ...row, marketCap: convertMarketCapitalization(row.marketCap, row.marketCapCurrency, baseCurrency, fxRates),
@@ -195,6 +223,11 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
         return { text: row.price != null ? formatCurrency(row.price, row.currency ?? "USD") : "-", color: colors.text };
       case "changePercent":
         return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: priceColor(row.changePercent ?? 0) };
+      case "preMarket":
+      case "afterHours": {
+        const move = extendedMove(row, column.id);
+        return { text: move != null ? formatPercentRaw(move) : "-", value: move, color: move == null ? colors.textDim : priceColor(move) };
+      }
       case "marketCap":
         return { text: formatCompact(row.marketCap ?? undefined, { fixedDecimals: true }), color: colors.textDim };
       case "trailingPE":

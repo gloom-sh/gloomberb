@@ -60,9 +60,9 @@ function latestReportedPeriod(financials: Pick<TickerFinancials, "annualStatemen
 }
 
 /**
- * Fundamentals and valuation: reported figures, not a feed. Dated by when the
- * statistics block was observed, with the newest statement period they run
- * through named in the status; stale only when the block says so.
+ * Fundamentals: reported figures, not a feed. Dated by when the statistics
+ * block was observed, with the newest statement period they run through
+ * named in the status; stale only when the block says so.
  */
 export function fundamentalsFreshness(financials: TickerFinancials, now = Date.now()): ReportFreshness {
   const fundamentals = financials.fundamentals;
@@ -72,4 +72,19 @@ export function fundamentalsFreshness(financials: TickerFinancials, now = Date.n
     basis: period ? `reported through ${period}` : REPORTED_DATA.basis,
     asOf: fundamentals?.fetchedAt ?? null,
   }, { stale: fundamentals?.stale === true }, now)!;
+}
+
+/**
+ * Valuation: market cap, multiples and yields measured at the quote's regular
+ * session price, beside the reported figures they divide. Dated by the quote,
+ * as `quote` dates it (after the close, its trading day's close), with the
+ * statement period the reported figures run through after the status. Stale
+ * fundamentals were measured at some older price, so they date it as
+ * `fundamentals` does; so does a missing quote.
+ */
+export function valuationFreshness(financials: TickerFinancials, now = Date.now()): ReportFreshness {
+  const quote = financials.quote;
+  if (!quote || financials.fundamentals?.stale === true) return fundamentalsFreshness(financials, now);
+  const period = latestReportedPeriod(financials);
+  return rowsFreshness([quoteObservation(quote, now)], period ? { note: `reported through ${period}` } : undefined, undefined, now)!;
 }

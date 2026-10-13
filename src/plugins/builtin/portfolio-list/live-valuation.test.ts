@@ -56,8 +56,9 @@ describe("live valuation", () => {
   test("reprices trailing P/E with the served rules", () => {
     const fundamentals: Fundamentals = { trailingPE: 20, eps: 5, marketCapCurrency: "USD" };
     expect(liveTrailingPE(quote(), fundamentals)).toBeCloseTo(22);
-    // The quote's own price, as served, not a separate post-market print.
+    // The regular session, never an after-hours print: a separate one, or the quote's own price after the close.
     expect(liveTrailingPE(quote({ marketState: "POST", postMarketPrice: 120 }), fundamentals)).toBeCloseTo(22);
+    expect(liveTrailingPE(quote({ marketState: "POST", price: 112, regularClose: 110, regularChange: 10 }), fundamentals)).toBeCloseTo(22);
     // Losses and zero earnings make it not meaningful, whatever multiple was stored beside them.
     expect(liveTrailingPE(quote(), { ...fundamentals, trailingPE: -12, eps: -9 })).toBe(NOT_MEANINGFUL);
     expect(liveTrailingPE(quote(), { ...fundamentals, eps: 0 })).toBe(NOT_MEANINGFUL);
