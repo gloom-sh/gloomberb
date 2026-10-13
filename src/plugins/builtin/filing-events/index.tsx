@@ -10,7 +10,7 @@ const description =
  * EK is Pro whole (`useProFeatureWall`): signed out it shows the sign-in wall
  * and on a free account the Pro wall, never a partial feed. The 8-Ks themselves
  * are in SEC, which needs no account: its rows carry each 8-K's filing date,
- * acceptance time and item numbers.
+ * acceptance time and items, by number and in words.
  */
 function filingEventsLockNote({ gate, symbol }: { gate: "sign-in" | "pro"; symbol: string | null }): string {
   const ticker = symbol ?? "<ticker>";
@@ -18,8 +18,8 @@ function filingEventsLockNote({ gate, symbol }: { gate: "sign-in" | "pro"; symbo
     ? "To read them in EK, open the app (gloomberb), log in or sign up from the command bar (Ctrl+P, Log In or Sign Up), then upgrade (Ctrl+P, UPGRADE)"
     : "To read them in EK, upgrade in the app (gloomberb, then Ctrl+P, UPGRADE)";
   return [
-    `EK is part of Gloom Cloud Pro: it classifies each 8-K by item and reads what it said. ${gate === "sign-in" ? "Signed out" : "On a free account"} it shows none of them.`,
-    `Free, with no sign-in: gloomberb fn SEC ${ticker} lists ${symbol ?? "the company"}'s recent filings, 8-Ks among them, with their filing dates and item numbers.`,
+    `EK is part of Gloom Cloud Pro: it reads each 8-K and sums up what it said and who it names. ${gate === "sign-in" ? "Signed out" : "On a free account"} it shows none of them.`,
+    `Free, with no sign-in: gloomberb fn SEC ${ticker} lists ${symbol ?? "the company"}'s recent filings, 8-Ks among them, each with its filing date and its items by number and name.`,
     `${unlock}; gloomberb fn EK ${ticker} then reads with that session.`,
   ].join("\n");
 }
