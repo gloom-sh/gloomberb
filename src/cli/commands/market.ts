@@ -61,7 +61,6 @@ import {
   optionsBasisFields,
   optionsBasisFootnote,
   parseOptionExpiration,
-  requestListedOpenInterest,
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
@@ -1500,8 +1499,6 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const quotePromise = loadListingQuote(market.dataProvider, listing);
     const fate = listingFateLoader(listing, market, quotePromise);
     const inputsPromise = loadOptionModelInputs(market.dataProvider, listing, quotePromise, refresh);
-    // OPX's listing dates the chain's open interest; asked for alongside the chain when the expiry is known.
-    const listedOpenInterest = expirationDate != null ? requestListedOpenInterest(symbol, expirationDate) : null;
     const { result, chain: loaded } = await loadForListing(listing, market, ctx, async () => {
       const cached = await market.dataProvider.getCachedQuery?.("getOptionsChain", [symbol, exchange, expirationDate, undefined])
         .load({ force: refresh });
@@ -1534,7 +1531,7 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     // IV and delta are valued at one spot and instant, named under the table and on every exported row.
     const { chain, spot: modelSpot } = valueChainAtModelSpot(loaded, inputs, Date.now(), identity.exchange);
     const basis: OptionsChainBasis = { spot: modelSpot, dividendYield: inputs.dividendYield ?? null,
-      openInterest: await loadOptionsChainOpenInterest(symbol, chain, listedOpenInterest) };
+      openInterest: await loadOptionsChainOpenInterest(symbol, chain) };
     const basisFields = optionsBasisFields(basis);
     const currency = [...chain.calls, ...chain.puts].find((contract) => contract.currency?.trim())?.currency.trim().toUpperCase()
       ?? quote?.currency ?? null;

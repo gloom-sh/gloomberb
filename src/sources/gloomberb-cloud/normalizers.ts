@@ -311,6 +311,8 @@ export function mapOptionsChain(
     delayMinutes: chain.delayMinutes,
     realtimeEligible: chain.realtimeEligible,
     asOf: chain.asOf,
+    // Left absent when the server does not send it, so the date is then established against OPX.
+    ...(chain.openInterestAsOf !== undefined ? { openInterestAsOf: chain.openInterestAsOf } : {}),
   };
 }
 

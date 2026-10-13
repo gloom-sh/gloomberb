@@ -4,11 +4,11 @@ import { loadOpenInterest, type OpenInterestPayload, type OptionsPositioningApi 
 
 /**
  * The session a chain's open interest is counted at
- * (docs/research-data.md#greeks-spot-and-time). The chain carries no date for
- * its counts; OPX's listed open interest does, the session whose close its
- * counts are. That date is the chain's only when the chain's counts are
- * OPX's: every contract with a count in both agrees. Otherwise the date is not
- * stated, never borrowed.
+ * (docs/research-data.md#greeks-spot-and-time). Gloom Cloud states it on the
+ * chain (`openInterestAsOf`). A chain that does not say, from an older server,
+ * borrows OPX's listed date, the session whose close its counts are, only when
+ * the chain's counts are OPX's: every contract with a count in both agrees.
+ * Otherwise the date is not stated.
  */
 export interface OpenInterestAsOf {
   /** The session the chain's counts are as of, YYYY-MM-DD; null when it cannot be established. */
@@ -19,6 +19,17 @@ export interface OpenInterestAsOf {
   compared: number;
   /** Of those, the ones whose counts agree. */
   matched: number;
+}
+
+/**
+ * The date the chain states for its counts: a session, or null when none of
+ * its counts is dated. Undefined when the chain does not say, and only then is
+ * OPX's listing compared.
+ */
+export function statedOpenInterestAsOf(chain: Pick<OptionsChain, "openInterestAsOf">): OpenInterestAsOf | undefined {
+  const stated = chain.openInterestAsOf;
+  if (stated !== null && (typeof stated !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(stated))) return undefined;
+  return { date: stated, listedDate: null, compared: 0, matched: 0 };
 }
 
 export function chainOpenInterestAsOf(

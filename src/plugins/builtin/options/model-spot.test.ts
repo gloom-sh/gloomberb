@@ -1,7 +1,7 @@
 import { expect, test } from "bun:test";
 import type { Quote } from "../../../types/financials";
 import { modelSpotLabel, optionModelSpot } from "./model-spot";
-import { chainOpenInterestAsOf, openInterestAsOfLabel } from "./open-interest-as-of";
+import { chainOpenInterestAsOf, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
 
 // KO before Tuesday's open: Monday's chain from the close, a pre-market print, Monday's official close.
 const chainAsOf = "2026-10-12T19:59:59.998Z";
@@ -45,4 +45,12 @@ test("the chain's open interest takes OPX's date only when every count agrees", 
   const apart = chainOpenInterestAsOf(chain as never, listed(4815));
   expect(apart).toEqual({ date: null, listedDate: "2026-10-09", compared: 3, matched: 2 });
   expect(openInterestAsOfLabel(apart)).toBe("OI date not published");
+});
+
+test("a chain's own open-interest date is used as stated; only a chain without the field is compared with OPX", () => {
+  expect(openInterestAsOfLabel(statedOpenInterestAsOf({ openInterestAsOf: "2026-10-09" })!)).toBe("OI as of Fri 9 Oct");
+  expect(openInterestAsOfLabel(statedOpenInterestAsOf({ openInterestAsOf: null })!)).toBe("OI date not published");
+  // An older server sends no field, and an unreadable value is no statement either.
+  expect(statedOpenInterestAsOf({})).toBeUndefined();
+  expect(statedOpenInterestAsOf({ openInterestAsOf: "9 Oct" })).toBeUndefined();
 });

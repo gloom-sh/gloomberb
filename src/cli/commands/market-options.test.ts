@@ -131,3 +131,19 @@ test("an options export says on every row what it is, the spot and time behind I
     setSystemTime();
   }
 });
+
+test("a chain that dates its own open interest is labelled with that date, and OPX is not asked", async () => {
+  const put = { contractSymbol: "GOOGL280317P00350000", strike: 350, currency: "USD", lastPrice: 50, change: 0, percentChange: 0,
+    bid: 50, ask: 50.2, impliedVolatility: 0, inTheMoney: false, expiration: EXPIRIES[1]!, lastTradeDate: 0, volume: 1, openInterest: 4815 };
+  // A server with no date for the counts says so with null; the label then never borrows OPX's.
+  for (const [openInterestAsOf, footnote] of [["2026-10-09", "OI as of Fri 9 Oct"], [null, "OI date not published"]] as const) {
+    const chain = { underlyingSymbol: "GOOGL", expirationDates: EXPIRIES, calls: [], puts: [put], openInterestAsOf };
+    const cli = createTestCliContext({ dataProvider: { getOptionsChain: async () => chain } });
+    await options.execute(["GOOGL", "--expiration", "2028-03-17"], cli.context);
+    const { result, options: render } = cli.printed[0]!;
+    expect(render!.footnote).toBe(footnote);
+    const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, render));
+    expect(json.metadata.openInterest).toEqual({ asOf: openInterestAsOf, listedAsOf: null, compared: 0, matched: 0 });
+  }
+  expect(listedOpenInterest).not.toHaveBeenCalled();
+});

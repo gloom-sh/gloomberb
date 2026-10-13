@@ -870,4 +870,10 @@ export interface OptionsChain {
   realtimeEligible?: boolean;
   /** ISO timestamp for the upstream options snapshot. */
   asOf?: string;
+  /**
+   * The session the chain's open interest counts, YYYY-MM-DD, as Gloom Cloud
+   * states it; null when none of its counts is dated. Absent from a source
+   * that does not say (an older server, another provider).
+   */
+  openInterestAsOf?: string | null;
 }

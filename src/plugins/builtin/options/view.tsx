@@ -73,7 +73,7 @@ import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/l
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { optionCarry, optionCostOfSpot } from "./carry";
 import { formatModelSpotPrice, modelSpotLabel, optionModelSpot } from "./model-spot";
-import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel } from "./open-interest-as-of";
+import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
 import { useAsyncResource } from "../../../react/async-resource";
 import {
   ALL_STRIKES,
@@ -529,12 +529,16 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       isPositionStrike: !!parsed && strike === parsed.strike,
     };
   }), [callsByStrike, dividendYield, greeksSpot, parsed, putsByStrike, spot, strikes, volatilities]);
-  // The open interest's session, from OPX's listing of the same expiry, stated only when the counts are OPX's.
-  const listedExpiry = selectedExpiration == null || !effectiveTicker ? null : expiryIsoDate(selectedExpiration);
+  // The open interest's session: the chain's own, or for a chain that does not say, OPX's listing of the
+  // same expiry, stated only when the counts are OPX's.
+  const statedOpenInterest = useMemo(() => strikeChain ? statedOpenInterestAsOf(strikeChain) : undefined, [strikeChain]);
+  const listedExpiry = selectedExpiration == null || !effectiveTicker || !strikeChain || statedOpenInterest
+    ? null : expiryIsoDate(selectedExpiration);
   const listedLoader = useCallback(() => loadListedOpenInterest(effectiveTicker, listedExpiry!), [effectiveTicker, listedExpiry]);
   const listedOpenInterest = useAsyncResource(listedExpiry ? listedLoader : null);
-  const openInterestAsOf = useMemo(() => strikeChain && listedOpenInterest.data ? chainOpenInterestAsOf(strikeChain, listedOpenInterest.data) : null,
-    [strikeChain, listedOpenInterest.data]);
+  const openInterestAsOf = useMemo(() => statedOpenInterest
+    ?? (strikeChain && listedOpenInterest.data ? chainOpenInterestAsOf(strikeChain, listedOpenInterest.data) : null),
+  [statedOpenInterest, strikeChain, listedOpenInterest.data]);
   // A report of the pane (`gloomberb fn OMON`) names them too.
   useRemoteUiNode(modelSpot ? {
     role: "report-notice",

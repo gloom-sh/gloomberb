@@ -9,7 +9,7 @@ import {
   formatModelSpotPrice, modelSpotLabel, optionModelSpot, type OptionModelSpot,
 } from "../../plugins/builtin/options/model-spot";
 import {
-  chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf,
+  chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf,
 } from "../../plugins/builtin/options/open-interest-as-of";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
 import { expiryIsoDate, missingExpiryText, parseOptionExpiration } from "../../utils/option-expiry";
@@ -161,19 +161,17 @@ export function valueChainAtModelSpot(
   };
 }
 
-/** The open-interest date of the chain's expiry, from OPX's listing of it; null when the listing cannot be read. */
-export async function loadOptionsChainOpenInterest(
-  symbol: string, chain: OptionsChain, listed?: ReturnType<typeof loadListedOpenInterest> | null,
-): Promise<OpenInterestAsOf | null> {
+/**
+ * The open-interest date of the chain's expiry: the chain's own, else (a chain
+ * that does not say) from OPX's listing of it; null when the listing cannot be read.
+ */
+export async function loadOptionsChainOpenInterest(symbol: string, chain: OptionsChain): Promise<OpenInterestAsOf | null> {
+  const stated = statedOpenInterestAsOf(chain);
+  if (stated) return stated;
   const expiration = [...chain.calls, ...chain.puts][0]?.expiration;
   if (expiration == null) return null;
-  const payload = await (listed ?? loadListedOpenInterest(symbol, expiryIsoDate(expiration)));
+  const payload = await loadListedOpenInterest(symbol, expiryIsoDate(expiration));
   return payload ? chainOpenInterestAsOf(chain, payload) : null;
-}
-
-/** OPX's listing of an expiry, requested while the chain loads. */
-export function requestListedOpenInterest(symbol: string, expiration: number) {
-  return loadListedOpenInterest(symbol, expiryIsoDate(expiration));
 }
 
 /**
