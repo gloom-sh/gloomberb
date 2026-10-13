@@ -242,8 +242,9 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
       case "name": {
         const company = counterpartyKind(row) === "company";
         // The kind label never gives way to a long cohort name; a column too narrow for the name says it in one word.
+        // The desktop always says it in one word: the Role column beside it names the role, and the name takes the room.
         const full = counterpartyKindLabel(row);
-        const kind = full && displayWidth(counterpartyLabel(row)) + displayWidth(full) + 4 <= column.width ? full : counterpartyKindLabel(row, true);
+        const kind = !desktop && full && displayWidth(counterpartyLabel(row)) + displayWidth(full) + 4 <= column.width ? full : counterpartyKindLabel(row, true);
         const ticker = !columns.some((entry) => entry.id === "ticker") ? row.counterparty.ticker : null;
         const room = Math.max(8, column.width - (kind ? displayWidth(kind) + 4 : 0) - (ticker ? displayWidth(ticker) + 1 : 0));
         // On the desktop the name gives way at the column's edge by CSS and the ticker and kind keep their room.

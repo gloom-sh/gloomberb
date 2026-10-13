@@ -276,10 +276,12 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
     style={desktop ? { borderLeft: `3px ${node.more ? "dotted" : "solid"} ${node.more ? blendHex(colors.bg, accent, 0.5) : accent}`, borderRadius: 3, paddingLeft: 6, cursor: "pointer",
       boxShadow: active ? `inset 0 0 0 1px ${blendHex(colors.bg, accent, 0.6)}` : undefined } : undefined}
     onMouseDown={onPress} onMouseOver={() => onHover(true)} onMouseOut={() => onHover(false)} data-gloom-role="supply-flow-node">
-    <Box flexDirection="row" height={1} overflow="hidden">
+    {/* The ticker shows only beside the whole name. On the desktop that is CSS: the row wraps, one line shows, and a ticker that does not fit goes to the hidden line. */}
+    <Box flexDirection="row" height={1} overflow="hidden" style={desktop ? { flexWrap: "wrap" } : undefined}>
       {!desktop ? <Text fg={node.more ? colors.textMuted : accent}>▍</Text> : null}
       <ClippedText fg={active && !desktop ? colors.selectedText : titleColor} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth} />
-      {ticker && displayWidth(name) + displayWidth(ticker) + 1 <= inner ? <Text fg={colors.textDim}>{` ${ticker}`}</Text> : null}
+      {ticker && (desktop || displayWidth(name) + displayWidth(ticker) + 1 <= inner)
+        ? <Text fg={colors.textDim} style={desktop ? { flex: "0 0 auto" } : undefined}>{` ${ticker}`}</Text> : null}
     </Box>
     {metric ? <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden">
       <ClippedText fg={active && !desktop ? colors.selectedText : colors.textDim} text={metric} width={inner - (desktop ? 0 : 1)} />
