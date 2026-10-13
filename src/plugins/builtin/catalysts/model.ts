@@ -48,7 +48,7 @@ export function catalystColumns(width: number, changes: boolean, litigation: boo
     // The entity the event is about, which the title alone buries.
     { id: "parties", label: "Parties", width: Math.max(16, Math.min(28, Math.round(width * 0.16))), min: 14, align: "left" },
     { id: "title", label: litigation ? "Case / docket" : "Event", width: 30, min: 20, flexGrow: 1, align: "left" },
-    ...(!litigation ? [{ id: "type", label: "Type", width: 13, align: "left" as const }] : []),
+    { id: "type", label: "Type", width: 13, align: "left" },
     { id: "status", label: changes ? "Change" : "Status", width: changes ? width < 110 ? 22 : 34 : width < 110 ? 14 : 20, min: changes ? 18 : 14, align: "left" },
     { id: "agency", label: "Agency", width: 12, align: "left" },
     { id: "country", label: "Country", width: 8, align: "left" },
