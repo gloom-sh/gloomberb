@@ -4,7 +4,7 @@
 
 ## Columns
 
-Each study shows when it was posted, its phase, its overall status, its title, its lead sponsor and the sponsor's ticker. The title takes the room that is left; on a narrow pane the phase and status shorten (`Ph 2/3`, `Not yet` for not yet recruiting, `Active` for active, not recruiting) and the detail shows them in full. `N/A` is the registry's "not applicable" phase (device and behavioural studies), `--` a study with no phase (observational).
+Each study shows when it was posted, its phase, its overall status, its title, its lead sponsor and the sponsor's ticker. The title takes the room that is left; on a narrow pane the phase and status shorten (`Ph 2/3`, `Not yet` for not yet recruiting, `Active` for active, not recruiting) and the detail shows them in full, and on a pane narrower than a terminal the time column gives way to the title. `N/A` is the registry's "not applicable" phase (device and behavioural studies), `--` a study with no phase (observational).
 
 The status is in the registry's words, coloured by stage: recruiting in green, not yet recruiting in a paler green, active or enrolling by invitation bright, completed dimmed, suspended amber, terminated and withdrawn red, unknown muted. The colours come from the theme, so they follow light and dark themes, and the words are always there. Industry sponsors read brighter than universities, hospitals and agencies.
 
@@ -20,4 +20,4 @@ The ticker is Gloom Cloud's answer for the lead sponsor's name, never a guess ma
 
 ## Detail
 
-Enter opens a study: its status, phase and study type, sponsor and class, ticker, registry ID, conditions, dates and enrollment, then the summary. `n` and `p` read on to the next and previous study, and `o` opens the study's registry page. Each date is as precise as the registry gives it (a month for many estimates), and `(est.)` marks a date the sponsor estimates rather than one that happened. Primary completion is when the last participant was examined for the primary outcome; neither it nor completion is a results, readout or approval date, and estimates move.
+Enter opens a study: its status, phase and study type, sponsor and class, ticker, registry ID, conditions, dates and enrollment, then the summary. `n` and `p` read on to the next and previous study, and `o` opens the study's registry page. `gloomberb shot TRIAL obesity --open NCT07868939` opens one study. Each date is as precise as the registry gives it (a month for many estimates), and `(est.)` marks a date the sponsor estimates rather than one that happened. Primary completion is when the last participant was examined for the primary outcome; neither it nor completion is a results, readout or approval date, and estimates move.

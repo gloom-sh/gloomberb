@@ -242,9 +242,12 @@ const TABLE_CHROME = 1 + 2;
 export function trialLayout(width: number): TrialLayout {
   const compact = width < 90;
   const wide = width >= 140;
+  // Narrower than a terminal, the posting age gives way to the title: the list
+  // is newest first and the detail has the date.
+  const timed = width >= 76;
   const fixed: TrialColumn[] = [
     // "10/15/26" once a study is a week old.
-    { id: "time", label: "Time", width: 8, align: "left" },
+    ...(timed ? [{ id: "time" as const, label: "Time", width: 8, align: "left" as const }] : []),
     { id: "phase", label: "Phase", width: compact ? 7 : 9, align: "left" },
     { id: "status", label: "Status", width: wide ? 23 : 11, align: "left" },
     { id: "sponsor", label: "Sponsor", width: wide ? 30 : compact ? 15 : 22, align: "left" },
@@ -252,5 +255,6 @@ export function trialLayout(width: number): TrialLayout {
   ];
   const used = fixed.reduce((sum, column) => sum + column.width + 1, 0) + TABLE_CHROME;
   const title: TrialColumn = { id: "title", label: "Title", width: Math.max(12, width - used - 1), align: "left", flexGrow: 1 };
-  return { compact, showVenue: wide, columns: [fixed[0]!, fixed[1]!, fixed[2]!, title, fixed[3]!, fixed[4]!] };
+  const statusAt = fixed.findIndex((column) => column.id === "status") + 1;
+  return { compact, showVenue: wide, columns: [...fixed.slice(0, statusAt), title, ...fixed.slice(statusAt)] };
 }

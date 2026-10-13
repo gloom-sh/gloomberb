@@ -60,5 +60,8 @@ test("the columns fill the pane at 80 and 160 cells without scrolling sideways",
     expect(columns.map((column) => column.id)).toEqual(["time", "phase", "status", "title", "sponsor", "ticker"]);
   }
   expect(trialLayout(78).columns.find((column) => column.id === "title")!.width).toBeGreaterThanOrEqual(20);
+  // Narrower still, the posting age gives way before the title does.
+  expect(trialLayout(66).columns.map((column) => column.id)).toEqual(["phase", "status", "title", "sponsor", "ticker"]);
+  expect(trialLayout(66).columns.find((column) => column.id === "title")!.width).toBeGreaterThanOrEqual(18);
   expect(trialLayout(158).columns.find((column) => column.id === "status")!.width).toBeGreaterThanOrEqual("Enrolling by invitation".length);
 });
