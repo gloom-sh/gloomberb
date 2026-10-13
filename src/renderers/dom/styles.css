@@ -280,7 +280,11 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="pane-content"] {
   overflow: hidden;
 }
-[data-gloom-role="pane-content"] > * {
+/* A pane shown as a view inside another pane (Fixed Income's sections) gets
+   its space the way a pane gets the pane's: the host's bars are taller than
+   the rows the view was given, so its root never runs past the host's box. */
+[data-gloom-role="pane-content"] > *,
+[data-gloom-role="nested-pane-content"] > * {
   min-width: 0;
   min-height: 0;
   max-height: 100%;

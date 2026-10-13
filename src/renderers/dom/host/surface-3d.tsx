@@ -287,10 +287,12 @@ function prefersReducedMotion(): boolean {
  */
 export function WebSurface3D(props: Surface3DHostProps) {
   const boxRef = useRef<BoxRenderable | null>(null);
-  // While a resize has the pane ahead of this size, the box takes the size it
-  // will have and the drawing buffer follows it (below), crisp on every move.
-  // It keeps its cells at rest: the GPU path is not checked without a GPU.
-  useLiveStretch(boxRef, props.width, props.height, { fit: false });
+  // The box takes the space the pane gives it, like a chart: at rest it fills
+  // the fraction of a cell its cells miss or overrun (a pane counts its chrome
+  // bars as rows, and they are taller), and while a resize has the pane ahead
+  // of this size it follows the frame or takes the size it will have. The
+  // drawing buffer follows the box (below), crisp on every move.
+  useLiveStretch(boxRef, props.width, props.height);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const labelLayerRef = useRef<HTMLDivElement | null>(null);

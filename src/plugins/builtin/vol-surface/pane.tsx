@@ -12,7 +12,8 @@ import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "..
 import { blendHex } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, type ScrollBoxRenderable } from "../../../ui";
+import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { FILL_REST } from "../../../components/ui/fill";
 import { resolveOptionsTarget } from "../../../utils/options";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
@@ -58,6 +59,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // Only while the table is on screen: loading, a failure or an empty chain
   // leave the strip its keys.
   const [tableOnScreen, setTableOnScreen] = useState(false);
+  const { nativePaneChrome } = useUiCapabilities();
   const tabKeys = activeTab !== "table" || !tableOnScreen;
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: activeTab, onSelect: setActiveTab,
     focused: focused && activeTab !== "surface", keyboardNavigation: tabKeys, dense: true });
@@ -427,7 +429,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         focused={focused} onKey={handleKey} metadata={exportMetadata} /> : table;
   const tableShown = activeTab === "table" && !!symbol && !!snapshot && !(!shownDate && liveEmpty);
   useEffect(() => setTableOnScreen(tableShown), [tableShown]);
-  return <Box flexDirection="column" width={width} height={height} overflow="hidden">
+  return <Box flexDirection="column" width={width} overflow="hidden" {...(nativePaneChrome ? FILL_REST : { height })}>
     {tabStrip}
     {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={active.loading && !snapshot}
       error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
@@ -444,7 +446,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
           ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
           : [`Spot ${formatPrice(snapshot?.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`, selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} />
       <StatGrid items={ivStats} width={width} />
-      {content}
+      {/* The terminal sizes the view in the rows under the bar and figures; the desktop fills what is left. */}
+      {nativePaneChrome ? <Box flexDirection="column" overflow="hidden" {...FILL_REST}>{content}</Box> : content}
     </PaneStatusBody>}
   </Box>;
 }

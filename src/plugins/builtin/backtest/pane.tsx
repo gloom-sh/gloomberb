@@ -22,7 +22,8 @@ import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneInstanceId, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
+import { FILL_REST } from "../../../components/ui/fill";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import { runBacktest, type BacktestResult, type BacktestTrade } from "./engine";
@@ -146,6 +147,7 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   }), [history.loading, result, view, paneId, symbol]);
 
   const { strip: tabStrip, rows: tabRows } = usePaneTabs(symbol ? { tabs: TABS, activeValue: view, onSelect: setView, focused, dense: true } : null);
+  const { nativePaneChrome } = useUiCapabilities();
   if (!symbol) return <EmptyState title="Select a ticker." hint="Open BT with a symbol, for example BT AAPL." />;
   const bodyHeight = Math.max(4, height - 1 - tabRows);
   const wide = width - SUMMARY_WIDTH - 1 >= MIN_WIDE_CHART_COLS;
@@ -187,7 +189,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     />
   );
   return (
-    <Box width={width} height={height} flexDirection="column">
+    // On the desktop the pane's box fills the pane by flex, so what fills it
+    // follows the pane's frame by CSS, the chart beside the metrics too.
+    <Box width={width} flexDirection="column" {...(nativePaneChrome ? FILL_REST : { height })}>
       {tabStrip}
       <QueryBar
         width={width}
@@ -242,7 +246,9 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
             emptyStateTitle="No trades in this window."
           />
         ) : wide ? (
-          <Box flexDirection="row" width={width} height={bodyHeight}>
+          // The desktop's query bar is taller than a row: the chart and the
+          // metrics take what is left under it, down to the pane footer.
+          <Box flexDirection="row" width={width} {...(nativePaneChrome ? FILL_REST : { height: bodyHeight })}>
             {chart(width - SUMMARY_WIDTH - 1, bodyHeight)}
             <Box width={1} />
             {summaryTable(SUMMARY_WIDTH, bodyHeight)}
