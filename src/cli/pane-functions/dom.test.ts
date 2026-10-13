@@ -2,9 +2,10 @@ import { afterAll, beforeAll, expect, setSystemTime, test } from "bun:test";
 import type { ResolvedPaneFunction } from "./resolver";
 import { assessPaneScreenshot, type PaneScreenshotResult } from "./screenshot";
 import type { DesktopPaneShotPayload, DesktopPaneShotRenderResult } from "../desktop-pane-shot";
-import { buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
+import { appendDomReportFooter, buildDomPaneReportFromRender, domReportNote, domReportView } from "./dom";
 import { getPaneFunctionCapability } from "./capabilities";
 import { researchModule } from "../../plugins/builtin/research";
+import { filingEventsModule } from "../../plugins/builtin/filing-events";
 import { renderReportCsv } from "../report-tables";
 import { formatFreshnessLine } from "./freshness";
 
@@ -189,7 +190,7 @@ test("states the expiry a rendered OMON shows and dates the report by the chain 
   const report = buildDomPaneReportFromRender(resolved, screenshot);
   expect(report.text.split("\n").slice(0, 3)).toEqual(["Options", "", "Expiry 2028-01-21 (469d)"]);
   expect(report.data.metadata).toMatchObject({ expiry: { date: "2028-01-21", daysToExpiry: 469 } });
-  expect(formatFreshnessLine(report.data.freshness)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 19:59 UTC · 15 min delayed");
+  expect(formatFreshnessLine(report.data.freshness!)).toBe("Source: Gloom Cloud · Fri 9 Oct 2026 19:59 UTC · 15 min delayed");
   expect(renderReportCsv(report.tables)).toContain("# note: Expiry 2028-01-21 (469d)");
 });
 
@@ -219,13 +220,13 @@ test("dates a rendered FXC by the observations behind its rates, in the report a
   } as unknown as PaneScreenshotResult;
 
   const report = buildDomPaneReportFromRender(resolved, screenshot);
-  expect(formatFreshnessLine(report.data.freshness)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
+  expect(formatFreshnessLine(report.data.freshness!)).toBe("Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
   expect(report.data.freshness).toMatchObject({ status: "delayed", asOf: "2026-10-10T04:21:11.000Z", asOfClose: "2026-10-09", market: { state: "closed" } });
   expect(renderReportCsv(report.tables)).toContain("# Source: Gloom Cloud · FX trading day Fri 9 Oct 2026 close · delayed · markets closed");
 
   // A pane that publishes nothing is still not reported.
   const bare = { ...screenshot, render: { ...screenshot.render, semanticUi: [] } } as unknown as PaneScreenshotResult;
-  expect(formatFreshnessLine(buildDomPaneReportFromRender(resolved, bare).data.freshness)).toContain("status not reported");
+  expect(formatFreshnessLine(buildDomPaneReportFromRender(resolved, bare).data.freshness!)).toContain("status not reported");
 });
 
 test("a pane behind the sign-in wall reports what it needs instead of the wall's buttons, as its catalog entry does", () => {
@@ -249,4 +250,31 @@ test("a pane behind the sign-in wall reports what it needs instead of the wall's
   expect(wall("DIAG MSTR Verify your email to run the Equity Diagnostic. Resend Verification Email")).toEndWith(
     "Verify your email to run the Equity Diagnostic. Requires a verified email on your Gloom account; resend the verification email in the app.",
   );
+});
+
+test("a pane walled whole cites no source, and one that says how to reach it says that instead of the wall", () => {
+  const ek = filingEventsModule.panes!.find((pane) => pane.id === "filing-events")!;
+  const resolved = {
+    token: "EK", label: "8-K Filings", options: {}, capability: { id: "filing-events-pane" }, pane: ek,
+  } as unknown as ResolvedPaneFunction;
+  const walled = (gate: "sign-in" | "pro", visibleText: string) => buildDomPaneReportFromRender(resolved, {
+    symbols: ["NEM"],
+    render: {
+      visibleText, accessGate: gate, rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false,
+      errorStateDetected: true, errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  } as unknown as PaneScreenshotResult);
+  const signedOut = walled("sign-in", "EK NEM Sign in to read 8-K filings. Log in \u21B5 Sign up free");
+  expect(signedOut.data).toMatchObject({ locked: "sign-in", complete: false });
+  expect(signedOut.data.freshness).toBeUndefined();
+  expect(signedOut.data.reason).toContain("Free, with no sign-in: gloomberb fn SEC NEM lists NEM's recent filings");
+  expect(signedOut.text).not.toContain("Sign up free");
+  expect(signedOut.tables.footer.some((line) => /^Source:|^Retrieval time/.test(line))).toBe(false);
+  const footer = appendDomReportFooter(signedOut.text, 10, domReportView(signedOut.data), signedOut.data.freshness);
+  expect(footer).toEndWith("Rendered view: the pane is locked, so no values were read. Render time: 10 ms.");
+  // On a free account the Pro wall stands in the same way, with the route that is left.
+  const free = walled("pro", "EK NEM 8-K filings are part of Gloom Cloud Pro. Upgrade");
+  expect(free.data.locked).toBe("pro");
+  expect(free.data.reason).toContain("On a free account it shows none of them.");
+  expect(free.data.reason).toContain("upgrade in the app");
 });
