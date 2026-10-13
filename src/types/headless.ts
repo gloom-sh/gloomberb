@@ -395,6 +395,12 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    * in the US never shows that company's numbers.
    */
   usListingsOnly?: string;
+  /**
+   * A sentence that answer adds for a listing abroad, after its US listing:
+   * where to read the nearest data the function has for it (time and sales
+   * points at GIP's 1-minute bars). `key` is the listing as read, RMS:ASX.
+   */
+  usListingsOnlyHint?(key: string): string;
   options: HeadlessPaneOptionDef[];
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;

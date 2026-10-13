@@ -143,14 +143,16 @@ export async function applyListingArgument(
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
   if (usOnly && abroad.length > 0) {
     const token = found.template?.shortcut?.prefix ?? args.target.toUpperCase();
-    const answers = await Promise.all(abroad.map((listing) => usListingsOnlyMessage(
-      usOnly, listing, context, (key) => `gloomberb ${command} ${token} ${key}`,
-    )));
+    const answers = await Promise.all(abroad.map(async (listing) => {
+      const answer = await usListingsOnlyMessage(usOnly, listing, context, (key) => `gloomberb ${command} ${token} ${key}`);
+      const hint = headless?.usListingsOnlyHint?.(listing.key);
+      return hint ? { ...answer, details: `${answer.details}\n${hint}` } : answer;
+    }));
     listings = listings.filter((listing) => !abroad.includes(listing));
     if (listings.length === 0) {
       throw new ListingArgError(answers.map((answer) => answer.message).join("\n"), answers.map((answer) => answer.details).join("\n"));
     }
-    notes.push(...answers.map((answer) => `${answer.message} ${answer.details}`));
+    notes.push(...answers.map((answer) => `${answer.message} ${answer.details.replaceAll("\n", " ")}`));
   }
   // One listing's notes come with its choice note; a list's are said here.
   if (listings.length > 1) notes.unshift(...listings.flatMap(listingReadNotes));
