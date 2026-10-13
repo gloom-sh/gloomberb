@@ -39,8 +39,8 @@ export interface QuoteBoardOptions {
   /**
    * Paint each listed symbol's cached quote, however old, as the network is
    * asked, and refresh the listed symbols in a few batches at once, each
-   * given up after `QUOTE_REFRESH_TIMEOUT_MS` so one slow symbol cannot hold
-   * the rest. A row whose refresh fails or times out keeps its cached quote,
+   * given up after `refreshTimeoutMs` so one slow symbol cannot hold the
+   * rest. A row whose refresh fails or times out keeps its cached quote,
    * marked stale.
    */
   cacheFirst?: boolean;
@@ -51,6 +51,8 @@ export interface QuoteBoardOptions {
    * Keep the reference stable until its contents change.
    */
   listedSymbols?: ReadonlySet<string> | null;
+  /** How long a cache-first refresh waits for one batch. */
+  refreshTimeoutMs?: number;
 }
 
 /**
@@ -69,7 +71,7 @@ const QUOTE_REFRESH_BATCHES = 4;
 /** And sends no batch smaller than this, so a short list is one request. */
 const QUOTE_REFRESH_MIN_BATCH = 8;
 /** A batch still unanswered after this long is given up and its rows keep their cached quote. */
-export const QUOTE_REFRESH_TIMEOUT_MS = 5_000;
+const QUOTE_REFRESH_TIMEOUT_MS = 5_000;
 
 const EMPTY_STATE: BoardQuoteState = { quote: null, loading: false, error: null, stale: false };
 
@@ -231,6 +233,7 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
     fallbackIntervalMs = QUOTE_BOARD_FALLBACK_MS,
     cacheFirst = false,
     listedSymbols = null,
+    refreshTimeoutMs = QUOTE_REFRESH_TIMEOUT_MS,
   } = options;
   const dataProvider = useAssetData();
   const appVisible = useAppVisible();
@@ -310,7 +313,7 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
         timer = setTimeout(() => {
           controller.abort();
           reject(new Error("Quote refresh timed out"));
-        }, QUOTE_REFRESH_TIMEOUT_MS);
+        }, refreshTimeoutMs);
       });
       Promise.race([requestBoardQuotes(dataProvider, batch, forceRefresh, controller.signal), timedOut])
         .catch((error: unknown): BoardQuoteMap => new Map(batch.map((symbol) => [
@@ -323,7 +326,7 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
           setSnapshots((prev) => mergeQuotes(prev, loaded));
         });
     }
-  }, [dataProvider]);
+  }, [dataProvider, refreshTimeoutMs]);
 
   /**
    * Paints `subset`'s cached quotes, however old. Asked after the refresh, so

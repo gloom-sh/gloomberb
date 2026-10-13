@@ -213,6 +213,49 @@ describe("useQuoteBoard failure handling", () => {
   });
 });
 
+describe("useQuoteBoard cache first", () => {
+  test("paints cached quotes, refreshes only listed rows, and a batch that never answers keeps its cached quotes, stale", async () => {
+    // Twelve symbols refresh as a batch of eight and one of three; H0 never answers, Z is not listed.
+    const symbols = [...Array.from({ length: 11 }, (_, index) => `H${index}`), "Z"];
+    const cached = (symbol: string) => ({ ...quote(symbol, 1), lastUpdated: 1_600_000_000_000 });
+    const refreshed: string[][] = [];
+    const provider = {
+      getQuotesBatch: (targets: QuoteSubscriptionTarget[], options?: { cacheOnly?: boolean }) => {
+        if (options?.cacheOnly) return Promise.resolve(targets.map((target) => ({ target, quote: cached(target.symbol) })));
+        refreshed.push(targets.map((target) => target.symbol));
+        if (targets.some((target) => target.symbol === "H0")) return new Promise<QuoteBatchResult[]>(() => {});
+        return Promise.resolve(targets.map((target) => ({ target, quote: quote(target.symbol, 2) })));
+      },
+    };
+    let board: BoardQuoteMap = new Map();
+    let list: (listed: ReadonlySet<string>) => void = () => {};
+    function CacheFirstProbe() {
+      const [listed, setListed] = useState<ReadonlySet<string>>(() => new Set(symbols.slice(0, 11)));
+      list = setListed;
+      board = useQuoteBoard(symbols, { cacheFirst: true, listedSymbols: listed, refreshTimeoutMs: 40, liveStreaming: false }).quotes;
+      return <Text>{`${board.size}`}</Text>;
+    }
+    const runtime = { getMarketData: () => provider } as unknown as PluginRuntimeAccess;
+    await tui.render(<PluginRenderProvider runtime={runtime} pluginId="test"><CacheFirstProbe /></PluginRenderProvider>, { width: 40, height: 6 });
+    await settle();
+
+    expect(refreshed).toEqual([symbols.slice(0, 8), symbols.slice(8, 11)]);
+    // H0's batch is still out: its rows show the cached quote while the other batch has landed.
+    expect(board.get("H1")).toMatchObject({ quote: { price: 1 }, loading: true });
+    expect(board.get("H9")).toMatchObject({ quote: { price: 2 }, loading: false, stale: false });
+    expect(board.get("Z")).toMatchObject({ quote: null, loading: false });
+
+    await settle(80);
+    expect(board.get("H1")).toMatchObject({ quote: { price: 1 }, loading: false, stale: true, error: "Quote refresh timed out" });
+
+    // Listing Z later fetches Z alone.
+    await act(async () => list(new Set(symbols)));
+    await settle();
+    expect(refreshed.at(-1)).toEqual(["Z"]);
+    expect(board.get("Z")?.quote?.price).toBe(2);
+  });
+});
+
 describe("useQuoteBoard target changes", () => {
   test("drops removed quotes and errors while retaining overlapping quotes across pending requests", async () => {
     const pending: Array<(rows: QuoteBatchResult[]) => void> = [];
