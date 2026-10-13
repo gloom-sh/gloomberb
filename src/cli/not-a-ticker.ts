@@ -2,7 +2,8 @@ import { notATickerSymbol } from "../sources/provider-errors";
 import { splitSymbolArgs } from "./symbol-args";
 
 // "Not a ticker: APPLE." as the router words it; the symbol ends at the sentence's own period.
-const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb (?:search|fred) )/g;
+// One that already names what to try (a search, a FRED series, the pair search offered) is left alone.
+const NOT_A_TICKER_SENTENCE = /Not a ticker: ((?:(?!\.\s)[^\n`\x1b])+?)\.(?=\s|\x1b|$)(?! Try `gloomberb (?:search|fred) | Did you mean )/g;
 
 /**
  * The symbol as the user typed it on the command line (`Apple`), not as the router saw it (`APPLE`).
@@ -44,6 +45,17 @@ export function withSearchHints(text: string, args: readonly string[], isFredSer
       return `${sentence} ${/^[A-Z0-9]+$/.test(id) && isFredSeries(id) ? `Try \`gloomberb fred ${id}\`.` : searchHint(typed)}`;
     })
     : text;
+}
+
+/**
+ * "Not a ticker: USD_NGN. Did you mean USDNGN=X (US Dollar/Nigerian Naira)?",
+ * the listing search suggests, which takes the place of the search hint.
+ */
+export function withListingSuggestion(message: string, suggestion: string): string {
+  const symbol = notATickerSymbol(message);
+  if (!symbol || message.includes(" Did you mean ")) return message;
+  const sentence = `Not a ticker: ${symbol}.`;
+  return message.replace(sentence, `${sentence} Did you mean ${suggestion}?`);
 }
 
 /** Whether an error message says the symbol is not a ticker. */

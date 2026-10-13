@@ -241,22 +241,26 @@ test("a symbol search finds no listing for names the near match search lists, in
   };
   const found = async () => [naira];
 
-  const list = await exec(["add", "Growth", "USD-NGN", "XXXXX"], found);
-  expect(list.text).toContain("Not found: USD-NGN; did you mean USDNGN=X (US Dollar/Nigerian Naira)?");
+  const list = await exec(["add", "Growth", "USD_NGN", "XXXXX"], found);
+  expect(list.text).toContain("Not found: USD_NGN; did you mean USDNGN=X (US Dollar/Nigerian Naira)?");
   expect(list.text).toContain("Not found: XXXXX");
   expect(list.text).not.toContain("XXXXX;");
-  expect(list.text).toContain('Watchlist "Growth": 0 added, 2 not found: USD-NGN, XXXXX.');
+  expect(list.text).toContain('Watchlist "Growth": 0 added, 2 not found: USD_NGN, XXXXX.');
   expect(list.rows.map((row) => row.suggestion)).toEqual(["USDNGN=X (US Dollar/Nigerian Naira)", undefined]);
 
   // One symbol typed alone fails with the same line.
-  const alone = await caught(watchlistCliCommand.execute(["add", "Growth", "USD-NGN"], hintedContext(market(found)).context));
-  expect(alone?.message).toBe('No ticker match found for "USD-NGN"; did you mean USDNGN=X (US Dollar/Nigerian Naira)?');
+  const alone = await caught(watchlistCliCommand.execute(["add", "Growth", "USD_NGN"], hintedContext(market(found)).context));
+  expect(alone?.message).toBe('No ticker match found for "USD_NGN"; did you mean USDNGN=X (US Dollar/Nigerian Naira)?');
 
   // A search that finds nothing, or fails, leaves the plain answer.
   const refused = async (): Promise<typeof naira[]> => { throw new Error("Gloom Cloud refused the request"); };
   for (const search of [async () => [], refused]) {
-    expect((await exec(["add", "Growth", "USD-NGN", "XXXXX"], search)).text).not.toContain("did you mean");
-    expect((await caught(watchlistCliCommand.execute(["add", "Growth", "USD-NGN"], hintedContext(market(search)).context)))?.message)
-      .toBe('No ticker match found for "USD-NGN".');
+    expect((await exec(["add", "Growth", "USD_NGN", "XXXXX"], search)).text).not.toContain("did you mean");
+    expect((await caught(watchlistCliCommand.execute(["add", "Growth", "USD_NGN"], hintedContext(market(search)).context)))?.message)
+      .toBe('No ticker match found for "USD_NGN".');
   }
+
+  // A spelling of the pair itself is the pair, not a near miss.
+  expect((await exec(["add", "Growth", "USD-NGN", "XXXXX"], found)).rows.map((row) => [row.status, row.listing]))
+    .toEqual([["added", "USDNGN=X:CCY"], ["not_found", null]]);
 });

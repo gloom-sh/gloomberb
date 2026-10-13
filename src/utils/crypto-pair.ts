@@ -32,7 +32,7 @@ const SLASH_COIN_PAIR = /^([A-Z0-9]{1,15})\/(USD|EUR|GBP|USDT|USDC|BTC)$/;
 let isoCurrencyCodes: ReadonlySet<string> | null = null;
 
 /** Every ISO currency code the runtime knows (THB, ARS, XAU), so a pair on one is never read as a coin. */
-function isIsoCurrencyCode(code: string): boolean {
+export function isIsoCurrencyCode(code: string): boolean {
   isoCurrencyCodes ??= new Set(typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("currency") : []);
   return FIAT_CURRENCY_CODES.has(code) || isoCurrencyCodes.has(code);
 }

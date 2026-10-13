@@ -128,13 +128,15 @@ import {
 import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
-import { providerMissReason } from "../../sources/provider-errors";
-import { isNotATickerMessage } from "../not-a-ticker";
+import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
+import { isNotATickerMessage, withListingSuggestion } from "../not-a-ticker";
+import { describeSuggestion, suggestListing } from "../listing-suggestion";
 import { splitSymbolArgs } from "../symbol-args";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
 import { subMinuteDataMessage } from "../known-gaps";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
+import { looksLikeCurrencyPair } from "../../utils/currency-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
 import { describeTickerChange, startTickerChangeLookup, tickerChangeLine, type TickerChange } from "../../tickers/ticker-changes";
 import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
@@ -696,7 +698,7 @@ async function answerQuote(
     root ? indexRootTryLine(root, request.command) : null,
     other || listing.exchange ? null : futuresTryLine(listing.symbol, request),
   ].filter((line): line is string => !!line);
-  if (!other && tryLines.length === 0) return { result, listing, notes: [] };
+  if (!other && tryLines.length === 0) return { result: await withCurrencyPairHint(result, market), listing, notes: [] };
   const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;
   const details = [other?.details, ...tryLines].filter(Boolean).join("\n");
   const oneLine = [
@@ -705,6 +707,21 @@ async function answerQuote(
     ...tryLines,
   ].filter(Boolean).join(" ");
   return { result, listing, failure: { message, details, oneLine }, notes: [] };
+}
+
+/**
+ * A symbol written like a currency pair that is not a ticker (USD_NGN, as some
+ * FX feeds write a pair) names the listing `gloomberb search` finds nearest to
+ * it, as `watchlist add` does: "Did you mean USDNGN=X (US Dollar/Nigerian
+ * Naira)?". When search finds nothing near, the row keeps its own error and its
+ * search hint.
+ */
+async function withCurrencyPairHint(result: QuoteBatchResult, market: MarketContext): Promise<QuoteBatchResult> {
+  const message = errorMessage(result.error);
+  const symbol = message ? notATickerSymbol(message) : null;
+  if (!message || !symbol || !looksLikeCurrencyPair(symbol)) return result;
+  const suggestion = await suggestListing(symbol, market);
+  return suggestion ? { ...result, error: withListingSuggestion(message, describeSuggestion(suggestion)) } : result;
 }
 
 /** A crypto pair that will not load points at the crypto board. Structured formats keep the error as thrown. */
