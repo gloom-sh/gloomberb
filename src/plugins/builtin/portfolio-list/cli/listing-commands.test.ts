@@ -18,6 +18,8 @@ const persistences: AppPersistence[] = [];
 const dataDirs: string[] = [];
 
 afterEach(async () => {
+  // A list that adds nothing sets the exit status; it must not become the test run's.
+  process.exitCode = 0;
   setCliColorEnabledOverride(null);
   for (const persistence of persistences.splice(0)) persistence.close();
   await Promise.all(dataDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
