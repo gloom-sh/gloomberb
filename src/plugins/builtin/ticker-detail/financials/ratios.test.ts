@@ -182,7 +182,7 @@ describe("financial ratios", () => {
     expect(table.cells.get("interest-coverage")![0]!.value).toBeCloseTo(8.015 / 0.16);
     expect(table.cells.get("fcf-debt")!.map((cell) => cell.value)).toEqual([8 / 5.08, 8 / 5.08, 7.3 / 5.08, "short-history", "short-history"]);
     expect(table.rows.filter((row) => row.kind === "input").map((row) => row.label)).toEqual([
-      "Net Debt", "÷ EBITDA TTM", "Total Debt", "÷ Equity", "EBIT TTM", "÷ Interest Expense TTM", "Free Cash Flow TTM", "÷ Total Debt",
+      "Net Debt", "÷ EBITDA TTM", "Total Debt", "÷ Equity", "EBIT TTM", "÷ Interest Exp TTM", "Free Cash Flow TTM", "÷ Total Debt",
     ]);
     // A year's column reads its own year, as before.
     const annual = ratioTableForFinancials(financials, leverage, "annual");

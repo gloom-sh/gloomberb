@@ -67,6 +67,8 @@ interface RatioInputDef {
    * (TTM), and show "< 4 quarters" rather than annualize a short history.
    */
   trailing?: boolean;
+  /** A shorter name for quarterly columns, so the label, TTM and its unit fit the label column. */
+  trailingLabel?: string;
   value: (period: RatioPeriod) => RatioAmount;
 }
 
@@ -188,8 +190,14 @@ const flow = (label: string, read: BalanceLine, operator?: RatioInputDef["operat
 });
 
 /** A flow a leverage ratio reads over a year: the trailing four quarters in a quarterly column. */
-const trailingFlow = (label: string, read: BalanceLine, operator?: RatioInputDef["operator"]): RatioInputDef => ({
-  label, operator, format: "money", trailing: true, value: ({ statement }) => reported(read(statement)),
+const trailingFlow = (
+  label: string,
+  read: BalanceLine,
+  operator?: RatioInputDef["operator"],
+  trailingLabel?: string,
+): RatioInputDef => ({
+  label, operator, format: "money", trailing: true, ...(trailingLabel ? { trailingLabel } : {}),
+  value: ({ statement }) => reported(read(statement)),
 });
 
 const perDay = (label: string, read: BalanceLine): RatioInputDef => ({
@@ -372,7 +380,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         // Both flows over the same trailing year, as a lender reads cover.
         inputs: [
           trailingFlow("EBIT", line("operatingIncome")),
-          trailingFlow("Interest Expense", line("interestExpense"), "÷"),
+          trailingFlow("Interest Expense", line("interestExpense"), "÷", "Interest Exp"),
         ],
         compute: ([ebit, interest]) => over(ebit!, interest!),
       },
@@ -539,7 +547,7 @@ export function evaluateRatio(def: RatioDef, period: RatioPeriod): RatioCell {
 function ratioInputLabel(input: RatioInputDef, quarterly: boolean): string {
   const label = !quarterly ? input.label
     : input.annualized ? `${input.label} × ${QUARTERS_PER_YEAR}`
-      : input.trailing ? `${input.label} TTM` : input.label;
+      : input.trailing ? `${input.trailingLabel ?? input.label} TTM` : input.label;
   return input.operator ? `${input.operator} ${label}` : label;
 }
 
