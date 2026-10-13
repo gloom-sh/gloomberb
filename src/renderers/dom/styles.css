@@ -263,10 +263,8 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   max-width: calc(100vw - 48px);
 }
 [data-gloom-role="status-bar"] {
-  flex: 0 0 var(--cell-h);
+  flex: none;
   height: var(--cell-h);
-  min-height: var(--cell-h);
-  max-height: var(--cell-h);
   align-items: center;
   border-top: 1px solid color-mix(in srgb, var(--gloom-border) 72%, transparent);
   font-size: 11.5px;

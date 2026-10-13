@@ -328,8 +328,11 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
     const frozenCell = freezeFirstColumn && overflowEdges.start
       ? body?.querySelector<HTMLElement>('[data-gloom-role="data-table-header-cell"]')
       : null;
+    // The gap after it is the next column's margin, as laid out.
+    const following = frozenCell?.nextElementSibling;
+    const gap = following ? parseFloat(following.ownerDocument.defaultView?.getComputedStyle(following).marginLeft ?? "") || 0 : 0;
     const next = frozenCell && body
-      ? Math.max(0, frozenCell.getBoundingClientRect().right - body.getBoundingClientRect().left + columnGap * WEB_CELL_WIDTH)
+      ? Math.max(0, frozenCell.getBoundingClientRect().right - body.getBoundingClientRect().left + gap)
       : 0;
     // Set only on a change: a state update from a layout effect costs the render a second commit.
     if (next !== frozenEdgePx) setFrozenEdgePx(next);
@@ -355,6 +358,8 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   };
   const bodyScrollerStyle: CSSProperties = {
     width: "100%",
+    // What is kept to the columns in view (a section header's action) measures the body in `cqw`.
+    containerType: "inline-size",
     flex: fitRows ? "0 0 auto" : "1 1 0px",
     minWidth: 0,
     minHeight: 0,

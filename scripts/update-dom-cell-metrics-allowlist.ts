@@ -68,14 +68,31 @@ export function collectDomCellMetrics(root = ROOT): Record<string, number> {
   return counts;
 }
 
-export function formatDomCellMetricsAllowlist(counts: Record<string, number>): string {
-  const sorted = Object.fromEntries(Object.entries(counts).sort(([a], [b]) => a.localeCompare(b)));
+/** An allowed file: how many uses it has, and why they stay. */
+export interface DomCellMetricsEntry {
+  uses: number;
+  why: string;
+}
+
+export function formatDomCellMetricsAllowlist(entries: Record<string, DomCellMetricsEntry>): string {
+  const sorted = Object.fromEntries(Object.entries(entries)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([file, entry]) => [file, { uses: entry.uses, why: entry.why }]));
   return `${JSON.stringify(sorted, null, 2)}\n`;
+}
+
+/** The counts as they are now, keeping each file's reason; a new file gets an empty one to fill in. */
+function updateDomCellMetricsAllowlist(counts: Record<string, number>, previous: Record<string, DomCellMetricsEntry>): Record<string, DomCellMetricsEntry> {
+  return Object.fromEntries(Object.entries(counts).map(([file, uses]) => [file, { uses, why: previous[file]?.why ?? "" }]));
 }
 
 if (import.meta.main) {
   const counts = collectDomCellMetrics();
-  await Bun.write(ALLOWLIST, formatDomCellMetricsAllowlist(counts));
+  const previous: Record<string, DomCellMetricsEntry> = await Bun.file(ALLOWLIST).exists() ? await Bun.file(ALLOWLIST).json() : {};
+  const entries = updateDomCellMetricsAllowlist(counts, previous);
+  await Bun.write(ALLOWLIST, formatDomCellMetricsAllowlist(entries));
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  const missing = Object.entries(entries).filter(([, entry]) => !entry.why.trim()).map(([file]) => file);
   console.log(`${total} uses of a cell metric in ${Object.keys(counts).length} DOM-only files written to ${relative(ROOT, ALLOWLIST)}`);
+  if (missing.length) console.log(`Say in "why" why these stay, or remove them:\n${missing.join("\n")}`);
 }
