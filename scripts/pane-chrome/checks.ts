@@ -378,6 +378,25 @@ async function crosshairUnder(cdp: Cdp, paneId: string, at: Point): Promise<void
   }
 }
 
+/**
+ * Text drawn over a chart's plot other than its drawing toolbar and the
+ * screenshot watermark: a floating readout, by whatever role it comes back
+ * under. The crosshair reads out in the legend and on the axes, never in a box.
+ */
+const FLOATING_PLOT_TEXT = (scope: string) => `(() => {
+  const plots = [...(${scope})?.querySelectorAll("[data-gloom-role=composite-chart-panel]") ?? []].map((plot) => plot.getBoundingClientRect());
+  const inside = (r) => plots.some((p) => r.x + r.width / 2 > p.left && r.x + r.width / 2 < p.right && r.y + r.height / 2 > p.top && r.y + r.height / 2 < p.bottom);
+  const skip = "[data-gloom-role=composite-chart-toolbar], [data-gloom-role=chart-watermark], [data-gloom-role=composite-chart-measure]";
+  return [...(${scope})?.querySelectorAll("[data-gloom-role=composite-chart] *") ?? []].flatMap((element) => {
+    if (element.closest(skip)) return [];
+    const own = [...element.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent.trim()).join("");
+    if (!own) return [];
+    const r = element.getBoundingClientRect(), style = getComputedStyle(element);
+    if (!r.width || !r.height || style.visibility === "hidden" || Number(style.opacity) === 0 || !inside(r)) return [];
+    return [own.slice(0, 40)];
+  });
+})()`;
+
 const plotRect = async (cdp: Cdp, paneId: string) => await evaluate<Rect | null>(
   cdp,
   `__check.rect(__check.pane(${JSON.stringify(paneId)})?.querySelector("[data-gloom-role=composite-chart-panel]"))`,
@@ -385,8 +404,7 @@ const plotRect = async (cdp: Cdp, paneId: string) => await evaluate<Rect | null>
 
 /**
  * The day of the observation the chart reads out under the pointer, as days
- * since 1970: the crosshair's readout on the desktop, where the legend keeps
- * the latest values, else the legend's entry.
+ * since 1970: the legend's entry, which follows the crosshair.
  */
 async function cursorDay(cdp: Cdp, paneId: string, at: Point): Promise<number> {
   // A move off and back, so the chart reads the pointer here even when it already was.
@@ -396,7 +414,7 @@ async function cursorDay(cdp: Cdp, paneId: string, at: Point): Promise<number> {
   await frames(cdp, 4);
   const day = await evaluate<number | null>(cdp, `(() => {
     const pane = __check.pane(${JSON.stringify(paneId)});
-    const label = (pane?.querySelector("[data-gloom-role=composite-chart-readout-row]") ?? pane?.querySelector("[data-gloom-role=composite-chart-legend-series]"))?.getAttribute("data-gloom-label") ?? "";
+    const label = pane?.querySelector("[data-gloom-role=composite-chart-legend-series]")?.getAttribute("data-gloom-label") ?? "";
     const date = /Observed (\\d{4}-\\d{2}-\\d{2})/.exec(label)?.[1];
     return date ? Date.parse(date) / 86400000 : null;
   })()`);
@@ -484,38 +502,45 @@ const nestedChartSteps: Step[] = NESTED_CHARTS.flatMap((paneId) => [
     },
   },
   {
-    // The readout box and the line markers are placed by CSS in the plot's own
-    // width and height, a fraction of a cell off its cells: they must still sit
-    // on the crosshair, and the box inside the plot and clear of the line.
-    name: `${paneId} chart: the readout and the line markers follow the crosshair`,
+    // The line markers are placed by CSS in the plot's own width and height, a
+    // fraction of a cell off its cells: they must still sit on the crosshair.
+    // The values are in the legend and on the axes: nothing floats over the plot.
+    name: `${paneId} chart: the line markers follow the crosshair and no readout floats over the plot`,
     scenario: "nested",
     async run(cdp: Cdp) {
       const plot = await plotRect(cdp, paneId);
+      const pane = `__check.pane(${JSON.stringify(paneId)})`;
+      const legend = `[...(${pane}?.querySelectorAll("[data-gloom-role=composite-chart-legend-series]") ?? [])].map((entry) => entry.textContent).join(" | ")`;
+      await mouse(cdp, "mouseMoved", plot.x + plot.width / 2, plot.y - 40, false);
+      await frames(cdp, 4);
+      const latest = await evaluate<string>(cdp, legend);
+      const seen = new Set<string>();
       for (const share of [0.12, 0.5, 0.92]) {
         const at = { x: plot.x + plot.width * share, y: plot.y + plot.height * 0.6 };
         await crosshairUnder(cdp, paneId, at);
         const geometry = `(() => {
-          const pane = __check.pane(${JSON.stringify(paneId)});
+          const pane = ${pane};
           const rect = (selector) => pane?.querySelector(selector)?.getBoundingClientRect();
           const line = rect("[data-gloom-role=chart-crosshair-x]");
           const marker = rect("[data-gloom-role=chart-crosshair-marker]");
-          const box = rect("[data-gloom-role=composite-chart-readout]");
           const area = rect("[data-gloom-role=composite-chart-panel]");
-          return line && marker && box && area ? {
+          return line && marker && area ? {
             line: line.x + line.width / 2, marker: marker.x + marker.width / 2, markerY: marker.y + marker.height / 2,
-            left: box.left, right: box.right, top: box.top, bottom: box.bottom,
-            areaLeft: area.left, areaRight: area.right, areaTop: area.top, areaBottom: area.bottom,
+            areaTop: area.top, areaBottom: area.bottom,
           } : null;
         })()`;
-        const g = await waitFor<Record<string, number> | null>(cdp, geometry) ?? fail(`${paneId}: no readout or line marker at ${Math.round(share * 100)}% of the plot`);
+        const g = await waitFor<Record<string, number> | null>(cdp, geometry) ?? fail(`${paneId}: no line marker at ${Math.round(share * 100)}% of the plot`);
         if (Math.abs(g.marker! - g.line!) > 1.5 || g.markerY! < g.areaTop! - 1 || g.markerY! > g.areaBottom! + 1) {
           fail(`${paneId}: the line marker is not on the crosshair at ${Math.round(share * 100)}% of the plot`, g);
         }
-        if (g.left! < g.areaLeft! - 1 || g.right! > g.areaRight! + 1 || g.top! < g.areaTop! - 1 || g.bottom! > g.areaBottom! + 1) {
-          fail(`${paneId}: the readout leaves the plot at ${Math.round(share * 100)}% of it`, g);
-        }
-        if (g.left! < g.line! + 8 && g.right! > g.line! - 8) fail(`${paneId}: the readout covers the crosshair at ${Math.round(share * 100)}% of the plot`, g);
+        const floating = await evaluate<string[]>(cdp, FLOATING_PLOT_TEXT(pane));
+        if (floating.length) fail(`${paneId}: text floats over the plot at ${Math.round(share * 100)}% of it`, floating);
+        seen.add(await evaluate<string>(cdp, legend));
       }
+      // The legend reads the crosshair out, and goes back to the latest values when the pointer leaves.
+      if (seen.size < 2) fail(`${paneId}: the legend did not follow the crosshair`, [...seen]);
+      await mouse(cdp, "mouseMoved", plot.x + plot.width / 2, plot.y - 40, false);
+      if (!await waitFor(cdp, `${legend} === ${JSON.stringify(latest)}`)) fail(`${paneId}: the legend kept the crosshair's values after the pointer left`, { latest, now: await evaluate(cdp, legend) });
     },
   },
   {
@@ -1067,28 +1092,52 @@ const steps: Step[] = [
     },
   },
   {
-    name: "chart composer: the crosshair reads out every series, by key and by pointer",
+    name: "chart composer: the legend reads out every series at the crosshair, by key and by pointer, and nothing floats over the plot",
     scenario: "cmp&chart=readout",
     async run(cdp) {
       const plot = await loadedChartPlot(cdp);
       if (!await waitFor(cdp, `document.querySelectorAll("[data-gloom-role=composite-chart-legend-series]").length === 6`, 10_000)) fail("the chart did not load its six series");
+      const legendText = `[...document.querySelectorAll("[data-gloom-role=composite-chart-legend-series]")].map((entry) => entry.textContent).join(" | ")`;
+      const latest = await evaluate<string>(cdp, legendText);
       // The newest bar is a US close, after the German listing's: its value is carried.
       await click(cdp, { x: plot.x + plot.width * 0.5, y: plot.y + plot.height * 0.5 });
       await mouse(cdp, "mouseMoved", plot.x + plot.width * 0.5, plot.y - 60, false);
       await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 });
       await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "ArrowLeft", code: "ArrowLeft", windowsVirtualKeyCode: 37 });
       const readout = `(() => {
-        const rows = [...document.querySelectorAll("[data-gloom-role=composite-chart-readout-row]")];
-        return { rows: rows.length, carried: rows.filter((row) => row.dataset.carried === "true").length,
+        const entries = [...document.querySelectorAll("[data-gloom-role=composite-chart-legend-series]")];
+        return { entries: entries.length, carried: entries.filter((entry) => entry.dataset.carried === "true").length,
+          text: ${legendText},
           markers: document.querySelectorAll("[data-gloom-role=chart-crosshair-marker]").length,
-          hollow: document.querySelectorAll("[data-gloom-role=chart-crosshair-marker][data-hollow=true]").length };
+          hollow: document.querySelectorAll("[data-gloom-role=chart-crosshair-marker][data-hollow=true]").length,
+          timeTag: document.querySelector("[data-gloom-role=chart-time-axis]")?.getAttribute("data-gloom-cursor") ?? null,
+          floating: ${FLOATING_PLOT_TEXT("document")} };
       })()`;
-      const byKey = await waitFor<{ rows: number; carried: number; markers: number; hollow: number } | null>(cdp, `(() => { const r = ${readout}; return r.rows === 6 && r.carried >= 1 ? r : null; })()`);
-      if (!byKey) fail("the arrow key's crosshair did not read out all six series with the German close carried", await evaluate(cdp, readout));
+      type Readout = { entries: number; carried: number; text: string; markers: number; hollow: number; timeTag: string | null; floating: string[] };
+      const byKey = await waitFor<Readout | null>(cdp, `(() => { const r = ${readout}; return r.entries === 6 && r.carried >= 1 && r.text !== ${JSON.stringify(latest)} ? r : null; })()`);
+      if (!byKey) fail("the arrow key's crosshair did not read out all six series in the legend with the German close carried", await evaluate(cdp, readout));
       // Price, two closes, the average and the RSI each get a marker; volume is read off its bars.
       if (byKey.markers !== 5 || byKey.hollow < 1) fail("the crosshair did not mark every line, the carried one hollow", byKey);
-      await mouse(cdp, "mouseMoved", plot.x + plot.width * 0.3, plot.y + plot.height * 0.4, false);
-      if (!await waitFor(cdp, `(() => { const r = ${readout}; return r.rows === 6 && r.markers === 5; })()`)) fail("the pointer's crosshair did not read out every series", await evaluate(cdp, readout));
+      if (byKey.floating.length) fail("text floats over the plot", byKey.floating);
+      if (!byKey.timeTag) fail("the time axis has no tag under the crosshair", byKey);
+      // Pointer in the price panel, then in the RSI panel: each gets its own horizontal line and price tag.
+      const panels = await evaluate<Rect[]>(cdp, `[...document.querySelectorAll("[data-gloom-role=composite-chart-panel]")].map(__check.rect)`);
+      for (const [index, panel] of [[0, panels[0]!], [panels.length - 1, panels.at(-1)!]] as const) {
+        const at = { x: panel.x + panel.width * 0.3, y: panel.y + panel.height * 0.4 };
+        await mouse(cdp, "mouseMoved", at.x, at.y, false);
+        const lines = `(() => {
+          const ys = [...document.querySelectorAll("[data-gloom-role=composite-chart-panel]")].map((plot) => !!plot.querySelector("[data-gloom-role=chart-crosshair-y]"));
+          const tag = [...document.querySelectorAll("[data-gloom-role=chart-price-axis-cursor]")].some((tag) => { const r = tag.getBoundingClientRect(); return Math.abs(r.y + r.height / 2 - ${at.y}) <= 3; });
+          return { ys, tag, ...${readout} };
+        })()`;
+        const state = await waitFor<(Readout & { ys: boolean[]; tag: boolean }) | null>(cdp, `(() => { const r = ${lines}; return r.entries === 6 && r.markers === 5 && r.ys.filter(Boolean).length === 1 && r.ys[${index}] && r.tag ? r : null; })()`);
+        if (!state) fail(`the pointer in panel ${index} did not draw one horizontal line there with its price tag on the axis, and read out every series`, await evaluate(cdp, lines));
+        if (state.floating.length) fail("text floats over the plot", state.floating);
+        if (!state.timeTag) fail(`panel ${index}: the time axis has no tag under the crosshair`, state);
+      }
+      // The pointer leaves: the legend is back on the latest values.
+      await mouse(cdp, "mouseMoved", plot.x + plot.width * 0.5, plot.y - 60, false);
+      if (!await waitFor(cdp, `${legendText} === ${JSON.stringify(latest)}`)) fail("the legend kept the crosshair's values after the pointer left", await evaluate(cdp, legendText));
     },
   },
   {

@@ -7,7 +7,6 @@ import { isVerticalWheelDirection } from "./panel-gestures";
 import { type ChartToolSpan, CHART_DRAWING_COLORS, isDrawingTool, type ChartDrawing } from "./tools";
 import { ChartDrawingStore, NO_DRAWINGS } from "./drawing-store";
 import { CompositeLegend } from "./legend";
-import { CompositeCrosshairReadout } from "./crosshair-readout";
 import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
 import { AsciiText, Box, ChartSurface, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { useLiveStretch } from "../../../ui/live-stretch";
@@ -509,10 +508,6 @@ function ThemedCompositeChart({
   }
 
   const showToolbar = interactive && navigable && plotWidth > CHART_TOOLBAR_WIDTH + 4;
-  // On the desktop and the web the crosshair carries every series' value
-  // beside it, and the legend keeps the latest ones. The terminal's legend
-  // reads out the cursor, as the cell plot has no room for a box over it.
-  const showReadout = isDesktopWeb && interactive && showLegend && !xAxis && scene.cursorDate !== null;
   // Bars shorter than a day carry a time of day the cursor reads out.
   const intradayBars = scene.timeZone !== undefined || visibleSeries.some((entry) => (
     !!entry.historyResolution && isIntradayResolution(entry.historyResolution)
@@ -558,7 +553,9 @@ function ThemedCompositeChart({
     >
       {showLegend ? (
         <CompositeLegend
-          scene={showReadout ? baseScene : scene}
+          // Every series' value at the crosshair, the latest ones when the
+          // pointer leaves; the price and the time under it sit on the axes.
+          scene={scene}
           series={visibleLegendSeries}
           visibleSeriesIds={visibleSeriesIds}
           lineCues={lineCues}
@@ -572,20 +569,6 @@ function ThemedCompositeChart({
           onToggleSeries={onToggleSeries}
           isSeriesToggleable={isSeriesToggleable}
           keyboardIndex={legendKeyboardIndex}
-        />
-      ) : null}
-      {showReadout ? (
-        <CompositeCrosshairReadout
-          scene={scene}
-          series={visibleLegendSeries}
-          visibleSeriesIds={visibleSeriesIds}
-          lineCues={lineCues}
-          formatValue={formatValue}
-          colors={resolvedColors}
-          plotWidth={plotWidth}
-          left={leftPadding}
-          right={rightPadding}
-          top={legendRows + (showToolbar ? 1 : 0)}
         />
       ) : null}
       {showToolbar ? (
@@ -654,7 +637,7 @@ function ThemedCompositeChart({
       ))}
       {watermarkScale ? (
         // Hidden until a screenshot reveals it (see utils/screenshot-watermark).
-        // Above the opaque bitmaps, below drawings, crosshair and readouts.
+        // Above the opaque bitmaps, below drawings and the crosshair.
         <Box
           position="absolute"
           left={leftPadding}

@@ -260,6 +260,7 @@ export function PriceAxisLabels({
           width={axisSectionWidth}
           bg={cursorBackgroundColor}
           flexDirection="row"
+          data-gloom-role="chart-price-axis-cursor"
           style={{
             position: "absolute",
             left: 0,
