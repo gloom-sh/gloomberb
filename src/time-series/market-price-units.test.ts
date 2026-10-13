@@ -43,9 +43,11 @@ test("share denominations require equity metadata; crypto-shaped symbols cannot 
   for (const type of [undefined, "", "FUTURE", "CURRENCY"]) {
     expect((await resolve(type)).series.map((entry) => entry.unit)).toEqual(Array(5).fill("USD"));
   }
+  // A loading seed draws with what the last settled chart of the listing knew
+  // (USD, no instrument type), never with a type read from the symbol's shape.
   const chart = spec();
   const seeded = seedChartResolutionResult(chart, new Map(chart.series.map((entry) => [chartQuoteOverrideKeyForSource(entry.source), history])));
-  expect(seeded?.series.map((entry) => entry.unit)).toEqual(Array(5).fill("currency"));
+  expect(seeded?.series.map((entry) => entry.unit)).toEqual(Array(5).fill("USD"));
 });
 
 test("normalized crypto prices keep the original unit in raw-value provenance", async () => {

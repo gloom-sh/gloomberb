@@ -123,6 +123,8 @@ declare global {
       externalOpens: string[];
       /** Times the popped-out window was asked to close. */
       detachedCloses: number;
+      /** `paint`: floats another chart composer pane in, as adding a chart pane does; returns its id. */
+      addChartPane?: () => string;
     };
   }
 }
@@ -554,17 +556,46 @@ function OverviewPane({ width, height, focused }: PaneProps) {
   return <OverviewTab ticker={OVERVIEW_TICKER} financials={OVERVIEW_FINANCIALS} width={width} height={height} focused={focused} />;
 }
 
-/** Real title-bar tabs mount each chart just as opening a research tab does. */
+/**
+ * Real title-bar tabs mount each chart just as opening a research tab does.
+ * `composer` is the research Chart tab itself: the chart composer on the
+ * invented source, loading its bars after a delay the first time.
+ */
 function PaintPane(props: PaneProps) {
   const [active, setActive] = useState("empty");
-  const { strip } = usePaneTabs({
-    tabs: ["empty", "chart", "overview"].map((value) => ({ value, label: value })),
+  const { strip, rows } = usePaneTabs({
+    tabs: ["empty", "chart", "overview", "composer"].map((value) => ({ value, label: value })),
     activeValue: active, onSelect: setActive,
   });
+  const body = { ...props, height: Math.max(4, props.height - rows) };
   return <Box flexDirection="column" flexGrow={1}>
     {strip}
-    {active === "chart" ? <ChartPane {...props} /> : active === "overview" ? <OverviewPane {...props} /> : null}
+    {active === "chart" ? <ChartPane {...props} />
+      : active === "overview" ? <OverviewPane {...props} />
+      : active === "composer" ? <ChartComposerFixturePane {...body} />
+      : null}
   </Box>;
+}
+
+/** Opens another chart composer pane, floating, as adding a chart pane does. */
+function PaneAdder() {
+  const dispatch = useAppDispatch();
+  const layout = useAppSelector((state) => state.config.layout);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  useEffect(() => {
+    window.__paneChrome.addChartPane = () => {
+      const current = layoutRef.current;
+      const instanceId = `chart-composer:added${current.instances.length}`;
+      dispatch({ type: "UPDATE_LAYOUT", layout: {
+        ...current,
+        instances: [...current.instances, { ...instance(instanceId), settings: { chartSpec: chartComposerSpec("pan") } }],
+        floating: [...current.floating, { instanceId, x: 20, y: 6, width: 100, height: 30, zIndex: 70 }],
+      } });
+      return instanceId;
+    };
+  }, [dispatch]);
+  return null;
 }
 
 /** The product picker and its preview/commit/cancel path, without network search. */
@@ -1013,7 +1044,11 @@ function chartComposerLayout(): LayoutConfig {
 function config() {
   const base = createDefaultConfig("/pane-chrome-fixture");
   const layout: LayoutConfig = scenario.startsWith("theme") ? themeLayout()
-    : scenario === "paint" ? { dockRoot: leaf("paint:a"), instances: [instance("paint:a")], floating: [], detached: [] }
+    : scenario === "paint" ? {
+      dockRoot: leaf("paint:a"),
+      instances: [{ ...instance("paint:a"), settings: { chartSpec: chartComposerSpec("pan") } }],
+      floating: [], detached: [],
+    }
     : scenario === "perf" ? perfLayout()
     : scenario === "screenshot" ? screenshotLayout()
     : scenario === "resize" ? resizeLayout()
@@ -1106,6 +1141,7 @@ createRoot(root).render(
           <Box data-theme-chrome="status"><StatusBar /></Box>
         </Box> : <Shell pluginRegistry={paneRegistry} />}
       {(scenario.startsWith("theme") || scenario === "paint") && <ThemeControls />}
+      {scenario === "paint" && <PaneAdder />}
       <Ready />
     </AppProvider>
   </DomHostProviders>,

@@ -677,7 +677,7 @@ const steps: Step[] = [
   { name: "theme preview paints every surface, cancel and commit agree", scenario: "theme&theme=high-contrast", run: checkThemePreview },
   { name: "theme preview paints a popped-out chart, cancel and commit agree", scenario: "theme-detached&theme=high-contrast", run: checkThemePreview },
   ...["white", "colorblind-light"].map((theme) => ({
-    name: `first paint has no blank chart or overview frame (${theme})`, scenario: `paint&theme=${theme}`, run: checkFirstPaint,
+    name: `first paint has no blank or provisional chart and no blank overview frame (${theme})`, scenario: `paint&theme=${theme}`, run: checkFirstPaint,
   })),
   ...PRESS_POINTS.map(([label, part]): Step => ({
     name: `docked pane: drag by the ${label} docks it elsewhere`,

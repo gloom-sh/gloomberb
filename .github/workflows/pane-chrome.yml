@@ -28,6 +28,7 @@ on:
       - "src/components/chart/native/raster/**"
       - "src/time-series/resolve.ts"
       - "src/time-series/use-chart-resolution.ts"
+      - "src/time-series/parsed-history-cache.ts"
       - "src/components/metric-treemap/**"
       - "src/components/ui/tabs.tsx"
       - "src/components/ui/icon.tsx"

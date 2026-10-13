@@ -29,6 +29,7 @@ const FRAME_PROBE = `(() => {
     return {
       id:pane.dataset.gloomPaneId, focused:pane.dataset.focused==='true', floating:pane.dataset.floating==='true'||pane.dataset.gloomRole==='detached-pane-window',
       background:getComputedStyle(body).backgroundColor,
+      chartText:[...body.querySelectorAll('[data-gloom-role=composite-chart]')].map(chart=>chart.innerText.replace(/\\s+/g,' ').trim()).join(' | '),
       plots:[...body.querySelectorAll('[data-gloom-role=composite-chart-panel]')].map(plot=>{
         const r=plot.getBoundingClientRect(), canvas=plot.querySelector('canvas');
         return {rect:[r.x,r.y,r.width,r.height], background:getComputedStyle(plot).backgroundColor,
@@ -51,7 +52,7 @@ interface Frame {
   surfacePixel: number[] | null;
   paletteTransitions: string[];
   panes: Array<{
-    id: string; focused: boolean; floating: boolean; background: string;
+    id: string; focused: boolean; floating: boolean; background: string; chartText: string;
     plots: Array<{ rect: number[]; background: string; canvas: { size: number[]; pixel: number[] } | null }>;
   }>;
   dividers: string[];
@@ -164,22 +165,57 @@ export async function checkThemePreview(cdp: Cdp): Promise<void> {
   if (JSON.stringify(original) !== JSON.stringify(await evaluate(cdp, SNAPSHOT))) throw new Error("final cancel did not restore High Contrast");
 }
 
-/** Cold open of both panes, then rapid switches. Every visible plot has pixels at its final size. */
+/** Every frame from the first one with a plot draws the chart the pane settles on: same place, same size, same labels. */
+function checkSettledFromFirstPlot(samples: Frame[], label: string, pick: (sample: Frame) => Frame["panes"][number] | undefined): void {
+  const shown = samples.filter((sample) => pick(sample)?.plots.length);
+  const last = shown.at(-1) && pick(shown.at(-1)!);
+  if (!last) return;
+  for (const sample of shown) {
+    const pane = pick(sample)!;
+    const at = `${label}, frame ${sample.n} (+${(sample.time - samples[0]!.time).toFixed(1)} ms)`;
+    if (pane.plots.length !== last.plots.length) throw new Error(`${at}: ${pane.plots.length} plots, then ${last.plots.length}`);
+    pane.plots.forEach((plot, index) => {
+      const settled = last.plots[index]!;
+      if (plot.rect.some((value, i) => Math.abs(value - settled.rect[i]!) > .1)) throw new Error(`${at}: plot ${index} at ${plot.rect.join(",")}, then moved to ${settled.rect.join(",")}`);
+      if (plot.canvas && settled.canvas && plot.canvas.size.join() !== settled.canvas.size.join()) throw new Error(`${at}: plot ${index} bitmap ${plot.canvas.size.join("x")}, then ${settled.canvas.size.join("x")}`);
+    });
+    // A provisional chart that relabels its axes when the settled one lands reads as a flash.
+    if (pane.chartText !== last.chartText) throw new Error(`${at}: chart drew "${pane.chartText.slice(0, 160)}", then "${last.chartText.slice(0, 160)}"`);
+  }
+}
+
+const TAB = (tab: string) => `[...document.querySelectorAll('[role=tab]')].find(e=>e.textContent.trim()===${JSON.stringify(tab)})`;
+/** The chart composer has drawn its settled chart: a plot, and no loading state in the pane. */
+const COMPOSER_SETTLED = `document.querySelector('[data-gloom-role=composite-chart-panel] canvas') && !/loading/i.test(document.querySelector('[data-gloom-role=pane-window]')?.innerText ?? '')`;
+
+/**
+ * Cold open of every pane, then rapid switches. Every visible plot has pixels
+ * at its final size. `composer` is the research Chart tab: the first open waits
+ * for its bars, the next ones draw from cache, and both must paint the chart it
+ * settles on from their first plotted frame.
+ */
 export async function checkFirstPaint(cdp: Cdp): Promise<void> {
   const palettes = await evaluate<Record<string, Record<string, string>>>(cdp, "__paneChrome.themes");
-  for (const [index, tab] of ["chart", "empty", "overview", "chart", "overview", "chart"].entries()) {
+  const theme = await evaluate<string>(cdp, "document.querySelector('[data-theme-controls]').dataset.committed");
+  for (const [index, tab] of ["chart", "empty", "overview", "composer", "chart", "overview", "chart", "overview", "composer", "empty", "composer"].entries()) {
     await startFrames(cdp);
-    await clickElement(cdp, `[...document.querySelectorAll('[role=tab]')].find(e=>e.textContent.trim()===${JSON.stringify(tab)})`);
-    await frames(cdp, 6);
-    const theme = await evaluate<string>(cdp, "document.querySelector('[data-theme-controls]').dataset.committed");
+    await clickElement(cdp, TAB(tab));
+    if (tab === "composer" && !await waitFor(cdp, COMPOSER_SETTLED, 5000)) throw new Error(`${tab}: the chart did not settle`);
+    await frames(cdp, tab === "composer" ? 20 : 6);
     const samples = await stopFrames(cdp, `open-${theme}-${index}-${tab}`);
     checkFrames(samples, palettes, false);
-    const plots = samples.filter((sample) => sample.tab === tab).map((sample) => sample.panes[0]?.plots[0]).filter((plot) => !!plot);
-    if (tab !== "empty" && !plots.length) throw new Error(`${tab}: no plot was captured`);
-    const last = plots.at(-1);
-    if (last?.canvas) for (const plot of plots) {
-      if (plot.rect.some((value, i) => Math.abs(value - last.rect[i]!) > .1)) throw new Error(`${tab}: plot moved after first paint`);
-      if (plot.canvas?.size.join() !== last.canvas.size.join()) throw new Error(`${tab}: bitmap changed size after first paint`);
-    }
+    if (tab !== "empty" && !samples.some((sample) => sample.tab === tab && sample.panes[0]?.plots.length)) throw new Error(`${tab}: no plot was captured`);
+    checkSettledFromFirstPlot(samples, tab, (sample) => sample.tab === tab ? sample.panes[0] : undefined);
   }
+  // A chart pane added beside it: its bars are cached by now.
+  await startFrames(cdp);
+  const added = await evaluate<string>(cdp, "window.__paneChrome.addChartPane()");
+  const addedPane = `document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id=${JSON.stringify(added)}]')`;
+  if (!await waitFor(cdp, `${addedPane}?.querySelector('[data-gloom-role=composite-chart-panel] canvas') && !/loading/i.test(${addedPane}.innerText)`, 5000)) {
+    throw new Error("added chart pane: the chart did not settle");
+  }
+  await frames(cdp, 20);
+  const samples = await stopFrames(cdp, `open-${theme}-added-pane`);
+  checkFrames(samples, palettes, false);
+  checkSettledFromFirstPlot(samples, "added chart pane", (sample) => sample.panes.find((pane) => pane.id === added));
 }

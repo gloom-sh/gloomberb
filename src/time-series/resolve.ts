@@ -70,6 +70,8 @@ import { marketSeriesFrequency } from "./market";
 import {
   rememberParsedPriceHistory,
   parsedPriceHistoryKey,
+  readSeedListingFacts,
+  rememberSeedListingFacts,
 } from "./parsed-history-cache";
 import {
   canonicalExchange,
@@ -675,22 +677,43 @@ export function seedChartResolutionResult(
   referenceNow?: Date,
   options: ChartResolveOptions = {},
 ): ChartResolutionResult | null {
+  let latest = Number.NEGATIVE_INFINITY;
+  for (const history of historyByInstrument.values()) {
+    for (const point of history) latest = Math.max(latest, getPricePointTimestamp(point));
+  }
+  if (!Number.isFinite(latest)) return null;
+  const now = referenceNow ?? new Date(latest);
+  const resolution = chartSeedResolution(spec, now, options);
+  // The seed is replaced by the settled chart moments later. Draw it with
+  // what that chart will know (units, served cadence, where its axis ends) so
+  // the swap changes no label and moves no plot.
+  const support: ChartResolutionSupport[][] = [];
   const series: ResolvedSeries[] = [];
   spec.series.forEach((seriesSpec, index) => {
     if (seriesSpec.visible === false || seriesSpec.source.kind !== "security") return;
     if (!isMarketFieldId(seriesSpec.source.fieldId)) return;
     const history = historyByInstrument.get(instrumentKey(seriesSpec.source));
     if (!history?.length) return;
-    const resolved = baseSecuritySeries(seriesSpec, emptyFinancials(history), index);
-    if (resolved?.points.length) series.push(resolved);
+    const facts = readSeedListingFacts(seriesSpec.source.instrument);
+    const resolved = baseSecuritySeries(seriesSpec, emptyFinancials(history), index, resolution, facts?.quoteMetadata);
+    if (!resolved?.points.length) return;
+    series.push(resolved);
+    if (facts?.resolutionSupport?.length) support.push(facts.resolutionSupport);
   });
   if (series.length === 0) return null;
-  let latest = Number.NEGATIVE_INFINITY;
-  for (const entry of series) {
-    for (const point of entry.points) latest = Math.max(latest, point.date.getTime());
+  const requested = requestedBounds(spec, now);
+  const sessionView = spec.viewport.range === "1D" && !explicitBounds(spec)
+    ? latestSessionView(series[0], series, spec.viewport.extendedHours === true, undefined)
+    : null;
+  const bounds = explicitBounds(spec) || runtimeRequestBounds(options)
+    ? requested
+    : sessionView?.bounds ?? followLatestMarketObservation(requested, series);
+  const primary = series[0]!;
+  if (sessionView?.priorClose != null && primary.transform === "raw"
+    && primary.unitGroup.startsWith("price") && primary.unitGroup !== "price:unknown") {
+    series[0] = { ...primary, priorClose: sessionView.priorClose };
   }
-  const bounds = requestedBounds(spec, referenceNow ?? new Date(latest));
-  const resolution = chartSeedResolution(spec, referenceNow ?? new Date(latest), options);
+  const resolutionSupport = support.length === series.length ? intersectChartResolutionSupport(support) : [];
   const priceComparison = resolvePriceComparison(spec, series, bounds, resolution);
   const displayBounds = comparisonDisplayBounds(bounds, priceComparison);
   const comparisonBounds = priceComparison && priceComparison.start !== null
@@ -699,10 +722,11 @@ export function seedChartResolutionResult(
   // Calculate studies from raw buffered inputs, then use the same presentation
   // and visible-window rules as the network result.
   const studies = resolveStudies(series, spec.studies, resolution);
-  const bufferedSeries = [
+  const axisWarnings: string[] = [];
+  const bufferedSeries = assignAxes([
     ...baseSeries,
     ...applyStudyPresentationTransforms(studies.series, spec.studies, series, comparisonBounds, undefined, priceComparison),
-  ].map((entry) => clipPriceComparison(entry, priceComparison));
+  ], [...spec.series, ...spec.studies], axisWarnings).map((entry) => clipPriceComparison(entry, priceComparison));
   const visible = bufferedSeries.map((entry) => {
     const entryBounds = presentationBounds(entry, spec.studies, priceComparison, bounds);
     const clipped = entryBounds.start !== null && entryBounds.end !== null
@@ -715,6 +739,7 @@ export function seedChartResolutionResult(
     series: visible,
     ...(priceHistoryIntegrity.length ? { priceHistoryIntegrity } : {}),
     ...(priceComparison ? { priceComparison } : {}),
+    ...(resolutionSupport.length > 0 ? { resolutionSupport } : {}),
     legendSeries: visible,
     ...(spec.viewport.maxPoints === undefined ? { bufferedSeries } : {}),
     ...((explicitBounds(spec) !== null || spec.viewport.maxPoints === undefined)
@@ -722,7 +747,7 @@ export function seedChartResolutionResult(
       ? { viewport: { start: new Date(displayBounds.start), end: new Date(displayBounds.end) } } : {}),
     loading: true,
     errors: studies.errors,
-    warnings: [...studies.warnings, ...chartPriceHistoryIntegrityNotices(priceHistoryIntegrity), ...(priceComparison ? [priceComparison.notice] : [])],
+    warnings: [...studies.warnings, ...axisWarnings, ...chartPriceHistoryIntegrityNotices(priceHistoryIntegrity), ...(priceComparison ? [priceComparison.notice] : [])],
     resolution,
   };
 }
@@ -1659,11 +1684,13 @@ async function resolveChartSpecPass(
       ? source
       : sourceWithResolvedExchange(source, await loadFinancials(source))
   )));
-  const sharedSupport = activeMarketSources.length > 0
-    ? intersectChartResolutionSupport(await Promise.all(
-        resolutionSupportSources.map((source) => loadResolutionSupport(source, priceOnly)),
-      ))
-    : [];
+  const supportBySource = await Promise.all(resolutionSupportSources.map((source) => loadResolutionSupport(source, priceOnly)));
+  const sharedSupport = activeMarketSources.length > 0 ? intersectChartResolutionSupport(supportBySource) : [];
+  // A placeholder list is not what the source serves; only a real answer seeds the next open.
+  if (!provisionalSupport) activeMarketSources.forEach((source, index) => {
+    const served = supportBySource[index];
+    if (served?.length) rememberSeedListingFacts(source.instrument, { resolutionSupport: served });
+  });
   const initialResolution = requestResolution(
     spec,
     initialVisibleBounds,
@@ -2010,6 +2037,11 @@ async function resolveChartSpecPass(
       );
       const quoteMetadata = mergeQuoteMetadata(existingMetadata, needsMetadata ? await loadQuoteMetadata(resolvedSource) : null);
       if (quoteMetadata || merged.quoteMetadata) merged = { ...merged, quoteMetadata };
+      if (marketField) {
+        // Same precedence as baseSecuritySeries: the quote's own facts first.
+        const listingFacts = mergeQuoteMetadata(merged.quote ? quoteMetadataFromQuote(merged.quote) : undefined, quoteMetadata);
+        if (listingFacts?.currency || listingFacts?.instrumentType) rememberSeedListingFacts(source.instrument, { quoteMetadata: listingFacts });
+      }
       if (history) {
         // Classification must be available before combining observations. A
         // quote cannot establish the price basis of independent bond history.
