@@ -1119,6 +1119,22 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   box-shadow: inset -1px 0 0 var(--sg-hairline);
 }
 [data-gloom-role="stat-grid-cell"][data-wide="true"] { grid-column: 1 / -1; box-shadow: none; }
+/* Column grid text whose track can be narrower than it, and the grid itself: clipped
+   without a scroll container where the engine has `overflow: clip`. A text box sets its
+   own overflow inline, hence !important. The margin keeps the antialiased edge of a glyph
+   that ends at the box from being cut. */
+[data-gloom-clip] {
+  overflow: clip !important;
+  overflow-clip-margin: 2px;
+}
+@supports not (overflow: clip) {
+  [data-gloom-clip] {
+    overflow: hidden !important;
+  }
+}
+[data-gloom-clip="text"] {
+  text-overflow: ellipsis !important;
+}
 [data-gloom-role="stat-grid-label"] {
   flex: 0 0 var(--stat-label-w, 10ch);
   width: var(--stat-label-w, 10ch);

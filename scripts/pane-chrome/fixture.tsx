@@ -586,9 +586,18 @@ function OverviewPane({ width, height, focused }: PaneProps) {
  * DES's overview over an invented company (`scenario=des`): the quote book,
  * fundamentals, positions in several accounts, profile and description.
  * `positions=<n>` sets how many accounts hold it (3 by default), `scale=<n>`
- * repeats the description, and `float=1` floats the pane over a plain one.
+ * repeats the description, `long=1` gives it long account names, long
+ * classification and site names, dated figures with their muted detail and a
+ * book with large sizes, and `float=1` floats the pane over a plain one.
  */
-const DES_ACCOUNTS = ["main", "Retirement", "Joint savings", "Trading", "Long term", "Education", "Family trust", "Margin", "Paper"];
+const DES_LONG = params.get("long") === "1";
+/** Account names from 4 to 44 characters, several near the length a column at rest holds, so a name ends close to its track whatever the width. */
+const DES_LONG_ACCOUNTS = [4, 9, 16, 22, 27, 31, 35, 38, 44].map((length) => "Retirement savings account of the invented family partnership".slice(0, length).trimEnd());
+const DES_ACCOUNTS = DES_LONG
+  ? DES_LONG_ACCOUNTS
+  : ["main", "Retirement", "Joint savings", "Trading", "Long term", "Education", "Family trust", "Margin", "Paper"];
+/** A date `days` from today, as the day a registry would list it. */
+const desDay = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 const desPositions = Number(params.get("positions") ?? 3);
 const DES_DESCRIPTION = Array.from({ length: Number(params.get("scale") ?? 1) }, () => "Example Industries builds small instruments for imaginary observatories. The team assembles each device in a bright studio beside the river, checks the lenses twice, and sends a hand written guide with every order. Longer runs use the same tools, but the instruments travel to classrooms, research stations and libraries across several regions.").join(" ");
 const DES_TICKER = createTestTicker("EXMPL", "Example Industries", {
@@ -603,14 +612,30 @@ const DES_FINANCIALS = createTestFinancials({
   financialCurrency: "USD",
   quote: createTestQuote({
     symbol: "EXMPL", name: "Example Industries", price: 105.25, change: 1.25, changePercent: 1.2, previousClose: 104, lastUpdated: Date.UTC(2026, 0, 2),
-    bid: 105.2, ask: 105.3, bidSize: 300, askSize: 500, high: 106, low: 103, high52w: 140, low52w: 80, volume: 1_200_000, marketCap: 5e9, marketState: "CLOSED",
+    bid: 105.2, ask: 105.3, bidSize: DES_LONG ? 12_345_678 : 300, askSize: DES_LONG ? 98_765_432 : 500, high: 106, low: 103, high52w: 140, low52w: 80, volume: 1_200_000, marketCap: 5e9, marketState: "CLOSED",
   }),
   priceHistory: inventedSeries(120, 100, 18),
   fundamentals: {
     marketCap: 5e9, enterpriseValue: 5.5e9, trailingPE: 21.5, forwardPE: 19.4, eps: 4.89, dividendYield: 0.017, beta: 1.12, revenue: 2e9,
     netIncome: 3e8, freeCashFlow: 2e8, profitMargin: 0.15, operatingMargin: 0.22, sharesOutstanding: 47_505_938, floatShares: 42e6,
+    ...(DES_LONG ? {
+      exDividendDate: desDay(6), shortPercentOfFloat: 0.034, shortRatio: 3.2, institutionPercentHeld: 0.71, insiderPercentHeld: 0.04,
+      revenueGrowth: 0.12, pegRatio: 1.4,
+    } : {}),
   },
-  profile: { description: DES_DESCRIPTION, sector: "Industrials", industry: "Instruments", employees: 12_345, website: "https://example.invalid", fiscalYearEnd: "12-31" },
+  ...(DES_LONG ? { nextEarnings: { date: desDay(4), timing: "amc" as const, timingSource: "filing" as const } } : {}),
+  profile: DES_LONG
+    ? {
+      description: DES_DESCRIPTION,
+      sector: "Industrials and precision instruments",
+      industry: "Precision measuring instruments and observatory equipment makers",
+      employees: 12_345,
+      website: "https://www.a-very-long-invented-company-website-name-for-testing.example.invalid",
+      fiscalYearEnd: "12-31",
+      sic: "3829",
+      sicDescription: "Measuring and controlling devices not elsewhere classified",
+    }
+    : { description: DES_DESCRIPTION, sector: "Industrials", industry: "Instruments", employees: 12_345, website: "https://example.invalid", fiscalYearEnd: "12-31" },
 });
 function DesPane({ width, height, focused }: PaneProps) {
   return <OverviewTab ticker={DES_TICKER} financials={DES_FINANCIALS} width={width} height={height} focused={focused} />;

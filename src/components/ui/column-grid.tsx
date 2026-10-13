@@ -36,19 +36,23 @@ export interface ColumnGridProps {
   role?: string;
 }
 
-/** Desktop text that ends in an ellipsis when its box is too narrow for it. */
-const CLIPPED_TEXT: CSSProperties = { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" };
-/** Desktop text that fits its column: a box that clips costs the browser on every frame of a resize. */
-const FITTING_TEXT: CSSProperties = { display: "block", minWidth: 0 };
 /**
- * Characters a growing column can lose to a resize before the next catch-up
- * lays it out again: text this much shorter than it still fits without a clip.
+ * Desktop text, in a box that takes what its track gives it. Whether its track
+ * can be narrower than the text is `clipOf`'s to say; where it can, the text
+ * carries `data-gloom-clip` and styles.css clips it, without a scroll container
+ * where the engine has `overflow: clip`, and ends it in an ellipsis.
  */
-const RESIZE_SLACK = 4;
+const TEXT_BOX: CSSProperties = { display: "block", minWidth: 0 };
+const CLIPPED = { "data-gloom-clip": "text" } as const;
 
-/** Characters the column always has room for, at rest and through a resize. */
-function roomOf(column: ColumnGridColumn): number {
-  return column.growFrom == null ? column.width : Math.max(column.growFrom, column.width - RESIZE_SLACK);
+/**
+ * The clip a cell's text gets: a fixed column is as wide as its characters at
+ * every frame, but a growing column can fall to `growFrom` characters at any
+ * frame of a resize, between two catch-ups, however far the pointer moved. Text
+ * longer than that is clipped, so a cell never draws outside its track.
+ */
+function clipOf(text: string, column: ColumnGridColumn): typeof CLIPPED | undefined {
+  return displayWidth(text) > (column.growFrom ?? column.width) ? CLIPPED : undefined;
 }
 
 /**
@@ -112,6 +116,8 @@ export function ColumnGrid({ columns, rows, width, role }: ColumnGridProps) {
       data-gloom-role={role}
       // A row is one line of text, as tall as the text's own line: rows of a set
       // height spare the browser sizing them again on every frame of a resize.
+      // The grid clips what its tracks put past its edge (columns that cannot shrink under a pane that does).
+      data-gloom-clip="box"
       style={{ display: "grid", gridTemplateColumns: template, gridAutoRows: "var(--cell-h)", ...(gap ? { columnGap: gap } : {}) }}
     >
       {rows.map((row, rowIndex) => (
@@ -126,7 +132,8 @@ export function ColumnGrid({ columns, rows, width, role }: ColumnGridProps) {
                   key={index}
                   fg={cell.color}
                   data-gloom-ui="column-grid-text"
-                  style={{ ...place, ...(displayWidth(cell.text) > roomOf(column) ? CLIPPED_TEXT : FITTING_TEXT), textAlign: column.align ?? "left" }}
+                  {...clipOf(cell.text, column)}
+                  style={{ ...place, ...TEXT_BOX, textAlign: column.align ?? "left" }}
                 >
                   {cell.text}
                 </Text>
@@ -177,17 +184,22 @@ export function ColumnGridPair({ label, labelWidth, width, value, valueColor, de
       </>
     );
   }
-  // Only text that may not fit gets a clip: one per cell would cost every frame of a resize.
-  const clipLabel = displayWidth(label) > labelWidth;
-  const clipValue = displayWidth(value) + (detail ? 1 + displayWidth(detail) : 0) > width - labelWidth - RESIZE_SLACK;
+  // The value's box can fall to nothing at any frame of a resize (the columns hold their labels, not their
+  // values), so its text and detail are clipped, the detail first. A link is clipped by its box, from its end.
   return (
     <>
-      <Text fg={colors.textDim} style={{ flexGrow: 0, flexShrink: 0, flexBasis: `${labelWidth}ch`, display: "block", ...(clipLabel ? { overflow: "hidden" } : {}) }}>{label}</Text>
-      <Box flexDirection="row" justifyContent="flex-end" overflow={clipValue ? "hidden" : undefined} flexGrow={1} flexShrink={1} flexBasis={0}>
+      <Text
+        fg={colors.textDim}
+        {...(displayWidth(label) > labelWidth ? { "data-gloom-clip": "box" } : {})}
+        style={{ flexGrow: 0, flexShrink: 0, flexBasis: `${labelWidth}ch`, display: "block" }}
+      >
+        {label}
+      </Text>
+      <Box flexDirection="row" justifyContent="flex-end" flexGrow={1} flexShrink={1} flexBasis={0} {...(url ? { "data-gloom-clip": "box" } : {})}>
         {url
           ? <ExternalLinkText url={url} label={value} color={color} />
-          : <Text fg={color} style={{ ...(clipValue ? CLIPPED_TEXT : FITTING_TEXT), flexShrink: 1 }}>{value}</Text>}
-        {detail ? <Text fg={colors.textDim} style={{ ...(clipValue ? CLIPPED_TEXT : FITTING_TEXT), flexShrink: 1000 }}>{` ${detail}`}</Text> : null}
+          : <Text fg={color} {...CLIPPED} style={{ ...TEXT_BOX, flexShrink: 1 }}>{value}</Text>}
+        {detail ? <Text fg={colors.textDim} {...CLIPPED} style={{ ...TEXT_BOX, flexShrink: 1000 }}>{` ${detail}`}</Text> : null}
       </Box>
     </>
   );

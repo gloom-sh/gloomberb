@@ -133,7 +133,9 @@ gutters and fill to the footer. A few rows of figures inside a section (an
 overview's positions, a quote book, label and value pairs in columns) are a
 `ColumnGrid`: the terminal sets the columns at the cells you give them, and
 the desktop lays them out as one CSS grid counted in characters, so they
-follow a resize to the pixel and line up with their header.
+follow a resize to the pixel and line up with their header. Text that can be
+wider than its track (a column that shrinks to `growFrom`) is clipped at the
+track at every frame of a resize, ending in an ellipsis.
 
 Pick by interaction: `DataTableView` (sortable columns, cursor, Enter opens),
 `DataTableStackView` (same, detail in the pane), `FeedDataTableStackView`

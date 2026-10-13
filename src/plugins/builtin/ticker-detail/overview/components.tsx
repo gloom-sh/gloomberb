@@ -240,9 +240,10 @@ export function FundamentalsGrid({
   const extraWidth = availableWidth - baseColWidth * columnCount;
   const colWidths = Array.from({ length: columnCount }, (_, index) => baseColWidth + (index === columnCount - 1 ? extraWidth : 0));
   // Equal columns on the desktop too, sharing the pane's width there.
+  // A column never gets narrower than its labels, so a label cannot reach the next column.
   const gridColumns: ColumnGridColumn[] = colWidths.map((colWidth, index) => ({
     width: colWidth,
-    growFrom: 0,
+    growFrom: gridLabelWidth(colWidth),
     gapBefore: index > 0 ? STAT_COLUMN_GAP : 0,
   }));
   const rows: ColumnGridCell[][] = [];
