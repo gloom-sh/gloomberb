@@ -18,8 +18,9 @@ import { LAYOUT_MEASURE, layoutFailures, type LayoutMeasure } from "./layout-mea
  * Functions open through the command bar, signed out, so a function behind
  * sign-in shows its gate. The page reads Gloom Cloud through a local stand-in
  * for the web app's worker: GETs and the market batch reads go to the public
- * API and are kept under the cache folder for the next run; every write, the
- * live socket and telemetry are refused. Results, a summary of every failing
+ * API and are kept under the cache folder for the next run, and every page
+ * runs on the first run's clock so the next run asks for the same dates; every
+ * write, the live socket and telemetry are refused. Results, a summary of every failing
  * pane and a picture of each view go to `--out` (default
  * ~/.cache/gloomberb-pane-chrome/layout-sweep).
  */
@@ -42,14 +43,30 @@ function keyOf(text: string): string {
   return new Bun.CryptoHasher("sha256").update(text).digest("hex").slice(0, 40);
 }
 
+/** The text of every answer served this run: a cut string found here arrived cut, the page did not cut it. */
+const served = new Set<string>();
+
+function remember(answer: Answer): Answer {
+  if (/json|text|xml/.test(answer.type) && answer.bytes.length < 8_000_000) served.add(new TextDecoder().decode(answer.bytes));
+  return answer;
+}
+
+/** Whether `text` came in an answer as it is: raw, or escaped in a JSON string. */
+function arrived(text: string): boolean {
+  if (text.length < 8) return false;
+  const escaped = JSON.stringify(text).slice(1, -1);
+  for (const body of served) if (body.includes(text) || body.includes(escaped)) return true;
+  return false;
+}
+
 /** A read the page made before, from disk; otherwise from upstream, kept when it worked. */
 async function read(label: string, load: () => Promise<Answer>): Promise<Answer> {
   const file = join(replay, keyOf(label));
   if (await Bun.file(`${file}.json`).exists()) {
     const meta = await Bun.file(`${file}.json`).json();
-    return { status: meta.status, type: meta.type, bytes: new Uint8Array(await Bun.file(`${file}.body`).arrayBuffer()) };
+    return remember({ status: meta.status, type: meta.type, bytes: new Uint8Array(await Bun.file(`${file}.body`).arrayBuffer()) });
   }
-  const fresh = await load().catch((error) => ({ status: 502, type: "text/plain", bytes: new TextEncoder().encode(String(error)) }));
+  const fresh = remember(await load().catch((error) => ({ status: 502, type: "text/plain", bytes: new TextEncoder().encode(String(error)) })));
   if (fresh.status < 500 && fresh.status !== 429) {
     await mkdir(replay, { recursive: true });
     await Bun.write(`${file}.body`, fresh.bytes);
@@ -108,14 +125,33 @@ function serve(): { url: string; stop(): void } {
   return { url: `http://127.0.0.1:${server.port}/`, stop: () => server.stop(true) };
 }
 
-/** A fresh workspace each load: one layout, onboarding done, usage and crash reports off. */
-function seedScript(layout: object, focused?: string): string {
+/**
+ * The time every page starts at: the first run's, kept with the reads. A pane
+ * asks for dates from the clock (an options chain's expiries, a week's
+ * calendar), so on a later day a replay would ask for dates it never kept and
+ * draw an empty state instead of the pane.
+ */
+async function sweepClock(): Promise<number> {
+  const file = Bun.file(join(replay, "clock.json"));
+  if (await file.exists()) return (await file.json()).ms;
+  const ms = Date.now();
+  await mkdir(replay, { recursive: true });
+  await Bun.write(file, JSON.stringify({ ms, iso: new Date(ms).toISOString() }));
+  return ms;
+}
+
+/** A fresh workspace each load: one layout, onboarding done, usage and crash reports off, and the sweep's clock. */
+function seedScript(layout: object, clockMs: number, focused?: string): string {
   const config = { layouts: [{ name: "Sweep", layout, ...(focused ? { focusedPaneId: focused } : {}) }], activeLayoutIndex: 0, layout, onboardingComplete: true, telemetry: { crashReports: false, usage: false } };
-  return `localStorage.clear(); localStorage.setItem("gloomberb.web.config.v1", ${JSON.stringify(JSON.stringify(config))});`;
+  return `(() => {
+  const RealDate = Date, startedAt = RealDate.now(), now = () => ${clockMs} + (RealDate.now() - startedAt);
+  globalThis.Date = class extends RealDate { constructor(...args) { if (args.length === 0) super(now()); else super(...args); } static now() { return now(); } };
+})();
+localStorage.clear(); localStorage.setItem("gloomberb.web.config.v1", ${JSON.stringify(JSON.stringify(config))});`;
 }
 
 async function load(cdp: Cdp, url: string, layout: object, focused?: string): Promise<void> {
-  const { identifier } = await cdp.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", { source: seedScript(layout, focused) });
+  const { identifier } = await cdp.send<{ identifier: string }>("Page.addScriptToEvaluateOnNewDocument", { source: seedScript(layout, await sweepClock(), focused) });
   const loaded = cdp.once("Page.loadEventFired", 60_000);
   await cdp.send("Page.navigate", { url });
   await loaded;
@@ -233,6 +269,9 @@ async function main(): Promise<void> {
             }
             const measure = await evaluate<LayoutMeasure>(cdp, LAYOUT_MEASURE(instance.instanceId as string));
             if (measure.missing) continue;
+            // A headline a feed sent already cut is the source's, not a count of columns.
+            measure.arrivedCut = measure.cut.filter((entry) => arrived(entry.whole));
+            measure.cut = measure.cut.filter((entry) => !measure.arrivedCut!.includes(entry));
             const name = `${entry.token}-${mode}-${size.width}x${size.height}-${view}`;
             await shot(cdp, scope, join(out, "shots", `${name}.jpg`));
             const failures = layoutFailures(measure);

@@ -39,6 +39,7 @@ const PANES: Array<{ id: string; label: string; opens?: string }> = [
   { id: "table", label: "table" },
   { id: "inline", label: "page of a table as tall as its rows and label and value rows" },
   { id: "chart-rows", label: "chart sized in rows under a query bar" },
+  { id: "list", label: "series list and its detail under a query bar" },
 ];
 
 function fail(message: string, detail?: unknown): never {

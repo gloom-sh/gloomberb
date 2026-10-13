@@ -37,6 +37,8 @@ on:
       - "src/components/ui/detail-scroll-body.tsx"
       - "src/components/ui/prose.tsx"
       - "src/components/ui/display.tsx"
+      - "src/components/ui/fill.ts"
+      - "src/plugins/builtin/shared/series-list-detail.tsx"
       - "src/components/table-view-shared.tsx"
       - "src/components/reader/**"
       - "src/components/markdown-text.tsx"
