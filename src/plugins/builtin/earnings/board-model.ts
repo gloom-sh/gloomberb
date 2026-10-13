@@ -164,7 +164,8 @@ export function fallbackReport(event: EarningsEvent, owned: ReadonlyMap<string, 
     // The count belongs to the estimate beside it.
     epsAnalysts: epsEstimate == null ? null : coherentEarningsValue(event, "epsAnalysts"),
     epsActual: null,
-    epsBasis: null,
+    // The estimate's basis goes with it.
+    epsBasis: epsEstimate == null ? null : earningsEpsBasis(event.epsBasis),
     revenueEstimate: dollars("revenueEstimate"),
     impliedMove: null,
     averageMove: null,

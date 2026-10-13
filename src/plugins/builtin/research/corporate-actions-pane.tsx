@@ -285,9 +285,11 @@ export function buildEventDetail({
   const comparison: EventDetailBlock[] = [
     ...(row.dateStatus && row.dateStatus !== "reported" ? [detailRow("Report date", row.date, row.dateStatus)] : []),
     detailRow("Actual", earningsInput(row.epsActual, row.epsCurrency),
-      row.epsBasis === "unknown" ? "basis unknown" : row.epsBasis),
+      row.epsActual == null ? undefined : row.epsBasis === "unknown" ? "basis unknown" : row.epsBasis),
+    // An upcoming estimate names its basis when it is adjusted (a REIT's FFO consensus).
     detailRow("Consensus", earningsInput(row.epsEstimate, row.epsCurrency),
-      row.epsAnalysts != null ? `${row.epsAnalysts} analysts` : undefined),
+      [row.epsAnalysts != null ? `${row.epsAnalysts} analysts` : null,
+        row.epsActual == null && row.epsBasis === "adjusted" ? "adjusted" : null].filter(Boolean).join(", ") || undefined),
   ];
   if (row.epsDifference != null) comparison.push(detailRow("Difference", earningsInput(row.epsDifference, row.epsCurrency)));
   if (row.surprisePercent != null) {

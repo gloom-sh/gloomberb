@@ -2,9 +2,10 @@ import type { EarningsDateStatus, EarningsEpsBasis } from "../../../types/financ
 
 /**
  * How every earnings surface (ERN, EE, the corporate-actions events and
- * their headless rows) reads and names a reported quarter's EPS basis and a
- * report date's status. Gloom Cloud resolves one figure per quarter; this
- * keeps the panes from naming it differently.
+ * their headless rows) reads and names a reported quarter's EPS basis, an
+ * upcoming estimate's when Gloom Cloud names one, and a report date's
+ * status. Gloom Cloud resolves one figure per quarter; this keeps the panes
+ * from naming it differently.
  */
 
 const BASES: ReadonlySet<string> = new Set<EarningsEpsBasis>(["gaap", "adjusted"]);
@@ -27,11 +28,16 @@ export function dateStatusFromEstimateFlag(isDateEstimate: boolean | null | unde
 export type EpsBasisName = "GAAP" | "adjusted" | "unknown";
 
 /** What the basis names mean, in every report's metadata. */
-export const EPS_BASIS_NOTE = "One reported EPS per quarter. GAAP: the quarter's diluted statement EPS. adjusted: the consensus-basis figure the estimate is measured against, which leaves out items the statements include. unknown: no statement on a comparable share basis to tell.";
+export const EPS_BASIS_NOTE = "One reported EPS per quarter. GAAP: the quarter's diluted statement EPS. adjusted: the consensus-basis figure the estimate is measured against, which leaves out items the statements include. unknown: no statement on a comparable share basis to tell. An upcoming report's estimate is labelled adjusted when it is the consensus on the adjusted basis the company's reports are on (a REIT's FFO), not a GAAP forecast.";
 
 /** The basis as rows, exports and tools name it. */
 export function epsBasisName(basis: EarningsEpsBasis | null): EpsBasisName {
   return basis === "gaap" ? "GAAP" : basis === "adjusted" ? "adjusted" : "unknown";
+}
+
+/** Whether a row names a basis: a reported figure always does, an upcoming estimate only when Gloom Cloud labels it. */
+export function showsEpsBasis(row: { epsActual: number | null | undefined; epsBasis: EarningsEpsBasis | null | undefined }): boolean {
+  return row.epsActual != null || row.epsBasis != null;
 }
 
 /** The basis in a table cell or a detail line. */

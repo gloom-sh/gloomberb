@@ -2,6 +2,7 @@ import type { ExchangeRateSnapshot } from "./exchange-rate";
 import type {
   AnalystResearchData,
   CorporateActionsData,
+  EarningsEpsBasis,
   Quote,
   QuoteMetadata,
   TickerFinancials,
@@ -94,6 +95,8 @@ export interface EarningsEvent {
   epsRevisionDown7d?: number | null;
   epsRevisionDown30d?: number | null;
   epsActual: number | null;
+  /** "adjusted" when the estimate is the consensus on the adjusted basis the company's reports are on (a REIT's FFO), not a GAAP forecast. */
+  epsBasis?: EarningsEpsBasis | null;
   revenueEstimate: number | null;
   revenueLow?: number | null;
   revenueHigh?: number | null;

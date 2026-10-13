@@ -2,7 +2,7 @@ import type { DataTableCell, DataTableColumn } from "../../../components";
 import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
-import { epsBasisShort } from "../shared/earnings-report";
+import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
 import type { BoardRow, BoardSort } from "./board-model";
 import { epsText, impliedText, moneyText, moveSize, TIMING_LABEL, weekday } from "./format";
 
@@ -86,7 +86,7 @@ export function renderBoardCell(row: BoardRow, column: BoardColumn): DataTableCe
       return { text: report.epsActual == null ? "" : epsText(report.epsActual), color: beat == null || beat === 0 ? colors.text : beat > 0 ? colors.positive : colors.negative };
     }
     case "basis":
-      return report.epsActual == null
+      return !showsEpsBasis(report)
         ? { text: "" }
         : { text: epsBasisShort(report.epsBasis), color: report.epsBasis ? colors.textMuted : dim };
     case "revenueEstimate":

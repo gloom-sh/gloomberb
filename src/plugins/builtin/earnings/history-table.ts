@@ -3,7 +3,7 @@ import { TABLE_COLUMN_GAP, tableColumnWidth } from "../../../components/ui/table
 import { colors } from "../../../theme/colors";
 import { TextAttributes } from "../../../ui";
 import { datedYear, epsText, fiscalMonth, impliedText, moneyText, signedPercent, TIMING_LABEL } from "./format";
-import { epsBasisShort } from "../shared/earnings-report";
+import { epsBasisShort, showsEpsBasis } from "../shared/earnings-report";
 import type { HistoryRow } from "./history-model";
 
 type HistoryColumnId =
@@ -74,7 +74,7 @@ export function renderHistoryCell(row: HistoryRow, column: HistoryColumn): DataT
     case "epsActual":
       return { text: epsText(row.epsActual), color: colors.text };
     case "basis":
-      return row.epsActual == null
+      return !showsEpsBasis(row)
         ? { text: "--", color: dim }
         : { text: epsBasisShort(row.epsBasis), color: row.epsBasis ? colors.textMuted : dim };
     case "epsSurprise":

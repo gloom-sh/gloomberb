@@ -87,7 +87,7 @@ export function historyRows(payload: EarningsHistoryPayload | null, today: strin
         epsEstimate: coherentEarningsValue(upcoming, "epsEstimate"),
         epsAnalysts: coherentEarningsValue(upcoming, "epsAnalysts"),
         epsActual: null,
-        epsBasis: null,
+        epsBasis: earningsEpsBasis(upcoming.epsBasis),
         epsSurprise: null,
         revenueEstimate: coherentEarningsValue(upcoming, "revenueEstimate"),
         revenueActual: null,

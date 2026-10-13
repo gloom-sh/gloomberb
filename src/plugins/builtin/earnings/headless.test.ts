@@ -33,6 +33,26 @@ test("ERN rows carry each quarter's basis, the estimate's analysts and whether t
   ]);
 });
 
+test("a REIT's next report shows the calendar's FFO consensus labelled adjusted, on ERN <ticker> and the board", async () => {
+  const pld = report({ symbol: "PLD", name: "Prologis, Inc.", date: addDays(today, 2), timing: "bmo", timingSource: "calendar",
+    fiscalPeriod: "2026-09", epsEstimate: 1.58, epsAnalysts: 2, epsBasis: "adjusted", dateStatus: "confirmed" });
+  const reported = report({ symbol: "PLD", date: addDays(today, -89), timing: "bmo", fiscalPeriod: "2026-06", epsEstimate: 1.53,
+    epsActual: 1.63, epsAnalysts: 4, epsBasis: "adjusted", dateStatus: "reported" });
+  const definition = createEarningsHeadless({
+    calendar: async () => ({ asOf: `${today}T12:00:00.000Z`, from: today, to: addDays(today, 90),
+      reports: [{ ...pld, marketCap: 122.8e9, averageMove: null, averageReports: 0 }] }),
+    history: async () => ({ ...history, symbol: "PLD", name: "Prologis, Inc.", reports: [pld, reported] }),
+    upcoming: async () => [],
+  });
+  const ern = await definition.load({ ...args, rawArgument: "PLD", argument: "PLD", symbols: ["PLD"] }, context);
+  expect(ern.rows.map((row) => [row.dateStatus, row.epsEstimate, row.epsAnalysts, row.epsActual, row.epsBasis])).toEqual([
+    ["confirmed", 1.58, 2, null, "adjusted"],
+    ["reported", 1.53, 4, 1.63, "adjusted"],
+  ]);
+  const board = await definition.load({ rawArgument: "PLD GOOGL", argument: ["PLD", "GOOGL"], symbols: ["PLD", "GOOGL"], options: {} }, context);
+  expect(board.rows.map((row) => [row.symbol, row.epsEstimate, row.epsAnalysts, row.epsBasis])).toEqual([["PLD", 1.58, 2, "adjusted"]]);
+});
+
 test("past the stored horizon the per-ticker calendar's estimate keeps its own analyst count and date flag", async () => {
   const definition = createEarningsHeadless({
     calendar: async () => { throw new Error("unused"); },

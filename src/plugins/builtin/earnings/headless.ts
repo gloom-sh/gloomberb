@@ -13,7 +13,7 @@ import { fetchEarningsCalendar, fetchEarningsHistory } from "./client";
 import { loadEarningsCalendar } from "./data/cache";
 import { epsText, impliedText, moneyText, moveSize, signedPercent, TIMING_LABEL } from "./format";
 import { historyRows } from "./history-model";
-import { EPS_BASIS_NOTE, epsBasisName } from "../shared/earnings-report";
+import { EPS_BASIS_NOTE, epsBasisName, showsEpsBasis } from "../shared/earnings-report";
 import { isUsListingExchange } from "../../../utils/exchanges";
 import { listingAbroadVenue } from "../../../utils/sec";
 import { findUsListingOfCompany } from "../../../tickers/us-listing";
@@ -120,7 +120,7 @@ async function boardRows(args: HeadlessPaneLoadArgs, context: HeadlessPaneContex
     epsEstimate: report.epsEstimate,
     epsAnalysts: report.epsAnalysts,
     epsActual: report.epsActual,
-    epsBasis: report.epsActual == null ? null : epsBasisName(report.epsBasis),
+    epsBasis: showsEpsBasis(report) ? epsBasisName(report.epsBasis) : null,
     revenueEstimate: report.revenueEstimate,
     impliedMove: report.impliedMove,
     averageMove: report.averageMove,
@@ -179,7 +179,7 @@ async function historyReport(symbol: string, context: HeadlessPaneContext, deps:
     epsEstimate: row.epsEstimate,
     epsAnalysts: row.epsAnalysts,
     epsActual: row.epsActual,
-    epsBasis: row.epsActual == null ? null : epsBasisName(row.epsBasis),
+    epsBasis: showsEpsBasis(row) ? epsBasisName(row.epsBasis) : null,
     epsSurprise: row.epsSurprise,
     revenueEstimate: row.revenueEstimate,
     revenueActual: row.revenueActual,
