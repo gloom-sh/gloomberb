@@ -1,8 +1,18 @@
 import type { ScreenMetric, ScreenRow } from "../../../api-client/equity-screener";
+import { getExtendedSessionDisplay, type ExtendedSession, type ExtendedSessionDisplay } from "../../../market-data/market/status";
+import { quoteTradingDay } from "../../../market-data/quotes/day-range";
+import { getRegularSessionQuoteDisplay } from "../../../market-data/quotes/screener-live-quotes";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { isFiniteNumber } from "../../../utils/guards";
+
+/**
+ * A screen row with its quote laid over it: price, change, volume and market
+ * cap are the regular session's, and a pre-market, after-hours or overnight
+ * print rides beside them in `extended`, measured from that session's close.
+ */
+export type LiveScreenRow = ScreenRow & { extended?: ExtendedSessionDisplay };
 
 function metricTime(metric: ScreenMetric | undefined): number | null {
   const stamp = metric?.observedAt ?? metric?.asOf ?? null;
@@ -15,58 +25,99 @@ function screenRowQuoteKey(row: Pick<ScreenRow, "symbol" | "exchange">): string 
   return buildQuoteKey({ symbol: row.symbol, exchange: row.exchange });
 }
 
-function liveMetric(metric: ScreenMetric, value: number, observedAt: string): ScreenMetric {
-  return { ...metric, value, asOf: observedAt, observedAt, state: "available" };
+function liveMetric(metric: ScreenMetric, value: number, asOf: string, observedAt: string): ScreenMetric {
+  return { ...metric, value, asOf, observedAt, state: "available" };
 }
 
 /**
- * Price, day change, volume and market cap from a live quote, over a snapshot
- * row. Market cap scales with price so it keeps the snapshot's share basis.
- * Membership, sort order and percentiles stay the snapshot's, so rows neither
- * reshuffle nor vanish between snapshots. A quote in another currency unit
- * (GBp against GBP) or older than the snapshot leaves the row alone.
+ * Price, day change, volume and market cap from a quote, over a snapshot row,
+ * as `quote` headlines them: the live quote while the regular session trades,
+ * then the completed session's close and its move (getRegularSessionQuoteDisplay,
+ * as the boards read it), weekend and overnight included, so an extended print
+ * never moves them. That print is the row's `extended`. Market cap scales with
+ * the price so it keeps the snapshot's share basis. Membership, sort order and
+ * percentiles stay the snapshot's, which ranks by the close too, so rows
+ * neither reshuffle nor vanish between snapshots. A quote in another currency
+ * unit (GBp against GBP), a stale one, or one older than the snapshot (a
+ * live quote observed before it, a quote of an earlier day than the
+ * snapshot's price) leaves the row alone.
  */
-function overlayLiveScreenRow(row: ScreenRow, quote: Quote | null): ScreenRow {
-  if (!quote || quote.stale === true || !isFiniteNumber(quote.price) || quote.price <= 0) return row;
-  const snapshotPrice = row.metrics.price;
-  if (!snapshotPrice) return row;
+function overlayLiveScreenRow(row: ScreenRow, quote: Quote | null | undefined): LiveScreenRow {
+  if (!quote || quote.stale === true || !isFiniteNumber(quote.price) || quote.price <= 0 || !isFiniteNumber(quote.lastUpdated)) return row;
   const quoteCurrency = quote.currency?.trim();
   if (quoteCurrency && row.currency && quoteCurrency !== row.currency) return row;
-  const snapshotAt = metricTime(snapshotPrice);
-  if (snapshotAt != null && isFiniteNumber(quote.lastUpdated) && quote.lastUpdated < snapshotAt) return row;
-  if (!isFiniteNumber(quote.lastUpdated)) return row;
-  if (snapshotPrice.value === quote.price && row.metrics.changePercent?.value === quote.changePercent) return row;
+  const snapshotPrice = row.metrics.price;
+  const headline = getRegularSessionQuoteDisplay(quote);
+  if (!headline || !isFiniteNumber(headline.price) || headline.price <= 0) return row;
+  if (headline.completed) {
+    // The snapshot dates a session's price by that session (a pre-market
+    // print by the day it trades in); a quote of an earlier day is older.
+    const snapshotSession = snapshotPrice.asOf && /^\d{4}-\d{2}-\d{2}$/.test(snapshotPrice.asOf) ? snapshotPrice.asOf : null;
+    const quoteDay = quoteTradingDay(quote) ?? headline.closedSession;
+    if (quoteDay && snapshotSession && quoteDay < snapshotSession) return row;
+  } else {
+    const snapshotAt = metricTime(snapshotPrice);
+    if (snapshotAt != null && quote.lastUpdated < snapshotAt) return row;
+  }
+  const print = getExtendedSessionDisplay(quote);
+  const extended = print && isFiniteNumber(print.price) && print.price > 0 ? print : null;
+  if (!extended && snapshotPrice.value === headline.price && row.metrics.changePercent.value === headline.changePercent) return row;
 
   const observedAt = new Date(quote.lastUpdated).toISOString();
-  const metrics = { ...row.metrics, price: liveMetric(snapshotPrice, quote.price, observedAt) };
-  if (isFiniteNumber(quote.changePercent) && metrics.changePercent) {
-    metrics.changePercent = liveMetric(metrics.changePercent, quote.changePercent, observedAt);
+  // A close is dated by its session, as the snapshot dates one.
+  const asOf = headline.completed ? headline.closedSession ?? observedAt : observedAt;
+  const metrics = { ...row.metrics, price: liveMetric(snapshotPrice, headline.price, asOf, observedAt) };
+  if (isFiniteNumber(headline.changePercent)) {
+    metrics.changePercent = liveMetric(metrics.changePercent, headline.changePercent, asOf, observedAt);
   }
-  if (isFiniteNumber(quote.volume) && quote.volume >= 0 && metrics.volume) {
-    metrics.volume = liveMetric(metrics.volume, quote.volume, observedAt);
+  // Outside the session the quote's volume may be the next pre-market's; the snapshot's is the close's session's.
+  if (!headline.completed && isFiniteNumber(quote.volume) && quote.volume >= 0) {
+    metrics.volume = liveMetric(metrics.volume, quote.volume, asOf, observedAt);
   }
   const cap = metrics.marketCap;
-  if (cap && isFiniteNumber(cap.value) && isFiniteNumber(snapshotPrice.value) && snapshotPrice.value > 0) {
-    metrics.marketCap = liveMetric(cap, cap.value * (quote.price / snapshotPrice.value), observedAt);
+  if (isFiniteNumber(cap.value) && isFiniteNumber(snapshotPrice.value) && snapshotPrice.value > 0) {
+    metrics.marketCap = liveMetric(cap, cap.value * (headline.price / snapshotPrice.value), asOf, observedAt);
   }
-  return { ...row, metrics };
+  return { ...row, metrics, ...(extended ? { extended } : {}) };
 }
 
 /** The last overlay per snapshot row, so a row whose quote did not move keeps its object. */
-const liveRows = new WeakMap<ScreenRow, { quote: Quote | null; row: ScreenRow }>();
+const liveRows = new WeakMap<ScreenRow, { quote: Quote | null; row: LiveScreenRow }>();
 
-export function overlayLiveScreenRows(
-  rows: readonly ScreenRow[],
-  entries: ReadonlyMap<string, QueryEntry<Quote>>,
-): ScreenRow[] {
+function overlayRows(rows: readonly ScreenRow[], quoteOf: (key: string) => Quote | null | undefined): LiveScreenRow[] {
   return rows.map((row) => {
-    const entry = entries.get(screenRowQuoteKey(row));
-    if (!entry) return row;
-    const quote = resolveEntryData(entry);
+    const quote = quoteOf(screenRowQuoteKey(row));
+    if (quote === undefined) return row;
     const cached = liveRows.get(row);
     if (cached && cached.quote === quote) return cached.row;
     const next = overlayLiveScreenRow(row, quote);
     liveRows.set(row, { quote, row: next });
     return next;
   });
+}
+
+/** The pane's rows with the streamed quotes on screen laid over them. */
+export function overlayLiveScreenRows(
+  rows: readonly ScreenRow[],
+  entries: ReadonlyMap<string, QueryEntry<Quote>>,
+): LiveScreenRow[] {
+  return overlayRows(rows, (key) => {
+    const entry = entries.get(key);
+    return entry ? resolveEntryData(entry) : undefined;
+  });
+}
+
+/** Rows with quotes keyed by screenRowQuoteKey laid over them, for a report. */
+export function overlayScreenQuotes(rows: readonly ScreenRow[], quotes: ReadonlyMap<string, Quote>): LiveScreenRow[] {
+  return overlayRows(rows, (key) => quotes.get(key));
+}
+
+/** The extended sessions some row has a print for, in the order their columns go. */
+export function screenExtendedSessions(rows: readonly LiveScreenRow[]): ExtendedSession[] {
+  return (["PRE", "POST", "OVERNIGHT"] as const).filter((session) => rows.some((row) => row.extended?.session === session));
+}
+
+/** A row's move in `session`'s print from the close in its price, when it has one. */
+export function screenExtendedMove(row: LiveScreenRow, session: ExtendedSession): number | null {
+  return row.extended?.session === session && isFiniteNumber(row.extended.changePercent) ? row.extended.changePercent : null;
 }

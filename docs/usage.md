@@ -497,7 +497,7 @@ Prices come from one shared stream: a symbol shown in several panes is subscribe
 What moves while you watch:
 
 - Portfolios and watchlists: price, change, volume, market value, P&L and weight. MCAP, P/E, FWD P/E and DIV% are repriced from the live price when the per-share figure behind each (shares outstanding, EPS, forward EPS, dividend per share) is on the quote's currency basis; otherwise they keep the served value. 52W% counts today's range, and TARGET% uses the live price when the target is in the listing's currency. After the regular close, LAST, CHG and CHG% hold the official close and its move from the previous close while EXT% follows the extended-hours print from that close; market value, DAY and P&L keep the live price. In the pre-market the row holds the last session the same way when the quote carries its close and move, with EXT% the pre-market print from that close; otherwise LAST and EXT% are the pre-market print. `DES` uses the same rules. Broker account totals, Net Liq and P&L in the portfolio header and `PORT` move with the positions' quotes from the broker's last snapshot.
-- `WEI`, `FUT`, `BI`/`SP`, `FXC`, `EQS` rows, `CRYP`, the header SPY chip and market state, and price alerts, which trigger on the tick that crosses. After the close `BI` and `MOST`'s lists hold the regular close as the portfolio does and only their extended-hours column moves; the header SPY follows an open pre-market or after-hours session, then holds the close (see [Company Research](#company-research)).
+- `WEI`, `FUT`, `BI`/`SP`, `FXC`, `EQS` rows, `CRYP`, the header SPY chip and market state, and price alerts, which trigger on the tick that crosses. After the close `BI`, `MOST`'s lists and `EQS` hold the regular close as the portfolio does and only their extended-hours column moves; the header SPY follows an open pre-market or after-hours session, then holds the close (see [Company Research](#company-research)).
 - Charts, including the research Chart tab: the forming bar takes each quote's high, low, close and volume, and settles to the source's bar shortly after it closes.
 - `OMON`: Last, volume, IV and Greeks stream during the regular session; a real-time chain also reloads every 15 seconds. `OVDV` reloads a real-time surface every 15 seconds in session at the live spot; on desktop and web the 3D surface eases into its new shape. `HVG` re-reads its ATM IV every minute in session. `VOLS` and the `VIX` curve stream index levels; the rest re-read every 15 seconds in session.
 - `CTM` and `WIRP` refresh delayed contract quotes every minute while Globex trades.
@@ -1014,6 +1014,11 @@ Returns, EPS revisions and upside take the sign colour.
 one column per numeric criterion and context columns (market cap, price, change, P/E,
 revenue growth, operating margin, dividend yield) as width allows. Stale values are
 amber, and an AS OF column dates the chosen metric on the rows where it is stale.
+Price, change and market cap follow the live quote while the regular session
+trades. After the close, overnight, over a weekend and in the pre-market they are
+the last regular close and its move, as `quote` shows them, and a PRE-MKT,
+AFTER-HRS or OVERNIGHT column beside CHG% carries the extended print's move from
+that close while a row has one. The screen filters, sorts and ranks by the close.
 Click a metric header to sort by it and make it the focus; click again to reverse.
 The footer shows matches, covered listings, currency and the snapshot time.
 Enter opens a company's dated observations; `o` opens it in Ticker Research.
@@ -1026,6 +1031,9 @@ Expired snapshots ask for a refresh before continuing or exporting.
 
 `gloomberb fn EQS --metric trailingPE --json` returns the first 100 matches with the
 snapshot, match and coverage counts, and the chosen metric's date and state per row.
+Each row's Last and Chg% are read from its quote as `quote` reads them, and a
+pre-market, after-hours or overnight print has its own column (`extendedPrice`,
+`extendedChangePercent` in JSON).
 A notice says when more rows match; narrow the criteria to reach them. `--definition`
 accepts versioned JSON with `criteria`, `currency` and `sort`, for example:
 

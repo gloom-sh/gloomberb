@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   ScrollBox,
@@ -41,10 +41,10 @@ import {
   type NumericField,
   type ScreenDefinition,
   type ScreenField,
-  type ScreenRow,
 } from "../../../api-client/equity-screener";
 import type { PaneProps } from "../../../types/plugin";
-import { formatPercentileRank } from "../../../utils/format";
+import { formatPercentileRank, formatPercentRaw } from "../../../utils/format";
+import { EXTENDED_SESSION_LABELS, extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { useOpenDescription } from "../shared/open-description";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
@@ -71,7 +71,7 @@ import {
   screenRowId,
 } from "./model";
 import { useScreenResults } from "./results";
-import { overlayLiveScreenRows } from "./live";
+import { overlayLiveScreenRows, screenExtendedMove, screenExtendedSessions, type LiveScreenRow } from "./live";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildScreenerQuoteTargets } from "../../../market-data/quotes/screener-live-quotes";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
@@ -88,15 +88,21 @@ const date = (value: string | null) => value?.slice(0, 10) ?? "--";
 const rank = (value: number | null) =>
   value == null ? "--" : value.toFixed(0);
 
+const EXTENDED_COLUMN_PREFIX = "ext:";
+
 /**
  * Symbol and name, then the focus metric with its covered-universe percentile
  * and date, then the screen's criteria and context metrics as width allows.
+ * A PRE-MKT, AFTER-HRS or OVERNIGHT column, named as MOST names it, follows
+ * CHG% for each session in `extendedSessions`, and is added only whole, as
+ * the metrics are.
  */
 function resultColumns(
   width: number,
   definition: ScreenDefinition,
   metric: NumericField,
   asOf: boolean,
+  extendedSessions: readonly ExtendedSession[] = [],
 ): DataTableColumn[] {
   const [focus, ...others] = resultFields(definition, metric);
   const metricColumn = (field: NumericField): DataTableColumn => ({
@@ -105,6 +111,17 @@ function resultColumns(
     width: columnWidth(field),
     align: "right",
   });
+  const extendedColumns = extendedSessions.map((session): DataTableColumn => ({
+    id: `${EXTENDED_COLUMN_PREFIX}${session}`,
+    label: extendedSessionStateLabel(session),
+    width: 9,
+    align: "right",
+  }));
+  // The extended move reads beside CHG%, or first after the focus metric when that is CHG%.
+  const extras = [
+    ...(focus === "changePercent" ? extendedColumns : []),
+    ...others.flatMap((field) => field === "changePercent" ? [metricColumn(field), ...extendedColumns] : [metricColumn(field)]),
+  ];
   const build = (
     extra: DataTableColumn[],
     exchange: boolean,
@@ -123,8 +140,8 @@ function resultColumns(
   // column is only added when it fits whole.
   const fits = (columns: DataTableColumn[]) => getTableWidth(columns) <= width;
   let shown: DataTableColumn[] = [];
-  for (const field of others) {
-    const next = [...shown, metricColumn(field)];
+  for (const column of extras) {
+    const next = [...shown, column];
     if (!fits(build(next, false, false))) break;
     shown = next;
   }
@@ -138,7 +155,7 @@ function ScreenDetail({
   width,
   height,
 }: {
-  row: ScreenRow;
+  row: LiveScreenRow;
   width: number;
   height: number;
 }) {
@@ -153,22 +170,33 @@ function ScreenDetail({
         {NUMERIC_FIELDS.map((field) => {
           const metric = row.metrics[field];
           const stamp = metricDate(metric);
+          const extended = field === "changePercent" ? row.extended : undefined;
           return (
-            <KeyValueRow
-              key={field}
-              label={screenLabel(field)}
-              labelWidth={24}
-              value={`${formatScreenValue(field, metric.value)} ${metric.unit}`}
-              detail={
-                metric.value === null
-                  ? (metric.reason ?? "unavailable")
-                  : [
-                      metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
-                      stamp.collected ? `collected ${stamp.text}` : stamp.text,
-                      metric.state === "available" ? null : metric.state,
-                    ].filter(Boolean).join(" \u00b7 ")
-              }
-            />
+            <Fragment key={field}>
+              <KeyValueRow
+                label={screenLabel(field)}
+                labelWidth={24}
+                value={`${formatScreenValue(field, metric.value)} ${metric.unit}`}
+                detail={
+                  metric.value === null
+                    ? (metric.reason ?? "unavailable")
+                    : [
+                        metric.percentile.value == null ? null : formatPercentileRank(metric.percentile.value),
+                        stamp.collected ? `collected ${stamp.text}` : stamp.text,
+                        metric.state === "available" ? null : metric.state,
+                      ].filter(Boolean).join(" \u00b7 ")
+                }
+              />
+              {extended ? (
+                // The pre-market, after-hours or overnight print, from the close in Price.
+                <KeyValueRow
+                  label={EXTENDED_SESSION_LABELS[extended.session]}
+                  labelWidth={24}
+                  value={`${formatScreenValue("price", extended.price)} ${row.metrics.price.unit}`}
+                  detail={`${formatPercentRaw(extended.changePercent)}${extended.mark ? " mid" : ""}`}
+                />
+              ) : null}
+            </Fragment>
           );
         })}
       </Box>
@@ -299,7 +327,9 @@ function EquityScreenView({
   // AS OF earns its column only when some row's focus metric is stale; the
   // snapshot decides, so a live quote freshening a row does not reflow the table.
   const staleFocus = snapshotRows.some((row) => row.metrics[metric]?.state === "stale");
-  const columns = resultColumns(width, definition, metric, staleFocus);
+  // A pre-market, after-hours or overnight column only while a row has such a print.
+  const extendedSessions = screenExtendedSessions(rows);
+  const columns = resultColumns(width, definition, metric, staleFocus, extendedSessions);
   const apply = (next: ScreenDefinition) => {
     try {
       setDefinition(parseScreenDefinition(next));
@@ -895,6 +925,13 @@ function EquityScreenView({
             ) : null
           }
           renderCell={(row, column) => {
+            if (column.id.startsWith(EXTENDED_COLUMN_PREFIX)) {
+              // The extended print's move from the close in PRICE and CHG%.
+              const move = screenExtendedMove(row, column.id.slice(EXTENDED_COLUMN_PREFIX.length) as ExtendedSession);
+              return move == null
+                ? { text: "--", color: colors.textDim }
+                : { text: formatPercentRaw(move), color: priceColor(move, colors) };
+            }
             const field = column.id.startsWith("m:")
               ? (column.id.slice(2) as NumericField)
               : null;

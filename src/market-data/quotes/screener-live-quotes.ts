@@ -5,7 +5,7 @@ import { buildQuoteKey, resolveEntryData } from "../selectors";
 import type { QueryEntry } from "../result-types";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { isFiniteNumber } from "../../utils/guards";
-import { getCompletedRegularSessionDisplay, getTradedSessionMoveDisplay, type ExtendedSession } from "../market/status";
+import { getCompletedRegularSessionDisplay, getTradedSessionMoveDisplay, type ActiveQuoteDisplay, type ExtendedSession } from "../market/status";
 import { quoteTradingDay } from "./day-range";
 
 const STREAM_FRESHNESS_MS = 2 * 60_000;
@@ -172,15 +172,32 @@ function overlaySessionQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote): 
   };
 }
 
-function overlayRegularSessionQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote, completedSessionDate: string | null): T {
+/** The regular session as a board reads it from one quote (getRegularSessionQuoteDisplay). */
+export type RegularSessionQuoteDisplay = ActiveQuoteDisplay & (
+  | { completed: false }
+  /** The completed session's close and move, and its date when the quote can say it. */
+  | { completed: true; closedSession: string | null }
+);
+
+/**
+ * What a board that headlines only the regular session reads from a quote
+ * (the `regularSession` overlay): the live quote while the session trades,
+ * then the completed session's close and its move. Null when the quote
+ * leaves the row as it was: outside the session without a close it can name,
+ * or, on a board of `completedSessionDate`, a quote that is no news for it.
+ */
+export function getRegularSessionQuoteDisplay(
+  quote: Quote,
+  completedSessionDate: string | null = null,
+): RegularSessionQuoteDisplay | null {
   const state = quote.marketState;
   if (state == null || state === "REGULAR") {
     // On a board of a completed session, only a session that trades after it is news.
     if (completedSessionDate) {
       const day = state === "REGULAR" ? quoteTradingDay(quote) : null;
-      if (day == null || day <= completedSessionDate) return row;
+      if (day == null || day <= completedSessionDate) return null;
     }
-    return overlayQuote(row, quote);
+    return { price: quote.price, change: quote.change, changePercent: quote.changePercent, completed: false };
   }
   const display = getCompletedRegularSessionDisplay(quote);
   const closeDate = quote.regularCloseSessionDate;
@@ -190,14 +207,21 @@ function overlayRegularSessionQuote<T extends ScreenerQuoteRow>(row: T, quote: Q
     || !isFiniteNumber(display.changePercent)
     || (completedSessionDate != null && closeDate != null && closeDate < completedSessionDate)
   ) {
-    return row;
+    return null;
   }
+  return { ...display, completed: true, closedSession: closeDate ?? quoteTradingDay(quote) };
+}
+
+function overlayRegularSessionQuote<T extends ScreenerQuoteRow>(row: T, quote: Quote, completedSessionDate: string | null): T {
+  const display = getRegularSessionQuoteDisplay(quote, completedSessionDate);
+  if (!display) return row;
+  if (!display.completed) return overlayQuote(row, quote);
   return {
     ...overlayQuote(row, quote),
     price: display.price,
     change: isFiniteNumber(display.change) ? display.change : null,
-    changePercent: display.changePercent,
-    regularChangePercent: display.changePercent,
+    changePercent: display.changePercent ?? null,
+    regularChangePercent: display.changePercent ?? null,
   };
 }
 

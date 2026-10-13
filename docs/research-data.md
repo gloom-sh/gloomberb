@@ -983,6 +983,11 @@ multiples, market capitalization and dividend yield carry no observation date; a
 company's detail shows their collection date, marked collected, instead of inventing
 a source date.
 
+Outside the regular session a listing is priced at the last regular close and its
+move, with its market cap moved to that close, so a pre-market or after-hours print
+never decides which listings match, their order or their percentiles. The pane and
+`fn EQS` show that print in a column of its own, from each row's quote.
+
 US primary listings are named by their SEC conformed name; other listings keep the
 provider name. Symbols differing only by share-class separator are one listing, and
 OTC or foreign order-book lines of an issuer with a US primary line in the same
