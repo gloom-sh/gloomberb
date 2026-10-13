@@ -36,6 +36,21 @@ export interface QuoteBoardOptions {
   selectedSymbol?: string | null;
   /** Snapshot poll cadence for on-screen symbols the stream is not carrying. */
   fallbackIntervalMs?: number;
+  /**
+   * Paint each listed symbol's cached quote, however old, as the network is
+   * asked, and refresh the listed symbols in a few batches at once, each
+   * given up after `QUOTE_REFRESH_TIMEOUT_MS` so one slow symbol cannot hold
+   * the rest. A row whose refresh fails or times out keeps its cached quote,
+   * marked stale.
+   */
+  cacheFirst?: boolean;
+  /**
+   * With `cacheFirst`, the symbols the board lists now (after its search and
+   * collapsed sections): only these are fetched, and the others keep their
+   * cached quote until they are listed. Omitted, every symbol is listed.
+   * Keep the reference stable until its contents change.
+   */
+  listedSymbols?: ReadonlySet<string> | null;
 }
 
 /**
@@ -48,6 +63,13 @@ const QUOTE_BOARD_FALLBACK_MS = 60_000;
 const STREAM_SILENCE_MS = 3 * 60_000;
 /** The feed answers a new subscription with a snapshot; give it this long before polling around it. */
 const STREAM_CONNECT_GRACE_MS = 10_000;
+
+/** A cache-first refresh splits the listed symbols into at most this many batches, sent at once. */
+const QUOTE_REFRESH_BATCHES = 4;
+/** And sends no batch smaller than this, so a short list is one request. */
+const QUOTE_REFRESH_MIN_BATCH = 8;
+/** A batch still unanswered after this long is given up and its rows keep their cached quote. */
+export const QUOTE_REFRESH_TIMEOUT_MS = 5_000;
 
 const EMPTY_STATE: BoardQuoteState = { quote: null, loading: false, error: null, stale: false };
 
@@ -108,6 +130,68 @@ function overlayStreamQuote(base: BoardQuoteState, streamed: Quote | null): Boar
   return { quote: streamed, loading: base.loading, error: null, stale: streamed.stale === true };
 }
 
+/** Quotes for `subset`, one state per symbol; throws only when the whole request fails. */
+async function requestBoardQuotes(
+  dataProvider: NonNullable<ReturnType<typeof useAssetData>>,
+  subset: readonly string[],
+  forceRefresh: boolean,
+  signal?: AbortSignal,
+): Promise<BoardQuoteMap> {
+  const next: BoardQuoteMap = new Map();
+  if (dataProvider.getQuotesBatch) {
+    const results = await dataProvider.getQuotesBatch(
+      subset.map((symbol) => ({ symbol, exchange: "" })),
+      { forceRefresh, ...(signal ? { signal } : {}) },
+    );
+    const bySymbol = new Map(results.map((result) => [result.target.symbol, result]));
+    for (const symbol of subset) {
+      const result = bySymbol.get(symbol);
+      next.set(symbol, {
+        quote: result?.quote ?? null,
+        loading: false,
+        error: result?.error ? errorMessage(result.error) : null,
+        stale: false,
+      });
+    }
+    return next;
+  }
+
+  const context = forceRefresh ? { cacheMode: "refresh" as const } : undefined;
+  await Promise.all(subset.map(async (symbol) => {
+    try {
+      const quote = await dataProvider.getQuote(symbol, "", context);
+      next.set(symbol, { quote, loading: false, error: null, stale: false });
+    } catch (error: unknown) {
+      next.set(symbol, { quote: null, loading: false, error: errorMessage(error), stale: false });
+    }
+  }));
+  return next;
+}
+
+/**
+ * Cached quotes painted under a board that is already loading: a row takes
+ * one when it has none or an older one. A row whose refresh already came back
+ * empty shows the cached quote as stale.
+ */
+function paintCachedQuotes(previous: BoardQuoteMap, cached: readonly { target: { symbol: string }; quote: Quote | null }[]): BoardQuoteMap {
+  let next: BoardQuoteMap | null = null;
+  for (const { target, quote } of cached) {
+    const state = previous.get(target.symbol);
+    if (!state || !finitePrice(quote)) continue;
+    if (state.quote && (state.quote.lastUpdated ?? 0) >= (quote.lastUpdated ?? 0)) continue;
+    next ??= new Map(previous);
+    next.set(target.symbol, { ...state, quote, stale: !state.loading && (!state.quote || state.stale) });
+  }
+  return next ?? previous;
+}
+
+function inBatches(symbols: readonly string[]): string[][] {
+  const size = Math.max(QUOTE_REFRESH_MIN_BATCH, Math.ceil(symbols.length / QUOTE_REFRESH_BATCHES));
+  const batches: string[][] = [];
+  for (let index = 0; index < symbols.length; index += size) batches.push(symbols.slice(index, index + size));
+  return batches;
+}
+
 function sameBoard(left: BoardQuoteMap, right: BoardQuoteMap): boolean {
   if (left.size !== right.size) return false;
   const leftEntries = [...left];
@@ -145,6 +229,8 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
     visibleSymbols = null,
     selectedSymbol = null,
     fallbackIntervalMs = QUOTE_BOARD_FALLBACK_MS,
+    cacheFirst = false,
+    listedSymbols = null,
   } = options;
   const dataProvider = useAssetData();
   const appVisible = useAppVisible();
@@ -195,39 +281,7 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
     }
     if (!dataProvider || subset.length === 0) return;
 
-    const loadQuotes = async (): Promise<BoardQuoteMap> => {
-      const next: BoardQuoteMap = new Map();
-      if (dataProvider.getQuotesBatch) {
-        const results = await dataProvider.getQuotesBatch(
-          subset.map((symbol) => ({ symbol, exchange: "" })),
-          { forceRefresh },
-        );
-        const bySymbol = new Map(results.map((result) => [result.target.symbol, result]));
-        for (const symbol of subset) {
-          const result = bySymbol.get(symbol);
-          next.set(symbol, {
-            quote: result?.quote ?? null,
-            loading: false,
-            error: result?.error ? errorMessage(result.error) : null,
-            stale: false,
-          });
-        }
-        return next;
-      }
-
-      const context = forceRefresh ? { cacheMode: "refresh" as const } : undefined;
-      await Promise.all(subset.map(async (symbol) => {
-        try {
-          const quote = await dataProvider.getQuote(symbol, "", context);
-          next.set(symbol, { quote, loading: false, error: null, stale: false });
-        } catch (error: unknown) {
-          next.set(symbol, { quote: null, loading: false, error: errorMessage(error), stale: false });
-        }
-      }));
-      return next;
-    };
-
-    loadQuotes().then((loaded) => {
+    requestBoardQuotes(dataProvider, subset, forceRefresh).then((loaded) => {
       if (fetchGenRef.current !== gen) return;
       setSnapshots((prev) => mergeQuotes(prev, loaded));
     }).catch((error: unknown) => {
@@ -241,14 +295,97 @@ export function useQuoteBoard(symbols: string[], options: QuoteBoardOptions = {}
     });
   }, [dataProvider, symbols]);
 
-  const refresh = useCallback(() => load(true), [load]);
+  const listedRef = useRef(listedSymbols);
+  listedRef.current = listedSymbols;
+  // Symbols a cache-first board has asked the network for since its last full load.
+  const requestedRef = useRef(new Set<string>());
+
+  /** Refreshes `subset` a few batches at once; a batch that fails or times out keeps its rows' cached quotes. */
+  const refreshInBatches = useCallback((subset: readonly string[], forceRefresh: boolean, gen: number) => {
+    if (!dataProvider) return;
+    for (const batch of inBatches(subset)) {
+      const controller = new AbortController();
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error("Quote refresh timed out"));
+        }, QUOTE_REFRESH_TIMEOUT_MS);
+      });
+      Promise.race([requestBoardQuotes(dataProvider, batch, forceRefresh, controller.signal), timedOut])
+        .catch((error: unknown): BoardQuoteMap => new Map(batch.map((symbol) => [
+          symbol,
+          { quote: null, loading: false, error: errorMessage(error), stale: false },
+        ])))
+        .then((loaded) => {
+          clearTimeout(timer);
+          if (fetchGenRef.current !== gen) return;
+          setSnapshots((prev) => mergeQuotes(prev, loaded));
+        });
+    }
+  }, [dataProvider]);
+
+  /**
+   * Paints `subset`'s cached quotes, however old. Asked after the refresh, so
+   * the network request is on its way while the cache is read.
+   */
+  const paintFromCache = useCallback((subset: readonly string[], gen: number) => {
+    if (!dataProvider?.getQuotesBatch || subset.length === 0) return;
+    dataProvider.getQuotesBatch(subset.map((symbol) => ({ symbol, exchange: "" })), { cacheOnly: true })
+      .then((cached) => {
+        if (fetchGenRef.current !== gen) return;
+        setSnapshots((prev) => paintCachedQuotes(prev, cached));
+      })
+      .catch(() => {});
+  }, [dataProvider]);
+
+  /** The cache-first full load: the listed symbols' cached quotes at once, then from the network. */
+  const loadCacheFirst = useCallback((forceRefresh: boolean) => {
+    fetchGenRef.current += 1;
+    const gen = fetchGenRef.current;
+    lastLoadAtRef.current = Date.now();
+    const listed = listedRef.current;
+    const requested = symbols.filter((symbol) => !listed || listed.has(symbol));
+    requestedRef.current = new Set(requested);
+    setSnapshots((prev) => {
+      const next: BoardQuoteMap = new Map();
+      for (const symbol of symbols) {
+        next.set(symbol, { ...(prev.get(symbol) ?? EMPTY_STATE), loading: !!dataProvider && requestedRef.current.has(symbol) });
+      }
+      return next;
+    });
+    if (!dataProvider || requested.length === 0) return;
+    refreshInBatches(requested, forceRefresh, gen);
+    if (!forceRefresh) paintFromCache(requested, gen);
+  }, [dataProvider, paintFromCache, refreshInBatches, symbols]);
+
+  const refresh = useCallback(() => (cacheFirst ? loadCacheFirst(true) : load(true)), [cacheFirst, load, loadCacheFirst]);
 
   useEffect(() => {
-    load(false);
+    if (cacheFirst) loadCacheFirst(false);
+    else load(false);
     return () => {
       fetchGenRef.current += 1;
     };
-  }, [load]);
+  }, [cacheFirst, load, loadCacheFirst]);
+
+  // A symbol listed for the first time since the last full load (a search
+  // cleared, a section opened) is fetched then; the others keep what they have.
+  const listedKey = listedSymbols ? [...listedSymbols].sort().join("\u001f") : null;
+  useEffect(() => {
+    if (!cacheFirst || !dataProvider) return;
+    const listed = listedRef.current;
+    const pending = symbols.filter((symbol) => (!listed || listed.has(symbol)) && !requestedRef.current.has(symbol));
+    if (pending.length === 0) return;
+    for (const symbol of pending) requestedRef.current.add(symbol);
+    setSnapshots((prev) => {
+      const next: BoardQuoteMap = new Map(prev);
+      for (const symbol of pending) next.set(symbol, { ...(prev.get(symbol) ?? EMPTY_STATE), loading: true });
+      return next;
+    });
+    refreshInBatches(pending, false, fetchGenRef.current);
+    paintFromCache(pending, fetchGenRef.current);
+  }, [cacheFirst, dataProvider, listedKey, paintFromCache, refreshInBatches, symbols]);
 
   const entriesRef = useRef(entries);
   entriesRef.current = entries;

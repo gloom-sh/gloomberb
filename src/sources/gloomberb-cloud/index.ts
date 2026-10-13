@@ -16,6 +16,7 @@ import type {
   SecFilingDocument,
   SecFilingItem,
   MarketDataRequestContext,
+  QuoteBatchOptions,
   QuoteBatchResult,
   QuoteSubscriptionTarget,
   SearchRequestContext,
@@ -494,8 +495,10 @@ export class GloomberbCloudProvider implements AssetDataProvider {
 
   async getQuotesBatch(
     targets: QuoteSubscriptionTarget[],
-    options: { forceRefresh?: boolean } = {},
+    options: QuoteBatchOptions = {},
   ): Promise<QuoteBatchResult[]> {
+    // This provider keeps no quote cache of its own.
+    if (options.cacheOnly) return targets.map((target) => ({ target, quote: null }));
     const { perpetuals, others } = splitPerpetualTargets(targets);
     if (perpetuals.length) {
       const [listed, answered] = await Promise.all([

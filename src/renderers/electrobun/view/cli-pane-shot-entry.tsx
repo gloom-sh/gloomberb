@@ -188,11 +188,13 @@ async function restoreShotCloudSession(): Promise<void> {
  * the cloud is one source among several: analyst rating price targets and part
  * of the corporate action history come from providers the router merges in.
  */
-async function requestShotMarketData<T>(operation: string, args: unknown[]): Promise<T> {
+async function requestShotMarketData<T>(operation: string, args: unknown[], signal?: AbortSignal): Promise<T> {
   const response = await window.fetch(SHOT_MARKET_BRIDGE_PATH, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ operation, args }),
+    // A board that stops waiting for a slow batch drops it, so the capture is not held for it.
+    ...(signal ? { signal } : {}),
   });
   const result = await response.json() as { ok: boolean; data?: T; error?: string };
   if (!result.ok) throw new Error(result.error ?? `Screenshot data request failed: ${operation}`);
@@ -301,8 +303,11 @@ function createShotDataProvider(payload: DesktopPaneShotPayload): DataProvider {
     id: payload.marketDataProviderId ?? cloudProvider.id,
     getQuote: (symbol, exchange, context) => requestShotMarketData<Quote>("getQuote", [symbol, exchange, context]),
     getQuoteMetadata: (symbol, exchange, context) => requestShotMarketData<QuoteMetadata | null>("getQuoteMetadata", [symbol, exchange, context]),
-    getQuotesBatch: (targets) => requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [targets])
-      .catch(() => targets.map((target) => ({ target, quote: null }))),
+    getQuotesBatch: (targets, options) => {
+      const { signal, ...sent } = options ?? {};
+      return requestShotMarketData<QuoteBatchResult[]>("getQuotesBatch", [targets, sent], signal)
+        .catch(() => targets.map((target) => ({ target, quote: null })));
+    },
     getOptionsChain: (symbol, exchange, expirationDate, context) => requestShotMarketData<OptionsChain>("getOptionsChain", [symbol, exchange, expirationDate, context]),
     getPriceHistory: (symbol, exchange, range, context) => requestShotMarketData<PricePoint[]>("getPriceHistory", [symbol, exchange, range, context])
       .then(revivePricePoints).catch(() => []),

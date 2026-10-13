@@ -30,7 +30,11 @@ const assetDataPayloads: Record<string, PayloadBuilder> = {
   canProvide: (ticker, exchange, context) => ({ ticker, exchange, context }),
   primaryMarketSourceName: () => ({}),
   getCachedFinancialsForTargets: (targets, options) => ({ targets, options }),
-  getQuotesBatch: (targets, options) => ({ targets, options }),
+  // An abort signal does not cross the bridge; the board stops waiting instead.
+  getQuotesBatch: (targets, options) => {
+    const { signal: _signal, ...sent } = (options ?? {}) as { signal?: unknown };
+    return { targets, options: sent };
+  },
   getTickerFinancialsBatch: (targets, options) => ({ targets, options }),
   getTickerFinancials: (ticker, exchange, context) => ({ ticker, exchange, context }),
   getQuote: (ticker, exchange, context) => ({ ticker, exchange, context }),

@@ -96,6 +96,12 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     }).map((row) => (row.type === "row" ? row.contract.symbol : null)),
     [collapsedSectors, contractsBySector, searchQuery, sortPreference],
   );
+  // The rows the board lists: the cached board paints at once and only these
+  // are refreshed, so `FUT gold` waits on gold alone.
+  const listedSymbols = useMemo(
+    () => new Set(windowSymbols.filter((symbol): symbol is string => symbol !== null)),
+    [windowSymbols],
+  );
   const liveSort = sortPreference.columnId !== null && LIVE_SORT_COLUMNS.has(sortPreference.columnId);
   const visibleSymbols = useVisibleBoardSymbols(
     windowSymbols,
@@ -105,7 +111,18 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
     liveStreaming,
     visibleSymbols,
     selectedSymbol: selectedId,
+    cacheFirst: true,
+    listedSymbols,
   });
+  // Status, the empty state and the report's date describe the listed rows, not the hidden ones.
+  const listedQuotes = useMemo<BoardQuoteMap>(
+    () => new Map([...quotes].filter(([symbol]) => listedSymbols.has(symbol))),
+    [listedSymbols, quotes],
+  );
+  const listedContracts = useMemo(
+    () => FUTURES_CONTRACTS.filter((contract) => listedSymbols.has(contract.symbol)),
+    [listedSymbols],
+  );
   const visibleColumnIds = useMemo(
     () => resolveFuturesColumnIds(paneInstance?.settings?.columnIds as string[] | undefined),
     [paneInstance?.settings?.columnIds],
@@ -116,7 +133,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
   );
   const paneVisible = usePaneVisible();
   const showsReturns = columns.some((column) => FUTURES_RETURN_COLUMNS[column.id]);
-  const returns = useFrontContractReturns(FUTURES_CONTRACTS, quotes, dataProvider, showsReturns && paneVisible);
+  const returns = useFrontContractReturns(listedContracts, quotes, dataProvider, showsReturns && paneVisible);
 
   const visibleCollapsed = effectiveCollapsedSectors(collapsedSectors, searchQuery);
   const rows = useMemo(
@@ -203,20 +220,20 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
 
   // `fn FUT` and `shot FUT` are dated by the quotes the board shows, as `quote` dates them:
   // the newest, its delay, and whether the markets are open.
-  useRemoteUiNode(quotes.size > 0 ? {
+  useRemoteUiNode(listedQuotes.size > 0 ? {
     role: "report-freshness",
     label: "Quote freshness",
     getMetadata: () => {
       const now = Date.now();
-      return { observations: [...quotes.values()].flatMap((state) => (state.quote ? [quoteObservation(state.quote, now)] : [])) };
+      return { observations: [...listedQuotes.values()].flatMap((state) => (state.quote ? [quoteObservation(state.quote, now)] : [])) };
     },
   } : null);
 
-  const status = quoteBoardStatus(quotes);
-  const errorMessage = boardErrorMessage(quotes);
+  const status = quoteBoardStatus(listedQuotes);
+  const errorMessage = boardErrorMessage(listedQuotes);
   // Every load came back empty: a board of dashes reads as broken, so the
   // body says so once and offers a retry. One quote is enough to keep rows.
-  const noQuotes = !!dataProvider && quotes.size > 0 && status.unavailable === quotes.size;
+  const noQuotes = !!dataProvider && listedQuotes.size > 0 && status.unavailable === listedQuotes.size;
   usePaneFooter(FUTURES_PANE_ID, () => {
     if (noQuotes) return { info: [], hints: [] };
     const info: PaneFooterSegment[] = quoteBoardFooterInfo(status);

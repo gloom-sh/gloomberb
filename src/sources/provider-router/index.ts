@@ -11,6 +11,7 @@ import type {
   CachedFinancialsTarget,
   DataProvider,
   MarketDataRequestContext,
+  QuoteBatchOptions,
   QuoteBatchResult,
   QuoteSubscriptionTarget,
   SearchRequestContext,
@@ -194,7 +195,7 @@ export class AssetDataRouter implements DataProvider {
 
   async getQuotesBatch(
     targets: QuoteSubscriptionTarget[],
-    options: { forceRefresh?: boolean } = {},
+    options: QuoteBatchOptions = {},
   ): Promise<QuoteBatchResult[]> {
     const mapped = mapListingTargets(targets, (target) => this.resolvePublicExchange(target.symbol, target.exchange, target.context));
     const results = await this.batchRoutes.getQuotesBatch(mapped.valid, options);
