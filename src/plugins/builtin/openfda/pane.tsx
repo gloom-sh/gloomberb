@@ -14,7 +14,6 @@ import {
   useQueryBarSearch,
   useTableLoadMore,
   type DataTableCell,
-  type DataTableColumn,
   type DataTableKeyEvent,
   type DataTableRootKeyContext,
   type PageRequest,
@@ -29,11 +28,24 @@ import {
   usePaneTitle,
   usePluginPaneState,
 } from "../../../public/react";
-import { colors } from "../../../theme/colors";
+import type { ThemeColors } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
 import { isPlainArrowUp, stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
+import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 import { OpenFdaClient, parseOpenFdaDate } from "./client";
+import {
+  activeFilters,
+  filterOptions,
+  FILTER_DEFAULT,
+  recordColumns,
+  recordTone,
+  type ColumnId,
+  type FilterKey,
+  type FilterState,
+  type RecordColumn,
+} from "./model";
 import {
   OPENFDA_PANE_ID,
   type DeviceReport,
@@ -52,65 +64,52 @@ const DATASETS: ReadonlyArray<{ value: OpenFdaDataset; label: string }> = [
   { value: "recall", label: "Drug recalls" },
 ];
 
-type ColumnId = "date" | "product" | "role" | "reactions" | "outcome" | "manufacturer" | "event" | "firm" | "class" | "status";
-type RecordColumn = DataTableColumn & { id: ColumnId };
+const EMPTY_FILTERS: FilterState = {};
+/** Pages read on their own to fill a list that row-by-row filtering left short. */
+const MAX_FILL_PAGES = 4;
 
-function recordColumns(dataset: OpenFdaDataset, width: number): RecordColumn[] {
-  const wide = width >= 72;
-  const date: RecordColumn = { id: "date", label: dataset === "recall" ? "Initiated" : "Received", width: 10, align: "left" };
-  if (dataset === "drug") {
-    return [
-      date,
-      { id: "product", label: "Drug", width: 14, align: "left", flexGrow: 1 },
-      ...(wide ? [
-        { id: "role" as const, label: "Role", width: 11, align: "left" as const },
-        { id: "reactions" as const, label: "Reactions", width: 24, align: "left" as const, flexGrow: 3 },
-      ] : []),
-      { id: "outcome", label: "Outcome", width: 11, align: "left" },
-    ];
-  }
-  if (dataset === "device") {
-    return [
-      date,
-      { id: "product", label: "Device", width: 18, align: "left", flexGrow: 2 },
-      ...(wide ? [{ id: "manufacturer" as const, label: "Manufacturer", width: 22, align: "left" as const, flexGrow: 1 }] : []),
-      { id: "event", label: "Event", width: 11, align: "left" },
-    ];
-  }
-  return [
-    date,
-    { id: "firm", label: "Firm", width: 16, align: "left", flexGrow: 1 },
-    { id: "class", label: "Class", width: 9, align: "left" },
-    ...(wide ? [
-      { id: "status" as const, label: "Status", width: 10, align: "left" as const },
-      { id: "product" as const, label: "Product", width: 20, align: "left" as const, flexGrow: 2 },
-    ] : []),
-  ];
-}
+/** Products FDA's product data does not cover (most vaccines) have no labeler on any row. */
+const QUIET_COLUMNS = { labeler: ["-"] } as const;
 
 const formatDate = (date: Date | null): string => (date ? date.toISOString().slice(0, 10) : "-");
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
-function cellFor(record: OpenFdaRecord, column: ColumnId): DataTableCell {
+/** A generic's record lists every labeler; the cell counts them instead of naming one. */
+function labelerText(record: DrugReport): string | null {
+  if (record.manufacturer) return record.manufacturer;
+  return record.labelers > 1 ? `${record.labelers} labelers` : null;
+}
+
+function cellFor(record: OpenFdaRecord, column: ColumnId, colors: ThemeColors): DataTableCell {
+  const missing: DataTableCell = { text: "-", color: colors.textMuted };
+  const toned = (text: string | null): DataTableCell => (text
+    ? { text, color: toneColor(recordTone(column, text), colors) }
+    : missing);
   if (column === "date") return { text: formatDate(record.date), value: record.date, color: colors.textMuted };
   switch (record.dataset) {
     case "drug":
       if (column === "product") return { text: record.product, color: colors.textBright };
-      if (column === "role") return { text: record.role ? capitalize(record.role) : "-", color: colors.textDim };
-      if (column === "reactions") return { text: record.reactions.join(", ") || "-", color: colors.text };
-      if (column === "outcome") return { text: record.outcome ?? "-", color: colors.text };
+      if (column === "labeler") {
+        const text = labelerText(record);
+        return text ? { text, color: record.manufacturer ? colors.text : colors.textMuted } : missing;
+      }
+      if (column === "role") return toned(record.role ? capitalize(record.role) : null);
+      if (column === "reactions") return record.reactions.length > 0 ? { text: record.reactions.join(", "), color: colors.text } : missing;
+      if (column === "outcome") return toned(record.outcome);
       break;
     case "device":
       if (column === "product") return { text: record.product, color: colors.textBright };
-      if (column === "manufacturer") return { text: record.manufacturer ?? "-", color: colors.text };
-      if (column === "event") return { text: record.eventType ?? "-", color: colors.text };
+      if (column === "manufacturer") return record.manufacturer ? { text: record.manufacturer, color: colors.text } : missing;
+      if (column === "problems") return record.productProblems.length > 0 ? { text: record.productProblems.join(", "), color: colors.text } : missing;
+      if (column === "event") return toned(record.eventType);
       break;
     case "recall":
       if (column === "firm") return { text: record.firm, color: colors.textBright };
-      if (column === "class") return { text: record.classification ?? "-", color: colors.text };
-      if (column === "status") return { text: record.status ?? "-", color: colors.textDim };
-      if (column === "product") return { text: record.product, color: colors.text };
+      if (column === "class") return toned(record.classification);
+      if (column === "status") return toned(record.status);
+      if (column === "reason") return record.reason ? { text: record.reason, color: colors.text } : missing;
+      if (column === "product") return { text: record.product, color: colors.textDim };
       break;
   }
   return { text: "" };
@@ -126,7 +125,7 @@ function DrugReportDetail({ record, width }: { record: DrugReport; width: number
       <KeyValueRow labelWidth={LABEL_WIDTH} label="Received" value={formatDate(record.date)} width={width} />
       <KeyValueRow labelWidth={LABEL_WIDTH} label="Role" value={record.role ? capitalize(record.role) : "Not coded"} width={width} />
       <KeyValueRow labelWidth={LABEL_WIDTH} label="Outcome" value={record.outcomes.length > 0 ? record.outcomes.join(", ") : record.outcome ?? "Not coded"} width={width} />
-      {record.manufacturer ? <KeyValueRow labelWidth={LABEL_WIDTH} label="Labeler" value={record.manufacturer} width={width} /> : null}
+      {labelerText(record) ? <KeyValueRow labelWidth={LABEL_WIDTH} label="Labeler" value={labelerText(record)!} width={width} /> : null}
       {record.reporter ? <KeyValueRow labelWidth={LABEL_WIDTH} label="Reporter" value={record.reporter} width={width} /> : null}
       {record.country ? <KeyValueRow labelWidth={LABEL_WIDTH} label="Country" value={record.country} width={width} /> : null}
       <KeyValueRow labelWidth={LABEL_WIDTH} label="Report" value={record.id.slice("drug:".length)} width={width} />
@@ -210,24 +209,39 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
   const [selectedId, setSelectedId] = useDebouncedPluginPaneState<string | null>("selectedId", null);
   // The open record is what the pane shows, so a reload or a shared layout opens it again.
   const [openItemId, setOpenItemId] = usePluginPaneState<string | null>("openItemId", null);
+  // One set of choices for the pane; each dataset reads the ones it offers.
+  const [filterState, setFilterState] = usePluginPaneState<FilterState>("filters", EMPTY_FILTERS);
+  const colors = useThemeColors();
   const { active: searchFocused, focus: focusSearch, searchProps } = useQueryBarSearch();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
   const term = query.trim();
   usePaneTitle(term ? `FDA ${term}` : "FDA Reports");
+  // A range counts back from today; the day, not the instant, keeps the request stable.
+  const today = new Date().toISOString().slice(0, 10);
+  const filters = useMemo(
+    () => activeFilters(dataset, filterState ?? EMPTY_FILTERS, new Date(`${today}T00:00:00Z`)),
+    [dataset, filterState, today],
+  );
+  const filtersKey = JSON.stringify(filters);
   // One dataset at a time, so a search sends one request and each dataset's
   // matches, failures and paging are its own.
   const loadPage = useMemo(
-    () => ({ offset, signal }: PageRequest) => client.listPage(dataset, term, offset, signal),
-    [client, dataset, term],
+    () => ({ offset, signal }: PageRequest) => client.listPage(dataset, term, offset, signal, filters),
+    // The key stands for the filters' contents.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [client, dataset, term, filtersKey],
   );
   const records = usePagedRows(loadPage, { getId: (record) => record.id, keepPreviousRows: true });
   const rows = records.rows;
   const firstPage = records.pages[0] ?? null;
   const windowLimited = records.pages[records.pages.length - 1]?.windowLimited ?? false;
   const loadMore = useTableLoadMore(scrollRef, records.hasMore && !openItemId, records.loadMore);
-  const columns = useMemo(() => recordColumns(dataset, width), [dataset, width]);
+  const columns = useMemo(
+    () => withoutQuietColumns(recordColumns(dataset, width), rows, (row, id) => cellFor(row, id as ColumnId, colors).text, QUIET_COLUMNS) as RecordColumn[],
+    [colors, dataset, rows, width],
+  );
   const datasetLabel = DATASETS.find((entry) => entry.value === dataset)!.label;
 
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
@@ -240,6 +254,14 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
     else setOpenItemId(null);
   }, [openItemId, openRecord, records, setOpenItemId]);
 
+  // A role checked row by row can leave pages shorter than the list, which then
+  // cannot scroll to load more: read on until it fills, a few pages at most.
+  const shortPages = !!firstPage && !firstPage.matchedExact && rows.length < height && records.pages.length < MAX_FILL_PAGES;
+  useEffect(() => {
+    if (!shortPages || openItemId || records.status !== "loaded" || records.loadingMore || records.moreError || !records.hasMore) return;
+    records.loadMore();
+  }, [openItemId, records, shortPages]);
+
   const updateQuery = useCallback((nextQuery: string) => {
     setQuery(nextQuery.trim());
     setSelectedId(null);
@@ -250,6 +272,11 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
     setSelectedId(null);
     setOpenItemId(null);
   }, [setDataset, setOpenItemId, setSelectedId]);
+  const updateFilter = useCallback((key: FilterKey, value: string) => {
+    setFilterState((current) => ({ ...current, [key]: value }));
+    setSelectedId(null);
+    setOpenItemId(null);
+  }, [setFilterState, setOpenItemId, setSelectedId]);
 
   const loading = records.loading && rows.length === 0;
   const error = records.error?.message ?? null;
@@ -292,15 +319,21 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
     return false;
   }, [focusSearch]);
 
-  const renderCell = useCallback((record: OpenFdaRecord, column: RecordColumn) => cellFor(record, column.id), []);
+  const renderCell = useCallback((record: OpenFdaRecord, column: RecordColumn) => cellFor(record, column.id, colors), [colors]);
 
   const lastUpdated = parseOpenFdaDate(firstPage?.lastUpdated ?? undefined);
-  const figures = useMemo<StatItem[]>(() => (firstPage && firstPage.matched > 0 && !error ? [{
-    id: "matched",
-    label: dataset === "recall" ? "Recalls" : "Reports",
-    value: firstPage.matched.toLocaleString("en-US"),
-    detail: lastUpdated ? `data as of ${formatDate(lastUpdated)}` : undefined,
-  }] : []), [dataset, error, firstPage, lastUpdated]);
+  const figures = useMemo<StatItem[]>(() => {
+    if (!firstPage || firstPage.matched <= 0 || error) return [];
+    const asOf = lastUpdated ? formatDate(lastUpdated) : null;
+    // A role checked row by row leaves the dataset's count too high to show.
+    if (!firstPage.matchedExact) return asOf ? [{ id: "updated", label: "Data as of", value: asOf }] : [];
+    return [{
+      id: "matched",
+      label: dataset === "recall" ? "Recalls" : "Reports",
+      value: firstPage.matched.toLocaleString("en-US"),
+      detail: asOf ? `data as of ${asOf}` : undefined,
+    }];
+  }, [dataset, error, firstPage, lastUpdated]);
 
   const header = (
     <Box flexDirection="column">
@@ -315,15 +348,25 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
           normalizeValue: (value) => value.trim(),
           ...searchProps,
         }}
-        filters={[{
-          id: "dataset",
-          label: "Dataset",
-          value: dataset,
-          options: DATASETS,
-          onChange: updateDataset,
-          // Three long names fit inline only on a wide pane; narrower, a menu.
-          inline: width >= 96,
-        }]}
+        filters={[
+          {
+            id: "dataset",
+            label: "Dataset",
+            value: dataset,
+            options: DATASETS,
+            onChange: updateDataset,
+            // Three long names fit inline only on a wide pane; narrower, a menu.
+            inline: width >= 132,
+          },
+          ...filterOptions(dataset, filterState ?? EMPTY_FILTERS).map((filter) => ({
+            id: filter.key,
+            label: filter.label,
+            value: filter.value,
+            defaultValue: FILTER_DEFAULT,
+            options: filter.options,
+            onChange: (value: string) => updateFilter(filter.key, value),
+          })),
+        ]}
       />
       <StatGrid items={figures} width={width} />
     </Box>
@@ -374,6 +417,7 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
       sortDirection="desc"
       scrollRef={scrollRef}
       onBodyScrollActivity={loadMore}
+      resetScrollKey={`${dataset}:${term}:${filtersKey}`}
       selectedTextOverridesCellColor
       emptyStateTitle={term ? `No ${datasetLabel.toLowerCase()} match ${term}.` : `No ${datasetLabel.toLowerCase()}.`}
       emptyStateHint="Press / to search…"

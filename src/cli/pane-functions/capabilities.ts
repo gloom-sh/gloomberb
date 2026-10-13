@@ -140,19 +140,24 @@ export function capabilityHasOption(capability: PaneFunctionCapability, key: str
   return resolveOptionDef(capability, key) !== undefined;
 }
 
-function normalizeEnumValue(option: PaneFunctionOptionDef, rawValue: string): string {
+function normalizeEnumValue(option: PaneFunctionOptionDef, rawValue: string, argument: string | null): string {
   const token = optionToken(rawValue);
   const match = option.values?.find((candidate) => (
     optionToken(candidate.value) === token
     || candidate.aliases?.some((alias) => optionToken(alias) === token)
   ));
   if (match) return match.value;
+  const hint = option.invalidValueHint?.(rawValue, argument);
   throw new Error(
-    `Invalid --${option.key} value "${rawValue}". Use one of: ${option.values?.map(({ value }) => value).join(", ") ?? ""}.`,
+    `Invalid --${option.key} value "${rawValue}".${hint ? ` ${hint}` : ""} Use one of: ${option.values?.map(({ value }) => value).join(", ") ?? ""}.`,
   );
 }
 
-function normalizeOptionValue(option: PaneFunctionOptionDef, rawValue: string | true): string | number | boolean {
+function normalizeOptionValue(
+  option: PaneFunctionOptionDef,
+  rawValue: string | true,
+  argument: string | null = null,
+): string | number | boolean {
   if (option.type === "boolean") {
     if (rawValue === true) return true;
     if (/^true$/i.test(rawValue)) return true;
@@ -161,7 +166,7 @@ function normalizeOptionValue(option: PaneFunctionOptionDef, rawValue: string | 
   }
   if (rawValue === true) throw new Error(`--${option.key} requires a value.`);
   if (option.normalize) return option.normalize(rawValue);
-  if (option.type === "enum") return normalizeEnumValue(option, rawValue);
+  if (option.type === "enum") return normalizeEnumValue(option, rawValue, argument);
   if (option.type === "integer") {
     const value = Number(rawValue);
     if (!Number.isInteger(value)) throw new Error(`--${option.key} must be an integer.`);
@@ -179,14 +184,17 @@ function normalizeOptionValue(option: PaneFunctionOptionDef, rawValue: string | 
 export function normalizeCapabilityOptions(
   capability: PaneFunctionCapability,
   options: Record<string, string | true>,
-  /** `code` is what the user types for the function (`CDX`), which an error names; the capability id stands in when there is none. */
-  settings: { strict?: boolean; code?: string } = {},
+  /**
+   * `code` is what the user types for the function (`CDX`), which an error names; the capability id stands in when
+   * there is none. `argument` is what the function was given (`RMS.AX`), which an option's pointer names.
+   */
+  settings: { strict?: boolean; code?: string; argument?: string | null } = {},
 ): NormalizedPaneFunctionOptions {
   if (!capability.botSafe) {
     // A rendered view takes any pane setting; the options it declares are checked.
     return Object.fromEntries(Object.entries(options).map(([key, value]) => {
       const option = resolveOptionDef(capability, key);
-      return option ? [option.key, normalizeOptionValue(option, value)] : [key, value];
+      return option ? [option.key, normalizeOptionValue(option, value, settings.argument)] : [key, value];
     }));
   }
 
@@ -206,7 +214,7 @@ export function normalizeCapabilityOptions(
         `${settings.code ?? capability.id} does not support --${rawKey}.${supported ? ` Supported options: ${supported}.` : " It has no options."}`,
       );
     }
-    normalized[option.key] = normalizeOptionValue(option, rawValue);
+    normalized[option.key] = normalizeOptionValue(option, rawValue, settings.argument);
   }
   return normalized;
 }

@@ -69,7 +69,7 @@ export const BUILTIN_EDITORIAL: Readonly<Record<string, BuiltinEditorial>> = {
   },
   "futures-commodities": {
     categories: ["markets", "macro"],
-    tagline: "Futures, curves, positioning, energy data.",
+    tagline: "Futures, curves, positioning, inventories and balances.",
     screenshots: ["CTM", "COT", "FUT"],
   },
   "global-markets": {

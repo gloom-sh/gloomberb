@@ -1,4 +1,8 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
+import { subMinuteDataMessage } from "../../../cli/known-gaps";
+import { listingSuffixExchange } from "../../../sources/listing-symbols";
+import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { listingAbroadVenue } from "../../../utils/sec";
 import { fetchTape } from "./client";
 import { newestFirst, quoteSpread, tapePrice, tapePriceDigits, tapeStatistics } from "./model";
 
@@ -12,9 +16,21 @@ function formattedColumns(rows: readonly HeadlessPaneRow[], formats: Record<stri
     .map((key) => ({ key, header: key, ...(formats[key] ? { format: formats[key] } : {}) }));
 }
 
+/**
+ * Whether a listing trades abroad, by its key, its saved exchange or its
+ * listing suffix (RMS.AX is the ASX): the SIP tape carries US listings only,
+ * so it has nothing for one, and its bare symbol can be another company there.
+ */
+function listedAbroad(key: string, exchange: string | undefined): boolean {
+  const parsed = parsePublicTickerKey(key);
+  const venue = parsed.exchange || exchange || listingSuffixExchange(parsed.symbol);
+  return !!venue && listingAbroadVenue(`${parsed.symbol}:${venue}`) != null;
+}
+
 export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "ticker", placeholder: "ticker", description: "US equity ticker." },
   usListingsOnly: "Time and sales",
+  usListingsOnlyHint: subMinuteDataMessage,
   options: [{ key: "limit", type: "integer", minimum: 1, maximum: 1000, defaultValue: 100, description: "Maximum recent prints in the report." }],
   discovery: { aliases: ["TAS", "QR"], dataRequirements: ["Gloom Cloud SIP trade and quote feed"],
     limitations: ["Bounded observed window, not a complete session.", "SIP is delayed fifteen minutes without realtime entitlement.", "Quote sizes are round lots.", "No Level 2 or inferred aggressor side."] },
@@ -22,6 +38,12 @@ export const timeSalesHeadless: HeadlessPaneDefinition<"bundle"> = {
   async load(args, ctx) {
     const symbol = args.symbols[0] ?? (typeof args.argument === "string" ? args.argument : "");
     const instrument = await ctx.resolveInstrument?.(symbol);
+    if (listedAbroad(symbol, instrument?.exchange)) {
+      // Say why the table is empty and where the finest bars for it are, rather than the tape's bare "unavailable".
+      return { complete: false, sections: [
+        { title: ctx.settings?.tab === "quotes" ? "NBBO" : "Trades", rows: [], empty: subMinuteDataMessage(symbol) },
+      ] };
+    }
     const data = await fetchTape(symbol, instrument?.exchange ?? "", ctx.signal, ctx.apiClient);
     const statistics = tapeStatistics(data);
     const window = [{ from: statistics.from, asOf: statistics.asOf, prints: statistics.count, shares: statistics.volume,

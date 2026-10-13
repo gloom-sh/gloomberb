@@ -12,7 +12,6 @@ import { PluginRenderProvider } from "../../runtime";
 import { buildDmCommandResults } from "./channels";
 import {
   buildChatSearchRows,
-  CHAT_REUSE_PANE_VALUE,
   createChatSearchProvider,
   openChatConversation,
   openChatNewDm,
@@ -140,10 +139,7 @@ describe("chat rows in the command bar", () => {
       { listConversations: signedIn },
     );
     await row!.execute();
-    expect(opened).toEqual([{
-      templateId: "new-chat-pane",
-      options: { arg: "dm:bob", values: { [CHAT_REUSE_PANE_VALUE]: "1" } },
-    }]);
+    expect(opened).toEqual([{ templateId: "new-chat-pane", options: { arg: "dm:bob" } }]);
   });
 });
 
@@ -287,44 +283,24 @@ describe("opening a conversation from the command bar", () => {
     expect(tui.frame()).toContain("New DM");
   });
 
-  test("the Chat template reuses the open pane, the one on the conversation first", async () => {
+  test("`CHAT gen` is no channel id: the Chat template opens what the bar lists first for the text", async () => {
     const template = chatModule.paneTemplates!.find((entry) => entry.id === "new-chat-pane") as PaneTemplateDef;
     const original = (chatController as any).channelCatalog.channels;
     (chatController as any).channelCatalog.channels = [everyone, general, dmBob];
-    const layout = (instances: Array<[string, string, number]>): LayoutConfig => ({
-      dockRoot: null,
-      instances: instances.map(([instanceId, channelId]) => ({ instanceId, paneId: "chat", settings: { channelId } })),
-      floating: instances.map(([instanceId, , zIndex]) => ({ instanceId, x: 0, y: 0, width: 80, height: 30, zIndex })),
-      detached: [],
-    });
-    const context = (paneLayout: LayoutConfig, focusedPaneId: string | null = null) => ({
-      layout: paneLayout,
-      focusedPaneId,
+    const context = {
+      layout: { dockRoot: null, instances: [], floating: [], detached: [] } as LayoutConfig,
+      focusedPaneId: null,
       activeTicker: null,
       activeCollectionId: null,
-    }) as unknown as PaneTemplateContext;
-    const reuse = { arg: "dm:bob", values: { [CHAT_REUSE_PANE_VALUE]: "1" } };
+    } as unknown as PaneTemplateContext;
     try {
-      // The frontmost Chat pane switches over.
-      expect(await template.createInstance!(context(layout([["chat:everyone", "everyone", 51], ["chat:general", "general", 52]])), reuse))
-        .toMatchObject({ instanceId: "chat:general", settings: { channelId: "dm:bob" }, title: "@bob" });
-      // A pane already on it wins.
-      expect(await template.createInstance!(context(layout([["chat:everyone", "everyone", 52], ["chat:x", "dm:bob", 51]])), reuse))
-        .toMatchObject({ instanceId: "chat:x" });
-      // No Chat pane: a pane of its own.
-      expect(await template.createInstance!(context(layout([])), reuse))
-        .toMatchObject({ instanceId: "chat:dm:bob", settings: { channelId: "dm:bob" } });
-      // Typed CHAT keeps one pane per channel.
-      expect(await template.createInstance!(context(layout([["chat:everyone", "everyone", 51]])), { arg: "dm:bob" }))
-        .toMatchObject({ instanceId: "chat:dm:bob" });
-      // `CHAT gen` is no channel id; it opens what the bar lists first for "gen".
       chatController.resolveRequiredChannelId = async (channelId) => {
         throw new Error(`Unknown chat channel "#${channelId}".`);
       };
       chatController.listConversations = signedIn;
-      expect(await template.createInstance!(context(layout([])), { arg: "prod" }))
+      expect(await template.createInstance!(context, { arg: "prod" }))
         .toMatchObject({ settings: { channelId: "product" } });
-      expect(await template.createInstance!(context(layout([])), { arg: "alice" }))
+      expect(await template.createInstance!(context, { arg: "alice" }))
         .toMatchObject({ settings: { channelId: "dm:alice" } });
     } finally {
       (chatController as any).channelCatalog.channels = original;

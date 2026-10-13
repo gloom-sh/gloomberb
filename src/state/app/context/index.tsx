@@ -398,13 +398,14 @@ function useUpdatePaneLayout(options: { saveDelayMs?: number } = {}) {
   }, [dispatch, saveDelayMs, stateRef]);
 }
 
-/** Keep a content-derived pane title in its saved layout, without exposing config writes. */
-export function usePaneTitle(title: string, paneId?: string): void {
+/** Keep a content-derived pane title in its saved layout, without exposing config writes. Null leaves the title alone. */
+export function usePaneTitle(title: string | null, paneId?: string): void {
   const id = useScopedPaneId(paneId);
   // A follower's title changes with every cursor move in its source; that is
   // not worth a config write per step.
   const updateLayout = useUpdatePaneLayout({ saveDelayMs: LOW_PRIORITY_CONFIG_SAVE_DEBOUNCE_MS });
   useEffect(() => {
+    if (title == null) return;
     updateLayout((layout) => {
       const pane = findPaneInstance(layout, id);
       return !pane || pane.title === title ? layout

@@ -23,7 +23,7 @@ import { PowerDetailView } from "./detail";
 import { PowerPricesView } from "./prices";
 import { blendHex } from "../../../theme/colors";
 import { missingCell, PartsBar, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
-import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerCoverageNote, powerFigures, powerLoadedSources, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
+import { COVERAGE_COLUMNS, EXPOSURE_COLUMNS, HISTORY_COLUMNS, GENERATION_COLUMNS, UTILITY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, historyDate, historyId, historySeries, otherRows, powerCoverageNote, powerFigures, powerRegion, powerNumber, powerPercent, powerTab, powerTickerEmpty, projectRows, titleCase, UNMAPPED, type PowerRow, type PowerTickerScope } from "./model";
 
 const rowId = (r: PowerRow) => r.id;
 const isRecord = (r: PowerRow) => !r.section;
@@ -125,7 +125,6 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
   const scopes = useAsyncResource(tickerEmpty && !snapshot ? scopesLoader : null);
   const tickerScopes = snapshot ? snapshot.tickerScopes : scopes.data;
   const tickerMessage = tickerEmpty ? powerTickerEmpty(symbol, tab, context, tickerScopes ?? []) : null;
-  const loadedSources = tickerEmpty && board ? powerLoadedSources(tab, board.coverage) : null;
   const selected = rows.find((r) => r.id === selectedId && isRecord(r)) ?? rows.find(isRecord);
   const openRow = rows.find((r) => r.id === openId);
   const scrollRef = useRef<ScrollBoxRenderable>(null);
@@ -226,7 +225,7 @@ function PowerView({ width, height, focused, scope, needsVerification }: PanePro
             empty: series.length ? undefined : historyPages.moreError ? "Full history could not load. Refresh to retry." : historyData?.payload.access === "preview" ? "Full history is available with Pro." : "History is accumulating from recorded snapshots.", remoteKind: "power-history" } : null} />}
         emptyStateTitle={tab === "history" ? historyPages.error?.message ?? "No recorded history for these filters." : "No reported records match these filters."}
         emptyContent={tickerMessage ? <Box paddingX={1} paddingY={1}>
-          <EmptyState title={tickerMessage.title} hint={[tickerMessage.hint, loadedSources ? `Sources loaded now: ${loadedSources}.` : null].filter(Boolean).join(" ") || undefined}
+          <EmptyState title={tickerMessage.title} hint={tickerMessage.hint || undefined}
             actions={tickerMessage.found.length ? tickerMessage.found.map((scope) => <Button key={`${scope.tab}:${scope.context}`} label={`Open ${scope.view}`}
               onPress={() => { if (scope.tab === "capacity") setContext(scope.context); setTab(scope.tab); }} />) : undefined} />
         </Box> : undefined}

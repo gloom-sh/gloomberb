@@ -90,6 +90,7 @@ function SnippetBlock({ text, secret, width }: { text: string; secret: string | 
       backgroundColor={nativePaneChrome ? colors.bg : colors.panel}
       style={nativePaneChrome ? { padding: "8px 10px", borderRadius: 4 } : undefined}
       data-gloom-role="mcp-connect-snippet"
+      data-gloom-selectable="true"
     >
       {text.split("\n").map((line, index) => {
         const atEdge = !!secret && line.includes(secret);

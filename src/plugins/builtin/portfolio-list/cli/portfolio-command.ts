@@ -2,6 +2,7 @@ import { saveConfig } from "../../../../data/config/store";
 import { withConfigData, withMarketData } from "../../../../cli/scoped-context";
 import { countCollectionTickers } from "../../../../cli/helpers";
 import { resolveCliTicker, resolveTickerForCli } from "../../../../cli/ticker-resolution";
+import { withSuggestion } from "../../../../cli/listing-suggestion";
 import { takeFlag, takeOption } from "../../../../cli/commands/command-utils";
 import { EXCHANGE_OPTION, listingKeys, loadSavedListing, parseListingArg, requireListingArg, savedListingName } from "../../../../cli/listing-arg";
 import { cliStyles, renderStats, renderTable } from "../../../../utils/cli-output";
@@ -47,6 +48,7 @@ import {
   failPortfolioCommand,
   isCashArgument,
   listingFields,
+  misplacedSymbolList,
   parseFiniteNumber,
   PortfolioCliError,
   rejectCashSymbol,
@@ -129,9 +131,21 @@ async function deletePortfolioCommand(name: string, ctx: CliCommandContext) {
 }
 
 /** The manual portfolio the leading arguments name and the symbols after it; fails naming the portfolios there are. */
-function requirePortfolioArgs(config: AppConfig, args: readonly string[], usage: string, ctx: CliCommandContext): { portfolio: Portfolio; rest: string[] } {
+function requirePortfolioArgs(
+  config: AppConfig,
+  args: readonly string[],
+  file: string | undefined,
+  verb: "add" | "remove",
+  usage: string,
+  ctx: CliCommandContext,
+): { portfolio: Portfolio; rest: string[] } {
   if (args.length === 0) ctx.fail(usage);
   const match = takeCollectionName(args, config.portfolios);
+  if (!match) {
+    // A pasted list in the place of the name is a list, not a portfolio that is missing.
+    const pasted = misplacedSymbolList(args, file, { noun: "portfolio", verb, collections: config.portfolios, usage });
+    if (pasted) ctx.fail(pasted.message, pasted.details);
+  }
   try {
     // A name nothing matches is reported as typed: its first argument, never the symbols glued on.
     return { portfolio: requireManualPortfolio(config, match?.collection.id ?? args[0]!), rest: match?.rest ?? [] };
@@ -171,13 +185,13 @@ async function addTickerToPortfolioCommand(portfolio: Portfolio, symbol: string,
     await store.saveTicker(result.ticker);
     ctx.printResult({ data, warnings }, { text: () => cliStyles.success(`Added ${saved.label} to "${portfolio.name}".`) });
   } catch (error) {
-    failPortfolioCommand(ctx, error, `Failed to add ${symbol} to "${portfolio.name}".`);
+    failPortfolioCommand(ctx, await withSuggestion(error, symbol, { store, dataProvider }), `Failed to add ${symbol} to "${portfolio.name}".`);
   }
 }
 
 async function addToPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
   await withMarketData(ctx, async (market) => {
-    const { portfolio, rest } = requirePortfolioArgs(market.config, args, ADD_USAGE, ctx);
+    const { portfolio, rest } = requirePortfolioArgs(market.config, args, file, "add", ADD_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, ADD_USAGE);
     if (list.single) {
       await addTickerToPortfolioCommand(portfolio, list.single, exchange, ctx, market);
@@ -189,6 +203,7 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
       store: market.store,
       dataProvider: market.dataProvider,
       reject: cashRefusal(portfolio, exchange),
+      suggest: true,
       onRetry: retryNotice(ctx),
       retry: (key) => `gloomberb portfolio add ${/\s/.test(portfolio.name) ? `"${portfolio.name}"` : portfolio.name} ${key}`,
       add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
@@ -239,7 +254,7 @@ async function removeTickerFromPortfolioCommand(portfolio: Portfolio, symbol: st
 
 async function removeFromPortfolioCommand(args: string[], file: string | undefined, exchange: string | undefined, ctx: CliCommandContext) {
   await withConfigData(ctx, async (context) => {
-    const { portfolio, rest } = requirePortfolioArgs(context.config, args, REMOVE_USAGE, ctx);
+    const { portfolio, rest } = requirePortfolioArgs(context.config, args, file, "remove", REMOVE_USAGE, ctx);
     const list = await requireSymbolList(ctx, rest, file, REMOVE_USAGE);
     if (list.single) {
       await removeTickerFromPortfolioCommand(portfolio, list.single, exchange, ctx, context);

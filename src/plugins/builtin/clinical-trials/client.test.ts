@@ -4,6 +4,7 @@ import {
   parseClinicalTrial,
   parseClinicalTrialsPage,
 } from "./client";
+import { normalizeTrialFilters, trialFiltersQuery } from "./model";
 
 function studyFixture(overrides: Record<string, unknown> = {}) {
   return {
@@ -81,5 +82,22 @@ describe("clinical trials parsing", () => {
     const next = new URL(buildStudiesUrl({ term: "diabetes", pageToken: "abc" }));
     expect(next.searchParams.get("pageToken")).toBe("abc");
     expect(next.searchParams.get("sort")).toBe("StudyFirstPostDate:desc");
+  });
+
+  test("asks the registry for the filters, so every page it returns already matches them", () => {
+    const one = new URL(buildStudiesUrl({ ...trialFiltersQuery({ status: "RECRUITING", phase: "PHASE3", sponsorClass: "INDUSTRY" }), pageToken: "abc" }));
+    expect(one.searchParams.get("filter.overallStatus")).toBe("RECRUITING");
+    expect(one.searchParams.get("filter.advanced")).toBe("AREA[Phase]PHASE3 AND AREA[LeadSponsorClass]INDUSTRY");
+    expect(one.searchParams.get("pageToken")).toBe("abc");
+
+    const several = new URL(buildStudiesUrl({ statuses: ["recruiting", "NOT_YET_RECRUITING"], phases: ["PHASE2", "PHASE3", "PHASE2"] }));
+    expect(several.searchParams.get("filter.overallStatus")).toBe("RECRUITING,NOT_YET_RECRUITING");
+    expect(several.searchParams.get("filter.advanced")).toBe("AREA[Phase](PHASE2 OR PHASE3)");
+
+    // "All" adds nothing, and nothing that is not a registry code reaches the expression.
+    const all = new URL(buildStudiesUrl(trialFiltersQuery(normalizeTrialFilters({ status: "all", phase: "PHASE3) OR (x", sponsorClass: "industry" }))));
+    expect(all.searchParams.has("filter.overallStatus")).toBe(false);
+    expect(all.searchParams.get("filter.advanced")).toBe("AREA[LeadSponsorClass]INDUSTRY");
+    expect(new URL(buildStudiesUrl({ phases: ["PHASE3) OR (AREA[x]"] })).searchParams.has("filter.advanced")).toBe(false);
   });
 });

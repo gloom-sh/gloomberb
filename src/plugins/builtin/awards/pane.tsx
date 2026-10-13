@@ -6,7 +6,7 @@ import { Badge, ChartTableHeader, DataTableView, PageStackView, PaneStatusBody, 
   usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PaneHint, type QueryBarFilter } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { formatCompactAxis } from "../../../components/chart-table";
-import { missingCell, shareCell } from "../shared/research-cells";
+import { missingCell, shareCell, withoutQuietColumns } from "../shared/research-cells";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -38,19 +38,25 @@ function groupedAggregates<T extends AwardAggregate>(rows: readonly T[], toItem:
 }
 const rowId = (row: AwardRow) => row.id;
 const rowDate = (row: AwardRow) => new Date(`${row.awardDate}T00:00:00Z`);
-const FEED_COLUMNS: DataTableColumn[] = [
-  { id: "date", label: "Date", width: 11, align: "left" }, { id: "recipient", label: "Awardee", width: 28, flexGrow: 1, align: "left" },
-  { id: "ticker", label: "Ticker", width: 10, align: "left" }, { id: "currency", label: "CCY", width: 5, align: "left" },
-  { id: "value", label: "Value", width: 11, align: "right" }, { id: "obligated", label: "Obligated", width: 11, align: "right" },
-  { id: "ceiling", label: "Ceiling", width: 11, align: "right" }, { id: "agency", label: "Agency", width: 28, align: "left" },
-  { id: "country", label: "Country", width: 8, align: "left" }, { id: "period", label: "Performance period", width: 24, align: "left" },
-  { id: "title", label: "Contract", width: 46, align: "left" },
-  { id: "dateBasis", label: "Date basis", width: 14, align: "left" },
-];
-const EVENT_COLUMNS: DataTableColumn[] = [FEED_COLUMNS[0]!, FEED_COLUMNS[1]!, FEED_COLUMNS[2]!,
-  { id: "ratio", label: "% revenue", width: 11, align: "right" }, FEED_COLUMNS[3]!, { ...FEED_COLUMNS[4]!, label: "Compared value" },
+const COLUMN = {
+  date: { id: "date", label: "Date", width: 11, align: "left" }, recipient: { id: "recipient", label: "Awardee", width: 26, flexGrow: 1, align: "left" },
+  ticker: { id: "ticker", label: "Ticker", width: 10, align: "left" }, currency: { id: "currency", label: "CCY", width: 5, align: "left" },
+  value: { id: "value", label: "Value", width: 11, align: "right" }, obligated: { id: "obligated", label: "Obligated", width: 11, align: "right" },
+  ceiling: { id: "ceiling", label: "Ceiling", width: 11, align: "right" }, agency: { id: "agency", label: "Agency", width: 24, align: "left" },
+  country: { id: "country", label: "Country", width: 8, align: "left" }, period: { id: "period", label: "Performance period", width: 24, align: "left" },
+  title: { id: "title", label: "Contract", width: 36, flexGrow: 1, align: "left" },
+  dateBasis: { id: "dateBasis", label: "Date basis", width: 14, align: "left" },
+} satisfies Record<string, DataTableColumn>;
+// Who won, what for, from whom and how much come first, so a 1280-wide pane
+// shows the contract; the period and date basis follow.
+const FEED_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker, COLUMN.title, COLUMN.agency, COLUMN.currency,
+  COLUMN.value, COLUMN.obligated, COLUMN.ceiling, COLUMN.country, COLUMN.period, COLUMN.dateBasis];
+/** Amounts a source never reports (UK and EU notices have no obligation or ceiling) leave a column of dashes. */
+const QUIET_AMOUNTS = { obligated: ["--"], ceiling: ["--"] } as const;
+const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
+  { id: "ratio", label: "% revenue", width: 11, align: "right" }, COLUMN.currency, { ...COLUMN.value, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },
-  { id: "revenuePeriod", label: "Revenue FY end", width: 15, align: "left" }, FEED_COLUMNS[7]!, FEED_COLUMNS[10]!];
+  { id: "revenuePeriod", label: "Revenue FY end", width: 15, align: "left" }, COLUMN.title, COLUMN.agency];
 // The share leads the figures: concentration is what these views are for.
 const AGG_COLUMNS: DataTableColumn[] = [
   { id: "label", label: "Agency", width: 30, flexGrow: 1, align: "left" }, { id: "currency", label: "CCY", width: 5, align: "left" },
@@ -59,8 +65,8 @@ const AGG_COLUMNS: DataTableColumn[] = [
   { id: "contracts", label: "Awards", width: 8, align: "right" },
   { id: "scope", label: "Scope", width: 27, align: "left" },
 ];
-const LEADER_COLUMNS: DataTableColumn[] = [{ id: "label", label: "Company", width: 28, flexGrow: 1, align: "left" }, { ...FEED_COLUMNS[2]!, width: 8 },
-  FEED_COLUMNS[3]!, AGG_COLUMNS[2]!, FEED_COLUMNS[4]!, FEED_COLUMNS[5]!, AGG_COLUMNS[6]!,
+const LEADER_COLUMNS: DataTableColumn[] = [{ id: "label", label: "Company", width: 28, flexGrow: 1, align: "left" }, { ...COLUMN.ticker, width: 8 },
+  COLUMN.currency, AGG_COLUMNS[2]!, COLUMN.value, COLUMN.obligated, AGG_COLUMNS[6]!,
   { id: "sector", label: "Sector", width: 25, align: "left" }, AGG_COLUMNS[5]!, AGG_COLUMNS[7]!];
 
 export function AwardsPane(props: PaneProps) {
@@ -199,7 +205,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     view={tab === "sectors" ? { value: leaderView, options: [{ value: "companies", label: "Companies" }, { value: "sectors", label: "Sectors" }], onChange: setLeaderView } : undefined} />;
   const columns = showLeaders ? LEADER_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency")
     : aggregated ? AGG_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency").map((column) => column.id === "label" ? { ...column, label: tab === "agencies" ? "Agency" : "Sector" } : column)
-    : tab === "events" ? EVENT_COLUMNS : FEED_COLUMNS;
+    : tab === "events" ? EVENT_COLUMNS : withoutQuietColumns(FEED_COLUMNS, rows, (row, id) => (id === "obligated" ? row.obligatedAmount : row.ceilingAmount) ?? "--", QUIET_AMOUNTS);
   const maxShare = Math.max(0, ...items.map((item) => item.kind === "aggregate" || item.kind === "leader" ? item.row.sharePercent ?? 0 : 0));
   // A preview's cohorts are the latest of any company, so they never chart as the ticker's.
   const charted = data?.locked ? [] : series;
@@ -259,7 +265,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
             if (column.id === "agency") return { text: award.agency.name, color: colors.text };
             if (column.id === "country") return { text: award.jurisdiction, color: colors.textDim };
             if (column.id === "period") return { text: awardPeriod(award), color: colors.textDim };
-            if (column.id === "title") return { text: award.title, color: colors.textDim };
+            if (column.id === "title") return { text: award.title, color: colors.text };
             if (column.id === "ratio") return { text: awardPercent(award), value: award.revenueComparison?.percent ?? null, color: colors.warning, attributes: TextAttributes.BOLD, keepColorWhenSelected: true };
             if (column.id === "revenue") return { text: money(award.revenueComparison?.annualRevenue), value: award.revenueComparison?.annualRevenue ?? null };
             if (column.id === "basis") return { text: award.revenueComparison?.basis === "obligated" ? "Obligated" : "Award value", color: colors.textDim };

@@ -3,7 +3,11 @@ import { parseSharePayload, type SharePayload } from "./payload";
 
 declare const __GLOOMBERB_API_URL__: string | undefined;
 
-const bundledApiOrigin = typeof __GLOOMBERB_API_URL__ === "string" ? __GLOOMBERB_API_URL__ : "";
+// The terminal reads shares from the API the rest of the app uses (GLOOMBERB_API_URL), as the
+// desktop and web builds do from the URL bundled in; browser bundles have no `process`.
+const bundledApiOrigin = typeof __GLOOMBERB_API_URL__ === "string" && __GLOOMBERB_API_URL__
+  ? __GLOOMBERB_API_URL__
+  : typeof process === "undefined" ? "" : process.env.GLOOMBERB_API_URL ?? "";
 export const SHARE_API_ORIGIN = bundledApiOrigin
   ? typeof location !== "undefined" && bundledApiOrigin === location.origin
     ? `${bundledApiOrigin}/api`

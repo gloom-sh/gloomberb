@@ -11,11 +11,13 @@ Each ratio opens (Enter, a click, or `e` for all) onto the inputs behind it. The
 The ratio tabs use the Income statement's columns: the latest fiscal years, with a TTM column when the last four quarters run past the latest year, or the latest quarters. Headers are the same fiscal labels (`FY2026`, `Q4 FY26`, `TTM Q3 FY26`).
 
 - **Averages.** Inputs marked `Avg` are the mean of the opening and closing balance. The opening balance is the prior fiscal year end for a year, the prior quarter end for a quarter, and the quarter end a year earlier for TTM. Both ends must come from the same line (total equity at both ends, or common equity at both), never one of each. The oldest column on screen usually has no opening balance loaded, so its averaged ratios read `not reported`.
-- **Quarters.** A quarterly column annualizes flows: the input label says `× 4` (`Net Income × 4`). Day counts spread a quarter's flow over 91.25 days and a year's over 365. Ratios of two flows over the same period (margins, interest coverage) need no annualization.
+- **Quarters.** A quarterly column annualizes flows: the input label says `× 4` (`Net Income × 4`). Day counts spread a quarter's flow over 91.25 days and a year's over 365. Margins, a ratio of two flows over the same period, need no annualization.
+- **Leverage in quarters.** Net debt / EBITDA, interest coverage and FCF / debt read their flows over the trailing year, as lenders do, never a quarter times four: the input label says `TTM` (`÷ EBITDA TTM`) and the row shows that year's figure. The trailing year is the fiscal year when one ends with the quarter, and otherwise the four quarters to it, summed. A quarter with fewer than four consecutive quarters on file reads `< 4 quarters` instead of annualizing the one it has: Newmont's quarter to June 2026 reads −3.93bn of net debt ÷ 16.04bn of EBITDA TTM = −0.24x, not one quarter's 3.64bn × 4 (−0.27x).
 
 ## Missing and meaningless values
 
 - `not reported`: an input line is not in the statements for that period. Apple, for example, has not tagged interest expense since FY2023, so its interest coverage reads `not reported` from FY2024. A missing line is never read as zero; a reported zero stays a value.
+- `< 4 quarters`: a quarterly leverage ratio has no trailing year to read its flow over, because fewer than four consecutive quarters are on file and no fiscal year ends with the quarter.
 - `N/M`: the denominator is zero or negative, where the ratio means nothing: negative equity under ROE or P/B, a loss under P/E, negative EBITDA or enterprise value under EV/EBITDA, no interest expense under coverage. ROE is also `N/M` on [near-zero equity](#roe-on-near-zero-equity).
 - `no price`: there is no daily close in the week before the period end, or the quote currency differs from the reporting currency (the footer warning names both).
 
@@ -84,6 +86,6 @@ The Valuation tab prices each period at its own period end, not today:
 - **Splits.** Closes are split-adjusted and statement EPS and share counts are on the current share basis, so a split since the period does not distort the multiple (NVIDIA's FY2023 reads 20.37 ÷ 0.174 = 117.0x).
 - **Currency.** The close must be in the reporting currency; GBp converts to GBP without an FX rate. A foreign listing of a company reporting in another currency reads `no price`.
 
-Current multiples at today's price are in `DES` and `RV`.
+Current multiples at today's price are in `DES` and `RV`; once the regular session is over they are measured at its close, never at an after-hours print.
 
 `gloomberb shot FA <ticker> --statement valuation` captures the same daily closes back to the oldest column. It stops with the reason when they are missing, fail to load or end more than a week before the latest period end. The shot's JSON reports `usable: false` while any column reads `no price`, and for any ratio tab when every ratio is `not reported` or `N/M`, or when the rendered cells differ from the table the captured data gives.

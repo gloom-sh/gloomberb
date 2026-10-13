@@ -803,6 +803,8 @@ export const zhTW: Record<string, string> = {
   "private": "不公開",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the line on its card and its icon's tooltip.
+  "Bot run by Gloom": "由 Gloom 營運的機器人",
   "Direct message": "私訊",
   "Group chat": "群組聊天",
   "Group": "群組",
@@ -819,6 +821,15 @@ export const zhTW: Record<string, string> = {
   "Read-only chat. Log in or sign up to send.": "聊天目前為唯讀模式。登入或註冊後即可傳送訊息。",
   "Saved login found. Log in again to send.": "發現已儲存的登入資訊。請重新登入後傳送訊息。",
   "Verify your email to send messages.": "驗證電子郵件後才能傳送訊息。",
+  // The first-chat prompt for an account still on its signup handle.
+  "Choose a handle": "設定帳號",
+  "Choose Handle": "設定帳號",
+  "Hide Handle Prompt": "隱藏帳號提示",
+  "@{handle} is taken. Try another.": "@{handle} 已被使用，換一個試試。",
+  "@{handle} isn't available. Try another.": "@{handle} 無法使用，換一個試試。",
+  "Use 3-30 letters, numbers or _, starting with a letter.": "使用 3-30 個字母、數字或 _，並以字母開頭。",
+  "Couldn't save your handle. Try again.": "無法儲存帳號，請再試一次。",
+  "You're @{handle} now.": "你現在是 @{handle}。",
   "Verify your email to use Cloud tweets.": "驗證電子郵件後才能使用 Cloud tweets。",
   "Resend Verification Email": "重新發送驗證郵件",
   "Sign in to {action}.": "登入後即可{action}。",
@@ -1025,6 +1036,8 @@ export const zhTW: Record<string, string> = {
   "Waiting for quote...": "等待行情...",
   "Pre-Market": "盤前",
   "After-Hours": "盤後",
+  "Overnight": "夜盤",
+  "mid": "中間價",
   "Price Return": "價格報酬",
   "Fundamentals": "基本面",
   "Positions": "持倉",
@@ -1105,6 +1118,7 @@ export const zhTW: Record<string, string> = {
   "PRE-MKT": "盤前",
   "OPEN": "盤中",
   "AFTER-HRS": "盤後",
+  "OVERNIGHT": "夜盤",
   "CLOSED": "休市",
   "Log In": "登入",
   "Sign Up": "註冊",

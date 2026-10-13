@@ -23,8 +23,10 @@ import {
   type GoingConcernParams,
   type InsolvencyNoticesParams,
 } from "./distress";
+import type { LettersParams } from "./letters";
 import type { IpoCalendarParams, IpoCalendarPayload } from "./ipo";
 import type { TickerChanges } from "../types/ticker-changes";
+import type { OrganizationTickersResponse } from "./organization-tickers";
 import type { CryptoMarketsPayload } from "./crypto-markets";
 import type { CentralBankRatesPayload } from "./central-bank-rates";
 import type { EstimateRevisionsPayload } from "./estimate-revisions";
@@ -37,7 +39,7 @@ import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange 
 import type { FuturesContractTermsPayload, FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
 import type { DoeBoardPayload } from "./doe";
-import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory } from "./europe-energy";
+import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory, GasStorageBoard, GasStorageHistory, GasStorageSeasonal } from "./europe-energy";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery } from "./gpu";
 import type { CpiBoardPayload } from "./cpi";
 import type { TapeSnapshot } from "./tape";
@@ -388,6 +390,15 @@ export class CloudDataApi {
     );
   }
 
+  /** The listed company each organization name resolves to, if any: a trial's lead sponsors, a page at a time. */
+  async getCloudOrganizationTickers(names: readonly string[], signal?: AbortSignal): Promise<OrganizationTickersResponse> {
+    return this.request<OrganizationTickersResponse>("/market/organization-tickers", {
+      method: "POST",
+      body: JSON.stringify({ names }),
+      signal,
+    });
+  }
+
   async getCloudHistory(
     symbol: string,
     exchange: string,
@@ -620,6 +631,25 @@ export class CloudDataApi {
     return this.request<CarbonHistory>(`/cloud/europe-energy/carbon/history${query}`, { signal: AbortSignal.timeout(30_000) });
   }
 
+  /** European gas storage: the EU aggregate and each member state as of its latest gas day. */
+  async getCloudEuropeGas(): Promise<GasStorageBoard> {
+    return this.request<GasStorageBoard>("/cloud/europe-energy/gas", { signal: AbortSignal.timeout(30_000) });
+  }
+
+  /** One area's gas days from `from` (all kept without one), oldest first. */
+  async getCloudEuropeGasHistory(code: string, from?: string | null): Promise<GasStorageHistory> {
+    const query = from ? `?${new URLSearchParams({ from })}` : "";
+    return this.request<GasStorageHistory>(
+      `/cloud/europe-energy/gas/${encodeURIComponent(code)}/history${query}`,
+      { signal: AbortSignal.timeout(30_000) },
+    );
+  }
+
+  /** One area's latest year against last year and its five-year range, day by day. */
+  async getCloudEuropeGasSeasonal(code: string): Promise<GasStorageSeasonal> {
+    return this.request<GasStorageSeasonal>(`/cloud/europe-energy/gas/${encodeURIComponent(code)}/seasonal`, { signal: AbortSignal.timeout(30_000) });
+  }
+
   async getCloudGpuBoard(): Promise<GpuBoardPayload> {
     return this.request<GpuBoardPayload>("/cloud/gpu/board");
   }
@@ -725,6 +755,12 @@ export class CloudDataApi {
 
   async getPublicInsolvencyNotices(params: InsolvencyNoticesParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
     return this.request<unknown>(`/public/insolvency-notices${distressQuery(params)}`, { signal: signalWithTimeout(options?.signal, 30_000) });
+  }
+
+  async getPublicLetters(params: LettersParams = {}, options?: { signal?: AbortSignal }): Promise<unknown> {
+    const { kinds, ...rest } = params;
+    const query = distressQuery({ kind: kinds?.length ? kinds.join(",") : undefined, ...rest });
+    return this.request<unknown>(`/public/letters${query}`, { signal: signalWithTimeout(options?.signal, 30_000) });
   }
 
   async getCloudIpoCalendar(params: IpoCalendarParams = {}, options?: { signal?: AbortSignal }): Promise<IpoCalendarPayload> {

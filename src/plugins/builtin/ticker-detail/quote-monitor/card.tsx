@@ -14,6 +14,8 @@ import {
   getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
+  EXTENDED_SESSION_MARKS,
+  extendedSessionLineLabel,
   type ExtendedSessionDisplay,
 } from "../../../../market-data/market/status";
 import { t } from "../../../../i18n";
@@ -39,20 +41,20 @@ const DESKTOP_DETAIL_CHAR_PX = 12 * 0.6;
 
 /**
  * The extended print's line, "After-Hours $336.08 -0.17%": the full label
- * where the room allows, else "AH" or "PM" as the heat map marks them, and
- * at the narrowest the mark and the move without the price.
+ * where the room allows, else "AH", "PM" or "ON" as the heat map marks them,
+ * and at the narrowest the mark and the move without the price.
  */
 function extendedLineParts(
   extended: ExtendedSessionDisplay,
   priceText: string,
   fits: (text: string) => boolean,
 ): { label: string; figures: string } | null {
-  const pre = extended.session === "PRE";
+  const mark = EXTENDED_SESSION_MARKS[extended.session];
   const percent = formatPercentRaw(extended.changePercent);
   const candidates = [
-    { label: t(pre ? "Pre-Market" : "After-Hours"), figures: `${priceText} ${percent}` },
-    { label: pre ? "PM" : "AH", figures: `${priceText} ${percent}` },
-    { label: pre ? "PM" : "AH", figures: percent },
+    { label: extendedSessionLineLabel(extended, t), figures: `${priceText} ${percent}` },
+    { label: mark, figures: `${priceText} ${percent}` },
+    { label: mark, figures: percent },
   ];
   return candidates.find(({ label, figures }) => fits(`${label} ${figures}`)) ?? null;
 }

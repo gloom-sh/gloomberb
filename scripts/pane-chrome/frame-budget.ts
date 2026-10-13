@@ -13,8 +13,9 @@ import { serveFixturePage, type FixturePage } from "./page";
  * layout, chart over a table, chart beside a table, chart under a toolbar), a
  * dock divider between a news table and a chart and one between the G layout
  * and the chart beside a table (`nested`, each measured on both sides), the
- * divider of a table in a pane's sidebar, and a chart composer's plot panned
- * back and forth (`cmp`). It
+ * divider of a table in a pane's sidebar, a chart composer's plot panned
+ * back and forth (`cmp`), and the divider beside a chat whose messages wrap
+ * to its width, with the first page of messages and with 500 loaded. It
  * reads what the page's main thread spent (Performance.getMetrics, in thread
  * time), the React commits and the animation frames the page ran, and for a
  * resize how far the frame's edge and the content's edge fell behind the
@@ -122,6 +123,8 @@ interface Scenario {
   canvas?: string;
   /** A page expression that holds once the scenario's content has loaded, for panes that load data. */
   ready?: string;
+  /** Puts the page in the state the drag starts from, once it is ready. */
+  prepare?(cdp: Cdp): Promise<void>;
 }
 
 const partCenter = (selector: string) => `(() => { const r = document.querySelector(${JSON.stringify(selector)}).getBoundingClientRect(); return { x: r.x + Math.min(r.width / 2, 16), y: r.y + r.height / 2 }; })()`;
@@ -140,6 +143,33 @@ const dividerRightOf = (paneId: string) => `(() => {
   return { x: divider.x + divider.width / 2, y };
 })()`;
 const TOP_DIVIDER = dividerRightOf("news:dock");
+const CHAT_DIVIDER = dividerRightOf("chat:a");
+const CHAT_ROWS = "document.querySelectorAll('[data-gloom-role=chat-message]').length";
+const CHAT_LIST = "document.querySelector('[data-gloom-role=chat-message]').parentElement";
+
+/** Scrolls the chat to its top until the channel has nothing older, as a reader who paged far back did, then to its newest message. */
+async function loadWholeChat(cdp: Cdp): Promise<void> {
+  for (let page = 0; page < 30; page += 1) {
+    const rows = await evaluate<number>(cdp, CHAT_ROWS);
+    await evaluate(cdp, `${CHAT_LIST}.scrollTop = 0`);
+    if (!await waitFor(cdp, `${CHAT_ROWS} > ${rows}`, 3_000)) break;
+    await frames(cdp, 2);
+  }
+  await evaluate(cdp, `(() => { const list = ${CHAT_LIST}; list.scrollTop = list.scrollHeight; })()`);
+  await frames(cdp, 10);
+}
+
+/** The chat beside a plain pane: its messages wrap their text to the width the divider gives it. */
+const chatDividerDrag = (name: string, fixture: string, prepare?: (cdp: Cdp) => Promise<void>): Scenario => ({
+  name,
+  fixture,
+  ready: `${CHAT_ROWS} > 0`,
+  prepare,
+  grab: (cdp) => evaluate(cdp, CHAT_DIVIDER),
+  path: (start, t) => ({ x: start.x - Math.sin(t * Math.PI * 2) * 200, y: start.y }),
+  // The newest message, at the bottom of the list the pane opens on.
+  track: { frame: rightOf(pane("chat:a")), content: lastRightOf(`${pane("chat:a")} [data-gloom-role=chat-message]`) },
+});
 const NESTED_DIVIDER = dividerRightOf("chart-bar:dock");
 
 /** A floating pane's corner, dragged out, in past where it started and out again, as the chart and table resizes do. */
@@ -253,6 +283,9 @@ const SCENARIOS: Scenario[] = [
     grab: (cdp) => evaluate(cdp, middleOf(`${pane("chart-composer:a")} [data-gloom-role=composite-chart-panel]`)),
     path: (start, t) => ({ x: start.x + Math.sin(t * Math.PI * 2) * 300, y: start.y }),
   },
+  chatDividerDrag("chat divider drag", "chat"),
+  // A reader who paged far back: every page stays in the list.
+  chatDividerDrag("chat divider drag, 500 messages", "chat&count=500&latency=0", loadWholeChat),
   {
     name: "table column drag",
     fixture: "resize",
@@ -286,6 +319,7 @@ async function measureDrag(cdp: Cdp, page: FixturePage, scenario: Scenario): Pro
   if (!await waitFor(cdp, "window.__paneChrome?.ready === true", 15_000)) throw new Error(`the ${scenario.fixture} fixture did not render`);
   if (scenario.ready && !await waitFor(cdp, scenario.ready, 15_000)) throw new Error(`the ${scenario.name} content did not load`);
   await frames(cdp, 10);
+  await scenario.prepare?.(cdp);
   const start = await scenario.grab(cdp);
   await mouse(cdp, "mouseMoved", start.x, start.y, false);
   await mouse(cdp, "mousePressed", start.x, start.y, true);

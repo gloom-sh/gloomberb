@@ -2,13 +2,20 @@
   "hosts": [
     "api.elections.kalshi.com",
     "api.fda.gov",
+    "api.fiscaldata.treasury.gov",
+    "api.publisher.jodidata.org",
     "api.votehub.com",
+    "apps.fas.usda.gov",
     "clinicaltrials.gov",
     "clob.polymarket.com",
     "data-api.polymarket.com",
     "efts.sec.gov",
     "gamma-api.polymarket.com",
+    "markets.newyorkfed.org",
     "nasdaqtrader.com",
-    "production.dataviz.cnn.io"
+    "production.dataviz.cnn.io",
+    "services-dynarep.ddwa.finra.org",
+    "www.ers.usda.gov",
+    "www.jodidata.org"
   ]
 }

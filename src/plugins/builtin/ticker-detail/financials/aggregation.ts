@@ -234,6 +234,17 @@ function aggregateQuarterlyStatements(
   return aggregate;
 }
 
+/**
+ * The four quarters to the one dated `end`, summed: what a quarterly column
+ * reads a flow over a year from. Null when fewer than four consecutive
+ * quarters end there.
+ */
+export function trailingFourQuarters(quarterlyStatements: readonly FinancialStatement[], end: string) {
+  const sorted = [...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date));
+  const index = sorted.findIndex((statement) => statement.date === end);
+  return index < 3 ? null : aggregateQuarterlyStatements(sorted.slice(index - 3, index + 1), "TTM");
+}
+
 export function computeTTM(quarterlyStatements: FinancialStatement[]) {
   return aggregateQuarterlyStatements([...quarterlyStatements].sort((a, b) => a.date.localeCompare(b.date)).slice(-4), "TTM");
 }

@@ -1,4 +1,4 @@
-import { useCallback, useSyncExternalStore, type RefObject } from "react";
+import { useCallback, useRef, useSyncExternalStore, type RefObject } from "react";
 import { buildAskGloomPaneAttachment } from "../../../../ask-gloom/pane-context";
 import {
   askGloomAboutPane,
@@ -9,13 +9,16 @@ import { domPaneText, terminalPaneText, type CellRect } from "../../../../ask-gl
 import type { DockLeafLayout, FloatingRect, LayoutBounds, ResolvedPane } from "../../../../layout/pane-manager";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import { useRemoteUiRegistry, type RemoteUiRegistry } from "../../../../remote/semantic-tree";
-import { resolveTickerForPane, type AppState } from "../../../../state/app/context";
+import type { AppState } from "../../../../state/app/context";
+import type { LayoutConfig } from "../../../../types/config";
 import { useNativeRenderer } from "../../../../ui";
 import { readRenderableBounds } from "../cursor-occlusion";
 
 interface ShellPaneAskOptions {
   focusedPaneId: string | null;
   getPaneTitle: (pane: ResolvedPane) => string;
+  /** The layout the panes are in, for their `personalData` rules. */
+  layout: LayoutConfig;
   nativePaneChrome: boolean;
   paneMap: Map<string, ResolvedPane>;
   pluginRegistry: PluginRegistry;
@@ -68,6 +71,7 @@ function activePaneTabs(paneId: string, remoteUi: RemoteUiRegistry | null, nativ
 export function useShellPaneAsk({
   focusedPaneId,
   getPaneTitle,
+  layout,
   nativePaneChrome,
   paneMap,
   pluginRegistry,
@@ -79,6 +83,9 @@ export function useShellPaneAsk({
   const canAsk = useSyncExternalStore(subscribeAskGloomAboutPanes, canAskGloomAboutPanes, canAskGloomAboutPanes);
   const nativeRenderer = useNativeRenderer();
   const remoteUi = useRemoteUiRegistry();
+  // Read when asked, so a layout edit does not remake the actions that ask.
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
 
   const readTerminalText = useCallback((paneId: string, cover: LayoutBounds | null | undefined): string | null => {
     const frame = nativeRenderer.captureFrame?.();
@@ -110,12 +117,10 @@ export function useShellPaneAsk({
     }
     const attachment = buildAskGloomPaneAttachment({
       registry: pluginRegistry,
-      instance: pane.instance,
+      pane,
+      state,
+      layout: layoutRef.current,
       title: getPaneTitle(pane),
-      symbol: resolveTickerForPane(state, paneId),
-      paneState: state.paneState[paneId],
-      config: state.config,
-      tickers: state.tickers,
       activeTabs: activePaneTabs(paneId, remoteUi, nativePaneChrome),
       visibleText,
     });

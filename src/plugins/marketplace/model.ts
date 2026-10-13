@@ -41,6 +41,11 @@ export interface RegistryPlugin {
   tier: PluginTier;
   bundled: boolean;
   featured?: boolean;
+  /**
+   * A sponsor's plugin, flagged by the feed from gloom.sh's sponsor list (never
+   * by the plugin itself). It is listed after the featured built-in.
+   */
+  sponsored?: boolean;
   stars: number;
   updatedAt?: string;
   readme?: string;
@@ -85,10 +90,12 @@ export interface InstalledPlugin {
 }
 
 /**
- * `research` holds the built-ins starter packs switch, so a pack's reach is
- * the section above the others; `builtin` the other built-ins.
+ * In list order. `featured` is Gloom Cloud, then `sponsored` the plugins of
+ * Gloom's sponsors, then what can be added. Built-ins follow: `research` holds
+ * the ones starter packs switch, so a pack's reach is exactly that section,
+ * and `builtin` the rest.
  */
-export type MarketplaceSection = "research" | "builtin" | "installed" | "available";
+export type MarketplaceSection = "featured" | "sponsored" | "installed" | "available" | "research" | "builtin";
 
 export interface MarketplaceEntry {
   id: string;
@@ -102,6 +109,8 @@ export interface MarketplaceEntry {
   repo?: string;
   stars: number;
   featured: boolean;
+  /** A sponsor's plugin, as the feed says. Never a built-in. */
+  sponsored: boolean;
   /** Ships inside Gloomberb; there is nothing to install or remove. */
   bundled: boolean;
   installed: boolean;
@@ -141,9 +150,25 @@ export interface MarketplaceEntry {
 
 const TIER_RANK: Record<PluginTier, number> = { official: 0, verified: 1, community: 2 };
 
-function sectionOf(entry: { id: string; installed: boolean; bundled: boolean }): MarketplaceSection {
-  if (entry.bundled) return PACK_PLUGIN_IDS.includes(entry.id) ? "research" : "builtin";
+function sectionOf(entry: {
+  id: string;
+  installed: boolean;
+  bundled: boolean;
+  featured: boolean;
+  sponsored: boolean;
+}): MarketplaceSection {
+  if (entry.bundled) {
+    // A pack plugin stays in the section packs reach, featured or not.
+    if (PACK_PLUGIN_IDS.includes(entry.id)) return "research";
+    return entry.featured ? "featured" : "builtin";
+  }
+  if (entry.sponsored) return "sponsored";
   return entry.installed ? "installed" : "available";
+}
+
+/** Featured by the feed, or by this build's own editorial for a built-in it ships. */
+function isFeatured(id: string, bundled: boolean, feedFeatured: boolean | undefined): boolean {
+  return feedFeatured === true || (bundled && BUILTIN_EDITORIAL[id]?.featured === true);
 }
 
 /**
@@ -225,6 +250,10 @@ export function mergeCatalog(options: {
       // and Update or Remove would then act on a leftover checkout.
       bundled: plugin.bundled || local?.source === "builtin",
     };
+    const flags = {
+      featured: isFeatured(plugin.id, base.bundled, plugin.featured),
+      sponsored: !base.bundled && plugin.sponsored === true,
+    };
     entries.push({
       id: plugin.id,
       name: builtin?.name ?? plugin.name,
@@ -236,7 +265,7 @@ export function mergeCatalog(options: {
       hosts: plugin.hosts,
       repo: plugin.repo,
       stars: plugin.stars,
-      featured: plugin.featured === true,
+      ...flags,
       ...base,
       enabled: local ? local.enabled : plugin.bundled,
       toggleable: local ? local.toggleable : true,
@@ -268,7 +297,7 @@ export function mergeCatalog(options: {
         : plugin.bundled
           ? !plugin.targets.includes(target)
           : !runsExternalPlugins(target) || !plugin.targets.includes(target),
-      section: sectionOf({ id: plugin.id, ...base }),
+      section: sectionOf({ id: plugin.id, ...base, ...flags }),
     });
   }
 
@@ -276,6 +305,7 @@ export function mergeCatalog(options: {
   // different id. Still needs to be manageable.
   for (const local of installedById.values()) {
     const base = { installed: true, bundled: local.source === "builtin" };
+    const flags = { featured: isFeatured(local.id, base.bundled, undefined), sponsored: false };
     entries.push({
       id: local.id,
       name: local.name,
@@ -289,7 +319,7 @@ export function mergeCatalog(options: {
       targets: local.unsupportedTarget ? [] : [target],
       hosts: [],
       stars: 0,
-      featured: false,
+      ...flags,
       ...base,
       enabled: local.enabled,
       toggleable: local.toggleable,
@@ -307,7 +337,7 @@ export function mergeCatalog(options: {
       lastError: local.lastError,
       needsRestart: local.needsRestart === true,
       unsupportedHere: !!local.unsupportedTarget,
-      section: sectionOf({ id: local.id, ...base }),
+      section: sectionOf({ id: local.id, ...base, ...flags }),
     });
   }
 
@@ -422,18 +452,21 @@ export function statusOf(entry: MarketplaceEntry): MarketplaceStatus {
   return { kind: "enabled", text: "on" };
 }
 
-/** Whether a section lists plugins that ship inside Gloomberb. */
-function isBuiltinSection(section: MarketplaceSection): boolean {
-  return section === "research" || section === "builtin";
-}
-
 /**
- * Sorted for a sectioned list: the research built-ins in pack order, the
- * other built-ins, then installed, then available; within the last two the
- * curated order: featured, then tier, then stars.
+ * Sorted for a sectioned list: Gloom Cloud, sponsors' plugins, installed,
+ * available, then the research built-ins in pack order and the other
+ * built-ins. Outside the built-ins the curated order: featured, then tier,
+ * then stars.
  */
 export function sortEntries(entries: readonly MarketplaceEntry[]): MarketplaceEntry[] {
-  const SECTION_RANK: Record<MarketplaceSection, number> = { research: 0, builtin: 1, installed: 2, available: 3 };
+  const SECTION_RANK: Record<MarketplaceSection, number> = {
+    featured: 0,
+    sponsored: 1,
+    installed: 2,
+    available: 3,
+    research: 4,
+    builtin: 5,
+  };
   return [...entries].sort((a, b) => {
     if (a.section !== b.section) return SECTION_RANK[a.section] - SECTION_RANK[b.section];
     if (a.section === "research") return PACK_PLUGIN_IDS.indexOf(a.id) - PACK_PLUGIN_IDS.indexOf(b.id);
@@ -455,8 +488,9 @@ export function filterEntries(
 
   return entries.filter((entry) => {
     // Core modules with no switch are not something the user manages; a
-    // toggleable built-in is, unless the built-in filter is off.
-    if (isBuiltinSection(entry.section) && (!entry.toggleable || !options.showBuiltin)) return false;
+    // toggleable built-in is, Gloom Cloud included, unless the built-in
+    // filter is off.
+    if (entry.bundled && (!entry.toggleable || !options.showBuiltin)) return false;
     if (options.category && !entry.categories.includes(options.category)) return false;
     if (!query) return true;
     return [entry.name, entry.id, entry.tagline, entry.description, ...entry.categories]
@@ -477,9 +511,11 @@ export type MarketplaceRow =
   | { type: "entry"; entry: MarketplaceEntry };
 
 export const SECTION_LABELS: Record<MarketplaceSection, string> = {
-  research: "Research and markets",
+  featured: "Featured",
+  sponsored: "Sponsored",
   installed: "Installed",
   available: "Available",
+  research: "Research and markets",
   builtin: "Built in",
 };
 

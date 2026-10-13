@@ -99,6 +99,8 @@ export const earningsModule: PluginModule = {
       name: "Earnings Calendar",
       icon: "$",
       component: EarningsPane,
+      // ERN and EVTS open this pane: EVTS sets `board`, a scoped ERN sets the tickers.
+      identitySettings: ["board", "symbols", "symbolsText"],
       personalData: ({ settings, tickers }) => {
         const symbols = settings.board === true ? [] : scopedSymbolsFromSettings(settings);
         // Single-ticker report history is public. The board marks owned names.

@@ -125,6 +125,17 @@ export interface PaneDef {
    * win over the binding.
    */
   tickerFollower?: boolean | ((pane: PaneInstanceConfig) => boolean);
+  /**
+   * For a pane type that two or more functions open (ERN and EVTS): the settings that say
+   * what a window shows, as against how (a range, a toggle, a column choice). Opening a
+   * function again focuses a window whose binding, params and settings match what the
+   * function opens; a window with a setting of its own that is not listed here is still that
+   * window, and one with a listed setting the function does not set belongs to another
+   * function and is left alone. Without it, a pane type opened by several functions is
+   * matched on its settings exactly, and a window that picked up any setting is not found.
+   * An empty list says binding and params alone name the window.
+   */
+  identitySettings?: readonly string[];
   /** Renderer-neutral data model used by CLI functions, automation, and hosted tools. */
   headless?: HeadlessPaneDefinition;
   /**
@@ -146,6 +157,14 @@ export interface PaneDef {
    */
   reportNotices?(settings: Readonly<Record<string, unknown>>): string[];
   /**
+   * What a rendered-view report prints in place of the pane when a sign-in
+   * wall or the Pro lock covers all of it: what is locked, what can still be
+   * read without it and where, and how to unlock it. Without it the report
+   * prints the wall's own words. Either way it cites no source, since nothing
+   * was read.
+   */
+  reportLockNote?(lock: { gate: "sign-in" | "pro"; symbol: string | null }): string;
+  /**
    * What a rendered-view report needs before it shows anything, such as a
    * sign-in: `gloomberb catalog` lists it under Requires, as it does a
    * `headless` model's `discovery.dataRequirements`.
@@ -164,9 +183,14 @@ export interface PaneDef {
   portableShare?: PanePortableShareDef;
   /**
    * The person's own data the pane shows, so posting a picture of it to chat
-   * asks first. A function decides per instance from what it shows now (a
-   * chat pane on a public channel, a quote of a ticker not held). Leave it
-   * off for market data.
+   * and attaching it to an Ask Gloom question ask first. A function decides
+   * per instance from what it shows now (a chat pane on a public channel, a
+   * quote of a ticker not held), and a function that returns null opts that
+   * instance out. Leave it off for market data. A pane that says nothing is
+   * still asked about when its plugin connects a broker (`holdings`) or the
+   * pane keeps fields private when shared (`portableShare.private`,
+   * `personal`), for plugins written before this field existed; declare it
+   * to say exactly what the pane shows.
    */
   personalData?: PanePersonalData | ((context: PanePersonalDataContext) => PanePersonalData | null);
   /**
@@ -178,10 +202,11 @@ export interface PaneDef {
 
 /**
  * Kinds of personal data a pane can show: `holdings` (positions, balances,
- * orders, profit and loss), `account` (account numbers, email, plan) and
- * `messages` (private conversations).
+ * orders, profit and loss), `account` (account numbers, email, plan),
+ * `messages` (private conversations) and `personal` (the person's own data
+ * of a kind the pane does not name).
  */
-export type PanePersonalData = "holdings" | "account" | "messages";
+export type PanePersonalData = "holdings" | "account" | "messages" | "personal";
 
 /**
  * An option of a rendered-view report, which sets the pane setting of its key,
@@ -334,6 +359,8 @@ interface PaneTemplateShortcut {
   prefix: string;
   /** Other mnemonics for the same view (FFIP for WIRP). They open it when typed but are not listed as separate rows. */
   aliases?: readonly string[];
+  /** Keep this shortcut executable when typed, but omit its pane from command-bar browse rows. Defaults to true. */
+  showInBrowse?: boolean;
   argPlaceholder?: string;
   argKind?: "text" | "ticker" | "ticker-list";
   /**

@@ -16,7 +16,7 @@ import {
   getExtendedSessionDisplay,
   getQuoteSessionFields,
   getRegularSessionDisplay,
-  marketStateLabel,
+  quoteSessionLabel,
   type ExtendedSession,
 } from "../../market-data/market/status";
 import { formatCompact, formatDistributionAmount, formatPercent, formatPercentRaw } from "../../utils/format";
@@ -62,6 +62,7 @@ import {
 } from "./options-chain";
 import { DEFAULT_LEAPS_CRITERIA, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions } from "./options-leaps";
 import type { CliResultColumn } from "../result";
+import type { PriceHistoryResult } from "../../types/price-history";
 import {
   exportRowsTable,
   reportFooterLines,
@@ -70,9 +71,12 @@ import {
 } from "../report-tables";
 import {
   historyBarStatusNote,
+  historyCoverageWarning,
   historyFacts,
   historyFlagNote,
   historyGapNote,
+  historyJumpNote,
+  historyUnbrokenFrom,
   historyAllRangeYears,
   historyIntervalsByRange,
   historyNotes,
@@ -89,7 +93,9 @@ import { newsFallbackText, newsSearchHeading, newsSearchText, newsSearchTextProb
 import { formatUtcTime } from "../../utils/utc-time";
 import { isFiniteNumber } from "../../utils/guards";
 import { exportedFundamentals } from "../../utils/price-earnings";
-import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness } from "../freshness";
+import { fundamentalsFreshness, fxPairFreshness, quotesFreshness, rowsFreshness, valuationFreshness } from "../freshness";
+import { atRegularSessionPrice } from "../../market-data/quotes/regular-session-valuation";
+import { selectMarketCapitalization } from "../../utils/market-capitalization";
 import {
   barHistoryFreshness,
   barResolutionFromDates,
@@ -128,13 +134,15 @@ import {
 import { indexRootAlsoLine, indexRootFor, indexRootTryLine, isYieldIndexSymbol } from "../index-roots";
 import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListingAbroad, noListingCalendarNote } from "../earnings-calendar";
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
-import { providerMissReason } from "../../sources/provider-errors";
-import { isNotATickerMessage } from "../not-a-ticker";
+import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
+import { isNotATickerMessage, withListingSuggestion } from "../not-a-ticker";
+import { describeSuggestion, suggestListing } from "../listing-suggestion";
 import { splitSymbolArgs } from "../symbol-args";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
 import { subMinuteDataMessage } from "../known-gaps";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
+import { looksLikeCurrencyPair } from "../../utils/currency-pair";
 import { isUsListingExchange } from "../../utils/exchanges";
 import { describeTickerChange, startTickerChangeLookup, tickerChangeLine, type TickerChange } from "../../tickers/ticker-changes";
 import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
@@ -245,6 +253,7 @@ const QUOTE_LEAD_COLUMNS = [
   // Text drops a column no row fills, so a table without an extended print stays as narrow as before.
   extendedColumn("PRE"),
   extendedColumn("POST"),
+  extendedColumn("OVERNIGHT"),
   { key: "session", header: "Session", shrink: false },
 ];
 
@@ -261,17 +270,21 @@ function yieldChangeCell(row: QuoteRow): string {
   return row.changeBasisPoints == null ? "" : colorBySign(formatBasisPoints(row.changeBasisPoints / 100, 1), row.changeBasisPoints);
 }
 
-/** The pre-market or after-hours print and its move from the regular close, in its own column. */
+/**
+ * The pre-market, after-hours or overnight print and its move from the
+ * regular close, in its own column; "mid" when it is a bid and ask midpoint.
+ */
 function extendedColumn(session: ExtendedSession) {
+  const price = (row: QuoteRow) => row.extendedMark ? `${row.extendedPrice} mid` : row.extendedPrice;
   return {
-    key: session === "PRE" ? "preMarket" : "afterHours",
+    key: session === "PRE" ? "preMarket" : session === "POST" ? "afterHours" : "overnight",
     header: EXTENDED_SESSION_LABELS[session],
     align: "right" as const,
     value: (row: QuoteRow) => row.extendedSession === session && row.extendedPrice
-      ? [row.extendedPrice, row.extendedChangePercent == null ? "" : formatPercentRaw(row.extendedChangePercent)].join(" ").trim()
+      ? [price(row), row.extendedChangePercent == null ? "" : formatPercentRaw(row.extendedChangePercent)].join(" ").trim()
       : "",
     format: (value: unknown, row: QuoteRow) => (
-      value ? [row.extendedPrice, formatChangePercentCell(row.extendedChangePercent)].join(" ").trim() : ""
+      value ? [price(row), formatChangePercentCell(row.extendedChangePercent)].join(" ").trim() : ""
     ),
   };
 }
@@ -361,7 +374,9 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       rawExtendedPrice: extended?.price ?? null,
       extendedChange: extended?.change ?? null,
       extendedChangePercent: roundedPercent(extended?.changePercent),
-      session: quote?.marketState ? marketStateLabel(quote.marketState) : "",
+      // The extended price is the session's bid and ask midpoint, nothing having traded in it.
+      extendedMark: extended?.mark === true,
+      session: quoteSessionLabel(quote) ?? "",
       // The close the shown move is measured from: the one before the session Last is.
       previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
       dayRange: quote?.low != null && quote.high != null
@@ -696,7 +711,7 @@ async function answerQuote(
     root ? indexRootTryLine(root, request.command) : null,
     other || listing.exchange ? null : futuresTryLine(listing.symbol, request),
   ].filter((line): line is string => !!line);
-  if (!other && tryLines.length === 0) return { result, listing, notes: [] };
+  if (!other && tryLines.length === 0) return { result: await withCurrencyPairHint(result, market), listing, notes: [] };
   const message = other?.message ?? `${listing.symbol} has no ${request.noun}.`;
   const details = [other?.details, ...tryLines].filter(Boolean).join("\n");
   const oneLine = [
@@ -705,6 +720,21 @@ async function answerQuote(
     ...tryLines,
   ].filter(Boolean).join(" ");
   return { result, listing, failure: { message, details, oneLine }, notes: [] };
+}
+
+/**
+ * A symbol written like a currency pair that is not a ticker (USD_NGN, as some
+ * FX feeds write a pair) names the listing `gloomberb search` finds nearest to
+ * it, as `watchlist add` does: "Did you mean USDNGN=X (US Dollar/Nigerian
+ * Naira)?". When search finds nothing near, the row keeps its own error and its
+ * search hint.
+ */
+async function withCurrencyPairHint(result: QuoteBatchResult, market: MarketContext): Promise<QuoteBatchResult> {
+  const message = errorMessage(result.error);
+  const symbol = message ? notATickerSymbol(message) : null;
+  if (!message || !symbol || !looksLikeCurrencyPair(symbol)) return result;
+  const suggestion = await suggestListing(symbol, market);
+  return suggestion ? { ...result, error: withListingSuggestion(message, describeSuggestion(suggestion)) } : result;
 }
 
 /** A crypto pair that will not load points at the crypto board. Structured formats keep the error as thrown. */
@@ -744,16 +774,17 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
     const load = () => market.dataProvider.getPriceHistoryWithMetadata
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
-      : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points) => ({ points, resolution: null }));
+      : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
     const quoted = loadListingQuote(market.dataProvider, listing);
     const fate = listingFateLoader(listing, market, quoted);
-    const [{ points, resolution }, quote] = await Promise.all([
+    const [loaded, quote] = await Promise.all([
       loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, {
         command: range === "1Y" ? "history" : `history --range ${range}`, noun: "history", fate,
       })
         .catch((error) => failHistory(error, listing.key, ctx)),
       quoted,
     ]);
+    const { points, resolution } = loaded;
     const identity = listingIdentity(listing, quote);
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
     const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
@@ -783,7 +814,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
       ...listingFateNotes(await fate(), { served: data.length > 0, firstDate: data[0]?.date }),
       ...await listingChoiceNotes(listing, market, quote, venues),
-      ...historyNotes(range, interval, data[0]?.date), gaps ?? [], historyFlagNote(data) ?? [], historyBarStatusNote(data) ?? [],
+      ...historyNotes(range, interval, data[0]?.date), historyCoverageWarning(range, loaded) ?? [],
+      gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyBarStatusNote(data) ?? [],
     ].flat();
     const priceColumns: CliResultColumn[] = [
       intraday
@@ -821,6 +853,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         interval,
         firstDate: data[0]?.date ?? null,
         lastDate: data.at(-1)?.date ?? null,
+        // The first bar after the last gap or jump; the first bar when there is none.
+        unbrokenFrom: historyUnbrokenFrom(data) ?? data[0]?.date ?? null,
         bars: data.length,
         asOf: freshness?.asOf ?? null,
         ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
@@ -831,16 +865,14 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
       dateKey: "date",
       textColumns: [...priceColumns, flagTextColumn],
-      // Every exported row says its currency, what a price is in and its bar size, so it survives head and concatenation.
       columns: [
         ...priceColumns,
-        { key: "currency", header: "Currency" },
-        { key: "unit", header: "Unit" },
-        { key: "interval", header: "Interval" },
         flagColumn,
         ...marked ? [{ key: "partial", header: "Partial" }, { key: "filled", header: "Filled" }] : [],
         ...volume ? [{ key: "volumeUnit", header: "Volume unit" }, { key: "volumeNote", header: "Volume note" }] : [],
       ],
+      // Every exported row says what it is a bar of, the currency a price is in and its bar size, so it survives head and concatenation.
+      exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: unit.currency ?? unit.unit, interval },
     });
   });
 }
@@ -889,15 +921,28 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       ...financials,
     };
     if (view !== "statements") {
-      const freshness = fundamentalsFreshness(financials);
+      // A valuation is measured at the quote's regular session price, so the quote dates it.
+      const freshness = view === "valuation" ? valuationFreshness(financials) : fundamentalsFreshness(financials);
+      // Market cap, the multiples and the yield at the regular session price, as the text gives them; the quote stays as sent.
+      const priced = atRegularSessionPrice(financials);
+      const capitalization = selectMarketCapitalization(priced.quote, priced.fundamentals);
       ctx.printResult({
         // JSON reads a multiple over a loss as null with its reason, never as a number.
-        data: { ...data, fundamentals: exportedFundamentals(data.fundamentals) },
+        data: {
+          ...data,
+          ...view === "valuation" ? {
+            ...getQuoteSessionFields(financials.quote),
+            marketCap: capitalization?.value ?? null,
+            marketCapCurrency: capitalization?.currency ?? null,
+          } : {},
+          fundamentals: exportedFundamentals(priced.fundamentals),
+        },
         freshness,
         ...(choice.length > 0 ? { warnings: choice } : {}),
       }, {
         text: () => renderFundamentalsReport(data, view),
         ...(tabular ? { tables: selectTables(fundamentalsReportTables(data, view, freshness)) } : {}),
+        exportIdentity: { symbolOrSeries: listing.key },
       });
       return;
     }
@@ -929,6 +974,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       rows: () => rows,
       columns: STATEMENT_COLUMNS,
       ...(tables && ctx.cliOptions.format === "csv" ? { tables } : {}),
+      // Annual statements in the company's reporting currency.
+      exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: rows.find((row) => row.currency)?.currency ?? null, interval: "annual" },
     });
   });
 }
@@ -1318,6 +1365,7 @@ async function runHolders(
         tables: [exportRowsTable("Holders", columns, shownRows)],
         footer: reportFooterLines({ freshness, notes: notices }),
       },
+      exportIdentity: { symbolOrSeries: listing.key },
       summary: () => [
         [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? "", unvaluedNote ?? ""].filter(Boolean).join(" "),
         insiderCommand ? insiderSummary(data, ownerTypes, listing, identity, form4) : "",
@@ -1577,6 +1625,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     })));
     ctx.printResult({ data: [row], freshness }, {
       text: () => describeFxRate(request, rate),
+      // The rate is the base currency's price of one unit of the other, at the latest quote of each leg.
+      exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: "spot" },
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },
@@ -1689,7 +1739,14 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Bars",
         lines: [
           `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
-          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every exported row (--csv, --ndjson, --json) carries currency, interval and flag.",
+          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every --csv and --ndjson row carries its flag and ends with symbol_or_series, currency_or_unit, interval, source and as_of; --json rows carry currency, unit, interval and flag.",
+          "A break in the series flags the bar after it, which keeps its prices: gap after more than three months with no bar (weeks for weekly, daily and intraday bars), jump when the close is over 100 times the one before or under a hundredth of it. A warning names each break, and the heading says the date the series runs unbroken from.",
+        ],
+      }, {
+        title: "Long history",
+        lines: [
+          "ZAR has daily FRED data from 1980: gloomberb fred DEXSFUS --start 1980 --sort asc --csv",
+          "NGN, SAR and ILS have no FRED series. Their daily bars cover the last five years (gloomberb fn G USDNGN=X --rangePreset 5Y --chartResolution 1d --csv); before that there are monthly bars only (gloomberb history USDNGN=X --range ALL).",
         ],
       }],
       examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history ZAR=X --tail 5", "history AAPL --range 5Y --csv > aapl.csv"],

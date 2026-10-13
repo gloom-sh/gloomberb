@@ -9,6 +9,10 @@ import { exposureModule } from "./builtin/exposure";
 import { supplyChainModule } from "./builtin/supply-chain";
 import { awardsModule } from "./builtin/awards";
 import { debtMaturitiesModule } from "./builtin/debt-maturities";
+import { fixedIncomeModule } from "./builtin/fixed-income";
+import { primaryDealersModule } from "./builtin/primary-dealers";
+import { traceBondsModule } from "./builtin/trace-bonds";
+import { treasuryDailyModule } from "./builtin/treasury-daily";
 import { revenueBreakdownModule } from "./builtin/revenue-breakdown";
 import { mnaModule } from "./builtin/mna";
 import { cryptoBoardModule } from "./builtin/crypto-board";
@@ -54,6 +58,9 @@ import { futuresModule } from "./builtin/futures";
 import { futuresCurveModule } from "./builtin/futures-curve";
 import { cotModule } from "./builtin/cot";
 import { doeModule } from "./builtin/doe";
+import { commodityBalancesModule } from "./builtin/commodity-balances";
+import { jodiModule } from "./builtin/jodi";
+import { commoditiesEnergyModule } from "./builtin/commodities-energy";
 import { gpuModule } from "./builtin/gpu";
 import { fxMatrixModule } from "./builtin/fx-matrix";
 import { docsModule } from "./builtin/docs";
@@ -78,7 +85,7 @@ import { peBandModule } from "./builtin/pe-band";
 import { macroDayModule } from "./builtin/macro-day";
 import { ivHistoryModule } from "./builtin/iv-history";
 import { backtestModule } from "./builtin/backtest";
-import { composeBuiltinPlugin } from "./builtin/plugin-module";
+import { composeBuiltinPlugin, type PluginModule } from "./builtin/plugin-module";
 import { portfolioListModule } from "./builtin/portfolio-list";
 import { researchModule } from "./builtin/research";
 import { scannerModule } from "./builtin/scanner";
@@ -111,11 +118,17 @@ import {
   newsPluginMeta,
   portfolioPluginMeta,
 } from "./builtin/builtin-plugin-meta";
+import { FIXED_INCOME_HOSTS } from "./builtin/fixed-income/model";
 
 const browserApplicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
   modules: [layoutManagerModule, helpModule, changelogModule, connectionsModule, docsModule],
 });
+
+const runtimeOnly = (module: PluginModule): PluginModule => {
+  const { panes: _panes, paneTemplates: _paneTemplates, ...runtime } = module;
+  return runtime;
+};
 
 const browserPortfolioPlugin = composeBuiltinPlugin({
   ...portfolioPluginMeta,
@@ -193,7 +206,12 @@ const browserScreenersPlugin = composeBuiltinPlugin({
 
 const browserFuturesCommoditiesPlugin = composeBuiltinPlugin({
   ...futuresCommoditiesPluginMeta,
-  modules: [futuresModule, futuresCurveModule, cotModule, doeModule],
+  modules: [
+    commoditiesEnergyModule,
+    ...[futuresModule, futuresCurveModule, cotModule, doeModule].map(runtimeOnly),
+    { module: runtimeOnly(commodityBalancesModule), stateId: "commodity-balances" },
+    { module: runtimeOnly(jodiModule), stateId: "jodi" },
+  ],
 });
 
 const browserCryptoPlugin = composeBuiltinPlugin({
@@ -240,15 +258,20 @@ const browserRatesMacroPlugin = composeBuiltinPlugin({
 const browserCreditPlugin = composeBuiltinPlugin({
   ...creditPluginMeta,
   modules: [
+    fixedIncomeModule,
     cdsModule,
     creditBoardsModule,
     creditConditionsModule,
     treasuryAuctionsModule,
     bondCalculatorModule,
+    traceBondsModule,
+    treasuryDailyModule,
+    primaryDealersModule,
     { module: creditDocumentsModule, stateId: "ticker-research" },
     { module: debtMaturitiesModule, stateId: "ticker-research" },
   ],
 });
+browserCreditPlugin.hosts = [...FIXED_INCOME_HOSTS];
 
 // The web app has never carried the earnings calendar. The call transcripts
 // and the ripple ran with Ticker Research here, so their pane state is under

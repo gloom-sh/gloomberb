@@ -803,6 +803,8 @@ export const zhCN: Record<string, string> = {
   "private": "私有",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the line on its card and its icon's tooltip.
+  "Bot run by Gloom": "由 Gloom 运营的机器人",
   "Direct message": "私信",
   "Group chat": "群聊",
   "Group": "群组",
@@ -819,6 +821,15 @@ export const zhCN: Record<string, string> = {
   "Read-only chat. Log in or sign up to send.": "聊天为只读模式。登录或注册后才能发送消息。",
   "Saved login found. Log in again to send.": "发现已保存的登录信息。请重新登录后发送消息。",
   "Verify your email to send messages.": "验证邮箱后才能发送消息。",
+  // The first-chat prompt for an account still on its signup handle.
+  "Choose a handle": "设置用户名",
+  "Choose Handle": "设置用户名",
+  "Hide Handle Prompt": "隐藏用户名提示",
+  "@{handle} is taken. Try another.": "@{handle} 已被占用，换一个试试。",
+  "@{handle} isn't available. Try another.": "@{handle} 不可用，换一个试试。",
+  "Use 3-30 letters, numbers or _, starting with a letter.": "使用 3-30 个字母、数字或 _，并以字母开头。",
+  "Couldn't save your handle. Try again.": "无法保存用户名，请重试。",
+  "You're @{handle} now.": "你现在是 @{handle}。",
   "Verify your email to use Cloud tweets.": "验证邮箱后才能使用 Cloud tweets。",
   "Resend Verification Email": "重新发送验证邮件",
   "Sign in to {action}.": "登录后即可{action}。",
@@ -1025,6 +1036,8 @@ export const zhCN: Record<string, string> = {
   "Waiting for quote...": "等待行情...",
   "Pre-Market": "盘前",
   "After-Hours": "盘后",
+  "Overnight": "夜盘",
+  "mid": "中间价",
   "Price Return": "价格收益",
   "Fundamentals": "基本面",
   "Positions": "持仓",
@@ -1105,6 +1118,7 @@ export const zhCN: Record<string, string> = {
   "PRE-MKT": "盘前",
   "OPEN": "盘中",
   "AFTER-HRS": "盘后",
+  "OVERNIGHT": "夜盘",
   "CLOSED": "休市",
   "Log In": "登录",
   "Sign Up": "注册",

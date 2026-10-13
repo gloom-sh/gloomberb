@@ -7,6 +7,7 @@ import {
   type DrugReport,
   type DrugRole,
   type OpenFdaDataset,
+  type OpenFdaFilters,
   type OpenFdaPage,
   type OpenFdaRecord,
 } from "./types";
@@ -95,11 +96,55 @@ const DATASET_PATH: Record<OpenFdaDataset, string> = {
   recall: "/drug/enforcement.json",
 };
 
+const DATE_FIELD: Record<OpenFdaDataset, string> = {
+  drug: "receivedate",
+  device: "date_received",
+  recall: "recall_initiation_date",
+};
+
 const DATASET_SORT: Record<OpenFdaDataset, string> = {
   drug: "receivedate:desc",
   device: "date_received:desc",
   recall: "recall_initiation_date:desc",
 };
+
+const DRUG_ROLE_CODES: Record<DrugRole, string> = { suspect: "1", concomitant: "2", interacting: "3" };
+const OUTCOME_CLAUSES: Record<string, string> = {
+  death: "seriousnessdeath:\"1\"",
+  serious: "serious:\"1\"",
+  not_serious: "serious:\"2\"",
+};
+const DEVICE_EVENTS: Record<string, string> = { death: "Death", injury: "Injury", malfunction: "Malfunction" };
+const RECALL_STATUSES: Record<string, string> = { ongoing: "Ongoing", completed: "Completed", terminated: "Terminated" };
+
+const compactDate = (value: string | undefined): string | null =>
+  value && /^\d{4}-\d{2}-\d{2}$/.test(value) ? value.replace(/-/g, "") : null;
+
+/**
+ * The filter clauses for one dataset. A drug's role is per drug and openFDA
+ * cannot tie it to the drug the search matched, so the role clause only keeps
+ * reports where some drug has that role; the rows check the matched one.
+ */
+function filterClauses(dataset: OpenFdaDataset, filters: OpenFdaFilters): string[] {
+  const clauses: string[] = [];
+  if (dataset === "drug") {
+    const outcome = filters.outcome ? OUTCOME_CLAUSES[filters.outcome] : undefined;
+    if (outcome) clauses.push(outcome);
+    if (filters.role && filters.role !== "all") clauses.push(`patient.drug.drugcharacterization:"${DRUG_ROLE_CODES[filters.role]}"`);
+  }
+  if (dataset === "device") {
+    const event = filters.event ? DEVICE_EVENTS[filters.event] : undefined;
+    if (event) clauses.push(`event_type:"${event}"`);
+  }
+  if (dataset === "recall") {
+    if (filters.recallClass && filters.recallClass !== "all") clauses.push(`classification:"Class ${"I".repeat(Number(filters.recallClass))}"`);
+    const status = filters.status ? RECALL_STATUSES[filters.status] : undefined;
+    if (status) clauses.push(`status:"${status}"`);
+  }
+  const since = compactDate(filters.since);
+  if (since) clauses.push(`${DATE_FIELD[dataset]}:[${since} TO 99991231]`);
+  return clauses;
+}
 
 /**
  * One page of a dataset, newest first. The search clauses are joined with
@@ -107,10 +152,14 @@ const DATASET_SORT: Record<OpenFdaDataset, string> = {
  * as `%2BOR%2B` and matches nothing. The parentheses matter too: without
  * them three recall clauses matched 4 records where the firm alone matched 156.
  */
-export function buildOpenFdaUrl(dataset: OpenFdaDataset, query: string, offset = 0): string {
+export function buildOpenFdaUrl(dataset: OpenFdaDataset, query: string, offset = 0, filters: OpenFdaFilters = {}): string {
   const params = new URLSearchParams();
   const text = query.trim();
-  if (text) params.set("search", `(${SEARCH_FIELDS[dataset].map((field) => `${field}:${quoted(text)}`).join(" OR ")})`);
+  const clauses = [
+    ...(text ? [`(${SEARCH_FIELDS[dataset].map((field) => `${field}:${quoted(text)}`).join(" OR ")})`] : []),
+    ...filterClauses(dataset, filters),
+  ];
+  if (clauses.length > 0) params.set("search", clauses.join(" AND "));
   params.set("sort", DATASET_SORT[dataset]);
   params.set("limit", String(PAGE_SIZE));
   if (offset > 0) params.set("skip", String(Math.min(offset, MAX_SKIP)));
@@ -140,9 +189,11 @@ const SERIOUSNESS: Array<[string, string]> = [
 /**
  * A FAERS report as the search found it. Reports list every drug the patient
  * took, so the row names the drug the search matched, with the reporter's
- * role for it, rather than whichever drug happens to come first.
+ * role for it, rather than whichever drug happens to come first. With a role
+ * asked for, the row names a drug in that role, and a report whose matched
+ * drugs all play another part is not a row.
  */
-export function parseDrugReport(raw: unknown, query = ""): DrugReport | null {
+export function parseDrugReport(raw: unknown, query = "", role: DrugRole | null = null): DrugReport | null {
   const report = asRecord(raw);
   const id = asString(report.safetyreportid);
   if (!id) return null;
@@ -160,7 +211,13 @@ export function parseDrugReport(raw: unknown, query = ""): DrugReport | null {
       matched: fieldsMatch([asString(drug.medicinalproduct), ...brand, ...generic], query),
     };
   });
-  const shown = drugs.find((drug) => drug.matched) ?? drugs.find((drug) => drug.role === "suspect") ?? drugs[0];
+  const matched = drugs.filter((drug) => drug.matched);
+  // A search openFDA matched on a name this parser reads differently still names a drug.
+  const candidates = matched.length > 0 ? matched : drugs;
+  const shown = role
+    ? candidates.find((drug) => drug.role === role)
+    : matched.find((drug) => drug.role === "suspect") ?? matched[0] ?? drugs.find((drug) => drug.role === "suspect") ?? drugs[0];
+  if (role && !shown) return null;
   const outcomes = SERIOUSNESS.filter(([field]) => asString(report[field]) === "1").map(([, label]) => label);
   const serious = asString(report.serious);
   const outcome = outcomes.includes("Death") ? "Death" : serious === "1" ? "Serious" : serious === "2" ? "Not serious" : null;
@@ -179,6 +236,7 @@ export function parseDrugReport(raw: unknown, query = ""): DrugReport | null {
     outcome,
     outcomes,
     manufacturer: shown && shown.manufacturers.length === 1 ? shown.manufacturers[0]! : null,
+    labelers: shown?.manufacturers.length ?? 0,
     reporter: REPORTERS[asString(primary.qualification) ?? ""] ?? null,
     country: asString(report.occurcountry) ?? asString(primary.reportercountry) ?? null,
   };
@@ -206,7 +264,7 @@ export function parseDeviceReport(raw: unknown, query = ""): DeviceReport | null
     eventType: usable(asString(report.event_type)) ?? null,
     model: usable(asString(shown.model_number)) ?? null,
     productCode: asString(shown.device_report_product_code) ?? null,
-    productProblems: asStringArray(report.product_problems),
+    productProblems: [...new Set(asStringArray(report.product_problems))],
     patientProblems: [...new Set(patientProblems)],
     reportNumber: asString(report.report_number) ?? null,
   };
@@ -248,20 +306,37 @@ export function parseDrugRecall(raw: unknown): DrugRecall | null {
   };
 }
 
-function parseRecord(dataset: OpenFdaDataset, raw: unknown, query: string): OpenFdaRecord | null {
-  if (dataset === "drug") return parseDrugReport(raw, query);
+const roleFilter = (filters: OpenFdaFilters): DrugRole | null =>
+  filters.role && filters.role !== "all" ? filters.role : null;
+
+function parseRecord(dataset: OpenFdaDataset, raw: unknown, query: string, filters: OpenFdaFilters): OpenFdaRecord | null {
+  if (dataset === "drug") return parseDrugReport(raw, query, roleFilter(filters));
   if (dataset === "device") return parseDeviceReport(raw, query);
   return parseDrugRecall(raw);
 }
 
+/**
+ * Whether rows are dropped after openFDA answers: a role with a search, where
+ * the role must be the matched drug's. Without a search the row names a drug
+ * in that role, which the role clause already guarantees.
+ */
+const filtersRows = (dataset: OpenFdaDataset, query: string, filters: OpenFdaFilters): boolean =>
+  dataset === "drug" && !!query.trim() && !!roleFilter(filters);
+
 /** One page of a dataset's answer, with what it says matched and how far paging reaches. */
-export function parseOpenFdaPage(dataset: OpenFdaDataset, payload: unknown, query: string, offset: number): OpenFdaPage {
+export function parseOpenFdaPage(
+  dataset: OpenFdaDataset,
+  payload: unknown,
+  query: string,
+  offset: number,
+  filters: OpenFdaFilters = {},
+): OpenFdaPage {
   const data = asRecord(payload);
   const raw = Array.isArray(data.results) ? data.results : [];
   const meta = asRecord(data.meta);
   const total = asRecord(meta.results).total;
   const matched = typeof total === "number" && Number.isFinite(total) ? total : offset + raw.length;
-  const rows = raw.map((entry) => parseRecord(dataset, entry, query)).filter((row): row is OpenFdaRecord => !!row);
+  const rows = raw.map((entry) => parseRecord(dataset, entry, query, filters)).filter((row): row is OpenFdaRecord => !!row);
   const nextOffset = offset + raw.length;
   const reachable = Math.min(matched, MAX_SKIP + PAGE_SIZE);
   const hasMore = raw.length > 0 && nextOffset < reachable;
@@ -270,24 +345,57 @@ export function parseOpenFdaPage(dataset: OpenFdaDataset, payload: unknown, quer
     hasMore,
     nextOffset: hasMore ? nextOffset : null,
     matched,
+    matchedExact: !filtersRows(dataset, query, filters),
     lastUpdated: asString(meta.last_updated) ?? null,
     windowLimited: !hasMore && nextOffset >= reachable && matched > reachable,
   };
 }
 
+/** A page that drops rows reads on until it holds this many, or has read this many pages. */
+const FILL_ROWS = 20;
+const MAX_FILL_REQUESTS = 3;
+
 export class OpenFdaClient {
-  /** A page of one dataset. No match is an empty page; any other failure throws. */
-  async listPage(dataset: OpenFdaDataset, query: string, offset: number, signal?: AbortSignal): Promise<OpenFdaPage> {
-    const response = await openFdaFetch.fetch(buildOpenFdaUrl(dataset, query, offset), {
+  /**
+   * A page of one dataset. No match is an empty page; any other failure
+   * throws. When the rows are filtered after openFDA answers, the page reads
+   * on so a sparse answer still fills the list and scrolling can load more.
+   */
+  async listPage(
+    dataset: OpenFdaDataset,
+    query: string,
+    offset: number,
+    signal?: AbortSignal,
+    filters: OpenFdaFilters = {},
+  ): Promise<OpenFdaPage> {
+    const first = await this.fetchPage(dataset, query, offset, signal, filters);
+    if (!filtersRows(dataset, query, filters)) return first;
+    const rows = [...first.rows];
+    let page = first;
+    for (let requests = 1; rows.length < FILL_ROWS && page.nextOffset != null && requests < MAX_FILL_REQUESTS; requests += 1) {
+      page = await this.fetchPage(dataset, query, page.nextOffset, signal, filters);
+      rows.push(...page.rows);
+    }
+    return { ...page, rows, matched: first.matched, lastUpdated: first.lastUpdated };
+  }
+
+  private async fetchPage(
+    dataset: OpenFdaDataset,
+    query: string,
+    offset: number,
+    signal: AbortSignal | undefined,
+    filters: OpenFdaFilters,
+  ): Promise<OpenFdaPage> {
+    const response = await openFdaFetch.fetch(buildOpenFdaUrl(dataset, query, offset, filters), {
       headers: authorizationHeaders(),
       signal,
     });
     // openFDA answers a search with no matches with a 404.
     if (response.status === 404) {
-      return { rows: [], hasMore: false, nextOffset: null, matched: 0, lastUpdated: null, windowLimited: false };
+      return { rows: [], hasMore: false, nextOffset: null, matched: 0, matchedExact: true, lastUpdated: null, windowLimited: false };
     }
     if (!response.ok) throw new Error(openFdaFailure(response.status));
-    return parseOpenFdaPage(dataset, await response.json(), query, offset);
+    return parseOpenFdaPage(dataset, await response.json(), query, offset, filters);
   }
 }
 

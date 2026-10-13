@@ -9,8 +9,6 @@ import { historyStatistics } from "../../../components/chart/curve/model";
 import type { MarketBoardRow } from "../../../components/market-board";
 import type { PricePoint } from "../../../types/financials";
 
-export const CDX_PANE_ID = "cdx-board";
-
 const YEAR_DAYS = 365;
 /** A level older than this is not the current market. */
 const STALE_DAYS = 5;

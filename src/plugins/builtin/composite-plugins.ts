@@ -31,6 +31,9 @@ import { futuresModule } from "./futures";
 import { futuresCurveModule } from "./futures-curve";
 import { cotModule } from "./cot";
 import { doeModule } from "./doe";
+import { commodityBalancesModule } from "./commodity-balances";
+import { jodiModule } from "./jodi";
+import { commoditiesEnergyModule } from "./commodities-energy";
 import { gpuModule } from "./gpu";
 import { fxMatrixModule } from "./fx-matrix";
 import { docsModule } from "./docs";
@@ -52,6 +55,7 @@ import { centralBankRatesModule } from "./central-bank-rates";
 import { moneyMarketsModule } from "./money-markets";
 import { ratePathModule } from "./rate-path";
 import { debtMaturitiesModule } from "./debt-maturities";
+import { fixedIncomeModule } from "./fixed-income";
 import { revenueBreakdownModule } from "./revenue-breakdown";
 import { mnaModule } from "./mna";
 import { shortVolumeModule } from "./short-volume";
@@ -64,6 +68,9 @@ import { congressResearchModule } from "./congress-trades";
 import { dividendYieldModule } from "./dividend-yield";
 import { executivesModule } from "./executives";
 import { filingEventsModule } from "./filing-events";
+import { primaryDealersModule } from "./primary-dealers";
+import { traceBondsModule } from "./trace-bonds";
+import { treasuryDailyModule } from "./treasury-daily";
 import { holdersModule } from "./holders";
 import { insiderModule } from "./insider";
 import { jobsModule } from "./jobs";
@@ -104,6 +111,7 @@ import {
   screenersPluginMeta,
   tickerCorePluginMeta,
 } from "./builtin-plugin-meta";
+import { FIXED_INCOME_HOSTS } from "./fixed-income/model";
 
 export const applicationPlugin = composeBuiltinPlugin({
   ...applicationPluginMeta,
@@ -120,6 +128,10 @@ export const portfolioPlugin = composeBuiltinPlugin({
 // hold nothing else.
 const rendererOnly = (module: PluginModule) => ({ module, rendererOnly: true });
 const tickerResearchModule = (module: PluginModule) => ({ module, stateId: "ticker-research", rendererOnly: true });
+const runtimeOnly = (module: PluginModule): PluginModule => {
+  const { panes: _panes, paneTemplates: _paneTemplates, ...runtime } = module;
+  return runtime;
+};
 
 export const tickerCorePlugin = composeBuiltinPlugin({
   ...tickerCorePluginMeta,
@@ -196,7 +208,15 @@ export const screenersPlugin = composeBuiltinPlugin({
 
 export const futuresCommoditiesPlugin = composeBuiltinPlugin({
   ...futuresCommoditiesPluginMeta,
-  modules: [futuresModule, futuresCurveModule, cotModule, doeModule],
+  modules: [
+    commoditiesEnergyModule,
+    runtimeOnly(futuresModule),
+    runtimeOnly(futuresCurveModule),
+    runtimeOnly(cotModule),
+    runtimeOnly(doeModule),
+    { module: runtimeOnly(commodityBalancesModule), stateId: "commodity-balances" },
+    { module: runtimeOnly(jodiModule), stateId: "jodi" },
+  ],
 });
 
 export const cryptoPlugin = composeBuiltinPlugin({
@@ -241,15 +261,20 @@ export const ratesMacroPlugin = composeBuiltinPlugin({
 export const creditPlugin = composeBuiltinPlugin({
   ...creditPluginMeta,
   modules: [
+    fixedIncomeModule,
     cdsModule,
     creditBoardsModule,
     creditConditionsModule,
     treasuryAuctionsModule,
     bondCalculatorModule,
+    traceBondsModule,
+    treasuryDailyModule,
+    primaryDealersModule,
     tickerResearchModule(creditDocumentsModule),
     tickerResearchModule(debtMaturitiesModule),
   ],
 });
+creditPlugin.hosts = [...FIXED_INCOME_HOSTS];
 
 export const earningsPlugin = composeBuiltinPlugin({
   ...earningsPluginMeta,

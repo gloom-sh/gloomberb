@@ -71,7 +71,8 @@ export function noteProviderAnswer(note: ProviderMissNote | undefined): void {
   if (note) note.notFound = false;
 }
 
-const NOT_A_TICKER = /^Not a ticker: (.+)\.$/;
+// A command may follow it with the listing search suggests: "Not a ticker: USD_NGN. Did you mean USDNGN=X (...)?"
+const NOT_A_TICKER = /^Not a ticker: (.+?)\.(?= Did you mean |$)/;
 
 /** "Not a ticker: APPLE.", what a request for a symbol no listing carries ends in. */
 function notATickerMessage(symbol: string): string {

@@ -8,6 +8,24 @@ export type OpenFdaDataset = "drug" | "device" | "recall";
 /** What part a drug played in a report, as the reporter coded it. */
 export type DrugRole = "suspect" | "concomitant" | "interacting";
 
+/**
+ * What narrows a dataset beyond the search. `"all"` (or a missing key) leaves
+ * that dimension open; `since` is a `YYYY-MM-DD` lower bound on the list's date.
+ */
+export interface OpenFdaFilters {
+  /** Drug reports: the worst outcome. Serious includes reports of a death. */
+  outcome?: "all" | "death" | "serious" | "not_serious";
+  /** Drug reports: the role of the drug the row names. */
+  role?: "all" | DrugRole;
+  /** Device reports: the event type. */
+  event?: "all" | "death" | "injury" | "malfunction";
+  /** Recalls: FDA's classification, I the most serious. */
+  recallClass?: "all" | "1" | "2" | "3";
+  /** Recalls: where the recall stands. */
+  status?: "all" | "ongoing" | "completed" | "terminated";
+  since?: string;
+}
+
 interface OpenFdaRecordBase {
   /** Dataset plus the dataset's own id, so a report is one row however it is found. */
   id: string;
@@ -30,6 +48,8 @@ export interface DrugReport extends OpenFdaRecordBase {
   outcomes: string[];
   /** Only when the product has a single labeler; generics list every one. */
   manufacturer: string | null;
+  /** How many firms label the product, as the FDA's product data lists them; 0 when it is not coded. */
+  labelers: number;
   reporter: string | null;
   country: string | null;
 }
@@ -71,6 +91,11 @@ export interface OpenFdaPage {
   hasMore: boolean;
   nextOffset: number | null;
   matched: number;
+  /**
+   * False when the pane filters further than the dataset can (a drug's role
+   * among several matched drugs), so `matched` counts more than the list holds.
+   */
+  matchedExact: boolean;
   lastUpdated: string | null;
   windowLimited: boolean;
 }

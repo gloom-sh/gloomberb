@@ -4,6 +4,7 @@ import { teamStore } from "../cloud/team/store";
 import { formatChatPaneTitle } from "./channel-labels";
 import {
   DEFAULT_CHAT_CHANNEL_ID,
+  LAST_VISITED_CHAT_CHANNEL_KEY,
   buildDmCommandResults,
   getPreferredChatOpenChannelId,
   hasOnlyDmUsernameArgs,
@@ -11,16 +12,21 @@ import {
   openDmTargetFromCommand,
   parseDmUsernames,
 } from "./channels";
-import { CHAT_REUSE_PANE_VALUE, createChatSearchProvider } from "./command-bar";
+import { CHAT_KEEP_CONVERSATION_VALUE, createChatSearchProvider } from "./command-bar";
 import { chatController } from "./controller";
 import { buildChatConversations, selectChatConversations } from "./conversations";
 import { pickChatPaneToReuse } from "./pane-state";
 import { ChatPane } from "./pane";
 import { chatSidebarStore } from "./sidebar-store";
+import { chatHandlePromptStore } from "./handle-prompt";
 import { ChatStatusWidget } from "./status-widget";
 import { UnreadInboxPane } from "./unread-inbox-pane";
 import { installPaneChatSharing } from "./share/flow";
+import { attachChatPaneLinkPanes } from "./pane-links/previews";
 import { UNREAD_INBOX_PANE_ID, UNREAD_INBOX_TEMPLATE_ID } from "./unread-inbox";
+import { watchUnreadBadge } from "./unread-badge";
+import { getAppBadgeHost } from "../../../notifications/app-badge";
+import { getNotificationLog, subscribeNotificationLog } from "../../../notifications/notification-log";
 
 /**
  * `CHAT general` or `CHAT #help` by id; failing that, `CHAT gen` or `CHAT alice`
@@ -47,6 +53,8 @@ function isPrivateConversation(channelId: unknown): boolean {
 }
 
 let disposePaneChatSharing: (() => void) | undefined;
+let detachPaneLinkPanes: (() => void) | undefined;
+let disposeUnreadBadge: (() => void) | undefined;
 
 export const chatModule: PluginModule = {
   panes: [{
@@ -57,7 +65,12 @@ export const chatModule: PluginModule = {
     defaultPosition: "right",
     defaultMode: "floating",
     defaultFloatingSize: { width: 80, height: 30 },
-    personalData: (context) => (isPrivateConversation(context.settings.channelId) ? "messages" : null),
+    // A pane with no channel yet opens the one last visited, a DM included.
+    personalData: ({ settings, config }) => (
+      isPrivateConversation(
+        typeof settings.channelId === "string" ? settings.channelId : config.pluginConfig["gloomberb-cloud"]?.[LAST_VISITED_CHAT_CHANNEL_KEY],
+      ) ? "messages" : null
+    ),
     portableShare: {
       private: { title: true, params: true, settings: true, state: true },
     },
@@ -81,10 +94,9 @@ export const chatModule: PluginModule = {
     keywords: ["new", "chat", "pane", "message"],
     shortcut: { prefix: "CHAT", argPlaceholder: "channel", argKind: "text" },
     createInstance: async (context, options) => {
-      const reuse = options?.values?.[CHAT_REUSE_PANE_VALUE] === "1";
       const rawArg = options?.arg?.trim() ?? "";
       // The command bar's New DM keeps the open pane on its conversation.
-      if (reuse && !rawArg) {
+      if (!rawArg && options?.values?.[CHAT_KEEP_CONVERSATION_VALUE] === "1") {
         const open = pickChatPaneToReuse(context.layout, context.focusedPaneId, null);
         if (open) return { placement: "floating", instanceId: open.instanceId };
       }
@@ -102,25 +114,17 @@ export const chatModule: PluginModule = {
         );
       const channel = chatController.getChannels().find((entry) => entry.id === channelId);
       const targetMessageId = options?.values?.messageId?.trim() || null;
-      // A conversation picked in the command bar goes to the Chat pane that is
-      // open, which switches to it, rather than to a pane of its own.
-      const open = reuse ? pickChatPaneToReuse(context.layout, context.focusedPaneId, channelId) : null;
-      if (open) {
-        return {
-          placement: "floating",
-          instanceId: open.instanceId,
-          title: formatChatPaneTitle(channel, channelId),
-          settings: { channelId },
-        };
-      }
+      // However a conversation is opened (the command bar, a notification, the
+      // unread list, a deep or share link), it shows in the Chat window that is
+      // already open, switching it over and scrolling to the message when one is
+      // named: the window on that conversation, else the focused one, else the
+      // one in front. A pane's id names the channel it was first opened on, but
+      // the user switches channels inside it, so the id cannot say which pane
+      // holds a conversation. Only with no Chat window open does a new one open.
+      const open = pickChatPaneToReuse(context.layout, context.focusedPaneId, channelId);
       return {
         placement: "floating",
-        // One pane per channel: re-opening the same channel focuses the pane
-        // that already holds it, even though its channelId setting drifts as
-        // the user switches channels inside the pane. A jump to a specific
-        // message stays unkeyed so it never lands on a pane that already
-        // scrolled past the target.
-        ...(targetMessageId ? {} : { instanceId: `chat:${channelId}` }),
+        instanceId: open?.instanceId ?? `chat:${channelId}`,
         title: formatChatPaneTitle(channel, channelId),
         settings: {
           channelId,
@@ -147,8 +151,22 @@ export const chatModule: PluginModule = {
     ctx.registerCommandBarSearchProvider(createChatSearchProvider(ctx));
     disposePaneChatSharing?.();
     disposePaneChatSharing = installPaneChatSharing(ctx);
+    // A chip names the pane it opens (any plugin's) and its letter.
+    detachPaneLinkPanes?.();
+    detachPaneLinkPanes = attachChatPaneLinkPanes((paneId) => ctx.getPaneDef(paneId));
     chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
+    chatHandlePromptStore.attach(ctx.persistence);
+    // The desktop app's Dock badge follows the Unread count; other hosts have no badge.
+    disposeUnreadBadge?.();
+    const badgeHost = getAppBadgeHost();
+    disposeUnreadBadge = badgeHost
+      ? watchUnreadBadge({
+        controller: chatController,
+        log: { get: getNotificationLog, subscribe: subscribeNotificationLog },
+        setBadge: (label) => badgeHost.setBadge(label),
+      })
+      : undefined;
     chatController.setNotifier(ctx.notify, (channelId, messageId) => {
       ctx.createPaneFromTemplate("new-chat-pane", { arg: channelId, values: { messageId } });
     });
@@ -178,6 +196,11 @@ export const chatModule: PluginModule = {
   dispose() {
     disposePaneChatSharing?.();
     disposePaneChatSharing = undefined;
+    detachPaneLinkPanes?.();
+    detachPaneLinkPanes = undefined;
+    // Before the controller drops its listeners, so the badge is cleared with the plugin.
+    disposeUnreadBadge?.();
+    disposeUnreadBadge = undefined;
     chatController.dispose();
   },
 };

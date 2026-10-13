@@ -5,11 +5,12 @@ import { join } from "path";
 import { AppPersistence } from "../../../../data/app-persistence";
 import { TickerRepository } from "../../../../data/ticker-repository";
 import { createTestCliContext } from "../../../../test-support/cli-context";
-import { createTestDataProvider, createTestQuote } from "../../../../test-support/data-provider";
+import { createNotFoundProvider, createTestDataProvider, createTestQuote } from "../../../../test-support/data-provider";
 import { createTestTicker } from "../../../../test-support/ticker";
 import { loadConfig, saveConfig } from "../../../../data/config/store";
 import { createDefaultConfig } from "../../../../types/config";
 import { setCliColorEnabledOverride } from "../../../../utils/cli-output";
+import type { CliCommandDef } from "../../../../types/plugin";
 import { portfolioCliCommand } from "./portfolio-command";
 import { watchlistCliCommand } from "./watchlist-command";
 
@@ -17,6 +18,8 @@ const persistences: AppPersistence[] = [];
 const dataDirs: string[] = [];
 
 afterEach(async () => {
+  // A list that adds nothing sets the exit status; it must not become the test run's.
+  process.exitCode = 0;
   setCliColorEnabledOverride(null);
   for (const persistence of persistences.splice(0)) persistence.close();
   await Promise.all(dataDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
@@ -167,4 +170,97 @@ test("a bare coin ticker on a fund says it is not the coin on every add and posi
   expect(rows.map((row) => row.hint)).toEqual([note, null]);
   // Naming the listing asks for the fund on purpose.
   expect((await run(portfolioCliCommand, ["add", "family", "ETH:ARCA"])).warnings ?? []).not.toContain(note);
+});
+
+/** A command context whose failures carry the hint line under them, as the CLI prints it. */
+function hintedContext(market: Record<string, unknown>, cliOptions: Parameters<typeof createTestCliContext>[1] = {}) {
+  const cli = createTestCliContext(market, cliOptions);
+  (cli.context as { fail: (message: string, details?: string) => never }).fail = (message, details) => {
+    throw Object.assign(new Error(message), { details });
+  };
+  return cli;
+}
+
+const caught = async (result: unknown) => (await Promise.resolve(result).then(() => null, (error: unknown) => error)) as (Error & { details?: string }) | null;
+
+test("one pasted list where the list name goes is a list of symbols, not a missing watchlist or portfolio", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  await store.saveTicker(createTestTicker("NVDA", "NVIDIA Corporation", { exchange: "NASDAQ" }));
+  await store.saveTicker(createTestTicker("MSFT", "Microsoft Corporation", { exchange: "NASDAQ" }));
+  const config = {
+    ...createDefaultConfig("/unused"),
+    portfolios: [{ id: "main", name: "Main", currency: "USD" }],
+    watchlists: [{ id: "growth", name: "Growth" }, { id: "watch-two", name: "Watch Two" }],
+  };
+  const run = (command: CliCommandDef, args: string[]) => caught(command.execute(args, hintedContext({ config, store }).context));
+  const watchlistUsage = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
+
+  const pasted = await run(watchlistCliCommand, ["add", "  usdngn=x , USDZAR=X;  usdsar=x\n"]);
+  expect(pasted?.message).toBe(
+    '"usdngn=x , USDZAR=X; usdsar=x" reads as a list of symbols, not a watchlist name; did you mean `gloomberb watchlist add <name> <list>`; lists: Growth, Watch Two',
+  );
+  expect(pasted?.details).toBe(watchlistUsage);
+  // Whichever separator the paste has, and for remove and portfolios too.
+  for (const text of ["NVDA,MSFT", "NVDA;MSFT", "NVDA MSFT", "NVDA\nMSFT", "NVDA, "]) {
+    expect((await run(watchlistCliCommand, ["add", text]))?.message).toContain("reads as a list of symbols");
+  }
+  expect((await run(watchlistCliCommand, ["remove", "NVDA MSFT"]))?.message).toContain("`gloomberb watchlist remove <name> <list>`");
+  const portfolio = await run(portfolioCliCommand, ["add", "nvda, msft"]);
+  expect(portfolio?.message).toBe('"nvda, msft" reads as a list of symbols, not a portfolio name; did you mean `gloomberb portfolio add <name> <list>`; portfolios: Main');
+  expect(portfolio?.details).toBe("Usage: gloomberb portfolio add <portfolio> <symbols...> [--file <path>]");
+  expect((await caught(watchlistCliCommand.execute(["add", "NVDA,MSFT"], hintedContext({ config: { ...config, watchlists: [] }, store }).context)))?.message)
+    .toContain("no lists yet, create one with `gloomberb watchlist create <name>`");
+
+  // A name that exists keeps its behaviour, with spaces or without; one that does not, with no separators or with --file, is still not found.
+  expect((await run(watchlistCliCommand, ["add", "Growth"]))?.message).toBe(watchlistUsage);
+  expect((await run(watchlistCliCommand, ["add", "watch two"]))?.message).toBe(watchlistUsage);
+  expect((await run(watchlistCliCommand, ["add", "Groth"]))?.message).toBe('Watchlist "Groth" was not found.');
+  expect((await run(watchlistCliCommand, ["add", "Groth", "NVDA"]))?.message).toBe('Watchlist "Groth" was not found.');
+  expect((await run(watchlistCliCommand, ["add", "My Lisst", "--file", "holdings.csv"]))?.message).toBe('Watchlist "My Lisst" was not found.');
+
+  // With the name first the same paste adds.
+  const added = hintedContext({ config, store });
+  await watchlistCliCommand.execute(["add", "Growth", "  nvda , MSFT;\n"], added.context);
+  expect((added.printed[0]!.result.data as Array<{ status: string; listing: string }>).map((row) => [row.status, row.listing])).toEqual([["added", "NVDA:NASDAQ"], ["added", "MSFT:NASDAQ"]]);
+});
+
+test("a symbol search finds no listing for names the near match search lists, in a list and alone, and stays quiet otherwise", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), portfolios: [], watchlists: [{ id: "growth", name: "Growth" }] };
+  const naira = { providerId: "test", symbol: "USDNGN=X", name: "US Dollar/Nigerian Naira", exchange: "CCY", type: "CURRENCY" };
+  const market = (search: () => Promise<typeof naira[]>) => ({ config, store, dataProvider: createNotFoundProvider({ search }) });
+  const exec = async (args: string[], search: () => Promise<typeof naira[]>) => {
+    const cli = hintedContext(market(search), { color: false });
+    await watchlistCliCommand.execute(args, cli.context);
+    const { result, options } = cli.printed[0]!;
+    return { rows: result.data as Array<Record<string, unknown>>, text: options!.text!(result.data) };
+  };
+  const found = async () => [naira];
+
+  const list = await exec(["add", "Growth", "USD_NGN", "XXXXX"], found);
+  expect(list.text).toContain("Not found: USD_NGN; did you mean USDNGN=X (US Dollar/Nigerian Naira)?");
+  expect(list.text).toContain("Not found: XXXXX");
+  expect(list.text).not.toContain("XXXXX;");
+  expect(list.text).toContain('Watchlist "Growth": 0 added, 2 not found: USD_NGN, XXXXX.');
+  expect(list.rows.map((row) => row.suggestion)).toEqual(["USDNGN=X (US Dollar/Nigerian Naira)", undefined]);
+
+  // One symbol typed alone fails with the same line.
+  const alone = await caught(watchlistCliCommand.execute(["add", "Growth", "USD_NGN"], hintedContext(market(found)).context));
+  expect(alone?.message).toBe('No ticker match found for "USD_NGN"; did you mean USDNGN=X (US Dollar/Nigerian Naira)?');
+
+  // A search that finds nothing, or fails, leaves the plain answer.
+  const refused = async (): Promise<typeof naira[]> => { throw new Error("Gloom Cloud refused the request"); };
+  for (const search of [async () => [], refused]) {
+    expect((await exec(["add", "Growth", "USD_NGN", "XXXXX"], search)).text).not.toContain("did you mean");
+    expect((await caught(watchlistCliCommand.execute(["add", "Growth", "USD_NGN"], hintedContext(market(search)).context)))?.message)
+      .toBe('No ticker match found for "USD_NGN".');
+  }
+
+  // A spelling of the pair itself is the pair, not a near miss.
+  expect((await exec(["add", "Growth", "USD-NGN", "XXXXX"], found)).rows.map((row) => [row.status, row.listing]))
+    .toEqual([["added", "USDNGN=X:CCY"], ["not_found", null]]);
 });

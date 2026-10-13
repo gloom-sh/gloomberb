@@ -82,7 +82,7 @@ describe("the SEC filing lookup provider", () => {
       ["10-K", "Annual Report", "Nov 2024"],
     ]);
     const eightK = await provider.provide("AAPL 8-K", { activeTicker: null, activeCollectionId: null }, signal);
-    expect(eightK.map((row) => [row.label, row.right])).toEqual([["Current Report · Items 2.02,9.01", "Jul 30"]]);
+    expect(eightK.map((row) => [row.label, row.right])).toEqual([["Results of operations · Items 2.02,9.01", "Jul 30"]]);
     await rows[0]!.execute();
     expect(opened).toEqual([["sec-pane", { symbol: "AAPL" }]]);
   });

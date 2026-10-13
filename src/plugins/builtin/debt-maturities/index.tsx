@@ -1,28 +1,14 @@
 import type { PluginModule } from "../plugin-module";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
+import { fixedIncomeShortcut } from "../fixed-income/shortcut";
 import { debtMaturitiesCache } from "./client";
 import { debtMaturitiesHeadless } from "./headless";
-import { DebtMaturitiesPane } from "./pane";
 import { DEBT_MATURITY_SERIES } from "./series";
 
 export const debtMaturitiesModule: PluginModule = {
   series: DEBT_MATURITY_SERIES,
-  panes: [
-    {
-      id: "debt-maturities",
-      name: "Debt Maturities",
-      icon: "D",
-      component: DebtMaturitiesPane,
-      defaultPosition: "right",
-      tickerFollower: true,
-      defaultMode: "floating",
-      defaultFloatingSize: { width: 96, height: 30 },
-      tableExport: true,
-      headless: debtMaturitiesHeadless,
-    },
-  ],
   paneTemplates: [
-    {
+    fixedIncomeShortcut({
       ...createTickerSurfacePaneTemplate({
         id: "debt-maturities-pane",
         paneId: "debt-maturities",
@@ -34,7 +20,7 @@ export const debtMaturitiesModule: PluginModule = {
         publicShare: true,
       }),
       headless: debtMaturitiesHeadless,
-    },
+    }, "issuer-debt", "maturities"),
   ],
   setup(ctx) {
     debtMaturitiesCache.attach(ctx.persistence);

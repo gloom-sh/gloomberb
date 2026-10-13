@@ -789,6 +789,8 @@ export const es: Record<string, string> = {
   "private": "privado",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the line on its card and its icon's tooltip.
+  "Bot run by Gloom": "Bot gestionado por Gloom",
   "Direct message": "Mensaje directo",
   "Group chat": "Chat grupal",
   "Group": "Grupo",
@@ -805,6 +807,15 @@ export const es: Record<string, string> = {
   "Read-only chat. Log in or sign up to send.": "Chat de solo lectura. Inicia sesión o regístrate para enviar.",
   "Saved login found. Log in again to send.": "Sesión guardada encontrada. Vuelve a iniciar sesión para enviar.",
   "Verify your email to send messages.": "Verifica tu correo para enviar mensajes.",
+  // The first-chat prompt for an account still on its signup handle.
+  "Choose a handle": "Elige tu usuario",
+  "Choose Handle": "Elegir usuario",
+  "Hide Handle Prompt": "Ocultar aviso de usuario",
+  "@{handle} is taken. Try another.": "@{handle} ya está en uso. Prueba otro.",
+  "@{handle} isn't available. Try another.": "@{handle} no está disponible. Prueba otro.",
+  "Use 3-30 letters, numbers or _, starting with a letter.": "Usa de 3 a 30 letras, números o _, empezando por una letra.",
+  "Couldn't save your handle. Try again.": "No se pudo guardar tu usuario. Inténtalo de nuevo.",
+  "You're @{handle} now.": "Ahora eres @{handle}.",
   "Verify your email to use Cloud tweets.": "Verifica tu correo para usar Cloud tweets.",
   "Resend Verification Email": "Reenviar correo de verificación",
   "Sign in to {action}.": "Inicia sesión para {action}.",
@@ -1011,6 +1022,8 @@ export const es: Record<string, string> = {
   "Waiting for quote...": "Esperando cotización...",
   "Pre-Market": "Premercado",
   "After-Hours": "Posmercado",
+  "Overnight": "Nocturno",
+  "mid": "medio",
   "Price Return": "Retorno de precio",
   "Fundamentals": "Fundamentales",
   "Positions": "Posiciones",
@@ -1091,6 +1104,7 @@ export const es: Record<string, string> = {
   "PRE-MKT": "PRE-MKT",
   "OPEN": "ABIERTO",
   "AFTER-HRS": "POST-MKT",
+  "OVERNIGHT": "NOCTURNO",
   "CLOSED": "CERRADO",
   "Log In": "Iniciar sesión",
   "Sign Up": "Registrarse",

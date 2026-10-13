@@ -40,13 +40,17 @@ import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import {
   basisPointsCell,
   DEFAULT_FRED_START,
+  filterFredSeries,
+  fredEmptyAdvice,
   fredEmptyMessage,
   fredExportValue,
   fredHistoryNotes,
+  fredInterval,
+  fredObservationsFromStart,
   fredProvenance,
   fredPublicationTime,
+  fredUnit,
   fredValueHeader,
-  fredValueKey,
   isSpreadSeries,
   laggingSeriesNote,
 } from "./fred-series";
@@ -346,13 +350,10 @@ async function runFredList(filter: string, ctx: Parameters<CliCommandDef["execut
     if (error instanceof ApiRequestError && error.status === 404) ctx.fail("The list of supported FRED series is not available yet.");
     throw error;
   }
-  const terms = filter.toLowerCase().split(/\s+/).filter(Boolean);
-  const rows = catalog.series
-    .map((series) => ({ id: series.id, title: series.title?.trim() ?? "", group: series.group?.trim() ?? "" }))
-    .filter((series) => {
-      const text = `${series.id} ${series.title} ${series.group}`.toLowerCase();
-      return terms.every((term) => text.includes(term));
-    });
+  const rows = filterFredSeries(
+    catalog.series.map((series) => ({ id: series.id, title: series.title?.trim() ?? "", group: series.group?.trim() ?? "" })),
+    filter,
+  );
   ctx.printResult({ data: rows, metadata: { filter: filter || null, total: catalog.series.length } }, {
     columns: [
       { key: "id", header: "ID", shrink: false },
@@ -381,15 +382,17 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     if (isUnsupportedSeries(error)) ctx.fail(`Unsupported FRED series ${seriesId}. List supported series with: gloomberb fred --list`);
     throw error;
   });
-  // Each observation exports under its unit (`value_bp`, `value_pct`), a spread in basis points.
-  const valueKey = fredValueKey(seriesId, data.info?.units);
+  // Every observation exports as `value`, a spread in basis points; its unit goes in the `currency_or_unit` column.
+  const unit = fredUnit(seriesId, data.info);
+  const interval = fredInterval(data.info?.frequency);
   // A value FRED does not list yet carries its publisher and when it published, in every export.
   const exportRow = (observation: { date: string; value: number | null; publisher?: string; publishedAt?: string }) => ({
     date: observation.date,
-    [valueKey]: fredExportValue(seriesId, observation.value),
+    value: fredExportValue(seriesId, observation.value),
     ...(observation.publisher?.trim() ? { publisher: observation.publisher.trim(), ...(observation.publishedAt ? { publishedAt: observation.publishedAt } : {}) } : {}),
   });
-  const rows = data.observations.map(exportRow);
+  // A --start before the series begins comes back padded with blank days: the rows start at its first observation.
+  const rows = fredObservationsFromStart(data.observations, data.info?.observationStart).map(exportRow);
   // The default start hides older history and a start before the series begins is moved up silently: say where it really starts.
   const notes = [
     ...fredHistoryNotes({ startDate, startGiven: start != null, seriesStart: data.info?.observationStart }),
@@ -398,6 +401,10 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   // Nothing on or after the start: name where the series ends, so an empty answer is not a dead end.
   const latest = rows.length > 0 ? null : await apiClient.getCloudFredSeries(seriesId, { limit: 1, sortOrder: "desc" })
     .then((payload) => payload.observations[0] ?? null).catch(() => null);
+  // CSV and NDJSON are rows alone: an empty one would read as a series with no data, so it fails and says where the series ends.
+  if (rows.length === 0 && (ctx.cliOptions.format === "csv" || ctx.cliOptions.format === "ndjson")) {
+    ctx.fail(`No ${seriesId} observations on or after ${startDate}.`, fredEmptyAdvice(seriesId, latest));
+  }
   const periodicity = periodicityOf(data.info?.frequency);
   const newestDate = rows.reduce<string | null>((newest, row) => (!newest || row.date > newest ? row.date : newest), null);
   // A newest value FRED does not list yet names its publisher, Treasury for a yield; FRED's own stay "FRED".
@@ -408,7 +415,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   ctx.printResult({
     data: rows,
     metadata: {
-      info: data.info, seriesId, startDate, sortOrder,
+      info: data.info, seriesId, startDate, sortOrder, unit, interval,
       ...(notes.length ? { notes } : {}),
       ...(latest ? { latestObservation: exportRow(latest) } : {}),
     },
@@ -422,12 +429,13 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   }, {
     dateKey: "date",
     empty: fredEmptyMessage(startDate, latest),
-    ...(notes.length ? { footnote: notes.join("\n") } : {}),
+    ...(notes.length ? { footnote: notes.join("\n"), exportNotes: notes } : {}),
+    exportIdentity: { symbolOrSeries: seriesId, currencyOrUnit: unit, interval },
     textColumns: [
       { key: "date", header: "Date" },
       isSpreadSeries(seriesId)
-        ? { key: valueKey, header: "Value (bp)", align: "right", format: basisPointsCell }
-        : { key: valueKey, header: fredValueHeader(data.info), align: "right" },
+        ? { key: "value", header: "Value (bp)", align: "right", format: basisPointsCell }
+        : { key: "value", header: fredValueHeader(data.info), align: "right" },
     ],
   });
 }
@@ -445,12 +453,12 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
     return {
       seriesId,
       date: latest?.date ?? "",
-      // Yields in percent, named so in every export, as `fred` names a percent series.
-      value_pct: latest?.value ?? null,
+      // Yields in percent, which the exports' `currency_or_unit` column says (`pct`), as `fred` does.
+      value: latest?.value ?? null,
       title: data.info?.title ?? "",
       // The move since the previous observation FRED has, not calendar yesterday: a Monday reads against Friday.
       previousDate: previous?.date ?? null,
-      previousValue_pct: previous?.value ?? null,
+      previousValue: previous?.value ?? null,
       changeBasisPoints: latest?.value != null && previous?.value != null ? toBasisPoints(latest.value - previous.value, 1) : null,
       latest,
       publishedAt: latest?.publisher ? null : fredPublicationTime(data.info, latest?.date),
@@ -470,9 +478,10 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       ...(publishedAt ? { publishedAt } : {}),
     }),
   }, {
+    exportIdentity: (row) => ({ symbolOrSeries: String(row.seriesId), currencyOrUnit: "pct", interval: "daily" }),
     textColumns: [
       { key: "tenor", header: "Tenor", value: (row) => YIELD_TENORS[String(row.seriesId)] ?? row.seriesId },
-      { key: "value_pct", header: "Yield %", align: "right", format: (value) => typeof value === "number" ? value.toFixed(2) : "-" },
+      { key: "value", header: "Yield %", align: "right", format: (value) => typeof value === "number" ? value.toFixed(2) : "-" },
       {
         key: "changeBasisPoints",
         header: "1D bp",

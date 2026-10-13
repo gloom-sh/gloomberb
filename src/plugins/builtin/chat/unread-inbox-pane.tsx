@@ -36,7 +36,8 @@ import { applyUnreadInboxItemToConfig } from "./pane-state";
 import { buildUnreadListRows, type UnreadInboxItem, type UnreadListRow } from "./unread-inbox";
 import { chatTextWithImages } from "./attachments/model";
 import { isManagedBot } from "./ghost-user";
-import { CHAT_AI_BADGE_WIDTH, ChatAiBadge } from "./message/ai-badge";
+import { ChatBotIcon } from "./message/person-icons";
+import { CHAT_PERSON_ICON_WIDTH } from "./people";
 
 type UnreadController = Pick<ChatController, "getSnapshot" | "listUnreadInbox" | "subscribe" | "markAllChannelsRead">;
 
@@ -82,17 +83,18 @@ function chatCell(
       const name = preview.user.username ? `@${preview.user.username}` : "";
       const text = chatTextWithImages(preview.content, preview.attachments?.length ?? 0).replace(/\s+/g, " ").trim();
       if (!isManagedBot(preview.user)) return { text: `${name ? `${name}: ` : ""}${text}` };
-      // A managed assistant's name carries the same AI badge as in the transcript.
+      // A managed assistant's name carries the same icon as in the transcript.
       const ink = rowState.selected ? colors.selectedText : colors.text;
-      // The badge stands where the colon would. The table gives the terminal its resolved width to clip
+      // The icon stands where the colon would. The table gives the terminal its resolved width to clip
       // to; the desktop clips the preview with CSS.
-      const latest = native ? ` ${text}` : truncateToDisplayWidth(` ${text}`, Math.max(0, column.width - displayWidth(name) - CHAT_AI_BADGE_WIDTH));
+      const latest = native ? ` ${text}` : truncateToDisplayWidth(` ${text}`, Math.max(0, column.width - displayWidth(name) - CHAT_PERSON_ICON_WIDTH));
       return {
-        text: `${name ? `${name} ` : ""}[AI]: ${text}`,
+        // Exports, reports and screen readers read the text, which names the bot in words.
+        text: `${name ? `${name} ` : ""}[Bot]: ${text}`,
         content: (
           <Box flexDirection="row" height={1} width={native ? "100%" : column.width} overflow="hidden">
             {name ? <Text fg={ink}>{name}</Text> : null}
-            <ChatAiBadge selectedColor={rowState.selected ? colors.selectedText : undefined} />
+            <ChatBotIcon selectedColor={rowState.selected ? colors.selectedText : undefined} />
             <Text
               fg={ink}
               style={native ? { flex: "1 1 0", minWidth: 0, display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" } : undefined}
@@ -172,6 +174,7 @@ export function UnreadInboxPane({
       currentState.config,
       { channelId: item.channelId, messageId, paneTitle: item.title },
       inboxInstanceId,
+      currentState.focusedPaneId,
     );
     const syncedConfig = syncConfigActiveLayoutState(
       config,

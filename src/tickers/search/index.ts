@@ -5,6 +5,7 @@ import { canonicalExchange, isSharedExchangeCode, isUsListingExchange, parsePubl
 import { getListingSymbol, tickerHasListingSuffix } from "../../sources/listing-symbols";
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
+import { currencyPairSpelling } from "../../utils/currency-pair";
 import { assetClassMarketSymbol, parseAssetClassQuery } from "./asset-classes";
 import { bareFuturesCode, futuresContractByCode } from "../../market-data/futures-board";
 import { searchContractKey, searchInstrumentKey } from "./identity";
@@ -311,9 +312,13 @@ export function resolveTickerSearch(options: ResolveTickerSearchOptions): Promis
   const typed = symbolSearchQuery(requested);
   // A futures board code no security uses is its future (TTF is TTF=F), unless a saved ticker holds it.
   const future = pickListing || options.tickers.has(typed) ? null : bareFuturesCode(typed);
-  const symbol = future?.symbol ?? typed;
+  // A currency pair is the one listing the service has for it, however it is written: EUR/USD and
+  // JPY=X are EURUSD=X and USDJPY=X. USD-NGN and USDNGN, which a security could also be written as
+  // (MNT-USD is a coin), are the pair only when nothing is listed under those letters.
+  const pair = pickListing || future ? null : currencyPairSpelling(typed);
+  const symbol = future?.symbol ?? (pair && !pair.ambiguous ? pair.symbol : typed);
   const literal = resolveTickerSymbol(symbol, options, pickListing ? requested : null);
-  const alternatives = pickListing ? [] : dottedVenueQueries(symbol);
+  const alternatives = pickListing ? [] : [...dottedVenueQueries(symbol), ...pair?.ambiguous ? [pair.symbol] : []];
   // Most input has no venue code to retry: hand back the literal lookup
   // itself, so it settles no later than it did before the retry existed.
   if (alternatives.length === 0) return literal;

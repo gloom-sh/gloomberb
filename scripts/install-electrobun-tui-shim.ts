@@ -1,5 +1,6 @@
 import { chmodSync, cpSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
+import { buildShotView, packShotView, SHOT_VIEW_ARCHIVE } from "../src/cli/desktop-pane-shot-view";
 
 type TargetOs = "darwin" | "linux" | "win";
 
@@ -29,8 +30,9 @@ done
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$SOURCE")" && pwd)"
 CONTENTS_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+export GLOOMBERB_CALLER_CWD="$PWD"
 cd "$CONTENTS_DIR/MacOS"
-exec "./bun" "$CONTENTS_DIR/Resources/gloomberb-tui/tui-entry.js" "$@"
+exec "$CONTENTS_DIR/MacOS/bun" "$CONTENTS_DIR/Resources/gloomberb-tui/tui-entry.js" "$@"
 `;
 
 const LINUX_SHIM = `#!/bin/sh
@@ -48,15 +50,17 @@ done
 
 SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$SOURCE")" && pwd)"
 APP_DIR="$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)"
+export GLOOMBERB_CALLER_CWD="$PWD"
 cd "$APP_DIR/bin"
-exec "./bun" "$APP_DIR/Resources/gloomberb-tui/tui-entry.js" "$@"
+exec "$APP_DIR/bin/bun" "$APP_DIR/Resources/gloomberb-tui/tui-entry.js" "$@"
 `;
 
 const WINDOWS_CMD_SHIM = `@echo off
 setlocal
 set "SCRIPT_DIR=%~dp0"
 set "APP_DIR=%SCRIPT_DIR%.."
-pushd "%APP_DIR%\\bin" >nul
+set "GLOOMBERB_CALLER_CWD=%CD%"
+pushd "%APP_DIR%\\bin" >nul || exit /b 1
 "%APP_DIR%\\bin\\bun.exe" "%APP_DIR%\\Resources\\gloomberb-tui\\tui-entry.js" %*
 set "GLOOMBERB_EXIT_CODE=%ERRORLEVEL%"
 popd >nul
@@ -271,6 +275,16 @@ for (const bundlePath of bundleCandidates(os)) {
 
   if (build.exitCode !== 0) {
     process.exit(1);
+  }
+
+  // The desktop CLI has no checkout to build the capture page from. Ship the
+  // same packed page as the standalone binary, beside this build's entry.
+  const shotViewDir = join(tuiBundleDir, ".shot-view");
+  try {
+    await buildShotView(shotViewDir, process.env.GLOOMBERB_API_URL ?? "https://api.gloom.sh");
+    writeFileSync(join(tuiBundleDir, SHOT_VIEW_ARCHIVE), await packShotView(shotViewDir));
+  } finally {
+    rmSync(shotViewDir, { recursive: true, force: true });
   }
 
   const nativeCoreDestPath = join(tuiBundleDir, "node_modules", "@opentui", nativeCorePackageName);

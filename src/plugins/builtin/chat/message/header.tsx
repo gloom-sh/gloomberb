@@ -2,10 +2,11 @@ import { useRef, type ReactNode } from "react";
 import { Box, Text, useUiCapabilities, type BoxRenderable } from "../../../../ui";
 import { t } from "../../../../i18n";
 import { displayWidth } from "../../../../utils/format";
-import { chatAuthorName, isDiscordGhost, isManagedBot } from "../ghost-user";
+import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { Button } from "../../../../components/ui";
 import { MESSAGE_ACTION_WIDTH } from "../layout";
-import { ChatAiBadge } from "./ai-badge";
+import { CHAT_PERSON_ICON_WIDTH, chatPersonIcons, fitChatPersonIcons } from "../people";
+import { ChatPersonIcons } from "./person-icons";
 import type { ChatMessageRenderState } from "./render-state";
 import type { ChatMessageBaseProps } from "./types";
 
@@ -78,12 +79,41 @@ export function ChatMessageActions({
   );
 }
 
-/** Author, send status and inline actions for the first message of a group. */
+/** The widest status a header shows ("just now edited", a date with " edited", "sending..."). */
+const WIDEST_HEADER_STATUS = Math.max(...["just now edited", "12/31/99 edited", "sending..."].map(displayWidth));
+/** Reply, React and Edit, after the cell before them. */
+const WIDEST_HEADER_ACTIONS = 1 + MESSAGE_ACTION_WIDTH * 3;
+
+/**
+ * Whether a header row `rowWidth` cells wide has room for every icon of its
+ * author whatever its status and actions: past that width the icons it shows
+ * no longer depend on the width, so a row need not draw again as it changes.
+ */
+export function chatHeaderFitsEveryIcon(msg: ChatMessageBaseProps["msg"], rowWidth: number): boolean {
+  const icons = chatPersonIcons(msg.user).length;
+  if (icons === 0) return true;
+  const spare = rowWidth - 1 - displayWidth(chatAuthorName(msg.user))
+    - (msg.origin === "discord" ? 8 : 0)
+    - 1 - WIDEST_HEADER_STATUS
+    - WIDEST_HEADER_ACTIONS;
+  return spare >= icons * CHAT_PERSON_ICON_WIDTH;
+}
+
+/**
+ * Author, send status and inline actions for the first message of a group.
+ *
+ * A bot's icon sits beside its name always. The Team and Pro icons show while
+ * the row is pointed at or selected, after the status, in the space the row
+ * already has: nothing before them moves, and a row that is not pointed at
+ * keeps no room for them. A row too narrow for its icons, its status and its
+ * actions drops Pro first, then the role, and never cuts the name.
+ */
 export function ChatMessageHeader({
   msg,
   state,
   rowProps,
   fitAuthorWidth = false,
+  fitWidth,
   onUserHover,
   onUserHoverEnd,
   onUserActivate,
@@ -94,6 +124,8 @@ export function ChatMessageHeader({
   rowProps: Record<string, unknown>;
   /** The terminal sizes the author cell to its label. */
   fitAuthorWidth?: boolean;
+  /** Cells the row has when `rowProps` sizes it in CSS: the desktop's. */
+  fitWidth?: number;
 }) {
   const authorLabel = chatAuthorName(msg.user);
   // A Discord ghost has no Gloom profile to open and no one to message.
@@ -101,37 +133,53 @@ export function ChatMessageHeader({
   const { nativeContextMenu } = useUiCapabilities();
   // The card opens beside the name the pointer is on.
   const nameRef = useRef<BoxRenderable | null>(null);
+  const rowWidth = typeof rowProps.width === "number" ? rowProps.width : fitWidth ?? null;
+  // Counted with the actions, shown or not, so the icons that fit do not change on hover.
+  const spare = rowWidth === null
+    ? Number.POSITIVE_INFINITY
+    : rowWidth - 1 - displayWidth(authorLabel)
+      - (msg.origin === "discord" ? 8 : 0)
+      - 1 - displayWidth(state.headerStatus)
+      - state.actionsWidth;
+  const icons = chatPersonIcons(msg.user);
+  const besideName = fitChatPersonIcons(icons.filter((icon) => icon.id === "bot"), spare);
+  const onPoint = fitChatPersonIcons(icons.filter((icon) => icon.id !== "bot"), spare - besideName.length * CHAT_PERSON_ICON_WIDTH);
+  // An open reaction picker keeps the row's actions, so it keeps what stands before them too.
+  const showOnPoint = state.showPersonIcons || actionProps.reactionPickerOpen === true;
+  const iconColor = state.isSelected ? state.selectedTextColor : undefined;
+  const profileTarget: Record<string, unknown> = hasProfile
+    ? {
+      onMouseOver: () => onUserHover(msg.user, nameRef.current),
+      onMouseMove: () => onUserHover(msg.user, nameRef.current),
+      onMouseOut: onUserHoverEnd,
+      "data-gloom-context-menu-surface": "true",
+      onMouseDown: (event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        // A native menu opens on the right-click's contextmenu event instead.
+        if (event.button === 2 && nativeContextMenu === true) return;
+        onUserActivate?.(msg.user, nameRef.current);
+      },
+      onContextMenu: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event, nameRef.current),
+      style: { cursor: "pointer" },
+    }
+    : {};
   return (
     <Box {...rowProps} flexDirection="row" height={1} paddingLeft={1}>
       <Box
         ref={nameRef}
         width={fitAuthorWidth ? displayWidth(authorLabel) : undefined}
         height={1}
-        {...(hasProfile
-          ? {
-            onMouseOver: () => onUserHover(msg.user, nameRef.current),
-            onMouseMove: () => onUserHover(msg.user, nameRef.current),
-            onMouseOut: onUserHoverEnd,
-            "data-gloom-context-menu-surface": "true",
-            onMouseDown: (event: { button?: number; preventDefault?: () => void; stopPropagation?: () => void }) => {
-              event.preventDefault?.();
-              event.stopPropagation?.();
-              // A native menu opens on the right-click's contextmenu event instead.
-              if (event.button === 2 && nativeContextMenu === true) return;
-              onUserActivate?.(msg.user, nameRef.current);
-            },
-            onContextMenu: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => onUserContextMenu?.(msg.user, event, nameRef.current),
-            style: { cursor: "pointer" },
-          }
-          : {})}
+        {...profileTarget}
       >
         <Text fg={state.authorColor} attributes={state.authorAttributes}>
           {authorLabel}
         </Text>
       </Box>
-      {isManagedBot(msg.user) && <ChatAiBadge selectedColor={state.isSelected ? state.selectedTextColor : undefined} />}
+      <ChatPersonIcons icons={besideName} selectedColor={iconColor} terminalTarget={profileTarget} />
       {msg.origin === "discord" && <Text fg={state.originTagColor}> Discord</Text>}
       <Text fg={state.headerStatusColor}> {state.headerStatus}</Text>
+      {showOnPoint && <ChatPersonIcons icons={onPoint} selectedColor={iconColor} terminalTarget={profileTarget} />}
       {(state.showReplyAction || (state.showRetryAction && actionProps.retryMessage)) && <Text fg={state.headerStatusColor}> </Text>}
       <ChatMessageActions state={state} {...actionProps} />
     </Box>

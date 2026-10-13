@@ -8,6 +8,7 @@ import {
   parseDrugReport,
   parseOpenFdaPage,
 } from "./client";
+import { activeFilters } from "./model";
 
 const savedKey = process.env.OPENFDA_API_KEY;
 afterEach(() => {
@@ -56,6 +57,45 @@ describe("openFDA requests", () => {
     expect(new URL(buildOpenFdaUrl("device", 'insulin "pump"')).searchParams.get("search")).toContain('device.brand_name:"insulin pump"');
   });
 
+  test("filters join the search with AND, and each dataset sends only the filters it offers", () => {
+    const now = new Date("2026-10-13T00:00:00Z");
+    const state = { outcome: "death", role: "suspect", event: "injury", recallClass: "1", status: "ongoing", range: "365" };
+    const search = (dataset: "drug" | "device" | "recall", query: string) =>
+      new URL(buildOpenFdaUrl(dataset, query, 0, activeFilters(dataset, state, now))).searchParams.get("search");
+    expect(search("drug", "keytruda")).toBe(
+      '(patient.drug.medicinalproduct:"keytruda" OR patient.drug.openfda.brand_name:"keytruda" OR '
+      + 'patient.drug.openfda.generic_name:"keytruda") AND seriousnessdeath:"1" AND '
+      + 'patient.drug.drugcharacterization:"1" AND receivedate:[20251013 TO 99991231]',
+    );
+    expect(search("device", "")).toBe('event_type:"Injury" AND date_received:[20251013 TO 99991231]');
+    expect(search("recall", "")).toBe('classification:"Class I" AND status:"Ongoing" AND recall_initiation_date:[20251013 TO 99991231]');
+    // Nothing chosen sends no search at all, and an unknown stored value is no filter.
+    expect(new URL(buildOpenFdaUrl("drug", "", 0, activeFilters("drug", { outcome: "bogus" }, now))).searchParams.has("search")).toBe(false);
+  });
+
+  test("a role filtered row by row reads on until the list fills, and says its count is not exact", async () => {
+    const concomitant = { ...DRUG_REPORT, patient: { ...DRUG_REPORT.patient, drug: [DRUG_REPORT.patient.drug[2]!] } };
+    const page = (offset: number) => ({
+      meta: { last_updated: "2026-07-30", results: { skip: offset, limit: 50, total: 500 } },
+      results: Array.from({ length: 50 }, (_, index) => ({
+        ...(index % 10 === 0 ? DRUG_REPORT : concomitant),
+        safetyreportid: String(offset + index),
+      })),
+    });
+    const skips: number[] = [];
+    setHttpFetchTransport(async (url) => {
+      const skip = Number(new URL(url).searchParams.get("skip") ?? 0);
+      skips.push(skip);
+      return new Response(JSON.stringify(page(skip)), { status: 200 });
+    });
+    const result = await new OpenFdaClient().listPage("drug", "dupilumab", 0, undefined, { role: "suspect" });
+    // Five suspect rows a page: three pages read, every row the matched drug as suspect.
+    expect(skips).toEqual([0, 50, 100]);
+    expect(result.rows).toHaveLength(15);
+    expect(result.rows.every((row) => row.dataset === "drug" && row.role === "suspect" && row.product === "DUPIXENT")).toBe(true);
+    expect(result).toMatchObject({ nextOffset: 150, hasMore: true, matched: 500, matchedExact: false });
+  });
+
   test("send the optional key in a header, never in the URL, treat no match as empty and fail loudly otherwise", async () => {
     process.env.OPENFDA_API_KEY = "test-key-123";
     const seen: Array<{ url: string; authorization: string | null }> = [];
@@ -92,6 +132,9 @@ describe("openFDA records", () => {
     expect(parseDrugReport(DRUG_REPORT, "dupilumab")).toMatchObject({ product: "DUPIXENT", role: "suspect", manufacturer: "Sanofi-Aventis U.S. LLC" });
     expect(parseDrugReport(DRUG_REPORT, "")?.product).toBe("DUPIXENT");
     expect(parseDrugReport({ ...DRUG_REPORT, seriousnessdeath: "1" }, "metformin")?.outcome).toBe("Death");
+    // A role asked for names a drug in that role, and drops a report whose matched drug plays another part.
+    expect(parseDrugReport(DRUG_REPORT, "metformin", "suspect")).toBeNull();
+    expect(parseDrugReport(DRUG_REPORT, "", "concomitant")).toMatchObject({ product: "AMLODIPINE BESYLATE", labelers: 2 });
   });
 
   test("a device report names the matched device, and recalls without a number stay apart", () => {

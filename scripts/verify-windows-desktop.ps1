@@ -9,6 +9,8 @@ $UpdateManifestPath = Join-Path $Root "artifacts\stable-win-x64-update.json"
 $GuiArtifactDir = Join-Path $Root "artifacts\windows-gui-verification"
 $BundleAppIconPath = Join-Path $BundleDir "Resources\app.ico"
 $BundleLogoIconPath = Join-Path $BundleDir "Resources\gloomberb-logo.ico"
+$SmokeRoot = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\glo-645\windows-$PID"
+New-Item -ItemType Directory -Force -Path $SmokeRoot | Out-Null
 
 New-Item -ItemType Directory -Force -Path $GuiArtifactDir | Out-Null
 
@@ -1113,6 +1115,7 @@ function Resolve-HomeDir {
 }
 
 function Get-GlobalConfigPath {
+  if ($env:GLOOMBERB_HOME) { return Join-Path $env:GLOOMBERB_HOME "config.json" }
   $HomeDir = Resolve-HomeDir
   Join-Path (Join-Path $HomeDir ".gloomberb") "config.json"
 }
@@ -1161,7 +1164,7 @@ function Seed-DesktopConfig {
     throw "Refusing to overwrite existing Gloomberb config during Windows verification: $GlobalConfigPath"
   }
 
-  $DataDir = Join-Path $env:TEMP "GloomberbDesktopData-$PID"
+  $DataDir = Join-Path $SmokeRoot "desktop-data"
   $DataConfigPath = Join-Path $DataDir "config.json"
   $Layout = @{
     dockRoot = @{
@@ -1333,12 +1336,13 @@ function Capture-OnboardingScreenshot {
     [string]$OutputPath
   )
 
-  $OnboardingHome = Join-Path $env:TEMP "GloomberbOnboardingHome-$PID"
+  $OnboardingHome = Join-Path $SmokeRoot "onboarding-home"
   $OnboardingProcess = $null
   $OnboardingWindowProcessIds = @()
   $TrackedProcesses = New-Object System.Collections.Generic.List[object]
   $PreviousHome = $env:HOME
   $PreviousUserProfile = $env:USERPROFILE
+  $PreviousGloomberbHome = $env:GLOOMBERB_HOME
   $PreviousElectrobunConsole = $env:ELECTROBUN_CONSOLE
 
   if (Test-Path $OnboardingHome) {
@@ -1349,6 +1353,7 @@ function Capture-OnboardingScreenshot {
   try {
     $env:HOME = $OnboardingHome
     $env:USERPROFILE = $OnboardingHome
+    $env:GLOOMBERB_HOME = Join-Path $OnboardingHome ".gloomberb"
     $env:ELECTROBUN_CONSOLE = "1"
 
     $InitialWindows = @(Get-VisibleWindows)
@@ -1413,13 +1418,14 @@ function Capture-OnboardingScreenshot {
 
     Restore-EnvironmentVariable "HOME" $PreviousHome
     Restore-EnvironmentVariable "USERPROFILE" $PreviousUserProfile
+    Restore-EnvironmentVariable "GLOOMBERB_HOME" $PreviousGloomberbHome
     Restore-EnvironmentVariable "ELECTROBUN_CONSOLE" $PreviousElectrobunConsole
     Remove-Item -Path $OnboardingHome -Recurse -Force -ErrorAction SilentlyContinue
   }
 }
 
 function Assert-TuiStarts {
-  param([string]$CliPath)
+  param([string]$CliPath, [switch]$Capture)
 
   & $CliPath __gloomberb-smoke-opentui-native
   if ($LASTEXITCODE -ne 0) {
@@ -1430,6 +1436,11 @@ function Assert-TuiStarts {
   if ($LASTEXITCODE -ne 0) {
     exit $LASTEXITCODE
   }
+
+  if ($Capture) {
+    & bun (Join-Path $Root "scripts\verify-desktop-cli.ts") $CliPath (Join-Path $Root "artifacts\windows-cli-verification")
+    if ($LASTEXITCODE -ne 0) { throw "Installed desktop CLI capture verification failed: $LASTEXITCODE" }
+  }
 }
 
 $RequiredPaths = @(
@@ -1439,6 +1450,7 @@ $RequiredPaths = @(
   $BundleAppIconPath,
   $BundleLogoIconPath,
   (Join-Path $BundleDir "Resources\gloomberb-tui\tui-entry.js"),
+  (Join-Path $BundleDir "Resources\gloomberb-tui\shot-view.json.gz"),
   (Join-Path $CoreDir "index.js"),
   (Join-Path $Root "artifacts\stable-win-x64-Gloomberb-Setup.zip"),
   (Join-Path $Root "artifacts\stable-win-x64-Gloomberb.tar.zst"),
@@ -1473,17 +1485,18 @@ if (-not $NativeLibraries) {
   throw "Missing OpenTUI Windows native DLL in $CoreDir"
 }
 
-Assert-TuiStarts (Join-Path $BundleDir "bin\gloomberb.cmd")
-
-$InstallDir = Join-Path $env:TEMP "GloomberbInstall-$PID"
-$InstallLog = Join-Path $env:TEMP "gloomberb-install-$PID.log"
-$UninstallLog = Join-Path $env:TEMP "gloomberb-uninstall-$PID.log"
+$InstallDir = Join-Path $SmokeRoot "installed app with spaces"
+$InstallLog = Join-Path $SmokeRoot "install.log"
+$UninstallLog = Join-Path $SmokeRoot "uninstall.log"
 $GuiProcess = $null
 $LaunchedWindowProcessIds = @()
 $TrackedGuiProcesses = New-Object System.Collections.Generic.List[object]
 $SeededDesktopConfig = $null
+$PreviousGloomberbHome = $env:GLOOMBERB_HOME
 
 try {
+  $env:GLOOMBERB_HOME = Join-Path $SmokeRoot "main-profile"
+  Assert-TuiStarts (Join-Path $BundleDir "bin\gloomberb.cmd")
   if (Test-Path $InstallDir) {
     Remove-Item -Recurse -Force $InstallDir
   }
@@ -1495,8 +1508,8 @@ try {
       "/SUPPRESSMSGBOXES",
       "/NORESTART",
       "/CURRENTUSER",
-      "/DIR=$InstallDir",
-      "/LOG=$InstallLog"
+      "/DIR=`"$InstallDir`"",
+      "/LOG=`"$InstallLog`""
     ) `
     -Wait `
     -PassThru
@@ -1513,7 +1526,7 @@ try {
     throw "Installed TUI command was not found: $InstalledCli"
   }
 
-  Assert-TuiStarts $InstalledCli
+  Assert-TuiStarts $InstalledCli -Capture
 
   Disable-InstalledDesktopUpdates -InstallDir $InstallDir
 
@@ -1684,6 +1697,8 @@ try {
     Remove-Item -Path $SeededDesktopConfig.GlobalConfigPath -Force -ErrorAction SilentlyContinue
     Remove-Item -Path $SeededDesktopConfig.DataDir -Recurse -Force -ErrorAction SilentlyContinue
   }
+
+  Restore-EnvironmentVariable "GLOOMBERB_HOME" $PreviousGloomberbHome
 
   $Uninstaller = Get-ChildItem -Path $InstallDir -Filter "unins*.exe" -File -ErrorAction SilentlyContinue | Select-Object -First 1
   if ($Uninstaller) {

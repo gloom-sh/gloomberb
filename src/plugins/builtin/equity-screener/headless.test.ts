@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { MAX_TOOL_RESULT_BYTES } from "../cloud/askg/protocol";
 import { equityScreenerHeadless } from "./headless";
+import { parseScreenDefinition } from "./model";
 import { screenFixture } from "./test-fixture";
 
 test("a full page with more matches is neither an error nor too large for an Ask Gloom tool result", async () => {
@@ -33,4 +34,16 @@ test("ATR% can be the metric, and the help says what it is and that IV rank is a
   const limitations = equityScreenerHeadless.discovery!.limitations!.join(" ");
   expect(limitations).toContain("ATR% is the 14-session average true range as a percent of the last close");
   expect(limitations).toContain("IV rank is a rank, not an IV percentile");
+});
+
+test("the catalog's example definition passes the real validator, and a bad one names the part and the operators", () => {
+  const option = equityScreenerHeadless.options.find((candidate) => candidate.key === "definition")!;
+  // The shell quoting is the catalog's: the JSON sits between single quotes.
+  const json = /^--definition '(.+)'$/.exec(option.example!)![1]!;
+  const definition = parseScreenDefinition(JSON.parse(json));
+  expect(definition.criteria.map((criterion) => criterion.op)).toEqual(["in", "gte", "between"]);
+  expect(option.normalize!(json)).toBe(json);
+  expect(() => option.normalize!(JSON.stringify({ ...definition, criteria: [{ field: "industry", op: "eq", value: "Gold" }] })))
+    .toThrow(/criteria\[0\] \(industry\): op "eq" is not supported: industry takes in, present, missing\. The example in gloomberb catalog EQS/);
+  expect(() => option.normalize!('{"version":1}')).toThrow(/criteria is missing.*sort is missing.*currency is missing/);
 });

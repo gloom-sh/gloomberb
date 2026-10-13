@@ -163,6 +163,8 @@ export function missingPanePlaceholderDef(paneId: string): PaneDef {
       defaultMode: "floating",
       defaultFloatingSize: { width: 60, height: 12 },
       portableShare: { private: {} },
+      // It draws a notice, not the pane's own data.
+      personalData: () => null,
     };
     placeholders.set(paneId, def);
   }

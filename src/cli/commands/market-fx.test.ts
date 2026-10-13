@@ -30,7 +30,7 @@ function harness(baseCurrency: string, rates: Record<string, Leg>) {
     } }) },
   });
   /** What a text and a JSON run print, closing line included. */
-  const output = (format: "text" | "json") => cli.printed.map(({ result, options }) => serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options));
+  const output = (format: "text" | "json" | "csv") => cli.printed.map(({ result, options }) => serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format }, options));
   return { context: cli.context, rows: () => cli.printed.map(({ result }) => result.data), output, requests, closed: cli.closeCount };
 }
 
@@ -40,6 +40,16 @@ test("FX command converts both USD legs into the configured base currency", asyn
   expect(run.rows()).toEqual([[{ currency: "GBP", baseCurrency: "EUR", rate: 1.25, asOf: null, stale: false, pair: "GBP/EUR", inverse: 0.8 }]]);
   expect(run.requests.sort()).toEqual(["EUR", "GBP"]);
   expect(run.closed()).toBe(1);
+});
+
+test("an FX export names the pair and the currency the rate is in, which is the base, not the currency asked for", async () => {
+  const now = Date.parse("2026-10-13T06:18:00Z");
+  const run = harness("USD", { ZAR: { rate: 0.06055468, asOf: now, staleAt: Infinity } });
+  await fx.execute(["ZAR"], run.context);
+  expect(run.output("csv")[0]!.split("\n").slice(0, 2)).toEqual([
+    "Currency,Base,Rate,As Of,Stale,Pair,Inverse,symbol_or_series,currency_or_unit,interval,source,as_of",
+    "ZAR,USD,0.06055468,2026-10-13T06:18:00.000Z,false,ZAR/USD,16.514000239122723,ZAR/USD,USD,spot,Gloom Cloud,2026-10-13T06:18:00.000Z",
+  ]);
 });
 
 test("FX cross rate reports the older leg's observation time and any stale leg", async () => {

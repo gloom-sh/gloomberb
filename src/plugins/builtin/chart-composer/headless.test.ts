@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createTestDataProvider } from "../../../test-support/data-provider";
-import { chartHeadless, economicChartDates, type ChartPaneModel } from "./headless";
+import { chartHeadless, chartResolutionDrop, economicChartDates, type ChartPaneModel } from "./headless";
 import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -57,6 +57,32 @@ test("an unavailable currency spread reaches headless errors even with normalize
     expect(result.series.map(({ id }) => id)).toEqual([...spec.series.map(({ id }) => id), "pair:ratio"]);
     expect(result.series.every(({ points }) => points.length > 0)).toBe(true);
   }
+});
+
+test("a bar size the source does not serve for the range warns what came back and why, and each series names what it was asked as", async () => {
+  const { applyChartComposerCapabilityOptions } = await import("./cli-options");
+  const monthly = [{ date: new Date("2026-08-01T00:00:00Z"), open: 16.2, high: 16.6, low: 16.1, close: 16.4 },
+    { date: new Date("2026-09-01T00:00:00Z"), open: 16.4, high: 16.7, low: 16.3, close: 16.5 }];
+  const provider = createTestDataProvider({
+    getTickerFinancials: async () => ({ annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getChartResolutionSupport: () => [{ resolution: "1d", maxRange: "5Y" }, { resolution: "1mo", maxRange: "ALL" }],
+    getPriceHistoryForResolution: async (_symbol, _exchange, _range, resolution) => resolution === "1mo" ? monthly : [],
+  });
+  const spec = applyChartComposerCapabilityOptions(buildCustomChartPreset("USDZAR=X"), "chart-composer", { rangePreset: "ALL", chartResolution: "1d" });
+  const result = await chartHeadless("chart-composer-pane").load(
+    { argument: "USDZAR=X", rawArgument: "USDZAR=X", symbols: [], options: {} },
+    { ...fixture().context, marketData: provider, settings: { chartSpec: spec } },
+  );
+  expect(result.warnings).toEqual(["1d is not available for ALL on USDZAR=X (1d bars go back 5Y at most); returning 1mo bars."]);
+  expect(result.metadata?.resolution).toEqual({ requested: "1d", returned: "1mo", range: "ALL", reason: "1d bars go back 5Y at most" });
+  expect(result.series[0]).toMatchObject({ symbol: "USDZAR=X", interval: "1mo" });
+  // Bars served as asked, or none asked for, warn of nothing.
+  const served = [{ historyResolution: "1d" as const, symbol: "USDZAR=X" }];
+  expect(chartResolutionDrop("1d", { range: "5Y" }, served, [])).toBeNull();
+  expect(chartResolutionDrop("auto", { range: "ALL" }, [{ historyResolution: "1mo", symbol: "USDZAR=X" }], [])).toBeNull();
+  // Without a support list the source's answer is the reason.
+  expect(chartResolutionDrop("1d", { range: "ALL" }, [{ historyResolution: "1wk", symbol: "USDNGN=X" }], [])?.warning)
+    .toBe("1d is not available for ALL on USDNGN=X (the source returned 1wk bars); returning 1wk bars.");
 });
 
 describe("GIP headless sessions", () => {

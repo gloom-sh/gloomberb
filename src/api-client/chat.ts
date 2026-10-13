@@ -19,6 +19,7 @@ import type {
   ChatStateResponse,
 } from "./types";
 import type { CloudApiRequest } from "./request";
+import { localUtcOffsetMinutes } from "../utils/local-utc-offset";
 type ChatNotificationListener = (notification: ChatNotification) => void;
 type ChatPresenceListener = (onlineCount: number) => void;
 
@@ -127,8 +128,15 @@ export class CloudChatApi {
     return this.request<{ onlineCount: number }>("/chat/presence");
   }
 
+  /**
+   * Channels, unread counts and pending notifications. It also reports this
+   * machine's current offset from UTC, so the card others open on you shows
+   * your local time; a server that predates it ignores the parameter.
+   */
   async getState(): Promise<ChatStateResponse> {
-    const state = await this.request<ChatStateResponse>("/chat/state");
+    const offset = localUtcOffsetMinutes();
+    const query = offset === null ? "" : `?${new URLSearchParams({ utcOffset: String(offset) })}`;
+    const state = await this.request<ChatStateResponse>(`/chat/state${query}`);
     this.noteMessages((state.notifications ?? []).map((notification) => notification?.message));
     return normalizeChatState(state);
   }

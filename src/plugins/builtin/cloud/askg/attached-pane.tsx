@@ -16,8 +16,8 @@ export function attachedPaneBlockHeight(attached: ASKGAttachedPane | null): numb
 
 /**
  * The pane a conversation is about, above the composer: a chip with its
- * function, and an x that takes it off. A pane with the user's holdings or
- * account data asks first whether what it shows may go with the question.
+ * function, and an x that takes it off. A pane that shows personal data
+ * asks first whether what it shows may go with the question.
  */
 export function AttachedPaneBlock({
   attached,
@@ -46,7 +46,7 @@ export function AttachedPaneBlock({
         </Box>
         <Box height={1}>
           <Text fg={colors.textDim}>
-            {truncateWithEllipsis("It shows your holdings or account data. Only what is on screen goes, as text.", textWidth)}
+            {truncateWithEllipsis("It shows your own data. Only what is on screen goes, as text.", textWidth)}
           </Text>
         </Box>
         <Box flexDirection="row" height={2} paddingTop={1}>

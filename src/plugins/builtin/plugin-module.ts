@@ -56,6 +56,7 @@ void ALL_MODULE_KEYS_HANDLED;
 
 interface CompositePluginOptions extends PluginMetadata {
   modules: readonly PluginModuleInput[];
+  hosts?: GloomPlugin["hosts"];
 }
 
 function moduleEntry(input: PluginModuleInput): PluginModuleEntry {
@@ -131,7 +132,7 @@ const backendVariants = new WeakMap<GloomPlugin, GloomPlugin>();
  * persisted under its namespace unless the module's entry keeps another.
  */
 export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlugin {
-  const { modules: inputs, ...metadata } = options;
+  const { modules: inputs, hosts, ...metadata } = options;
   const pluginStateId = metadata.stateId ?? metadata.id;
   const modules = inputs.map((input) => {
     const { module, stateId } = moduleEntry(input);
@@ -147,6 +148,7 @@ export function composeBuiltinPlugin(options: CompositePluginOptions): GloomPlug
 
   const plugin: GloomPlugin = {
     ...metadata,
+    ...(hosts ? { hosts } : {}),
     ...(cliCommands.length > 0 ? { cliCommands } : {}),
     ...(panes.length > 0 ? { panes } : {}),
     ...(paneTemplates.length > 0 ? { paneTemplates } : {}),

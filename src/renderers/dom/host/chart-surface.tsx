@@ -172,6 +172,11 @@ const ChartVectors = memo(function ChartVectors({ vectors }: { vectors: readonly
   );
 });
 
+/** Dashed like the last-price line the bitmap draws (6 px on, 5 px off). */
+function crosshairDashes(direction: "to bottom" | "to right", color: string): string {
+  return `repeating-linear-gradient(${direction}, ${color} 0 6px, transparent 6px 11px)`;
+}
+
 function ChartCrosshair({
   bitmap,
   crosshair,
@@ -196,7 +201,7 @@ function ChartCrosshair({
           bottom: 0,
           left: `${clampedX}%`,
           width: 1,
-          backgroundColor: crosshair.color,
+          backgroundImage: crosshairDashes("to bottom", crosshair.color),
           opacity: 0.78,
           transform: "translateX(-0.5px)",
           pointerEvents: "none",
@@ -240,7 +245,7 @@ function ChartCrosshair({
               right: 0,
               top: `${clampedY}%`,
               height: 1,
-              backgroundColor: crosshair.color,
+              backgroundImage: crosshairDashes("to right", crosshair.color),
               opacity: 0.78,
               transform: "translateY(-0.5px)",
               pointerEvents: "none",

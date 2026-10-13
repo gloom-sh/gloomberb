@@ -2,7 +2,8 @@ import { TextAttributes } from "../../../../ui";
 import { blendHex, colors, hoverBg } from "../../../../theme/colors";
 import type { ChatMessage } from "../../../../api-client";
 import { formatTimeAgo } from "../../../../utils/datetime-format";
-import { isGroupedWithPrevious } from "../layout";
+import { isGroupedWithPrevious, MESSAGE_ACTION_WIDTH } from "../layout";
+import { chatAuthorNameColor } from "../people";
 
 /** The band on a message the reader was sent to: the accent at low strength, between the hover and the selection. */
 export function chatHighlightBg(palette = colors): string {
@@ -20,6 +21,16 @@ export interface ChatMessageRenderState {
   showEditAction: boolean;
   /** A failed send of yours offers Retry in place of Reply and Edit. */
   showRetryAction: boolean;
+  /**
+   * Cells the header's actions take whenever they show, hovered or not, so a
+   * narrow row fits its icons once instead of again on every hover.
+   */
+  actionsWidth: number;
+  /**
+   * The Team and Pro icons show: the row is under the pointer or selected.
+   * A bot's icon shows always.
+   */
+  showPersonIcons: boolean;
   /** Still pending past the slow threshold: drawn dim. */
   isSending: boolean;
   bgColor: string | undefined;
@@ -87,6 +98,8 @@ export function getChatMessageRenderState({
     showReactAction: showReplyAction && canReact,
     showEditAction: showReplyAction && canEdit,
     showRetryAction: showActions && hasFailed,
+    actionsWidth: !canSend ? 0 : 1 + MESSAGE_ACTION_WIDTH * (hasFailed ? 1 : 1 + (canReact ? 1 : 0) + (canEdit ? 1 : 0)),
+    showPersonIcons: isSelected || hoveredIdx === index,
     isSending,
     bgColor: isSelected ? colors.selected : isHighlighted ? chatHighlightBg() : isHovered ? hoverBg() : undefined,
     selectedTextColor,
@@ -101,7 +114,7 @@ export function getChatMessageRenderState({
           ? colors.negative
           : colors.textMuted,
     originTagColor: isSelected ? selectedTextColor : colors.textDim,
-    authorColor: isSelected ? selectedTextColor : hasFailed ? colors.negative : colors.positive,
+    authorColor: isSelected ? selectedTextColor : hasFailed ? colors.negative : chatAuthorNameColor(msg.user),
     authorAttributes: (isSending ? TextAttributes.DIM : 0) | TextAttributes.BOLD,
     bodyColor: isSelected ? selectedTextColor : hasFailed ? colors.negative : isSending ? colors.textDim : colors.text,
   };

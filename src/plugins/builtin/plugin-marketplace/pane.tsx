@@ -902,7 +902,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
   if (status === "loading" && entries.length === 0) {
     return (
       <Box flexDirection="column" width={width} height={height}>
-        <PaneStatusBody loading align="center" loadingLabel="" />
+        <PaneStatusBody loading align="center" />
       </Box>
     );
   }

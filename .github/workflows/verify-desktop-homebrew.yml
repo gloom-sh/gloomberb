@@ -36,7 +36,11 @@ jobs:
         run: |
           set -euo pipefail
           brew install zstd
-          tmp_dir="$(mktemp -d)"
+          test "$(uname -m)" = arm64
+          smoke_root="$HOME/.cache/gloom-smoke/glo-645"
+          mkdir -p "$smoke_root"
+          tmp_dir="$(mktemp -d "$smoke_root/macos package.XXXXXX")"
+          trap 'rm -rf "${tmp_dir:?}"' EXIT
           zstd -d -o "$tmp_dir/Gloomberb.app.tar" artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
           tar -xf "$tmp_dir/Gloomberb.app.tar" -C "$tmp_dir"
 
@@ -44,7 +48,9 @@ jobs:
           test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/tui-entry.js"
           test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
           test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
-          "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" help
+          bun scripts/verify-desktop-cli.ts \
+            "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" \
+            artifacts/macos-cli-verification
 
           codesign --verify --verbose=4 "$tmp_dir/Gloomberb.app"
           ditto -c -k --keepParent "$tmp_dir/Gloomberb.app" artifacts/stable-macos-arm64-Gloomberb.app.zip
@@ -58,6 +64,12 @@ jobs:
           test -f artifacts/stable-macos-arm64-update.json
           codesign --verify --verbose=4 artifacts/stable-macos-arm64-Gloomberb.dmg
           xcrun stapler validate -v artifacts/stable-macos-arm64-Gloomberb.dmg
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: macos-arm64-desktop-cli-verification
+          path: artifacts/macos-cli-verification
 
       - name: Verify cask generation and tap access
         env:

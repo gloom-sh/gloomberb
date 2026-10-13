@@ -120,6 +120,11 @@ export function mapQuote(
       divisor,
     ),
     extendedSessionPrint: typeof quote.extendedSessionPrint === "boolean" ? quote.extendedSessionPrint : undefined,
+    overnightPrice: normalizePriceValueByDivisor(quote.overnightPrice, divisor),
+    overnightChange: normalizePriceValueByDivisor(quote.overnightChange, divisor),
+    overnightPriceKind: quote.overnightPriceKind === "trade" || quote.overnightPriceKind === "mark"
+      ? quote.overnightPriceKind
+      : undefined,
     listingExchangeName,
     listingExchangeFullName,
     exchangeName: listingExchangeName,

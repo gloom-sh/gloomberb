@@ -21,6 +21,8 @@ export interface SelectButtonOption<T extends string = string> {
   disabled?: boolean;
   /** A key that picks this option, shown beside it where there is room (e.g. "1"). */
   hint?: string;
+  /** Tints the option in the menu, e.g. a status in its tone; the label carries the meaning. */
+  color?: string;
 }
 
 export interface SelectButtonProps<T extends string = string> {
@@ -120,6 +122,7 @@ export function SelectButton<T extends string = string>({
             label: option.label,
             description: option.description,
             disabled: option.disabled,
+            color: option.color,
           }))}
         />
       ),

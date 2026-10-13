@@ -7,7 +7,8 @@ import {
   type ChartResolutionSupport,
   type ManualChartResolution,
 } from "../../../time-series/resolution";
-import { resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { parsePublicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { listingSuffixExchange } from "../../../sources/listing-symbols";
 import { getPricePointTimestamp } from "../../../utils/price-history";
 import { pricePointIntegrity } from "../../../utils/price-history-integrity";
 import { zonedDateKey, zonedWallClockToUtcMs } from "../../../utils/zoned-date-time";
@@ -96,6 +97,20 @@ function sessionUtcBounds(value: string, timeZone: string): {
       0,
     )),
   };
+}
+
+/**
+ * The zone a listing's sessions are dated in: its exchange's, else the one its
+ * key or listing suffix names (RMS.AX trades on the ASX). A session is the
+ * bars of one local day, so it starts at the local open even where that falls
+ * before UTC midnight (10:00 in Sydney is 23:00 UTC the day before). UTC for a
+ * listing without a known venue, such as a bare US symbol.
+ */
+export function intradaySessionTimeZone(symbol: string, exchange: string | undefined): string {
+  const parsed = parsePublicTickerKey(symbol);
+  return resolveExchangeTimeZone(exchange)
+    ?? resolveExchangeTimeZone(parsed.exchange ?? listingSuffixExchange(parsed.symbol))
+    ?? "UTC";
 }
 
 function normalizedPoints(points: readonly PricePoint[]): PricePoint[] {
@@ -232,11 +247,11 @@ async function loadHistoricalFallback(
   exchange: string,
   request: IntradayRequest,
   now: Date,
+  timeZone: string,
   context?: MarketDataRequestContext,
 ): Promise<PriceHistoryResult> {
   const empty = { points: [], resolution: request.resolution };
   if (request.session) {
-    const timeZone = resolveExchangeTimeZone(exchange) ?? "UTC";
     const bounds = sessionUtcBounds(request.session, timeZone);
     return await fetchHistoryResult(provider, symbol, exchange,
       { kind: "detail", start: bounds.start, end: bounds.end, interval: request.resolution }, context).catch(() => null) ?? empty;
@@ -256,14 +271,14 @@ export async function loadIntradayWindow(options: {
   now?: Date;
   context?: MarketDataRequestContext;
 }): Promise<LoadedIntradayWindow> {
-  const timeZone = resolveExchangeTimeZone(options.exchange) ?? "UTC";
+  const timeZone = intradaySessionTimeZone(options.symbol, options.exchange);
   let acquisition = options.request.session
     ? await loadHistoricalFallback(
         options.provider,
         options.symbol,
         options.exchange,
         options.request,
-        options.now ?? new Date(), options.context,
+        options.now ?? new Date(), timeZone, options.context,
       )
     : await loadTrailingHistory(
         options.provider,
@@ -292,7 +307,7 @@ export async function loadIntradayWindow(options: {
           options.symbol,
           options.exchange,
           options.request,
-          options.now ?? new Date(), options.context,
+          options.now ?? new Date(), timeZone, options.context,
         );
     raw = acquisition.points;
     window = resolveIntradaySessionWindow(raw, {

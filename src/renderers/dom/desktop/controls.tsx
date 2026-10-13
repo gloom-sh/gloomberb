@@ -16,6 +16,7 @@ import type { MessageComposerProps } from "../../../components/ui/message-compos
 import type { PageStackViewProps } from "../../../components/ui/page-stack-view";
 import { StackHeaderContext, type StackHeaderSlot } from "./stack-header";
 import { releasePointerFocus } from "../host/focus-scope";
+import { selectionStyle } from "../host/style";
 import { WebIcon, WebIconButton } from "./icons";
 import { WebKeyHints, WebKeycap, ariaKeyShortcut, dialogSurface } from "./dialog-actions";
 import { NestedPaneTabs } from "../../../components/layout/pane/header-tabs";
@@ -221,7 +222,7 @@ export function WebCheckbox({
           color: textColor,
           fontWeight: active ? 700 : 500,
           lineHeight: "20px",
-          userSelect: "none",
+          ...selectionStyle(false),
           position: "relative",
         }}
       >

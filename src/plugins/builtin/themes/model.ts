@@ -1,7 +1,7 @@
 import { THEME_PERIODS, type ThemeAggregate, type ThemeMember, type ThemePeriod, type ThemeSummary } from "../../../api-client/themes";
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
-import { marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
+import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 
 export const PERIOD_LABELS: Record<ThemePeriod, string> = { changePercent: "1D", return1WPercent: "1W", return1MPercent: "1M", return3MPercent: "3M", returnYtdPercent: "YTD" };
@@ -129,7 +129,7 @@ export function themeColumns(width: number, rows: readonly ThemeSummary[]): Data
  * windows first, then that column, then the name.
  */
 export function memberColumns(width: number, extendedSessions: readonly ExtendedSession[] = []): DataTableColumn[] {
-  const extended = extendedSessions.map((session) => column(session === "PRE" ? "preMarket" : "afterHours", marketStateLabel(session), 9));
+  const extended = extendedSessions.map((session) => column(session === "PRE" ? "preMarket" : "afterHours", extendedSessionStateLabel(session), 9));
   const [day, ...windows] = THEME_PERIODS.map((period) => column(period, PERIOD_LABELS[period], 9));
   return fitColumns([column("symbol", "Ticker", 7, "left"), column("name", "Name", 24, "left"), column("price", "Price $", 10),
     day!, ...extended, ...windows], width,

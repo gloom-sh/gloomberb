@@ -1,4 +1,5 @@
 import { fxLegForCurrency } from "../../../market-data/coordinator/fx-legs";
+import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { fxCloseOnOrBefore, type FxCloses } from "../../../market-data/fx-closes";
 import { extractFundamentalSeries } from "../../../time-series/fundamentals";
 import type { SecuritySeriesSource, TimeSeriesPoint } from "../../../time-series/types";
@@ -322,8 +323,8 @@ export function projectPeBand(
   const ranked = weeks.filter((week) => week.pe != null);
   const pes = ranked.map((week) => week.pe!);
   const ordered = [...pes].sort((a, b) => a - b);
-  const quotePrice = financials.quote?.price;
-  const price = quotePrice != null && Number.isFinite(quotePrice) && quotePrice > 0 ? quotePrice : sorted.at(-1)?.close ?? null;
+  // The regular session's price, as the quote headlines it: after the close, the close rather than an after-hours print.
+  const price = regularSessionValuationPrice(financials.quote) ?? sorted.at(-1)?.close ?? null;
   const currentStep = stepAt(allSteps, now);
   // Today's EPS at the latest completed FX close.
   const currentEps = priced(currentStep, day(now))?.eps ?? null;

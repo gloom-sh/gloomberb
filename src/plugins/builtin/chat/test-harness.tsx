@@ -15,6 +15,7 @@ import { setSharedMarketDataForTests, setSharedRegistryForTests } from "../../re
 import { ChatContent } from "./content";
 import { ChatController } from "./controller";
 import { chatSidebarStore } from "./sidebar-store";
+import { chatHandlePromptStore } from "./handle-prompt";
 
 const TRANSCRIPT_KIND = "channel-transcript";
 const TRANSCRIPT_KEY = "everyone";
@@ -55,6 +56,7 @@ export function cleanupChatTest(): void {
 
   // The sidebar's width and folded sections are a process-wide singleton.
   chatSidebarStore.reset();
+  chatHandlePromptStore.reset();
   setSharedRegistryForTests(undefined);
   setSharedMarketDataForTests(undefined);
   apiClient.connectChannel = originalConnectChannel;

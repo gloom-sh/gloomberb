@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import {
   chartTableChromeRows,
   ChartTableHeader,
@@ -135,7 +136,8 @@ export function DividendYieldPane({ focused, width, height, loadData = fetchDivi
   const cloudSession = useResearchCloudSession();
   const quoteCurrency = financials?.quote?.currency;
   const exchange = ticker?.metadata.exchange ?? "";
-  const quotePrice = financials?.quote?.price ?? null;
+  // The regular session's price: after the close, the close rather than an after-hours print.
+  const quotePrice = regularSessionValuationPrice(financials?.quote);
 
   const [sortPreference, setSortPreference] = useState<DividendSortPreference>(DEFAULT_SORT_PREFERENCE);
   // Null follows the table's first row, including after a reload.

@@ -5,6 +5,7 @@ import {
   type ChatUserSummary,
 } from "../../../api-client";
 import { PROFILE_POPOVER_CLOSE_DELAY_MS } from "./message/profile-popover";
+import { localUtcOffsetMinutes } from "../../../utils/local-utc-offset";
 import type { ChatUserAnchor } from "./message/types";
 
 interface ProfilePopoverOptions {
@@ -13,7 +14,13 @@ interface ProfilePopoverOptions {
   anchor?: ChatUserAnchor;
 }
 
+/**
+ * Your own card from your account, as others see it once your settings are
+ * saved: your clock while you share it, and the desks you chose. Badges come
+ * from the chat's copy of you, which the server signs.
+ */
 function accountProfileToChatUser(profile: AccountProfile): ChatUserSummary {
+  const offset = profile.showLocalTime === true ? localUtcOffsetMinutes() : null;
   return {
     id: profile.id,
     username: profile.username,
@@ -24,7 +31,16 @@ function accountProfileToChatUser(profile: AccountProfile): ChatUserSummary {
     profilePublic: profile.profilePublic,
     acceptUnknownDms: profile.acceptUnknownDms,
     portfolioAnalytics: profile.portfolioAnalytics,
+    ...(offset !== null ? { utcOffsetMinutes: offset } : {}),
+    ...(profile.chatDesks?.length ? { desks: profile.chatDesks } : {}),
   };
+}
+
+/** Your account's view of you over the chat's copy, keeping what only the chat has (your badges). */
+function withOwnProfile(chatUser: ChatUserSummary | null, own: ChatUserSummary): ChatUserSummary {
+  if (!chatUser || chatUser.id !== own.id) return own;
+  const { utcOffsetMinutes: _offset, desks: _desks, ...rest } = chatUser;
+  return { ...rest, ...own };
 }
 
 const OPTIONAL_PROFILE_FIELDS = [
@@ -98,7 +114,7 @@ export function useChatProfilePopover(trackOwnProfileUserId?: string) {
         ownProfileRef.current = nextUser;
         ownProfileLoadedAtRef.current = Date.now();
         setOwnProfileConfigured(isAccountProfileConfigured(profile));
-        setProfilePopoverUser((current) => current?.id === profile.id ? nextUser : current);
+        setProfilePopoverUser((current) => current?.id === profile.id ? withOwnProfile(current, nextUser) : current);
       })
       .catch(() => {})
       .finally(() => {
@@ -115,7 +131,7 @@ export function useChatProfilePopover(trackOwnProfileUserId?: string) {
   ) => {
     const ownProfile = options?.ownProfile === true;
     const cachedUser = ownProfile && ownProfileRef.current?.id === targetUser.id
-      ? ownProfileRef.current
+      ? withOwnProfile(targetUser, ownProfileRef.current)
       : targetUser;
     // Every name has a card: a private or empty profile gets the name-only one.
     cancelProfilePopoverClose();

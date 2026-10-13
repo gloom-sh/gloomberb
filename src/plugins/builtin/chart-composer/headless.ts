@@ -3,19 +3,26 @@ import { FINANCIAL_VINTAGE_NOTICE, SEC_EPS_BASIS_NOTICE } from "../../../utils/f
 import { graphRowsForFinancials, summarizeResolvedSeries } from "../../../time-series/reporting";
 import { priceHistoryIntegrityNotices, chartPriceHistoryIntegrityNotices } from "../../../time-series/market";
 import type { HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessSeries, HeadlessSeriesResult } from "../../../types/headless";
-import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
+import type { CapabilitySeriesSource, ChartResolutionResult, ChartSeriesSource, ChartSeriesSpec, ChartSpec, ChartViewportSpec, ResolvedSeries } from "../../../time-series/types";
 import { resolveGeoChartSeries } from "../world-venue-map/geo-series";
 import { GEO_SERIES_CAPABILITY_ID } from "./series-expression";
 import { mergePriceHistoryWindows, priceHistoryAcquisitionIdentity, priceHistoryTailAcquisition, resolveChartSpecData } from "../../../time-series/resolve";
-import { intersectChartResolutionSupport, isIntradayResolution, normalizeChartResolutionSupport, type ManualChartResolution } from "../../../time-series/resolution";
-import { intradaySessionDates, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
+import {
+  getSupportMaxRange,
+  intersectChartResolutionSupport,
+  isIntradayResolution,
+  normalizeChartResolutionSupport,
+  type ManualChartResolution,
+} from "../../../time-series/resolution";
+import type { ChartResolution } from "../../../time-series/range";
+import { intradaySessionDates, intradaySessionTimeZone, loadIntradayWindow, resolveIntradayRequest, type IntradayRequest, type IntradayWindow, type LoadedIntradayWindow } from "./session-history";
 import { createSnapshotDataProvider, snapshotInstrumentKey, type SnapshotMarketData } from "../../../market-data/snapshot-provider";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { HistorySession } from "../../../types/price-history";
 import type { TickerFinancials, PricePoint, Quote } from "../../../types/financials";
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
-import { parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
@@ -288,6 +295,64 @@ function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): Hea
   return barHistoryFreshness(coarsest);
 }
 
+/** What a chart series was asked as: a listing as typed (`USDZAR=X`, `SAN:EPA`), a FRED series by its ID. */
+function askedSymbol(source: ChartSeriesSource): string {
+  switch (source.kind) {
+    case "security": return publicTickerKey(source.instrument.symbol, source.instrument.exchange || undefined);
+    case "economic": return source.seriesId.toUpperCase();
+    case "capability": return `CAP:${source.capabilityId}:${source.seriesId}`;
+  }
+}
+
+/**
+ * The bars a market series was served in (`1mo`), else how often the series
+ * observes (`quarterly`), else how far apart its points are (a FRED series
+ * charts at its own frequency, `daily` for DEXSFUS).
+ */
+function servedInterval(series: Pick<ResolvedSeries, "historyResolution" | "nativeFrequency"> & Pick<HeadlessSeries, "points">): string | undefined {
+  if (series.historyResolution) return series.historyResolution;
+  if (series.nativeFrequency && series.nativeFrequency !== "auto") return series.nativeFrequency;
+  const spacing = inferSeriesFrequency(series.points.map((point) => ({ date: point.date, value: 0 })));
+  return spacing === "irregular" ? undefined : spacing;
+}
+
+/** A dropped resolution, as JSON's `metadata.resolution` states it. */
+export interface ChartResolutionDrop {
+  requested: ManualChartResolution;
+  returned: ManualChartResolution;
+  range: string;
+  reason: string;
+}
+
+/**
+ * A bar size asked for that the chart's price series did not come back in:
+ * what was asked, what was returned and why, so a report never hands back
+ * monthly bars for `--chartResolution 1d` without saying so. Null when every
+ * price series is in the bars asked for, or none was asked.
+ */
+export function chartResolutionDrop(
+  requested: ChartResolution,
+  viewport: Pick<ChartViewportSpec, "range" | "dateWindow">,
+  series: ReadonlyArray<Pick<ResolvedSeries, "historyResolution"> & { symbol?: string }>,
+  support: ChartResolutionResult["resolutionSupport"],
+): { drop: ChartResolutionDrop; warning: string } | null {
+  if (requested === "auto") return null;
+  const dropped = series.filter((entry) => entry.historyResolution && entry.historyResolution !== requested);
+  const returned = dropped[0]?.historyResolution;
+  if (!returned) return null;
+  const range = viewport.dateWindow ? "this window" : viewport.range;
+  const symbols = [...new Set(dropped.flatMap((entry) => entry.symbol ? [entry.symbol] : []))];
+  const maxRange = support?.length ? getSupportMaxRange(support, requested) : null;
+  const reason = !support?.length ? `the source returned ${returned} bars`
+    : maxRange == null ? `the source does not serve ${requested} bars`
+      : `${requested} bars go back ${maxRange} at most`;
+  const on = symbols.length > 0 ? ` on ${symbols.join(" and ")}` : "";
+  return {
+    drop: { requested, returned, range, reason },
+    warning: `${requested} is not available for ${range}${on} (${reason}); returning ${returned} bars.`,
+  };
+}
+
 export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneDefinition<"series"> {
   return {
     ...paneSchemas[template],
@@ -355,12 +420,29 @@ export function chartHeadless(template: keyof typeof paneSchemas): HeadlessPaneD
             target, symbol, exchange, points, bufferedPoints: data.priceHistory, start, end, session: data.priceHistorySession, sourceKey: data.priceHistorySourceKey,
             rangePreset: spec.viewport.range === "1W" ? "1W" : "1D",
             resolution: historyResolution, requestedSession: null,
-            sessionDates: intradaySessionDates(points, resolveExchangeTimeZone(exchange) ?? "UTC"),
+            sessionDates: intradaySessionDates(points, intradaySessionTimeZone(symbol, exchange)),
             unavailableReason: points.length ? null : model.chart.errors[0] ?? `No intraday price history is available for ${symbol} for the requested window.`,
           });
         }
       }
       model.snapshot.intradayHistories = intradayHistories;
+      // Exports name each series by what it was asked as and the bars or frequency it came back in.
+      const asked = new Map(parsed.series.map((series) => [series.id, askedSymbol(series.source)]));
+      model.series = model.series.map((series) => {
+        const symbol = asked.get(series.id);
+        const interval = servedInterval(series as HeadlessSeries & Pick<ResolvedSeries, "historyResolution" | "nativeFrequency">);
+        return { ...series, ...(symbol ? { symbol } : {}), ...(interval ? { interval } : {}) };
+      });
+      const dropped = chartResolutionDrop(
+        parsed.viewport.resolution,
+        model.spec.viewport,
+        (model.series as Array<HeadlessSeries & Pick<ResolvedSeries, "historyResolution"> & { derived?: boolean }>).filter((series) => !series.derived),
+        model.chart.resolutionSupport,
+      );
+      if (dropped) {
+        model.warnings = [...model.warnings ?? [], dropped.warning];
+        model.metadata = { ...model.metadata, resolution: dropped.drop };
+      }
       model.freshness = chartFreshness(model.series, model.spec);
       const priceDomainFailures = intradayHistories.flatMap(({ symbol, exchange, priceDomainFailure }) =>
         priceDomainFailure ? [{ symbol, exchange, ...priceDomainFailure }] : []);

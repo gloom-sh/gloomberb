@@ -16,7 +16,7 @@ const RATE_UNITS = ["%", "bp", "x", "ratio", "index", "score", "points"] as cons
 /** Quantities, which may take a scale ("thousand barrels"). */
 const QUANTITY_UNITS = [
   "number", "count", "units", "shares", "contracts", "days", "people", "jobs", "posts", "views", "hours",
-  "barrels", "barrels/day", "cubic feet", "MW", "MWh", "tons", "ounces",
+  "barrels", "barrels/day", "cubic feet", "MW", "MWh", "TWh", "GWh/day", "tons", "ounces",
   // The instrument's own currency, for a field that applies to any ticker.
   "currency", "currency/share",
 ] as const;

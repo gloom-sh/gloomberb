@@ -35,24 +35,34 @@ export function formatCaptureStamp(date: Date): string {
 }
 
 /**
- * The personal data a pane instance shows now, from its definition. A pane of
- * a plugin that connects a broker and says nothing is taken to show holdings,
- * so an external broker plugin's positions and orders ask before they are posted.
+ * The personal data a pane instance shows now, from its definition: the one
+ * answer Share and Ask Gloom both read. A declaration decides, and a rule that
+ * returns null opts the instance out. A pane that says nothing keeps the
+ * answer plugins written before `personalData` got (an external plugin's
+ * panes still ask until it declares): `holdings` when its plugin connects a
+ * broker, so a broker plugin's positions and orders ask, else `personal` when
+ * it keeps fields private when shared, else market data.
  */
 export function resolvePanePersonalData(
-  def: Pick<PaneDef, "personalData"> | undefined,
+  def: Pick<PaneDef, "personalData" | "portableShare"> | undefined,
   context: PanePersonalDataContext,
   options: { ownerConnectsBroker?: boolean } = {},
 ): PanePersonalData | null {
   const declared = def?.personalData;
-  if (declared === undefined) return options.ownerConnectsBroker ? "holdings" : null;
-  return typeof declared === "function" ? declared(context) : declared;
+  if (declared !== undefined) return typeof declared === "function" ? declared(context) : declared;
+  if (options.ownerConnectsBroker) return "holdings";
+  return def?.portableShare?.private ? "personal" : null;
 }
 
 /** Whether the person holds the ticker a pane shows: a position that is not zero. */
 export function holdsActiveTicker(context: Pick<PanePersonalDataContext, "activeTicker" | "tickers">): boolean {
   const ticker = context.activeTicker ? context.tickers.get(context.activeTicker) : undefined;
   return ticker?.metadata.positions.some((position) => position.shares !== 0) ?? false;
+}
+
+/** Whether the pane is on one of the person's portfolios: a watchlist is tickers they follow, a portfolio is what they hold. */
+export function isOnPortfolio(context: Pick<PanePersonalDataContext, "config" | "activeCollectionId">): boolean {
+  return context.config.portfolios.some((portfolio) => portfolio.id === context.activeCollectionId);
 }
 
 /** The confirmation a picture of personal data asks before it is posted. */
@@ -64,6 +74,8 @@ export function personalDataQuestion(kind: PanePersonalData): string {
       return "This shows your account details. Post it?";
     case "messages":
       return "This shows private messages. Post it?";
+    case "personal":
+      return "This shows your own data. Post it?";
   }
 }
 

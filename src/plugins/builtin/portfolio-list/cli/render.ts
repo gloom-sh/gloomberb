@@ -130,7 +130,7 @@ function quoteMoveColumns(headline: ActiveQuoteDisplay | null) {
 /** The extended sessions among the rows' prints, in the order their columns go. */
 export function extendedSessionsOf(sessions: Iterable<ExtendedSession | null | undefined>): ExtendedSession[] {
   const present = new Set(sessions);
-  return (["PRE", "POST"] as const).filter((session) => present.has(session));
+  return (["PRE", "POST", "OVERNIGHT"] as const).filter((session) => present.has(session));
 }
 
 export function renderCollectionOverview(config: AppConfig, tickers: TickerRecord[]): string {
@@ -477,7 +477,7 @@ function extendedCells(
   assetCategory: string | undefined,
 ): string[] {
   return sessions.map((session) => extended?.session === session && quote
-    ? `${formatListPrice(extended.price, quote, assetCategory)} ${colorBySign(formatPercentRaw(extended.changePercent), extended.change)}`
+    ? `${formatListPrice(extended.price, quote, assetCategory)}${extended.mark ? " mid" : ""} ${colorBySign(formatPercentRaw(extended.changePercent), extended.change)}`
     : "");
 }
 

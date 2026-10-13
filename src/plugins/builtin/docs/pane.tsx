@@ -74,10 +74,15 @@ const STACK_LIMIT = 30;
 const MEASURE = 72;
 /**
  * On the desktop and the web the text reads a size up from the table text,
- * with more air between lines: about 68 characters to the line in the same
- * measure.
+ * with more air between lines, at most 69 characters of it to the line (as
+ * wide as a screenshot of the measure): the column fills a narrower pane and
+ * stops there in a wider one.
  */
-const READING_STYLE = { fontSize: "1.1667em", "--cell-h": "1.7em" } as const;
+const READING_STYLE = { fontSize: "1.1667em", "--cell-h": "1.7em", maxWidth: "69ch" } as const;
+/** The terminal wraps at `width` columns; the desktop and the web at the reading column's own width. */
+function useTextWidth(width: number): number | "100%" {
+  return useUiCapabilities().nativePaneChrome ? "100%" : width;
+}
 /** Below this the description column folds away and the title takes the row. */
 const ABOUT_COLUMN_MIN_WIDTH = 64;
 
@@ -110,9 +115,10 @@ function RelatedRow({ label, detail, topic, onOpenTopic, width }: {
   width: number;
 }) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   usePaneLinkMenuEntry(`docs-topic:${docsTopicKey(topic)}`, tf("Open {label}", { label }), () => onOpenTopic(topic));
   return (
-    <ActionRow label={label} onPress={() => onOpenTopic(topic)} width={width}>
+    <ActionRow label={label} onPress={() => onOpenTopic(topic)} width={nativePaneChrome ? undefined : width}>
       {detail ? <Text fg={colors.textMuted}>{detail}</Text> : null}
     </ActionRow>
   );
@@ -127,12 +133,13 @@ function FunctionEntry({ fn, feed, width, onOpenTopic, onOpenLink }: {
 }) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
+  const textWidth = useTextWidth(width);
   const pages = docsPagesForFunction(feed, fn.code).slice(0, 3);
   const lesson = fn.lesson ? findDocsLesson(feed, fn.lesson) : null;
   const tag = fn.plugin ? tf("Plugin: {name}", { name: fn.plugin.name }) : fn.access === "pro" ? "Pro" : fn.access === "cloud" ? t("Gloom Cloud account") : null;
   return (
     <Box flexDirection="column" gap={1}>
-      <Text fg={colors.textBright} wrapText width={width}>{fn.description}</Text>
+      <Text fg={colors.textBright} wrapText width={textWidth}>{fn.description}</Text>
       {nativePaneChrome && fn.shot ? (
         <DocsBlocks blocks={[{ type: "image", src: fn.shot, alt: `${fn.code} ${fn.name}` }]} width={width} onOpenLink={onOpenLink} />
       ) : null}
@@ -164,6 +171,7 @@ function FunctionEntry({ fn, feed, width, onOpenTopic, onOpenLink }: {
 
 function LessonEntry({ url, width, onOpenLink }: { url: string; width: number; onOpenLink: (href: string) => void }) {
   const colors = useThemeColors();
+  const textWidth = useTextWidth(width);
   const lesson = useDocsLesson(url);
   if (lesson.status === "loading") return <PaneStatusBody loading subject="Lesson" align="start" />;
   if (lesson.status === "unavailable") {
@@ -177,10 +185,10 @@ function LessonEntry({ url, width, onOpenLink }: { url: string; width: number; o
   }
   return (
     <Box flexDirection="column" gap={1}>
-      <Text fg={colors.textMuted} wrapText width={width}>
+      <Text fg={colors.textMuted} wrapText width={textWidth}>
         {[lesson.lesson.chapter, lesson.lesson.minutes > 0 ? tf("{minutes} min", { minutes: lesson.lesson.minutes }) : ""].filter(Boolean).join(" · ")}
       </Text>
-      {lesson.lesson.summary ? <Text fg={colors.textBright} wrapText width={width}>{lesson.lesson.summary}</Text> : null}
+      {lesson.lesson.summary ? <Text fg={colors.textBright} wrapText width={textWidth}>{lesson.lesson.summary}</Text> : null}
       <DocsBlocks blocks={lesson.lesson.blocks} width={width} onOpenLink={onOpenLink} />
     </Box>
   );
@@ -233,7 +241,7 @@ function TopicView({ topic, feed, width, scrollRef, onOpenTopic, onOpenLink, onS
   return (
     <DetailScrollBody ref={scrollRef} resetScrollKey={docsTopicKey(topic)}>
       <PaneLinkMenu>
-        <Box flexDirection="column" width={measure} data-gloom-role="docs-body" style={nativePaneChrome ? READING_STYLE : undefined}>
+        <Box flexDirection="column" width={nativePaneChrome ? "100%" : measure} data-gloom-role="docs-body" style={nativePaneChrome ? READING_STYLE : undefined}>
           {body}
         </Box>
       </PaneLinkMenu>

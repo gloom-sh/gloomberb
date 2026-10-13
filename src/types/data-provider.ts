@@ -169,6 +169,18 @@ export interface QuoteBatchResult {
   error?: unknown;
 }
 
+export interface QuoteBatchOptions {
+  forceRefresh?: boolean;
+  /**
+   * Answer from the local cache alone, stale and expired quotes included, and
+   * never reach the network: what a board paints before its refresh lands. A
+   * provider with no cache answers every target with no quote.
+   */
+  cacheOnly?: boolean;
+  /** The caller stopped waiting; a transport that can abandon the request does. */
+  signal?: AbortSignal;
+}
+
 export interface TickerFinancialsBatchResult {
   target: CachedFinancialsTarget;
   financials: TickerFinancials | null;
@@ -194,7 +206,7 @@ export interface AssetDataProvider {
    */
   primaryMarketSourceName?(): string | null | Promise<string | null>;
   getCachedFinancialsForTargets?(targets: CachedFinancialsTarget[], options?: { allowExpired?: boolean; includeStaleQuotes?: boolean }): Map<string, TickerFinancials> | Promise<Map<string, TickerFinancials>>;
-  getQuotesBatch?(targets: QuoteSubscriptionTarget[], options?: { forceRefresh?: boolean }): Promise<QuoteBatchResult[]>;
+  getQuotesBatch?(targets: QuoteSubscriptionTarget[], options?: QuoteBatchOptions): Promise<QuoteBatchResult[]>;
   getTickerFinancialsBatch?(targets: CachedFinancialsTarget[], options?: { forceRefresh?: boolean }): Promise<TickerFinancialsBatchResult[]>;
   getTickerFinancials(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<TickerFinancials>;
   getQuote(ticker: string, exchange?: string, context?: MarketDataRequestContext): Promise<Quote>;

@@ -18,13 +18,15 @@ export type SectorNewsSelection = "all" | typeof SECTOR_NEWS_SECTORS[number];
 /**
  * NI codes, Bloomberg style: topics the service tags from a story's text and
  * source (`NI MNA`), and the sectors NI always had (`NI TECH`). ENERGY is a
- * topic, so it takes energy news from every sector.
+ * topic, so it takes energy news from every sector. `LTR` is the one code that
+ * lists no stories: public fund and investor letters, as links.
  */
 export interface NewsIndustryCode {
   code: string;
   label: string;
   topic?: string;
   sector?: typeof SECTOR_NEWS_SECTORS[number];
+  letters?: true;
 }
 
 export const NEWS_INDUSTRY_CODES: readonly NewsIndustryCode[] = [
@@ -36,6 +38,7 @@ export const NEWS_INDUSTRY_CODES: readonly NewsIndustryCode[] = [
   { code: "CRYPTO", label: "Crypto", topic: "crypto" },
   { code: "EARN", label: "Earnings", topic: "earn" },
   { code: "IPO", label: "IPOs", topic: "ipo" },
+  { code: "LTR", label: "Letters", letters: true },
   { code: "TECH", label: "Tech", sector: "information_technology" },
   { code: "FIN", label: "Financials", sector: "financials" },
   { code: "HEALTH", label: "Health care", sector: "health_care" },

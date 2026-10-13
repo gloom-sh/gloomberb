@@ -7,6 +7,7 @@ import { calendarMonthsBefore } from "../../../utils/calendar-date";
 import { inferCadence, trailingCashAt } from "./trailing-cash";
 import { dividendQuotePriceMetadata } from "./reference-price";
 import { mapQuote } from "../../../sources/gloomberb-cloud/normalizers";
+import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 
 export const DIVIDENDS_CONNECTION_ID = "gloom-dividends";
 export const INCOMPLETE_DIVIDEND_HISTORY = "Incomplete cash history; totals unavailable.";
@@ -101,7 +102,8 @@ export async function fetchDividendData(
     historyError = INCOMPLETE_DIVIDEND_HISTORY;
   }
   const suppliedPrice = dividendReferencePrice(currentPrice, currentPriceCurrency, currency);
-  const price = suppliedPrice ?? dividendReferencePrice(quote?.price ?? null, quote?.currency, currency);
+  // The regular session's price, as the quote headlines it: after the close, the close rather than an after-hours print.
+  const price = suppliedPrice ?? dividendReferencePrice(regularSessionValuationPrice(quote), quote?.currency, currency);
   const historyAvailable = actions !== null && !historyError;
   // Minor-unit cash histories do not establish the denomination of annual-rate fields.
   const summaryRatesComparable = cashUnit.divisor === 1

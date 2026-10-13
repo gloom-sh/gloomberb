@@ -3,7 +3,7 @@ import { getTableWidth } from "../../../components/ui/table-layout";
 import { TextAttributes } from "../../../ui";
 import { colors, priceColor } from "../../../theme/colors";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
-import { marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
+import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import type { MarketMoverColumn, MarketMoverRow } from "./model";
 import { fiftyTwoWeekPositionPercent, formatMoverPrice, moverExtendedMove, moverReferencePrice } from "./model";
 
@@ -44,7 +44,7 @@ export function buildMarketMoverColumns(width: number, extendedSessions: readonl
     ...extendedSessions.map((session): MarketMoverColumn => ({
       id: session === "PRE" ? "preMarket" : "afterHours",
       // Named for the session it trades in, as the header labels it.
-      label: marketStateLabel(session),
+      label: extendedSessionStateLabel(session),
       width: EXTENDED_COLUMN_WIDTH,
       align: "right",
     })),

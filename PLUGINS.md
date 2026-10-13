@@ -432,10 +432,10 @@ The four supported shapes cover the pane catalog:
 
 - `rows`: `{ columns?, rows }` for one table
 - `bundle`: `{ sections: [{ title, columns?, rows } | { title, entries }] }` for dashboards such as VAL and ECST
-- `series`: `{ series: [{ id, label, points }], stats? }` for charts and derived statistics
+- `series`: `{ series: [{ id, label, points, unit?, symbol?, interval? }], stats? }` for charts and derived statistics. `unit`, `symbol` (what the series was asked as) and `interval` (the bars or frequency served) fill the `currency_or_unit`, `symbol_or_series` and `interval` columns every exported row ends with
 - `snapshot`: `{ asOf, items }` for a point-in-time view of a stream
 
-All shapes may include `errors`, `metadata`, and `unavailableSymbols`. An error that names what Gloom Pro unlocks (`Full history requires Gloom Pro`) is a lock, not a failure: the text report prints it under `Pro:` and keeps `Errors:` for the rest, and a bundle section that is empty because of it sets `empty: "Locked: Gloom Pro"` in place of the default `No data.`. Set `unavailableSymbols` for partially missing inputs even when another symbol returns data; otherwise a partial report can incorrectly appear complete. Set `symbols` when the loader expands an expression or adds an implicit peer. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
+All shapes may include `errors`, `metadata`, and `unavailableSymbols`. An error that names what Gloom Pro unlocks (`Full history requires Gloom Pro`) is a lock, not a failure: the text report prints it under `Pro:` and keeps `Errors:` for the rest, and a bundle section that is empty because of it sets `empty: "Locked: Gloom Pro"` in place of the default `No data.`. Set `unavailableSymbols` for partially missing inputs even when another symbol returns data; otherwise a partial report can incorrectly appear complete. Set `symbols` when the loader expands an expression or adds an implicit peer. Set `warnings` when the report could not do what was asked and did something else instead, such as a bar size the source does not serve for the range: `fn` prints each on stderr and lists them under `warnings` in JSON. Rows and items should contain raw structured values. Put display formatting in column `format` callbacks, or use an entry's `formatted` field, so JSON keeps the raw value while text stays readable.
 
 ### Report and screenshot models
 
@@ -1153,7 +1153,7 @@ Use `true` instead of an array to keep a whole scope local. Set `title: true` wh
 
 ### Personal data in a pane's picture
 
-Share can post a picture of a pane as it looks or copy its public link. A pane that shows the person's own data declares it with `personalData`, and posting its picture asks first (`This shows your holdings. Post it?`): `"holdings"` for positions, balances, orders and P&L, `"account"` for account numbers, email and plan, `"messages"` for private conversations. A pane of a plugin that registers a broker and declares nothing is taken to show `holdings`; a broker plugin's pane of market data opts out with `personalData: () => null`. A function decides from what the instance shows now; it gets the pane's settings context plus `tickers`:
+Share can post a picture of a pane as it looks or copy its public link. A pane that shows the person's own data declares it with `personalData`, and posting its picture asks first (`This shows your holdings. Post it?`): `"holdings"` for positions, balances, orders and P&L, `"account"` for account numbers, email and plan, `"messages"` for private conversations. `"personal"` is for the person's own data of a kind none of these names (`This shows your own data. Post it?`). Ask Gloom reads the same declaration, and asks before it attaches what such a pane shows to a question. A declaration always decides, a rule that returns null included (`personalData: () => null` for a pane of market data). A pane that declares nothing keeps the answer plugins written before `personalData` got: `holdings` when its plugin registers a broker, else `personal` when the pane lists `portableShare.private` fields. Declare it to say what the pane shows, and to opt a market-data pane of such a plugin out. A function decides from what the instance shows now; it gets the pane's settings context plus `tickers`:
 
 ```typescript
 ctx.registerPane({
@@ -1319,6 +1319,8 @@ Create pane instances programmatically:
 ```typescript
 ctx.createPaneFromTemplate("my-chart-new", { symbol: "AAPL" });
 ```
+
+Opening a template again focuses the pane that already shows what it names and adds one only when there is none. Put what identifies the window in what `createInstance` returns (`binding`, `params`, the settings that say what it shows) and leave view preferences out of it; return a stable `instanceId` for a function that is one window. A pane the user switches inside, like Chat, names the pane to reuse from `context.layout` and `context.focusedPaneId` instead. When two functions open one pane type, the pane def lists `identitySettings`, the settings that say what a window shows (`["board"]`), so a window that picked up other settings is still found and one carrying another function's setting is left alone. The rules are in `docs/pane-conventions.md` (8b).
 
 ## Reusable components
 
@@ -1679,6 +1681,7 @@ The full set of pane conventions (anatomy, where actions and status go, table + 
 - Put changing pane status in `usePaneFooter()`. Keep keyboard hints on their shared controls; do not add fixed footer labels, row counts, or generic hints.
 - Use `colors` and the shared components instead of hard-coded palette values when possible.
 - Use `usePaneTicker()` inside pane/tab components so multi-pane layouts keep working correctly.
+- On the desktop and the web no text is selectable unless it opts in, so a stray double click or Ctrl/Cmd+A never highlights the interface. Text people copy by hand (an article, an answer, a log, code) takes `<Text selectable>` for a run, or `data-gloom-selectable="true"` on the `Box` around a block; `MarkdownText` and the article reader already do. Text fields keep their own selection. Anything else is a copy action or an export. The terminal selects with the mouse as before.
 
 ## Example: adding a command
 

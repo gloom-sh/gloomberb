@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import type { CarbonBoard, PowerPriceRow } from "../../../api-client/europe-energy";
 import {
-  ChartTableHeader, CompositeChart, MarketBoardStack, PaneStatusBody, spanAxisFormatter, usePaneNoticeFooter, usePaneStatusFooter,
+  ChartTableHeader, CompositeChart, MarketBoardStack, PaneStatusBody, QueryBar, spanAxisFormatter, usePaneNoticeFooter, usePaneStatusFooter,
   usePaneTabs, type MarketBoardRow, type PaneHint, type StatItem,
 } from "../../../components";
 import { staticSeries } from "../../../components/chart/static/series";
@@ -13,7 +13,9 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useRendererHost } from "../../../ui";
 import { POWER_TABS } from "./model";
-import { usePowerPricesEvidence, type PowerPricesSnapshot } from "./evidence";
+import { usePowerPricesEvidence, type GasStorageSnapshot, type PowerPricesSnapshot } from "./evidence";
+import { GasStorageView } from "./gas";
+import { GAS_PUBLISHER } from "./gas-model";
 import { getCachedCarbonPrice, getCachedPowerPrices, loadCarbonHistory, loadCarbonPrice, loadPowerPriceHistory, loadPowerPrices, POWER_PRICES_NOT_AVAILABLE, validateCarbonPrice, validatePowerPrices } from "./prices-client";
 import { CARBON_PRICE_UNIT, CARBON_SELECTION, DEFAULT_PRICE_MARKET, formatPowerChange, formatPowerPrice, POWER_PRICE_UNIT, powerPriceMarket, powerRangePosition } from "./prices-model";
 
@@ -93,18 +95,42 @@ function PriceDetail({ row, width, height, focused }: { row: PowerPriceRow; widt
       formatAxisValue={formatAxis} remoteKind="day-ahead-history" />} />;
 }
 
+const BOARDS = [{ value: "power", label: "Power" }, { value: "gas", label: "Gas storage" }] as const;
+
 /**
- * POWER's Prices tab: every European market's latest day-ahead price, each
+ * POWER's Prices tab: European day-ahead power with the EU carbon allowance,
+ * or European gas storage, picked in the query bar. `EPWR GAS` opens on gas.
+ */
+export function PowerPricesView({ width, height, focused }: PaneProps) {
+  const [openingTab] = usePaneSettingValue("tab", "queue");
+  const [, setTab] = usePluginPaneState<string>("power:tab", openingTab);
+  const params = usePaneInstance()?.params;
+  const [board, setBoard] = usePluginPaneState<string>("power:prices:board", params?.board === "gas" ? "gas" : "power");
+  const gas = board === "gas";
+  const [gasSnapshot] = usePaneSettingValue<GasStorageSnapshot | null>("gasStorageSnapshot", null);
+  const { strip, rows: tabRows } = usePaneTabs({ tabs: [...POWER_TABS], activeValue: "prices", onSelect: (tab: string) => setTab(tab), focused, dense: true });
+  // GIE asks to be named under its data; the credit sits at the bar's right edge.
+  const query = <QueryBar width={width} meta={gas ? GAS_PUBLISHER : undefined}
+    filters={[{ id: "board", label: "Board", inline: true, value: gas ? "gas" : "power", options: BOARDS, onChange: setBoard }]} />;
+  const bodyHeight = Math.max(3, height - tabRows - 1);
+  return <Box width={width} height={height} flexDirection="column">
+    {strip}
+    <Box height={1} flexShrink={0}>{query}</Box>
+    {gas ? <GasStorageView width={width} height={bodyHeight} focused={focused} snapshot={gasSnapshot} />
+      : <PowerPriceBoard width={width} height={bodyHeight} focused={focused} />}
+  </Box>;
+}
+
+/**
+ * The power board: every European market's latest day-ahead price, each
  * dated by its own delivery day, with the selected market's year above the
  * board and its whole history in the detail. The EU carbon allowance's
  * auction price sits in the figures above, in its own unit.
  */
-export function PowerPricesView({ width, height, focused }: PaneProps) {
+function PowerPriceBoard({ width, height, focused }: { width: number; height: number; focused: boolean }) {
   const colors = useThemeColors();
   const host = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const [openingTab] = usePaneSettingValue("tab", "queue");
-  const [, setTab] = usePluginPaneState<string>("power:tab", openingTab);
   // `EPWR DE` opens with the market in the instance params, `EPWR EUA` with the carbon allowance; a saved selection wins.
   const params = usePaneInstance()?.params;
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("power:prices:selected", powerPriceMarket(params?.market)?.code ?? null);
@@ -138,7 +164,6 @@ export function PowerPricesView({ width, height, focused }: PaneProps) {
   useAutoRefresh(resource.updatedAt, resource.load);
   useAutoRefresh(carbonResource.updatedAt, carbonResource.load);
   usePaneRefreshKey(() => { void resource.reload(); void history.reload(); void carbonResource.reload(); }, { focused });
-  const { strip, rows: tabRows } = usePaneTabs({ tabs: [...POWER_TABS], activeValue: "prices", onSelect: (tab: string) => setTab(tab), focused, dense: true });
   const notAvailable = !board && resource.error === POWER_PRICES_NOT_AVAILABLE;
   const open = rows.find((row) => row.id === openId);
   const charted = carbonCharted ? carbon!.row : selected?.price;
@@ -161,19 +186,17 @@ export function PowerPricesView({ width, height, focused }: PaneProps) {
   usePaneNoticeFooter({ registrationId: "power-prices:notices", focused,
     notices: [...(board?.gaps ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
       ...(carbon?.gaps ?? []), ...(board && !carbon && carbonResource.error ? [carbonResource.error] : [])] });
-  const bodyHeight = Math.max(3, height - tabRows);
   return <Box width={width} height={height} flexDirection="column">
-    {strip}
     <PaneStatusBody loading={resource.loading && !board} error={!board && !notAvailable ? resource.error : null}
-      empty={notAvailable} emptyTitle={POWER_PRICES_NOT_AVAILABLE} subject="power prices" width={width} height={bodyHeight}>
-      {board ? <MarketBoardStack rows={rows} width={width} height={bodyHeight} focused={focused}
-        rootBefore={({ columns }) => <ChartTableHeader width={width} height={bodyHeight} tableRows={rows.length} tableColumns={columns}
+      empty={notAvailable} emptyTitle={POWER_PRICES_NOT_AVAILABLE} subject="power prices" width={width} height={height}>
+      {board ? <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
+        rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns}
           figures={figures} chart={charted ? { series, loading: history.loading && !series.length, empty: `No price history for ${charted.name}`,
             formatValue: (value) => `${formatPowerPrice(value)} ${unit}`, formatAxisValue: formatAxis, remoteKind: "day-ahead-history" } : null} />}
         selectedId={selected?.id ?? null} onSelectedIdChange={selectMarket} openId={open?.id ?? null} onOpenIdChange={setOpenId}
         labelHeader="MARKET" labelWidth={16} valueLabel={POWER_PRICE_UNIT} valueWidth={10} percentileLabel="IN 1Y" extraColumns={EXTRA_COLUMNS}
         emptyTitle={POWER_PRICES_NOT_AVAILABLE}
-        renderDetail={(row) => <PriceDetail row={row.price} width={width} height={Math.max(5, bodyHeight - 2)} focused={focused} />} /> : null}
+        renderDetail={(row) => <PriceDetail row={row.price} width={width} height={Math.max(5, height - 2)} focused={focused} />} /> : null}
     </PaneStatusBody>
   </Box>;
 }

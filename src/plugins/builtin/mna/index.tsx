@@ -32,6 +32,8 @@ export const mnaModule: PluginModule = {
       name: "M&A",
       icon: "M",
       component: MnaPane,
+      // MA and DIST open this pane: DIST sets the tab param, MA a ticker.
+      identitySettings: ["ticker"],
       defaultPosition: "right",
       tickerFollower: true,
       defaultMode: "floating",

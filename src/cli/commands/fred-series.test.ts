@@ -1,11 +1,15 @@
 import { expect, test } from "bun:test";
 import {
   basisPointsCell,
+  filterFredSeries,
+  fredEmptyAdvice,
   fredEmptyMessage,
   fredExportValue,
   fredHistoryNotes,
+  fredInterval,
+  fredObservationsFromStart,
   fredPublicationTime,
-  fredValueKey,
+  fredUnit,
   isSpreadSeries,
   laggingSeriesNote,
 } from "./fred-series";
@@ -18,15 +22,30 @@ test("spreads export in basis points, FRED's other series as they come", () => {
   expect([44, -12.5, 315.04, -0.04, null, "n/a"].map(basisPointsCell)).toEqual(["44", "-12.5", "315", "0", "", ""]);
 });
 
-test("every export names its unit in the value column, never a bare value", () => {
-  expect(fredValueKey("BAMLH0A0HYM2", "Percent")).toBe("value_bp");
-  expect(fredValueKey("DGS10", "Percent")).toBe("value_pct");
-  expect(fredValueKey("CPIAUCSL", "Index 1982-1984=100")).toBe("value_index_1982_1984_100");
-  expect(fredValueKey("GDP", "Billions of Dollars")).toBe("value_billions_of_dollars");
-  expect(fredValueKey("T10YIE", "Percent Change from Year Ago")).toBe("value_percent_change_from_year_ago");
-  // Without FRED's metadata the unit is said to be unknown, not left out.
-  expect(fredValueKey("DGS10", undefined)).toBe("value_unit_unknown");
-  expect(fredValueKey("T10Y2Y", undefined)).toBe("value_bp");
+test("the unit column names a spread bp, a percent pct and anything else as FRED states it", () => {
+  expect(fredUnit("BAMLH0A0HYM2", { units: "Percent" })).toBe("bp");
+  expect(fredUnit("DGS10", { units: "Percent" })).toBe("pct");
+  expect(fredUnit("CPIAUCSL", { units: "Index 1982-1984=100" })).toBe("Index 1982-1984=100");
+  expect(fredUnit("GDP", { units: "Billions of Dollars", seasonalAdjustment: "Seasonally Adjusted Annual Rate" })).toBe("Billions of Dollars, annual rate");
+  // A spread is in bp whatever the metadata says; without it any other series has no unit to state.
+  expect(fredUnit("T10Y2Y", null)).toBe("bp");
+  expect(fredUnit("DGS10", undefined)).toBeNull();
+  expect(["Daily", "Weekly, Ending Friday", "Monthly", "", null].map(fredInterval)).toEqual(["daily", "weekly", "monthly", null, null]);
+});
+
+test("a start before the series begins drops the blank days before it, and keeps a blank holiday after it", () => {
+  const observations = [
+    { date: "1979-12-28", value: null }, { date: "1979-12-31", value: null },
+    { date: "1980-01-02", value: 0.8271 }, { date: "1980-01-03", value: null }, { date: "1980-01-04", value: 0.8268 },
+  ];
+  const kept = ["1980-01-02", "1980-01-03", "1980-01-04"];
+  expect(fredObservationsFromStart(observations, "1980-01-02").map((row) => row.date)).toEqual(kept);
+  // Newest first, as --sort desc serves it.
+  expect(fredObservationsFromStart([...observations].reverse(), "1980-01-02").map((row) => row.date)).toEqual([...kept].reverse());
+  // Without FRED's metadata, the first value marks the start.
+  expect(fredObservationsFromStart(observations, null).map((row) => row.date)).toEqual(kept);
+  // A blank row at the start asked for, inside the series, is a holiday and stays.
+  expect(fredObservationsFromStart([{ date: "2021-01-01", value: null }, { date: "2021-01-04", value: 14.6 }], "1980-01-02")).toHaveLength(2);
 });
 
 test("FRED's last update is the publication time only when it covers the newest observation", () => {
@@ -57,9 +76,35 @@ test("an empty window names the latest observation, or says no results when ther
     .toBe("Latest observation: 2026-10-09 (5.24). Nothing on or after 2026-10-11.");
   expect(fredEmptyMessage("2026-10-11", { date: "2026-10-09", value: null })).toBe("Latest observation: 2026-10-09. Nothing on or after 2026-10-11.");
   expect(fredEmptyMessage("2026-10-11", null)).toBe("No results.");
+  // A CSV of nothing fails with a start that reaches the latest observation.
+  expect(fredEmptyAdvice("DGS10", { date: "2026-10-09" })).toBe("Latest observation: 2026-10-09. Try: gloomberb fred DGS10 --start 2026");
 });
 
 test("a lagging series carries its note, in any case", () => {
   expect(laggingSeriesNote("umcsent")).toContain("fn ECO");
   expect(laggingSeriesNote("DGS10")).toBeNull();
+});
+
+test("fred --list ranks the group and title words a filter names above an id that only contains it", () => {
+  const rows = [
+    { id: "FDEFX", title: "Federal Government: National Defense Consumption Expenditures and Gross Investment", group: "Defense & fiscal" },
+    { id: "DEXBZUS", title: "Brazilian Reals to U.S. Dollar Spot Exchange Rate (BRL per USD)", group: "FX" },
+    { id: "DEXJPUS", title: "Japanese Yen to U.S. Dollar Spot Exchange Rate (JPY per USD)", group: "FX" },
+    { id: "CPIAUCSL", title: "Consumer Price Index", group: "Prices" },
+    { id: "CORESTICKM159SFRBATL", title: "Sticky Price CPI", group: "Prices" },
+    { id: "EXFX", title: "Cross rates of the Swiss franc", group: "Rates" },
+  ];
+  const ids = (filter: string) => filterFredSeries(rows, filter).map((row) => row.id);
+  // The FX group, in catalog order, then the ids that spell fx.
+  expect(ids("fx")).toEqual(["DEXBZUS", "DEXJPUS", "FDEFX", "EXFX"]);
+  // A word of the title beats an id with the letters inside, and an exact id is found whole.
+  expect(ids("cpi")).toEqual(["CORESTICKM159SFRBATL", "CPIAUCSL"]);
+  expect(ids("cpiaucsl")).toEqual(["CPIAUCSL"]);
+  expect(ids("def")).toEqual(["FDEFX"]);
+  // Every word must match somewhere; the best match of each word ranks the row.
+  expect(ids("fx japanese")).toEqual(["DEXJPUS"]);
+  expect(ids("price sticky")).toEqual(["CORESTICKM159SFRBATL"]);
+  expect(ids("nothing")).toEqual([]);
+  // No filter keeps the catalog as it is.
+  expect(ids("")).toEqual(rows.map((row) => row.id));
 });

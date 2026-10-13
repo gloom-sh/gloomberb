@@ -207,7 +207,8 @@ function muteSourceQuery(context: PaneSettingsContext): NewsQuery | null {
   const fromParams = context.pane.params?.code;
   const code = typeof saved === "string" ? saved : fromParams;
   const entry = parseNewsIndustryCode(typeof code === "string" ? code : "");
-  if (!entry) return null;
+  // Letters are links to publishers, not stories from sources: nothing to mute.
+  if (!entry || entry.letters) return null;
   if (entry.topic) return NEWS_QUERY_PRESETS.topic(entry.topic);
   return NEWS_QUERY_PRESETS.sectorAll;
 }

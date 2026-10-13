@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { getLoadablePlugins } from "../plugins/catalog";
-import { createPaneDiscoveryContext } from "../cli/pane-functions/discovery";
+import { loadBuiltinPanes } from "../test-support/builtin-panes";
 import { createTestTicker } from "../test-support/ticker";
 import { createDefaultConfig, type PaneInstanceConfig } from "../types/config";
 import type { PaneDef, PanePersonalDataContext } from "../types/plugin";
-import { resolvePanePersonalData } from "./pane-image";
+import { personalDataQuestion, resolvePanePersonalData } from "./pane-image";
 
 const paneDefs = new Map<string, PaneDef>(
   getLoadablePlugins().flatMap((plugin) => plugin.panes ?? []).map((pane) => [pane.id, pane]),
@@ -37,24 +37,18 @@ const followed = new Map([["NVDA", createTestTicker("NVDA", "NVIDIA", { watchlis
 
 describe("which panes ask before their picture is posted to chat", () => {
   test("every built-in pane with private portable data declares picture privacy", async () => {
-    const { panes, paneTemplates: _templates, ...discovery } = createPaneDiscoveryContext({
-      getConfig: () => context("discovery").config,
-      panes: new Map(paneDefs),
-    });
-    const started: ReturnType<typeof getLoadablePlugins> = [];
+    // Includes setup-registered panes, not just the catalogue's static definitions.
+    const { panes, dispose } = await loadBuiltinPanes();
     try {
-      // Include setup-registered panes, not just the catalogue's static definitions.
-      for (const plugin of getLoadablePlugins()) {
-        started.push(plugin);
-        await plugin.setup?.(discovery);
-      }
-      // No exceptions today. A future exception must name the pane and explain
-      // why its private portable fields cannot expose personal data in a picture.
+      // The fallback for an undeclared private pane exists for plugins written before
+      // `personalData`; built-ins say exactly what they show. No exceptions today. A future
+      // exception must name the pane and explain why its private portable fields cannot expose
+      // personal data in a picture or an attachment.
       expect([...panes.values()]
         .filter((pane) => pane.portableShare?.private && pane.personalData === undefined)
         .map((pane) => pane.id).sort()).toEqual([]);
     } finally {
-      for (const plugin of started.reverse()) plugin.dispose?.();
+      dispose();
     }
   });
 
@@ -93,5 +87,21 @@ describe("which panes ask before their picture is posted to chat", () => {
     expect(resolvePanePersonalData(orders, context("ibkr-orders"), { ownerConnectsBroker: true })).toBe("holdings");
     expect(resolvePanePersonalData(orders, context("quotes"), { ownerConnectsBroker: false })).toBeNull();
     expect(resolvePanePersonalData(paneDefs.get("ticker-research"), context("ticker-research"), { ownerConnectsBroker: true })).toBeNull();
+  });
+
+  test("a pane that says nothing but keeps fields private when shared asks about its own data, unless a declaration says otherwise", () => {
+    const vault = { portableShare: { private: { state: true } } };
+    const ask = (def: Parameters<typeof resolvePanePersonalData>[0], options = {}) => resolvePanePersonalData(def, context("vault"), options);
+    expect(ask(vault)).toBe("personal");
+    expect(personalDataQuestion("personal")).toBe("This shows your own data. Post it?");
+    // A broker plugin's pane stays holdings, declared or not.
+    expect(ask(vault, { ownerConnectsBroker: true })).toBe("holdings");
+    // Any declaration wins, a rule that returns null included.
+    expect(ask({ ...vault, personalData: () => null })).toBeNull();
+    expect(ask({ ...vault, personalData: () => null }, { ownerConnectsBroker: true })).toBeNull();
+    expect(ask({ ...vault, personalData: "messages" })).toBe("messages");
+    expect(ask({ portableShare: { prepare: (pane) => pane } })).toBeNull();
+    // A rule that throws is not read as an answer.
+    expect(() => ask({ ...vault, personalData: () => { throw new Error("cannot read it"); } })).toThrow();
   });
 });

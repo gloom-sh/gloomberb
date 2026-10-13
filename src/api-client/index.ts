@@ -40,6 +40,7 @@ import type {
 
 export { setCloudApiFetchTransport, setCloudApiUploadTransport } from "./request";
 export type { ChatAttachmentUpload } from "./chat";
+export type { ChatPaneLink } from "./chat-pane-link";
 export { NoteConflictError } from "./notes";
 export { ThesisConflictError, ThesisGoalpostError } from "./theses";
 export { TeamRevisionConflictError } from "./views";
@@ -741,6 +742,7 @@ class GloomApiClient {
   getCloudAnalystResearch = this.data.getCloudAnalystResearch.bind(this.data);
   getCloudCorporateActions = this.data.getCloudCorporateActions.bind(this.data);
   getCloudTickerChanges = this.data.getCloudTickerChanges.bind(this.data);
+  getCloudOrganizationTickers = this.data.getCloudOrganizationTickers.bind(this.data);
   getCloudHistory = this.data.getCloudHistory.bind(this.data);
   getCloudExchangeRate = this.data.getCloudExchangeRate.bind(this.data);
   getCloudEconomicCalendar = this.data.getCloudEconomicCalendar.bind(this.data);
@@ -772,6 +774,7 @@ class GloomApiClient {
   getPublicGoingConcern = this.data.getPublicGoingConcern.bind(this.data);
   getPublicDistressDesignations = this.data.getPublicDistressDesignations.bind(this.data);
   getPublicInsolvencyNotices = this.data.getPublicInsolvencyNotices.bind(this.data);
+  getPublicLetters = this.data.getPublicLetters.bind(this.data);
   getCloudIpoCalendar = this.data.getCloudIpoCalendar.bind(this.data);
   getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
   getCloudSocialMentions = this.data.getCloudSocialMentions.bind(this.data);
@@ -817,6 +820,9 @@ class GloomApiClient {
   getCloudEuropePowerHistory = this.data.getCloudEuropePowerHistory.bind(this.data);
   getCloudEuropeCarbon = this.data.getCloudEuropeCarbon.bind(this.data);
   getCloudEuropeCarbonHistory = this.data.getCloudEuropeCarbonHistory.bind(this.data);
+  getCloudEuropeGas = this.data.getCloudEuropeGas.bind(this.data);
+  getCloudEuropeGasHistory = this.data.getCloudEuropeGasHistory.bind(this.data);
+  getCloudEuropeGasSeasonal = this.data.getCloudEuropeGasSeasonal.bind(this.data);
   getCloudGpuBoard = this.data.getCloudGpuBoard.bind(this.data);
   getCloudGpuHistory = this.data.getCloudGpuHistory.bind(this.data);
   getCloudGpuEvents = this.data.getCloudGpuEvents.bind(this.data);

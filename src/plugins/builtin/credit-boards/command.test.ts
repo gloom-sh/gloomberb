@@ -37,21 +37,27 @@ describe("folded pane commands", () => {
     expect(volume?.params?.tabAt).toMatch(/^\d+$/);
   });
 
-  test("SOVR reuses an open CDS board, and the first one takes a stable id", async () => {
+  test("CDX and SOVR route through Fixed Income and reuse one stable pane", async () => {
     const cdx = open(creditBoardsModule.paneTemplates, "cdx-pane");
     const sovr = open(creditBoardsModule.paneTemplates, "sovr-pane");
     const first = await cdx(context(empty));
-    expect(first).toMatchObject({ instanceId: "cdx-board", params: { tab: "index" } });
+    expect(first).toMatchObject({
+      instanceId: "fixed-income",
+      params: { tab: "credit", view: "index" },
+    });
     expect(first?.params?.tabAt).toMatch(/^\d+$/);
 
     const openBoard: LayoutConfig = {
       dockRoot: null,
-      instances: [{ instanceId: "cdx-1", paneId: "cdx-board", binding: { kind: "none" } }],
+      instances: [{ instanceId: "fixed-income", paneId: "fixed-income", binding: { kind: "none" } }],
       floating: [],
       detached: [],
     };
     const sovereign = await sovr(context(openBoard));
-    expect(sovereign).toMatchObject({ instanceId: "cdx-1", params: { tab: "sovereign" } });
+    expect(sovereign).toMatchObject({
+      instanceId: "fixed-income",
+      params: { tab: "credit", view: "sovereign" },
+    });
     expect(sovereign?.params?.tabAt).toMatch(/^\d+$/);
   });
 });

@@ -1,15 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { Box, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { usePaneInstance } from "../../../state/app/context";
 import {
   DataTableStackView,
-  DetailScrollBody,
   PaneStatusBody,
   useExternalLinkFooter,
   type DataTableCell,
   type DataTableColumn,
 } from "../../../components";
-import { MarkdownText } from "../../../components/markdown-text";
+import { DetailReader } from "../../../components/reader/detail-reader";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { fetchChangelogReleases, type ChangelogRelease } from "../../../updater/github-releases";
 import { colors } from "../../../theme/colors";
@@ -65,16 +64,16 @@ function ChangelogDetail({
   width: number;
   scrollRef: RefObject<ScrollBoxRenderable | null>;
 }) {
-  const lineWidth = Math.max(width - 2, 12);
-
+  // The stack title already carries the version.
   return (
-    <DetailScrollBody ref={scrollRef} resetScrollKey={release.id}>
-      <Box flexDirection="column" width={lineWidth}>
-        {/* The stack title already carries the version. */}
-        <Text fg={colors.textMuted}>{formatShortDate(release.publishedAt, { fallback: "" })}</Text>
-        <MarkdownText text={release.body} lineWidth={lineWidth} />
-      </Box>
-    </DetailScrollBody>
+    <DetailReader
+      ref={scrollRef}
+      resetScrollKey={release.id}
+      width={width}
+      meta={[formatShortDate(release.publishedAt, { fallback: "" })]}
+      body={release.body}
+      bodyFormat="markdown"
+    />
   );
 }
 

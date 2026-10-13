@@ -21,6 +21,7 @@ import {
   installElectrobunCloudApiFetchTransport,
   installElectrobunHttpFetchTransport,
 } from "./http-fetch";
+import { installElectrobunAppBadgeHost } from "./app-badge-host";
 import { installElectrobunUpdateHost } from "./update-host";
 import { installScreenshotWatermark } from "./screenshot-watermark";
 import { installElectrobunWindowFullscreenTracking } from "./window-fullscreen";
@@ -147,6 +148,7 @@ async function boot() {
   installElectrobunCapabilityStreamClient();
   installFocusScopeRelease();
   installElectrobunWindowFullscreenTracking();
+  if (init.windowKind === "main") installElectrobunAppBadgeHost();
   installDomMarketDataFrames();
   installScreenshotWatermark();
   const desktopSnapshot = init.windowKind === "detached" && init.paneId && init.desktopSnapshot

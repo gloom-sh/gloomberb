@@ -7,6 +7,16 @@ import { displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../
 import { truncateWithEllipsis } from "../../../../utils/text-wrap";
 import { t } from "../../../../i18n";
 import { isDiscordGhost, isManagedBot } from "../ghost-user";
+import {
+  CHAT_PERSON_ICON_WIDTH,
+  chatAuthorNameColor,
+  chatPersonFacts,
+  chatPersonIcons,
+  fitChatPersonIcons,
+  type ChatPersonFacts,
+} from "../people";
+import { ChatPersonIcons } from "./person-icons";
+import { localUtcOffsetMinutes } from "../../../../utils/local-utc-offset";
 import type { ChatUserAnchor } from "./types";
 
 /**
@@ -147,18 +157,70 @@ function nameCardRow(user: ChatUserSummary): { handle: string; name: string | nu
 
 function nameCardNaturalWidth(user: ChatUserSummary): number {
   const { handle, name } = nameCardRow(user);
-  return displayWidth(handle) + (name ? 1 + displayWidth(name) : 0);
+  return displayWidth(handle) + chatPersonIcons(user).length * CHAT_PERSON_ICON_WIDTH + (name ? 1 + displayWidth(name) : 0);
+}
+
+/**
+ * The handle in the name's colour, then the person's icons, Team and Pro
+ * included without a pointer on anything: the line below says what each one
+ * is. A handle too long for them keeps its room and the icons go first.
+ */
+function CardHandle({ user, handle, width }: { user: ChatUserSummary; handle: string; width: number }) {
+  const icons = fitChatPersonIcons(chatPersonIcons(user), width - displayWidth(handle));
+  return (
+    <>
+      <Text fg={chatAuthorNameColor(user)} attributes={TextAttributes.BOLD}>
+        {truncateToDisplayWidth(handle, Math.max(1, width - icons.length * CHAT_PERSON_ICON_WIDTH))}
+      </Text>
+      <ChatPersonIcons icons={icons} />
+    </>
+  );
 }
 
 function NameCardRow({ user, width }: { user: ChatUserSummary; width: number }) {
   const { handle, name } = nameCardRow(user);
-  const handleText = truncateToDisplayWidth(handle, width);
-  const nameWidth = width - displayWidth(handleText) - 1;
+  const handleWidth = Math.min(width, displayWidth(handle) + chatPersonIcons(user).length * CHAT_PERSON_ICON_WIDTH);
+  const nameWidth = width - handleWidth - 1;
   return (
     <Box height={1} width={width} flexDirection="row">
-      <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{handleText}</Text>
+      <CardHandle user={user} handle={handle} width={handleWidth} />
       {name && nameWidth >= 4 ? <Text fg={colors.textDim}>{` ${truncateToDisplayWidth(name, nameWidth)}`}</Text> : null}
     </Box>
+  );
+}
+
+/**
+ * The card's lines about who someone is beyond their profile: their role and
+ * Pro, their local time and what they trade. Each is one short line, or
+ * nothing. The keyboard reaches them too: `p` on a message opens this card.
+ */
+function personFactRows(facts: ChatPersonFacts): Array<{ id: string; label: string | null; value: string }> {
+  return [
+    ...(facts.roles.length > 0 ? [{ id: "role", label: null, value: facts.roles.map((role) => t(role)).join(" · ") }] : []),
+    ...(facts.localTime ? [{ id: "local-time", label: t("Local time"), value: facts.localTime }] : []),
+    ...(facts.trades.length > 0 ? [{ id: "trades", label: t("Trades"), value: facts.trades.map((desk) => t(desk)).join(", ") }] : []),
+  ];
+}
+
+function personFactRowWidth(row: { label: string | null; value: string }): number {
+  return (row.label ? displayWidth(row.label) + 1 : 0) + displayWidth(row.value);
+}
+
+function PersonFactRows({ rows, width }: { rows: ReturnType<typeof personFactRows>; width: number }) {
+  return (
+    <>
+      {rows.map((row) => {
+        const labelText = row.label ? truncateToDisplayWidth(row.label, Math.max(1, width - 2)) : "";
+        const valueWidth = Math.max(1, width - (labelText ? displayWidth(labelText) + 1 : 0));
+        // A long list of desks wraps under itself rather than losing its end.
+        return (
+          <Box key={row.id} width={width} flexDirection="row" data-gloom-role={`chat-profile-${row.id}`}>
+            {labelText ? <Text fg={colors.textDim}>{`${labelText} `}</Text> : null}
+            <Text fg={row.label ? colors.text : colors.textDim} wrapText width={valueWidth}>{row.value}</Text>
+          </Box>
+        );
+      })}
+    </>
   );
 }
 
@@ -205,11 +267,13 @@ export function UserProfilePopover({
   const maxPopoverWidth = Math.max(24, Math.min(38, width - 4));
   // Anyone without a public profile still gets a card: the name and a way to write to them.
   const nameOnly = !isOwnProfile && !hasPublicChatProfileInfo(user);
+  const factRows = personFactRows(chatPersonFacts(user, Date.now(), localUtcOffsetMinutes()));
   const popoverWidth = nameOnly
     ? Math.min(maxPopoverWidth, Math.max(
       NAME_CARD_MIN_WIDTH,
       nameCardNaturalWidth(user),
       messageRefusal ? displayWidth(messageRefusal) : 0,
+      ...factRows.map(personFactRowWidth),
     ) + chromeWidth)
     : maxPopoverWidth;
   const meta = [user.title, user.company].filter(Boolean).join(" · ");
@@ -227,6 +291,7 @@ export function UserProfilePopover({
   const content = nameOnly ? (
     <>
       <NameCardRow user={user} width={headerWidth} />
+      <PersonFactRows rows={factRows} width={headerWidth} />
       {messageAction ? (
         <Button label={messageAction.label} width={headerWidth} variant="ghost" compact stopPropagation onPress={messageAction.onPress} />
       ) : messageRefusal ? (
@@ -236,10 +301,8 @@ export function UserProfilePopover({
   ) : (
     <>
       <Box height={1} width={headerWidth} flexDirection="row">
-        <Box width={usernameWidth}>
-          <Text fg={colors.positive} attributes={TextAttributes.BOLD}>
-            {truncateWithEllipsis(user.username ? `@${user.username}` : user.displayName, usernameWidth)}
-          </Text>
+        <Box width={usernameWidth} flexDirection="row">
+          <CardHandle user={user} handle={user.username ? `@${user.username}` : user.displayName} width={usernameWidth} />
         </Box>
         {statsWidth > 0 ? (
           <>
@@ -249,8 +312,9 @@ export function UserProfilePopover({
         ) : null}
         <Box flexGrow={1} />
       </Box>
-      {isManagedBot(user) ? <Text fg={colors.textDim}>{truncateWithEllipsis(t("AI bot run by Gloom"), headerWidth)}</Text> : null}
+      <PersonFactRows rows={factRows.filter((row) => row.id === "role")} width={headerWidth} />
       {meta ? <Text fg={colors.textDim}>{truncateWithEllipsis(meta, headerWidth)}</Text> : null}
+      <PersonFactRows rows={factRows.filter((row) => row.id !== "role")} width={headerWidth} />
       {bio ? (
         <Text fg={colors.text} wrapText width={headerWidth}>
           {bio}

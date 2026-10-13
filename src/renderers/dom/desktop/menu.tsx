@@ -93,7 +93,7 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
               <CheckboxBox checked={!!item.checked} />
             )}
             <span className="gloom-menu-label">
-              <span className="gloom-menu-text">{item.label}</span>
+              <span className="gloom-menu-text" style={item.color ? { color: item.color } : undefined}>{item.label}</span>
               {item.description ? <span className="gloom-menu-description">{item.description}</span> : null}
             </span>
             {item.hint ? <span className="gloom-menu-hint">{item.hint}</span> : null}

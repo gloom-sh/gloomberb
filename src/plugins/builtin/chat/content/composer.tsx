@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Box, Text, TextAttributes, useCommandBarShortcut, type TextareaRenderable } from "../../../../ui";
 import { getMessageComposerBlockHeight, MessageComposer } from "../../../../components/ui";
 import { colors } from "../../../../theme/colors";
@@ -8,7 +9,7 @@ import { InlineAuthActions } from "../../cloud/auth-actions";
 import { Button, ListView } from "../../../../components/ui";
 import { COMPOSER_ACTION_WIDTH } from "../layout";
 import { isManagedBot } from "../ghost-user";
-import { ChatAiBadge } from "../message/ai-badge";
+import { ChatBotIcon } from "../message/person-icons";
 import type { ChatMentionSuggestion } from "./mentions";
 import type { ChatDraftAttachment } from "../controller/attachments";
 import { DesktopChatAttachButton, DesktopChatAttachmentStrip } from "../attachments/desktop";
@@ -22,6 +23,8 @@ interface MutableRef<T> {
 }
 
 interface ChatComposerAreaProps {
+  /** The first-chat handle prompt, drawn above everything else once you can send. */
+  handlePrompt?: ReactNode;
   canSend: boolean;
   cancelEditMessage: () => void;
   clearReplyTarget: () => void;
@@ -87,6 +90,7 @@ function ChatMentionSuggestions({
 }
 
 export function ChatComposerArea({
+  handlePrompt,
   canSend,
   cancelEditMessage,
   clearReplyTarget,
@@ -161,6 +165,8 @@ export function ChatComposerArea({
         />
       )}
 
+      {handlePrompt}
+
       {editingMessage && (
         <Box height={1} width={contentWidth} flexDirection="row">
           <Text fg={colors.textMuted}>{` ${t("editing")} `}</Text>
@@ -178,8 +184,8 @@ export function ChatComposerArea({
         <Box height={1} width={contentWidth} flexDirection="row">
           <Text fg={colors.textMuted}>{` ${t("replying to")} `}</Text>
           <Text fg={colors.positive} attributes={TextAttributes.BOLD}>{`@${replyTo.user.username}`}</Text>
-          {isManagedBot(replyTo.user) && <ChatAiBadge />}
-          {/* The badge stands where the colon would. */}
+          {isManagedBot(replyTo.user) && <ChatBotIcon />}
+          {/* The bot's icon stands where the colon would. */}
           <Text fg={colors.textDim}>{replyPreview ? `${isManagedBot(replyTo.user) ? " " : ": "}${replyPreview}` : ""}</Text>
           <Box flexGrow={1} />
           <Button stopPropagation
@@ -255,6 +261,7 @@ export function getChatComposerAreaHeight({
   replyTo,
   mentionSuggestionCount,
   draftAttachmentCount = 0,
+  promptRows = 0,
 }: {
   canSend: boolean;
   composerHeight: number;
@@ -264,9 +271,11 @@ export function getChatComposerAreaHeight({
   mentionSuggestionCount?: number;
   /** The terminal draws a row per waiting image; the desktop strip sizes itself. */
   draftAttachmentCount?: number;
+  /** Terminal rows the handle prompt above the composer takes. */
+  promptRows?: number;
 }) {
   if (!canSend) return 2;
-  return getMessageComposerBlockHeight({ height: composerHeight, nativePaneChrome })
+  return promptRows + getMessageComposerBlockHeight({ height: composerHeight, nativePaneChrome })
     + (editingMessage || replyTo ? 1 : 0)
     + Math.max(0, mentionSuggestionCount ?? 0)
     + (!nativePaneChrome && !editingMessage ? draftAttachmentCount : 0);

@@ -158,3 +158,62 @@ describe("intraday price domains", () => {
     }
   });
 });
+
+/** Half-hour bars from a session's open (UTC) up to its close. */
+function sessionBars(open: string, close: string): PricePoint[] {
+  const points: PricePoint[] = [];
+  for (let time = Date.parse(open); time < Date.parse(close); time += 30 * 60_000) {
+    points.push({ date: new Date(time), open: 10, high: 10.1, low: 9.9, close: 10, volume: 100 });
+  }
+  return points;
+}
+
+describe("intraday sessions on the exchange clock", () => {
+  // Each venue's last two sessions; the latest one opens at `open` UTC. A
+  // listing with no exchange reads its venue from its suffix.
+  const cases = [
+    // Sydney in daylight time (AEDT, UTC+11): 10:00 is 23:00 UTC the day before.
+    { venue: "ASX daylight", symbol: "RMS.AX", exchange: "", previous: ["2026-10-11T23:00:00Z", "2026-10-12T05:00:00Z"], open: "2026-10-12T23:00:00Z", close: "2026-10-13T05:00:00Z", date: "2026-10-13" },
+    // Sydney in standard time (AEST, UTC+10): 10:00 is UTC midnight.
+    { venue: "ASX standard", symbol: "BHP", exchange: "ASX", previous: ["2026-06-15T00:00:00Z", "2026-06-15T06:00:00Z"], open: "2026-06-16T00:00:00Z", close: "2026-06-16T06:00:00Z", date: "2026-06-16" },
+    // Auckland in daylight time (NZDT, UTC+13): 10:00 is 21:00 UTC the day before.
+    { venue: "NZX daylight", symbol: "AIR.NZ", exchange: "", previous: ["2026-10-11T21:00:00Z", "2026-10-12T03:45:00Z"], open: "2026-10-12T21:00:00Z", close: "2026-10-13T03:45:00Z", date: "2026-10-13" },
+    // Auckland in standard time (NZST, UTC+12): still 22:00 UTC the day before.
+    { venue: "NZX standard", symbol: "FPH", exchange: "NZX", previous: ["2026-06-14T22:00:00Z", "2026-06-15T04:45:00Z"], open: "2026-06-15T22:00:00Z", close: "2026-06-16T04:45:00Z", date: "2026-06-16" },
+    // Tokyo (JST, UTC+9, no daylight time): 09:00 is UTC midnight.
+    { venue: "TSE", symbol: "7203.T", exchange: "", previous: ["2026-10-12T00:00:00Z", "2026-10-12T06:30:00Z"], open: "2026-10-13T00:00:00Z", close: "2026-10-13T06:30:00Z", date: "2026-10-13" },
+    // New York opens 13:30 UTC in daylight time, the same day in UTC: a bare symbol with no venue reads alike.
+    { venue: "NYSE", symbol: "NEM", exchange: "NYSE", previous: ["2026-10-09T13:30:00Z", "2026-10-09T20:00:00Z"], open: "2026-10-12T13:30:00Z", close: "2026-10-12T20:00:00Z", date: "2026-10-12" },
+    { venue: "bare US symbol", symbol: "NEM", exchange: "", previous: ["2026-10-09T13:30:00Z", "2026-10-09T20:00:00Z"], open: "2026-10-12T13:30:00Z", close: "2026-10-12T20:00:00Z", date: "2026-10-12" },
+  ];
+
+  test("1D starts at the latest session's local open, before UTC midnight in Sydney and Auckland", async () => {
+    for (const { venue, symbol, exchange, previous, open, close, date } of cases) {
+      const latest = sessionBars(open, close);
+      const points = [...sessionBars(previous[0]!, previous[1]!), ...latest];
+      const loaded = await loadIntradayWindow({
+        provider: createTestDataProvider({ getPriceHistoryForResolution: async () => points }),
+        symbol, exchange, request: { rangePreset: "1D", resolution: "1m", session: null },
+      });
+      expect(loaded.start?.toISOString(), venue).toBe(new Date(open).toISOString());
+      expect(loaded.points, venue).toHaveLength(latest.length);
+      expect(loaded.sessionDates, venue).toEqual([date]);
+    }
+  });
+
+  test("a named session is fetched from local midnight to local midnight", async () => {
+    let requested: [Date, Date] | null = null;
+    const loaded = await loadIntradayWindow({
+      provider: createTestDataProvider({
+        getDetailedPriceHistory: async (_symbol, _exchange, start, end) => {
+          requested = [start, end];
+          return sessionBars("2026-10-12T23:00:00Z", "2026-10-13T05:00:00Z");
+        },
+      }),
+      symbol: "RMS.AX", exchange: "", request: { rangePreset: "1D", resolution: "1m", session: "2026-10-13" },
+    });
+    expect(requested!.map((bound) => bound.toISOString())).toEqual(["2026-10-12T13:00:00.000Z", "2026-10-13T13:00:00.000Z"]);
+    expect(loaded.start?.toISOString()).toBe("2026-10-12T23:00:00.000Z");
+    expect(loaded.points).toHaveLength(12);
+  });
+});

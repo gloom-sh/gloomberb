@@ -1,5 +1,6 @@
 import { expect, test } from "bun:test";
 import { earningsCallsHeadless } from "../../plugins/builtin/earnings-calls/headless";
+import { paneSchemas } from "../../plugins/builtin/chart-composer/headless-schema";
 import { createDefaultConfig } from "../../types/config";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateDef } from "../../types/plugin";
 import type { MarketContext } from "../types";
@@ -14,11 +15,15 @@ const template = (prefix: string, paneId: string, headless: HeadlessPaneDefiniti
 const indices: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "none" }, options: [], load: () => ({ sections: [] }),
 };
+const intraday: HeadlessPaneDefinition<"series"> = {
+  shape: "series", ...paneSchemas["graph-intraday-price-pane"], load: () => ({ series: [] }),
+};
 const registry: PaneFunctionCatalog = {
-  panes: new Map([["world-indices", pane("world-indices")], ["earnings-calls", pane("earnings-calls")]]),
+  panes: new Map([["world-indices", pane("world-indices")], ["earnings-calls", pane("earnings-calls")], ["chart", pane("chart")]]),
   paneTemplates: new Map([
     ["world-indices-pane", template("WEI", "world-indices", indices)],
     ["earnings-calls-pane", template("CALLS", "earnings-calls", earningsCallsHeadless)],
+    ["chart-pane", template("GIP", "chart", intraday)],
   ]),
   destroy: () => {},
 };
@@ -48,6 +53,18 @@ test("an option or argument a function refuses names the function code, never it
     registry, context, { ...parsePaneFunctionArgs(["CALLS"]), requireBotSafe: true }, { strictHeadlessOptions: true },
   ).catch((error: Error) => error.message);
   expect(strict).toBe("CALLS requires exactly one ticker.");
+});
+
+test("a bar size under a minute points at GIP's 1-minute bars for the ticker asked about", async () => {
+  const pointer = "No second or tick bars; 1-minute bars: fn GIP RMS.AX; trades exist for US listings only.";
+  for (const value of ["1s", "30s", "tick", "500ms"]) {
+    await expect(fn(["GIP", "RMS.AX", "--chartResolution", value])).rejects
+      .toThrow(`Invalid --chartResolution value "${value}". ${pointer} Use one of: auto, 1m, 5m, 15m, 1h.`);
+  }
+  await expect(fn(["GIP", "RMS.AX", "--resolution", "1s"])).rejects.toThrow(pointer);
+  // Another interval it does not serve is only refused.
+  await expect(fn(["GIP", "RMS.AX", "--chartResolution", "2m"])).rejects
+    .toThrow('Invalid --chartResolution value "2m". Use one of: auto, 1m, 5m, 15m, 1h.');
 });
 
 test("a name that opens nothing lists the closest functions and where to search, never an alphabetical list", async () => {

@@ -17,7 +17,12 @@ import {
 } from "../utils/display-number";
 import { isEpochMilliseconds, parseReportTime } from "../utils/utc-time";
 import type { ReportFreshness } from "./pane-functions/freshness";
-import { exportSourceLines } from "./export-source";
+import {
+  EXPORT_IDENTITY_COLUMNS,
+  exportIdentityCells,
+  exportSourceLines,
+  type ExportIdentity,
+} from "./export-source";
 
 type CliReportValue = string | number;
 
@@ -29,12 +34,16 @@ export interface CliReportTable {
   columns: string[];
   /** Numbers, ISO times and text; an empty string for a missing value. */
   rows: CliReportValue[][];
+  /** What this table's rows are of, where it differs from the report's: one series of a chart. */
+  identity?: ExportIdentity;
 }
 
 export interface CliReportTables {
   tables: CliReportTable[];
   /** What CSV writes after the data as `#` lines: source and as-of, completeness, errors, notes. */
   footer: string[];
+  /** What the rows are of, for the fixed columns every row ends with (`EXPORT_IDENTITY_COLUMNS`). */
+  identity?: ExportIdentity;
 }
 
 /** A column as a report declares it: the text view draws `format(value, row)`, or the value itself. */
@@ -444,13 +453,24 @@ function csvLine(row: readonly unknown[]): string {
 }
 
 /**
+ * A table with the fixed columns after its own, every row naming what it is
+ * and the source and as-of the footer cites. A table without columns stays empty.
+ */
+function identifiedTable(table: CliReportTable, report: CliReportTables, freshness: ReportFreshness | undefined): CliReportTable {
+  if (!freshness || table.columns.length === 0) return table;
+  const cells = exportIdentityCells(freshness, { ...report.identity, ...table.identity });
+  return { ...table, columns: [...table.columns, ...EXPORT_IDENTITY_COLUMNS], rows: table.rows.map((row) => [...row, ...cells]) };
+}
+
+/**
  * One table writes as a plain CSV; several write as blocks, each under a
  * `# section: <title>` line, with a blank line between. The footer follows
- * the data as `#` lines after a blank line.
+ * the data as `#` lines after a blank line. With the `freshness` the footer
+ * cites, every row ends with the fixed columns of `EXPORT_IDENTITY_COLUMNS`.
  */
-export function renderReportCsv(report: CliReportTables): string {
+export function renderReportCsv(report: CliReportTables, freshness?: ReportFreshness): string {
   const marked = report.tables.length > 1;
-  const blocks = report.tables.map((table) => [
+  const blocks = report.tables.map((table) => identifiedTable(table, report, freshness)).map((table) => [
     ...(marked ? [commentLine(`section: ${table.title}`)] : []),
     ...(table.columns.length > 0 ? [[table.columns, ...table.rows].map(csvLine).join("\n")] : []),
   ].join("\n"));
@@ -462,10 +482,14 @@ export function withCsvFooter(csv: string, footer: readonly string[]): string {
   return [csv, footer.map(commentLine).join("\n")].filter(Boolean).join("\n\n");
 }
 
-/** One JSON object per row, keyed by column; rows of a report with several tables name their section. */
-export function renderReportNdjson(report: CliReportTables): string {
+/**
+ * One JSON object per row, keyed by column; rows of a report with several
+ * tables name their section. With the report's `freshness`, every row ends
+ * with the fixed fields CSV ends it with.
+ */
+export function renderReportNdjson(report: CliReportTables, freshness?: ReportFreshness): string {
   const tagged = report.tables.length > 1;
-  return report.tables.flatMap((table) => {
+  return report.tables.map((table) => identifiedTable(table, report, freshness)).flatMap((table) => {
     const sectionKey = table.columns.some((column) => column.toLowerCase() === "section") ? "_section" : "section";
     return table.rows.map((row) => {
       const object: Record<string, CliReportValue | null> = tagged ? { [sectionKey]: table.title } : {};

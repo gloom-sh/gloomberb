@@ -40,6 +40,7 @@ describe("DesktopChatMessage", () => {
         catalog={{}}
         userByUsername={new Map()}
         openTicker={noop}
+        openPaneLink={noop}
         onUserHover={noop}
         onUserHoverEnd={noop}
         beginReplyTo={noop}

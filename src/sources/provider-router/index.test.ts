@@ -30,6 +30,30 @@ describe("AssetDataRouter", () => {
     expect(JSON.parse(JSON.stringify(result)).error).toBe("No quote provider available for ES=F");
   });
 
+  test("a cache-only batch answers from the cache, an expired quote included, and never asks a provider", async () => {
+    const persistence = new AppPersistence(createTempDbPath("cache-only-batch"));
+    let asked = 0;
+    const provider: DataProvider = {
+      ...fallbackProvider,
+      id: "gloom",
+      name: "Gloom",
+      async getQuote() { asked += 1; throw new Error("network"); },
+      async getQuotesBatch() { asked += 1; return []; },
+    };
+    try {
+      const cachedQuote = createTestQuote({ symbol: "GC=F", providerId: "gloom", price: 4_190.6 });
+      persistence.resources.set({ namespace: "market", kind: "quote", entityKey: getRouterEntityKey("GC=F"), variantKey: "", sourceKey: "provider:gloom" }, cachedQuote, {
+        schemaVersion: QUOTE_SCHEMA_VERSION, cachePolicy: { staleMs: 60_000, expireMs: 60_000 }, fetchedAt: Date.now() - 60 * 60_000,
+      });
+      const router = new AssetDataRouter(provider, [], persistence.resources);
+      const results = await router.getQuotesBatch([{ symbol: "GC=F", exchange: "" }, { symbol: "SI=F", exchange: "" }], { cacheOnly: true });
+      expect(results.map((result) => result.quote?.price ?? null)).toEqual([4_190.6, null]);
+      expect(asked).toBe(0);
+    } finally {
+      persistence.close();
+    }
+  });
+
   test("falls through to Gloom quotes and history when Cloud market requests never settle", async () => {
     const cloudCalls = { quote: 0, history: 0 };
     const gloomCalls = { quote: 0, history: 0 };

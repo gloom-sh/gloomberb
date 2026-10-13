@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableView, PaneStatusBody, QueryBar, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
+import { DataTableView, PaneStatusBody, Prose, QueryBar, usePaneFooter, usePaneNoticeFooter, type DataTableColumn, type DataTableKeyEvent } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { usePaneCollection, usePaneSettingValue, usePluginAppActions, useTickers } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text } from "../../../ui";
+import { Box, Text, useUiCapabilities } from "../../../ui";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
@@ -36,6 +36,7 @@ const COLUMNS: DataTableColumn[] = [
 
 export function IvScreenPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   const [scope, setScope] = usePaneSettingValue("scope", "etfs");
   const [symbolsText, setSymbolsText] = usePaneSettingValue("symbols", "");
   const [symbolsActive, setSymbolsActive] = useState(false);
@@ -135,9 +136,16 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
         getExportMetadata={() => [["universe", universe.label], ["as of", fullDatesText || undefined],
           ["IV", "30-day ATM, annualized"], ["IV1Y", "one-year ATM, annualized"], ["rank window", "prior 52 weeks of trade-close readings"], ["HV", `${HV_WINDOW}-session close-to-close`]]}
         renderCell={(row, column) => cell(row, column.id)} />
-      <Box flexDirection="column" paddingX={1} height={definitions.length} flexShrink={0}>
-        {definitions.map((line, index) => <Text key={index} fg={colors.textDim}>{line}</Text>)}
-      </Box>
+      {nativePaneChrome ? (
+        // The desktop and the web wrap each definition at the pane's width, under a table that fills the rest.
+        <Box flexDirection="column" paddingX={1} flexShrink={0}>
+          {VCA_DEFINITIONS.map((line) => <Prose key={line} text={line} width={Math.max(1, width - 2)} color={colors.textDim} figures={false} />)}
+        </Box>
+      ) : (
+        <Box flexDirection="column" paddingX={1} height={definitions.length} flexShrink={0}>
+          {definitions.map((line, index) => <Text key={index} fg={colors.textDim}>{line}</Text>)}
+        </Box>
+      )}
     </PaneStatusBody>
   </Box>;
 }

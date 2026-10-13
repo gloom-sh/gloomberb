@@ -73,9 +73,106 @@ window.__chat = {
     const r = document.querySelector('textarea')?.getBoundingClientRect();
     return r ? { x: r.x + 24, y: r.y + r.height / 2 } : null;
   },
+  /**
+   * The lowest name of a user in view: its box, colour, the icons its header
+   * row shows, where the status beside it starts, and the row's height.
+   */
+  name(username) {
+    const view = this.scroller().getBoundingClientRect();
+    const text = [...document.querySelectorAll('[data-gloom-role=chat-message-row] span, [data-gloom-role=chat-message-row] div')]
+      .filter((el) => {
+        if (el.childElementCount !== 0 || el.textContent !== username) return false;
+        const r = el.getBoundingClientRect();
+        return r.top >= view.top && r.bottom <= view.bottom;
+      })
+      .at(-1);
+    if (!text) return null;
+    const row = text.closest('[data-gloom-role=chat-message-row]');
+    const message = row.closest('[data-gloom-role=chat-message]');
+    const r = text.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    const icons = [...row.querySelectorAll('[data-gloom-role=chat-person-icon]')].map((icon) => {
+      const b = icon.getBoundingClientRect();
+      return {
+        id: icon.getAttribute('data-person-icon'),
+        title: icon.getAttribute('title'),
+        left: b.left,
+        drawn: !!icon.querySelector('svg[data-gloom-icon]'),
+        visible: b.width > 0 && b.right <= rowRect.right + 0.5 && b.bottom <= rowRect.bottom + 0.5,
+      };
+    });
+    // The status text after the name and its icons: the first leaf that reads like one.
+    const status = [...row.querySelectorAll('span, div')]
+      .find((el) => el.childElementCount === 0 && /^\\s*(\\d|now|sending|failed)/.test(el.textContent ?? ''));
+    // The desktop draws a row's actions on every row and shows them on hover.
+    const actions = row.querySelector('[data-gloom-role=chat-message-reply-action]')?.getBoundingClientRect();
+    const actionsInRow = !actions || actions.right <= rowRect.right + 0.5;
+    return {
+      id: message?.getAttribute('data-gloom-chat-message-id') ?? null,
+      x: r.x + r.width / 2,
+      y: r.y + r.height / 2,
+      left: r.left,
+      top: r.top,
+      // Whole: its box as wide as its text, and no icon over it.
+      nameWhole: text.parentElement.getBoundingClientRect().width >= r.width - 0.5 && icons.every((icon) => icon.left >= r.right - 0.5),
+      rowHeight: rowRect.height,
+      statusLeft: status ? status.getBoundingClientRect().left : null,
+      color: getComputedStyle(text).color,
+      icons,
+      actionsInRow,
+    };
+  },
+  /** The text of the open profile card, or null. */
+  card() {
+    const card = this.cardElement();
+    return card ? card.textContent : null;
+  },
+  cardElement() {
+    return [...document.querySelectorAll('.gloom-popover')].find((popover) => popover.querySelector('[data-gloom-role^=chat-profile-]')) ?? null;
+  },
+  /** The icons the open card shows beside the handle. */
+  cardIcons() {
+    return [...(this.cardElement()?.querySelectorAll('[data-gloom-role=chat-person-icon]') ?? [])].map((icon) => icon.getAttribute('data-person-icon')).join();
+  },
   neighbour() {
     const r = document.querySelector('[data-gloom-role=pane-window][data-gloom-pane-id="plain:a"]')?.getBoundingClientRect();
     return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+  },
+  /** A message's chips: what each says, where it is, and whether it shows a picture. */
+  chips(id) {
+    const row = this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id);
+    return [...(row?.querySelectorAll('[data-gloom-role=chat-pane-chip]') ?? [])].map((chip) => {
+      const r = chip.getBoundingClientRect();
+      return { link: chip.getAttribute('data-gloom-pane-link'), text: chip.textContent, picture: !!chip.querySelector('img'), x: r.x + r.width / 2, y: r.y + r.height / 2, height: r.height };
+    });
+  },
+  /** Everything a message row draws, chips and controls included. */
+  rowText(id) {
+    return this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id)?.textContent ?? '';
+  },
+  /**
+   * How far left of the chat pane's right edge, in px, each row in view ends,
+   * with the text box of its body and the cut-off of its reply quote; and the
+   * widths of all rows, in view or not.
+   */
+  edges() {
+    const pane = document.querySelector('[data-gloom-pane-id="chat:a"] [data-gloom-role=pane-content]').getBoundingClientRect();
+    const view = this.scroller().getBoundingClientRect();
+    const rows = this.rows();
+    const inView = rows.filter((r) => { const b = r.getBoundingClientRect(); return b.bottom > view.top && b.top < view.bottom; });
+    const gap = (el) => pane.right - el.getBoundingClientRect().right;
+    return {
+      rows: inView.map(gap),
+      bodies: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-body]')].map(gap)),
+      quotes: inView.flatMap((r) => [...r.querySelectorAll('[data-gloom-role=chat-message-row] [style*="text-overflow: ellipsis"]')].map(gap)),
+      widths: [...new Set(rows.map((r) => Math.round(r.getBoundingClientRect().width * 100) / 100))],
+      fromBottom: this.state().fromBottom,
+    };
+  },
+  /** The words a message's body draws, without its chips. */
+  bodyText(id) {
+    const row = this.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === id);
+    return row?.querySelector('[data-gloom-role=chat-message-body]')?.textContent ?? '';
   },
 };
 `;
@@ -156,6 +253,89 @@ function expectMarked(actual: string[], expected: string[], what: string): void 
   if (actual.join() !== expected.join()) fail(`${what}: rows marked ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`);
 }
 
+/** The handle prompt's field, its value and whether it has the focus; null once the prompt is gone. */
+const handleField = (cdp: Cdp) => evaluate<{ x: number; y: number; value: string; focused: boolean; text: string } | null>(cdp, `(() => {
+  const prompt = document.querySelector('[data-gloom-role=chat-handle-prompt]');
+  const input = prompt?.querySelector('input');
+  if (!input) return null;
+  const r = input.getBoundingClientRect();
+  return { x: r.x + 24, y: r.y + r.height / 2, value: input.value, focused: document.activeElement === input, text: prompt.textContent };
+})()`);
+
+async function backspace(cdp: Cdp, times: number): Promise<void> {
+  for (let press = 0; press < times; press += 1) {
+    await cdp.send("Input.dispatchKeyEvent", { type: "rawKeyDown", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+    await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "Backspace", code: "Backspace", windowsVirtualKeyCode: 8 });
+  }
+  await frames(cdp, 3);
+}
+
+interface Edges { rows: number[]; bodies: number[]; quotes: number[]; widths: number[]; fromBottom: number }
+
+/** Each kind's single distance from the pane's right edge, or a failure when its rows do not share one. */
+function restGaps(edges: Edges, what: string): Record<"rows" | "bodies" | "quotes", number> {
+  const one = (values: number[], kind: string) => {
+    if (values.length === 0) fail(`${what}: no ${kind} in view`);
+    if (Math.max(...values) - Math.min(...values) > 0.5) fail(`${what}: the ${kind} in view do not end at one place`, values);
+    return values[0]!;
+  };
+  return { rows: one(edges.rows, "rows"), bodies: one(edges.bodies, "message bodies"), quotes: one(edges.quotes, "reply quotes") };
+}
+
+/**
+ * Resizes the chat pane with real pointer input, one move a frame, from
+ * `from` along `path` (t from 0 to 1), and reads the edges after every frame
+ * has laid out, just before the release, and once the release has settled.
+ */
+async function resizeChat(cdp: Cdp, from: Point, path: (t: number) => Point, moves = 45): Promise<{ during: Edges[]; held: Edges; released: Edges }> {
+  await mouse(cdp, "mouseMoved", from.x, from.y, false);
+  await mouse(cdp, "mousePressed", from.x, from.y, true);
+  await evaluate(cdp, `(() => {
+    window.__edges = [];
+    window.__sampling = true;
+    const tick = () => {
+      if (!window.__sampling) return;
+      setTimeout(() => { if (window.__sampling) window.__edges.push(__chat.edges()); }, 0);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  })()`);
+  let to = from;
+  for (let move = 1; move <= moves; move += 1) {
+    to = path(move / moves);
+    await mouse(cdp, "mouseMoved", to.x, to.y, true);
+    await frames(cdp);
+  }
+  await frames(cdp, 2);
+  const during = await evaluate<Edges[]>(cdp, "(() => { window.__sampling = false; return window.__edges; })()");
+  const held = await evaluate<Edges>(cdp, "__chat.edges()");
+  await mouse(cdp, "mouseReleased", to.x, to.y, false);
+  await frames(cdp, 8);
+  await pause(cdp, 250);
+  const released = await evaluate<Edges>(cdp, "__chat.edges()");
+  return { during, held, released };
+}
+
+/** Every row in view, its text and its quote end where they did at rest, on every frame of the drag and after the release. */
+function expectFollowed(rest: Edges, result: { during: Edges[]; held: Edges; released: Edges }, what: string): void {
+  const expected = restGaps(rest, `${what} at rest`);
+  let worst = { px: 0, kind: "", frame: -1 };
+  result.during.forEach((edges, frame) => {
+    for (const kind of ["rows", "bodies", "quotes"] as const) {
+      for (const gap of edges[kind]) {
+        const px = Math.abs(gap - expected[kind]);
+        if (px > worst.px) worst = { px: Math.round(px * 100) / 100, kind, frame };
+      }
+    }
+  });
+  if (worst.px > 0.5) fail(`${what}: the ${worst.kind} in view fell ${worst.px} px behind the pane's edge (frame ${worst.frame} of ${result.during.length})`);
+  const jump = Math.max(...(["rows", "bodies", "quotes"] as const).flatMap((kind) => [...result.held[kind], ...result.released[kind]].map((gap) => Math.abs(gap - expected[kind]))));
+  if (jump > 0.5) fail(`${what}: the rows in view moved ${Math.round(jump * 100) / 100} px when the pointer let go`, { held: result.held, released: result.released });
+}
+
+const dividerPoint = (cdp: Cdp) => evaluate<Point | null>(cdp, `(() => { const d = document.querySelector('[data-gloom-role=dock-divider]')?.getBoundingClientRect(); return d ? { x: d.x + d.width / 2, y: 300 } : null; })()`);
+const gripPoint = (cdp: Cdp) => evaluate<Point | null>(cdp, `(() => { const g = document.querySelector('[data-gloom-pane-id="chat:a"] [data-gloom-role=resize-handle]')?.getBoundingClientRect(); return g ? { x: g.x + g.width / 2, y: g.y + g.height / 2 } : null; })()`);
+
 const OPENED_ON = "m60";
 
 /** Opens on a message the way a notification does, with the pointer parked outside the list. */
@@ -166,7 +346,174 @@ async function openOnTarget(cdp: Cdp): Promise<void> {
   await frames(cdp, 3);
 }
 
+interface PersonIconState { id: string; title: string | null; left: number; drawn: boolean; visible: boolean }
+
+interface NameState {
+  id: string | null;
+  x: number;
+  y: number;
+  left: number;
+  top: number;
+  nameWhole: boolean;
+  rowHeight: number;
+  statusLeft: number | null;
+  color: string;
+  icons: PersonIconState[];
+  actionsInRow: boolean;
+}
+
+const nameOf = (cdp: Cdp, username: string) => evaluate<NameState | null>(cdp, `__chat.name(${JSON.stringify(username)})`);
+
+async function pointAtName(cdp: Cdp, username: string): Promise<void> {
+  const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn`);
+  await mouse(cdp, "mouseMoved", name.x - 4, name.y, false);
+  await mouse(cdp, "mouseMoved", name.x, name.y, false);
+  await frames(cdp, 3);
+}
+
+async function parkPointer(cdp: Cdp): Promise<void> {
+  const away = await evaluate<Point>(cdp, "__chat.neighbour()");
+  await mouse(cdp, "mouseMoved", away.x, away.y, false);
+  await frames(cdp, 3);
+}
+
+/** The icons a drawn name's header shows, in order, each drawn and inside the row. */
+async function iconsOf(cdp: Cdp, username: string): Promise<string> {
+  const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn`);
+  const broken = name.icons.filter((icon) => !icon.drawn || !icon.visible);
+  if (broken.length > 0) fail(`${username}'s icons are not all drawn inside the row`, name.icons);
+  return name.icons.map((icon) => icon.id).join();
+}
+
+/** The name, its status and its row stay where they were. */
+function expectUnmoved(before: NameState, after: NameState, what: string): void {
+  const moved = Math.abs(before.left - after.left) > 0.5 || Math.abs(before.top - after.top) > 0.5
+    || Math.abs(before.rowHeight - after.rowHeight) > 0.5
+    || (before.statusLeft !== null && after.statusLeft !== null && Math.abs(before.statusLeft - after.statusLeft) > 0.5);
+  if (moved) fail(`${what} moved the name, its status or the row`, { before, after });
+}
+
+interface Chip { link: string; text: string; picture: boolean; x: number; y: number; height: number }
+
+/** The invented shares and the last three messages the `chips=1` channel ends on. */
+const SHARES = { posted: "5ea7c0de".repeat(4), bare: "b0a7c0de".repeat(4) };
+const CHIP_ROWS = { wire: "m87", posted: "m88", bare: "m89" };
+/** An invented Wire news post from before the wire dropped the publisher's address; it sits above the three. */
+const LEGACY_NEWS = { row: "m86", story: "story-sample", address: "news.example.com" };
+const chips = (cdp: Cdp, id: string) => evaluate<Chip[]>(cdp, `__chat.chips(${JSON.stringify(id)})`);
+
+async function oneChip(cdp: Cdp, id: string): Promise<Chip> {
+  const found = await chips(cdp, id);
+  if (found.length !== 1) fail(`message ${id} should draw one chip`, found);
+  return found[0]!;
+}
+
 export const chatSteps: ChatStep[] = [
+  {
+    name: "chat people: a bot's name has its own colour and its icon always, a person's icons wait for the pointer",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await parkPointer(cdp);
+      const bot = await nameOf(cdp, "deskbot") ?? fail("no bot message in view");
+      const person = await nameOf(cdp, "quill") ?? fail("no member message in view");
+      if (bot.color === person.color) fail("the bot's name is drawn like a person's", { bot: bot.color, person: person.color });
+      const expected: Record<string, string> = { deskbot: "bot", marlow: "", quill: "" };
+      for (const [username, icons] of Object.entries(expected)) {
+        const actual = await iconsOf(cdp, username);
+        if (actual !== icons) fail(`${username} shows the wrong icons with no pointer on the row`, { actual, expected: icons });
+      }
+      const title = bot.icons[0]?.title;
+      if (title !== "Bot run by Gloom") fail("the bot's icon does not say what it is", { title });
+    },
+  },
+  {
+    name: "chat people: Team and Pro show on the row under the pointer and on the selected row, and nothing moves",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await parkPointer(cdp);
+      const before = await nameOf(cdp, "marlow") ?? fail("no staff message in view");
+      if (before.icons.length > 0) fail("marlow's icons show with no pointer on the row", before.icons);
+
+      // The pointer on the message's text, then on the name.
+      const row = await evaluate<{ x: number; y: number; width: number; height: number } | null>(cdp, `__chat.rowRect(${JSON.stringify(before.id)})`) ?? fail("no row for marlow's message");
+      await mouse(cdp, "mouseMoved", row.x + row.width * 0.6, row.y + row.height - 6, false);
+      await mouse(cdp, "mouseMoved", row.x + row.width * 0.6 + 4, row.y + row.height - 6, false);
+      await frames(cdp, 4);
+      const onRow = await nameOf(cdp, "marlow") ?? fail("marlow's name went");
+      if (await iconsOf(cdp, "marlow") !== "team,pro") fail("the row under the pointer does not show Team and Pro", onRow.icons);
+      expectUnmoved(before, onRow, "showing the icons");
+      const titles = onRow.icons.map((icon) => icon.title).join();
+      if (titles !== "Gloom team,Pro") fail("the icons do not say what they are", { titles });
+      await pointAtName(cdp, "marlow");
+      if (await iconsOf(cdp, "marlow") !== "team,pro") fail("the name under the pointer does not show Team and Pro");
+      expectUnmoved(before, (await nameOf(cdp, "marlow"))!, "pointing at the name");
+
+      // The pointer goes: so do the icons, and nothing moves back either.
+      await parkPointer(cdp);
+      if (!await waitFor(cdp, "__chat.card() === null", 2_000)) fail("the card stayed after the pointer left");
+      if (await iconsOf(cdp, "marlow") !== "") fail("Team and Pro stayed after the pointer left");
+      expectUnmoved(before, (await nameOf(cdp, "marlow"))!, "hiding the icons");
+
+      // Without a mouse: the newest message, marlow's, selected.
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await parkPointer(cdp);
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      const selectedNow = await selected(cdp);
+      const newest = await nameOf(cdp, "marlow") ?? fail("marlow's name went");
+      if (selectedNow.join() !== newest.id) fail("ArrowUp did not select marlow's newest message", { selected: selectedNow, marlow: newest.id });
+      if (await iconsOf(cdp, "marlow") !== "team,pro") fail("the selected row does not show Team and Pro");
+      expectUnmoved(before, newest, "selecting the row");
+    },
+  },
+  {
+    name: "chat people: pointing at a name opens the card with their icons, local time and what they trade, and the keyboard opens the same card",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await pointAtName(cdp, "marlow");
+      if (!await waitFor(cdp, "(__chat.card() ?? '').includes('Local time')", 2_000)) fail("pointing at a name opened no card with a local time");
+      const card = await evaluate<string>(cdp, "__chat.card()");
+      for (const part of ["Gloom team · Pro", "Trades", "Options, Futures"]) {
+        if (!card.includes(part)) fail(`the card does not say ${JSON.stringify(part)}`, card);
+      }
+      if (!/Local time\s*\d\d:\d\d/.test(card)) fail("the card's local time is not a clock reading", card);
+      const cardIcons = await evaluate<string>(cdp, "__chat.cardIcons()");
+      if (cardIcons !== "team,pro") fail("the card does not show the icons beside the handle", { cardIcons });
+      // The pointer leaves for the pane beside: the card goes.
+      await parkPointer(cdp);
+      if (!await waitFor(cdp, "__chat.card() === null", 2_000)) fail("the card stayed after the pointer left");
+
+      // Without a mouse: the newest message (marlow's), then p.
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await pressKey(cdp, "ArrowUp", "ArrowUp");
+      await pressKey(cdp, "p", "KeyP", "p");
+      if (!await waitFor(cdp, "(__chat.card() ?? '').includes('Local time')", 2_000)) fail("p on a selected message opened no card with a local time");
+    },
+  },
+  {
+    name: "chat people: at phone width the name stays whole and the icons and the row's actions stay inside the row",
+    scenario: "chat",
+    async run(cdp) {
+      await ready(cdp);
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+      try {
+        await frames(cdp, 12);
+        for (const username of ["deskbot", "marlow", "quill"]) {
+          // Under the pointer, where Team and Pro show and the actions with them.
+          await pointAtName(cdp, username);
+          const name = await nameOf(cdp, username) ?? fail(`no name ${username} drawn at phone width`);
+          const clipped = name.icons.filter((icon) => !icon.visible);
+          if (clipped.length > 0) fail(`${username}'s icons run past the row at phone width`, name.icons);
+          if (!name.actionsInRow) fail(`${username}'s icons push the row's actions out of it at phone width`, name.icons);
+          if (!name.nameWhole) fail(`${username}'s name is cut at phone width`, name);
+        }
+      } finally {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+      }
+    },
+  },
   {
     name: "chat list: a message a notification opened on is marked in view, then goes back to normal",
     scenario: `chat&target=${OPENED_ON}`,
@@ -488,6 +835,204 @@ export const chatSteps: ChatStep[] = [
       const offset = await evaluate<number | null>(cdp, `__chat.offsetOf(${JSON.stringify(before.id)})`);
       if (offset === null) fail("narrowing the pane took the message the reader was on out of the list", { before });
       expectPlace(before, { id: before.id, offset }, "narrowing the pane");
+    },
+  },
+  {
+    name: "chat resize: messages, reply quotes and wrapped text follow a divider drag to the pixel, and stay put when it lets go",
+    scenario: "chat&replies=1",
+    async run(cdp) {
+      await ready(cdp);
+      const rest = await evaluate<Edges>(cdp, "__chat.edges()");
+      const divider = await dividerPoint(cdp) ?? fail("no divider");
+      // In and back out, ending between cells rather than where it started.
+      const result = await resizeChat(cdp, divider, (t) => ({ x: divider.x - Math.sin(t * Math.PI * 0.8) * 230, y: divider.y }));
+      expectFollowed(rest, result, "a divider drag");
+      if (result.released.fromBottom > 4) fail("the list left the bottom", result.released);
+    },
+  },
+  {
+    name: "chat resize: messages, reply quotes and wrapped text follow a floating pane's corner to the pixel, and stay put when it lets go",
+    scenario: "chat&replies=1&float=1",
+    async run(cdp) {
+      await ready(cdp);
+      const rest = await evaluate<Edges>(cdp, "__chat.edges()");
+      const grip = await gripPoint(cdp) ?? fail("no resize grip");
+      const result = await resizeChat(cdp, grip, (t) => ({ x: grip.x - 181 * t, y: grip.y - 66 * t }));
+      expectFollowed(rest, result, "a corner drag");
+      if (result.released.fromBottom > 4) fail("the list left the bottom", result.released);
+    },
+  },
+  {
+    name: "chat resize: a reader who scrolled back stays on the message they are reading through a drag and its release",
+    scenario: "chat&count=300&loaded=300&replies=1",
+    async run(cdp) {
+      await ready(cdp);
+      await evaluate(cdp, `(() => { const s = __chat.scroller(); s.scrollTop = Math.round((s.scrollHeight - s.clientHeight) / 2); })()`);
+      await frames(cdp, 6);
+      const before = await anchor(cdp);
+      const divider = await dividerPoint(cdp) ?? fail("no divider");
+      await mouse(cdp, "mouseMoved", divider.x, divider.y, false);
+      await mouse(cdp, "mousePressed", divider.x, divider.y, true);
+      for (let move = 1; move <= 30; move += 1) {
+        await mouse(cdp, "mouseMoved", divider.x - move * 6, divider.y, true);
+        await frames(cdp);
+        if (move % 10 === 0) expectPlace(before, await anchor(cdp), `step ${move} of the drag`);
+      }
+      await mouse(cdp, "mouseReleased", divider.x - 180, divider.y, false);
+      await frames(cdp, 8);
+      await pause(cdp, 250);
+      expectPlace(before, await anchor(cdp), "the release");
+    },
+  },
+  {
+    name: "chat resize: over 500 loaded messages, every row in view follows a drag, every row takes the new width on release, and the list keeps its bottom",
+    scenario: "chat&count=500&loaded=500&replies=1",
+    async run(cdp) {
+      await ready(cdp);
+      const rest = await evaluate<Edges>(cdp, "__chat.edges()");
+      if (await evaluate<number>(cdp, "__chat.rows().length") < 500) fail("the list did not load 500 messages");
+      const divider = await dividerPoint(cdp) ?? fail("no divider");
+      const result = await resizeChat(cdp, divider, (t) => ({ x: divider.x - Math.sin(t * Math.PI * 0.8) * 230, y: divider.y }));
+      expectFollowed(rest, result, "a divider drag over 500 messages");
+      const behind = result.during.map((edges) => edges.fromBottom).filter((px) => px > 4);
+      if (behind.length > 0) fail("the list left the bottom during the drag", behind);
+      if (result.released.widths.length !== 1) fail("rows out of view kept another width after the release", result.released.widths);
+      if (result.released.fromBottom > 4) fail("the list left the bottom", result.released);
+    },
+  },
+  {
+    name: "chat chips: a share link is a chip with the share's title and pane, and its row keeps its height while the share is read",
+    scenario: "chat&chips=1&shares=held",
+    async run(cdp) {
+      await ready(cdp);
+      if (!await waitFor(cdp, "window.__chatFake.shareReads >= 2", 3_000)) fail("the chips never asked for their shares");
+      const rowsBefore = await Promise.all(Object.values(CHIP_ROWS).map((id) => evaluate<{ height: number }>(cdp, `__chat.rowRect(${JSON.stringify(id)})`)));
+      const bare = await oneChip(cdp, CHIP_ROWS.bare);
+      if (bare.link !== `share:${SHARES.bare}`) fail("the bare link's chip opens the wrong share", bare);
+      // The link is the chip now: no bare address in the text, and a message that was only a link has no text row.
+      if (await evaluate<string>(cdp, `__chat.bodyText(${JSON.stringify(CHIP_ROWS.bare)})`)) fail("a message that was only a share link still draws a text row");
+      const postedText = await evaluate<string>(cdp, `__chat.bodyText(${JSON.stringify(CHIP_ROWS.posted)})`);
+      if (postedText.includes("gloom.sh") || !postedText.includes("Chain for the week")) fail("the caption should stay and the share link should go", postedText);
+      // A share posted with its picture shows the picture in the chip, not again below it.
+      const posted = await oneChip(cdp, CHIP_ROWS.posted);
+      if (!posted.picture) fail("the posted picture is not the chip's preview", posted);
+      if (await evaluate<number>(cdp, `__chat.rows().find((r) => r.getAttribute('data-gloom-chat-message-id') === ${JSON.stringify(CHIP_ROWS.posted)}).querySelectorAll('[data-gloom-role=chat-message-image]').length`) !== 0) {
+        fail("the posted picture is drawn twice");
+      }
+      const wire = await oneChip(cdp, CHIP_ROWS.wire);
+      if (wire.link !== "economic-calendar" || !/Economic Calendar/.test(wire.text) || !/Jan 8/.test(wire.text)) fail("the Wire post's chip does not name its calendar and day", wire);
+
+      await evaluate(cdp, "window.__chatFake.releaseShares()");
+      if (!await waitFor(cdp, `__chat.chips(${JSON.stringify(CHIP_ROWS.bare)})[0]?.text.includes("DES SAMPL Options")`, 3_000)) fail("the chip never showed the share's title", await chips(cdp, CHIP_ROWS.bare));
+      await frames(cdp, 4);
+      const readChip = await oneChip(cdp, CHIP_ROWS.bare);
+      if (!readChip.text.includes("Research")) fail("the chip does not say which pane the share holds", readChip);
+      const rowsAfter = await Promise.all(Object.values(CHIP_ROWS).map((id) => evaluate<{ height: number }>(cdp, `__chat.rowRect(${JSON.stringify(id)})`)));
+      rowsBefore.forEach((before, index) => {
+        if (Math.abs(before.height - rowsAfter[index]!.height) > 0.5) fail("a chip's row changed height when its share was read", { before, after: rowsAfter[index] });
+      });
+      const after = await state(cdp);
+      if (after.fromBottom > 4) fail("reading the shares moved a reader at the bottom", after);
+    },
+  },
+  {
+    name: "chat chips: a click on a share chip opens the shared pane and a Wire post's chip opens its calendar, without selecting the row",
+    scenario: "chat&chips=1",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await oneChip(cdp, CHIP_ROWS.bare));
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("share:${SHARES.bare}")`, 2_000)) fail("a click on the chip did not open its share", await evaluate(cdp, "window.__chatFake.opened"));
+      await click(cdp, await oneChip(cdp, CHIP_ROWS.posted));
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("share:${SHARES.posted}")`, 2_000)) fail("a click on the picture chip did not open its share", await evaluate(cdp, "window.__chatFake.opened"));
+      await click(cdp, await oneChip(cdp, CHIP_ROWS.wire));
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("template:econ-calendar-pane")`, 2_000)) fail("a click on the Wire chip did not open its calendar", await evaluate(cdp, "window.__chatFake.opened"));
+      const chosen = await selected(cdp);
+      if (chosen.length > 0) fail("a click on a chip selected its message", chosen);
+      if (await evaluate<number>(cdp, "document.querySelectorAll('[data-gloom-role=chat-image-lightbox]').length") !== 0) fail("a click on the picture chip opened the image viewer instead");
+    },
+  },
+  {
+    name: "chat chips: the keyboard opens the chip of the selected message",
+    scenario: "chat&chips=1",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await pressKey(cdp, "Escape", "Escape");
+      await pressKey(cdp, "k", "KeyK", "k");
+      const chosen = await selected(cdp);
+      if (chosen.join() !== CHIP_ROWS.bare) fail("k did not select the newest message", chosen);
+      await pressKey(cdp, "o", "KeyO", "o");
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("share:${SHARES.bare}")`, 2_000)) fail("o did not open the selected message's chip", await evaluate(cdp, "window.__chatFake.opened"));
+    },
+  },
+  {
+    name: "chat chips: a news post that still ends in the publisher's address draws no address, and its chip opens the story in Gloom",
+    scenario: "chat&chips=1",
+    async run(cdp) {
+      await ready(cdp);
+      const row = JSON.stringify(LEGACY_NEWS.row);
+      const text = await evaluate<string>(cdp, `__chat.rowText(${row})`);
+      if (!text.includes("Sample Corp expands packaging deal")) fail("the news post lost its headline", text);
+      if (text.includes(LEGACY_NEWS.address) || text.includes("https://")) fail("the news post still draws the publisher's address", text);
+      const chip = await oneChip(cdp, LEGACY_NEWS.row);
+      if (chip.link !== "news-story" || !/Story/.test(chip.text)) fail("the news post's chip does not name the story", chip);
+      await click(cdp, chip);
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("template:news-story-pane:${LEGACY_NEWS.story}")`, 2_000)) {
+        fail("a click on the chip did not open the story in Gloom", await evaluate(cdp, "window.__chatFake.opened"));
+      }
+      const outside = await evaluate<string[]>(cdp, "window.__paneChrome.externalOpens");
+      if (outside.length > 0) fail("a click on the chip opened a page outside Gloom", outside);
+      const chosen = await selected(cdp);
+      if (chosen.length > 0) fail("a click on a chip selected its message", chosen);
+    },
+  },
+  {
+    name: "chat chips: o on that news post opens the story at once, with no publisher address to choose",
+    scenario: "chat&chips=1",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await pressKey(cdp, "Escape", "Escape");
+      // Newest first: the bare share, the posted share, the calendar post, then the news post.
+      for (let step = 0; step < 4; step += 1) await pressKey(cdp, "k", "KeyK", "k");
+      const chosen = await selected(cdp);
+      if (chosen.join() !== LEGACY_NEWS.row) fail("k did not reach the news post", chosen);
+      await pressKey(cdp, "o", "KeyO", "o");
+      if (!await waitFor(cdp, `window.__chatFake.opened.includes("template:news-story-pane:${LEGACY_NEWS.story}")`, 2_000)) {
+        fail("o did not open the story: it asked which of several targets instead", await evaluate(cdp, "document.body.innerText.slice(-400)"));
+      }
+      const outside = await evaluate<string[]>(cdp, "window.__paneChrome.externalOpens");
+      if (outside.length > 0) fail("o opened a page outside Gloom", outside);
+      if (await evaluate<boolean>(cdp, `document.body.innerText.includes(${JSON.stringify(LEGACY_NEWS.address)})`)) fail("the publisher's address is still on screen");
+    },
+  },
+  {
+    name: "chat handle: the first-chat prompt keeps a refused handle in its field, gives the chat its keys back when the pointer leaves, and saves into the composer with the draft kept",
+    scenario: "chat&handle=placeholder&latency=50",
+    async run(cdp) {
+      await ready(cdp);
+      await click(cdp, await evaluate<Point>(cdp, "__chat.composer()"));
+      await cdp.send("Input.insertText", { text: "draft stays" });
+      await pressKey(cdp, "Escape", "Escape");
+      const field = await handleField(cdp) ?? fail("no handle prompt for an account on its signup placeholder");
+      await click(cdp, field);
+      await cdp.send("Input.insertText", { text: "taken" });
+      await pressKey(cdp, "Enter", "Enter", "\r");
+      if (!await waitFor(cdp, "document.querySelector('[data-gloom-role=chat-handle-prompt]')?.textContent.includes('is taken')", 3_000)) fail("a taken handle did not say so", await handleField(cdp));
+      const refused = await handleField(cdp);
+      if (!refused?.focused || refused.value !== "taken") fail("a refused handle left its field", refused);
+      // A click on a message takes the keyboard back to the chat.
+      await click(cdp, await listCentre(cdp));
+      await pressKey(cdp, "k", "KeyK", "k");
+      if ((await selected(cdp)).length !== 1) fail("after a click away from the field, k selected no message", await handleField(cdp));
+      // The reason under the field moved it up.
+      await click(cdp, await handleField(cdp) ?? fail("the handle prompt went away after a click outside it"));
+      await backspace(cdp, 5);
+      await cdp.send("Input.insertText", { text: "vince" });
+      await pressKey(cdp, "Enter", "Enter", "\r");
+      if (!await waitFor(cdp, "!document.querySelector('[data-gloom-role=chat-handle-prompt]')", 3_000)) fail("a free handle did not save", await handleField(cdp));
+      const composer = await evaluate<{ focused: boolean; value: string }>(cdp, "(() => { const t = document.querySelector('textarea'); return { focused: document.activeElement === t, value: t?.value ?? '' }; })()");
+      if (!composer.focused || composer.value !== "draft stays") fail("saving from the field did not hand the keyboard to the composer with its draft", composer);
     },
   },
 ];

@@ -24,6 +24,7 @@ import type { TickerFinancials } from "../types/financials";
 import type { PaneDef, PaneTemplateDef } from "../types/plugin";
 import type { TickerRecord } from "../types/ticker";
 import { resolveTickerInstrumentKind } from "../tickers/instrument-kind";
+import { DESK_KEYS, type DeskKey } from "./desk-keys";
 
 /**
  * Desks: ready-made layout tabs for one kind of trading, offered when the app
@@ -36,8 +37,7 @@ import { resolveTickerInstrumentKind } from "../tickers/instrument-kind";
  * gallery.
  */
 
-export const DESK_KEYS = ["equities", "options", "futures", "rates", "fx", "active"] as const;
-export type DeskKey = (typeof DESK_KEYS)[number];
+export { DESK_KEYS, type DeskKey };
 
 /** In an argument, the company the desk is built around. */
 const DESK_COMPANY = "{company}";

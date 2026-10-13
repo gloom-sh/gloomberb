@@ -23,8 +23,8 @@ export interface AskGloomPaneAttachment {
   /** Its text as drawn when asked, bounded; null when none could be read. */
   visibleText: string | null;
   /**
-   * It shows holdings, balances or account data, so Ask Gloom asks before
-   * anything it shows leaves the device.
+   * The pane shows personal data (`PaneDef.personalData`), so Ask Gloom
+   * asks before anything it shows leaves the device.
    */
   personal: boolean;
 }

@@ -118,6 +118,31 @@ const ICONS: Record<IconName, ReactNode> = {
       strokeLinejoin="round"
     />
   ),
+  // A robot's head: an antenna, two eyes and a mouth.
+  bot: (
+    <>
+      <path d="M6 1.9v1.3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      <circle cx="6" cy="1.45" r=".8" fill="currentColor" />
+      <rect x="1.9" y="3.6" width="8.2" height="6.6" rx="1.7" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="4.5" cy="6.3" r=".95" fill="currentColor" />
+      <circle cx="7.5" cy="6.3" r=".95" fill="currentColor" />
+      <path d="M4.7 8.35h2.6" stroke="currentColor" strokeWidth="1" strokeLinecap="round" />
+    </>
+  ),
+  // The Gloom mark: a solid core in a ring.
+  team: (
+    <>
+      <circle cx="6" cy="6" r="4.45" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="6" cy="6" r="2.25" fill="currentColor" />
+    </>
+  ),
+  // A cut gem: the table on top, the point below.
+  pro: (
+    <>
+      <path d="M3.6 2.4h4.8l2.3 2.9L6 10.4 1.3 5.3l2.3-2.9Z" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round" />
+      <path d="M1.5 5.3h9M4.8 2.5 4.3 5.3 6 10.1l1.7-4.8-.5-2.8" stroke="currentColor" strokeWidth=".9" strokeLinejoin="round" />
+    </>
+  ),
   restore: (
     <>
       <rect x="2" y="4" width="6" height="6" rx="0.8" stroke="currentColor" strokeWidth="1.1" />

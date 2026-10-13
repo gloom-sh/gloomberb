@@ -61,7 +61,7 @@ describe("portfolio panes on the old default columns get AS OF UTC where AGE was
       ],
     };
     const result = migrateSavedConfig(saved, "/unused-portfolio-as-of");
-    expect(result.applied).toEqual(["portfolio-as-of-column"]);
+    expect(result.applied).toEqual(["portfolio-as-of-column", "fold-fixed-income-panes", "fold-commodities-and-energy-panes"]);
     expect(result.config.configVersion).toBe(CURRENT_CONFIG_VERSION);
     const layouts = result.config.layouts as Array<{ layout: LayoutConfig }>;
     expect(columnsOf(result.config.layout, "portfolio-list:main")).toEqual(DEFAULT_PORTFOLIO_COLUMN_IDS);

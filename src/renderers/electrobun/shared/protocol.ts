@@ -213,6 +213,8 @@ interface DesktopBackendRequestMap {
     response: null;
   };
   "host.showContextMenu": { request: { menu: DesktopContextMenuItem[] }; response: boolean };
+  /** The unread count for the Dock icon badge: `""` (none), `"1"` to `"99"` or `"99+"`. Only the main window's is applied. */
+  "host.setAppBadge": { request: { label: string }; response: null };
   "update.check": { request: { currentVersion: string }; response: UpdateCheckResult };
   /** Downloads and stages the update. It ends in `ready` and never relaunches the app. */
   "update.start": { request: { release: ReleaseInfo; currentVersion?: string }; response: null };

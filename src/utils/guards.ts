@@ -35,3 +35,28 @@ export function isStringArray(value: unknown): value is string[] {
 export function isDateString(value: unknown): value is string {
   return typeof value === "string" && Number.isFinite(Date.parse(value));
 }
+
+/** The value as a trimmed string, or null when it is not a string or is blank. */
+export function textOrNull(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed || null;
+}
+
+/** A field that may hold text or a number, as text: a finite number is written out. */
+export function scalarTextOrNull(value: unknown): string | null {
+  return isFiniteNumber(value) ? String(value) : textOrNull(value);
+}
+
+/** A finite number, or a string that reads as one ("12.5"). A blank string is null, not 0. */
+export function numericOrNull(value: unknown): number | null {
+  if (typeof value === "number") return finiteOrNull(value);
+  if (typeof value !== "string" || !value.trim()) return null;
+  return finiteOrNull(Number(value));
+}
+
+/** The YYYY-MM-DD day an ISO date or timestamp string starts with, or null. */
+export function isoDateOrNull(value: unknown): string | null {
+  const text = textOrNull(value);
+  return text && /^\d{4}-\d{2}-\d{2}/.test(text) ? text.slice(0, 10) : null;
+}

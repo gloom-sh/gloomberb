@@ -35,6 +35,7 @@ import { usePluginTickerActions } from "../../runtime";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { useFxRatesMap, useTickerFinancialsMap } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { EXTENDED_SESSION_MARKS } from "../../../market-data/market/status";
 import { instrumentFromTicker, type InstrumentRef } from "../../../market-data/request-types";
 import {
   buildTrackedCurrencies,
@@ -106,6 +107,13 @@ const SNAPSHOT_REFRESH_MS = 60_000;
 const LAYOUT_THROTTLE_MS = 5_000;
 /** A size change below this share of a tile's area is not worth moving it. */
 const LAYOUT_TOLERANCE = 0.005;
+/**
+ * A move changes a tile's area far faster than a price changes a market cap
+ * (1.0% to 1.1% is a tenth more area), so tiles sized by the day's move relayout
+ * less often and only past a larger change, or the board would never sit still.
+ */
+const DAY_MOVE_LAYOUT_THROTTLE_MS = 30_000;
+const DAY_MOVE_LAYOUT_TOLERANCE = 0.05;
 const TERMINAL_PAINT_THROTTLE_MS = 250;
 /** "loading", which comes and goes with each refresh. */
 const LOADING_FOOTER_WIDTH = 7;
@@ -113,6 +121,7 @@ const SELECTION_STREAM_SETTLE_MS = 1_500;
 const TOOLTIP_NAME_WIDTH = 28;
 const SIZE_BY_SETTING_KEY = "sizeBy";
 const SQRT_SIZE_VALUE: HeatmapSizeBy = "sqrt-market-cap";
+const DAY_MOVE_SIZE_VALUE: HeatmapSizeBy = "day-move";
 const SESSION_BASIS_SETTING_KEY = "sessionBasis";
 const REGULAR_SESSION_BASIS: HeatmapSessionBasis = "regular-session";
 const NAME_COUNT_SETTING_KEY = "maxNames";
@@ -154,11 +163,9 @@ function sizeLabel(asset: HeatmapBoardAsset): string | null {
   return `${label} ${formatMoneyCompact(asset.size, asset.sizeCurrency ?? asset.currency)}`;
 }
 
-/** Marks a pre-market or after-hours move, which is measured from the regular close. */
+/** Marks a pre-market, after-hours or overnight move, which is measured from the regular close. */
 function sessionMark(asset: HeatmapBoardAsset): string | null {
-  if (asset.extendedSession === "PRE") return "PM";
-  if (asset.extendedSession === "POST") return "AH";
-  return null;
+  return asset.extendedSession ? EXTENDED_SESSION_MARKS[asset.extendedSession] : null;
 }
 
 function formatMove(asset: HeatmapBoardAsset, change: number | null): string {
@@ -170,6 +177,8 @@ function formatMove(asset: HeatmapBoardAsset, change: number | null): string {
  * The size transform applies to each name before groups sum them, so a
  * sector's block is the sum of its transformed names. A board that already
  * carries a weight (a portfolio or watchlist) applied it when it was built.
+ * The day's move is the live tile's own, the one its colour reads, so a
+ * pre-market or after-hours session sizes a tile as it colours it.
  */
 function buildLayoutItems(
   snapshot: readonly HeatmapBoardAsset[],
@@ -177,16 +186,19 @@ function buildLayoutItems(
   grouping: HeatmapGrouping,
   sizeBy: HeatmapSizeBy,
 ): Array<MetricTreemapItem<HeatmapBoardAsset>> {
-  return snapshot.map((asset, index) => ({
-    id: asset.symbol,
-    label: asset.symbol,
-    weight: asset.weight != null
-      ? liveHeatmapWeight(asset, live[index] ?? asset)
-      : heatmapSizeWeight(liveHeatmapWeight(asset, live[index] ?? asset), sizeBy),
-    group: grouping === "flat" ? undefined : asset.sector ?? null,
-    subgroup: grouping === "sector-industry" ? asset.industry ?? null : undefined,
-    data: asset,
-  }));
+  return snapshot.map((asset, index) => {
+    const current = live[index] ?? asset;
+    return {
+      id: asset.symbol,
+      label: asset.symbol,
+      weight: asset.weight != null
+        ? liveHeatmapWeight(asset, current)
+        : heatmapSizeWeight(sizeBy, { marketCap: liveHeatmapWeight(asset, current), move: heatmapMove(current) }),
+      group: grouping === "flat" ? undefined : asset.sector ?? null,
+      subgroup: grouping === "sector-industry" ? asset.industry ?? null : undefined,
+      data: asset,
+    };
+  });
 }
 
 /**
@@ -240,9 +252,9 @@ function otherTooltip(items: readonly MetricTreemapItem<HeatmapBoardAsset>[]): s
   ];
 }
 
-function useSettledLayoutItems<T>(items: readonly MetricTreemapItem<T>[]): readonly MetricTreemapItem<T>[] {
+function useSettledLayoutItems<T>(items: readonly MetricTreemapItem<T>[], tolerance: number): readonly MetricTreemapItem<T>[] {
   const settledRef = useRef<readonly MetricTreemapItem<T>[] | null>(null);
-  const settled = settleTreemapLayoutItems(settledRef.current, items, LAYOUT_TOLERANCE);
+  const settled = settleTreemapLayoutItems(settledRef.current, items, tolerance);
   settledRef.current = settled;
   return settled;
 }
@@ -254,13 +266,14 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   // A pane setting, not private pane state, so the settings dialog can show it.
   const [universeSetting, setActiveUniverse] = usePaneSettingValue<string>("universe", "us-equity");
   const [linkPortfolio] = usePaneSettingValue<boolean>("linkPortfolio", false);
-  const [sizeBySetting] = usePaneSettingValue<string>(SIZE_BY_SETTING_KEY, SQRT_SIZE_VALUE);
-  const sizeBy = heatmapSizeBy(sizeBySetting);
+  // Unset until the pane chooses: the board's own default applies, which depends on the tab.
+  const [sizeBySetting] = usePaneSettingValue<unknown>(SIZE_BY_SETTING_KEY, null);
   const [sessionBasisSetting] = usePaneSettingValue<unknown>(SESSION_BASIS_SETTING_KEY, null);
   const regularSession = heatmapSessionBasis(sessionBasisSetting) === REGULAR_SESSION_BASIS;
   const [nameCountSetting] = usePaneSettingValue<unknown>(NAME_COUNT_SETTING_KEY, null);
   const nameCount = heatmapNameCount(nameCountSetting);
   const activeUniverse = heatmapTabId(universeSetting);
+  const sizeBy = heatmapSizeBy(sizeBySetting, activeUniverse);
   const portfolioTab = activeUniverse === PORTFOLIO_HEATMAP_TAB;
   const config = usePaneAppConfig();
   const tickersBySymbol = useAppSelector((state) => state.tickers);
@@ -405,15 +418,17 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     () => resolveHeatmapGrouping(boardAssets, activeUniverse === "us-equity"),
     [activeUniverse, boardAssets],
   );
+  const byMove = sizeBy === DAY_MOVE_SIZE_VALUE;
   // A new board, or a new Colour by, applies at once rather than on the next tick.
   const layoutAssets = useThrottledMemo(
     () => resolvedAssets,
     [resolvedAssets],
     [boardAssets, regularSession],
-    LAYOUT_THROTTLE_MS,
+    byMove ? DAY_MOVE_LAYOUT_THROTTLE_MS : LAYOUT_THROTTLE_MS,
   );
   const layoutItems = useSettledLayoutItems(
     useMemo(() => buildLayoutItems(boardAssets, layoutAssets, grouping, sizeBy), [boardAssets, grouping, layoutAssets, sizeBy]),
+    byMove ? DAY_MOVE_LAYOUT_TOLERANCE : LAYOUT_TOLERANCE,
   );
   // The board on screen seeds the next layout's order, so a refresh nudges tiles instead of reshuffling them.
   const sceneRef = useRef<{ tab: string; scene: ReturnType<typeof buildHeatTreemapScene<HeatmapBoardAsset>> } | null>(null);
@@ -434,6 +449,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   const visibleTiles = scene.tiles;
   useMarketHeatmapEvidence({
     tab: activeUniverse,
+    sizedBy: heatmapSizeByApplies(activeUniverse, collectionKind) ? sizeBy : "position-value",
     tiles: visibleTiles,
     assets: paintAssets,
     grouped: grouping !== "flat",
@@ -729,7 +745,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
   id: "market-heatmap",
   name: "Market Heatmap",
   version: "1.0.0",
-  description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by the square root of market cap or by position value and colored by daily move",
+  description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by the day's move, market cap or position value and colored by daily move",
   toggleable: true,
   targets: ["cli", "tui", "desktop", "web"],
 
@@ -761,6 +777,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
           icon: "sqrt",
           onValue: SQRT_SIZE_VALUE,
           label: "Size by square root of market cap",
+          // Off picks the field's first other option, the day's move.
           visible: (context) => heatmapSizeByApplies(context.settings.universe, context.paneState[HEATMAP_COLLECTION_KIND_STATE_KEY]),
         },
       ],
@@ -768,7 +785,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
         title: "Market Heatmap Settings",
         values: {
           linkPortfolio: context.settings.linkPortfolio === true,
-          [SIZE_BY_SETTING_KEY]: heatmapSizeBy(context.settings[SIZE_BY_SETTING_KEY]),
+          [SIZE_BY_SETTING_KEY]: heatmapSizeBy(context.settings[SIZE_BY_SETTING_KEY], context.settings.universe),
           [SESSION_BASIS_SETTING_KEY]: heatmapSessionBasis(context.settings[SESSION_BASIS_SETTING_KEY]),
           [NAME_COUNT_SETTING_KEY]: String(heatmapNameCount(context.settings[NAME_COUNT_SETTING_KEY])),
         },
@@ -790,10 +807,11 @@ export const marketHeatmapPlugin: GloomPlugin = {
             label: "Size by",
             type: "select",
             options: [
+              { value: DAY_MOVE_SIZE_VALUE, label: "Day move" },
               { value: "market-cap", label: "Market cap" },
               { value: SQRT_SIZE_VALUE, label: "Square root of market cap" },
             ],
-            description: "Square root gives mid-size names room next to the largest. A portfolio is always sized by position value.",
+            description: "Day move sizes each name by how far it moved, up or down, so today's movers stand out; colour still shows the direction. Square root gives mid-size names room next to the largest. A portfolio is always sized by position value.",
           },
           {
             key: SESSION_BASIS_SETTING_KEY,
@@ -828,7 +846,7 @@ export const marketHeatmapPlugin: GloomPlugin = {
       id: "market-heatmap-pane",
       paneId: "market-heatmap",
       label: "Market Heatmap",
-      description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by the square root of market cap or by position value and colored by daily move.",
+      description: "Largest US stocks and ETFs, or the portfolio pane's list, sized by the day's move, market cap or position value and colored by daily move.",
       keywords: ["heatmap", "market", "largest", "top", "stocks", "etf", "portfolio", "watchlist", "screener"],
       shortcut: { prefix: "HM" },
     },

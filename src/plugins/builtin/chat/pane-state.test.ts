@@ -52,4 +52,24 @@ describe("chat pane state", () => {
     expect(open.chatInstanceId).toBe("chat:everyone");
     expect(open.config.layout.instances.find((instance) => instance.instanceId === "chat:everyone")?.settings).toEqual({ channelId: "everyone" });
   });
+
+  test("with no pane on the channel, an unread row opens in the focused chat pane, else the one in front", () => {
+    const config = configWithFloating([
+      { instanceId: "chat:a", paneId: "chat", title: "#everyone", settings: { channelId: "everyone" } },
+      { instanceId: "chat:b", paneId: "chat", title: "#macro", settings: { channelId: "macro" } },
+      { instanceId: "unread-inbox", paneId: "unread-inbox", title: "Unread" },
+    ]);
+    config.layout.floating[0]!.zIndex = 52;
+    config.layout.floating[1]!.zIndex = 51;
+    const row = { channelId: "trading", messageId: "m1", paneTitle: "#trading" };
+
+    // The first chat pane in the list is not the one the user was last using.
+    expect(applyUnreadInboxItemToConfig(config, row, "unread-inbox", "chat:b").chatInstanceId).toBe("chat:b");
+    expect(applyUnreadInboxItemToConfig(config, row, "unread-inbox", "unread-inbox").chatInstanceId).toBe("chat:a");
+
+    const swapped = configWithFloating(config.layout.instances);
+    swapped.layout.floating[0]!.zIndex = 50;
+    swapped.layout.floating[1]!.zIndex = 53;
+    expect(applyUnreadInboxItemToConfig(swapped, row, "unread-inbox", null).chatInstanceId).toBe("chat:b");
+  });
 });

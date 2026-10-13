@@ -13,6 +13,8 @@ export interface ChoiceDialogChoice {
   description?: string;
   detail?: string;
   disabled?: boolean;
+  /** Tints the label, e.g. a status in its tone. */
+  color?: string;
 }
 
 export interface ChoiceDialogProps extends PromptContext<string> {
@@ -68,6 +70,7 @@ export function ChoiceDialog({
     description: getChoiceDescription(choice),
     detail: choice.detail,
     disabled: choice.disabled,
+    color: choice.color,
   })), [choices]);
   const width = useMemo(() => choiceDialogWidth(title, choices), [choices, title]);
 

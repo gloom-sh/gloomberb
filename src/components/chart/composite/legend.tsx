@@ -17,8 +17,8 @@ const DOT_MARKER = "● ";
 const DOM_DOT_CELLS = 2;
 const DOM_LINE_CELLS = 3;
 
-/** A series' value as the legend and the crosshair readout print it, in the series' own unit. */
-export function formatLegendSeriesValue(
+/** A series' value as the legend prints it, in the series' own unit. */
+function formatLegendSeriesValue(
   series: ResolvedSeries,
   value: number | null,
   formatValue: CompositeChartProps["formatValue"],
@@ -95,14 +95,14 @@ function legendValueDates(
 const LISTED_TICKER_PATTERN = /(^|[\s(])([A-Z0-9^][A-Z0-9.^=/-]*):([A-Z0-9]{2,})(?=$|[\s),])/g;
 
 /** `Volume AAPL:XNAS Price` → `Volume AAPL Price`, for a legend name that must shorten. */
-export function withoutListingExchange(label: string): string {
+function withoutListingExchange(label: string): string {
   return label.replace(LISTED_TICKER_PATTERN, (match, lead: string, symbol: string, exchange: string) => (
     CANONICAL_EXCHANGE_ALIASES[exchange] ? `${lead}${symbol}` : match
   ));
 }
 
 /** The legend's marker for a series on the desktop: its line as the plot strokes it, or a dot. */
-export function CompositeSeriesSwatch({ series, cue, filled = true }: {
+function CompositeSeriesSwatch({ series, cue, filled = true }: {
   series: ResolvedSeries;
   cue: SeriesLineCue | null;
   filled?: boolean;
@@ -189,6 +189,8 @@ export function CompositeLegend({
       ? ` ${formatPercentRaw(entry.latestChangePercent)}`
       : "";
     const ownDate = valueDates.own.get(entry.id);
+    // Carried from an earlier observation: another venue's closed session, a coarser series.
+    const carried = !!scene?.cursorDate && !!cursorValue?.carried && cursorValue.value != null;
     const valueText = entry.points.length === 0
       ? entry.hidden ? "" : "no data"
       : `${formatLegendSeriesValue(
@@ -220,6 +222,7 @@ export function CompositeLegend({
       valueText,
       toggleable,
       tooltip,
+      carried,
     };
   });
   type LegendEntry = (typeof entries)[number];
@@ -358,7 +361,7 @@ export function CompositeLegend({
           data-gloom-role="composite-chart-legend-scroll"
         >
           <Box flexDirection="row" width={desiredSeriesWidth} height={1} gap={1}>
-            {entries.map(({ entry, cue, marker, text, toggleable, tooltip, width: entryWidth }, index) => {
+            {entries.map(({ entry, cue, marker, text, toggleable, tooltip, carried, width: entryWidth }, index) => {
               const entryVisible = visibleSeriesIds.has(entry.id);
               return (
               <Box
@@ -383,6 +386,7 @@ export function CompositeLegend({
                   ? `${entryVisible ? "Hide" : "Show"} `
                   : ""}${tooltip}`}
                 data-visible={entryVisible ? "true" : "false"}
+                data-carried={carried ? "true" : undefined}
                 title={isDesktopWeb ? tooltip : undefined}
               >
                 {isDesktopWeb ? (
@@ -392,7 +396,7 @@ export function CompositeLegend({
                 )}
                 {/* The filled/hollow marker already says whether a series is
                     shown; the word only repeated it in every legend slot. */}
-                <Text fg={entryVisible ? themeColors.text : themeColors.textDim}>{text}</Text>
+                <Text fg={entryVisible && !carried ? themeColors.text : themeColors.textDim}>{text}</Text>
               </Box>
               );
             })}

@@ -13,6 +13,7 @@ interface ChoiceOption {
   label: string;
   description?: string;
   disabled?: boolean;
+  color?: string;
 }
 
 /**
@@ -62,6 +63,7 @@ export function useQueryBarKeys({
             label: option.label,
             description: option.description,
             disabled: option.disabled,
+            color: option.color,
           }))}
         />
       ),

@@ -1,10 +1,16 @@
 /**
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
- * bars and QR lists each trade, timestamped to the millisecond.
+ * bars, and QR lists each trade of a US listing. `history --interval`, GIP's
+ * `--chartResolution 1s` and QR on a listing abroad all say this.
  */
 export function subMinuteDataMessage(symbol = "<ticker>"): string {
-  return `No second or tick bars; spread series are daily. 1-minute bars: gloomberb fn GIP ${symbol}. `
-    + `Individual trades with ms timestamps: gloomberb fn QR ${symbol}.`;
+  return `No second or tick bars; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`;
+}
+
+/** A bar size finer than a minute, as people type one: 1s, 30s, 5sec, 500ms, tick, ticks, tick-by-tick, seconds. */
+export function isSubMinuteInterval(value: string): boolean {
+  return /^(\d+(\.\d+)?\s*(ms|msecs?|millis(econds?)?|s|secs?|seconds?)|\d*\s*ticks?|tick[\s-]*by[\s-]*tick|seconds?|sub[\s-]*(minute|second)s?)$/i
+    .test(value.trim());
 }
 
 /**
@@ -21,6 +27,11 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; message: string }> =
     terms: ["EUA", "EUAs", "EU ETS", "EU allowance", "EU allowances", "EU carbon", "carbon", "carbon allowance", "carbon allowances",
       "carbon price", "carbon prices", "carbon credits", "emission allowances", "emissions allowances"],
     message: "EU carbon (EUA): the auction price is in EPWR, chart CAP:carbon:eua. Traded proxies: CO2:LSE, KRBN.",
+  },
+  {
+    terms: ["EU gas storage", "European gas storage", "Europe gas storage", "EU gas inventories", "European gas inventories",
+      "AGSI", "AGSI+", "GIE AGSI", "gas storage Europe"],
+    message: "European gas storage: EPWR GAS, or EPWR GAS DE for one country; chart CAP:gas-storage:eu. US storage is NGS.",
   },
   {
     terms: ["tick", "ticks", "tick data", "tick bars", "tick by tick", "second", "seconds", "second bars", "1s", "1 second",

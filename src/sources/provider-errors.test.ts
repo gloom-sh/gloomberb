@@ -66,6 +66,8 @@ test("the final error says not a ticker only while every provider that failed fo
 test("only the router's own words name a symbol as not a ticker", () => {
   expect(notATickerSymbol("Not a ticker: BRK.B.")).toBe("BRK.B");
   expect(notATickerSymbol("Not a ticker: APPLE INC.\nTry again")).toBe("APPLE INC");
+  // A command can name the pair search offered after it.
+  expect(notATickerSymbol("Not a ticker: USD_NGN. Did you mean USDNGN=X?")).toBe("USD_NGN");
   for (const text of ["No quote provider available for APPLE", "Not a ticker", "APPLE is not a ticker."]) expect(notATickerSymbol(text)).toBeNull();
   expect(isNoProviderMessage("No history provider available for 2222")).toBe(true);
   expect(isNoProviderMessage("Not a ticker: 2222.")).toBe(true);

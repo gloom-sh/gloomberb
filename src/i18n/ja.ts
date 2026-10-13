@@ -803,6 +803,8 @@ export const ja: Record<string, string> = {
   "private": "非公開",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the line on its card and its icon's tooltip.
+  "Bot run by Gloom": "Gloom が運営するボット",
   "Direct message": "ダイレクトメッセージ",
   "Group chat": "グループチャット",
   "Group": "グループ",
@@ -819,6 +821,15 @@ export const ja: Record<string, string> = {
   "Read-only chat. Log in or sign up to send.": "読み取り専用チャット。送信するにはログインまたはサインアップしてください。",
   "Saved login found. Log in again to send.": "保存されたログインが見つかりました。送信するには再度ログインしてください。",
   "Verify your email to send messages.": "メッセージを送信するにはメールを確認してください。",
+  // The first-chat prompt for an account still on its signup handle.
+  "Choose a handle": "ユーザー名を決める",
+  "Choose Handle": "ユーザー名を決める",
+  "Hide Handle Prompt": "ユーザー名の案内を隠す",
+  "@{handle} is taken. Try another.": "@{handle} は使われています。別の名前にしてください。",
+  "@{handle} isn't available. Try another.": "@{handle} は使えません。別の名前にしてください。",
+  "Use 3-30 letters, numbers or _, starting with a letter.": "英字で始まる 3〜30 文字の英数字か _ を使ってください。",
+  "Couldn't save your handle. Try again.": "ユーザー名を保存できませんでした。もう一度お試しください。",
+  "You're @{handle} now.": "@{handle} になりました。",
   "Verify your email to use Cloud tweets.": "Cloud tweets を使用するにはメールを確認してください。",
   "Resend Verification Email": "確認メールを再送信",
   "Sign in to {action}.": "{action}するにはログインしてください。",
@@ -1025,6 +1036,8 @@ export const ja: Record<string, string> = {
   "Waiting for quote...": "株価を待っています...",
   "Pre-Market": "時間外（寄付前）",
   "After-Hours": "時間外（引け後）",
+  "Overnight": "夜間取引",
+  "mid": "仲値",
   "Price Return": "価格リターン",
   "Fundamentals": "ファンダメンタルズ",
   "Positions": "ポジション",
@@ -1105,6 +1118,7 @@ export const ja: Record<string, string> = {
   "PRE-MKT": "PRE-MKT",
   "OPEN": "取引中",
   "AFTER-HRS": "時間外",
+  "OVERNIGHT": "夜間",
   "CLOSED": "休場",
   "Log In": "ログイン",
   "Sign Up": "サインアップ",

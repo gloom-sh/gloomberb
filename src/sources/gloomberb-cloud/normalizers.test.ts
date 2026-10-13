@@ -5,6 +5,8 @@ import { mergeQuoteContribution, normalizeQuoteContribution } from "../../market
 import { resolveCanonicalQuote, resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
 import { deriveQuarterlyStatements } from "../../time-series/fundamentals";
 import { formatMarketChangeWithCurrency, formatMarketPriceWithCurrency, quoteFormatOptions } from "../../market-data/market/format";
+import { sessionQuotes } from "../../test-support/test-fixture-session-quotes";
+import type { Quote } from "../../types/financials";
 
 test("daily fund NAV mapping separates its observation kind from monetary price units", () => {
   const raw: CloudQuotePayload = {
@@ -226,4 +228,26 @@ test("served withdrawal ids become gaps that charts do not recompute", () => {
   }).annualStatements[0];
   expect(earnings).toEqual({ date: "2022-12-31", currency: "EUR", unavailableEarnings: ["basicEps", "eps"],
     unavailableFields: ["operatingRevenue", "pretaxIncome", "taxProvision"] });
+});
+
+test("the overnight price rides only on the frame that says so, through the merge and the canonical quote", () => {
+  const { overnightMark, preMarket } = sessionQuotes();
+  const frame = (quote: Quote) =>
+    mapQuote(JSON.parse(JSON.stringify({ ...quote, providerId: "gloomberb-cloud", dataSource: "live" })) as CloudQuotePayload);
+  const night = frame(overnightMark);
+  expect(night).toMatchObject({ overnightPrice: 198.95, overnightChange: 0.17, overnightPriceKind: "mark", lastTradePrice: 198.8 });
+  expect(frame({ ...overnightMark, overnightPriceKind: "indicative" as never }).overnightPriceKind).toBeUndefined();
+
+  const nightAt = Date.parse("2026-10-12T00:31:00Z");
+  const held = normalizeQuoteContribution(night)!;
+  expect(resolveCanonicalQuote({ "gloomberb-cloud": held }, nightAt).quote).toMatchObject({
+    price: 198.95, marketState: "CLOSED", overnightPrice: 198.95, overnightPriceKind: "mark", lastTradePrice: 198.8,
+  });
+  // At 04:00 the pre-market frame leaves the overnight fields out: they go.
+  const morning = mergeQuoteContribution(held, frame(preMarket));
+  const resolved = resolveCanonicalQuote({ "gloomberb-cloud": morning }, Date.parse("2026-10-12T12:00:05Z")).quote!;
+  expect([resolved.marketState, resolved.overnightPrice, resolved.overnightChange, resolved.overnightPriceKind])
+    .toEqual(["PRE", undefined, undefined, undefined]);
+  // A source that says PRE drops a carried overnight price however it arrived.
+  expect(normalizeQuoteContribution({ ...night, marketState: "PRE" })?.overnightPrice).toBeUndefined();
 });

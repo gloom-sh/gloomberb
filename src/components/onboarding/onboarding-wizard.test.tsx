@@ -466,7 +466,7 @@ describe("OnboardingWizard", () => {
     expect(capturedConfig?.layouts.map((layout) => layout.name)).toEqual(["Home", "Rates", "FX & Macro", "Monitor", "Macro"]);
     expect(capturedConfig?.activeLayoutIndex).toBe(0);
     expect(capturedConfig?.layouts[1]?.layout.instances.map((instance) => instance.paneId)).toEqual([
-      "rate-path", "yield-curve", "money-markets", "cdx-board", "central-bank-rates",
+      "rate-path", "yield-curve", "money-markets", "fixed-income", "central-bank-rates",
     ]);
   });
 

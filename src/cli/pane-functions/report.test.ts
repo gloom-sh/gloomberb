@@ -9,6 +9,7 @@ import {
   resolvePaneFunctionReportSource,
 } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
+import { emptySeriesExport } from "./index";
 import type { MarketContext } from "../types";
 
 const spec: ChartSpec = {
@@ -120,4 +121,17 @@ test("HELP has no report and sends a newcomer to the command guide and the funct
     .catch((error: Error) => error.message);
   expect(await shot("CAT")).toContain("`gloomberb shot CAT santander`");
   expect(await message("chat")).not.toContain("gloomberb shot");
+});
+
+test("a series export with no rows says what was asked, and a FRED id given as a ticker gets the fred: prefix", () => {
+  const fred = new Set(["DEXSFUS"]);
+  expect(emptySeriesExport("G", "DEXSFUS", { unavailableSymbols: ["DEXSFUS"], errors: ["dexsfus-market-ohlcv-1: Not a ticker: DEXSFUS."] }, fred)).toEqual({
+    message: "fn G DEXSFUS has no data to export: DEXSFUS is a FRED series, not a ticker.",
+    details: "Chart it with the fred: prefix: gloomberb fn G fred:DEXSFUS --csv (or gloomberb fred DEXSFUS --csv).",
+  });
+  // Anything else repeats why, without the series id the error was filed under.
+  expect(emptySeriesExport("G", "ZZZZQX", { unavailableSymbols: ["ZZZZQX"], errors: ["zzzzqx-market-ohlcv-1: Not a ticker: ZZZZQX."] }, fred, "--ndjson")).toEqual({
+    message: "fn G ZZZZQX has no data to export for ZZZZQX.",
+    details: "Not a ticker: ZZZZQX.\nCheck the symbol with gloomberb search, or run gloomberb fn G ZZZZQX without --ndjson to see the report.",
+  });
 });

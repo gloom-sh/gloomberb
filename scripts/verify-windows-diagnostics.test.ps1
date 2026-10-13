@@ -209,7 +209,7 @@ function Test-MainLaunchDiagnostics {
   param([string]$RootTestDir)
   $MainVerification = @($Ast.EndBlock.Statements | Where-Object { $_ -is [System.Management.Automation.Language.TryStatementAst] })
   Assert-Condition ($MainVerification.Count -eq 1) "Could not isolate the main verification lifecycle"
-  function Assert-TuiStarts { param($CliPath) }
+  function Assert-TuiStarts { param($CliPath, [switch]$Capture) }
   function Disable-InstalledDesktopUpdates { param($InstallDir) }
   function Capture-OnboardingScreenshot { param($InstallDir, $OutputPath) }
   function Seed-DesktopConfig { return $null }
@@ -271,6 +271,8 @@ function Test-MainLaunchDiagnostics {
     if ($Mode -eq "write-fail") {
       New-Item -ItemType Directory (Join-Path $script:GuiArtifactDir "windows-main-failure.json") | Out-Null
     }
+    $BundleDir = Join-Path $RootTestDir "unused-bundle"
+    $PreviousGloomberbHome = $env:GLOOMBERB_HOME
     $InstallDir = Join-Path $script:GuiArtifactDir "install"
     $InstallerPath = Join-Path $RootTestDir "unused-installer.exe"
     $InstallLog = Join-Path $RootTestDir "unused-install.log"
@@ -307,7 +309,9 @@ function Test-MainLaunchDiagnostics {
   }
 }
 
-$TestDir = Join-Path ([System.IO.Path]::GetTempPath()) "gloom-windows-diagnostics-$([Guid]::NewGuid())"
+$TestDir = Join-Path ([Environment]::GetFolderPath("UserProfile")) ".cache\gloom-smoke\glo-645\diagnostics-$([Guid]::NewGuid())"
+$SmokeRoot = $TestDir
+$InitialGloomberbHome = $env:GLOOMBERB_HOME
 $InitialHome = $env:HOME
 $InitialUserProfile = $env:USERPROFILE
 $InitialConsole = $env:ELECTROBUN_CONSOLE
@@ -332,7 +336,7 @@ try {
     Assert-Condition ($ObservedFailure -eq $(if ($Mode -eq "success") { $null } else { "Original onboarding window failure" })) "Diagnostics changed the verification outcome: $ObservedFailure"
     Assert-Condition $script:Stopped "Failure did not clean up processes"
     Assert-Condition ($script:Events.Contains("dispose-101") -and $script:Events.Contains("dispose-102")) "Retained process handles were not disposed"
-    Assert-Condition ($env:HOME -ceq $InitialHome -and $env:USERPROFILE -ceq $InitialUserProfile -and $env:ELECTROBUN_CONSOLE -ceq $InitialConsole) "Failure did not restore the environment"
+    Assert-Condition ($env:HOME -ceq $InitialHome -and $env:USERPROFILE -ceq $InitialUserProfile -and $env:ELECTROBUN_CONSOLE -ceq $InitialConsole -and $env:GLOOMBERB_HOME -ceq $InitialGloomberbHome) "Failure did not restore the environment"
     if ($Mode -eq "diagnostics-fail") {
       $Evidence = Get-Content (Join-Path $script:GuiArtifactDir "windows-onboarding-failure.json") -Raw | ConvertFrom-Json
       Assert-Condition ($Evidence.WindowInventoryError -eq "Window inventory failed") "Window read failure was lost"
@@ -353,6 +357,7 @@ try {
   Test-PartialWindowDiscovery
   Test-MainLaunchDiagnostics $TestDir
 } finally {
+  Restore-EnvironmentVariable "GLOOMBERB_HOME" $InitialGloomberbHome
   Restore-EnvironmentVariable "ELECTROBUN_CONSOLE" $InitialConsole
   Remove-Item -Path $TestDir -Recurse -Force -ErrorAction SilentlyContinue
 }

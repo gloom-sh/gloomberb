@@ -85,6 +85,7 @@
     "check:pane-chrome": "bun run scripts/pane-chrome/checks.ts",
     "check:pane-screenshot": "bun run scripts/pane-chrome/screenshot.ts",
     "check:pane-rest": "bun run scripts/pane-chrome/rest-diff.ts",
+    "check:pane-layout": "bun run scripts/pane-chrome/layout-sweep.ts",
     "benchmark:pane-drag:compare": "bun run scripts/pane-chrome/frame-budget.ts",
     "test:global-upgrade": "bun run scripts/smoke-global-upgrade.ts",
     "release": "./scripts/release.sh"

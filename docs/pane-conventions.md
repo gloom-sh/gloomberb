@@ -146,6 +146,8 @@ so the selected row reads in the selection color without each cell checking
 goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
 it, the text keeps its own selection color, and exports read only the text.
 
+**A table set inline.** A short table that sits in a page between prose (keys in Help, a plan comparison) takes `fitRows` with `virtualize={false}`: the terminal gives it its rows, the desktop and the web make it exactly as tall as its header and rows, where a count of rows is short by the taller header bar. Its box takes no height there either.
+
 **Table + detail.** `DataTableStackView` is the "list, then open one" shape:
 Enter or click calls `onActivate`, the pane sets the open item, the stack
 shows `← Back` plus `detailTitle` and the detail. Esc, Backspace, the mouse
@@ -159,7 +161,11 @@ back button or clicking Back pops it. Rules:
 - `prefetchDetail` warms the cache once the cursor rests; it never mutates.
 - A detail read as text sits in a `DetailScrollBody` whose ref is the
   stack's `detailScrollRef`, so j/k step it a line at a time and the next
-  item starts at the top.
+  item starts at the top. An item's facts and text read through
+  `DetailReader` (`src/components/reader/detail-reader.tsx`): label and value
+  pairs, then the text in short paragraphs in the reader's type, across the
+  pane's width on the desktop and the web. `FeedDataTableStackView` takes the
+  facts as `detailFacts`; the Changelog and Trials details are the reference.
 - Any other scrolling body is a `ScrollBox`. Leaving `scrollY` out means it
   scrolls vertically, with the wheel and, while the pane is focused, with the
   arrows, j/k, PageUp, PageDown, Home and End; `scrollY={false}` turns that off.
@@ -433,6 +439,59 @@ header, with the detail's height.
   branch for a bar. Prefer `flexGrow`/`flexBasis={0}`/`overflow="hidden"`
   to hard heights; subtract the tab strip and `rootBefore` rows before passing
   `rootHeight`.
+- The desktop app and the web are an app, not a document: Ctrl/Cmd+A, a double
+  or triple click and a drag across panes select no text. Text people copy by
+  hand opts in: `<Text selectable>` for a run, `data-gloom-selectable="true"`
+  on the `Box` around a block (articles, answers, logs, code; `MarkdownText`
+  and the reader already do). Fields keep their own selection. Anything else
+  people need out of a pane is a copy action or an export, not a selection.
+  The terminal selects with the mouse as it always did.
+
+## 8b. Opening a function twice
+
+Opening a function that is already open focuses its window; a window is added
+only when none is open. That holds for every way in: the command bar, a
+notification or alert, a deep or share link, a shortcut, `pane.show` and
+`pane.createFromTemplate` from the Remote API, and an "Open" action in another
+pane. The host decides it in `createPaneTemplateOrThrow` from what the
+template's `createInstance` returns:
+
+- **One window per function** (Plugins, Unread, a board that takes no
+  argument): return no `instanceId` or a stable one (`"unread-inbox"`). Settings
+  the user changes later do not make it another window.
+- **One window per ticker or per query**: key the id by the argument
+  (`financial-analysis:AAPL`, `jobs:home`), put the ticker in `binding` and the
+  query in `settings`. The host also finds a pane that shows that ticker or
+  query under another id, such as one unlinked from a list.
+- **A window the user switches inside** (Chat changes channel in place) cannot
+  be named by an id: the id says what it was opened on, not what it shows. Its
+  `createInstance` reads `context.layout` and `context.focusedPaneId` and
+  returns the `instanceId` of the pane to reuse: the one already showing the
+  thing, else the focused one, else the one in front (`pickChatPaneToReuse`).
+  Only with none open does it return a new id.
+- **The spec holds identity, not preferences.** Binding, params and the
+  settings that say what the window shows (`channelId`, `symbols`, `board`);
+  never a view preference (live streaming, a range). The host matches a pane by
+  what the spec names and ignores the settings it leaves out, so a pane the user
+  has tuned is still found.
+- **Two functions on one pane type** (ERN and EVTS, MA and DIST, POWER and
+  EPWR, BI and THEM) tell their windows apart by binding, params and settings.
+  Declare the settings that name a window as `identitySettings` on the pane def
+  (`["board", "symbols", "symbolsText"]`; `[]` when binding and params say it
+  all). A window that picked up any other setting is still found, and a window
+  carrying an identity setting the function does not set is left to the function
+  that does. This reads what the window stores, so panes saved before the
+  declaration are found too. Without it a bare spec only matches a window with no
+  settings at all, because the host cannot tell whose settings are whose.
+- **New on purpose**: a blank form that builds something (`VIEW`), a function
+  that creates a list (`PF`), "Open in new pane" (`forceNewPane`) and Duplicate
+  Pane. Charts and quotes for different tickers are different specs, so they
+  are different windows.
+
+`workflow/pane-reuse.test.ts` opens every function in the catalog twice, after
+its pane picked up a setting, and lists the ones that still add a window with
+the reason. A new function that lands on that list fails the test: fix the
+template, or add it with its reason.
 
 ## 9. Checklist for a new pane or tab
 
@@ -449,8 +508,9 @@ header, with the detail's height.
 11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
-14. On the desktop tables and charts fill with flex, not terminal row arithmetic; nothing ends in a dead band above the footer.
+14. On the desktop and the web nothing is sized in cells: boxes fill with flex, percentages or CSS units, text wraps in CSS at the width it sits in (a reading measure is a CSS `max-width` in `ch`), and sizes are read from the laid-out page. Nothing ends in a dead band above the footer or a gap at the right edge. `bun run check:pane-layout` measures every function; `src/architecture/dom-cell-metrics.test.ts` keeps cell metrics out of DOM-only code.
 15. A chart with a table uses `ChartTableHeader`: named series, one shared selection, `chartTableLayout` at every size, no repeated numbers.
+16. Opening the function again focuses its window (8b): identity in the spec, preferences out of it, a stable `instanceId` for a one-window function.
 
 ## Reference implementations
 
@@ -477,6 +537,7 @@ All under `src/plugins/builtin/` unless noted.
 | Status, notice, empty state | `src/components/ui/status.tsx` |
 | Load-more helpers | `src/components/table-view-shared.tsx`, `src/components/paged-rows.ts` |
 | Stack | `src/components/data-table/stack-view.tsx`, `ui/page-stack-view.tsx` |
+| Item detail: facts, then the text across the pane | `clinical-trials/pane.tsx`, `changelog/index.tsx`, `src/components/reader/detail-reader.tsx` |
 | Figures, chart and table, selection drives the cursor | `short-volume/pane.tsx` |
 | Board whose chart follows the selected row | `credit-conditions/index.tsx` |
 | Chart over table layout, strip, selection | `src/components/chart-table/` |

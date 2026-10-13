@@ -11,6 +11,7 @@ import { getContextMenuRequestId, normalizeContextMenuItems } from "../context-m
 import { MAIN_WINDOW_RPC_KEY } from "../window/focus";
 import { applyDesktopWindowControl } from "../window/controls";
 import { saveTextFileToDownloads } from "../../../../utils/save-text-file";
+import { setAppBadge } from "./app-badge";
 import type { DesktopBackend, DesktopRpc } from "./backend";
 
 function normalizeText(value: unknown): string | undefined {
@@ -155,6 +156,13 @@ export async function handleDesktopHostRequest(
       ContextMenu.showContextMenu(menu as never);
       return true;
     }
+    case "host.setAppBadge":
+      // One badge for the app, from the main window; a popped-out pane's view
+      // has its own chat state and must not overwrite it.
+      if (backend.rpcs.getRpcWindowKey(rpc) === MAIN_WINDOW_RPC_KEY) {
+        setAppBadge(request.payload.label);
+      }
+      return null;
     default: {
       const exhaustive: never = request;
       throw new Error(`Unknown host method: ${String(exhaustive)}`);

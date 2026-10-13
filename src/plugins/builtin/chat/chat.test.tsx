@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { act } from "react";
+import { act, useState } from "react";
 import { AppContext, createInitialState } from "../../../state/app/context";
 import { createStaticAppStore } from "../../../test-support/app-store";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
@@ -13,6 +13,8 @@ import { ChatContent } from "./content";
 import { MESSAGE_HIGHLIGHT_MS } from "./content/row-activity";
 import { SLOW_SEND_THRESHOLD_MS } from "./message/pending-send";
 import { chatHighlightBg } from "./message/render-state";
+import { chatBotNameColor } from "./people";
+import { ICON_GLYPHS } from "../../../components/ui/icon";
 import { ChatStatusWidget } from "./status-widget";
 import {
   createChatTestHarness,
@@ -604,6 +606,53 @@ describe("ChatContent", () => {
       await flushFrame();
 
       expect(bodyBg("message 1")).not.toBe(highlighted);
+    });
+
+    // The pane clears a handled target, so a notification for the same message
+    // clicked again names it anew: the open window has to jump a second time.
+    test("is marked again when the same message is named a second time", async () => {
+      const controller = createController({ messages: [makeMessage(1), makeMessage(2)] });
+      const state = createInitialState(createDefaultConfig("/tmp/gloomberb-chat"));
+      let nameMessage: (messageId: string | undefined) => void = () => {};
+      let handled = 0;
+      function Pane() {
+        const [target, setTarget] = useState<string | undefined>("m1");
+        nameMessage = setTarget;
+        return (
+          <AppContext value={createStaticAppStore(state)}>
+            <PluginRenderProvider pluginId="gloomberb-cloud" runtime={createTestPluginRuntime()}>
+              <ChatContent
+                controller={controller}
+                width={72}
+                height={12}
+                focused
+                targetMessageId={target}
+                onTargetMessageHandled={() => {
+                  handled += 1;
+                  setTarget(undefined);
+                }}
+              />
+            </PluginRenderProvider>
+          </AppContext>
+        );
+      }
+      await act(async () => {
+        await tui.render(<Pane />, { width: 72, height: 12 });
+      });
+      await flushFrame();
+      expect(handled).toBe(1);
+      expect(bodyBg("message 1")).toBe(highlighted);
+
+      await emitKeypress({ name: "x", sequence: "x" });
+      await flushFrame();
+      expect(bodyBg("message 1")).not.toBe(highlighted);
+
+      await act(async () => {
+        nameMessage("m1");
+      });
+      await flushFrame();
+      expect(handled).toBe(2);
+      expect(bodyBg("message 1")).toBe(highlighted);
     });
 
     test("leaves the list following new messages, which a selection would not", async () => {
@@ -1314,28 +1363,141 @@ describe("ChatContent", () => {
     expect(tui.frame()).toContain("@cy");
   });
 
-  test("badges a managed assistant's messages as AI, never a person's or a Discord ghost's", async () => {
+  test("marks a bot with its icon in its own colour always, staff and Pro with theirs only on the row in play, and nothing moves", async () => {
     const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
     const controller = createController({
       messages: [
         { id: "m1", channelId: "everyone", content: "ask me anything", replyToId: null, createdAt: at(0), user: { id: "b1", username: "gloombot", displayName: "Gloombot", accountType: "managed_llm" } },
         { id: "m2", channelId: "everyone", content: "from a person", replyToId: null, createdAt: at(10), user: { id: "u1", username: "bob", displayName: "Bob", accountType: "human" } },
         { id: "m3", channelId: "everyone", content: "a guest speaking", replyToId: null, createdAt: at(20), user: { id: "d1", username: null, displayName: "Grace H", accountType: "discord" }, origin: "discord" },
+        { id: "m4", channelId: "everyone", content: "shipping it", replyToId: null, createdAt: at(30), user: { id: "s1", username: "wren", displayName: "Wren", accountType: "human", badges: ["team", "pro"], utcOffsetMinutes: 120, desks: ["options", "futures"] } },
+        { id: "m5", channelId: "everyone", content: "long only", replyToId: null, createdAt: at(40), user: { id: "p1", username: "otto", displayName: "Otto", accountType: "human", badges: ["pro"] } },
       ],
     });
 
-    await mountChat(controller, { width: 60, height: 18 });
+    await mountChat(controller, { width: 60, height: 24 });
 
-    const rows = tui.frame().split("\n").map((row) => row.trimEnd());
-    const header = (author: string) => rows.find((row) => row.startsWith(` ${author} `))!;
-    expect(header("gloombot")).toContain(" AI ");
-    expect(header("bob")).not.toContain("AI");
-    expect(header("Grace H")).not.toContain("AI");
+    const { bot, team, pro } = ICON_GLYPHS;
+    // The renderer holds a pointer move that follows another within a frame and acts on it from a timer:
+    // the row or the card is not drawn on the first read, so each read waits for what it checks.
+    const POINTER_ATTEMPTS = 40;
+    const anyIcon = new RegExp(`[${bot}${team}${pro}]`);
+    const rows = () => tui.frame().split("\n").map((row) => row.trimEnd());
+    const header = (author: string) => rows().find((row) => row.startsWith(` ${author} `))!;
+    expect(header("gloombot")).toMatch(new RegExp(`^ gloombot ${bot} \\S`));
+    expect(header("bob")).not.toMatch(anyIcon);
+    expect(header("Grace H")).not.toMatch(anyIcon);
+    // Nobody's pointer is on them: no Team or Pro, and no room kept for them.
+    expect(header("wren")).not.toMatch(anyIcon);
+    expect(header("otto")).not.toMatch(anyIcon);
 
-    // The badge is not a target of its own: the name still opens the card, which says what the account is.
+    // A bot's name and its icon have their own colour; a person's name keeps the one every name has.
+    const spanColour = (text: string) => tui.setup().captureSpans().lines
+      .flatMap((line) => line.spans)
+      .find((span) => span.text.trim() === text)?.fg.toInts().join(",");
+    expect(spanColour("gloombot")).toBe(hexToRgbaInts(chatBotNameColor()));
+    expect(spanColour(bot)).toBe(hexToRgbaInts(chatBotNameColor()));
+    expect(spanColour("bob")).toBe(hexToRgbaInts(colors.positive));
+
+    // The pointer on wren's message: Team and Pro after the time, the name and the time where they were.
+    const resting = header("wren");
+    const body = rows().findIndex((row) => row.includes("shipping it"));
+    await act(async () => {
+      await tui.setup().mockMouse.moveTo(30, body);
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+    await tui.waitForFrameToContain(`${team} ${pro}`, POINTER_ATTEMPTS);
+    const pointed = header("wren");
+    expect(pointed).toMatch(new RegExp(` ${team} ${pro} `));
+    expect(pointed.indexOf(team)).toBeGreaterThan(resting.length - 1);
+    expect(pointed.slice(0, resting.length)).toBe(resting);
+    expect(header("otto")).not.toMatch(anyIcon);
+
+    // The terminal has no tooltip: pointing at an icon opens the card, which shows the icons beside the handle and says what they are.
+    await act(async () => {
+      await tui.setup().mockMouse.moveTo(pointed.indexOf(team), rows().findIndex((row) => row.startsWith(" wren ")));
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+    const card = await tui.waitForFrameToContain(`@wren ${team} ${pro}`, POINTER_ATTEMPTS);
+    expect(card).toContain("Gloom team · Pro");
+    expect(card).toMatch(/Local time \d\d:\d\d/);
+    expect(card).toContain("Trades Options, Futures");
+
+    // A bot's card says what it is, and has no clock.
+    await emitKeypress({ name: "escape", sequence: "\u001b" });
+    await flushFrame();
     await tui.clickFrameText("gloombot");
     await flushFrame();
-    expect(tui.frame()).toContain("AI bot run by Gloom");
+    const botCard = await tui.waitForFrameToContain(`@gloombot ${bot}`, POINTER_ATTEMPTS);
+    expect(botCard).toContain("Bot run by Gloom");
+    expect(botCard).not.toContain("Local time");
+  });
+
+  test("at 70 columns the bot's icon fits beside its name, a quote and the reply being written, and a long staff row keeps its actions", async () => {
+    const at = (second: number) => `2026-03-28T00:00:${String(second).padStart(2, "0")}.000Z`;
+    const bot = { id: "b1", username: "deskbot", displayName: "Deskbot", accountType: "managed_llm" as const };
+    const staff = { id: "s1", username: "a_staff_member_with_a_long_nam", displayName: "Staff", accountType: "human" as const, badges: ["team" as const, "pro" as const] };
+    const quoted = "Futures are flat into the open and the calendar stays quiet until ten, with nothing else after the bell.";
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: quoted, replyToId: null, createdAt: at(0), user: bot, reactions: [] },
+        { id: "m2", channelId: "everyone", content: "thanks", replyToId: "m1", replyTo: { content: quoted, user: { id: "b1", username: "deskbot" } }, createdAt: at(10), user: staff, reactions: [] },
+        { id: "m3", channelId: "everyone", content: quoted, replyToId: null, createdAt: at(20), user: bot, reactions: [] },
+      ],
+    });
+
+    await mountChat(controller, { width: 70, height: 18 });
+    const rows = () => tui.frame().split("\n").map((row) => row.trimEnd());
+    const { bot: botIcon, team, pro } = ICON_GLYPHS;
+
+    // The quote of a bot's message: the icon stands where the colon would, and the preview ends in an ellipsis inside the row.
+    const quote = rows().find((row) => row.trimStart().startsWith("reply deskbot"))!;
+    expect(quote).toContain(`reply deskbot ${botIcon} Futures`);
+    expect(quote.endsWith("...")).toBe(true);
+
+    // The newest message, a bot's, selected: its icon and its actions all show.
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await flushFrame();
+    const botHeader = rows().filter((row) => row.startsWith(" deskbot ")).at(-1)!;
+    expect(botHeader).toMatch(new RegExp(` deskbot ${botIcon} .*Reply +React`));
+
+    // A 30-character staff name with Reply and React, selected: the name whole, both icons, and the actions in the row.
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await flushFrame();
+    const staffHeader = rows().find((row) => row.startsWith(` ${staff.username} `))!;
+    expect(staffHeader).toMatch(new RegExp(` ${team} ${pro} +Reply +React$`));
+
+    // Replying to the bot: the composer names it with its icon and keeps Cancel whole.
+    await emitKeypress({ name: "down", sequence: "\u001b[B" });
+    await emitKeypress({ name: "return", sequence: "\r" });
+    await flushFrame();
+    const replying = rows().find((row) => row.includes("replying to @deskbot"))!;
+    expect(replying).toMatch(new RegExp(`replying to @deskbot ${botIcon} Futures.*\\.\\.\\. +Cancel$`));
+  });
+
+  test("a row too narrow for both icons drops Pro before the role and keeps the name and the actions, and a hidden clock never shows", async () => {
+    const controller = createController({
+      messages: [
+        { id: "m1", channelId: "everyone", content: "hi", replyToId: null, createdAt: "2026-03-28T00:00:00.000Z", user: { id: "s1", username: "longer_staff_name", displayName: "Staff", accountType: "human", badges: ["team", "pro"] } },
+      ],
+    });
+
+    // One cell short of both icons once Reply is counted.
+    await mountChat(controller, { width: 41, height: 12 });
+    await emitKeypress({ name: "up", sequence: "\u001b[A" });
+    await flushFrame();
+
+    const header = tui.frame().split("\n").find((row) => row.startsWith(" longer_staff_name "))!.trimEnd();
+    expect(header).toContain(` ${ICON_GLYPHS.team} `);
+    expect(header).not.toContain(ICON_GLYPHS.pro);
+    expect(header).toMatch(/Reply$/);
+
+    await tui.clickFrameText("longer_staff_name");
+    await flushFrame();
+    expect(tui.frame()).toContain("Gloom team · Pro");
+    expect(tui.frame()).not.toContain("Local time");
   });
 
   test("shows a saved-login read-only footer when a session token is cached", async () => {

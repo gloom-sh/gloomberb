@@ -21,6 +21,7 @@ import {
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { liveDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../portfolio-list/live-valuation";
+import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
 import { formatReportedMoney } from "../../../../utils/reported-money";
 import { fundamentalsCurrency, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
@@ -182,7 +183,8 @@ export function buildOverviewStats({
       valueColor: priceColor(fundamentals.revenueGrowth),
     });
   }
-  const enterpriseValue = reportedEnterpriseValue(fundamentals);
+  // At the regular session price, as the market cap above it is.
+  const enterpriseValue = reportedEnterpriseValue(atRegularSessionPrice({ quote, fundamentals }).fundamentals);
   if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {

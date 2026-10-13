@@ -22,6 +22,12 @@ Open a row with Enter or a click for dates, units, exact source cells, the prima
 
 Columns that would only repeat a default on every row, such as a project-level record scope or zero records with missing capacity, are left out until a row differs. The Queue figures carry the selected region's active, completed and withdrawn MW as one bar.
 
+## European prices and gas storage (EPWR)
+
+`EPWR` opens the Prices tab, free. Its query bar switches between the power board (day-ahead prices and the EUA auction price) and gas storage. `EPWR GAS` opens gas storage on the EU, `EPWR GAS DE` on one country.
+
+Gas storage comes from GIE AGSI+, published each evening. Each area is dated by its gas day; `est` marks a day the platform still flags as estimated, as the current day always is. The EU row is the platform's own aggregate, not a sum. The five-year range reads the same calendar day in the five years before the gas day's year: February 29 reads the 28th in years without one, and a range holding fewer years says how many. A missing day is a gap, never zero. Chart `CAP:gas-storage:eu` (% full), `CAP:gas-storage-twh:eu` (TWh) or `CAP:gas-injection:eu` (net injection, GWh/day).
+
 ## History and comparability
 
 Direct-source history uses Gloom's observation times. When a public register overwrites its file, the previous capture remains available. Published benchmark series use the period actually reported by the historical compilation and retain the time the archive was ingested. Benchmark records do not add to current direct-source totals. Sources, fuels, statuses and series are kept separate; a change is calculated against the previous observation of the same series. A coverage expansion or a source correction can move a total without representing a new grid application.

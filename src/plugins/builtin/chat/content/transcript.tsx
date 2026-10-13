@@ -5,7 +5,8 @@ import { colors } from "../../../../theme/colors";
 import { t } from "../../../../i18n";
 import type { ChatAttachment, ChatMessage, ChatUserSummary } from "../../../../api-client";
 import type { ChatUserAnchor, ChatUserContextMenuEvent } from "../message/types";
-import { DesktopChatMessage } from "../message/desktop";
+import type { ChatMessagePaneLink } from "../pane-links/model";
+import { DesktopChatMessage, desktopChatMessageWidth } from "../message/desktop";
 import { UserProfilePopover } from "../message/profile-popover";
 import { TerminalChatMessage } from "../message/terminal";
 import { NewMessagesJump } from "./new-messages";
@@ -43,6 +44,8 @@ interface ChatTranscriptProps {
   onStickyPinChange: (pinned: boolean) => void;
   latestEditableMessageId: string | null;
   openTicker: (symbol: string) => void;
+  /** Opens what a message's chip stands for. */
+  openPaneLink: (link: ChatMessagePaneLink) => void;
   profilePopoverUser: ChatUserSummary | null;
   /** The name or @mention the open card belongs beside. */
   profilePopoverAnchor: ChatUserAnchor;
@@ -105,6 +108,7 @@ export function ChatTranscript({
   onStickyPinChange,
   latestEditableMessageId,
   openTicker,
+  openPaneLink,
   profilePopoverUser,
   profilePopoverAnchor,
   registerMessageElement,
@@ -164,7 +168,9 @@ export function ChatTranscript({
             onMouseMove: onPointerMove,
             onStickyPinChange,
           } : {})}
-          style={nativePaneChrome ? { minHeight: 0 } : undefined}
+          // Messages stack as blocks on the desktop: through a resize, the rows out
+          // of view keep their width (resize-rows.ts) and cost no layout at all.
+          style={nativePaneChrome ? { minHeight: 0, ...(messages.length > 0 ? { display: "block" } : {}) } : undefined}
         >
           {!nativePaneChrome && loadingOlderMessages && (
             <Box alignItems="center" justifyContent="center" height={1} width={contentWidth}>
@@ -196,9 +202,11 @@ export function ChatTranscript({
                 hoveredIdx={hoveredIdx === index ? index : null}
                 highlighted={msg.id === highlightedMessageId}
                 canSend={canSend}
+                contentWidth={desktopChatMessageWidth(msg, contentWidth)}
                 catalog={catalog}
                 userByUsername={userByUsername}
                 openTicker={openTicker}
+                openPaneLink={openPaneLink}
                 onUserHover={showProfilePopover}
                 onUserHoverEnd={scheduleProfilePopoverClose}
                 onUserActivate={toggleProfilePopover}
@@ -229,6 +237,7 @@ export function ChatTranscript({
                 catalog={catalog}
                 userByUsername={userByUsername}
                 openTicker={openTicker}
+                openPaneLink={openPaneLink}
                 onUserHover={showProfilePopover}
                 onUserHoverEnd={scheduleProfilePopoverClose}
                 onUserActivate={toggleProfilePopover}

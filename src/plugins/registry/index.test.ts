@@ -220,7 +220,7 @@ describe("Macro's successors", () => {
     await registry.setConfigState("credit", "cds:tenor", "5y");
     expect(Object.keys(pluginConfig)).toEqual(["macro"]);
 
-    const instances = ["econ-calendar", "yield-curve", "cds", "earnings-calendar"]
+    const instances = ["econ-calendar", "yield-curve", "fixed-income", "earnings-calendar"]
       .map((paneId) => createPaneInstance(paneId, { instanceId: `${paneId}:main`, binding: { kind: "none" } }));
     const layout = {
       dockRoot: null,
@@ -233,7 +233,7 @@ describe("Macro's successors", () => {
       return resolveShellVisibleLayout(layout, disabledPaneIds, registry.panes).instances.map((instance) => instance.paneId);
     };
     expect(visiblePanes(["credit"])).toEqual(["econ-calendar", "yield-curve", "earnings-calendar"]);
-    expect(visiblePanes(["earnings"])).toEqual(["econ-calendar", "yield-curve", "cds"]);
+    expect(visiblePanes(["earnings"])).toEqual(["econ-calendar", "yield-curve", "fixed-income"]);
     expect(visiblePanes(expandBuiltinPluginGroups(["macro"]))).toEqual([]);
   });
 });
@@ -260,7 +260,7 @@ describe("Market Overview's successors", () => {
       expect(registry.getConfigState(pluginId, "priceLevels")).toBe("kept");
     }
 
-    const paneIds = ["world-venue-map", "world-indices", "equity-screener", "futures", "crypto-board", "attention", "correlation"];
+    const paneIds = ["world-venue-map", "world-indices", "equity-screener", "commodities-energy", "crypto-board", "attention", "correlation"];
     const instances = paneIds.map((paneId) => createPaneInstance(paneId, { instanceId: `${paneId}:main`, binding: { kind: "none" } }));
     const layout = {
       dockRoot: null,
@@ -272,7 +272,7 @@ describe("Market Overview's successors", () => {
       const disabledPaneIds = new Set(disabled.flatMap((pluginId) => registry.getPluginPaneIds(pluginId)));
       return resolveShellVisibleLayout(layout, disabledPaneIds, registry.panes).instances.map((instance) => instance.paneId);
     };
-    expect(visiblePanes(["global-markets"])).toEqual(["equity-screener", "futures", "crypto-board", "attention", "correlation"]);
+    expect(visiblePanes(["global-markets"])).toEqual(["equity-screener", "commodities-energy", "crypto-board", "attention", "correlation"]);
     expect(visiblePanes(expandBuiltinPluginGroups(["market-overview"]))).toEqual([]);
 
     // The template is Global Markets', the chart it opens Ticker Research's.
@@ -297,9 +297,7 @@ describe("Ticker Research's successors", () => {
     const tab = (tabId: string) => registeredStateNamespace(registry.tickerResearchTabs.get(tabId)!.component);
 
     expect({
-      "credit-documents": pane("credit-documents"),
-      "debt-maturities": pane("debt-maturities"),
-      cds: pane("cds"),
+      "fixed-income": pane("fixed-income"),
       "earnings-ripple": pane("earnings-ripple"),
       "earnings-calls": pane("earnings-calls"),
       "earnings-calls tab": tab("earnings-calls"),
@@ -314,9 +312,7 @@ describe("Ticker Research's successors", () => {
       "holders tab": tab("holders"),
       sec: pane("sec"),
     }).toEqual({
-      "credit-documents": "ticker-research",
-      "debt-maturities": "ticker-research",
-      cds: "macro",
+      "fixed-income": "macro",
       "earnings-ripple": "ticker-research",
       "earnings-calls": "macro",
       "earnings-calls tab": "macro",
@@ -336,7 +332,7 @@ describe("Ticker Research's successors", () => {
   test("hide only their own panes, and name themselves where something of theirs would open hidden", async () => {
     const registry = createRegistry();
     for (const plugin of successors) await registry.register(plugin);
-    const paneIds = ["ticker-research", "options", "holders", "credit-documents", "cds", "earnings-ripple", "supply-chain", "backtest", "econ-calendar", "world-venue-map"];
+    const paneIds = ["ticker-research", "options", "holders", "fixed-income", "earnings-ripple", "supply-chain", "backtest", "econ-calendar", "world-venue-map"];
     const instances = paneIds.map((paneId) => createPaneInstance(paneId, { instanceId: `${paneId}:main`, binding: { kind: "fixed", symbol: "AAPL" } }));
     const layout = {
       dockRoot: null,
@@ -348,7 +344,7 @@ describe("Ticker Research's successors", () => {
       const disabledPaneIds = new Set(disabled.flatMap((pluginId) => registry.getPluginPaneIds(pluginId)));
       return resolveShellVisibleLayout(layout, disabledPaneIds, registry.panes).instances.map((instance) => instance.paneId);
     };
-    // Credit & Bonds keeps CDS from Macro; Rates & Macro and Global Markets are in no Ticker Research group.
+    // The retired Ticker Research group still includes Credit & Fixed Income; Rates & Macro and Global Markets do not.
     expect(visiblePanes(expandBuiltinPluginGroups(["ticker-research"]))).toEqual(["econ-calendar", "world-venue-map"]);
     expect(visiblePanes(["ownership"])).toEqual(paneIds.filter((paneId) => paneId !== "holders"));
 

@@ -1220,6 +1220,35 @@
    "lesson": "/academy/rates-bonds-credit/rates/bond-calculator"
   },
   {
+   "code": "FI",
+   "name": "Fixed Income",
+   "description": "Credit, bonds, and Treasuries",
+   "detail": "One workspace for credit markets, issuer debt, corporate bond sales, Treasury auctions, Treasury cash and debt, and primary dealer positions. FI opens it; the older shortcuts still land on their own section.",
+   "category": "macro"
+  },
+  {
+   "code": "TRACE",
+   "name": "Corporate bond tape",
+   "description": "Latest corporate and agency sales",
+   "detail": "Latest corporate and agency bond sales: issuer, coupon, price, yield, and grade. TRACE alone lists the tape; TRACE with an issuer filters to that name. It opens the Bonds section of Fixed Income.",
+   "category": "macro",
+   "arg": "issuer"
+  },
+  {
+   "code": "DTS",
+   "name": "Treasury cash and debt",
+   "description": "Operating cash and debt held by the public",
+   "detail": "Treasury operating cash for the latest day, and debt held by the public for the last 20 business days. It opens the Treasury section of Fixed Income.",
+   "category": "macro"
+  },
+  {
+   "code": "PDLR",
+   "name": "Primary dealer positions",
+   "description": "Weekly dealer positions and fails",
+   "detail": "Weekly net positions and settlement fails in Treasuries and mortgage-backed securities, from the primary dealers. It opens the Treasury section of Fixed Income.",
+   "category": "macro"
+  },
+  {
    "code": "VAL",
    "name": "Market valuation",
    "description": "Whole-market multiples",

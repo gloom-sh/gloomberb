@@ -377,7 +377,7 @@ function LegacyPortfolioAnalyticsPane({ focused, width, height }: PaneProps) {
     <Box flexDirection="column" width={width} height={height}>
       {portfolioTabs.length === 0 ? (
         <Box paddingX={1} paddingY={1}>
-          <Text fg={colors.textMuted}>No portfolios found</Text>
+          <EmptyState title="No portfolios found." />
         </Box>
       ) : (
         <>

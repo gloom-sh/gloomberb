@@ -41,7 +41,13 @@ class FakeScroller {
     this.heights[index] = height;
     // The browser keeps the offset when content changes, unless it now overshoots.
     this.scrollTop = Math.min(this.scrollTop, Math.max(0, this.scrollHeight - this.clientHeight));
-    observers.resize?.();
+    observers.resize?.([sizeEntry(this.children[index]!, height)]);
+  }
+
+  /** The scrollport changes height: the observer reports the scroller itself. */
+  resizeView(height: number) {
+    this.clientHeight = height;
+    observers.resize?.([sizeEntry(this, height)]);
   }
 
   prepend(height: number) {
@@ -77,7 +83,12 @@ class FakeRow {
   }
 }
 
-const observers: { resize?: () => void; mutation?: () => void } = {};
+/** What a ResizeObserver reports for one element: only the height is read. */
+function sizeEntry(target: object, height: number) {
+  return { target, contentRect: { height }, borderBoxSize: [{ blockSize: height, inlineSize: 0 }] };
+}
+
+const observers: { resize?: (entries: unknown[]) => void; mutation?: () => void } = {};
 const globals = globalThis as unknown as Record<string, unknown>;
 const saved = { ResizeObserver: globals.ResizeObserver, MutationObserver: globals.MutationObserver };
 
@@ -85,7 +96,7 @@ beforeEach(() => {
   observers.resize = undefined;
   observers.mutation = undefined;
   globals.ResizeObserver = class {
-    constructor(callback: () => void) { observers.resize = callback; }
+    constructor(callback: (entries: unknown[]) => void) { observers.resize = callback; }
     observe() {}
     unobserve() {}
     disconnect() {}
@@ -97,13 +108,19 @@ beforeEach(() => {
   };
 });
 
+const attached: Array<{ dispose(): void }> = [];
+
 afterEach(() => {
+  // A scroller left attached would still answer the next suite's live resizes.
+  for (const sticky of attached.splice(0)) sticky.dispose();
   globals.ResizeObserver = saved.ResizeObserver;
   globals.MutationObserver = saved.MutationObserver;
 });
 
 function attach(scroller: FakeScroller, options: { startAtBottom?: boolean; onPinChange?: (pinned: boolean) => void } = {}) {
-  return attachStickyScroll(scroller as unknown as HTMLElement, { startAtBottom: options.startAtBottom ?? true, onPinChange: options.onPinChange });
+  const sticky = attachStickyScroll(scroller as unknown as HTMLElement, { startAtBottom: options.startAtBottom ?? true, onPinChange: options.onPinChange });
+  attached.push(sticky);
+  return sticky;
 }
 
 describe("a sticky scroller", () => {
@@ -149,7 +166,7 @@ describe("a sticky scroller", () => {
     // The viewport shrinks by 20px; the browser reports a scroll although the offset stayed.
     scroller.clientHeight = 80;
     for (const listener of scroller.scrollListeners) listener();
-    observers.resize?.();
+    scroller.resizeView(80);
 
     expect(pins).toEqual([]);
     expect(scroller.scrollTop).toBe(120);

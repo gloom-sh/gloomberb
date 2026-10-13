@@ -16,7 +16,15 @@ import { formatUtcTime, isEpochMilliseconds, isZonedIsoDateTime } from "../utils
 import { formatFreshnessLine, type ReportFreshness } from "./pane-functions/freshness";
 import { withSearchHints, type FredSeriesCheck } from "./not-a-ticker";
 import { renderReportCsv, renderReportNdjson, withCsvFooter, type CliReportTables } from "./report-tables";
-import { exportSource, exportSourceLines, type ExportSource } from "./export-source";
+import {
+  EXPORT_IDENTITY_COLUMNS,
+  exportIdentityCells,
+  exportIdentityFields,
+  exportSource,
+  exportSourceLines,
+  type ExportIdentity,
+  type ExportSource,
+} from "./export-source";
 import { windowRows, type RowWindow, type RowWindowOptions } from "./row-window";
 
 export interface CliResult<T = unknown> {
@@ -28,7 +36,8 @@ export interface CliResult<T = unknown> {
    * (docs/usage.md#how-current-a-report-is): the last line of the text output
    * and `metadata.freshness` in JSON. Exports cite it too (`exportSource`):
    * CSV ends with it as `#` lines, or `tables` footer does, and JSON carries
-   * it as `source`. NDJSON stays rows only.
+   * it as `source`. NDJSON stays rows only. CSV and NDJSON rows end with the
+   * fixed columns of `EXPORT_IDENTITY_COLUMNS`, its source and as-of among them.
    */
   freshness?: ReportFreshness;
   /**
@@ -88,6 +97,15 @@ export interface CliResultRenderOptions<T = unknown, Row = Record<string, unknow
    * text view shows them, CSV with its `# section:` and closing `#` lines.
    */
   tables?: CliReportTables;
+  /**
+   * What the rows are of, for the fixed columns (`EXPORT_IDENTITY_COLUMNS`)
+   * CSV and NDJSON end every row with when the result cites a source: one
+   * identity for every row, or each row's own. Without it a row's own
+   * `symbol` and `currency` fields say it, as far as they go.
+   */
+  exportIdentity?: ExportIdentity | ((row: Row) => ExportIdentity);
+  /** What CSV says after the source lines as `# note:` lines: what the rows do not show, such as where a series begins. */
+  exportNotes?: readonly string[];
 }
 
 interface CliResultJsonEnvelope<T> extends Omit<CliResult<T>, "freshness" | "exportFreshness"> {
@@ -267,16 +285,32 @@ function serializeColumns<Row>(columns?: CliResultColumn<Row>[]) {
 function renderCsv<Row extends Record<string, unknown>>(
   rows: Row[],
   columns?: CliResultColumn<Row>[],
+  identity?: (row: Row) => string[],
 ): string {
   const resolvedColumns = columns && columns.length > 0
     ? columns
     : inferColumns(rows as Record<string, unknown>[]) as CliResultColumn<Row>[];
   return serializeCsv([
-    resolvedColumns.map((column) => column.header),
-    ...rows.map((row) => resolvedColumns.map((column) => (
-      column.value ? column.value(row) : row[column.key]
-    ))),
+    [...resolvedColumns.map((column) => column.header), ...identity ? EXPORT_IDENTITY_COLUMNS : []],
+    ...rows.map((row) => [
+      ...resolvedColumns.map((column) => (column.value ? column.value(row) : row[column.key])),
+      ...identity?.(row) ?? [],
+    ]),
   ]);
+}
+
+function stringField(row: Record<string, unknown>, key: string): string | null {
+  const value = row?.[key];
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+/** What a row is of: as the command says, else its own `symbol` and `currency` fields. */
+function rowIdentity<Row extends Record<string, unknown>>(
+  row: Row,
+  declared: CliResultRenderOptions<unknown, Row>["exportIdentity"],
+): ExportIdentity {
+  if (typeof declared === "function") return declared(row);
+  return declared ?? { symbolOrSeries: stringField(row, "symbol"), currencyOrUnit: stringField(row, "currency") };
 }
 
 function textColumns<Row extends Record<string, unknown>>(
@@ -389,16 +423,25 @@ function serializeCliRows<T, Row extends Record<string, unknown>>(
   renderOptions: CliResultRenderOptions<T, Row>,
   cited?: ReportFreshness,
 ): string {
-  if (renderOptions.tables && options.format === "csv") return renderReportCsv(renderOptions.tables);
-  if (renderOptions.tables && options.format === "ndjson") return renderReportNdjson(renderOptions.tables);
+  if (renderOptions.tables && (options.format === "csv" || options.format === "ndjson")) {
+    // A report's tables name what they are of, else the command's one identity for every row does.
+    const declared = renderOptions.exportIdentity;
+    const tables = renderOptions.tables.identity || !declared || typeof declared === "function"
+      ? renderOptions.tables
+      : { ...renderOptions.tables, identity: declared };
+    return options.format === "csv" ? renderReportCsv(tables, cited) : renderReportNdjson(tables, cited);
+  }
   const window = windowed(asRows(result.data, renderOptions.rows), options, renderOptions);
   const rows = window.rows;
   if (options.format === "ndjson") {
-    return rows.map((row) => JSON.stringify(row)).join("\n");
+    return rows.map((row) => JSON.stringify(cited && isPlainObject(row)
+      ? { ...row, ...exportIdentityFields(cited, rowIdentity(row as Row, renderOptions.exportIdentity)) }
+      : row)).join("\n");
   }
   if (options.format === "csv") {
-    const csv = renderCsv(rows as Row[], renderOptions.columns);
-    return cited ? withCsvFooter(csv, exportSourceLines(cited)) : csv;
+    if (!cited) return renderCsv(rows as Row[], renderOptions.columns);
+    const csv = renderCsv(rows as Row[], renderOptions.columns, (row) => exportIdentityCells(cited, rowIdentity(row, renderOptions.exportIdentity)));
+    return withCsvFooter(csv, [...exportSourceLines(cited), ...(renderOptions.exportNotes ?? []).map((note) => `note: ${note}`)]);
   }
   if (renderOptions.text) {
     return renderOptions.text(result.data);

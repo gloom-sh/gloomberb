@@ -139,6 +139,8 @@ export function liveQuoteObservation(
 ): LiveQuoteObservation | null {
   if (!quote || isQuoteStaleForCurrentSession(quote, quoteObservationNow(quote, now))) return null;
   if (hasUnknownBondHistoryBasis(quote, assetCategory)) return null;
+  // No history covers the overnight session: its prices form or move no bar.
+  if (quote.overnightPrice != null) return null;
   const quoteTime = quote.lastUpdated;
   const quotePrice = getActiveQuotePrice(quote);
   if (

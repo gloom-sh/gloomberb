@@ -801,6 +801,8 @@ export const ko: Record<string, string> = {
   "private": "비공개",
 
   // ── Chat ────────────────────────────────────────────────────
+  // A bot Gloom runs: the line on its card and its icon's tooltip.
+  "Bot run by Gloom": "Gloom이 운영하는 봇",
   "Direct message": "DM",
   "Group chat": "그룹 채팅",
   "Group": "그룹",
@@ -817,6 +819,15 @@ export const ko: Record<string, string> = {
   "Read-only chat. Log in or sign up to send.": "읽기 전용 채팅. 보내려면 로그인하거나 회원가입하세요.",
   "Saved login found. Log in again to send.": "저장된 로그인을 찾았습니다. 보내려면 다시 로그인하세요.",
   "Verify your email to send messages.": "메시지를 보내려면 이메일을 인증하세요.",
+  // The first-chat prompt for an account still on its signup handle.
+  "Choose a handle": "사용자명 정하기",
+  "Choose Handle": "사용자명 정하기",
+  "Hide Handle Prompt": "사용자명 안내 숨기기",
+  "@{handle} is taken. Try another.": "@{handle}은(는) 이미 사용 중입니다. 다른 이름을 입력하세요.",
+  "@{handle} isn't available. Try another.": "@{handle}은(는) 사용할 수 없습니다. 다른 이름을 입력하세요.",
+  "Use 3-30 letters, numbers or _, starting with a letter.": "영문자로 시작하는 3~30자의 영문, 숫자, _를 사용하세요.",
+  "Couldn't save your handle. Try again.": "사용자명을 저장하지 못했습니다. 다시 시도하세요.",
+  "You're @{handle} now.": "이제 @{handle}입니다.",
   "Verify your email to use Cloud tweets.": "Cloud 게시물을 사용하려면 이메일을 인증하세요.",
   "Resend Verification Email": "확인 이메일 다시 보내기",
   "Sign in to {action}.": "{action}하려면 로그인하세요.",
@@ -1023,6 +1034,8 @@ export const ko: Record<string, string> = {
   "Waiting for quote...": "시세 대기 중...",
   "Pre-Market": "장전",
   "After-Hours": "장후",
+  "Overnight": "야간",
+  "mid": "중간가",
   "Price Return": "가격 수익률",
   "Fundamentals": "펀더멘털",
   "Positions": "포지션",
@@ -1103,6 +1116,7 @@ export const ko: Record<string, string> = {
   "PRE-MKT": "장전",
   "OPEN": "장중",
   "AFTER-HRS": "장후",
+  "OVERNIGHT": "야간",
   "CLOSED": "휴장",
   "Log In": "로그인",
   "Sign Up": "가입",

@@ -146,8 +146,8 @@ const newsWirePaneTemplates: PluginModule["paneTemplates"] = [
     id: "news-industry-pane",
     paneId: "news-industry",
     label: TOPIC_NEWS_TITLE,
-    description: "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector",
-    keywords: ["news", "industry", "sector", "topic", "ni", "mna", "central banks", "crypto", "ipo", "earnings", "regulation"],
+    description: "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or sector, and public fund letters (LTR)",
+    keywords: ["news", "industry", "sector", "topic", "ni", "mna", "central banks", "crypto", "ipo", "earnings", "regulation", "letters", "ltr", "fund letters", "investor letters"],
     shortcut: {
       prefix: "NI",
       argPlaceholder: "code",

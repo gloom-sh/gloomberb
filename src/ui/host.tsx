@@ -473,6 +473,8 @@ interface HostQueryBarOption {
   selected: boolean;
   /** Shortcut key for the option. */
   hint?: string;
+  /** Tints the option's label, e.g. a status in its tone. */
+  color?: string;
 }
 
 export interface HostQueryBarItem {
@@ -518,6 +520,8 @@ export interface HostQueryBarProps {
   onClearAll?: () => void;
   /** Muted context at the right edge, e.g. the selected row's date. */
   meta?: string;
+  /** Drawn before the search and filters, e.g. the ticker the list is about. */
+  leading?: ReactNode;
   /** Opens one item's menu, e.g. from a pane shortcut. The token changes per request. */
   openRequest?: { id: string; token: number } | null;
 }
@@ -567,6 +571,8 @@ export interface HostMenuItem {
   selected?: boolean;
   /** The checkbox state in a multi-select menu. */
   checked?: boolean;
+  /** Tints the label, e.g. a status in its tone; the words carry the meaning. */
+  color?: string;
 }
 
 export interface HostMenuProps {

@@ -195,15 +195,35 @@ export interface StudiesQuery {
   term?: string;
   /** Sponsor/company filter (`query.spons`). */
   sponsor?: string;
+  /** Overall statuses, any of (`filter.overallStatus`), e.g. `RECRUITING`. */
+  statuses?: readonly string[];
+  /** Phases, any of, e.g. `PHASE3` or `NA`. */
+  phases?: readonly string[];
+  /** Lead sponsor classes, any of, e.g. `INDUSTRY`. */
+  sponsorClasses?: readonly string[];
   pageSize?: number;
   /** The previous page's `nextPageToken`; without it, the first page. */
   pageToken?: string;
 }
 
+/** Registry codes are upper-case words; anything else would break the expression. */
+const REGISTRY_CODE = /^[A-Z][A-Z0-9_]*$/;
+
+function codes(values: readonly string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => value.trim().toUpperCase()).filter((value) => REGISTRY_CODE.test(value)))];
+}
+
+/** `AREA[Phase]PHASE3`, or `AREA[Phase](PHASE2 OR PHASE3)` for several. */
+function areaClause(area: string, values: string[]): string | null {
+  if (values.length === 0) return null;
+  return values.length === 1 ? `AREA[${area}]${values[0]}` : `AREA[${area}](${values.join(" OR ")})`;
+}
+
 /**
  * Build the v2 studies URL. Pure: no network, no API key. The most recently
  * posted studies come first, the order the pane lists them in, so each page
- * continues the one before it.
+ * continues the one before it. Filters go to the registry with the search, so
+ * every page it returns already matches them.
  */
 export function buildStudiesUrl(query: StudiesQuery = {}): string {
   const params = new URLSearchParams();
@@ -215,6 +235,11 @@ export function buildStudiesUrl(query: StudiesQuery = {}): string {
   if (term) params.set("query.term", term);
   const sponsor = query.sponsor?.trim();
   if (sponsor) params.set("query.spons", sponsor);
+  const statuses = codes(query.statuses);
+  if (statuses.length > 0) params.set("filter.overallStatus", statuses.join(","));
+  const advanced = [areaClause("Phase", codes(query.phases)), areaClause("LeadSponsorClass", codes(query.sponsorClasses))]
+    .filter((clause): clause is string => clause !== null);
+  if (advanced.length > 0) params.set("filter.advanced", advanced.join(" AND "));
   if (query.pageToken) params.set("pageToken", query.pageToken);
   return `${CLINICAL_TRIALS_API_BASE_URL}/studies?${params.toString()}`;
 }

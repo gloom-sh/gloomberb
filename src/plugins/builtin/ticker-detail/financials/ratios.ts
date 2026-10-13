@@ -6,6 +6,7 @@ import { formatPerShareNumber } from "../../../../utils/reported-money";
 import { hasStatementGap } from "../../../../utils/statement-gaps";
 import {
   buildPreviousStatementMap,
+  trailingFourQuarters,
   type FinancialPeriod,
   type FinancialTableStatement,
 } from "./aggregation";
@@ -20,13 +21,15 @@ import {
  * Why a ratio or one of its inputs has no number: a line the statements do
  * not carry for the period, a ratio whose denominator makes it meaningless
  * (a loss under P/E, negative equity under ROE), no close at the period end,
- * or a close still loading.
+ * a close still loading, or a quarter with fewer than four quarters to sum
+ * for a trailing flow.
  */
-export type RatioGap = "not-reported" | "not-meaningful" | "no-price" | "loading";
+export type RatioGap = "not-reported" | "short-history" | "not-meaningful" | "no-price" | "loading";
 export type RatioAmount = number | RatioGap;
 
 export const RATIO_GAP_TEXT: Record<RatioGap, string> = {
   "not-reported": "not reported",
+  "short-history": "< 4 quarters",
   "not-meaningful": "N/M",
   "no-price": "no price",
   loading: "--",
@@ -42,6 +45,12 @@ export interface RatioPeriod {
   opening: FinancialStatement | undefined;
   /** Flows cover one quarter and are annualized. */
   quarterly: boolean;
+  /**
+   * A quarterly column's trailing year, for inputs that read one: the fiscal
+   * year ending with the quarter, or the four quarters to it summed; null when
+   * neither is on file.
+   */
+  trailing?: FinancialTableStatement | null;
   /** The close at the period end in the statement's currency. */
   price: RatioAmount;
 }
@@ -53,6 +62,13 @@ interface RatioInputDef {
   format: RatioInputFormat;
   /** A flow over the period. Quarterly columns multiply it by four. */
   annualized?: boolean;
+  /**
+   * A flow over a year: quarterly columns read the trailing four quarters
+   * (TTM), and show "< 4 quarters" rather than annualize a short history.
+   */
+  trailing?: boolean;
+  /** A shorter name for quarterly columns, so the label, TTM and its unit fit the label column. */
+  trailingLabel?: string;
   value: (period: RatioPeriod) => RatioAmount;
 }
 
@@ -75,7 +91,7 @@ export interface RatioTabDef {
 
 export interface RatioCell {
   value: RatioAmount;
-  /** Each input as reported for the period, before annualization. */
+  /** Each input as reported for the period (summed over four quarters when trailing), before annualization. */
   inputs: RatioAmount[];
 }
 
@@ -171,6 +187,17 @@ const periodDays = (period: RatioPeriod) => (period.quarterly ? DAYS_PER_YEAR / 
 
 const flow = (label: string, read: BalanceLine, operator?: RatioInputDef["operator"]): RatioInputDef => ({
   label, operator, format: "money", annualized: true, value: ({ statement }) => reported(read(statement)),
+});
+
+/** A flow a leverage ratio reads over a year: the trailing four quarters in a quarterly column. */
+const trailingFlow = (
+  label: string,
+  read: BalanceLine,
+  operator?: RatioInputDef["operator"],
+  trailingLabel?: string,
+): RatioInputDef => ({
+  label, operator, format: "money", trailing: true, ...(trailingLabel ? { trailingLabel } : {}),
+  value: ({ statement }) => reported(read(statement)),
 });
 
 const perDay = (label: string, read: BalanceLine): RatioInputDef => ({
@@ -332,7 +359,7 @@ export const RATIO_TABS: RatioTabDef[] = [
               return debt === undefined || cash === undefined ? "not-reported" : debt - cash;
             },
           },
-          flow("EBITDA", line("ebitda"), "÷"),
+          trailingFlow("EBITDA", line("ebitda"), "÷"),
         ],
         compute: ([debt, ebitda]) => over(debt!, ebitda!),
       },
@@ -350,10 +377,10 @@ export const RATIO_TABS: RatioTabDef[] = [
         id: "interest-coverage",
         label: "Interest Coverage",
         format: "multiple",
-        // A ratio of two flows over the same period needs no annualization.
+        // Both flows over the same trailing year, as a lender reads cover.
         inputs: [
-          { label: "EBIT", format: "money", value: ({ statement }) => reported(finite(statement.operatingIncome)) },
-          { label: "Interest Expense", operator: "÷", format: "money", value: ({ statement }) => reported(finite(statement.interestExpense)) },
+          trailingFlow("EBIT", line("operatingIncome")),
+          trailingFlow("Interest Expense", line("interestExpense"), "÷", "Interest Exp"),
         ],
         compute: ([ebit, interest]) => over(ebit!, interest!),
       },
@@ -363,7 +390,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         format: "percent",
         signed: true,
         inputs: [
-          flow("Free Cash Flow", freeCashFlow),
+          trailingFlow("Free Cash Flow", freeCashFlow),
           { label: "Total Debt", operator: "÷", format: "money", value: closing(line("totalDebt")) },
         ],
         compute: ([cash, debt]) => over(cash!, debt!),
@@ -498,10 +525,15 @@ export const RATIO_TAB_KEYS = new Set(RATIO_TABS.map((tab) => tab.key));
  * report explains more than a missing close, and a close still loading may
  * yet arrive.
  */
-const GAP_ORDER: RatioGap[] = ["not-reported", "not-meaningful", "no-price", "loading"];
+const GAP_ORDER: RatioGap[] = ["not-reported", "short-history", "not-meaningful", "no-price", "loading"];
+
+function inputAmount(input: RatioInputDef, period: RatioPeriod): RatioAmount {
+  if (!input.trailing || !period.quarterly) return input.value(period);
+  return period.trailing ? input.value({ ...period, statement: period.trailing }) : "short-history";
+}
 
 export function evaluateRatio(def: RatioDef, period: RatioPeriod): RatioCell {
-  const inputs = def.inputs.map((input) => input.value(period));
+  const inputs = def.inputs.map((input) => inputAmount(input, period));
   const gap = GAP_ORDER.find((candidate) => inputs.includes(candidate));
   if (gap) return { value: gap, inputs };
   const values = inputs.map((amount, index) => (
@@ -511,9 +543,11 @@ export function evaluateRatio(def: RatioDef, period: RatioPeriod): RatioCell {
   return { value: isGap(value) || Number.isFinite(value) ? value : "not-meaningful", inputs };
 }
 
-/** The label an input row shows: the operator that joins it and the quarterly annualization. */
+/** The label an input row shows: the operator that joins it and a quarterly column's basis, ×4 or TTM. */
 function ratioInputLabel(input: RatioInputDef, quarterly: boolean): string {
-  const label = input.annualized && quarterly ? `${input.label} × ${QUARTERS_PER_YEAR}` : input.label;
+  const label = !quarterly ? input.label
+    : input.annualized ? `${input.label} × ${QUARTERS_PER_YEAR}`
+      : input.trailing ? `${input.trailingLabel ?? input.label} TTM` : input.label;
   return input.operator ? `${input.operator} ${label}` : label;
 }
 
@@ -602,18 +636,46 @@ export function resolveFinancialSectionKey(value: string | undefined): string {
   return ratio ?? resolveFinancialSubTabKey(value);
 }
 
+/** A fiscal year ending within this many days of a quarter is that quarter's trailing year. */
+const SAME_PERIOD_END_DAYS = 7;
+
+/**
+ * A quarterly column's trailing year: the reported fiscal year when one ends
+ * with the quarter, as the annual view shows that year rather than a TTM of
+ * the same months; otherwise the four quarters to it, summed. Null when
+ * neither is on file.
+ */
+function trailingYear(
+  statement: FinancialStatement,
+  annualStatements: readonly FinancialStatement[],
+  quarterlyStatements: readonly FinancialStatement[],
+): FinancialTableStatement | null {
+  const end = Date.parse(statement.date);
+  const year = annualStatements.find((candidate) => (
+    Math.abs(Date.parse(candidate.date) - end) <= SAME_PERIOD_END_DAYS * 86_400_000
+    && (!candidate.currency || !statement.currency || candidate.currency === statement.currency)
+  ));
+  return year ?? trailingFourQuarters(quarterlyStatements, statement.date);
+}
+
 export function ratioPeriods(
   statements: readonly FinancialTableStatement[],
   openings: ReadonlyMap<string, FinancialStatement>,
   period: FinancialPeriod,
   price: (statement: FinancialTableStatement) => RatioAmount,
+  /** Every statement on file, not only the columns shown, for quarterly columns' trailing years. */
+  onFile: { annual: readonly FinancialStatement[]; quarterly: readonly FinancialStatement[] } = { annual: [], quarterly: [] },
 ): RatioPeriod[] {
-  return statements.map((statement) => ({
-    statement,
-    opening: openings.get(statement.date),
-    quarterly: period === "quarterly" && statement.date !== "TTM",
-    price: price(statement),
-  }));
+  return statements.map((statement) => {
+    const quarterly = period === "quarterly" && statement.date !== "TTM";
+    return {
+      statement,
+      opening: openings.get(statement.date),
+      quarterly,
+      ...(quarterly ? { trailing: trailingYear(statement, onFile.annual, onFile.quarterly) } : {}),
+      price: price(statement),
+    };
+  });
 }
 
 export type RatioTableRow =
@@ -713,5 +775,5 @@ export function ratioTableForFinancials(
     const close = history ? periodEndClose(history, ratioPeriodEnd(statement)) : undefined;
     return (close === undefined ? null : currencies.priceInStatementUnits(statement, close)) ?? "no-price";
   };
-  return buildRatioTableModel(tab, ratioPeriods(statements, ratioOpenings(period, annual, quarterly), period, price), "all");
+  return buildRatioTableModel(tab, ratioPeriods(statements, ratioOpenings(period, annual, quarterly), period, price, { annual, quarterly }), "all");
 }

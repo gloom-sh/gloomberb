@@ -45,13 +45,18 @@ async function show(quote: Quote) {
 }
 
 test("portfolio and watchlist show headline the regular close beside the extended print, and value at the live price", async () => {
-  for (const state of ["weekend", "afterHours", "preMarket"] as const) {
+  for (const state of ["weekend", "afterHours", "preMarket", "overnight"] as const) {
     const quote = sessionQuotes()[state];
     const headline = getRegularSessionDisplay(quote)!;
     const extended = getExtendedSessionDisplay(quote)!;
     const { text, rows, json } = await show(quote);
-    const figures = state === "preMarket" ? /\$198\.78 +\+0\.51% +\$199\.50 \+0\.36%/ : /\$198\.78 +\+0\.51% +\$198\.80 \+0\.01%/;
-    expect(text).toContain(state === "preMarket" ? "Pre-Market" : "After Hours");
+    const figures = {
+      weekend: /\$198\.78 +\+0\.51% +\$198\.80 \+0\.01%/,
+      afterHours: /\$198\.78 +\+0\.51% +\$198\.80 \+0\.01%/,
+      preMarket: /\$198\.78 +\+0\.51% +\$199\.50 \+0\.36%/,
+      overnight: /\$198\.78 +\+0\.51% +\$198\.95 \+0\.09%/,
+    }[state];
+    expect(text).toContain({ weekend: "After Hours", afterHours: "After Hours", preMarket: "Pre-Market", overnight: "Overnight" }[state]);
     // The portfolio's row, then the watchlist's.
     expect(rows).toHaveLength(2);
     for (const row of rows) expect(row).toMatch(figures);
@@ -151,8 +156,9 @@ describe("what a portfolio is priced at and when each row's price is from", () =
 
     const csv = await showExport(["show", "Main", "--close"], "csv");
     const [header, ...lines] = csv.split("\n");
-    expect(header!.split(",").slice(-3)).toEqual(["valuationBasis", "valuationPrice", "valuationAsOf"]);
-    expect(lines.find((line) => line.startsWith("XLK"))).toMatch(/,regular-close,198\.78,2026-10-09T20:00:00\.000Z$/);
+    // The valuation fields come last before the five fixed columns every export ends with.
+    expect(header!.split(",").slice(-8)).toEqual(["valuationBasis", "valuationPrice", "valuationAsOf", "symbol_or_series", "currency_or_unit", "interval", "source", "as_of"]);
+    expect(lines.find((line) => line.startsWith("XLK"))).toMatch(/,regular-close,198\.78,2026-10-09T20:00:00\.000Z,XLK,[^,]*,,[^,]+,2026-10-09T20:00:00\.000Z$/);
     expect(csv).toMatch(/# Source: .* · priced at the regular close\n/);
     expect(csv).toContain("# Observation date: 2026-10-09T20:00:00.000Z\n# Oldest observation: 2026-10-09T15:38:00.000Z\n");
 

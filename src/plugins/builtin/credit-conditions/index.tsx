@@ -21,6 +21,7 @@ import { formatPercentileRank } from "../../../utils/format";
 import { usePaneSettingValue } from "../../../state/app/context";
 import { usePluginPaneState } from "../../runtime";
 import type { PluginModule } from "../plugin-module";
+import { fixedIncomeShortcut } from "../fixed-income/shortcut";
 import { CREDIT_SPREAD_SERIES } from "./series";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { getCachedCreditConditions, loadCreditConditions } from "./client";
@@ -143,25 +144,15 @@ export function CreditConditionsPane({ paneId, focused, width, height }: PanePro
 
 export const creditConditionsModule: PluginModule = {
   series: CREDIT_SPREAD_SERIES,
-  panes: [{
-    id: "credit-conditions",
-    name: "Credit Spreads",
-    icon: "C",
-    component: CreditConditionsPane,
-    defaultPosition: "right",
-    defaultMode: "floating",
-    defaultFloatingSize: { width: 72, height: 22 },
-    settings: { title: "Credit Spreads", fields: [{ key: "region", label: "Region", type: "select", options: [
-      { value: "all", label: "All" }, { value: "us", label: "US" }, { value: "euro", label: "Euro" },
-    ] }] },
-  }],
   paneTemplates: [{
-    id: "credit-conditions-pane",
-    paneId: "credit-conditions",
-    label: "Credit Spreads",
-    description: "ICE BofA option-adjusted spreads from FRED: US investment grade and high yield by rating, and euro high yield.",
-    keywords: ["credit", "spread", "oas", "corporate", "high yield", "investment grade", "macro", "euro", "europe", "bb", "ccc", "rating"],
-    shortcut: { prefix: "CRD" },
-    headless: creditConditionsHeadless,
+    ...fixedIncomeShortcut({
+      id: "credit-conditions-pane",
+      paneId: "credit-conditions",
+      label: "Credit Spreads",
+      description: "ICE BofA option-adjusted spreads from FRED: US investment grade and high yield by rating, and euro high yield.",
+      keywords: ["credit", "spread", "oas", "corporate", "high yield", "investment grade", "macro", "euro", "europe", "bb", "ccc", "rating"],
+      shortcut: { prefix: "CRD" },
+      headless: creditConditionsHeadless,
+    }, "credit", "spreads"),
   }],
 };

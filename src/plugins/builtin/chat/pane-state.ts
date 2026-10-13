@@ -75,20 +75,17 @@ function setChatPaneJump(
 }
 
 /**
- * Opens an unread channel in the layout's chat pane (the one already on that
- * channel, else the first) at the message, and closes the unread list. With
- * no chat pane, the caller opens one.
+ * Opens an unread channel at the message in the layout's chat pane (the one
+ * already on that channel, else the focused one, else the one in front) and
+ * closes the unread list. With no chat pane, the caller opens one.
  */
 export function applyUnreadInboxItemToConfig(
   config: AppConfig,
   item: { channelId: string; messageId: string | null; paneTitle: string },
   inboxInstanceId?: string | null,
+  focusedPaneId: string | null = null,
 ): { config: AppConfig; chatInstanceId: string | null } {
-  const chatPanes = config.layout.instances.filter((instance) => instance.paneId === "chat");
-  const existing = chatPanes.find((instance) => (
-    typeof instance.settings?.channelId === "string"
-    && normalizeChannelId(instance.settings.channelId) === item.channelId
-  )) ?? chatPanes[0];
+  const existing = pickChatPaneToReuse(config.layout, focusedPaneId, normalizeChannelId(item.channelId));
   let layout = config.layout;
   if (existing) {
     layout = updatePaneInstance(layout, existing.instanceId, (instance) => ({

@@ -1,4 +1,4 @@
-import { Box, Text } from "../../ui";
+import { Box } from "../../ui";
 import { TextAttributes, type ScrollBoxRenderable } from "../../ui";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
 import { t } from "../../i18n";
@@ -17,18 +17,23 @@ import {
   type IndexedStackRow,
   type StackSortPreference,
 } from "../feed-stack-controller";
-import { DetailScrollBody, ExternalLink, type DataTableCell, type DataTableColumn } from "../ui";
+import type { DataTableCell, DataTableColumn } from "../ui";
 import { PaneLinkMenu } from "../ui/external-link";
-import { wrapTextLines } from "../../utils/text-wrap";
 import { tableColumnWidth } from "../ui/table-layout";
+import { DetailReader, type DetailFact } from "../reader/detail-reader";
 
 export interface FeedDataTableItem {
   id: string;
   eyebrow?: string;
+  /** A tone for the source cell, such as a form that matters; the text carries the meaning. */
+  eyebrowColor?: string;
   title: string;
   timestamp?: Date | string | null;
   detailTitle?: string;
+  /** Short lines over the text; the terminal's form of the facts when both are given. */
   detailMeta?: string[];
+  /** Label and value pairs the desktop and the web show as a block over the text. */
+  detailFacts?: DetailFact[];
   detailBody?: string | null;
   detailNote?: string | null;
 }
@@ -149,7 +154,6 @@ export function FeedDataTableStackView({
     else setLocalOpenItemId(itemId);
   }, [controlled, onOpenItemIdChange]);
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
-  const detailTextWidth = Math.max(width - 2, 12);
   const columns = useMemo(
     () => buildColumns(width, t(sourceLabel), t(titleLabel), items),
     [items, language, sourceLabel, titleLabel, width],
@@ -228,7 +232,7 @@ export function FeedDataTableStackView({
       case "source":
         return {
           text: row.item.eyebrow ?? "",
-          color: colors.textMuted,
+          color: row.item.eyebrowColor ?? colors.textMuted,
         };
       case "title":
         return {
@@ -246,43 +250,15 @@ export function FeedDataTableStackView({
   }, [isItemRead]);
 
   const detailContent = openItem ? (
-    <DetailScrollBody ref={detailScrollRef} resetScrollKey={openItem.id}>
-      <Box flexDirection="column">
-        {(openItem.detailMeta ?? [])
-          .flatMap((entry) => wrapTextLines(entry, detailTextWidth, 2))
-          .map((line, index) => (
-            <Box key={`meta-${index}`} height={1}>
-              <Text fg={colors.textMuted}>{line}</Text>
-            </Box>
-          ))}
-
-        <Box height={1} />
-
-        {wrapTextLines(openItem.detailBody ?? "", detailTextWidth).map(
-          (line, index) => (
-            <Box key={`body-${index}`} height={1}>
-              <Text fg={colors.text}>{line}</Text>
-            </Box>
-          ),
-        )}
-
-        {openItem.detailNote ? (
-          <>
-            <Box height={1} />
-            {wrapTextLines(openItem.detailNote, detailTextWidth).map(
-              (line, index) =>
-                /^https?:\/\/\S+$/.test(line.trim()) ? (
-                  <ExternalLink key={`note-${index}`} url={line.trim()} />
-                ) : (
-                  <Box key={`note-${index}`} height={1}>
-                    <Text fg={colors.textDim}>{line}</Text>
-                  </Box>
-                ),
-            )}
-          </>
-        ) : null}
-      </Box>
-    </DetailScrollBody>
+    <DetailReader
+      ref={detailScrollRef}
+      resetScrollKey={openItem.id}
+      width={width}
+      meta={openItem.detailMeta}
+      facts={openItem.detailFacts}
+      body={openItem.detailBody}
+      note={openItem.detailNote}
+    />
   ) : (
     <Box flexGrow={1} />
   );

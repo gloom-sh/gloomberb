@@ -220,6 +220,8 @@ export function StaticXAxisLabels({
       // between renders.
       style={isDesktop ? { flex: "1 1 0px", width: "auto", minWidth: 0 } : undefined}
       data-gloom-role="chart-time-axis"
+      // The time under the crosshair, for checks that move it.
+      data-gloom-cursor={clippedCursorLabel || undefined}
       data-gloom-label={(visiblePositionedLabels.length > 0
         ? visiblePositionedLabels.map((entry) => entry.label)
         : visibleLabels).join(" ")}

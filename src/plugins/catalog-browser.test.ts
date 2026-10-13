@@ -36,7 +36,7 @@ describe("browser plugin catalog", () => {
       "insider",
       "world-indices",
       "econ-calendar",
-      "treasury-auctions",
+      "fixed-income",
       "dividend-yield",
     ]));
     for (const forbidden of [

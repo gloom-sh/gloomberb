@@ -8,6 +8,7 @@ import { useRendererHost, useUiCapabilities } from "../../../../ui";
 import { useOptionalDialog, type PromptContext } from "../../../../ui/dialog";
 import { chatAuthorName, isDiscordGhost } from "../ghost-user";
 import { chatMessageOpenTargets, type ChatOpenTarget } from "./open-targets";
+import { chatMessagePaneLinks, type ChatMessagePaneLink } from "../pane-links/model";
 import { openChatImageViewer } from "../attachments/desktop";
 import { canReactToMessage } from "../reactions";
 
@@ -28,6 +29,7 @@ export function useChatFooter({
   focusComposer,
   catalog,
   openTicker,
+  openPaneLink,
   openAttachPicker,
   profilePopoverUser,
   showProfilePopover,
@@ -65,6 +67,8 @@ export function useChatFooter({
   focusComposer: () => void;
   catalog: Record<string, InlineTickerCatalogEntry>;
   openTicker: (symbol: string) => void;
+  /** Opens what a message's chip stands for. */
+  openPaneLink: (link: ChatMessagePaneLink) => void;
   /** Opens the composer's file picker; null where images cannot be attached. */
   openAttachPicker: (() => void) | null;
   profilePopoverUser: ChatUserSummary | null;
@@ -94,15 +98,19 @@ export function useChatFooter({
 }) {
   const dialog = useOptionalDialog();
   const rendererHost = useRendererHost();
-  const content = selectedMessage?.content ?? "";
+  const { links: paneLinks, content } = chatMessagePaneLinks(selectedMessage);
   const attachments = selectedMessage?.attachments;
   const openTargets = useMemo(
-    () => chatMessageOpenTargets(content, catalog, attachments),
-    [attachments, catalog, content],
+    () => chatMessageOpenTargets(content, catalog, attachments, paneLinks),
+    [attachments, catalog, content, paneLinks],
   );
   const { nativePaneChrome } = useUiCapabilities();
 
   const openTarget = useCallback((target: ChatOpenTarget) => {
+    if (target.kind === "pane") {
+      openPaneLink(target.link);
+      return;
+    }
     if (target.kind === "ticker") {
       openTicker(target.symbol);
       return;
@@ -118,7 +126,7 @@ export function useChatFooter({
       return;
     }
     void rendererHost.openExternal(target.url);
-  }, [dialog, nativePaneChrome, openTicker, rendererHost, selectedMessage]);
+  }, [dialog, nativePaneChrome, openPaneLink, openTicker, rendererHost, selectedMessage]);
 
   // One target opens at once; several ask which, in the order the message reads.
   const openSelectedTargets = useCallback(async () => {
@@ -170,7 +178,9 @@ export function useChatFooter({
   const failedSend = selectedMessage?.clientStatus === "failed";
   const canAttachImages = !!openAttachPicker;
   const openTargetTitle = onlyTarget
-    ? onlyTarget.kind === "ticker" ? `Open $${onlyTarget.symbol}` : onlyTarget.kind === "image" ? "Open Image" : "Open Link"
+    ? onlyTarget.kind === "ticker"
+      ? `Open $${onlyTarget.symbol}`
+      : onlyTarget.kind === "image" ? "Open Image" : onlyTarget.kind === "pane" ? "Open Pane" : "Open Link"
     : openTargets.every((target) => target.kind === "ticker")
       ? "Open Ticker…"
       : openTargets.every((target) => target.kind === "link")

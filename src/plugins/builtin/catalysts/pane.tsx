@@ -16,11 +16,11 @@ import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
 import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
-import { listingCell } from "../shared/research-cells";
+import { listingCell, toneColor } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadCatalystDetail, loadCatalysts, validateCatalysts } from "./client";
 import { CatalystEventDetail } from "./detail";
-import { catalystAgency, catalystCell, catalystColumns, catalystLabel, catalystQuery, catalystSection, catalystSymbol, catalystTab, CATALYST_TABS } from "./model";
+import { catalystAgency, catalystCell, catalystColumns, catalystLabel, catalystQuery, catalystSection, catalystStatusTone, catalystSymbol, catalystTab, catalystTypeTone, CATALYST_TABS } from "./model";
 
 type Row = SectionedRow<CatalystEvent> | { kind: "locked"; key: string };
 const rowKey = (row: Row) => row.key;
@@ -139,8 +139,10 @@ export function CatalystView({ width, height, focused, symbol, litigation = fals
       const more = event.parties.filter((party) => party.ticker).length - 1;
       return more > 0 ? { text, color: colors.textBright } : listingCell(symbol, colors, state.selected);
     }
-    return { text, color: column.id === "title" ? colors.textBright : column.id === "date" ? colors.text
-      : column.id === "status" && tab === "changes" ? colors.text : colors.textDim };
+    if (column.id === "parties") return { text, color: text === "--" ? colors.textMuted : colors.textBright };
+    if (column.id === "type") return { text, color: toneColor(catalystTypeTone(event.type), colors) };
+    if (column.id === "status") return { text, color: tab === "changes" ? colors.text : toneColor(catalystStatusTone(event.status), colors) };
+    return { text, color: column.id === "title" || column.id === "date" ? colors.text : colors.textDim };
   };
   if (isCloudSessionRequired(error?.message)) return <SignInWall placement="catalysts-signin" action="view catalysts" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">

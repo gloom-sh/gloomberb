@@ -61,6 +61,12 @@ jobs:
         run: ./scripts/verify-windows-desktop.ps1
 
       - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-x64-desktop-cli-verification
+          path: artifacts/windows-cli-verification
+
+      - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: gloomberb-windows-x64-package

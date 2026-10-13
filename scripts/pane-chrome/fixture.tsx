@@ -23,7 +23,9 @@
  * or `cmp` (one chart composer pane on invented 30-minute bars, see
  * createInventedChartSource: `&chart=readout` three listings on two venues,
  * volume and two studies, `pan` one listing with years of bars, `edge` one
- * whose bars start 150 sessions back, `percent` three listings rebased).
+ * whose bars start 150 sessions back, `percent` three listings rebased), or
+ * `layout` (one pane that sets text or scrolls content, docked or floating,
+ * for the layout checks; see layout-fixture.tsx).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -71,6 +73,7 @@ import { PriceSparkline } from "../../src/components/price-sparkline/view";
 import { registerAskGloomPaneHandler } from "../../src/ask-gloom/pane-request";
 import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/header";
 import { ChatFixturePane, chatLayout } from "./chat-fixture";
+import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -116,8 +119,12 @@ declare global {
       attachments: Array<{ paneId: string; visibleText: string | null; args: Readonly<Record<string, string>> }>;
       /** Sizes of the PNG images Copy Screenshot put on the clipboard, in order. */
       clipboardImages: number[];
+      /** Addresses handed to the system browser, in order. */
+      externalOpens: string[];
       /** Times the popped-out window was asked to close. */
       detachedCloses: number;
+      /** `paint`: floats another chart composer pane in, as adding a chart pane does; returns its id. */
+      addChartPane?: () => string;
     };
   }
 }
@@ -368,6 +375,31 @@ function ChartUnderBarPane({ focused, width, height }: PaneProps) {
   );
 }
 
+/**
+ * A chart sized in rows under a query bar, over a caption, as the
+ * correlation pane lays one out: the pane counts the bar as a row, which the
+ * page draws taller, so the chart's rows run past its clipping box.
+ */
+function ChartRowsPane({ focused, width, height }: PaneProps) {
+  // Whole rows for the chart; what is left of the pane's rows, less the bar and the caption, above it.
+  const chartRows = Math.max(4, Math.floor(height * 0.6));
+  const aboveRows = Math.max(1, height - 1 - chartRows - 1);
+  return (
+    <Box flexDirection="column" width={width} height={height} overflow="hidden">
+      <QueryBar width={width} meta="Invented closes" />
+      <Box height={aboveRows} flexShrink={0} paddingX={1}>
+        <Text>Invented figures above the chart</Text>
+      </Box>
+      <Box flexGrow={1} minHeight={0} overflow="hidden">
+        <CompositeChart series={CHART_SERIES} panels={CHART_PANELS} width={Math.max(1, width)} height={chartRows} focused={focused} />
+      </Box>
+      <Box height={1} paddingX={1}>
+        <Text>An invented close, rebased to the first day</Text>
+      </Box>
+    </Box>
+  );
+}
+
 const BOARD_TABS = [{ value: "one", label: "Stocks" }, { value: "two", label: "Rates" }];
 const BOARD_ROWS = TABLE_ROWS.slice(0, 12);
 
@@ -549,17 +581,46 @@ function OverviewPane({ width, height, focused }: PaneProps) {
   return <OverviewTab ticker={OVERVIEW_TICKER} financials={OVERVIEW_FINANCIALS} width={width} height={height} focused={focused} />;
 }
 
-/** Real title-bar tabs mount each chart just as opening a research tab does. */
+/**
+ * Real title-bar tabs mount each chart just as opening a research tab does.
+ * `composer` is the research Chart tab itself: the chart composer on the
+ * invented source, loading its bars after a delay the first time.
+ */
 function PaintPane(props: PaneProps) {
   const [active, setActive] = useState("empty");
-  const { strip } = usePaneTabs({
-    tabs: ["empty", "chart", "overview"].map((value) => ({ value, label: value })),
+  const { strip, rows } = usePaneTabs({
+    tabs: ["empty", "chart", "overview", "composer"].map((value) => ({ value, label: value })),
     activeValue: active, onSelect: setActive,
   });
+  const body = { ...props, height: Math.max(4, props.height - rows) };
   return <Box flexDirection="column" flexGrow={1}>
     {strip}
-    {active === "chart" ? <ChartPane {...props} /> : active === "overview" ? <OverviewPane {...props} /> : null}
+    {active === "chart" ? <ChartPane {...props} />
+      : active === "overview" ? <OverviewPane {...props} />
+      : active === "composer" ? <ChartComposerFixturePane {...body} />
+      : null}
   </Box>;
+}
+
+/** Opens another chart composer pane, floating, as adding a chart pane does. */
+function PaneAdder() {
+  const dispatch = useAppDispatch();
+  const layout = useAppSelector((state) => state.config.layout);
+  const layoutRef = useRef(layout);
+  layoutRef.current = layout;
+  useEffect(() => {
+    window.__paneChrome.addChartPane = () => {
+      const current = layoutRef.current;
+      const instanceId = `chart-composer:added${current.instances.length}`;
+      dispatch({ type: "UPDATE_LAYOUT", layout: {
+        ...current,
+        instances: [...current.instances, { ...instance(instanceId), settings: { chartSpec: chartComposerSpec("pan") } }],
+        floating: [...current.floating, { instanceId, x: 20, y: 6, width: 100, height: 30, zIndex: 70 }],
+      } });
+      return instanceId;
+    };
+  }, [dispatch]);
+  return null;
 }
 
 /** The product picker and its preview/commit/cancel path, without network search. */
@@ -820,6 +881,7 @@ const PANES = {
   news: { name: "Top News", component: NewsPane },
   chart: { name: "Chart", component: ChartPane },
   "chart-bar": { name: "G chart", component: ChartUnderBarPane },
+  "chart-rows": { name: "Chart in rows", component: ChartRowsPane },
   board: { name: "Board", component: ChartBoardPane },
   beside: { name: "Chart beside a table", component: ChartBesideTablePane },
   overlay: { name: "Chart under a toolbar", component: ChartOverlayPane },
@@ -828,6 +890,7 @@ const PANES = {
   heat: { name: "Heat map", component: HeatPane },
   chat: { name: "Chat", component: ChatFixturePane },
   "chart-composer": { name: "Chart", component: ChartComposerFixturePane },
+  ...LAYOUT_PANES,
 };
 
 function registry(): PluginRegistry {
@@ -1007,7 +1070,11 @@ function chartComposerLayout(): LayoutConfig {
 function config() {
   const base = createDefaultConfig("/pane-chrome-fixture");
   const layout: LayoutConfig = scenario.startsWith("theme") ? themeLayout()
-    : scenario === "paint" ? { dockRoot: leaf("paint:a"), instances: [instance("paint:a")], floating: [], detached: [] }
+    : scenario === "paint" ? {
+      dockRoot: leaf("paint:a"),
+      instances: [{ ...instance("paint:a"), settings: { chartSpec: chartComposerSpec("pan") } }],
+      floating: [], detached: [],
+    }
     : scenario === "perf" ? perfLayout()
     : scenario === "screenshot" ? screenshotLayout()
     : scenario === "resize" ? resizeLayout()
@@ -1016,6 +1083,7 @@ function config() {
     : scenario === "nested" ? nestedLayout()
     : scenario === "stacked" ? stackedLayout()
     : scenario === "cmp" ? chartComposerLayout()
+    : scenario === "layout" ? layoutLayout(params)
     : chromeLayout();
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
   const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];
@@ -1052,6 +1120,7 @@ window.__paneChrome = {
   asks: [],
   attachments: [],
   clipboardImages: [],
+  externalOpens: [],
   detachedCloses: 0,
   capturePane: async (paneId) => `data:image/png;base64,${(await domScreenshot.capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
   captureForAssistant: async (paneId, scale, maxBytes, minWidth) => {
@@ -1075,11 +1144,14 @@ registerAskGloomPaneHandler(({ paneId, visibleText, args }) => {
 });
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
 if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
+if (scenario === "layout") installLayoutFetches();
 const rendererHost: RendererHost = {
   ...webRendererHost,
   controlWindow: (action) => { window.__paneChrome.windowControls.push(action); },
   // The system clipboard is not there to read; the check counts what Copy Screenshot sends it.
   copyPngImage: async (pngBase64) => { window.__paneChrome.clipboardImages.push(pngBase64.length); },
+  // There is no desktop process to open a browser; the check reads what it was asked to open.
+  openExternal: async (url) => { window.__paneChrome.externalOpens.push(url); },
 };
 
 const root = document.getElementById("root")!;
@@ -1095,6 +1167,7 @@ createRoot(root).render(
           <Box data-theme-chrome="status"><StatusBar /></Box>
         </Box> : <Shell pluginRegistry={paneRegistry} />}
       {(scenario.startsWith("theme") || scenario === "paint") && <ThemeControls />}
+      {scenario === "paint" && <PaneAdder />}
       <Ready />
     </AppProvider>
   </DomHostProviders>,

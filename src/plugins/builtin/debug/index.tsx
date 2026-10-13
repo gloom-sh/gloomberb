@@ -93,10 +93,10 @@ function DebugEntryDetail({ entry }: { entry: LogEntry }) {
   return (
     <ScrollBox flexGrow={1} scrollY focusable={false}>
       <Box flexDirection="column" paddingX={1}>
-        <Text fg={colors.text} wrapText>{entry.message}</Text>
+        <Text fg={colors.text} wrapText selectable>{entry.message}</Text>
         {entry.data !== undefined && (
           <Box marginTop={1}>
-            <Text fg={colors.textDim} wrapText>{JSON.stringify(entry.data, null, 2)}</Text>
+            <Text fg={colors.textDim} wrapText selectable>{JSON.stringify(entry.data, null, 2)}</Text>
           </Box>
         )}
       </Box>

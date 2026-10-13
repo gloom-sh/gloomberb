@@ -21,6 +21,15 @@ export interface TickerBadgeListProps {
   width: number;
   fallbackColor?: string;
   liveQuote?: boolean;
+  /**
+   * The source names these as listed tickers (an SEC filer's ticker, the
+   * pane's own symbol): each is drawn as a badge as it is, with no lookup
+   * and no quote. A lookup that fails prints a symbol as plain text, so a
+   * column of looked-up symbols can mix chips and bare words.
+   */
+  listed?: boolean;
+  /** Opens a badge; by default the symbol is resolved and opened as a ticker link would be. */
+  onOpen?: (symbol: string) => void;
 }
 
 function badgeStatus(entry: InlineTickerCatalogEntry | undefined): TickerBadgeStatus {
@@ -34,6 +43,8 @@ export function TickerBadgeList({
   width,
   fallbackColor = colors.textBright,
   liveQuote = true,
+  listed = false,
+  onOpen,
 }: TickerBadgeListProps) {
   const [hoveredSymbol, setHoveredSymbol] = useState<string | null>(null);
   /**
@@ -51,8 +62,8 @@ export function TickerBadgeList({
     [symbols],
   );
   const tickerTexts = useMemo(
-    () => named.map((symbol) => `$${symbol}`),
-    [named],
+    () => (listed ? [] : named.map((symbol) => `$${symbol}`)),
+    [listed, named],
   );
   /**
    * Quotes are only worth fetching where they can be read. A column with no
@@ -70,7 +81,7 @@ export function TickerBadgeList({
     ),
     [chrome, named, width],
   );
-  const liveQuotes = liveQuote && slack >= MIN_CHANGE_WIDTH;
+  const liveQuotes = liveQuote && !listed && slack >= MIN_CHANGE_WIDTH;
   const { catalog, openTicker } = useInlineTickers(tickerTexts, {
     liveQuotes,
     settleMs: BADGE_LIST_SETTLE_MS,
@@ -125,7 +136,7 @@ export function TickerBadgeList({
             onHoverEnd={() => {
               setHoveredSymbol((current) => (current === symbol ? null : current));
             }}
-            onOpen={openTicker}
+            onOpen={onOpen ?? openTicker}
           />
         );
       })}

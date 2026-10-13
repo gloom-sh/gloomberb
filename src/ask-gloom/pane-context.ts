@@ -1,8 +1,9 @@
+import type { ResolvedPane } from "../layout/pane-manager";
 import type { PluginRegistry } from "../plugins/registry";
-import { paneShowsPersonalData } from "../shares/personal-pane";
-import type { AppConfig, PaneInstanceConfig } from "../types/config";
+import { panePersonalData } from "../shares/personal-pane";
+import { resolveTickerForPane, type AppState } from "../state/app/context";
+import type { LayoutConfig } from "../types/config";
 import type { PaneSharePrivateFields } from "../types/plugin";
-import type { TickerRecord } from "../types/ticker";
 import type { AskGloomPaneAttachment } from "./pane-request";
 
 /** A handful of the pane's own settings is enough to say how it is set up. */
@@ -50,14 +51,13 @@ function functionCode(registry: Pick<PluginRegistry, "paneTemplates">, paneType:
 }
 
 export interface PaneAttachmentSource {
-  registry: Pick<PluginRegistry, "panes" | "paneTemplates" | "brokers" | "getPanePluginId" | "getBrokerPluginId">;
-  instance: PaneInstanceConfig;
+  registry: Pick<PluginRegistry, "paneTemplates" | "brokers" | "getPanePluginId" | "getBrokerPluginId">;
+  pane: Pick<ResolvedPane, "instance" | "def">;
+  state: AppState;
+  /** The layout the pane is in, as the share path reads it for `personalData`. */
+  layout: LayoutConfig;
   /** What the header calls it. */
   title: string;
-  symbol: string | null;
-  paneState?: Readonly<Record<string, unknown>>;
-  config: Pick<AppConfig, "portfolios" | "brokerInstances">;
-  tickers?: ReadonlyMap<string, TickerRecord>;
   /** The tab each of its tab strips has open, outermost first. */
   activeTabs?: readonly string[];
   visibleText: string | null;
@@ -70,16 +70,17 @@ export interface PaneAttachmentSource {
  */
 export function buildAskGloomPaneAttachment({
   registry,
-  instance,
+  pane,
+  state,
+  layout,
   title,
-  symbol,
-  paneState,
-  config,
-  tickers,
   activeTabs = [],
   visibleText,
 }: PaneAttachmentSource): AskGloomPaneAttachment {
-  const privateFields = registry.panes.get(instance.paneId)?.portableShare?.private;
+  const { instance } = pane;
+  const symbol = resolveTickerForPane(state, instance.instanceId);
+  const paneState = state.paneState[instance.instanceId];
+  const privateFields = pane.def.portableShare?.private;
   const args: Record<string, string> = {};
   const tabs = activeTabs.map((tab) => tab.trim()).filter(Boolean);
   if (tabs.length > 0) args.tab = tabs.join(" > ").slice(0, MAX_ARG_VALUE_LENGTH);
@@ -100,14 +101,17 @@ export function buildAskGloomPaneAttachment({
     symbol,
     args,
     visibleText,
-    personal: showsPersonalData({ registry, instance, paneState, symbol, config, tickers }),
+    personal: showsPersonalData({ registry, state, layout, pane }),
   };
 }
 
-/** A pane that cannot be read for it counts as personal: its contents then wait for a yes. */
-function showsPersonalData(source: Parameters<typeof paneShowsPersonalData>[0]): boolean {
+/**
+ * Whatever the pane shows as personal data, as sharing its picture reads it.
+ * A pane that cannot be read for it counts as personal: its contents then wait for a yes.
+ */
+function showsPersonalData(source: Parameters<typeof panePersonalData>[0]): boolean {
   try {
-    return paneShowsPersonalData(source);
+    return panePersonalData(source) !== null;
   } catch {
     return true;
   }

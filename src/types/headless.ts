@@ -60,6 +60,12 @@ export interface HeadlessPaneOptionDef {
    * type's own check; throws an Error that names what is wrong.
    */
   normalize?(value: string): string | number | boolean;
+  /**
+   * A sentence for a value the option does not take but people reach for,
+   * such as `1s` for an intraday interval; null for the rest. `argument` is
+   * what the function was given (its ticker), to name it in a pointer.
+   */
+  invalidValueHint?(value: string, argument: string | null): string | null;
 }
 
 export interface HeadlessPaneLoadArgs {
@@ -278,6 +284,12 @@ interface HeadlessPaneResultBase {
    * `complete: false` says when the report does not cover what was asked.
    */
   notes?: string[];
+  /**
+   * What the report could not do as it was asked and did instead, such as a
+   * bar size the source does not serve for the range: `fn` prints each on
+   * stderr and lists them under `warnings` in JSON. One sentence each.
+   */
+  warnings?: string[];
   metadata?: Record<string, unknown>;
   /** What this load knows about its data's source and age; overrides the definition's `freshness`. */
   freshness?: HeadlessPaneFreshness;
@@ -336,6 +348,10 @@ export interface HeadlessSeries {
   label: string;
   /** Explicit unit of the point values; report formatting does not rescale them. */
   unit?: string;
+  /** The symbol or series ID the series was asked for as (`USDZAR=X`, `DEXSFUS`), which exports name each row by. */
+  symbol?: string;
+  /** The bar interval or observation frequency the points are at (`1d`, `1mo`, `daily`), as served, not as asked. */
+  interval?: string;
   points: HeadlessSeriesPoint[];
 }
 
@@ -381,6 +397,12 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    * in the US never shows that company's numbers.
    */
   usListingsOnly?: string;
+  /**
+   * A sentence that answer adds for a listing abroad, after its US listing:
+   * where to read the nearest data the function has for it (time and sales
+   * points at GIP's 1-minute bars). `key` is the listing as read, RMS:ASX.
+   */
+  usListingsOnlyHint?(key: string): string;
   options: HeadlessPaneOptionDef[];
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;
