@@ -22,6 +22,10 @@ interface PaneFunctionReportData {
   empty: boolean;
   complete: boolean;
   unavailableSymbols: string[];
+  /** Report errors: a source that did not answer, a symbol that is not one. */
+  errors?: string[];
+  /** What the report could not do as asked and did instead; `fn` prints them on stderr and in JSON's `warnings`. */
+  warnings?: string[];
   /** Source, as-of in UTC and live/delayed/stale/not-a-feed status; the last line of the text report. */
   freshness: ReportFreshness;
   [key: string]: unknown;
@@ -72,6 +76,10 @@ export async function buildFunctionReport(
     : await buildDomFunctionReport(resolved, context, rawArg);
   const elapsedMs = Math.max(0, Math.round(performance.now() - startedAt));
   report.data = { ...report.data, source, elapsedMs };
+  // A report about one symbol names it on every exported row; a chart's series name their own.
+  if (!report.tables.identity && report.data.symbols.length === 1) {
+    report.tables = { ...report.tables, identity: { symbolOrSeries: report.data.symbols[0]! } };
+  }
   if (source === "dom") {
     const view = domReportView(report.data);
     report.text = appendDomReportFooter(report.text, elapsedMs, view, report.data.freshness);

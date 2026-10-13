@@ -19,18 +19,44 @@ export function isSpreadSeries(seriesId: string): boolean {
 }
 
 /**
- * The field a series' observations export under, named by their unit: a
- * spread in basis points (`value_bp`), a percent (`value_pct`), any other
- * unit slugged from FRED's own (`Index 1982-1984=100` is
- * `value_index_1982_1984_100`), and `value_unit_unknown` when FRED's
- * metadata did not come back. Never a bare `value`.
+ * The unit a series' observations export in, for the `currency_or_unit`
+ * column beside its bare `value`: `bp` for a spread (exported in basis
+ * points), `pct` for a percent, otherwise FRED's own units, with "annual
+ * rate" as the text header says it. Null when FRED's metadata did not come
+ * back.
  */
-export function fredValueKey(seriesId: string, units: string | null | undefined): string {
-  if (isSpreadSeries(seriesId)) return "value_bp";
-  const unit = units?.trim() ?? "";
-  if (/^percent$/i.test(unit)) return "value_pct";
-  const slug = unit.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
-  return `value_${slug || "unit_unknown"}`;
+export function fredUnit(seriesId: string, info: { units?: string | null; seasonalAdjustment?: string | null } | null | undefined): string | null {
+  if (isSpreadSeries(seriesId)) return "bp";
+  const units = info?.units?.trim();
+  if (!units) return null;
+  if (/^percent$/i.test(units)) return "pct";
+  const annualRate = /annual rate/i.test(info?.seasonalAdjustment ?? "") && !/annual rate/i.test(units);
+  return `${units}${annualRate ? ", annual rate" : ""}`;
+}
+
+/** How often a series observes, in FRED's word lower-cased: `Weekly, Ending Friday` is `weekly`. Null when FRED does not say. */
+export function fredInterval(frequency: string | null | undefined): string | null {
+  const word = frequency?.split(",")[0]?.trim().toLowerCase();
+  return word || null;
+}
+
+/**
+ * The observations from the series' first one on: Gloom Cloud answers a
+ * `--start` before a series begins with a blank row for every day in between
+ * (DEXSFUS from 1975 has five years of them before 1980-01-02). FRED's
+ * `observationStart` says where it begins; without it the blank rows before
+ * the first value go. Blank rows after it (a holiday's ".") stay.
+ */
+export function fredObservationsFromStart<T extends { date: string; value: number | null }>(
+  observations: readonly T[],
+  seriesStart: string | null | undefined,
+): T[] {
+  const first = seriesStart && /^\d{4}-\d{2}-\d{2}$/.test(seriesStart)
+    ? seriesStart
+    : observations.reduce<string | null>((earliest, observation) => (
+      observation.value != null && Number.isFinite(observation.value) && (!earliest || observation.date < earliest) ? observation.date : earliest
+    ), null);
+  return first ? observations.filter((observation) => observation.date >= first) : [...observations];
 }
 
 /**
@@ -143,6 +169,13 @@ export function fredEmptyMessage(startDate: string, latest: { date: string; valu
   return latest
     ? `Latest observation: ${latest.date}${latest.value == null ? "" : ` (${latest.value})`}. Nothing on or after ${startDate}.`
     : "No results.";
+}
+
+/** What an export of nothing on or after `--start` says to try instead: a start that reaches the latest observation. */
+export function fredEmptyAdvice(seriesId: string, latest: { date: string } | null): string {
+  return latest
+    ? `Latest observation: ${latest.date}. Try: gloomberb fred ${seriesId} --start ${latest.date.slice(0, 4)}`
+    : `No observations came back for ${seriesId}. Try an earlier --start, or gloomberb fred --list for the series served.`;
 }
 
 /** A series as `fred --list` shows it. */

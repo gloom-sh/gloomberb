@@ -856,16 +856,14 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       heading: `${listingHeading(identity)}\n${cliStyles.muted(historyFacts(unit, data).join("  ·  "))}`,
       dateKey: "date",
       textColumns: [...priceColumns, flagTextColumn],
-      // Every exported row says its currency, what a price is in and its bar size, so it survives head and concatenation.
       columns: [
         ...priceColumns,
-        { key: "currency", header: "Currency" },
-        { key: "unit", header: "Unit" },
-        { key: "interval", header: "Interval" },
         flagColumn,
         ...marked ? [{ key: "partial", header: "Partial" }, { key: "filled", header: "Filled" }] : [],
         ...volume ? [{ key: "volumeUnit", header: "Volume unit" }, { key: "volumeNote", header: "Volume note" }] : [],
       ],
+      // Every exported row says what it is a bar of, the currency a price is in and its bar size, so it survives head and concatenation.
+      exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: unit.currency ?? unit.unit, interval },
     });
   });
 }
@@ -923,6 +921,7 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       }, {
         text: () => renderFundamentalsReport(data, view),
         ...(tabular ? { tables: selectTables(fundamentalsReportTables(data, view, freshness)) } : {}),
+        exportIdentity: { symbolOrSeries: listing.key },
       });
       return;
     }
@@ -954,6 +953,8 @@ async function runFinancials(rawArgs: string[], ctx: Parameters<CliCommandDef["e
       rows: () => rows,
       columns: STATEMENT_COLUMNS,
       ...(tables && ctx.cliOptions.format === "csv" ? { tables } : {}),
+      // Annual statements in the company's reporting currency.
+      exportIdentity: { symbolOrSeries: listing.key, currencyOrUnit: rows.find((row) => row.currency)?.currency ?? null, interval: "annual" },
     });
   });
 }
@@ -1343,6 +1344,7 @@ async function runHolders(
         tables: [exportRowsTable("Holders", columns, shownRows)],
         footer: reportFooterLines({ freshness, notes: notices }),
       },
+      exportIdentity: { symbolOrSeries: listing.key },
       summary: () => [
         [valueBasis ? `Value = ${valueBasis}.` : "", positionsBasis ?? "", shareBasisNote ?? "", unvaluedNote ?? ""].filter(Boolean).join(" "),
         insiderCommand ? insiderSummary(data, ownerTypes, listing, identity, form4) : "",
@@ -1602,6 +1604,8 @@ async function runFx(rawArgs: string[], ctx: Parameters<CliCommandDef["execute"]
     })));
     ctx.printResult({ data: [row], freshness }, {
       text: () => describeFxRate(request, rate),
+      // The rate is the base currency's price of one unit of the other, at the latest quote of each leg.
+      exportIdentity: { symbolOrSeries: pair, currencyOrUnit: baseCurrency, interval: "spot" },
       columns: [
         { key: "currency", header: "Currency" },
         { key: "baseCurrency", header: "Base" },
@@ -1714,8 +1718,14 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         title: "Bars",
         lines: [
           `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
-          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every exported row (--csv, --ndjson, --json) carries currency, interval and flag.",
+          "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every --csv and --ndjson row carries its flag and ends with symbol_or_series, currency_or_unit, interval, source and as_of; --json rows carry currency, unit, interval and flag.",
           "A break in the series flags the bar after it, which keeps its prices: gap after more than three months with no bar (weeks for weekly, daily and intraday bars), jump when the close is over 100 times the one before or under a hundredth of it. A warning names each break, and the heading says the date the series runs unbroken from.",
+        ],
+      }, {
+        title: "Long history",
+        lines: [
+          "ZAR has daily FRED data from 1980: gloomberb fred DEXSFUS --start 1980 --sort asc --csv",
+          "NGN, SAR and ILS have no FRED series. Their daily bars cover the last five years (gloomberb fn G USDNGN=X --rangePreset 5Y --chartResolution 1d --csv); before that there are monthly bars only (gloomberb history USDNGN=X --range ALL).",
         ],
       }],
       examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history ZAR=X --tail 5", "history AAPL --range 5Y --csv > aapl.csv"],
