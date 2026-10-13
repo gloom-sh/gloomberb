@@ -6,16 +6,21 @@ import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import { instrumentFromTicker } from "../../../market-data/request-types";
-import { useDebouncedPluginPaneState } from "../../runtime";
+import { useDebouncedPluginPaneState, usePluginPaneState } from "../../runtime";
 import { usePaneSettingValue } from "../../../state/app/context";
 import type { ScrollBoxRenderable } from "../../../ui";
-import { EmptyState, FeedDataTableStackView, Spinner, StatGrid, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type StatItem } from "../../../components";
+import { EmptyState, FeedDataTableStackView, QueryBar, Spinner, TickerBadgeList, usePaneNoticeFooter, useTableLoadMore, type FeedDataTableItem, type PaneHint, type QueryBarFilter } from "../../../components";
+import { displayWidth } from "../../../utils/format";
+import type { DetailFact } from "../../../components/reader/detail-reader";
+import type { ThemeColors } from "../../../theme/colors";
+import { useThemeColors } from "../../../theme/theme-context";
+import { useOpenDescription } from "../shared/open-description";
+import { toneColor } from "../shared/research-cells";
 import { mayBeUsEquityOrFundTicker, mayBeUsEquityTicker, secFilingItemCodes } from "../../../utils/sec";
-import { parseForm4Xml, transactionTypeLabel } from "../insider/insider-data";
+import { parseForm4Xml } from "../insider/insider-data";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   formatFilingMetaDate,
-  buildInsiderTransactionTitle,
   buildInsiderTransactionDetailBody,
   renderFilingNotice,
 } from "./filing-display";
@@ -37,6 +42,11 @@ import { SignInWall } from "../cloud/auth-actions";
 import { ETF_FILING_FORMS, ETF_FORMS_SETTING, filterFilingsByForms, parseFormsSetting, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { createSecHeadless, fundFilingsEmpty, secHeadless } from "./headless";
 import {
+  ALL_FORMS,
+  COMPANY_FORM_GROUPS,
+  filingTone,
+  filterFilingsByGroup,
+  FUND_FORM_GROUPS,
   getFilingDisplayTitle,
   getFilingColumnText,
   getFormDescription,
@@ -45,6 +55,7 @@ import {
   secIssuerLabel,
   secReportedAcceptance,
 } from "./model";
+import { rowSummary, rowSummaryTarget } from "./row-summaries";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { createSecFilingSearchProvider, resetSecFilingFocusRequests, useSecFilingFocusRequest } from "./command-bar-search";
 
@@ -53,6 +64,8 @@ export { secHeadless } from "./headless";
 const SEC_FILING_PAGE_SIZE = 50;
 const NO_FILINGS: SecFilingItem[] = [];
 const OWNERSHIP_FORMS = new Set(["3", "4", "5"]);
+/** At most this many rows on screen have their insider forms and fund flow notices read for their row text. */
+const OWNERSHIP_ROWS_READ = 40;
 
 function formatFiledAt(filing: SecFilingItem): string {
   return formatFilingMetaDate(filing.filingDate);
@@ -122,16 +135,6 @@ function buildDetailBodyWithDocuments({
   return lines.join("\n");
 }
 
-function buildForm4Preview(content: string | null): string | null {
-  if (!content) return null;
-  const transactions = parseForm4Xml(content);
-  const tx = transactions[0];
-  if (!tx) return null;
-  if (transactions.length === 1) return `${tx.reportedName} — ${buildInsiderTransactionTitle(tx)}`;
-  const types = [...new Set(transactions.map((transaction) => transactionTypeLabel(transaction.transactionType)))];
-  return `${tx.reportedName} — ${transactions.length} transactions: ${types.join(", ")}`;
-}
-
 function buildForm4Detail(content: string | null, filing: SecFilingItem): string {
   if (!content) return buildDetailBody(filing);
   const transactions = parseForm4Xml(content);
@@ -149,6 +152,9 @@ function buildForm4Detail(content: string | null, filing: SecFilingItem): string
 }
 
 function toFeedItems(
+  colors: ThemeColors,
+  issuerTicker: { symbol: string; open: () => void } | null,
+  showIssuer: boolean,
   filings: SecFilingItem[],
   selectedAccessionNumber: string | undefined,
   contentCache: Map<string, string | null>,
@@ -169,10 +175,10 @@ function toFeedItems(
       ? `${buildDetailBody(filing)}\n\nReadable filing content was not available for this document.`
       : buildDetailBody(filing);
 
-    // For Form 4s, build structured preview and detail from parsed XML
-    const form4Preview = isOwnership && hasFetchedContent
-      ? buildForm4Preview(fetchedContent ?? null)
-      : null;
+    // An insider form read once says who traded and how, a fund's 24F-2NT its
+    // year's flows; the row says it too.
+    const summaryTarget = rowSummaryTarget(filing);
+    const readSummary = summaryTarget ? rowSummary(filing.form, contentCache.get(summaryTarget.accessionNumber)) : null;
     const form4Detail = isOwnership && hasFetchedContent
       ? buildForm4Detail(fetchedContent ?? null, filing)
       : null;
@@ -197,13 +203,28 @@ function toFeedItems(
     const enrichedTitle = formDesc
       ? `${displayTitle} — ${formDesc}`
       : displayTitle;
+    const summary = readSummary?.title ?? getFilingColumnText(filing);
+    const items = secFilingItemCodes(filing.items);
+    const facts: DetailFact[] = [
+      { label: "Issuer", value: filing.companyName || "Name unavailable" },
+      ...(issuerTicker ? [{ label: "Ticker", value: issuerTicker.symbol, link: { label: `Open ${issuerTicker.symbol}`, onOpen: issuerTicker.open } }] : []),
+      { label: "CIK", value: filing.cik },
+      { label: "Form", value: formDesc ? `${filing.form} · ${formDesc}` : filing.form, color: toneColor(filingTone(filing, readSummary?.direction), colors) },
+      { label: "Filed", value: formatFiledAt(filing) },
+      ...(acceptedAt ? [{ label: "SEC-reported acceptance", value: acceptedAt }] : []),
+      ...(items ? [{ label: "Items", value: items }] : []),
+      { label: "Accession", value: filing.accessionNumber },
+    ];
 
     return {
       id: filing.accessionNumber,
       eyebrow: filing.form,
-      title: form4Preview || getFilingColumnText(filing),
+      eyebrowColor: toneColor(filingTone(filing, readSummary?.direction), colors),
+      // A ticker shared by several filers names the filer on each row.
+      title: showIssuer && filing.companyName ? `${filing.companyName}: ${summary}` : summary,
       timestamp: filing.filingDate,
       detailTitle: enrichedTitle,
+      detailFacts: facts,
       detailMeta: [
         secIssuerLabel(filing),
         `Filed ${formatFiledAt(filing)}`,
@@ -218,8 +239,11 @@ function toFeedItems(
   });
 }
 
-function SecView({ width, height, focused }: { width: number; height: number; focused: boolean }) {
+/** `paneType` is set for the standalone pane and absent in the DES tab, whose header already names the security. */
+function SecView({ width, height, focused, paneType }: { width: number; height: number; focused: boolean; paneType?: string }) {
   const { ticker } = usePaneTickerIdentity();
+  const colors = useThemeColors();
+  const openDescription = useOpenDescription();
   const selectionKey = `selectedIdx:${ticker?.metadata.ticker ?? "none"}`;
   const [selectedIdx, setSelectedIdx] = useDebouncedPluginPaneState<number>(selectionKey, 0);
   // The open filing is what the pane shows, so it is pane state: it restores
@@ -251,10 +275,22 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
   const issuerFilings = useResolvedEntryValue(filingsEntry) ?? NO_FILINGS;
   // The filter runs over every filing the service returned for the issuer,
   // the same list the unfiltered pane shows, not over a first page of it.
-  const filings = useMemo(
+  const formFilings = useMemo(
     () => (forms ? filterFilingsByForms(issuerFilings, forms) : issuerFilings),
     [forms, issuerFilings],
   );
+  // The fund view (ETF) has its own groups; each view keeps its own choice.
+  const groups = forms ? FUND_FORM_GROUPS : COMPANY_FORM_GROUPS;
+  const [storedGroup, setFormGroup] = usePluginPaneState<string>(forms ? "fundFormGroup" : "formGroup", ALL_FORMS);
+  const formGroup = groups.some((group) => group.value === storedGroup) ? storedGroup : ALL_FORMS;
+  // A ticker can map to more than one filer (CIK); each can be listed alone.
+  const issuers = useMemo(() => secFilingIssuers(formFilings), [formFilings]);
+  const [storedIssuer, setIssuer] = usePluginPaneState<string>("issuerCik", ALL_FORMS);
+  const issuerCik = issuers.some((issuer) => issuer.cik === storedIssuer) ? storedIssuer : ALL_FORMS;
+  const filings = useMemo(() => {
+    const grouped = filterFilingsByGroup(formFilings, groups, formGroup);
+    return issuerCik === ALL_FORMS ? grouped : grouped.filter((filing) => filing.cik === issuerCik);
+  }, [formFilings, formGroup, groups, issuerCik]);
   const filterHistoryCapped = !!forms && issuerFilings.length >= SEC_FILING_FETCH_LIMIT;
   const [visibleCount, setVisibleCount] = useState(SEC_FILING_PAGE_SIZE);
   const visibleFilings = useMemo(() => filings.slice(0, visibleCount), [filings, visibleCount]);
@@ -266,7 +302,7 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
   );
   useEffect(() => {
     setVisibleCount(SEC_FILING_PAGE_SIZE);
-  }, [ticker?.metadata.ticker, ticker?.metadata.exchange, formsSetting]);
+  }, [ticker?.metadata.ticker, ticker?.metadata.exchange, formsSetting, formGroup, issuerCik]);
   const loading = filingsEntry?.phase === "loading" || filingsEntry?.phase === "refreshing";
   // A restored or shared open filing can sit past the first page, or be gone
   // from the feed entirely.
@@ -284,7 +320,7 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
   const error = filingsEntry?.error && filingsEntry.error.reasonCode !== "NO_DATA" ? filingsEntry.error.message : null;
   // Hosted, the only filings source is Gloom Cloud, which needs an account.
   const cloudSession = useResearchCloudSession();
-  const authWall = filings.length === 0 && isCloudSessionRequired(error);
+  const authWall = formFilings.length === 0 && isCloudSessionRequired(error);
 
   const openFiling = openItemId
     ? filings.find((filing) => filing.accessionNumber === openItemId) ?? null
@@ -298,14 +334,30 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
     || documentsEntry?.phase === "refreshing"
   );
 
-  // Only the filing in view needs its content; queueing every ownership form in
-  // the list fires dozens of SEC requests the user never looks at.
+  // The open filing's content comes first. Insider forms say who traded only
+  // in their text, so the ones around the cursor are read after it, one at a
+  // time, for their rows; the rest of the list is never queued, which would
+  // fire dozens of requests for rows nobody looks at. Read text is cached.
   const selectedFiling = visibleFilings[selectedIdx];
-  const contentTargets = useMemo(() => [
+  // The rows on screen, as a share of the list so it holds for terminal rows and desktop pixels alike.
+  const [onScreen, setOnScreen] = useState({ first: 0, count: height });
+  const trackScroll = useCallback(() => {
+    loadMore();
+    const box = scrollRef.current;
+    if (!box?.viewport || !(box.scrollHeight > 0) || visibleFilings.length === 0) return;
+    const first = Math.floor((box.scrollTop / box.scrollHeight) * visibleFilings.length);
+    const count = Math.ceil((box.viewport.height / box.scrollHeight) * visibleFilings.length) + 1;
+    setOnScreen((current) => (current.first === first && current.count === count ? current : { first, count }));
+  }, [loadMore, visibleFilings.length]);
+  const nearbyOwnership = useMemo(() => [
+    ...(selectedFiling ? [selectedFiling] : []),
+    ...visibleFilings.slice(onScreen.first, onScreen.first + Math.min(OWNERSHIP_ROWS_READ, onScreen.count)),
+  ].map(rowSummaryTarget).filter((target): target is SecFilingItem => !!target), [onScreen, selectedFiling, visibleFilings]);
+  const viewedTargets = useMemo(() => [
     ...(openFiling ? [openFiling] : []),
     ...buildInlineFilingContentTargets(openFiling, openDocuments),
-    ...(selectedFiling && OWNERSHIP_FORMS.has(selectedFiling.form.trim()) ? [selectedFiling] : []),
-  ], [openDocuments, openFiling, selectedFiling]);
+  ], [openDocuments, openFiling]);
+  const contentTargets = useMemo(() => [...viewedTargets, ...nearbyOwnership], [nearbyOwnership, viewedTargets]);
   const { contentCache, contentErrors, retry: retryContent, loadingKey } = useSecFilingContentCache({
     scopeKey: `${ticker?.metadata.ticker ?? "none"}:${ticker?.metadata.exchange ?? ""}:${eligibleTicker}`,
     targets: contentTargets,
@@ -352,14 +404,24 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
     }
   }, [selectedIdx, setSelectedIdx, visibleFilings.length]);
 
+  // The pane's own ticker opens its description; a fund or equity both have one.
+  const issuerTicker = useMemo(() => (ticker && paneType ? {
+    symbol: ticker.metadata.ticker,
+    open: () => openDescription(ticker.metadata.ticker, ticker.metadata.exchange || undefined),
+  } : null), [openDescription, paneType, ticker]);
+  const hints = useMemo<PaneHint[]>(() => (issuerTicker
+    ? [{ id: "sec-description", key: "d", label: "es", title: `Open ${issuerTicker.symbol}`, onPress: issuerTicker.open }]
+    : []), [issuerTicker]);
   usePaneStatusLinkFooter({
     registrationId: "sec",
     focused,
     url: openFiling?.filingUrl,
     source: openFiling?.form,
     label: "filing",
-    loading: loading || loadingDocuments || !!loadingKey,
+    // Rows read in the background for their insiders do not hold up the pane.
+    loading: loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
     error: authWall ? null : error ?? detailError,
+    hints,
     showOpenHint: !!openFiling?.filingUrl,
   });
 
@@ -373,13 +435,36 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
     title: "Fund filings",
   });
 
-  // One cell per filer: a ticker can map to more than one CIK.
-  const issuerItems = useMemo<StatItem[]>(() => secFilingIssuers(filings).map((issuer) => ({
-    id: issuer.cik,
-    label: "Issuer",
-    value: issuer.companyName || "Name unavailable",
-    detail: `CIK ${issuer.cik}`,
-  })), [filings]);
+  const queryFilters = useMemo<QueryBarFilter[]>(() => [
+    {
+      id: "form",
+      label: "Form",
+      value: formGroup,
+      defaultValue: ALL_FORMS,
+      options: [{ value: ALL_FORMS, label: forms ? "All fund forms" : "All forms" }, ...groups.map((group) => ({ value: group.value, label: group.label }))],
+      onChange: (value: string) => { setFormGroup(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
+    },
+    ...(issuers.length > 1 ? [{
+      id: "issuer",
+      label: "Filer",
+      value: issuerCik,
+      defaultValue: ALL_FORMS,
+      options: [{ value: ALL_FORMS, label: "All filers" }, ...issuers.map((issuer) => ({ value: issuer.cik, label: issuer.companyName || `CIK ${issuer.cik}` }))],
+      onChange: (value: string) => { setIssuer(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
+    }] : []),
+  ], [formGroup, forms, groups, issuerCik, issuers, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx]);
+  // The ticker and the filer once, beside the filters: every row is their filing.
+  const issuerMeta = issuers.length === 1 ? secIssuerLabel(issuers[0]!).replace(/CIK 0+/, "CIK ") : undefined;
+  const queryBar = (
+    <QueryBar
+      width={width}
+      filters={queryFilters}
+      meta={issuerMeta}
+      leading={issuerTicker
+        ? <TickerBadgeList symbols={[issuerTicker.symbol]} width={displayWidth(issuerTicker.symbol) + 2} listed onOpen={issuerTicker.open} />
+        : undefined}
+    />
+  );
 
   if (!ticker) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view SEC filings." />;
@@ -389,8 +474,8 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
   }
   if (authWall) return <SignInWall placement="sec-signin" action="view SEC filings" needsVerification={cloudSession.needsVerification} />;
   if (loading && filings.length === 0) return <Spinner label="Loading SEC filings..." />;
-  if (error && filings.length === 0) return <EmptyState title="SEC filings unavailable." message={error} />;
-  if (filings.length === 0) {
+  if (error && formFilings.length === 0) return <EmptyState title="SEC filings unavailable." message={error} />;
+  if (formFilings.length === 0) {
     return renderFilingNotice(forms ? `No fund filings for ${ticker.metadata.ticker}.` : `No recent SEC filings for ${ticker.metadata.ticker}.`, width);
   }
 
@@ -400,6 +485,9 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
       height={height}
       focused={focused}
       items={toFeedItems(
+        colors,
+        issuerTicker,
+        issuers.length > 1 && issuerCik === ALL_FORMS,
         visibleFilings,
         openFiling?.accessionNumber,
         contentCache,
@@ -414,12 +502,12 @@ function SecView({ width, height, focused }: { width: number; height: number; fo
       openItemId={openItemId}
       onOpenItemIdChange={setOpenItemId}
       prefetchDetail={prefetchDocuments}
-      rootBefore={<StatGrid items={issuerItems} width={width} />}
+      rootBefore={queryBar}
       sourceLabel="Form"
       titleLabel="Filing"
-      emptyStateTitle="No SEC filings."
+      emptyStateTitle={formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
       scrollRef={scrollRef}
-      onBodyScrollActivity={loadMore}
+      onBodyScrollActivity={trackScroll}
     />
   );
 }

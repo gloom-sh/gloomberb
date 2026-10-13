@@ -25,6 +25,8 @@ import { DetailReader, type DetailFact } from "../reader/detail-reader";
 export interface FeedDataTableItem {
   id: string;
   eyebrow?: string;
+  /** A tone for the source cell, such as a form that matters; the text carries the meaning. */
+  eyebrowColor?: string;
   title: string;
   timestamp?: Date | string | null;
   detailTitle?: string;
@@ -230,7 +232,7 @@ export function FeedDataTableStackView({
       case "source":
         return {
           text: row.item.eyebrow ?? "",
-          color: colors.textMuted,
+          color: row.item.eyebrowColor ?? colors.textMuted,
         };
       case "title":
         return {

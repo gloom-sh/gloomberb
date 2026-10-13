@@ -123,6 +123,11 @@ export interface QueryBarProps {
   /** Muted context at the right edge (the selected row's date). Not for status. */
   meta?: string;
   /**
+   * What the whole list is about, drawn before the search and filters: a
+   * pane over one security puts its ticker badge here so the list opens it.
+   */
+  leading?: ReactNode;
+  /**
    * The date the data is as of (`as of 2026-10-09`), shown where `meta` is
    * when there is none. A `gloomberb shot` whose status line dates the data
    * leaves it out, so the date is said once.
@@ -224,7 +229,7 @@ export function useQueryBarSearch(): QueryBarSearchFocus {
  * same everywhere. The desktop draws soft chips with menus; the terminal keeps
  * text controls and the choice dialogs.
  */
-export function QueryBar({ width, search, filters = [], view, meta: given, asOf }: QueryBarProps) {
+export function QueryBar({ width, search, filters = [], view, meta: given, asOf, leading }: QueryBarProps) {
   const ui = useUiHost();
   const captureDatesData = useCaptureDatesData();
   const meta = given ?? (captureDatesData ? undefined : asOf);
@@ -430,6 +435,7 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf 
         } : undefined}
         onClearAll={narrowingCount >= 2 ? resetAll : undefined}
         meta={meta}
+        leading={leading}
         openRequest={openRequest}
       />
     );
@@ -437,6 +443,7 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf 
 
   return (
     <Box height={1} width={width} flexDirection="row" gap={2} paddingX={1} overflow="hidden" flexShrink={0}>
+      {leading ? <Box flexShrink={0} height={1}>{leading}</Box> : null}
       {searchNode}
       {filters.map((filter) => {
         if (filter.kind === "text") {
