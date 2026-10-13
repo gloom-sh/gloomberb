@@ -4,7 +4,6 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import type { BoxRenderable, HostPopoverProps } from "../../../ui";
 import { blendHex } from "../../../theme/colors";
-import { WEB_CELL_HEIGHT, WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { useThemeColors } from "../../../theme/theme-context";
 
 const VIEWPORT_MARGIN = 10;
@@ -33,23 +32,15 @@ interface Edges {
 }
 
 /**
- * Where an anchor element is now, in viewport pixels. Null once it is gone
- * from the page (a removed message), so the popover falls back to its trigger.
+ * Where an anchor element is now, in viewport pixels, as the page lays it out
+ * (every box and scroller on the desktop reports its rect). Null once it is
+ * gone from the page (a removed message), so the popover falls back to its
+ * trigger.
  */
 function anchorEdges(anchor: BoxRenderable): Edges | null {
   const rect = anchor.getBoundingClientRect?.();
-  if (rect) {
-    if (rect.width === 0 && rect.height === 0) return null;
-    return { left: rect.x, top: rect.y, right: rect.x + rect.width, bottom: rect.y + rect.height };
-  }
-  const bounds = anchor.absoluteBounds;
-  if (!bounds) return null;
-  return {
-    left: bounds.x * WEB_CELL_WIDTH,
-    top: bounds.y * WEB_CELL_HEIGHT,
-    right: (bounds.x + bounds.width) * WEB_CELL_WIDTH,
-    bottom: (bounds.y + bounds.height) * WEB_CELL_HEIGHT,
-  };
+  if (!rect || (rect.width === 0 && rect.height === 0)) return null;
+  return { left: rect.x, top: rect.y, right: rect.x + rect.width, bottom: rect.y + rect.height };
 }
 
 /** The area a popover must stay in: the window, and for `pane` the pane that holds its trigger too. */
