@@ -143,13 +143,16 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     panelId: "price",
     timeBasis: chartTimeZone ? { kind: "market", timeZone: chartTimeZone } : undefined,
   });
+  // A provider EV off market cap + debt - cash, or why a withdrawn one is unavailable.
+  const enterpriseValueNote = enterpriseValueReconciliationNote(fundamentals)
+    ?? (fundamentals?.unavailableFields?.includes("enterpriseValue")
+      ? t("Enterprise value unavailable: the source observation failed validation.") : undefined);
   usePaneNoticeFooter({
     registrationId: "overview-notices",
     notices: [
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(priceSeries.warning ? [priceSeries.warning] : []),
-      ...(fundamentals?.unavailableFields?.includes("enterpriseValue")
-        ? [enterpriseValueReconciliationNote(fundamentals) ?? t("Enterprise value unavailable: the source observation failed validation.")] : []),
+      ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],
