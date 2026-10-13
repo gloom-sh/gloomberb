@@ -457,8 +457,8 @@ export function designationColumns(width: number): Column[] {
     { id: "code", label: "Code", width: 6, align: "left" },
     { id: "name", label: "Company", width: 16, align: "left", flexGrow: 1 },
     { id: "exchange", label: "Exch", width: 5, align: "left" },
-    // Room for "Trading suspended, ended 2026-10-06" once the pane is wide.
-    { id: "status", label: "Status", width: width >= 100 ? 36 : 22, align: "left" },
+    // Room for "Changed trading method, ended 2026-10-06" once the pane is wide.
+    { id: "status", label: "Status", width: width >= 100 ? 40 : 22, align: "left" },
   ], ["exchange", "code"], width);
 }
 
