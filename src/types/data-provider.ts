@@ -180,6 +180,14 @@ export interface QuoteBatchOptions {
    * provider with no cache answers every target with no quote.
    */
   cacheOnly?: boolean;
+  /**
+   * Ask the sources even for a target whose cached quote is still fresh; that
+   * copy answers only when they cannot. A command that prints quotes once
+   * shows the service's quote of the moment, so every form of one listing
+   * (BRK.B saved on NYSE, BRK-B, BRK.B:NYSE) prints the same quote, never
+   * each form's own copy from whenever it was last asked for.
+   */
+  revalidate?: boolean;
   /** The caller stopped waiting; a transport that can abandon the request does. */
   signal?: AbortSignal;
 }
