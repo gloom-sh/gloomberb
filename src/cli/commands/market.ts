@@ -62,6 +62,7 @@ import {
 } from "./options-chain";
 import { DEFAULT_LEAPS_CRITERIA, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions } from "./options-leaps";
 import type { CliResultColumn } from "../result";
+import type { PriceHistoryResult } from "../../types/price-history";
 import {
   exportRowsTable,
   reportFooterLines,
@@ -70,9 +71,12 @@ import {
 } from "../report-tables";
 import {
   historyBarStatusNote,
+  historyCoverageWarning,
   historyFacts,
   historyFlagNote,
   historyGapNote,
+  historyJumpNote,
+  historyUnbrokenFrom,
   historyAllRangeYears,
   historyIntervalsByRange,
   historyNotes,
@@ -744,16 +748,17 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const context = { cacheMode: ctx.cliOptions.refresh ? "refresh" as const : "default" as const };
     const load = () => market.dataProvider.getPriceHistoryWithMetadata
       ? market.dataProvider.getPriceHistoryWithMetadata(symbol, exchange, range, context)
-      : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points) => ({ points, resolution: null }));
+      : market.dataProvider.getPriceHistory(symbol, exchange, range, context).then((points): PriceHistoryResult => ({ points, resolution: null }));
     const quoted = loadListingQuote(market.dataProvider, listing);
     const fate = listingFateLoader(listing, market, quoted);
-    const [{ points, resolution }, quote] = await Promise.all([
+    const [loaded, quote] = await Promise.all([
       loadForListing(listing, market, ctx, load, (loaded) => loaded.points.length === 0, {
         command: range === "1Y" ? "history" : `history --range ${range}`, noun: "history", fate,
       })
         .catch((error) => failHistory(error, listing.key, ctx)),
       quoted,
     ]);
+    const { points, resolution } = loaded;
     const identity = listingIdentity(listing, quote);
     // Without a quote currency, the listing metadata research reads (as `ticker` does) may still state it.
     const listed = quote?.currency ? quote : await market.dataProvider.getQuoteMetadata?.(symbol, exchange).catch(() => null);
@@ -783,7 +788,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
       // FB's bars are the fund listed there now; META's from 2021 are from when it was FB.
       ...listingFateNotes(await fate(), { served: data.length > 0, firstDate: data[0]?.date }),
       ...await listingChoiceNotes(listing, market, quote, venues),
-      ...historyNotes(range, interval, data[0]?.date), gaps ?? [], historyFlagNote(data) ?? [], historyBarStatusNote(data) ?? [],
+      ...historyNotes(range, interval, data[0]?.date), historyCoverageWarning(range, loaded) ?? [],
+      gaps ?? [], historyJumpNote(data) ?? [], historyFlagNote(data) ?? [], historyBarStatusNote(data) ?? [],
     ].flat();
     const priceColumns: CliResultColumn[] = [
       intraday
@@ -821,6 +827,8 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         interval,
         firstDate: data[0]?.date ?? null,
         lastDate: data.at(-1)?.date ?? null,
+        // The first bar after the last gap or jump; the first bar when there is none.
+        unbrokenFrom: historyUnbrokenFrom(data) ?? data[0]?.date ?? null,
         bars: data.length,
         asOf: freshness?.asOf ?? null,
         ...(volume ? { volumeUnit: volume.unit, volumePeriod: interval === "1d" ? "UTC day" : interval } : {}),
@@ -1690,6 +1698,7 @@ export const marketDataCliCommands: BuiltinCliCommandDef[] = [
         lines: [
           `Each range comes in one bar size: ${historyIntervalsByRange()}. The line under the heading, and the --json metadata, give the currency, the bar size actually served, the first and last bar and the bar count. A warning says when the bars are coarser, or start later, than the range asked for, and for a coin, which trades every day, names each day it has no bar for.`,
           "A bar whose prices contradict each other (high below the open or close, or low above them) is left blank and flagged, such as high<open, with the count in a warning. Every exported row (--csv, --ndjson, --json) carries currency, interval and flag.",
+          "A break in the series flags the bar after it, which keeps its prices: gap after more than three months with no bar (weeks for weekly, daily and intraday bars), jump when the close is over 100 times the one before or under a hundredth of it. A warning names each break, and the heading says the date the series runs unbroken from.",
         ],
       }],
       examples: ["history AAPL", "history BHP:ASX --range 5Y", "history ZAR=X --range ALL", "history ZAR=X --tail 5", "history AAPL --range 5Y --csv > aapl.csv"],

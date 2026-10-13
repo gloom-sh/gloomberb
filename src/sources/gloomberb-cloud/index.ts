@@ -2,7 +2,7 @@ import { exchangeRateMetadata } from "../../utils/exchange-rate-snapshot";
 import type { ExchangeRateSnapshot } from "../../types/exchange-rate";
 import type { TimeRange } from "../../time-series/range";
 import { subtractTimeRange } from "../../time-series/date-window";
-import { HistoryCoverageError, parseHistoryCoverageStart } from "../history-coverage";
+import { HistoryCoverageError, parseHistoryCoverageNote, parseHistoryCoverageStart } from "../history-coverage";
 import {
   normalizeChartResolutionSupport,
   type ChartResolutionSupport,
@@ -177,6 +177,7 @@ function mapCloudPriceHistory(
   extendedHours = false,
 ): PriceHistoryResult {
   const coverageStart = parseHistoryCoverageStart(response.coverage);
+  const coverageNote = parseHistoryCoverageNote(response.coverage);
   if (response.status === "empty" && coverageStart
     && requestedStart.getTime() < Date.parse(coverageStart)) throw new HistoryCoverageError(coverageStart);
   // The server marks a cached copy it could not refresh in time. Bars that
@@ -237,6 +238,7 @@ function mapCloudPriceHistory(
     resolution,
     ...(session && matchingSource && matchingIdentity ? { session } : {}),
     ...(coverageStart ? { coverageStart } : {}),
+    ...(coverageNote ? { coverageNote } : {}),
     ...(extendedHours ? { extendedHours: true } : {}),
   };
 }

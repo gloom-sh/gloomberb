@@ -1445,7 +1445,9 @@ export interface CloudHistoryCoverage {
   /** First bar date (YYYY-MM-DD) the source serves, such as a fund's inception. */
   firstAllowedBarDate?: string;
   inceptionDate?: string;
-  sourceUrl: string;
+  /** Why nothing earlier is served, such as "old-shekel quotes before 1992 are not served". */
+  note?: string;
+  sourceUrl?: string;
   firstBarDate: string | null;
   lastBarDate: string | null;
   barCount: number;
