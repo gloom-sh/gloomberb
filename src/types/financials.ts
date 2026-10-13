@@ -162,6 +162,26 @@ export interface TtmConversion {
   eps?: "report_date";
 }
 
+/**
+ * How a served enterprise value ties to market cap + total debt - cash from the latest balance sheet served beside it.
+ * `matches` within 5%; `differs` beyond it (or beyond 2% on the other side of the market cap from net debt), within
+ * 0.7x to 1.5x, shown labelled as the provider's; `withdrawn` outside that band, with no EV or EV/revenue; `unchecked`
+ * without a recent balance sheet carrying both lines.
+ */
+export interface EnterpriseValueCheck {
+  status: "matches" | "differs" | "withdrawn" | "unchecked";
+  /** The provider's enterprise value, served as `enterpriseValue` unless withdrawn. */
+  source: number;
+  currency: string;
+  marketCap: number;
+  totalDebt?: number;
+  cash?: number;
+  /** YYYY-MM-DD of the balance sheet the debt and cash come from. */
+  balanceSheetDate?: string;
+  /** marketCap + totalDebt - cash. */
+  computed?: number;
+}
+
 /** How a trailing P/E converts the EPS it divides by, when that EPS is in another currency than the price. */
 export interface TrailingPEConversion {
   /** The currency of the trailing EPS. */
@@ -200,6 +220,8 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   pegRatio?: number;
   enterpriseValue?: number;
   enterpriseToRevenue?: number;
+  /** Set where Gloom Cloud checked `enterpriseValue` against market cap + total debt - cash; pairs with that value only. */
+  enterpriseValueCheck?: EnterpriseValueCheck;
   /** Explicit provider retractions; omitted fields alone remain eligible for fallback. */
   unavailableFields?: Array<"enterpriseValue" | "enterpriseToRevenue">;
   operatingCashFlow?: number;

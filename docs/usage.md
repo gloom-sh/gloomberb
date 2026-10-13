@@ -995,9 +995,10 @@ social attention, fields cover:
   most 30); it is unavailable with fewer. Pair it with Beta and IV RANK to screen
   volatility.
 - **P/B**, **EV/EBITDA** and **FY ROE%**: market cap over latest balance-sheet equity;
-  market cap plus debt minus cash over the last four quarters' EBITDA; annual net
-  income over average equity. The same definitions as the FA ratio tabs. Statements
-  in another currency than the market cap (most ADRs) leave them unavailable.
+  the enterprise value the valuation view shows over the last four quarters' EBITDA,
+  unavailable where that EV is withdrawn (under 0.7x or over 1.5x market cap plus
+  debt minus cash); annual net income over average equity. Statements in another
+  currency than the market cap (most ADRs) leave them unavailable.
 - **EPS REV 30D%**: change in the current fiscal year's consensus EPS over 30 days,
   unavailable when the fiscal year rolled in between.
 - **UPSIDE%**: mean analyst price target over the price.

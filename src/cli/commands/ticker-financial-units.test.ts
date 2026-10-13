@@ -82,6 +82,38 @@ test("a zero enterprise value is a gap, not a value, while a negative one is kep
   expect(valuation(withEnterpriseValue(-5e9))).toContain("Enterprise Value -5B USD");
 });
 
+test("an EV off market cap + debt - cash is labelled as the provider's with the reconciliation, a withdrawn one is unavailable", async () => {
+  // Synthetic, shaped like WPM (differs) and GFI (withdrawn).
+  const check = { currency: "USD", marketCap: 62e9, totalDebt: 2e9, cash: 0.1e9, balanceSheetDate: "2026-06-30", computed: 63.9e9 };
+  const withCheck = (fundamentals: TickerFinancials["fundamentals"]): TickerFinancials => ({
+    quote, annualStatements: [], quarterlyStatements: [], priceHistory: [],
+    fundamentals: { marketCap: 62e9, marketCapCurrency: "USD", ...fundamentals },
+  });
+  const valuation = (financials: TickerFinancials) => renderFundamentalsReport({ ...financials, symbol: "UNITTEST" }, "valuation")
+    .replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  const differs = withCheck({ enterpriseValue: 61.8e9, enterpriseValueCheck: { ...check, status: "differs", source: 61.8e9 } });
+  expect(valuation(differs)).toContain("Enterprise Value 61.8B USD (provider)");
+  expect(valuation(differs)).toContain(
+    "EV 61.8B USD (provider) vs 63.9B computed from market cap + total debt - cash (balance sheet 2026-06-30).");
+  expect(await report(differs)).toContain("Enterprise Value 61.8B USD (provider)");
+  const withdrawn = withCheck({
+    unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
+    enterpriseValueCheck: { ...check, status: "withdrawn", source: 128e9 },
+  });
+  expect(valuation(withdrawn)).toContain("Enterprise Value unavailable");
+  expect(valuation(withdrawn)).toContain(
+    "EV unavailable: the provider's 128B USD is 2.0x the 63.9B computed from market cap + total debt - cash (balance sheet 2026-06-30).");
+  // A matching EV, or a check beside another source's EV, prints as before.
+  for (const fundamentals of [
+    { enterpriseValue: 63e9, enterpriseValueCheck: { ...check, status: "matches" as const, source: 63e9 } },
+    { enterpriseValue: 70e9, enterpriseValueCheck: { ...check, status: "differs" as const, source: 61.8e9 } },
+  ]) {
+    const text = valuation(withCheck(fundamentals));
+    expect(text).toMatch(new RegExp(`^Enterprise Value ${fundamentals.enterpriseValue / 1e9}B USD$`, "m"));
+    expect(text).not.toContain("computed");
+  }
+});
+
 test("trailing figures use the fundamentals' currency, then the statements' reporting currency, never the quote's", async () => {
   const fundamentals = { eps: 31.43, revenue: 202.08e9, netIncome: 46.98e9, operatingCashFlow: 42.43e9, freeCashFlow: 36.96e9 };
   const reportedIn = (financialCurrency: string | undefined, fundamentalsCurrency?: string): TickerFinancials => ({

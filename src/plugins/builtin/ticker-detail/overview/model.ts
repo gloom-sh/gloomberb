@@ -22,7 +22,7 @@ import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types"
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
 import { liveDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../portfolio-list/live-valuation";
 import { formatReportedMoney } from "../../../../utils/reported-money";
-import { fundamentalsCurrency, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
+import { enterpriseValueCheck, fundamentalsCurrency, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 
@@ -186,7 +186,14 @@ export function buildOverviewStats({
   if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {
-    stats.push({ label: "EV", value: formatCompactCurrency(enterpriseValue, quoteCurrency) });
+    // More than 5% from market cap + debt - cash: the provider's, with the computed figure where it fits.
+    const check = enterpriseValueCheck(fundamentals);
+    const computed = check?.status === "differs" && check.computed != null ? formatCompact(check.computed) : undefined;
+    stats.push({
+      label: "EV",
+      value: formatCompactCurrency(enterpriseValue, quoteCurrency),
+      detail: computed ? [`provider vs ${computed}`, "provider"] : undefined,
+    });
   }
   if (finite(fundamentals?.beta)) {
     stats.push({ label: "Beta", value: formatNumber(fundamentals.beta, 2), link: RELATIONSHIP_GRAPH });

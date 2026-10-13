@@ -1,5 +1,6 @@
-import type { Fundamentals, TickerFinancials } from "../types/financials";
+import type { EnterpriseValueCheck, Fundamentals, TickerFinancials } from "../types/financials";
 import { resolveCurrencyUnit } from "./currency-units";
+import { formatCompact } from "./format";
 
 export const RETRACTABLE_VALUATION_FIELDS = ["enterpriseValue", "enterpriseToRevenue"] as const;
 
@@ -19,6 +20,45 @@ export function redactUnavailableFundamentals(value: Fundamentals | undefined): 
 export function reportedEnterpriseValue(fundamentals: Pick<Fundamentals, "enterpriseValue"> | undefined): number | undefined {
   const value = fundamentals?.enterpriseValue;
   return typeof value === "number" && Number.isFinite(value) && value !== 0 ? value : undefined;
+}
+
+const finiteNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
+
+/**
+ * The served check of the enterprise value beside it, when it describes that value: a provider EV the check labels or
+ * matches is the one shown, and a withdrawn one is no longer shown. A check merged beside another source's EV is none.
+ */
+export function enterpriseValueCheck(
+  fundamentals: Pick<Fundamentals, "enterpriseValue" | "enterpriseValueCheck" | "unavailableFields"> | undefined,
+): EnterpriseValueCheck | undefined {
+  const check = fundamentals?.enterpriseValueCheck;
+  if (!check || !finiteNumber(check.source) || !check.currency) return undefined;
+  if (check.status === "withdrawn") {
+    return fundamentals?.enterpriseValue === undefined && fundamentals.unavailableFields?.includes("enterpriseValue")
+      && finiteNumber(check.computed) ? check : undefined;
+  }
+  return fundamentals?.enterpriseValue === check.source ? check : undefined;
+}
+
+/** "(provider)" beside an EV more than 5% from market cap + debt - cash, or "unavailable" for a withdrawn one. */
+export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): "provider" | "unavailable" | undefined {
+  const status = enterpriseValueCheck(fundamentals)?.status;
+  return status === "differs" ? "provider" : status === "withdrawn" ? "unavailable" : undefined;
+}
+
+/**
+ * The reconciliation line under a labelled or withdrawn EV: "EV 61.75B USD (provider) vs 63.75B computed from market
+ * cap + total debt - cash (balance sheet 2026-06-30)." Undefined when the EV matches, is unchecked, or has no check.
+ */
+export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | undefined {
+  const check = enterpriseValueCheck(fundamentals);
+  if (!check || !finiteNumber(check.computed) || (check.status !== "differs" && check.status !== "withdrawn")) return undefined;
+  const source = `${formatCompact(check.source)} ${check.currency}`;
+  const computed = formatCompact(check.computed);
+  const basis = `market cap + total debt - cash${check.balanceSheetDate ? ` (balance sheet ${check.balanceSheetDate})` : ""}`;
+  if (check.status === "differs") return `EV ${source} (provider) vs ${computed} computed from ${basis}.`;
+  const ratio = check.computed > 0 ? ` is ${(check.source / check.computed).toFixed(1)}x` : " is far from";
+  return `EV unavailable: the provider's ${source}${ratio} the ${computed} computed from ${basis}.`;
 }
 
 /**

@@ -27,6 +27,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
+import { enterpriseValueReconciliationNote } from "../../../utils/fundamentals";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
 import {
@@ -148,7 +149,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(priceSeries.warning ? [priceSeries.warning] : []),
       ...(fundamentals?.unavailableFields?.includes("enterpriseValue")
-        ? [t("Enterprise value unavailable: the source observation failed validation.")] : []),
+        ? [enterpriseValueReconciliationNote(fundamentals) ?? t("Enterprise value unavailable: the source observation failed validation.")] : []),
       ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],
