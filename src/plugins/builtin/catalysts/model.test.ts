@@ -1,7 +1,7 @@
 import { enrollmentSeries } from "./history";
 import { describe, expect, test } from "bun:test";
 import { catalystFixture } from "./test-fixture";
-import { catalystChangeText, catalystDate, catalystQuery } from "./model";
+import { catalystCell, catalystChangeText, catalystColumns, catalystDate, catalystParties, catalystQuery, catalystStatusTone } from "./model";
 import { validateCatalystDetail, validateCatalysts } from "./client";
 import { catalystMatches } from "../alerts/catalysts";
 import { createEventAlert, readEventAlerts } from "../alerts/events";
@@ -20,6 +20,38 @@ test("party revision summaries expose changed links and preserve additions, remo
   expect(catalystChangeText({ field: "metadata.enrollment", before: null, after: 0 })).toBe("Enrollment: -- → 0");
   expect(catalystChangeText({ field: "metadata.hasResults", before: false, after: true })).toBe("Has results: No → Yes");
   expect(catalystChangeText({ field: "metadata.phases", before: [], after: ["PHASE1", "PHASE2"] })).toBe("Phases: None → PHASE1, PHASE2");
+});
+
+describe("catalyst parties, tones and columns", () => {
+  test("names the linked party first, reads a Federal Register filer from the title, and keeps the rest as the event", () => {
+    const party = (name: string, ticker: string | null) => ({ ...event.parties[0]!, name, ticker });
+    expect(catalystParties({ ...event, parties: [party("Vertex Pharmaceuticals Incorporated", null), party("Moderna, Inc", "MRNA")] })).toBe("Moderna +1");
+    const sro = { ...event, parties: [], title: "Self-Regulatory Organizations; Cboe EDGA Exchange, Inc.; Notice of Filing of a Proposed Rule Change" };
+    expect(catalystParties(sro)).toBe("Cboe EDGA Exchange");
+    expect(catalystCell(sro, "title", "any", false)).toBe("Notice of Filing of a Proposed Rule Change");
+    const filer = { ...event, parties: [], title: "Dominion Energy South Carolina, Inc.; Notice of Application" };
+    expect(catalystParties(filer)).toBe("Dominion Energy South Carolina");
+    // An agency heading is not a filer, and the title stays whole.
+    const heading = { ...event, parties: [], title: "Airworthiness Directives; Airbus Helicopters" };
+    expect(catalystParties(heading)).toBe("--");
+    expect(catalystCell(heading, "title", "any", false)).toBe(heading.title);
+  });
+  test("tones a status by what it means for the company", () => {
+    expect(catalystStatusTone("complete response letter")).toBe("negative");
+    expect(catalystStatusTone("NO_LONGER_AVAILABLE")).toBe("negative");
+    expect(catalystStatusTone("early termination granted")).toBe("positive");
+    expect(catalystStatusTone("approved_for_marketing")).toBe("positive");
+    expect(catalystStatusTone("settled action filed; court approval pending")).toBe("warning");
+    expect(catalystStatusTone("ACTIVE_NOT_RECRUITING")).toBe("accent");
+    expect(catalystStatusTone("Notice")).toBe("muted");
+    expect(catalystStatusTone("company-reported target")).toBe("text");
+  });
+  test("keeps date, ticker, parties, event and status at 80 columns and fits the table to the width", () => {
+    const need = (width: number) => catalystColumns(width, false, false).reduce((sum, column) => sum + column.width + 1, 3);
+    expect(catalystColumns(78, false, false).map((column) => column.id)).toEqual(["date", "ticker", "parties", "title", "status"]);
+    for (const width of [78, 110, 158]) expect(need(width)).toBeLessThanOrEqual(width);
+    expect(catalystColumns(158, false, false).map((column) => column.id)).toEqual(["date", "basis", "ticker", "parties", "title", "type", "status", "agency", "country"]);
+  });
 });
 
 describe("catalyst provenance and dates", () => {

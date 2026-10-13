@@ -1,7 +1,7 @@
 import type { CatalystEvent, CatalystFilters, CatalystType } from "../../../api-client/catalysts";
 import type { DataTableColumn } from "../../../components";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { humanLabel } from "../shared/research-cells";
+import { humanLabel, type StateTone } from "../shared/research-cells";
 
 export const CATALYST_TABS = [{ value: "calendar", label: "Calendar" }, { value: "changes", label: "Changes" }] as const;
 export type CatalystTab = typeof CATALYST_TABS[number]["value"];
@@ -21,17 +21,98 @@ export const catalystDate = (event: CatalystEvent, field: CatalystFilters["dateF
   if (!value) return "--";
   return value.slice(0, event.datePrecision[key] === "year" ? 4 : event.datePrecision[key] === "month" ? 7 : 10);
 };
+type FitColumn = DataTableColumn & { min?: number };
+
+/** Cells a table needs for `columns`: a gap after each, both edge paddings and the scrollbar. */
+const tableNeed = (columns: readonly FitColumn[]) => columns.reduce((sum, column) => sum + column.width + 1, 3);
+
+/**
+ * The columns that fit `width`. The wide-only columns go first, then every
+ * column gives up its slack down to `min`, then the date basis and the
+ * parties go; date, ticker, event and status always stay.
+ */
+function fitColumns(columns: FitColumn[], width: number): DataTableColumn[] {
+  let kept = columns;
+  const drop = (id: string) => { if (tableNeed(kept) > width) kept = kept.filter((column) => column.id !== id); };
+  for (const id of ["country", "agency", "type"]) drop(id);
+  if (tableNeed(kept) > width) kept = kept.map((column) => ({ ...column, width: column.min ?? column.width }));
+  for (const id of ["basis", "parties"]) drop(id);
+  return kept.map(({ min: _min, ...column }) => column);
+}
+
 export function catalystColumns(width: number, changes: boolean, litigation: boolean): DataTableColumn[] {
-  return [
+  return fitColumns([
     { id: "date", label: changes ? "Observed (UTC)" : "Date", width: changes ? 16 : 10, align: "left" },
     ...(!changes ? [{ id: "basis", label: "Date basis", width: 10, align: "left" as const }] : []),
-    ...(!litigation ? [{ id: "ticker", label: "Ticker", width: width < 110 ? 12 : 14, align: "left" as const }] : []),
-    { id: "title", label: litigation ? "Case / docket" : "Event", width: 30, flexGrow: 1, align: "left" },
-    ...(width >= 115 ? [{ id: "type", label: "Type", width: 13, align: "left" as const }] : []),
-    { id: "status", label: changes ? "Change" : "Status", width: changes ? width < 110 ? 22 : 34 : width < 110 ? 14 : 20, align: "left" },
-    ...(width >= 145 ? [{ id: "agency", label: "Agency", width: 12, align: "left" as const }, { id: "country", label: "Country", width: 8, align: "left" as const }] : []),
-  ];
+    ...(!litigation ? [{ id: "ticker", label: "Ticker", width: width < 110 ? 12 : 14, min: 10, align: "left" as const }] : []),
+    // The entity the event is about, which the title alone buries.
+    { id: "parties", label: "Parties", width: Math.max(16, Math.min(28, Math.round(width * 0.16))), min: 14, align: "left" },
+    { id: "title", label: litigation ? "Case / docket" : "Event", width: 30, min: 20, flexGrow: 1, align: "left" },
+    ...(!litigation ? [{ id: "type", label: "Type", width: 13, align: "left" as const }] : []),
+    { id: "status", label: changes ? "Change" : "Status", width: changes ? width < 110 ? 22 : 34 : width < 110 ? 14 : 20, min: changes ? 18 : 14, align: "left" },
+    { id: "agency", label: "Agency", width: 12, align: "left" },
+    { id: "country", label: "Country", width: 8, align: "left" },
+  ], width);
 }
+
+type Party = CatalystEvent["parties"][number];
+
+/** Legal forms dropped from a party in a cell: `Vertex Pharmaceuticals Incorporated` reads `Vertex Pharmaceuticals`. */
+const LEGAL_FORM = /(?:,?\s+(?:inc|incorporated|corp|corporation|co|company|llc|l\.l\.c|ltd|limited|plc|p\.l\.c|lp|l\.p|ag|sa|s\.a|se|nv|n\.v|bv|b\.v|a\/s|as|ab|asa|oyj|spa|s\.p\.a|gmbh|kgaa|holdings?)\.?)+$/i;
+const shortPartyName = (name: string) => name.trim().replace(LEGAL_FORM, "").trim() || name.trim();
+
+/**
+ * Federal Register titles name the filer before the action: `Self-Regulatory
+ * Organizations; Cboe EDGA Exchange, Inc.; Notice of Filing...` and
+ * `Dominion Energy South Carolina, Inc.; Notice of Application...`. The
+ * service records no parties for these, so the cell reads the filer from the
+ * title, and the event from the rest of it.
+ */
+const SRO_TITLE = /^Self-Regulatory Organizations;\s*([^;]+?);\s*(.+)$/;
+const FILER_TITLE = /^([^;]+?(?:Inc\.|LLC|L\.L\.C\.|Corporation|Corp\.|Company|Ltd\.?|L\.P\.|LP));\s*(.+)$/;
+function titleFiler(event: Pick<CatalystEvent, "parties" | "title">): { name: string; rest: string } | null {
+  if (event.parties.length > 0) return null;
+  const match = SRO_TITLE.exec(event.title) ?? FILER_TITLE.exec(event.title);
+  return match ? { name: match[1]!.trim(), rest: match[2]!.trim() } : null;
+}
+
+/** The parties a row names, the ones linked to a listing first, so the ticker beside them is the first one's. */
+export function catalystParties(event: Pick<CatalystEvent, "parties" | "title">): string {
+  const parties = [...event.parties].sort((a, b) => Number(!a.ticker) - Number(!b.ticker));
+  const names = [...new Set(parties.map((party) => shortPartyName(party.name)))];
+  if (!names.length) {
+    const filer = titleFiler(event);
+    return filer ? shortPartyName(filer.name) : "--";
+  }
+  return names.length > 1 ? `${names[0]} +${names.length - 1}` : names[0]!;
+}
+
+/**
+ * A status in the tone of what it means for the company: a refusal, a
+ * complete response letter, a withdrawal or a charge red, an approval or a
+ * cleared review green, a proposal or a decision still pending amber, a trial
+ * under way in the accent, and a plain notice quiet. The words stay.
+ */
+const STATUS_TONES: Array<[RegExp, StateTone]> = [
+  [/early termination granted|investigation closed/, "positive"],
+  [/not available|no longer available|complete response|\bcrl\b|refused|revoked|withdrawn|terminated|suspended|guilty|convict|charges|lapsed|expired|sanctions/, "negative"],
+  [/approved|authori[sz]ed|^available$|^completed$/, "positive"],
+  [/proposed|pending|re-examination|appeal|^settlement announced/, "warning"],
+  [/recruiting|enrolling|^active|^ongoing$/, "accent"],
+  [/^(notice|rule|published|presidential document)$/, "muted"],
+];
+export function catalystStatusTone(status: string): StateTone {
+  const text = humanLabel(status).toLowerCase();
+  return STATUS_TONES.find(([pattern]) => pattern.test(text))?.[1] ?? "text";
+}
+
+/** Event types: the adverse ones amber, the binary decisions in the accent, routine rulemaking quiet. */
+const TYPE_TONES: Record<CatalystType, StateTone> = {
+  litigation: "warning", antitrust: "warning", recall: "warning", sanctions: "warning", export_control: "warning", tariff: "warning",
+  pdufa: "accent", advisory: "accent", approval: "accent", clinical: "text",
+  regulatory: "muted", rulemaking: "muted",
+};
+export const catalystTypeTone = (type: CatalystType): StateTone => TYPE_TONES[type] ?? "text";
 function changeValue(value: unknown): string {
   if (value == null) return "--";
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -39,7 +120,6 @@ function changeValue(value: unknown): string {
   if (typeof value === "object") return Object.entries(value).map(([key, part]) => `${humanLabel(key)}: ${changeValue(part)}`).join("; ") || "None";
   return String(value);
 }
-type Party = CatalystEvent["parties"][number];
 function partyList(value: unknown): Party[] | null {
   return Array.isArray(value) && value.every((item) => item && typeof item === "object" && typeof item.name === "string"
     && (item.ticker === null || typeof item.ticker === "string")) ? value as Party[] : null;
@@ -89,7 +169,9 @@ export const catalystCell = (event: CatalystEvent, column: string, field: Cataly
     case "date": return catalystDate(event, changes ? "observed" : field);
     case "basis": return catalystDateBasis(event, field);
     case "ticker": return catalystTickers(event) || "Unlinked";
-    case "title": return event.title;
+    case "parties": return catalystParties(event);
+    // A filer read from the title is in the Parties column; the event is the rest.
+    case "title": return titleFiler(event)?.rest ?? event.title;
     case "type": return catalystLabel(event.type);
     case "status": return changes ? changeSummary(event) : humanLabel(event.status);
     case "agency": return catalystAgency(event.agency);
