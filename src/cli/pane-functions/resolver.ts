@@ -233,6 +233,7 @@ export async function resolvePaneFunction(
   const normalizedOptions = normalizeCapabilityOptions(capability, args.options, {
     strict: args.requireBotSafe || (!!headless && resolutionSettings.strictHeadlessOptions === true),
     code: token,
+    argument: args.arg || null,
   });
   const settings = {
     ...optionSettings(args.options),

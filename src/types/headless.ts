@@ -60,6 +60,12 @@ export interface HeadlessPaneOptionDef {
    * type's own check; throws an Error that names what is wrong.
    */
   normalize?(value: string): string | number | boolean;
+  /**
+   * A sentence for a value the option does not take but people reach for,
+   * such as `1s` for an intraday interval; null for the rest. `argument` is
+   * what the function was given (its ticker), to name it in a pointer.
+   */
+  invalidValueHint?(value: string, argument: string | null): string | null;
 }
 
 export interface HeadlessPaneLoadArgs {

@@ -1,10 +1,16 @@
 /**
  * Where data finer than a minute is: nowhere as bars. GIP draws 1-minute
- * bars and QR lists each trade, timestamped to the millisecond.
+ * bars, and QR lists each trade of a US listing. `history --interval`, GIP's
+ * `--chartResolution 1s` and QR on a listing abroad all say this.
  */
 export function subMinuteDataMessage(symbol = "<ticker>"): string {
-  return `No second or tick bars; spread series are daily. 1-minute bars: gloomberb fn GIP ${symbol}. `
-    + `Individual trades with ms timestamps: gloomberb fn QR ${symbol}.`;
+  return `No second or tick bars; 1-minute bars: fn GIP ${symbol}; trades exist for US listings only.`;
+}
+
+/** A bar size finer than a minute, as people type one: 1s, 30s, 5sec, 500ms, tick, ticks, tick-by-tick, seconds. */
+export function isSubMinuteInterval(value: string): boolean {
+  return /^(\d+(\.\d+)?\s*(ms|msecs?|millis(econds?)?|s|secs?|seconds?)|\d*\s*ticks?|tick[\s-]*by[\s-]*tick|seconds?|sub[\s-]*(minute|second)s?)$/i
+    .test(value.trim());
 }
 
 /**

@@ -44,7 +44,7 @@ import {
   type AppState,
 } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
-import { isUsListingExchange, parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
@@ -105,6 +105,7 @@ import {
 } from "./settings";
 import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
+import { intradaySessionTimeZone } from "./session-history";
 import { ChartSeriesQuickAdd } from "./quick-add";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
@@ -954,7 +955,7 @@ function ChartComposerSurface({
     if (!window) return undefined;
     const exchange = spec.series.find((entry) => entry.source.kind === "security")?.source;
     const timeZone = exchange?.kind === "security"
-      ? resolveExchangeTimeZone(exchange.instrument.exchange) ?? "UTC"
+      ? intradaySessionTimeZone(exchange.instrument.symbol, exchange.instrument.exchange)
       : "UTC";
     return formatChartDateWindow(window, timeZone);
   }, [spec.series, spec.viewport.dateWindow]);
