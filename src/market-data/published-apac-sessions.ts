@@ -1,5 +1,5 @@
-// Published full-day closures (weekend dates omitted) for Asia-Pacific venues and EGX,
-// not a holiday-rule engine. A year a venue has not published is unknown, not
+// Published full-day closures (weekend dates omitted) for Asia-Pacific venues, EGX and Wiener
+// Boerse, not a holiday-rule engine. A year a venue has not published is unknown, not
 // open: every weekday of it reads as a session. Half-day sessions (HKEX and
 // SGX eves, ASX's 14:10 closes) are not modelled. Checked 2026-10-09:
 // KRX, also KOSDAQ: http://open.krx.co.kr/contents/MKD/01/0110/01100305/MKD01100305.jsp
@@ -9,6 +9,9 @@
 //   (some moved, as its list warns), and on National Day, 16 and 17 Dec. Its week is Sunday to Thursday.
 // HKEX: https://www.hkex.com.hk/-/media/HKEX-Market/Services/Circulars-and-Notices/Participant-and-Members-Circulars/SEHK/2025/ce_SEHK_CT_075_2025.pdf
 //   and https://www.hkex.com.hk/-/media/HKEX-Market/Services/Circulars-and-Notices/Participant-and-Members-Circulars/SEHK/2026/ce_SEHK_CT_077_2026.pdf
+// Wiener Boerse closes its main market (VIE) and the Vienna MTF (WBDM) on its stock exchange holidays,
+//   and trades on Austria's other public holidays:
+//   https://www.wienerborse.at/uploads/u/cms/files/trading/stock-exchange-holidays-2026-en.pdf (and -2027-en.pdf)
 // SGX closes on Singapore's gazetted public holidays, one on a Sunday moving to the Monday:
 //   https://www.sgx.com/stock-exchange/trading and https://www.mom.gov.sg/employment-practices/public-holidays
 // MSX closes on the holidays its site lists (msx.om exchange holidays, read 10 Oct 2026).
@@ -26,6 +29,11 @@ const KRX_CLOSURES: Record<number, readonly string[]> = {
     "01-01", "02-08", "02-09", "03-01", "05-03", "05-05", "05-13", "07-19", "08-16",
     "09-14", "09-15", "09-16", "10-04", "10-11", "12-27", "12-31",
   ],
+};
+
+const WIENER_BOERSE_CLOSURES: Record<number, readonly string[]> = {
+  2026: ["01-01", "04-03", "04-06", "05-01", "10-26", "12-24", "12-25", "12-31"],
+  2027: ["01-01", "03-26", "03-29", "10-26", "12-24", "12-31"],
 };
 
 const TWSE_CLOSURES: Record<number, readonly string[]> = {
@@ -61,6 +69,8 @@ export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, rea
     2026: ["01-01", "02-17", "02-18", "04-03", "05-01", "05-27", "06-01", "08-10", "11-09", "12-25"],
     2027: ["01-01", "02-08", "03-10", "03-26", "05-17", "05-20", "08-09", "10-28"],
   },
+  VIE: WIENER_BOERSE_CLOSURES,
+  WBDM: WIENER_BOERSE_CLOSURES,
   MSX: {
     2026: ["01-15", "01-18", "03-19", "03-22", "03-23", "05-26", "05-27", "05-28", "06-18", "08-27", "11-25", "11-26"],
   },
