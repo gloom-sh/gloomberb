@@ -1,15 +1,13 @@
 import { createRemoteBrokerAdapter } from "../../../brokers/remote-broker-adapter";
 import type { AppServicesFactoryOptions } from "../../../core/app-service-ports";
 import { createAppRuntime } from "../../../core/app-runtime";
-import { newsProvider } from "../../../capabilities";
 import { createRemoteAssetDataClient } from "./remote/asset-data-client";
 import { RemotePersistence } from "./remote/persistence";
 import { RemoteTickerRepository } from "./remote/ticker-repository";
 import { connectBackendConnectionHealth } from "./remote/connection-health";
 import { backendRequest, getElectrobunBackendInitSnapshot } from "./backend-rpc";
 import { createCapabilityInvoker } from "./remote/capability-invoker";
-import { apiClient } from "../../../api-client";
-import { cloudNewsParams, mapCloudNewsArticle } from "../../../sources/gloomberb-cloud/news";
+import { createDesktopNewsSource } from "./news-source";
 
 export function createElectrobunAppServices({ config, plugins, externalPlugins }: AppServicesFactoryOptions) {
   const dataProvider = createRemoteAssetDataClient();
@@ -33,25 +31,7 @@ export function createElectrobunAppServices({ config, plugins, externalPlugins }
     // shared default drops a hidden app to the configured refresh interval.
     newsOptions: { pollIntervalMs: undefined },
     configure({ newsService }) {
-      newsService.register(newsProvider({
-        id: dataProvider.id,
-        name: dataProvider.name,
-        priority: 0,
-        provider: {
-          fetchNews: (query) => dataProvider.getNews(query),
-          fetchNewsPage: async (query) => {
-            try {
-              const response = await apiClient.getCloudNews(cloudNewsParams(query));
-              return {
-                articles: response.items.map((item) => mapCloudNewsArticle(item, query.ticker)),
-                nextCursor: response.nextCursor ?? null,
-              };
-            } catch {
-              return { articles: await dataProvider.getNews(query), nextCursor: null };
-            }
-          },
-        },
-      }));
+      newsService.register(createDesktopNewsSource(dataProvider));
     },
     onReady: ({ pluginRegistry }) => connectBackendConnectionHealth(pluginRegistry.connectionHealth),
   });
