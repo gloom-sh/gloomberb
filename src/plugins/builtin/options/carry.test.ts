@@ -1,5 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { formatCarryPercent, formatCostOfSpot, optionCarry, optionCostOfSpot, optionSpreadPercent } from "./carry";
+import { valueOption } from "../shared/volatility";
+import {
+  formatCarryPercent, formatCostOfSpot, optionBreakeven, optionCarry, optionCarryNet, optionCostOfSpot, optionSpreadPercent,
+} from "./carry";
 import { createOptionColumns } from "./table";
 
 // 2028-01-21; valued from 2026-10-09 16:00 New York, 469 days and the hour daylight saving gives back before its close.
@@ -43,6 +46,28 @@ describe("optionCarry", () => {
     // A day out it is a rate again.
     expect(optionCarry(expiringToday, "call", 717.6, Date.parse("2026-10-08T20:00:00Z"))!.extrinsicPerYear).toBeCloseTo(0.9 / 717.6 * 365, 10);
   });
+});
+
+test("optionCarryNet is, by put-call parity, about what the opposite contract at the same strike costs per year", () => {
+  // Model prices on both sides of one strike: a deep call's carry net of financing is the put's price, and the reverse.
+  const years = (469 + 1 / 24) / 365;
+  const priced = (side: "call" | "put", strike: number) => valueOption({
+    side, spot: 100, strike, daysToExpiry: years * 365, rate: 0.04, volatility: 0.3, dividendYield: 0.02,
+  }).price;
+  for (const strike of [70, 130]) {
+    const [held, other] = strike < 100 ? ["call", "put"] as const : ["put", "call"] as const;
+    const mid = priced(held, strike);
+    const carry = optionCarry({ strike, bid: mid, ask: mid, expiration: EXPIRATION }, held, 100, NOW)!;
+    // Simple against continuous interest and dividends leaves under a tenth of a percent; a turned sign would be several.
+    expect(optionCarryNet(carry, held, strike, 100, 0.04, 0.02)! * 100).toBeCloseTo(priced(other, strike) / 100 / years * 100, 0);
+  }
+  expect(optionCarryNet({ extrinsic: 0.9, extrinsicPerYear: null }, "call", 600, 717.6, 0.04, 0)).toBeNull();
+});
+
+test("optionBreakeven is the strike plus the midpoint for a call and less it for a put, with a two-sided quote", () => {
+  expect(optionBreakeven({ strike: 600, bid: 209.4, ask: 211.5 }, "call")).toBeCloseTo(810.45, 10);
+  expect(optionBreakeven({ strike: 500, bid: 27.3, ask: 28.2 }, "put")).toBeCloseTo(472.25, 10);
+  expect(optionBreakeven({ strike: 600, bid: 0, ask: 211.5 }, "call")).toBeNull();
 });
 
 test("optionSpreadPercent is the width over the midpoint, and only for a two-sided quote", () => {

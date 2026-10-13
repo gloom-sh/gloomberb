@@ -1,4 +1,4 @@
-import type { OptionContract, OptionsChain, Quote } from "../../types/financials";
+import type { OptionContract, OptionsChain, Quote, TickerFinancials } from "../../types/financials";
 import type { DataProvider } from "../../types/data-provider";
 import type { CliListing } from "../listing-arg";
 import { cliStyles, cliTerminalWidth, wrapText } from "../../utils/cli-output";
@@ -97,16 +97,30 @@ function optionModelFigures(chain: OptionsChain, inputs: OptionModelInputs): Map
   return figures;
 }
 
-/** Spot and dividend yield for IV and delta, read from the underlying the way the options pane does; missing ones stay missing. */
+/** The underlying's financials, as DES reads them: its dividend yield, ex-dividend date and next report. Null when they cannot be read. */
+export function loadUnderlyingFinancials(
+  dataProvider: Pick<DataProvider, "getTickerFinancials">,
+  listing: CliListing,
+  refresh: boolean,
+): Promise<TickerFinancials | null> {
+  return Promise.resolve().then(() => dataProvider.getTickerFinancials(
+    listing.request.symbol, listing.request.exchange, { cacheMode: refresh ? "refresh" : "default" },
+  )).catch(() => null);
+}
+
+/**
+ * Spot and dividend yield for IV and delta, read from the underlying the way the
+ * options pane does; missing ones stay missing. `financials` shares one read of
+ * them with a caller that needs more of them.
+ */
 export async function loadOptionModelInputs(
   dataProvider: Pick<DataProvider, "getTickerFinancials">,
   listing: CliListing,
   quote: Promise<Quote | null>,
   refresh: boolean,
+  underlying: Promise<TickerFinancials | null> = loadUnderlyingFinancials(dataProvider, listing, refresh),
 ): Promise<OptionModelInputs> {
-  const financials = await Promise.resolve().then(() => dataProvider.getTickerFinancials(
-    listing.request.symbol, listing.request.exchange, { cacheMode: refresh ? "refresh" : "default" },
-  )).catch(() => null);
+  const financials = await underlying;
   const current = [await quote, financials?.quote]
     .find((candidate) => candidate && candidate.stale !== true && isFiniteNumber(candidate.price) && candidate.price > 0);
   const dividendYield = financials?.fundamentals?.dividendYield;

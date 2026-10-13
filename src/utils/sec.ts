@@ -37,7 +37,8 @@ function isEquityType(value?: string): boolean {
 
 const FUND_TYPES = new Set(["ETF", "ETP", "FUND", "MUTUALFUND", "CEF", "CLOSEDEND", "CLOSEDENDFUND"]);
 
-function isFundType(value?: string): boolean {
+/** An instrument type that names a fund (ETF, closed-end fund), which reports no earnings of its own. */
+export function isFundType(value?: string): boolean {
   return FUND_TYPES.has(normalize(value).replace(/[\s_-]/g, ""));
 }
 

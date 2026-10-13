@@ -18,6 +18,24 @@ export function numberErrorMessage(message: string, value: unknown): string {
   return dotted == null ? message : `${message.replace(/\.$/, "")}; use a dot: ${dotted}`;
 }
 
+const DECIMAL_COMMA_RANGE = /^([+-]?\d+(?:,\d+)?)\s*(-|to|\.\.)\s*([+-]?\d+(?:,\d+)?)$/i;
+
+/**
+ * A range typed with decimal commas, `0,80-0,90`, as the dotted range to type
+ * instead (`0.80-0.90`); null when neither end has a decimal comma.
+ */
+function dottedDecimalRange(value: unknown): string | null {
+  const match = DECIMAL_COMMA_RANGE.exec(typeof value === "string" ? value.trim() : "");
+  if (!match || !`${match[1]}${match[3]}`.includes(",")) return null;
+  return `${match[1]!.replace(",", ".")}${match[2]}${match[3]!.replace(",", ".")}`;
+}
+
+/** `numberErrorMessage` for a range of two numbers: "... got "0,80-0,90"; use a dot: 0.80-0.90". */
+export function rangeErrorMessage(message: string, value: unknown): string {
+  const dotted = dottedDecimalRange(value);
+  return dotted == null ? message : `${message.replace(/\.$/, "")}; use a dot: ${dotted}`;
+}
+
 /** What a number pasted from a sheet reads as. */
 export type PastedNumber =
   | { kind: "number"; value: number }

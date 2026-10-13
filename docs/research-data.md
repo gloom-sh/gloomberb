@@ -673,6 +673,21 @@ The OMON surface shortcut and OVDV chain shortcut preserve ticker scope and sele
 
 A midpoint below intrinsic, which a wide deep in-the-money quote can have, gives a negative figure rather than zero. Without a two-sided quote or a current underlying price there is no figure, and under a day from expiry there is no yearly figure: cents of time value over hours annualise to noise. `gloomberb options --leaps` ranks by the same figure, computed by the same code, as do its spread % and delta.
 
+**Carry net of financing** (`gloomberb options --leaps --columns carry-net`, `Net/yr`) is extrinsic per year once the interest and dividends that holding the option instead of the stock moves are counted:
+
+- for a call, `(extrinsic - strike x rate x years + spot x dividend yield x years) / spot / years`;
+- for a put, `(extrinsic + strike x rate x years - spot x dividend yield x years) / spot / years`.
+
+A call bought instead of the stock leaves the strike in cash, earning the rate, and forgoes the dividends, so the interest comes off and the dividends go back on. A put's midpoint already holds both the other way round (put-call parity), so for a put the signs turn. By parity, either figure is close to what the opposite contract at the same strike costs per year: the price of the optionality alone. The rate is the 4% every option valuation in the app assumes, the dividend yield is the underlying's, the one its IV and delta are valued at, and years are those of extrinsic per year; interest and dividends are simple, not compounded. When the underlying's dividend yield is unknown (its financials could not be read), carry-net counts no dividends, as delta does, and a warning says so; a stock that pays none has a yield of 0 and no warning.
+
+The other figures `--columns` adds read from the same sources as the panes:
+
+- **IV** is the contract's implied volatility, solved from its midpoint by the options pane's solver; it is the volatility its delta is valued at.
+- **IVR** is the underlying's IV rank: its 30-day IV at the latest stored close against the 52 weeks before it, 0 to 100, as OMON and OVDV show it ([implied volatility history](#implied-volatility-history)). One request covers every symbol. A listing outside the US has none.
+- **Cost** is cash per contract at the midpoint, `(bid + ask) / 2 x 100`, in the contract's currency: the midpoint extrinsic and carry-net are read from.
+- **Breakeven** (`B/E`) is the underlying's price at expiry that pays that midpoint back, strike plus it for a call and strike less it for a put; `B/E%` is its distance from spot.
+- **Next earnings** is the underlying's next report date, and **ex-dividend** its latest ex-dividend date (the coming one once it is announced, else the last), both as DES shows them, from the same read of its financials that gives the dividend yield. A fund has no report date and a stock that pays no dividend no ex-date, so neither is missed; otherwise a figure a symbol lacks is a blank cell and one warning line for the symbol.
+
 **Cost % of spot** (`P COST%`, put side only) is what a protective put costs against the stock it covers: the put's midpoint over the underlying's current price, `((bid + ask) / 2) / spot`, to three significant digits. The January 2027 SPY 700 put at 5.48/5.51 against 778.57 is 5.495 / 778.57 = 0.706%. A put without a two-sided quote, or a chain without a current underlying price, shows a dash; under 0.001% the column reads `<0.001%`. It is per share, so it is also the premium per contract over the notional one contract covers. [Options scenario analysis](#options-scenario-analysis) turns it into a budget: how many contracts a share of NAV buys.
 
 ### VIX curve and cross-asset volatility board

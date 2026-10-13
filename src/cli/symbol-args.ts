@@ -13,6 +13,25 @@ export function symbolInputKey(symbol: string): string {
   return symbol.trim().replace(/^\$/, "").toUpperCase();
 }
 
+/**
+ * How a command's symbol list spots one security typed twice: `symbolInputKey`,
+ * with a share class written with a dot or a dash as one (BRK.B and BRK-B).
+ */
+function securityInputKey(symbol: string): string {
+  return symbolInputKey(symbol).replace(/-/g, ".");
+}
+
+/** The securities of a symbol list, each once, in the first spelling typed: `AAPL aapl BRK.B BRK-B` is AAPL and BRK.B. */
+export function uniqueSecuritySymbols(symbols: readonly string[]): string[] {
+  const seen = new Set<string>();
+  return symbols.filter((symbol) => {
+    const key = securityInputKey(symbol);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /** The symbols without repeats, first spelling kept, and how many repeats were dropped. */
 export function uniqueSymbols(symbols: readonly string[]): { symbols: string[]; repeated: number } {
   const seen = new Set<string>();

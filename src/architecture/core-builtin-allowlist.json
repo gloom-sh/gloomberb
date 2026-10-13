@@ -8,7 +8,7 @@
   "src/app/runtime/startup.ts": ["chat"],
   "src/cli/commands/market.ts": ["holders","insider","research","sec"],
   "src/cli/commands/options-chain.ts": ["options","options-calculator"],
-  "src/cli/commands/options-leaps.ts": ["options","vol-surface"],
+  "src/cli/commands/options-leaps.ts": ["iv-history","options","vol-surface"],
   "src/cli/commands/overview.ts": ["correlation","econ","market-movers","sectors","world-indices"],
   "src/cli/commands/ticker.ts": ["notes"],
   "src/cli/desktop-pane-shot.ts": ["market-valuation","time-sales"],
