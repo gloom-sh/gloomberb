@@ -12,7 +12,7 @@ import {
   chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, type OpenInterestAsOf, statedOpenInterestAsOf,
 } from "../../plugins/builtin/options/open-interest-as-of";
 import { DEFAULT_OPTION_CALC_DRAFT } from "../../plugins/builtin/options-calculator/model";
-import { expiryIsoDate, missingExpiryText, parseOptionExpiration } from "../../utils/option-expiry";
+import { expiryIsoDate, parseOptionExpiration } from "../../utils/option-expiry";
 
 export const OPTIONS_USAGE = "options <symbol> [--expiration <YYYY-MM-DD|unix>]";
 
@@ -27,22 +27,6 @@ export function chainHasExpiry(chain: OptionsChain, requested: number): boolean 
 /** Every listed expiry as a unique, ascending UTC date. */
 function listedDates(expirations: readonly number[]): string[] {
   return [...new Set(expirations.map((expiration) => expiryIsoDate(expiration)).filter(Boolean))].sort();
-}
-
-/**
- * Why a chain request for one expiry came back without contracts, and which
- * expiries it could have been: the few nearest the requested date, so a typo or
- * an unlisted LEAPS date points at the neighbours to pick.
- */
-export function missingExpiryMessage(
-  symbol: string,
-  requested: number,
-  expirations: readonly number[],
-): { message: string; details?: string } {
-  return {
-    message: missingExpiryText(requested, expirations, symbol),
-    details: `Run gloomberb options ${symbol} to list every expiry (--json carries them too).`,
-  };
 }
 
 const EXPIRY_LIST_LIMIT = 40;

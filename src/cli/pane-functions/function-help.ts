@@ -395,7 +395,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["ERN"],
   },
   DVD: {
-    summary: "Cash distributions, trailing yield, the forward yield fundamentals show (latest distribution annualized), and payout growth. Future payments are not forecast.",
+    summary: "Cash distributions, trailing yield, the forward yield fundamentals show (the latest distribution annualized, or the declared one once announced), and payout growth. Future payments are not forecast.",
     usage: ["DVD KO"],
     keys: [STEP],
     data: same("Daily"),

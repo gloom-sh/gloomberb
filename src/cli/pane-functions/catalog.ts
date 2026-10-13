@@ -575,25 +575,28 @@ export function renderPaneCatalogReport(
   glossary: GlossaryLookup = { exact: [], partial: [] },
   gap: string | null = null,
   series: readonly SeriesMatch[] = [],
+  /** The `config` command a query names a setting of ("light theme"), printed last, beside the functions. */
+  setting: string | null = null,
 ): string {
   const query = args.query.trim().toLowerCase();
   const exact = query
     ? entries.find((entry) => entry.token.toLowerCase() === query)
       ?? entries.find((entry) => entry.aliases.some((alias) => alias.toLowerCase() === query))
     : undefined;
-  if (exact) return renderCatalogEntry(exact);
+  const withSetting = (text: string) => [text, setting ?? ""].filter(Boolean).join("\n\n");
+  if (exact) return withSetting(renderCatalogEntry(exact));
 
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
   const terms = renderCatalogGlossary(glossary, width);
   const charted = renderSeriesMatches(args.query.trim(), series, Number.isFinite(args.limit) ? CATALOG_SERIES_LIMIT : series.length, width);
-  const withGap = (text: string) => [gap ? wrapText(gap, width).join("\n") : "", text].filter(Boolean).join("\n\n");
+  const withGap = (text: string) => withSetting([gap ? wrapText(gap, width).join("\n") : "", text].filter(Boolean).join("\n\n"));
   const withTerms = (text: string) => withGap([text, charted, terms].filter(Boolean).join("\n\n"));
   if (args.query && entries.length === 1) return withTerms(renderCatalogEntry(entries[0]!));
 
   const note = (text: string) => wrapText(text, width).map((line) => cliStyles.muted(line)).join("\n");
   if (entries.length === 0) {
     if (charted) return withGap([charted, terms].filter(Boolean).join("\n\n"));
-    if (glossary.exact.length > 0 || gap) return withGap(terms);
+    if (glossary.exact.length > 0 || gap || setting) return withGap(terms);
     return withTerms(note(args.query
       ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`
       : "No functions are available."));

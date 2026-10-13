@@ -55,7 +55,6 @@ import {
   formatOptionDeltaCell,
   formatOptionIvCell,
   formatOptionQuoteCell,
-  missingExpiryMessage,
   OPTION_MODEL_RATE,
   OPTIONS_USAGE,
   optionRows,
@@ -65,6 +64,7 @@ import {
   valueChainAtModelSpot,
   type OptionsChainBasis,
 } from "./options-chain";
+import { missingExpiryMessage } from "../../utils/option-expiry";
 import { DEFAULT_LEAPS_CRITERIA, LEAPS_USAGE, parseLeapsCriteria, runLeapsScreen, takeLeapsOptions } from "./options-leaps";
 import type { CliResultColumn } from "../result";
 import type { PriceHistoryResult } from "../../types/price-history";

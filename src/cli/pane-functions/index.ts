@@ -26,7 +26,7 @@ import {
 import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceNotes } from "../listing-arg";
-import { knownGapMessage, topicPointer } from "../known-gaps";
+import { knownGapMessage, settingsPointer, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
 import { CLI_EXIT_CODES } from "../exit-codes";
@@ -316,6 +316,8 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const glossary = lookupGlossary(parsed.query);
         // Data no source carries yet is said once: in the text, else as the envelope's warning.
         const gap = knownGapMessage(parsed.query);
+        // A setting is a command, not a function: "light theme" names `config themes` beside THEM.
+        const setting = settingsPointer(parsed.query);
         // The data catalog series the query names, which `fn G` charts.
         const series = findCatalogSeries(ctx.plugins, parsed.query);
         const listed = pointer
@@ -324,9 +326,9 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         ctx.printResult({
           data: listed,
           ...series.length ? { metadata: { series } } : {},
-          ...gap && ctx.cliOptions.format !== "text" ? { warnings: [gap] } : {},
+          ...(gap || setting) && ctx.cliOptions.format !== "text" ? { warnings: [gap, setting].filter((note): note is string => !!note) } : {},
         }, {
-          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series),
+          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series, setting),
         });
       } finally {
         registry.destroy();

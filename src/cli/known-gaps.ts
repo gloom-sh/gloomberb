@@ -82,6 +82,28 @@ export function topicPointer(query: string): { message: string; codes: string[] 
   return { message: `${pointer.topic}: not in the terminal yet; closest: ${closest}`, codes: pointer.closest.map(([code]) => code) };
 }
 
+/**
+ * Settings people look for by name that are a `config` command, not a function or a ticker: the line `search` and
+ * `catalog` print beside whatever else the query finds. A query asks for one when every word is a word of that
+ * setting and one of them names it: "light theme", "dark", "colour-blind", but not "ai theme" (THEM's basket) or
+ * "dark pool".
+ */
+const SETTING_POINTERS: ReadonlyArray<{ names: readonly string[]; words: readonly string[]; line: string }> = [
+  {
+    names: ["theme", "themes", "light", "dark", "colorblind", "colourblind", "blind"],
+    words: ["mode", "color", "colour", "colors", "colours", "high", "contrast", "change", "switch", "set", "setting", "settings"],
+    line: "Themes: gloomberb config themes",
+  },
+];
+
+/** The `config` command for a query that names a setting ("light theme"), else null. */
+export function settingsPointer(query: string): string | null {
+  const asked = words(query);
+  if (asked.length === 0) return null;
+  return SETTING_POINTERS.find(({ names, words: other }) => asked.some((word) => names.includes(word))
+    && asked.every((word) => names.includes(word) || other.includes(word)))?.line ?? null;
+}
+
 /** Letters and digits only, lower case: `EU-ETS`, `eu ets` and `EUETS` are one lookup. */
 function lookupKey(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9]/g, "");

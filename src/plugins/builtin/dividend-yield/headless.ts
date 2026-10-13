@@ -55,6 +55,12 @@ function dateEntry(label: string, date: Date | null) {
   return { label, value: date, formatted: date ? date.toISOString().slice(0, 10) : "—" };
 }
 
+/** The next pay date, when it is the one stated beside the ex-date the forward rate is dated by. */
+function forwardPayDate(metrics: DividendData["metrics"]): Date | null {
+  const exDate = metrics.nextExDividendDate?.toISOString().slice(0, 10);
+  return exDate != null && exDate === metrics.forwardRateAsOf ? metrics.nextPayDate : null;
+}
+
 function matchesType(payment: DividendPayment, type: string): boolean {
   return type === "all" || payment.type === type;
 }
@@ -95,7 +101,7 @@ export function projectDividendYieldHeadless(
             : "Reference price time unavailable; cash yield may be out of date." }] : []),
           { label: "Trailing yield", value: metrics.trailingYield, formatted: formatDividendYield(metrics.trailingYield) },
           { label: "Forward yield", value: metrics.forwardYield, formatted: metrics.forwardYield == null ? formatDividendYield(null)
-            : `${formatDividendYield(metrics.forwardYield)} (${forwardDividendBasis(metrics.forwardRateAsOf)})` },
+            : `${formatDividendYield(metrics.forwardYield)} (${forwardDividendBasis(metrics.forwardRateAsOf, { payDate: forwardPayDate(metrics) })})` },
           { label: "Trailing rate", value: metrics.trailingRate, formatted: currency ? formatDistributionAmount(metrics.trailingRate ?? undefined, currency) : "—" },
           { label: "Forward rate", value: metrics.forwardRate, formatted: currency ? formatDistributionAmount(metrics.forwardRate ?? undefined, currency) : "—" },
           { label: "Earnings Payout", value: metrics.payoutRatio, formatted: formatDividendYield(metrics.payoutRatio) },
@@ -132,7 +138,7 @@ export function projectDividendYieldHeadless(
       limitations: data.notes ?? [],
       yieldMethod: "Cash distributions with ex-dates in the preceding 12 months, one payment per period for a regular cadence, divided by the reference share price; excludes reinvestment and is not SEC yield or total return.",
       forwardRateAsOf: metrics.forwardRateAsOf,
-      forwardRateMethod: "Indicated annual cash rate, the one fundamentals use: the latest regular distribution annualized, dated by its ex-date (forwardRateAsOf). Only when its currency units are comparable with the share price.",
+      forwardRateMethod: "Indicated annual cash rate, the one fundamentals use: the latest regular distribution annualized, or once the next one is declared that one, dated by its ex-date (forwardRateAsOf; a date still ahead is the declared distribution's). Only when its currency units are comparable with the share price.",
       paymentFrequencyMethod: "Cadence inferred from ex-dates in the last two years, unavailable when no cash was reported in the last year; not an announced payment schedule.",
     },
   };

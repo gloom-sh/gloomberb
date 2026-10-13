@@ -22,6 +22,7 @@ import { colors, priceColor } from "../../../theme/colors";
 import { TextAttributes, useUiCapabilities } from "../../../ui";
 import { displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
+import { forwardDividendNote } from "../../../utils/forward-dividend";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -76,11 +77,12 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
   const exDate: StatItem[] = metrics.nextExDividendDate
     ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate) }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
+  const forwardNote = metrics.forwardYield != null ? forwardDividendNote(metrics.forwardRateAsOf) : null;
   return [
     { id: "ttm-yield", label: short ? "TTM yld" : "TTM yield", value: formatDividendYield(metrics.trailingYield), color: priceColor(metrics.trailingYield ?? 0) },
-    // Dated by the distribution it annualizes; docs/research-data.md says how it is built.
+    // Dated by the distribution it annualizes, or marked declared beside the next ex-date; docs/research-data.md says how it is built.
     { id: "forward-yield", label: short ? "Fwd yld" : "Fwd yield", value: formatDividendYield(metrics.forwardYield), color: priceColor(metrics.forwardYield ?? 0),
-      ...(metrics.forwardYield != null && metrics.forwardRateAsOf ? { detail: `as of ${metrics.forwardRateAsOf}` } : {}) },
+      ...(forwardNote ? { detail: forwardNote } : {}) },
     { id: "ttm-rate", label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency) },
     { id: "forward-rate", label: short ? "Fwd/sh" : "Fwd/share", value: formatRate(metrics.forwardRate, currency) },
     { id: "growth-1y", label: short ? "1Y chg" : "1Y growth", value: formatGrowth(metrics.growth1Y), color: priceColor(metrics.growth1Y ?? 0) },

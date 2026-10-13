@@ -6,11 +6,11 @@ import {
   formatExpiryList,
   formatOptionDeltaCell,
   formatOptionIvCell,
-  missingExpiryMessage,
   optionRows,
   optionsBasisFootnote,
   valueChainAtModelSpot,
 } from "./options-chain";
+import { missingExpiryMessage } from "../../utils/option-expiry";
 
 const at = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
 

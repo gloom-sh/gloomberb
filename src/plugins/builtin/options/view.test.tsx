@@ -16,7 +16,8 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { OptionsView } from "./view";
 import { TestPaneProvider, createTestTicker, createTestPaneConfig } from "../../../test-support/pane";
 import { RemoteUiRegistryProvider, createRemoteUiRegistry } from "../../../remote/semantic-tree";
-import { renderedReportFreshness, renderedReportNotices } from "../../../cli/pane-functions/report-notices";
+import { renderedReportFailure, renderedReportFreshness, renderedReportNotices } from "../../../cli/pane-functions/report-notices";
+import { missingExpiryMessage } from "../../../utils/option-expiry";
 
 const TEST_PANE_ID = "ticker-detail:options-test";
 
@@ -281,6 +282,22 @@ test("a typed expiry date opens that expiry, and its report names it with the ch
   expect(report.notices[0]).toBe("Expiry 2026-06-25 (24d)");
   expect(report.facts.expiry).toEqual({ date: "2026-06-25", daysToExpiry: 24 });
   expect(renderedReportFreshness(registry.snapshot())).toEqual({ asOf: "2026-06-01T20:00:00.000Z", status: "delayed", delayMinutes: 15 });
+  expect(renderedReportFailure(registry.snapshot())).toBeNull();
+});
+
+test("a typed expiry the chain does not list fails its report with the options command's error, and names no expiry", async () => {
+  const chain = makeChain([100, 101], 101, [1_781_049_600, 1_782_345_600]);
+  setSharedMarketDataCoordinator(new MarketDataCoordinator(createTestDataProvider({ getOptionsChain: async () => chain })));
+  const registry = createRemoteUiRegistry();
+  await act(async () => {
+    await tui.render(<RemoteUiRegistryProvider registry={registry}>
+      <OptionsHarness ticker={makeTicker("AAPL")} quotePrice={101} settings={{ expiration: "2026-06-26" }} />
+    </RemoteUiRegistryProvider>, { width: 124, height: 16 });
+  });
+  await renderSettled();
+  // `fn OMON --expiration` prints this and exits non-zero, as `options --expiration` does, instead of reading the pane back.
+  expect(renderedReportFailure(registry.snapshot())).toEqual(missingExpiryMessage("AAPL", 1_782_432_000, chain.expirationDates));
+  expect(renderedReportNotices(registry.snapshot()).notices.some((notice) => notice.startsWith("Expiry"))).toBe(false);
 });
 
 test("shows the spot, volatility statistics and the mirrored default fields", async () => {

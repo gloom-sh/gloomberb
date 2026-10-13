@@ -23,7 +23,7 @@ import { fail } from "../errors";
 import type { MarketContext } from "../types";
 import type { CliCommandContext, GloomPlugin } from "../../types/plugin";
 import { indexRootFor, indexRootTryLine } from "../index-roots";
-import { knownGapMessage } from "../known-gaps";
+import { knownGapMessage, settingsPointer } from "../known-gaps";
 import { instrumentTypeLabel } from "../../tickers/instrument-kind";
 import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { groupByCompany } from "../../tickers/company-name";
@@ -325,9 +325,9 @@ function catalogHint(query: string): string {
 
 /**
  * The notes beside the results: the index a bare root names, data the query
- * asks for that no source carries yet, the central bank it names, and for an
- * empty search the catalog, unless a known gap, the bank or the functions
- * listed already said where to look instead.
+ * asks for that no source carries yet, the central bank it names, the setting
+ * it names ("light theme"), and for an empty search the catalog, unless one of
+ * those or the functions listed already said where to look instead.
  */
 function searchNotes(
   query: string,
@@ -337,9 +337,10 @@ function searchNotes(
 ): string[] {
   const gap = knownGapMessage(query);
   const bank = searchedCentralBank(query);
+  const setting = settingsPointer(query);
   const empty = candidates.length === 0 && !fate.stopped;
-  return [...fate.notes, indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null,
-    empty && !gap && !bank && functions.length === 0 ? catalogHint(query) : null]
+  return [...fate.notes, indexRootNote(query, candidates), gap, bank ? centralBankLine(bank) : null, setting,
+    empty && !gap && !bank && !setting && functions.length === 0 ? catalogHint(query) : null]
     .filter((note): note is string => !!note);
 }
 
@@ -379,6 +380,8 @@ export function buildSearchReport({
   if (gap) lines.push("", gap);
   const bank = searchedCentralBank(query);
   if (bank) lines.push("", centralBankLine(bank));
+  const setting = settingsPointer(query);
+  if (setting) lines.push("", setting);
   const charted = renderSeriesMatches(query, series, SEARCH_SERIES_LIMIT, cliTerminalWidth() ?? 100, "catalog");
   // A query that names the data ("carbon", "day-ahead") lists its series first; words that happen to
   // be in a series name ("apple") list them after the tickers.
@@ -390,7 +393,7 @@ export function buildSearchReport({
   if (candidates.length === 0) {
     if (fate.stopped) return lines.join("\n");
     if (functions.length > 0) lines.push("", renderFunctionMatches(functions));
-    else if (!gap && !bank && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
+    else if (!gap && !bank && !setting && !charted) lines.push(cliStyles.muted("No matches found."), cliStyles.muted(catalogHint(query)));
     return lines.join("\n");
   }
 

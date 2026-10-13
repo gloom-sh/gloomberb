@@ -347,7 +347,7 @@ function percentFigure(fraction: number | null | undefined, format: (value: numb
   return fraction != null ? { text: format(fraction), value: fraction * 100, unit: "%" } : { text: "—" };
 }
 
-/** A forward yield says what it annualizes and when, as DVD does; any other yield is the figure alone. */
+/** A forward yield says what it annualizes and when, as DVD does (a declared distribution by its ex-date); any other yield is the figure alone. */
 function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
   const figure = percentFigure(fundamentals?.dividendYield, formatFractionPercentCell);
   return fundamentals?.dividendYieldBasis === "forward" && fundamentals.dividendYield != null

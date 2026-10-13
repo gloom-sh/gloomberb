@@ -10,7 +10,7 @@ import { lockNoteReason } from "../../plugins/builtin/shared/pro-lock-note";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
-import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
+import { renderedReportFailure, renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
@@ -332,13 +332,21 @@ function failedDomReport(
   };
 }
 
+/** A report the rendered pane says it cannot give; the command fails with the pane's words and advice line. */
+class RenderedReportFailure extends Error {
+  constructor(message: string, readonly details?: string) {
+    super(message);
+  }
+}
+
 export async function buildDomFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArg: string,
 ): Promise<PaneFunctionReport> {
+  let result: PaneScreenshotResult;
   try {
-    const result = await renderDesktopShot({
+    result = await renderDesktopShot({
       resolved,
       context,
       rawArg,
@@ -351,6 +359,13 @@ export async function buildDomFunctionReport(
       options: {},
       captureImage: false,
     });
+  } catch (error) {
+    return failedDomReport(resolved, rawArg, error);
+  }
+  // No header and no partial view: the error alone, and a failed exit, as the plain command gives.
+  const failure = renderedReportFailure(result.render.semanticUi ?? []);
+  if (failure) throw new RenderedReportFailure(failure.message, failure.details);
+  try {
     return buildDomPaneReportFromRender(resolved, result);
   } catch (error) {
     return failedDomReport(resolved, rawArg, error);

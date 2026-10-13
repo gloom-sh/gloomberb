@@ -6,7 +6,9 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
-import { expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, missingExpiryText, readOptionExpiration } from "../../../utils/option-expiry";
+import {
+  expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, missingExpiryMessage, missingExpiryText, readOptionExpiration,
+} from "../../../utils/option-expiry";
 import { canonicalTickerKey } from "../../../utils/exchanges";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
@@ -402,7 +404,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const expiryAsOfMs = Number.isFinite(chainAsOfMs) ? chainAsOfMs : Date.now();
   const expiryDate = selectedExpiration == null ? "" : expiryIsoDate(selectedExpiration);
   const expiryDays = selectedExpiration == null ? "" : formatDaysToExpiry(selectedExpiration, expiryAsOfMs);
-  useRemoteUiNode(expiryDate && chain ? {
+  useRemoteUiNode(expiryDate && chain && !expirationUnavailable ? {
     role: "report-notice",
     label: "Expiry",
     getMetadata: () => ({
@@ -410,6 +412,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       key: "expiry",
       value: { date: expiryDate, daysToExpiry: daysToExpiry(selectedExpiration!, expiryAsOfMs) },
     }),
+  } : null);
+  // `fn OMON --expiration` on a date the chain cannot show fails as `options --expiration` does.
+  useRemoteUiNode(expirationUnavailable && selectedExpiration != null && effectiveTicker ? {
+    role: "report-failure",
+    label: "Expiry unavailable",
+    getMetadata: () => missingExpiryMessage(effectiveTicker, selectedExpiration, availableExpirations),
   } : null);
   // A refresh that failed keeps the last chain, which is then stale.
   const asOfEntry = strikeChain == null ? null : strikeChain === expirationChain ? expirationChainEntry : initialChainEntry;
