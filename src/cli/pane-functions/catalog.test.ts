@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { tickerDetailModule } from "../../plugins/builtin/ticker-detail";
 import { findFunctionCode, limitationSentence } from "./catalog";
 
 test("limitations read as sentences, so one does not run into the next", () => {
@@ -33,4 +34,15 @@ test("a function's code or alias is found in any case, with what it takes; a key
   expect(findFunctionCode(registry, "volatility")).toBeNull();
   expect(findFunctionCode(registry, "OVDX")).toBeNull();
   expect(findFunctionCode(registry, "")).toBeNull();
+});
+
+test("DES, the command bar's name for the ticker research pane, is an alias of its function T", () => {
+  const template = tickerDetailModule.paneTemplates!.find((entry) => entry.shortcut?.prefix === "T")!;
+  const registry = {
+    panes: new Map([[template.paneId, { id: template.paneId, name: template.label }]]),
+    paneTemplates: new Map([[template.id, template]]),
+    destroy() {},
+  } as never;
+  expect(findFunctionCode(registry, "T")).toEqual({ argument: "<ticker>" });
+  expect(findFunctionCode(registry, "des")).toEqual({ argument: "<ticker>" });
 });

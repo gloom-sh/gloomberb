@@ -2,7 +2,8 @@ import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText
 
 /**
  * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio,
- * fund and short interest terms the functions show in their rows, headers and footers.
+ * fund, short interest, quote-board, futures and economic-calendar terms the functions
+ * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
  * the ones it shows. Only terms a pane or report actually prints belong here.
@@ -427,6 +428,64 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     shown: ["Short volume", "Short %", "Exempt volume"],
     definition: "Shares sold short in a day's off-exchange trading, which FINRA publishes daily; Short % is its share of the day's volume there. "
       + "It is a flow of trades, not the open position short interest counts, and it includes exempt volume.",
+  },
+  // Quote boards (QQ). The words a beginner meets in a quote's rows and its status line.
+  {
+    term: "Ticker", aliases: ["tickers", "ticker symbol", "symbol", "stock symbol"], functions: ["QQ"], shown: ["Ticker", "Symbol"],
+    definition: "The short code a security trades under, such as AAPL for Apple or ^GSPC for the S&P 500. Type it after a function: fn QQ AAPL.",
+  },
+  {
+    term: "Pre-market", aliases: ["pre-mkt", "pre-market session", "pre-market trading", "pre-market price"], functions: ["QQ"],
+    shown: ["Pre-Market", "pre-market", "PRE-MKT"],
+    definition: "Trading in a US stock before the regular session opens, from 4:00 to 9:30 am New York time, when fewer trades happen and prices can jump. "
+      + "An index does not trade then: its pre-market status means it has not opened, and its level is still the last close.",
+  },
+  {
+    term: "After hours", aliases: ["after-hrs", "post-market", "extended hours", "after-hours trading"], functions: ["QQ"],
+    shown: ["After Hours", "after hours", "AFTER-HRS"],
+    definition: "Trading in a US stock after the regular session closes, from 4:00 to 8:00 pm New York time. "
+      + "Like the pre-market it is thin, so a price there can move more than the regular close suggests.",
+  },
+  {
+    term: "Regular close", aliases: ["close", "closing price", "last close", "prior close", "regular session", "regular session close"],
+    functions: ["QQ"], shown: ["close", "Close"],
+    definition: "The last price of the regular session, 9:30 am to 4:00 pm New York time for US stocks. "
+      + "From the close until the next open a quote's Last and change stay at it, and pre-market and after-hours prices are shown beside it.",
+  },
+  {
+    term: "Delayed", aliases: ["delayed quote", "delayed quotes", "delay", "15 min delayed", "live", "real-time"], functions: ["QQ", "FUT"],
+    shown: ["delayed", "Delayed"],
+    definition: "A price that reaches you some minutes after it traded; the status line gives the lag, such as 15 min delayed. A live (real-time) price has no lag.",
+  },
+  // Futures (FUT, CTM).
+  {
+    term: "Futures contract", aliases: ["futures", "future", "futures contracts", "contract", "contract month", "expiry", "expiration"],
+    functions: ["FUT", "CTM"], shown: ["CONTRACT", "Contract"],
+    definition: "An agreement to buy or sell something, such as oil, gold or the S&P 500, at a set price on a set date. Each contract has a month (Dec 26) and expires, "
+      + "and most traders close out before then. A contract's own Settlement line says how it ends: in cash or by physical delivery.",
+  },
+  {
+    term: "Settle (futures)", aliases: ["settle", "settle price", "settlement price", "futures settle", "daily settlement price"],
+    functions: ["FUT", "CTM"], shown: ["Settle", "PREV"],
+    definition: "A futures contract's official price for the day, set by its exchange from trading near the close. "
+      + "The day's change and margin are measured from it, and it can differ from the last trade. FUT's PREV is the previous one.",
+  },
+  // The economic calendar (ECO).
+  {
+    term: "Actual", aliases: ["actual release", "actual value"], functions: ["ECO"], shown: ["ACTUAL", "Actual"],
+    definition: "The figure a release came in at, filled in once it is published. A dash means it is still to come.",
+  },
+  {
+    term: "Forecast", aliases: ["forecasts", "consensus", "expected"], functions: ["ECO"], shown: ["FORECAST", "Forecast"],
+    definition: "What economists expected the release to show, the consensus before it comes out. Markets move on the gap between Actual and Forecast more than on the number alone.",
+  },
+  {
+    term: "Prior", aliases: ["previous", "prior value", "previous release"], functions: ["ECO"], shown: ["PRIOR", "Prior"],
+    definition: "The previous release's figure, the one Actual and Forecast are compared with.",
+  },
+  {
+    term: "Impact", short: "IMP", aliases: ["importance", "event impact", "high impact"], functions: ["ECO"],
+    definition: "How much a release usually moves markets: HIGH for the big ones (CPI, jobs, rate decisions), MED and LOW for speeches and smaller data.",
   },
 ];
 

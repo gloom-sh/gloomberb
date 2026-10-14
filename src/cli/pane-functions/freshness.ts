@@ -10,7 +10,7 @@ import type {
 } from "../../types/plugin";
 import { localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
 import { isRecord } from "../../utils/guards";
-import { latestRegularSessionClose } from "../../market-data/market/freshness";
+import { latestRegularSessionClose, readIndexSession } from "../../market-data/market/freshness";
 import { reportMarketSession, reportVenueSessionDates, type ReportMarket, type SessionObservation, type VenueSessionDate } from "./market-session";
 
 /**
@@ -153,10 +153,12 @@ function readFeedSignals(record: Record<string, unknown>, signals: FeedSignals):
 function readSession(record: Record<string, unknown>, time: ReportTime | null, signals: FeedSignals): void {
   const exchange = record.sessionExchange;
   if (typeof exchange !== "string" || !exchange.trim()) return;
+  const calendar = readIndexSession(record.sessionCalendar);
   signals.sessions.push({
     exchange,
     ...(typeof record.marketState === "string" ? { marketState: record.marketState } : {}),
     time,
+    ...(calendar ? { calendar } : {}),
   });
 }
 

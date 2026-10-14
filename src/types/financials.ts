@@ -5,6 +5,20 @@ export type SessionConfidence = "explicit" | "derived" | "unknown";
 export type QuoteDataSource = "live" | "delayed" | "snapshot";
 export type QuoteDelivery = "stream" | "poll";
 
+/**
+ * The regular sessions an index quote carries, dated by its source: the
+ * calendar its publisher's name does not give (SNP, DJI, NASDAQ GIDS). Times
+ * are ms.
+ */
+export interface QuoteIndexSession {
+  /** The zone the sessions' dates are read in. */
+  timeZone: string;
+  /** The regular session the quote's day follows: today's, or the next one while it has not opened. */
+  current: { start: number; end: number };
+  /** The latest regular sessions, oldest first. */
+  regular: Array<{ start: number; end: number }>;
+}
+
 export interface QuoteFieldProvenance {
   providerId: string;
   dataSource?: QuoteDataSource;
@@ -100,6 +114,8 @@ export interface Quote extends DepositaryReceiptFacts {
   routingExchangeFullName?: string;
   marketState?: MarketState;
   sessionConfidence?: SessionConfidence;
+  /** An index's own regular sessions, for the open its pre-market waits for and the close its last print was. */
+  indexSession?: QuoteIndexSession;
   preMarketPrice?: number;
   preMarketChange?: number;
   preMarketChangePercent?: number;

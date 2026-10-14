@@ -147,14 +147,14 @@ import { earningsCalendarFailure, earningsChoiceNote, earningsDateLabel, isListi
 import { formatBasisPoints, toBasisPoints } from "../../utils/basis-points";
 import { notATickerSymbol, providerMissReason } from "../../sources/provider-errors";
 import { isNotATickerMessage, withListingSuggestion } from "../not-a-ticker";
-import { describeSuggestion, suggestListing } from "../listing-suggestion";
+import { describeSuggestion, suggestListing, suggestUsTicker, type ListingSuggestion } from "../listing-suggestion";
 import { splitSymbolArgs, uniqueSecuritySymbols } from "../symbol-args";
 import { cliPerpetualContract, perpetualContractStats, type PerpetualContractPayload } from "../perpetual-contract";
 import { subMinuteDataMessage } from "../known-gaps";
 import { secRegistrantMismatchMessage, SecRegistrantMismatchError, areDifferentCompanies } from "../../sources/sec-registrant";
 import { isCryptoPairSymbol } from "../../utils/crypto-pair";
 import { looksLikeCurrencyPair } from "../../utils/currency-pair";
-import { isUsListingExchange } from "../../utils/exchanges";
+import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { describeTickerChange, startTickerChangeLookup, tickerChangeLine, type TickerChange } from "../../tickers/ticker-changes";
 import { noSecReportsNotice, nonUsSecListingVenue } from "../../utils/sec";
 import type { MarketContext } from "../types";
@@ -212,6 +212,8 @@ type QuoteCliRecord = Omit<QuoteBatchResult, "error"> & {
   perpetualContract?: PerpetualContractPayload;
   /** The symbol changed: its issuer moved to another symbol, or its holder had another before. */
   tickerChange?: TickerChange;
+  /** A bare symbol read on a listing abroad that is one slip from a US ticker: the US ticker it was most likely typed for. */
+  usSuggestion?: ListingSuggestion;
 };
 type FinancialsCliData = TickerFinancials & {
   symbol: string;
@@ -608,6 +610,11 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
     const perpetualContracts = await Promise.all(answers.map(({ result }) => commandName === "quote" && result.quote
       ? cliPerpetualContract(result.quote)
       : null));
+    // A bare symbol quoted on a listing abroad (APPL, Aptus Pharma on BSE) that is one slip from a US ticker (AAPL) says so.
+    const usSuggestions = await Promise.all(answers.map(({ result, listing, notes }) => {
+      const venue = result.quote && !listing.saved ? bareListingNote(listing, result.quote) : null;
+      return venue && notes.includes(venue) ? suggestUsTicker(listing.symbol, market) : null;
+    }));
     // Each row names its listing by key (SAN:EPA) and company, so the table needs no line above it.
     const data = answers.map(({ result, listing, failure }, index) => ({
       target: result.target,
@@ -617,6 +624,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       quote: result.quote,
       ...contracts[index] ? { futuresContract: contracts[index] } : {},
       ...perpetualContracts[index] ? { perpetualContract: perpetualContracts[index] } : {},
+      ...usSuggestions[index] ? { usSuggestion: usSuggestions[index] } : {},
       error: failure?.oneLine ?? errorMessage(result.error),
       ...yieldIndexFields(result),
       ...tickerChanges[index] ? { tickerChange: tickerChanges[index] } : {},
@@ -643,7 +651,7 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       freshness: quotesFreshness(data.map((row) => row.quote)),
     }, {
       rows: quoteRows,
-      details: quoteFuturesContractText,
+      details: quoteDetailsText,
       columns,
       ...(yieldsOnly ? { textColumns: columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column) } : {}),
     });
@@ -653,7 +661,28 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
 }
 
 /**
- * Under the table, each futures row's Settle line and Contract block, worded
+ * Under the table: each futures row's Settle line and Contract block, then the
+ * line for a symbol that is not a US ticker though it is one slip from one.
+ */
+function quoteDetailsText(data: QuoteCliRecord[]): string {
+  return [quoteFuturesContractText(data), ...data.flatMap((row) => notUsTickerLine(row) ?? [])].filter(Boolean).join("\n\n");
+}
+
+/**
+ * "APPL is not a US ticker: it is Aptus Pharma Limited on BSE (INR). Did you
+ * mean AAPL (Apple Inc.)?", for a symbol read on a listing abroad that is one
+ * slip from a US ticker, worded as the not-a-ticker answers word it.
+ */
+function notUsTickerLine({ target, quote, listing, usSuggestion }: QuoteCliRecord): string | null {
+  if (!quote || !usSuggestion) return null;
+  const venue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  const name = quote.name || listing?.name;
+  const what = `${name ? `${name} on ` : ""}${venue}${quote.currency ? ` (${quote.currency})` : ""}`;
+  return cliStyles.warning(`${target.symbol} is not a US ticker: it is ${what}. Did you mean ${describeSuggestion(usSuggestion)}?`);
+}
+
+/**
+ * Each futures row's Settle line and Contract block, worded
  * as `ticker` words them. Several symbols name theirs in the block's title.
  */
 function quoteFuturesContractText(data: QuoteCliRecord[]): string {

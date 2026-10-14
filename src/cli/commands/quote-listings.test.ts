@@ -133,6 +133,44 @@ test("a bare symbol the service read on its home listing abroad names the venue"
   }
 });
 
+test("a bare symbol read abroad that is one slip from a US ticker says so beside the quote, and a deliberate one says nothing", async () => {
+  const listed = (symbol: string, exchangeName: string, currency: string, name: string) => createTestQuote({ symbol, name, exchangeName, listingExchangeName: exchangeName, currency });
+  const stock = (symbol: string, name: string, exchange: string, currency: string) => ({ providerId: "test", symbol, name, exchange, type: "EQUITY", currency });
+  const dataProvider = createTestDataProvider({
+    search: async (query: string) => ({
+      APPL: [stock("APPL", "Aptus Pharma Limited", "BSE", "INR")],
+      AAPL: [stock("AAPL", "Apple Inc.", "NASDAQ", "USD")],
+      "7203": [stock("7203", "Toyota Motor Corporation", "JPX", "JPY")],
+    })[query] ?? [],
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => ({
+      target,
+      quote: ({
+        APPL: listed("APPL", "BSE", "INR", "Aptus Pharma Limited"),
+        "APPL:BSE": listed("APPL", "BSE", "INR", "Aptus Pharma Limited"),
+        AAPL: listed("AAPL", "NASDAQ", "USD", "Apple Inc."),
+        "7203.T": listed("7203.T", "JPX", "JPY", "Toyota Motor Corporation"),
+      } as Record<string, ReturnType<typeof createTestQuote>>)[target.symbol] ?? null,
+    })),
+  });
+  const run = async (symbol: string, saved?: unknown) => {
+    const cli = createTestCliContext({ dataProvider, store: { loadTicker: async () => saved ?? null, loadAllTickers: async () => [] } });
+    await quoteCommand.execute([symbol], cli.context);
+    const { result, options } = cli.printed[0]!;
+    return { row: result.data[0], details: options?.details?.(result.data) ?? "" };
+  };
+
+  const typo = await run("APPL");
+  // On stdout beside the table, and in the JSON row, not only the venue warning.
+  expect(typo.details).toContain("APPL is not a US ticker: it is Aptus Pharma Limited on BSE (INR). Did you mean AAPL (Apple Inc.)?");
+  expect(typo.row.usSuggestion).toEqual({ symbol: "AAPL", name: "Apple Inc." });
+  // A venue the person named, a ticker with its suffix and a US listing are deliberate.
+  for (const symbol of ["APPL:BSE", "7203.T", "AAPL"]) {
+    const quiet = await run(symbol);
+    expect(quiet.details).toBe("");
+    expect(quiet.row.usSuggestion).toBeUndefined();
+  }
+});
+
 test("a futures board code quotes its future where no security uses it, and names the future where the security has no quote", async () => {
   const ttf = venueSource("TTF", [], { "TTF=F": createTestQuote({ symbol: "TTF=F", currency: "EUR", instrumentType: "FUTURE" }) });
   expect((await runQuote(["TTF"], ttf)).rows.map((row) => row.target.symbol)).toEqual(["TTF=F"]);

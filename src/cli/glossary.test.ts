@@ -86,3 +86,41 @@ test("SIV's short volume is its own term, apart from short interest", () => {
   expect(terms(reportGlossary("SIV", volume))).toEqual(["Short volume"]);
   expect(reportGlossary("SI", volume).map((entry) => entry.term)).not.toContain("Short volume");
 });
+
+test("a beginner's words for quotes, futures and the calendar are found by plain names, each as its own entry", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["pre-market", "premarket", "PRE-MKT", "after hours", "post-market", "regular close", "close", "delayed", "ticker", "symbol", "futures contract", "futures", "forecast", "prior"].map(exact))
+    .toEqual([["Pre-market"], ["Pre-market"], ["Pre-market"], ["After hours"], ["After hours"], ["Regular close"], ["Regular close"], ["Delayed"], ["Ticker"], ["Ticker"],
+      ["Futures contract"], ["Futures contract"], ["Forecast"], ["Prior"]]);
+  // `settle` was found only as the short-interest Settlement, a date: it is the futures settlement price now,
+  // and the date stays reachable by its own words.
+  expect(exact("settle")).toEqual(["Settle (futures)"]);
+  expect(exact("settlement price")).toEqual(["Settle (futures)"]);
+  expect(exact("settlement")).toEqual(["Settlement"]);
+  expect(exact("settlement date")).toEqual(["Settlement"]);
+  expect(exact("settled")).toEqual(["Settlement"]);
+  expect(terms(lookupGlossary("settle").partial)).toEqual(["Settlement"]);
+});
+
+test("QQ, FUT and ECO explain the quote, futures and calendar words they print", () => {
+  const quotes = [
+    "Ticker  Name       Last     Change  Change %  Pre-Market",
+    "AAPL    Apple Inc. $341.27  +$0.30  +0.09%    $342.68 +0.41%",
+    "",
+    "Source: Gloom Cloud \u00b7 Wed 14 Oct 2026 10:51 UTC \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC",
+  ].join("\n");
+  expect(terms(reportGlossary("QQ", quotes))).toEqual(["Ticker", "Pre-market", "Delayed"]);
+  // An index's prior close is dated in the status line; "closed" is not "close".
+  expect(terms(reportGlossary("QQ", "^GSPC  7,805.45\n\nSource: Gloom Cloud \u00b7 US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC")))
+    .toEqual(["Pre-market", "Regular close", "Delayed"]);
+  expect(terms(reportGlossary("QQ", "AAPL  After Hours\n\nSource: Gloom Cloud \u00b7 15 min delayed \u00b7 markets closed until Thu"))).toEqual(["After hours", "Delayed"]);
+
+  const futures = "SESSION  SYM  CONTRACT              LAST   PREV\nOPEN     CL   WTI Crude Oil Dec 26  94.40  93.17\n\nSource: Gloom Cloud \u00b7 15 min delayed \u00b7 markets open";
+  expect(terms(reportGlossary("FUT", futures))).toEqual(["Delayed", "Futures contract", "Settle (futures)"]);
+  // The curve's own Settle column, and the other functions that do not print these words.
+  expect(terms(reportGlossary("CTM", "Contract  Last  Settle 2026-10-13"))).toEqual(["Futures contract", "Settle (futures)"]);
+  expect(reportGlossary("HP", futures)).toEqual([]);
+
+  const calendar = "TIME (UTC)  IMP   CTY  EVENT     ACTUAL  FORECAST  PRIOR\n12:30  HIGH  US   CPI m/m   -       0.6%      0.4%";
+  expect(terms(reportGlossary("ECO", calendar))).toEqual(["Actual", "Forecast", "Prior", "Impact"]);
+});

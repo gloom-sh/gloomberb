@@ -1,4 +1,4 @@
-import type { MarketState } from "../../types/financials";
+import type { MarketState, QuoteIndexSession } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
 import { hasPublishedApacCalendar, isPublishedApacClosure } from "../published-apac-sessions";
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
@@ -674,4 +674,28 @@ function isTimestampStaleForExchangeSessionUnsafe(
     return !(isLocalTradingDay(canonical, currentDate, weekendDays) && (calendarDaysBehind > 1 || localWeekday(currentDate) === 1));
   }
   return false;
+}
+
+function readSessionWindow(value: unknown): { start: number; end: number } | null {
+  const { start, end } = (value ?? {}) as { start?: unknown; end?: unknown };
+  return typeof start === "number" && typeof end === "number" && Number.isFinite(start) && Number.isFinite(end) && end > start
+    ? { start, end }
+    : null;
+}
+
+/**
+ * The regular sessions an index quote carries, read without trusting the
+ * shape it arrived in: its zone, the session its day follows and the latest
+ * ones. Null when the zone or the current session is missing.
+ */
+export function readIndexSession(value: unknown): QuoteIndexSession | null {
+  const { timeZone, current, regular } = (value ?? {}) as { timeZone?: unknown; current?: unknown; regular?: unknown };
+  const now = readSessionWindow(current);
+  if (typeof timeZone !== "string" || !timeZone.includes("/") || !now) return null;
+  return {
+    timeZone,
+    current: now,
+    // The latest two: the one a print after the close belongs to, and the one before it.
+    regular: Array.isArray(regular) ? regular.flatMap((window) => readSessionWindow(window) ?? []).slice(-2) : [],
+  };
 }
