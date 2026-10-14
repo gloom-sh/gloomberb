@@ -93,7 +93,8 @@ never goes there.
 
 Nowhere: a row count as its own line, in the footer, in a tab label, or as "showing N of M";
 the pane's own name; fixed labels; generic key hints (`j/k`, `Enter to open`,
-`r to refresh`); explanatory paragraphs; the data provider.
+`r to refresh`, a sidebar's `<`/`>`, a key that focuses a message field Enter
+already focuses); explanatory paragraphs; the data provider.
 
 **The data provider is invisible.** Never show which vendor or internal
 route served the data: no `provider:gloomberb-cloud`, `gloomberb-cloud`,
@@ -123,6 +124,10 @@ the origin of a number. The one count the kit draws is the
   clickable. Hints follow the selection: a different array when a row is
   selected, a detail is open, a tab changes. A hint with no target is omitted
   or `disabled`, never a no-op.
+- A key that only repeats what Enter already does, or that adjusts the
+  layout rather than acting on what the pane shows, is not drawn: it goes in
+  `keys`, which binds it, and in `menu` with its `accelerator`, which lists
+  it. `PaneSidebar` does this for `<` and `>`; Chat does it for Compose.
 - `r` refreshes every pane. No per-pane refresh hint (PR #589). Built-in
   panes bind it with `usePaneRefreshKey(reload, { focused })`, or with
   `handleRefreshKey` inside a table's key handler.
@@ -424,7 +429,8 @@ header, with the detail's height.
 - A list of conversations, channels or documents beside the selected one is
   `PaneSidebar` on the left (`PaneSidebarRow`, `PaneSidebarAction`,
   `ActionRow` section headers), width persisted and drag-resizable,
-  `shouldShowPaneSidebar` deciding whether the pane is big enough. Sidebar
+  `<` and `>` bound to its width and listed in the pane menu (not the
+  footer), `shouldShowPaneSidebar` deciding whether the pane is big enough. Sidebar
   when the user switches items many times a session; stack when they open
   one, read, and go back.
 - Loading: `useAsyncResource` + `useAutoRefresh` + `useUpdatedAgo`, seeded
