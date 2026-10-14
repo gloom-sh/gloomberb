@@ -67,6 +67,8 @@ export interface HistoryRow {
   partial?: true;
   /** The bar's prices were rebuilt from hourly bars where the source left the day empty. */
   filled?: true;
+  /** A future's session has closed but its settlement is not confirmed yet: the close is the last trade. */
+  unsettled?: true;
   /** What the volume counts, when the history says: a coin's is traded value in its quote currency (`USD`). */
   volumeUnit?: string;
   /** Why a coin's bar has no volume: `day in progress`, `rebuilt from hourly bars`, `not reported`. */
@@ -216,6 +218,7 @@ export function historyRows(
       flag: flags.length > 0 ? flags.join(",") : null,
       ...(point.partial ? { partial: true as const } : {}),
       ...(point.filled ? { filled: true as const } : {}),
+      ...(point.unsettled ? { unsettled: true as const } : {}),
       ...(volume ? { volumeUnit: volume.unit } : {}),
       // A coin trades every day, so a bar without volume says why.
       ...(volume && values.volume == null
@@ -255,13 +258,18 @@ function listDates(dates: readonly string[]): string {
 }
 
 /**
- * What the partial and filled bars are: "2026-10-12 is still forming
- * (partial), with no volume until the day closes", and the bars rebuilt from
- * hourly bars. Null when no bar is either.
+ * What the partial, filled and unsettled bars are: "2026-10-12 is still
+ * forming (partial), with no volume until the day closes", the bars rebuilt
+ * from hourly bars, and a future's closed session that "closes on its last
+ * trade until its settlement is confirmed (unsettled)". Null when no bar is
+ * any of them.
  */
-export function historyBarStatusNote(rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "volume">[]): string | null {
+export function historyBarStatusNote(
+  rows: readonly Pick<HistoryRow, "date" | "partial" | "filled" | "unsettled" | "volume">[],
+): string | null {
   const partial = rows.filter((row) => row.partial);
   const filled = rows.filter((row) => row.filled);
+  const unsettled = rows.filter((row) => row.unsettled);
   const notes = [
     partial.length > 0
       ? `${listDates(partial.map((row) => row.date))} ${partial.length === 1 ? "is" : "are"} still forming (partial)`
@@ -270,6 +278,10 @@ export function historyBarStatusNote(rows: readonly Pick<HistoryRow, "date" | "p
     filled.length > 0
       ? `${listDates(filled.map((row) => row.date))} ${filled.length === 1 ? "was" : "were"} rebuilt from hourly bars (filled)`
         + (filled.every((row) => row.volume == null) ? ", without volume" : "")
+      : null,
+    unsettled.length > 0
+      ? `${listDates(unsettled.map((row) => row.date))} ${unsettled.length === 1 ? "closes" : "close"} on the last trade until the`
+        + ` settlement is confirmed (unsettled)`
       : null,
   ].filter((note): note is string => note != null);
   return notes.length > 0 ? notes.join("; ") : null;

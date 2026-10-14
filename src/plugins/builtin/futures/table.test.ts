@@ -8,6 +8,7 @@ import {
   type FuturesSector,
 } from "../../../market-data/futures-board";
 import { FUTURES_SERIES } from "./series";
+import type { FuturesTermsMap } from "./use-board-terms";
 import type { FuturesColumnId, FuturesTableRow } from "./model";
 import {
   createFuturesColumns,
@@ -89,6 +90,22 @@ describe("futures price formatting", () => {
   });
 });
 
+describe("futures unit", () => {
+  test("says what a price counts, as quote does, and waits for the terms before saying nothing", () => {
+    const crude = FUTURES_CONTRACTS.find((contract) => contract.symbol === "CL=F")!;
+    const unit = (terms: FuturesTermsMap) => {
+      const column = createFuturesColumns(160).find((candidate) => candidate.id === "unit")!;
+      return renderFuturesCell({ type: "row", contract: crude }, column, new Map(), { terms }).text;
+    };
+    const spec = { unit: "USD / barrel", size: "1,000 barrels", pointValue: 1000, tick: 0.01, tickValue: 10, settlement: "physical" as const };
+    const terms = { symbol: "CL=F", root: "CL", name: "WTI Crude Oil", contract: "CLZ26", contractSymbol: "CLZ26.NYM", deliveryMonth: "2026-12",
+      spec, lastTrade: "2026-11-20", firstNotice: null, inDelivery: false, settlement: null };
+    expect(unit(new Map([["CL=F", { loading: false, terms }]]))).toBe("USD / barrel");
+    expect(unit(new Map([["CL=F", { loading: true, terms: null }]]))).toBe("…");
+    expect(unit(new Map([["CL=F", { loading: false, terms: null }]]))).toBe("—");
+  });
+});
+
 describe("futures columns", () => {
   test("honors a saved column selection and falls back when it is unusable", () => {
     const fullSet = FUTURES_COLUMN_DEFS.length;
@@ -108,16 +125,23 @@ describe("futures columns", () => {
   });
 
   test("drops the extra columns a narrow board cannot fit instead of clipping them", () => {
+    // The unit a price counts outranks the change in points, which the change in percent still gives.
     const narrow = createFuturesColumns(80).map((column) => column.id);
-    expect(narrow).not.toContain("volume");
-    expect(narrow).not.toContain("time");
+    expect(narrow).toEqual(["status", "code", "name", "price", "unit", "changePercent"]);
 
-    // Returns outrank volume, previous close and time as the board narrows.
-    const medium = createFuturesColumns(110).map((column) => column.id);
+    // Returns outrank volume and time, and those the previous close, as the board narrows.
+    const medium = createFuturesColumns(130).map((column) => column.id);
     expect(medium).toContain("returnYtd");
+    expect(medium).toContain("change");
     expect(medium).not.toContain("volume");
 
-    const wide = createFuturesColumns(150).map((column) => column.id);
+
+    // A 1280-pixel shot's board (about 158 cells) leaves the previous close and the quote time to wider ones.
+    const shot = createFuturesColumns(158);
+    expect(shot.map((column) => column.id)).not.toContain("time");
+    expect(shot.find((column) => column.id === "name")!.width).toBeGreaterThanOrEqual(46);
+
+    const wide = createFuturesColumns(210).map((column) => column.id);
     expect(wide).toContain("volume");
     expect(wide).toContain("prevClose");
     expect(wide).toContain("time");

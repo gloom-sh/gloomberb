@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { act } from "react";
+import { apiClient } from "../../../api-client";
+import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
 import { createOpenTuiTestHarness, type TestKeyEvent } from "../../../renderers/opentui/test-utils";
 import { createInitialState } from "../../../state/app/context";
 import { createDefaultConfig } from "../../../types/config";
@@ -8,6 +10,7 @@ import type { PinTickerOptions } from "../../../types/plugin";
 import type { PluginRuntimeAccess } from "../../runtime";
 import { futuresModule } from "./index";
 import { TestPaneProvider } from "../../../test-support/pane";
+import { resetFuturesBoardTerms } from "./use-board-terms";
 
 const FuturesPane = futuresModule.panes![0]!.component as (props: {
   paneId: string;
@@ -20,8 +23,27 @@ const FuturesPane = futuresModule.panes![0]!.component as (props: {
 const tui = createOpenTuiTestHarness();
 const pinned: Array<{ symbol: string; options?: PinTickerOptions }> = [];
 
+/** Contract terms as the server sends them on 2026-10-14: CL=F on December while November trades until the 20th. */
+const contractTerms: Record<string, FuturesContractTermsPayload> = {
+  "CL=F": { symbol: "CL=F", root: "CL", name: "WTI Crude Oil", contract: "CLZ26", contractSymbol: "CLZ26.NYM", deliveryMonth: "2026-12",
+    spec: { unit: "USD / barrel", size: "1,000 barrels", pointValue: 1000, tick: 0.01, tickValue: 10, settlement: "physical" },
+    lastTrade: "2026-11-20", firstNotice: null, inDelivery: false, settlement: { price: 93.17, date: "2026-10-13" },
+    nearest: { contract: "CLX26", contractSymbol: "CLX26.NYM", deliveryMonth: "2026-11", lastTrade: "2026-10-20" } },
+};
+let termsSpy: { mockRestore(): void } | null = null;
+
+beforeEach(() => {
+  termsSpy = spyOn(apiClient, "getCloudFuturesContract").mockImplementation(async (symbol: string) => {
+    const terms = contractTerms[symbol];
+    if (!terms) throw new Error("Not a futures symbol with known contract terms");
+    return terms;
+  });
+});
+
 afterEach(() => {
   pinned.length = 0;
+  termsSpy?.mockRestore();
+  resetFuturesBoardTerms();
 });
 
 function makeRuntime(quoteError?: string): PluginRuntimeAccess {
@@ -31,6 +53,8 @@ function makeRuntime(quoteError?: string): PluginRuntimeAccess {
       targets.map((target) => ({ target: { symbol: target.symbol, exchange: "" }, quote: null, error: new Error(quoteError) })) as QuoteBatchResult[]
     ),
   } : {
+    // Returns columns on a wide board read each row's history; none here.
+    getPriceHistory: async () => [],
     getQuote: async (symbol: string) => ({
       symbol,
       price: 100,
@@ -88,11 +112,11 @@ function makeRuntime(quoteError?: string): PluginRuntimeAccess {
   } as unknown as PluginRuntimeAccess;
 }
 
-function Harness({ quoteError }: { quoteError?: string }) {
+function Harness({ quoteError, width = 80 }: { quoteError?: string; width?: number }) {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-futures-pane-test"));
   return (
     <TestPaneProvider state={state} paneId="futures" runtime={makeRuntime(quoteError)} pluginId="market-overview">
-      <FuturesPane paneId="futures" paneType="futures" focused width={80} height={24} />
+      <FuturesPane paneId="futures" paneType="futures" focused width={width} height={24} />
     </TestPaneProvider>
   );
 }
@@ -203,6 +227,29 @@ describe("FuturesPane", () => {
     expect(frame).toContain("Quotes are offline");
     expect(frame).toContain("Retry");
     expect(frame).not.toContain("E-Mini S&P 500");
+  });
+
+  test("a row names the month its symbol rolled past and the unit its price counts, as quote does", async () => {
+    await tui.render(<Harness width={190} />, { width: 190, height: 24 });
+    await renderSettled();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      await tui.setup().renderOnce();
+    });
+    await renderSettled();
+    const crude = tui.frame().split("\n").find((line) => line.includes("WTI Crude Oil"));
+    expect(crude).toContain("WTI Crude Oil Dec 26, most active (Nov expires 20 Oct)");
+    expect(crude).toContain("USD / barrel");
+    // A root the server has no terms for keeps its catalog name, and its catalog unit where there is one.
+    const ttf = tui.frame().split("\n").find((line) => line.includes("Dutch TTF Gas"));
+    expect(ttf).toContain("EUR / MWh");
+    expect(ttf).not.toContain("most active");
+    // A narrow board keeps the month the quote prices and the unit, and drops the note it has no room for.
+    await tui.render(<Harness />, { width: 80, height: 24 });
+    await renderSettled();
+    const narrow = tui.frame().split("\n").find((line) => line.includes("WTI Crude Oil"));
+    expect(narrow).toContain("WTI Crude Oil Dec 26");
+    expect(narrow).toContain("USD / barrel");
   });
 
   test("search narrows the board to matching contracts", async () => {

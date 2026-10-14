@@ -7,7 +7,9 @@ import {
   buildFuturesRows,
   DEFAULT_FUTURES_SORT,
   effectiveCollapsedSectors,
+  futuresContractHeadline,
   futuresContractName,
+  futuresUnitLabel,
   type FuturesColumnId,
   type FuturesTableRow,
 } from "./model";
@@ -48,6 +50,34 @@ describe("buildFuturesRows search", () => {
     expect(name("ZW=F", "Chicago SRW Wheat Futures,Dec-2")).toBe("Chicago SRW Wheat");
     expect(name("6C=F", "Canadian Dollar Futures,Dec-202")).toBe("Canadian Dollar");
     expect(futuresContractName(contract("CL=F"), { symbol: "OTHER", name: "Crude Oil Nov 26" } as Quote)).toBe("WTI Crude Oil");
+  });
+
+  test("names the nearer month and its expiry while the alias quotes the most active one", () => {
+    const crude = [...contractsBySector.values()].flat().find((row) => row.symbol === "CL=F")!;
+    const december = { symbol: "CL=F", name: "WTI Crude Oil Dec 26" } as Quote;
+    const nearest = { contract: "CLX26", contractSymbol: "CLX26.NYM", deliveryMonth: "2026-11", lastTrade: "2026-10-20" };
+    const terms = { deliveryMonth: "2026-12", nearest };
+    expect(futuresContractHeadline(crude, december, terms)).toBe("WTI Crude Oil Dec 26, most active (Nov expires 20 Oct)");
+    // The month leads, so a column clipping the tail keeps it; one too narrow for "most active" shows the plain name.
+    expect(futuresContractHeadline(crude, december, terms, 33)).toBe("WTI Crude Oil Dec 26, most active (Nov expires 20 Oct)");
+    expect(futuresContractHeadline(crude, december, terms, 32)).toBe("WTI Crude Oil Dec 26");
+    // A quote whose name carries no month is placed by its terms.
+    expect(futuresContractHeadline(crude, { symbol: "CL=F" } as Quote, terms)).toBe("WTI Crude Oil Dec 26, most active (Nov expires 20 Oct)");
+    // Once the alias quotes the nearest month itself, or before the terms load, it is the plain name.
+    expect(futuresContractHeadline(crude, december, { deliveryMonth: "2026-12", nearest: null })).toBe("WTI Crude Oil Dec 26");
+    expect(futuresContractHeadline(crude, december, null)).toBe("WTI Crude Oil Dec 26");
+    // Terms read before a roll the quote already took never mix months.
+    expect(futuresContractHeadline(crude, { ...december, name: "WTI Crude Oil Jan 27" }, terms)).toBe("WTI Crude Oil Jan 27");
+    expect(futuresContractHeadline(crude, december, { deliveryMonth: "2026-12", nearest: { ...nearest, lastTrade: null } }))
+      .toBe("WTI Crude Oil Dec 26, most active (Nov still trading)");
+  });
+
+  test("a row's unit is the exchange's from its terms, else the catalog's", () => {
+    const row = (symbol: string) => [...contractsBySector.values()].flat().find((contract) => contract.symbol === symbol)!;
+    const spec = { unit: "USD / barrel", size: "1,000 barrels", pointValue: 1000, tick: 0.01, tickValue: 10, settlement: "physical" as const };
+    expect(futuresUnitLabel(row("CL=F"), { spec })).toBe("USD / barrel");
+    expect(futuresUnitLabel(row("TTF=F"), { spec: null })).toBe("EUR / MWh");
+    expect(futuresUnitLabel(row("CL=F"), null)).toBeNull();
   });
 
   test("matches contract code, name, and listed symbol case-insensitively", () => {

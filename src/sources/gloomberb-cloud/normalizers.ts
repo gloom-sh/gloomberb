@@ -222,6 +222,7 @@ export function mapPricePoint(
     volume: point.volume,
     ...(point.partial === true ? { partial: true } : {}),
     ...(point.filled === true ? { filled: true } : {}),
+    ...(point.unsettled === true ? { unsettled: true } : {}),
   };
 }
 

@@ -886,16 +886,18 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     const flagColumn: CliResultColumn = {
       key: "flag", header: "Flag", format: (value) => typeof value === "string" ? cliStyles.warning(value) : "",
     };
-    // Text also marks a bar still forming or rebuilt from hourly bars there; exports keep them as their own fields.
+    // Text also marks a bar still forming, rebuilt from hourly bars or closing before its settlement; exports keep them as fields.
     const flagTextColumn: CliResultColumn = {
       ...flagColumn,
       format: (value, row) => [
         typeof value === "string" ? cliStyles.warning(value) : "",
         row.partial ? cliStyles.muted("partial") : "",
         row.filled ? cliStyles.muted("filled") : "",
+        row.unsettled ? cliStyles.muted("unsettled") : "",
       ].filter(Boolean).join(" "),
     };
     const marked = data.some((row) => row.partial || row.filled);
+    const unsettled = data.some((row) => row.unsettled);
     ctx.printResult({
       data,
       metadata: {
@@ -924,6 +926,7 @@ async function runHistory(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
         ...priceColumns,
         flagColumn,
         ...marked ? [{ key: "partial", header: "Partial" }, { key: "filled", header: "Filled" }] : [],
+        ...unsettled ? [{ key: "unsettled", header: "Unsettled" }] : [],
         ...volume ? [{ key: "volumeUnit", header: "Volume unit" }, { key: "volumeNote", header: "Volume note" }] : [],
       ],
       // Every exported row says what it is a bar of, the currency a price is in and its bar size, so it survives head and concatenation.

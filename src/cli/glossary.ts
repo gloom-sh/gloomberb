@@ -287,8 +287,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "EU Allowance: the right to emit one tonne of CO2 under the EU Emissions Trading System, priced in euros per tonne.",
   },
   {
-    term: "Front month", aliases: ["front-month", "front contract", "continuous contract", "front-month contract"], functions: ["FUT", "CTM"],
-    definition: "The nearest contract still trading. FUT quotes each root's front month by its continuous symbol (TTF=F), which rolls to the next contract as one expires.",
+    term: "Front month", aliases: ["front-month", "front contract", "continuous contract", "front-month contract", "most active", "most active contract"],
+    functions: ["FUT", "CTM"], shown: ["most active"],
+    definition: "The nearest contract still trading, which is the one about to expire. Rolls follow volume: a continuous symbol (CL=F), "
+      + "and FUT with it, moves to the next contract when that one becomes the most active (it holds more open interest, or trades more "
+      + "where none is reported), usually days before expiry, and until then FUT names the nearer contract and its expiry.",
   },
   // Perpetual futures (PERP).
   {

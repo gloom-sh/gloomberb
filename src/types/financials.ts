@@ -791,6 +791,8 @@ export interface PricePoint {
   partial?: boolean;
   /** The bar's prices were rebuilt from shorter bars where the source left it empty or too coarse. */
   filled?: boolean;
+  /** A future's session that has closed but whose settlement is not confirmed yet: its close is the last trade. */
+  unsettled?: boolean;
 }
 
 export interface StatementHistoryAttempt {

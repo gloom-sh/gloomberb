@@ -1,8 +1,10 @@
+import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
 import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "../../../market-data/futures-board";
 import type { FuturesReturnHorizon } from "./returns";
+import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
 
 export type FuturesTableRow =
@@ -14,6 +16,7 @@ export type FuturesColumnId =
   | "code"
   | "name"
   | "price"
+  | "unit"
   | "change"
   | "changePercent"
   | "return1w"
@@ -67,6 +70,59 @@ export function quotedContractMonth(
   return { year, month };
 }
 
+/** "2026-10-20" as "20 Oct". */
+function dayMonth(date: string): string {
+  return `${Number(date.slice(8, 10))} ${MONTH_NAMES[Number(date.slice(5, 7)) - 1]}`;
+}
+
+/**
+ * The row's headline: the contract its quote prices, as futuresContractName
+ * words it. While the continuous symbol has rolled to the most active month
+ * and a nearer one still trades, the headline says so, with the nearer one's
+ * last trade: "WTI Crude Oil Dec 26, most active (Nov expires 20 Oct)". The
+ * terms only add that note when they name the month the quote prices, so a
+ * roll between the two loads never mixes months, and place the month when the
+ * quote's name carries none. A name column too narrow for the note keeps the
+ * plain name.
+ */
+export function futuresContractHeadline(
+  contract: FuturesContract,
+  quote?: Quote | null,
+  terms?: Pick<FuturesContractTermsPayload, "deliveryMonth" | "nearest"> | null,
+  width = Number.POSITIVE_INFINITY,
+): string {
+  const quoted = quotedContractMonth(contract, quote);
+  const termsMonth = terms?.deliveryMonth && /^\d{4}-\d{2}$/.test(terms.deliveryMonth)
+    ? { year: Number(terms.deliveryMonth.slice(0, 4)), month: Number(terms.deliveryMonth.slice(5, 7)) - 1 }
+    : null;
+  const nearest = terms?.nearest;
+  const agree = quoted == null || termsMonth == null || (quoted.year === termsMonth.year && quoted.month === termsMonth.month);
+  // A quote whose name carries no month (or a cut one) is placed by its terms.
+  const month = agree ? quoted ?? termsMonth : quoted;
+  if (!month) return contract.name;
+  const active = `${MONTH_NAMES[month.month]} ${String(month.year).slice(-2)}`;
+  const plain = `${contract.name} ${active}`;
+  if (!nearest || !agree || nearest.deliveryMonth >= `${month.year}-${String(month.month + 1).padStart(2, "0")}`) return plain;
+  const nearer = MONTH_NAMES[Number(nearest.deliveryMonth.slice(5, 7)) - 1];
+  const expiry = nearest.lastTrade ? `expires ${dayMonth(nearest.lastTrade)}` : "still trading";
+  // The month the quote prices leads, so a column that clips the tail still shows it; one too narrow for
+  // "most active" shows the plain name.
+  const note = `, most active (${nearer} ${expiry})`;
+  return width >= plain.length + MOST_ACTIVE_MIN.length ? `${plain}${note}` : plain;
+}
+
+/** The least of the note a name column must fit to carry it. */
+const MOST_ACTIVE_MIN = ", most active";
+
+/**
+ * What a row's price counts, as `quote` says it: the exchange's unit from the
+ * contract terms ("USD / barrel"), the catalog's where the server has none
+ * ("EUR / MWh"), else null.
+ */
+export function futuresUnitLabel(contract: FuturesContract, terms?: Pick<FuturesContractTermsPayload, "spec"> | null): string | null {
+  return terms?.spec?.unit ?? contract.unit ?? null;
+}
+
 function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: Quote | null): boolean {
   const normalized = query.trim().toLowerCase();
   if (!normalized) return true;
@@ -89,9 +145,12 @@ function getSortValue(
   contract: FuturesContract,
   quotes: BoardQuoteMap,
   returns?: FrontReturnsMap,
+  terms?: FuturesTermsMap,
 ): string | number | null {
   const quote = quotes.get(contract.symbol)?.quote;
   switch (columnId) {
+    case "unit":
+      return futuresUnitLabel(contract, terms?.get(contract.symbol)?.terms);
     case "status":
       return quote?.marketState === "REGULAR" ? 0 : 1;
     case "code":
@@ -122,12 +181,13 @@ function sortContracts(
   sortPreference: FuturesSortPreference,
   quotes: BoardQuoteMap,
   returns?: FrontReturnsMap,
+  terms?: FuturesTermsMap,
 ): FuturesContract[] {
   const columnId = sortPreference.columnId;
   if (!columnId) return contracts;
   return [...contracts].sort((left, right) => compareSortValues(
-    getSortValue(columnId, left, quotes, returns),
-    getSortValue(columnId, right, quotes, returns),
+    getSortValue(columnId, left, quotes, returns, terms),
+    getSortValue(columnId, right, quotes, returns, terms),
     sortPreference.direction,
   ));
 }
@@ -139,6 +199,8 @@ export interface BuildFuturesRowsOptions {
   collapsed?: ReadonlySet<FuturesSector>;
   /** Front-contract returns, for sorting on a returns column. */
   returns?: FrontReturnsMap;
+  /** Each row's contract terms, for sorting on the unit. */
+  terms?: FuturesTermsMap;
 }
 
 const NO_COLLAPSED_SECTORS: ReadonlySet<FuturesSector> = new Set();
@@ -166,7 +228,7 @@ export function buildFuturesRows(
   const query = options?.query ?? "";
   const collapsed = effectiveCollapsedSectors(options?.collapsed, query);
   for (const sector of FUTURES_SECTOR_ORDER) {
-    const contracts = sortContracts(contractsBySector.get(sector) ?? [], sortPreference, quotes, options?.returns)
+    const contracts = sortContracts(contractsBySector.get(sector) ?? [], sortPreference, quotes, options?.returns, options?.terms)
       .filter((contract) => matchesFuturesSearch(contract, query, quotes.get(contract.symbol)?.quote));
     if (contracts.length === 0) continue;
     rows.push({ type: "header", sector });

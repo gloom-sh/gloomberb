@@ -1,5 +1,6 @@
 import { afterEach, expect, setSystemTime, test } from "bun:test";
 import { apiClient, type CloudPricePointPayload } from "../../api-client";
+import { historyBarStatusNote, historyRows } from "../../cli/history-rows";
 import { AssetDataRouter } from "../provider-router";
 import { GloomberbCloudProvider } from "./index";
 
@@ -48,4 +49,20 @@ test("a coin's partial and filled days keep their flags through the router", asy
     ["2026-10-11", null, false, true],
     ["2026-10-12", null, true, false],
   ]);
+});
+
+test("a future's unsettled and trading sessions keep their flags through the router, and history says what they are", async () => {
+  // CL=F read at 20:40 New York on 2026-10-13: 10-13 has closed on its last trade, 10-14 trades from the evening open.
+  setSystemTime(Date.parse("2026-10-14T00:40:00Z"));
+  apiClient.getCloudHistory = async () => ({ status: "success", data: [
+    { date: "2026-10-12T00:00:00.000Z", open: 90.98, high: 93.43, low: 88.9, close: 92.86, volume: 165128 },
+    { date: "2026-10-13T00:00:00.000Z", open: 92.4, high: 94.09, low: 90.85, close: 93.2, volume: 191509, unsettled: true },
+    { date: "2026-10-14T00:00:00.000Z", open: 93.73, high: 93.91, low: 93.52, close: 93.8, volume: 1820, partial: true },
+  ] });
+  const { points, resolution } = await new AssetDataRouter(new GloomberbCloudProvider()).getPriceHistoryWithMetadata("CL=F", "", "1M");
+  expect(points.map((point) => [new Date(point.date).toISOString().slice(0, 10), point.unsettled ?? false, point.partial ?? false])).toEqual([
+    ["2026-10-12", false, false], ["2026-10-13", true, false], ["2026-10-14", false, true],
+  ]);
+  expect(historyBarStatusNote(historyRows(points, resolution, "USD")))
+    .toBe("2026-10-14 is still forming (partial); 2026-10-13 closes on the last trade until the settlement is confirmed (unsettled)");
 });

@@ -30,6 +30,22 @@ export interface FuturesContractTermsPayload {
   inDelivery: boolean
   /** The newest exchange settlement confirmed for the contract, with its session. */
   settlement: { price: number; date: string } | null
+  /**
+   * For a continuous symbol (CL=F) or a front generic: the nearest contract
+   * still trading when the symbol has rolled past it to the most active one,
+   * with its last trade; null when it prices the nearest itself. Absent from
+   * servers that do not send it.
+   */
+  nearest?: FuturesNearestContract | null
+}
+
+/** The nearest contract still trading, which a continuous symbol has rolled past (CLX26 under CL=F on Dec). */
+interface FuturesNearestContract {
+  contract: string
+  contractSymbol: string
+  /** YYYY-MM */
+  deliveryMonth: string
+  lastTrade: string | null
 }
 
 /** Gloom Cloud futures prices retain provider denomination and explicit quote units. */

@@ -5,7 +5,8 @@ import { TextAttributes } from "../../../ui";
 import { formatCompact, formatNumber, formatPercentRaw } from "../../../utils/format";
 import { isBoardRowLoading, renderQuoteBoardCell, type BoardQuoteMap } from "../shared/use-quote-board";
 import { tickDecimals, type FuturesContract } from "../../../market-data/futures-board";
-import { FUTURES_RETURN_COLUMNS, futuresContractName, type FuturesColumnId, type FuturesTableRow } from "./model";
+import { FUTURES_RETURN_COLUMNS, futuresContractHeadline, futuresUnitLabel, type FuturesColumnId, type FuturesTableRow } from "./model";
+import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
 
 export type FuturesColumn = DataTableColumn & { id: FuturesColumnId };
@@ -21,6 +22,7 @@ export const FUTURES_COLUMN_DEFS: readonly FuturesColumnDef[] = [
   { id: "code", label: "Symbol", description: "Exchange contract code." },
   { id: "name", label: "Contract", description: "Contract name." },
   { id: "price", label: "Last", description: "Last traded price." },
+  { id: "unit", label: "Unit", description: "What a price counts, as the exchange quotes it (USD / barrel)." },
   { id: "change", label: "Change", description: "Change on the session." },
   { id: "changePercent", label: "Change %", description: "Percent change on the session." },
   { id: "return1w", label: "1W", description: "Front contract's return over one week." },
@@ -35,22 +37,32 @@ const DEFAULT_FUTURES_COLUMN_IDS = FUTURES_COLUMN_DEFS.map((column) => column.id
 
 /**
  * Extra columns only earn their width once the board is wide enough to keep a
- * readable contract name; a narrow pane drops them instead of clipping.
+ * readable contract name (24 cells or more); a narrow pane drops them instead
+ * of clipping. The unit a price counts outranks its session change in points,
+ * which the change in percent still gives. The previous close (the last price
+ * less the change) goes first, then each row's quote time (the status line
+ * dates the newest), which leaves a 1280-pixel shot room for "WTI Crude Oil
+ * Dec 26, most active (Nov expires 20 Oct)".
  */
 const COLUMN_MIN_PANE_WIDTH: Partial<Record<FuturesColumnId, number>> = {
-  return1w: 84,
-  return1m: 92,
-  returnYtd: 106,
-  volume: 116,
-  prevClose: 128,
-  time: 140,
+  change: 100,
+  return1w: 108,
+  return1m: 117,
+  returnYtd: 126,
+  volume: 136,
+  time: 170,
+  prevClose: 200,
 };
+/** From this width the unit column fits lumber's "USD / 1,000 board ft" whole. */
+const WIDE_UNIT_MIN_WIDTH = 200;
 const SESSION_TEXT_MIN_WIDTH = 100;
 
 const COLUMN_WIDTHS: Record<Exclude<FuturesColumnId, "name">, number> = {
   status: 1,
   code: 5,
   price: 12,
+  // "US cents / bushel"; lumber's longer unit fits from WIDE_UNIT_MIN_WIDTH.
+  unit: 17,
   change: 10,
   changePercent: 9,
   return1w: 8,
@@ -70,6 +82,7 @@ export function usesSessionText(width: number): boolean {
 
 function columnWidth(id: Exclude<FuturesColumnId, "name">, paneWidth: number): number {
   if (id === "status") return usesSessionText(paneWidth) ? 9 : 1;
+  if (id === "unit" && paneWidth >= WIDE_UNIT_MIN_WIDTH) return 20;
   return COLUMN_WIDTHS[id];
 }
 
@@ -95,7 +108,7 @@ export function createFuturesColumns(width: number, visibleIds?: readonly string
       // TIME is left-aligned like the text columns: the shared table trims a few
       // cells off the right edge of a floating pane, and a right-aligned value
       // there would lose digits.
-      align: id === "code" || id === "status" || id === "time" ? "left" : "right",
+      align: id === "code" || id === "status" || id === "unit" || id === "time" ? "left" : "right",
     };
   });
 }
@@ -105,6 +118,7 @@ const FUTURES_HEADER_LABELS: Record<FuturesColumnId, string> = {
   code: "SYM",
   name: "CONTRACT",
   price: "LAST",
+  unit: "UNIT",
   change: "CHG",
   changePercent: "CHG%",
   return1w: "1W",
@@ -200,7 +214,7 @@ export function renderFuturesCell(
   row: FuturesTableRow,
   column: FuturesColumn,
   quotes: BoardQuoteMap,
-  options?: { sessionText?: boolean; returns?: FrontReturnsMap },
+  options?: { sessionText?: boolean; returns?: FrontReturnsMap; terms?: FuturesTermsMap },
 ): DataTableCell {
   if (row.type === "header") return { text: "" };
 
@@ -216,7 +230,13 @@ export function renderFuturesCell(
         attributes: TextAttributes.BOLD,
       };
     case "name":
-      return { text: futuresContractName(contract, quote) };
+      return { text: futuresContractHeadline(contract, quote, options?.terms?.get(contract.symbol)?.terms, column.width) };
+    case "unit": {
+      const terms = options?.terms?.get(contract.symbol);
+      const unit = futuresUnitLabel(contract, terms?.terms);
+      if (unit) return { text: unit, color: colors.textDim };
+      return terms?.loading ? { text: "…", color: colors.textDim } : { text: "—", color: colors.textDim };
+    }
     case "volume":
       if (isBoardRowLoading(state)) return { text: "…", color: colors.textDim };
       if (!quote || quote.volume == null || !Number.isFinite(quote.volume)) {
