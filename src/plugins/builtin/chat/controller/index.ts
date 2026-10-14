@@ -56,6 +56,7 @@ import {
   ensureChatChannelConnection,
   getOpenConnectionChannelIds,
   getSafetyRefreshChannelIds as getChannelIdsForSafetyRefresh,
+  markConnectedChannelsForBackfill,
 } from "./connections";
 import {
   handleChatNotification as handleChatNotificationEvent,
@@ -163,6 +164,7 @@ export class ChatController {
     emit: () => this.emit(),
     getSafetyRefreshChannelIds: () => getChannelIdsForSafetyRefresh(this.storage.channelStates),
     runSafetyRefresh: (channelId) => this.messageLoading.runMessagesRefresh(channelId, { showLoading: false }),
+    resyncChannels: () => this.resyncConnectedChannels(),
   });
 
   attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState): void {
@@ -787,6 +789,17 @@ export class ChatController {
       session: this.session,
       stopRealtime: () => this.realtime.stopAll(),
     });
+  }
+
+  /** Each channel read live reads its latest page in full, after any read already out. */
+  private resyncConnectedChannels(): void {
+    for (const channelId of markConnectedChannelsForBackfill(this.storage.channelStates)) {
+      const inFlight = this.ensureChannelState(channelId).refreshMessagesPromise ?? Promise.resolve();
+      void inFlight
+        .catch(() => {})
+        .then(() => this.messageLoading.runMessagesRefresh(channelId, { showLoading: false }))
+        .catch(() => {});
+    }
   }
 
   private ensureOpenChannelConnections(): void {

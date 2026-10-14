@@ -47,6 +47,7 @@ const originalUpdateChatChannelState = apiClient.updateChatChannelState.bind(api
 const originalMarkChatNotificationsDelivered = apiClient.markChatNotificationsDelivered.bind(apiClient);
 const originalSubscribeChatNotifications = apiClient.subscribeChatNotifications.bind(apiClient);
 const originalSubscribeChatPresence = apiClient.subscribeChatPresence.bind(apiClient);
+const originalSubscribeSocketConnection = apiClient.subscribeSocketConnection;
 const originalEditMessage = apiClient.editMessage.bind(apiClient);
 const originalSendMessage = apiClient.sendMessage.bind(apiClient);
 
@@ -138,6 +139,7 @@ afterEach(() => {
   apiClient.markChatNotificationsDelivered = originalMarkChatNotificationsDelivered;
   apiClient.subscribeChatNotifications = originalSubscribeChatNotifications;
   apiClient.subscribeChatPresence = originalSubscribeChatPresence;
+  apiClient.subscribeSocketConnection = originalSubscribeSocketConnection;
   apiClient.editMessage = originalEditMessage;
   apiClient.sendMessage = originalSendMessage;
 });
@@ -1084,6 +1086,106 @@ describe("ChatController", () => {
 
     expect(calls).toEqual([undefined, undefined, "m1"]);
     expect(controller.getSnapshot().messages[0]?.reactions?.[0]?.me).toBe(true);
+  });
+
+  describe("reactions made while a channel was not read live", () => {
+    let thumbs = 1;
+    let calls: Array<string | undefined> = [];
+    const page = (channelId: string) => [chatMessage({
+      id: "m1",
+      channelId,
+      content: "a generic fixture message",
+      createdAt: "2026-03-28T00:00:00.000Z",
+      user: { id: "u2", username: "bob", displayName: "Bob" },
+      reactions: [{ emoji: "👍", count: thumbs, me: false, users: [] }],
+    })];
+    const thumbsHeld = (controller: ChatController, channelId: string) => (
+      controller.getSnapshot(channelId).messages[0]?.reactions?.[0]?.count
+    );
+
+    beforeEach(() => {
+      thumbs = 1;
+      calls = [];
+      apiClient.connectChannel = () => ({
+        send: async () => {
+          throw new Error("not implemented");
+        },
+        close: () => {},
+      });
+    });
+
+    test("a channel read live again reads its latest page in full", async () => {
+      const persistence = new MemoryPersistence();
+      const controller = createController();
+      apiClient.getMessages = async (channelId, opts) => {
+        // The default channel stays read live throughout.
+        if (channelId === "options") calls.push(opts?.after);
+        return opts?.after ? [] : page(channelId);
+      };
+      persistSession(persistence, { emailVerified: true });
+      controller.attachPersistence(persistence);
+
+      const detach = controller.attachChannelView("options");
+      controller.ensureConnection("options");
+      await controller.refreshChannelMessages("options");
+      detach();
+      (controller as any).ensureOpenChannelConnections();
+
+      // Reacted to while another channel was open: newer messages alone miss it.
+      thumbs = 2;
+      await controller.refreshChannelMessages("options");
+      expect(thumbsHeld(controller, "options")).toBe(1);
+
+      controller.attachChannelView("options");
+      controller.ensureConnection("options");
+      await controller.refreshChannelMessages("options");
+
+      expect(calls).toEqual([undefined, "m1", undefined]);
+      expect(thumbsHeld(controller, "options")).toBe(2);
+    });
+
+    test("after the socket comes back, a channel read live reads its latest page in full, after a catch-up already out", async () => {
+      const persistence = new MemoryPersistence();
+      const controller = createController();
+      const catchUp = Promise.withResolvers<ChatMessage[]>();
+      let holdCatchUp = false;
+      let socketEvent: ((event: "ready" | "closed") => void) | null = null;
+      apiClient.subscribeSocketConnection = (listener) => {
+        socketEvent = listener;
+        return () => {
+          socketEvent = null;
+        };
+      };
+      apiClient.getMessages = async (channelId, opts) => {
+        calls.push(opts?.after);
+        if (opts?.after) return holdCatchUp ? catchUp.promise : [];
+        return page(channelId);
+      };
+      persistSession(persistence, { emailVerified: true });
+      controller.attachPersistence(persistence);
+      (controller as any).realtime.ensureRealtimeSubscriptions();
+      controller.ensureConnection();
+      await controller.refreshMessages();
+
+      // The first hello is not a comeback.
+      socketEvent!("ready");
+      await flushMicrotasks();
+      expect(calls).toEqual([undefined]);
+
+      holdCatchUp = true;
+      const catchingUp = controller.refreshMessages();
+      socketEvent!("closed");
+      thumbs = 2;
+      socketEvent!("ready");
+      catchUp.resolve([]);
+      await catchingUp;
+      for (let attempt = 0; attempt < 20 && thumbsHeld(controller, "everyone") !== 2; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+
+      expect(calls).toEqual([undefined, "m1", undefined]);
+      expect(thumbsHeld(controller, "everyone")).toBe(2);
+    });
   });
 
   test("shows a pending message immediately and replaces it when the send succeeds", async () => {

@@ -16,12 +16,15 @@ interface ChatControllerRealtimeOptions {
   emit: () => void;
   getSafetyRefreshChannelIds: () => string[];
   runSafetyRefresh: (channelId: string) => Promise<void>;
+  /** The socket came back after a drop: the channels read live read their latest page in full. */
+  resyncChannels: () => void;
 }
 
 export class ChatControllerRealtime {
   private verificationPollTimer: ReturnType<typeof setInterval> | null = null;
   private sessionRetryTimer: ReturnType<typeof setTimeout> | null = null;
   private safetyRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  private socketConnectionUnsubscribe: (() => void) | null = null;
   private chatNotificationUnsubscribe: (() => void) | null = null;
   private chatPresenceUnsubscribe: (() => void) | null = null;
   private chatReactionsUnsubscribe: (() => void) | null = null;
@@ -78,9 +81,26 @@ export class ChatControllerRealtime {
         this.options.emit();
       });
     }
+    if (!this.socketConnectionUnsubscribe) {
+      // Frames sent while the socket was down are gone, and the catch-up
+      // only reads newer messages, so a reaction, edit or removal made
+      // meanwhile is read with a full page once it is back.
+      let dropped = false;
+      this.socketConnectionUnsubscribe = apiClient.subscribeSocketConnection((event) => {
+        if (event === "closed") {
+          dropped = true;
+          return;
+        }
+        if (!dropped) return;
+        dropped = false;
+        this.options.resyncChannels();
+      });
+    }
   }
 
   stopRealtimeSubscriptions(): void {
+    this.socketConnectionUnsubscribe?.();
+    this.socketConnectionUnsubscribe = null;
     this.chatNotificationUnsubscribe?.();
     this.chatNotificationUnsubscribe = null;
     this.chatPresenceUnsubscribe?.();

@@ -21,6 +21,21 @@ export function getSafetyRefreshChannelIds(channelStates: Iterable<[string, Chan
   return active.length > 0 ? active : [DEFAULT_CHAT_CHANNEL_ID];
 }
 
+/**
+ * The channels read live, each marked to read its latest page in full on its
+ * next refresh: after the socket was down, what changed on messages already
+ * held (reactions, edits, removals) does not come with newer messages.
+ */
+export function markConnectedChannelsForBackfill(channelStates: Iterable<[string, ChannelRuntimeState]>): string[] {
+  const channelIds: string[] = [];
+  for (const [channelId, channel] of channelStates) {
+    if (!channel.wsConnected) continue;
+    channel.backfilled = false;
+    channelIds.push(channelId);
+  }
+  return channelIds;
+}
+
 export function getOpenConnectionChannelIds(channelStates: Iterable<[string, ChannelRuntimeState]>): Set<string> {
   const channelIds = new Set<string>([DEFAULT_CHAT_CHANNEL_ID]);
   for (const [channelId, channel] of channelStates) {
@@ -76,6 +91,9 @@ export function ensureChatChannelConnection({
   if (channel.wsConnected) return;
   channel.wsConnected = true;
 
+  // Reactions, edits and removals on messages already held while the channel
+  // was not read live come only with a full page, not with newer messages.
+  channel.backfilled = false;
   void refreshMessages().catch(() => {});
 
   channel.wsConnection = connectChannel(
