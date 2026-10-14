@@ -12,7 +12,7 @@ export const paneSchemas = {
         key: "peers",
         type: "boolean",
         settingKey: "autoPeers",
-        description: "With one symbol, add 4 to 6 competitors: the covered equities in its industry closest in market cap (an education company filed under software is compared with education companies), or a curated list when too few are covered. The header names the method",
+        description: "With one symbol, add 4 to 6 competitors: the covered equities in its industry closest in market cap (an education company filed under software is compared with education companies, and an online learning company with its curated core first), or a curated list when too few are covered. The header names the method",
         example: "--peers",
       },
       {

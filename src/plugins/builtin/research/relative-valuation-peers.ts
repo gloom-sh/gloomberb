@@ -13,10 +13,11 @@ const FEWEST_PEERS = 4;
 
 /**
  * How the peers were picked: the subject's own industry, the industry its
- * business belongs to when its profile files it under another, or a curated
- * list when too few covered equities share either.
+ * business belongs to when its profile files it under another, a curated
+ * group's core first (the subject is one of that core) and its industry
+ * after, or a curated list when too few covered equities can be read.
  */
-type PeerMethod = "industry" | "related-industry" | "curated";
+type PeerMethod = "industry" | "related-industry" | "curated-core" | "curated";
 
 /** The peers `--peers` added to one symbol, and how; the pane and the report both read it. */
 export interface PeerSelection {
@@ -27,26 +28,33 @@ export interface PeerSelection {
   industry: string | null;
   /** The subject's own industry, as its profile names it. */
   subjectIndustry: string | null;
+  /** The peers taken from a curated group's core, first in `peers`; the rest came from `industry`. */
+  curatedPeers?: string[];
+  /** The curated group, as the header and the note name it (`online learning`). */
+  curatedGroup?: string;
   /** How the peers were chosen, read after "Peers chosen automatically: ". */
   basis: string;
 }
 
 /**
  * An industry whose companies are often filed under another: a subject
- * filed under one of `filedUnder` whose profile opens on this business, or
- * one of `members`, takes its peers from `industry` instead.
+ * filed under one of `filedUnder` whose profile opens on this business takes
+ * its peers from `industry` instead. Its curated `core` are the companies
+ * that compete head on: one of them is compared with the rest of the core
+ * first and the industry after, and they join every other subject's
+ * candidates.
  */
 interface RelatedIndustry {
-  /** The business, as the header and the note name it. */
+  /** The business, as the note names it (`its education business`). */
   label: string;
   industry: string;
   filedUnder: readonly string[];
   /** What the first sentence of the profile says when the company is in this business. */
   business: RegExp;
-  /** Companies in this business that are filed under one of `filedUnder`; they join its peers. */
-  members: readonly string[];
-  /** The peers used when the screener cannot answer, or covers fewer than four. */
-  curated: readonly string[];
+  /** The curated group the core forms, as the header and the note name it. */
+  coreLabel: string;
+  /** The curated core; also the peers used when the screener cannot answer, or covers fewer than four. */
+  core: readonly string[];
 }
 
 /** Kept small on purpose: an entry earns its place when an industry label hides who the competitors are. */
@@ -55,8 +63,8 @@ const RELATED_INDUSTRIES: readonly RelatedIndustry[] = [{
   industry: "Education & Training Services",
   filedUnder: ["Software - Application", "Software - Infrastructure", "Internet Content & Information"],
   business: /\b(?:education|educational|e-?learning|online learning|language learning|learning platform|tutoring)\b/i,
-  members: ["DUOL", "NRDY", "UDMY"],
-  curated: ["COUR", "CHGG", "LRN", "NRDY", "DUOL", "UDMY"],
+  coreLabel: "online learning",
+  core: ["DUOL", "COUR", "CHGG", "NRDY", "LRN", "UDMY"],
 }];
 
 /** The company `--peers` was given: its industry and business from its profile, and its market cap in US dollars. */
@@ -79,24 +87,41 @@ export interface PeerCandidate {
 interface PeerGroup {
   industry: string;
   related: RelatedIndustry | null;
+  /** The subject is one of the related industry's curated core, which it is compared with first. */
+  inCore: boolean;
 }
 
 function bareSymbol(symbol: string): string {
   return parsePublicTickerKey(symbol).symbol.toUpperCase();
 }
 
-/** What a profile says the company does, before who it serves: its first sentence. */
+/** A period that ends an abbreviation or an initial (`Inc.`, `N.V.`, `U.S.`), not a sentence. */
+const ABBREVIATION_END = /(?:\b(?:inc|corp|co|ltd|plc|llc|lp|ag|se|nv|sa|no|st|mr|mrs|dr|jr|sr|vs|etc)|\b[a-z])\.$/i;
+
+/**
+ * What a profile says the company does, before who it serves: its first
+ * sentence, read past the name's `Inc.` (`Duolingo, Inc. Class A Common Stock
+ * represents ownership in Duolingo, a technology company focused on...`).
+ */
 function firstSentence(text: string | null): string {
-  return (text ?? "").split(/(?<=[.!?])\s+/, 1)[0] ?? "";
+  const source = text ?? "";
+  for (const match of source.matchAll(/[.!?](?=\s+[A-Z])/g)) {
+    const head = source.slice(0, match.index + 1);
+    if (!ABBREVIATION_END.test(head)) return head;
+  }
+  return source;
 }
 
 export function peerGroupOf(subject: Pick<PeerSubject, "symbol" | "industry" | "description">): PeerGroup | null {
+  const symbol = bareSymbol(subject.symbol);
+  // A member of a curated core is placed by its symbol, whatever its profile says.
+  const core = RELATED_INDUSTRIES.find((group) => group.core.includes(symbol));
+  if (core) return { industry: core.industry, related: core, inCore: true };
   const industry = subject.industry?.trim();
   if (!industry) return null;
-  const symbol = bareSymbol(subject.symbol);
-  const related = RELATED_INDUSTRIES.find((group) => group.industry === industry || (group.filedUnder.includes(industry)
-    && (group.members.includes(symbol) || group.business.test(firstSentence(subject.description)))));
-  return related ? { industry: related.industry, related } : { industry, related: null };
+  const related = RELATED_INDUSTRIES.find((group) => group.industry === industry
+    || (group.filedUnder.includes(industry) && group.business.test(firstSentence(subject.description))));
+  return related ? { industry: related.industry, related, inCore: false } : { industry, related: null, inCore: false };
 }
 
 /**
@@ -105,8 +130,12 @@ export function peerGroupOf(subject: Pick<PeerSubject, "symbol" | "industry" | "
  * that reports no revenue figures is left out, and the subject itself.
  * Without the subject's cap the largest come first.
  */
-export function rankPeerCandidates(subject: Pick<PeerSubject, "symbol" | "marketCapUsd">, candidates: readonly PeerCandidate[]): string[] {
-  const seen = new Set([bareSymbol(subject.symbol)]);
+export function rankPeerCandidates(
+  subject: Pick<PeerSubject, "symbol" | "marketCapUsd">,
+  candidates: readonly PeerCandidate[],
+  { limit = MOST_PEERS, exclude = [] }: { limit?: number; exclude?: readonly string[] } = {},
+): string[] {
+  const seen = new Set([bareSymbol(subject.symbol), ...exclude.map(bareSymbol)]);
   const usable = candidates.filter((candidate) => {
     const key = bareSymbol(candidate.symbol);
     if (!candidate.reportsOperations || seen.has(key)) return false;
@@ -119,38 +148,69 @@ export function rankPeerCandidates(subject: Pick<PeerSubject, "symbol" | "market
     .sort((left, right) => distance(left.marketCapUsd) - distance(right.marketCapUsd)
       || (right.marketCapUsd ?? 0) - (left.marketCapUsd ?? 0)
       || left.symbol.localeCompare(right.symbol))
-    .slice(0, MOST_PEERS)
+    .slice(0, limit)
     .map((candidate) => candidate.symbol);
 }
 
+/** `A`, `A and B`, `A, B and C`. */
+function listText(items: readonly string[]): string {
+  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/** The covered equities the screener returned for a subject's group: its industry's, and its curated core's. */
+export interface PeerCandidates {
+  industry: readonly PeerCandidate[];
+  core: readonly PeerCandidate[];
+}
+
 /**
- * The peers of the subject, from the covered equities of its group: its own
- * industry, or the related industry its business belongs to with that
- * business's members filed elsewhere. Fewer than four, or no candidates at
- * all (`candidates` null: the screener did not answer), falls back to the
- * related industry's curated list when it has one; otherwise what was found,
- * or null when nothing was.
+ * The peers of the subject, from the covered equities of its group. One of a
+ * curated core is compared with the rest of that core first, closest in
+ * market cap, and the industry's closest fill the table to six. Any other
+ * subject takes the closest of its own industry, or of the related industry
+ * its business belongs to with that core among the candidates. Fewer than
+ * four, or no candidates at all (`candidates` null: the screener did not
+ * answer), falls back to the related industry's curated core when it has
+ * one; otherwise what was found, or null when nothing was.
  */
-export function selectPeers(subject: PeerSubject, group: PeerGroup, candidates: readonly PeerCandidate[] | null): PeerSelection | null {
-  const peers = candidates ? rankPeerCandidates(subject, candidates) : [];
+export function selectPeers(subject: PeerSubject, group: PeerGroup, candidates: PeerCandidates | null): PeerSelection | null {
   const symbol = subject.symbol;
   const related = group.related;
+  const curatedCore = group.inCore && related ? (candidates ? rankPeerCandidates(subject, candidates.core) : []) : [];
+  const fill = candidates
+    ? group.inCore
+      ? rankPeerCandidates(subject, candidates.industry, { limit: MOST_PEERS - curatedCore.length, exclude: curatedCore })
+      : rankPeerCandidates(subject, [...candidates.industry, ...related ? candidates.core : []])
+    : [];
+  const peers = [...curatedCore, ...fill];
   if (peers.length < FEWEST_PEERS && related) {
-    const curated = related.curated.filter((peer) => peer !== bareSymbol(symbol)).slice(0, MOST_PEERS);
+    const curated = related.core.filter((peer) => peer !== bareSymbol(symbol)).slice(0, MOST_PEERS);
     return {
       subject: symbol, peers: curated, method: "curated", industry: related.industry, subjectIndustry: subject.industry,
-      basis: `a curated list of ${related.label} companies, as ${candidates ? `fewer than ${FEWEST_PEERS}` : "no"} covered equities in ${related.industry} could be read`,
+      curatedPeers: curated, curatedGroup: related.coreLabel,
+      basis: `the ${related.coreLabel} curated list (${listText(curated)}), as ${candidates ? `fewer than ${FEWEST_PEERS}` : "no"} covered equities in ${related.industry} could be read`,
     };
   }
   if (peers.length === 0) return null;
-  const closest = `the ${peers.length} covered ${peers.length === 1 ? "equity" : "equities"} in ${group.industry} closest to ${symbol} in market cap`;
+  // `the 6 covered equities in X closest to DUOL in market cap`, the fill after a core naming its own.
+  const closest = (names: readonly string[]) => {
+    const count = names.length === 1 ? "the covered equity" : `the ${names.length} covered equities`;
+    return `${names === peers ? "" : `${listText(names)}, `}${count} in ${group.industry} closest to ${symbol} in market cap`;
+  };
+  if (related && group.inCore && curatedCore.length > 0) {
+    return {
+      subject: symbol, peers, method: "curated-core", industry: group.industry, subjectIndustry: subject.industry,
+      curatedPeers: curatedCore, curatedGroup: related.coreLabel,
+      basis: `${listText(curatedCore)} from the ${related.coreLabel} curated core${fill.length > 0 ? `; ${closest(fill)}` : ""}`,
+    };
+  }
   if (related && group.industry !== subject.industry) {
     return {
       subject: symbol, peers, method: "related-industry", industry: group.industry, subjectIndustry: subject.industry,
-      basis: `${closest}, where its ${related.label} business sits though its profile files it under ${subject.industry}`,
+      basis: `${closest(peers)}, where its ${related.label} business sits though its profile files it under ${subject.industry ?? "another industry"}`,
     };
   }
-  return { subject: symbol, peers, method: "industry", industry: group.industry, subjectIndustry: subject.industry, basis: closest };
+  return { subject: symbol, peers, method: "industry", industry: group.industry, subjectIndustry: subject.industry, basis: closest(peers) };
 }
 
 /**
@@ -165,6 +225,10 @@ export function peerMethodTitle(selection: PeerSelection, { automatic = false }:
       return `${peers} by industry: ${selection.industry}`;
     case "related-industry":
       return `${peers} by related industry: ${selection.industry}`;
+    case "curated-core":
+      return selection.peers.length > (selection.curatedPeers?.length ?? 0)
+        ? `${peers}: ${selection.curatedGroup} curated core, then ${selection.industry}`
+        : `${peers}: ${selection.curatedGroup} curated core`;
     case "curated":
       return `${peers} from a curated list`;
   }
@@ -200,10 +264,11 @@ async function subjectCapUsd(financials: TickerFinancials | null, ctx: HeadlessP
 }
 
 /**
- * Picks the peers of `symbol` for `--peers`: its group from its profile, the
- * group's covered equities from the screener (its industry, and the members
- * of a related one), ranked by market cap. Throws when the profile names no
- * industry, or nothing can be found, saying how to list peers instead.
+ * Picks the peers of `symbol` for `--peers`: its group from its symbol or
+ * profile, the group's covered equities from the screener (its industry, and
+ * a related industry's curated core), ranked as `selectPeers` says. Throws
+ * when nothing places the subject, or nothing can be found, saying how to
+ * list peers instead.
  */
 export async function pickPeers(symbol: string, financials: TickerFinancials | null, ctx: HeadlessPaneContext): Promise<PeerSelection> {
   const subject: PeerSubject = {
@@ -215,16 +280,16 @@ export async function pickPeers(symbol: string, financials: TickerFinancials | n
   const listYourOwn = `List them yourself: gloomberb fn RV ${symbol} <tickers>.`;
   const group = peerGroupOf(subject);
   if (!group) throw new Error(`${symbol}'s profile names no industry, so --peers cannot pick its peers. ${listYourOwn}`);
-  let candidates: PeerCandidate[] | null = null;
+  let candidates: PeerCandidates | null = null;
   let failure: string | null = null;
   try {
-    const [capUsd, industryRows, memberRows] = await Promise.all([
+    const [capUsd, industryRows, coreRows] = await Promise.all([
       subjectCapUsd(financials, ctx).catch(() => null),
       screenRows({ field: "industry", op: "in", value: [group.industry] }, ctx),
-      group.related ? screenRows({ field: "symbol", op: "in", value: [...group.related.members] }, ctx) : Promise.resolve([]),
+      group.related ? screenRows({ field: "symbol", op: "in", value: [...group.related.core] }, ctx) : Promise.resolve([]),
     ]);
     subject.marketCapUsd = capUsd;
-    candidates = [...industryRows, ...memberRows].map(candidateOf);
+    candidates = { industry: industryRows.map(candidateOf), core: coreRows.map(candidateOf) };
   } catch (error) {
     ctx.signal.throwIfAborted();
     failure = errorMessage(error);
