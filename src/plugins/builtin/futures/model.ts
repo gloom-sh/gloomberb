@@ -40,7 +40,8 @@ export function futuresRowId(row: FuturesTableRow): string {
   return row.type === "header" ? `header-${row.sector}` : row.contract.symbol;
 }
 
-const CONTRACT_MONTH = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[ -](\d{4}|\d{2})$/i;
+/** "Nov 26" or "Futures,Nov-2026"; a hyphen takes only a whole year, since "Futures,Nov-20" is 2026 cut short. */
+const CONTRACT_MONTH = /\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)(?: (\d{4}|\d{2})|-(\d{4}))$/i;
 
 /**
  * The alias stays the row identity while its quoted contract rolls, so the
@@ -66,7 +67,8 @@ export function quotedContractMonth(
   const match = CONTRACT_MONTH.exec(quote.name?.trim() ?? "");
   if (!match) return null;
   const month = MONTH_NAMES.findIndex((name) => name.toLowerCase() === match[1]!.toLowerCase());
-  const year = match[2]!.length === 2 ? 2000 + Number(match[2]) : Number(match[2]);
+  const written = match[2] ?? match[3]!;
+  const year = written.length === 2 ? 2000 + Number(written) : Number(written);
   return { year, month };
 }
 

@@ -67,11 +67,31 @@ const PRICE_OVERLAYS: Record<string, { exchange: string; priceSymbol: string }> 
   "040701": { exchange: "NYB", priceSymbol: "OJ=F" }, "058644": { exchange: "CME", priceSymbol: "LBR=F" },
   "057642": { exchange: "CME", priceSymbol: "LE=F" }, "054642": { exchange: "CME", priceSymbol: "HE=F" },
   "061641": { exchange: "CME", priceSymbol: "GF=F" },
+  // Sector, index and energy roots added on 2026-10-14, each CFTC market matched
+  // by name and open interest against the board and checked for five years of
+  // front-price history the same day.
+  "138749": { exchange: "CME", priceSymbol: "XAE=F" }, "13874H": { exchange: "CME", priceSymbol: "XAB=F" },
+  "13874F": { exchange: "CME", priceSymbol: "XAI=F" }, "138748": { exchange: "CME", priceSymbol: "XAP=F" },
+  "13874E": { exchange: "CME", priceSymbol: "XAV=F" }, "13874C": { exchange: "CME", priceSymbol: "XAF=F" },
+  "13874I": { exchange: "CME", priceSymbol: "XAK=F" }, "13874P": { exchange: "CME", priceSymbol: "XAZ=F" },
+  "13874J": { exchange: "CME", priceSymbol: "XAU=F" }, "240741": { exchange: "CME", priceSymbol: "NKD=F" },
+  "240743": { exchange: "CME", priceSymbol: "NIY=F" }, "13874U": { exchange: "CME", priceSymbol: "MES=F" },
+  "209747": { exchange: "CME", priceSymbol: "MNQ=F" }, "239747": { exchange: "CME", priceSymbol: "M2K=F" },
+  "124608": { exchange: "CBT", priceSymbol: "MYM=F" },
+};
+/**
+ * Board roots the CFTC reports whose front alias has no five years of daily
+ * history to overlay (checked 2026-10-14): positioning without a price line.
+ * The CFTC reports the consumer discretionary sector some weeks only.
+ */
+const UNPRICED_BOARD_MARKETS: Readonly<Record<string, string>> = {
+  EMD: "33874A", RX: "124606", XAY: "138747", HH: "023A55",
 };
 /** The CFTC market a FUT board root reports under, by its price symbol; null for one the CFTC does not report (TTF). */
 function boardMarketCode(contract: FuturesContract): string | null {
   return Object.values(ROOTS).find((row) => row.priceSymbol === contract.symbol)?.code
     ?? Object.entries(PRICE_OVERLAYS).find(([, row]) => row.priceSymbol === contract.symbol)?.[0]
+    ?? UNPRICED_BOARD_MARKETS[contract.code]
     ?? null;
 }
 /**

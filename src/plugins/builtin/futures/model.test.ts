@@ -49,6 +49,8 @@ describe("buildFuturesRows search", () => {
     // Cut off inside the year: the month alone could be a year out.
     expect(name("ZW=F", "Chicago SRW Wheat Futures,Dec-2")).toBe("Chicago SRW Wheat");
     expect(name("6C=F", "Canadian Dollar Futures,Dec-202")).toBe("Canadian Dollar");
+    // Cut two digits into the year, it would read as 2020.
+    expect(name("QM=F", "E-mini Crude Oil Futures,Nov-20")).toBe("E-Mini Crude Oil");
     expect(futuresContractName(contract("CL=F"), { symbol: "OTHER", name: "Crude Oil Nov 26" } as Quote)).toBe("WTI Crude Oil");
   });
 
@@ -84,7 +86,7 @@ describe("buildFuturesRows search", () => {
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "gc" })))
       .toEqual(["header:metals", "GC=F"]);
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "crude" })))
-      .toEqual(["header:energy", "CL=F", "BZ=F"]);
+      .toEqual(["header:energy", "CL=F", "BZ=F", "QM=F", "MCL=F"]);
     expect(rowIds(buildFuturesRows(contractsBySector, DEFAULT_FUTURES_SORT, EMPTY_QUOTES, { query: "6J=f" })))
       .toEqual(["header:currencies", "6J=F"]);
   });
@@ -128,20 +130,23 @@ describe("buildFuturesRows collapse", () => {
 
 describe("futures sorting", () => {
   test("sorts within a sector, never across sectors", () => {
+    // The micro Russell is priced below the micro crude, and still sorts inside its own sector.
     const quotes = quoteMap({
-      "ES=F": { price: 7731 },
-      "NQ=F": { price: 29670 },
-      "YM=F": { price: 53499 },
-      "RTY=F": { price: 3046 },
+      "MES=F": { price: 7731 },
+      "MNQ=F": { price: 29670 },
+      "MYM=F": { price: 53499 },
+      "M2K=F": { price: 30 },
+      "MCL=F": { price: 95 },
+      "MNG=F": { price: 3.2 },
       "GC=F": { price: 4451 },
     });
     const rows = buildFuturesRows(
       contractsBySector,
       { columnId: "price", direction: "desc" },
       quotes,
-      { query: "e-mini" },
+      { query: "micro" },
     );
-    expect(rowIds(rows)).toEqual(["header:equity-index", "YM=F", "NQ=F", "ES=F", "RTY=F"]);
+    expect(rowIds(rows)).toEqual(["header:equity-index", "MYM=F", "MNQ=F", "MES=F", "M2K=F", "header:energy", "MCL=F", "MNG=F"]);
   });
 
   test("the keyboard cycle reaches every state a header click can, and wraps", () => {

@@ -389,7 +389,7 @@ export const futuresModule: PluginModule = {
       paneId: FUTURES_PANE_ID,
       label: "Futures Board",
       description:
-        "Each root's most active futures contract across equity index, rates, energy, metals, agriculture, livestock, and FX with last price, unit, session change, search, and collapsible sectors.",
+        "Each root's most active futures contract across equity index, equity sectors, rates, energy, metals, agriculture, livestock, and FX with last price, unit, session change, search, and collapsible sectors.",
       keywords: [
         "futures",
         "commodities",

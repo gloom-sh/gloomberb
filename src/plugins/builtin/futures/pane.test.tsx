@@ -112,11 +112,11 @@ function makeRuntime(quoteError?: string): PluginRuntimeAccess {
   } as unknown as PluginRuntimeAccess;
 }
 
-function Harness({ quoteError, width = 80 }: { quoteError?: string; width?: number }) {
+function Harness({ quoteError, width = 80, height = 24 }: { quoteError?: string; width?: number; height?: number }) {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-futures-pane-test"));
   return (
     <TestPaneProvider state={state} paneId="futures" runtime={makeRuntime(quoteError)} pluginId="market-overview">
-      <FuturesPane paneId="futures" paneType="futures" focused width={width} height={24} />
+      <FuturesPane paneId="futures" paneType="futures" focused width={width} height={height} />
     </TestPaneProvider>
   );
 }
@@ -141,7 +141,7 @@ describe("FuturesPane", () => {
     expect(collapsed).toContain("▸ Equity Index");
     expect(collapsed).not.toContain("E-Mini S&P 500");
     // Other sectors keep their contracts.
-    expect(collapsed).toContain("WTI Crude Oil");
+    expect(collapsed).toContain("S&P Energy");
 
     await emitKeypress({ name: "enter", sequence: "\r" });
     await renderSettled();
@@ -230,7 +230,8 @@ describe("FuturesPane", () => {
   });
 
   test("a row names the month its symbol rolled past and the unit its price counts, as quote does", async () => {
-    await tui.render(<Harness width={190} />, { width: 190, height: 24 });
+    // Tall enough to reach the energy rows below the equity groups.
+    await tui.render(<Harness width={190} height={64} />, { width: 190, height: 64 });
     await renderSettled();
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 20));
@@ -245,7 +246,7 @@ describe("FuturesPane", () => {
     expect(ttf).toContain("EUR / MWh");
     expect(ttf).not.toContain("most active");
     // A narrow board keeps the month the quote prices and the unit, and drops the note it has no room for.
-    await tui.render(<Harness />, { width: 80, height: 24 });
+    await tui.render(<Harness height={64} />, { width: 80, height: 64 });
     await renderSettled();
     const narrow = tui.frame().split("\n").find((line) => line.includes("WTI Crude Oil"));
     expect(narrow).toContain("WTI Crude Oil Dec 26");
