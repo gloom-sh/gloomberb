@@ -7,6 +7,43 @@ at page one, a warning paragraph above a chart, a title repeated in the body.
 This file says what the app does instead. [PLUGINS.md](../PLUGINS.md) has
 the APIs.
 
+## Principles
+
+These come first. Each is one rule, and a change that breaks one is wrong,
+not the rule. Details follow below.
+
+1. **One element, one look.** Every kind of element (button, tab, chip,
+   input, table, heading, empty or locked state, notice) has exactly one
+   convention, defined once in the shared kit. A pane never has its own.
+2. **Same role, same size.** Type size, weight, colour, spacing, radius and
+   borders come from tokens by role (body, heading, metadata, label,
+   positive, negative). No raw px, hex or font-size in pane or plugin code.
+3. **Levels differ on purpose.** Neighbouring levels differ by at least about
+   15% in size, or by weight, colour and space. A step of 1 or 2 px reads as
+   a mistake.
+4. **Extend the kit, never fork it.** If the kit lacks what a pane needs, add
+   it to the kit for every pane and migrate the callers. Never a pane-local
+   variant.
+5. **Plugins are panes.** Built-in and external plugins follow every rule
+   here and use the same components. No plugin ships its own look.
+6. **Change the class, test the whole app.** A UI change is made in the
+   shared component and checked against all panes and plugins before it
+   merges: before and after sheets of every view, not only the pane that
+   prompted it. A change that moves views it should not touch is wrong.
+7. **Look next to the neighbours.** A pane must look like it belongs beside
+   the news reader, a table pane and a form pane at the same width. If you
+   can tell it apart by its style rather than its content, fix it.
+8. **Exceptions are written down.** A real deviation (a dense table, a chart
+   axis) goes in the allowlist with a reason a reviewer accepted. No reason,
+   no exception.
+9. **The browser lays out the desktop and web.** Flex, wrapping and ellipsis,
+   not cell counts. The terminal keeps its own cell layout, byte for byte.
+
+A UI change says in its description what it was checked against: all views,
+both themes, a narrow and a wide pane. Rules 2, 6 and 8 are enforced by CI as
+the checks land (Linear GLO-768); until a check exists, the reviewer enforces
+them.
+
 ## 1. Anatomy
 
 **App chrome** (the shell's, never a pane's): the header holds the command
