@@ -81,6 +81,12 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-titlebar-overlay="true"] * {
   cursor: inherit;
 }
+/* A row of text grows with the text size and the title bar does not: at the
+   largest sizes the top bar's buttons and prompt would stand out of it. */
+[data-gloom-role="app-header"][data-titlebar-overlay="true"] button,
+[data-gloom-role="app-header"][data-titlebar-overlay="true"] [role="button"] {
+  max-height: __TITLEBAR_OVERLAY_HEIGHT_PX__px;
+}
 [data-titlebar-overlay="true"] button,
 [data-titlebar-overlay="true"] input,
 [data-titlebar-overlay="true"] textarea,

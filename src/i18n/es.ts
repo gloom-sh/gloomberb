@@ -982,6 +982,7 @@ export const es: Record<string, string> = {
   "Update ready, restart to apply": "Actualización lista; reinicia para aplicar",
   "Update ready": "Actualización lista",
   "Restart": "Reiniciar",
+  "Restart to apply v{version}": "Reinicia para aplicar v{version}",
   "Checking for updates...": "Buscando actualizaciones...",
   "Downloading v{version}: {percent}%": "Descargando v{version}: {percent}%",
   "Update failed: {error}": "Error al actualizar: {error}",

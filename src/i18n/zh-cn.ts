@@ -996,6 +996,7 @@ export const zhCN: Record<string, string> = {
   "Update ready, restart to apply": "更新已就绪，重启后生效",
   "Update ready": "更新已就绪",
   "Restart": "重启",
+  "Restart to apply v{version}": "重启以应用 v{version}",
   "Checking for updates...": "正在检查更新...",
   "Downloading v{version}: {percent}%": "正在下载 v{version}：{percent}%",
   "Update failed: {error}": "更新失败：{error}",

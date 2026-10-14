@@ -996,6 +996,7 @@ export const ja: Record<string, string> = {
   "Update ready, restart to apply": "アップデートの準備ができました。適用するには再起動してください",
   "Update ready": "アップデートの準備完了",
   "Restart": "再起動",
+  "Restart to apply v{version}": "再起動して v{version} を適用",
   "Checking for updates...": "アップデートを確認中...",
   "Downloading v{version}: {percent}%": "v{version} をダウンロード中: {percent}%",
   "Update failed: {error}": "更新に失敗しました: {error}",

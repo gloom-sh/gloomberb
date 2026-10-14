@@ -994,6 +994,7 @@ export const ko: Record<string, string> = {
   "Update ready, restart to apply": "업데이트 준비 완료. 적용하려면 다시 시작하세요",
   "Update ready": "업데이트 준비 완료",
   "Restart": "다시 시작",
+  "Restart to apply v{version}": "다시 시작하여 v{version} 적용",
   "Checking for updates...": "업데이트 확인 중...",
   "Downloading v{version}: {percent}%": "v{version} 다운로드 중: {percent}%",
   "Update failed: {error}": "업데이트 실패: {error}",

@@ -25,8 +25,10 @@
  * volume and two studies, `pan` one listing with years of bars, `edge` one
  * whose bars start 150 sessions back, `percent` three listings rebased),
  * `layout` (one pane that sets text or scrolls content, docked or floating,
- * for the layout checks; see layout-fixture.tsx), or `des` (DES's overview
- * over an invented company, see DesPane).
+ * for the layout checks; see layout-fixture.tsx), `des` (DES's overview
+ * over an invented company, see DesPane), or `header` (the app's top bar in
+ * each update state, see header-fixture.tsx; `&host=browser` draws it as the
+ * web app does).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -74,6 +76,8 @@ import { PriceSparkline } from "../../src/components/price-sparkline/view";
 import { registerAskGloomPaneHandler } from "../../src/ask-gloom/pane-request";
 import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/header";
 import { ChatFixturePane, chatLayout } from "./chat-fixture";
+import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHeaderPlatform, type HeaderFixtureHandle } from "./header-fixture";
+import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
@@ -126,6 +130,8 @@ declare global {
       detachedCloses: number;
       /** `paint`: floats another chart composer pane in, as adding a chart pane does; returns its id. */
       addChartPane?: () => string;
+      /** `header`: sets the top bar's update state and window mode, and counts Help and Restart presses. */
+      header: HeaderFixtureHandle;
     };
   }
 }
@@ -1168,7 +1174,8 @@ function config() {
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
   const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];
   if (scenario === "theme") layouts.push({ name: "Alternate", layout: cloneLayout(layout) });
-  return { ...base, theme: params.get("theme") ?? base.theme, layout, layouts, activeLayoutIndex: 0 };
+  const fontSize = Number(params.get("font")) || base.fontSize;
+  return { ...base, theme: params.get("theme") ?? base.theme, fontSize, layout, layouts, activeLayoutIndex: 0 };
 }
 
 const paneRegistry = registry();
@@ -1202,6 +1209,7 @@ window.__paneChrome = {
   clipboardImages: [],
   externalOpens: [],
   detachedCloses: 0,
+  header: { show: ignore, fullscreen: ignore, commandBar: ignore, helpOpens: 0, restarts: 0 },
   capturePane: async (paneId) => `data:image/png;base64,${(await domScreenshot.capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
   captureForAssistant: async (paneId, scale, maxBytes, minWidth) => {
     try {
@@ -1225,6 +1233,11 @@ registerAskGloomPaneHandler(({ paneId, visibleText, args }) => {
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
 if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
 if (scenario === "layout") installLayoutFetches();
+if (scenario === "header") {
+  installHeaderPlatform(platform);
+  installHeaderClock();
+  installHeaderMarketData();
+}
 const rendererHost: RendererHost = {
   ...webRendererHost,
   controlWindow: (action) => { window.__paneChrome.windowControls.push(action); },
@@ -1237,10 +1250,11 @@ const rendererHost: RendererHost = {
 const root = document.getElementById("root")!;
 root.tabIndex = -1;
 createRoot(root).render(
-  <DomHostProviders ui={createWebUiHost(platform)} renderer={rendererHost}>
+  <DomHostProviders ui={params.get("host") === "browser" ? browserUiHost : createWebUiHost(platform)} renderer={rendererHost}>
     <AppProvider config={config()} desktopBridge={detached ? detachedBridge : undefined}>
       {detached
         ? <DetachedPaneShell pluginRegistry={paneRegistry} desktopWindowBridge={detachedBridge} />
+        : scenario === "header" ? <HeaderFixture handle={window.__paneChrome.header} />
         : scenario === "theme" ? <Box flexDirection="column" width="100%" height="100%">
           <Box data-theme-chrome="header"><Header /></Box>
           <Shell pluginRegistry={paneRegistry} />

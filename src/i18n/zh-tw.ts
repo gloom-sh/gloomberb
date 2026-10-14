@@ -996,6 +996,7 @@ export const zhTW: Record<string, string> = {
   "Update ready, restart to apply": "更新已就緒，重新啟動後生效",
   "Update ready": "更新已就緒",
   "Restart": "重新啟動",
+  "Restart to apply v{version}": "重新啟動以套用 v{version}",
   "Checking for updates...": "正在檢查更新...",
   "Downloading v{version}: {percent}%": "正在下載 v{version}：{percent}%",
   "Update failed: {error}": "更新失敗：{error}",
