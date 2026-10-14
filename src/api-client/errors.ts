@@ -75,10 +75,20 @@ export function parseApiErrorMessage(body: string): string {
       (value): value is string =>
         typeof value === "string" && value.trim().length > 0,
     );
-    return parts.join(" ") || body;
+    return parts.join(" ") || validationErrorText(parsed) || body;
   } catch {
     return htmlErrorTitle(body) ?? body;
   }
+}
+
+/**
+ * A request the API's schema refused comes back as the values it was sent
+ * (`{"type":"validation","on":"query","found":{...}}`), which is no message to
+ * show; it is said in words instead.
+ */
+function validationErrorText(parsed: Record<string, unknown>): string | null {
+  if (parsed.type !== "validation") return null;
+  return parsed.on === "query" ? "Gloom Cloud did not accept an option or filter value." : "Gloom Cloud did not accept the request.";
 }
 
 /** A JSON error body as an object, or undefined for any other body. */

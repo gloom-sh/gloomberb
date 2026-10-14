@@ -92,3 +92,34 @@ export function parsePastedNumber(value: unknown): PastedNumber {
 export function ambiguousNumberMessage(text: string, reading: { thousands: number; decimal: number }): string {
   return `${text.trim()} could be ${reading.thousands} (thousands) or ${reading.decimal} (decimal comma); type ${reading.thousands} or ${reading.decimal}`;
 }
+
+/** What a dot and exactly three digits after one to three (`81.000`, `81.250`) could mean. */
+export interface ThousandsDotReadings {
+  /** The number as written, the dot a decimal point: 81. */
+  decimal: number;
+  /** The dot as many locales write it, between thousands: 81000. */
+  thousands: number;
+}
+
+const THOUSANDS_DOT = /^([+-]?)([1-9]\d{0,2})\.(\d{3})$/;
+
+/** Both readings of `81.000`; null for any other text, which has one. */
+export function thousandsDotReadings(value: unknown): ThousandsDotReadings | null {
+  const match = THOUSANDS_DOT.exec(typeof value === "string" ? value.trim() : "");
+  if (!match) return null;
+  const sign = match[1] === "-" ? -1 : 1;
+  return { decimal: sign * Number(`${match[2]}.${match[3]}`), thousands: sign * Number(`${match[2]}${match[3]}`) };
+}
+
+/**
+ * Whether a dot and three digits was meant as a thousands separator, beside a
+ * price it must be near (the last price): the number as written is more than
+ * 90% away from it, while the thousands reading lands within 10%. A plain
+ * dotted number otherwise keeps its meaning, and without a reference it is
+ * read as written.
+ */
+export function meantThousandsDot(readings: ThousandsDotReadings, reference: number | null | undefined): boolean {
+  if (reference == null || !Number.isFinite(reference) || reference === 0) return false;
+  const scale = Math.abs(reference);
+  return Math.abs(readings.decimal - reference) * 10 > scale * 9 && Math.abs(readings.thousands - reference) * 10 <= scale;
+}

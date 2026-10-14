@@ -11,13 +11,15 @@ import {
   mapCloudNewsArticle,
 } from "../../../sources/gloomberb-cloud/news";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { formatUtcSeconds } from "../../../utils/utc-time";
 import { cloudNewsFreshness, cloudRealtimeAccess } from "../shared/report-freshness";
 
+// Stories carry their time to the second, so a story published on a whole minute prints its seconds too.
 const NEWS_COLUMNS = [
-  { key: "publishedAt", header: "Published" },
+  { key: "publishedAt", header: "Published", textFormat: formatUtcSeconds },
   { key: "source", header: "Source" },
   { key: "headline", header: "Headline" },
-  { key: "tickers", header: "Tickers" },
+  { key: "tickers", header: "Tickers", textFormat: (value: unknown) => Array.isArray(value) ? value.join(", ") : String(value ?? "") },
   { key: "sentiment", header: "Sentiment" },
   { key: "importance", header: "Score", align: "right" as const },
 ];

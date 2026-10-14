@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { parseAlertAddArgs } from "./cli";
+import { parseAlertAddArgs, thousandsDotMessage } from "./cli";
 import { EVENT_ALERTS_KEY, readEventAlerts } from "./events";
 import { checkScheduledEventAlertsNow, startScheduledEventAlerts } from "./scheduled-check";
 import {
@@ -102,6 +102,23 @@ test("alerts add reads a price pasted from a sheet, and asks when a comma and th
   expect(() => price("1,350")).toThrow("1,350 could be 1350 (thousands) or 1.35 (decimal comma); type 1350 or 1.35");
   expect(() => price("abc")).toThrow("Alert price must be a finite number.");
   expect(() => price("1,23,456")).toThrow("Alert price must be a finite number.");
+});
+
+test("alerts add asks about 81.000 near a price of 81,600, an unquoted 81 000, and refuses a word after the price", () => {
+  const add = (...args: string[]) => parseAlertAddArgs(["BTC-USD", "below", ...args], undefined) as Extract<ReturnType<typeof parseAlertAddArgs>, { kind: "price" }>;
+  expect(thousandsDotMessage(add("81.000"), "BTC-USD", 81_634.52))
+    .toBe("81.000 could be 81000 (thousands) or 81 (decimal point), and BTC-USD last traded at 81634.52; type gloomberb alerts add BTC-USD below 81000 or gloomberb alerts add BTC-USD below 81");
+  expect(thousandsDotMessage(add("81.250"), "BTC-USD", 81_634.52, "CCC")).toContain("type gloomberb alerts add BTC-USD below 81250 --exchange CCC or");
+  // Near the number as written, without a last price, or with fewer decimals, the price reads as typed.
+  expect(thousandsDotMessage(add("81.000"), "BTC-USD", 80.5)).toBeNull();
+  expect(thousandsDotMessage(add("81.000"), "BTC-USD", null)).toBeNull();
+  expect(add("81.000").price).toBe(81);
+  expect([add("81.5"), add("81.25")].map((request) => [request.price, thousandsDotMessage(request, "BTC-USD", 81_634.52)])).toEqual([[81.5, null], [81.25, null]]);
+
+  expect(() => add("81", "000")).toThrow("81 000 could be 81000 (thousands) or 81 and a stray 000; type gloomberb alerts add BTC-USD below 81000 or gloomberb alerts add BTC-USD below 81");
+  expect(() => add("1", "234", "567,5")).toThrow("could be 1234567.5 (thousands)");
+  expect(() => add("81000", "foo")).toThrow('A price alert takes one price, not "foo" after 81000; type gloomberb alerts add BTC-USD below 81000');
+  expect(() => add("81", "00")).toThrow('not "00" after 81');
 });
 
 test("the app alerts once when the lead time is reached and saves the event it alerted for", async () => {
