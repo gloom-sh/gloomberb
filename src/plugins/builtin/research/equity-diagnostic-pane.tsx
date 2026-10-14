@@ -571,10 +571,9 @@ export function EquityDiagnosticView({ focused, width, height }: {
     return <Box paddingX={1} paddingY={1}><DiagnosticLoading step={loadingStep} /></Box>;
   }
   if (!report) {
-    const retryAction = <Button label="Retry" variant="secondary" onPress={retry} />;
     return failure
-      ? <PaneStatusBody error={failureText(failure)} actions={retryAction} />
-      : <PaneStatusBody empty emptyTitle={t("No diagnostic available yet.")} actions={retryAction} />;
+      ? <PaneStatusBody error={failureText(failure)} retry={{ onRetry: retry }} />
+      : <PaneStatusBody empty emptyTitle={t("No diagnostic available yet.")} retry={{ onRetry: retry }} />;
   }
 
   return (

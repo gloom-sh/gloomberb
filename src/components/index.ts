@@ -147,7 +147,7 @@ export type {
   NoticeProps, NumberFieldProps, PaneStatusBodyProps, PopoverProps, ProseProps, QueryBarFilter,
   QueryBarMultiFilter, QueryBarProps, QueryBarSearch, QueryBarSearchFocus, QueryBarSelectFilter, QueryBarTextFilter,
   QueryBarToggleFilter, QueryBarView, RangeTrackProps, RatioBarProps, SectionHeadingProps, SectionProps, SegmentedControlProps,
-  SelectButtonOption, SelectButtonProps, SelectControl, StatGridProps, StatItem, TabsProps,
+  SelectButtonOption, SelectButtonProps, SelectControl, StatGridProps, StatItem, StatusRetry, TabsProps,
   TextFieldProps, TextPromptDialogProps,
 } from "./ui";
 export { usePaneTicker } from "../state/app/context";

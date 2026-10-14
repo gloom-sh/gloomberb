@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Button,
   DataTableView,
   PaneStatusBody,
   QueryBar,
@@ -286,7 +285,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
         height={height}
         error={errorMessage ?? "No quotes returned."}
         subject="Futures quotes"
-        actions={<Button label="Retry" variant="secondary" compact onPress={refresh} />}
+        retry={{ onRetry: refresh }}
       />
     );
   }

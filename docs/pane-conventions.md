@@ -84,7 +84,8 @@ never goes there.
 | Limitation on content still worth reading | Inline beside that content | `Notice` |
 | Account state blocks the pane (signed out, unverified, plan) | Body | `SignInWall` (`cloud/auth-actions.tsx`) |
 | Plan gating that only degrades the pane (delayed data, upgrade hint) | Footer, shared wording | `useCloudAccessFooter` (`shared/cloud-upgrade.ts`) |
-| Retry, upgrade, or start button on an empty or failed state | Inside that state | `PaneStatusBody`/`EmptyState` `actions` |
+| Retry (or look again) from an empty or failed state | Inside that state, first, so it answers Enter | `PaneStatusBody`/`EmptyState` `retry` |
+| Upgrade or start button on an empty or failed state | Inside that state | `PaneStatusBody`/`EmptyState` `actions` |
 | An operation finished (saved, exported, failed) | Toast | `notify` |
 | Destructive or irreversible decision | Dialog | `ConfirmDialog`, `tone: "danger"` |
 | Per-instance configuration | Pane settings via the `...` menu | `settings` on the pane def, `usePaneSettingValue` |

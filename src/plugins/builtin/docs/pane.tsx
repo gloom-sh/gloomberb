@@ -182,7 +182,7 @@ function LessonEntry({ url, width, onOpenLink }: { url: string; width: number; o
       <EmptyState
         title="This lesson is not saved for offline reading."
         hint="It is kept once it has been read with a connection."
-        actions={<Button label="Try Again" onPress={lesson.retry} compact />}
+        retry={{ onRetry: lesson.retry }}
       />
     );
   }

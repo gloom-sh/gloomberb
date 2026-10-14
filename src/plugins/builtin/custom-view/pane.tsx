@@ -10,7 +10,7 @@ import { teamViewsStore } from "../cloud/team/views";
 import { setPaneSettings } from "../../../pane-settings";
 import { customViewInstanceSettings } from "./index";
 import type { DataTableColumn } from "../../../components/ui/data-table/types";
-import { Button, PaneStatusBody, TextPromptDialog, usePaneFooter } from "../../../components";
+import { PaneStatusBody, TextPromptDialog, usePaneFooter } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -370,7 +370,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
       <PaneStatusBody
         error={error}
         errorTitle="This view could not load."
-        actions={<Button label="Retry" compact onPress={() => { void reload(); }} />}
+        retry={{ onRetry: reload }}
       />
     );
   }

@@ -193,7 +193,7 @@ function DiscoverStatus({ controller }: { controller: LayoutGalleryController })
         <EmptyState
           title={discover.state.error}
           status="error"
-          actions={<Button label={t("Retry")} compact onPress={discover.refresh} />}
+          retry={{ onRetry: discover.refresh }}
         />
       </SidebarState>
     );
@@ -219,7 +219,7 @@ function TeamStatus({ controller }: { controller: LayoutGalleryController }) {
         <EmptyState
           title={state.error}
           status="error"
-          actions={<Button label={t("Retry")} compact onPress={refresh} />}
+          retry={{ onRetry: refresh }}
         />
       </SidebarState>
     );

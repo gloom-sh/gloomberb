@@ -886,7 +886,7 @@ export function PluginMarketplacePane({ focused, width, height }: PaneProps) {
     <EmptyState
       title="Plugin catalog unavailable."
       status="error"
-      actions={<Button label="Retry" variant="primary" compact onPress={() => refresh(true)} />}
+      retry={{ onRetry: () => refresh(true) }}
     />
   ) : query || category ? (
     <EmptyState title="No plugins match." />
