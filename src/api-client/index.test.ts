@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
-import { apiClient, setCloudApiFetchTransport } from "./index";
+import { apiClient, ASSIST_ARG_OPTION_LIMIT, setCloudApiFetchTransport } from "./index";
 import { publishableMarketplaceLayout } from "../shares/portable-layout";
 import { createDefaultConfig } from "../types/config";
 import type { PaneDef } from "../types/plugin";
@@ -1150,22 +1150,23 @@ describe("apiClient command assist", () => {
         name: "Change Theme",
         arg: {
           kind: "text",
-          // 65 values, but the one too long to run is dropped before counting.
-          options: [{ value: "amber", label: "A".repeat(80) }, { value: "x".repeat(41), label: "Long" }, ...values(63)],
+          // One over the cap, but the value too long to run is dropped before counting.
+          options: [{ value: "amber", label: "A".repeat(80) }, { value: "x".repeat(41), label: "Long" }, ...values(ASSIST_ARG_OPTION_LIMIT - 1)],
         },
       },
-      { prefix: "CTM", name: "Futures Curve", arg: { kind: "text", optional: true, options: values(65) } },
+      { prefix: "CTM", name: "Futures Curve", arg: { kind: "text", optional: true, options: values(ASSIST_ARG_OPTION_LIMIT + 1) } },
     ]);
 
     const [theme, curve] = sent;
-    expect(theme?.arg?.options).toHaveLength(64);
+    expect(ASSIST_ARG_OPTION_LIMIT).toBe(128);
+    expect(theme?.arg?.options).toHaveLength(ASSIST_ARG_OPTION_LIMIT);
     expect(theme?.arg?.options?.[0]).toEqual({ value: "amber", label: "A".repeat(60) });
     expect(theme?.arg?.options?.some((option) => option.value.length > 40)).toBe(false);
     // A cut list would read as the whole set, so an oversized one is not sent.
     expect(curve?.arg).toEqual({ kind: "text", optional: true });
   });
 
-  test("passes a 46-value list, the size of CTM's roots, through unchanged", async () => {
+  test("passes a 76-value list, the size of CTM's roots, through unchanged", async () => {
     let sent: AssistCommandDescriptor[] = [];
     apiClient.setSessionToken("session-token");
     apiClient.restoreCachedUser(verifiedUser);
@@ -1173,7 +1174,7 @@ describe("apiClient command assist", () => {
       sent = (JSON.parse(String(init?.body)) as { commands: AssistCommandDescriptor[] }).commands;
       return Response.json({ candidates: [] });
     });
-    const roots = Array.from({ length: 46 }, (_, index) => ({ value: `R${index}`, label: `R${index} Root ${index}` }));
+    const roots = Array.from({ length: 76 }, (_, index) => ({ value: `R${index}`, label: `R${index} Root ${index}` }));
 
     await apiClient.assistCommand("copper curve", [
       { prefix: "CTM", name: "Futures Curve", arg: { kind: "text", optional: true, options: roots } },
