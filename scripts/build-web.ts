@@ -1,12 +1,25 @@
 import { mkdir, readFile, rm, writeFile } from "fs/promises";
-import { join, relative } from "path";
+import { join, relative, resolve } from "path";
 import { buildViewBundle } from "../src/renderers/dom/build-assets";
 import type { WebBundledPluginDescriptor } from "../src/plugins/web-bundled";
 import { isProxiedHost, PROXY_ALLOWED_HOSTS } from "../src/utils/plugin-proxy-hosts";
-import { compileWebBundledPlugins } from "./web-plugins";
+import { takeOption } from "./tui-benchmark-harness";
+import { compileExtraWebPlugins, compileWebBundledPlugins } from "./web-plugins";
 
+/**
+ *   bun run web:build
+ *   bun scripts/build-web.ts [--out <dir>] [--keep-names] [--plugin <dir>]...
+ *
+ * The flags are for the UI audit (`scripts/pane-chrome/ui-audit.ts`), which
+ * builds its own copy: `--keep-names` keeps component names through
+ * minification, and each `--plugin` compiles one more plugin checkout (the
+ * registry's) into the page. The deployed build takes none of them.
+ */
+const args = process.argv.slice(2);
 const root = process.cwd();
-const outdir = join(root, "dist", "web");
+const outdir = resolve(takeOption(args, "--out") ?? join(root, "dist", "web"));
+const keepNames = args.includes("--keep-names");
+const extraPluginDirs = args.flatMap((arg, index) => (arg === "--plugin" && args[index + 1] ? [resolve(args[index + 1]!)] : []));
 await rm(outdir, { recursive: true, force: true });
 await mkdir(outdir, { recursive: true });
 // Tabs get the plain mark, like gloom.sh; the app icon tile is too small to read at 16px.
@@ -44,6 +57,7 @@ async function buildPage(
     entrypoint,
     outdir: join(outdir, "assets", name),
     sourcemap: "none",
+    keepNames,
     define: { __GLOOMBERB_API_URL__: "location.origin", ...extraDefines },
     failureMessage: `Failed to build the ${name} web page`,
     missingEntryMessage: `${name} build did not emit JavaScript`,
@@ -81,7 +95,7 @@ async function buildPage(
  */
 async function buildBundledPlugins(): Promise<WebBundledPluginDescriptor[]> {
   const pluginsDir = join(outdir, "assets", "plugins");
-  const compiled = await compileWebBundledPlugins(pluginsDir);
+  const compiled = await compileWebBundledPlugins(pluginsDir, { minify: !keepNames });
 
   const missing = compiled.flatMap(({ plugin }) => (plugin.hosts ?? [])
     .filter((host) => !isProxiedHost(host.trim().toLowerCase(), PROXY_ALLOWED_HOSTS))
@@ -93,7 +107,9 @@ async function buildBundledPlugins(): Promise<WebBundledPluginDescriptor[]> {
     );
   }
 
-  return compiled.map(({ plugin, file }) => ({
+  // Plugins added for an audit are not served by the worker, so their hosts are not checked.
+  const extra = extraPluginDirs.length ? await compileExtraWebPlugins(pluginsDir, extraPluginDirs, { minify: !keepNames }) : [];
+  return [...compiled, ...extra].map(({ plugin, file }) => ({
     id: plugin.id,
     name: plugin.name,
     version: plugin.version,

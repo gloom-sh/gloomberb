@@ -1,0 +1,375 @@
+import { appendFile, mkdir, readdir, rm } from "fs/promises";
+import { existsSync } from "fs";
+import { join, resolve } from "path";
+import { takeOption } from "../tui-benchmark-harness";
+import { cacheDir, click, evaluate, launchBrowser, sleep, type Browser, type Cdp } from "./browser";
+import { UI_AUDIT_MEASURE, type AuditMeasure } from "./ui-audit-measure";
+import { writeAuditReport } from "./ui-audit-report";
+import {
+  createReplay, discover, fallbackInstance, key, loadLayout, readCatalog, routeDirectReads,
+  runCommand, serveWebApp, settle, shot, type CatalogEntry, type SeedOptions,
+} from "./web-app";
+
+/**
+ * The UI audit: every view of the desktop and web app, measured. For each
+ * function in the catalog, the panes of the plugins the web app bundles and,
+ * with `--registry`, of every plugin the registry lists, it opens the pane
+ * docked on the real web build at each width, then its detail (Enter) and
+ * each of its tabs, and records with ui-audit-measure.ts every run of text
+ * (size, line height, weight, colour, where it sits against the pane's edge,
+ * and the component that drew it), every element of a design-system family
+ * (buttons, tabs, chips, fields, rows, headings, cards, states, pane chrome,
+ * dialogs, menus, chart chrome) with its shape and colours, and the rows of
+ * tables and lists. The first time a variant of a family shows, it is
+ * pictured as drawn and, for the interactive ones, under the pointer
+ * (`variants/`). The shell is measured too: the app header and status bar,
+ * the command bar, a dialog, a pane's menu and the first-run guide.
+ *
+ *   bun run audit:ui [--only TOP,CHG] [--widths 640,1280] [--themes white,paper]
+ *                    [--registry] [--build] [--no-shots] [--resume] [--list]
+ *                    [--out <dir>] [--web <dir>] [--replay <dir>] [--root <checkout>]
+ *
+ * It builds its own copy of the web app (`build-web.ts --keep-names`, so the
+ * components keep their names) under the cache folder, and reads Gloom Cloud
+ * signed out as web-app.ts describes, from its own replay folder: a second run
+ * draws the same data. Measures are taken in the first theme; every theme gets
+ * a picture of each view, under `shots/<theme>/<width>/`. `views.jsonl` lists
+ * every view with the pane instance and steps that open it, so another
+ * browser can draw the same views. At the end ui-audit-report.ts writes
+ * `report.md` and `report.json`: the variants of each family with a picture
+ * grid, the type, insets and row heights in use, colours against the theme,
+ * and a scan of the code for literals that bypass the theme and the kit. Run
+ * it again with `--sheets` for contact sheets of every view.
+ */
+
+const args = process.argv.slice(2);
+const root = resolve(takeOption(args, "--root") ?? join(import.meta.dir, "../.."));
+const only = takeOption(args, "--only")?.split(",");
+const widths = (takeOption(args, "--widths") ?? "640,1280").split(",").map(Number);
+const height = Number(takeOption(args, "--height") ?? 800);
+const themes = (takeOption(args, "--themes") ?? "white,paper").split(",");
+const out = resolve(takeOption(args, "--out") ?? cacheDir("ui-audit"));
+const web = resolve(takeOption(args, "--web") ?? cacheDir("ui-audit-web"));
+const replay = createReplay(resolve(takeOption(args, "--replay") ?? cacheDir("ui-audit-replay")));
+const shots = !args.includes("--no-shots");
+const resume = args.includes("--resume");
+const withRegistry = args.includes("--registry");
+const MAX_TABS = 20;
+/** Families whose look under the pointer is pictured too. */
+const HOVERED = new Set(["button", "tab", "link", "chip", "toggle", "input", "select", "menu-item", "keycap", "list-row", "table-row"]);
+
+/** What makes a variant worth its own picture: the family, its shape, the component and its state. */
+function variantKeyOf(element: { family: string; shape: string; component: string; state: string }): string {
+  return [element.family, element.shape, element.component, element.state].join("|");
+}
+const ENTRY_TIMEOUT_MS = 6 * 60_000;
+const debug = process.env.UI_AUDIT_DEBUG ? (message: string) => console.log(`  ${(performance.now() / 1000).toFixed(1)}s ${message}`) : () => {};
+
+interface AuditEntry extends CatalogEntry {
+  /** The registry or bundled plugin a pane comes from; built-in panes have none. */
+  plugin?: string;
+}
+
+/** One view of the app: what it is, and how to open it again. */
+interface AuditView {
+  id: string;
+  kind: "pane" | "shell";
+  token: string;
+  paneId?: string;
+  plugin?: string;
+  instance?: Record<string, unknown>;
+  /** Root, detail (Enter on the root), or a tab of the root by its label. */
+  view: string;
+  tab?: string;
+}
+
+interface AuditResult extends AuditView {
+  width: number;
+  height: number;
+  theme: string;
+  measure: AuditMeasure;
+}
+
+const slug = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 32) || "tab";
+
+/** Registry plugins that are not built in, checked out at their registry ref and installed beside each other. */
+async function registryPluginDirs(builtIn: Set<string>): Promise<string[]> {
+  const { loadRegistry } = await import("../../src/plugins/marketplace/feed");
+  const { linkHostPackages } = await import("../../src/plugins/host-link");
+  const { WEB_BUNDLED_PLUGIN_PACKAGES } = await import("../../src/plugins/web-bundled");
+  const feed = await loadRegistry();
+  const pluginsDir = cacheDir("ui-audit-plugins");
+  await mkdir(pluginsDir, { recursive: true });
+  const dirs: string[] = [];
+  for (const plugin of feed.plugins) {
+    if (!plugin.repo || plugin.bundled || builtIn.has(plugin.id)) continue;
+    const name = plugin.repo.split("/")[1]!;
+    if ((WEB_BUNDLED_PLUGIN_PACKAGES as readonly string[]).includes(name)) continue;
+    const dir = join(pluginsDir, name);
+    if (!existsSync(join(dir, "package.json"))) {
+      const clone = Bun.spawnSync(["git", "clone", "--quiet", "--depth", "1", ...(plugin.ref ? ["--branch", plugin.ref] : []), `https://github.com/${plugin.repo}.git`, dir]);
+      if (clone.exitCode !== 0) { console.warn(`Left out ${plugin.id}: could not clone ${plugin.repo}`); continue; }
+      Bun.spawnSync(["bun", "install", "--production", "--omit", "peer", "--ignore-scripts"], { cwd: dir });
+    }
+    linkHostPackages(dir, undefined, pluginsDir);
+    dirs.push(dir);
+  }
+  return dirs;
+}
+
+/** The web app with component names kept, and the registry's plugins when asked. */
+async function buildWeb(pluginDirs: string[]): Promise<void> {
+  const build = Bun.spawnSync(["bun", "scripts/build-web.ts", "--out", web, "--keep-names", ...pluginDirs.flatMap((dir) => ["--plugin", dir])], { cwd: root, stdout: "inherit", stderr: "inherit" });
+  if (build.exitCode !== 0) throw new Error("The audit's web build failed");
+}
+
+/** The functions of the plugins compiled into the audit's build, read from the compiled modules. */
+async function pluginEntries(): Promise<AuditEntry[]> {
+  const { installPluginHostModules } = await import("../../src/plugins/host-modules");
+  const { pluginFromModule } = await import("../../src/plugins/plugin-export");
+  await installPluginHostModules();
+  const entries: AuditEntry[] = [];
+  const dir = join(web, "assets", "plugins");
+  for (const name of existsSync(dir) ? await readdir(dir) : []) {
+    const files = (await readdir(join(dir, name))).filter((file) => file.endsWith(".js"));
+    for (const file of files) {
+      const plugin = await import(join(dir, name, file)).then(pluginFromModule).catch(() => null);
+      if (!plugin) continue;
+      const templated = new Set<string>();
+      for (const template of plugin.paneTemplates ?? []) {
+        // One function per pane: a plugin that lists a template per report (FXMD) draws them in one pane.
+        if (templated.has(template.paneId)) continue;
+        templated.add(template.paneId);
+        const token = template.shortcut?.prefix ?? template.id;
+        entries.push({ token, paneId: template.paneId, argKind: template.shortcut?.argKind ?? null, plugin: plugin.id });
+      }
+      for (const pane of plugin.panes ?? []) {
+        if (!templated.has(pane.id)) entries.push({ token: pane.id, paneId: pane.id, plugin: plugin.id });
+      }
+    }
+  }
+  return entries;
+}
+
+const dock = (instance: Record<string, unknown>) => ({ dockRoot: { kind: "pane", instanceId: instance.instanceId }, instances: [instance], floating: [], detached: [] });
+const EMPTY_LAYOUT = { dockRoot: null, instances: [], floating: [], detached: [] };
+const SAMPLE_PANE = { instanceId: "world-indices:audit", paneId: "world-indices", binding: { kind: "none" } };
+
+/** The shell around the panes: views with no pane of their own to scope to. */
+const SHELL_VIEWS: Array<{ id: string; layout: object; focused?: string; seed?: SeedOptions; open(cdp: Cdp): Promise<void> }> = [
+  { id: "shell", layout: EMPTY_LAYOUT, async open() {} },
+  { id: "command-bar", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await key(cdp, "p", "KeyP", 80, 2); } },
+  { id: "command-bar-search", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "apple", { submit: false }); } },
+  { id: "theme-picker", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "TH"); } },
+  { id: "feedback-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "FB"); } },
+  { id: "pane-settings-dialog", layout: dock(SAMPLE_PANE), focused: SAMPLE_PANE.instanceId, async open(cdp) { await runCommand(cdp, "PS"); } },
+  {
+    id: "pane-menu",
+    layout: dock(SAMPLE_PANE),
+    focused: SAMPLE_PANE.instanceId,
+    async open(cdp) {
+      const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => { const r = document.querySelector("[data-gloom-role=pane-title]")?.getBoundingClientRect(); return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
+      if (!at) return;
+      await cdp.send("Input.dispatchMouseEvent", { type: "mousePressed", x: at.x, y: at.y, button: "right", buttons: 2, clickCount: 1 });
+      await cdp.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: at.x, y: at.y, button: "right", buttons: 0, clickCount: 1 });
+    },
+  },
+  { id: "onboarding", layout: EMPTY_LAYOUT, seed: { onboardingComplete: false }, async open() {} },
+];
+
+async function writeLine(file: string, value: unknown): Promise<void> {
+  await appendFile(file, `${JSON.stringify(value)}\n`);
+}
+
+async function readLines<T>(file: string): Promise<T[]> {
+  if (!await Bun.file(file).exists()) return [];
+  return (await Bun.file(file).text()).split("\n").filter(Boolean).map((line) => JSON.parse(line) as T);
+}
+
+async function main(): Promise<void> {
+  const catalog: AuditEntry[] = readCatalog(root, cacheDir("ui-audit-home"));
+  const builtIn = new Set(catalog.map((entry) => entry.paneId));
+  if (args.includes("--build") || !await Bun.file(join(web, "index.html")).exists()) {
+    await buildWeb(withRegistry ? await registryPluginDirs(builtIn) : []);
+  }
+  const entries = [...catalog, ...(await pluginEntries()).filter((entry) => !builtIn.has(entry.paneId))]
+    .filter((entry) => !only || only.includes(entry.token));
+  const shells = SHELL_VIEWS.filter((view) => !only || only.includes(view.id));
+  if (args.includes("--list")) {
+    for (const entry of entries) console.log(`${entry.token}\t${entry.paneId}\t${entry.plugin ?? ""}`);
+    for (const shell of shells) console.log(`${shell.id}\tshell`);
+    return;
+  }
+
+  await mkdir(out, { recursive: true });
+  const resultsFile = join(out, "results.jsonl");
+  const viewsFile = join(out, "views.jsonl");
+  const done = new Set<string>();
+  if (resume) for (const view of await readLines<AuditView>(viewsFile)) done.add(view.token);
+  else { await rm(resultsFile, { force: true }); await rm(viewsFile, { force: true }); }
+
+  const app = serveWebApp(web, replay);
+  let browser: Browser = await launchBrowser("ui-audit", widths[0]!, height);
+  const start = async () => {
+    await routeDirectReads(browser.cdp, replay);
+    await browser.cdp.send("Emulation.setTimezoneOverride", { timezoneId: "America/New_York" });
+  };
+  await start();
+
+  /** Pictures of each variant the first time it is seen: as drawn, and under the pointer for the interactive ones. */
+  const variantsFile = join(out, "variants.jsonl");
+  const pictured = new Set<string>();
+  if (resume) for (const line of await readLines<{ key: string }>(variantsFile)) pictured.add(line.key);
+  const pictureVariants = async (view: AuditView, width: number, value: AuditMeasure) => {
+    const cdp = browser.cdp;
+    const dir = join(out, "variants");
+    await mkdir(dir, { recursive: true });
+    for (const element of value.elements) {
+      if (!element.sample) continue;
+      const variantKey = variantKeyOf(element);
+      if (pictured.has(variantKey)) continue;
+      pictured.add(variantKey);
+      const file = `${new Bun.CryptoHasher("sha1").update(variantKey).digest("hex").slice(0, 16)}`;
+      const { x, y, width: w, height: h } = element.sample;
+      const clip = { x: Math.max(0, x - 4), y: Math.max(0, y - 4), width: Math.min(w + 8, width - Math.max(0, x - 4)), height: Math.min(h + 8, height - Math.max(0, y - 4)), scale: 1 };
+      const grab = async (name: string) => {
+        const { data } = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png", clip });
+        await Bun.write(join(dir, name), Buffer.from(data, "base64"));
+      };
+      await grab(`${file}.png`);
+      let hover: string | null = null;
+      if (HOVERED.has(element.family)) {
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: x + w / 2, y: y + h / 2, button: "none", buttons: 0 });
+        await sleep(160);
+        hover = `${file}-hover.png`;
+        await grab(hover);
+        await cdp.send("Input.dispatchMouseEvent", { type: "mouseMoved", x: width - 2, y: height - 2, button: "none", buttons: 0 });
+        await sleep(60);
+      }
+      await writeLine(variantsFile, { key: variantKey, family: element.family, shape: element.shape, component: element.component, state: element.state, token: view.token, view: view.id, width, file: `variants/${file}.png`, hover: hover ? `variants/${hover}` : null });
+    }
+  };
+
+  const record = async (view: AuditView, scope: string | null, width: number, theme: string, measure: boolean) => {
+    const cdp = browser.cdp;
+    debug(`record ${view.id} ${width} ${theme}`);
+    if (measure) {
+      const value = await evaluate<AuditMeasure>(cdp, UI_AUDIT_MEASURE(scope), 60_000);
+      debug(`measured ${value.texts?.length ?? 0} runs, ${value.elements?.length ?? 0} elements`);
+      if (value.missing) return false;
+      const result: AuditResult = { ...view, width, height, theme, measure: value };
+      await writeLine(resultsFile, result);
+      if (shots) await pictureVariants(view, width, value);
+    }
+    if (shots) {
+      const dir = join(out, "shots", theme, String(width));
+      await mkdir(dir, { recursive: true });
+      await shot(cdp, null, join(dir, `${view.id}.jpg`));
+    }
+    return true;
+  };
+
+  const viewport = async (width: number) => {
+    await browser.cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
+  };
+
+  try {
+    for (const shell of shells) {
+      if (done.has(shell.id)) continue;
+      const view: AuditView = { id: shell.id, kind: "shell", token: shell.id, view: "root" };
+      for (const width of widths) {
+        await viewport(width);
+        for (const [index, theme] of themes.entries()) {
+          await loadLayout(browser.cdp, app.url, replay, shell.layout, shell.focused, { theme, ...shell.seed });
+          await settle(browser.cdp, "body", 700, 6_000);
+          await shell.open(browser.cdp);
+          await settle(browser.cdp, "body", 600, 4_000);
+          await record(view, null, width, theme, index === 0);
+          await key(browser.cdp, "Escape", "Escape", 27);
+        }
+      }
+      await writeLine(viewsFile, view);
+      console.log(`${shell.id}: measured`);
+    }
+
+    for (const entry of entries) {
+      if (done.has(entry.token)) continue;
+      const started = Date.now();
+      try {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const views = await Promise.race([
+          auditPane(entry).finally(() => clearTimeout(timer)),
+          new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`timed out after ${ENTRY_TIMEOUT_MS / 1000}s`)), ENTRY_TIMEOUT_MS); }),
+        ]);
+        for (const view of views) await writeLine(viewsFile, view);
+        console.log(`${entry.token}: ${views.length} views in ${Math.round((Date.now() - started) / 1000)}s`);
+      } catch (error) {
+        console.warn(`${entry.token}: ${error instanceof Error ? error.message : error}`);
+        await writeLine(viewsFile, { id: `${entry.token}--failed`, kind: "pane", token: entry.token, paneId: entry.paneId, plugin: entry.plugin, view: "failed" });
+        // A page that hung or a browser that died: start a fresh one.
+        await browser.close().catch(() => {});
+        browser = await launchBrowser("ui-audit", widths[0]!, height);
+        await start();
+      }
+    }
+  } finally {
+    await browser.close().catch(() => {});
+    app.stop();
+  }
+
+  async function auditPane(entry: AuditEntry): Promise<AuditView[]> {
+    const cdp = browser.cdp;
+    await viewport(widths[widths.length - 1]!);
+    const instance = await discover(cdp, app.url, replay, entry) ?? fallbackInstance(entry);
+    const id = instance.instanceId as string;
+    const scope = `[data-gloom-pane-id="${id}"]`;
+    const base = { kind: "pane" as const, token: entry.token, paneId: entry.paneId, ...(entry.plugin ? { plugin: entry.plugin } : {}), instance };
+    const views = new Map<string, AuditView>();
+    const paneText = () => evaluate<string>(cdp, `document.querySelector(${JSON.stringify(scope)})?.innerText ?? ""`);
+    const open = async (theme: string) => {
+      debug(`open ${theme}`);
+      await loadLayout(cdp, app.url, replay, dock(instance), id, { theme });
+      await settle(cdp, scope);
+      debug("settled");
+    };
+    for (const width of widths) {
+      await viewport(width);
+      for (const [index, theme] of themes.entries()) {
+        const measure = index === 0;
+        await open(theme);
+        const rootView: AuditView = { ...base, id: `${entry.token}--root`, view: "root" };
+        if (!await record(rootView, id, width, theme, measure)) continue;
+        views.set(rootView.id, rootView);
+        const tabs = await evaluate<string[]>(cdp, `[...(document.querySelector(${JSON.stringify(scope)})?.querySelectorAll("[role=tab]") ?? [])].filter((el) => el.getAttribute("aria-selected") !== "true" && el.getBoundingClientRect().width > 0).map((el) => el.textContent.trim()).filter(Boolean).slice(0, ${MAX_TABS})`);
+        // The detail Enter opens from the root.
+        const before = await paneText();
+        await key(cdp, "Enter", "Enter", 13);
+        await settle(cdp, scope, 700, 6_000);
+        if (await paneText() !== before) {
+          const detail: AuditView = { ...base, id: `${entry.token}--detail`, view: "detail" };
+          await record(detail, id, width, theme, measure);
+          views.set(detail.id, detail);
+        }
+        if (tabs.length === 0) continue;
+        await open(theme);
+        for (const label of tabs) {
+          const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => { const el = [...(document.querySelector(${JSON.stringify(scope)})?.querySelectorAll("[role=tab]") ?? [])].find((tab) => tab.textContent.trim() === ${JSON.stringify(label)}); const r = el?.getBoundingClientRect(); return r && r.width > 0 ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
+          if (!at) continue;
+          await click(cdp, at);
+          await settle(cdp, scope, 700, 6_000);
+          const tab: AuditView = { ...base, id: `${entry.token}--tab-${slug(label)}`, view: "tab", tab: label };
+          await record(tab, id, width, theme, measure);
+          views.set(tab.id, tab);
+        }
+      }
+    }
+    return [...views.values()];
+  }
+
+  const pluginsDir = cacheDir("ui-audit-plugins");
+  const extraDirs = withRegistry && existsSync(pluginsDir) ? (await readdir(pluginsDir)).map((name) => join(pluginsDir, name)) : [];
+  await writeAuditReport(out, { root, extraDirs });
+  console.log(`\n${join(out, "report.md")}`);
+}
+
+if (import.meta.main) await main();
