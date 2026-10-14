@@ -11,6 +11,7 @@ import {
 import { ClippedText } from "../../../components/ui/display";
 import { RatioBar } from "../../../components/ui/ratio-bar";
 import { getTableWidth } from "../../../components/ui/table-layout";
+import { chromeBarRows } from "../../../components/layout/pane/sizing";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -299,7 +300,7 @@ function SupplyView({ symbol, width, height, focused }: Pick<PaneProps, "width" 
           <QueryBar width={width} filters={[tierFilter]} meta={flowMeta} />
           <StatGrid items={flowFigures} width={width} columns={flowFigureColumns} />
           <SupplyFlow rows={allRows} symbol={symbol} focusName={data.entity?.name ?? null} focusId={focusId} width={width}
-            height={Math.max(10, bodyHeight - 1 - statGridRows(flowFigures, width, flowFigureColumns) - (data.truncated ? 1 : 0))} focused={focused && !openRow} selectedId={selectedId}
+            height={Math.max(10, bodyHeight - chromeBarRows(desktop) - statGridRows(flowFigures, width, flowFigureColumns) - (data.truncated ? 1 : 0))} focused={focused && !openRow} selectedId={selectedId}
             onSelect={setSelected} onOpen={navigate} onVisible={setFlowIds} />
           {data.truncated ? <Box paddingX={1}><UpgradeLabel text="Upgrade to see every relationship" onPress={openUpgrade} role="supply-upgrade" /></Box> : null}
         </Box> : <DataTableView<SectionedRow<Item>> columns={columns}
