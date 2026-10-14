@@ -1,4 +1,5 @@
 import { useThemeColors } from "../../theme/theme-context";
+import { TYPE } from "../../theme/ui-tokens";
 import { Box, StyledText, Text, TextAttributes } from "../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { wrapTextLines } from "../../utils/text-wrap";
@@ -14,30 +15,42 @@ import type { ArticleBlock } from "./article-text";
 
 /**
  * The reader's type scale on the desktop and the web, one for every reader
- * (the article reader, the detail reader, the markdown and docs headings in
- * them). Reading text sits a step above the app's own size (12px by default)
- * and every other level is a modest step from it, so the page reads as part
- * of the app and the levels differ by weight and space as much as by size:
+ * (the article reader, the detail reader, Docs, and the markdown in them),
+ * from the app's tokens (src/theme/ui-tokens.ts TYPE):
  *
  * | Level | Wide | Column under 480px |
  * |---|---|---|
  * | Metadata, facts, tables, coverage | 12px, dimmer | 12px |
- * | Body | 14px, line height 1.6 | 13.2px |
- * | Lead | 15px | 14.1px |
- * | Section heading | 16px bold | 15.2px |
+ * | Body and lead (the lead is bright, not bigger) | 14px, line height 1.6 | 13.2px |
+ * | Section heading | 16px bold, bright, space above | 15.1px |
  * | Title | 20px bold | 18.9px |
  *
- * The body size comes from `--reader-em`, which a container query in
- * styles.css lowers in a narrow column, so a resize changes it with the
- * layout and nothing counts cells. The levels above it are in em of it.
+ * 14 to 16 is a 14% step, so a heading also differs by weight, colour and
+ * the space above it. The body size comes from `--reader-em`, which a
+ * container query in styles.css lowers in a narrow column, so a resize
+ * changes it with the layout and nothing counts cells. The levels above it
+ * are in em of it.
  */
-export const READER_COLUMN_FONT = "calc(var(--reader-em, 1.1667) * 1em)";
+export const READER_COLUMN_FONT = `calc(var(--reader-em, ${TYPE.body / TYPE.ui}) * 1em)`;
+/** The reading measure: every reader centres its column at this width, in its own type. */
+export const READER_MEASURE = "66ch";
+/**
+ * The one reading column: centred at the measure, the pane's inset on each
+ * side, 12px above and 16px below. Readers that sit in a DetailScrollBody
+ * (which already gives that inset) take only the measure.
+ */
+export const READER_COLUMN_STYLE = {
+  width: "100%",
+  maxWidth: `calc(${READER_MEASURE} + 2 * var(--gloom-inset))`,
+  padding: "var(--gloom-space-md) var(--gloom-inset) var(--gloom-space-lg)",
+  boxSizing: "border-box",
+} as const;
 /** Back to the app's own size inside a reading column: metadata, chips, controls, tables. */
 export const READER_APP_FONT = "calc(1em / var(--reader-em, 1.1667))";
 /** Line height of reading text on the desktop, against its own size. */
 export const DESKTOP_LINE_HEIGHT = 1.6;
 /** A section heading in reading text: a step above the body, set apart by weight and the space above it. */
-export const READER_HEADING_STYLE = { fontSize: "1.15em", fontWeight: 700, lineHeight: 1.35, margin: "0.9em 0 0.4em" } as const;
+export const READER_HEADING_STYLE = { fontSize: `${TYPE.heading / TYPE.body}em`, fontWeight: 700, lineHeight: 1.35, margin: "0.9em 0 0.4em" } as const;
 
 export type Segment = { text: string; marked?: boolean; figure?: boolean };
 
@@ -72,14 +85,16 @@ function hasHeaderRow(rows: readonly string[][]): boolean {
 export type TextVariant = "headline" | "meta" | "lead" | "body" | "heading" | "label" | "fact" | "item";
 
 const DESKTOP_VARIANT_STYLE: Record<TextVariant, Record<string, string | number>> = {
-  headline: { fontSize: "1.43em", lineHeight: 1.25 },
+  headline: { fontSize: `${TYPE.title / TYPE.body}em`, lineHeight: 1.25 },
   meta: { fontSize: READER_APP_FONT, lineHeight: 1.5 },
-  lead: { fontSize: "1.07em", lineHeight: 1.55, marginBottom: "1em" },
+  // The body's size, set apart by its brighter colour (the caller) and the space after it.
+  lead: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "1em" },
   body: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.9em" },
   heading: READER_HEADING_STYLE,
   // Names what follows (key facts, coverage) as a section heading does, without the air above a section.
   label: { ...READER_HEADING_STYLE, margin: "0 0 0.4em" },
-  fact: { fontSize: "0.93em", lineHeight: 1.55, marginBottom: "0.35em" },
+  // At the app's size, as the detail reader's facts are.
+  fact: { fontSize: READER_APP_FONT, lineHeight: 1.55, marginBottom: "0.35em" },
   item: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.3em" },
 };
 

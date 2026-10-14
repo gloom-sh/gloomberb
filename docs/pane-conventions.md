@@ -44,6 +44,86 @@ both themes, a narrow and a wide pane. Rules 2, 6 and 8 are enforced by CI as
 the checks land (Linear GLO-768); until a check exists, the reviewer enforces
 them.
 
+## Design system (desktop and web)
+
+The conventions below are the principles in numbers. Each family is one
+shared component; a pane that needs something else extends the component.
+The terminal keeps its own cell layout and takes none of these values.
+
+### Tokens
+
+Defined once: CSS variables in `src/renderers/dom/styles.css` (on `body`)
+and TS constants in `src/theme/ui-tokens.ts` (`TYPE`, `WEIGHT`, `SPACE`,
+`RADIUS`, `TOKEN`). Colour roles are set per theme by `src/theme/colors.ts`.
+Style with `var(--gloom-…)`, never a number of your own.
+
+| Token | Value | Use |
+|---|---|---|
+| `--gloom-type-caption` | 10px | key caps only |
+| `--gloom-type-ui` | 12px | everything that is not reading text: chrome, tables, controls, tabs, footers, labels, metadata |
+| `--gloom-type-body` | 14px, line height 1.6 | reading text in a reader column |
+| `--gloom-type-heading` | 16px bold | a heading in reading text |
+| `--gloom-type-title` | 20px bold | a reader's title, a pane's lead figure |
+| `--gloom-weight-regular`, `-bold` | 400, 700 | the only two weights |
+| `--gloom-space-xs/sm/md/lg/xl` | 4, 8, 12, 16, 24px | gaps, padding, margins |
+| `--gloom-inset` | one cell (8px) | a pane body's inset on every side |
+| `--gloom-radius-sm/md/lg/full` | 3, 6, 8, 999px; bars and tables 0 | small marks (key caps, chips); controls; floating surfaces; dots |
+| `--gloom-hairline` | text at 14% | every rule inside the app: bars, footer, status bar, menus, dividers |
+| `--gloom-hover-fill` | bright text at 8% | the pointer over a control, a menu item, a hint |
+| `--gloom-band` | bright text at 3.5% | the query bar, stack header and figure bands |
+| `--gloom-elevation` | `0 12px 32px` bg at 48% | the one shadow, for floating surfaces only |
+| `--gloom-surface-raised` | panel toward bg | dialogs, menus, popovers, toasts, the command bar, cards |
+| `--gloom-surface-sunken` | bg | inside a field, a select, a checkbox |
+| `--gloom-control-border` | border toward the accent | buttons, fields, selects, floating surfaces |
+| `--gloom-accent` | border-focused | focus, the active tab's underline, a chosen control |
+| `--gloom-link`, `--gloom-link-hover` | text, bright text | links |
+| `--gloom-error` | negative | errors |
+| `--gloom-locked` | dim text | the lock of a locked or Pro state |
+
+Levels step by at least about 15% in size (12, 14, 16, 20) or differ by
+weight and colour. 14 to 16 is 14%, so a reading heading is also bold,
+bright and set off by space; the lead is the body size, bright. A reader
+column under 480px steps every reading level down together (13.2px body).
+
+### Families
+
+| Family | The convention (component) |
+|---|---|
+| Buttons (`Button`, `IconButton`) | Four kinds, one radius (`md`), no shadow. Primary: accent fill, bold. Danger: the same in negative. Secondary: 1px control border, regular. Ghost (`ghost`, `plain`): text that takes the hover fill. Icon: 20×18, hover fill. Height one row (18px), a bar's controls the bar's 20px. A chosen button takes the selection fill. |
+| Tabs, segmented choices (`Tabs`, `SegmentedControl`, query bar choices) | One look: 12px text, 8px padding, no box and no radius; inactive dim, hover the text colour, active bright and bold on a 2px accent underline. Title-bar tabs, sub-tabs and segmented choices are the same. |
+| Chips (`Badge`, ticker chips) | 16px in an 18px row, `sm` radius, 8px padding, a subtle fill, the tone in the text. Regular weight; tickers bold. |
+| Key caps | 14px tall, caption size, `sm` radius, a 1px ring and a faint fill mixed from the text colour around it. |
+| Fields and selects (`TextField`, `SelectField`, `SelectButton`) | One row tall, sunken fill, 1px control border, `md` radius, 8px padding; focused or open, the accent border. In a query bar they are its segments. |
+| Checkbox | 14px, `sm` radius, control border, sunken fill; checked, the accent. |
+| Links (`ExternalLinkText`) | The text around them, underlined; bright under the pointer or focus. |
+| Toolbars (`QueryBar`) | The band: 20px, hairline under it, segments split by hairlines with 8px padding, the first one at the inset. |
+| Tables (`DataTable`) | Header 20px, bold dim on a fill; rows 18px, cell padding 0 8px; hover fill on rows; selection fill on the chosen row. No zebra. |
+| Key-value rows (`KeyValueRow`, `StatGrid`, `FieldGrid`) | 18px rows, label dim, value regular or bold; no rule between rows. Grid bands keep their hairline below and between cells. |
+| Section headings (`SectionHeading`) | 12px bold bright in data panes; 16px in readers. |
+| Cards (`Card`) | Raised surface, 1px hairline, `md` radius, 8px inside; chosen, the accent border. For a unit of content (a quote tile), never for rows. |
+| States (`EmptyState`, `PaneStatusBody`, `Spinner`, `Notice`, walls) | At the inset (8px from each edge); the message dim, an error in negative, actions under it. Loading is the one spinner and "Loading …". Locked: the lock in the locked colour, the action bright. |
+| Pane chrome | Title bar 20px, title 12px bold whatever the focus (focus changes colour, never weight), 8px inset, hairline below (accent when focused). Footer 20px, 12px, hairline above; hints are ghost buttons: key bright, word dim. Detail back row: the band, Back as its first segment. |
+| Shell | App header and status bar at 12px, theme text roles (no greys of their own); status bar items are ghost buttons. |
+| Dialogs, menus, popovers, toasts, command bar | One floating surface: raised fill, 1px control border, `lg` radius, the elevation shadow; 16px inside a dialog, 4px inside a menu; menu items 24px, `md` radius, hover fill. |
+| Readers (`ArticleReader`, `DetailReader`, Docs) | One column, centred at 66ch of the reading size, the pane's inset on each side, 12px above and 16px below; title 20, headings 16, body and lead 14, metadata and facts 12. |
+| Chart chrome | Legends and axes 12px dim. Labels a heat map, treemap or map fits to its own shapes are allowed to size themselves. |
+
+### Exceptions
+
+A deviation is listed with its reason, as the cell-metric allowlist is
+(`src/architecture/dom-cell-metrics-allowlist.json`): the file, what it sets
+outside the tokens, and a `why` a reviewer accepted ("a heat map tile's label
+is fitted to the tile"). Data marks (bars, swatches, flags) and fitted chart
+labels are the usual reasons. Chat panes have their own owner.
+
+### Seeing it
+
+`bun run kit:page` serves the kit page: every family in every state, in the
+white and paper themes, at any width (`scripts/pane-chrome/kit-page.ts`;
+`--shots` writes one picture per family at 640 and 1280px). It is the
+benchmark a UI change is compared against; `bun run audit:ui` measures the
+whole app against it (CONTRIBUTING.md).
+
 ## 1. Anatomy
 
 **App chrome** (the shell's, never a pane's): the header holds the command
@@ -62,8 +142,8 @@ never goes there.
 - Body: content only. Tabs, tables, details, forms, charts.
 - Header zone: the top of the body, in this order and nothing else: the
   `QueryBar` (search, filters, view), then a `StatGrid` of summary figures,
-  then content. On the desktop the title-bar tab takes the colour of whatever
-  sits under it, so the tab, the bar and the figures read as one surface.
+  then content. The title-bar tabs, the bar and the figures read as one
+  surface: tabs are text on an underline, the bands share one fill.
   No loose text lines, blank rows or button rows above or between them.
 - Footer, registered with `usePaneFooter`: `info` on the left (changing
   status), `hints` on the right (pane actions with their keys, visible only
@@ -216,17 +296,17 @@ back button or clicking Back pops it. Rules:
   stack's `detailScrollRef`, so j/k step it a line at a time and the next
   item starts at the top. An item's facts and text read through
   `DetailReader` (`src/components/reader/detail-reader.tsx`): label and value
-  pairs, then the text in short paragraphs in the reader's type, across the
-  pane's width on the desktop and the web. `FeedDataTableStackView` takes the
+  pairs, then the text in short paragraphs in the reader's type, in the one
+  reader column on the desktop and the web. `FeedDataTableStackView` takes the
   facts as `detailFacts`; the Changelog and Trials details are the reference.
 - Reading text on the desktop and the web (the article reader, `DetailReader`,
-  Docs) takes one type scale, from `src/components/reader/reader-text.tsx`:
-  metadata, facts, tables and coverage at the app's own size (12px) and
-  dimmer; body 14px at line height 1.6; a lead 15px; section headings 16px
-  bold with space above them; a title 20px bold. In a column under 480px the
-  body is 13.2px and the levels above it follow. Levels differ by weight and
-  space as much as by size, so a reader sits beside the app's tables without
-  shouting. A pane does not set its own reading size.
+  Docs) takes one type scale and one column, from
+  `src/components/reader/reader-text.tsx` (Design system, Readers): metadata,
+  facts, tables and coverage at the app's own size (12px) and dimmer; body and
+  lead 14px at line height 1.6, the lead brighter; section headings 16px bold
+  and bright with space above them; a title 20px bold. In a column under 480px
+  the body is 13.2px and the levels above it follow. A pane does not set its
+  own reading size or column.
 - Any other scrolling body is a `ScrollBox`. Leaving `scrollY` out means it
   scrolls vertically, with the wheel and, while the pane is focused, with the
   arrows, j/k, PageUp, PageDown, Home and End; `scrollY={false}` turns that off.

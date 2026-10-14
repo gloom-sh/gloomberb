@@ -319,7 +319,6 @@ export function PaneFooterBar({
   const resolvedFooter = footer ?? EMPTY_FOOTER;
   const empty = !hasPaneFooterContent(resolvedFooter);
   const borderColor = focused ? colors.borderFocused : colors.border;
-  const topBorderColor = colors.border;
   const nativeBackgroundColor = empty
     ? "transparent"
     : focused
@@ -340,10 +339,10 @@ export function PaneFooterBar({
         data-focused={focused ? "true" : "false"}
         data-empty={empty ? "true" : "false"}
         style={{
-          "--pane-footer-border-color": empty ? "transparent" : topBorderColor,
-          borderTop: `1px solid ${empty ? "transparent" : topBorderColor}`,
+          // The one hairline (styles.css), and no highlight under it.
+          "--pane-footer-border-color": empty ? "transparent" : "var(--gloom-hairline)",
+          borderTop: `1px solid ${empty ? "transparent" : "var(--gloom-hairline)"}`,
           backgroundColor: nativeBackgroundColor,
-          boxShadow: empty ? "none" : `inset 0 1px 0 ${blendHex(nativeBackgroundColor, colors.textBright, 0.03)}`,
         }}
       >
         <FooterContent

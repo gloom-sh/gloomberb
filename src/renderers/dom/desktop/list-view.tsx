@@ -3,7 +3,7 @@ import { useEffect, useId, useRef, useState, type CSSProperties } from "react";
 import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
 import { TextAttributes } from "../../../ui";
 import type { ListRowState, ListViewItem, ListViewProps } from "../../../components/ui/list-view";
-import { blendHex, hoverBg, type ThemeColors } from "../../../theme/colors";
+import { hoverBg, type ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
 import { isInsideDialogSurface } from "../host/focus-scope";
@@ -67,12 +67,11 @@ function listRowStyle(selected: boolean, disabled: boolean, colors: ThemeColors)
   return {
     borderRadius: CONTROL_RADIUS,
     border: `1px solid ${selected ? colors.borderFocused : "transparent"}`,
-    boxShadow: selected ? `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.06)}` : undefined,
     boxSizing: "border-box",
     cursor: disabled ? "default" : "pointer",
     maxWidth: "100%",
     minWidth: 0,
-    paddingInline: 10,
+    paddingInline: "var(--gloom-space-sm)",
   };
 }
 

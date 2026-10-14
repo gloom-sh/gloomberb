@@ -5,6 +5,30 @@ body {
   --cell-w: 8px;
   --cell-h: 18px;
   --chrome-h: 20px;
+  /* Design tokens (src/theme/ui-tokens.ts, docs/pane-conventions.md "Tokens").
+     FONT+ sets --gloom-font-scale with the cell size. */
+  --gloom-font-scale: 1;
+  --gloom-type-caption: calc(10px * var(--gloom-font-scale));
+  --gloom-type-ui: calc(12px * var(--gloom-font-scale));
+  --gloom-type-body: calc(14px * var(--gloom-font-scale));
+  --gloom-type-heading: calc(16px * var(--gloom-font-scale));
+  --gloom-type-title: calc(20px * var(--gloom-font-scale));
+  --gloom-weight-regular: 400;
+  --gloom-weight-bold: 700;
+  --gloom-space-xs: 4px;
+  --gloom-space-sm: 8px;
+  --gloom-space-md: 12px;
+  --gloom-space-lg: 16px;
+  --gloom-space-xl: 24px;
+  --gloom-inset: var(--cell-w);
+  --gloom-radius-sm: 3px;
+  --gloom-radius-md: 6px;
+  --gloom-radius-lg: 8px;
+  --gloom-radius-full: 999px;
+  --gloom-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
+  --gloom-hover-fill: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
+  --gloom-band: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  --gloom-elevation: 0 12px 32px color-mix(in srgb, var(--gloom-bg) 48%, transparent);
   margin: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
   font-size: 12px;
@@ -42,8 +66,9 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 /* `plain` buttons drop the border, so hover is the only thing left that says
    the row or chip is clickable. A translucent wash reads the same on the
    sidebar, a pane body and the status bar. */
-[data-gloom-role="desktop-button"][data-gloom-variant="plain"]:not(:disabled):hover {
-  background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
+/* Ghost and secondary buttons take the hover fill; filled ones keep their fill. */
+[data-gloom-role="desktop-button"]:is([data-gloom-variant="plain"], [data-gloom-variant="ghost"], [data-gloom-variant="secondary"]):not(:disabled):not([aria-pressed="true"]):hover {
+  background-color: var(--gloom-hover-fill);
 }
 /* A raised button sinks while it is held: its light flips and its shadow goes
    (control-styles.ts, buttonRelief). */
@@ -272,8 +297,8 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   flex: none;
   height: var(--cell-h);
   align-items: center;
-  border-top: 1px solid color-mix(in srgb, var(--gloom-border) 72%, transparent);
-  font-size: 11.5px;
+  border-top: 1px solid var(--gloom-hairline);
+  font-size: var(--gloom-type-ui);
 }
 [data-gloom-role="status-bar"] span {
   line-height: var(--cell-h);
@@ -330,8 +355,8 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   min-height: var(--chrome-h);
   max-height: var(--chrome-h);
   align-items: center;
-  border-top: 1px solid color-mix(in srgb, var(--pane-footer-border-color, var(--gloom-border)) 72%, transparent);
-  font-size: 11.5px;
+  border-top: 1px solid var(--pane-footer-border-color, var(--gloom-hairline));
+  font-size: var(--gloom-type-ui);
   overflow: hidden;
 }
 [data-gloom-role="pane-footer"][data-empty="true"] {
@@ -343,10 +368,10 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="pane-hint"] {
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: var(--gloom-radius-md);
 }
 [data-gloom-role="pane-hint"]:hover {
-  background: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
+  background: var(--gloom-hover-fill);
 }
 [data-gloom-role="resize-handle"] {
   cursor: nwse-resize;
@@ -438,24 +463,59 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
     --tab-reorder-duration: 0ms;
   }
 }
-[data-gloom-role="tab-button"]:focus-visible {
-  outline: 1px solid var(--tab-hover-underline);
-  outline-offset: -1px;
+/* One tab everywhere: title-bar tabs, sub-tabs, segmented choices and the
+   query bar's inline choices. Text only, no box: inactive dim, hovered the
+   text colour with a faint underline, active bright and bold on a 2px accent
+   underline. Keyboard focus is the hover look. */
+[data-gloom-role="tab-button"] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--gloom-space-xs);
+  height: 100%;
+  padding: 0 var(--gloom-space-sm);
+  font-size: var(--gloom-type-ui);
+  font-weight: var(--gloom-weight-regular);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--tab-fg, var(--gloom-text-dim));
+  background: transparent;
+  border-radius: 0;
+  transition: color 110ms ease;
 }
-/* Title-bar tabs open into the pane body, so a ring would draw a line under the
-   active tab's label. Keyboard focus shows as the hover fill instead. */
-[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-button"]:focus-visible {
-  outline: none;
+[data-gloom-role="tab-button"]::after {
+  content: "";
+  position: absolute;
+  left: var(--gloom-space-sm);
+  right: var(--gloom-space-sm);
+  bottom: 0;
+  height: 2px;
+  background: var(--gloom-accent);
+  opacity: 0;
+  transition: opacity 110ms ease;
 }
-[data-gloom-role="pane-header-tabs"] [data-gloom-role="tab-button"]:not([data-active="true"]):focus-visible {
-  background: var(--pane-tab-hover-bg) !important;
-  color: var(--tab-hover-fg) !important;
+[data-gloom-role="tab-button"][data-dense="true"] { padding: 0 var(--gloom-space-xs); }
+[data-gloom-role="tab-button"][data-dense="true"]::after { left: var(--gloom-space-xs); right: var(--gloom-space-xs); }
+[data-gloom-role="tab-button"]:not([data-active="true"]):not(:disabled):is(:hover, :focus-visible) {
+  color: var(--gloom-text);
 }
+[data-gloom-role="tab-button"]:not([data-active="true"]):not(:disabled):is(:hover, :focus-visible)::after {
+  opacity: 0.35;
+}
+[data-gloom-role="tab-button"][data-active="true"] {
+  color: var(--tab-active-fg, var(--gloom-text-bright));
+  font-weight: var(--gloom-weight-bold);
+}
+[data-gloom-role="tab-button"][data-active="true"]::after { opacity: 1; }
+[data-gloom-role="tab-button"]:disabled { color: var(--gloom-text-muted); cursor: default; }
+[data-gloom-role="tab-button"]:focus-visible { outline: none; }
 [data-gloom-role="tab-close"] {
   cursor: pointer;
+  border-radius: var(--gloom-radius-sm);
 }
 [data-gloom-role="tab-close"]:hover {
-  background: color-mix(in srgb, var(--gloom-text-bright) 10%, transparent);
+  background: var(--gloom-hover-fill);
 }
 [data-gloom-scrollbar-x],
 [data-gloom-scrollbar-y] {
@@ -613,13 +673,13 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   gap: 2px 10px;
   align-items: start;
   width: 100%;
-  padding: 11px 10px 11px 12px;
+  padding: var(--gloom-space-md);
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--gloom-toast-accent) 54%, var(--gloom-border));
-  border-radius: 7px;
-  background: color-mix(in srgb, var(--gloom-panel) 94%, var(--gloom-bg));
+  border: 1px solid color-mix(in srgb, var(--gloom-toast-accent) 54%, var(--gloom-control-border));
+  border-radius: var(--gloom-radius-lg);
+  background: var(--gloom-surface-raised);
   color: var(--gloom-text);
-  box-shadow: 0 14px 32px color-mix(in srgb, var(--gloom-bg) 42%, transparent);
+  box-shadow: var(--gloom-elevation);
   pointer-events: auto;
 }
 .gloom-toast[data-type="success"] { --gloom-toast-accent: var(--gloom-positive); }
@@ -636,7 +696,6 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   margin-top: 5px;
   border-radius: 50%;
   background: var(--gloom-toast-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--gloom-toast-accent) 14%, transparent);
 }
 .gloom-toast-heading {
   grid-area: 1 / 2;
@@ -657,7 +716,6 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 .gloom-toast-subtitle {
   overflow: hidden;
   color: var(--gloom-text-dim);
-  font-size: 11px;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -679,7 +737,7 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 @media (hover: hover) and (pointer: fine) {
   .gloom-toast[data-actionable="true"]:hover {
     border-color: var(--gloom-toast-accent);
-    background: color-mix(in srgb, var(--gloom-panel) 88%, var(--gloom-toast-accent));
+    background: color-mix(in srgb, var(--gloom-surface-raised) 88%, var(--gloom-toast-accent));
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -703,14 +761,12 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   max-width: min(920px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   overflow: auto;
-  border: 1px solid var(--gloom-border);
-  border-radius: 6px;
-  background: var(--gloom-panel);
+  border: 1px solid var(--gloom-control-border);
+  border-radius: var(--gloom-radius-lg);
+  background: var(--gloom-surface-raised);
   color: var(--gloom-text);
   padding: 0;
-  box-shadow:
-    0 18px 48px color-mix(in srgb, var(--gloom-bg) 46%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--gloom-text-bright) 5%, transparent);
+  box-shadow: var(--gloom-elevation);
 }
 .gloom-popover-anchor {
   display: inline-flex;
@@ -722,13 +778,12 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   z-index: 10001;
   max-height: min(420px, calc(100vh - 20px));
   overflow: auto;
-  border: 1px solid;
-  border-radius: 8px;
-  padding: 8px;
+  border: 1px solid var(--gloom-control-border);
+  border-radius: var(--gloom-radius-lg);
+  padding: var(--gloom-space-sm);
   outline: none;
-  box-shadow:
-    0 14px 34px color-mix(in srgb, var(--gloom-bg) 42%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--gloom-text-bright) 5%, transparent);
+  background: var(--gloom-surface-raised);
+  box-shadow: var(--gloom-elevation);
 }
 /* Chart screenshot watermark: mounted by every chart, revealed together by
    html[data-gloom-screenshot] (pane capture, OS screenshot chords, CLI shots). */
@@ -746,8 +801,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
    tinted with an accent base line. The row scrolls sideways when the pane is
    narrower than its controls. */
 .gloom-qb {
-  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
-  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  --qb-hairline: var(--gloom-hairline);
+  --qb-fill: var(--gloom-hover-fill);
   --qb-accent-fill: color-mix(in srgb, var(--gloom-border-focused) 18%, transparent);
   --qb-label: color-mix(in srgb, var(--gloom-text) 58%, transparent);
   /* 20px at the default font size, whole pixels at every size. The bottom
@@ -757,9 +812,9 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   padding-bottom: 1px;
   flex-shrink: 0;
   min-width: 0;
-  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  background: var(--gloom-band);
   box-shadow: inset 0 -1px 0 var(--qb-hairline);
-  font-size: 12px;
+  font-size: var(--gloom-type-ui);
 }
 .gloom-qb button { font: inherit; border: 0; margin: 0; }
 .gloom-qb-scroll {
@@ -779,8 +834,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   display: inline-flex;
   align-items: center;
   flex: none;
-  gap: 6px;
-  padding: 0 10px;
+  gap: var(--gloom-space-xs);
+  padding: 0 var(--gloom-space-sm);
   border-radius: 0;
   background: transparent;
   color: var(--gloom-text);
@@ -804,38 +859,50 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-search[data-active="true"] .gloom-qb-search-icon { color: var(--gloom-border-focused); }
 .gloom-qb-search-input { flex: 1; min-width: 0; display: flex; align-items: center; }
 .gloom-qb-search-input input::placeholder { color: var(--gloom-text-muted); }
-.gloom-qb-kbd {
+/* The one key cap (dialog-actions.tsx WebKeycap): mixed from the text colour it
+   sits with, so it reads on a filled button, a plain one and in every theme. */
+.gloom-qb-kbd,
+.gloom-keycap {
   flex: none;
-  min-width: 15px;
-  height: 15px;
-  line-height: 15px;
-  text-align: center;
-  font-size: 10px;
-  border-radius: 3px;
-  background: var(--qb-fill);
-  color: var(--gloom-text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 var(--gloom-space-xs);
+  font-size: var(--gloom-type-caption);
+  font-weight: var(--gloom-weight-regular);
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  border-radius: var(--gloom-radius-sm);
+  font-family: inherit;
+  color: color-mix(in srgb, currentColor 80%, transparent);
+  background: color-mix(in srgb, currentColor 10%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 30%, transparent);
 }
 .gloom-qb-filters { display: flex; align-items: stretch; flex: none; }
 .gloom-qb-filters .gloom-popover-anchor { display: flex; align-items: stretch; }
 .gloom-qb-chip { cursor: pointer; }
 .gloom-qb-chip:hover, .gloom-qb-chip[data-open="true"] { background: var(--qb-fill); }
 .gloom-qb-label { color: var(--qb-label); }
-.gloom-qb-chevron { width: 9px; height: 9px; color: var(--gloom-text-muted); margin-right: -2px; }
+.gloom-qb-chevron { width: 9px; height: 9px; color: var(--gloom-text-muted); }
 .gloom-qb-chip[data-narrowing="true"],
 .gloom-qb-chip[data-narrowing="true"]:hover {
   background: var(--qb-accent-fill);
   box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
 }
 .gloom-qb-chip[data-narrowing="true"] .gloom-qb-label { color: color-mix(in srgb, var(--gloom-border-focused) 80%, var(--gloom-text)); }
-.gloom-qb-chip[data-narrowing="true"] .gloom-qb-value { color: var(--gloom-text-bright); font-weight: 600; }
+.gloom-qb-chip[data-narrowing="true"] .gloom-qb-value { color: var(--gloom-text-bright); font-weight: var(--gloom-weight-bold); }
 .gloom-qb-reset {
   width: 14px;
   height: 14px;
-  margin-right: -4px;
+  margin-right: calc(-1 * var(--gloom-space-xs));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 3px;
+  border-radius: var(--gloom-radius-sm);
   color: var(--gloom-text-muted);
   cursor: pointer;
 }
@@ -843,8 +910,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-reset:hover { background: var(--qb-fill); color: var(--gloom-text-bright); }
 .gloom-qb-clear { color: var(--gloom-text-muted); cursor: pointer; box-shadow: none; }
 .gloom-qb-clear:hover { color: var(--gloom-text); background: var(--qb-fill); }
-.gloom-qb-inline { gap: 2px; padding-right: 0; }
-.gloom-qb-inline .gloom-qb-label { padding-right: 4px; color: var(--gloom-text-muted); }
+.gloom-qb-inline { gap: 0; padding-right: 0; }
+.gloom-qb-inline .gloom-qb-label { padding-right: var(--gloom-space-xs); color: var(--gloom-text-muted); }
 .gloom-qb-view {
   margin-left: auto;
   display: flex;
@@ -866,23 +933,23 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments::-webkit-scrollbar { display: none; }
 .gloom-qb-inline[data-strip="true"] .gloom-qb-segments > button { flex: none; white-space: nowrap; }
 .gloom-qb-filters[data-strip="true"] > :not([data-strip="true"]) { flex: none; }
+/* Inline choices are tabs (the tab rule above): text only, the active one
+   bright and bold on the accent underline. */
 .gloom-qb-view button {
   height: 100%;
-  padding: 0 8px;
+  padding: 0 var(--gloom-space-sm);
   border-radius: 0;
   background: transparent;
-  /* Options read as values (like a chip's value); the label beside an inline
-     group stays the muted one. */
-  color: color-mix(in srgb, var(--gloom-text) 82%, transparent);
+  color: var(--gloom-text-dim);
+  font-weight: var(--gloom-weight-regular);
   cursor: pointer;
-  transition: background-color 120ms ease, color 120ms ease;
+  transition: color 120ms ease, box-shadow 120ms ease;
 }
-.gloom-qb-view button:hover { color: var(--gloom-text); }
+.gloom-qb-view button:hover { color: var(--gloom-text); box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--gloom-accent) 35%, transparent); }
 .gloom-qb-view button[data-active="true"] {
-  background: var(--qb-fill);
   color: var(--gloom-text-bright);
-  font-weight: 600;
-  box-shadow: inset 0 -2px 0 var(--gloom-border-focused);
+  font-weight: var(--gloom-weight-bold);
+  box-shadow: inset 0 -2px 0 var(--gloom-accent);
 }
 /* Context gives way first when the pane is narrow. */
 .gloom-qb-meta {
@@ -890,7 +957,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   align-self: center;
   flex: 0 1000 auto;
   min-width: 0;
-  padding: 0 10px;
+  padding: 0 var(--gloom-space-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -904,7 +971,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   display: flex;
   align-items: center;
   align-self: stretch;
-  padding: 0 4px 0 8px;
+  padding: 0 var(--gloom-space-xs) 0 var(--gloom-inset);
 }
 
 /* Audio player: the query bar's band at the foot of what it plays, so its
@@ -1017,23 +1084,23 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
    Back and the item title read as the pane's toolbar. Grows when a long title
    wraps rather than hiding it. */
 .gloom-stack-bar {
-  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
-  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  --qb-hairline: var(--gloom-hairline);
+  --qb-fill: var(--gloom-hover-fill);
   display: flex;
   align-items: stretch;
   min-height: var(--chrome-h);
   padding-bottom: 1px;
   flex-shrink: 0;
-  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  background: var(--gloom-band);
   box-shadow: inset 0 -1px 0 var(--qb-hairline);
-  font-size: 12px;
+  font-size: var(--gloom-type-ui);
 }
 .gloom-stack-back {
   flex: none;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 0 10px;
+  gap: var(--gloom-space-xs);
+  padding: 0 var(--gloom-space-sm);
   border: 0;
   margin: 0;
   font: inherit;
@@ -1050,13 +1117,13 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   flex: 1;
   min-width: 0;
   align-self: center;
-  padding: 5px 10px;
-  line-height: 18px;
-  font-weight: 700;
+  padding: 1px var(--gloom-space-sm);
+  line-height: var(--cell-h);
+  font-weight: var(--gloom-weight-bold);
   color: var(--gloom-text-bright);
   overflow-wrap: break-word;
 }
-.gloom-stack-hint { flex: none; align-self: center; padding: 0 10px; color: var(--gloom-text-muted); white-space: nowrap; }
+.gloom-stack-hint { flex: none; align-self: center; padding: 0 var(--gloom-space-sm); color: var(--gloom-text-muted); white-space: nowrap; }
 /* Back and the title when a detail's query bar has taken the stack header. */
 .gloom-qb .gloom-stack-back { height: 100%; }
 .gloom-qb-title {
@@ -1064,11 +1131,11 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   max-width: 40ch;
   display: inline-flex;
   align-items: center;
-  padding: 0 10px;
+  padding: 0 var(--gloom-space-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-weight: 700;
+  font-weight: var(--gloom-weight-bold);
   color: var(--gloom-text-bright);
   box-shadow: inset -1px 0 0 var(--qb-hairline);
 }
@@ -1112,36 +1179,35 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 /* Popovers take focus so their keys work; the focus ring is noise on a
    surface that is plainly the active one. */
 .gloom-popover:focus, .gloom-popover:focus-visible { outline: none; }
-.gloom-popover[data-density="menu"] { padding: 4px; border-radius: 7px; }
+.gloom-popover[data-density="menu"] { padding: var(--gloom-space-xs); }
 
 /* Menu: the one list of choices every popover menu renders (filter menus,
    selects, multi-selects, the pane menu). */
-.gloom-menu { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: 12px; }
+.gloom-menu { display: flex; flex-direction: column; gap: 1px; min-width: 0; font-size: var(--gloom-type-ui); }
 .gloom-menu-title {
-  padding: 4px 8px 3px;
+  padding: var(--gloom-space-xs) var(--gloom-space-sm);
   color: var(--gloom-text-muted);
-  font-size: 11px;
   white-space: nowrap;
 }
-.gloom-menu-divider { height: 1px; margin: 3px 4px; background: color-mix(in srgb, var(--gloom-text) 12%, transparent); }
+.gloom-menu-divider { height: 1px; margin: var(--gloom-space-xs); background: var(--gloom-hairline); }
 .gloom-menu-item {
   min-height: 24px;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 3px 8px;
-  border-radius: 5px;
+  gap: var(--gloom-space-sm);
+  padding: var(--gloom-space-xs) var(--gloom-space-sm);
+  border-radius: var(--gloom-radius-md);
   cursor: pointer;
   color: var(--gloom-text);
   white-space: nowrap;
 }
 .gloom-menu-item[aria-disabled="true"] { color: var(--gloom-text-muted); cursor: default; }
-.gloom-menu-item[data-highlighted="true"] { background: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent); color: var(--gloom-text-bright); }
-.gloom-menu-item[data-selected="true"] { font-weight: 600; }
+.gloom-menu-item[data-highlighted="true"] { background: var(--gloom-hover-fill); color: var(--gloom-text-bright); }
+.gloom-menu-item[data-selected="true"] { font-weight: var(--gloom-weight-bold); }
 .gloom-menu-label { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .gloom-menu-text { overflow: hidden; text-overflow: ellipsis; }
-.gloom-menu-description { color: var(--gloom-text-muted); font-weight: 400; font-size: 11px; white-space: normal; }
-.gloom-menu-hint { flex: none; padding-left: 16px; color: var(--gloom-text-muted); font-weight: 400; }
+.gloom-menu-description { color: var(--gloom-text-muted); font-weight: var(--gloom-weight-regular); white-space: normal; }
+.gloom-menu-hint { flex: none; padding-left: var(--gloom-space-lg); color: var(--gloom-text-muted); font-weight: var(--gloom-weight-regular); }
 .gloom-menu-check { flex: none; color: var(--gloom-border-focused); display: inline-flex; }
 .gloom-menu-check svg { width: 11px; height: 11px; }
 
@@ -1154,9 +1220,9 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
    band surface and hairlines; each cell is label, value, unit. The cell being
    edited takes the accent base line the active search field uses. */
 [data-gloom-role="field-grid"] {
-  --fg-hairline: color-mix(in srgb, var(--gloom-text) 12%, transparent);
-  --fg-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
-  background: color-mix(in srgb, var(--gloom-text-bright) 2%, transparent);
+  --fg-hairline: var(--gloom-hairline);
+  --fg-fill: var(--gloom-hover-fill);
+  background: var(--gloom-band);
   box-shadow: inset 0 -1px 0 var(--fg-hairline);
 }
 /* Every row is the same column grid, so a short last row stays aligned. */
@@ -1164,17 +1230,14 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   display: grid !important;
   grid-template-columns: repeat(var(--field-columns, 3), minmax(0, 1fr));
 }
-[data-gloom-role="field-grid-row"] + [data-gloom-role="field-grid-row"] {
-  box-shadow: inset 0 1px 0 var(--fg-hairline);
-}
 [data-gloom-role="field-grid-cell"] {
   /* Cells share the row, so the sheet spans the pane; the value keeps its
      own width beside the label, so a unit never drifts from its number. */
   width: auto !important;
   min-width: 0;
   align-items: center;
-  gap: 8px;
-  padding: 0 10px;
+  gap: var(--gloom-space-sm);
+  padding: 0 var(--gloom-space-sm);
   box-sizing: border-box;
   box-shadow: inset -1px 0 0 var(--fg-hairline);
   cursor: text;
@@ -1201,33 +1264,31 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 [data-gloom-role="field-grid-value"] { flex: 0 0 auto; width: 12ch !important; justify-content: flex-end; min-width: 0; }
 [data-gloom-role="field-grid-value"] > * { width: 100% !important; }
 [data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] { flex: 1 1 auto; width: auto !important; justify-content: flex-start; }
-[data-gloom-role="field-grid-value"] button { justify-content: flex-end; color: var(--gloom-text-bright) !important; font-weight: 600; }
-[data-gloom-role="field-grid-value"] input { text-align: right; color: var(--gloom-text-bright); font-weight: 600; }
-[data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] input { text-align: left; font-weight: 400; }
+[data-gloom-role="field-grid-value"] button { justify-content: flex-end; color: var(--gloom-text-bright) !important; font-weight: var(--gloom-weight-bold); }
+[data-gloom-role="field-grid-value"] input { text-align: right; color: var(--gloom-text-bright); font-weight: var(--gloom-weight-bold); }
+[data-gloom-role="field-grid-cell"][data-kind="text"] [data-gloom-role="field-grid-value"] input { text-align: left; font-weight: var(--gloom-weight-regular); }
 [data-gloom-role="field-grid-unit"] { flex: none; color: var(--gloom-text-muted); }
 
 /* Stat grid: the read-only sibling of the field grid. A pane's summary figures
    sit in the same band of hairline-split cells, so the header zone (title-bar
    tab, query bar, figures) reads as one surface. Cells are not editable: no
    hover, no text cursor. Each cell is label, value, muted context. */
+/* Key-value rows carry no rule between them: alignment and the band are enough. */
 [data-gloom-role="stat-grid"] {
-  --sg-hairline: color-mix(in srgb, var(--gloom-text) 12%, transparent);
-  background: color-mix(in srgb, var(--gloom-text-bright) 2%, transparent);
+  --sg-hairline: var(--gloom-hairline);
+  background: var(--gloom-band);
   box-shadow: inset 0 -1px 0 var(--sg-hairline);
 }
 [data-gloom-role="stat-grid-row"] {
   display: grid !important;
   grid-template-columns: repeat(var(--stat-columns, 3), minmax(0, 1fr));
 }
-[data-gloom-role="stat-grid-row"] + [data-gloom-role="stat-grid-row"] {
-  box-shadow: inset 0 1px 0 var(--sg-hairline);
-}
 [data-gloom-role="stat-grid-cell"] {
   width: auto !important;
   min-width: 0;
   align-items: center;
-  gap: 8px;
-  padding: 0 var(--cell-w);
+  gap: var(--gloom-space-sm);
+  padding: 0 var(--gloom-inset);
   box-sizing: border-box;
   box-shadow: inset -1px 0 0 var(--sg-hairline);
 }
@@ -1256,7 +1317,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-[data-gloom-role="stat-grid-value"] { flex: none; white-space: nowrap; font-weight: 600; }
+[data-gloom-role="stat-grid-value"] { flex: none; white-space: nowrap; font-weight: var(--gloom-weight-bold); }
 [data-gloom-role="stat-grid-detail"] {
   flex: 1 1 auto;
   min-width: 0;
@@ -1274,10 +1335,10 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   justify-content: center;
   min-width: 20px;
   height: 18px;
-  padding: 0 4px;
+  padding: 0 var(--gloom-space-xs);
   margin: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--gloom-radius-md);
   background: transparent;
   color: var(--gloom-text-dim);
   font: inherit;
@@ -1285,7 +1346,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   transition: background-color 120ms ease, color 120ms ease;
 }
 .gloom-icon-button:disabled { cursor: default; }
-.gloom-icon-button:not(:disabled):hover { background: color-mix(in srgb, var(--gloom-text-bright) 9%, transparent); color: var(--gloom-text-bright); }
+.gloom-icon-button:not(:disabled):hover { background: var(--gloom-hover-fill); color: var(--gloom-text-bright); }
 .gloom-icon-button[aria-pressed="true"] { color: var(--gloom-warning); }
 .gloom-qb-view button:disabled { color: var(--gloom-text-muted); opacity: 0.55; cursor: default; }
 [data-gloom-role="field-grid-value"] button,
@@ -1321,19 +1382,19 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 /* Inline quick add across a pane (a watchlist's ticker field): the query bar's
    band at the foot of the list, the field as its leading segment. */
 [data-gloom-role="inline-quick-add"][data-band="true"] {
-  --qb-hairline: color-mix(in srgb, var(--gloom-text) 14%, transparent);
-  --qb-fill: color-mix(in srgb, var(--gloom-text-bright) 6%, transparent);
+  --qb-hairline: var(--gloom-hairline);
+  --qb-fill: var(--gloom-hover-fill);
   height: var(--chrome-h);
   padding-top: 1px;
   align-items: stretch;
-  background: color-mix(in srgb, var(--gloom-text-bright) 3.5%, transparent);
+  background: var(--gloom-band);
   box-shadow: inset 0 1px 0 var(--qb-hairline);
-  font-size: 12px;
+  font-size: var(--gloom-type-ui);
   cursor: text;
 }
 [data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-field"] {
-  gap: 6px;
-  padding: 0 10px 0 var(--cell-w);
+  gap: var(--gloom-space-xs);
+  padding: 0 var(--gloom-space-sm) 0 var(--gloom-inset);
   box-shadow: inset -1px 0 0 var(--qb-hairline);
   transition: background-color 120ms ease;
 }
@@ -1343,7 +1404,7 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   box-shadow: inset -1px 0 0 var(--qb-hairline), inset 0 -2px 0 var(--gloom-border-focused);
 }
 [data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-field"] input::placeholder { color: var(--gloom-text-muted); }
-[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-preview"] { padding: 0 10px; }
+[data-gloom-role="inline-quick-add"][data-band="true"] [data-gloom-role="inline-quick-add-preview"] { padding: 0 var(--gloom-space-sm); }
 
 /* ===== Data table: sortable headers ===== */
 
@@ -1353,21 +1414,21 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   margin-left: auto;
   flex: none;
   height: var(--cell-h);
-  padding: 0 6px;
+  padding: 0 var(--gloom-space-xs);
   border: 0;
-  border-radius: 4px;
+  border-radius: var(--gloom-radius-md);
   background: transparent;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-weight: 400;
+  gap: var(--gloom-space-xs);
+  font-weight: var(--gloom-weight-regular);
   white-space: nowrap;
   transition: background-color 120ms ease, color 120ms ease;
 }
 [data-gloom-role="data-table-section-action"] svg { color: var(--gloom-text-muted); }
 [data-gloom-role="data-table-section-action"]:hover {
   color: var(--gloom-text-bright) !important;
-  background-color: color-mix(in srgb, var(--gloom-text-bright) 8%, transparent);
+  background-color: var(--gloom-hover-fill);
 }
 
 /* A header that sorts brightens under the pointer; plain headers (no
@@ -1377,10 +1438,14 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   color: var(--gloom-text) !important;
 }
 
+/* A link is the text around it, underlined (external-link.tsx); the pointer or keyboard focus brightens it. */
+[data-gloom-link="true"] { text-underline-offset: 2px; }
+[data-gloom-link="true"]:is(:hover, :focus-visible) { color: var(--gloom-link-hover) !important; }
+
 /* Keyboard focus. Tab walks the controls of an open dialog, and a focused
    control shows where Enter and Space will land. Pointer focus draws nothing. */
 :where(button, a[href], summary, [role="button"], [role="radio"], [role="option"], input[type="checkbox"]):focus-visible {
-  outline: 2px solid var(--gloom-border-focused);
+  outline: 2px solid var(--gloom-accent);
   outline-offset: 1px;
 }
 

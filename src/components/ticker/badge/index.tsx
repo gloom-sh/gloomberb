@@ -24,7 +24,8 @@ export interface TickerBadgeProps {
   onOpen: (symbol: string) => void;
 }
 
-const NATIVE_CHIP_STYLE = { height: "calc(100% - 4px)", borderRadius: 3, position: "relative" };
+/** The one chip (display.tsx Badge): 16px in an 18px row, the small-mark radius. */
+const NATIVE_CHIP_STYLE = { height: "calc(100% - 2px)", borderRadius: "var(--gloom-radius-sm)", position: "relative" };
 /**
  * Desktop and web: under the pointer the resting text stays in the flow,
  * unseen, and the price is laid over it. The chip keeps the width its resting

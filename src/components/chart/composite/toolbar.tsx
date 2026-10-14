@@ -41,7 +41,8 @@ function ChartToolChip({
       data-active={active ? "true" : "false"}
       title={isDesktopWeb ? label : undefined}
       // Cells size the terminal strip; the desktop chip sizes to its icon.
-      style={isDesktopWeb ? { width: "auto", paddingInline: 4, borderRadius: 4 } : undefined}
+      // The icon button's look: the control radius, the hover fill.
+      style={isDesktopWeb ? { width: "auto", paddingInline: "var(--gloom-space-xs)", borderRadius: "var(--gloom-radius-md)" } : undefined}
     >
       {isDesktopWeb ? (
         <Box
@@ -151,9 +152,9 @@ export function ChartToolbar({
       backgroundColor={themeColors.bg}
       style={isDesktopWeb
         ? {
-          gap: 3,
-          padding: 3,
-          borderRadius: 7,
+          gap: "var(--gloom-space-xs)",
+          padding: "var(--gloom-space-xs)",
+          borderRadius: "var(--gloom-radius-lg)",
           backgroundColor: `color-mix(in srgb, ${themeColors.bg} 78%, transparent)`,
           backdropFilter: "blur(6px)",
           width: "auto",

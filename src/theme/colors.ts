@@ -1,5 +1,6 @@
 import { blendForContrast, blendForContrastOnSurfaces, blendHex, higherContrast } from "./color-utils";
 import { getTheme, DEFAULT_THEME, type Theme } from "./themes";
+import { roleColours } from "./ui-tokens";
 
 export type ThemeColors = Readonly<Omit<Theme, "name" | "description">>;
 
@@ -148,6 +149,7 @@ function syncThemeCssVariables(): void {
     style.setProperty(name, currentColors[key]);
   }
   style.setProperty("--gloom-hover-bg", hoverBg());
+  for (const [name, value] of roleColours(currentColors)) style.setProperty(name, value);
 }
 
 export function commandBarBg(palette: ThemeColors = colors): string {

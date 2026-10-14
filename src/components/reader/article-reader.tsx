@@ -22,6 +22,7 @@ import { blockWords, markTerms, type ArticleBlock } from "./article-text";
 import {
   READER_APP_FONT,
   READER_COLUMN_FONT,
+  READER_COLUMN_STYLE,
   DESKTOP_LINE_HEIGHT,
   ReaderBlock,
   ReaderText,
@@ -34,7 +35,6 @@ import {
  * loses its place on the way back to the start of the next line.
  */
 const TERMINAL_MEASURE = 72;
-const DESKTOP_MEASURE_CH = 66;
 /** Fewer hidden words than this are shown rather than tucked behind Read more. */
 const COLLAPSE_MIN_HIDDEN_WORDS = 80;
 const MAX_TICKERS = 6;
@@ -419,12 +419,10 @@ function ArticleReaderView({
             width="100%"
             data-gloom-ui="reader-column"
             style={{
-              // The measure plus the column's own inset on both sides.
-              maxWidth: `calc(${DESKTOP_MEASURE_CH}ch + 48px)`,
+              // The one reading column (reader-text.tsx): the measure, the pane's inset on each side.
+              ...READER_COLUMN_STYLE,
               fontSize: READER_COLUMN_FONT,
               lineHeight: DESKTOP_LINE_HEIGHT,
-              padding: "1.2em 24px 3em",
-              boxSizing: "border-box",
             }}
           >
             {content}
@@ -447,7 +445,7 @@ function RawText({ text, geometry }: { text: string; geometry: ReaderGeometry })
   const colors = useThemeColors();
   if (geometry.desktop) {
     return (
-      <Text fg={colors.text} wrapText selectable width="100%" style={{ display: "block", whiteSpace: "pre-wrap", fontSize: "0.85em", lineHeight: 1.6 }}>
+      <Text fg={colors.text} wrapText selectable width="100%" style={{ display: "block", whiteSpace: "pre-wrap", fontSize: READER_APP_FONT, lineHeight: 1.6 }}>
         {text}
       </Text>
     );

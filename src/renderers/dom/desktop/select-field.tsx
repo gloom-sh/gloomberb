@@ -1,7 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useImperativeHandle, useRef, useState, type CSSProperties } from "react";
 import { useThemeColors } from "../../../theme/theme-context";
-import { blendHex } from "../../../theme/colors";
 import { WEB_CELL_HEIGHT } from "../../../theme/font-scale";
 import { Box } from "../../../ui";
 import { MenuPopover } from "../../../components/ui/menu";
@@ -62,13 +61,13 @@ export function WebSelectField({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: 6,
+    gap: "var(--gloom-space-xs)",
     color: disabled ? colors.textMuted : colors.text,
-    backgroundColor: inline ? "transparent" : blendHex(colors.panel, colors.textBright, 0.06),
-    border: inline ? "none" : `1px solid ${open ? colors.borderFocused : colors.border}`,
-    borderRadius: inline ? 0 : 6,
-    padding: inline ? 0 : "0 8px",
-    boxShadow: inline ? "none" : `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.05)}`,
+    // The field look: sunk into the surface, the control border, the accent while open.
+    backgroundColor: inline ? "transparent" : "var(--gloom-surface-sunken)",
+    border: inline ? "none" : `1px solid ${open ? "var(--gloom-accent)" : "var(--gloom-control-border)"}`,
+    borderRadius: inline ? 0 : "var(--gloom-radius-md)",
+    padding: inline ? 0 : "0 var(--gloom-space-sm)",
     cursor: disabled ? "default" : "pointer",
     font: "inherit",
     textAlign: "left",

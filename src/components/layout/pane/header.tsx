@@ -1,6 +1,6 @@
 import { Box, Text, useActionShortcut, useNativeRenderer, useRendererHost, useUiCapabilities } from "../../../ui";
 import { useCallback, useRef, type ReactNode } from "react";
-import { blendHex, colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
+import { colors, floatingPaneTitleBg, paneTitleBg, paneTitleText } from "../../../theme/colors";
 import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
 import { capturePointerDrag } from "../../../ui/pointer-drag";
@@ -11,7 +11,6 @@ import { nativePaneHeaderRows } from "./sizing";
 
 const PANE_HEADER_HEIGHT = 1;
 /** Space above desktop title-bar tabs, in px. */
-const HEADER_TAB_TOP_GAP = 2;
 const PANE_HEADER_GRIP = ":: ";
 export const PANE_HEADER_ACTION = " ... ";
 /** The pane's docs: the same width shown or blank, so the title never shifts. */
@@ -39,8 +38,6 @@ interface PaneHeaderProps {
   quickSettings?: PaneHeaderQuickSetting[];
   /** Desktop only: the pane's primary tab strip, drawn as title-bar tabs. */
   tabs?: PaneHeaderTabsRegistration | null;
-  /** The body colour the active title-bar tab opens into. */
-  bodyBackground?: string;
   /**
    * Desktop: a 1px line is drawn over the header's first row (a dock divider
    * above it, or a floating pane's border). The header mirrors it with padding
@@ -134,7 +131,6 @@ export function PaneHeader({
   showActions = false,
   quickSettings = [],
   tabs = null,
-  bodyBackground,
   topRule = false,
   titleBar = null,
   onHeaderMouseMove,
@@ -193,7 +189,8 @@ export function PaneHeader({
     : { onMouseDown: beginPaneDrag, onMouseDrag: onHeaderMouseDrag, onMouseDragEnd: onHeaderMouseDragEnd };
 
   if (nativePaneChrome) {
-    const ruleColor = visuallyFocused ? colors.borderFocused : colors.border;
+    // Focused, the rule is the accent; otherwise the one hairline.
+    const ruleColor = visuallyFocused ? colors.borderFocused : "var(--gloom-hairline)";
     // No width of its own: it stretches across its pane, so it follows a
     // frame a resize sizes outside React.
     return (
@@ -218,7 +215,7 @@ export function PaneHeader({
           // active one covers the rule.
           paddingInline: titleBar
             ? `${6 + titleBar.leadingInset * WEB_CELL_WIDTH}px ${titleBar.trailing ? 0 : 6}px`
-            : 6,
+            : "var(--gloom-inset)",
           paddingTop: topInset,
           paddingBottom: 1,
           // A window title bar also keeps the window's top edge its own colour.
@@ -228,7 +225,7 @@ export function PaneHeader({
         }}
       >
         {!titleBar && (
-          <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: 6 }}>
+          <Box data-gloom-role="pane-grip" flexShrink={0} flexDirection="row" alignItems="center" style={{ alignSelf: "stretch", marginRight: "var(--gloom-space-xs)" }}>
             <Icon name="grip" size={12} color={visuallyFocused ? colors.borderFocused : colors.textMuted} />
           </Box>
         )}
@@ -240,7 +237,9 @@ export function PaneHeader({
             selectable={false}
             data-gloom-role="pane-title"
             style={{
-              fontWeight: visuallyFocused ? 700 : 600,
+              // Focus changes the colour, never the weight: a bold title would
+              // change width as the pane takes and loses focus.
+              fontWeight: 700,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
@@ -262,22 +261,13 @@ export function PaneHeader({
               alignSelf: "stretch",
               marginTop: -topInset,
               marginBottom: -1,
-              marginLeft: 10,
-              "--pane-tab-top-gap": `${HEADER_TAB_TOP_GAP}px`,
+              marginLeft: "var(--gloom-space-sm)",
               // Undoes the negative top margin for controls centred in the
               // strip (the overflow chevron).
               "--pane-tab-top-inset": `${topInset}px`,
-              // Lifts tab labels onto the header's centre line. The tab spans
-              // gap..bottom with a 1px top border; the centre line sits halfway
-              // between the top rule (if any) and the bottom rule.
-              "--pane-tab-label-lift": `${HEADER_TAB_TOP_GAP + 2 - topInset}px`,
-              // Fallback until the tab strip has measured the surface under it.
-              "--pane-tab-active-bg": bodyBackground ?? colors.bg,
-              "--pane-tab-border": ruleColor,
               // The active tab reads as active whenever the pane is focused, even
               // while a detail or field inside the pane owns the keyboard.
               "--pane-tab-active-fg": visuallyFocused ? colors.textBright : colors.text,
-              "--pane-tab-hover-bg": blendHex(backgroundColor, colors.textBright, 0.06),
             }}
           >
             <Tabs

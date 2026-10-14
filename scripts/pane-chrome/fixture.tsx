@@ -33,7 +33,9 @@
  * for the layout checks; see layout-fixture.tsx), `des` (DES's overview
  * over an invented company, see DesPane), or `header` (the app's top bar in
  * each update state, see header-fixture.tsx; `&host=browser` draws it as the
- * web app does).
+ * web app does), or `kit` (the kit page: every design-system family in every
+ * state, see kit-fixture.tsx; `&family=<id>` shows one, `&theme=paper` and
+ * `&font=` as everywhere).
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
@@ -88,6 +90,7 @@ import { chatLatencyLayouts, ChatLatencySync } from "./chat-latency-fixture";
 import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHeaderPlatform, type HeaderFixtureHandle } from "./header-fixture";
 import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
+import { KitPage } from "./kit-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -1463,6 +1466,7 @@ createRoot(root).render(
       {detached
         ? <DetachedPaneShell pluginRegistry={paneRegistry} desktopWindowBridge={detachedBridge} />
         : scenario === "header" ? <HeaderFixture handle={window.__paneChrome.header} />
+        : scenario === "kit" ? <KitPage family={params.get("family")} />
         : scenario === "theme" ? <Box flexDirection="column" width="100%" height="100%">
           <Box data-theme-chrome="header"><Header /></Box>
           <Shell pluginRegistry={paneRegistry} />

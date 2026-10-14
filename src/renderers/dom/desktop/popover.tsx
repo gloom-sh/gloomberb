@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { BoxRenderable, HostPopoverProps } from "../../../ui";
-import { blendHex } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 
 const VIEWPORT_MARGIN = 10;
@@ -238,8 +237,6 @@ export function WebPopover({
             visibility: position.visible ? "visible" : "hidden",
             minWidth: cssSize(minWidth),
             maxWidth: cssSize(maxWidth),
-            borderColor: blendHex(colors.border, colors.borderFocused, 0.18),
-            background: blendHex(colors.panel, colors.bg, 0.08),
             color: colors.text,
           }}
         >
