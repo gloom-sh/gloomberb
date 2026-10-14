@@ -205,7 +205,7 @@ function FeedbackDialog({
           borderColor={colors.borderFocused}
           backgroundColor={colors.panel}
           onMouseDown={focusMessage}
-          {...(nativePaneChrome ? { style: { borderRadius: 6, overflow: "hidden" } } : {})}
+          {...(nativePaneChrome ? { style: { borderRadius: "var(--gloom-radius-md)", overflow: "hidden" } } : {})}
         >
           <Textarea
             ref={messageRef}

@@ -268,7 +268,7 @@ export const ThemePicker = memo(forwardRef<ThemePickerHandle, ThemePickerProps>(
         paddingX={contentPadding}
         width="100%"
         data-command-bar-row-selected={nativePaneChrome && state.selected ? "true" : undefined}
-        style={nativePaneChrome ? { borderRadius: 6 } : undefined}
+        style={nativePaneChrome ? { borderRadius: "var(--gloom-radius-md)" } : undefined}
       >
         <Box width={GLYPH_GUTTER_WIDTH}>
           <Text fg={subtle}>

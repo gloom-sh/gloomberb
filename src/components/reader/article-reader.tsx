@@ -196,6 +196,8 @@ function ArticleReaderView({
 }: ArticleReaderProps) {
   const colors = useThemeColors();
   const desktop = useUiCapabilities().nativePaneChrome === true;
+  // A label names a section as a heading does, so on the desktop it looks like one; the terminal keeps it dim.
+  const labelColor = desktop ? colors.textBright : colors.textDim;
   const nativeRenderer = useNativeRenderer();
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const idPrefix = `reader-${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
@@ -376,7 +378,7 @@ function ArticleReaderView({
       ) : null}
       {!raw && facts.length > 0 ? (
         <Box flexDirection="column" style={desktop ? { margin: "0.3em 0 1em" } : undefined}>
-          <ReaderText text={readerLabel("Key facts")} geometry={geometry} color={colors.textDim} variant="label" />
+          <ReaderText text={readerLabel("Key facts")} geometry={geometry} color={labelColor} variant="label" />
           {facts.map((fact, index) => (
             <ReaderText key={index} text={fact} geometry={geometry} color={colors.text} variant="fact" segments={figureSegments(fact)} figureColor={colors.textBright} />
           ))}
@@ -401,7 +403,7 @@ function ArticleReaderView({
       ) : null}
       {children ? (
         <Box flexDirection="column" style={desktop ? { marginTop: lead || blocks.length > 0 ? "0.8em" : 0 } : undefined}>
-          {childrenLabel ? <ReaderText text={readerLabel(childrenLabel)} geometry={geometry} color={colors.textDim} variant="label" /> : null}
+          {childrenLabel ? <ReaderText text={readerLabel(childrenLabel)} geometry={geometry} color={labelColor} variant="label" /> : null}
           <Box flexDirection="column" style={desktop ? { fontSize: READER_APP_FONT, lineHeight: "normal" } : undefined}>
             {children}
           </Box>

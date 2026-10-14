@@ -395,7 +395,7 @@ function wrappedTextStyle() {
  */
 function nativeLineStyle(parsed: ParsedLine) {
   const marker = parsed.segments[0]?.text ?? "";
-  const hang = parsed.heading || !/^([-*]|\d+\.) $/.test(marker) ? 0 : (parsed.indent ?? 0) + marker.length;
+  const hang = parsed.heading || !/^([-*\u2022]|\d+\.) $/.test(marker) ? 0 : (parsed.indent ?? 0) + marker.length;
   return {
     ...wrappedTextStyle(),
     display: "block",
@@ -462,8 +462,20 @@ function SegmentSpan({ segment, wrap = false, onOpenLink }: {
   );
 }
 
+/**
+ * Desktop and web: a heading in the readers' bright heading colour and a
+ * bullet as the readers' dim dot (src/components/reader/reader-text.tsx), so
+ * markdown reads as every other reader does. The terminal keeps its accent.
+ */
+function readerLine(parsed: ParsedLine): ParsedLine {
+  if (parsed.heading) return { ...parsed, segments: parsed.segments.map((segment) => ({ ...segment, color: colors.textBright })) };
+  const [marker, ...rest] = parsed.segments;
+  if (parsed.indent === undefined || !marker || !/^[-*] $/.test(marker.text)) return parsed;
+  return { ...parsed, segments: [{ text: "\u2022 ", color: colors.textDim }, ...rest] };
+}
+
 function MarkdownLine({
-  parsed,
+  parsed: sourceLine,
   lineWidth,
   catalog,
   textColor,
@@ -482,6 +494,7 @@ function MarkdownLine({
   onOpenLink?: (href: string) => void;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
+  const parsed = nativePaneChrome ? readerLine(sourceLine) : sourceLine;
   const indent = parsed.indent ?? 0;
   const indentStr = indent > 0 ? " ".repeat(indent) : "";
   // The desktop and the web always wrap, in CSS, across the box the text sits in.

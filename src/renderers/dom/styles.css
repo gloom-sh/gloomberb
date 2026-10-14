@@ -63,18 +63,12 @@ input, textarea { cursor: text; }
   user-select: text;
 }
 button, [data-gloom-interactive="true"] { cursor: pointer; }
-/* `plain` buttons drop the border, so hover is the only thing left that says
-   the row or chip is clickable. A translucent wash reads the same on the
-   sidebar, a pane body and the status bar. */
-/* Ghost and secondary buttons take the hover fill; filled ones keep their fill. */
+/* Ghost and secondary buttons are clear and take the hover fill, a translucent
+   wash that reads the same on the sidebar, a pane body and the status bar;
+   filled ones keep their fill (control-styles.ts, buttonPalette). */
+[data-gloom-role="desktop-button"] { background-color: transparent; }
 [data-gloom-role="desktop-button"]:is([data-gloom-variant="plain"], [data-gloom-variant="ghost"], [data-gloom-variant="secondary"]):not(:disabled):not([aria-pressed="true"]):hover {
   background-color: var(--gloom-hover-fill);
-}
-/* A raised button sinks while it is held: its light flips and its shadow goes
-   (control-styles.ts, buttonRelief). */
-[data-gloom-raised="true"]:not(:disabled):active {
-  background-image: var(--gloom-pressed-image) !important;
-  box-shadow: var(--gloom-pressed-shadow) !important;
 }
 [data-gloom-hover-bg="true"]:hover {
   background-color: var(--gloom-box-hover-bg) !important;
@@ -150,9 +144,10 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="pane-window"][data-floating="true"] {
   border: 0;
-  border-radius: 6px;
+  border-radius: var(--gloom-radius-md);
   overflow: hidden;
-  box-shadow: 0 18px 38px color-mix(in srgb, var(--gloom-bg) 46%, transparent);
+  /* A floating pane is a floating surface: the one elevation. */
+  box-shadow: var(--gloom-elevation);
 }
 [data-gloom-role="pane-window"][data-floating="true"]::after {
   content: "";
@@ -163,12 +158,9 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   pointer-events: none;
   z-index: 100;
 }
-[data-gloom-role="pane-window"][data-floating="true"][data-focused="true"] {
-  box-shadow: 0 18px 40px color-mix(in srgb, var(--gloom-bg) 50%, transparent);
-}
 [data-gloom-role="pane-window"][data-floating="true"][data-window-mode-selected="true"] {
   box-shadow:
-    0 18px 40px color-mix(in srgb, var(--gloom-bg) 50%, transparent),
+    var(--gloom-elevation),
     0 0 0 2px var(--gloom-border-focused),
     0 0 0 5px color-mix(in srgb, var(--gloom-border-focused) 28%, transparent);
 }
@@ -395,21 +387,21 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 }
 [data-gloom-role="window-mode-status"] {
   border: 1px solid color-mix(in srgb, var(--gloom-border-focused) 76%, transparent);
-  border-radius: 8px;
+  border-radius: var(--gloom-radius-lg);
   background:
     linear-gradient(
       180deg,
       color-mix(in srgb, var(--gloom-border-focused) 95%, var(--gloom-bg) 5%),
       color-mix(in srgb, var(--gloom-border-focused) 82%, var(--gloom-bg) 18%)
     ) !important;
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--gloom-bg) 55%, transparent);
+  box-shadow: var(--gloom-elevation);
   overflow: hidden;
 }
 [data-gloom-role="window-mode-status"] span {
   line-height: var(--cell-h);
 }
 [data-gloom-role="window-mode-corner"] {
-  border-radius: 4px;
+  border-radius: var(--gloom-radius-sm);
   box-shadow:
     0 0 0 1px var(--gloom-bg),
     0 0 0 4px color-mix(in srgb, var(--gloom-border-focused) 28%, transparent);
@@ -540,7 +532,7 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   min-width: 24px;
   min-height: 24px;
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--gloom-radius-full);
   background: transparent;
   background-clip: content-box;
 }

@@ -249,7 +249,7 @@ export function CurveSurface({ series, width, height, focused = false, primarySe
           ? <Box key={entry.id} flexDirection="row" flexShrink={0} alignItems="center">
             {/* The desktop draws the marker as a dot, never a cell character. */}
             {nativePaneChrome
-              ? <Box flexShrink={0} style={{ width: 8, height: 8, marginInlineEnd: 6, borderRadius: 999, backgroundColor: entry.color }} />
+              ? <Box flexShrink={0} style={{ width: 8, height: 8, marginInlineEnd: 6, borderRadius: "var(--gloom-radius-full)", backgroundColor: entry.color }} />
               : <Text fg={entry.color}>● </Text>}
             <Text fg={colors.text}>{entry.text}</Text>
           </Box>

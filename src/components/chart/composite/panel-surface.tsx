@@ -834,8 +834,8 @@ export function CompositePanelSurface({
           style={isDesktopWeb
             ? {
               width: "auto",
-              paddingInline: 4,
-              borderRadius: 4,
+              paddingInline: "var(--gloom-space-xs)",
+              borderRadius: "var(--gloom-radius-sm)",
               backgroundColor: `color-mix(in srgb, ${colors.background} 82%, transparent)`,
             }
             : undefined}

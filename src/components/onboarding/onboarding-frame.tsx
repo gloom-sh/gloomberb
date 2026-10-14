@@ -156,13 +156,14 @@ export function OnboardingCoach({
         // Wide enough for the primary action and its key on one line.
         width="min(432px, calc(100vw - 32px))"
         flexDirection="column"
-        backgroundColor={blendHex(colors.panel, colors.bg, 0.12)}
         style={{
           height: "auto",
-          padding: 14,
-          border: `1px solid ${blendHex(colors.border, colors.borderFocused, 0.28)}`,
-          borderRadius: 6,
-          boxShadow: `0 14px 34px color-mix(in srgb, ${colors.bg} 42%, transparent), inset 0 1px 0 color-mix(in srgb, ${colors.textBright} 5%, transparent)`,
+          padding: SPACE.lg,
+          // The one floating surface (docs/pane-conventions.md, "Design system").
+          backgroundColor: "var(--gloom-surface-raised)",
+          border: "1px solid var(--gloom-control-border)",
+          borderRadius: RADIUS.lg,
+          boxShadow: "var(--gloom-elevation)",
           boxSizing: "border-box",
         }}
         data-gloom-role="onboarding-coach"
@@ -583,7 +584,7 @@ export function OnboardingFeature({
         width="6px"
         height="6px"
         backgroundColor={colors.positive}
-        style={{ borderRadius: 999, flexShrink: 0, marginTop: 6, marginRight: 10 }}
+        style={{ borderRadius: RADIUS.full, flexShrink: 0, marginTop: 6, marginRight: 10 }}
       />
       <Box flexDirection="column" flexGrow={1} minWidth={0}>
         <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText>

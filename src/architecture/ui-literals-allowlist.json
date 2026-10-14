@@ -1,0 +1,223 @@
+{
+  "src/cli/desktop-pane-shot.ts": {
+    "literals": {
+      "font size": 1
+    },
+    "why": "A pane picture's caption, drawn by the CLI into a page without the app's styles."
+  },
+  "src/components/metric-treemap/heat-surface.tsx": {
+    "literals": {
+      "font size": 3,
+      "font weight": 1,
+      "radius": 3,
+      "shadow": 1
+    },
+    "why": "Heat map tiles size, weigh and round their labels to fit each tile; a tile's lift is its own hover mark."
+  },
+  "src/components/metric-treemap/index.tsx": {
+    "literals": {
+      "font size": 1,
+      "font weight": 1,
+      "radius": 1
+    },
+    "why": "Treemap labels are fitted to their tile's size."
+  },
+  "src/components/onboarding/onboarding-frame.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "The progress bar is a 2px data mark rounded at its ends."
+  },
+  "src/components/onboarding/portfolio-step/positions-panel.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "Onboarding's positions panel; moves to Card in phase 3 (GLO-768)."
+  },
+  "src/components/ui/country-flag.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "A flag is a data mark with its own small rounding."
+  },
+  "src/components/ui/range-track.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "The range track is a data mark rounded at its ends."
+  },
+  "src/components/ui/ratio-bar.tsx": {
+    "literals": {
+      "radius": 2
+    },
+    "why": "Ratio bar segments are data marks rounded at their ends."
+  },
+  "src/components/ui/split-bar.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "Split bar segments are data marks rounded at their ends."
+  },
+  "src/plugins/builtin/account-management/pane.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "A pane's own card; moves to Card in phase 3 (GLO-768)."
+  },
+  "src/plugins/builtin/chart-composer/editor/desktop-view.tsx": {
+    "literals": {
+      "font weight": 1
+    },
+    "why": "Chart composer's series labels; pane migration in phase 3 (GLO-768)."
+  },
+  "src/plugins/builtin/chat/attachments/desktop.tsx": {
+    "literals": {
+      "font size": 3,
+      "radius": 5
+    },
+    "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
+  },
+  "src/plugins/builtin/chat/content/handle-prompt.tsx": {
+    "literals": {
+      "font weight": 1
+    },
+    "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
+  },
+  "src/plugins/builtin/chat/message/pane-chip.tsx": {
+    "literals": {
+      "font weight": 1,
+      "radius": 3
+    },
+    "why": "Chat has its own owner and conventions; reported, not changed (GLO-768)."
+  },
+  "src/plugins/builtin/cloud/company-picker.tsx": {
+    "literals": {
+      "font size": 2,
+      "radius": 4
+    },
+    "why": "The company picker's logo tiles and search; pane migration in phase 3 (GLO-768)."
+  },
+  "src/plugins/builtin/cloud/mcp-connect/dialog.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "The MCP connect dialog's code block; pane migration in phase 3 (GLO-768)."
+  },
+  "src/plugins/builtin/credit-documents/gauge.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "The gauge's fill is a data mark rounded at its end."
+  },
+  "src/plugins/builtin/executives/pane.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "A legend swatch is a data mark."
+  },
+  "src/plugins/builtin/gpu/ladder.tsx": {
+    "literals": {
+      "radius": 4
+    },
+    "why": "Ladder rungs, ranges and markers are data marks."
+  },
+  "src/plugins/builtin/revenue-breakdown/bars.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "Revenue bars are data marks."
+  },
+  "src/plugins/builtin/supply-chain/disclosure-quote.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "A quoted disclosure's rule; pane migration in phase 3 (GLO-768)."
+  },
+  "src/plugins/builtin/supply-chain/flow.tsx": {
+    "literals": {
+      "radius": 4,
+      "shadow": 1
+    },
+    "why": "FlowCard and the flow's nodes; FlowCard moves to Card and Button in phase 3 (GLO-768)."
+  },
+  "src/plugins/builtin/supply-chain/graph-pane.tsx": {
+    "literals": {
+      "radius": 1
+    },
+    "why": "A graph node's dot is a data mark."
+  },
+  "src/plugins/builtin/ticker-detail/quote-monitor/card.tsx": {
+    "literals": {
+      "font size": 8,
+      "radius": 1
+    },
+    "why": "The quote card's figures (HM, QQ, VAL) are sized to the card; pane migration in phase 3 (GLO-768)."
+  },
+  "src/plugins/builtin/world-venue-map/geo-svg.tsx": {
+    "literals": {
+      "font weight": 1
+    },
+    "why": "Map labels are fitted to the map's shapes."
+  },
+  "src/plugins/builtin/world-venue-map/map.tsx": {
+    "literals": {
+      "font size": 2,
+      "radius": 4
+    },
+    "why": "Map labels, legend and pins are fitted to the map."
+  },
+  "src/renderers/dom/build-assets.ts": {
+    "literals": {
+      "grey": 1
+    },
+    "why": "The page's background before the app's styles load."
+  },
+  "src/renderers/dom/desktop/controls.tsx": {
+    "literals": {
+      "font size": 1,
+      "grey": 4
+    },
+    "why": "The checkbox's tick is white on the accent for contrast in every theme; the message composer belongs to chat."
+  },
+  "src/renderers/dom/host/media-surface.tsx": {
+    "literals": {
+      "grey": 3
+    },
+    "why": "A video's letterbox is black in every theme."
+  },
+  "src/renderers/dom/host/overflow-fade.ts": {
+    "literals": {
+      "grey": 4
+    },
+    "why": "Black here is a mask's opacity, not a colour."
+  },
+  "src/renderers/dom/host/surface-3d.tsx": {
+    "literals": {
+      "grey": 1,
+      "radius": 2
+    },
+    "why": "The 3D surface's colour bar and probe are data marks."
+  },
+  "src/renderers/dom/styles.css": {
+    "literals": {
+      "font size": 2,
+      "grey": 9,
+      "radius": 1
+    },
+    "why": "The root font size the tokens scale from, the fatal page drawn when the app could not start (its own size, button and fallbacks), theme fallbacks inside var(), and Windows' red close button."
+  },
+  "src/renderers/share/styles.css": {
+    "literals": {
+      "font size": 8,
+      "grey": 2,
+      "radius": 2
+    },
+    "why": "Share pages are a separate public page with their own styles."
+  },
+  "src/types/config.ts": {
+    "literals": {
+      "font size": 1
+    },
+    "why": "The default font size setting, a number of pixels the user changes."
+  }
+}

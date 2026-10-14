@@ -107,7 +107,7 @@ function ChartColorSwatch({
         ? {
           width: 14,
           height: 14,
-          borderRadius: 999,
+          borderRadius: "var(--gloom-radius-full)",
           backgroundColor: color,
           border: `1.5px solid ${active ? themeColors.text : "transparent"}`,
         }

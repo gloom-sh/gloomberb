@@ -114,7 +114,7 @@ function FormTextarea({
       {...(desktop ? {
         style: {
           border: `1px solid ${focused ? colors.borderFocused : colors.border}`,
-          borderRadius: 6,
+          borderRadius: "var(--gloom-radius-md)",
           overflow: "hidden",
         },
       } : {})}
@@ -289,7 +289,7 @@ export function FormFieldRow({
           onFocus();
           if (!pending) onOpen();
         }}
-        {...(desktop ? { style: { border: `1px solid ${active ? colors.borderFocused : colors.border}`, borderRadius: 6, padding: "0 7px" } } : {})}
+        {...(desktop ? { style: { border: `1px solid ${active ? colors.borderFocused : colors.border}`, borderRadius: "var(--gloom-radius-md)", padding: "0 7px" } } : {})}
       >
         <Text fg={active ? colors.text : colors.textDim}>{t(summarizeWorkflowFieldValue(field, value))}</Text>
       </Box>

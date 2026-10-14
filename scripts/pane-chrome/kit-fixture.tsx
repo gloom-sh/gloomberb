@@ -68,6 +68,11 @@ class Specimen extends Component<{ children: ReactNode }, { error: string | null
   }
 }
 
+/** Cells across the page inside its margins, for the specimens that are laid out in cells. */
+function pageColumns(): number {
+  return Math.floor((window.innerWidth - 48) / 8);
+}
+
 /** One labelled specimen: the state's name over it, dim. */
 function Sample({ label, children, force, width }: { label: string; children: ReactNode; force?: "hover" | "focus"; width?: number | string }) {
   const colors = useThemeColors();
@@ -175,7 +180,7 @@ function ButtonFamily() {
           </Row>
         </Group>
       ))}
-      <Group title="chosen (a pressed toggle)">
+      <Group title="Chosen">
         <Row><Sample label="active"><Button variant="secondary" active label="Log scale" onPress={noop} /></Sample></Row>
       </Group>
       <Group title="icon">
@@ -197,7 +202,7 @@ function TabsFamily() {
   const [choice, setChoice] = useState("1y");
   return (
     <>
-      <Group title="Tabs (title bar, sub-tabs, segmented choices are one look)">
+      <Group title="Tabs">
         <Row>
           <Sample label="active, inactive, disabled" width={420}><Box style={{ height: "var(--chrome-h)", width: "100%" }}><Tabs tabs={tabs} activeValue={value} onSelect={setValue} focused /></Box></Sample>
         </Row>
@@ -251,7 +256,9 @@ function FieldsFamily() {
       </Group>
       <Group title="Select">
         <Row>
-          <Sample label="select button"><SelectButton label="Currency" value="usd" options={[{ value: "usd", label: "USD" }, { value: "eur", label: "EUR" }]} onChange={noop} width={12} /></Sample>
+          <Sample label="inline, in a toolbar"><SelectButton label="Currency" value="usd" options={[{ value: "usd", label: "USD" }, { value: "eur", label: "EUR" }]} onChange={noop} width={12} /></Sample>
+          <Sample label="field, in a form"><SelectButton label="Currency" variant="field" value="usd" options={[{ value: "usd", label: "USD" }, { value: "eur", label: "EUR" }]} onChange={noop} width={16} /></Sample>
+          <Sample label="disabled"><SelectButton label="Currency" variant="field" disabled value="usd" options={[{ value: "usd", label: "USD" }]} onChange={noop} width={16} /></Sample>
         </Row>
       </Group>
       <Group title="Checkbox">
@@ -262,10 +269,10 @@ function FieldsFamily() {
           <Sample label="disabled"><Checkbox label="Attach screenshot" checked={false} disabled onChange={noop} /></Sample>
         </Row>
       </Group>
-      <Group title="Query bar (search, filters, toggle, view)">
+      <Group title="Query bar">
         <Box style={{ width: "100%" }}>
           <QueryBar
-            width={120}
+            width={Math.min(120, pageColumns())}
             search={{ value: "", onChange: noop, placeholder: "company or ticker", focused: true, active: false, onActiveChange: noop }}
             filters={[
               { id: "country", label: "Country", value: "all", options: [{ value: "all", label: "All countries" }, { value: "us", label: "United States" }], onChange: noop },
@@ -297,14 +304,14 @@ function TablesFamily() {
   ];
   return (
     <>
-      <Group title="Table: header, rows, the chosen row, the pointer's row">
+      <Group title="Table">
         <Box style={{ width: "100%" }} data-kit-hover-row="2">
           <DataTableView<Holding, typeof columns[number]>
             columns={columns}
             items={HOLDINGS}
             selection={{ kind: "index", selectedIndex: 0, onChange: noop }}
             focused
-            rootWidth={80}
+            rootWidth={Math.min(80, pageColumns())}
             rootHeight={6}
             fitRows
             virtualize={false}
@@ -327,9 +334,9 @@ function TablesFamily() {
           <KeyValueRow label="Change" value="+2.71%" tone="positive" width={44} />
         </Box>
       </Group>
-      <Group title="Figure band (StatGrid)">
+      <Group title="Figure band">
         <Box style={{ width: "100%" }}>
-          <StatGrid width={110} items={[{ label: "Last", value: "343.56" }, { label: "Change", value: "+0.67%", tone: "positive" }, { label: "Volume", value: "52.1M" }, { label: "52w range", value: "164 - 352", detail: "near high" }, { label: "Beta", value: "1.07" }, { label: "Yield", value: "0.31%" }]} />
+          <StatGrid width={Math.min(110, pageColumns())} items={[{ label: "Last", value: "343.56" }, { label: "Change", value: "+0.67%", tone: "positive" }, { label: "Volume", value: "52.1M" }, { label: "52w range", value: "164 - 352" }, { label: "Beta", value: "1.07" }, { label: "Yield", value: "0.31%" }]} />
         </Box>
       </Group>
     </>
@@ -389,16 +396,16 @@ function ChromeFamily() {
   };
   return (
     <>
-      <Group title="Title bar: focused with tabs, unfocused">
+      <Group title="Title bar">
         <Box flexDirection="column" style={{ width: "100%", gap: "var(--gloom-space-sm)" }}>
-          <PaneHeader title="AAPL" width={100} focused showActions tabs={tabs} />
-          <PaneHeader title="World Indices" width={100} focused={false} />
+          <PaneHeader title="AAPL" width={Math.min(100, pageColumns())} focused showActions tabs={tabs} />
+          <PaneHeader title="World Indices" width={Math.min(100, pageColumns())} focused={false} />
         </Box>
       </Group>
-      <Group title="Footer: status and hints">
+      <Group title="Footer">
         <Box flexDirection="column" style={{ width: "100%", gap: "var(--gloom-space-sm)" }}>
-          <PaneFooterBar footer={footer} focused width={100} />
-          <PaneFooterBar footer={footer} focused={false} width={100} />
+          <PaneFooterBar footer={footer} focused width={Math.min(100, pageColumns())} />
+          <PaneFooterBar footer={footer} focused={false} width={Math.min(100, pageColumns())} />
         </Box>
       </Group>
       <Group title="Detail back row">

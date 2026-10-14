@@ -102,7 +102,7 @@ export function CapturePreview({ capture, meta, wrapMeta = false, width, preview
         width: "100%",
         height: `min(46vh, calc(${fitDialogWidth(CAPTURE_DIALOG_COLUMNS)} * ${capture.height / Math.max(1, capture.width)}))`,
         border: `1px solid ${colors.border}`,
-        borderRadius: 6,
+        borderRadius: "var(--gloom-radius-md)",
         backgroundColor: colors.bg,
       }}
     />
