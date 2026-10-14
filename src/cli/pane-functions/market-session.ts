@@ -104,6 +104,47 @@ function closeMarketOf(exchange: string, session: VenueSession): string | null {
   return isUsListingExchange(exchange) ? "US" : exchange;
 }
 
+/** One market's session behind a report that mixes markets: its local date, and whether that session has closed. */
+export interface VenueSessionDate {
+  /** `US` for the US listing venues, which share one calendar, the venue's code elsewhere (`XETRA`, `EPA`). */
+  market: string;
+  /** The session's local date, `YYYY-MM-DD`. */
+  date: string;
+  /** The newest row on that market is its latest close. */
+  close: boolean;
+}
+
+/**
+ * Each market's session, for a report whose rows trade on more than one
+ * (a US line beside Xetra and Paris ones): the newest row of each, dated in
+ * its venue's own day, in the order the markets first appear. Empty when the
+ * rows share one market, or fewer than two can be placed.
+ */
+export function reportVenueSessionDates(observations: readonly SessionObservation[], now: number): VenueSessionDate[] {
+  const newestByMarket = new Map<string, { observation: SessionObservation & { time: ReportTime }; session: VenueSession }>();
+  for (const observation of observations) {
+    const exchange = canonicalExchange(observation.exchange);
+    const time = observation.time;
+    if (!exchange || !time) continue;
+    const session = venueSession(exchange, observation.marketState, now);
+    if (!session || session.state === "always") continue;
+    const market = exchange === FX_VENUE ? "FX" : isUsListingExchange(exchange) ? "US" : exchange;
+    const current = newestByMarket.get(market);
+    if (!current || time.time > current.observation.time.time) newestByMarket.set(market, { observation: { ...observation, time }, session });
+  }
+  if (newestByMarket.size < 2) return [];
+  return [...newestByMarket].map(([market, { observation, session }]) => {
+    // A venue in its session whose newest row is from an earlier day has not printed today: that row is its last close.
+    const exchange = canonicalExchange(observation.exchange);
+    const latestClose = session.state === "open" && session.timeZone ? latestRegularSessionClose(exchange, now) : null;
+    const last = latestClose ? { date: latestClose.date, open: latestRegularSessionOpen(exchange, latestClose.close) } : session.last;
+    const closeDate = closeDateOf(observation, { ...session, last }, now);
+    const date = closeDate
+      ?? (session.timeZone ? zonedDateKey(observation.time.time, session.timeZone) : new Date(observation.time.time).toISOString().slice(0, 10));
+    return { market, date, close: closeDate != null };
+  });
+}
+
 /**
  * Where the markets behind a quote report stand now, and whether the newest
  * observation is a close, and whose. Null market when the venues disagree

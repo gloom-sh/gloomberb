@@ -5,6 +5,7 @@ import { findNamedCollection } from "../../portfolio/collection-name";
 import { apiClient } from "../../api-client";
 import type { MarketContext } from "../types";
 import type {
+  HeadlessArgumentExpansion,
   HeadlessBundleResult,
   HeadlessBundleSection,
   HeadlessPaneColumn,
@@ -162,22 +163,17 @@ async function loadHeadlessPaneModel(
   return result;
 }
 
-/**
- * Loads the same renderer-neutral model used by `fn`.
- * Both reports and screenshot payloads execute this loader.
- */
-export async function loadResolvedHeadlessPaneModel(
+type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
+  dataProvider: HeadlessPaneContext["marketData"];
+};
+
+/** What a headless loader reads the market, the account and the saved collections through. */
+function createHeadlessPaneContext(
   resolved: ResolvedPaneFunction,
-  context: Pick<MarketContext, "config" | "store" | "refresh"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
-    dataProvider: HeadlessPaneContext["marketData"];
-  },
-  rawArgument: string,
-  signal: AbortSignal = new AbortController().signal,
-): Promise<LoadedHeadlessPaneModel> {
-  const definition = resolved.headless;
-  if (!definition) throw new Error(`${resolved.token} has no headless pane model.`);
-  const args = buildHeadlessPaneLoadArgs(definition, resolved.token, rawArgument, resolved.options);
-  const headlessContext: HeadlessPaneContext = {
+  context: HeadlessMarketContext,
+  signal: AbortSignal,
+): HeadlessPaneContext {
+  return {
     marketData: context.dataProvider,
     apiClient,
     config: context.config,
@@ -203,7 +199,40 @@ export async function loadResolvedHeadlessPaneModel(
       return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
     },
   };
-  const result = await loadHeadlessPaneModel(definition, args, headlessContext);
+}
+
+/**
+ * The argument a function widens before it runs (`expandArgument`, RV's
+ * `--peers`), with the settings that say how; null when it runs as typed.
+ */
+export async function expandResolvedArgument(
+  resolved: ResolvedPaneFunction,
+  context: HeadlessMarketContext,
+  rawArgument: string,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<HeadlessArgumentExpansion | null> {
+  const definition = resolved.headless;
+  if (!definition?.expandArgument) return null;
+  const args = buildHeadlessPaneLoadArgs(definition, resolved.token, rawArgument, resolved.options);
+  const expansion = await definition.expandArgument(args, createHeadlessPaneContext(resolved, context, signal));
+  throwIfAborted(signal);
+  return expansion;
+}
+
+/**
+ * Loads the same renderer-neutral model used by `fn`.
+ * Both reports and screenshot payloads execute this loader.
+ */
+export async function loadResolvedHeadlessPaneModel(
+  resolved: ResolvedPaneFunction,
+  context: HeadlessMarketContext,
+  rawArgument: string,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<LoadedHeadlessPaneModel> {
+  const definition = resolved.headless;
+  if (!definition) throw new Error(`${resolved.token} has no headless pane model.`);
+  const args = buildHeadlessPaneLoadArgs(definition, resolved.token, rawArgument, resolved.options);
+  const result = await loadHeadlessPaneModel(definition, args, createHeadlessPaneContext(resolved, context, signal));
   return { definition, args, result };
 }
 
@@ -677,7 +706,7 @@ export function renderHeadlessPaneText(
   else switch (definition.shape) {
     case "rows": {
       const rowsResult = result as HeadlessRowsResult;
-      lines.push(renderRows(rowsResult.rows, rowsResult.columns, definition.columns, rowsResult.empty));
+      lines.push(renderRows(rowsResult.rows, rowsResult.textColumns ?? rowsResult.columns, definition.columns, rowsResult.empty));
       break;
     }
     case "bundle":

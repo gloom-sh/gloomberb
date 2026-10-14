@@ -1,5 +1,5 @@
 import { extname, isAbsolute, relative, resolve } from "path";
-import type { CliCommandContext } from "../../types/plugin";
+import type { CliCommandContext, HeadlessArgumentExpansion } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import { withMarketData } from "../context";
 import { cliStyles, renderStats, type CliStatEntry } from "../../utils/cli-output";
@@ -8,6 +8,7 @@ import {
   findFunctionCode,
   renderPaneCatalogReport,
   selectPaneCatalogMatches,
+  suggestPaneFunctions,
   type PaneFunctionCatalog,
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
@@ -19,6 +20,7 @@ import {
 } from "./options";
 import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
+import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings, shotStatusIssues } from "./screenshot";
 import {
   buildPaneCatalogEntries,
@@ -29,6 +31,7 @@ import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceN
 import { knownGapMessage, settingsPointer, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
+import type { CatalogCommandHit } from "../unknown-command";
 import { CLI_EXIT_CODES } from "../exit-codes";
 import {
   GLOSSARY,
@@ -55,13 +58,28 @@ async function withPaneRuntime<T>(
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
-      const parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions), settings.command);
-      const resolved = await resolvePaneFunction(registry, context, parsed, settings);
+      let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions), settings.command);
+      let resolved = await resolvePaneFunction(registry, context, parsed, settings);
+      // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
+      const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
+      if (expansion) {
+        parsed = { ...parsed, arg: expansion.argument };
+        resolved = withExpansion(await resolvePaneFunction(registry, context, parsed, settings), expansion);
+      }
       return await run({ parsed, context, registry, resolved });
     } finally {
       registry.destroy();
     }
   });
+}
+
+/** The resolved function with what its expansion adds to the pane: settings, and a title that says how. */
+function withExpansion(resolved: ResolvedPaneFunction, { settings = {}, title }: HeadlessArgumentExpansion): ResolvedPaneFunction {
+  return {
+    ...resolved,
+    optionSettings: { ...resolved.optionSettings, ...settings },
+    instance: { ...resolved.instance, ...(title ? { title } : {}), settings: { ...resolved.instance.settings, ...settings } },
+  };
 }
 
 /** A word that can be a function code: letters and digits, with the dots and dashes some codes carry. */
@@ -99,6 +117,37 @@ export async function functionCodeCommand(
     return { code, command: ["gloomberb fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
   } catch {
     return null;
+  }
+}
+
+/** How many functions an unknown command word is answered with. */
+const COMMAND_HIT_LIMIT = 3;
+
+/**
+ * The functions the catalog finds for a word typed as a command (`gloomberb
+ * comps`): what `catalog <word>` would list first, as many as are close.
+ * Empty when the word finds none or the catalog cannot be read.
+ */
+export async function catalogCommandHits(ctx: CliCommandContext, token: string): Promise<CatalogCommandHit[]> {
+  const word = token.trim();
+  if (!/^[a-z][\w-]{1,30}$/i.test(word)) return [];
+  try {
+    return await withMarketData(ctx, async (market) => {
+      const registry = await createPaneCatalog(market, ctx.plugins);
+      try {
+        return (await suggestPaneFunctions(registry, market, word)).slice(0, COMMAND_HIT_LIMIT).map((entry) => ({
+          code: entry.token,
+          label: entry.label,
+          argKind: entry.argKind ?? null,
+          argPlaceholder: entry.argPlaceholder ?? null,
+          peers: entry.capability.options.some((option) => option.key === "peers" && option.type === "boolean"),
+        }));
+      } finally {
+        registry.destroy();
+      }
+    });
+  } catch {
+    return [];
   }
 }
 

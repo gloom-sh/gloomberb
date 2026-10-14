@@ -159,7 +159,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const error = symbols.length > 0 ? peerSnapshot.error : "No tickers selected";
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
-  const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
+  const appBaseCurrency = useAppSelector((state) => state.config.baseCurrency);
+  // `--currency` on a capture asks for another currency than the app's.
+  const capCurrency = typeof pane?.settings?.capCurrency === "string" ? pane.settings.capCurrency : null;
+  const baseCurrency = capCurrency ?? appBaseCurrency;
   const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => symbols.map((peer) => ({
     symbol: peer,
     exchange: "",

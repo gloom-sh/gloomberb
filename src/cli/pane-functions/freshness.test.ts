@@ -110,6 +110,24 @@ describe("report freshness", () => {
     expect(deriveHeadlessFreshness(rows({ status: "not-a-feed" }), { rows: [{ asOf: "2026-10-04" }] }, SAT).lagDays).toBeUndefined();
   });
 
+  test("a table across markets that asks for it dates each market's session, not only the newest row's", () => {
+    const WED = Date.parse("2026-10-14T03:00:00Z"); // every venue closed
+    const quote = (sessionExchange: string, lastUpdated: string) => ({
+      dataSource: "delayed", delayMinutes: 15, sessionExchange, marketState: "CLOSED", lastUpdated: Date.parse(lastUpdated),
+    });
+    const airlines = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-13T15:35:00Z"), quote("EPA", "2026-10-13T15:35:00Z")] };
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), airlines, WED)))
+      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed until 06:00 UTC");
+    // A venue whose newest row is a day older says so beside the others.
+    const stale = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-12T15:35:00Z")] };
+    expect(formatStatusLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), stale, WED)))
+      .toMatch(/^US Tue 13 Oct 2026 close, XETRA Mon 12 Oct 2026 session · /);
+    // Undeclared, or one market only, keeps the newest row's line.
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows(), airlines, WED))).toContain("· US trading day Tue 13 Oct 2026 close ·");
+    expect(deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [quote("NYSE", "2026-10-13T23:45:00Z")] }, WED).venueSessions)
+      .toBeUndefined();
+  });
+
   test("a dataset that names its observation ends fn, the pane footer and a capture with one line", () => {
     const SUN = Date.parse("2026-10-11T15:14:00Z");
     // DTCC's swap tape: a delayed feed whose single names trade days apart, dated by the last trade.

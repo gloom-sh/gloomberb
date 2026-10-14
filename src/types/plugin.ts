@@ -3,6 +3,7 @@ import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import type { HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionDef } from "./headless";
 
 export type {
+  HeadlessArgumentExpansion,
   HeadlessBundleResult,
   HeadlessBundleSection,
   HeadlessFreshnessStatus,

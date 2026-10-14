@@ -37,7 +37,8 @@ import { createSystemCliCommands } from "./commands/system";
 import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
-import { functionCodeCommand, runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import { catalogCommandHits, functionCodeCommand, runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import { catalogPointer, type CatalogCommandHit } from "./unknown-command";
 import { catalogFredSeriesIds } from "./series-search";
 
 const { width: SHOT_WIDTH, height: SHOT_HEIGHT } = SHOT_SIZE_LIMITS;
@@ -64,7 +65,7 @@ function createCoreCliCommands(
         const topic = args[0];
         if (topic) {
           const command = lookupCommand(topic);
-          if (!command) failUnknownCommand(topic, allCommands(), await functionCodeCommand(ctx, topic, []));
+          if (!command) failUnknownCommand(topic, allCommands(), await unknownCommandPointers(ctx, topic, [], allCommands()));
           printCommandHelp(command, ctx);
           return;
         }
@@ -306,18 +307,47 @@ function printCommandHelp(command: CliCommandDef, ctx: CliCommandContext): void 
   ctx.printResult({ data: { ...describeCliCommand(command), sections: command.help?.sections ?? [] } });
 }
 
-/** `function` is what the word is when it is a function's code, and the command that runs it. */
-function failUnknownCommand(token: string, commands: CliCommandDef[], fn: { code: string; command: string } | null = null): never {
-  if (fn) fail(`${fn.code} is a function: ${fn.command}`);
-  const suggestion = suggestCliCommand(
+function nearCommand(token: string, commands: CliCommandDef[]): string | null {
+  return suggestCliCommand(
     normalizeCliCommandToken(token),
     commands.flatMap((command) => [command.name, ...(command.aliases ?? [])]),
   );
+}
+
+interface UnknownCommandPointers {
+  /** The word is a function's code: the command that runs it. */
+  fn: { code: string; command: string } | null;
+  /** Functions the catalog finds for the word, read only when it is no code and no command is close to it. */
+  hits: CatalogCommandHit[];
+  /** What the reader typed after the word, which a pointer runs the function with. */
+  args: readonly string[];
+}
+
+/** What an unknown command word may point at: a function's code first, then what the catalog finds for it. */
+async function unknownCommandPointers(
+  ctx: CliCommandContext,
+  token: string,
+  args: readonly string[],
+  commands: CliCommandDef[],
+): Promise<UnknownCommandPointers> {
+  const fn = await functionCodeCommand(ctx, token, args);
+  const hits = fn || nearCommand(token, commands) ? [] : await catalogCommandHits(ctx, token);
+  return { fn, hits, args };
+}
+
+/**
+ * A function's code is pointed at `fn`; a typo of a command at the command;
+ * a word the catalog knows (`comps`, `peers`) at the functions it finds.
+ */
+function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: UnknownCommandPointers): never {
+  if (pointers.fn) fail(`${pointers.fn.code} is a function: ${pointers.fn.command}`);
+  const suggestion = nearCommand(token, commands);
+  const catalog = suggestion ? null : catalogPointer(token, pointers.hits, pointers.args);
   fail(
     `Unknown command "${token}".`,
     suggestion
       ? `Did you mean ${suggestion}? Run gloomberb help to see every command.`
-      : "Run gloomberb help to see every command.",
+      : catalog ? `${catalog}\nRun gloomberb help to see every command.` : "Run gloomberb help to see every command.",
   );
 }
 
@@ -408,11 +438,13 @@ export async function failUnknownCliCommand(args: string[], options: DispatchCli
     // dispatchCli already reported flags that do not parse.
   }
   const registry = await createRegistry(options);
-  // A function's code typed as a command is pointed at `fn`, with the arguments the reader gave.
-  const fn = token && parsed
-    ? await functionCodeCommand(createCliCommandContext("core", registry, parsed.options, parsed.args.slice(1)), token, parsed.args.slice(1))
-    : null;
-  return failUnknownCommand(token, listedCommands(registry).map((entry) => entry.command), fn);
+  const commands = listedCommands(registry).map((entry) => entry.command);
+  // A function's code typed as a command is pointed at `fn`, and a word the catalog knows at its
+  // functions, with the arguments the reader gave.
+  const pointers = token && parsed
+    ? await unknownCommandPointers(createCliCommandContext("core", registry, parsed.options, parsed.args.slice(1)), token, parsed.args.slice(1), commands)
+    : { fn: null, hits: [], args: [] };
+  return failUnknownCommand(token, commands, pointers);
 }
 
 export async function runCli(args: string[], options: DispatchCliOptions = {}): Promise<boolean> {

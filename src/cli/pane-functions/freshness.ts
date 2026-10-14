@@ -11,7 +11,7 @@ import type {
 import { localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
 import { isRecord } from "../../utils/guards";
 import { latestRegularSessionClose } from "../../market-data/market/freshness";
-import { reportMarketSession, type ReportMarket, type SessionObservation } from "./market-session";
+import { reportMarketSession, reportVenueSessionDates, type ReportMarket, type SessionObservation, type VenueSessionDate } from "./market-session";
 
 /**
  * The four states of docs/usage.md#how-current-a-report-is, plus `unreported`
@@ -53,6 +53,12 @@ export interface ReportFreshness {
   tradingDayMarket?: string;
   /** Where the venues of a quote report stand now, from their session calendars. */
   market?: ReportMarket;
+  /**
+   * With a declared `datesEachVenue`, when the rows trade on more than one
+   * market: each market's session date, which the status line gives in place
+   * of the newest row's alone.
+   */
+  venueSessions?: VenueSessionDate[];
   /**
    * For a dataset (declared `dataset`, with no quote among its rows): whole UTC
    * days from the last day its newest observation covers to when this report
@@ -404,6 +410,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     }
   }
   const { market, closeDate, closeMarket } = reportMarketSession(signals.sessions, now);
+  const venueSessions = declared.datesEachVenue && !declaredAsOf ? reportVenueSessionDates(signals.sessions, now) : [];
   // The close wording dates the newest observation, so only when that is what `asOf` is.
   const asOfClose = closeDate && asOf && !declaredAsOf ? closeDate : null;
   const tradingDayMarket = asOfClose ? closeMarket
@@ -434,6 +441,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(asOfClose ? { asOfClose } : {}),
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
     ...(market ? { market } : {}),
+    ...(venueSessions.length > 0 ? { venueSessions } : {}),
     ...(lagDays != null ? { lagDays } : {}),
     ...(observation ? { observation } : {}),
     ...(sources.length ? { sources: sources.map(({ source, time }) => ({ source, asOf: isoTime(time) })) } : {}),
@@ -628,6 +636,26 @@ function onRetrievalDay(iso: string, retrievedAt: string): boolean {
   return iso.slice(0, 10) === retrievedAt.slice(0, 10);
 }
 
+/** `US and XETRA`, `US, XETRA and EPA`. */
+function listText(items: readonly string[]): string {
+  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+}
+
+/**
+ * Each market's session date, markets on the same day and state said once:
+ * `US, XETRA and EPA Tue 13 Oct 2026 close`, or `US Tue 13 Oct 2026 close,
+ * XETRA Wed 14 Oct 2026 session` while Xetra trades.
+ */
+function venueSessionsText(sessions: readonly VenueSessionDate[]): string {
+  const groups: Array<{ markets: string[]; date: string; close: boolean }> = [];
+  for (const { market, date, close } of sessions) {
+    const group = groups.find((entry) => entry.date === date && entry.close === close);
+    if (group) group.markets.push(market);
+    else groups.push({ markets: [market], date, close });
+  }
+  return groups.map(({ markets, date, close }) => `${listText(markets)} ${dayText(date)} ${close ? "close" : "session"}`).join(", ");
+}
+
 /**
  * The dated as-of: a session close, a UTC time, a date, or when the report was
  * retrieved; with the oldest observation unless `short`, or when the line says
@@ -636,6 +664,7 @@ function onRetrievalDay(iso: string, retrievedAt: string): boolean {
  */
 function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, undated = false): string {
   if (!freshness.asOf) return `retrieved ${timeText(freshness.retrievedAt, local)}`;
+  if (freshness.venueSessions?.length) return venueSessionsText(freshness.venueSessions);
   const market = freshness.tradingDayMarket;
   const period = freshness.periodicity;
   const time = parseReportTime(freshness.asOf);
