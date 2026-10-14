@@ -779,6 +779,8 @@ An independent current bond quote must declare its own price basis. A percent-of
 
 Sign in with email and password, or pick `Log In with QR Code` from the command bar and scan the code with the Gloomberb mobile companion app to sign the terminal in without typing. The onboarding wizard offers the same QR option as the recommended path, with email and password as the alternative.
 
+Signed in, your layouts, settings, portfolios and watchlists sync between your devices. What each pane is showing (its cursor, an open detail, the scroll position) and which floating pane is on top stay on each device, and a pane in its own desktop window opens as a floating pane in the terminal and the browser. If two devices change the layouts before either has synced, as when one was offline, the later change wins and the other device takes its layouts as a whole. A change whose time is unknown, such as an edit to `config.json` while the app was closed, gives way to the other device's.
+
 ## Connect an AI assistant (MCP)
 
 `MCP` opens a short setup for the [Gloom MCP server](https://gloom.sh/docs/mcp); typing mcp, claude, codex or cursor in the command bar finds it too, and so does `ACM` > Advanced > Assistants (MCP). Pick the client and copy its one command or config with `c` or Copy.

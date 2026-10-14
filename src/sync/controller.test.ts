@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import {
   appReducer,
   createInitialState,
@@ -6,7 +6,9 @@ import {
   type AppState,
 } from "../core/state/app/state";
 import type { TickerRepository } from "../data/ticker-repository";
-import { createDefaultConfig } from "../types/config";
+import { normalizeConfigForSave, normalizeLoadedConfig } from "../data/config/store/normalize";
+import { createDefaultConfig, createPaneInstance } from "../types/config";
+import { materializeDetachedLayouts } from "../core/state/app/layout";
 import {
   __syncContributorInternalsForTests,
   coreConfigSyncContributor,
@@ -14,6 +16,7 @@ import {
 import { CloudSyncController } from "./controller";
 import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
+  SyncRevisionConflictError,
   type SyncBaselineStore,
   type SyncContributor,
   type SyncSnapshot,
@@ -284,13 +287,11 @@ test("keeps startup layout changes while serializing pull and push", async () =>
   expect(pushedConfig.layout.instances).toContainEqual(startupPane);
 });
 
-test("keeps the latest layout when switching away and back during a pull", async () => {
+test("keeps a layout switched to while a pull is in flight", async () => {
   let state = createInitialState(createDefaultConfig("/tmp/gloomberb-sync-layout-roundtrip-test"));
   const dispatch = (action: AppAction) => {
     state = appReducer(state, action);
   };
-  dispatch({ type: "SWITCH_LAYOUT", index: 1 });
-  dispatch({ type: "SWITCH_LAYOUT", index: 0 });
 
   let resolvePull!: (response: SyncSnapshotResponse) => void;
   const deferredPull = new Promise<SyncSnapshotResponse>((resolve) => {
@@ -309,8 +310,7 @@ test("keeps the latest layout when switching away and back during a pull", async
   const controller = startController({ transport, contributors: [coreConfigSyncContributor], getState: () => state, dispatch });
 
   const startupSync = controller.requestSync({ reason: "startup" });
-  dispatch({ type: "SWITCH_LAYOUT", index: 1 });
-  dispatch({ type: "SWITCH_LAYOUT", index: 0 });
+  dispatch({ type: "SWITCH_LAYOUT", index: 2 });
   const queuedPush = controller.requestSync({ reason: "state-change" });
 
   const remoteConfig = createDefaultConfig("/remote/path-is-not-synced");
@@ -332,8 +332,8 @@ test("keeps the latest layout when switching away and back during a pull", async
     activeLayoutIndex: number;
   };
   expect(state.config.theme).toBe("green");
-  expect(state.config.activeLayoutIndex).toBe(0);
-  expect(pushedConfig.activeLayoutIndex).toBe(0);
+  expect(state.config.activeLayoutIndex).toBe(2);
+  expect(pushedConfig.activeLayoutIndex).toBe(2);
 });
 
 // Two clients on one account used to trade views: a pull replaced live pane
@@ -493,4 +493,224 @@ test("a broker profile removed on one device stays removed after another device 
     desktop: ["ibkr-flex"],
     cloud: ["ibkr-flex"],
   });
+});
+
+/**
+ * One account's synced copy, replaced whole by each push. Like the Cloud with
+ * If-Match, it refuses a push merged with an older revision than it holds.
+ */
+function createSharedCloud() {
+  let snapshot: SyncSnapshot | null = null;
+  let revision = 0;
+  return {
+    config: () => snapshot?.contributors["core.config"]?.payload as AppState["config"] | undefined,
+    transport: (device: { online: boolean; duringPull?: () => void; beforePush?: () => Promise<void> }): SyncTransport => ({
+      id: "shared-cloud",
+      isAvailable: () => true,
+      pullSnapshot: async () => {
+        if (!device.online) throw new Error("offline");
+        const response = { snapshot, revision: snapshot ? revision : null, updatedAt: snapshot?.createdAt ?? null };
+        device.duringPull?.();
+        return response;
+      },
+      pushSnapshot: async (next, options) => {
+        await device.beforePush?.();
+        if (options?.baseRevision != null && options.baseRevision !== revision) throw new SyncRevisionConflictError();
+        snapshot = next;
+        revision += 1;
+        return { revision, updatedAt: next.createdAt };
+      },
+    }),
+  };
+}
+
+/**
+ * A signed-in app on its own machine. Its config, sync baseline and memos
+ * survive a restart. A terminal has no desktop windows, so like the terminal
+ * app it draws a pane in one as a floating pane.
+ */
+function createDevice(cloud: ReturnType<typeof createSharedCloud>, name: string, { terminal = false } = {}) {
+  let config = createDefaultConfig(`/devices/${name}`);
+  let baseline: Record<string, unknown> | null = null;
+  let memos: Record<string, unknown> | null = null;
+  let state!: AppState;
+  let controller: CloudSyncController | null = null;
+  const device = {
+    online: true,
+    duringPull: undefined as (() => void) | undefined,
+    beforePush: undefined as (() => Promise<void>) | undefined,
+    get state() { return state; },
+    dispatch: (action: AppAction) => {
+      state = appReducer(state, terminal && action.type === "SET_CONFIG"
+        ? { ...action, config: materializeDetachedLayouts(action.config) }
+        : action);
+    },
+    sync: (reason: string) => controller!.requestSync({ reason }),
+    /** Quits, then launches again from config.json, read the way a launch reads it. */
+    restart: () => {
+      config = state?.config ?? config;
+      controller?.clearRuntime();
+      const saved = JSON.parse(JSON.stringify(normalizeConfigForSave(config))) as Record<string, unknown>;
+      const loaded = normalizeLoadedConfig(saved, config.dataDir).config;
+      state = createInitialState(terminal ? materializeDetachedLayouts(loaded) : loaded);
+      controller = startController({
+        transport: cloud.transport(device),
+        contributors: [coreConfigSyncContributor],
+        getState: () => state,
+        dispatch: device.dispatch,
+        baselineStore: {
+          load: () => baseline,
+          save: (payloads) => { baseline = payloads; },
+          loadMemos: () => memos,
+          saveMemos: (next) => { memos = next; },
+        },
+      });
+    },
+    layoutNames: () => state.config.layouts.map((layout) => layout.name),
+  };
+  device.restart();
+  return device;
+}
+
+const DEFAULT_LAYOUT_NAMES = createDefaultConfig("/devices/defaults").layouts.map((layout) => layout.name);
+
+function cloudLayoutNames(cloud: ReturnType<typeof createSharedCloud>): string[] | undefined {
+  return cloud.config()?.layouts.map((layout) => layout.name);
+}
+
+/** The portfolio list settles its cursor while the app starts, which rewrites the pane state its layout mirrors. */
+function settleCursorAtLaunch(device: ReturnType<typeof createDevice>): () => void {
+  return () => device.dispatch({ type: "UPDATE_PANE_STATE", paneId: "portfolio-list:main", patch: { cursorSymbol: "AAPL" } });
+}
+
+// GLO-692: a layout edited on the Mac was gone the next day once the Linux
+// terminal started. Its cursor settled during its first pull, the pulled
+// layout was refused as if Linux had edited its own, and its startup push
+// wrote the older layout over the Mac's everywhere.
+test("a layout edited on one device survives another device's launch", async () => {
+  const cloud = createSharedCloud();
+  const linux = createDevice(cloud, "linux");
+  const mac = createDevice(cloud, "mac");
+  await linux.sync("startup");
+  await mac.sync("startup");
+
+  mac.dispatch({ type: "NEW_LAYOUT", name: "Mac edit" });
+  await mac.sync("state-change");
+  linux.restart();
+  linux.duringPull = settleCursorAtLaunch(linux);
+  await linux.sync("startup");
+  mac.restart();
+  await mac.sync("startup");
+
+  const edited = [...DEFAULT_LAYOUT_NAMES, "Mac edit"];
+  expect({ linux: linux.layoutNames(), mac: mac.layoutNames(), cloud: cloudLayoutNames(cloud) })
+    .toEqual({ linux: edited, mac: edited, cloud: edited });
+});
+
+test("a device's first sync takes the cloud's layout instead of pushing its own", async () => {
+  const cloud = createSharedCloud();
+  const mac = createDevice(cloud, "mac");
+  await mac.sync("startup");
+  mac.dispatch({ type: "NEW_LAYOUT", name: "Mac edit" });
+  await mac.sync("state-change");
+
+  const laptop = createDevice(cloud, "laptop");
+  laptop.duringPull = settleCursorAtLaunch(laptop);
+  await laptop.sync("startup");
+
+  const edited = [...DEFAULT_LAYOUT_NAMES, "Mac edit"];
+  expect({ laptop: laptop.layoutNames(), cloud: cloudLayoutNames(cloud) }).toEqual({ laptop: edited, cloud: edited });
+});
+
+test("a layout edited offline wins over an older cloud edit and gives way to a newer one", async () => {
+  const at = (time: string) => setSystemTime(new Date(`2026-10-14T${time}:00.000Z`));
+  const run = async (offlineEditAt: string, macEditAt: string) => {
+    at("09:00");
+    const cloud = createSharedCloud();
+    const linux = createDevice(cloud, "linux");
+    const mac = createDevice(cloud, "mac");
+    await linux.sync("startup");
+    await mac.sync("startup");
+    linux.online = false;
+    const edits = [
+      { time: offlineEditAt, edit: async () => {
+        linux.dispatch({ type: "NEW_LAYOUT", name: "Linux offline" });
+        await linux.sync("state-change");
+      } },
+      { time: macEditAt, edit: async () => {
+        mac.dispatch({ type: "NEW_LAYOUT", name: "Mac edit" });
+        await mac.sync("state-change");
+      } },
+    ].sort((left, right) => left.time.localeCompare(right.time));
+    for (const { time, edit } of edits) {
+      at(time);
+      await edit();
+    }
+    at("12:00");
+    linux.restart();
+    linux.online = true;
+    await linux.sync("startup");
+    await mac.sync("poll");
+    return { linux: linux.layoutNames().at(-1), mac: mac.layoutNames().at(-1), cloud: cloudLayoutNames(cloud)?.at(-1) };
+  };
+
+  try {
+    expect(await run("11:00", "10:00")).toEqual({ linux: "Linux offline", mac: "Linux offline", cloud: "Linux offline" });
+    expect(await run("10:00", "11:00")).toEqual({ linux: "Mac edit", mac: "Mac edit", cloud: "Mac edit" });
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("two devices editing different settings at once both keep their edit", async () => {
+  const cloud = createSharedCloud();
+  const linux = createDevice(cloud, "linux");
+  const mac = createDevice(cloud, "mac");
+  await linux.sync("startup");
+  await mac.sync("startup");
+
+  mac.dispatch({ type: "SET_CONFIG", config: { ...mac.state.config, theme: "green" } });
+  linux.dispatch({ type: "NEW_LAYOUT", name: "Linux edit" });
+  // The Mac's push lands between Linux's pull and Linux's push.
+  linux.beforePush = async () => {
+    linux.beforePush = undefined;
+    await mac.sync("state-change");
+  };
+  await linux.sync("state-change");
+  await mac.sync("poll");
+
+  const edited = [...DEFAULT_LAYOUT_NAMES, "Linux edit"];
+  expect({
+    linux: [linux.state.config.theme, linux.layoutNames()],
+    mac: [mac.state.config.theme, mac.layoutNames()],
+    cloud: [cloud.config()?.theme, cloudLayoutNames(cloud)],
+  }).toEqual({
+    linux: ["green", edited],
+    mac: ["green", edited],
+    cloud: ["green", edited],
+  });
+});
+
+test("a terminal that syncs leaves a desktop pane in its own window", async () => {
+  const cloud = createSharedCloud();
+  const desktop = createDevice(cloud, "desktop");
+  const layout = desktop.state.config.layout;
+  desktop.dispatch({
+    type: "UPDATE_LAYOUT",
+    layout: {
+      ...layout,
+      instances: [...layout.instances, createPaneInstance("help", { instanceId: "help:window" })],
+      detached: [{ instanceId: "help:window", x: 120, y: 80, width: 640, height: 420 }],
+    },
+  });
+  await desktop.sync("startup");
+  const terminal = createDevice(cloud, "terminal", { terminal: true });
+  await terminal.sync("startup");
+  await desktop.sync("poll");
+
+  expect(terminal.state.config.layout.floating.map((entry) => entry.instanceId)).toContain("help:window");
+  expect({
+    desktop: desktop.state.config.layout.detached.map((entry) => entry.instanceId),
+    cloud: cloud.config()?.layout.detached.map((entry) => entry.instanceId),
+  }).toEqual({ desktop: ["help:window"], cloud: ["help:window"] });
 });

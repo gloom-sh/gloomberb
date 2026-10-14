@@ -12,7 +12,7 @@ import {
   parseCloudLayoutEntry,
   parseCloudLayoutList,
 } from "../layout-marketplace/cloud";
-import type { SyncSnapshot } from "../sync/types";
+import { SyncRevisionConflictError, type SyncSnapshot } from "../sync/types";
 import { withDeadline } from "../utils/async-deadline";
 import { CloudASKGApi } from "./askg";
 import { CloudAuthApi } from "./auth";
@@ -450,14 +450,24 @@ class GloomApiClient {
     return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", { method: "GET" });
   }
 
+  /**
+   * `baseRevision` goes out as If-Match: the server ignores the body field and
+   * would replace a snapshot another device wrote since this one pulled. With
+   * the header it refuses that write (409), raised as SyncRevisionConflictError
+   * so the controller pulls again instead.
+   */
   async putSyncSnapshot(snapshot: SyncSnapshot, options?: { baseRevision?: number | null }): Promise<CloudSyncPushResponse> {
-    return this.request<CloudSyncPushResponse>("/sync/snapshot", {
-      method: "PUT",
-      body: JSON.stringify({
-        snapshot,
-        baseRevision: options?.baseRevision ?? null,
-      }),
-    });
+    const baseRevision = options?.baseRevision ?? null;
+    try {
+      return await this.request<CloudSyncPushResponse>("/sync/snapshot", {
+        method: "PUT",
+        ...(baseRevision !== null ? { headers: { "If-Match": String(baseRevision) } } : {}),
+        body: JSON.stringify({ snapshot, baseRevision }),
+      });
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 409) throw new SyncRevisionConflictError(error.message);
+      throw error;
+    }
   }
 
   async getMarketplaceLayout(

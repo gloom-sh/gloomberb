@@ -8,6 +8,7 @@ import type { Quote } from "../types/financials";
 import { getActiveQuoteDisplay } from "../market-data/market/status";
 import { installTestWebSocket, verifiedUser } from "../test-support/cloud-api";
 import type { AssistCommandDescriptor } from "./types";
+import { SyncRevisionConflictError } from "../sync/types";
 
 const originalFetch = globalThis.fetch;
 const originalWebSocket = globalThis.WebSocket;
@@ -147,6 +148,26 @@ describe("apiClient layout marketplace", () => {
       paneState: {},
     });
   });
+});
+
+// The Cloud reads the base revision only from If-Match. Sent in the body
+// alone, a push merged with an older revision replaced another device's newer
+// one (GLO-692) instead of being refused so this device could pull it first.
+test("a sync push names the revision it merged with, and a refused one is a conflict", async () => {
+  const snapshot = {
+    schemaVersion: 1 as const, appId: "gloomberb" as const, clientId: "client_test",
+    createdAt: "2026-10-14T12:00:00.000Z", contributors: {},
+  };
+  const ifMatch: Array<string | null> = [];
+  apiClient.setSessionToken("sync-session");
+  setCloudApiFetchTransport(async (_url, init) => {
+    ifMatch.push(new Headers(init?.headers).get("if-match"));
+    return Response.json({ message: "Sync snapshot changed since the revision you edited.", revision: 8 }, { status: 409 });
+  });
+
+  await expect(apiClient.putSyncSnapshot(snapshot, { baseRevision: 7 })).rejects.toBeInstanceOf(SyncRevisionConflictError);
+  await expect(apiClient.putSyncSnapshot(snapshot, { baseRevision: 0 })).rejects.toBeInstanceOf(SyncRevisionConflictError);
+  expect(ifMatch).toEqual(["7", "0"]);
 });
 
 describe("apiClient auth cookies", () => {
