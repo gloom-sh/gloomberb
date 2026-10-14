@@ -443,6 +443,29 @@ describe("CLI search helpers", () => {
     expect(headings[0]).toContain("Primary Listing");
   });
 
+  test("a company searched by name lists its home line as the primary listing, not a one-off cross-listing with its short name", async () => {
+    const line = (symbol: string, exchange: string, name: string, extra: Record<string, unknown> = {}) =>
+      ({ providerId: "gloom", symbol, name, exchange, type: "Common Stock", currency: "EUR", ...extra });
+    const search = async () => [
+      line("LHAB", "XSTU", "Lufthansa AG Sponsored ADR", { type: "American Depositary Receipt", popularity: 20005 }),
+      line("LUFTH", "BUD", "LUFTHANSA", { currency: "HUF" }),
+      line("LHA", "FWB2", "Deutsche Lufthansa AG", { popularity: 20050 }),
+      line("LHA", "XETRA", "Deutsche Lufthansa AG", { popularity: 21027 }),
+    ];
+    const candidates = await searchCandidatesForCli({ query: "lufthansa", tickers: [], dataProvider: createTestDataProvider({ search }) });
+
+    expect(candidates[0]).toMatchObject({ label: "LHA", category: "Primary Listing", result: { exchange: "XETRA" } });
+    expect(candidates.filter((candidate) => candidate.category === "Primary Listing")).toHaveLength(1);
+    expect(candidates.find((candidate) => candidate.label === "LUFTH")?.category).toBe("Other Listings");
+
+    // A line that is already the most searched of its company stays, whatever else lists.
+    const scored = await searchCandidatesForCli({ query: "deutsche bank", tickers: [], dataProvider: createTestDataProvider({ search: async () => [
+      line("DB", "NYSE", "Deutsche Bank AG", { currency: "USD", popularity: 21718 }),
+      line("DBK", "XETRA", "Deutsche Bank AG", { popularity: 20718 }),
+    ] }) });
+    expect(scored[0]).toMatchObject({ label: "DB", category: "Primary Listing" });
+  });
+
   test("renders an empty state when no search results match", () => {
     const report = buildSearchReport({
       query: "zzzz",

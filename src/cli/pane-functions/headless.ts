@@ -527,6 +527,36 @@ function splitErrors(result: HeadlessPaneResult): { locked: string[]; failed: st
   return { locked: errors.filter(isProLock), failed: errors.filter((error) => !isProLock(error)) };
 }
 
+/**
+ * Why a report with nothing in it is empty, when its pane gave no reason of
+ * its own: the free view left it empty (the report carries a Pro line), or the
+ * symbols asked for are not covered by the function (or hold nothing for the
+ * options chosen). Null when something has
+ * rows, a table states its own reason, an error explains it, or no symbol was
+ * asked for (a board that is empty says nothing about coverage).
+ */
+function emptyReportReason(
+  definition: HeadlessPaneDefinition,
+  result: HeadlessPaneResult,
+  args: HeadlessPaneLoadArgs,
+  token: string | undefined,
+): string | null {
+  if (resultRowCount(definition, result) > 0) return null;
+  const ownReason = definition.shape === "rows" ? !!(result as HeadlessRowsResult).empty
+    : definition.shape === "bundle" && (result as HeadlessBundleResult).sections.some((section) => "empty" in section && !!section.empty);
+  const { locked, failed } = splitErrors(result);
+  if (ownReason || failed.length) return null;
+  if (locked.length) return "Locked: Gloom Pro";
+  const symbols = result.symbols ?? args.symbols;
+  if (!symbols.length) return null;
+  // An option the reader chose (a range, a tab) can leave a covered symbol empty, so coverage is not claimed then.
+  const narrowed = definition.options.some((option) => {
+    const value = args.options[option.key];
+    return value !== undefined && value !== "" && String(value) !== String(option.defaultValue ?? "");
+  });
+  return narrowed ? `No data for ${symbols.join(", ")} with these options.` : `No data for ${symbols.join(", ")}: not covered${token ? ` by ${token}` : ""}.`;
+}
+
 function textNotices(result: HeadlessPaneResult): string[] {
   const notices = result.metadata?.notices;
   if (!Array.isArray(notices)) return [];
@@ -634,12 +664,17 @@ export function renderHeadlessPaneText(
   args: HeadlessPaneLoadArgs,
   fallbackTitle: string,
   freshness: ReportFreshness = deriveHeadlessFreshness(definition, result),
+  /** The function's token, which an empty report names as the one that does not cover the symbol. */
+  token?: string,
 ): string {
   // A long title wraps to a narrow --width like the text under a table; each line stays bold.
   const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
   const notices = textNotices(result);
   if (notices.length) lines.push(...notices, "");
-  switch (definition.shape) {
+  const reason = emptyReportReason(definition, result, args, token);
+  // Said once, not under the heading of each empty table.
+  if (reason) lines.push(reason);
+  else switch (definition.shape) {
     case "rows": {
       const rowsResult = result as HeadlessRowsResult;
       lines.push(renderRows(rowsResult.rows, rowsResult.columns, definition.columns, rowsResult.empty));
@@ -756,6 +791,7 @@ export async function buildHeadlessFunctionReport(
       loaded.args,
       resolved.label,
       freshness,
+      resolved.token,
     ),
     tables: headlessReportTables(
       loaded.definition,

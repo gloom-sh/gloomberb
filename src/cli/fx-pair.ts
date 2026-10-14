@@ -13,11 +13,28 @@ export interface FxRequest {
 
 const CURRENCY_CODE = /^[A-Z]{3}$/;
 
+let knownCurrencies: ReadonlySet<string> | undefined;
+
+/** An ISO 4217 code the runtime lists, or the offshore yuan it has none for. */
+function isKnownCurrency(code: string): boolean {
+  if (!knownCurrencies) {
+    try {
+      knownCurrencies = new Set([...Intl.supportedValuesOf("currency"), "CNH"]);
+    } catch {
+      knownCurrencies = new Set();
+    }
+  }
+  return knownCurrencies.has(code);
+}
+
 /** The request, or the sentence saying what is wrong with the argument. */
 export function parseFxRequest(raw: string, baseCurrency: string): FxRequest | { error: string } {
   const text = raw.trim().toUpperCase();
   const parts = text.split("/").map((part) => part.trim());
   if (parts.length > 2 || parts.some((part) => !part)) return { error: `"${raw}" is not a currency or a pair such as USD/NGN.` };
+  // EURUSD is the pair typed without its slash: say how to write it.
+  const joined = parts.length === 1 && /^[A-Z]{6}$/.test(text) && isKnownCurrency(text.slice(0, 3)) && isKnownCurrency(text.slice(3));
+  if (joined) return { error: `${text} is not a currency code; write the pair as ${text.slice(0, 3)}/${text.slice(3)}.` };
   const bad = parts.filter((part) => !CURRENCY_CODE.test(part));
   if (bad.length > 0) return { error: `${bad.join(" and ")} ${bad.length > 1 ? "are not currency codes" : "is not a currency code"}; use three letters such as NGN.` };
   return parts.length === 2

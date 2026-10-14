@@ -72,7 +72,7 @@ export const themesHeadless: HeadlessPaneDefinition<"rows"> = {
     const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
     if (argument) {
       const theme = matchTheme(board.themes, argument);
-      if (!theme) throw new Error(`No theme matches ${argument}`);
+      if (!theme) throw new Error(`No theme matches ${argument}. Themes: ${board.themes.map((row) => row.name).join(", ")}.`);
       const data = await fetchThemeMembers(theme.id, context.apiClient);
       const observation = boardObservation(data);
       // Price and 1D are the regular session's; an extended print gets a column only when a member has one.

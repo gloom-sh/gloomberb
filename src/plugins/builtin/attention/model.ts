@@ -1,5 +1,6 @@
 import type { AttentionPayload, AttentionPoint, AttentionRow, AttentionWindow } from "../../../api-client/attention";
 import type { DataTableColumn } from "../../../components";
+import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 export const ATTENTION_TABS = [{ value: "ranking", label: "Ranking" }, { value: "abnormal", label: "Abnormal" },
   { value: "sectors", label: "Sectors" }, { value: "countries", label: "Countries" }, { value: "history", label: "History" }, { value: "evidence", label: "Evidence" }] as const;
 export type AttentionTab = typeof ATTENTION_TABS[number]["value"];
@@ -43,6 +44,27 @@ export function rowCell(row: AttentionRow, column: string) {
 }
 export const emptyAttention = (data: AttentionPayload | null | undefined) => data?.status === "disabled"
   ? "Research attention collection is not enabled yet." : "Waiting for privacy-qualified research activity.";
+
+/** How many tickers the free preview lists: the top of the board by research hours. */
+const PREVIEW_ROWS = 3;
+
+/**
+ * What the free preview of the board shows and what Pro adds, for the lock
+ * line of `fn ATTN`. The server picks the preview's rows before it looks a
+ * ticker up, so a ticker outside them comes back empty and `outside` says the
+ * rows are the board's, not the ticker's. Null when there is nothing to
+ * preview, which includes a board still collecting.
+ */
+export function attentionPreviewNote(data: AttentionPayload, asked: string | undefined, outside: boolean): string | null {
+  if (data.entitlement !== "preview" || !data.rows.length) return null;
+  const total = Math.max(data.counts.rows, data.rows.length);
+  const listed = total > data.rows.length ? `${data.rows.length} of ${total.toLocaleString("en-US")} tickers` : countOf(data.rows.length, "ticker");
+  const shows = asked && outside ? `the top ${listed}, not ${asked}: ${previewCantFilter(["ticker"])}`
+    : asked ? `${data.rows[0]!.symbol}, one of the top ${PREVIEW_ROWS} of ${total.toLocaleString("en-US")} tickers, for the latest hour`
+      : `the top ${listed}, for the latest hour`;
+  const hidden = total - PREVIEW_ROWS;
+  return freePreviewNote({ shows, adds: `${hidden > 0 ? `the other ${hidden.toLocaleString("en-US")} tickers and ` : ""}hourly history for any ticker` });
+}
 
 /** An unpublished hour is a gap, never a measured zero or an interpolated count. */
 export function historyPoints(history: readonly AttentionPoint[]) {

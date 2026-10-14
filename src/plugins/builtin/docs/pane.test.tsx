@@ -82,6 +82,12 @@ describe("DOCS in the terminal", () => {
     expect(await tui.waitForFrameToContain("No docs match \"zzqx\".")).not.toContain("Options chain");
   });
 
+  test("a search that is a function's code opens its entry, as the command line asks for it with no registry to resolve the mnemonic", async () => {
+    serve();
+    await mount("home:gp");
+    expect(await tui.waitForFrameToContain("GP · Price chart")).toContain("Candles with volume");
+  });
+
   test("offline, the shipped docs read and say so, and a lesson never read asks for a connection", async () => {
     serve(false);
     await mount("fn:GP");

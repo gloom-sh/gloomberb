@@ -49,6 +49,7 @@ import {
   type DocsTopic,
 } from "../../../docs/topics";
 import { t, tf } from "../../../i18n";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -289,6 +290,12 @@ export function DocsPane({ focused, width, height }: PaneProps) {
       openTopic({ kind: "page", slug: topic.query.toLowerCase() });
       return;
     }
+    // The command line cannot resolve a mnemonic before the reader runs, so a search that is a function's code opens its entry.
+    const code = topic.kind === "home" && topic.query ? findDocsFunction(feed, topic.query.trim()) ?? findDocsFunction(feed, topic.query.trim().split(/\s+/)[0] ?? "") : null;
+    if (code) {
+      openTopic({ kind: "function", code: code.code });
+      return;
+    }
     if (topic.kind === "home") setShow("all");
     openTopic(topic);
   }, [feed, handledAt, openTopic, requestAt, requestKey, setHandledAt, setShow]);
@@ -329,6 +336,14 @@ export function DocsPane({ focused, width, height }: PaneProps) {
   }, [entries, query, show]);
 
   const visibleEntries = useMemo(() => rows.filter(isSectionedItemRow).map((row) => row.item), [rows]);
+  // A request that matches nothing fails a report of the pane (`gloomberb fn DOCS zzzz`) instead of listing the whole index.
+  const requested = requestKey ? parseDocsTopicKey(requestKey) : null;
+  const requestedQuery = requested?.kind === "home" ? requested.query?.trim() ?? "" : "";
+  useRemoteUiNode(feed && requestedQuery && stack.length === 0 && query.trim() === requestedQuery && visibleEntries.length === 0 ? {
+    role: "report-failure",
+    label: "No docs entry",
+    getMetadata: () => ({ message: `No docs entry for ${requestedQuery}.`, details: "Run gloomberb fn DOCS for the index." }),
+  } : null);
   const effectiveSelectedKey = visibleEntries.some((entry) => entry.key === selectedKey)
     ? selectedKey
     : visibleEntries[0]?.key ?? null;
