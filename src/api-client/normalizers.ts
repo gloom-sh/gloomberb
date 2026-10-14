@@ -2,6 +2,7 @@ import type {
   ChatAccountType,
   ChatAttachment,
   ChatChannel,
+  ChatChannelState,
   ChatDiscordLink,
   ChatMessage,
   ChatMessageOrigin,
@@ -188,6 +189,26 @@ export function normalizeChatNotification(
     ...notification,
     createdAt: normalizeTimestamp(notification.createdAt),
     message: normalizeChatMessage(notification.message),
+  };
+}
+
+/** A `chat.channel_state` frame, or null when it is not one. */
+export function normalizeChatChannelStateFrame(data: unknown): ChatChannelState | null {
+  if (!data || typeof data !== "object") return null;
+  const state = data as Partial<ChatChannelState>;
+  if (
+    typeof state.channelId !== "string"
+    || typeof state.notificationsEnabled !== "boolean"
+    || typeof state.unreadCount !== "number"
+    || (state.lastReadMessageId !== null && typeof state.lastReadMessageId !== "string")
+  ) {
+    return null;
+  }
+  return {
+    channelId: state.channelId,
+    notificationsEnabled: state.notificationsEnabled,
+    lastReadMessageId: state.lastReadMessageId,
+    unreadCount: state.unreadCount,
   };
 }
 

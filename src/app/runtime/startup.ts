@@ -107,6 +107,10 @@ export function useAppStartupRuntime({
     appLog.info("app activity propagated", { active: appActive });
   }, [appActive]);
 
+  useEffect(() => {
+    chatController.setRaisesBackgroundAlerts(!isDetachedWindow);
+  }, [isDetachedWindow]);
+
   // Runs for the life of the app: a freeze is only reportable if something
   // was watching the clock while it happened.
   useEffect(() => startMainThreadStallMonitor(), []);

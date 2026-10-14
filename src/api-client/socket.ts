@@ -1,6 +1,7 @@
 import type { TapeFeedEvent } from "./tape";
 import type {
   AuthUser,
+  ChatChannelState,
   ChatMessage,
   ChatNotification,
   ChatReactionsUpdate,
@@ -11,6 +12,7 @@ import type {
   TeamNotification,
 } from "./types";
 import {
+  normalizeChatChannelStateFrame,
   normalizeChatMessage,
   normalizeChatNotification,
   normalizeChatReactions,
@@ -42,6 +44,7 @@ const cloudApiLog = debugLog.createLogger("cloud-api");
 
 type ChannelListener = (message: ChatMessage) => void;
 type ChatNotificationListener = (notification: ChatNotification) => void;
+type ChatChannelStateListener = (state: ChatChannelState) => void;
 type ChatPresenceListener = (onlineCount: number) => void;
 type ChatReactionsListener = (update: ChatReactionsUpdate) => void;
 type TeamNotificationListener = (notification: TeamNotification) => void;
@@ -108,6 +111,8 @@ export class CloudApiSocket {
   private readonly channelListeners = new Map<string, Set<ChannelListener>>();
   private readonly chatNotificationListeners =
     new Set<ChatNotificationListener>();
+  private readonly chatChannelStateListeners =
+    new Set<ChatChannelStateListener>();
   private readonly chatPresenceListeners = new Set<ChatPresenceListener>();
   private readonly chatReactionsListeners = new Set<ChatReactionsListener>();
   private readonly teamNotificationListeners =
@@ -246,6 +251,17 @@ export class CloudApiSocket {
     this.chatNotificationListeners.add(listener);
     return () => {
       this.chatNotificationListeners.delete(listener);
+    };
+  }
+
+  /**
+   * The reader's read state or mute changed on another device or window. Like
+   * notifications, it never opens the socket by itself.
+   */
+  subscribeChatChannelState(listener: ChatChannelStateListener): () => void {
+    this.chatChannelStateListeners.add(listener);
+    return () => {
+      this.chatChannelStateListeners.delete(listener);
     };
   }
 
@@ -511,6 +527,7 @@ export class CloudApiSocket {
     this.offeredFeatureListeners.clear();
     this.connectionListeners.clear();
     this.chatNotificationListeners.clear();
+    this.chatChannelStateListeners.clear();
     this.chatPresenceListeners.clear();
     this.chatReactionsListeners.clear();
     this.teamNotificationListeners.clear();
@@ -610,6 +627,16 @@ export class CloudApiSocket {
       );
       for (const listener of this.chatNotificationListeners) {
         listener(notification);
+      }
+      return;
+    }
+
+    if (parsed?.type === "chat.channel_state") {
+      const state = normalizeChatChannelStateFrame(parsed.data);
+      if (state) {
+        for (const listener of this.chatChannelStateListeners) {
+          listener(state);
+        }
       }
       return;
     }

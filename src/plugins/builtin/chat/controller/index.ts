@@ -11,6 +11,7 @@ import {
   type ChatChannel,
   type ChatChannelState,
   type ChatMessage,
+  type ChatNotification,
   type ChatReaction,
   type ChatReactionsUpdate,
   type PersistedAuthUser,
@@ -57,9 +58,7 @@ import {
   getOpenConnectionChannelIds,
   getSafetyRefreshChannelIds as getChannelIdsForSafetyRefresh,
 } from "./connections";
-import {
-  handleChatNotification as handleChatNotificationEvent,
-} from "./notifications";
+import { ChatNotificationAlerts } from "./notifications";
 import {
   CHAT_MESSAGE_EDIT_WINDOW_LABEL,
   DISCORD_MESSAGE_EDIT_NOTICE,
@@ -116,7 +115,14 @@ export class ChatController {
   );
   private notifyFn: (notification: AppNotificationRequest) => AppNotificationDelivery | void = () => {};
   private openMessageFn: ((channelId: string, messageId: string) => void) | undefined;
-  private notifiedMessageIds = new Set<string>();
+  private readonly alerts = new ChatNotificationAlerts({
+    getAppActive: () => this.appActive,
+    ensureChannelState: (channelId) => this.ensureChannelState(channelId),
+    mergeMessages: (channelId, messages, options) => this.mergeMessages(channelId, messages, options),
+    getChannel: (channelId) => this.channelCatalog.getChannels().find((channel) => channel.id === channelId),
+    getNotify: () => this.notifyFn,
+    getOpenMessage: () => this.openMessageFn,
+  });
 
   private readonly storage = new ChatControllerStorage({
     emit: (channelId) => this.emit(channelId),
@@ -156,6 +162,11 @@ export class ChatController {
     getUser: () => this.session.user,
     refreshSession: () => this.refreshSession(),
     handleNotification: (notification) => this.handleChatNotification(notification),
+    handleChannelState: (state) => {
+      this.applyChannelState(state);
+      this.emit(state.channelId);
+      this.emit();
+    },
     handleReactions: (update) => this.applyReactionsUpdate(update),
     setOnlineCount: (onlineCount) => {
       this.channelCatalog.setOnlineCount(onlineCount);
@@ -168,6 +179,14 @@ export class ChatController {
   attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState): void {
     this.storage.attachPersistence(persistence, resume);
     this.hydrate();
+  }
+
+  /**
+   * A popped-out window has its own chat state but leaves background banners
+   * to the main window, so one message raises one banner per app.
+   */
+  setRaisesBackgroundAlerts(raises: boolean): void {
+    this.alerts.raisesBackgroundAlerts = raises;
   }
 
   setNotifier(
@@ -466,7 +485,7 @@ export class ChatController {
       },
       closeAllConnections: () => this.closeAllConnections(),
       emit: () => this.emit(),
-      stopRealtime: () => this.realtime.stopAll(),
+      stopRealtime: () => this.stopRealtime(),
     });
   }
 
@@ -502,7 +521,7 @@ export class ChatController {
       persistChannelState: (channelId) => this.storage.persistChannelState(channelId),
       persistSession: () => this.storage.persistSession(this.session.sessionToken, this.session.user),
       shouldClearSession: clearSession,
-      stopRealtime: () => this.realtime.stopAll(),
+      stopRealtime: () => this.stopRealtime(),
     });
   }
 
@@ -514,7 +533,7 @@ export class ChatController {
     });
     disposeChatControllerRuntime({
       channelStates: this.storage.channelStates,
-      clearNotifications: () => this.notifiedMessageIds.clear(),
+      clearNotifications: () => this.alerts.clear(),
       clearView: () => this.view.clear(),
       closeAllConnections: () => this.closeAllConnections(),
       flushDraftSync: (channelId) => this.storage.flushDraftSync(channelId),
@@ -522,7 +541,7 @@ export class ChatController {
         this.notifyFn = () => {};
         this.openMessageFn = undefined;
       },
-      stopRealtime: () => this.realtime.stopAll(),
+      stopRealtime: () => this.stopRealtime(),
     });
   }
 
@@ -778,6 +797,12 @@ export class ChatController {
     closeAllChannelConnections(this.storage.channelStates.values());
   }
 
+  /** Live updates stop, and so do alerts still waiting to go up: nobody signed in reads them. */
+  private stopRealtime(): void {
+    this.realtime.stopAll();
+    this.alerts.clear();
+  }
+
   private applySignedOutSession(): void {
     applySignedOutChatControllerSession({
       channelStates: this.storage.channelStates.values(),
@@ -785,7 +810,7 @@ export class ChatController {
       emit: () => this.emit(),
       persistSession: (sessionToken, user) => this.storage.persistSession(sessionToken, user),
       session: this.session,
-      stopRealtime: () => this.realtime.stopAll(),
+      stopRealtime: () => this.stopRealtime(),
     });
   }
 
@@ -823,20 +848,10 @@ export class ChatController {
   }
 
   private handleChatNotification(
-    notification: Parameters<typeof handleChatNotificationEvent>[0]["notification"],
+    notification: ChatNotification,
     options: { countUnread?: boolean } = {},
   ): void {
-    handleChatNotificationEvent({
-      notification,
-      options,
-      appActive: this.appActive,
-      ensureChannelState: (channelId) => this.ensureChannelState(channelId),
-      mergeMessages: (channelId, messages, mergeOptions) => this.mergeMessages(channelId, messages, mergeOptions),
-      getChannel: (channelId) => this.channelCatalog.getChannels().find((channel) => channel.id === channelId),
-      notifiedMessageIds: this.notifiedMessageIds,
-      notify: this.notifyFn,
-      openMessage: this.openMessageFn,
-    });
+    this.alerts.handle(notification, options);
   }
 
   private getUnreadMentionCount(channelId: string): number {

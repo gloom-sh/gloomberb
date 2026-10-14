@@ -646,6 +646,7 @@ class GloomApiClient {
   getChatState = this.chat.getState.bind(this.chat);
   updateChatChannelState = this.chat.updateChannelState.bind(this.chat);
   markChatNotificationsDelivered = this.chat.markNotificationsDelivered.bind(this.chat);
+  getUnseenChatNotificationIds = this.chat.getUnseenNotificationIds.bind(this.chat);
   openDirectChannel = this.chat.openDirectChannel.bind(this.chat);
   openGroupChannel = this.chat.openGroupChannel.bind(this.chat);
   getMessages = this.chat.getMessages.bind(this.chat);
@@ -658,6 +659,7 @@ class GloomApiClient {
   subscribeChatReactions = this.chat.subscribeReactions.bind(this.chat);
   connectChannel = this.chat.connectChannel.bind(this.chat);
   subscribeChatNotifications = this.chat.subscribeNotifications.bind(this.chat);
+  subscribeChatChannelState = this.chat.subscribeChannelState.bind(this.chat);
   subscribeChatPresence = this.chat.subscribePresence.bind(this.chat);
   getChatDiscordLink = this.chat.getDiscordLink.bind(this.chat);
   unlinkChatDiscord = this.chat.unlinkDiscord.bind(this.chat);
