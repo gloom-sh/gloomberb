@@ -144,6 +144,21 @@ export function futuresGenericPriceBasis(generic: Pick<FuturesGeneric, "root">):
   return null;
 }
 
+/**
+ * How a futures listing's price reads, whichever form it takes: a generic by
+ * its root (VX1 points, TY1 32nds), and a continuous (`ES=F`, `SXO=F`) or
+ * listed contract (`SXOZ26.CME`) of an index, sector or industry root in index
+ * points, on the root's own venue or with none. The quote keeps its currency
+ * for what a tick is worth. Null for every other listing, a security that
+ * shares a root's code on another venue (XAU on Toronto, the XAR ETF) included.
+ */
+export function futuresListingPriceBasis(symbol: string, exchange?: string | null): "points" | "thirty-seconds" | null {
+  const generic = futuresGenericListing(symbol, exchange);
+  if (generic) return futuresGenericPriceBasis(generic);
+  const listing = futuresListingVenue(symbol, exchange);
+  return listing?.root && ROOT_VENUES[listing.root] === listing.venue && POINT_ROOTS.has(listing.root) ? "points" : null;
+}
+
 /** Whether a root's date rules count back from first notice or from last trade. */
 export function futuresGenericNotice(root: string): "first notice" | "last trade" {
   return FIRST_NOTICE_ROOTS.has(root) ? "first notice" : "last trade";

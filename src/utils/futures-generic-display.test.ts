@@ -27,7 +27,7 @@ describe("generic futures read in their own units", () => {
     expect(formatChartLegendValue(104.484375, "32nds", "price:32nds", "FUTURE")).toBe("104-15½");
   });
 
-  test("a generic's cloud quote carries its basis; a contract's does not", () => {
+  test("a generic's cloud quote carries its basis; a crude contract's does not", () => {
     const quote = (symbol: string) => ({ symbol, price: 17.5, currency: "USD", change: 0.1, changePercent: 0.5, lastUpdated: 0, instrumentType: "FUTURE" });
     expect(mapQuote(quote("VX1") as never).priceBasis).toBe("points");
     expect(mapQuote(quote("TY1") as never).priceBasis).toBe("thirty-seconds");

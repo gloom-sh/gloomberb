@@ -1,4 +1,4 @@
-import { futuresGenericListing, futuresGenericPriceBasis } from "../../utils/futures-generic";
+import { futuresListingPriceBasis } from "../../utils/futures-generic";
 import type { TimeRange } from "../../time-series/range";
 import { RANGE_HISTORY_RESOLUTION } from "../../time-series/resolution";
 import type {
@@ -55,6 +55,12 @@ function isImpossiblePreviousClose(
     && previousClose * IMPOSSIBLE_CLOSE_FACTOR < low52w;
 }
 
+/** A quote that says it is something other than a future (an equity, a fund) keeps its own price basis. */
+function isNonFutureType(instrumentType: string | undefined): boolean {
+  const type = instrumentType?.trim().toUpperCase();
+  return !!type && type !== "FUTURE" && type !== "FUTURES" && type !== "FUT";
+}
+
 export function mapQuote(
   quote: CloudQuotePayload,
   providerMeta?: CloudProviderMeta,
@@ -76,12 +82,14 @@ export function mapQuote(
   const changePercent = !impossibleClose && typeof quote.changePercent === "number" && Number.isFinite(quote.changePercent)
     ? quote.changePercent
     : Number.NaN;
-  // A generic future (VX1, TY1) reads in points or 32nds, not dollars.
-  const generic = futuresGenericListing(quote.symbol, quote.listingExchangeName ?? quote.exchangeName);
+  // A generic future (VX1, TY1) reads in points or 32nds, and an index future's
+  // continuous symbol or contract (ES=F, SXOZ26.CME) in points, not dollars.
+  const futuresBasis = isNonFutureType(quote.instrumentType) ? null
+    : futuresListingPriceBasis(quote.symbol, quote.listingExchangeName ?? quote.exchangeName);
   const priceObservation = quote.priceBasis === "nav" ? "nav" : undefined;
   const priceBasis = quote.priceBasis === "nav"
     ? "per-unit"
-    : (generic ? futuresGenericPriceBasis(generic) : null) ?? quote.priceBasis;
+    : futuresBasis ?? quote.priceBasis;
   return withoutUndefinedFields(reconcileQuoteDayRange({
     ...quote,
     priceBasis,
