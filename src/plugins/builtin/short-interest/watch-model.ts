@@ -4,7 +4,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { isKnownNonUsListing, listingAbroadVenue } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
-import { percentOfFloat } from "./model";
+import { type SettlementFloatStatistics, settlementPercentFloat } from "./model";
 import type { ShortInterestRecord } from "./types";
 
 /** Short interest is published per settlement for each US listing, so a list fetches one symbol at a time. */
@@ -52,6 +52,8 @@ export interface ShortWatchInputs {
   symbol: string;
   records: readonly ShortInterestRecord[] | null;
   floatShares: number | null;
+  /** The statistics' short % of float and its settlement (settlementPercentFloat). */
+  statistics?: SettlementFloatStatistics | null;
   history: readonly PricePoint[] | null;
   error?: string | null;
 }
@@ -102,15 +104,16 @@ function shortWatchSetup(row: Pick<ShortWatchRow, "percentFloat" | "daysToCover"
 
 /**
  * One name's latest settlement, its change from the settlement before, its
- * shares short over the float, and its month's price move. A settlement that
- * carries its own percent of float keeps it; otherwise the float is the
- * snapshot's current float.
+ * shares short over the float, and its month's price move. The percent of
+ * float is the statistics' own when they are of the same settlement, so it
+ * reads as the overview and `fundamentals` do; otherwise the settlement's
+ * shares short over the snapshot's float.
  */
 export function buildShortWatchRow(inputs: ShortWatchInputs): ShortWatchRow {
   const records = [...(inputs.records ?? [])].sort((left, right) => left.settlementDate.getTime() - right.settlementDate.getTime());
   const latest = records.at(-1);
   const prior = records.at(-2);
-  const percentFloat = latest ? latest.shortPercentFloat ?? percentOfFloat(latest.sharesShort, inputs.floatShares) : null;
+  const percentFloat = latest ? settlementPercentFloat(latest, inputs.floatShares, inputs.statistics) : null;
   const move = inputs.history ? oneMonthReturn(inputs.history) : null;
   const row = {
     symbol: inputs.symbol,

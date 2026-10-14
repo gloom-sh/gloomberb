@@ -433,6 +433,34 @@ function fundamentalsMetrics(
   ];
 }
 
+/**
+ * The float and the short interest `fundamentals` prints after the share count: the shares short, short % of float
+ * and days to cover of one settlement, dated, as the JSON gives them and `SI` and `SIW` show them.
+ */
+function floatAndShortInterestMetrics(
+  quote: TickerFinancials["quote"],
+  fundamentals: TickerFinancials["fundamentals"],
+  profile: TickerFinancials["profile"],
+): FundamentalsMetric[] {
+  const finite = (value: number | undefined): value is number => value != null && Number.isFinite(value);
+  const float = fundamentals?.floatShares;
+  const short = fundamentals?.sharesShort;
+  const days = fundamentals?.shortRatio;
+  const date = fundamentals?.shortInterestDate;
+  const receipt = finite(float) && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
+  return [
+    finite(float) && float > 0
+      ? { label: "Float", text: formatCompact(float), value: float, ...(receipt ? { unit: "ADR equivalent" } : {}) }
+      : { label: "Float", text: "—" },
+    finite(short)
+      ? { label: "Short Interest", text: `${formatCompact(short)}${date ? ` (settled ${date})` : ""}`, value: short, unit: "shares" }
+      : { label: "Short Interest", text: "—" },
+    ...finite(short) && date ? [{ label: "Short Interest Settlement", text: date, value: date, exportOnly: true }] : [],
+    { label: "Short % of Float", ...percentFigure(fundamentals?.shortPercentOfFloat, formatFractionPercentCell) },
+    finite(days) ? { label: "Days to Cover", text: formatNumber(days, 2), value: days } : { label: "Days to Cover", text: "—" },
+  ];
+}
+
 function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, string]> {
   return metrics.filter((metric) => !metric.exportOnly).map((metric) => [metric.label, metric.text]);
 }
@@ -540,7 +568,10 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
     : { text: "—" };
   const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials),
     undefined, snapshot.declaredDividends ?? null);
-  if (view === "fundamentals") return metrics.filter((metric) => metric.text !== "—");
+  if (view === "fundamentals") {
+    return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
+      .filter((metric) => metric.text !== "—");
+  }
   const valued = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield")) && text !== "—");
   // The share count follows the market cap it is the basis of.
   const shares = valued.filter((metric) => metric.label === "Shares Outstanding");

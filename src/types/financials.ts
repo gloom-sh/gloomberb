@@ -245,15 +245,17 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   return3Y?: number;
   lastQuarterGrowth?: number;
   sharesOutstanding?: number;
-  /** Free float: shares outstanding less insider and strategic holdings. */
+  /** Free float: shares outstanding less insider and strategic holdings, never above `sharesOutstanding`. */
   floatShares?: number;
   beta?: number;
-  /** Shares sold short at the source's latest settlement. */
+  /** Shares short at the latest FINRA settlement, the one `SI` and `SIW` show; dated by `shortInterestDate`. */
   sharesShort?: number;
-  /** Shares short over float from the same observation, as a fraction (0.0127 for 1.27%). */
+  /** `sharesShort` over `floatShares`, as a fraction (0.0127 for 1.27%). */
   shortPercentOfFloat?: number;
-  /** Days to cover: shares short over average daily volume. */
+  /** Days to cover as FINRA states it for the settlement: shares short over the period's average daily volume. */
   shortRatio?: number;
+  /** The settlement date (YYYY-MM-DD) of `sharesShort`, `shortPercentOfFloat` and `shortRatio`. */
+  shortInterestDate?: string;
   /** Fractions of shares outstanding. */
   insiderPercentHeld?: number;
   institutionPercentHeld?: number;

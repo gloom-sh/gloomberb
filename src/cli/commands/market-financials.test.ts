@@ -23,9 +23,9 @@ const FINANCIALS: TickerFinancials = {
   priceHistory: [],
 };
 
-async function run(command: string, args: string[], format: CliOutputFormat): Promise<string[]> {
-  const cli = createTestCliContext({ dataProvider: { getTickerFinancials: async () => FINANCIALS } }, { format });
-  await marketDataCliCommands.find((entry) => entry.name === command)!.execute(["SBK.JO", ...args], cli.context);
+async function run(command: string, args: string[], format: CliOutputFormat, financials = FINANCIALS): Promise<string[]> {
+  const cli = createTestCliContext({ dataProvider: { getTickerFinancials: async () => financials } }, { format });
+  await marketDataCliCommands.find((entry) => entry.name === command)!.execute([financials.quote?.symbol ?? "SBK.JO", ...args], cli.context);
   const [printed] = cli.printed;
   return serializeCliResult(printed!.result, { ...DEFAULT_CLI_OPTIONS, format }, printed!.options).split("\n");
 }
@@ -107,3 +107,27 @@ test("--section names the sections a report has, and is only for --csv and --ndj
   );
   await expect(run("valuation", ["--section", "1"], "json")).rejects.toThrow("--section picks one table of --csv or --ndjson output.");
 });
+
+test("fundamentals prints the float and the short interest of one dated settlement, as its JSON gives them", async () => {
+  // GLO-760, GME as Gloom Cloud serves it after 2026-10-14: the float at the shares outstanding, the 30 September
+  // settlement's shares short and days to cover. The text view used to leave these out, so scripts read the JSON alone.
+  const gme: TickerFinancials = {
+    quote: { symbol: "GME", name: "GameStop Corp.", price: 29.84, currency: "USD", change: 0, changePercent: 0, lastUpdated: Date.parse("2026-10-14T13:00:00Z") },
+    fundamentals: {
+      sharesOutstanding: 449_100_000, floatShares: 449_100_000, sharesShort: 42_673_721,
+      shortPercentOfFloat: 42_673_721 / 449_100_000, shortRatio: 3.98, shortInterestDate: "2026-09-30",
+    },
+    annualStatements: [], quarterlyStatements: [], priceHistory: [],
+  };
+  const text = (await run("fundamentals", [], "text", gme)).join("\n").replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  expect(text).toContain("Shares Outstanding 449.1M\nFloat 449.1M\nShort Interest 42.67M (settled 2026-09-30)\nShort % of Float 9.50%\nDays to Cover 3.98\n");
+  const json = JSON.parse((await run("fundamentals", [], "json", gme)).join("\n"));
+  expect(json.data.fundamentals).toMatchObject({
+    floatShares: 449_100_000, sharesShort: 42_673_721, shortRatio: 3.98, shortInterestDate: "2026-09-30",
+  });
+  expect(await run("fundamentals", [], "csv", gme)).toEqual(expect.arrayContaining([
+    expect.stringMatching(/^Short Interest \(shares\),42673721,GME,/),
+    expect.stringMatching(/^Short Interest Settlement,2026-09-30,GME,/),
+    expect.stringMatching(/^Days to Cover,3.98,GME,/),
+  ]));
+})

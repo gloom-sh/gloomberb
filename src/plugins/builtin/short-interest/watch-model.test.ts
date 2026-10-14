@@ -47,11 +47,27 @@ describe("short watch rows", () => {
     expect(row("HIGH", 12, 100, 1).changePercent).toBeCloseTo(100, 9);
   });
 
-  test("a float smaller than the shares short is not used, so days to cover decides alone", () => {
+  test("a float under half the shares short is not used, so days to cover decides alone", () => {
     // BRK.B: 12.53M short against 1.23M, which is Berkshire's Class A float.
     expect(row("BRK.B", 12.53, 1.234, 3.3)).toMatchObject({ percentFloat: null, setup: null });
     expect(row("BRK.B", 12.53, 1.234, 6)).toMatchObject({ percentFloat: null, setup: "crowded-rising" });
     expect(row("FULL", 100, 100, 1).percentFloat).toBe(100);
+    // Shares lent twice can put short interest above the float, as the overview reads it too.
+    expect(row("SQUEEZE", 140, 100, 1).percentFloat).toBe(140);
+  });
+
+  test("the statistics' percent of float of the same settlement is the one shown", () => {
+    // GLO-760, GME on 2026-10-13: 42.67M short. The statistics divide by the float capped at the 449.1M shares
+    // outstanding (9.50%); the snapshot of an older app build carried the 461.24M float (9.25%).
+    const records = [settlement("2026-09-15", 39_069_126, 4.29), settlement("2026-09-30", 42_673_721, 3.98)];
+    const gme = (statistics: { settlementDate: string; shortPercentOfFloat: number | null }) =>
+      buildShortWatchRow({ symbol: "GME", records, floatShares: 461_240_030, statistics, history: rising });
+    expect(gme({ settlementDate: "2026-09-30", shortPercentOfFloat: 42_673_721 / 449_100_000 }))
+      .toMatchObject({ percentFloat: expect.closeTo(9.502, 3), daysToCover: 3.98 });
+    // Statistics of another settlement are not mixed in: the settlement over the snapshot's float.
+    expect(gme({ settlementDate: "2026-09-15", shortPercentOfFloat: 0.087 }).percentFloat).toBeCloseTo(9.252, 3);
+    // The same settlement without a percent (no float served) has none.
+    expect(gme({ settlementDate: "2026-09-30", shortPercentOfFloat: null }).percentFloat).toBeNull();
   });
 
   test("ranks crowded names that are rising first, then crowded, then the rest, unreported last", () => {

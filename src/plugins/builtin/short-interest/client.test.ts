@@ -26,10 +26,10 @@ test("confirmed empty settlements remain an empty result rather than a transport
     .toMatchObject({ records: [], cloudSessionRequired: false });
 });
 
-const snapshot = (floatShares: number | undefined): QueryEntry<TickerFinancials> => ({
+const snapshot = (floatShares: number | undefined, statistics: Record<string, unknown> = {}): QueryEntry<TickerFinancials> => ({
   ...createIdleEntry<TickerFinancials>(),
   phase: "ready",
-  data: { fundamentals: { floatShares }, annualStatements: [], quarterlyStatements: [], priceHistory: [] } as unknown as TickerFinancials,
+  data: { fundamentals: { floatShares, ...statistics }, annualStatements: [], quarterlyStatements: [], priceHistory: [] } as unknown as TickerFinancials,
 });
 test("the newest settlement reads its percent of float from the current float, as SIW does, and the settlements before it stay blank", async () => {
   const points = [point("2026-09-15", 39_000_000, 4.3), point("2026-09-30", 42_670_000, 3.98)];
@@ -44,4 +44,17 @@ test("the newest settlement reads its percent of float from the current float, a
   // A percentage the source states is kept.
   const stated = await loadShortInterestWithFloat("TEST", { client: client([point("2026-09-30", 42_670_000, 3.98, 7)]), loadSnapshots: async () => [snapshot(461_000_000)] });
   expect(stated.records[0]?.shortPercentFloat).toBe(7);
+});
+test("the newest settlement takes the statistics' percent of float when they are of the same settlement, as SIW and the overview do", async () => {
+  // GLO-760, GME: 42.67M short; the statistics divide by the float served at the 449.1M shares outstanding.
+  const points = [point("2026-09-15", 39_000_000, 4.3), point("2026-09-30", 42_673_721, 3.98)];
+  const statistics = { shortInterestDate: "2026-09-30", shortPercentOfFloat: 42_673_721 / 449_100_000 };
+  const same = await loadShortInterestWithFloat("TEST", { client: client(points, "finra"), loadSnapshots: async () => [snapshot(461_240_030, statistics)] });
+  expect(same.records.map((record) => record.shortPercentFloat)).toEqual([null, expect.closeTo(9.502, 3)]);
+  // Statistics of an older settlement are not mixed in: the shares short over the current float.
+  const older = await loadShortInterestWithFloat("TEST", {
+    client: client(points, "finra"),
+    loadSnapshots: async () => [snapshot(461_240_030, { ...statistics, shortInterestDate: "2026-09-15" })],
+  });
+  expect(older.records.at(-1)?.shortPercentFloat).toBeCloseTo(9.252, 3);
 });

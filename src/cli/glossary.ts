@@ -386,7 +386,8 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Days to cover", aliases: ["short ratio", "short interest ratio", "days-to-cover", "dtc"], functions: ["SI", "SIW"],
     shown: ["Days to cover"],
-    definition: "Shares short divided by average daily volume: how many days of normal trading it would take the shorts to buy their shares back. "
+    definition: "Shares short divided by the average daily volume FINRA reports with the settlement: how many days of normal trading it would take "
+      + "the shorts to buy their shares back. The overview, fundamentals, SI, SIW and EQS all give FINRA's figure. "
       + "A higher number means a squeeze would take longer to unwind.",
   },
   {
@@ -397,7 +398,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   {
     term: "Float", aliases: ["free float", "public float", "float shares", "floating stock", "% float", "percent of float"],
     functions: ["SI", "SIW"], shown: ["Float"],
-    definition: "The shares open to public trading: those outstanding less shares held by insiders and strategic holders. "
+    definition: "The shares open to public trading: those outstanding less shares held by insiders and strategic holders, never more than the shares outstanding. "
       + "% Float is shares short over today's float, so a settlement is measured against the float as it is now, not as it was then; "
       + "SI gives it for the latest settlement only.",
   },

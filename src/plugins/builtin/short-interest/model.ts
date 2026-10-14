@@ -56,29 +56,58 @@ function formatPercent(value: number | null): string {
 const finiteNumber = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
 
 /**
- * Shares short over the float, in percent. A float smaller than the shares
- * short is another class's float (BRK.B reports Berkshire's Class A), not a
- * short over 100%, so it is not used.
+ * Shares short over the float, in percent. Short interest above the float is
+ * possible (shares lent twice), twice it is not: such a float is another
+ * class's (BRK.B's is Berkshire's Class A), so it is not used. The bound
+ * Gloom Cloud's statistics use for their short % of float.
  */
-export function percentOfFloat(sharesShort: number, floatShares: number | null | undefined): number | null {
-  return finiteNumber(floatShares) && floatShares > 0 && floatShares >= sharesShort ? (sharesShort / floatShares) * 100 : null;
+function percentOfFloat(sharesShort: number, floatShares: number | null | undefined): number | null {
+  return finiteNumber(floatShares) && floatShares > 0 && sharesShort <= floatShares * 2 ? (sharesShort / floatShares) * 100 : null;
+}
+
+/**
+ * The statistics' short % of float (a fraction, null when not served) and the
+ * settlement it is of: Gloom Cloud serves it on the float it serves, from the
+ * settlement SI and SIW show, as the overview and `fundamentals` read it.
+ */
+export interface SettlementFloatStatistics {
+  settlementDate: string;
+  shortPercentOfFloat: number | null;
+}
+
+/**
+ * A settlement's percent of float: the statistics' own when they are of the
+ * same settlement, then a percentage the source states, then the shares short
+ * over the current float.
+ */
+export function settlementPercentFloat(
+  record: ShortInterestRecord,
+  floatShares: number | null | undefined,
+  statistics?: SettlementFloatStatistics | null,
+): number | null {
+  if (statistics && statistics.settlementDate === record.settlementDate.toISOString().slice(0, 10)) {
+    return finiteNumber(statistics.shortPercentOfFloat) ? statistics.shortPercentOfFloat * 100 : null;
+  }
+  return record.shortPercentFloat ?? percentOfFloat(record.sharesShort, floatShares);
 }
 
 /**
  * The newest settlement's percent of float where the source gives none, read
- * against the current float as SIW reads it. The float is undated, so the
- * settlements before it stay blank rather than take today's float.
+ * against the current float as SIW reads it (settlementPercentFloat). The
+ * float is undated, so the settlements before it stay blank rather than take
+ * today's float.
  */
 export function withLatestPercentFloat(
   records: readonly ShortInterestRecord[],
   floatShares: number | null | undefined,
+  statistics?: SettlementFloatStatistics | null,
 ): ShortInterestRecord[] {
   const latest = records.reduce<ShortInterestRecord | null>(
     (best, record) => (!best || record.settlementDate.getTime() > best.settlementDate.getTime() ? record : best),
     null,
   );
-  return records.map((record) => (record === latest && record.shortPercentFloat == null
-    ? { ...record, shortPercentFloat: percentOfFloat(record.sharesShort, floatShares) }
+  return records.map((record) => (record === latest
+    ? { ...record, shortPercentFloat: settlementPercentFloat(record, floatShares, statistics) }
     : record));
 }
 

@@ -6,7 +6,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint, TickerFinancials } from "../../../types/financials";
 import { errorMessage } from "../../../utils/errors";
 import { loadShortInterest, type ShortInterestResult } from "./client";
-import { withLatestPercentFloat } from "./model";
+import { type SettlementFloatStatistics, withLatestPercentFloat } from "./model";
 import { buildShortWatchRow, type ShortWatchRow } from "./watch-model";
 import type { ShortInterestRecord } from "./types";
 
@@ -31,24 +31,37 @@ export function createShortWatchDependencies(
   };
 }
 
-/** Each symbol's current float, in order: null where its snapshot is missing or carries none. */
-async function loadFloatShares(
+/** A symbol's current float and the statistics' short % of float with its settlement, from its snapshot. */
+interface FloatSnapshot {
+  floatShares: number | null;
+  statistics: SettlementFloatStatistics | null;
+}
+
+/** Each symbol's float and statistics, in order: empty where its snapshot is missing or carries none. */
+async function loadFloats(
   symbols: readonly string[],
   loadSnapshots: ShortWatchDependencies["loadSnapshots"],
   options: { forceRefresh?: boolean } = {},
-): Promise<Array<number | null>> {
+): Promise<FloatSnapshot[]> {
   const entries = await Promise.resolve()
     .then(() => loadSnapshots(symbols.map((symbol) => ({ symbol, exchange: "" })), options))
     .catch(() => []);
   return symbols.map((_symbol, index) => {
     const entry = entries[index];
-    return (entry ? resolveEntryValue(entry) : null)?.fundamentals?.floatShares ?? null;
+    const fundamentals = (entry ? resolveEntryValue(entry) : null)?.fundamentals;
+    return {
+      floatShares: fundamentals?.floatShares ?? null,
+      statistics: fundamentals?.shortInterestDate
+        ? { settlementDate: fundamentals.shortInterestDate, shortPercentOfFloat: fundamentals.shortPercentOfFloat ?? null }
+        : null,
+    };
   });
 }
 
 /**
- * A ticker's settlements with the newest one's percent of float, from the same
- * float SIW divides by. A snapshot that fails leaves the settlements as they are.
+ * A ticker's settlements with the newest one's percent of float, as SIW reads
+ * it (settlementPercentFloat). A snapshot that fails leaves the settlements as
+ * they are.
  */
 export async function loadShortInterestWithFloat(
   symbol: string,
@@ -58,14 +71,15 @@ export async function loadShortInterestWithFloat(
     loadSnapshots?: ShortWatchDependencies["loadSnapshots"];
   } = {},
 ): Promise<ShortInterestResult> {
-  const [result, [floatShares]] = await Promise.all([loadShortInterest(symbol, client), loadFloatShares([symbol], loadSnapshots)]);
-  return { ...result, records: withLatestPercentFloat(result.records, floatShares) };
+  const [result, [snapshot]] = await Promise.all([loadShortInterest(symbol, client), loadFloats([symbol], loadSnapshots)]);
+  return { ...result, records: withLatestPercentFloat(result.records, snapshot?.floatShares, snapshot?.statistics) };
 }
 
 /**
- * Every name's settlements, float and daily closes. The floats come in one
- * batched snapshot; settlements and closes are per symbol, six at a time. A
- * name whose closes fail keeps its short interest without a price move.
+ * Every name's settlements, float and daily closes. The floats, with the
+ * statistics' short % of float and its settlement, come in one batched
+ * snapshot; settlements and closes are per symbol, six at a time. A name
+ * whose closes fail keeps its short interest without a price move.
  */
 export async function loadShortWatch(
   symbols: readonly string[],
@@ -73,7 +87,7 @@ export async function loadShortWatch(
   dependencies: ShortWatchDependencies = createShortWatchDependencies(),
 ): Promise<ShortWatchRow[]> {
   const instruments = symbols.map((symbol) => ({ symbol, exchange: "" }));
-  const floats = loadFloatShares(symbols, dependencies.loadSnapshots, { forceRefresh: options.forceRefresh });
+  const floats = loadFloats(symbols, dependencies.loadSnapshots, { forceRefresh: options.forceRefresh });
   const rows = new Array<ShortWatchRow>(symbols.length);
   let next = 0;
   const worker = async () => {
@@ -85,10 +99,12 @@ export async function loadShortWatch(
         dependencies.loadChart({ instrument, bufferRange: "3M", granularity: "resolution", resolution: "1d" },
           { forceRefresh: options.forceRefresh }).then((entry) => resolveEntryValue(entry) ?? []),
       ]);
+      const snapshot = (await floats)[index];
       rows[index] = buildShortWatchRow({
         symbol: instrument.symbol,
         records: records.status === "fulfilled" ? records.value : null,
-        floatShares: (await floats)[index] ?? null,
+        floatShares: snapshot?.floatShares ?? null,
+        statistics: snapshot?.statistics ?? null,
         history: history.status === "fulfilled" ? history.value : null,
         error: records.status === "rejected" ? errorMessage(records.reason) : null,
       });
