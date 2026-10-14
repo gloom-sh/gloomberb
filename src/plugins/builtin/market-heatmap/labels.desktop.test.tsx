@@ -93,7 +93,7 @@ for (const [columns, rows, sizedBy] of [[75, 13, "sqrt-market-cap"], [110, 35, "
     const board = usStocksBoard(sizedBy);
     const scene = buildHeatTreemapScene(board, heatTreemapCanvas(columns, rows, { nativePaneChrome: true, cellWidthPx: 8, cellHeightPx: 18 }));
     const container = await dom.render(
-      <HeatTreemapSurface scene={scene} items={board} width={columns} height={rows} selectedId={null} onSelect={() => {}} />,
+      <HeatTreemapSurface scene={scene} resizing={false} items={board} width={columns} height={rows} selectedId={null} onSelect={() => {}} />,
     );
     const text = [...container.querySelectorAll("[data-gloom-role='heat-tile']")].map((tile) => tile.textContent ?? "");
     expect(text).toHaveLength(scene.tiles.length);

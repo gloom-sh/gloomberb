@@ -5,6 +5,7 @@ import { cacheDir, click, drag, evaluate, frames, holdKey, launchBrowser, mouse,
 import { serveFixturePage, type FixturePage } from "./page";
 import { chatSteps } from "./chat-checks";
 import { desSteps } from "./des-checks";
+import { heatSteps } from "./heat-checks";
 import { headerSteps } from "./header-checks";
 import { layoutSteps } from "./layout-checks";
 import { selectionSteps } from "./selection-checks";
@@ -1351,6 +1352,7 @@ const steps: Step[] = [
   })),
   ...chatSteps,
   ...desSteps,
+  ...heatSteps,
   ...headerSteps,
   ...layoutSteps,
   ...selectionSteps,

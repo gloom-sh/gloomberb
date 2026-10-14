@@ -25,6 +25,7 @@ const LAYOUTS: Array<{ name: string; query: string }> = [
   { name: "news table, chart, table with sidebar, table, floating news table", query: "scenario=resize" },
   { name: "floating chart", query: "scenario=resize&float=chart" },
   { name: "floating heat map", query: "scenario=resize&float=heat" },
+  { name: "market heat map of 500 names, docked and floating", query: "scenario=resize&float=heat&heat=market&dock=heat" },
   { name: "floating Fear & Greed", query: "scenario=resize&float=fear" },
   { name: "Fear & Greed and canvas charts", query: "scenario=screenshot" },
   { name: "charts inside a pane's layout, docked (G layout, board, beside a table, under a toolbar)", query: "scenario=nested" },

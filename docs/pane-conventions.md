@@ -566,6 +566,7 @@ template, or add it with its reason.
 14. On the desktop and the web nothing is sized in cells: boxes fill with flex, percentages or CSS units, text wraps in CSS at the width it sits in (a reading measure is a CSS `max-width` in `ch`), and sizes are read from the laid-out page. Nothing ends in a dead band above the footer or a gap at the right edge. `bun run check:pane-layout` measures every function; `src/architecture/dom-cell-metrics.test.ts` keeps cell metrics out of DOM-only code, and its allowlist says for every file why the uses left stay (a shared API that speaks cells to every renderer, or a size the terminal shares by design).
 15. A chart with a table uses `ChartTableHeader`: named series, one shared selection, `chartTableLayout` at every size, no repeated numbers.
 16. Opening the function again focuses its window (8b): identity in the spec, preferences out of it, a stable `instanceId` for a one-window function.
+17. Nothing animates while its box is being resized. Motion tied to the layout (a glide, a fade, a pulse) reads `resizing` from `useSettledLayoutSize` (`src/ui/resize-settle.ts`), the one signal for a pane resize, a divider, a maximise or restore and a window resize; content placed in percentages of its box holds its layout while the size changes and is laid out once the size settles, as the heat map's tiles are (`useHeatTreemapScene`). `bun run check:pane-chrome --only "market heat map"` drags, resizes the window and maximises with real input and fails on a relayout per move or a tile animating.
 
 ## Reference implementations
 

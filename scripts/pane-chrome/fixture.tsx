@@ -14,7 +14,9 @@
  * (chart panes for the copy screenshot check) or `resize` (a news table, a
  * chart, and a table in a sidebar beside a second table, docked, with a news
  * table floating over them; `&float=chart`, `&float=heat` or `&float=fear`
- * floats a chart, a heat map or the Fear & Greed pane instead, and `&float=g`,
+ * floats a chart, a heat map or the Fear & Greed pane instead (`&heat=market`
+ * makes the heat map the market board of 500 names, `&ticks=1` recolours it
+ * four times a second, and `&dock=heat` docks one in the chart's place), and `&float=g`,
  * `&float=board`, `&float=beside`, `&float=overlay` or `&float=under` one of
  * the charts that sit inside a pane's own layout), `nested` (the first four
  * docked), `stacked` (the chart under a table docked beside a chart),
@@ -30,7 +32,7 @@
  * each update state, see header-fixture.tsx; `&host=browser` draws it as the
  * web app does).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
 import { useCommandBarThemePreview } from "../../src/components/command-bar/theme-preview";
 import { OverviewTab } from "../../src/plugins/builtin/ticker-detail/overview-tab";
@@ -48,7 +50,9 @@ import { StaticChartSurface } from "../../src/components/chart/static/chart-surf
 import { DataTableView } from "../../src/components/data-table/view";
 import { ChartTableHeader } from "../../src/components/chart-table/header";
 import { QueryBar } from "../../src/components/ui/query-bar";
-import { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface } from "../../src/components/metric-treemap/heat-surface";
+// A namespace import: the frame budget builds this file against the base
+// branch's sources too, which may not have useHeatTreemapScene.
+import * as heatSurface from "../../src/components/metric-treemap/heat-surface";
 import type { MetricTreemapItem } from "../../src/components/metric-treemap/layout";
 import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
 import { DetachedPaneShell } from "../../src/components/layout/detached-pane-shell";
@@ -569,14 +573,107 @@ const HEAT_ITEMS: MetricTreemapItem<null>[] = Array.from({ length: 60 }, (_, ind
 });
 const ignoreTile = () => {};
 
-/** A heat map over invented tiles, laid out the way the market heat map lays out its board. */
-function HeatPane({ width, height }: PaneProps) {
+const { HeatTreemapSurface } = heatSurface;
+interface FixtureHeatLayout<T> { scene: ReturnType<typeof heatSurface.buildHeatTreemapScene<T>>; resizing: boolean }
+
+declare global {
+  interface Window {
+    /** Scenes the heat maps committed, and a board refresh with new sizes (`heat=market`), as a snapshot reload brings. */
+    __heat: { builds: number; refresh(): void };
+  }
+}
+const heatRefreshes = new Set<() => void>();
+window.__heat = { builds: 0, refresh: () => heatRefreshes.forEach((refresh) => refresh()) };
+
+/**
+ * The scene as the market heat map's pane lays it out, seeded with the one on
+ * screen. A base branch from before `useHeatTreemapScene` lays it out at
+ * every size it renders at, as its pane did.
+ */
+const useFixtureHeatScene = heatSurface.useHeatTreemapScene ?? function useEveryHeatScene<T>(
+  items: readonly MetricTreemapItem<T>[],
+  width: number,
+  height: number,
+): FixtureHeatLayout<T> {
   const capabilities = useUiCapabilities();
+  const shown = useRef<FixtureHeatLayout<T>["scene"] | null>(null);
   const scene = useMemo(
-    () => buildHeatTreemapScene(HEAT_ITEMS, heatTreemapCanvas(width, height, capabilities)),
-    [capabilities, height, width],
+    () => (shown.current = heatSurface.buildHeatTreemapScene(items, heatSurface.heatTreemapCanvas(width, height, capabilities), shown.current)),
+    [capabilities, height, items, width],
   );
-  return <HeatTreemapSurface scene={scene} items={HEAT_ITEMS} width={width} height={height} selectedId={null} onSelect={ignoreTile} />;
+  return { scene, resizing: false };
+};
+
+/** Counts the scenes a heat map commits: each new one restyles every tile. */
+function useCountedScene<T>(layout: FixtureHeatLayout<T>): FixtureHeatLayout<T> {
+  useLayoutEffect(() => {
+    window.__heat.builds += 1;
+  }, [layout.scene]);
+  return layout;
+}
+
+/** A heat map over invented tiles, laid out the way the market heat map lays out its board. */
+function InventedHeatPane({ width, height }: PaneProps) {
+  const { scene, resizing } = useCountedScene(useFixtureHeatScene(HEAT_ITEMS, width, height));
+  return <HeatTreemapSurface scene={scene} resizing={resizing} items={HEAT_ITEMS} width={width} height={height} selectedId={null} onSelect={ignoreTile} />;
+}
+
+/** Eleven invented sectors of five invented industries each. */
+const MARKET_SECTORS = Array.from({ length: 11 }, (_, sector) => `Sector ${String.fromCharCode(65 + sector)}`);
+/** A deterministic stand-in for Math.random, so both checkouts draw the same board. */
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
+
+/** 500 invented names in sectors and industries, sized like market caps: a few giants and a long tail. */
+function marketHeatItems(generation: number, moves: readonly number[]): MetricTreemapItem<null>[] {
+  const random = seeded(7 + generation);
+  return moves.map((move, index) => {
+    const sector = MARKET_SECTORS[index % MARKET_SECTORS.length]!;
+    const weight = 4_000 / (index + 8) ** 1.1 * (0.85 + random() * 0.3);
+    return {
+      id: `name-${index}`,
+      label: `N${index}`,
+      weight,
+      colorValue: move,
+      primaryText: `${move >= 0 ? "+" : ""}${move.toFixed(1)}%`,
+      group: sector,
+      subgroup: `${sector} ${Math.floor(index / MARKET_SECTORS.length) % 5}`,
+      data: null,
+    };
+  });
+}
+
+/**
+ * `heat=market`: the market heat map's board as its pane lays it out: 500
+ * names in sectors and industries, and with `ticks=1` a few moves changing
+ * four times a second, as quotes stream in. Tiles are sized by the board a
+ * refresh brings (`window.__heat.refresh()`), coloured by every tick.
+ */
+function MarketHeatPane({ width, height }: PaneProps) {
+  const [moves, setMoves] = useState(() => Array.from({ length: 500 }, (_, index) => Math.sin(index * 1.3) * 3.2));
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => {
+    const refresh = () => setGeneration((value) => value + 1);
+    heatRefreshes.add(refresh);
+    if (params.get("ticks") !== "1") return () => { heatRefreshes.delete(refresh); };
+    const random = seeded(11);
+    const timer = setInterval(() => {
+      setMoves((current) => current.map((move) => (random() < 0.04 ? move + (random() - 0.5) * 1.2 : move)));
+    }, 250);
+    return () => {
+      heatRefreshes.delete(refresh);
+      clearInterval(timer);
+    };
+  }, []);
+  const layoutItems = useMemo(() => marketHeatItems(generation, moves), [generation]); // eslint-disable-line react-hooks/exhaustive-deps
+  const paintItems = useMemo(() => marketHeatItems(generation, moves), [generation, moves]);
+  const { scene, resizing } = useCountedScene(useFixtureHeatScene(layoutItems, width, height));
+  return <HeatTreemapSurface scene={scene} resizing={resizing} items={paintItems} width={width} height={height} selectedId={null} onSelect={ignoreTile} />;
 }
 
 const OVERVIEW_TICKER = createTestTicker("EXMPL", "Example Industries", { exchange: "", assetCategory: "STK" });
@@ -972,7 +1069,7 @@ const PANES = {
   overlay: { name: "Chart under a toolbar", component: ChartOverlayPane },
   under: { name: "Chart under a table", component: ChartUnderTablePane },
   sidebar: { name: "Sidebar", component: SidebarPane },
-  heat: { name: "Heat map", component: HeatPane },
+  heat: { name: "Heat map", component: params.get("heat") === "market" ? MarketHeatPane : InventedHeatPane },
   chat: { name: "Chat", component: ChatFixturePane },
   "chart-composer": { name: "Chart", component: ChartComposerFixturePane },
   ...LAYOUT_PANES,
@@ -1075,13 +1172,15 @@ const FLOATING_RESIZE: Record<string, string> = {
  */
 function resizeLayout(): LayoutConfig {
   const floating = `${FLOATING_RESIZE[params.get("float") ?? ""] ?? "news"}:float`;
+  // `dock=heat`: the heat map docked where the chart is, so a window resize resizes it.
+  const docked = params.get("dock") === "heat" ? "heat:dock" : "chart:dock";
   return {
     dockRoot: {
       kind: "split", axis: "vertical", ratio: 0.55,
-      first: row(["news:dock", "chart:dock"]),
+      first: row(["news:dock", docked]),
       second: row(["sidebar:dock", "table:dock"]),
     },
-    instances: ["news:dock", "chart:dock", "sidebar:dock", "table:dock", floating].map(instance),
+    instances: ["news:dock", docked, "sidebar:dock", "table:dock", floating].map(instance),
     floating: [{ instanceId: floating, x: 50, y: 8, width: 72, height: 22, zIndex: 60 }],
     detached: [],
   };

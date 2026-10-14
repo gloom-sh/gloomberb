@@ -74,7 +74,7 @@ test("a theme switch recolours the heat map tiles at once, though no tile's prop
     setThemeId = updateThemeId;
     return (
       <ThemeProvider themeId={themeId}>
-        <HeatTreemapSurface scene={scene} items={heatItems} width={40} height={6} selectedId={null} onSelect={() => {}} />
+        <HeatTreemapSurface scene={scene} resizing={false} items={heatItems} width={40} height={6} selectedId={null} onSelect={() => {}} />
       </ThemeProvider>
     );
   }

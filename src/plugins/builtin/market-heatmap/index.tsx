@@ -1,12 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Box, useUiCapabilities } from "../../../ui";
 import {
-  buildHeatTreemapScene,
   findMetricTreemapNeighbor,
   formatHeatTileMove,
-  heatTreemapCanvas,
   HeatTreemapSurface,
   settleTreemapLayoutItems,
+  useHeatTreemapScene,
 } from "../../../components/metric-treemap";
 import {
   loadingText,
@@ -262,7 +261,7 @@ function useSettledLayoutItems<T>(items: readonly MetricTreemapItem<T>[], tolera
 function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   const { pinTicker } = usePluginTickerActions();
   const liveStreaming = useLiveStreamingSetting();
-  const { cellWidthPx = 8, cellHeightPx = 18, nativePaneChrome } = useUiCapabilities();
+  const { nativePaneChrome } = useUiCapabilities();
   // A pane setting, not private pane state, so the settings dialog can show it.
   const [universeSetting, setActiveUniverse] = usePaneSettingValue<string>("universe", "us-equity");
   const [linkPortfolio] = usePaneSettingValue<boolean>("linkPortfolio", false);
@@ -370,10 +369,6 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
   });
 
   const chartHeight = Math.max(1, height - (tabsInHeader ? 0 : 1));
-  const canvas = useMemo(
-    () => heatTreemapCanvas(width, chartHeight, { nativePaneChrome, cellWidthPx, cellHeightPx }),
-    [cellHeightPx, cellWidthPx, chartHeight, nativePaneChrome, width],
-  );
 
   // Stream weights by market-cap rank, fixed for this load of the board.
   const quoteWeightsRef = useRef<{ tab: string; weights: Map<string, number> } | null>(null);
@@ -430,14 +425,9 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
     useMemo(() => buildLayoutItems(boardAssets, layoutAssets, grouping, sizeBy), [boardAssets, grouping, layoutAssets, sizeBy]),
     byMove ? DAY_MOVE_LAYOUT_TOLERANCE : LAYOUT_TOLERANCE,
   );
-  // The board on screen seeds the next layout's order, so a refresh nudges tiles instead of reshuffling them.
-  const sceneRef = useRef<{ tab: string; scene: ReturnType<typeof buildHeatTreemapScene<HeatmapBoardAsset>> } | null>(null);
-  const scene = useMemo(() => {
-    const previous = sceneRef.current?.tab === activeUniverse ? sceneRef.current.scene : null;
-    const next = buildHeatTreemapScene(layoutItems, canvas, previous);
-    sceneRef.current = { tab: activeUniverse, scene: next };
-    return next;
-  }, [activeUniverse, canvas, layoutItems]);
+  // The board on screen seeds the next layout's order, so a refresh nudges
+  // tiles instead of reshuffling them; a resize lays it out once it settles.
+  const { scene, resizing } = useHeatTreemapScene(layoutItems, width, chartHeight, activeUniverse);
   // The terminal repaints whole cells: colours there move at most four times a second.
   const paintAssets = useThrottledMemo(
     () => resolvedAssets,
@@ -726,6 +716,7 @@ function MarketHeatmapPane({ focused, width, height }: PaneProps) {
       >
         <HeatTreemapSurface
           scene={scene}
+          resizing={resizing}
           items={paintItems}
           width={width}
           height={chartHeight}

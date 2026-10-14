@@ -8,8 +8,9 @@ import { serveFixturePage, type FixturePage } from "./page";
  * Frame budget of pane drags and resizes, against a base checkout. Each run
  * drags with real pointer input at 60 moves a second for 1.5 s: a docked and a
  * floating pane across a dense layout (fixture.tsx, `perf`), and, over the
- * `resize` layout, the corner of a floating news table, chart, heat map and
- * Fear & Greed pane and of the charts that sit inside a pane's own layout (G
+ * `resize` layout, the corner of a floating news table, chart, heat map (an
+ * invented one, and the market board of 500 names with ticks) and Fear &
+ * Greed pane and of the charts that sit inside a pane's own layout (G
  * layout, chart over a table, chart beside a table, chart under a toolbar), a
  * dock divider between a news table and a chart and one between the G layout
  * and the chart beside a table (`nested`, each measured on both sides), the
@@ -228,6 +229,8 @@ const SCENARIOS: Scenario[] = [
   cornerResize("chart resize", "chart", "chart:float", "canvas", `${pane("chart:float")} canvas`),
   // Tiles placed in percentages of a map laid out on the cell grid.
   cornerResize("heat map resize", "heat", "heat:float", "[data-gloom-role=heat-treemap]"),
+  // The market heat map's board: 500 names in sectors and industries, recoloured by ticks as the drag goes.
+  cornerResize("market heat map resize", "heat&heat=market&ticks=1", "heat:float", "[data-gloom-role=heat-treemap]"),
   // A chart of a fixed height in a column of text: it follows the width only.
   cornerResize("fear and greed resize", "fear", "fear-greed:float", "[data-gloom-role=composite-chart]", `${pane("fear-greed:float")} [data-gloom-role=composite-chart] canvas`),
   {

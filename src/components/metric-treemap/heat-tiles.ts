@@ -240,15 +240,17 @@ export interface HeatTileMotion {
  * tile from its old place (its new size applies at once), a colour change
  * fades the old colour out over the new one, and a jump in the move flashes
  * once. `glideCount` alternates two keyframe names, which restarts the slide.
- * Reduced motion keeps every change instant.
+ * Reduced motion keeps every change instant, and so does a resize: while the
+ * box is changing size nothing on the board moves on its own.
  */
-export function heatTileMotion({ reducedMotion, glide, glideCount, pulseCount }: {
+export function heatTileMotion({ reducedMotion, resizing, glide, glideCount, pulseCount }: {
   reducedMotion: boolean;
+  resizing: boolean;
   glide: boolean;
   glideCount: number;
   pulseCount: number;
 }): HeatTileMotion {
-  if (reducedMotion) return {};
+  if (reducedMotion || resizing) return {};
   return {
     ...(glide && glideCount > 0
       ? { glideAnimation: `gloom-heat-glide-${glideCount % 2 === 0 ? "b" : "a"} ${GLIDE_MS}ms ease` }
