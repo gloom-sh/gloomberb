@@ -1,5 +1,5 @@
 import { useThemeColors } from "../../theme/theme-context";
-import { TYPE } from "../../theme/ui-tokens";
+import { TYPE, WEIGHT } from "../../theme/ui-tokens";
 import { Box, StyledText, Text, TextAttributes } from "../../ui";
 import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
 import { wrapTextLines } from "../../utils/text-wrap";
@@ -50,7 +50,7 @@ export const READER_APP_FONT = "calc(1em / var(--reader-em, 1.1667))";
 /** Line height of reading text on the desktop, against its own size. */
 export const DESKTOP_LINE_HEIGHT = 1.6;
 /** A section heading in reading text: a step above the body, set apart by weight and the space above it. */
-export const READER_HEADING_STYLE = { fontSize: `${TYPE.heading / TYPE.body}em`, fontWeight: 700, lineHeight: 1.35, margin: "0.9em 0 0.4em" } as const;
+export const READER_HEADING_STYLE = { fontSize: `${TYPE.heading / TYPE.body}em`, fontWeight: WEIGHT.bold, lineHeight: 1.35, margin: "0.9em 0 0.4em" } as const;
 
 export type Segment = { text: string; marked?: boolean; figure?: boolean };
 

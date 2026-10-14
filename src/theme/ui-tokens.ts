@@ -38,26 +38,6 @@ export const SPACE = { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 } as const;
 /** Every radius in use: bars and tables, small marks (key caps, chips), controls, floating surfaces, dots. */
 export const RADIUS = { none: 0, sm: 3, md: 6, lg: 8, full: 999 } as const;
 
-/** CSS variable references, for inline styles. */
-export const TOKEN = {
-  typeCaption: "var(--gloom-type-caption)",
-  typeUi: "var(--gloom-type-ui)",
-  typeBody: "var(--gloom-type-body)",
-  typeHeading: "var(--gloom-type-heading)",
-  typeTitle: "var(--gloom-type-title)",
-  inset: "var(--gloom-inset)",
-  elevation: "var(--gloom-elevation)",
-  hairline: "var(--gloom-hairline)",
-  hoverFill: "var(--gloom-hover-fill)",
-  surfaceRaised: "var(--gloom-surface-raised)",
-  surfaceSunken: "var(--gloom-surface-sunken)",
-  controlBorder: "var(--gloom-control-border)",
-  accent: "var(--gloom-accent)",
-  link: "var(--gloom-link)",
-  error: "var(--gloom-error)",
-  locked: "var(--gloom-locked)",
-} as const;
-
 /** The border of a control (button, field, select, checkbox) and of a floating surface. */
 export function controlBorderColour(palette: Palette): string {
   return blendHex(palette.border, palette.borderFocused, 0.18);
@@ -69,7 +49,7 @@ export function surfaceRaisedColour(palette: Palette): string {
 }
 
 /** What a field is sunk into: the darkest surface of the theme. */
-export function surfaceSunkenColour(palette: Palette): string {
+function surfaceSunkenColour(palette: Palette): string {
   return palette.bg;
 }
 

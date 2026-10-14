@@ -47,7 +47,7 @@ const CONTENT_HEIGHT = new Set(["dialog", "card", "menu", "tooltip", "toast", "t
  * label fitted to the tile, a map label scaled with the map. Reported apart
  * from the app's type scale and cards; their chrome (legends, axes) is not.
  */
-const FITTED = /HeatTreemap|DomHeatTile|WorldVenueMap|CountryNames|SupplyGraph|GeoMap|Basemap|MetricTreemap/;
+export const FITTED = /HeatTreemap|DomHeatTile|WorldVenueMap|CountryNames|SupplyGraph|GeoMap|Basemap|MetricTreemap/;
 
 /** What each family is, for the report's reader. */
 const FAMILY_LABEL: Record<string, string> = {
@@ -104,7 +104,7 @@ function textRole(run: AuditTextRun): string {
 }
 
 /** The theme token a computed colour is, or how it is not one. */
-function colourName(colour: string, palette: Record<string, string>): string {
+export function colourName(colour: string, palette: Record<string, string>): string {
   if (!colour) return "none";
   const rgb = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(colour);
   if (!rgb) return colour.startsWith("color(") ? "mixed (color-mix)" : `other ${colour}`;
@@ -122,7 +122,7 @@ function colourName(colour: string, palette: Record<string, string>): string {
 }
 
 /** The variant a family member belongs to: its shape, without the height its content gives it. */
-function variantShape(element: AuditElement): string {
+export function variantShape(element: AuditElement): string {
   let shape = CONTENT_HEIGHT.has(element.family) ? element.shape.replace(/\bh=\d+\s*/, "") : element.shape;
   // A width over a few cells is its label's, not an icon's.
   shape = shape.replace(/\bw=(\d+)\b/, (whole, width) => (Number(width) > 48 ? "w=auto" : whole));

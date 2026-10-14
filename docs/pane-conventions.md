@@ -54,7 +54,7 @@ The terminal keeps its own cell layout and takes none of these values.
 
 Defined once: CSS variables in `src/renderers/dom/styles.css` (on `body`)
 and TS constants in `src/theme/ui-tokens.ts` (`TYPE`, `WEIGHT`, `SPACE`,
-`RADIUS`, `TOKEN`). Colour roles are set per theme by `src/theme/colors.ts`.
+`RADIUS`). Colour roles are set per theme by `src/theme/colors.ts`.
 Style with `var(--gloom-…)`, never a number of your own.
 
 | Token | Value | Use |
@@ -71,7 +71,7 @@ Style with `var(--gloom-…)`, never a number of your own.
 | `--gloom-hairline` | text at 14% | every rule inside the app: bars, footer, status bar, menus, dividers |
 | `--gloom-hover-fill` | bright text at 8% | the pointer over a control, a menu item, a hint |
 | `--gloom-band` | bright text at 3.5% | the query bar, stack header and figure bands |
-| `--gloom-elevation` | `0 12px 32px` bg at 48% | the one shadow, for floating surfaces only |
+| `--gloom-elevation` | `0 12px 32px` bg at 48% | the one shadow, for floating surfaces and floating panes only |
 | `--gloom-surface-raised` | panel toward bg | dialogs, menus, popovers, toasts, the command bar, cards |
 | `--gloom-surface-sunken` | bg | inside a field, a select, a checkbox |
 | `--gloom-control-border` | border toward the accent | buttons, fields, selects, floating surfaces |
@@ -97,7 +97,7 @@ column under 480px steps every reading level down together (13.2px body).
 | Checkbox | 14px, `sm` radius, control border, sunken fill; checked, the accent. |
 | Links (`ExternalLinkText`) | The text around them, underlined; bright under the pointer or focus. |
 | Toolbars (`QueryBar`) | The band: 20px, hairline under it, segments split by hairlines with 8px padding, the first one at the inset. |
-| Tables (`DataTable`) | Header 20px, bold dim on a fill; rows 18px, cell padding 0 8px; hover fill on rows; selection fill on the chosen row. No zebra. |
+| Tables (`DataTable`) | Header 20px, bold dim on a fill; rows 18px, cell padding 0 8px; hover fill on rows; selection fill on the chosen row. No zebra. A table inside a column of prose (HELP's Basics) drops its cell padding so its rows line up with the text. |
 | Key-value rows (`KeyValueRow`, `StatGrid`, `FieldGrid`) | 18px rows, label dim, value regular or bold; no rule between rows. Grid bands keep their hairline below and between cells. |
 | Section headings (`SectionHeading`) | 12px bold bright in data panes; 16px in readers. |
 | Cards (`Card`) | Raised surface, 1px hairline, `md` radius, 8px inside; chosen, the accent border. For a unit of content (a quote tile), never for rows. |
@@ -105,16 +105,30 @@ column under 480px steps every reading level down together (13.2px body).
 | Pane chrome | Title bar 20px, title 12px bold whatever the focus (focus changes colour, never weight), 8px inset, hairline below (accent when focused). Footer 20px, 12px, hairline above; hints are ghost buttons: key bright, word dim. Detail back row: the band, Back as its first segment. |
 | Shell | App header and status bar at 12px, theme text roles (no greys of their own); status bar items are ghost buttons. |
 | Dialogs, menus, popovers, toasts, command bar | One floating surface: raised fill, 1px control border, `lg` radius, the elevation shadow; 16px inside a dialog, 4px inside a menu; menu items 24px, `md` radius, hover fill. |
-| Readers (`ArticleReader`, `DetailReader`, Docs) | One column, centred at 66ch of the reading size, the pane's inset on each side, 12px above and 16px below; title 20, headings 16, body and lead 14, metadata and facts 12. |
+| Readers (`ArticleReader`, `DetailReader`, Docs, `MarkdownText`) | One column, centred at 66ch of the reading size, the pane's inset on each side, 12px above and 16px below; title 20, headings 16 bold bright (a list's label too), body and lead 14, metadata and facts 12; bullets a dim dot. |
 | Chart chrome | Legends and axes 12px dim. Labels a heat map, treemap or map fits to its own shapes are allowed to size themselves. |
 
 ### Exceptions
 
-A deviation is listed with its reason, as the cell-metric allowlist is
-(`src/architecture/dom-cell-metrics-allowlist.json`): the file, what it sets
-outside the tokens, and a `why` a reviewer accepted ("a heat map tile's label
-is fitted to the tile"). Data marks (bars, swatches, flags) and fitted chart
-labels are the usual reasons. Chat panes have their own owner.
+A value written out instead of taken from a token (a font size, a weight
+other than 400 and 700, a corner radius, a drop shadow, and in DOM-only code
+a grey) is counted per file by `src/architecture/ui-literals.test.ts`. A file
+may keep what `src/architecture/ui-literals-allowlist.json` records for it,
+and every entry says why:
+
+```json
+"src/plugins/builtin/gpu/ladder.tsx": {
+  "literals": { "radius": 4 },
+  "why": "Ladder rungs, ranges and markers are data marks."
+}
+```
+
+The count can only go down: `bun scripts/update-ui-literals-allowlist.ts`
+lowers it after a cleanup and lists files that still need a reason. A
+reviewer accepts a reason when the value belongs to the data rather than to
+the chrome: data marks (bars, swatches, flags, markers), labels fitted to a
+chart's shapes, pages drawn without the app's styles. A pane that has not
+moved onto the kit yet says so and names GLO-768. Chat has its own owner.
 
 ### Seeing it
 
@@ -122,7 +136,8 @@ labels are the usual reasons. Chat panes have their own owner.
 white and paper themes, at any width (`scripts/pane-chrome/kit-page.ts`;
 `--shots` writes one picture per family at 640 and 1280px). It is the
 benchmark a UI change is compared against; `bun run audit:ui` measures the
-whole app against it (CONTRIBUTING.md).
+whole app against it and `bun run audit:ui:compare --before <run> --after <run>`
+says how far two runs differ, family by family (CONTRIBUTING.md).
 
 ## 1. Anatomy
 
