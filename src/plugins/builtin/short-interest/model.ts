@@ -53,6 +53,35 @@ function formatPercent(value: number | null): string {
   return value == null ? "-" : `${formatNumber(value, 2)}%`;
 }
 
+const finiteNumber = (value: number | null | undefined): value is number => typeof value === "number" && Number.isFinite(value);
+
+/**
+ * Shares short over the float, in percent. A float smaller than the shares
+ * short is another class's float (BRK.B reports Berkshire's Class A), not a
+ * short over 100%, so it is not used.
+ */
+export function percentOfFloat(sharesShort: number, floatShares: number | null | undefined): number | null {
+  return finiteNumber(floatShares) && floatShares > 0 && floatShares >= sharesShort ? (sharesShort / floatShares) * 100 : null;
+}
+
+/**
+ * The newest settlement's percent of float where the source gives none, read
+ * against the current float as SIW reads it. The float is undated, so the
+ * settlements before it stay blank rather than take today's float.
+ */
+export function withLatestPercentFloat(
+  records: readonly ShortInterestRecord[],
+  floatShares: number | null | undefined,
+): ShortInterestRecord[] {
+  const latest = records.reduce<ShortInterestRecord | null>(
+    (best, record) => (!best || record.settlementDate.getTime() > best.settlementDate.getTime() ? record : best),
+    null,
+  );
+  return records.map((record) => (record === latest && record.shortPercentFloat == null
+    ? { ...record, shortPercentFloat: percentOfFloat(record.sharesShort, floatShares) }
+    : record));
+}
+
 export function buildRows(records: ShortInterestRecord[]): ShortInterestRow[] {
   return records.map((record, index) => ({
     key: `${record.settlementDate.toISOString()}:${index}`,
@@ -89,9 +118,10 @@ export function sortRows(rows: ShortInterestRow[], preference: SortPreference): 
 /**
  * The columns sit together rather than spread across the pane, so the figures
  * of one settlement read as a row, and fit a 60-column pane without a
- * horizontal scrollbar. FINRA settlement history carries no float, so percent of float is null for
- * every row on that route. Keeping the column drew a header over a column of
- * dashes, which reads as missing data rather than data the source never had.
+ * horizontal scrollbar. FINRA settlement history carries no float, so percent of float
+ * is null for every row unless the latest one is read against the current float
+ * (`withLatestPercentFloat`). Keeping the column with nothing in it drew a header over a
+ * column of dashes, which reads as missing data rather than data the source never had.
  */
 export function buildColumns(
   records: readonly ShortInterestRecord[] = [],

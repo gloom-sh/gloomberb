@@ -283,7 +283,7 @@ function runGlossary(term: string, ctx: CliCommandContext): void {
   const { exact, partial } = lookupGlossary(term);
   const entries = [...exact, ...partial];
   if (entries.length === 0) {
-    ctx.fail(`No glossary entry for "${term}".`, "gloomberb catalog glossary lists every term.");
+    ctx.fail(`No glossary entry for "${term}".`, knownGapMessage(term) ?? "gloomberb catalog glossary lists every term.");
   }
   ctx.printResult({ data: entries.map(glossaryRecord) }, { text: () => renderGlossaryEntries(entries).join("\n") });
 }

@@ -1,5 +1,5 @@
 import type { DesktopPaneShotRenderedRow } from "../desktop-pane-shot";
-import { cliStyles, renderSection, renderTable } from "../../utils/cli-output";
+import { cliStyles, cliTerminalWidth, renderSection, renderTable, wrapText } from "../../utils/cli-output";
 import { formatUtcTime } from "../../utils/utc-time";
 import type { MarketContext } from "../types";
 import type { PaneFunctionReport } from "./report";
@@ -14,10 +14,14 @@ import { renderedReportFailure, renderedReportFreshness, renderedReportNotices, 
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
+/** A pane whose reader has a page open grows to show all of it, up to about 18,000 px: a report saves no image to bound it. */
+const DOM_REPORT_MAX_HEIGHT_CELLS = 1000;
 const DOM_LIMITATION =
   "Only values visible in the rendered pane are returned; clipped or off-screen data may be omitted.";
 const DOM_EVERY_ROW =
   "Every row of the pane's table is returned, including rows scrolled out of view.";
+const DOM_WHOLE_PANE =
+  "The pane was grown to fit the page it has open, so all of its text is returned.";
 
 /** The sign-in wall's buttons, which a rendered view reads as words: `Log in ↵ Sign up free`. */
 const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Email)(?:\s*\u21B5)?(?=\s|$)/g;
@@ -37,6 +41,28 @@ function signInWallText(visibleText: string): string {
     ? "Requires a verified email on your Gloom account; resend the verification email in the app."
     : "Requires a free Gloom sign-in: log in or sign up in the app.";
   return headline ? `${headline} ${needs}` : needs;
+}
+
+const LIST_MARKER = /^\s*[\u2022\u25E6\u25AA\u00B7\u2013-]\s*$/;
+
+/**
+ * The words of a pane that is prose, not a table, a line to each block it draws
+ * and wrapped to the terminal's width (100 where it has none): the pane's own title,
+ * which the report's heading says already, is left off its top.
+ */
+function proseLines(render: PaneScreenshotResult["render"], title: string): string[] {
+  const lines = render.visibleLines?.length ? render.visibleLines : [render.visibleText];
+  const width = Math.min(cliTerminalWidth() ?? 100, 100);
+  const titled = lines[0]?.trim() === title ? lines.slice(1) : lines;
+  const body: string[] = [];
+  // A stack's detail opens under its Back button, a control and not part of the page.
+  for (const line of titled[0] === "Back" ? titled.slice(1) : titled) {
+    // A list marker is drawn as a block of its own, ahead of the item's words.
+    const marker = body.at(-1);
+    if (marker !== undefined && LIST_MARKER.test(marker)) body[body.length - 1] = `${marker.trim()} ${line}`;
+    else body.push(line);
+  }
+  return body.flatMap((line) => wrapText(line, width));
 }
 
 function rowsContainEllipsis(rows: DesktopPaneShotRenderedRow[]): boolean {
@@ -215,7 +241,7 @@ export function buildDomPaneReportFromRender(
   } else if (lockNote) {
     textLines.push(...lockNoteLines(lockNote));
   } else if (result.render.visibleText) {
-    textLines.push(gate === "sign-in" ? signInWallText(result.render.visibleText) : result.render.visibleText);
+    textLines.push(...(gate === "sign-in" ? [signInWallText(result.render.visibleText)] : proseLines(result.render, resolved.label)));
   } else {
     textLines.push(failureReason ?? "No rendered values were available.");
   }
@@ -231,6 +257,8 @@ export function buildDomPaneReportFromRender(
   const complete = failureReason === null && !truncated;
   // Each table published its rows and nothing else was cut: the report is the whole view.
   const everyRow = complete && result.render.reportRows !== undefined;
+  // A reader grown to fit its page (a docs page) and not cut once grown is read whole.
+  const wholePane = complete && !everyRow && resolved.pane.shotFitsReader === true;
   return {
     data: {
       kind: "rendered-view",
@@ -247,7 +275,8 @@ export function buildDomPaneReportFromRender(
       truncated,
       truncationReasons,
       ...(everyRow ? { everyRow } : {}),
-      limitation: everyRow ? DOM_EVERY_ROW : DOM_LIMITATION,
+      ...(wholePane ? { wholePane } : {}),
+      limitation: everyRow ? DOM_EVERY_ROW : wholePane ? DOM_WHOLE_PANE : DOM_LIMITATION,
       ...(lockReason ?? failureReason ? { reason: lockReason ?? failureReason } : {}),
       ...(notices.length > 0 ? { metadata: { ...rendered.facts, notices } } : {}),
       ...(locked ? { locked } : { freshness }),
@@ -278,12 +307,12 @@ export function appendDomReportFooter(
   ].join("\n");
 }
 
-/** How much of the pane a rendered-view report holds: none behind a wall, cut, every row its tables publish, or what the viewport shows. */
-export type DomReportView = "locked" | "clipped" | "every-row" | "visible";
+/** How much of the pane a rendered-view report holds: none behind a wall, cut, every row its tables publish, all of a pane grown to fit, or what the viewport shows. */
+export type DomReportView = "locked" | "clipped" | "every-row" | "whole" | "visible";
 
 export function domReportView(data: Readonly<Record<string, unknown>>): DomReportView {
   if (data.locked) return "locked";
-  return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : "visible";
+  return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : data.wholePane === true ? "whole" : "visible";
 }
 
 /** What a rendered-view report says about where its values come from. */
@@ -292,6 +321,8 @@ export function domReportNote(elapsedMs: number, view: DomReportView): string {
     ? "Rendered view: the pane is locked, so no values were read."
     : view === "every-row"
     ? "Rendered view: every row of the pane's table, including rows scrolled out of view."
+    : view === "whole"
+    ? "Rendered view: the pane grown to fit the whole page."
     : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
   return `${source} Render time: ${elapsedMs} ms.`;
 }
@@ -356,6 +387,8 @@ export async function buildDomFunctionReport(
       theme: null,
       scale: 1,
       watermark: null,
+      fitReader: true,
+      maxHeightCells: DOM_REPORT_MAX_HEIGHT_CELLS,
       options: {},
       captureImage: false,
     });

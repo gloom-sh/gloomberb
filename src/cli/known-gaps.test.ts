@@ -36,7 +36,7 @@ test("a topic no function covers is answered with the nearest functions, whereve
   const registry = await createPaneCatalog(context, getLoadablePlugins());
   try {
     const tokens = (await buildPaneCatalogEntries(registry, context)).map((entry) => entry.token);
-    for (const code of pointer.codes) expect(tokens, code).toContain(code);
+    for (const code of [...pointer.codes, ...topicPointer("borrow fee")!.codes]) expect(tokens, code).toContain(code);
   } finally {
     registry.destroy();
   }
@@ -58,4 +58,18 @@ test("a search no ticker answers lists the functions that carry every word, so a
   expect(report).not.toContain("No matches found");
   // Some of the words only: no function carries them all, and the search says so as before.
   expect(await searchFunctionsForCli("rebalance xylophone", getLoadablePlugins(), context)).toEqual([]);
+});
+
+test("securities-lending data is said to be unavailable, with short interest as the nearest data, instead of SI being listed as its source", () => {
+  const pointer = topicPointer("borrow fee")!;
+  expect(pointer.message).toStartWith("borrow fee, utilization and locate: not available");
+  expect(pointer.codes).toEqual(["SI", "SIW", "SIV"]);
+  for (const query of ["borrow", "Utilisation", "utilization", "locate", "stock borrow rates", "what is the cost to borrow GME"]) {
+    expect(topicPointer(query), query).toEqual(pointer);
+  }
+  // Words that name another thing alone: a country's capacity utilization is FRED's, and a company can be located.
+  for (const query of ["capacity utilization", "locate headquarters", "borrow money", "short interest"]) expect(topicPointer(query), query).toBeNull();
+  const catalog = renderPaneCatalogReport([], parsePaneCatalogArgs(["borrow fee"]), lookupGlossary("borrow fee"), pointer.message);
+  expect(catalog).toContain("not available");
+  expect(catalog).not.toContain("No functions match");
 });

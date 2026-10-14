@@ -189,6 +189,12 @@ export interface PaneDef {
    * the last ones. Leave it off for long or paged lists.
    */
   shotFitsRows?: true;
+  /**
+   * A report of the pane grows to the whole text of the page its reader has
+   * open (a docs page), so it is not cut at the first screen. A list the reader
+   * opens from keeps its height.
+   */
+  shotFitsReader?: true;
   /** Add an Excel-compatible CSV action for the pane's single active DataTable. */
   tableExport?: true;
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);

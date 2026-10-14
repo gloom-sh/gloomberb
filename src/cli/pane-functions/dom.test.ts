@@ -278,3 +278,31 @@ test("a pane walled whole cites no source, and one that says how to reach it say
   expect(free.data.reason).toContain("On a free account it shows none of them.");
   expect(free.data.reason).toContain("upgrade in the app");
 });
+
+test("a pane that is prose reads as the lines it draws, wrapped, without its own title and Back button, and whole once it grew to fit", () => {
+  const resolved = {
+    token: "DOCS", label: "Docs", options: {}, capability: { id: "docs-pane" },
+    pane: { id: "docs", shotFitsReader: true, reportFreshness: { status: "not-a-feed", basis: "documentation" } },
+  } as unknown as ResolvedPaneFunction;
+  const long = "Short interest as a share of float, days to cover, the change since the prior settlement and the month's price move across your portfolios and watchlists. Updates twice a month.";
+  const lines = ["Docs", "Back", "SIW · Short squeeze watch", "Type", "SIW GME, AMC, CVNA", long, "•", "Ex-dividend dates", "Plan  Data and features", "Free  Delayed 15 minutes."];
+  const report = (truncated: boolean) => buildDomPaneReportFromRender(resolved, {
+    symbols: [],
+    render: {
+      visibleText: lines.join(" "), visibleLines: lines, rows: [], truncated, truncationReasons: truncated ? ["rows below the rendered viewport are cut"] : [],
+      loadingStateDetected: false, errorStateDetected: false, errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [],
+    },
+  } as unknown as PaneScreenshotResult);
+  const whole = report(false);
+  expect(whole.text).toBe([
+    "Docs", "",
+    "SIW · Short squeeze watch", "Type", "SIW GME, AMC, CVNA",
+    // Wrapped at 100 columns where the terminal has no width; a list marker joins its item; aligned columns stay as drawn.
+    ...[long.slice(0, long.lastIndexOf(" ", 100)), long.slice(long.lastIndexOf(" ", 100) + 1)],
+    "• Ex-dividend dates", "Plan  Data and features", "Free  Delayed 15 minutes.",
+  ].join("\n"));
+  expect(domReportView(whole.data)).toBe("whole");
+  expect(domReportNote(5, "whole")).toBe("Rendered view: the pane grown to fit the whole page. Render time: 5 ms.");
+  // A page still cut once the pane has grown is not whole.
+  expect(domReportView(report(true).data)).toBe("clipped");
+});

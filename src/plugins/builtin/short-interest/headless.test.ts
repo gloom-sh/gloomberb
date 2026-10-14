@@ -5,6 +5,11 @@ import type { HeadlessPaneLoadArgs } from "../../../types/plugin";
 import { loadShortInterest } from "./client";
 import { createShortInterestHeadless } from "./headless";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import { reportGlossary } from "../../../cli/glossary";
+import { deriveHeadlessFreshness, formatFreshnessLine } from "../../../cli/pane-functions/freshness";
+import { shortInterestFreshness } from "./schedule";
+import { shortWatchHeadless } from "./watch-headless";
+import { setupLabel } from "./watch-model";
 
 const records = [
   {
@@ -82,5 +87,27 @@ describe("short interest headless model", () => {
       settlementDate: "2026-08-15",
       sharesShort: 12_000_000,
     });
+  });
+});
+
+describe("what --explain finds in the reports", () => {
+  const now = Date.parse("2026-10-14T06:00:00Z");
+  const explained = (token: string, text: string) => reportGlossary(token, text).map((entry) => entry.term);
+
+  test("SI's own headers and source line carry the terms, and the source line says when the settlement was published", async () => {
+    const headless = createShortInterestHeadless({ loadRecords: async () => records });
+    const result = await headless.load(args(), createTestHeadlessContext());
+    // The newest settlement shown is the one the schedule is read from.
+    expect(result.freshness).toEqual(shortInterestFreshness("2026-08-31"));
+    const text = [headless.columns!.map((column) => column.header).join("  "), formatFreshnessLine(deriveHeadlessFreshness(headless, result, now))].join("\n");
+    expect(text).toContain("Days to cover");
+    expect(explained("SI", text)).toEqual(["Short interest", "Settlement", "Days to cover", "Average daily volume", "Float"]);
+  });
+
+  test("SIW's headers, flags and title carry the terms", () => {
+    const text = ["Short squeeze watch", shortWatchHeadless.columns!.map((column) => column.header).join("  "), setupLabel("crowded-rising")].join("\n");
+    expect(explained("SIW", text)).toEqual(["Short interest", "Settlement", "Days to cover", "Float", "Crowded", "Squeeze", "SI change", "1M return"]);
+    // A date column that holds a day says so.
+    expect(shortWatchHeadless.columns!.map((column) => column.header)).toContain("Close date");
   });
 });

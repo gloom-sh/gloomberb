@@ -1,5 +1,6 @@
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { formatCompact, formatNumber } from "../../../utils/format";
+import { shortInterestFreshness } from "./schedule";
 import { createShortWatchDependencies, loadShortWatch } from "./watch-client";
 import { customUniverse, type ShortWatchSetup, setupLabel, SHORT_WATCH_LIMIT, sortShortWatchRows } from "./watch-model";
 
@@ -19,27 +20,30 @@ export const shortWatchHeadless: HeadlessPaneDefinition<"rows"> = {
     aliases: ["SIW"],
     screenshotReadiness: "live-dom",
     dataRequirements: ["FINRA short interest settlements", "Float", "Daily closes"],
-    limitations: ["Percent of float uses the current float against the settlement's shares short.",
+    limitations: ["Borrow fee, utilization and locate availability are not available: FINRA short interest counts shares short, not what they cost to borrow.",
+      "Percent of float uses the current float against the settlement's shares short.",
       "Crowded is a fixed threshold, not a squeeze forecast."],
   },
   columns: [
     { key: "symbol", header: "Symbol" },
     { key: "setup", header: "Setup", format: (value) => setupLabel(value as ShortWatchSetup | null) || "--" },
     { key: "percentFloat", header: "% Float", align: "right", format: number(2, "%") },
-    { key: "daysToCover", header: "Days to Cover", align: "right", format: number(2) },
+    { key: "daysToCover", header: "Days to cover", align: "right", format: number(2) },
     { key: "changePercent", header: "SI Chg %", align: "right", format: signedPercent },
     { key: "return1M", header: "1M %", align: "right", format: signedPercent },
     { key: "sharesShort", header: "Shares Short", align: "right", format: (value) => typeof value === "number" ? formatCompact(value) : "--" },
     { key: "settlementDate", header: "Settled" },
-    { key: "closeDate", header: "Close" },
+    { key: "closeDate", header: "Close date" },
   ],
   async load(args, ctx) {
     const universe = customUniverse(args.symbols.join(","));
     const rows = sortShortWatchRows(await loadShortWatch(universe.symbols, { signal: ctx.signal, forceRefresh: ctx.refresh },
       createShortWatchDependencies(ctx.marketData, ctx.apiClient)), "setup", "desc");
     const missing = rows.filter((row) => !row.settlementDate);
+    const freshness = shortInterestFreshness(rows.map((row) => row.settlementDate).filter((date): date is string => !!date).sort().at(-1));
     return {
       rows: rows.map(({ error: _error, ...row }) => row),
+      ...(freshness ? { freshness } : {}),
       complete: !missing.length && !universe.notice && rows.every((row) => row.return1M != null),
       symbols: universe.symbols,
       unavailableSymbols: missing.map((row) => row.symbol),

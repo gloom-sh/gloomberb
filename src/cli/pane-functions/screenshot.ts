@@ -936,6 +936,8 @@ export async function renderDesktopShot({
   watermark,
   statusLine = false,
   fitRows = false,
+  fitReader = false,
+  maxHeightCells,
   options,
   captureImage = true,
   onStalledReport,
@@ -953,6 +955,10 @@ export async function renderDesktopShot({
   statusLine?: boolean;
   /** No `--height` was asked for: a pane that fits its rows (FUT) grows to show them all. */
   fitRows?: boolean;
+  /** A pane whose reader has a page open grows to show all of its text (a report's, which saves no image). */
+  fitReader?: boolean;
+  /** How tall a pane that fits its rows or its reader may grow, in cells, where the height limit of a saved image does not apply. */
+  maxHeightCells?: number;
   options: Record<string, string | true>;
   captureImage?: boolean;
   /**
@@ -999,7 +1005,14 @@ export async function renderDesktopShot({
       loadModel,
     );
     if (statusLine && captureImage) payload.statusLine = true;
-    if (fitRows && resolved.pane.shotFitsRows) payload.maxHeightCells = shotMaxHeightCells(scale ?? 1);
+    const fitRoles = [
+      ...(fitRows && resolved.pane.shotFitsRows ? ["data-table-body-scroll"] : []),
+      ...(fitReader && resolved.pane.shotFitsReader ? ["detail-scroll-body"] : []),
+    ];
+    if (fitRoles.length > 0) {
+      payload.maxHeightCells = maxHeightCells ?? shotMaxHeightCells(scale ?? 1);
+      payload.fitRoles = fitRoles;
+    }
     // Loads while the page renders.
     const report = payload.statusLine ? reportShotFreshness(resolved, loadModel) : undefined;
     // The same load says whether the report is complete, with or without a status line.

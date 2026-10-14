@@ -4,6 +4,7 @@ import type { TickerRecord } from "../../../types/ticker";
 import { isKnownNonUsListing, listingAbroadVenue } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import { percentOfFloat } from "./model";
 import type { ShortInterestRecord } from "./types";
 
 /** Short interest is published per settlement for each US listing, so a list fetches one symbol at a time. */
@@ -109,11 +110,7 @@ export function buildShortWatchRow(inputs: ShortWatchInputs): ShortWatchRow {
   const records = [...(inputs.records ?? [])].sort((left, right) => left.settlementDate.getTime() - right.settlementDate.getTime());
   const latest = records.at(-1);
   const prior = records.at(-2);
-  // A float smaller than the shares short is another class's float (BRK.B reports Berkshire's Class A), not a short over 100%.
-  const percentFloat = latest
-    ? latest.shortPercentFloat ?? (finite(inputs.floatShares) && inputs.floatShares >= latest.sharesShort && inputs.floatShares > 0
-      ? latest.sharesShort / inputs.floatShares * 100 : null)
-    : null;
+  const percentFloat = latest ? latest.shortPercentFloat ?? percentOfFloat(latest.sharesShort, inputs.floatShares) : null;
   const move = inputs.history ? oneMonthReturn(inputs.history) : null;
   const row = {
     symbol: inputs.symbol,

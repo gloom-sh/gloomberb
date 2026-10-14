@@ -49,7 +49,11 @@ const KNOWN_GAPS: ReadonlyArray<{ terms: readonly string[]; message: string }> =
  */
 const TOPIC_POINTERS: ReadonlyArray<{
   topic: string;
+  /** What is true of it, when "not in the terminal yet" is not: no source carries it. */
+  availability?: string;
   phrases: readonly string[];
+  /** Words that ask for the topic only as the whole query: "utilization" alone, but "capacity utilization" is another thing. */
+  whole?: readonly string[];
   closest: ReadonlyArray<readonly [code: string, gives: string]>;
 }> = [
   {
@@ -57,6 +61,16 @@ const TOPIC_POINTERS: ReadonlyArray<{
     phrases: ["defense budget", "defence budget", "defense spending", "defence spending", "dod", "department of defense",
       "military budget", "military spending", "pentagon budget", "pentagon spending"],
     closest: [["AWARDS", "government contract awards by company"], ["THEM", "defense and aerospace theme: fn THEM defense"]],
+  },
+  {
+    // SI's own limitations say the same, so a search for a borrow fee does not read SI as a source of one.
+    topic: "borrow fee, utilization and locate",
+    availability: "not available (no securities-lending data)",
+    phrases: ["borrow fee", "borrow fees", "borrow rate", "borrow rates", "borrow cost", "borrow costs", "cost to borrow", "short borrow",
+      "stock borrow", "borrow availability", "borrow utilization", "borrow utilisation", "shares to borrow", "hard to borrow",
+      "easy to borrow", "securities lending", "stock loan", "stock lending", "locate fee", "short locate"],
+    whole: ["borrow", "borrowing", "utilization", "utilisation", "locate", "locates", "htb", "lendable shares"],
+    closest: [["SI", "FINRA short interest and days to cover"], ["SIW", "crowded shorts across your names"], ["SIV", "daily short volume"]],
   },
 ];
 
@@ -76,10 +90,15 @@ function containsWords(query: readonly string[], phrase: readonly string[]): boo
 /** The pointer for a query that asks about a topic no function covers, with the function codes it names. */
 export function topicPointer(query: string): { message: string; codes: string[] } | null {
   const asked = words(query);
-  const pointer = TOPIC_POINTERS.find(({ phrases }) => phrases.some((phrase) => containsWords(asked, words(phrase))));
+  const key = lookupKey(query);
+  const pointer = TOPIC_POINTERS.find(({ phrases, whole }) => phrases.some((phrase) => containsWords(asked, words(phrase)))
+    || whole?.some((word) => lookupKey(word) === key));
   if (!pointer) return null;
   const closest = pointer.closest.map(([code, gives]) => `${code} (${gives})`).join(", ");
-  return { message: `${pointer.topic}: not in the terminal yet; closest: ${closest}`, codes: pointer.closest.map(([code]) => code) };
+  return {
+    message: `${pointer.topic}: ${pointer.availability ?? "not in the terminal yet"}; closest: ${closest}`,
+    codes: pointer.closest.map(([code]) => code),
+  };
 }
 
 /**

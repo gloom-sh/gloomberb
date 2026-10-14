@@ -76,6 +76,8 @@ export interface ReportFreshness {
   oldestAgeMinutes?: number;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
+  /** When the figures reach readers and when the next are due, said right after the as-of date. */
+  schedule?: string;
   /** Who published the figures, when the data names them. */
   publisher?: string;
   /** When the publisher released the data, an ISO instant in UTC or an ISO date, when the data states it. */
@@ -417,6 +419,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
   const observation = lagDays != null ? declared.observation?.trim() : undefined;
 
   const note = declared.note?.trim();
+  const schedule = declared.schedule?.trim();
   const publisher = declared.publisher?.trim();
   const publishedAt = parseReportTime(declared.publishedAt);
   return {
@@ -439,6 +442,7 @@ function resolveFreshness({ declared, signals, observations, now }: FreshnessInp
     ...(sources.length ? { sources: sources.map(({ source, time }) => ({ source, asOf: isoTime(time) })) } : {}),
     ...(oldestAgeMinutes != null ? { oldestAgeMinutes } : {}),
     ...(note ? { note } : {}),
+    ...(schedule ? { schedule } : {}),
     ...(publisher ? { publisher } : {}),
     ...(publishedAt ? { publishedAt: isoTime(publishedAt) } : {}),
     retrievedAt: new Date(now).toISOString(),
@@ -713,6 +717,8 @@ interface StatusLineDetail {
   date?: "none";
   /** Leave out what the figures are (`funding = current estimate`). */
   note?: "none";
+  /** Leave out when the figures are published and the next are due. */
+  schedule?: "none";
 }
 
 /**
@@ -728,6 +734,7 @@ function statusLineParts(freshness: ReportFreshness, detail: StatusLineDetail = 
   return [
     ...(freshness.sources?.length ? sourcesAsOfParts(freshness, freshness.sources, undated)
       : [asOfText(freshness, detail.asOf === "short", local, undated)]),
+    ...(freshness.schedule && detail.schedule !== "none" ? [freshness.schedule] : []),
     ...(freshness.oldestAgeMinutes != null ? [`oldest ${ageText(freshness.oldestAgeMinutes)}`] : []),
     statusText(freshness, detail.status === "short"),
     ...(freshness.market && detail.market !== "none" ? [marketText(freshness.market, now, detail.market === "short", local)] : []),
@@ -812,13 +819,13 @@ export function paneStatusLine(freshness: ReportFreshness): string {
 /**
  * `paneStatusLine` from longest to shortest, for a footer to show the first
  * that fits beside its keys: the market part shortens, the stale total goes,
- * then what the figures are.
+ * then what the figures are, then when they are published.
  */
 export function paneStatusLineVariants(freshness: ReportFreshness): string[] {
   // A dataset's line has no market or local time to leave out: it reads as its report and capture do.
   if (datesObservation(freshness)) return statusLineVariants(freshness);
   const pane: StatusLineDetail = { local: "none", date: "none" };
-  const details: StatusLineDetail[] = [pane, { ...pane, market: "short" }, { ...pane, market: "short", status: "short" }, { ...pane, market: "short", status: "short", note: "none" }];
+  const details: StatusLineDetail[] = [pane, { ...pane, market: "short" }, { ...pane, market: "short", status: "short" }, { ...pane, market: "short", status: "short", note: "none" }, { ...pane, market: "short", status: "short", note: "none", schedule: "none" }];
   return [...new Set(details.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
 }
 
@@ -855,9 +862,14 @@ export function statusLineVariants(freshness: ReportFreshness, { source = false 
   // A line that dates each source keeps every source's time and their age to
   // the last: its day goes first, then what the figures are.
   const shortest = details.at(-1)!;
+  // What the figures are goes before when they are published.
+  const trailing: StatusLineDetail[] = [
+    ...(freshness.note ? [{ ...shortest, note: "none" as const }] : []),
+    ...(freshness.schedule ? [{ ...shortest, note: "none" as const, schedule: "none" as const }] : []),
+  ];
   const variants: StatusLineDetail[] = freshness.sources?.length
     ? [{}, ...details.map((detail) => ({ ...detail, date: "none" as const })), { ...shortest, date: "none", note: "none" }]
-    : freshness.note ? [...details, { ...shortest, note: "none" }] : details;
+    : [...details, ...trailing];
   const lines = [...new Set(variants.map((detail) => capitalize(statusLineParts(freshness, detail).join(" · "))))];
   // A line that dates each source names them already.
   if (!source || freshness.sources?.length) return lines;

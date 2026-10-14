@@ -19,7 +19,6 @@ import { Box, TextAttributes } from "../../../ui";
 import { isKnownNonUsEquityTicker } from "../../../utils/sec";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
-import { loadShortInterest } from "./client";
 import {
   DEFAULT_SORT,
   buildColumns,
@@ -34,6 +33,7 @@ import {
   type SortPreference,
 } from "./model";
 import type { ShortInterestRecord } from "./types";
+import { loadShortInterestWithFloat } from "./watch-client";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const EMPTY_RECORDS: ShortInterestRecord[] = [];
@@ -45,7 +45,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   const symbol = ticker?.metadata.ticker ?? null;
 
   const skipNonUs = isKnownNonUsEquityTicker(ticker);
-  const request = useCallback(() => loadShortInterest(symbol!), [symbol]);
+  const request = useCallback(() => loadShortInterestWithFloat(symbol!), [symbol]);
   const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true });
   const { error, updatedAt, reload: refresh } = resource;
   const records = resource.data?.records ?? EMPTY_RECORDS;

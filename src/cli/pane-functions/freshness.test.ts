@@ -58,6 +58,21 @@ describe("report freshness", () => {
     ]);
   });
 
+  test("a publication schedule reads right after the date it belongs to, and a narrow line gives it up last", () => {
+    const schedule = "published Fri 9 Oct, next settlement Thu 15 Oct, published Mon 26 Oct";
+    const settlement = rows({
+      source: "FINRA", status: "not-a-feed", basis: "twice-monthly settlement", observedKey: "settlementDate", oldest: null, schedule, publishedAt: "2026-10-09",
+    });
+    const result = { rows: [{ settlementDate: "2026-09-30" }, { settlementDate: "2026-09-15" }] };
+    expect(line(settlement, result))
+      .toBe(`Source: FINRA · Wed 30 Sep 2026 · ${schedule} · not a live feed (twice-monthly settlement)`);
+    const freshness = deriveHeadlessFreshness(settlement, result, NOW);
+    expect(freshness).toMatchObject({ asOf: "2026-09-30", schedule, publishedAt: "2026-10-09" });
+    const variants = statusLineVariants(freshness, { source: true });
+    expect(variants[0]).toContain(schedule);
+    expect(variants.at(-1)).toBe("Wed 30 Sep 2026 · not a live feed (twice-monthly settlement)");
+  });
+
   test("venues polled apart are each dated by their own observation, and the oldest says how far behind the view is", () => {
     const now = Date.parse("2026-10-11T02:24:40Z");
     const venues = rows({ source: "Binance, Bybit", status: "delayed", maxAgeMinutes: 60, note: "funding = current estimate, pays 08:00 UTC",

@@ -1,8 +1,8 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
 
 /**
- * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio
- * and fund terms the functions show in their rows, headers and footers.
+ * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio,
+ * fund and short interest terms the functions show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
  * the ones it shows. Only terms a pane or report actually prints belong here.
@@ -370,6 +370,63 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
       + "Fees, cash and holdings that differ from the index widen it.",
   },
+  // Short interest (SI, SIW) and daily short volume (SIV).
+  {
+    term: "Short interest", short: "SI", aliases: ["shares short", "short position", "short positions", "short shares"],
+    functions: ["SI", "SIW"], shown: ["Shares Short", "Short interest"],
+    definition: "The number of shares sold short and not yet bought back, counted across US broker-dealers on each settlement date. "
+      + "It is a position, not trading volume, and it is published seven business days after the date it counts.",
+  },
+  {
+    term: "Settlement", aliases: ["settlement date", "settlement dates", "settled", "reporting settlement date"],
+    functions: ["SI", "SIW"], shown: ["Date", "Settled", "settlement"],
+    definition: "The date short positions are counted, twice a month: the 15th (the business day before when it is not one) and the month's last business day. "
+      + "FINRA publishes each count seven business days later, and the report's source line gives that date and the next settlement's.",
+  },
+  {
+    term: "Days to cover", aliases: ["short ratio", "short interest ratio", "days-to-cover", "dtc"], functions: ["SI", "SIW"],
+    shown: ["Days to cover"],
+    definition: "Shares short divided by average daily volume: how many days of normal trading it would take the shorts to buy their shares back. "
+      + "A higher number means a squeeze would take longer to unwind.",
+  },
+  {
+    term: "Average daily volume", short: "ADV", aliases: ["avg daily vol", "avg daily volume", "average daily share volume", "avg volume"], functions: ["SI"],
+    shown: ["Avg Daily Vol"],
+    definition: "The shares traded per day on average, as FINRA reports it with each settlement. Days to cover divides shares short by it.",
+  },
+  {
+    term: "Float", aliases: ["free float", "public float", "float shares", "floating stock", "% float", "percent of float"],
+    functions: ["SI", "SIW"], shown: ["Float"],
+    definition: "The shares open to public trading: those outstanding less shares held by insiders and strategic holders. "
+      + "% Float is shares short over today's float, so a settlement is measured against the float as it is now, not as it was then; "
+      + "SI gives it for the latest settlement only.",
+  },
+  {
+    // SIW's Setup column prints these two words.
+    term: "Crowded", aliases: ["crowded short", "crowded shorts", "crowded trade", "crowded, rising", "crowded rising", "setup"], functions: ["SIW"],
+    shown: ["Crowded", "Crowded, rising"],
+    definition: "SIW's flag for a heavily shorted name: at least 10% of the float short, or five or more days to cover with at least 5% of the float short "
+      + "(days to cover alone when the float is unknown). Crowded, rising adds a price up over the month. A fixed threshold, not a squeeze forecast.",
+  },
+  {
+    term: "Squeeze", aliases: ["short squeeze", "squeezes", "short covering"], functions: ["SIW"], shown: ["Short squeeze watch"],
+    definition: "A price rise that forces short sellers to buy shares back to limit their losses, which lifts the price further. "
+      + "It needs a crowded short and little trading to absorb the buying; SIW lists the names where that could happen and does not predict one.",
+  },
+  {
+    term: "SI change", aliases: ["si chg", "short interest change"], functions: ["SIW"], shown: ["SI Chg %"],
+    definition: "The change in shares short from the settlement before, in percent. A split between the two settlements is not adjusted.",
+  },
+  {
+    term: "1M return", aliases: ["1m", "one month return", "month move"], functions: ["SIW"], shown: ["1M %"],
+    definition: "The price change over one calendar month, from the latest daily close to the last close on or before the same day a month earlier.",
+  },
+  {
+    term: "Short volume", aliases: ["daily short volume", "short sale volume", "exempt volume"], functions: ["SIV"],
+    shown: ["Short volume", "Short %", "Exempt volume"],
+    definition: "Shares sold short in a day's off-exchange trading, which FINRA publishes daily; Short % is its share of the day's volume there. "
+      + "It is a flow of trades, not the open position short interest counts, and it includes exempt volume.",
+  },
 ];
 
 const ANSI = /\x1b\[[0-9;]*m/g;
@@ -390,7 +447,10 @@ function names(entry: GlossaryEntry): string[] {
 export interface GlossaryLookup {
   /** The entries the query names: by the term, its abbreviation or an alias. */
   exact: GlossaryEntry[];
-  /** The others whose names start a word with each word of the query: `stop-out` finds stop-out vs average. */
+  /**
+   * The others whose names start a word with each word of the query: `stop-out` finds stop-out vs average.
+   * Those that hold the words whole come first.
+   */
   partial: GlossaryEntry[];
 }
 
@@ -407,7 +467,12 @@ export function lookupGlossary(query: string): GlossaryLookup {
     const have = names(entry).flatMap(words);
     return wanted.every((word) => have.some((name) => name.startsWith(word)));
   });
-  return { exact, partial };
+  // The entries that hold the words whole come before those that only start with them: `float` is the float, not the floating rate note.
+  const whole = (entry: GlossaryEntry) => {
+    const have = names(entry).flatMap(words);
+    return wanted.every((word) => have.includes(word));
+  };
+  return { exact, partial: partial.sort((left, right) => Number(whole(right)) - Number(whole(left))) };
 }
 
 function escapeRegExp(text: string): string {

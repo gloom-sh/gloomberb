@@ -5,13 +5,15 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { formatCompact, formatNumber } from "../../../utils/format";
-import { loadShortInterest, type ShortInterestResult } from "./client";
+import type { ShortInterestResult } from "./client";
 import {
   buildRows,
   sortRows,
   type SortPreference,
 } from "./model";
+import { shortInterestFreshness } from "./schedule";
 import type { ShortInterestRecord } from "./types";
+import { loadShortInterestWithFloat } from "./watch-client";
 
 const SHORT_INTEREST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "settlementDate", header: "Date" },
@@ -23,7 +25,7 @@ const SHORT_INTEREST_COLUMNS: HeadlessPaneColumn[] = [
   },
   {
     key: "daysToCover",
-    header: "Days to Cover",
+    header: "Days to cover",
     align: "right",
     format: (value) => value == null ? "-" : formatNumber(Number(value), 2),
   },
@@ -50,7 +52,7 @@ export interface ShortInterestHeadlessDependencies {
 }
 
 const defaultDependencies: ShortInterestHeadlessDependencies = {
-  loadRecords: (symbol, _args, ctx) => loadShortInterest(symbol, ctx.apiClient),
+  loadRecords: (symbol, _args, ctx) => loadShortInterestWithFloat(symbol, { marketData: ctx.marketData, client: ctx.apiClient }),
 };
 
 export function createShortInterestHeadless(
@@ -64,6 +66,12 @@ export function createShortInterestHeadless(
       kind: "ticker",
       placeholder: "ticker",
       description: "US equity ticker.",
+    },
+    discovery: {
+      limitations: [
+        "Borrow fee, utilization and locate availability are not available: FINRA short interest counts shares short, not what they cost to borrow.",
+        "Percent of float is the latest settlement's shares short over the current float; earlier settlements stay blank.",
+      ],
     },
     usListingsOnly: "FINRA short interest",
     options: [
@@ -107,8 +115,10 @@ export function createShortInterestHeadless(
           averageDailyVolume: row.record.averageDailyVolume,
           shortPercentFloat: row.record.shortPercentFloat,
         }));
+      const freshness = shortInterestFreshness(rows.map((row) => row.settlementDate).sort().at(-1));
       return {
         rows,
+        ...(freshness ? { freshness } : {}),
         ...(latestSettlements ? {
           complete: false,
           errors: [cloudSessionRequired

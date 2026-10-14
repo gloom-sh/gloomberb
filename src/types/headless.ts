@@ -265,6 +265,12 @@ export interface HeadlessPaneFreshness {
   citeOldest?: boolean;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
+  /**
+   * When the figures reach readers and when the next ones are due, said right
+   * after the as-of date: `published Fri 9 Oct, next settlement Thu 15 Oct,
+   * published Mon 26 Oct` for a settlement a regulator publishes days later.
+   */
+  schedule?: string;
 }
 
 interface HeadlessPaneResultBase {

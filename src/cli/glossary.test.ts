@@ -67,3 +67,22 @@ test("the rebalance table's and ETF's words are found by plain names, and premiu
   expect(terms(reportGlossary("PF", "Ticker  Value  Weight  P&L\nTargets add up to 90.0%; 10.0% is unallocated."))).toEqual(["Weight"]);
   expect(terms(reportGlossary("ETF", "Fund facts (fee, NAV, premium) are not available yet; try fn SEC IBIT."))).toEqual(["NAV", "Premium/discount"]);
 });
+
+test("a word that is a term whole is found before the terms that only start with it", () => {
+  // `float` is the float of a stock, not the floating rate note that starts with the same letters.
+  const float = lookupGlossary("float");
+  expect([...terms(float.exact), ...terms(float.partial)]).toEqual(["Float", "FRN"]);
+  // "Monthly-weighted" came first in the glossary, but it only starts with "weight"; Target and Drift hold it whole.
+  expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift", "Monthly-weighted"]);
+  expect(terms(lookupGlossary("asset").partial)).toEqual(["NAV", "Fed assets"]);
+  expect(["short interest", "shares short", "short ratio", "dtc", "settlement date", "crowded rising", "short squeeze", "% float"].map((query) => terms(lookupGlossary(query).exact)))
+    .toEqual([["Short interest"], ["Short interest"], ["Days to cover"], ["Days to cover"], ["Settlement"], ["Crowded"], ["Squeeze"], ["Float"]]);
+  // Borrow data is not offered, so it has no entry to define.
+  expect(lookupGlossary("borrow fee")).toEqual({ exact: [], partial: [] });
+});
+
+test("SIV's short volume is its own term, apart from short interest", () => {
+  const volume = "Date  Short %  Short volume  Total volume  Exempt volume  Status\n2026-10-13  58.79%  3.57M  6.07M  16.3k  Reported";
+  expect(terms(reportGlossary("SIV", volume))).toEqual(["Short volume"]);
+  expect(reportGlossary("SI", volume).map((entry) => entry.term)).not.toContain("Short volume");
+});

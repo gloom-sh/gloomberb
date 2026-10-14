@@ -50,7 +50,7 @@ const COLUMNS: WatchColumn[] = [
   { id: "return1M", label: "1M%", width: 8, align: "right" },
   { id: "sharesShort", label: "Short", width: 8, align: "right" },
   { id: "settlementDate", label: "Settled", width: 8, align: "right" },
-  { id: "closeDate", label: "Close", width: 8, align: "right" },
+  { id: "closeDate", label: "Close date", width: 10, align: "right" },
 ];
 const DEFAULT_SORT = { columnId: "setup" as ShortWatchSortId, direction: "desc" as SortDirection };
 const rowKey = (row: ShortWatchRow) => row.symbol;

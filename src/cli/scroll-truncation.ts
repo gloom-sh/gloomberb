@@ -6,7 +6,11 @@ export interface ScrollBoxMetrics {
   scrollLeft: number;
   scrollWidth: number;
   clientWidth: number;
-  /** The box draws a scrollbar on that axis, which says it overflows even when the measures cannot. */
+  /**
+   * The box draws a scrollbar on that axis, which says it overflows even when the measures cannot:
+   * a table's body, which draws only the rows near the viewport. A plain scroll box draws one by
+   * default and holds all its content, so its measures say it.
+   */
   scrollbarY: boolean;
   scrollbarX: boolean;
 }
