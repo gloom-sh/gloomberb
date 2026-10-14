@@ -1,13 +1,17 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import type { DataProvider, QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
 import type { TickerChanges } from "../../types/ticker-changes";
 import { createTestCliContext, type PrintedCliResult } from "../../test-support/cli-context";
 import { createTestDataProvider, createTestQuote } from "../../test-support/data-provider";
+import { captureConsole } from "../../test-support/console";
 import { createTestTicker } from "../../test-support/ticker";
 import { buildSearchReport, search } from "./search";
 import { marketDataCliCommands } from "./market";
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
+
+// A quote that finds nothing sets the exit status; it must not become the test run's.
+afterEach(() => { process.exitCode = 0; });
 
 /**
  * A quote source that answers only the listing keys in `quoted`, and records what each batch asked for.
@@ -284,5 +288,29 @@ test("a pasted list is one row per symbol, in order, however it is separated, fo
       expect(rows.map((row) => row.target.symbol)).toEqual(["JNK", "EMB", "BRK.B", "BF-B"]);
       expect(asked).toEqual([["JNK", "EMB", "BRK.B", "BF-B"]]);
     }
+  }
+});
+
+test("quote and compare exit 1 when none of the symbols has a quote, 0 when some do, and print the same table either way", async () => {
+  const dataProvider = createTestDataProvider({
+    getQuotesBatch: async (targets: QuoteSubscriptionTarget[]): Promise<QuoteBatchResult[]> => targets.map((target) => target.symbol === "AAPL"
+      ? { target, quote: createTestQuote({ symbol: "AAPL" }) }
+      : { target, quote: null, error: new Error(`Not a ticker: ${target.symbol}.`) }),
+  });
+  const run = async (name: string, ...symbols: string[]) => {
+    const cli = createTestCliContext({ dataProvider });
+    process.exitCode = 0;
+    const { exitCode } = await captureConsole(() => marketDataCliCommands.find((command) => command.name === name)!.execute(symbols, cli.context));
+    return { exitCode: exitCode ?? 0, rows: (cli.printed[0]!.result.data as Array<{ target: { symbol: string }; error?: string | null }>) };
+  };
+  for (const name of ["quote", "compare"]) {
+    const none = await run(name, "GMEE", "ZZZZQ");
+    expect(none.exitCode).toBe(1);
+    expect(none.rows.map((row) => [row.target.symbol, row.error])).toEqual([["GMEE", "Not a ticker: GMEE."], ["ZZZZQ", "Not a ticker: ZZZZQ."]]);
+    // One symbol that resolves is a result; the one that did not stays named in the table.
+    const mixed = await run(name, "GMEE", "AAPL");
+    expect(mixed.exitCode).toBe(0);
+    expect(mixed.rows.map((row) => row.target.symbol)).toEqual(["GMEE", "AAPL"]);
+    expect((await run(name, "AAPL")).exitCode).toBe(0);
   }
 });

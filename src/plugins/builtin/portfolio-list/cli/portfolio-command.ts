@@ -51,6 +51,7 @@ import {
   misplacedSymbolList,
   parseFiniteNumber,
   PortfolioCliError,
+  refuseDryRun,
   rejectCashSymbol,
   requireManualPortfolio,
   requirePortfolio,
@@ -208,7 +209,7 @@ async function addToPortfolioCommand(args: string[], file: string | undefined, e
       retry: (key) => `gloomberb portfolio add ${/\s/.test(portfolio.name) ? `"${portfolio.name}"` : portfolio.name} ${key}`,
       add: (ticker) => addTickerToPortfolio(ticker, portfolio.id),
     });
-    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated });
+    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated, strays: list.strays });
   });
 }
 
@@ -275,7 +276,7 @@ async function removeFromPortfolioCommand(args: string[], file: string | undefin
       },
     });
     if (nextConfig !== context.config) await saveConfig(nextConfig);
-    printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated });
+    printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "portfolio", name: portfolio.name }, repeated: list.repeated, strays: list.strays });
   });
 }
 
@@ -814,7 +815,7 @@ export const portfolioCliCommand: CliCommandDef = {
     const importOnly = args.find((arg) => IMPORT_FLAGS.has(arg.split("=")[0]!));
     if (importOnly) ctx.fail(`${importOnly.split("=")[0]} is an option of portfolio import, not portfolio ${action}.`, IMPORT_USAGE);
     const mutating = MUTATING_ACTIONS.has(action ?? "") || ((action === "target" || action === "targets") && (args[1] === "set" || args[1] === "clear"));
-    if (ctx.cliOptions.dryRun && mutating) ctx.fail(`portfolio ${action} has no --dry-run; it changes the portfolio when it runs.`);
+    if (mutating) refuseDryRun(ctx, "portfolio", action!);
 
     if (!action || action === "list") {
       await listCollections(ctx);

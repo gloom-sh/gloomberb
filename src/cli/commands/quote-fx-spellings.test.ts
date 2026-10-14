@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import type { Quote } from "../../types/financials";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
@@ -9,6 +9,9 @@ import { DEFAULT_CLI_OPTIONS } from "../options";
 import { printCliResult } from "../result";
 import { setCliColorEnabledOverride } from "../../utils/cli-output";
 import { marketDataCliCommands } from "./market";
+
+// A quote that finds nothing sets the exit status; it must not become the test run's.
+afterEach(() => { process.exitCode = 0; });
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 

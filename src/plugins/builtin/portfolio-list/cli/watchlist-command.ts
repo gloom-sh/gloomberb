@@ -22,12 +22,14 @@ import {
   removeTickerFromWatchlist as removeWatchlistMembership,
 } from "../mutations";
 import { showCollection } from "./render";
-import { listingFields, misplacedSymbolList, takeCollectionName } from "./shared";
+import { listingFields, misplacedSymbolList, refuseDryRun, takeCollectionName } from "./shared";
 import { addSymbols, FILE_OPTION, printSymbolRows, removeSymbols, requireSymbolList, retryNotice, SYMBOL_LIST_HELP } from "./bulk-symbols";
 import { CLI_COMMAND_GROUPS } from "../../../../cli/help";
 
 const ADD_USAGE = "Usage: gloomberb watchlist add <watchlist> <symbols...> [--file <path>]";
 const REMOVE_USAGE = "Usage: gloomberb watchlist remove <watchlist> <symbols...> [--file <path>]";
+/** Actions that change a watchlist: none of them previews, so --dry-run would change it anyway. */
+const MUTATING_ACTIONS = new Set(["create", "delete", "rm", "add", "remove"]);
 
 /** The watchlist the leading arguments name and the symbols after it; fails naming the watchlists there are. */
 function requireWatchlistArgs(
@@ -134,7 +136,7 @@ async function addToWatchlistCommand(args: string[], file: string | undefined, e
       suggest: true,
       add: (ticker) => addTickerToWatchlist(ticker, watchlist.id),
     });
-    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated });
+    printSymbolRows(ctx, rows, { verb: "add", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, strays: list.strays });
   });
 }
 
@@ -167,7 +169,7 @@ async function removeFromWatchlistCommand(args: string[], file: string | undefin
       store: context.store,
       remove: (ticker) => removeWatchlistMembership(ticker, watchlist.id),
     });
-    printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated });
+    printSymbolRows(ctx, rows, { verb: "remove", collection: { kind: "watchlist", name: watchlist.name }, repeated: list.repeated, strays: list.strays });
   });
 }
 
@@ -246,6 +248,7 @@ export const watchlistCliCommand: CliCommandDef = {
     const file = hasFile ? takeOption(args, "--file") ?? "" : undefined;
     const action = args[0];
     if (file != null && action !== "add" && action !== "remove") ctx.fail(`--file is an option of watchlist add and remove, not watchlist ${action ?? "list"}.`, ADD_USAGE);
+    if (MUTATING_ACTIONS.has(action ?? "")) refuseDryRun(ctx, "watchlist", action!);
 
     if (!action || action === "list") {
       await listWatchlists(ctx);

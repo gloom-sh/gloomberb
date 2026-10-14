@@ -1,11 +1,49 @@
+/** The quote marks a pasted list wraps its entries in: "AAPL", 'MSFT', “NVDA”. */
+const QUOTE_MARKS = "\"'`\u2018\u2019\u201C\u201D";
+const QUOTE_EDGES = new RegExp(`^[${QUOTE_MARKS}]+|[${QUOTE_MARKS}]+$`, "g");
+
 /**
  * Symbols given as command arguments, each of which may hold several split by
  * commas, semicolons, spaces, tabs or newlines (a pasted list), with the blanks
- * dropped and the typed case kept. Every command that takes a symbol list splits
- * its arguments here, and `not-a-ticker` reads the typed spelling back from them.
+ * dropped, the quote marks around each entry removed and the typed case kept.
+ * Every command that takes a symbol list splits its arguments here, and
+ * `not-a-ticker` reads the typed spelling back from them.
  */
 export function splitSymbolArgs(args: readonly string[]): string[] {
-  return args.flatMap((arg) => arg.replace(/^\uFEFF/, "").split(/[\s,;]+/)).filter(Boolean);
+  return args
+    .flatMap((arg) => arg.replace(/^\uFEFF/, "").split(/[\s,;]+/))
+    .map((entry) => entry.replace(QUOTE_EDGES, ""))
+    .filter(Boolean);
+}
+
+/** The list separators in `text`, each once: `,;` for a stray `;,;`. */
+function separatorsIn(text: string): string {
+  return [...new Set([...text].filter((char) => char === "," || char === ";"))].join("");
+}
+
+/**
+ * A pasted list, or one cell of a file, without the separators and quote marks
+ * stuck to its ends (`UPST;`, `"GME",`). The separators it dropped are named
+ * (`Ignored the stray ";" after UPST.`) rather than swallowed, and never reach
+ * a listing search as part of a symbol, which would ask for `UPST;`.
+ */
+export function stripStrayEdges(text: string): { text: string; notes: string[] } {
+  const junk = `[\\s,;${QUOTE_MARKS}]`;
+  const leading = text.match(new RegExp(`^${junk}+`))?.[0] ?? "";
+  const rest = text.slice(leading.length);
+  const trailing = rest.match(new RegExp(`${junk}+$`))?.[0] ?? "";
+  const inner = rest.slice(0, rest.length - trailing.length);
+  const entries = splitSymbolArgs([inner]);
+  const [first, last] = [entries[0], entries.at(-1)];
+  const before = separatorsIn(leading);
+  const after = separatorsIn(trailing);
+  const notes = !first
+    ? (before || after ? [`Ignored the stray "${separatorsIn(leading + trailing)}".`] : [])
+    : [
+      ...before ? [`Ignored the stray "${before}" before ${first}.`] : [],
+      ...after ? [`Ignored the stray "${after}" after ${last}.`] : [],
+    ];
+  return { text: inner, notes };
 }
 
 /** How a symbol is compared for repeats: AAPL, aapl and $AAPL are one. */

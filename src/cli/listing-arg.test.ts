@@ -35,6 +35,14 @@ test("SYM:EXCH and --exchange name the same listing through the exchange aliases
   expect(parseListingArg("SAN:EPA", "LSE", { ownExchangeWins: true }).key).toBe("SAN:EPA");
 });
 
+test("a separator or quote marks left on a pasted ticker never reach the listing search, and a separator is named", () => {
+  expect(parseListingArg("UPST;")).toEqual({ symbol: "UPST", exchange: "", key: "UPST", readAs: 'Ignored the stray ";" after UPST.' });
+  expect(parseListingArg(`"san:epa",`)).toEqual({ symbol: "SAN", exchange: "EPA", key: "SAN:EPA", readAs: 'Ignored the stray "," after san:epa.' });
+  // Quote marks alone say nothing; an exchange still has to agree with --exchange.
+  expect(parseListingArg("'AAPL'")).toEqual({ symbol: "AAPL", exchange: "", key: "AAPL" });
+  expect(() => parseListingArg("SAN:EPA;", "LON")).toThrow("SAN:EPA names exchange EPA, but --exchange names LSE.");
+});
+
 test("a futures board code no security uses is its future; one a security keeps, or one with a venue, stays as typed", () => {
   for (const row of FUTURES_CONTRACTS) {
     expect(parseListingArg(row.code).key).toBe(row.bareCode ? row.symbol : row.code);

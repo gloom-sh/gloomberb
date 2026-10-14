@@ -39,6 +39,7 @@ import {
   typedExchangeCode,
 } from "../utils/exchanges";
 import { withMarketData } from "./scoped-context";
+import { stripStrayEdges } from "./symbol-args";
 import { isNoProviderMessage } from "../sources/provider-errors";
 import { dashedCoinPair } from "../utils/crypto-pair";
 import { currencyPairSpelling } from "../utils/currency-pair";
@@ -91,9 +92,21 @@ export interface ListingArg {
  * `resolveCliListing` asks search before reading them as USDNGN=X.
  */
 export function parseListingArg(
-  raw: string,
+  rawArg: string,
   exchangeOption?: string | null,
   { ownExchangeWins = false }: { ownExchangeWins?: boolean } = {},
+): ListingArg {
+  // A pasted ticker can bring the separator or quote marks that sat beside it (`UPST;`); search would ask for them.
+  const stripped = stripStrayEdges(rawArg);
+  const raw = stripped.text || rawArg;
+  const listing = parseCleanListingArg(raw, exchangeOption, { ownExchangeWins });
+  return stripped.text && stripped.notes.length > 0 ? { ...listing, readAs: stripped.notes.join(" ") } : listing;
+}
+
+function parseCleanListingArg(
+  raw: string,
+  exchangeOption: string | null | undefined,
+  { ownExchangeWins }: { ownExchangeWins: boolean },
 ): ListingArg {
   const optionCode = (exchangeOption ?? "").trim().toUpperCase();
   const option = canonicalExchange(optionCode);
@@ -167,9 +180,11 @@ async function settleSharedCode(listing: ListingArg, deps: ListingDeps): Promise
   }
   const { exchange } = reading;
   const key = `${symbol}:${exchange}`;
-  const readAs = exchange === meanings[0] ? {}
-    : { readAs: `Read ${symbol}:${code} as ${key}: ${code} is ${venueChoices(meanings)}, and ${symbol} trades on ${exchange}.` };
-  return { symbol, exchange, key, ...readAs };
+  const readAs = [
+    listing.readAs,
+    exchange === meanings[0] ? null : `Read ${symbol}:${code} as ${key}: ${code} is ${venueChoices(meanings)}, and ${symbol} trades on ${exchange}.`,
+  ].filter(Boolean).join(" ");
+  return { symbol, exchange, key, ...readAs ? { readAs } : {} };
 }
 
 /**

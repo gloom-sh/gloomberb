@@ -247,3 +247,9 @@ test("a function whose data covers US listings only names the company's US listi
     "FINRA short interest covers US listings only, and SAN:EPA is Sanofi on Euronext Paris (EPA). Sanofi's US listing: SNY (try: gloomberb fn SIW SNY)",
   ]);
 });
+
+test("a list function reads a pasted list split by semicolons, quote marks dropped, and names a separator left on its end", async () => {
+  const list = await runFunction("SIW", `"AAPL";'RY' ;`);
+  expect(list.listing).toBe("AAPL, RY");
+  expect(list.warnings).toEqual(expect.arrayContaining(['Ignored the stray ";" after RY.']));
+});

@@ -65,12 +65,13 @@ interface CollectionRef {
 /**
  * One line per symbol and the summary under them; `--json` and `--csv` give
  * the rows, with the summary in the JSON metadata and on standard error beside
- * CSV. The command exits non-zero when no symbol ended up as asked.
+ * CSV. A separator dropped from a symbol of the list is named as a warning. The
+ * command exits non-zero when no symbol ended up as asked.
  */
 export function printSymbolRows(
   ctx: CliCommandContext,
   rows: SymbolRow[],
-  { verb, collection, repeated }: { verb: Verb; collection: CollectionRef; repeated: number },
+  { verb, collection, repeated, strays }: { verb: Verb; collection: CollectionRef; repeated: number; strays: readonly string[] },
 ): void {
   const summary = `${collection.kind === "watchlist" ? "Watchlist" : "Portfolio"} "${collection.name}": ${summarizeSymbolRows(rows, verb, repeated)}`;
   const count = (status: SymbolStatus) => rows.filter((row) => row.status === status).length;
@@ -80,6 +81,7 @@ export function printSymbolRows(
   ctx.printResult({
     data: rows,
     metadata: { [collection.kind]: collection.name, ...counts, repeated, summary },
+    ...strays.length > 0 ? { warnings: [...strays] } : {},
   }, {
     text: () => [...rows.map((row) => rowLines(row, verb)), "", summary].join("\n"),
   });
@@ -102,13 +104,14 @@ export async function requireSymbolList(
   args: readonly string[],
   file: string | undefined,
   usage: string,
-): Promise<{ symbols: string[]; repeated: number; single: string | null }> {
+): Promise<{ symbols: string[]; repeated: number; strays: string[]; single: string | null }> {
   try {
     const list = await readSymbolList({ args, file });
     if (list.symbols.length === 0) ctx.fail(usage);
-    // One symbol typed alone keeps the single-symbol output and errors.
+    // One symbol typed alone keeps the single-symbol output and errors. It goes as typed, so a separator
+    // left on it (`UPST;`) is named by the listing it resolves to.
     const typed = splitSymbolArgs(args);
-    const single = file == null && !args.includes("-") && typed.length === 1 ? typed[0]! : null;
+    const single = file == null && !args.includes("-") && typed.length === 1 ? (args.length === 1 ? args[0]!.trim() : typed[0]!) : null;
     return { ...list, single };
   } catch (error) {
     if (error instanceof SymbolListError) ctx.fail(error.message, usage);

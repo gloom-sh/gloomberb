@@ -1,6 +1,6 @@
 import { readFile } from "fs/promises";
 import { fstatSync } from "fs";
-import { splitSymbolArgs, uniqueSymbols } from "./symbol-args";
+import { splitSymbolArgs, stripStrayEdges, uniqueSymbols } from "./symbol-args";
 
 /** Header cells that name a spreadsheet's symbol column, compared without case, spaces or punctuation. */
 const SYMBOL_HEADERS = new Set(["symbol", "symbols", "ticker", "tickers", "code", "stockcode", "securitycode", "instrument"]);
@@ -129,13 +129,25 @@ export class SymbolListError extends Error {
 /**
  * The symbols a command was given: as arguments, from `--file`, and from
  * standard input when an argument is `-` or nothing else was given and input
- * is piped in. Repeats are dropped.
+ * is piped in. Repeats are dropped. A separator stuck to a symbol in a file, or
+ * left on the end of what was typed (`UPST;`), is dropped with the quote marks
+ * around it, and each is named in `strays` so the command can say so.
  */
-export async function readSymbolList(source: SymbolListSource): Promise<{ symbols: string[]; repeated: number }> {
+export async function readSymbolList(source: SymbolListSource): Promise<{ symbols: string[]; repeated: number; strays: string[] }> {
   const readStdin = source.readStdin ?? (() => Bun.stdin.text());
   const wantsStdin = source.args.includes("-") || source.file === "-";
-  const typed = splitSymbolArgs(source.args.filter((arg) => arg !== "-"));
+  const typedArgs = source.args.filter((arg) => arg !== "-");
+  const typed = splitSymbolArgs(typedArgs);
   const collected = [...typed];
+  // A separator left on the end of what was typed: `UPST;`, or a list that ends in a comma.
+  const strays = new Set<string>(stripStrayEdges(typedArgs.join(" ")).notes);
+  const addCells = (cells: readonly string[]) => {
+    for (const cell of cells) {
+      const cleaned = stripStrayEdges(cell);
+      cleaned.notes.forEach((note) => strays.add(note));
+      collected.push(cleaned.text);
+    }
+  };
   if (source.file != null && source.file !== "-") {
     if (!source.file.trim() || source.file.startsWith("--")) throw new SymbolListError("--file needs a path, such as --file symbols.csv.");
     let text: string;
@@ -145,10 +157,10 @@ export async function readSymbolList(source: SymbolListSource): Promise<{ symbol
       const code = (error as NodeJS.ErrnoException).code;
       throw new SymbolListError(code === "ENOENT" ? `No file at ${source.file}.` : `Could not read ${source.file}: ${error instanceof Error ? error.message : String(error)}`);
     }
-    collected.push(...parseSymbolText(text));
+    addCells(parseSymbolText(text));
   }
   if (wantsStdin || (typed.length === 0 && source.file == null && (source.stdinPiped ?? stdinIsPiped()))) {
-    collected.push(...parseSymbolText(await readStdin()));
+    addCells(parseSymbolText(await readStdin()));
   }
-  return uniqueSymbols(collected);
+  return { ...uniqueSymbols(collected), strays: [...strays] };
 }

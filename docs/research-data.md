@@ -443,7 +443,7 @@ FINRA strikes positions twice a month, on the 15th (the business day before when
 
 ### Short squeeze watch (SIW)
 
-`SIW` lists every US-listed stock and fund in your portfolios and watchlists; `SIW GME, AMC, CVNA` lists those names instead (up to 60). Each row reads one name's latest FINRA settlement:
+`SIW` lists every US-listed stock and fund in your portfolios and watchlists; `SIW GME, AMC, CVNA` lists those names instead (up to 60), split by commas, semicolons or blanks, with the quote marks around a name dropped. A share class written `BRK-B` or `BRK.B` is the same name. A name that cannot be read is listed with its reason (`Left out: BTC-USD: not a US ticker symbol; SAN:EPA: not US-listed.`) and a separator left on the end of the list is named too (`Ignored the stray ";" after UPST.`). `gloomberb fn SIW` exits 1 when no name has data, whether every name was left out or FINRA reports nothing for each, and 0 when some do. Each row reads one name's latest FINRA settlement:
 
 - **% Float** is that settlement's shares short over the current float. The float is undated, so the percentage is the latest settlement's only; the `SI` pane keeps older settlements without one. A float smaller than the shares short is not used (some multi-class tickers report one class's float): the percentage stays blank and days to cover decides alone.
 - **Days** is FINRA's days to cover: shares short over average daily volume.

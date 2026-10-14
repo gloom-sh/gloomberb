@@ -14,6 +14,7 @@ export const shortWatchHeadless: HeadlessPaneDefinition<"rows"> = {
   freshness: { source: "FINRA", status: "not-a-feed", basis: "twice-monthly settlement", observedKey: "settlementDate", maxAgeMinutes: 30 * 24 * 60 },
   argument: { kind: "symbol-list", maximum: SHORT_WATCH_LIMIT, description: "US tickers; the pane defaults to your portfolios and watchlists." },
   usListingsOnly: "FINRA short interest",
+  failsWithoutData: true,
   options: [],
   describe: "Short squeeze watch",
   discovery: {

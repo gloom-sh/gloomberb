@@ -38,6 +38,7 @@ import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
+import { splitSymbolArgs } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock } from "./access-gate";
@@ -75,7 +76,7 @@ function normalizeSymbol(value: string): string {
 function normalizeSymbolList(value: string): string[] {
   const symbols: string[] = [];
   const seen = new Set<string>();
-  for (const part of value.split(/[,\s]+/)) {
+  for (const part of splitSymbolArgs([value])) {
     const symbol = normalizeSymbol(part);
     if (!symbol || seen.has(symbol)) continue;
     seen.add(symbol);

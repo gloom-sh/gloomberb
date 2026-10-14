@@ -151,6 +151,11 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
   }
 }
 
+/** Whether a list report has no row with data: it is empty, or every row is a name without any. */
+function foundNothing(data: { rowCount: number; unavailableSymbols: readonly string[] }): boolean {
+  return data.rowCount === 0 || data.unavailableSymbols.length >= data.rowCount;
+}
+
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
   await runPaneCliCommand(ctx, async () => {
     await withPaneRuntime(ctx, args, async ({ parsed, context, resolved }) => {
@@ -210,6 +215,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });
+      // The report is printed as it is; a list that found data for none of its names says so in the exit status too.
+      if (resolved.headless?.failsWithoutData && foundNothing(report.data)) process.exitCode = CLI_EXIT_CODES.error;
     }, { strictHeadlessOptions: true, tableSection: true });
   });
 }

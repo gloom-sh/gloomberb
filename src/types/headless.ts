@@ -419,6 +419,12 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    * points at GIP's 1-minute bars). `key` is the listing as read, RMS:ASX.
    */
   usListingsOnlyHint?(key: string): string;
+  /**
+   * `fn` exits 1 when the report has no name with data: no rows, or every row
+   * is one of `unavailableSymbols`. A list that gives data for some names
+   * exits 0 and names the others in its errors.
+   */
+  failsWithoutData?: boolean;
   options: HeadlessPaneOptionDef[];
   /**
    * Widens the argument before the function runs, so its report, its capture

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { splitSymbolArgs, uniqueSecuritySymbols } from "./symbol-args";
+import { splitSymbolArgs, stripStrayEdges, uniqueSecuritySymbols } from "./symbol-args";
 
 test("arguments split on commas, spaces and newlines in any mix", () => {
   expect(splitSymbolArgs(["AAPL, msft ,XXXXX,ttf.as", "nvda", "xom ", "BRK.B;SAN:EPA\n7203.T"]))
@@ -11,6 +11,20 @@ test("a list pasted from a terminal, a sheet or a chat splits whatever its separ
   expect(splitSymbolArgs(["AAPL\tMSFT\r\nNVDA\r\n\r\n,, ,"])).toEqual(["AAPL", "MSFT", "NVDA"]);
   expect(splitSymbolArgs(["\uFEFFAAPL MSFT"])).toEqual(["AAPL", "MSFT"]);
   expect(splitSymbolArgs(["", "  \n "])).toEqual([]);
+});
+
+test("quote marks around a pasted entry are dropped, single, double or curly, whole or stray", () => {
+  expect(splitSymbolArgs([`"GME", 'AMC'; “CVNA”, "BRK-B`, `'UPST`])).toEqual(["GME", "AMC", "CVNA", "BRK-B", "UPST"]);
+  expect(splitSymbolArgs(['"', "''"])).toEqual([]);
+});
+
+test("a separator stuck to the end of a list or cell is dropped and named, quote marks silently", () => {
+  expect(stripStrayEdges("UPST;")).toEqual({ text: "UPST", notes: ['Ignored the stray ";" after UPST.'] });
+  expect(stripStrayEdges(`;"GME",`)).toEqual({ text: `GME`, notes: ['Ignored the stray ";" before GME.', 'Ignored the stray "," after GME.'] });
+  expect(stripStrayEdges("GME, AMC,")).toEqual({ text: "GME, AMC", notes: ['Ignored the stray "," after AMC.'] });
+  expect(stripStrayEdges(";")).toEqual({ text: "", notes: ['Ignored the stray ";".'] });
+  expect(stripStrayEdges(`"GME" `)).toEqual({ text: "GME", notes: [] });
+  expect(stripStrayEdges("SAN:EPA")).toEqual({ text: "SAN:EPA", notes: [] });
 });
 
 test("a security typed twice, in either case or with either share-class separator, is kept once in its first spelling", () => {

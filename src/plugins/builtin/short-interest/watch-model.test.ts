@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { buildShortWatchRow, oneMonthReturn, sortShortWatchRows } from "./watch-model";
+import { createTestTicker } from "../../../test-support/ticker";
+import { buildShortWatchRow, customUniverse, oneMonthReturn, ownNamesUniverse, sortShortWatchRows } from "./watch-model";
 
 const close = (date: string, value: number): PricePoint => ({ date: new Date(`${date}T00:00:00Z`), close: value });
 /** Weekday closes from `from` to `to`, at `value` unless the day has its own close. */
@@ -64,5 +65,33 @@ describe("short watch rows", () => {
     ];
     expect(sortShortWatchRows(rows, "setup", "desc").map((entry) => entry.symbol))
       .toEqual(["UP_HIGH", "UP_LOW", "DOWN", "CALM", "NONE"]);
+  });
+});
+
+describe("short watch names", () => {
+  test("a pasted list reads one name per entry, whatever the separators, quote marks and share class spelling", () => {
+    expect(customUniverse("GME, amc,CVNA ,BRK-B ")).toEqual({ symbols: ["GME", "AMC", "CVNA", "BRK.B"], notice: null });
+    expect(customUniverse("GME;AMC").symbols).toEqual(["GME", "AMC"]);
+    expect(customUniverse(`"GME", 'AMC'; “CVNA”, $BF-B\nBF.B brk.b BRK-B`).symbols).toEqual(["GME", "AMC", "CVNA", "BF.B", "BRK.B"]);
+  });
+
+  test("a name left out is listed with its own reason, never only counted", () => {
+    // BTC-USD and BRK-B-NONSENSE are not class shares: the dash only reads as a dot after one to five letters and one class letter.
+    expect(customUniverse("GME BTC-USD SAN:EPA BRK-B-nonsense 7203.T")).toEqual({
+      symbols: ["GME"],
+      notice: "Left out: BTC-USD: not a US ticker symbol; SAN:EPA: not US-listed; BRK-B-NONSENSE: not a US ticker symbol; 7203.T: not a US ticker symbol.",
+    });
+    expect(customUniverse("")).toEqual({ symbols: [], notice: null });
+  });
+
+  test("your own names name each one left out, by what is wrong with it", () => {
+    const own = { portfolios: ["main"] };
+    const universe = ownNamesUniverse([
+      createTestTicker("UPST", "Upstart", own),
+      createTestTicker("SAN", "Sanofi", { ...own, exchange: "EPA", currency: "EUR" }),
+      createTestTicker("BTC-USD", "Bitcoin", { ...own, assetCategory: "CRYPTO" }),
+      createTestTicker("NOPE", "Not held", { portfolios: [] }),
+    ]);
+    expect(universe).toEqual({ symbols: ["UPST"], notice: "Left out: BTC-USD: not a US-listed stock or fund; SAN: not US-listed." });
   });
 });

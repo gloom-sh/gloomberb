@@ -24,6 +24,7 @@ import { withCliServices, withMarketData } from "../context";
 import { isoDate, parsePositiveInt, requireOneArg, takeFlag, takeOption } from "./command-utils";
 import type { BuiltinCliCommandDef } from "../command-options";
 import { CLI_COMMAND_GROUPS, TABLE_SECTION_OPTION } from "../help";
+import { CLI_EXIT_CODES } from "../exit-codes";
 import {
   formatChangePercentCell,
   formatCountCell,
@@ -646,6 +647,8 @@ async function runQuote(rawArgs: string[], ctx: Parameters<CliCommandDef["execut
       columns,
       ...(yieldsOnly ? { textColumns: columns.map((column) => column.key === "changePercent" ? { ...column, header: "Chg" } : column) } : {}),
     });
+    // The table names each symbol it found nothing for; with none found, the exit status says so too.
+    if (data.every((row) => !row.quote)) process.exitCode = CLI_EXIT_CODES.error;
   });
 }
 
