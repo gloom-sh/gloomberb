@@ -114,6 +114,37 @@ test("an EV off market cap + debt - cash is labelled as the provider's with the 
   }
 });
 
+test("after the close the EV row and its note read one close, the cap rests on the shares shown, and a withdrawn EV says why", () => {
+  // GLO-754, CHGG on 2026-10-13: the after-hours 0.74 quote beside the 0.7133 close. The row moved the provider's
+  // 63.02M EV to the close (60.06M) while its note still read 63.02M against 43.61M computed at 0.74.
+  const afterHours = {
+    ...quote, price: 0.74, change: 0.0289, changePercent: 4.06, previousClose: 0.7111, marketState: "POSTPOST" as const,
+    regularClose: 0.7133, regularCloseSessionDate: "2026-10-13", regularChange: 0.0022, regularChangePercent: 0.31,
+    changeSessionDate: "2026-10-13", marketCap: 82_076_032,
+  };
+  const valuation = (fundamentals: TickerFinancials["fundamentals"]) => renderFundamentalsReport(
+    { quote: afterHours, annualStatements: [], quarterlyStatements: [], priceHistory: [], fundamentals, symbol: "UNITTEST" }, "valuation",
+  ).replace(/\u001b\[[0-9;]*m/g, "").replace(/ {2,}/g, " ");
+  const chegg = valuation({
+    marketCap: 82_076_032, marketCapCurrency: "USD", sharesOutstanding: 110_913_557, enterpriseValue: 63_023_563,
+    enterpriseValueCheck: { status: "differs", source: 63_023_563, currency: "USD", marketCap: 82_076_032, totalDebt: 33_845_000,
+      cash: 72_314_000, balanceSheetDate: "2026-06-30", computed: 43_607_032 },
+  });
+  expect(chegg).toContain("Market Cap 79.11M USD\nShares Outstanding 110.91M\n");
+  expect(chegg).toContain("Enterprise Value 60.06M USD (provider)");
+  expect(chegg).toContain("EV 60.06M USD (provider) vs 40.65M computed from market cap + total debt - cash (balance sheet 2026-06-30).");
+  expect(chegg).not.toContain("does not rest on");
+  // A cap on another count than the one shown (one class's) says so; NRDY's EV, withdrawn by Gloom Cloud's
+  // validation with no check, is unavailable with the reason rather than a dropped row.
+  const nerdy = valuation({
+    marketCap: 82_076_032, marketCapCurrency: "USD", sharesOutstanding: 72_230_417,
+    unavailableFields: ["enterpriseValue", "enterpriseToRevenue"],
+  });
+  expect(nerdy).toContain("Market cap 79.11M USD is the provider's and does not rest on the 72.23M shares shown (x 0.7133 USD = 51.52M).");
+  expect(nerdy).toContain("Enterprise Value unavailable");
+  expect(nerdy).toContain("EV unavailable: the provider's figure failed validation.");
+});
+
 test("trailing figures use the fundamentals' currency, then the statements' reporting currency, never the quote's", async () => {
   const fundamentals = { eps: 31.43, revenue: 202.08e9, netIncome: 46.98e9, operatingCashFlow: 42.43e9, freeCashFlow: 36.96e9 };
   const reportedIn = (financialCurrency: string | undefined, fundamentalsCurrency?: string): TickerFinancials => ({

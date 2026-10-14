@@ -183,13 +183,14 @@ export function buildOverviewStats({
       valueColor: priceColor(fundamentals.revenueGrowth),
     });
   }
-  // At the regular session price, as the market cap above it is.
-  const enterpriseValue = reportedEnterpriseValue(atRegularSessionPrice({ quote, fundamentals }).fundamentals);
+  // At the regular session price, as the market cap above it is, with the check moved beside it.
+  const priced = atRegularSessionPrice({ quote, fundamentals }).fundamentals;
+  const enterpriseValue = reportedEnterpriseValue(priced);
   if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
     stats.push({ label: "EV", value: "—" });
   } else if (enterpriseValue != null) {
     // More than 5% from market cap + debt - cash: the provider's, with the computed figure where it fits.
-    const check = enterpriseValueCheck(fundamentals);
+    const check = enterpriseValueCheck(priced);
     const computed = check?.status === "differs" && check.computed != null ? formatCompact(check.computed) : undefined;
     stats.push({
       label: "EV",

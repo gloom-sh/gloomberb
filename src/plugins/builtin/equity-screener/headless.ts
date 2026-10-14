@@ -10,7 +10,7 @@ import { buildQuoteKey } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { formatCurrency, formatPercentRaw } from "../../../utils/format";
 import { fetchScreen } from "./client";
-import { overlayScreenQuotes, screenExtendedSessions } from "./live";
+import { overlayScreenQuotes, screenExtendedSessions, sortLiveScreenRows } from "./live";
 import {
   DEFAULT_SCREEN,
   EXAMPLE_SCREEN_DEFINITION,
@@ -125,7 +125,8 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
     const metric = (args.options.metric ?? "marketCap") as NumericField;
     // Last, Chg% and market cap are the regular session, as `quote` and the
     // pane read each row's quote; an extended print is a column of its own.
-    const rows = overlayScreenQuotes(data.rows, await loadRowQuotes(data.rows, ctx));
+    // A sort on one of them is redone on those figures.
+    const rows = sortLiveScreenRows(overlayScreenQuotes(data.rows, await loadRowQuotes(data.rows, ctx)), data.definition.sort);
     const extendedSessions = screenExtendedSessions(rows);
     // Payload status also counts ordinary per-field sparsity; only generation
     // warnings are failures, and more pages are not an error.
@@ -184,7 +185,7 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
         covered: data.universe.covered,
         returned: data.rows.length,
         hasMore: !!data.nextCursor,
-        priceBasis: "price, changePercent and the market cap are the regular session, read from each row's quote as `quote` reads it: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice and extendedChangePercent, measured from that close. Membership, order and percentiles are the snapshot's, which ranks by the close.",
+        priceBasis: "price, changePercent and the market cap are the regular session, read from each row's quote as `quote` reads it: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice and extendedChangePercent, measured from that close. Membership and percentiles are the snapshot's, which ranks by the close; a sort on price, changePercent, volume or marketCap orders these rows by the figures shown.",
         notices: data.nextCursor
           ? [
               `Top ${data.rows.length} of ${data.universe.matched} matches; narrow the criteria to see the rest.`,

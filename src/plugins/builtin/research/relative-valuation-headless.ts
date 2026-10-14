@@ -46,7 +46,9 @@ const VALUATION_COLUMNS: HeadlessPaneColumn[] = [
   })),
   ...[["evSales", "EV/S"]].map(([key, header]) => ({
     key: key!, header: header!, align: "right" as const,
-    format: (value: unknown) => value == null ? "-" : formatNumber(Number(value), 1),
+    // A withdrawn EV says so rather than leaving a bare dash; the note under the table says why.
+    format: (value: unknown, row: Record<string, unknown>) => value != null ? formatNumber(Number(value), 1)
+      : row.evSalesUnavailable ? "EV unavailable" : "-",
   })),
   ...[["fcfYield", "FCF Yield"], ["revenueGrowth", "Quarter Revenue YoY"], ["operatingMargin", "TTM Op Margin"]].map(([key, header]) => ({
     key: key!, header: header!, align: "right" as const,
@@ -82,8 +84,11 @@ export const relativeValuationHeadless: HeadlessPaneDefinition<"rows"> = {
         quoteBasis: "Stale quote fields are excluded from comparison; reportedQuote retains the rejected observation and quoteAsOf retains its source timestamp.",
         priceBasis: "price, change and changePercent are the regular session: after the close, its close and that close's move. A pre-market, after-hours or overnight print is in extendedPrice, extendedChange and extendedChangePercent, measured from that close (extendedMark when it is a bid and ask midpoint). marketCap, the P/E multiples, evSales (through the equity part of the enterprise value) and fcfYield are measured at that regular session price.",
         fundamentalsBasis: "Provider multiples and operating metrics retain independent fundamentalsProvenance. Retrieval time does not establish the valuation date.",
-        notices: rows.some((row) => Object.keys(row.notMeaningful).length > 0
-          || Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],
+        notices: [
+          ...rows.some((row) => Object.keys(row.notMeaningful).length > 0
+            || Object.values(row.reportedMultiples).some((value) => value != null && value <= 0)) ? [PRICE_EARNINGS_NOTICE] : [],
+          ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
+        ],
         multipleBasis: "Comparable P/E fields require a positive finite multiple over positive EPS; notMeaningful says why one is null, and reportedMultiples preserves the finite provider values.",
         marketCapBasis: "Market caps retain their own currency and source. Fundamentals retrieval time is not a valuation date; quote timestamps do not date fallback caps.",
       },

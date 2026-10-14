@@ -40,18 +40,29 @@ export function enterpriseValueCheck(
   return fundamentals?.enterpriseValue === check.source ? check : undefined;
 }
 
+/**
+ * Whether the provider's EV was withdrawn: retracted (`unavailableFields`) and none served in its place, by the
+ * served check or by Gloom Cloud's own validation of the source observation, which leaves no check.
+ */
+export function enterpriseValueWithdrawn(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): boolean {
+  return fundamentals?.enterpriseValue === undefined && !!fundamentals?.unavailableFields?.includes("enterpriseValue");
+}
+
 /** "(provider)" beside an EV more than 5% from market cap + debt - cash, or "unavailable" for a withdrawn one. */
 export function enterpriseValueLabel(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): "provider" | "unavailable" | undefined {
   const status = enterpriseValueCheck(fundamentals)?.status;
-  return status === "differs" ? "provider" : status === "withdrawn" ? "unavailable" : undefined;
+  return status === "differs" ? "provider" : status === "withdrawn" || enterpriseValueWithdrawn(fundamentals) ? "unavailable" : undefined;
 }
 
 /**
  * The reconciliation line under a labelled or withdrawn EV: "EV 61.75B USD (provider) vs 63.75B computed from market
- * cap + total debt - cash (balance sheet 2026-06-30)." Undefined when the EV matches, is unchecked, or has no check.
+ * cap + total debt - cash (balance sheet 2026-06-30)." For an EV withdrawn without a check, that the source failed
+ * validation. Undefined when the EV matches, is unchecked, or has no check. Read it from the fundamentals the rows
+ * show (atRegularSessionPrice moves the check with the EV and the market cap), so its figures are theirs.
  */
 export function enterpriseValueReconciliationNote(fundamentals: Parameters<typeof enterpriseValueCheck>[0]): string | undefined {
   const check = enterpriseValueCheck(fundamentals);
+  if (!check && enterpriseValueWithdrawn(fundamentals)) return "EV unavailable: the provider's figure failed validation.";
   if (!check || !finiteNumber(check.computed) || (check.status !== "differs" && check.status !== "withdrawn")) return undefined;
   const source = `${formatCompact(check.source)} ${check.currency}`;
   const computed = formatCompact(check.computed);

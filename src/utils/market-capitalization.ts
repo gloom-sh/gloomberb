@@ -1,4 +1,5 @@
 import type { Fundamentals, Quote } from "../types/financials";
+import { formatCompact, formatNumber } from "./format";
 
 export interface MarketCapitalization {
   value: number;
@@ -63,4 +64,25 @@ export function convertMarketCapitalization(
  */
 export function listedMarketCapitalization(value: number | null): number | null {
   return value != null && Number.isFinite(value) && value > 0 ? value : null;
+}
+
+/** How far a market cap may sit from the share count times the price and still rest on that count. */
+const SHARE_COUNT_TOLERANCE = 0.02;
+
+/**
+ * Where a market cap does not rest on the share count shown beside it (one class's count beside an all-class cap):
+ * "Market cap 137.20B USD is the provider's and does not rest on the 799.93M shares shown (x 110.11 USD = 88.08B)."
+ * Undefined when they tie, or without a count and a price in the cap's currency to test.
+ */
+export function marketCapShareBasisNote(
+  capitalization: Pick<MarketCapitalization, "value" | "currency"> | null,
+  shares: number | undefined,
+  price: number | null | undefined,
+  priceCurrency: string | undefined,
+): string | undefined {
+  if (!capitalization || !(capitalization.value > 0) || capitalization.currency !== priceCurrency) return undefined;
+  if (shares == null || !Number.isFinite(shares) || !(shares > 0) || price == null || !Number.isFinite(price) || !(price > 0)) return undefined;
+  const product = shares * price;
+  if (Math.abs(capitalization.value / product - 1) <= SHARE_COUNT_TOLERANCE) return undefined;
+  return `Market cap ${formatCompact(capitalization.value)} ${capitalization.currency} is the provider's and does not rest on the ${formatCompact(shares)} shares shown (x ${formatNumber(price, price < 1 ? 4 : 2)} ${priceCurrency} = ${formatCompact(product)}).`;
 }

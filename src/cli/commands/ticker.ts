@@ -3,7 +3,7 @@ import { formatReportedMoney } from "../../utils/reported-money";
 import { convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
-import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../utils/market-capitalization";
+import { describeFundamentalMarketCap, marketCapShareBasisNote, selectMarketCapitalization } from "../../utils/market-capitalization";
 import {
   formatCompact,
   formatCurrency,
@@ -34,7 +34,7 @@ import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFutur
 import type { AppConfig } from "../../types/config";
 import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
-import { atRegularSessionPrice } from "../../market-data/quotes/regular-session-valuation";
+import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, isCryptoVenuePerpetual, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import type { SecFilingItem } from "../../types/data-provider";
@@ -440,26 +440,33 @@ function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, str
 const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)", "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)"]);
 
 /**
- * The notes under shown fundamentals: how a labelled or withdrawn EV compares with market cap + debt - cash, what a
- * converted TTM block was converted from, an EPS in another currency than the amounts beside it, and what a P/E on
- * such an EPS divides.
+ * The notes under shown fundamentals: a market cap that does not rest on the share count shown, how a labelled or
+ * withdrawn EV compares with market cap + debt - cash, what a converted TTM block was converted from, an EPS in
+ * another currency than the amounts beside it, and what a P/E on such an EPS divides. `priced` is the snapshot at
+ * the regular session price (atRegularSessionPrice), the figures the lines show, so each note reads those.
  */
 function fundamentalsNotes(
-  fundamentals: TickerFinancials["fundamentals"],
+  priced: Pick<TickerFinancials, "quote" | "fundamentals">,
   metrics: readonly FundamentalsMetric[],
   quoteCurrency: string | undefined,
 ): string[] {
+  const fundamentals = priced.fundamentals;
   const shown = (label: string) => metrics.some((metric) => metric.label === label && metric.text !== "—");
+  const shareBasis = shown("Market Cap") && shown("Shares Outstanding")
+    ? marketCapShareBasisNote(selectMarketCapitalization(priced.quote, fundamentals), fundamentals?.sharesOutstanding,
+      regularSessionValuationPrice(priced.quote), priced.quote?.currency)
+    : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
   const eps = shown("EPS (TTM)") ? epsConversionNote(fundamentals) : undefined;
   const priceEarnings = metrics.some((metric) => metric.label === "P/E (TTM)" && typeof metric.value === "number")
     ? convertedPriceEarningsNote(fundamentals, quoteCurrency)
     : undefined;
   const enterpriseValue = shown("Enterprise Value") ? enterpriseValueReconciliationNote(fundamentals) : undefined;
-  return [enterpriseValue, conversion, eps, priceEarnings].filter((note): note is string => !!note);
+  return [shareBasis, enterpriseValue, conversion, eps, priceEarnings].filter((note): note is string => !!note);
 }
 
-const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
+// The share count is the market cap's basis: the cap is the count times the price, or a note says why not.
+const VALUATION_METRICS = new Set(["Market Cap", "Shares Outstanding", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
 
 type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string; declaredDividends?: ForwardYieldDeclarations | null };
 
@@ -534,7 +541,10 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials),
     undefined, snapshot.declaredDividends ?? null);
   if (view === "fundamentals") return metrics.filter((metric) => metric.text !== "—");
-  const valuation = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield")) && text !== "—");
+  const valued = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield")) && text !== "—");
+  // The share count follows the market cap it is the basis of.
+  const shares = valued.filter((metric) => metric.label === "Shares Outstanding");
+  const valuation = valued.flatMap((metric) => metric.label === "Shares Outstanding" ? [] : metric.label === "Market Cap" ? [metric, ...shares] : [metric]);
   // A listing with no valuation (a fund) says so rather than printing its price alone.
   return valuation.length === 0 ? [] : [...valuationPriceMetrics(financials).filter((metric) => metric.text !== "—"), ...valuation];
 }
@@ -562,7 +572,7 @@ export function renderFundamentalsReport(
   const fund = fundFactsNote(symbol, financials.exchange || quote?.exchangeName, financials);
   if (lines.length === before) lines.push("", cliStyles.muted([`No ${view} reported for ${financials.symbol}.`, fund].filter(Boolean).join(" ")));
   else if (fund) lines.push(cliStyles.muted(fund));
-  for (const note of fundamentalsNotes(financials.fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   if (view === "fundamentals") appendTextSection(lines, "Description", profile?.description);
   return lines.join("\n");
 }
@@ -602,7 +612,7 @@ export function fundamentalsReportTables(
       notes: [
         ...metrics.length === 0
           ? [`No ${view} reported for ${financials.symbol}.`]
-          : fundamentalsNotes(financials.fundamentals, metrics, financials.quote?.currency),
+          : fundamentalsNotes(atRegularSessionPrice(financials), metrics, financials.quote?.currency),
         ...fund ? [fund] : [],
       ],
     }),
@@ -769,7 +779,7 @@ export async function buildTickerReport({
     { text: enterpriseValueText }, declared);
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
-  for (const note of fundamentalsNotes(fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   // Where a fund's facts would go: under its fundamentals, or in their place.
   const fund = fundFactsNote(quote?.symbol ?? symbol,
     quote?.tradingExchangeName || listingExchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange, financials, tickerFile);

@@ -28,6 +28,7 @@ import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import { enterpriseValueReconciliationNote } from "../../../utils/fundamentals";
+import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
 import {
@@ -144,10 +145,9 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     panelId: "price",
     timeBasis: chartTimeZone ? { kind: "market", timeZone: chartTimeZone } : undefined,
   });
-  // A provider EV off market cap + debt - cash, or why a withdrawn one is unavailable.
-  const enterpriseValueNote = enterpriseValueReconciliationNote(fundamentals)
-    ?? (fundamentals?.unavailableFields?.includes("enterpriseValue")
-      ? t("Enterprise value unavailable: the source observation failed validation.") : undefined);
+  // A provider EV off market cap + debt - cash, or why a withdrawn one is unavailable, at the
+  // regular session price the EV beside it is shown at.
+  const enterpriseValueNote = enterpriseValueReconciliationNote(atRegularSessionPrice({ quote, fundamentals }).fundamentals);
   usePaneNoticeFooter({
     registrationId: "overview-notices",
     notices: [

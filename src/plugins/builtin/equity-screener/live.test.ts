@@ -12,7 +12,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
 import { setCliColorEnabledOverride } from "../../../utils/cli-output";
 import { equityScreenerHeadless } from "./headless";
-import { overlayLiveScreenRows, screenExtendedSessions } from "./live";
+import { overlayLiveScreenRows, screenExtendedSessions, sortLiveScreenRows } from "./live";
 import { screenFixture } from "./test-fixture";
 
 afterEach(() => setCliColorEnabledOverride(null));
@@ -155,4 +155,18 @@ test("the EQS pane, its report and `quote` agree on Last and Chg% in every sessi
       expect(text).toContain({ PRE: "Pre-Market", POST: "After Hours", OVERNIGHT: "Overnight" }[extended!.session]);
     }
   }
+});
+
+test("a sort on a figure the quotes move is redone on the figures shown; other sorts keep the snapshot's order", () => {
+  // GLO-754: GRAB was ranked at a cap two closes old (13.05B) and shown at its close (12.19B), above MANH's 12.98B.
+  const row = (symbol: string, cap: number | null, volume: number) => {
+    const base = snapshotRow();
+    return { ...base, symbol, metrics: { ...base.metrics,
+      marketCap: { ...base.metrics.marketCap, value: cap }, volume: { ...base.metrics.volume, value: volume } } };
+  };
+  const shown = [row("GRAB", 12.19e9, 3), row("NONE", null, 1), row("MANH", 12.98e9, 2), row("DUOL", 6.55e9, 4)];
+  const order = (sort: Parameters<typeof sortLiveScreenRows>[1]) => sortLiveScreenRows(shown, sort).map((item) => item.symbol);
+  expect(order({ field: "marketCap", direction: "desc" })).toEqual(["MANH", "GRAB", "DUOL", "NONE"]);
+  expect(order({ field: "marketCap", direction: "asc" })).toEqual(["DUOL", "GRAB", "MANH", "NONE"]);
+  expect(order({ field: "trailingPE", direction: "desc" })).toEqual(["GRAB", "NONE", "MANH", "DUOL"]);
 });

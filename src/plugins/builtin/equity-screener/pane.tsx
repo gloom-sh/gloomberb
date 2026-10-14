@@ -48,6 +48,7 @@ import { EXTENDED_SESSION_LABELS, extendedSessionStateLabel, type ExtendedSessio
 import { useOpenDescription } from "../shared/open-description";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { INITIAL_STREAM_RANGE, streamWindowRows } from "../shared/use-quote-board";
+import { useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { SignInWall } from "../cloud/auth-actions";
 import { CriterionEditor } from "./criterion-editor";
@@ -71,12 +72,14 @@ import {
   screenRowId,
 } from "./model";
 import { useScreenResults } from "./results";
-import { overlayLiveScreenRows, screenExtendedMove, screenExtendedSessions, type LiveScreenRow } from "./live";
+import { overlayLiveScreenRows, screenExtendedMove, screenExtendedSessions, sortLiveScreenRows, type LiveScreenRow } from "./live";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import { buildScreenerQuoteTargets } from "../../../market-data/quotes/screener-live-quotes";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { getTableWidth } from "../../../components/ui/table-layout";
 
+/** How often a live sort re-reads the figures it orders by. */
+const LIVE_ORDER_SAMPLE_MS = 5_000;
 const TABS = [
   { value: "results", label: "Results" },
   { value: "criteria", label: "Criteria" },
@@ -290,7 +293,23 @@ function EquityScreenView({
     freshnessScopeKey: `equity-screener:${JSON.stringify(definition)}`,
     liveStreaming,
   });
-  const rows = useMemo(() => overlayLiveScreenRows(snapshotRows, liveEntries), [liveEntries, snapshotRows]);
+  const liveRows = useMemo(() => overlayLiveScreenRows(snapshotRows, liveEntries), [liveEntries, snapshotRows]);
+  // A sort on a field the quotes move is redone on the figures shown, so the
+  // column reads monotone. Re-sorting on every tick would reshuffle rows under
+  // the cursor; the order is taken from values sampled every few seconds,
+  // and at once when the screen or its pages change.
+  const orderRows = useSampledValue(
+    liveRows,
+    LIVE_ORDER_SAMPLE_MS,
+    `${data?.snapshot?.id ?? ""}:${JSON.stringify(definition.sort)}:${snapshotRows.length}`,
+  );
+  const rows = useMemo(() => {
+    const order = new Map(sortLiveScreenRows(orderRows, definition.sort).map((row, index) => [screenRowId(row), index]));
+    return liveRows
+      .map((row, index) => ({ row, index, place: order.get(screenRowId(row)) ?? Number.POSITIVE_INFINITY }))
+      .sort((a, b) => a.place - b.place || a.index - b.index)
+      .map(({ row }) => row);
+  }, [definition.sort, liveRows, orderRows]);
   const opened = rows.find((row) => screenRowId(row) === openId);
   const selected =
     opened ?? rows.find((row) => screenRowId(row) === selectedId) ?? rows[0];

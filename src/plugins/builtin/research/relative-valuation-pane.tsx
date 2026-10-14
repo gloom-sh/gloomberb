@@ -209,8 +209,11 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
 
   usePaneNoticeFooter({
     registrationId: "relative-valuation-notices",
-    notices: rows.filter((row) => row.fundamentalsProvenance?.stale)
-      .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
+    notices: [
+      ...rows.filter((row) => row.fundamentalsProvenance?.stale)
+        .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
+      ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
+    ],
     focused,
   });
 
@@ -237,7 +240,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "forwardPE":
         return { text: formatPriceEarnings(row.notMeaningful.forwardPE ? NOT_MEANINGFUL : row.reportedMultiples.forwardPE), color: colors.text };
       case "evSales":
-        return { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
+        // A withdrawn EV says so; the footer says why.
+        return row.evSales == null && row.evSalesUnavailable
+          ? { text: "EV n/a", color: colors.textDim }
+          : { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
       case "fcfYield":
         return { text: formatLevelPercent(row.fcfYield ?? undefined), color: priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth":

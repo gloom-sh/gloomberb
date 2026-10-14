@@ -1,4 +1,4 @@
-import type { ScreenMetric, ScreenRow } from "../../../api-client/equity-screener";
+import type { ScreenDefinition, ScreenMetric, ScreenRow } from "../../../api-client/equity-screener";
 import { getExtendedSessionDisplay, type ExtendedSession, type ExtendedSessionDisplay } from "../../../market-data/market/status";
 import { quoteTradingDay } from "../../../market-data/quotes/day-range";
 import { getRegularSessionQuoteDisplay } from "../../../market-data/quotes/screener-live-quotes";
@@ -110,6 +110,32 @@ export function overlayLiveScreenRows(
 /** Rows with quotes keyed by screenRowQuoteKey laid over them, for a report. */
 export function overlayScreenQuotes(rows: readonly ScreenRow[], quotes: ReadonlyMap<string, Quote>): LiveScreenRow[] {
   return overlayRows(rows, (key) => quotes.get(key));
+}
+
+/** The fields a quote moves on a row (overlayLiveScreenRow). */
+const LIVE_SORT_FIELDS: ReadonlySet<string> = new Set(["price", "changePercent", "volume", "marketCap"]);
+
+/**
+ * Rows in the screen's order by the figures they show. A sort on a field the
+ * quotes move (price, change, volume, market cap) is redone on the overlaid
+ * values, so the column reads monotone: GRAB's snapshot cap, two closes old,
+ * kept it above MANH after its quote moved it below (GLO-754). Rows without a
+ * value stay last, and ties keep the snapshot's order. Any other sort is the
+ * snapshot's, which the overlay does not touch.
+ */
+export function sortLiveScreenRows<T extends ScreenRow>(rows: readonly T[], sort: ScreenDefinition["sort"]): T[] {
+  if (!LIVE_SORT_FIELDS.has(sort.field)) return [...rows];
+  const field = sort.field as "price" | "changePercent" | "volume" | "marketCap";
+  const sign = sort.direction === "desc" ? -1 : 1;
+  return rows
+    .map((row, index) => ({ row, index, value: row.metrics[field]?.value }))
+    .sort((a, b) => {
+      const aKnown = isFiniteNumber(a.value), bKnown = isFiniteNumber(b.value);
+      if (aKnown !== bKnown) return aKnown ? -1 : 1;
+      if (aKnown && bKnown && a.value !== b.value) return sign * (a.value! - b.value!);
+      return a.index - b.index;
+    })
+    .map(({ row }) => row);
 }
 
 /** The extended sessions some row has a print for, in the order their columns go. */
