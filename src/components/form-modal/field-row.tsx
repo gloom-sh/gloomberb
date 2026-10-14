@@ -112,9 +112,11 @@ function FormTextarea({
       borderColor={focused ? colors.borderFocused : colors.border}
       backgroundColor={colors.panel}
       {...(desktop ? {
+        // The field look (docs/pane-conventions.md, "Design system").
         style: {
-          border: `1px solid ${focused ? colors.borderFocused : colors.border}`,
+          border: `1px solid ${focused ? "var(--gloom-accent)" : "var(--gloom-control-border)"}`,
           borderRadius: "var(--gloom-radius-md)",
+          backgroundColor: "var(--gloom-surface-sunken)",
           overflow: "hidden",
         },
       } : {})}
@@ -289,7 +291,7 @@ export function FormFieldRow({
           onFocus();
           if (!pending) onOpen();
         }}
-        {...(desktop ? { style: { border: `1px solid ${active ? colors.borderFocused : colors.border}`, borderRadius: "var(--gloom-radius-md)", padding: "0 7px" } } : {})}
+        {...(desktop ? { style: { border: `1px solid ${active ? "var(--gloom-accent)" : "var(--gloom-control-border)"}`, borderRadius: "var(--gloom-radius-md)", backgroundColor: "var(--gloom-surface-sunken)", padding: "0 var(--gloom-space-sm)" } } : {})}
       >
         <Text fg={active ? colors.text : colors.textDim}>{t(summarizeWorkflowFieldValue(field, value))}</Text>
       </Box>

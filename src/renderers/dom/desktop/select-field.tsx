@@ -54,7 +54,9 @@ export function WebSelectField({
   setSelectRef.current = selectRef;
 
   const resolvedWidth = width ?? (inline ? "auto" : 184);
-  const resolvedHeight = height ?? (inline ? WEB_CELL_HEIGHT : 28);
+  // A field is one row inside its border, as a text field is; inline it is the row.
+  const row = WEB_CELL_HEIGHT;
+  const resolvedHeight = height ?? (inline ? row : row + 2);
   const style: CSSProperties = {
     width: resolvedWidth,
     height: resolvedHeight,

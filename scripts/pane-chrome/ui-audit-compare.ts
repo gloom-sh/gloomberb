@@ -12,7 +12,10 @@ import { FITTED, colourName, variantShape } from "./ui-audit-report";
  *   bun scripts/pane-chrome/ui-audit-compare.ts --before <run> --after <run> [--out <dir>] [--sheets]
  *
  * Writes compare.md and compare.json: per family the variants (shapes, less
- * the colour of their rules, which is a state's or a theme's) before and after, and the font sizes, weights, radii, shadows, rule colours and
+ * the colour of their rules, which is a state's or a theme's) before and after,
+ * and its looks: the same shapes less what their content or state decides (an
+ * icon's width, a weight that marks the active tab or a footer's key), so two
+ * key caps that differ by a glyph's width count once, and the font sizes, weights, radii, shadows, rule colours and
  * pane insets in use. `--sheets` also compares every view's picture in both
  * runs (`shots/<theme>/<width>/`, and `<browser>-shots/` beside them) pixel
  * by pixel, and lays out a sheet per family of the views that changed, before
@@ -26,9 +29,24 @@ async function readResults(dir: string): Promise<ResultLine[]> {
   return text.split("\n").filter(Boolean).map((line) => JSON.parse(line) as ResultLine);
 }
 
+/** Families whose weight says which one is active or what the content is, not a variant. */
+const WEIGHT_IS_STATE = new Set(["tab", "toggle", "keycap", "pane-footer", "table-header-cell", "legend", "axis", "pane-hint"]);
+
+/** A shape less what its content or state decides. */
+function look(family: string, shape: string): string {
+  // The audit cuts a long shadow short, so two of the same can read differently past their first offsets.
+  let out = shape
+    .replace(/\bw=\d+\b/, "w=icon")
+    .replace(/ icon\b/, "")
+    .replace(/shadow=(.{0,14}).*? (?=(?:outline|font)=)/, "shadow=$1 ");
+  if (WEIGHT_IS_STATE.has(family)) out = out.replace(/font=(\d+(?:\.\d+)?)\/\d+/, "font=$1");
+  return out.replace(/\s+/g, " ").trim();
+}
+
 interface Summary {
   views: Set<string>;
   families: Map<string, Map<string, Set<string>>>;
+  looks: Map<string, Map<string, Set<string>>>;
   sizes: Map<number, Set<string>>;
   weights: Map<number, Set<string>>;
   radii: Map<string, Set<string>>;
@@ -44,7 +62,7 @@ function add<K>(map: Map<K, Set<string>>, key: K, view: string): void {
 }
 
 function summarize(results: ResultLine[]): Summary {
-  const summary: Summary = { views: new Set(), families: new Map(), sizes: new Map(), weights: new Map(), radii: new Map(), shadows: new Map(), rules: new Map(), insets: new Map() };
+  const summary: Summary = { views: new Set(), families: new Map(), looks: new Map(), sizes: new Map(), weights: new Map(), radii: new Map(), shadows: new Map(), rules: new Map(), insets: new Map() };
   const palette = results.find((result) => Object.keys(result.measure.palette ?? {}).length)?.measure.palette ?? {};
   for (const result of results) {
     const view = result.id;
@@ -59,7 +77,11 @@ function summarize(results: ResultLine[]): Summary {
       const byShape = summary.families.get(element.family) ?? new Map<string, Set<string>>();
       summary.families.set(element.family, byShape);
       // A rule's colour is a state (focused or not) or a theme's, not a shape: both runs drop it.
-      add(byShape, variantShape(element).replace(/color\([^)]*\)|rgba?\([^)]*\)/g, "c"), view);
+      const shape = variantShape(element).replace(/color\([^)]*\)|rgba?\([^)]*\)/g, "c");
+      add(byShape, shape, view);
+      const byLook = summary.looks.get(element.family) ?? new Map<string, Set<string>>();
+      summary.looks.set(element.family, byLook);
+      add(byLook, look(element.family, shape), view);
       const radius = /radius=([\d. ]+?)(?= (?:shadow|outline|font|icon|fill)|$)/.exec(element.shape)?.[1]?.trim();
       if (radius !== undefined) add(summary.radii, radius, view);
       const shadow = /shadow=(.+?) (?:outline=|font=)/.exec(element.shape)?.[1];
@@ -112,7 +134,15 @@ async function main(): Promise<void> {
     const shapesAfter = after.families.get(family) ?? new Map<string, Set<string>>();
     const lead = [...shapesAfter].sort((a, b) => b[1].size - a[1].size)[0];
     const off = new Set([...shapesAfter].filter(([shape]) => shape !== lead?.[0]).flatMap(([, views]) => [...views].map((view) => view.split("--")[0]!)));
-    return { family, before: shapeCount(before, family), after: shapesAfter.size, offLead: [...off].sort() };
+    return {
+      family,
+      before: shapeCount(before, family),
+      after: shapesAfter.size,
+      looksBefore: before.looks.get(family)?.size ?? 0,
+      looksAfter: after.looks.get(family)?.size ?? 0,
+      looksAfterList: [...(after.looks.get(family) ?? new Map<string, Set<string>>())].sort((a, b) => b[1].size - a[1].size).map(([shape, views]) => ({ shape, functions: [...new Set([...views].map((view) => view.split("--")[0]!))].sort() })),
+      offLead: [...off].sort(),
+    };
   });
   const scalar = (name: string, b: Map<unknown, Set<string>>, a: Map<unknown, Set<string>>) => ({ name, before: b.size, after: a.size, beforeValues: top(b as Map<string, Set<string>>), afterValues: top(a as Map<string, Set<string>>) });
   const measures = [
@@ -128,9 +158,18 @@ async function main(): Promise<void> {
     ``,
     `${before.views.size} views before, ${after.views.size} after.`,
     ``,
-    `| Family | Variants before | Variants after | Functions off the main variant after |`,
-    `|---|---:|---:|---|`,
-    ...familyRows.map((row) => `| ${row.family} | ${row.before} | ${row.after} | ${row.offLead.length}${row.offLead.length ? `: ${row.offLead.slice(0, 18).join(", ")}${row.offLead.length > 18 ? ", ..." : ""}` : ""} |`),
+    `| Family | Variants before | Variants after | Looks before | Looks after | Functions off the main variant after |`,
+    `|---|---:|---:|---:|---:|---|`,
+    ...familyRows.map((row) => `| ${row.family} | ${row.before} | ${row.after} | ${row.looksBefore} | ${row.looksAfter} | ${row.offLead.length}${row.offLead.length ? `: ${row.offLead.slice(0, 18).join(", ")}${row.offLead.length > 18 ? ", ..." : ""}` : ""} |`),
+    ``,
+    `## Looks after, per family`,
+    ``,
+    ...familyRows.flatMap((row) => [
+      `### ${row.family}`,
+      ``,
+      ...row.looksAfterList.map((entry) => `- \`${entry.shape}\`: ${entry.functions.length} (${entry.functions.slice(0, 14).join(", ")}${entry.functions.length > 14 ? ", ..." : ""})`),
+      ``,
+    ]),
     ``,
     `| Measure | Before | After | Before: values (views) | After: values (views) |`,
     `|---|---:|---:|---|---|`,

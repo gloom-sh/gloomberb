@@ -887,14 +887,15 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 }
 .gloom-qb-chip[data-narrowing="true"] .gloom-qb-label { color: color-mix(in srgb, var(--gloom-border-focused) 80%, var(--gloom-text)); }
 .gloom-qb-chip[data-narrowing="true"] .gloom-qb-value { color: var(--gloom-text-bright); font-weight: var(--gloom-weight-bold); }
+/* A chip's reset is the icon button (20 by 18, the hover fill), at the chip's end. */
 .gloom-qb-reset {
-  width: 14px;
-  height: 14px;
-  margin-right: calc(-1 * var(--gloom-space-xs));
+  width: 20px;
+  height: 18px;
+  margin-right: calc(-1 * var(--gloom-space-sm));
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--gloom-radius-sm);
+  border-radius: var(--gloom-radius-md);
   color: var(--gloom-text-muted);
   cursor: pointer;
 }

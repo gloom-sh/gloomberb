@@ -182,6 +182,9 @@ export function WebTabs({
         gap: 0,
         width: "100%",
         height: listHeight,
+        // A body strip's first label sits on the pane's inset: dense tabs pad
+        // half as much, so the strip makes up the rest.
+        paddingInlineStart: !header && (dense || compact) ? "var(--gloom-space-xs)" : undefined,
         minInlineSize: 0,
         flexShrink: header ? 1 : 0,
         overflowX: "auto",
