@@ -12,7 +12,7 @@ import { ChatMessageActions, ChatMessageHeader, chatHeaderFitsEveryIcon } from "
 import { MESSAGE_ACTION_WIDTH } from "../layout";
 import { canReactToMessage } from "../reactions";
 import { DesktopChatReactions, DesktopReactionAction } from "./reactions";
-import { ResponsiveTickerBadgeText } from "./inline-tokens";
+import { DesktopChatMessageText } from "./inline-tokens";
 import { DesktopChatPaneChip } from "./pane-chip";
 import { chatMessagePaneLinks } from "../pane-links/model";
 import { useSlowPendingSend } from "./pending-send";
@@ -192,10 +192,11 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
           style={{ minWidth: 0, alignItems: "flex-start" }}
         >
           <Box flexGrow={1} data-gloom-role="chat-message-body" data-gloom-selectable="true" style={{ minWidth: 0 }}>
-            <ResponsiveTickerBadgeText
+            <DesktopChatMessageText
               text={content}
               catalog={catalog}
               textColor={state.bodyColor}
+              mutedColor={state.bodyMutedColor}
               openTicker={openTicker}
               userByUsername={userByUsername}
               onUserHover={onUserHover}

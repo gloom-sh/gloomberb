@@ -226,7 +226,12 @@ export function Divider({ width, height, orientation = "horizontal" }: DividerPr
       flexShrink={0}
       border={vertical ? ["left"] : ["top"]}
       borderColor={colors.border}
-      style={{ border: 0, [vertical ? "borderLeft" : "borderTop"]: `1px solid ${colors.border}` }}
+      style={{
+        border: 0,
+        [vertical ? "borderLeft" : "borderTop"]: `1px solid ${colors.border}`,
+        // A vertical rule given no height runs the height of the row it stands in.
+        ...(vertical && height === undefined ? { height: "auto", alignSelf: "stretch" } : {}),
+      }}
       role="separator"
       data-gloom-ui="divider"
     />

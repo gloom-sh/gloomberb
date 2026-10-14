@@ -278,6 +278,11 @@ export function useChatFooter({
     if (replyToId) {
       menu.push({ id: "original-message", label: "Go to Original Message", onSelect: () => latest.current.jumpToMessage(replyToId) });
     }
+    // The message as its author wrote it, markdown and all; a selection copies what the row draws.
+    const messageText = composing ? "" : selectedMessage?.content ?? "";
+    if (messageText) {
+      menu.push({ id: "copy-message", label: "Copy Message Text", onSelect: () => { void rendererHost.copyText(messageText); } });
+    }
     if (needsProfileSetup) {
       menu.push({ id: "profile-setup", label: "Set Up Profile", onSelect: () => latest.current.openProfileSetup() });
     }
@@ -302,6 +307,7 @@ export function useChatFooter({
     notificationsEnabled,
     openTargetTitle,
     openTargets.length,
+    rendererHost,
     replyToId,
     selectedIdx,
     selectedMessage,

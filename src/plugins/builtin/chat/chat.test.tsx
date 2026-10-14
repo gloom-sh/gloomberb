@@ -16,6 +16,7 @@ import { chatHighlightBg } from "./message/render-state";
 import { chatBotNameColor } from "./people";
 import { ICON_GLYPHS } from "../../../components/ui/icon";
 import { ChatStatusWidget } from "./status-widget";
+import { estimateMessageHeight } from "./layout";
 import {
   createChatTestHarness,
   createController,
@@ -1282,6 +1283,49 @@ describe("ChatContent", () => {
     expect(frame).toContain("https://github.com/houmain/keymapper/issues?weird_one=");
     expect(frame).toContain("the_rest_of the query parameters got lost entirely :)");
     expect(frame).not.toContain("therquery=parametersfgot");
+  });
+
+  test("draws markdown in the rows the list measures: marks gone, a list item hung, a quote barred on each row, a reply quoting it plainly", async () => {
+    const message: ChatMessage = {
+      id: "m1",
+      channelId: "everyone",
+      content: [
+        "**No price yet:** it hasn't traded, `search CLAU`",
+        "- a list item long enough to wrap onto a second row",
+        "> a quote long enough to wrap onto a second row too",
+      ].join("\n"),
+      replyToId: null,
+      createdAt: "2026-03-28T00:00:00.000Z",
+      user: { id: "u1", username: "ada", displayName: "Ada" },
+    };
+    const controller = createController({
+      messages: [message, {
+        id: "m2",
+        channelId: "everyone",
+        content: "thanks",
+        replyToId: "m1",
+        replyTo: { content: message.content, user: { id: "u1", username: "ada" } },
+        createdAt: "2026-03-28T00:10:00.000Z",
+        user: { id: "u2", username: "quill", displayName: "Quill" },
+      }],
+    });
+
+    await mountChat(controller, { width: 40, height: 14 });
+
+    const lines = tui.frame().split("\n").map((line) => line.trimEnd());
+    const header = lines.findIndex((line) => line.startsWith(" ada "));
+    const reply = lines.findIndex((line) => line.includes("reply ada:"));
+    expect(lines.slice(header + 1, reply)).toEqual([
+      "   No price yet: it hasn't traded,",
+      "   search CLAU",
+      "   \u2022 a list item long enough to wrap",
+      "     onto a second row",
+      "   \u2502 a quote long enough to wrap",
+      "   \u2502 onto a second row too",
+    ]);
+    expect(lines[reply]).toBe("  reply ada: No price yet: it has...");
+    // The list is scrolled by these heights, so they must be the rows drawn.
+    expect(estimateMessageHeight(message, 38)).toBe(reply - header);
   });
 
   test("draws a row per image in the terminal, with no blank text row for an image-only message", async () => {

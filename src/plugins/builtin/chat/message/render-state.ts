@@ -44,6 +44,8 @@ export interface ChatMessageRenderState {
   authorColor: string;
   authorAttributes: number;
   bodyColor: string;
+  /** Code, list markers and a quote's bar in the body. */
+  bodyMutedColor: string;
 }
 
 export function getChatMessageRenderState({
@@ -117,5 +119,6 @@ export function getChatMessageRenderState({
     authorColor: isSelected ? selectedTextColor : hasFailed ? colors.negative : chatAuthorNameColor(msg.user),
     authorAttributes: (isSending ? TextAttributes.DIM : 0) | TextAttributes.BOLD,
     bodyColor: isSelected ? selectedTextColor : hasFailed ? colors.negative : isSending ? colors.textDim : colors.text,
+    bodyMutedColor: isSelected ? selectedTextColor : hasFailed ? colors.negative : colors.textDim,
   };
 }

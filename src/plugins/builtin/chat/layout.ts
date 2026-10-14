@@ -1,7 +1,7 @@
 import type { ScrollBoxRenderable } from "../../../ui";
 import type { ChatMessage } from "../../../api-client";
 import { splitLongTextSegmentByDisplayWidth, truncateWithEllipsis } from "../../../utils/text-wrap";
-import { tokenizeInlineContent, type InlineContentToken } from "../../../utils/inline-content-tokenizer";
+import { parseMarkdownLines } from "../../../utils/markdown";
 import { displayWidth } from "../../../utils/format";
 import {
   getTickerBadgeText,
@@ -12,6 +12,7 @@ import type { InlineTickerCatalogEntry } from "../../../state/hooks/inline-ticke
 import { STICKY_BOTTOM_THRESHOLD_PX } from "../../../ui/sticky-scroll";
 import { terminalReactionRows } from "./reactions";
 import { chatMessagePaneLinks } from "./pane-links/model";
+import { chatInlineTokens, type ChatInlineToken, type ChatTextStyle } from "./markdown";
 
 const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
 const MESSAGE_SELECTION_BOTTOM_INSET = 1;
@@ -38,9 +39,8 @@ export function formatInlinePreview(text: string, width: number) {
   return truncateWithEllipsis(normalizeInlinePreview(text), width);
 }
 
-type ChatBodyInlineToken = InlineContentToken;
-
-export type ChatBodyLine = ChatBodyInlineToken[];
+/** One row of a message in the terminal: its tokens, already wrapped to the body's width. */
+export type ChatBodyLine = ChatInlineToken[];
 
 function wrapTextLines(text: string, width: number) {
   const safeWidth = Math.max(width, 1);
@@ -97,7 +97,7 @@ export function chatBadgeTextWidth(symbol: string, entry: InlineTickerCatalogEnt
 }
 
 function inlineTokenWidth(
-  token: InlineContentToken,
+  token: ChatInlineToken,
   catalog: Record<string, InlineTickerCatalogEntry>,
 ): number {
   if (token.kind !== "ticker") return displayWidth(token.value);
@@ -110,11 +110,8 @@ function inlineTokenWidth(
   return chatBadgeTextWidth(token.symbol, entry) + TICKER_BADGE_CHROME_WIDTH;
 }
 
-function tokenWithValue(token: InlineContentToken, value: string): InlineContentToken {
-  if (token.kind === "link") return { ...token, value };
-  if (token.kind === "username") return { ...token, value };
-  if (token.kind === "ticker") return { ...token, value };
-  return { kind: "text", value };
+function tokenWithValue(token: ChatInlineToken, value: string): ChatInlineToken {
+  return { ...token, value };
 }
 
 function firstDisplayWidthChunk(value: string, width: number): string {
@@ -136,8 +133,27 @@ function trimLineEnd(line: ChatBodyLine): ChatBodyLine {
   return next;
 }
 
-function wrapInlineContentLine(
-  text: string,
+function sameStyle(a: ChatTextStyle | undefined, b: ChatTextStyle | undefined): boolean {
+  return !!a?.bold === !!b?.bold && !!a?.italic === !!b?.italic && !!a?.strike === !!b?.strike
+    && !!a?.code === !!b?.code && !!a?.muted === !!b?.muted;
+}
+
+/** Neighbouring words of one style draw as one run. */
+function joinTextTokens(line: ChatBodyLine): ChatBodyLine {
+  const joined: ChatBodyLine = [];
+  for (const token of line) {
+    const previous = joined[joined.length - 1];
+    if (token.kind === "text" && previous?.kind === "text" && sameStyle(previous.style, token.style)) {
+      joined[joined.length - 1] = { ...previous, value: previous.value + token.value };
+    } else {
+      joined.push(token);
+    }
+  }
+  return joined;
+}
+
+function wrapInlineTokens(
+  tokens: readonly ChatInlineToken[],
   width: number,
   catalog: Record<string, InlineTickerCatalogEntry>,
 ): ChatBodyLine[] {
@@ -147,12 +163,12 @@ function wrapInlineContentLine(
   let currentWidth = 0;
 
   const finishLine = () => {
-    lines.push(trimLineEnd(current));
+    lines.push(joinTextTokens(trimLineEnd(current)));
     current = [];
     currentWidth = 0;
   };
 
-  const appendSegment = (token: InlineContentToken, rawValue: string, trimStartOnWrap: boolean) => {
+  const appendSegment = (token: ChatInlineToken, rawValue: string, trimStartOnWrap: boolean) => {
     let value = currentWidth === 0 && trimStartOnWrap ? rawValue.trimStart() : rawValue;
     if (!value) return;
 
@@ -202,53 +218,99 @@ function wrapInlineContentLine(
     }
   };
 
-  const appendTextPart = (rawPart: string) => {
+  const appendTextPart = (token: ChatInlineToken, rawPart: string) => {
     let part = rawPart;
     const partWidth = displayWidth(part);
     if (currentWidth > 0 && partWidth > safeWidth - currentWidth && partWidth <= safeWidth) {
       finishLine();
       part = part.trimStart();
     }
-    appendSegment({ kind: "text", value: part }, part, true);
+    appendSegment(token, part, true);
   };
 
-  const appendText = (value: string) => {
-    const parts = value.match(/\S+\s*|\s+/g) ?? [value];
+  const appendText = (token: ChatInlineToken) => {
+    const parts = token.value.match(/\S+\s*|\s+/g) ?? [token.value];
     for (const part of parts) {
-      appendTextPart(part);
+      appendTextPart(token, part);
     }
   };
 
-  const appendInlineToken = (token: InlineContentToken) => {
+  const appendInlineToken = (token: ChatInlineToken) => {
     const tokenWidth = inlineTokenWidth(token, catalog);
     if (currentWidth > 0 && currentWidth + tokenWidth > safeWidth) finishLine();
     appendSegment(token, token.value, false);
   };
 
-  for (const token of tokenizeInlineContent(text)) {
+  for (const token of tokens) {
     if (token.kind === "text") {
-      appendText(token.value);
+      appendText(token);
       continue;
     }
     appendInlineToken(token);
   }
 
-  if (current.length > 0 || lines.length === 0) lines.push(trimLineEnd(current));
+  if (current.length > 0 || lines.length === 0) finishLine();
   return lines;
 }
 
+const QUOTE_BAR: ChatInlineToken = { kind: "text", value: "\u2502 ", style: { muted: true } };
+
+/** Each wrapped row starts with `first` or, after the first, `rest`: a list item's marker and the hang under it, a quote's bar. */
+function withPrefix(lines: ChatBodyLine[], first: ChatInlineToken, rest: ChatInlineToken): ChatBodyLine[] {
+  return lines.map((line, index) => [index === 0 ? first : rest, ...line]);
+}
+
+/** A line of a code block, as written, broken where the row ends. */
+function codeRows(text: string, width: number): ChatBodyLine[] {
+  const value = text.replace(/\t/g, "  ");
+  if (!value) return [[]];
+  return splitLongTextSegmentByDisplayWidth(value, Math.max(width, 1))
+    .map((chunk): ChatBodyLine => [{ kind: "text", value: chunk, style: { code: true } }]);
+}
+
+/**
+ * A message's rows in the terminal: its markdown read line by line (a heading
+ * bold, a list item's later rows hung under its text, a quote barred on every
+ * row, a code block as written) and wrapped to `width`.
+ */
 export function getMessageBodyTokenLines(
   text: string,
   width: number,
   catalog: Record<string, InlineTickerCatalogEntry>,
 ): ChatBodyLine[] {
   const lines: ChatBodyLine[] = [];
-  for (const paragraph of text.split("\n")) {
-    if (!paragraph) {
-      lines.push([]);
-      continue;
+  for (const line of parseMarkdownLines(text)) {
+    switch (line.kind) {
+      case "blank":
+        lines.push([]);
+        break;
+      case "code":
+        lines.push(...codeRows(line.text, width));
+        break;
+      case "heading":
+        lines.push(...wrapInlineTokens(
+          chatInlineTokens(line.text).map((token) => ({ ...token, style: { ...token.style, bold: true } })),
+          width,
+          catalog,
+        ));
+        break;
+      case "quote":
+        lines.push(...withPrefix(wrapInlineTokens(chatInlineTokens(line.text), width - 2, catalog), QUOTE_BAR, QUOTE_BAR));
+        break;
+      case "list": {
+        const marker = `${" ".repeat(line.indent)}${/^\d/.test(line.marker) ? line.marker : "\u2022"} `;
+        const markerWidth = displayWidth(marker);
+        lines.push(...withPrefix(
+          wrapInlineTokens(chatInlineTokens(line.text), width - markerWidth, catalog),
+          { kind: "text", value: marker, style: { muted: true } },
+          { kind: "text", value: " ".repeat(markerWidth) },
+        ));
+        break;
+      }
+      case "text":
+        lines.push(...wrapInlineTokens(chatInlineTokens(line.text), width, catalog));
+        break;
     }
-    lines.push(...wrapInlineContentLine(paragraph, width, catalog));
   }
   return lines.length > 0 ? lines : [[]];
 }
@@ -267,9 +329,7 @@ export function estimateMessageHeight(
   // The terminal draws a row per image and one for a review note; an image-only message has no text row.
   const bodyLineCount = content.length === 0 && (imageCount > 0 || links.length > 0)
     ? 0
-    : catalog
-      ? getMessageBodyTokenLines(content, contentLineWidth, catalog).length
-      : wrapTextLines(content, contentLineWidth).length;
+    : getMessageBodyTokenLines(content, contentLineWidth, catalog ?? {}).length;
   const reviewNoteHeight = message.attachmentReview ? 1 : 0;
   const reactionRows = message.reactions?.length ? terminalReactionRows(message.reactions, contentLineWidth).length : 0;
   return headerHeight + (message.replyTo ? 1 : 0) + bodyLineCount + links.length + imageCount + reviewNoteHeight + reactionRows;
