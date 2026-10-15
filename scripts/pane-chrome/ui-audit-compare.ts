@@ -3,7 +3,7 @@ import { mkdir, readdir, rm } from "fs/promises";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
 import type { AuditMeasure } from "./ui-audit-measure";
-import { FITTED, colourName, variantShape } from "./ui-audit-report";
+import { FITTED, colourName, derivedColours, variantShape } from "./ui-audit-report";
 
 /**
  * Two UI audit runs side by side (ui-audit.ts): how far the app converged on
@@ -67,9 +67,10 @@ function add<K>(map: Map<K, Set<string>>, key: K, view: string): void {
   map.set(key, set);
 }
 
-function summarize(results: ResultLine[]): Summary {
+function summarize(results: ResultLine[], derived: Record<string, string>): Summary {
   const summary: Summary = { views: new Set(), families: new Map(), looks: new Map(), sizes: new Map(), weights: new Map(), radii: new Map(), shadows: new Map(), rules: new Map(), insets: new Map() };
-  const palette = results.find((result) => Object.keys(result.measure.palette ?? {}).length)?.measure.palette ?? {};
+  // The theme's tokens, then the colours its helpers make (a control's border), named as the report names them.
+  const palette = { ...results.find((result) => Object.keys(result.measure.palette ?? {}).length)?.measure.palette ?? {}, ...derived };
   for (const result of results) {
     const view = result.id;
     summary.views.add(view);
@@ -175,8 +176,10 @@ async function main(): Promise<void> {
   const beforeDir = resolve(takeOption(args, "--before") ?? "");
   const afterDir = resolve(takeOption(args, "--after") ?? "");
   const out = resolve(takeOption(args, "--out") ?? afterDir);
-  const before = summarize(await readResults(beforeDir));
-  const after = summarize(await readResults(afterDir));
+  // White's helper colours, from this checkout's theme code, for both runs alike.
+  const derived = await derivedColours("white").catch(() => ({}));
+  const before = summarize(await readResults(beforeDir), derived);
+  const after = summarize(await readResults(afterDir), derived);
   const families = [...new Set([...before.families.keys(), ...after.families.keys()])]
     .sort((a, b) => shapeCount(before, b) - shapeCount(before, a));
   const familyRows = families.map((family) => {

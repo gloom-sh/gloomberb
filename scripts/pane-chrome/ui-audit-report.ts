@@ -135,7 +135,7 @@ export function variantShape(element: AuditElement): string {
  * pane's title bar, a hover fill, the command bar's surfaces), so a colour
  * one of them makes is not counted as off the palette.
  */
-async function derivedColours(themeId: string): Promise<Record<string, string>> {
+export async function derivedColours(themeId: string): Promise<Record<string, string>> {
   const theme = await import("../../src/theme/colors");
   const controls = await import("../../src/renderers/dom/desktop/control-styles");
   const p = theme.getThemeColors(themeId);
