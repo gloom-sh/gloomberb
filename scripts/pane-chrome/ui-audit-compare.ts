@@ -336,7 +336,10 @@ async function main(): Promise<void> {
         } catch {
           continue;
         }
-        const label = failedViews.has(view) ? "could not compare" : changedViews.has(view) ? `moved ${(worst(view) * 100).toFixed(1)}%` : "unchanged";
+        // The pictured pair's own change, then the most it moved in any engine, theme or width.
+        const here = changes.find((entry) => entry.view === view && entry.engine === "chromium" && entry.theme === "white" && entry.width === "1280");
+        const shown = here?.status === "compared" ? `${(here.change * 100).toFixed(1)}% here` : here?.status ?? "not compared here";
+        const label = failedViews.has(view) ? "could not compare" : changedViews.has(view) ? `${shown}, at most ${(worst(view) * 100).toFixed(1)}%` : "unchanged";
         tiles.push("-label", `${view}  ${label}`, tile);
       }
       if (tiles.length === 0) continue;
