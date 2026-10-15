@@ -4,9 +4,9 @@
  * the web, and nothing from the page run as code or HTML. The terminal shows
  * a picture's caption and a diagram's steps instead of the picture.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ActionRow, MarkdownText, RemoteImage, usePaneLinkMenuEntry } from "../../../components";
-import { READER_HEADING_STYLE, READER_PARAGRAPH_GAP } from "../../../components/reader/reader-text";
+import { DESKTOP_LINE_HEIGHT, READER_COLUMN_FONT, READER_HEADING_STYLE, READER_MEASURE, READER_PARAGRAPH_GAP } from "../../../components/reader/reader-text";
 import type { DocsBlock } from "../../../docs/content";
 import { tf } from "../../../i18n";
 import { isDarkTheme } from "../../../theme/themes";
@@ -211,6 +211,29 @@ export function DocsBlocks({ blocks, width, onOpenLink }: {
           {blockLinks(block).map((link) => <LinkMenuEntry key={link.href} label={link.label} href={link.href} onOpen={onOpenLink} />)}
         </Box>
       ))}
+    </Box>
+  );
+}
+
+/**
+ * On the desktop and the web the text reads as in every reader
+ * (reader-text.tsx): the body size, a step up from the table text, the
+ * reading line height, centred at the measure; the column fills a narrower
+ * pane and stops there in a wider one.
+ */
+const DOCS_READING_STYLE = { fontSize: READER_COLUMN_FONT, "--cell-h": `${DESKTOP_LINE_HEIGHT}em`, maxWidth: READER_MEASURE, alignSelf: "center" } as const;
+
+/**
+ * The desktop and web reading column. Its wrapper is a size container, as the
+ * article and detail readers are, so a narrow pane steps the type down with
+ * theirs (styles.css, "Reading columns").
+ */
+export function DocsReadingColumn({ children }: { children: ReactNode }) {
+  return (
+    <Box flexDirection="column" width="100%" data-gloom-ui="docs-reader">
+      <Box flexDirection="column" width="100%" data-gloom-role="docs-body" data-gloom-ui="reader-column" style={DOCS_READING_STYLE}>
+        {children}
+      </Box>
     </Box>
   );
 }

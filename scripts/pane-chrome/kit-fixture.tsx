@@ -32,8 +32,7 @@ import { ArticleReader } from "../../src/components/reader/article-reader";
 import { parseArticle } from "../../src/components/reader/article-text";
 import { DetailReader } from "../../src/components/reader/detail-reader";
 import type { DocsBlock } from "../../src/docs/content";
-import { DocsBlocks } from "../../src/plugins/builtin/docs/blocks";
-import { DOCS_READING_STYLE } from "../../src/plugins/builtin/docs/pane";
+import { DocsBlocks, DocsReadingColumn } from "../../src/plugins/builtin/docs/blocks";
 import { PaneHeader } from "../../src/components/layout/pane/header";
 import { PaneFooterBar } from "../../src/components/layout/pane/footer";
 import { PageStackView } from "../../src/components/ui/page-stack-view";
@@ -473,9 +472,9 @@ function ReaderFamily() {
         <DetailReader width={60} facts={[{ label: "Status", value: "Recruiting" }, { label: "Phase", value: "2" }]} body={`${PARAGRAPH}\n\n${PARAGRAPH}\n\n## Guidance\n\n${PARAGRAPH}\n\n- **Calmer reading.** ${PARAGRAPH}\n- ${short}`} bodyFormat="markdown" />
       </Box>
       <Box flexDirection="column" style={{ ...column, padding: "var(--gloom-space-md) var(--gloom-inset)" }} data-kit-reader="docs">
-        <Box flexDirection="column" width="100%" style={DOCS_READING_STYLE}>
+        <DocsReadingColumn>
           <DocsBlocks blocks={docs} width={60} onOpenLink={noop} />
-        </Box>
+        </DocsReadingColumn>
       </Box>
     </Box>
   );

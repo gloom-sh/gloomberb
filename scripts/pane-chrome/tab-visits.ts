@@ -34,7 +34,7 @@ export interface Alternative {
   hidden: boolean;
 }
 
-export type TabVisitStatus = "measured" | "unmeasured" | "skipped";
+type TabVisitStatus = "measured" | "unmeasured" | "skipped";
 
 export interface TabVisit {
   /** The alternatives pressed, in order, from the pane as it first shows. */
@@ -123,7 +123,7 @@ async function helpers(cdp: Cdp): Promise<void> {
 }
 
 /** The alternatives in the pane as it is now. */
-export async function listAlternatives(cdp: Cdp, scope: string): Promise<Alternative[]> {
+async function listAlternatives(cdp: Cdp, scope: string): Promise<Alternative[]> {
   await helpers(cdp);
   return evaluate<Alternative[]>(cdp, `window.__tabVisits.list(${JSON.stringify(scope)})`);
 }
@@ -132,7 +132,7 @@ export async function listAlternatives(cdp: Cdp, scope: string): Promise<Alterna
  * Presses one alternative and confirms the page selected it; the error says
  * why it did not. `settle` waits for what the press loads.
  */
-export async function selectAlternative(cdp: Cdp, scope: string, id: string, settle: () => Promise<void>): Promise<{ ok: true } | { ok: false; reason: string }> {
+async function selectAlternative(cdp: Cdp, scope: string, id: string, settle: () => Promise<void>): Promise<{ ok: true } | { ok: false; reason: string }> {
   await helpers(cdp);
   const aimed = await evaluate<{ ok?: true; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(id)})`);
   if (aimed.error) return { ok: false, reason: aimed.error };

@@ -1453,7 +1453,8 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
    (14px), or 1.1em (13.2px) under 480px. The rest of the reader's scale is in
    em of it (reader-text.tsx). */
 [data-gloom-ui="article-reader"],
-[data-gloom-ui="detail-reader"] {
+[data-gloom-ui="detail-reader"],
+[data-gloom-ui="docs-reader"] {
   container-type: inline-size;
 }
 @container (max-width: 480px) {

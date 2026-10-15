@@ -8,7 +8,8 @@ import { evaluate, frames, type Cdp } from "./browser";
  * gap, one space around a heading, and the same dim dot and hang. The detail
  * reader's label and value facts stay at the app's size. On the kit page's
  * readers (kit-fixture.tsx), which hold the same text, from the browser's
- * computed styles and boxes.
+ * computed styles and boxes, in wide columns and in narrow ones, where all
+ * three step down together.
  */
 
 interface ReaderStep {
@@ -71,29 +72,34 @@ export const readerSteps: ReaderStep[] = [{
   name: "readers: the article reader, markdown and Docs set paragraphs, a section heading and prose bullets alike; label and value facts stay at the app's size",
   scenario: "kit&family=reader",
   async run(cdp) {
-    // Wide enough that each of the three columns reads at the full size (narrower than 480px steps it down).
-    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1900, height: 1300, deviceScaleFactor: 1, mobile: false });
-    await frames(cdp, 3);
+    const sizes: Record<string, string> = {};
     try {
-      const { readers, factSize } = await evaluate<{ readers: ReaderLayout[]; factSize: string | null }>(cdp, MEASURE);
-      if (readers.length !== 3 || readers.some((reader) => !reader.paragraph || !reader.heading || reader.listGap === null)) fail("a kit reader is missing the blocks this check measures", readers);
-      const counts = Object.fromEntries(readers.map((reader) => [reader.reader, reader.bullets.length]));
-      // Key facts and the list in the article; the list in markdown and Docs.
-      if (counts.article !== 4 || counts.detail !== 2 || counts.docs !== 2) fail("the kit readers do not show the bullets this check measures", counts);
-      const [base] = readers;
-      const problems: string[] = [];
-      for (const reader of readers) {
-        const p = reader.paragraph!, h = reader.heading!, bp = base!.paragraph!, bh = base!.heading!;
-        if (p.fontSize !== bp.fontSize || p.lineHeight !== bp.lineHeight || !near(p.gap, bp.gap)) problems.push(`${reader.reader} paragraphs ${p.fontSize}/${p.lineHeight}, gap ${p.gap}; ${base!.reader} ${bp.fontSize}/${bp.lineHeight}, gap ${bp.gap}`);
-        if (h.fontSize !== bh.fontSize || h.fontWeight !== bh.fontWeight || !near(h.above, bh.above) || !near(h.below, bh.below)) problems.push(`${reader.reader} heading ${h.fontSize} ${h.fontWeight}, ${h.above} above, ${h.below} below; ${base!.reader} ${bh.fontSize} ${bh.fontWeight}, ${bh.above} above, ${bh.below} below`);
-        if (!near(reader.listGap!, base!.listGap!)) problems.push(`${reader.reader} list ${reader.listGap} under its paragraph; ${base!.reader} ${base!.listGap}`);
-        for (const bullet of reader.bullets) {
-          const b0 = base!.bullets[0]!;
-          if (bullet.fontSize !== bp.fontSize || bullet.lineHeight !== bp.lineHeight || bullet.dot !== b0.dot || !near(bullet.hang, b0.hang)) problems.push(`${reader.reader} bullet "${bullet.text}" ${bullet.fontSize}/${bullet.lineHeight}, dot ${bullet.dot}, hang ${bullet.hang}; paragraphs ${bp.fontSize}/${bp.lineHeight}, first bullet dot ${b0.dot}, hang ${b0.hang}`);
+      // Wide, each of the three columns reads at the full size; narrow, under 480px, every one steps down together.
+      for (const [label, width] of [["wide", 1900], ["narrow", 1100]] as const) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width, height: 1300, deviceScaleFactor: 1, mobile: false });
+        await frames(cdp, 3);
+        const { readers, factSize } = await evaluate<{ readers: ReaderLayout[]; factSize: string | null }>(cdp, MEASURE);
+        if (readers.length !== 3 || readers.some((reader) => !reader.paragraph || !reader.heading || reader.listGap === null)) fail(`${label}: a kit reader is missing the blocks this check measures`, readers);
+        const counts = Object.fromEntries(readers.map((reader) => [reader.reader, reader.bullets.length]));
+        // Key facts and the list in the article; the list in markdown and Docs.
+        if (counts.article !== 4 || counts.detail !== 2 || counts.docs !== 2) fail(`${label}: the kit readers do not show the bullets this check measures`, counts);
+        const [base] = readers;
+        const problems: string[] = [];
+        for (const reader of readers) {
+          const p = reader.paragraph!, h = reader.heading!, bp = base!.paragraph!, bh = base!.heading!;
+          if (p.fontSize !== bp.fontSize || p.lineHeight !== bp.lineHeight || !near(p.gap, bp.gap)) problems.push(`${reader.reader} paragraphs ${p.fontSize}/${p.lineHeight}, gap ${p.gap}; ${base!.reader} ${bp.fontSize}/${bp.lineHeight}, gap ${bp.gap}`);
+          if (h.fontSize !== bh.fontSize || h.fontWeight !== bh.fontWeight || !near(h.above, bh.above) || !near(h.below, bh.below)) problems.push(`${reader.reader} heading ${h.fontSize} ${h.fontWeight}, ${h.above} above, ${h.below} below; ${base!.reader} ${bh.fontSize} ${bh.fontWeight}, ${bh.above} above, ${bh.below} below`);
+          if (!near(reader.listGap!, base!.listGap!)) problems.push(`${reader.reader} list ${reader.listGap} under its paragraph; ${base!.reader} ${base!.listGap}`);
+          for (const bullet of reader.bullets) {
+            const b0 = base!.bullets[0]!;
+            if (bullet.fontSize !== bp.fontSize || bullet.lineHeight !== bp.lineHeight || bullet.dot !== b0.dot || !near(bullet.hang, b0.hang)) problems.push(`${reader.reader} bullet "${bullet.text}" ${bullet.fontSize}/${bullet.lineHeight}, dot ${bullet.dot}, hang ${bullet.hang}; paragraphs ${bp.fontSize}/${bp.lineHeight}, first bullet dot ${b0.dot}, hang ${b0.hang}`);
+          }
         }
+        if (problems.length) fail(`${label}: the readers lay reading text out differently`, problems);
+        if (!factSize || parseFloat(factSize) >= parseFloat(base!.paragraph!.fontSize)) fail(`${label}: label and value facts are ${factSize}, not the app's size under the reading text`);
+        sizes[label] = base!.paragraph!.fontSize;
       }
-      if (problems.length) fail("the readers lay reading text out differently", problems);
-      if (!factSize || parseFloat(factSize) >= parseFloat(base!.paragraph!.fontSize)) fail(`label and value facts are ${factSize}, not the app's size under the reading text`);
+      if (!(parseFloat(sizes.narrow!) < parseFloat(sizes.wide!))) fail(`the readers read at ${sizes.wide} wide and ${sizes.narrow} in a narrow column; a narrow column steps down`);
     } finally {
       await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
     }
