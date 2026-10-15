@@ -58,8 +58,12 @@ export interface InsiderSignalsPayload {
   through: string;
   /** The newest filing day read. */
   asOf: string | null;
-  /** Days whose filings have all been read. */
-  coverage: { from: string | null; through: string | null };
+  /**
+   * Days whose filings have all been read. `missingDays`: weekdays since
+   * `from` the server no longer reads on its own and has not read whole, a gap
+   * an outage left (left out by servers that predate it).
+   */
+  coverage: { from: string | null; through: string | null; missingDays?: string[] };
   rows: InsiderSignalRow[];
 }
 

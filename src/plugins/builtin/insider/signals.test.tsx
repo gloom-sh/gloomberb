@@ -149,6 +149,20 @@ test("the footer warns when the window reaches past the filings read, or none ha
   expect(tui.frame()).not.toContain("[!]");
 });
 
+test("the footer warns when days in the window were left unread by an outage", async () => {
+  const notice = (window: number, from: string, missingDays?: string[]) =>
+    insiderSignalsCoverageNotice({ window, through: "2026-10-15", coverage: { from, through: "2026-10-14", missingDays } });
+  // Servers that predate the list, and gaps outside the window, say nothing.
+  expect(notice(30, "2026-08-31")).toBeNull();
+  expect(notice(7, "2026-08-31", ["2026-09-28", "2026-09-29"])).toBeNull();
+  expect(notice(30, "2026-08-31", ["2026-09-28"])).toBe("Form 4 filings for Sep 28, 2026 are not read yet, so this ranking may leave out buying.");
+  expect(notice(30, "2026-08-31", ["2026-09-28", "2026-09-29"])).toBe("Form 4 filings for 2 days in this window are not read yet, so this ranking may leave out buying.");
+  expect(notice(90, "2026-09-17", ["2026-09-28"])).toBe("Form 4 filings are read from Sep 17, 2026, and 1 day since is not read yet, so this ranking may leave out buying.");
+
+  await mount(async (window) => ({ ...payload(window), coverage: { from: "2026-08-31", through: "2026-10-14", missingDays: ["2026-09-28"] } }));
+  expect(tui.frame()).toContain("[!] as of Oct 14, 2026");
+});
+
 test("a narrow pane keeps the reasons and drops the company, then the counts", () => {
   const ids = (width: number) => buildInsiderSignalColumns(width, ROWS).map((column) => column.id);
   expect(ids(110)).toEqual(["ticker", "company", "score", "why", "insiders", "value", "lastBuy"]);

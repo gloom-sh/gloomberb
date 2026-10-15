@@ -30,15 +30,25 @@ const DAY_MS = 86_400_000;
 
 /**
  * Filings are read from a first day on: a window reaching past it ranks less
- * buying than it says, and so does one before any day has been read whole.
+ * buying than it says, and so does one before any day has been read whole, or
+ * one holding days an outage left unread.
  */
 export function insiderSignalsCoverageNotice(payload: Pick<InsiderSignalsPayload, "window" | "through" | "coverage">): string | null {
   const from = payload.coverage.from;
   if (!from) return "Form 4 filings are still being read, so this ranking may leave out buying.";
   const windowStart = new Date(Date.parse(`${payload.through}T00:00:00Z`) - (payload.window - 1) * DAY_MS).toISOString().slice(0, 10);
-  return from > windowStart
-    ? `Form 4 filings are read from ${formatShortDate(from, { utc: true })}, so this window leaves out buying before then.`
-    : null;
+  const missingDays = Array.isArray(payload.coverage.missingDays) ? payload.coverage.missingDays : [];
+  const missing = missingDays.filter((day) => typeof day === "string" && day >= windowStart && day <= payload.through);
+  const day = (value: string) => formatShortDate(value, { utc: true });
+  const days = (count: number) => `${count} ${count === 1 ? "day" : "days"}`;
+  if (from > windowStart) {
+    return missing.length
+      ? `Form 4 filings are read from ${day(from)}, and ${days(missing.length)} since ${missing.length === 1 ? "is" : "are"} not read yet, so this ranking may leave out buying.`
+      : `Form 4 filings are read from ${day(from)}, so this window leaves out buying before then.`;
+  }
+  if (missing.length === 1) return `Form 4 filings for ${day(missing[0]!)} are not read yet, so this ranking may leave out buying.`;
+  if (missing.length > 1) return `Form 4 filings for ${days(missing.length)} in this window are not read yet, so this ranking may leave out buying.`;
+  return null;
 }
 
 export function formatSignalValue(value: number): string {
