@@ -5,6 +5,7 @@ import { compareSortValues, type SortDirection } from "../../../utils/sort-value
 import { getPricePointTimestamp } from "../../../utils/price-history";
 import { mergePriceHistoryIntegrity, pricePointIntegrity, type PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
 import {
+  getCompletedRegularSessionDisplay,
   getExtendedSessionDisplay,
   getRegularSessionDisplay,
   extendedSessionStateLabel,
@@ -436,15 +437,26 @@ export function nextSortPreference(current: SectorSortPreference, columnId: stri
 const finitePositive = (value: number | null | undefined): value is number =>
   typeof value === "number" && Number.isFinite(value) && value > 0;
 
+const validSessionDate = (value: string | undefined): string | null =>
+  typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value ? value : null;
+
 /**
- * The session a quote's regular price belongs to. Every instrument in these
- * collections is a US-listed ETF, so an undeclared session is the New York
- * date of the quote.
+ * The session a quote's regular price belongs to. In the pre-market that is
+ * the last completed session whose close the quote carries (getRegularSessionDisplay),
+ * not today, which has not traded yet: a fund with a pre-market print and one
+ * still on its prior close then belong to the same session. Otherwise it is
+ * the session the quote's change is declared against. Every instrument in
+ * these collections is a US-listed ETF, so an undeclared session is the New
+ * York date of the quote.
  */
 export function sectorQuoteSessionDate(quote: Quote): string | null {
+  if (quote.marketState === "PRE" && getCompletedRegularSessionDisplay(quote)) {
+    return validSessionDate(quote.regularCloseSessionDate);
+  }
   const declared = quote.changeSessionDate;
-  if (typeof declared === "string" && /^\d{4}-\d{2}-\d{2}$/.test(declared)
-    && Number.isFinite(Date.parse(declared)) && new Date(declared).toISOString().slice(0, 10) === declared) return declared;
+  const declaredDate = validSessionDate(declared);
+  if (declaredDate) return declaredDate;
   if (declared != null) return null;
   if (!Number.isFinite(quote.lastUpdated) || quote.lastUpdated <= 0) return null;
   return new Intl.DateTimeFormat("en-CA", {
@@ -454,11 +466,11 @@ export function sectorQuoteSessionDate(quote: Quote): string | null {
 
 /**
  * A live quote extends a loaded row only inside the session its returns are
- * measured to. Every fund shares that session, so a pre-market print (the
- * next session) or a quote older than the snapshot leaves the row's price
- * alone and the board keeps ranking on one completed session. The 1M and 1Y
- * returns keep their baselines: the row's own return and price imply the
- * start close.
+ * measured to. Every fund shares that session, so a pre-market quote that
+ * does not carry the last close (its price is the next session's) or a quote
+ * older than the snapshot leaves the row's price alone and the board keeps
+ * ranking on one completed session. The 1M and 1Y returns keep their
+ * baselines: the row's own return and price imply the start close.
  */
 function isLiveSectorQuote(row: SectorRow, quote: Quote | null | undefined): quote is Quote {
   if (!isCurrentSectorQuote(row, quote) || !finitePositive(getRegularSessionDisplay(quote)?.price)) return false;
