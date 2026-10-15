@@ -374,6 +374,10 @@ header, with the detail's height.
   four or fewer short exclusive options, `multi`, `toggle`, `text` for a second
   field. One terminal row; on the desktop it scrolls sideways when narrow.
   Status never goes in the bar; units and as-of context may use `meta`.
+  The inline filter or view that picks a chart's range sets `chartRange`:
+  choosing the selected range again sends the pane's charts back to it, as `0`
+  does, so every chart's range strip behaves the same. Bind the range's number
+  keys the same way (`useSeriesList` does for a list beside a detail chart).
 - `useQueryBarSearch()` holds whether the search owns the keyboard; spread its
   `searchProps` into `search`. The bar already binds `/`, so a pane binds it
   again only to add a condition.
