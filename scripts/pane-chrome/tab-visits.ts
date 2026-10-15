@@ -49,12 +49,12 @@ const HELPERS = `(() => {
   if (window.__tabVisits) return;
   const groupOf = (el) => el.closest("[role=tablist], [role=radiogroup]") ?? el.parentElement;
   const labelOf = (el) => (el.getAttribute("aria-label") || el.textContent || "").replace(/\\s+/g, " ").trim();
-  const entries = (scope) => {
+  const entries = (scope, selector) => {
     const root = document.querySelector(scope);
     if (!root) return [];
     const groups = [];
     const members = new Map();
-    for (const el of root.querySelectorAll("[role=tab], [role=radio]")) {
+    for (const el of root.querySelectorAll(selector)) {
       const group = groupOf(el);
       if (!members.has(group)) { members.set(group, []); groups.push(group); }
       members.get(group).push(el);
@@ -89,12 +89,12 @@ const HELPERS = `(() => {
     return out;
   };
   window.__tabVisits = {
-    list(scope) {
-      return entries(scope).map(({ el, place, ...entry }) => entry);
+    list(scope, selector) {
+      return entries(scope, selector).map(({ el, place, ...entry }) => entry);
     },
     /** Scrolls the alternative into view and says where a press lands on it, or why it cannot. */
-    aim(scope, id) {
-      const entry = entries(scope).find((candidate) => candidate.id === id);
+    aim(scope, selector, id) {
+      const entry = entries(scope, selector).find((candidate) => candidate.id === id);
       if (!entry) return { error: "not on the page" };
       if (entry.disabled) return { error: "disabled" };
       if (entry.hidden) return { error: "not laid out" };
@@ -104,8 +104,8 @@ const HELPERS = `(() => {
       entry.el.scrollIntoView({ block: "nearest", inline: "center" });
       return { ok: true, place: entry.place, label: entry.label };
     },
-    point(scope, id) {
-      const entry = entries(scope).find((candidate) => candidate.id === id);
+    point(scope, selector, id) {
+      const entry = entries(scope, selector).find((candidate) => candidate.id === id);
       if (!entry) return { error: "not on the page" };
       const rect = entry.el.getBoundingClientRect();
       const x = rect.left + rect.width / 2;
@@ -116,8 +116,8 @@ const HELPERS = `(() => {
       return { x, y };
     },
     /** The pressed alternative: the marked element, or (re-rendered) the one with its identity, or its label in its place. */
-    selected(scope, id, place, label) {
-      const all = entries(scope);
+    selected(scope, selector, id, place, label) {
+      const all = entries(scope, selector);
       const marked = document.querySelector("[data-tab-visit-target]");
       // A choice may relabel itself once chosen ("Auto" reads "Auto (5m)").
       const entry = all.find((candidate) => candidate.el === marked)
@@ -135,26 +135,26 @@ async function helpers(cdp: Cdp): Promise<void> {
 }
 
 /** The alternatives in the pane as it is now. */
-async function listAlternatives(cdp: Cdp, scope: string): Promise<Alternative[]> {
+async function listAlternatives(cdp: Cdp, scope: string, selector: string): Promise<Alternative[]> {
   await helpers(cdp);
-  return evaluate<Alternative[]>(cdp, `window.__tabVisits.list(${JSON.stringify(scope)})`);
+  return evaluate<Alternative[]>(cdp, `window.__tabVisits.list(${JSON.stringify(scope)}, ${JSON.stringify(selector)})`);
 }
 
 /**
  * Presses one alternative and confirms the page selected it; the error says
  * why it did not. `settle` waits for what the press loads.
  */
-async function selectAlternative(cdp: Cdp, scope: string, id: string, settle: () => Promise<void>): Promise<{ ok: true } | { ok: false; reason: string }> {
+async function selectAlternative(cdp: Cdp, scope: string, selector: string, id: string, settle: () => Promise<void>): Promise<{ ok: true } | { ok: false; reason: string }> {
   await helpers(cdp);
-  const aimed = await evaluate<{ ok?: true; place?: string; label?: string; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(id)})`);
+  const aimed = await evaluate<{ ok?: true; place?: string; label?: string; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)})`);
   if (aimed.error) return { ok: false, reason: aimed.error };
   await frames(cdp, 2);
-  const at = await evaluate<{ x?: number; y?: number; error?: string }>(cdp, `window.__tabVisits.point(${JSON.stringify(scope)}, ${JSON.stringify(id)})`);
+  const at = await evaluate<{ x?: number; y?: number; error?: string }>(cdp, `window.__tabVisits.point(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)})`);
   if (at.error || at.x === undefined || at.y === undefined) return { ok: false, reason: at.error ?? "no point to press" };
   await click(cdp, { x: at.x, y: at.y });
   await settle();
   await helpers(cdp);
-  const selected = await evaluate<{ ok?: true; error?: string }>(cdp, `window.__tabVisits.selected(${JSON.stringify(scope)}, ${JSON.stringify(id)}, ${JSON.stringify(aimed.place)}, ${JSON.stringify(aimed.label)})`);
+  const selected = await evaluate<{ ok?: true; error?: string }>(cdp, `window.__tabVisits.selected(${JSON.stringify(scope)}, ${JSON.stringify(selector)}, ${JSON.stringify(id)}, ${JSON.stringify(aimed.place)}, ${JSON.stringify(aimed.label)})`);
   return selected.error ? { ok: false, reason: selected.error } : { ok: true };
 }
 
@@ -168,6 +168,8 @@ export interface VisitOptions {
   record(path: Alternative[]): Promise<boolean>;
   /** Presses in a row from the first view; what a deeper press reveals is counted, not opened. */
   depth?: number;
+  /** What counts as an alternative: tabs and choices by default, `[role=tab]` for tabs alone. */
+  selector?: string;
 }
 
 /**
@@ -176,10 +178,10 @@ export interface VisitOptions {
  * or skipped (disabled, not laid out, deeper than `depth`). The pane as it
  * first shows is the caller's to measure.
  */
-export async function visitAlternatives({ cdp, scope, reset, settle, record, depth = 2 }: VisitOptions): Promise<TabVisit[]> {
+export async function visitAlternatives({ cdp, scope, reset, settle, record, depth = 2, selector = "[role=tab], [role=radio]" }: VisitOptions): Promise<TabVisit[]> {
   const visits: TabVisit[] = [];
   await reset();
-  const first = await listAlternatives(cdp, scope);
+  const first = await listAlternatives(cdp, scope, selector);
   const queue: Array<{ path: Alternative[]; parent: Alternative[] }> = [];
   const enqueue = (path: Alternative[], alternatives: Alternative[], parent: Alternative[]) => {
     for (const alternative of alternatives) {
@@ -199,7 +201,7 @@ export async function visitAlternatives({ cdp, scope, reset, settle, record, dep
     await reset();
     let failure: string | null = null;
     for (const [step, alternative] of path.entries()) {
-      const result = await selectAlternative(cdp, scope, alternative.id, settle);
+      const result = await selectAlternative(cdp, scope, selector, alternative.id, settle);
       if (!result.ok) {
         failure = path.length > 1 ? `press ${step + 1} of ${path.length} (${alternative.name}): ${result.reason}` : result.reason;
         break;
@@ -216,7 +218,7 @@ export async function visitAlternatives({ cdp, scope, reset, settle, record, dep
     visits.push({ path: named, status: "measured" });
     // What this press revealed: alternatives in a group the state before it did not have, or new in one it had.
     const stateBefore = path.length > 1 ? queue[index]!.parent : first;
-    const now = await listAlternatives(cdp, scope);
+    const now = await listAlternatives(cdp, scope, selector);
     enqueue(path, now.filter((entry) => isRevealed(entry, stateBefore)), now);
   }
   // An alternative not laid out at first (inside a view not yet open) that a press then revealed and the sweep measured is covered, not skipped.

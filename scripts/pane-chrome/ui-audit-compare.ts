@@ -9,7 +9,7 @@ import { FITTED, colourName, derivedColours, variantShape } from "./ui-audit-rep
  * Two UI audit runs side by side (ui-audit.ts): how far the app converged on
  * its conventions, and which views moved.
  *
- *   bun scripts/pane-chrome/ui-audit-compare.ts --before <run> --after <run> [--out <dir>] [--sheets]
+ *   bun scripts/pane-chrome/ui-audit-compare.ts --before <run> --after <run> [--out <dir>] [--sheets] [--body-inset <top>,<bottom>]
  *
  * Writes compare.md and compare.json: per family the variants (shapes, less
  * the colour of their rules, which is a state's or a theme's) before and after,
@@ -21,6 +21,10 @@ import { FITTED, colourName, derivedColours, variantShape } from "./ui-audit-rep
  * both runs (`shots/<theme>/<width>/`, and `<browser>-shots/` beside them)
  * pixel by pixel, and lays out a sheet per family of the views that changed,
  * before over after, with views that did not change beside them.
+ * `--body-inset` compares only what lies between bands at the top and bottom
+ * of each picture (the app's header and a pane's title bar, its footer and
+ * the status bar), so a change to the chrome every view shares does not hide
+ * which pane bodies moved.
  *
  * Coverage is explicit: a picture ImageMagick could not read or compare (a
  * truncated file) is an error, a picture with no partner in the other run is
@@ -152,18 +156,26 @@ function dimensions(file: string, command: Command): { width: number; height: nu
   return { width, height };
 }
 
-export function pixelChange(before: string, after: string, command: Command = spawn): PixelComparison {
+/**
+ * `inset` leaves out bands at the top and bottom of both pictures (the app's
+ * header and status bar, the pane's title bar and footer), to tell a pane body
+ * that moved from one whose chrome alone did.
+ */
+export function pixelChange(before: string, after: string, command: Command = spawn, inset: { top: number; bottom: number } = { top: 0, bottom: 0 }): PixelComparison {
   const a = dimensions(before, command);
   if ("error" in a) return { status: "error", error: a.error };
   const b = dimensions(after, command);
   if ("error" in b) return { status: "error", error: b.error };
   if (a.width !== b.width || a.height !== b.height) return { status: "resized", before: `${a.width}x${a.height}`, after: `${b.width}x${b.height}` };
+  const height = b.height - inset.top - inset.bottom;
+  if (height <= 0) return { status: "error", error: `nothing left of ${b.width}x${b.height} inside the inset` };
+  const region = inset.top || inset.bottom ? `[${b.width}x${height}+0+${inset.top}]` : "";
   // Exit 0: the same within the fuzz; 1: pixels differ (the count is on stderr); anything else failed.
-  const result = command(["compare", "-regard-warnings", "-metric", "AE", "-fuzz", "2%", before, after, "null:"]);
+  const result = command(["compare", "-regard-warnings", "-metric", "AE", "-fuzz", "2%", `${before}${region}`, `${after}${region}`, "null:"]);
   if (result.exitCode !== 0 && result.exitCode !== 1) return { status: "error", error: `compare failed (exit ${result.exitCode}): ${firstLine(result.stderr) || "no message"}` };
   const text = result.stderr.trim();
   if (!/^\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text)) return { status: "error", error: `compare gave no pixel count: "${text.slice(0, 120)}"` };
-  return { status: "compared", change: Number(text) / (b.width * b.height) };
+  return { status: "compared", change: Number(text) / (b.width * height) };
 }
 
 function run(command: string[]): void {
@@ -176,6 +188,9 @@ async function main(): Promise<void> {
   const beforeDir = resolve(takeOption(args, "--before") ?? "");
   const afterDir = resolve(takeOption(args, "--after") ?? "");
   const out = resolve(takeOption(args, "--out") ?? afterDir);
+  // `--body-inset 40,40`: compare what lies between the window's top and bottom bands only.
+  const [insetTop = 0, insetBottom = 0] = (takeOption(args, "--body-inset") ?? "0,0").split(",").map(Number);
+  const inset = { top: insetTop, bottom: insetBottom };
   // White's helper colours, from this checkout's theme code, for both runs alike.
   const derived = await derivedColours("white").catch(() => ({}));
   const before = summarize(await readResults(beforeDir), derived);
@@ -228,11 +243,19 @@ async function main(): Promise<void> {
     ...measures.map((row) => `| ${row.name} | ${row.before} | ${row.after} | ${row.beforeValues} | ${row.afterValues} |`),
   ];
 
+  // Tabs a run could not open, or left alone, from its views.jsonl: listed, not measured.
+  const unopened = async (dir: string) => existsSync(join(dir, "views.jsonl"))
+    ? (await Bun.file(join(dir, "views.jsonl")).text()).split("\n").filter(Boolean).map((line) => JSON.parse(line) as { id: string; view: string; reason?: string })
+      .filter((view) => view.view === "unmeasured" || view.view === "skipped" || view.view === "failed").map((view) => `${view.id} (${view.reason ?? view.view})`)
+    : [];
+  const unopenedBefore = await unopened(beforeDir), unopenedAfter = await unopened(afterDir);
   // Which views each run measured: a view only one run has is listed, never counted as unchanged.
   const onlyBefore = [...before.views].filter((view) => !after.views.has(view)).sort();
   const onlyAfter = [...after.views].filter((view) => !before.views.has(view)).sort();
   md.splice(3, 0, ``,
-    `Views in both runs: ${[...after.views].filter((view) => before.views.has(view)).length}. Only before: ${onlyBefore.length}${onlyBefore.length ? ` (${onlyBefore.join(", ")})` : ""}. Only after: ${onlyAfter.length}${onlyAfter.length ? ` (${onlyAfter.join(", ")})` : ""}.`);
+    `Views in both runs: ${[...after.views].filter((view) => before.views.has(view)).length}. Only before: ${onlyBefore.length}${onlyBefore.length ? ` (${onlyBefore.join(", ")})` : ""}. Only after: ${onlyAfter.length}${onlyAfter.length ? ` (${onlyAfter.join(", ")})` : ""}.`,
+    ``,
+    `Not measured before (a tab the press did not select, a disabled one, a pane that did not open): ${unopenedBefore.length ? unopenedBefore.join("; ") : "none"}. After: ${unopenedAfter.length ? unopenedAfter.join("; ") : "none"}.`);
 
   type Change = { view: string; theme: string; width: string; engine: string } & PixelComparison;
   const changes: Change[] = [];
@@ -257,7 +280,7 @@ async function main(): Promise<void> {
               unpaired.push({ engine, theme, width, view, missing: beforeFiles.has(file) ? "after" : "before" });
               continue;
             }
-            const comparison = pixelChange(join(beforeDir, dir, theme, width, file), join(afterDir, dir, theme, width, file));
+            const comparison = pixelChange(join(beforeDir, dir, theme, width, file), join(afterDir, dir, theme, width, file), undefined, inset);
             if (comparison.status === "error") errors += 1;
             changes.push({ view, theme, width, engine, ...comparison });
           }
@@ -273,7 +296,7 @@ async function main(): Promise<void> {
       return `| ${engine} | ${mine.filter((entry) => entry.status !== "error").length} | ${mine.filter(moved).length} | ${mine.filter((entry) => entry.status === "error").length} | ${unpaired.filter((entry) => entry.engine === engine && entry.missing === "after").length} | ${unpaired.filter((entry) => entry.engine === engine && entry.missing === "before").length} |`;
     });
     md.push("", "## Pictures compared", "",
-      `${compared.length} picture pairs compared, ${errors} could not be compared, ${unpaired.length} pictures without a partner. A pair that could not be compared or has no partner is not counted as unchanged.`, "",
+      `${compared.length} picture pairs compared${inset.top || inset.bottom ? `, each without its top ${inset.top}px and bottom ${inset.bottom}px` : ""}, ${errors} could not be compared, ${unpaired.length} pictures without a partner. A pair that could not be compared or has no partner is not counted as unchanged.`, "",
       "| Engine | Pairs compared | Moved (> 0.05% of pixels, or resized) | Could not compare | Only before | Only after |", "|---|---:|---:|---:|---:|---:|", ...byEngine);
     if (missingDirs.length) md.push("", ...missingDirs.map((line) => `- ${line}`));
     // Another engine's pictures against the views Chromium pictured in the same run: a view one engine could not draw is listed.
