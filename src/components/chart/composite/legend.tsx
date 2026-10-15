@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { Box, ScrollBox, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, ScrollBox, Span, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { colors as themeColors, hoverBg } from "../../../theme/colors";
 import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
 import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
@@ -188,6 +188,9 @@ export function CompositeLegend({
     const ownDate = valueDates.own.get(entry.id);
     // Carried from an earlier observation: another venue's closed session, a coarser series.
     const carried = !!scene?.cursorDate && !!cursorValue?.carried && cursorValue.value != null;
+    // What a futures price counts, beside its number as FUT prints it.
+    const statedUnit = entry.points.length > 0 && !formatValue && entry.statedUnit ? ` ${entry.statedUnit}` : "";
+    const valueTail = `${ownDate ? ` ${ownDate}` : ""}${changeText}`;
     const valueText = entry.points.length === 0
       ? entry.hidden ? "" : "no data"
       : `${formatLegendSeriesValue(
@@ -195,7 +198,7 @@ export function CompositeLegend({
         cursorValue?.value ?? null,
         formatValue,
         scene,
-      )}${ownDate ? ` ${ownDate}` : ""}${changeText}`;
+      )}${statedUnit}${valueTail}`;
     const fullText = [entry.label, valueText].filter(Boolean).join(" ");
     const details = formatCompositePointDetails(cursorValue?.point);
     const exactTotal = entry.unitGroup.split(":")[0] === "currency-total"
@@ -217,6 +220,8 @@ export function CompositeLegend({
       width: Math.max(1, displayWidth(text)) + markerWidth,
       labelWidth,
       valueText,
+      statedUnit,
+      valueTail,
       toggleable,
       tooltip,
       carried,
@@ -358,8 +363,9 @@ export function CompositeLegend({
           data-gloom-role="composite-chart-legend-scroll"
         >
           <Box flexDirection="row" width={desiredSeriesWidth} height={1} gap={1}>
-            {entries.map(({ entry, cue, marker, text, toggleable, tooltip, carried, width: entryWidth }, index) => {
+            {entries.map(({ entry, cue, marker, text, statedUnit, valueTail, toggleable, tooltip, carried, width: entryWidth }, index) => {
               const entryVisible = visibleSeriesIds.has(entry.id);
+              const unitAt = statedUnit ? text.length - statedUnit.length - valueTail.length : -1;
               return (
               <Box
                 key={entry.id}
@@ -393,7 +399,15 @@ export function CompositeLegend({
                 )}
                 {/* The filled/hollow marker already says whether a series is
                     shown; the word only repeated it in every legend slot. */}
-                <Text fg={entryVisible && !carried ? themeColors.text : themeColors.textDim}>{text}</Text>
+                <Text fg={entryVisible && !carried ? themeColors.text : themeColors.textDim}>
+                  {unitAt >= 0 ? (
+                    <>
+                      {text.slice(0, unitAt)}
+                      <Span fg={themeColors.textDim}>{statedUnit}</Span>
+                      {valueTail}
+                    </>
+                  ) : text}
+                </Text>
               </Box>
               );
             })}

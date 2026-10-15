@@ -209,6 +209,15 @@ G MSFT:revenue / AAPL:revenue
 
 `A/B` and `A / B` chart the ratio of two series. `A - B` charts the spread. A slash that is the symbol stays one series, so `EUR/USD` and `BTC/USD` are not ratios. A constant such as `100 - STRC:price` is not a series.
 
+A formula adds and subtracts series, each times a number, and charts the result in the Formula panel:
+
+```text
+G "42*HO=F - CL=F"
+G "(2*42*RB=F + 42*HO=F - 3*CL=F)/3"
+```
+
+The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided by a number. A futures price is in its contract's unit, as FUT and `quote` print it: heating oil and gasoline are USD / gallon, crude USD / barrel. A 42 on a per-gallon series makes it per barrel (42 gallons to the barrel), so both formulas above are crack spreads in USD / barrel; any other number keeps the unit, and series in different units do not add up. `catalog crack` lists the heating-oil and 3:2:1 cracks.
+
 #### Your own series
 
 Put a CSV file in the `series` folder of your data folder (`~/.gloomberb/series`, or wherever `gloomberb version` says the data directory is) and it appears in the catalog's **Your series** tab the next time the catalog opens, chartable against anything else. The first column is the date (`2024-03-01`, `2024-03`, `2024` or an ISO date and time), each further column is a series, and an optional header row names them. Lines starting with `#` above the data set what the catalog shows:
@@ -228,7 +237,7 @@ Open **Series** to add, remove, reorder, or hide series and choose each series' 
 
 The toolbar controls preset or exact date ranges, intervals from one minute through monthly, the primary chart mode, technical indicators, and pair formulas. Indicators include volume, SMA, EMA, Bollinger Bands, VWAP, anchored VWAP, volume profile, RSI, MACD, ATR, and Realized Volatility; formulas include ratio, spread, and rolling correlation. Realized Volatility has window and estimator controls in pane settings. Auto resolution requests daily bars for that indicator; explicit weekly or intraday bars cannot be annualized as daily sessions. Mixed-frequency values use as-of alignment: fundamentals use filing dates when available, sparse series carry forward only after becoming available, and missing publication dates appear behind the warning indicator in the existing chart footer (click it or press `!`).
 
-Spread calculates the first input minus the second input times its configured multiplier. It requires matching known input dimensions, currencies, and scales; an incompatible formula is unavailable and appears in the existing chart/report errors while usable series remain available. Market prices also require a declared per-unit basis: two bare USD futures quotes do not establish comparable physical quantities. A multiplier does not supply missing units or establish a conversion. No implicit FX conversion occurs. Studies use source values before chart presentation transforms, so selecting a percent or index display does not convert foreign-currency inputs before subtraction. Ratios retain derived units such as USD/EUR or 1/share and have no value at a zero denominator. As-of alignment can combine observations from different dates; the source dates do not establish a synchronized executable price.
+Spread calculates the first input minus the second input times its configured multiplier. It requires matching known input dimensions, currencies, and scales; an incompatible formula is unavailable and appears in the existing chart/report errors while usable series remain available. Market prices also require a declared per-unit basis: a future's is its contract's unit (USD / barrel), and a price in a currency alone does not establish comparable physical quantities. A spread's multiplier does not supply missing units or establish a conversion. No implicit FX conversion occurs. Studies use source values before chart presentation transforms, so selecting a percent or index display does not convert foreign-currency inputs before subtraction. Ratios retain derived units such as USD/EUR or 1/share and have no value at a zero denominator. As-of alignment can combine observations from different dates; the source dates do not establish a synchronized executable price.
 
 When either ratio input has unknown units or a missing price basis, its numeric ratio remains available with unit `unknown`. Currency factors cancel only at the same scale: GBP/GBp remains explicit, while equivalent pence labels GBp/GBX cancel. This does not convert either input's values.
 

@@ -251,7 +251,8 @@ const chartComposerTemplates: PaneTemplateDef[] = [
     paneId: CHART_COMPOSER_PANE_ID,
     label: "Custom Chart",
     description: "Chart arbitrary market, fundamental, valuation, and FRED series together.",
-    keywords: ["chart", "graph", "custom", "series", "fred", "fundamental"],
+    // Futures formulas chart here: a crack spread is `42*HO=F - CL=F`.
+    keywords: ["chart", "graph", "custom", "series", "fred", "fundamental", "crack spread", "refining margin"],
     shortcut: { prefix: "G", argPlaceholder: "series", argKind: "text", argOptional: true },
     wizard: [{
       key: "series",
@@ -260,7 +261,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
       type: "text",
       // Empty falls back to the active ticker in createInstance, as `G` with no argument does.
       required: false,
-      body: ["Enter comma-separated SYMBOL:field or FRED:series expressions, or leave empty to chart the active ticker. A/B charts the ratio. EUR/USD stays one series."],
+      body: ["Enter comma-separated SYMBOL:field or FRED:series expressions, or leave empty to chart the active ticker. A/B charts the ratio, 42*HO=F - CL=F a formula. EUR/USD stays one series."],
     }],
     canCreate: () => true,
     createInstance: (context, options) => {

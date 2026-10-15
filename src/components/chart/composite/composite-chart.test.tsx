@@ -412,6 +412,24 @@ describe("CompositeChart", () => {
     expect(frame.match(/Jan 3/g)).toHaveLength(1);
   });
 
+  test("a futures price reads in the legend as its number and contract unit, while its axis keeps the currency", async () => {
+    const heatingOil = { ...series("price", "main", "left", "USD / gallon", [2.5, 2.6125, 2.55]),
+      label: "HO=F Price", unitGroup: "price:USD", statedUnit: "USD / gallon", priceAssetCategory: "FUTURE" };
+    await tui.render(
+      <CompositeChart width={78} height={12} series={[heatingOil]} panels={[{ id: "main" }]}
+        cursorDate={new Date("2025-01-02T00:00:00.000Z")} />,
+      { width: 80, height: 14 },
+    );
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+    const frame = tui.frame();
+    expect(frame.split("\n")[0]).toContain("HO=F Price 2.6125 USD / gallon");
+    // The crosshair's axis label and the ticks keep the dollar sign.
+    expect(frame).toContain("$2.55");
+  });
+
   test("keeps legend items compact and anchors an accessory to the right edge", async () => {
     await tui.render(
       <CompositeChart

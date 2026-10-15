@@ -74,6 +74,11 @@ export function findCatalogSeries(
   return ranked.sort((left, right) => right.score - left.score || left.order - right.order).map(({ match }) => match);
 }
 
+/** A chart expression as a shell takes it: a formula (`42*HO=F - CL=F`) in double quotes. */
+function shellArgument(expression: string): string {
+  return /[\s*()&|;<>$`'"\\!?[\]{}#~]/.test(expression) ? `"${expression.replace(/(["\\$`])/g, "\\$1")}"` : expression;
+}
+
 /**
  * The series part of `catalog` or `search`: a table of the first `limit`
  * matches with the expression `fn G` charts, and how to see the rest.
@@ -103,7 +108,7 @@ export function renderSeriesMatches(
     renderTable(
       [{ header: "Series" }, { header: "Unit" }, { header: "Frequency", optional: true }, { header: "Publisher", optional: true },
         { header: "Chart", shrink: false }],
-      shown.map((match) => [match.name, match.unit, match.frequency, match.publisher ?? "", cliStyles.command(match.expression)]),
+      shown.map((match) => [match.name, match.unit, match.frequency, match.publisher ?? "", cliStyles.command(shellArgument(match.expression))]),
     ),
     "",
     ...wrapText(hint, width).map((line) => cliStyles.muted(line)),

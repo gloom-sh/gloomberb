@@ -18,6 +18,7 @@ import {
   type ParsedSeriesExpression,
 } from "./series-expression";
 import { setBuiltinStudies, setPairStudies, type PairStudySelection } from "./studies";
+import { looksLikeFormula, parseFormulaExpression, type ParsedFormula } from "./formula";
 
 function chartSpec(
   series: ChartSeriesSpec[],
@@ -63,10 +64,51 @@ function derivedPair(expression: string): { series: ParsedSeriesExpression[]; fo
   return { series: [left, right], formula: "ratio" };
 }
 
+/** The study id of a chart's series formula; a chart draws one. */
+const FORMULA_STUDY_ID = "formula";
+
+/** A formula's legs as series, with the study that sums them in the Formula panel. */
+function formulaChartPreset(formula: ParsedFormula): ChartSpec {
+  // A leg taken per barrel (42*HO=F) is a price per gallon; beside one per
+  // barrel (CL=F) it reads on its own axis, not flattened along the crude's.
+  const mixed = formula.legs.some((leg) => leg.perBarrel) && formula.legs.some((leg) => !leg.perBarrel);
+  const series = buildCustomSeries(formula.legs.map((leg) => leg.series)).map((entry, index) => (
+    mixed && entry.panelId === "main" && !formula.legs[index]!.perBarrel ? { ...entry, axis: "right" as const } : entry
+  ));
+  const parameters: ChartStudySpec["parameters"] = { divisor: formula.divisor };
+  formula.legs.forEach((leg, index) => {
+    parameters[`weight${index + 1}`] = leg.weight;
+    if (leg.perBarrel) parameters[`perBarrel${index + 1}`] = 1;
+  });
+  return chartSpec(series, {
+    studies: [{
+      id: FORMULA_STUDY_ID,
+      kind: "formula",
+      inputSeriesIds: series.map((entry) => entry.id),
+      parameters,
+      panelId: "formula",
+      axis: "auto",
+    }],
+  });
+}
+
+/**
+ * A chart of what was typed: one series or a list, a pair (`A / B`, `A - B`),
+ * or a formula (`42*HO=F - CL=F`).
+ */
 export function buildCustomChartPreset(expression: string, fallbackSymbol?: string | null): ChartSpec {
   const derived = derivedPair(expression);
   if (derived) return setPairStudies(chartSpec(buildCustomSeries(derived.series)), [derived.formula]);
-  const parsed = parseChartExpression(expression);
+  let parsed: ParsedSeriesExpression[];
+  try {
+    parsed = parseChartExpression(expression);
+  } catch (error) {
+    // Text a list cannot read, written as a formula, gets the formula's own error.
+    if (!looksLikeFormula(expression)) throw error;
+    const formula = parseFormulaExpression(expression);
+    if (!formula) throw error;
+    return formulaChartPreset(formula);
+  }
   if (parsed.length === 0) return fallbackSymbol ? buildPriceChartPreset(fallbackSymbol) : buildEmptyChartPreset();
   return chartSpec(buildCustomSeries(parsed));
 }

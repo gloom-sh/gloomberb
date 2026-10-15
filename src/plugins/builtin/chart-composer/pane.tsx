@@ -897,12 +897,10 @@ function ChartComposerSurface({
     ? "Comparison unavailable: need two shared dates and a nonzero baseline."
     : null;
   const statusError = resolution.errors[0];
-  const spreadUnitError = spec.studies.some((study) => study.kind === "spread"
-    && statusError?.startsWith(`${study.id}: spread cannot subtract `)
-    && statusError.endsWith("; inputs require matching known units, currencies and scales."));
-  const statusErrorNotice = spreadUnitError
-    ? "Spread unavailable: incompatible or unknown units."
-    : statusError;
+  // A spread or formula error names its legs and their units; the study's id adds nothing to it.
+  const formulaStudy = spec.studies.find((study) => (study.kind === "spread" || study.kind === "formula")
+    && statusError?.startsWith(`${study.id}: `));
+  const statusErrorNotice = formulaStudy ? statusError?.slice(`${formulaStudy.id}: `.length) : statusError;
   // Failed series use their authored id in errors and their display label in warnings.
   const errorSeries = spec.series.find((entry) => statusError?.startsWith(`${entry.label ?? entry.id}: `));
   const errorMessage = errorSeries ? statusError?.slice(`${errorSeries.label ?? errorSeries.id}: `.length) : undefined;

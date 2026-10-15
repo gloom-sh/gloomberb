@@ -488,7 +488,7 @@ describe("study resolution", () => {
     expect(result.warnings).toEqual([
       "ratio: ratio inputs use different currencies (USD and JPY); raw values are not FX-converted.",
     ]);
-    expect(result.errors).toEqual([expect.stringContaining("spread: spread cannot subtract JPY (JPY/share) from USD (USD/share)")]);
+    expect(result.errors).toEqual(["spread: USD is USD/share and JPY is JPY/share: a spread does not convert currencies."]);
     expect(result.series.find(({ id }) => id === "spread")).toBeUndefined();
     expect(result.series.find(({ id }) => id === "ratio")).toMatchObject({
       unit: "USD/JPY",
@@ -504,7 +504,7 @@ describe("study resolution", () => {
     ]);
 
     expect(result.warnings).toEqual([]);
-    expect(result.errors).toEqual([expect.stringContaining("spread: spread cannot subtract REVENUE (USD) from PRICE (USD/share)")]);
+    expect(result.errors).toEqual(["spread: PRICE is USD/share and REVENUE is in USD: a spread needs both in one unit."]);
     expect(result.series).toEqual([]);
   });
 
@@ -565,7 +565,7 @@ describe("study resolution", () => {
       const result = resolveStudies(inputs, [study("spread", "spread", ["left", "right"])]);
       expect(result.series).toEqual([]);
       expect(result.errors).toHaveLength(1);
-      expect(result.errors[0]).toContain("spread: spread cannot subtract");
+      expect(result.errors[0]).toBe("spread: LEFT is USD/share and RIGHT is EUR/share: a spread does not convert currencies.");
     }
   });
 
@@ -614,7 +614,7 @@ describe("study resolution", () => {
       { id: "nested", unit: "unknown", unitGroup: "derived-unit:unknown" },
     ]);
     expect(combined.every(({ points }) => points.every(({ value }) => value === 1))).toBe(true);
-    expect(spread.errors).toEqual([expect.stringContaining("spread cannot subtract")]);
+    expect(spread.errors).toEqual([expect.stringContaining("has no known unit: a spread needs both in one known unit.")]);
   });
 
   test("ratio axis groups distinguish opposite currency scales while retaining equivalent aliases", () => {

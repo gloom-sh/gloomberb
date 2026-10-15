@@ -67,7 +67,9 @@ export type ChartStudyKind =
   | "atr"
   | "ratio"
   | "spread"
-  | "correlation";
+  | "correlation"
+  /** A weighted sum of any number of series over a divisor: `(2*42*RB=F + 42*HO=F - 3*CL=F)/3`. */
+  | "formula";
 
 export interface ChartStudySpec {
   id: string;
@@ -156,6 +158,12 @@ export interface ResolvedSeries {
   /** Unit of rawValue, retained when presentation transforms change unit. */
   rawUnit?: string;
   unitGroup: string;
+  /**
+   * The unit the legend states beside each value, read bare as FUT prints its
+   * price beside its unit: what a futures price counts ("USD / gallon"), where
+   * the currency alone does not say it, and what a formula of them counts.
+   */
+  statedUnit?: string;
   /** Source instrument category used only for monetary market-price precision. */
   priceAssetCategory?: string;
   /** Volume basis established by the source instrument; omitted when unspecified. */

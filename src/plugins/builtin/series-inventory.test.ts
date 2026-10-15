@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { getLoadablePlugins } from "../catalog";
 import { SeriesRegistry, seriesExpression } from "../../series/registry";
 import { parseSeriesExpression } from "./chart-composer/series-expression";
+import { parseFormulaExpression } from "./chart-composer/formula";
 import { SERIES_INVENTORY } from "./series-inventory";
 
 const BUILTIN_DIR = import.meta.dir;
@@ -83,7 +84,8 @@ describe("built-in series inventory", () => {
       if (seen.has(key)) problems.push(`${definition.id} charts the same as ${seen.get(key)}`);
       seen.set(key, definition.id);
       const sample = definition.input ? template.replaceAll("{ticker}", SAMPLE_INPUTS[definition.input]) : template;
-      if (!parseSeriesExpression(sample)) problems.push(`${definition.id}: ${sample} does not parse`);
+      // A formula of series (a crack spread) charts as one line.
+      if (!parseSeriesExpression(sample) && !parseFormulaExpression(sample)) problems.push(`${definition.id}: ${sample} does not parse`);
       if (definition.publisher && !PUBLISHERS.has(definition.publisher)) problems.push(`${definition.id}: publisher ${definition.publisher}`);
       if (!definition.group) problems.push(`${definition.id} has no group`);
     }

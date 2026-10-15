@@ -34,6 +34,8 @@ export function parsedPriceHistoryKey(
  */
 interface SeedListingFacts {
   quoteMetadata?: QuoteMetadata;
+  /** What a future's price counts ("USD / gallon"), so a seed states the unit the settled chart will. */
+  contractUnit?: string;
   resolutionSupport?: ChartResolutionSupport[];
 }
 

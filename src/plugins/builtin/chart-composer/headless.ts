@@ -22,6 +22,7 @@ import type { HistorySession } from "../../../types/price-history";
 import type { TickerFinancials, PricePoint, Quote } from "../../../types/financials";
 import { chartQuoteOverrideKeyForTarget, getLiveChartQuoteTargets } from "../../../time-series/live-quotes";
 import { createChartSeriesResolver } from "../../../capabilities";
+import { loadFuturesContractTerms, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
 import { parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
@@ -131,6 +132,7 @@ export async function loadChartPaneModel(
       }
     },
     resolveCapabilitySeries: headlessCapabilityResolver(context),
+    loadFuturesPriceUnit: (symbol) => loadFuturesPriceUnit(symbol, (key) => loadFuturesContractTerms(key, context.apiClient)),
     loadFredSeries: async (request) => ({
       data: await context.apiClient.getCloudFredSeries(request.seriesId, {
         startDate: request.startDate,
