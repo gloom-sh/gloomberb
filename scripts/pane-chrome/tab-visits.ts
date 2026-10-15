@@ -219,7 +219,9 @@ export async function visitAlternatives({ cdp, scope, reset, settle, record, dep
     const now = await listAlternatives(cdp, scope);
     enqueue(path, now.filter((entry) => isRevealed(entry, stateBefore)), now);
   }
-  return visits;
+  // An alternative not laid out at first (inside a view not yet open) that a press then revealed and the sweep measured is covered, not skipped.
+  const reached = new Set(visits.filter((visit) => visit.status === "measured").map((visit) => visit.path.at(-1)!.id));
+  return visits.filter((visit) => !(visit.status === "skipped" && visit.reason?.startsWith("not laid out") && reached.has(visit.path.at(-1)!.id)));
 }
 
 /** The label without what a choice adds once chosen ("Auto (5m)" is "Auto"). */
@@ -228,14 +230,16 @@ function baseLabel(label: string): string {
 }
 
 /**
- * Whether a press revealed `entry`: no group before it shares half its labels
- * (a relabelled or re-chosen group is the same group), or the group that does
- * lacked this label.
+ * Whether a press revealed `entry`: no group laid out before it shares half
+ * its labels (a relabelled or re-chosen group is the same group), or the
+ * group that does lacked this label.
  */
 function isRevealed(entry: Alternative, before: Alternative[]): boolean {
+  if (entry.hidden) return false;
   const labels = new Set(entry.groupLabels.map(baseLabel));
   let best: Set<string> | null = null, bestScore = 0;
-  for (const group of new Set(before.map((alternative) => alternative.groupLabels.map(baseLabel).join("|")))) {
+  // Only what was laid out before: a group mounted but hidden then is revealed by the press that shows it.
+  for (const group of new Set(before.filter((alternative) => !alternative.hidden).map((alternative) => alternative.groupLabels.map(baseLabel).join("|")))) {
     const other = new Set(group.split("|"));
     const shared = [...labels].filter((label) => other.has(label)).length;
     const score = shared / new Set([...labels, ...other]).size;

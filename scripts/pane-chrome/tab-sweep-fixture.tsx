@@ -16,12 +16,15 @@ export const TAB_SWEEP_TABS = Array.from({ length: 25 }, (_, index) => `Tab ${St
 export const TAB_SWEEP_STUCK = "Tab 13";
 /** Shows the inner choice. */
 export const TAB_SWEEP_REVEALS = "Tab 05";
+/** Shows a choice that was mounted, hidden, from the start. */
+export const TAB_SWEEP_SHOWS_HIDDEN = "Tab 20";
 
 export function TabSweepFixture() {
   const [tab, setTab] = useState("Tab 01");
   const [other, setOther] = useState("other");
   const [inner, setInner] = useState("inner-1");
   const [deep, setDeep] = useState("deep-1");
+  const [kept, setKept] = useState("kept-1");
   return (
     <Box flexDirection="column" width="100%" height="100%" data-gloom-pane-id="tab-sweep" style={{ padding: 24, gap: 12 }}>
       <Box style={{ width: 240, height: "var(--chrome-h)" }}>
@@ -33,13 +36,17 @@ export function TabSweepFixture() {
         />
       </Box>
       <SegmentedControl options={[{ label: "Tab 01", value: "first" }, { label: "Other", value: "other" }]} value={other} onChange={setOther} focused />
+      {/* Mounted from the start but hidden until Tab 20 shows it, as a pane keeps a tab's view mounted. */}
+      <Box visible={tab === TAB_SWEEP_SHOWS_HIDDEN}>
+        <SegmentedControl options={[{ label: "Kept 1", value: "kept-1" }, { label: "Kept 2", value: "kept-2" }]} value={kept} onChange={setKept} focused />
+      </Box>
       {tab === TAB_SWEEP_REVEALS ? (
         <SegmentedControl options={[{ label: "Inner 1", value: "inner-1" }, { label: "Inner 2", value: "inner-2" }]} value={inner} onChange={setInner} focused />
       ) : null}
       {tab === TAB_SWEEP_REVEALS && inner === "inner-2" ? (
         <SegmentedControl options={[{ label: "Deep 1", value: "deep-1" }, { label: "Deep 2", value: "deep-2" }]} value={deep} onChange={setDeep} focused />
       ) : null}
-      <Box data-sweep-shows=""><Text>{`tab=${tab} other=${other} inner=${tab === TAB_SWEEP_REVEALS ? inner : "-"}`}</Text></Box>
+      <Box data-sweep-shows=""><Text>{`tab=${tab} other=${other} inner=${tab === TAB_SWEEP_REVEALS ? inner : "-"} kept=${tab === TAB_SWEEP_SHOWS_HIDDEN ? kept : "-"}`}</Text></Box>
     </Box>
   );
 }
