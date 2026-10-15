@@ -41,6 +41,11 @@ export interface ResultItem {
   resolveTicker?: () => Promise<TickerRecord>;
   shortcutQuery?: string;
   searchText?: string;
+  /**
+   * Draws the shortcut in the right column instead of the badge column, for a
+   * row that leads with what it does in plain words.
+   */
+  shortcutOnRight?: boolean;
   /** Tints the trailing marker and the section heading with the AI accent. */
   accent?: boolean;
   /**

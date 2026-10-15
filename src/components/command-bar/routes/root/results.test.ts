@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneTemplateDef } from "../../../../types/plugin";
+import type { Command } from "../../commands/registry";
 import { orderListResults, type ResultItem } from "../../list/model";
 import { PLUGIN_INSTALL_CATEGORY } from "../../view-model";
 import { mergePlainRootTickerResults } from "../ticker-search/results";
@@ -396,5 +397,71 @@ describe("recents in the root result model", () => {
     expect(items.filter((item) => item.category === "Suggested").map((item) => item.label)).toEqual([
       "A", "B", "C", "D", "Ticker News A", "Ticker News B", "Ticker News C", "Ticker News D",
     ]);
+  });
+});
+
+describe("Start Here in the empty bar", () => {
+  const template = (id: string, prefix: string): PaneTemplateDef => ({
+    id,
+    paneId: id,
+    label: id,
+    description: "",
+    shortcut: { prefix },
+  }) as PaneTemplateDef;
+  // No comparison chart and no portfolio pane here, as on a host without them.
+  const templates = [template("graph-price", "GP"), template("relative-valuation", "RV"), template("economic-calendar", "ECO")];
+  const describeCommand = {
+    id: "security-description",
+    prefix: "DES",
+    label: "Description",
+    description: "Open security details",
+    category: "Search",
+  } as Command;
+
+  test("follows Suggested in plain words with the code on the right, each row running its code's own row", () => {
+    const ran: string[] = [];
+    const templateRow = (entry: PaneTemplateDef): ResultItem => ({
+      id: `pane-template:${entry.id}:`,
+      label: entry.label,
+      detail: "",
+      category: "Panes",
+      kind: "action",
+      right: entry.shortcut?.prefix,
+      shortcutQuery: entry.shortcut?.prefix,
+      action: () => { ran.push(entry.id); },
+    });
+    const { items } = buildRootResultModel(rootOptions({
+      availableCommands: [describeCommand],
+      buildRecentTickerItem: (symbol) => ({ ...paneRow, id: `ticker:${symbol}`, label: symbol, kind: "ticker" }),
+      state: {
+        config: { watchlists: [], portfolios: [], recentCommands: [] },
+        recentTickers: ["AAPL"],
+        focusedPaneId: null,
+      } as unknown as RootResultModelOptions["state"],
+      getAvailablePaneShortcutTemplates: (query) => templates.filter((entry) => entry.shortcut?.prefix === query),
+      createPaneTemplateItem: templateRow,
+      paneShortcutItems: () => templates.map(templateRow),
+      openModeRoute: (screen) => { ran.push(screen); },
+    }));
+    const ordered = orderListResults(items);
+
+    expect(ordered[0]?.id).toBe("ticker:AAPL");
+    const startHere = ordered.filter((item) => item.category === "Start Here");
+    expect(ordered.slice(1, 1 + startHere.length)).toEqual(startHere);
+    // The comparison chart is missing, so relative valuation answers "Compare stocks".
+    expect(startHere.map((item) => [item.label, item.right])).toEqual([
+      ["Look up a company", "DES"],
+      ["Chart a stock", "GP"],
+      ["Compare stocks", "RV"],
+      ["Check the economy", "ECO"],
+    ]);
+    expect(startHere.every((item) => item.shortcutOnRight)).toBe(true);
+
+    startHere[0]?.action();
+    startHere[1]?.action();
+    expect(ran).toEqual(["ticker-search", "graph-price"]);
+    // Everything the bar listed before is still listed after the group.
+    for (const entry of templates) expect(ordered.some((item) => item.id === `pane-template:${entry.id}:`)).toBe(true);
+    expect(ordered.some((item) => item.id === "security-description")).toBe(true);
   });
 });

@@ -501,9 +501,8 @@ export const zhCN: Record<string, string> = {
 
   // ── Help pane ────────────────────────────────────────────────
   "How To Use Gloomberb": "如何使用 Gloomberb",
-  "Gloomberb is command-bar first.": "Gloomberb 以命令栏为核心。",
-  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "不知道代码？点击顶部的搜索栏，或按 {key}，用日常语言输入你想要的，比如 \"apple earnings\"。“功能”标签列出了全部功能。",
-  "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"apple earnings\". The Functions tab lists everything.": "不知道代码？点击顶部的搜索栏，用日常语言输入你想要的，比如 \"apple earnings\"。“功能”标签列出了全部功能。",
+  "Not sure of a code? Click the search bar at the top, or press {key}, and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代码？点击顶部的搜索栏，或按 {key}，用日常语言输入你想要的，比如 \"top news\"。“功能”标签列出了全部功能。",
+  "Not sure of a code? Click the search bar at the top and type what you want in plain words, like \"top news\". The Functions tab lists everything.": "不知道代码？点击顶部的搜索栏，用日常语言输入你想要的，比如 \"top news\"。“功能”标签列出了全部功能。",
   "Click anything to use it; the keys shown beside actions are shortcuts.": "点击任意内容即可使用；操作旁显示的按键是快捷键。",
   "Open Help": "打开帮助",
   "Command Prefixes": "命令前缀",

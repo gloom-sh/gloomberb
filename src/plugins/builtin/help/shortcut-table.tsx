@@ -28,6 +28,8 @@ export interface ShortcutTableEntry {
   id: string;
   badges: string[];
   description: string;
+  /** Makes the row one click: anywhere on it runs this. */
+  run?: () => void;
 }
 
 type ShortcutColumn = DataTableColumn & { id: "key" | "description" };
@@ -68,8 +70,19 @@ export function ShortcutTable({
 
   const renderCell = useCallback((row: ShortcutRow, column: ShortcutColumn): DataTableCell => {
     if (!isSectionedItemRow(row)) return EMPTY_TABLE_CELL;
-    if (column.id === "key") return badgeCell(row.item.badges, column.width);
-    return { text: t(row.item.description), color: colors.text };
+    const run = row.item.run;
+    const cell: DataTableCell = column.id === "key"
+      ? badgeCell(row.item.badges, column.width)
+      : { text: t(row.item.description), color: colors.text };
+    if (!run) return cell;
+    return {
+      ...cell,
+      onMouseDown: (event: { preventDefault?: () => void; stopPropagation?: () => void }) => {
+        event?.preventDefault?.();
+        event?.stopPropagation?.();
+        run();
+      },
+    };
   }, [colors]);
 
   if (fillHeight !== undefined) {

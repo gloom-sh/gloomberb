@@ -60,8 +60,10 @@ afterEach(() => {
   resetEconCalendarPersistence();
 });
 
-async function renderPane(width: number) {
+/** `impactFilter` is the filter saved with the pane; without one it opens on its default. */
+async function renderPane(width: number, impactFilter: string | null = "all") {
   const state = createInitialState(createDefaultConfig("/tmp/gloomberb-econ-test"));
+  if (impactFilter) state.paneState["econ-calendar"] = { pluginState: { econ: { impactFilter } } };
   await tui.render(
     <TestPaneProvider state={state} paneId="econ-calendar" runtime={{} as unknown as PluginRuntimeAccess} pluginId="econ">
       <PaneFooterProvider>
@@ -85,6 +87,28 @@ async function renderPane(width: number) {
 }
 
 describe("EconCalendarPane", () => {
+  // Most rows are low-impact releases; a newcomer should see the few that move markets.
+  test("opens on high-impact events unless a filter was saved, and says so when none match", async () => {
+    seedCalendar();
+    const opened = await renderPane(110, null);
+    expect(opened).toContain("CPI m/m");
+    expect(opened).not.toContain("Retail Sales");
+
+    const saved = await renderPane(110, "all");
+    expect(saved).toContain("CPI m/m");
+    expect(saved).toContain("Retail Sales");
+
+    const persistence = new MemoryPluginPersistence();
+    persistence.seedResource("calendar", "global", [{
+      id: "low", date: new Date(Date.now() + 3_600_000).toISOString(), time: "13:00", country: "GB",
+      event: "MPC Member Speaks", impact: "low", actual: null, forecast: null, prior: null,
+    }], { sourceKey: "gloomberb-cloud", schemaVersion: 1 });
+    attachEconCalendarPersistence(persistence);
+    const empty = await renderPane(110, null);
+    expect(empty).toContain("No high-impact events listed");
+    expect(empty).toContain("Show all");
+  });
+
   // The column math has to leave room for gaps, padding, and the scrollbar
   // lane; one column short silently clipped the last value of every row.
   test("fits the last column instead of clipping released values", async () => {

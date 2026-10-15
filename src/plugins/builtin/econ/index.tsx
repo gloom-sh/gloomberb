@@ -2,7 +2,9 @@ import { Box } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
+  Button,
   DataTableStackView,
+  EmptyState,
   QueryBar,
   usePaneFooter,
   type DataTableCell,
@@ -21,6 +23,7 @@ import { FRED_CATALOG_SERIES } from "./fred-catalog";
 import { EconDetailView } from "./detail-view";
 import {
   COUNTRY_CYCLE,
+  DEFAULT_IMPACT_FILTER,
   FILTER_CYCLE,
   attachEconCalendarPersistence,
   actualColor,
@@ -28,6 +31,7 @@ import {
   CALENDAR_TIME_ZONE_LABEL,
   dateKey,
   dayLabel,
+  filteredEmptyTitle,
   formatCountdown,
   formatStaleness,
   getCalendarCache,
@@ -58,6 +62,10 @@ const IMPACT_LABELS: Record<ImpactFilter, string> = {
 };
 
 const NO_EVENTS: EconEvent[] = [];
+const SPELLED_IMPACT = "IMPACT";
+const SPELLED_COUNTRY = "COUNTRY";
+/** Event names this wide still read; past it the headers spell themselves out. */
+const SPELLED_HEADER_MIN_EVENT_WIDTH = 24;
 /** A result says whether a forced reload asked for it, so its answer can reset the cursor. */
 type CalendarResult = EconCalendarLoadResult & { forced?: boolean };
 const loadEvents = async (force: boolean): Promise<CalendarResult> => ({ ...await loadCalendar(force), forced: force });
@@ -76,7 +84,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // The selected row and the open event are remembered by event id, so a
   // reload or a shared layout comes back to the same release.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
-  const [impactFilter, setImpactFilter] = usePluginPaneState<ImpactFilter>("impactFilter", "all");
+  const [impactFilter, setImpactFilter] = usePluginPaneState<ImpactFilter>("impactFilter", DEFAULT_IMPACT_FILTER);
   const [countryFilter, setCountryFilter] = usePluginPaneState<CountryFilter>("countryFilter", "all");
   const [now, setNow] = useState(Date.now());
   const [openKey, setOpenKey] = usePluginPaneState<string | null>("openKey", null);
@@ -173,6 +181,12 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     setSelectedKey(null);
     returnToPresent();
   }, [returnToPresent, setCountryFilter, setSelectedKey]);
+  const showAllEvents = useCallback(() => {
+    setImpactFilter("all");
+    setCountryFilter("all");
+    setSelectedKey(null);
+    returnToPresent();
+  }, [returnToPresent, setCountryFilter, setImpactFilter, setSelectedKey]);
   const cycleImpactFilter = useCallback((step: 1 | -1) => {
     setImpactFilter((prev) => FILTER_CYCLE[(FILTER_CYCLE.indexOf(prev) + step + FILTER_CYCLE.length) % FILTER_CYCLE.length]!);
     setSelectedKey(null);
@@ -200,22 +214,33 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     // The header names the zone, so the column is as wide as the header needs.
     const timeLabelText = `TIME (${CALENDAR_TIME_ZONE_LABEL})`;
     const timeWidth = tableColumnWidth({ width: 6, label: timeLabelText });
-    const impactWidth = 4;
-    const flagWidth = 3;
     const actualWidth = 9;
     const forecastWidth = 10;
     const priorWidth = 9;
     const minEventWidth = 12;
-    const fixedWidth = timeWidth + impactWidth + flagWidth + actualWidth + forecastWidth + priorWidth;
     // Padding, one gap per column boundary, and the vertical scrollbar lane;
     // one column short of that clipped the PRIOR values at the right edge.
     const columnCount = 7;
-    const eventWidth = Math.max(minEventWidth, width - 3 - columnCount - fixedWidth);
+    const eventRoom = (impactWidth: number, countryWidth: number) => (
+      width - 3 - columnCount - (timeWidth + impactWidth + countryWidth + actualWidth + forecastWidth + priorWidth)
+    );
+    // IMPACT and COUNTRY in words while event names keep room to read; the
+    // short labels otherwise, with the word on hover where there is one.
+    const spelledImpactWidth = tableColumnWidth({ width: 1, label: SPELLED_IMPACT });
+    const spelledCountryWidth = tableColumnWidth({ width: 1, label: SPELLED_COUNTRY });
+    const spelled = eventRoom(spelledImpactWidth, spelledCountryWidth) >= SPELLED_HEADER_MIN_EVENT_WIDTH;
+    const impactColumn = spelled
+      ? { label: SPELLED_IMPACT, width: spelledImpactWidth }
+      : { label: "IMP", width: 4, title: "Impact" };
+    const countryColumn = spelled
+      ? { label: SPELLED_COUNTRY, width: spelledCountryWidth }
+      : { label: "CTY", width: 3, title: "Country" };
+    const eventWidth = Math.max(minEventWidth, eventRoom(impactColumn.width, countryColumn.width));
 
     return [
       { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
-      { id: "impact", label: "IMP", width: impactWidth, align: "left" },
-      { id: "country", label: "CTY", width: flagWidth, align: "left" },
+      { id: "impact", ...impactColumn, align: "left" },
+      { id: "country", ...countryColumn, align: "left" },
       { id: "event", label: "EVENT", width: eventWidth, align: "left" },
       { id: "actual", label: "ACTUAL", width: actualWidth, align: "right" },
       { id: "forecast", label: "FORECAST", width: forecastWidth, align: "right" },
@@ -224,6 +249,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
+  // The calendar has events and the filters hid them all: say which, with the way back.
+  const filterEmptyTitle = events.length > 0 ? filteredEmptyTitle(impactFilter, countryFilter) : null;
   const emptyStateHint = !loading && !error
     ? [
         impactFilter !== "all" ? `impact: ${impactFilter}` : null,
@@ -339,7 +366,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     <QueryBar
       width={width}
       filters={[
-        { id: "impact", label: "Impact", inline: true, value: impactFilter, defaultValue: "all",
+        { id: "impact", label: "Impact", inline: true, value: impactFilter, defaultValue: DEFAULT_IMPACT_FILTER,
           options: FILTER_CYCLE.map((value) => ({ value, label: IMPACT_LABELS[value] })),
           onChange: (value: string) => selectImpactFilter(value as ImpactFilter) },
         { id: "region", label: "Region", inline: true, value: countryFilter, defaultValue: "all",
@@ -398,6 +425,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
       selectedTextOverridesCellColor
+      emptyContent={filterEmptyTitle ? (
+        <Box width="100%" paddingX={1} paddingY={1}>
+          <EmptyState title={filterEmptyTitle} actions={<Button label="Show all" compact onPress={showAllEvents} />} />
+        </Box>
+      ) : undefined}
       emptyStateTitle={loading ? "Loading economic events..." : listedAfter ?? "No events"}
       emptyStateHint={emptyStateHint}
       showHorizontalScrollbar={false}

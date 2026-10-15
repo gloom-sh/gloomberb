@@ -14,6 +14,11 @@ export type DataTableColumn = Pick<
    * automation and screen readers read only `label`.
    */
   headerLeading?: ReactNode;
+  /**
+   * The plain words behind a short label ("Impact" for IMP), shown on hover on
+   * the desktop and the web. The terminal has no hover and shows `label` only.
+   */
+  title?: string;
   flexGrow?: number;
 };
 
