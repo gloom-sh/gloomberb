@@ -152,26 +152,20 @@ test("compare spreads 8h funding between the venues it shows, dates each venue, 
   expect(one).not.toContain("Funding spread");
 });
 
-test("a table that shows the APR % column says what it is in the footer, and a market nothing matches says which to try", async () => {
+test("the APR % column adds no data warning, and a market nothing matches says which to try", async () => {
+  // APR's definition is in the CLI report, Evidence and the docs: a ⚠ on every board would not be a data problem.
   serve({ board: perpBoard({ rows: [perpRow(), venueRow("bybit")] }) });
   await mount({ market: "", tab: "board" }, {}, createTestPluginRuntime(), 160);
   const board = await tui.waitForFrameToContain("APR %");
-  expect(board).toContain("⚠");
+  expect(board).not.toContain("⚠");
   await act(async () => tui.setup().mockInput.pressKey("!"));
-  // The warning wraps inside its box.
-  expect(await tui.waitForFrameToContain("not funding actually paid")).toContain("APR = current 8h rate × 3 × 365");
-  await tui.emitKeypress({ name: "escape" });
-  // A pane too narrow for the column has no APR to explain.
-  await remount();
-  serve({ board: perpBoard({ rows: [perpRow(), venueRow("bybit")] }) });
-  await mount({ market: "", tab: "board" });
-  expect(await tui.waitForFrameToContain("OBSERVED UTC")).not.toMatch(/APR %|⚠/);
+  expect(tui.frame()).not.toMatch(/Data warnings|APR = current/);
   await remount();
   serve({ compare: perpBoard({ rows: [venueRow("binance"), venueRow("bybit")] }) });
   await mount({ market: "", tab: "compare" }, {}, createTestPluginRuntime(), 160);
-  await tui.waitForFrameToContain("APR %");
+  expect(await tui.waitForFrameToContain("APR %")).not.toContain("⚠");
   await act(async () => tui.setup().mockInput.pressKey("!"));
-  expect(await tui.waitForFrameToContain("APR = current 8h rate × 3 × 365")).toContain("Data warnings");
+  expect(tui.frame()).not.toMatch(/Data warnings|APR = current/);
   await remount();
   // A typed name the board does not spell reads as its base asset; one nothing matches names the markets nearest to it.
   const calls = serve({ board: perpBoard({ rows: [venueRow("binance", { marketId: "binance:BZUSDT", symbol: "BZUSDT", baseAsset: "BZ", displayName: "Brent Crude" })] }) });

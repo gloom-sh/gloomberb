@@ -25,7 +25,7 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { boardSearchText, cachedPerpSelection, cachedPerpsBoard, cachedPerpsCompare, cachedPerpsRankings, loadPerpSelection, loadPerpsBoard, loadPerpsCompare,
   loadPerpsHistoryForRange, loadPerpsRankings } from "./client";
 import { perpFreshness, perpObservation } from "./freshness";
-import { APR_FOOTNOTE, ASSET_FILTERS, BOARD_SORTS, boardColumns, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
+import { ASSET_FILTERS, BOARD_SORTS, boardColumns, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
   HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, PERP_TABS, percent,
   positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
@@ -230,9 +230,7 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
   const line = usePerpStatusLine(rows, rows, resource.updatedAt);
   usePaneStatusFooter({ registrationId: "perps:board", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
-  // The APR % column carries its own definition for as long as the pane is wide enough to show it.
-  usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: [...resource.data?.refreshError ? [resource.data.refreshError] : [],
-    ...rows.length && columns.some((column) => column.id === "fundingApr") ? [APR_FOOTNOTE] : []] });
+  usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="view perpetual markets" needsVerification={session.needsVerification} />;
   const narrow = (apply: () => void) => { apply(); setSelected(null); };
   const lock = locked ? <LockedPreview text={moreText(locked, "markets")} onPress={upgrade} role="perps-board-upgrade" /> : null;
@@ -322,8 +320,7 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
   usePaneStatusFooter({ registrationId: "perps:compare", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
-  usePaneNoticeFooter({ registrationId: "perps:compare-notice", focused, notices: [...resource.data?.refreshError ? [resource.data.refreshError] : [],
-    ...rows.length && columns.some((column) => column.id === "fundingApr") ? [APR_FOOTNOTE] : []] });
+  usePaneNoticeFooter({ registrationId: "perps:compare-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="compare perpetual venues" needsVerification={session.needsVerification} />;
   const figures: StatItem[] = spread ? [{ id: "spread", label: "Funding spread 8h", value: spread.text, detail: spread.detail }] : [];
   const lock = locked ? <LockedPreview text={moreText(locked, locked === 1 ? "contract" : "contracts")} onPress={upgrade} role="perps-compare-upgrade" /> : null;

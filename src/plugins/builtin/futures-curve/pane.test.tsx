@@ -202,29 +202,21 @@ describe("crypto basis against spot", () => {
     expect(lines.join("\n")).not.toContain("Basis blank:");
   });
 
-  test("the footer names the listing and feed the quote reports, and a short-dated rate carries its noise as a data warning", async () => {
+  test("the footer names the listing and feed the quote reports, and a short-dated rate is no data warning", async () => {
     spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload());
     let lines = await render(130, 30, "curve", { root: "BTC", quote: reportingSpot(2) });
     expect(lines.join("\n")).toMatch(/spot BTC-USD 80,000\.00 · (\d{4}-\d{2}-\d{2} )?\d{2}:\d{2} UTC \(CCC, real-time\)/);
-    // BTCV26 is 21 days out: 10 bp of spot moves its rate 0.1% x 365 / 21 = 1.7 points. The warning is the footer's, opened with `!`.
-    expect(lines.join("\n")).toContain("⚠");
+    // BTCV26 is 21 days out, so its rate is noisy, but that is how the contract is, not a problem with the data: only the CLI report says so.
+    expect(lines.join("\n")).not.toContain("⚠");
     await act(async () => tui.setup().mockInput.pressKey("!"));
     await settle();
-    // The warning wraps inside its box.
-    expect(tui.frame()).toContain("Ann Basis is noisy under 30 days to expiry: 10 bp of spot noise moves");
-    expect(tui.frame()).toContain("BTCV26 (21d) by ±1.7 points.");
-    await tui.emitKeypress({ name: "escape" });
-    await settle();
+    expect(tui.frame()).not.toMatch(/Data warnings|noisy under 30 days/);
     // A narrower footer gives the listing up before the price and its time.
     spy.mockRestore(); futuresCurveCache.reset();
     spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload(BTC_CONTRACTS.slice(0, 2)));
     lines = await render(98, 30, "curve", { root: "BTC", quote: reportingSpot(2) });
     expect(lines.join("\n")).toMatch(/spot BTC-USD 80,000\.00 · \d{2}:\d{2} UTC/);
     expect(lines.join("\n")).not.toContain("(CCC");
-    // Without a contract inside 30 days there is nothing to warn of.
-    spy.mockRestore(); futuresCurveCache.reset();
-    spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload(BTC_CONTRACTS.slice(1, 2)));
-    expect((await render(130, 30, "curve", { root: "BTC", quote: reportingSpot(2) })).join("\n")).not.toContain("⚠");
   });
 
   test("a print over an hour before the spot is blank, and a data warning counts those thin contracts", async () => {
