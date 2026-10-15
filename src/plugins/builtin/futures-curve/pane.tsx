@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, Notice, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type StatItem } from "../../../components";
+import { chartTableChromeRows, ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, Notice, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableColumn, type PaneFooterSegment, type StatItem } from "../../../components";
 import { fitChartTableColumns } from "../../../components/chart-table";
 import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve";
 import { isAccessDenied } from "../../../api-client/errors";
@@ -17,7 +17,7 @@ import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { getCachedFuturesCurve, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpreadLabel, curveTimestamp, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges } from "./model";
+import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -68,6 +68,13 @@ const contractKey = (row: FuturesContract) => row.symbol;
 // Left and Right step along the expiries, the way the curve reads.
 const contractDate = (row: FuturesContract) => new Date(row.expiration);
 const sentenceCase = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/** The footer's spot, naming the quote's own listing and feed; a narrow footer gives those up before the price and its time. */
+function spotSegment(spot: CurveSpot, root: string, clock: number): PaneFooterSegment {
+  const label = curveSpotLabel(spot, root, clock);
+  const source = curveSpotSource(spot);
+  return { id: "spot", parts: [{ text: source ? `${label} (${source})` : label, tone: "muted" }], ...source ? { variants: [[{ text: label, tone: "muted" }]] } : {} };
+}
 
 export function FuturesCurvePane(props: PaneProps) {
   const pane = usePaneInstance();
@@ -216,8 +223,8 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
     info: data ? [
       { id: "source", parts: [{ text: `${requestedDate ? "daily archive" : data.source === "cboe" ? "settlement" : delay > 0 ? `${delay}m delayed` : "dated quotes"} · ${unit ?? "units unavailable"} · ${curveTimestamp(newest)}${newest?.includes("T") ? " UTC" : ""}`, tone: "muted" }] },
       ...(staleCount ? [{ id: "stale", parts: [{ text: `${staleCount} of ${data.contracts.length} stale`, tone: "warning" as const }] }] : []),
-      ...(spot ? [{ id: "spot", parts: [spot.status === "ok" ? { text: curveSpotLabel(spot, root, clock), tone: "muted" as const }
-        : { text: `Basis blank: ${spot.reason}`, tone: "warning" as const }] }] : []),
+      ...(spot ? [spot.status === "ok" ? spotSegment(spot, root, clock)
+        : { id: "spot", parts: [{ text: `Basis blank: ${spot.reason}`, tone: "warning" as const }] }] : []),
     ] : [],
   });
   const tableChromeRows = chartTableChromeRows(columns, width);

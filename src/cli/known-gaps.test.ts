@@ -4,7 +4,7 @@ import { createDefaultConfig } from "../types/config";
 import { knownGapMessage, topicPointer } from "./known-gaps";
 import type { MarketContext } from "./types";
 import { buildSearchReport, searchFunctionsForCli } from "./commands/search";
-import { buildPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
+import { buildPaneCatalogEntries, filterPaneCatalogEntries, renderPaneCatalogReport } from "./pane-functions/catalog";
 import { createPaneCatalog } from "./pane-functions/discovery";
 import { parsePaneCatalogArgs } from "./pane-functions/options";
 import { lookupGlossary } from "./glossary";
@@ -58,6 +58,23 @@ test("a search no ticker answers lists the functions that carry every word, so a
   expect(report).not.toContain("No matches found");
   // Some of the words only: no function carries them all, and the search says so as before.
   expect(await searchFunctionsForCli("rebalance xylophone", getLoadablePlugins(), context)).toEqual([]);
+});
+
+test("the basis trade is found by its own words: the futures curve first, then the perpetual that pays its other leg", async () => {
+  const context = { config: createDefaultConfig("/tmp/known-gaps-test") } as MarketContext;
+  expect((await searchFunctionsForCli("basis trade", getLoadablePlugins(), context)).map((match) => match.token)).toEqual(["CTM", "PERP"]);
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    const entries = await buildPaneCatalogEntries(registry, context);
+    for (const query of ["basis", "carry", "contango", "backwardation", "roll", "basis trade"]) {
+      const report = renderPaneCatalogReport(filterPaneCatalogEntries(entries, query), parsePaneCatalogArgs([query]), lookupGlossary(query)).replace(/\x1b\[[0-9;]*m/g, "");
+      expect(report, query).toMatch(/^CTM\s+Futures Curve/m);
+    }
+  } finally {
+    registry.destroy();
+  }
+  // Carry has no glossary entry of its own; the basis it names is listed beside the functions.
+  expect(renderPaneCatalogReport([], parsePaneCatalogArgs(["carry"]), lookupGlossary("carry"))).toContain("Glossary: Futures basis.");
 });
 
 test("securities-lending data is said to be unavailable, with short interest as the nearest data, instead of SI being listed as its source", () => {

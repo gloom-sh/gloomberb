@@ -2,7 +2,7 @@ import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText
 
 /**
  * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio,
- * fund, short interest, quote-board, futures and economic-calendar terms the functions
+ * fund, short interest, quote-board, futures (basis, contango, roll yield) and economic-calendar terms the functions
  * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
@@ -301,10 +301,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "The funding rate keeps its price close to the asset it tracks.",
   },
   {
-    term: "Funding rate", aliases: ["funding", "funding payment", "funding fee", "funding 8h"], functions: ["PERP"],
-    shown: ["Funding %/int", "Funding 8h", "Paid %/int"],
+    term: "Funding rate", aliases: ["funding", "funding payment", "funding fee", "funding 8h", "funding apr", "apr"], functions: ["PERP"],
+    shown: ["Funding %/int", "Funding 8h", "Paid %/int", "APR %"],
     definition: "A regular payment between the two sides of a perpetual contract, set to pull its price toward the asset's. "
-      + "Positive means longs pay shorts, negative means shorts pay longs.",
+      + "Positive means longs pay shorts, negative means shorts pay longs, so a basis trade (long spot, short the perpetual) collects it when positive. "
+      + "APR % is the current 8h rate × 3 × 365: a simple annualisation of the rate now, not funding actually paid.",
   },
   {
     term: "Open interest", short: "OI", aliases: ["open interest usd"], functions: ["PERP"],
@@ -472,6 +473,35 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     functions: ["FUT", "CTM"], shown: ["Settle", "PREV"],
     definition: "A futures contract's official price for the day, set by its exchange from trading near the close. "
       + "The day's change and margin are measured from it, and it can differ from the last trade. FUT's PREV is the previous one.",
+  },
+  // Futures basis and curve shape (CTM, FUT, PERP).
+  {
+    term: "Futures basis", aliases: ["basis", "basis trade", "cash and carry", "cash-and-carry", "vs spot", "spot spread"],
+    functions: ["CTM", "FUT", "PERP"], shown: ["Vs Spot", "VS SPOT"],
+    definition: "The gap between a futures price and the spot price of what it tracks, in percent: positive when the future costs more, negative when it costs less. "
+      + "It closes by expiry. A basis trade buys spot and sells the future to earn it. A perpetual has no expiry, so its funding rate plays that part.",
+  },
+  {
+    term: "Annualised basis", aliases: ["annualized basis", "ann basis", "ann. basis", "basis annualised"], functions: ["CTM", "PERP"], shown: ["Ann Basis", "ANN BASIS"],
+    definition: "The basis restated as a yearly rate, so contracts of different length compare with each other and with a perpetual's funding APR: "
+      + "(Last / spot - 1) × 365 / days to expiry, simple rather than compounded, on the latest trade against the spot quote. "
+      + "Inside 30 days a few basis points of spot noise move it by whole points: 10 bp is about ±2 points at 18 days to expiry.",
+  },
+  {
+    term: "Contango", aliases: ["contango curve", "upward curve"], functions: ["CTM", "FUT"], shown: ["contango", "Contango"],
+    definition: "A futures curve that slopes up: each contract costs more than the one before it, and the future trades above spot. "
+      + "A long rolling into the next contract pays that difference, a short earns it, and the basis closes as expiry nears.",
+  },
+  {
+    term: "Backwardation", aliases: ["backwardation curve", "downward curve", "inverted futures curve"], functions: ["CTM", "FUT"], shown: ["backwardation", "Backwardation"],
+    definition: "A futures curve that slopes down: later contracts cost less than nearer ones, and the future trades below spot, often when the asset is scarce now. "
+      + "A long rolling into the next contract earns that difference, a short pays it.",
+  },
+  {
+    term: "Roll yield", aliases: ["roll", "roll return", "annualised roll yield", "annualized roll yield", "ann roll yield", "ann. roll yield"], functions: ["CTM", "FUT"],
+    shown: ["Ann. roll yield", "Annualized Roll Yield"],
+    definition: "What a long future earns or loses as it is rolled into the next contract. CTM's annualised roll yield is the front price over the next contract's "
+      + "less 1, scaled to a year: (front / next - 1) × 365 / days between the two. It is positive in backwardation and negative in contango.",
   },
   // The economic calendar (ECO).
   {

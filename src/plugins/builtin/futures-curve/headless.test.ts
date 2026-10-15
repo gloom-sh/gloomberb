@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { FuturesContract, FuturesCurveAsOfPayload, FuturesCurvePayload } from "../../../api-client/futures-curve";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
+import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
 import type { HeadlessBundleResult } from "../../../types/plugin";
 import { futuresCurveHeadless } from "./headless";
 
@@ -29,7 +30,7 @@ function context(options: { quote?: (symbol: string) => Promise<ReturnType<typeo
   const reads: string[] = [];
   const marketData = createTestDataProvider({ getQuote: async (symbol) => {
     reads.push(symbol);
-    return options.quote ? options.quote(symbol) : createTestQuote({ symbol, price: 80_000, lastUpdated: SPOT_AT, dataSource: "live" });
+    return options.quote ? options.quote(symbol) : createTestQuote({ symbol, price: 80_000, lastUpdated: SPOT_AT, dataSource: "live", listingExchangeName: "CCC" });
   } });
   const apiClient = { getCloudFuturesCurve: async (root: string) => curve(root, root === "BTC" ? BTC : [contract("ES", "Z26", 30, 6600)]),
     getCloudFuturesCurveAsOf: async () => options.asOf! } as never;
@@ -64,8 +65,26 @@ describe("CTM report basis", () => {
       [null, null], [null, null], [null, null], [null, null],
     ]);
     expect(metadata.basisBlankedThin).toBe(2);
-    expect(metadata.spot).toEqual({ symbol: "BTC-USD", price: 80_000, asOf: new Date(SPOT_AT).toISOString().replace(".000Z", "Z"), status: "ok", reason: null });
-    expect(metadata.notices).toEqual([expect.stringMatching(/^Basis against spot BTC-USD 80,000\.00 · /)]);
+    expect(metadata.spot).toEqual({ symbol: "BTC-USD", price: 80_000, asOf: new Date(SPOT_AT).toISOString().replace(".000Z", "Z"), status: "ok", reason: null, venue: "CCC", feed: "real-time" });
+    // The spot is named as the quote path reports it, and is the terminal's quote, not the CME reference rate.
+    expect(metadata.notices).toEqual([expect.stringMatching(/^Basis against spot BTC-USD 80,000\.00 · .* UTC \(CCC, real-time\); not the CME reference rate\.$/)]);
+  });
+
+  test("the footnotes give the convention, why each blank cell is blank and how noisy a short-dated rate is", async () => {
+    const { result } = await run("BTC");
+    expect(result.notes).toEqual([
+      "Ann Basis = (Last / spot - 1) × 365 / days to expiry: simple actual/365, the latest trade against the spot quote.",
+      "Basis blank for BTCZ26 (price over two sessions old); BTCF27 (no price); BTCG27, BTCH27 (last trade over 1h before the spot quote).",
+      // 21 days to the front contract: 0.1% x 365 / 21 = 1.7 points a year.
+      "Ann Basis is noisy under 30 days to expiry: 10 bp of spot noise moves BTCV26 (21d) by ±1.7 points.",
+    ]);
+    const text = renderHeadlessPaneText(futuresCurveHeadless, result, createTestHeadlessArgs(), "CTM").replace(/\x1b\[[0-9;]*m/g, "");
+    expect(text).toMatch(/\nNotes:\n {2}Ann Basis = \(Last \/ spot - 1\) × 365 \/ days to expiry.*\n {2}Basis blank for BTCZ26 .*\n {2}Ann Basis is noisy under 30 days/);
+    // A spot that is not usable blanks every cell for its own reason, which the notice gives: the convention stays, nothing else.
+    const stale = await run("BTC", { quote: async (symbol) => createTestQuote({ symbol, price: 80_000, lastUpdated: SPOT_AT - 2 * 3_600_000, dataSource: "live" }) });
+    expect(stale.result.notes).toEqual([expect.stringContaining("Ann Basis = (Last / spot - 1)")]);
+    // Other roots have no basis columns to footnote.
+    expect((await run("ES")).result.notes).toBeUndefined();
   });
 
   test("a stale or missing spot blanks the fields and the report says why", async () => {

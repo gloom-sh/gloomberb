@@ -35,6 +35,36 @@ export function underlyingTicker(row: Pick<PerpBoardRow, "underlyingSymbol" | "u
   return !listing || isUsListingExchange(listing) ? symbol : publicTickerKey(symbol, listing);
 }
 export const marketLabel = (row: PerpBoardRow) => row.dex && row.dex !== "default" ? `${row.baseAsset} · ${row.dex.toUpperCase()}` : row.baseAsset;
+
+/**
+ * Plain names for markets, as the Market column writes the contracts to try, nearest first. A name the board does
+ * not spell: bitcoin is BTC, and Brent is BZ on the Binance board and BRENTOIL on Hyperliquid's xyz dex. Keys are
+ * lower case letters and digits only, so "Brent Crude" and "brent-crude" are one.
+ */
+const PLAIN_NAMES: Readonly<Record<string, readonly string[]>> = {
+  bitcoin: ["BTC"], ethereum: ["ETH"], ether: ["ETH"], solana: ["SOL"], dogecoin: ["DOGE"], ripple: ["XRP"],
+  brent: ["BZ", "BRENTOIL · XYZ"], brentcrude: ["BZ", "BRENTOIL · XYZ"], wti: ["CL"], wticrude: ["CL"], naturalgas: ["NATGAS · XYZ"],
+};
+/** A pair as exchanges and charts write it: BTC-USD, BTC/USD, BTCUSD, BTCUSDT, BTC-PERP, BTC/USDT:USDT. */
+const QUOTED_PAIR = /^([A-Z0-9]{1,15}?)([-/_ ]?)(?:USDT|USDC|USD|PERP)(?::[A-Z]{3,4})?$/;
+
+/**
+ * The names to try for an input that names no market as typed: a plain name's contracts, or the base asset of a pair.
+ * Empty for an input that is neither; the caller has already tried it as typed.
+ */
+export function perpBaseCandidates(input: string): string[] {
+  const plain = PLAIN_NAMES[input.toLowerCase().replace(/[^a-z0-9]/g, "")];
+  if (plain) return [...plain];
+  const pair = QUOTED_PAIR.exec(input.trim().toUpperCase());
+  return pair ? [pair[1]!] : [];
+}
+/** The base asset a Market column label names: `BRENTOIL · XYZ` is BRENTOIL. */
+export const baseOfLabel = (label: string) => label.split("·")[0]!.trim();
+/** The base asset of a pair written with a separator (BTC-USD, BTC/USD), which no board symbol spells; null for anything else. */
+export function separatedPairBase(input: string): string | null {
+  const pair = QUOTED_PAIR.exec(input.trim().toUpperCase());
+  return pair?.[2] ? pair[1]! : null;
+}
 /** What the contract is, in plain words: perpetual futures never expire and trade around the clock. */
 export const perpDescription = (row: Pick<PerpBoardRow, "venue">) =>
   `Perpetual futures (24/7 ${row.venue === "hyperliquid" || row.venue === "dydx" ? "on-chain" : venueName(row.venue)} market)`;
@@ -45,6 +75,8 @@ export function readingTime(observedAt: string | null | undefined, now = Date.no
   const iso = new Date(read).toISOString();
   return `${iso.slice(0, 10) === new Date(now).toISOString().slice(0, 10) ? "" : `${iso.slice(0, 10)} `}${iso.slice(11, 16)} UTC`;
 }
+/** What the APR % column is: the current rate carried forward a year, never funding that was paid. */
+export const APR_FOOTNOTE = "APR = current 8h rate × 3 × 365: a simple annualisation of the current funding rate, not funding actually paid.";
 export const fundingInterval = (row: Pick<PerpBoardRow, "fundingIntervalHours" | "fundingKind">) => row.fundingIntervalHours ? `${row.fundingIntervalHours}h${row.fundingKind === "last-paid" ? " paid" : row.fundingKind === "continuous" ? " continuous" : ""}` : "--";
 export const HISTORY_METRICS = ["funding", "oi", "premium", "price", "long-short"] as const;
 export type HistoryMetric = typeof HISTORY_METRICS[number];

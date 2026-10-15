@@ -168,6 +168,71 @@ test("a Market column label opens its market, and a label nothing carries fails 
   await expect(perpsHeadless.load(args("FOO · XYZ"), createTestHeadlessContext({ apiClient }))).rejects.toThrow('No perpetual market matches "FOO · XYZ". Try BTC, ETH, SP500, xyz:SP500.');
 });
 
+test("a pair or plain name opens the market it stands for, and a name nothing matches names the nearest board markets", async () => {
+  const bz = perpRow({ marketId: "binance:BZUSDT", venue: "binance", dex: "", symbol: "BZUSDT", baseAsset: "BZ", displayName: "Brent Crude", assetClass: "energy", quoteCurrency: "USDT" });
+  const brentoil = perpRow({ marketId: "hyperliquid:xyz:BRENTOIL", dex: "xyz", symbol: "xyz:BRENTOIL", baseAsset: "BRENTOIL", displayName: "BRENTOIL", assetClass: "energy" });
+  const eth = venueRow("binance", { marketId: "binance:ETHUSDT", symbol: "ETHUSDT", baseAsset: "ETH", displayName: "Ethereum" });
+  const listed = [market, bz, brentoil, eth];
+  const requests: string[] = [];
+  const apiClient = {
+    // The server finds the text inside a symbol, base asset or name; the board never spells "bitcoin" or "brent" as a symbol.
+    getCloudPerpsBoard: async (query: { search?: string }) => perpBoard({ rows: listed.filter((row) => !query.search
+      || `${row.symbol} ${row.baseAsset} ${row.displayName}`.toUpperCase().includes(query.search.toUpperCase())) }),
+    getCloudPerpsMarket: async (id: string) => ({ ...perpBoard({ rows: listed.filter((row) => row.marketId === id) }), evidence: [], methodologyUrl: "" }),
+    getCloudPerpsHistory: async (query: { marketId: string }) => perpHistory({ marketId: query.marketId }),
+    getCloudPerpsCompare: async (base: string) => { requests.push(base); return perpBoard({ rows: listed.filter((row) => row.baseAsset === base) }); },
+  } as never;
+  const load = async (argument: string, tab = "history") => {
+    const args = createTestHeadlessArgs({ argument, rawArgument: argument, options: { tab, days: "7", metric: "funding" } });
+    const result = await perpsHeadless.load(args, createTestHeadlessContext({ apiClient }));
+    return { result, text: renderHeadlessPaneText(perpsHeadless, result, args, "PERP"), metadata: result.metadata as Record<string, unknown> };
+  };
+  // Pairs, quote-currency spellings and plain names each reach the market they stand for, and say so.
+  for (const typed of ["BTC-USD", "BTC/USD", "BTCUSD", "btc-usdt", "Bitcoin"]) {
+    expect((await load(typed)).metadata, typed).toMatchObject({ marketId: market.marketId, notices: [`Showing BTC for "${typed}".`] });
+  }
+  expect((await load("ethereum")).metadata).toMatchObject({ marketId: eth.marketId });
+  // A symbol or base asset as typed is not reread: BTCUSDT is Binance's contract and BRENTOIL is its own market.
+  expect((await load("ETHUSDT")).metadata).toMatchObject({ marketId: eth.marketId });
+  expect((await load("BRENTOIL")).metadata).not.toHaveProperty("notices");
+  // Brent is BZ on the Binance board and BRENTOIL on Hyperliquid's xyz dex: the nearest is shown and the other named.
+  const brent = await load("brent");
+  expect(brent.metadata).toMatchObject({ marketId: bz.marketId, notices: ['Showing BZ for "brent". Also on the board: BRENTOIL · XYZ.'] });
+  expect(brent.text).toContain('Showing BZ for "brent". Also on the board: BRENTOIL · XYZ.');
+  // The same names compare their base asset across venues, and the comparison says which it read.
+  const compared = await load("Bitcoin", "compare");
+  expect(compared.metadata).toMatchObject({ baseAsset: "BTC", notices: ['Showing BTC for "Bitcoin".'] });
+  expect(requests).toEqual(["BITCOIN", "BTC"]);
+  expect((await load("btc", "compare")).metadata).not.toHaveProperty("notices");
+  // A pair searches the board by its base asset.
+  expect(((await load("BTC-USD", "board")).result.sections[0] as { rows: unknown[] }).rows).toEqual([market]);
+
+  // A name nothing matches suggests the board markets nearest it, as the Market column writes them; free text and an unknown name keep the examples.
+  await expect(load("brentt")).rejects.toThrow('No perpetual market matches "brentt". Try BZ, BRENTOIL · XYZ.');
+  await expect(load("brentt", "compare")).rejects.toThrow('No perpetual market matches "brentt". Try BZ, BRENTOIL · XYZ.');
+  await expect(load("ethereun")).rejects.toThrow('No perpetual market matches "ethereun". Try ETH.');
+  await expect(load("XYZZY")).rejects.toThrow('No perpetual market matches "XYZZY". Try BTC, ETH, SP500, xyz:SP500.');
+  await expect(load("what is a perp")).rejects.toThrow('No perpetual market matches "what is a perp". Try BTC, ETH, SP500, xyz:SP500.');
+});
+
+test("a report that shows the APR % column footnotes what it annualises, and the rankings that do not show it say nothing", async () => {
+  const note = "APR = current 8h rate × 3 × 365: a simple annualisation of the current funding rate, not funding actually paid.";
+  for (const tab of ["history", "evidence"]) {
+    const { result, text } = await report(tab);
+    expect(result.notes, tab).toEqual([note]);
+    expect(text).toContain(`Notes: ${note}`);
+  }
+  const apiClient = { getCloudPerpsBoard: async () => perpBoard({ rows: [market] }), getCloudPerpsCompare: async () => perpBoard({ rows: [market] }),
+    getCloudPerpsRankings: async () => perpRankings({ fundingPositive: [market] }) } as never;
+  const load = (tab: string) => perpsHeadless.load(createTestHeadlessArgs({ argument: null, rawArgument: "", options: { tab } }), createTestHeadlessContext({ apiClient }));
+  expect((await load("board")).notes).toEqual([note]);
+  expect((await load("compare")).notes).toEqual([note]);
+  expect((await load("rankings")).notes).toBeUndefined();
+  // An empty table has no column to footnote.
+  const empty = createTestHeadlessContext({ apiClient: { getCloudPerpsBoard: async () => perpBoard({ rows: [], access: "preview", locked: 5 }) } as never });
+  expect((await perpsHeadless.load(createTestHeadlessArgs({ argument: null, rawArgument: "", options: { tab: "board" } }), empty)).notes).toBeUndefined();
+});
+
 test("a free account's locked tables say Locked, and the Pro line says what Pro adds, apart from the errors", async () => {
   const locked = perpHistory({ locked: true, access: "preview" });
   const apiClient = { getCloudPerpsBoard: async () => perpBoard({ rows: [market] }), getCloudPerpsMarket: async () => ({ ...perpBoard({ rows: [market], access: "preview" }), evidence: [], methodologyUrl: "" }),
