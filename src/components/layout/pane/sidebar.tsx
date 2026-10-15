@@ -68,8 +68,6 @@ export function PaneSidebar({
   focused,
   keyboardFocused = false,
   resize,
-  side = "left",
-  surface = "panel",
   children,
 }: {
   width: number;
@@ -78,10 +76,6 @@ export function PaneSidebar({
   keyboardFocused?: boolean;
   /** Makes the divider a drag handle; omit to keep the sidebar a fixed width. */
   resize?: PaneSidebarResize;
-  /** The content edge the sidebar sits on. Existing navigation sidebars stay left. */
-  side?: "left" | "right";
-  /** Body surfaces hold forms/content; navigation sidebars retain their panel surface. */
-  surface?: "panel" | "body";
   children: ReactNode | ((state: PaneSidebarRenderState) => ReactNode);
 }) {
   const { nativePaneChrome } = useUiCapabilities();
@@ -107,9 +101,9 @@ export function PaneSidebar({
     event?.preventDefault?.();
     event?.stopPropagation?.();
     const pointerX = event?.preciseX ?? event?.x ?? origin.pointerX;
-    const next = origin.width + (pointerX - origin.pointerX) * (side === "right" ? -1 : 1);
+    const next = origin.width + (pointerX - origin.pointerX);
     return Math.min(resize.max, Math.max(resize.min, precise ? next : Math.round(next)));
-  }, [resize, side]);
+  }, [resize]);
 
   const stopLiveDrag = useCallback(() => {
     const drag = liveDragRef.current;
@@ -207,10 +201,9 @@ export function PaneSidebar({
   const borderWidth = nativePaneChrome ? 0 : width > 1 ? 1 : 0;
   const listWidth = Math.max(width - borderWidth, 1);
   const dividerColor = focused ? colors.borderFocused : colors.border;
-  const surfaceColor = surface === "body" ? colors.bg : colors.panel;
   const backgroundColor = keyboardFocused
-    ? blendHex(surfaceColor, colors.borderFocused, 0.18)
-    : surfaceColor;
+    ? blendHex(colors.panel, colors.borderFocused, 0.18)
+    : colors.panel;
   const activeBackgroundColor = keyboardFocused
     ? blendHex(colors.selected, colors.borderFocused, 0.32)
     : blendHex(colors.panel, colors.selected, 0.35);
@@ -232,7 +225,7 @@ export function PaneSidebar({
         ref={sidebarRef}
         width={width}
         height={sidebarLayoutHeight}
-        flexDirection={side === "right" ? "row-reverse" : "row"}
+        flexDirection="row"
         position="relative"
         style={nativeFillStyle}
         data-gloom-role="pane-sidebar"
@@ -265,7 +258,7 @@ export function PaneSidebar({
           <Box
             position="absolute"
             top={0}
-            {...(side === "right" ? { left: 0 } : { right: 0 })}
+            right={0}
             width={1}
             height={sidebarLayoutHeight}
             style={{
@@ -284,14 +277,14 @@ export function PaneSidebar({
             ref={dividerRef}
             position="absolute"
             top={0}
-            {...(side === "right" ? { left: 0 } : { right: 0 })}
+            right={0}
             width={1}
             height={sidebarLayoutHeight}
             {...resizeHandlers}
             title={`${t("Resize sidebar")} (${NARROW_KEY} ${WIDEN_KEY})`}
             style={{
               width: 1 + DESKTOP_RESIZE_HANDLE_PADDING_PX * 2,
-              [side === "right" ? "left" : "right"]: -DESKTOP_RESIZE_HANDLE_PADDING_PX,
+              right: -DESKTOP_RESIZE_HANDLE_PADDING_PX,
               height: "100%",
               zIndex: 3,
               cursor: "col-resize",

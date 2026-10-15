@@ -104,7 +104,7 @@ export function WebSelectField({
       }}
     >
       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-        {showUnset ? "Unset" : current?.short ?? current?.label ?? value}
+        {showUnset ? "Unset" : current?.label ?? value}
       </span>
       <Chevron />
     </button>

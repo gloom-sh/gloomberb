@@ -5,13 +5,6 @@ import { fitAxisLabels, type ProjectedLevel } from "./levels";
 const GAP = 3;
 const HALO = 2;
 
-/** Space outside the plot for read-only annotations. Unlabelled charts keep every column. */
-export function levelLabelGutter(levels: readonly { label?: string; editable: boolean }[], width: number): number {
-  const labels = levels.filter((level) => !level.editable && level.label).map((level) => level.label!.length);
-  // Keep the plot still as a draft gains a digit or an order changes status.
-  return labels.length ? Math.min(32, Math.max(1, Math.floor(width / 3))) : 0;
-}
-
 /** DOM annotations sit above the SVG's ratio-space line, not on its text row. */
 export function layoutLevelLabels(levels: readonly ProjectedLevel[], plotHeight: number, textHeight: number) {
   const candidates = levels.filter(({ level }) => level.label).map((entry) => {

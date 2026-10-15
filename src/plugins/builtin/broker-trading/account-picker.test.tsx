@@ -16,7 +16,7 @@ test("account choices show modes and require a deliberate selection, with simula
   await tui.render(<BrokerAccountPicker accounts={accounts} onChange={(value) => changes.push(value)} controlRef={control} />);
   expect(changes).toEqual([]);
   await act(async () => control.current!.open());
-  await tui.waitForFrameToContain("Practice account");
+  await tui.waitForFrameToContain("Demo simulation profile");
   expect(tui.frame()).toContain("SIMULATION");
   expect(tui.frame()).toContain("LIVE");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });

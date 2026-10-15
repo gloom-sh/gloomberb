@@ -7,6 +7,7 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { BrokerTradingController } from "./controller";
 import { editTicketDraft, newTicketDraft, quickTicketQuantity } from "./pane-model";
 import { BrokerTicketView, ticketQuoteAge, type TicketAction } from "./ticket";
+import { TicketOrderSummary } from "./ticket-parts";
 import { createDemoBroker, type DemoOrderOutcome } from "./test-fixture";
 
 const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
@@ -53,11 +54,11 @@ async function mount(mode: "simulation" | "live", typed = "", outcome: DemoOrder
 test("unreported buying power after is never invented by subtracting an order estimate", async () => {
   const demo = createDemoBroker();
   const model = { brokerName: demo.adapter.name, symbol: "AAPL", accounts: demo.accounts(), accountId: demo.draft.accountId, draft: demo.draft,
-    phase: "review" as const, preview: { estimatedCost: 3365 }, warnings: [], tradingEnabled: true, connected: true };
-  await tui.render(<BrokerTicketView model={model} width={80} height={30} focused onEdit={() => {}} onAction={() => {}} onAccountChange={() => {}} />);
-  await tui.waitForFrameToContain("Buying power after");
+    phase: "editing" as const, warnings: [], tradingEnabled: true, connected: true };
+  await tui.render(<TicketOrderSummary model={model} width={80} />);
+  await tui.waitForFrameToContain("Broker power after");
   expect(tui.frame()).not.toContain("$21,235.00");
-  expect(tui.frame().split("\n").find((line) => line.includes("Buying power after"))).toContain("Not reported");
+  expect(tui.frame().split("\n").find((line) => line.includes("Broker power after"))).toContain("Not reported");
 });
 
 test("result retains broker preview values without pre-submit placeholders", async () => {
@@ -140,8 +141,7 @@ test("rejected result focuses Edit order and preserves the rejected fields", asy
 test("filled result focuses New order without submitting a second order", async () => {
   const f = await mount("simulation", "", "filled");
   await tui.clickFrameText("Place simulation order");
-  await tui.waitForFrameToContain("Filled / Quantity");
-  expect(tui.frame().split("\n").find((line) => line.includes("Filled / Quantity"))).toContain("10 / 10");
+  await tui.waitForFrameToContain("10 of 10 filled");
   expect(tui.frame()).toContain("Refresh status");
   await tui.emitKeypress({ name: "enter", sequence: "\r" }, { trackPropagation: true });
   await tui.waitForFrameToContain("Limit price");

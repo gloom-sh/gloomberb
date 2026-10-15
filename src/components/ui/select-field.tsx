@@ -9,8 +9,6 @@ export interface SelectFieldHandle {
 
 interface SelectFieldOption {
   label: string;
-  /** Abbreviated trigger value; the menu always shows the complete label. */
-  short?: string;
   value: string;
   description?: string;
   disabled?: boolean;

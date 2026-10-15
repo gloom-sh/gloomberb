@@ -1025,7 +1025,7 @@ function ChartComposerSurface({
     <Box flexDirection="column" width={width} height={height}>
       <Box flexDirection="row" alignItems="center" width={width}>
       <QueryBar
-        width={width}
+        width={trade ? width - 16 : width}
         filters={[
           { id: "range", label: "Range", inline: true,
             value: spec.viewport.dateWindow ? "" : spec.viewport.range,

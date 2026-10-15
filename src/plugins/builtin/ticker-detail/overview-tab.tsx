@@ -397,7 +397,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
           </Box>
         )}
 
-        <ResearchTradeActions focused={focused} />
+        <Box flexDirection="row" justifyContent="flex-end"><ResearchTradeActions focused={focused} /></Box>
         {hasHistory && (
           <Box
             onMouseDown={onOpenChart

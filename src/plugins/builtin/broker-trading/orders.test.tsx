@@ -11,7 +11,7 @@ import { createDemoBroker, type DemoBrokerOptions } from "./test-fixture";
 const tui = createOpenTuiTestHarness({ width: 90, height: 30 });
 const paneId = "broker-orders:test";
 
-async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string | null, confirmedCancel = false, width = 90) {
+async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string | null, confirmedCancel = false) {
   const demo = createDemoBroker(options);
   if (confirmedCancel) demo.adapter.getOrderStatus = async (_instance, orderId) => demo.order(demo.draft, "CANCELED", orderId);
   const config = createTestPaneConfig("/synthetic/orders-render", { instanceId: paneId, paneId: "broker-orders", binding: { kind: "none" }, settings: {} });
@@ -19,7 +19,7 @@ async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string |
   const state = createInitialState(config); state.focusedPaneId = paneId;
   const modifications: BrokerOrder[] = [];
   let returnedToTicket = 0;
-  await act(async () => { await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker-trading" runtime={createTestPluginRuntime()} width={width} height={30} footerKeys>
+  await act(async () => { await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker-trading" runtime={createTestPluginRuntime()} width={90} height={30} footerKeys>
     {(body) => <BrokerOrdersView {...body} focused broker={demo.adapter} instance={demo.instance} accounts={demo.accounts()} accountId={selectedAccount === null ? undefined : selectedAccount ?? demo.draft.accountId}
       onAccountChange={() => {}} onModify={(order) => modifications.push(order)} onBack={() => { returnedToTicket++; }} />}
   </TestPaneFrame>); });
@@ -27,7 +27,7 @@ async function mount(options: DemoBrokerOptions = {}, selectedAccount?: string |
   return { demo, modifications, returnedToTicket: () => returnedToTicket, mutations: () => demo.calls.filter((call) => ["placeOrder", "modifyOrder", "cancelOrder"].includes(call.method)) };
 }
 
-test.each([true, false])("compact rows (explicit: %s) step into review and keep cancel confirmation safe across resize", async (explicit) => {
+test("docked rows step a selected order into review and keep cancel confirmation safe across resize", async () => {
   const demo = createDemoBroker();
   const config = createTestPaneConfig("/synthetic/docked-orders", { instanceId: paneId, paneId: "broker-orders", binding: { kind: "none" } });
   config.brokerInstances = [demo.instance];
@@ -36,7 +36,7 @@ test.each([true, false])("compact rows (explicit: %s) step into review and keep 
   let resize!: (compact: boolean) => void;
   function Orders() {
     const [compact, setCompact] = useState(true); resize = setCompact;
-    return <BrokerOrdersView compact={explicit && compact} focused width={compact ? 34 : 90} height={25} broker={demo.adapter} instance={demo.instance}
+    return <BrokerOrdersView compact={compact} focused width={compact ? 34 : 90} height={25} broker={demo.adapter} instance={demo.instance}
       accounts={demo.accounts()} accountId={demo.draft.accountId} onAccountChange={() => {}} onModify={(order, edit) => modifications.push({ order, edit })} />;
   }
   await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={createTestPluginRuntime()} width={90} height={30}>{() => <Orders />}</TestPaneFrame>);
@@ -47,15 +47,14 @@ test.each([true, false])("compact rows (explicit: %s) step into review and keep 
   expect(modifications[0]!.edit).toEqual({ review: true, price: Number((modifications[0]!.order.limitPrice! + 0.01).toFixed(2)) });
   expect(demo.calls.filter((call) => ["placeOrder", "modifyOrder"].includes(call.method))).toEqual([]);
   await tui.emitKeypress({ name: "c" }, { trackPropagation: true });
-  await tui.waitForFrameToContain("Cancel AAPL order?");
-  expect(tui.frame()).toContain("SELL 10 AAPL");
+  await tui.waitForFrameToContain("Cancel SELL");
   await act(async () => resize(false));
-  await tui.waitForFrameToContain("Cancel AAPL order?");
+  await tui.waitForFrameToContain("Cancel SELL");
   await tui.emitKeypress({ name: "escape" }, { trackPropagation: true });
   expect(demo.calls.filter((call) => call.method === "cancelOrder")).toHaveLength(0);
   await act(async () => resize(true));
   await tui.emitKeypress({ name: "c" }, { trackPropagation: true });
-  await tui.waitForFrameToContain("Cancel AAPL order?");
+  await tui.waitForFrameToContain("Cancel SELL");
   await tui.emitKeypress([{ name: "enter" }, { name: "enter" }], { trackPropagation: true });
   await tui.waitForFrameToContain("Pending cancel");
   expect(demo.calls.filter((call) => call.method === "cancelOrder")).toHaveLength(1);
@@ -76,8 +75,7 @@ test("the dock reflects a placement immediately and disables other mutations dur
       accounts={demo.accounts()} accountId={demo.draft.accountId} onAccountChange={() => {}} onModify={(value) => modifications.push(value)} />;
   }
   await tui.render(<TestPaneFrame state={state} paneId={paneId} pluginId="broker" runtime={createTestPluginRuntime()} width={90} height={30}>{() => <Orders />}</TestPaneFrame>);
-  await tui.waitForFrameToContain("BUY 10 @");
-  expect(published.at(-1)).toEqual([order]);
+  await tui.waitForFrameToContain("Open Orders (1)");
   await tui.emitKeypress([{ name: "m" }, { name: "c" }, { name: "enter" }]);
   expect(modifications).toEqual([]);
   expect(demo.calls.filter((call) => call.method === "cancelOrder")).toEqual([]);
@@ -155,10 +153,10 @@ test("trading off hides mutations and an uncertain cancel cannot be repeated wit
   expect(uncertain.mutations().map((call) => call.method)).toEqual(["cancelOrder"]);
 });
 
-test.each([90, 38])("an inline cancel at %s columns targets its own row without opening modify", async (width) => {
-  const f = await mount({}, undefined, false, width);
+test("an inline cancel targets its own row and does not activate modify through the table", async () => {
+  const f = await mount();
   const lines = tui.frame().split("\n");
-  const row = lines.findIndex((line) => line.includes("Partial"));
+  const row = lines.findIndex((line) => line.includes("Partial fill"));
   const column = lines[row]!.indexOf("Cancel");
   expect(column).toBeGreaterThan(0);
   await act(async () => {
