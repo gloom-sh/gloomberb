@@ -48,7 +48,8 @@ const US_EXCHANGE_TIME_ZONE = "America/New_York";
 /**
  * A venue's session now, from its calendar (weekends and published holidays),
  * or from the state its source reports when the app has no calendar for it,
- * such as an index publisher or a futures exchange. Null when neither says.
+ * such as an index publisher or a futures exchange; an index quote that states
+ * none is placed on the sessions it carries. Null when none of them says.
  */
 function venueSession(exchange: string, marketState: string | undefined, now: number, calendar?: QuoteIndexSession): VenueSession | null {
   if (isAlwaysOpenExchange(exchange)) return { state: "always" };
@@ -68,8 +69,22 @@ function venueSession(exchange: string, marketState: string | undefined, now: nu
   }
   if (marketState === "REGULAR") return { state: "open" };
   const stated = marketState === "PRE" ? "pre-market" : marketState === "POST" ? "after-hours" : marketState && CLOSED_STATES.has(marketState) ? "closed" : null;
-  if (!stated) return null;
-  return calendar ? { state: stated, ...quotedSessions(calendar, now) } : { state: stated };
+  if (!calendar) return stated ? { state: stated } : null;
+  const state = stated ?? quotedState(calendar, now);
+  return state ? { state, ...quotedSessions(calendar, now) } : null;
+}
+
+/**
+ * Where an index quote's own sessions put the market now, for a quote that
+ * states no session. Before the open it is pre-market on the day of the open,
+ * as the venue calendars have it, and closed on any earlier day (a weekend, a holiday).
+ */
+function quotedState({ timeZone, current, regular }: QuoteIndexSession, now: number): ReportMarketState | null {
+  if (now >= current.end) return "closed";
+  if (now >= current.start) return "open";
+  // A regular session still running is not today's: the sessions disagree, so say nothing.
+  if (regular.some((window) => window.end > now)) return null;
+  return zonedDateKey(now, timeZone) === zonedDateKey(current.start, timeZone) ? "pre-market" : "closed";
 }
 
 /**
