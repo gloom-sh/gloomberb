@@ -71,6 +71,7 @@ import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { DataProvider } from "../../../types/data-provider";
 import { useShellPaneActions } from "./pane/actions";
 import { useShellPaneCapture } from "./pane/capture";
+import { canReportPaneBug } from "../../../shares/bug-report-flow";
 import { useShellPaneLayoutMoves } from "./pane/new-layout";
 import { resolvePaneFocusSourceLayout } from "./fullscreen";
 import { useTransientLayout } from "../transient-layout";
@@ -668,6 +669,9 @@ export function Shell({
       paneLayoutMoveMenu(paneId),
       () => { openPaneDocs(paneId); },
       canAsk ? () => { askAboutPane(paneId, { cover: kitMenuRectRef.current }); } : undefined,
+      canReportPaneBug(nativePaneChrome || !!nativeRenderer.capturePaneImage)
+        ? () => { pluginRegistry.reportPaneBug(paneId); }
+        : undefined,
     );
     const showKitMenu = () => {
       const fallbackSourceItems = withPluginContextMenuItems(context, items, pluginRegistry);
@@ -710,7 +714,7 @@ export function Shell({
     void showContextMenu(context, items, event).then((shown) => {
       if (!shown) showKitMenu();
     });
-  }, [askAboutPane, canAsk, canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
+  }, [askAboutPane, canAsk, canExportPaneCsv, closePaneMenu, contentHeight, copyPaneScreenshot, desktopWindowBridge, exportPaneCsv, focusPane, getPaneTitle, handlePaneQuickSetting, nativePaneChrome, nativeRenderer, togglePaneFullscreen, openPaneDocs, openPaneSettings, paneAccelerators, paneLayoutMoveMenu, paneMap, persistLayout, pluginRegistry, rendererHost.copyPngImage, sharePane, shortcutDisplayMode, showContextMenu, titleState, visibleLayout, width]);
   openPaneMenuRef.current = openPaneMenu;
 
 

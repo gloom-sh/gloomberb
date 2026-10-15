@@ -11,6 +11,7 @@ import { useUiCapabilities, type NativeRendererHost } from "../../../../ui";
 import { buildPaneSharePayload } from "../../../../shares/pane";
 import { preparePaneShare } from "../../../../shares/prepare";
 import { shareFocusedPane } from "../../../../shares/flow";
+import { reportPaneBug } from "../../../../shares/bug-report-flow";
 import { useDialog } from "../../../../ui/dialog";
 import { capturePaneImage as paintPaneImage } from "../../../../utils/dom-screenshot";
 import { setPaneCaptureStamp } from "../../pane/capture-stamp";
@@ -45,8 +46,9 @@ interface UseShellPaneCaptureOptions {
 
 /**
  * Binds `capturePaneImage` and `promptDialog` for plugins that post a pane's
- * picture or copy its link. The desktop and the web paint the pane's DOM; the
- * terminal draws the cells it shows, kitty charts included.
+ * picture or copy its link, and Share and Report a Bug, which are built on
+ * them. The desktop and the web paint the pane's DOM; the terminal draws the
+ * cells it shows, kitty charts included.
  */
 export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
   const { pluginRegistry } = options;
@@ -129,6 +131,12 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
       setTimeout(() => {
         void shareFocusedPane(pluginRegistry, paneId).finally(() => shareOnce.end());
       }, 0);
+    },
+    reportPaneBug: (requestedPaneId) => {
+      const paneId = requestedPaneId ?? latest.current.focusedPaneId;
+      if (!paneId) return;
+      // After the menu that chose it has closed; the flow takes one report at a time.
+      setTimeout(() => { void reportPaneBug(pluginRegistry, paneId); }, 0);
     },
     capturePaneImage: capture,
     promptDialog: (prompt) => dialog.prompt(prompt),

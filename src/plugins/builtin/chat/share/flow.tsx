@@ -1,6 +1,6 @@
 import { apiClient } from "../../../../api-client";
 import { pngDataUrl } from "../../../../shares/pane-image";
-import { registerPaneChatSharing } from "../../../../shares/chat";
+import { registerPaneChatSharing, type ChatPostPurpose } from "../../../../shares/chat";
 import type { GloomPluginContext } from "../../../../types/plugin";
 import { requestAuthDialog } from "../../../../account/auth-dialog";
 import { MAX_CHAT_IMAGE_BYTES } from "../attachments/model";
@@ -11,6 +11,11 @@ import { defaultShareTarget, shareTargets } from "./targets";
 
 type ShareContext = Pick<GloomPluginContext, "notify" | "createPaneFromTemplate" | "configState">;
 const INCLUDE_LINK_KEY = "share.includeLink";
+/** How the sign-in and verify prompts finish "Sign in to ...". */
+const PURPOSE_TEXT: Record<ChatPostPurpose, string> = {
+  share: "share to chat",
+  "bug-report": "report a bug",
+};
 
 function errorText(error: unknown, fallback: string): string {
   return error instanceof Error && error.message ? error.message : fallback;
@@ -18,12 +23,13 @@ function errorText(error: unknown, fallback: string): string {
 
 /**
  * Whether the account can post, saying in one line what is missing when it
- * cannot: a sign-in (which then carries on with the share) or a verified email.
+ * cannot: a sign-in (which then carries on with the share or the bug report)
+ * or a verified email.
  */
-function readyToPost(ctx: ShareContext, retry: () => void): boolean {
+function readyToPost(ctx: ShareContext, retry: () => void, purpose: ChatPostPurpose): boolean {
   if (!apiClient.isSignedIn()) {
     ctx.notify({
-      body: "Sign in to share to chat.",
+      body: `Sign in to ${PURPOSE_TEXT[purpose]}.`,
       type: "info",
       action: { label: "Sign in", onClick: () => { requestAuthDialog({ onSignedIn: retry }); } },
     });
@@ -31,7 +37,7 @@ function readyToPost(ctx: ShareContext, retry: () => void): boolean {
   }
   if (!apiClient.isVerified()) {
     ctx.notify({
-      body: "Verify your email to share to chat.",
+      body: `Verify your email to ${PURPOSE_TEXT[purpose]}.`,
       type: "info",
       action: {
         label: "Resend link",
@@ -55,10 +61,14 @@ async function loadTargets() {
   return shareTargets(list ? buildChatConversations(list.states, list.userId) : []);
 }
 
+function openMessage(ctx: ShareContext, channelId: string, messageId: string): void {
+  ctx.createPaneFromTemplate("new-chat-pane", { arg: channelId, values: { messageId } });
+}
+
 /** Chat contributes a destination, never another menu entry, command or key. */
 export function installPaneChatSharing(ctx: ShareContext): () => void {
   return registerPaneChatSharing({
-    ready: (retry) => readyToPost(ctx, retry),
+    ready: (retry, purpose = "share") => readyToPost(ctx, retry, purpose),
     targets: loadTargets,
     defaultChannel: (targets) => defaultShareTarget(targets, ctx.configState.get<string>(LAST_VISITED_CHAT_CHANNEL_KEY)),
     includeLink: () => ctx.configState.get<boolean>(INCLUDE_LINK_KEY) !== false,
@@ -78,10 +88,9 @@ export function installPaneChatSharing(ctx: ShareContext): () => void {
       ctx.notify({
         body: `Posted to ${label}`,
         type: "success",
-        action: { label: "Open", onClick: () => {
-          ctx.createPaneFromTemplate("new-chat-pane", { arg: result.channelId, values: { messageId: result.messageId } });
-        } },
+        action: { label: "Open", onClick: () => { openMessage(ctx, result.channelId, result.messageId); } },
       });
     },
+    openMessage: (channelId, messageId) => openMessage(ctx, channelId, messageId),
   });
 }

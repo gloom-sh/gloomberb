@@ -38,7 +38,8 @@ import {
   paneManagementAccelerators,
   resolvePaneManagementShortcut,
 } from "./shell/shortcuts";
-import { menuItemsForFallback, paneFooterMenuItems } from "./shell/menu";
+import { menuItemsForFallback, paneFooterMenuItems, REPORT_BUG_MENU_LABEL } from "./shell/menu";
+import { canReportPaneBug } from "../../shares/bug-report-flow";
 import { useShellPaneCapture } from "./shell/pane/capture";
 import { captureStampFooter, usePaneCaptureStamp } from "./pane/capture-stamp";
 import { pluginContextMenuSlot, withPluginContextMenuItems } from "../../ui/context-menu";
@@ -252,6 +253,10 @@ export function DetachedPaneShell({ pluginRegistry, desktopWindowBridge }: Detac
     }
     items.push({ id: "pane-docs", label: "Docs", onSelect: openDocs });
     items.push({ id: "share-pane", label: "Share", accelerator: accelerators.share, onSelect: sharePane });
+    // A popped-out window paints its pane's DOM, so it can always picture it.
+    if (canReportPaneBug(true)) {
+      items.push({ id: "report-bug", label: REPORT_BUG_MENU_LABEL, onSelect: () => pluginRegistry.reportPaneBug(desktopWindowBridge.paneId) });
+    }
     items.push(pluginContextMenuSlot("pane"));
     if (dockPane) {
       items.push({ id: "dock", label: "Dock in Main Window", accelerator: accelerators.toggleFloating, onSelect: dockPane });
