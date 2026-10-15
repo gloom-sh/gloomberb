@@ -28,9 +28,9 @@ import type {
 import { resolveDataTableScrollTop } from "../visible-range";
 import { useFocusOwningPane, useVisibleRangeEmitter } from "../hooks";
 import { useStableColumns } from "../stable-columns";
-import { isDataTableColumnShown, resolveDataTableVisibleWindow, resolveDataTableWholeColumns, type DataTableWholeColumns } from "./model";
+import { resolveDataTableColumnClips, resolveDataTableVisibleWindow, type DataTableColumnClip } from "./model";
 
-/** What a column the pane's edge cuts draws: nothing, in its own place. */
+/** What a number column the pane's edge cuts draws: nothing, in its own place. */
 const CUT_CELL: DataTableCell = { text: "" };
 
 interface DataTableRowPointerTarget<T> {
@@ -79,8 +79,7 @@ function OpenTuiDataTableRowInner<
   sectionWidth,
   selected,
   selectedTextOverridesCellColor,
-  shownFrom,
-  shownTo,
+  columnClips,
 }: {
   /** Only compared by the row memo; see `getRowVersion`. */
   rowVersion?: unknown;
@@ -111,9 +110,8 @@ function OpenTuiDataTableRowInner<
   rowContextMenuSurface: boolean;
   selected: boolean;
   selectedTextOverridesCellColor: boolean;
-  /** The columns drawn, from `shownFrom` to `shownTo`; -1 draws them all (see resolveDataTableWholeColumns). */
-  shownFrom: number;
-  shownTo: number;
+  /** How the viewport cuts each column, null when every column shows whole (resolveDataTableColumnClips). */
+  columnClips: readonly (DataTableColumnClip | null)[] | null;
 }) {
   const sectionHeader = renderSectionHeader?.(item, index) ?? null;
 
@@ -174,7 +172,6 @@ function OpenTuiDataTableRowInner<
   }
 
   const rowState = { selected };
-  const shown = shownFrom < 0 ? null : { from: shownFrom, to: shownTo };
   const rowBackgroundColor = getRowBackgroundColor?.(item, index, rowState);
   const rowBg = selected ? colors.selected : rowBackgroundColor ?? colors.bg;
   const rowHoverBg = selected ? undefined : hoverBg(colors);
@@ -202,13 +199,14 @@ function OpenTuiDataTableRowInner<
     >
       {displayColumns.map((column, columnIndex) => {
         const frozen = columnIndex === 0 && frozenColumnOffset !== undefined;
-        // A column the pane's edge cuts keeps its place, blank.
-        const cell = isDataTableColumnShown(shown, columnIndex, frozenColumnOffset !== undefined)
-          ? renderCell(item, column, index, rowState) : CUT_CELL;
+        const clip = columnClips?.[columnIndex] ?? null;
+        // A number the pane's edge cuts keeps its place, blank; cut text is fitted to what shows.
+        const cell = clip?.kind === "blank" ? CUT_CELL : renderCell(item, column, index, rowState);
         const columnStart = columnStarts[columnIndex] ?? 0;
         const leadGap = tableColumnLeadGap(displayColumns, columnIndex, columnGap);
-        const inset = !frozen && frozenColumnOffset !== undefined
+        const inset = clip?.kind === "fit" ? clip.inset : !frozen && frozenColumnOffset !== undefined
           ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
+        const shownWidth = clip?.kind === "fit" ? clip.width : column.width - inset;
         return (
           <Box
             key={column.id}
@@ -234,10 +232,10 @@ function OpenTuiDataTableRowInner<
               handleRowMouseDown(itemKey, { item, index }, event);
             }}
           >
-            {cell.content !== undefined ? (frozenColumnOffset === undefined ? cell.content : (
+            {cell.content !== undefined ? (frozenColumnOffset === undefined && !clip ? cell.content : (
               <>
                 {frozen && <Text position="absolute" left={0} top={0}>{" ".repeat(column.width + columnGap + horizontalPadding)}</Text>}
-                <Box marginLeft={frozen ? horizontalPadding : inset} width={Math.max(0, column.width - inset)} overflow="hidden">
+                <Box marginLeft={frozen ? horizontalPadding : inset} width={Math.max(0, shownWidth)} overflow="hidden">
                   {cell.content}
                 </Box>
               </>
@@ -248,7 +246,7 @@ function OpenTuiDataTableRowInner<
                   ? colors.selectedText
                   : cell.color ?? colors.text}
               >
-                {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${inset < column.width ? fitTableCellText(cell.text, column.width - inset, column.align) : ""}${frozen ? " ".repeat(columnGap) : ""}`}
+                {`${frozen ? " ".repeat(horizontalPadding) : ""}${" ".repeat(inset)}${shownWidth > 0 ? fitTableCellText(cell.text, shownWidth, column.align) : ""}${frozen ? " ".repeat(columnGap) : ""}`}
               </Text>
             )}
           </Box>
@@ -373,8 +371,9 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
     () => tableColumnStarts(displayColumns, columnGap),
     [columnGap, displayColumns],
   );
-  const wholeColumns: DataTableWholeColumns | null = useMemo(
-    () => resolveDataTableWholeColumns({
+  const columnClips = useMemo(
+    () => resolveDataTableColumnClips({
+      aligns: displayColumns.map((column) => column.align),
       columnGap,
       columnStarts,
       frozenFirstColumn: freezeFirstColumn,
@@ -594,8 +593,10 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
           {displayColumns.map((column, columnIndex) => {
             const frozen = freezeFirstColumn && columnIndex === 0;
             const columnStart = columnStarts[columnIndex] ?? 0;
-            const inset = freezeFirstColumn && !frozen
+            const clip = columnClips?.[columnIndex] ?? null;
+            const inset = clip?.kind === "fit" ? clip.inset : freezeFirstColumn && !frozen
               ? Math.min(column.width, Math.max(0, frozenColumnOffset + (displayColumns[0]?.width ?? 0) + columnGap - columnStart)) : 0;
+            const shownWidth = clip?.kind === "fit" ? clip.width : column.width - inset;
             const isSorted = sortColumnId === column.id;
             const marker = sortDirection === "asc" ? "▲" : "▼";
             // An unlabeled column shows the bare marker, not a stray space before it.
@@ -605,13 +606,14 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
             // over its numbers.
             const hasNextLabel = columnIndex < displayColumns.length - 1
               && tableColumnLeadGap(displayColumns, columnIndex + 1, columnGap) === 0;
-            const labelText = !isDataTableColumnShown(wholeColumns, columnIndex, freezeFirstColumn) ? " ".repeat(column.width)
-              : " ".repeat(inset) + (inset < column.width ? fitTableHeaderText(
-              column.label + indicator,
-              column.width - inset,
-              column.align,
-              hasNextLabel,
-            ) : "");
+            const labelText = clip?.kind === "blank" ? " ".repeat(column.width)
+              : " ".repeat(inset) + (shownWidth > 0 ? fitTableHeaderText(
+                column.label + indicator,
+                shownWidth,
+                column.align,
+                // Cut by the edge, the label's last cell is the edge.
+                hasNextLabel && clip === null,
+              ) : "");
             return (
               <Box
                 key={column.id}
@@ -697,8 +699,7 @@ export function OpenTuiDataTable<T, C extends DataTableColumn = DataTableColumn>
                     sectionWidth={sectionWidth}
                     selected={isSelected(item, index)}
                     selectedTextOverridesCellColor={selectedTextOverridesCellColor}
-                    shownFrom={wholeColumns?.from ?? -1}
-                    shownTo={wholeColumns?.to ?? -1}
+                    columnClips={columnClips}
                   />
                 );
               }),
