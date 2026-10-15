@@ -39,6 +39,7 @@ export function WebSelectField({
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const inline = variant === "inline";
+  const well = variant === "well";
   const current = options.find((option) => option.value === value);
   const showUnset = includeUnsetOption && !current;
 
@@ -55,7 +56,7 @@ export function WebSelectField({
   setSelectRef.current = selectRef;
 
   const resolvedWidth = width ?? (inline ? "auto" : 184);
-  const resolvedHeight = height ?? (inline ? WEB_CELL_HEIGHT : 28);
+  const resolvedHeight = height ?? (inline || well ? WEB_CELL_HEIGHT : 28);
   const style: CSSProperties = {
     width: resolvedWidth,
     height: resolvedHeight,
@@ -64,11 +65,11 @@ export function WebSelectField({
     justifyContent: "space-between",
     gap: 6,
     color: disabled ? colors.textMuted : colors.text,
-    backgroundColor: inline ? "transparent" : blendHex(colors.panel, colors.textBright, 0.06),
-    border: inline ? "none" : `1px solid ${open ? colors.borderFocused : colors.border}`,
-    borderRadius: inline ? 0 : 6,
+    backgroundColor: inline ? "transparent" : well ? colors.panel : blendHex(colors.panel, colors.textBright, 0.06),
+    border: inline || well ? "none" : `1px solid ${open ? colors.borderFocused : colors.border}`,
+    borderRadius: inline ? 0 : well ? 3 : 6,
     padding: inline ? 0 : "0 8px",
-    boxShadow: inline ? "none" : `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.05)}`,
+    boxShadow: inline || well ? "none" : `inset 0 1px 0 ${blendHex(colors.bg, colors.textBright, 0.05)}`,
     cursor: disabled ? "default" : "pointer",
     font: "inherit",
     textAlign: "left",

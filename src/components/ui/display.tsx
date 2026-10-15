@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { t } from "../../i18n";
 import { blendHex, hoverBg } from "../../theme/colors";
+import { blendForContrast, higherContrast } from "../../theme/color-utils";
 import { useThemeColors } from "../../theme/theme-context";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../ui";
 import { truncateToDisplayWidth } from "../../utils/format";
@@ -62,6 +63,7 @@ export interface KeyValueRowProps {
   width?: number;
   labelWidth?: number;
   emphasis?: boolean;
+  align?: "left" | "right";
   /**
    * Opens what the value names (a security's DES, a function): the whole row is the target, and inside a
    * `PaneLinkMenu` the pane menu lists it as `link.label`, so the keyboard reaches what a click opens.
@@ -118,7 +120,7 @@ export function KeyValueRow(props: KeyValueRowProps) {
  * width in characters, the value and detail taking the rest of the row and
  * clipped in CSS where they run out of it.
  */
-function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, link }: KeyValueRowProps) {
+function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, align = "left", link }: KeyValueRowProps) {
   const colors = useThemeColors();
   usePaneLinkMenuEntry(link ? `key-value:${label}:${value}` : null, link?.label ?? "", () => link?.onOpen());
   const target = link ? {
@@ -137,7 +139,7 @@ function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidt
       <Text
         fg={color ?? statToneColor(tone, colors) ?? colors.text}
         attributes={emphasis ? TextAttributes.BOLD : undefined}
-        style={{ ...NATIVE_CLIP_STYLE, flex: detail ? "0 1 auto" : "1 1 auto" }}
+        style={{ ...NATIVE_CLIP_STYLE, flex: detail ? "0 1 auto" : "1 1 auto", textAlign: align }}
       >
         {value}
       </Text>
@@ -146,7 +148,7 @@ function NativeKeyValueRow({ label, value, detail, tone, color, width, labelWidt
   );
 }
 
-function TerminalKeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, link }: KeyValueRowProps) {
+function TerminalKeyValueRow({ label, value, detail, tone, color, width, labelWidth, emphasis = true, align = "left", link }: KeyValueRowProps) {
   const colors = useThemeColors();
   usePaneLinkMenuEntry(link ? `key-value:${label}:${value}` : null, link?.label ?? "", () => link?.onOpen());
   const target = link ? {
@@ -169,7 +171,7 @@ function TerminalKeyValueRow({ label, value, detail, tone, color, width, labelWi
       <Box width={labelColumns} flexShrink={0} overflow="hidden">
         <Text fg={colors.textDim}>{t(label)}</Text>
       </Box>
-      <Box width={valueWidth} flexShrink={0} overflow="hidden">
+      <Box width={valueWidth} flexShrink={0} overflow="hidden" alignItems={align === "right" ? "flex-end" : undefined}>
         <Text fg={color ?? statToneColor(tone, colors) ?? colors.text} attributes={emphasis ? TextAttributes.BOLD : undefined}>
           {valueWidth === undefined ? value : truncateToDisplayWidth(value, valueWidth)}
         </Text>
@@ -200,10 +202,13 @@ export function Badge({ label, tone = "neutral", color, variant = "subtle" }: Ba
   const accent = color ?? (tone === "neutral" ? colors.textDim : tone === "accent" ? colors.borderFocused : colors[tone]);
   const solid = variant === "solid";
   const neutral = solid && tone === "neutral" && !color;
+  const background = neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, 0.28);
+  const baseForeground = neutral ? colors.selectedText : solid ? colors.bg : accent;
+  const foreground = blendForContrast(baseForeground, background, higherContrast("#000000", "#ffffff", background), 4.5);
   const chip = (
-    <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={neutral ? colors.selected : solid ? accent : blendHex(colors.bg, accent, 0.28)}
+    <Box height={nativePaneChrome ? undefined : 1} paddingX={1} backgroundColor={background}
       data-gloom-ui="badge" justifyContent={nativePaneChrome ? "center" : undefined} style={nativePaneChrome ? NATIVE_BADGE_STYLE : undefined}>
-      <Text fg={neutral ? colors.selectedText : solid ? colors.bg : accent} attributes={TextAttributes.BOLD}>{t(label)}</Text>
+      <Text fg={foreground} attributes={TextAttributes.BOLD}>{t(label)}</Text>
     </Box>
   );
   return nativePaneChrome ? <Box height={1} flexShrink={0} justifyContent="center">{chip}</Box> : chip;

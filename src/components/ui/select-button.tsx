@@ -41,7 +41,7 @@ export interface SelectButtonProps<T extends string = string> {
   emphasized?: boolean;
   idPrefix?: string;
   showLabel?: boolean;
-  variant?: "inline" | "field";
+  variant?: "inline" | "field" | "well";
   width?: number;
   onFocus?: () => void;
   /**
@@ -154,8 +154,8 @@ export function SelectButton<T extends string = string>({
     );
   }
 
-  if (variant === "field") {
-    return <Button label={showLabel ? `${label}: ${current?.short ?? current?.label ?? ""}` : current?.short ?? current?.label ?? label} width={width} active={emphasized} disabled={disabled} onPress={openDialog} stopPropagation />;
+  if (variant === "field" || variant === "well") {
+    return <Button label={showLabel ? `${label}: ${current?.short ?? current?.label ?? ""}` : current?.short ?? current?.label ?? label} width={width} variant={variant === "well" ? "quiet" : undefined} active={emphasized} disabled={disabled} onPress={openDialog} stopPropagation />;
   }
 
   return (

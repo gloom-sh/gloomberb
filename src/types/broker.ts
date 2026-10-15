@@ -11,6 +11,7 @@ import type {
   BrokerOrderPreview,
   BrokerOrderRequest,
   BrokerPortfolioPerformance,
+  BrokerTradingCapabilities,
 } from "./trading";
 import type { CachePolicy, CachePolicyMap } from "./persistence";
 
@@ -144,7 +145,13 @@ export interface BrokerAdapter {
     onQuote: (target: QuoteSubscriptionTarget, quote: Quote) => void,
   ): () => void;
   listOpenOrders?(instance: BrokerInstanceConfig): Promise<BrokerOrder[]>;
+  /** Explicit status, including terminal orders. Null means unconfirmed, never cancelled by absence. */
+  getOrderStatus?(instance: BrokerInstanceConfig, orderId: number): Promise<BrokerOrder | null>;
   listExecutions?(instance: BrokerInstanceConfig): Promise<BrokerExecution[]>;
+  /** Opt into the shared ticket with supported combinations and current trading permission. */
+  getTradingCapabilities?(instance: BrokerInstanceConfig, contract?: BrokerContractRef, orderType?: BrokerOrderRequest["orderType"]): BrokerTradingCapabilities;
+  /** Config patch for the host's explicit enable/disable trading confirmation. Must not perform I/O. */
+  getTradingConfigUpdate?(instance: BrokerInstanceConfig, enabled: boolean): Record<string, unknown>;
   previewOrder?(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrderPreview>;
   placeOrder?(instance: BrokerInstanceConfig, request: BrokerOrderRequest): Promise<BrokerOrder>;
   modifyOrder?(instance: BrokerInstanceConfig, orderId: number, request: BrokerOrderRequest): Promise<BrokerOrder>;

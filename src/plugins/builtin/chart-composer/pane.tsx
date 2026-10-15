@@ -109,6 +109,7 @@ import { resolveChartComposerShortcut } from "./shortcuts";
 import { describeChartResolution, formatChartDateWindow, formatChartResolution } from "./viewport-labels";
 import { intradaySessionTimeZone } from "./session-history";
 import { ChartSeriesQuickAdd } from "./quick-add";
+import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { usePluginAppActions, usePluginConfigState } from "../../runtime";
 import { usePluginRenderContext } from "../../runtime/context";
@@ -277,6 +278,7 @@ function ChartComposerSurface({
   footerId,
   onCapture,
 }: ChartComposerSurfaceProps) {
+  const trade = useResearchTrading();
   const dialog = useDialog();
   const dispatch = useAppDispatch();
   const { cellWidthPx = 8 } = useUiCapabilities();
@@ -480,6 +482,7 @@ function ChartComposerSurface({
     return {
       seriesId: listing.seriesId,
       items: [
+        ...(trade && researchTradeMatches(trade, { ...listing.instrument, exchange: listing.target.exchange }) ? trade.levels : []),
         ...stored.map((level) => ({
           id: level.id,
           value: level.price,
@@ -498,7 +501,7 @@ function ChartComposerSurface({
       onEdit: editLevels,
       ...(alertsOn ? { action: { label: "alert", title: "Alert at Level", run: (level) => { void alertAtLevel(level.value); } } } : {}),
     };
-  }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing]);
+  }, [alertAtLevel, alertsJson, alertsOn, editLevels, levelStore, listing, trade?.levels, trade?.contract]);
   const [interactionCaptured, setInteractionCapturedState] = useState(false);
   // Typing in quick-add must not freeze the plot: it only takes the keyboard.
   const [modalCaptured, setModalCaptured] = useState(false);
@@ -854,7 +857,9 @@ function ChartComposerSurface({
   );
   useShortcut((event) => {
     if (interactionCaptureRef.current || dialogOpen) return;
-    const shortcut = resolveChartComposerShortcut(event, RANGES.length);
+    if (trade && event.name === "s" && !event.shift) return;
+    const shortcut = trade && event.name === "s" && event.shift && !event.targetEditable && !event.ctrl && !event.meta && !event.alt
+      ? "series" : resolveChartComposerShortcut(event, RANGES.length);
     if (!shortcut) return;
     event.preventDefault();
     event.stopPropagation();
@@ -959,7 +964,7 @@ function ChartComposerSurface({
           ? [{ id: "newest", asOf: true, parts: [{ text: `newest ${newestBeyondView}`, tone: "muted" as const }] }]
           : [],
     hints: [
-      { id: "series", key: "s", label: "eries", onPress: footerSeries },
+      { id: "series", key: trade ? "S" : "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
       { id: "formulas", key: "f", label: "ormulas", onPress: openFormulas, disabled: formulasDisabled },
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
@@ -1036,6 +1041,7 @@ function ChartComposerSurface({
 
   return (
     <Box flexDirection="column" width={width} height={height}>
+      <Box flexDirection="row" alignItems="center" width={width}>
       <QueryBar
         width={width}
         filters={[
@@ -1053,6 +1059,8 @@ function ChartComposerSurface({
         } : undefined}
         meta={dateWindowLabel}
       />
+      <ResearchTradeActions focused={shortcutActive} />
+      </Box>
       <MultiSelectDialogButton
         ref={indicatorsDialogRef}
         label="Indicators"

@@ -5,6 +5,7 @@ import { Box, Text, useUiCapabilities } from "../../ui";
 import { formatRelativeAge } from "../../utils/datetime-format";
 import { Spinner } from "./loading";
 import { ButtonActionScope } from "./action-scope";
+import { blendForContrast, higherContrast } from "../../theme/color-utils";
 import { Button } from "./button";
 
 /**
@@ -170,14 +171,27 @@ function EmptyStateBody({ title, message, hint, actions, retry, status = "empty"
 export interface NoticeProps {
   children: ReactNode;
   tone?: "muted" | "positive" | "warning" | "negative";
+  variant?: "inline" | "callout";
 }
 
 /** Inline feedback leaves existing content visible, including stale data after a refresh failure. */
-export function Notice({ children, tone = "warning" }: NoticeProps) {
+export function Notice({ children, tone = "warning", variant = "inline" }: NoticeProps) {
   const colors = useThemeColors();
+  const native = useUiCapabilities().nativePaneChrome;
+  const color = tone === "muted" ? colors.textDim : colors[tone];
+  const status = tone === "negative" ? "error" : "notice";
+  // Inline feedback keeps its original single-text shape: a flex row here collapses inside content-sized parents.
+  if (variant !== "callout") {
+    return (
+      <Box data-gloom-status={status} data-gloom-ui="notice">
+        <Text fg={color} wrapText>{children}</Text>
+      </Box>
+    );
+  }
+  const foreground = blendForContrast(color, colors.panel, higherContrast("#000000", "#ffffff", colors.panel), 4.5);
   return (
-    <Box data-gloom-status={tone === "negative" ? "error" : "notice"} data-gloom-ui="notice">
-      <Text fg={tone === "muted" ? colors.textDim : colors[tone]} wrapText>{children}</Text>
+    <Box flexDirection="row" gap={1} paddingX={1} paddingY={native ? 0.35 : 0} backgroundColor={colors.panel} border={["left"]} borderColor={color} data-gloom-status={status} data-gloom-ui="notice" role={native ? tone === "negative" ? "alert" : "status" : undefined} aria-atomic={native ? true : undefined}>
+      <Text fg={foreground}>!</Text><Box flexGrow={1} minWidth={0}><Text fg={foreground} wrapText>{children}</Text></Box>
     </Box>
   );
 }

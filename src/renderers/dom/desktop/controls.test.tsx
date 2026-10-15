@@ -3,9 +3,15 @@ import { expect, test } from "bun:test";
 import { act, useState } from "react";
 import { WebCheckbox, WebSegmentedControl } from "./controls";
 import { WebListView } from "./list-view";
+import { buttonRelief } from "./control-styles";
 import { Button } from "../../../components/ui/button";
-import { TextField } from "../../../components/ui/fields";
+import { NumberField, TextField } from "../../../components/ui/fields";
 import { ActionRow } from "../../../components/ui/action-row";
+import { Badge } from "../../../components/ui/display";
+import { Notice } from "../../../components/ui/status";
+import { contrastRatio } from "../../../theme/color-utils";
+import { getCurrentThemeId, getThemeColors, syncTheme } from "../../../theme/colors";
+import { ThemeProvider } from "../../../theme/theme-context";
 import { Box, Text } from "../../../ui";
 import { createDomTestHarness } from "../test-utils";
 
@@ -103,6 +109,33 @@ test("shared buttons activate once by mouse or keyboard and isolate nested actio
   expect(presses).toEqual(["reply", "reply", "reply"]);
 });
 
+test("semantic primary buttons keep their fill through raised, focused and pressed states", async () => {
+  const originalTheme = getCurrentThemeId();
+  try {
+    for (const theme of ["white", "monokai"]) {
+      const colors = getThemeColors(theme);
+      for (const active of [false, true]) {
+        const container = await renderDom(<ThemeProvider themeId={theme}>
+          <Button label="Buy" variant="primary" tone="positive" active={active} />
+          <Button label="Sell" variant="primary" tone="negative" active={active} />
+          <Button label="Unavailable" variant="primary" tone="positive" disabled />
+        </ThemeProvider>);
+        const buttons = [...container.querySelectorAll("button")];
+        for (const [index, tone] of (["positive", "negative"] as const).entries()) {
+          // Relief is an opaque image over the background color. Checking just
+          // that color misses a gradient that silently hides the Buy/Sell tone.
+          const expected = buttonRelief({ variant: "primary", active }, { ...colors, borderFocused: colors[tone], selected: colors[tone] });
+          expect(buttons[index]!.style.backgroundImage).toBe(expected.backgroundImage!);
+          expect(buttons[index]!.style.getPropertyValue("--gloom-pressed-image")).toBe(expected.pressedImage!);
+        }
+        expect(buttons[2]!.style.backgroundImage).toBe("");
+      }
+    }
+  } finally {
+    syncTheme(originalTheme);
+  }
+});
+
 test("TextField delivers normalized native keys before submit and respects cancellation", async () => {
   const keys: string[] = [];
   const submitted: string[] = [];
@@ -119,6 +152,84 @@ test("TextField delivers normalized native keys before submit and respects cance
   });
   expect(keys).toEqual(["return:true", "return:false"]);
   expect(submitted).toEqual(["draft"]);
+});
+
+test.each(["default", "well"] as const)("%s numeric stepper owns only its wheel/key events, bounds and disabled state", async (variant) => {
+  let submits = 0, parentWheels = 0;
+  function Fields() {
+    const [price, setPrice] = useState("0.3");
+    const [disabled, setDisabled] = useState(false);
+    return <div onWheel={() => parentWheels++}>
+      <NumberField variant={variant} label="Limit price" focused value={price} onChange={setPrice} step={0.1} min={0.1} max={0.5} disabled={disabled} onSubmit={() => submits++} />
+      <NumberField label="Quantity" value="10" step={1} />
+      <button onClick={() => setDisabled(true)}>Busy</button><span id="outside">Outside</span>
+    </div>;
+  }
+  const container = await renderDom(<Fields />);
+  const price = container.querySelector<HTMLInputElement>('input[aria-label="Limit price"]')!;
+  const quantity = container.querySelector<HTMLInputElement>('input[aria-label="Quantity"]')!;
+  const wheel = () => new WheelEvent("wheel", { deltaY: -80, bubbles: true, cancelable: true });
+  const event = wheel();
+  await act(async () => { price.dispatchEvent(event); });
+  expect(price.value).toBe("0.4");
+  expect(quantity.value).toBe("10");
+  expect(event.defaultPrevented).toBe(true);
+  expect(parentWheels).toBe(0);
+  await act(async () => { price.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true })); });
+  expect(price.value).toBe("0.5");
+  expect(container.querySelector<HTMLButtonElement>('button[aria-label="Increase Limit price"]')!.disabled).toBe(true);
+  await act(async () => { price.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })); });
+  expect(price.value).toBe("0.4");
+  await act(async () => { container.querySelector("#outside")!.dispatchEvent(wheel()); });
+  expect(parentWheels).toBe(1);
+  await act(async () => { [...container.querySelectorAll("button")].find((button) => button.textContent === "Busy")!.click(); });
+  expect(price.disabled).toBe(true);
+  const disabledWheel = wheel();
+  await act(async () => { price.dispatchEvent(disabledWheel); });
+  expect(price.value).toBe("0.4");
+  expect(disabledWheel.defaultPrevented).toBe(false);
+  expect(parentWheels).toBe(2);
+  expect(submits).toBe(0);
+});
+
+test("field labels survive the shared wrapper and reach native accessible names", async () => {
+  const container = await renderDom(<Box>
+    <TextField label="Visible label" value="one" />
+    <NumberField label="Quantity" labelWidth={12} value="10" />
+    <TextField accessibleLabel="LIVE order symbol confirmation" value="" />
+    <WebSegmentedControl accessibleLabel="Order side" value="buy" options={[{ value: "buy", label: "Buy" }, { value: "sell", label: "Sell" }]} />
+  </Box>);
+  expect([...container.querySelectorAll("input")].map((input) => input.getAttribute("aria-label")))
+    .toEqual(["Visible label", "Quantity", "LIVE order symbol confirmation"]);
+  expect(container.querySelector('[role="radiogroup"]')?.getAttribute("aria-label")).toBe("Order side");
+});
+
+test("warning and LIVE text meet normal-text contrast while preserving semantic borders and fills", async () => {
+  const originalTheme = getCurrentThemeId();
+  const hex = (css: string): string => css.startsWith("#") ? css : `#${css.match(/\d+/g)!.slice(0, 3).map((part) => Number(part).toString(16).padStart(2, "0")).join("")}`;
+  try {
+    for (const theme of ["white", "monokai"]) {
+      const colors = getThemeColors(theme);
+      const container = await renderDom(<ThemeProvider themeId={theme}>
+        <Notice variant="callout" tone="warning">Delayed quote</Notice>
+        <Notice variant="callout" tone="negative">Order rejected</Notice>
+        <Badge label="LIVE" tone="negative" variant="solid" />
+      </ThemeProvider>);
+      const notices = [...container.querySelectorAll<HTMLElement>('[data-gloom-ui="notice"]')];
+      expect(notices.map((notice) => notice.getAttribute("role"))).toEqual(["status", "alert"]);
+      for (const [index, notice] of notices.entries()) {
+        const text = [...notice.querySelectorAll<HTMLElement>("span")].find((node) => node.textContent !== "!")!;
+        expect(contrastRatio(hex(text.style.color), hex(notice.style.backgroundColor))).toBeGreaterThanOrEqual(4.5);
+        expect(hex(notice.style.borderLeftColor)).toBe(index === 0 ? colors.warning : colors.negative);
+      }
+      const badge = container.querySelector<HTMLElement>('[data-gloom-ui="badge"]')!;
+      const text = badge.querySelector<HTMLElement>("span")!;
+      expect(hex(badge.style.backgroundColor)).toBe(colors.negative);
+      expect(contrastRatio(hex(text.style.color), hex(badge.style.backgroundColor))).toBeGreaterThanOrEqual(4.5);
+    }
+  } finally {
+    syncTheme(originalTheme);
+  }
 });
 
 test("a framed TextField keeps its text a cell off the frame, and a plain one sits flush", async () => {

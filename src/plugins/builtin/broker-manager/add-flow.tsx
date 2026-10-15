@@ -20,7 +20,7 @@ import { connectSignedInBrokerProfile } from "../../../brokers/signed-in/connect
 import { SIGNED_IN_BROKER_TYPE } from "../../../brokers/signed-in/profile";
 import { runBrokerSignIn, type BrokerSignInOutcome } from "../../../brokers/signed-in/sign-in";
 import { promptGloomSignIn, useBrokerSignInAttempt } from "../../../brokers/signed-in/sign-in-dialog";
-import { Button, ListView, useFieldRing } from "../../../components";
+import { Button, confirmDialog, ListView, useFieldRing } from "../../../components";
 import { showCollectionInPortfolioPane } from "../../../components/command-bar/pane-actions";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { BrokerConnectView } from "../../../components/form-modal/broker-step";
@@ -191,7 +191,13 @@ export function useBrokerAddFlow({
       setBusy(t("Connecting broker…"));
       let instanceId: string;
       try {
-        const instance = await createBrokerInstance(adapter.id, label, buildBrokerProfileConfig(adapter, draft.values));
+        const config = buildBrokerProfileConfig(adapter, draft.values);
+        const proposed = { id: "new-profile", brokerType: adapter.id, label, enabled: true, config };
+        if (adapter.getTradingCapabilities?.(proposed).enabled && !await confirmDialog(dialog, {
+          title: "Enable trading?", body: "Orders can commit real money. Start with a simulation account. Every order needs review and confirmation; LIVE orders also need a typed confirmation. You can turn trading off in Brokers at any time.",
+          confirmLabel: "Enable trading", confirmVariant: "danger",
+        })) { setBusy(null); return; }
+        const instance = await createBrokerInstance(adapter.id, label, config);
         instanceId = instance.id;
       } catch (error) {
         setBusy(null);
@@ -202,7 +208,7 @@ export function useBrokerAddFlow({
     } finally {
       committingRef.current = false;
     }
-  }, [createBrokerInstance, setBusy, setMessage, syncNewProfile]);
+  }, [createBrokerInstance, dialog, setBusy, setMessage, syncNewProfile]);
 
   /** Shows one connect attempt in the pane until it ends, then says how. */
   const showAttempt = useCallback((flowId: number, write: boolean) => new Promise<BrokerSignInOutcome>((resolve) => {

@@ -40,6 +40,7 @@ export function WebButton({
   expanded,
   onPress,
   variant = "secondary",
+  tone,
   disabled = false,
   pending = false,
   active = false,
@@ -52,8 +53,8 @@ export function WebButton({
   title,
 }: ButtonProps) {
   const colors = useThemeColors();
-  const palette = buttonPalette({ variant, active, disabled }, colors);
-  const relief = buttonRelief({ variant, active, disabled }, colors);
+  const palette = buttonPalette({ variant, active, disabled, tone }, colors);
+  const relief = buttonRelief({ variant, active, disabled, tone }, colors);
 
   return (
     <button
@@ -274,10 +275,12 @@ const COMFORTABLE_FIELD_HEIGHT = 26;
 
 export function WebTextField({
   label,
+  accessibleLabel,
   value,
   placeholder,
   maxLength,
   focused,
+  disabled = false,
   width,
   inputRef,
   onChange,
@@ -303,6 +306,7 @@ export function WebTextField({
   const renderer = useRendererHost();
   const { nativeContextMenu } = useUiCapabilities();
   const plain = variant === "plain";
+  const well = variant === "well";
   const comfortable = size === "comfortable";
 
   return (
@@ -324,6 +328,7 @@ export function WebTextField({
         alignItems="center"
         backgroundColor={plain ? "transparent" : resolvedBackgroundColor}
         onMouseDown={() => {
+          if (disabled) return;
           onMouseDown?.();
           resolvedInputRef.current?.focus?.();
         }}
@@ -337,13 +342,15 @@ export function WebTextField({
         data-gloom-role="desktop-text-field"
         style={{
           height: comfortable ? COMFORTABLE_FIELD_HEIGHT : undefined,
-          border: plain ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
-          borderRadius: plain ? 0 : CONTROL_RADIUS,
-          boxShadow: plain ? undefined : controlShadow(focused, colors),
+          border: plain || well ? "none" : `1px solid ${controlBorderColor(focused, false, colors)}`,
+          borderRadius: plain ? 0 : well ? 3 : CONTROL_RADIUS,
+          boxShadow: well ? focused ? `inset 0 -2px ${colors.borderFocused}` : undefined : plain ? undefined : controlShadow(focused, colors),
           overflow: "hidden",
         }}
       >
         <Input
+          aria-label={accessibleLabel ?? label}
+          disabled={disabled}
           ref={resolvedInputRef as RefObject<InputRenderable | null>}
           width="100%"
           value={value}
@@ -473,12 +480,15 @@ export function WebMessageComposer({
 }
 
 export function WebSegmentedControl({
+  accessibleLabel,
   options,
   value,
   onChange,
   focused,
   width,
   wrap = false,
+  size = "default",
+  variant = "default",
 }: SegmentedControlProps) {
   const colors = useThemeColors();
   const enabled = options.filter((option) => !option.disabled);
@@ -496,14 +506,16 @@ export function WebSegmentedControl({
       flexDirection="row"
       flexWrap={wrap ? "wrap" : "nowrap"}
       width={width}
-      height={wrap ? undefined : 1}
+      height={wrap ? undefined : size === "large" ? 2 : 1}
       alignItems="center"
       backgroundColor={panelFill(colors)}
       role="radiogroup"
+      aria-label={accessibleLabel}
       style={{
-        border: `1px solid ${focused ? colors.borderFocused : panelBorder(colors)}`,
+        border: variant === "flat" ? "none" : `1px solid ${focused ? colors.borderFocused : panelBorder(colors)}`,
         borderRadius: CONTROL_RADIUS,
-        padding: 1,
+        boxShadow: variant === "flat" && focused ? `0 0 0 2px ${colors.borderFocused}` : undefined,
+        padding: variant === "flat" ? 0 : 1,
       }}
     >
       {options.map((option) => {
@@ -514,7 +526,8 @@ export function WebSegmentedControl({
             flexDirection="row"
             alignItems="center"
             justifyContent="center"
-            backgroundColor={active ? colors.selected : "transparent"}
+            flexGrow={size === "large" ? 1 : undefined}
+            backgroundColor={option.disabled ? colors.panel : active && option.tone ? colors[option.tone] : active ? colors.selected : "transparent"}
             onMouseDown={() => {
               if (!option.disabled) onChange?.(option.value);
             }}
@@ -546,9 +559,9 @@ export function WebSegmentedControl({
             }}
           >
             <Text
-              fg={option.disabled ? colors.textMuted : active ? colors.selectedText : colors.textDim}
+              fg={option.disabled ? colors.textMuted : active && option.tone ? colors.bg : option.tone ? colors[option.tone] : active ? colors.selectedText : colors.textDim}
               attributes={active ? TextAttributes.BOLD : 0}
-              style={{ lineHeight: "normal" }}
+              style={{ lineHeight: "normal", fontSize: size === "large" ? "15px" : undefined, fontWeight: size === "large" ? 700 : undefined }}
             >
               {option.label}
             </Text>
