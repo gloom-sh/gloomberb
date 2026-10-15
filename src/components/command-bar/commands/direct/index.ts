@@ -385,9 +385,21 @@ export function runDirectCommandAction(options: {
         notify(`${t(command.label)}: ${channel}`, { type: "success" });
       };
       // The saved setting flips; GLOOMBERB_UPDATE_CHANNEL still wins for the run it is set on.
+      // Both ways ask: "update" then Enter lands on this row first.
       if (state.config.updates?.channel === "nightly") {
-        setChannel("stable");
-        closeAll({ revertThemePreview: false });
+        openInlineConfirm({
+          confirmId: "switch-to-stable",
+          title: "Switch to Stable?",
+          body: [
+            isPrereleaseVersion(VERSION)
+              ? "Updates come from stable releases only. This nightly build stays until a newer stable release is out."
+              : "Updates come from stable releases only.",
+          ],
+          confirmLabel: "Switch to Stable",
+          cancelLabel: "Stay on Nightly",
+          tone: "default",
+          onConfirm: async () => { setChannel("stable"); },
+        });
         return;
       }
       openInlineConfirm({
