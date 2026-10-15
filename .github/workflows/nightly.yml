@@ -116,9 +116,15 @@ jobs:
       - name: Write release notes
         run: bun run scripts/nightly.ts notes > "$RUNNER_TEMP/nightly-notes.md"
 
+      # Nothing may carry this run's name yet, so the draft the cleanup below
+      # deletes can only be this run's own.
+      - name: Check the tag is new
+        run: bun run scripts/nightly.ts claim-tag
+
       # Uploaded as a draft first, so no updater sees a release with half its
       # files; published as a prerelease that is never the latest release.
-      - name: Publish the prerelease
+      - name: Upload the draft
+        id: draft
         run: |
           set -euo pipefail
           shopt -s nullglob
@@ -131,6 +137,10 @@ jobs:
             --prerelease \
             --latest=false \
             --draft
+
+      - name: Publish the prerelease
+        run: |
+          set -euo pipefail
           gh release edit "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
           test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" != "$NIGHTLY_TAG"
 
@@ -139,3 +149,11 @@ jobs:
           NIGHTLY_PRUNE_DAYS: ${{ vars.NIGHTLY_PRUNE_DAYS }}
           NIGHTLY_KEEP_TAG: v${{ needs.plan.outputs.version }}
         run: bun run scripts/nightly.ts prune
+
+      # A failed or cancelled publish leaves its draft behind; this deletes
+      # that draft and nothing else: only once the upload step ran, only a
+      # draft named for this run, by id so no tag goes with it, and never a
+      # release that was already published.
+      - name: Delete this run's draft
+        if: ${{ (failure() || cancelled()) && (steps.draft.outcome == 'success' || steps.draft.outcome == 'failure' || steps.draft.outcome == 'cancelled') }}
+        run: bun run scripts/nightly.ts drop-draft

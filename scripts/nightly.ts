@@ -5,13 +5,18 @@
  *   bun run scripts/nightly.ts plan    whether this run builds, and as what version (GITHUB_OUTPUT)
  *   bun run scripts/nightly.ts notes   the prerelease notes: what changed since the last nightly build
  *   bun run scripts/nightly.ts prune   nightly prereleases older than NIGHTLY_PRUNE_DAYS; a dry run without it
+ *   bun run scripts/nightly.ts claim-tag   fails unless no tag and no release (draft included) is named NIGHTLY_TAG yet
+ *   bun run scripts/nightly.ts drop-draft  after a failed publish, deletes the drafts named NIGHTLY_TAG, nothing else
  *
  * A nightly build is `<base>-nightly.<UTC date>.<run number>.g<sha7>`. The base
  * is the patch after the latest stable release, so every nightly build sorts
  * above the stable release users already have and below the next one; the
  * date and run number order two builds of one day, whatever their shas look
  * like. Nothing here commits, tags or touches a stable release: GitHub reads
- * go through `gh`, and `prune` deletes nothing but nightly prereleases.
+ * go through `gh`, `prune` deletes nothing but nightly prereleases, and
+ * `drop-draft` nothing but the unpublished draft its own run created. No
+ * command deletes a git tag other than `prune`, with the nightly release it
+ * belongs to.
  */
 import { appendFileSync, readFileSync } from "fs";
 import { compareSemver, parseSemver } from "../src/utils/semver";
@@ -19,18 +24,29 @@ import { compareSemver, parseSemver } from "../src/utils/semver";
 const NIGHTLY_TAG = /^v\d+\.\d+\.\d+-nightly\.\d{8}\.\d+\.g[0-9a-f]{7}$/;
 
 interface ReleaseListing {
+  id: number;
   tag_name: string;
   prerelease: boolean;
   draft: boolean;
-  created_at: string;
+  /**
+   * When the release went out; null while it is a draft. Not `created_at`,
+   * which GitHub sets from the tagged commit's date.
+   */
+  published_at: string | null;
 }
 
-/** The version nightly builds count up from: the next patch after the latest stable release, or package.json when it is already ahead. */
-export function nightlyBaseVersion(packageVersion: string, latestStableTag: string | null): string {
+/**
+ * The version nightly builds count up from: the next patch after the latest
+ * stable release, or package.json when it is already ahead. Without a latest
+ * stable release there is no safe base (package.json alone would give the
+ * stable version itself, which sorts above its own nightly builds), so it throws.
+ */
+export function nightlyBaseVersion(packageVersion: string, latestStableTag: string): string {
   const pkg = parseSemver(packageVersion);
   if (!pkg || pkg.prerelease) throw new Error(`package.json version ${packageVersion} is not a release version`);
   const latest = parseSemver(latestStableTag);
-  if (latest && (compareSemver(packageVersion, latestStableTag) ?? 0) <= 0) {
+  if (!latest || latest.prerelease) throw new Error(`The latest stable release ${JSON.stringify(latestStableTag)} is not a release version`);
+  if ((compareSemver(packageVersion, latestStableTag) ?? 0) <= 0) {
     return `${latest.major}.${latest.minor}.${latest.patch + 1}`;
   }
   return `${pkg.major}.${pkg.minor}.${pkg.patch}`;
@@ -87,14 +103,34 @@ export function planNightly(input: NightlyPlanInput): NightlyPlan {
   return { build: true, publish: input.publish, reason: input.publish ? `publishing ${short}` : `building ${short} without publishing` };
 }
 
-/** Nightly prereleases created more than `days` days before `now`, other than `keepTag`. Nothing else is ever listed. */
+/**
+ * Nightly prereleases published more than `days` days before `now`, other
+ * than `keepTag` and the newest nightly build. Nothing else is ever listed: a
+ * stable release, a draft, a prerelease that is not a nightly tag, or a
+ * release with no publish date stays.
+ */
 export function prunableNightlies(releases: ReleaseListing[], now: Date, days: number, keepTag: string | null): string[] {
   const cutoff = now.getTime() - days * 24 * 60 * 60 * 1000;
-  return releases
-    .filter((release) => release.prerelease && !release.draft && isNightlyTag(release.tag_name))
-    .filter((release) => release.tag_name !== keepTag && Date.parse(release.created_at) < cutoff)
+  const nightlies = releases.filter((release) => release.prerelease && !release.draft && isNightlyTag(release.tag_name));
+  const newest = nightlies.map((release) => release.tag_name).sort((left, right) => compareSemver(right, left) ?? 0)[0];
+  return nightlies
+    .filter((release) => release.tag_name !== keepTag && release.tag_name !== newest)
+    // An unparseable or missing date is NaN, which is never below the cutoff.
+    .filter((release) => Date.parse(release.published_at ?? "") < cutoff)
     .map((release) => release.tag_name);
 }
+
+/**
+ * The releases a failed publish leaves behind for `tag`: its drafts, by id.
+ * A published release is never listed, and deleting a release by id leaves
+ * its tag alone.
+ */
+export function leftoverDrafts(releases: ReleaseListing[], tag: string): number[] {
+  if (!isNightlyTag(tag)) throw new Error(`${tag} is not a nightly tag`);
+  return releases.filter((release) => release.draft && release.tag_name === tag).map((release) => release.id);
+}
+
+type Gh = (args: string[]) => Promise<string>;
 
 async function gh(args: string[]): Promise<string> {
   const proc = Bun.spawn(["gh", ...args], { stdout: "pipe", stderr: "pipe" });
@@ -105,6 +141,23 @@ async function gh(args: string[]): Promise<string> {
   ]);
   if (code !== 0) throw new Error(`gh ${args.join(" ")} failed: ${stderr.trim()}`);
   return stdout;
+}
+
+/**
+ * The latest stable release's tag. A failed read fails the run: guessing the
+ * base from package.json could publish `0.16.4-nightly.*`, which sorts below
+ * the stable 0.16.4 everyone already has.
+ */
+export async function readLatestStableTag(repo: string, run: Gh = gh): Promise<string> {
+  let tag: string;
+  try {
+    tag = (await run(["api", `repos/${repo}/releases/latest`, "--jq", ".tag_name"])).trim();
+  } catch (error) {
+    throw new Error(`Could not read the latest stable release, so there is no version to build: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  const parsed = parseSemver(tag);
+  if (!parsed || parsed.prerelease) throw new Error(`The latest release ${JSON.stringify(tag)} is not a stable version`);
+  return tag;
 }
 
 function requireEnv(name: string): string {
@@ -156,12 +209,18 @@ function writeSummary(markdown: string): void {
   console.log(markdown);
 }
 
+function fail(message: string): never {
+  console.error(`::error::${message}`);
+  process.exit(1);
+}
+
 async function runPlan(): Promise<void> {
   const repo = requireEnv("GITHUB_REPOSITORY");
   const sha = requireEnv("GITHUB_SHA");
   const runNumber = Number(requireEnv("GITHUB_RUN_NUMBER"));
   const packageVersion = (JSON.parse(readFileSync("package.json", "utf8")) as { version: string }).version;
-  const latestStable = (await gh(["api", `repos/${repo}/releases/latest`, "--jq", ".tag_name"]).catch(() => "")).trim() || null;
+  // Fails the plan, so nothing builds or publishes; no outputs are written.
+  const latestStable = await readLatestStableTag(repo).catch((error: Error) => fail(error.message));
   const previous = await latestNightly(repo);
   const [verifyPassed, verifyWindowsPassed] = await Promise.all([
     workflowPassed(repo, "verify.yml", sha),
@@ -190,13 +249,10 @@ async function runPlan(): Promise<void> {
     `### Nightly ${plan.build ? version : "skipped"}`,
     "",
     `- ${plan.error ?? plan.reason}`,
-    `- Latest stable release: ${latestStable ?? "none"}; last nightly build: ${previous?.tag ?? "none"}`,
+    `- Latest stable release: ${latestStable}; last nightly build: ${previous?.tag ?? "none"}`,
     `- Verify on ${sha.slice(0, 7)}: ${verifyPassed ? "passed" : "not passed"}; Verify Windows: ${verifyWindowsPassed ? "passed" : "not passed"}`,
   ].join("\n"));
-  if (plan.error) {
-    console.error(`::error::${plan.error}`);
-    process.exit(1);
-  }
+  if (plan.error) fail(plan.error);
   if (!plan.build) console.log(`::notice::No nightly build: ${plan.reason}`);
 }
 
@@ -205,7 +261,7 @@ async function runNotes(): Promise<void> {
   const sha = requireEnv("NIGHTLY_SHA");
   const previousTag = process.env.NIGHTLY_PREVIOUS_TAG?.trim();
   const lines = [
-    `Nightly build of main at ${sha.slice(0, 7)}, for the nightly update channel. It is not a stable release and can break; stable releases are listed on the [changelog](https://gloom.sh/changelog).`,
+    `Nightly build of main at ${sha.slice(0, 7)}, for the nightly release channel. It is not a stable release and can break; stable releases are listed on the [changelog](https://gloom.sh/changelog).`,
   ];
   if (previousTag) {
     const titles = (await gh([
@@ -236,11 +292,56 @@ async function runPrune(): Promise<void> {
   writeSummary(`Pruned ${tags.length} nightly prerelease(s) older than ${days} days.`);
 }
 
+function requireNightlyTag(): string {
+  const tag = requireEnv("NIGHTLY_TAG");
+  if (!isNightlyTag(tag)) fail(`${tag} is not a nightly tag`);
+  return tag;
+}
+
+/**
+ * Before the draft is created: no tag and no release, draft or not, may carry
+ * this run's name yet, so whatever `drop-draft` later finds is this run's own.
+ */
+async function runClaimTag(): Promise<void> {
+  const repo = requireEnv("GITHUB_REPOSITORY");
+  const tag = requireNightlyTag();
+  const proc = Bun.spawn(["gh", "api", `repos/${repo}/git/ref/tags/${tag}`], { stdout: "pipe", stderr: "pipe" });
+  const [stderr, code] = await Promise.all([new Response(proc.stderr).text(), proc.exited]);
+  if (code === 0) fail(`The tag ${tag} already exists; this run publishes nothing.`);
+  if (!stderr.includes("HTTP 404")) fail(`Could not tell whether the tag ${tag} exists: ${stderr.trim()}`);
+  const named = (await listReleases(repo, 1)).filter((release) => release.tag_name === tag);
+  if (named.length > 0) fail(`A release named ${tag} already exists; this run publishes nothing.`);
+  console.log(`${tag} is free`);
+}
+
+/**
+ * After a failed or cancelled publish: deletes this run's drafts and nothing
+ * else. By release id, so the tag stays (a draft has none of its own anyway),
+ * and a release already published is never touched.
+ */
+async function runDropDraft(): Promise<void> {
+  const repo = requireEnv("GITHUB_REPOSITORY");
+  const tag = requireNightlyTag();
+  const ids = leftoverDrafts(await listReleases(repo, 1), tag);
+  for (const id of ids) {
+    await gh(["api", "--method", "DELETE", `repos/${repo}/releases/${id}`]);
+    console.log(`Deleted the draft ${tag} (release ${id})`);
+  }
+  writeSummary(ids.length > 0 ? `Deleted the unpublished draft ${tag}.` : `No draft named ${tag} to delete.`);
+}
+
+const COMMANDS: Record<string, () => Promise<void>> = {
+  plan: runPlan,
+  notes: runNotes,
+  prune: runPrune,
+  "claim-tag": runClaimTag,
+  "drop-draft": runDropDraft,
+};
+
 if (import.meta.main) {
-  const command = process.argv[2];
-  const run = command === "plan" ? runPlan : command === "notes" ? runNotes : command === "prune" ? runPrune : null;
+  const run = COMMANDS[process.argv[2] ?? ""];
   if (!run) {
-    console.error("Usage: bun run scripts/nightly.ts plan|notes|prune");
+    console.error(`Usage: bun run scripts/nightly.ts ${Object.keys(COMMANDS).join("|")}`);
     process.exit(1);
   }
   await run();
