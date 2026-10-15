@@ -531,7 +531,10 @@ describe("PortfolioListPane cash and margin UI", () => {
 
     const previewFrame = tui.frame();
     expect(previewFrame).toContain("420");
-    expect(previewFrame).not.toMatch(/MSFT\s+420/);
+    // The field shows the symbol whole and the preview does not repeat it.
+    const quickAddRow = previewFrame.split("\n").find((line) => line.includes("420")) ?? "";
+    expect(quickAddRow).toMatch(/\+ MSFT\s+420/);
+    expect(quickAddRow.match(/MSFT/g)).toHaveLength(1);
     expect(previewFrame).toContain("+1.25%");
 
     await act(async () => {
@@ -741,6 +744,17 @@ describe("PortfolioListPane cash and margin UI", () => {
       type: "error",
       body: "No exact ticker match",
     });
+    // The failed symbol leaves the field, still named under it, so the next one replaces it instead of running on.
+    expect(tui.frame()).toContain("NOPE  No exact ticker match");
+
+    await act(async () => {
+      await tui.setup().mockInput.typeText("MSF");
+      await tui.setup().renderOnce();
+    });
+    await flushFrame();
+    // The lookup runs on what was typed next alone.
+    expect(tui.frame()).toMatch(/\+ MSF\s+MSF checking/);
+    expect(tui.frame()).not.toContain("NOPE");
   });
 
   test("quick-add shows the saved listing's venue, and a colon opens that symbol's venues in the command bar", async () => {

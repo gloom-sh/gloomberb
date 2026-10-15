@@ -1341,7 +1341,7 @@ Every menu, dropdown and pop-up list uses `MenuPopover` (or `Menu` inside a `Pop
 
 A built-in pane whose body cannot render until the account is right renders `SignInWall` from `src/plugins/builtin/cloud/auth-actions.tsx` rather than its own prompt. The pane passes only the phrase that finishes the headline (`action="browse earnings call transcripts"`) plus `needsVerification` when the session exists but the address is unconfirmed; the component owns the copy, the actions, and the verification branch.
 
-Use `usePaneSettingValue(key, fallback)` from `gloomberb/react` for persistent pane settings and `usePaneTitle(title)` for a content-derived pane title. They update the active saved layout without requiring direct app-config writes. Both accept an optional explicit pane ID.
+Use `usePaneSettingValue(key, fallback)` from `gloomberb/react` for persistent pane settings and `usePaneTitle(title)` for a content-derived pane title. They update the active saved layout without requiring direct app-config writes. Both accept an optional explicit pane ID. A pane that titles itself from what it shows can also set `instanceTitle(pane)` on its `PaneDef`, returning the same title from the saved params and settings, so the Layouts browser names a window it has not rendered (two curve windows read `Curve · BZ` and `Curve · CL`, not the pane type twice).
 
 ### Loading data into a pane
 

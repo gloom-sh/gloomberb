@@ -51,8 +51,9 @@ test.each([
   const scrolled = tui.frame();
   expect(scrolled).toContain("FRED T10Y2Y");
   expect(scrolled).toContain("10Y minus 2Y");
-  expect(scrolled).toMatch(/High\s+124\.00%\s+2021-01-01/);
   expect(scrolled).toMatch(/Low\s+100\.00%\s+2019-01-01/);
+  // Two years of readings under the 20Y range: the figures say where the history starts.
+  expect(scrolled).toMatch(/History\s+2019-01-01\s+to 2021-01-01/);
   expect(scrolled).toContain("20Y");
   expect(scrolled).toContain("All");
   if (partial) {

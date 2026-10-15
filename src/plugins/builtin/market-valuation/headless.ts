@@ -11,6 +11,7 @@ import {
 import type { ValuationRangeId } from "./defs";
 import { DEFAULT_INDICATOR_ID, INDICATORS, resolveIndicatorArg } from "./indicators";
 import { createCloudSourceDeps } from "./sources";
+import { historyStartNotice, rangeHeading, type HistorySpan } from "../shared/history-span";
 import { formatSigma } from "../shared/trend";
 import {
   selectValuationViews,
@@ -75,6 +76,7 @@ function projectValuationHeadlessBundle(
     stale: view.observationStale,
   }));
 
+  const notice = selected ? historyStartNotice(selected.indicator.label, range, selected.span) : null;
   return {
     sections: [
       {
@@ -114,6 +116,9 @@ function projectValuationHeadlessBundle(
       sources: bundle.sources,
       range,
       selected: selected?.indicator.id ?? null,
+      // The dates the selected indicator's chart covers, which head the report when the range outruns them.
+      span: selected?.span ?? null,
+      ...(notice ? { notices: [notice] } : {}),
     },
   };
 }
@@ -135,7 +140,8 @@ export const marketValuationHeadless: HeadlessPaneDefinition<"bundle"> = {
     values: [{ value: "10Y" }, { value: "25Y" }, { value: "ALL", aliases: ["all"] }],
     defaultValue: "25Y",
   }],
-  describe: (args) => `Market Valuation | ${String(args.options.range)}`,
+  describe: (args, result) => `Market Valuation | ${rangeHeading(String(args.options.range),
+    (result?.metadata?.span as HistorySpan | null | undefined) ?? null)}`,
   async load(args, ctx) {
     const requested = typeof args.argument === "string" ? resolveIndicatorArg(args.argument) : null;
     if (args.argument && !requested) {

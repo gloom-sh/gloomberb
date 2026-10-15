@@ -17,7 +17,7 @@ import { futuresSessionRefreshInterval } from "../shared/futures-session";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
 import { getCachedFuturesCurve, loadFuturesCurve, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
+import { basisSpotSymbol, curveAsOfDate, curveAxisPrice, curveBasisPercent, curveBasisRows, curveChangeText, curveContractChanges, curveContractCode, curvePrice, curveRank, curveSpot, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveTitle, curveUnitLabel, DEFAULT_CURVE_HORIZON, futuresCurveSeries, newestQuote, normalizeCurveRoot, paneCurveRoot, sortCurveContracts, thinContractCount, thinContractsNotice, unsupportedCurveRootMessage, type CurveContractChanges, type CurveSpot } from "./model";
 
 const TABS = [{ value: "curve", label: "Curve" }, { value: "contracts", label: "Contracts" }];
 // One column order for every root. SETTLE is the exchange settlement for the
@@ -37,7 +37,9 @@ const COLUMNS: DataTableColumn[] = [
   { id: "volume", label: "VOLUME", width: 10, align: "right" },
   { id: "asOf", label: "AS OF UTC", width: 16, align: "left" },
 ];
-const CONTRACTS_DROP_ORDER = ["percentile", "volume", "oi", "notice"];
+// A narrow pane keeps the contract and its last trade longest; the settlement
+// goes before the expiry, which names the contract on the curve's time axis.
+const CONTRACTS_DROP_ORDER = ["percentile", "volume", "oi", "notice", "asOf", "change", "settle", "expiry"];
 const column = (id: string) => COLUMNS.find((entry) => entry.id === id)!;
 // The curve's rows move with the look-back curves drawn above them; the
 // footer carries the quote time every row would otherwise repeat. The session
@@ -48,7 +50,7 @@ const CURVE_COLUMNS: DataTableColumn[] = [
   { id: "change1m", label: "VS 1M", width: 10, align: "right" },
   column("percentile"), column("oi"), column("volume"),
 ];
-const CURVE_DROP_ORDER = ["percentile", "volume", "change1m", "oi"];
+const CURVE_DROP_ORDER = ["percentile", "volume", "change1m", "oi", "change1w", "settle", "expiry"];
 // A crypto curve also reads against spot. Its widths are the tightest each column
 // holds (BTCV26.CME, 128000.00), so the two new columns fit beside the rest, and
 // a narrow pane drops the least useful ones before a number would be clipped.
@@ -58,7 +60,7 @@ const BASIS_CURVE_COLUMNS: DataTableColumn[] = [
   { id: "annBasis", label: "ANN BASIS", width: 11, align: "right" },
   ...CURVE_COLUMNS.slice(4),
 ];
-const BASIS_DROP_ORDER = ["percentile", "volume", "change1m", "oi", "settle"];
+const BASIS_DROP_ORDER = ["percentile", "volume", "change1m", "oi", "settle", "change1w", "vsSpot", "expiry"];
 const NO_SYMBOLS: string[] = [];
 /** The spot's age is judged against the clock, so a quote that stops moving still goes stale on screen. */
 const SPOT_CLOCK_MS = 30_000;
@@ -78,9 +80,9 @@ function spotSegment(spot: CurveSpot, root: string, clock: number): PaneFooterSe
 
 export function FuturesCurvePane(props: PaneProps) {
   const pane = usePaneInstance();
-  const requested = pane?.settings?.root ?? pane?.params?.root ?? "ES";
+  const requested = paneCurveRoot(pane);
   const root = normalizeCurveRoot(requested);
-  // Inside the Commodities & Energy workspace the window's title is the workspace's, not this tab's.
+  // Inside the Commodities & Energy workspace the workspace titles the window, by the tab it shows.
   const ownsTitle = pane?.paneId === "futures-curve";
   return root ? <FuturesCurveView key={root} {...props} root={root} ownsTitle={ownsTitle} />
     : <PaneStatusBody error={unsupportedCurveRootMessage(requested)} subject="futures curve" />;
@@ -111,7 +113,7 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
   const [horizon] = usePaneSettingValue("horizon", DEFAULT_CURVE_HORIZON);
   // A pending date change must never relabel the previous curve as the new one.
   const data = resource.data?.date === requestedDate ? resource.data.payload : null;
-  usePaneTitle(ownsTitle ? `CTM ${root}` : null);
+  usePaneTitle(ownsTitle ? curveTitle(root) : null);
   const curveTab = tab === "curve";
   // The Curve tab of a crypto root reads against spot; a past date has no spot history.
   const spotSymbol = basisSpotSymbol(root);
@@ -170,9 +172,11 @@ function FuturesCurveView({ width, height, focused, root, ownsTitle }: PaneProps
     // Labelled before fitting: a dated header is wider than the column's numbers.
     const shown = (list: DataTableColumn[]) => list.filter((entry) => !(settlesOnly && entry.id === "price") && !(noNotice && entry.id === "notice"))
       .map((entry) => entry.id === "settle" ? { ...entry, label: settleLabel } : entry);
-    return !curveTab ? fitChartTableColumns(shown(COLUMNS), width, CONTRACTS_DROP_ORDER)
-      : basisActive ? fitChartTableColumns(shown(BASIS_CURVE_COLUMNS), width, BASIS_DROP_ORDER)
-        : fitChartTableColumns(shown(CURVE_COLUMNS), width, CURVE_DROP_ORDER);
+    // A curve that only settles keeps its settlement: it is the price.
+    const order = (list: string[]) => settlesOnly ? list.filter((id) => id !== "settle") : list;
+    return !curveTab ? fitChartTableColumns(shown(COLUMNS), width, order(CONTRACTS_DROP_ORDER))
+      : basisActive ? fitChartTableColumns(shown(BASIS_CURVE_COLUMNS), width, order(BASIS_DROP_ORDER))
+        : fitChartTableColumns(shown(CURVE_COLUMNS), width, order(CURVE_DROP_ORDER));
   }, [basisActive, curveTab, noNotice, settleLabel, settlesOnly, width]);
   const formatValue = useCallback((value: number) => curvePrice(value, root), [root]);
   const formatChange = useCallback((value: number) => curveChangeText(value, root), [root]);

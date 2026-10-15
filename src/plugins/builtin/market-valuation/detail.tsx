@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import type { StatItem } from "../../../components/ui";
 import { Box } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
+import { historySpanStat } from "../shared/history-span";
 import { SeriesDetailChart } from "../shared/series-detail-chart";
 import { valuationAxis, zoneSeriesFor } from "./chart-projection";
 import type { IndicatorViewModel } from "./view";
@@ -49,6 +50,8 @@ export function IndicatorDetail({
     { id: "year-ago", label: "1Y ago", value: view.ratioOneYearAgo == null ? "--" : indicator.formatValue(view.ratioOneYearAgo) },
     { id: "ath", label: "ATH", value: indicator.formatValue(view.allTimeHigh.ratio), detail: view.allTimeHigh.date },
     { id: "atl", label: "ATL", value: indicator.formatValue(view.allTimeLow.ratio), detail: view.allTimeLow.date },
+    // A range longer than the history shows all of it, from where it starts.
+    ...[historySpanStat(view.span)].filter((item): item is StatItem => item !== null),
   ], [indicator, levels, view]);
   const showZoneScale = view.current.ratio != null && !!view.zone;
 

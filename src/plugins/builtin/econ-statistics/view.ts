@@ -1,3 +1,4 @@
+import { historySpan, type HistorySpan } from "../shared/history-span";
 import { periodsPerYear, type StatPoint } from "../shared/stat-transform";
 import { sigmaVsTrend } from "../shared/trend";
 import type { StatBuild } from "./client";
@@ -32,6 +33,8 @@ export interface StatViewModel {
   high: StatPoint;
   low: StatPoint;
   visible: StatPoint[];
+  /** The dates the chart shows: the whole history when the range reaches past its start. */
+  span: HistorySpan | null;
   observationStale: boolean;
   fetchedAt: number | null;
   cacheStale: boolean | null;
@@ -125,6 +128,7 @@ export function projectStat(
     high: extreme(visible, "high"),
     low: extreme(visible, "low"),
     visible,
+    span: historySpan(points[0]!.date, visible, STAT_RANGE_WINDOWS_MS[range]),
     observationStale: nowMs - Date.parse(latest.date) > stat.staleAfterMs,
     fetchedAt: build.cache?.fetchedAt ?? null,
     cacheStale: build.cache?.stale ?? null,

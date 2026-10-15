@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { cloneLayout } from "../types/config";
+import type { PaneDef } from "../types/plugin";
 import {
   buildOwnedEntries,
   describeArrangement,
@@ -30,6 +31,27 @@ describe("gallery layout summaries", () => {
     expect(missing.icon.length).toBeGreaterThan(0);
     expect(summaries.every((pane) => pane.name.length > 0)).toBe(true);
     expect(missingPaneIds(testLayout(), panes)).toEqual(["mystery-pane"]);
+  });
+
+  test("a pane is listed by its own window title, so two of one type are told apart", () => {
+    const layout = testLayout();
+    // BZ's window was saved before its pane titled itself; its type names it from what it shows.
+    const curves = ["BZ", "CL"].map((root) => ({ instanceId: `commodities-energy:${root}`, paneId: "commodities-energy",
+      title: root === "BZ" ? "Commodities & Energy" : `Curve \u00b7 ${root}`, params: { tab: "curve", root } }));
+    const workspace: PaneDef = { id: "commodities-energy", name: "Commodities & Energy", component: () => null, defaultPosition: "right",
+      instanceTitle: (pane) => pane.params?.tab === "curve" && pane.params.root ? `Curve \u00b7 ${pane.params.root}` : null };
+    layout.instances.push(...curves, { instanceId: "chat:1", paneId: "ticker-chart", title: "dm:abc123" },
+      { instanceId: "ticker-chart:2", paneId: "ticker-chart", title: "Chart NVDA", binding: { kind: "fixed", symbol: "NVDA" } });
+    layout.floating.push(...[...curves, { instanceId: "chat:1" }, { instanceId: "ticker-chart:2" }]
+      .map(({ instanceId }, index) => ({ instanceId, x: index, y: 0, width: 10, height: 10 })));
+    const summaries = summarizeLayoutPanes(layout, new Map([...panes, ["commodities-energy", workspace]]));
+    const named = (id: string) => summaries.find((pane) => pane.instanceId === id);
+    expect(named("commodities-energy:BZ")?.name).toBe("Curve \u00b7 BZ");
+    expect(named("commodities-energy:CL")?.name).toBe("Curve \u00b7 CL");
+    // A conversation's id is not a title to show; the pane type names it.
+    expect(named("chat:1")?.name).toBe("Chart");
+    // A title that already names the ticker does not get it twice.
+    expect(named("ticker-chart:2")).toMatchObject({ name: "Chart NVDA", symbol: null });
   });
 
   test("counts placements without double counting floating or detached panes", () => {

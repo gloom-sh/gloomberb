@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { futuresCurveCache } from "./client";
 import { futuresCurveHeadless } from "./headless";
-import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
+import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, curveTitle, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
 import { FuturesCurvePane } from "./pane";
 
 export const futuresCurveModule: PluginModule = {
@@ -25,7 +25,7 @@ export const futuresCurveModule: PluginModule = {
     createInstance: (context, options) => {
       const input = options?.arg?.trim();
       const root = input ? normalizeCurveRoot(input) : curveRootForTicker(context.activeTicker) ?? "ES";
-      return { title: `CTM ${root ?? input}`, params: { root: root ?? input ?? "ES" }, placement: "floating" };
+      return { title: root ? curveTitle(root) : `CTM ${input}`, params: { root: root ?? input ?? "ES" }, placement: "floating" };
     },
   }],
   setup(ctx) { futuresCurveCache.attach(ctx.persistence); },

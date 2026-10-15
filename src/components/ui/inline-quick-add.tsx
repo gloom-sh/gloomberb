@@ -45,7 +45,10 @@ export function InlineQuickAddRow({
     const queryWidth = [...value.trim()].length;
     if (queryWidth > 0) {
       // A typed query hugs its preview unless the caller asked for a wider field.
-      return Math.max(minInputWidth ?? 4, Math.min(maxInputWidth, queryWidth + 1));
+      // The cursor and the next keystroke both need a cell: a key lands before
+      // the field widens, and with one cell to spare the input scrolled its
+      // first character out of view (OMV.VI read "MV.VI").
+      return Math.max(minInputWidth ?? 4, Math.min(maxInputWidth, queryWidth + 2));
     }
     return Math.max(minInputWidth ?? 6, Math.min(10, Math.floor(width * 0.18)));
   }, [maxInputWidth, minInputWidth, value, width]);

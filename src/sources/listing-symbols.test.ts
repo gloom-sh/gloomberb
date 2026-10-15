@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { getListingSymbol, getListingSymbolsToTry } from "./listing-symbols";
+import { getListingSymbol, getListingSymbolsToTry, listingSuffixExchange } from "./listing-symbols";
 
 describe("Listing symbol aliases", () => {
   test("canonicalizes MIC aliases before applying exchange suffixes", () => {
@@ -16,5 +16,14 @@ describe("Listing symbol aliases", () => {
     expect(getListingSymbol("ENEL", "XMIL")).toBe("ENEL.MI");
     expect(getListingSymbol("NOKIA", "XHEL")).toBe("NOKIA.HE");
     expect(getListingSymbol("EQNR", "XOSL")).toBe("EQNR.OL");
+  });
+
+  test("a venue under its own canonical code takes its suffix, and the suffix names it back", () => {
+    // Gloom Cloud names Vienna VIE, Madrid MCE, Mexico BMV and Sao Paulo B3; the table keyed them by other codes.
+    for (const [symbol, venue, listed] of [["OMV", "VIE", "OMV.VI"], ["WALMEX", "BMV", "WALMEX.MX"], ["PETR4", "B3", "PETR4.SA"]]) {
+      expect(getListingSymbol(symbol!, venue!)).toBe(listed!);
+      expect(listingSuffixExchange(listed!)).toBe(venue!);
+    }
+    expect(getListingSymbol("REP", "MCE")).toBe("REP.MC");
   });
 });

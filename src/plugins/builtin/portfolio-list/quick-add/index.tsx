@@ -40,10 +40,13 @@ function QuickAddPreview({
   validation,
   collectionKind,
   submitting,
+  cleared,
 }: {
   validation: QuickAddValidation;
   collectionKind: QuickAddCollectionKind;
   submitting: boolean;
+  /** The field was emptied after the add failed: the line names what was typed. */
+  cleared: boolean;
 }) {
   if (submitting) {
     return <Text fg={colors.textDim}>{t("adding...")}</Text>;
@@ -58,7 +61,7 @@ function QuickAddPreview({
   }
 
   if (validation.status === "missing" || validation.status === "error") {
-    return <Text fg={colors.textMuted}>{t(validation.message)}</Text>;
+    return <Text fg={colors.textMuted}>{cleared ? `${validation.query}  ${t(validation.message)}` : t(validation.message)}</Text>;
   }
 
   if (validation.status === "choose") {
@@ -159,6 +162,20 @@ export function QuickAddTickerInput({
     setValidation(IDLE_VALIDATION);
   }, []);
 
+  // A symbol that cannot be added leaves the field, so the next one typed
+  // replaces it instead of running on (OMV.VIREP.MC); the line under it still
+  // says what failed until then.
+  const keepFailureRef = useRef(false);
+  const clearFailedInput = useCallback((failure: QuickAddValidation) => {
+    keepFailureRef.current = true;
+    validationSeqRef.current += 1;
+    setInputValue("");
+    // The focused field keeps its own text and cursor until told, as the chart composer's add field is.
+    inputRef.current?.editBuffer?.setText?.("");
+    inputRef.current?.setCursorOffset?.(0);
+    setValidation(failure);
+  }, []);
+
   // `NET:` is the command bar's venue dropdown. Choosing a row adds it here.
   const handOffListingChoice = useCallback((query: string) => {
     validationSeqRef.current += 1;
@@ -200,9 +217,14 @@ export function QuickAddTickerInput({
     const seq = validationSeqRef.current;
 
     if (!query) {
+      if (keepFailureRef.current) {
+        keepFailureRef.current = false;
+        return;
+      }
       setValidation(IDLE_VALIDATION);
       return;
     }
+    keepFailureRef.current = false;
 
     if (listingChoiceQuery(query)) {
       setValidation(IDLE_VALIDATION);
@@ -261,6 +283,7 @@ export function QuickAddTickerInput({
             collection: collectionName,
           }),
         });
+        resetInput();
         return;
       }
       if (currentValidation.status !== "ready") {
@@ -270,6 +293,7 @@ export function QuickAddTickerInput({
             ? "Ticker lookup is still in progress."
             : currentValidation.message;
         notify({ type: "error", body });
+        if (currentValidation.status === "missing" || currentValidation.status === "error") clearFailedInput(currentValidation);
         return;
       }
 
@@ -327,12 +351,13 @@ export function QuickAddTickerInput({
       resetInput();
       queueMicrotask(() => inputRef.current?.focus?.());
     } catch {
-      setValidation({ status: "error", query, message: "Ticker add failed" });
+      clearFailedInput({ status: "error", query, message: "Ticker add failed" });
       notify({ type: "error", body: tf("Failed to add {symbol}.", { symbol: query }) });
     } finally {
       setSubmitting(false);
     }
   }, [
+    clearFailedInput,
     collectionId,
     collectionKind,
     collectionName,
@@ -398,6 +423,7 @@ export function QuickAddTickerInput({
           validation={validation}
           collectionKind={collectionKind}
           submitting={submitting}
+          cleared={!inputValue}
         />
       )}
     />

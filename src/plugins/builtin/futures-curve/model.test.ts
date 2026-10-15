@@ -152,11 +152,11 @@ test("every FUT board root opens a curve, as a typed code or an =F symbol; the c
   expect(["ZL", "OJ", "LBR", "ZW", "TTF", "SXO"].map(curveRootForTicker)).toEqual(["ZL", "OJ", "LBR", "ZW", "TTF", "SXO"]);
   const template = futuresCurveModule.paneTemplates![0]!;
   const open = (arg: string | undefined, activeTicker: string | null) => template.createInstance!({ activeTicker } as never, { arg } as never);
-  expect(await open(undefined, "ZM")).toMatchObject({ title: "CTM ES", params: { root: "ES" } });
-  expect(await open("ZM", "ZM")).toMatchObject({ title: "CTM ZM", params: { root: "ZM" } });
-  expect(await open(undefined, "ZM=F")).toMatchObject({ title: "CTM ZM", params: { root: "ZM" } });
-  expect(await open(undefined, "ALI")).toMatchObject({ title: "CTM ES", params: { root: "ES" } });
-  expect(await open(undefined, "OJ")).toMatchObject({ title: "CTM OJ", params: { root: "OJ" } });
+  expect(await open(undefined, "ZM")).toMatchObject({ title: "Curve · ES", params: { root: "ES" } });
+  expect(await open("ZM", "ZM")).toMatchObject({ title: "Curve · ZM", params: { root: "ZM" } });
+  expect(await open(undefined, "ZM=F")).toMatchObject({ title: "Curve · ZM", params: { root: "ZM" } });
+  expect(await open(undefined, "ALI")).toMatchObject({ title: "Curve · ES", params: { root: "ES" } });
+  expect(await open(undefined, "OJ")).toMatchObject({ title: "Curve · OJ", params: { root: "OJ" } });
 });
 
 test("roots the server sends no terms for read their catalogue unit, each price at its tick", () => {
@@ -179,12 +179,12 @@ test("a crypto root opens from a typed argument, a crypto ticker or a futures sy
 
   const template = futuresCurveModule.paneTemplates![0]!;
   const open = (arg: string | undefined, activeTicker: string | null) => template.createInstance!({ activeTicker } as never, { arg } as never);
-  expect(await open("BTC", "AAPL")).toMatchObject({ title: "CTM BTC", params: { root: "BTC" } });
-  expect(await open(undefined, "BTC")).toMatchObject({ title: "CTM ES", params: { root: "ES" } });
-  expect(await open(undefined, "ETH-USD")).toMatchObject({ title: "CTM ETH", params: { root: "ETH" } });
-  expect(await open(undefined, "SOL")).toMatchObject({ title: "CTM ES" });
+  expect(await open("BTC", "AAPL")).toMatchObject({ title: "Curve · BTC", params: { root: "BTC" } });
+  expect(await open(undefined, "BTC")).toMatchObject({ title: "Curve · ES", params: { root: "ES" } });
+  expect(await open(undefined, "ETH-USD")).toMatchObject({ title: "Curve · ETH", params: { root: "ETH" } });
+  expect(await open(undefined, "SOL")).toMatchObject({ title: "Curve · ES" });
   // An explicit argument still wins over the cursor.
-  expect(await open("XRP", "BTC-USD")).toMatchObject({ title: "CTM XRP" });
+  expect(await open("XRP", "BTC-USD")).toMatchObject({ title: "Curve · XRP" });
   const requested: string[] = [];
   await fetchFuturesCurve("btc", { getCloudFuturesCurve: async (root) => { requested.push(root); return { ...payload(), root }; } });
   expect(requested).toEqual(["BTC"]);

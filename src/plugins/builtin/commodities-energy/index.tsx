@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ComponentType } from "react";
 import { NestedPaneTabs, PaneFooterScope, usePaneTabs } from "../../../components";
-import { usePaneSettingValue } from "../../../state/app/context";
+import { usePaneInstance, usePaneSettingValue, usePaneTitle } from "../../../state/app/context";
 import { Box } from "../../../ui";
 import type { PaneProps, PaneSettingsContext, PaneTemplateContext, PaneTemplateCreateOptions, PaneTemplateDef, PaneTemplateInstanceConfig } from "../../../types/plugin";
 import { withPluginStateNamespace } from "../../runtime/context";
@@ -14,12 +14,23 @@ import { DoePane } from "../doe/pane";
 import { FuturesPane, futuresModule } from "../futures";
 import { FuturesCurvePane } from "../futures-curve/pane";
 import { futuresCurveModule } from "../futures-curve";
+import { curveTitle, normalizeCurveRoot, paneCurveRoot } from "../futures-curve/model";
 import { JodiPane } from "../jodi/pane";
 import { jodiModule } from "../jodi";
 import type { PluginModule } from "../plugin-module";
 
 const COMMODITIES_ENERGY_PANE_ID = "commodities-energy";
 const COMMODITIES_ENERGY_TITLE = "Commodities & Energy";
+
+/**
+ * The window's title: the curve it shows, by its root ("Curve \u00b7 BZ"), as a
+ * workspace on one item names that item (Ticker Research its ticker), so two
+ * curves are told apart; the workspace's own name on its boards.
+ */
+function workspaceTitle(tab: string | undefined, pane: Parameters<typeof paneCurveRoot>[0]): string {
+  const root = tab === "curve" ? normalizeCurveRoot(paneCurveRoot(pane)) : null;
+  return root ? curveTitle(root) : COMMODITIES_ENERGY_TITLE;
+}
 
 const TABS = [
   { value: "markets", label: "Markets" },
@@ -69,9 +80,9 @@ function workspaceTemplate(
     createInstance: (context: PaneTemplateContext, createOptions?: PaneTemplateCreateOptions) => {
       const requested = createInstance?.(context, createOptions);
       const existing = reusableWorkspace(context);
-      // One window for every tab: the old functions' titles (CTM CL, CFTC Positioning) would outlive their tab.
+      // One window for every tab, titled by the tab it opens on: the old functions' titles (CFTC Positioning) would outlive their tab.
       const reuse = (instance: PaneTemplateInstanceConfig | null) => instance
-        ? { ...instance, instanceId: existing?.instanceId ?? instance.instanceId, title: COMMODITIES_ENERGY_TITLE }
+        ? { ...instance, instanceId: existing?.instanceId ?? instance.instanceId, title: workspaceTitle(tab, instance) }
         : null;
       return requested instanceof Promise ? requested.then(reuse) : reuse(requested ?? {});
     },
@@ -112,8 +123,13 @@ const workspaceTemplates = [
   workspaceTemplate(jodiTemplate, "balances", { browse: false }),
 ];
 
+/** The tab a saved workspace shows: its last one, else the one it was opened on. */
+function savedTab(pane: { settings?: Record<string, unknown>; params?: Record<string, string> }): WorkspaceTab {
+  return (pane.settings?.workspaceTab ?? pane.params?.tab ?? "markets") as WorkspaceTab;
+}
+
 function activeSettings(context: PaneSettingsContext) {
-  const selectedTab = (context.settings.workspaceTab ?? context.pane.params?.tab ?? "markets") as WorkspaceTab;
+  const selectedTab = savedTab({ settings: context.settings, params: context.pane.params });
   const pane = selectedTab === "markets" ? futuresModule.panes?.[0]
     : selectedTab === "curve" ? futuresCurveModule.panes?.[0]
       : null;
@@ -129,6 +145,8 @@ function CommoditiesEnergyPane(props: PaneProps) {
     "markets",
   );
   const [settingsTab, setSettingsTab] = usePaneSettingValue<WorkspaceTab>("workspaceTab", "markets");
+  const pane = usePaneInstance();
+  usePaneTitle(workspaceTitle(tab, pane));
   const [mounted, setMounted] = useState<Set<WorkspaceTab>>(() => new Set([tab]));
   useEffect(() => {
     setMounted((current) => current.has(tab) ? current : new Set([...current, tab]));
@@ -174,6 +192,7 @@ export const commoditiesEnergyModule: PluginModule = {
     defaultFloatingSize: { width: 110, height: 32 },
     tableExport: true,
     settings: activeSettings,
+    instanceTitle: (pane) => workspaceTitle(savedTab(pane), pane),
   }],
   paneTemplates: workspaceTemplates,
 };

@@ -8,6 +8,7 @@ import {
   type ValuationRangeId,
   type ZoneHit,
 } from "./defs";
+import { historySpan, type HistorySpan } from "../shared/history-span";
 import { fitTrend, sigmaVsTrend, trendAt, type TrendFit } from "../shared/trend";
 
 const MS_PER_DAY = 86_400_000;
@@ -55,6 +56,8 @@ export interface IndicatorViewModel {
   allTimeLow: Extreme;
   percentile: number | null;
   chart: ValuationChartProjection;
+  /** The dates the chart shows: the whole history when the range reaches past its start. */
+  span: HistorySpan | null;
   asOf: string;
   observationStale: boolean;
 }
@@ -126,6 +129,7 @@ export function projectView(
     allTimeLow: findExtreme(points, "low"),
     percentile,
     chart: projectChart(indicator, visible, mean),
+    span: points[0] ? historySpan(points[0].date, visible.filter(isUsableRatio), RANGE_WINDOWS_MS[range]) : null,
     asOf: current.date,
     observationStale: build.sourceStale === true || nowMs - parseDateMs(current.date) > indicator.staleAfterMs,
   };

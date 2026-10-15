@@ -439,6 +439,24 @@ describe("ticker-search utilities", () => {
     }
   });
 
+  test("a suffixed listing search does not carry resolves through its own quote, as quote reads it", async () => {
+    const quote = (symbol: string, overrides: Record<string, unknown> = {}) => ({
+      symbol, name: "CEZ, a. s.", listingExchangeName: "PSE", currency: "CZK", price: 1365, instrumentType: "EQUITY",
+      lastUpdated: 1, change: 0, changePercent: 0, ...overrides,
+    });
+    const resolve = (query: string, answer: ReturnType<typeof quote>) => resolveTickerSearch({ query, activeTicker: null, tickers: new Map(),
+      dataProvider: createTestDataProvider({ search: async () => [], getQuote: async () => answer }) });
+    expect(await resolve("CEZ.PR", quote("CEZ.PR"))).toMatchObject({
+      kind: "provider", symbol: "CEZ.PR", result: { symbol: "CEZ.PR", exchange: "PSE", currency: "CZK", name: "CEZ, a. s.", type: "EQUITY" },
+    });
+    // The quote has to answer for that key, price it, and sit on a venue the suffix belongs to.
+    expect(await resolve("CEZ.PR", quote("CEZ"))).toBeNull();
+    expect(await resolve("CEZ.PR", quote("CEZ.PR", { price: 0 }))).toBeNull();
+    expect(await resolve("OMV.VI", quote("OMV.VI", { listingExchangeName: "LSE" }))).toBeNull();
+    // A bare symbol is search's to resolve; its quote is never read as a listing.
+    expect(await resolve("CEZ", quote("CEZ"))).toBeNull();
+  });
+
   test("resolves explicit venues ahead of punctuation lookalikes and saved foreign listings", async () => {
     const tickers = new Map([["VOD", createTestTicker("VOD", "Vodafone ADR", { exchange: "NASDAQ" })]]);
     const dataProvider = makeDataProvider([

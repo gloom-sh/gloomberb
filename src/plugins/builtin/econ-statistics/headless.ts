@@ -11,6 +11,7 @@ import {
   loadStatsBundle,
   type StatsBundle,
 } from "./client";
+import { historyStartNotice } from "../shared/history-span";
 import { formatSigma } from "../shared/trend";
 import { STAT_CATEGORIES } from "./defs";
 import { DEFAULT_STAT_ID, resolveStatArg, STATS } from "./stats";
@@ -127,6 +128,7 @@ export function projectStatsHeadlessBundle(
     }];
   });
 
+  const notice = selected ? historyStartNotice(selected.stat.label, range, selected.span) : null;
   return {
     sections: [
       ...sections,
@@ -142,6 +144,9 @@ export function projectStatsHeadlessBundle(
       fetchedAtComplete: bundle.fetchedAtComplete,
       range,
       selected: selected?.stat.id ?? null,
+      // The dates the selected statistic's chart covers; its row's figures count over them.
+      span: selected?.span ?? null,
+      ...(notice ? { notices: [notice] } : {}),
     },
   };
 }

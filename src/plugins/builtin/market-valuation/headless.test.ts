@@ -65,4 +65,23 @@ describe("market valuation headless model", () => {
     expect(shillerCalls).toBe(1);
     expect(result.metadata).toMatchObject({ range: "10Y", selected: "shiller-cape" });
   });
+
+  test("a range longer than the history says where it starts, and the report is headed by the dates it covers", async () => {
+    // Yearly CAPE readings from 1990: 10Y fits inside them, 50Y and ALL reach past their start.
+    const observations = Array.from({ length: 37 }, (_, index) => ({ date: `${1990 + index}-01-01`, price: 1000, dividend: 20,
+      earnings: 50, cpi: 200, longRate: 4, cape: 20 + index / 2, excessCapeYield: 0.02 }));
+    const apiClient = {
+      getCloudShiller: async () => ({ observations, sourceUrl: "https://example.test/shiller.xls", fetchedAt: "2026-01-02T00:00:00Z" }),
+    } as unknown as HeadlessPaneContext["apiClient"];
+    const context = createTestHeadlessContext({ apiClient });
+    const report = async (range: string) => {
+      const args = { ...loadArgs(), options: { range } };
+      const result = await marketValuationHeadless.load(args, context);
+      const describe = marketValuationHeadless.describe as (args: HeadlessPaneLoadArgs, result: unknown) => string;
+      return { title: describe(args, result), notices: (result.metadata as { notices?: string[] }).notices ?? [] };
+    };
+    expect(await report("10Y")).toEqual({ title: "Market Valuation | 10Y", notices: [] });
+    expect(await report("ALL")).toEqual({ title: "Market Valuation | 1990-01-01 to 2026-01-01",
+      notices: ["Shiller CAPE history starts 1990-01-01."] });
+  });
 });

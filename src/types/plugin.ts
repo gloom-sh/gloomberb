@@ -149,6 +149,13 @@ export interface PaneDef {
    * An empty list says binding and params alone name the window.
    */
   identitySettings?: readonly string[];
+  /**
+   * The title a saved window of this pane has, from its params and settings,
+   * for lists that name windows without rendering them (the Layouts browser).
+   * A pane that titles itself by what it shows ("Curve \u00b7 BZ") gives the same
+   * title here, so two of its windows are told apart before either is opened.
+   */
+  instanceTitle?(pane: PaneInstanceConfig): string | null;
   /** Renderer-neutral data model used by CLI functions, automation, and hosted tools. */
   headless?: HeadlessPaneDefinition;
   /**

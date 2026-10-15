@@ -16,15 +16,16 @@ const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   LSE: ".L", LSEETF: ".L",
   XETRA: ".DE", XETR: ".DE", IBIS: ".DE", IBIS2: ".DE", FWB: ".F", FWB2: ".F", GETTEX: ".DE", TGATE: ".DE", SWB: ".SG",
   EURONEXT: ".AS", AEB: ".AS", AMS: ".AS", SBF: ".PA", EPA: ".PA", "ENEXT.BE": ".BR", BRU: ".BR", BVL: ".LS", LIS: ".LS",
-  BVME: ".MI", BIT: ".MI", BM: ".MC",
+  // MCE and VIE are Madrid and Vienna as Gloom Cloud names them (REP.MC, OMV.VI).
+  BVME: ".MI", BIT: ".MI", BM: ".MC", MCE: ".MC",
   SIX: ".SW", EBS: ".SW", SWX: ".SW",
   SFB: ".ST", Stockholm: ".ST", OMX: ".ST", CPH: ".CO", HEX: ".HE", HEL: ".HE", OSE: ".OL", OSL: ".OL", OMXNO: ".OL", ICEX: ".IC",
-  VSE: ".VI", WSE: ".WA", GPW: ".WA", PRA: ".PR", BUX: ".BD", ATHEX: ".AT", BVB: ".RO", BIST: ".IS",
+  VSE: ".VI", VIE: ".VI", WSE: ".WA", GPW: ".WA", PRA: ".PR", BUX: ".BD", ATHEX: ".AT", BVB: ".RO", BIST: ".IS",
   TASE: ".TA",
   MSX: ".OM",
   JSE: ".JO",
   BHB: ".BH",
-  BVMF: ".SA", MEXI: ".MX", BYMA: ".BA", BCS: ".SN",
+  BVMF: ".SA", MEXI: ".MX", BMV: ".MX", BYMA: ".BA", BCS: ".SN",
   TADAWUL: ".SR", QE: ".QA", DFM: ".AE", KUWAIT: ".KW",
   EGX: ".CA",
 };
@@ -55,6 +56,9 @@ const HOST_SUFFIX_ENTRIES = Object.entries(EXCHANGE_SUFFIX_MAP)
   .filter(([venue, suffix]) => venue !== "PSE" || suffix !== ".PS")
   .map(([venue, suffix]) => [canonicalExchange(venue), suffix] as const);
 const KNOWN_HOST_VENUES = new Set(Object.values(CANONICAL_EXCHANGE_ALIASES));
+/** A venue's suffix by its canonical code, for a code the table spells another way (B3 for BVMF's .SA). */
+const CANONICAL_SUFFIXES = new Map<string, string>();
+for (const [venue, suffix] of HOST_SUFFIX_ENTRIES) if (!CANONICAL_SUFFIXES.has(venue)) CANONICAL_SUFFIXES.set(venue, suffix);
 
 export function getListingSymbol(ticker: string, exchange: string): string {
   const qualified = parsePublicTickerKey(ticker);
@@ -62,7 +66,7 @@ export function getListingSymbol(ticker: string, exchange: string): string {
   exchange = qualified.exchange || exchange;
   if (tickerHasListingSuffix(ticker)) return ticker;
   const canonical = canonicalExchange(exchange) || exchange;
-  const suffix = EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? "";
+  const suffix = EXCHANGE_SUFFIX_MAP[canonical] ?? EXCHANGE_SUFFIX_MAP[exchange] ?? CANONICAL_SUFFIXES.get(canonical) ?? "";
   return `${normalizeListingTicker(ticker, canonical)}${suffix}`;
 }
 
