@@ -7,12 +7,13 @@ import {
   canRestartToApply,
   canSelfUpdate,
   checkForUpdateDetailed,
+  discardStagedUpdate,
   performUpdate,
   type ReleaseInfo,
   type UpdateCheckResult,
   type UpdateProgress,
 } from "../../updater";
-import { resolveUpdateChannel } from "../../updater/channel";
+import { resolveUpdateChannel, stagedUpdateFitsChannel } from "../../updater/channel";
 import type { UpdateChannel } from "../../types/config";
 import { VERSION } from "../../version";
 import { debugLog } from "../../utils/debug-log";
@@ -156,7 +157,8 @@ export function useAppUpdateRuntime({
 
   // A channel switch checks again at once and says what it found: nightly
   // starts on today's build, stable says when this nightly build stays. An
-  // update already downloading or waiting for a restart is kept.
+  // update already downloading or waiting for a restart is left to the effect
+  // below, which takes it back once it is ready if the channel rules it out.
   const checkedChannelRef = useRef(updateChannel);
   useEffect(() => {
     if (!enabled || isDetachedWindow || checkedChannelRef.current === updateChannel) return;
@@ -167,6 +169,29 @@ export function useAppUpdateRuntime({
     dispatch({ type: "SET_UPDATE_AVAILABLE", release: null });
     void runUpdateCheck(true);
   }, [dispatch, enabled, isDetachedWindow, runUpdateCheck, stateRef, updateChannel]);
+
+  // A downloaded update the channel does not allow (a nightly build waiting
+  // for a restart after the switch back to stable, or one that finished
+  // downloading after it) is taken back rather than installed by the restart,
+  // and stable checks again.
+  const discardingRef = useRef(false);
+  useEffect(() => {
+    if (!enabled || isDetachedWindow || discardingRef.current) return;
+    const { updateProgress: progress, updateAvailable: staged } = stateRef.current;
+    if (progress?.phase !== "ready" || stagedUpdateFitsChannel(staged, updateChannel)) return;
+    discardingRef.current = true;
+    void discardStagedUpdate().then((error) => {
+      discardingRef.current = false;
+      if (error) {
+        updateLog.warn("could not take back the staged update", { error, version: staged?.version });
+        dispatch({ type: "SET_UPDATE_NOTICE", notice: `Could not take back v${staged?.version ?? "?"}: ${error}` });
+        return;
+      }
+      dispatch({ type: "SET_UPDATE_PROGRESS", progress: null });
+      dispatch({ type: "SET_UPDATE_AVAILABLE", release: null });
+      void runUpdateCheck(true);
+    });
+  }, [dispatch, enabled, isDetachedWindow, runUpdateCheck, stateRef, updateAvailable, updateChannel, updateProgress]);
 
   // First launch on a new version: show that release's notes, then remember the version.
   useEffect(() => {

@@ -207,12 +207,39 @@ describe("desktop update channels", () => {
       baseUrl: `https://github.com/gloom-sh/gloomberb/releases/download/${NIGHTLY}`,
     });
 
-    // The download reads the same release, and a later stable check while it
-    // waits for the restart leaves that source alone.
+    // The download reads the same release, and a nightly check while it waits
+    // for the restart leaves that source alone.
     await desktop.download("0.18.0", () => {}, "nightly");
-    await desktop.check("0.18.0", "stable");
+    await expect(desktop.check("0.18.0", "nightly")).resolves.toMatchObject({ release: { tagName: NIGHTLY } });
     expect(sources.at(-1)).toEqual(expect.objectContaining({ channel: "nightly" }));
     expect(calls).toEqual(["check", "check", "download"]);
+  });
+
+  test("back on stable, a downloaded nightly build is dropped, so a restart cannot install it", async () => {
+    const { updater, calls, sources } = createFakeUpdater({ applyStatuses: RELAUNCH, manifestVersion: "0.18.0" });
+    const desktop = createElectrobunDesktopUpdater(updater, { listReleases: async () => [listing(NIGHTLY, "nightly")] });
+    const { progress, onProgress } = collect();
+    await desktop.download("0.17.0", onProgress, "nightly");
+    expect(progress.at(-1)).toEqual({ phase: "ready", canRestart: true });
+
+    // The stable check answers from version.json's source again (which also
+    // clears Electrobun's ready flag) instead of the staged nightly build.
+    const result = await desktop.check("0.17.0", "stable");
+    expect(result).toMatchObject({ kind: "available", release: { version: "0.18.0", tagName: "v0.18.0" } });
+    expect(result.kind === "available" && result.release.channel).toBeFalsy();
+    expect(sources.at(-1)).toBeNull();
+    await desktop.apply(onProgress);
+    expect(progress.at(-1)).toEqual({ phase: "error", error: "The downloaded update is no longer available." });
+    expect(calls).not.toContain("apply");
+  });
+
+  test("a downloaded stable release stays through a switch to nightly", async () => {
+    const { updater } = createFakeUpdater({ manifestVersion: "0.18.0" });
+    const desktop = createElectrobunDesktopUpdater(updater, {
+      listReleases: async () => { throw new Error("a staged update needs no new list"); },
+    });
+    await desktop.download("0.17.0", () => {}, "stable");
+    await expect(desktop.check("0.17.0", "nightly")).resolves.toMatchObject({ kind: "available", release: { version: "0.18.0" } });
   });
 
   test("nightly with nothing newer than the installed build does not ask Electrobun", async () => {

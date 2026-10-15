@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, test } from "bun:test";
 import { createHash } from "crypto";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { gzipSync } from "zlib";
@@ -11,6 +11,7 @@ import {
   checkForUpdateDetailed,
   describeUnwritableInstall,
   detectUpdateAction,
+  discardStagedUpdate,
   getAssetBaseNameForRuntime,
   performUpdate,
   resolveSelfUpdateTargetPath,
@@ -576,6 +577,57 @@ describe("performUpdate", () => {
       expect(readFileSync(execPath)).toEqual(nextBinary);
       // Swapped in and waiting: the running process is never restarted for the user.
       expect(progress.at(-1)).toEqual({ phase: "ready" });
+    } finally {
+      Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
+      Object.defineProperty(process, "argv", { value: originalArgv, configurable: true });
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  // Switching back to stable before the restart must not leave the nightly
+  // build to start next time; a stable update keeps no copy, as before.
+  test("a nightly build swapped in is put back for the binary this run started from", async () => {
+    const originalExecPath = process.execPath;
+    const originalArgv = process.argv;
+    const tempDir = mkdtempSync(join(tmpdir(), "gloomberb-update-"));
+    const execPath = join(tempDir, "gloomberb");
+    const runningBinary = Buffer.from("running-binary");
+    const update = (version: string, bytes: Buffer): ReleaseInfo => ({
+      version,
+      tagName: `v${version}`,
+      downloadUrl: "https://example.com/gloomberb",
+      publishedAt: "2026-10-16T05:00:00Z",
+      updateAction: { kind: "self" },
+      checksum: createHash("sha256").update(bytes).digest("hex"),
+    });
+    const install = async (release: ReleaseInfo, bytes: Buffer) => {
+      globalThis.fetch = (async () => new Response(bytes, { status: 200 })) as typeof fetch;
+      const progress: UpdateProgress[] = [];
+      await performUpdate(release, (entry) => { progress.push(entry); });
+      expect(progress.at(-1)).toEqual({ phase: "ready" });
+    };
+
+    writeFileSync(execPath, runningBinary);
+    chmodSync(execPath, 0o755);
+    try {
+      Object.defineProperty(process, "execPath", { value: execPath, configurable: true });
+      Object.defineProperty(process, "argv", { value: [execPath], configurable: true });
+
+      const nightlyBinary = Buffer.from("nightly-binary");
+      await install(update("9.9.10-nightly.20261016.5.gabcdef0", nightlyBinary), nightlyBinary);
+      expect(readFileSync(execPath)).toEqual(nightlyBinary);
+
+      await expect(discardStagedUpdate()).resolves.toBeNull();
+      expect(readFileSync(execPath)).toEqual(runningBinary);
+      expect(readdirSync(tempDir)).toEqual(["gloomberb"]);
+      // Nothing is left to take back twice.
+      await expect(discardStagedUpdate()).resolves.toBe("the previous version was not kept");
+
+      const stableBinary = Buffer.from("stable-binary");
+      await install(update("9.9.10", stableBinary), stableBinary);
+      expect(readdirSync(tempDir)).toEqual(["gloomberb"]);
+      await expect(discardStagedUpdate()).resolves.toBe("the previous version was not kept");
+      expect(readFileSync(execPath)).toEqual(stableBinary);
     } finally {
       Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
       Object.defineProperty(process, "argv", { value: originalArgv, configurable: true });

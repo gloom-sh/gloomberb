@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer, useRef } from "react";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../state/app/context";
@@ -177,4 +177,65 @@ test("switching channel checks the new one at once and says what it found", asyn
   await app.settle();
   expect(checked).toEqual(["stable", "nightly", "stable"]);
   expect(app.state().updateNotice).toBe("Staying on v1.0.1-nightly.20261016.5.gabc until a newer stable release");
+});
+
+describe("a nightly build downloaded before the switch back to stable", () => {
+  const nightly: ReleaseInfo = { ...release, version: "99.0.1-nightly.20261016.5.gabcdef0", tagName: "v99.0.1-nightly.20261016.5.gabcdef0", channel: "nightly" };
+
+  /** Nightly offers a build, stable has nothing newer; downloads wait for `finish` when held. */
+  function installChannelHost({ hold = false } = {}) {
+    const host = { checked: [] as string[], finish: () => {} };
+    setUpdateHost({
+      async checkForUpdateDetailed(_version, channel) {
+        host.checked.push(channel);
+        return channel === "nightly" ? { kind: "available", release: nightly } : { kind: "current" };
+      },
+      async performUpdate(_release, onProgress) {
+        onProgress({ phase: "downloading", percent: 10 });
+        const ready = () => onProgress({ phase: "ready", canRestart: true });
+        if (hold) host.finish = ready;
+        else ready();
+      },
+      async applyUpdate() {},
+    });
+    return host;
+  }
+
+  async function switchTo(app: Awaited<ReturnType<typeof mountRuntime>>, channel: "stable" | "nightly") {
+    act(() => { app.dispatch({ type: "SET_CONFIG", config: withUpdateChannel(app.state().config, channel) }); });
+    await app.settle();
+  }
+
+  test("is taken back rather than installed by the restart, and stable checks again", async () => {
+    const host = installChannelHost();
+    const app = await mountRuntime();
+    await switchTo(app, "nightly");
+    await app.settle();
+    expect(app.state().updateProgress).toEqual({ phase: "ready", canRestart: true });
+    expect(app.state().updateAvailable?.version).toBe(nightly.version);
+
+    await switchTo(app, "stable");
+    await app.settle();
+    expect(app.state().updateProgress).toBeNull();
+    expect(app.state().updateAvailable).toBeNull();
+    expect(host.checked).toEqual(["stable", "nightly", "stable"]);
+    expect(app.state().updateNotice).toBe(`Already on v${VERSION}`);
+  });
+
+  test("is taken back when it only finishes downloading after the switch", async () => {
+    const host = installChannelHost({ hold: true });
+    const app = await mountRuntime();
+    await switchTo(app, "nightly");
+    expect(app.state().updateProgress).toEqual({ phase: "downloading", percent: 10 });
+
+    await switchTo(app, "stable");
+    // The download under way is left to finish.
+    expect(app.state().updateProgress).toEqual({ phase: "downloading", percent: 10 });
+    act(() => { host.finish(); });
+    await app.settle();
+    await app.settle();
+    expect(app.state().updateProgress).toBeNull();
+    expect(app.state().updateAvailable).toBeNull();
+    expect(host.checked).toEqual(["stable", "nightly", "stable"]);
+  });
 });

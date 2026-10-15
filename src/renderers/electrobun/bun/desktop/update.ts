@@ -14,6 +14,7 @@ import {
   newestRelease,
   type GitHubReleaseListing,
 } from "../../../../updater/github-releases";
+import { stagedUpdateFitsChannel } from "../../../../updater/channel";
 import { compareSemver, isPrereleaseVersion } from "../../../../utils/semver";
 
 type ElectrobunUpdater = typeof Electrobun.Updater;
@@ -137,6 +138,16 @@ export function createElectrobunDesktopUpdater(
   /** An apply is under way, or finished and the app is quitting. */
   let applyInProgress = false;
 
+  /**
+   * Forgets a downloaded update `updateChannel` does not allow: a nightly
+   * build staged before the switch back to stable. Electrobun's own ready
+   * flag goes at the stable check that follows (every check replaces it), so
+   * a restart cannot install it, and its files go with the next download.
+   */
+  function dropStagedMisfit(updateChannel: UpdateChannel): void {
+    if (readyRelease && !applyInProgress && !stagedUpdateFitsChannel(readyRelease, updateChannel)) readyRelease = null;
+  }
+
   async function releaseInfo(updateInfo: { version?: string; hash?: string }, currentVersion: string): Promise<ReleaseInfo> {
     const [channel, baseUrl] = await Promise.all([
       updater.localInfo.channel(),
@@ -186,9 +197,10 @@ export function createElectrobunDesktopUpdater(
   }
 
   async function check(currentVersion: string, updateChannel: UpdateChannel = "stable"): Promise<UpdateCheckResult> {
-    // A downloaded update stays the answer until the user restarts into it, and
-    // asking Electrobun again would discard its ready flag. Its source stays
-    // put too, whatever the channel says now: applying reads it again.
+    dropStagedMisfit(updateChannel);
+    // A downloaded update the channel still allows stays the answer until the
+    // user restarts into it, and asking Electrobun again would discard its
+    // ready flag. Its source stays put too: applying reads it again.
     if (readyRelease) return { kind: "available", release: readyRelease };
     try {
       const [channel, baseUrl] = await Promise.all([
@@ -243,6 +255,7 @@ export function createElectrobunDesktopUpdater(
 
     // Already downloaded, for instance after the window reloaded: say so
     // instead of fetching again.
+    dropStagedMisfit(updateChannel);
     if (readyRelease) {
       onProgress({ phase: "ready", canRestart: true });
       return;

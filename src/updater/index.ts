@@ -86,6 +86,13 @@ export interface UpdateHost {
 
 let updateHost: UpdateHost | null = null;
 
+/**
+ * The terminal binary a nightly build replaced in this run, kept beside it
+ * until the restart so a switch back to stable can put it back
+ * (`discardStagedUpdate`). Stable updates keep nothing, as before.
+ */
+let stagedSwap: { execPath: string; previousPath: string } | null = null;
+
 export function setUpdateHost(host: UpdateHost | null): void {
   updateHost = host;
 }
@@ -415,6 +422,40 @@ export async function checkForUpdate(
   return result.kind === "available" ? result.release : null;
 }
 
+/**
+ * Takes back a downloaded update the channel no longer allows: a nightly build
+ * waiting for a restart when the channel goes back to stable. The terminal
+ * binary, already swapped in, is swapped back for the one this run started
+ * from. The desktop app drops its staged update itself at the stable check
+ * the caller runs next. Resolves to why it could not, or null.
+ */
+export async function discardStagedUpdate(): Promise<string | null> {
+  if (updateHost) return null;
+  const swap = stagedSwap;
+  if (!swap) return "the previous version was not kept";
+  const discardedPath = `${swap.execPath}.discarded`;
+  try {
+    const { renameSync, unlinkSync } = getRuntimeProcess()!.getBuiltinModule("fs");
+    try {
+      unlinkSync(discardedPath);
+    } catch {}
+    renameSync(swap.execPath, discardedPath);
+    try {
+      renameSync(swap.previousPath, swap.execPath);
+    } catch (error) {
+      renameSync(discardedPath, swap.execPath);
+      throw error;
+    }
+    stagedSwap = null;
+    try {
+      unlinkSync(discardedPath);
+    } catch {}
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : "the previous version could not be put back";
+  }
+}
+
 /** Installs the downloaded update and relaunches. Callers gate it on `canRestartToApply`. */
 export async function applyUpdate(onProgress: (p: UpdateProgress) => void): Promise<void> {
   if (!updateHost?.applyUpdate) {
@@ -527,6 +568,7 @@ export async function performUpdate(
 
     // Swap binaries
     onProgress({ phase: "replacing" });
+    stagedSwap = null;
     try {
       unlinkSync(oldPath);
     } catch {}
@@ -537,9 +579,16 @@ export async function performUpdate(
       renameSync(oldPath, execPath);
       throw error;
     }
-    try {
-      unlinkSync(oldPath);
-    } catch {}
+    if (isPrereleaseVersion(release.version)) {
+      // A nightly build can be ruled out before the restart (the channel goes
+      // back to stable), so the binary it replaced stays to put back. The
+      // next update clears it away.
+      stagedSwap = { execPath, previousPath: oldPath };
+    } else {
+      try {
+        unlinkSync(oldPath);
+      } catch {}
+    }
 
     // The new binary is in place; the running process keeps the old one until
     // the user restarts it, which this process never does for them.

@@ -1,5 +1,6 @@
 import type { AppConfig, UpdateChannel, UpdatesConfig } from "../types/config";
 import { isRecord } from "../utils/guards";
+import { isPrereleaseVersion } from "../utils/semver";
 
 /** Overrides the saved channel for one run: `GLOOMBERB_UPDATE_CHANNEL=nightly gloomberb`. */
 const UPDATE_CHANNEL_ENV = "GLOOMBERB_UPDATE_CHANNEL";
@@ -23,6 +24,16 @@ export function sanitizeUpdatesConfig(value: unknown): UpdatesConfig | undefined
 export function withUpdateChannel(config: AppConfig, channel: UpdateChannel): AppConfig {
   const { updates: _previous, ...rest } = config;
   return channel === "nightly" ? { ...rest, updates: { channel } } : rest;
+}
+
+/**
+ * Whether a downloaded update still follows `channel`'s rules: nightly takes
+ * any newer release, stable only a stable one. A nightly build downloaded
+ * before the switch back to stable does not fit, and is taken back rather
+ * than installed by the next restart.
+ */
+export function stagedUpdateFitsChannel(release: { version: string } | null | undefined, channel: UpdateChannel): boolean {
+  return channel === "nightly" || !release || !isPrereleaseVersion(release.version);
 }
 
 function readChannelOverride(): string | undefined {
