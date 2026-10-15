@@ -62,6 +62,7 @@ on:
       - "src/utils/dom-screenshot*.ts"
       - "src/utils/one-shot.ts"
       - "src/utils/double-escape-close.ts"
+      - "src/utils/datetime-format.ts"
       - "src/utils/screenshot-watermark.ts"
       - "src/remote/pane-screenshot.ts"
       - "src/types/config.ts"
@@ -111,6 +112,17 @@ jobs:
       # window width. The summary names the step.
       - name: Move panes with real pointer input
         run: bun run check:pane-chrome
+
+      - name: Keep draft and upload work independent of transcript length
+        run: bun scripts/pane-chrome/chat-latency.ts --quick --check --label chat-latency
+
+      - name: Keep chat input profiles
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-latency
+          path: ~/.cache/gloomberb-pane-chrome/chat-latency
+          if-no-files-found: ignore
 
       - name: Keep screenshots of failed steps
         if: failure()
