@@ -24,18 +24,13 @@ import {
   formatSignalValue,
   INSIDER_SIGNAL_WINDOW_OPTIONS,
   insiderSignalFirstDirection,
+  insiderSignalsCoverageNotice,
   insiderSignalsEmptyTitle,
   insiderSignalWhy,
   insiderSignalWindow,
   type InsiderSignalColumn,
   type InsiderSignalColumnId,
 } from "./signals-model";
-
-const DAY_MS = 86_400_000;
-
-function addDays(day: string, days: number): string {
-  return new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
-}
 
 interface InsiderSignalsViewProps {
   width: number;
@@ -96,16 +91,12 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
       ? [{ id: "asof", asOf: true, parts: [{ text: `as of ${formatShortDate(data.asOf, { utc: true })}`, tone: "muted" as const }] }]
       : [],
   });
-  // Filings are read from a first day on; a window reaching past it ranks less buying than it says.
-  const indexedFrom = data?.coverage.from ?? null;
-  const windowStart = data ? addDays(data.through, 1 - data.window) : null;
+  const coverageNotice = data ? insiderSignalsCoverageNotice(data) : null;
   usePaneNoticeFooter({
     registrationId: "insider:signals:notices",
     focused,
     notices: [
-      ...(indexedFrom && windowStart && indexedFrom > windowStart
-        ? [`Form 4 filings are read from ${formatShortDate(indexedFrom, { utc: true })}, so this window leaves out buying before then.`]
-        : []),
+      ...(coverageNotice ? [coverageNotice] : []),
       ...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ],
   });
@@ -132,7 +123,7 @@ export function InsiderSignalsView({ width, height, focused, onOpen }: InsiderSi
       loading={!data && resource.loading}
       error={!data ? resource.error : null}
       retry={{ onRetry: () => void resource.reload(), pending: resource.loading }}
-      subject="insider buying"
+      subject="Insider buying"
     >
       {data ? (
         <DataTableView<InsiderSignalRow, InsiderSignalColumn>

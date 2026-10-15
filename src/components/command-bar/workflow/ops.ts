@@ -115,9 +115,11 @@ async function resolvePaneTemplateOptions(
   // nothing was named, so they must not resolve a ticker at all: there is no
   // input to match, and silently falling back to the active ticker would bind a
   // pane the caller deliberately left unbound.
+  // INS opens its own view without one (the market's insider buying) when
+  // nothing is named and no ticker is active; with one active it opens on it.
   const tickerNamed = !!(resolvedOptions?.symbol?.trim() || resolvedOptions?.arg?.trim() || resolvedOptions?.ticker);
-  const resolvesTicker = template.shortcut?.argPlaceholder === "ticker"
-    && (tickerNamed || !template.shortcut.argOptional);
+  const opensWithoutTicker = !!template.shortcut?.argOptional || (!!template.shortcut?.openWithoutArg && !baseContext.activeTicker);
+  const resolvesTicker = template.shortcut?.argPlaceholder === "ticker" && (tickerNamed || !opensWithoutTicker);
   if (resolvesTicker) {
     if (resolvedOptions?.instrument === null && !resolvedOptions.ticker) {
       const publicQuery = resolvedOptions.symbol ?? resolvedOptions.arg ?? baseContext.activeTicker ?? "";

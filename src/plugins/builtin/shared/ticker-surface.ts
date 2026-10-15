@@ -114,9 +114,10 @@ export function createTickerSurfacePaneTemplate(
     createInstance: (context, createOptions) => {
       const symbol = resolveTickerSurfaceSymbol(context, createOptions);
       if (!symbol) {
-        // One window per function: no id, binding or settings, so opening it again finds it.
+        // One window per function: no id or settings, so opening it again
+        // finds it. Bound to nothing, so it does not follow the focused list.
         return templateOptions.withoutTickerTitle
-          ? { title: templateOptions.withoutTickerTitle, placement: "floating" }
+          ? { title: templateOptions.withoutTickerTitle, binding: { kind: "none" }, placement: "floating" }
           : null;
       }
       return createTickerSurfacePaneInstance(

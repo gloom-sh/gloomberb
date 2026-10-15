@@ -1,5 +1,6 @@
 import type { DataTableColumn } from "../../../components";
-import type { InsiderSignalRow } from "../../../api-client/insider-signals";
+import type { InsiderSignalRow, InsiderSignalsPayload } from "../../../api-client/insider-signals";
+import { formatShortDate } from "../../../utils/datetime-format";
 import { displayWidth, formatCompact } from "../../../utils/format";
 import { DEFAULT_INSIDER_SIGNAL_WINDOW, INSIDER_SIGNAL_WINDOWS } from "./signals-client";
 
@@ -23,6 +24,21 @@ export function insiderSignalWindow(value: unknown): number {
 /** The reasons as one line, strongest first. */
 export function insiderSignalWhy(row: Pick<InsiderSignalRow, "reasons">): string {
   return row.reasons.join(" · ");
+}
+
+const DAY_MS = 86_400_000;
+
+/**
+ * Filings are read from a first day on: a window reaching past it ranks less
+ * buying than it says, and so does one before any day has been read whole.
+ */
+export function insiderSignalsCoverageNotice(payload: Pick<InsiderSignalsPayload, "window" | "through" | "coverage">): string | null {
+  const from = payload.coverage.from;
+  if (!from) return "Form 4 filings are still being read, so this ranking may leave out buying.";
+  const windowStart = new Date(Date.parse(`${payload.through}T00:00:00Z`) - (payload.window - 1) * DAY_MS).toISOString().slice(0, 10);
+  return from > windowStart
+    ? `Form 4 filings are read from ${formatShortDate(from, { utc: true })}, so this window leaves out buying before then.`
+    : null;
 }
 
 export function formatSignalValue(value: number): string {

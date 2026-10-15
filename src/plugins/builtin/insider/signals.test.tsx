@@ -14,7 +14,7 @@ import { createStatefulTestPluginRuntime } from "../../../test-support/plugin-ru
 import { findPaneInstance } from "../../../types/config";
 import { insiderModule } from "./index";
 import { insiderSignalsCache } from "./signals-client";
-import { buildInsiderSignalColumns } from "./signals-model";
+import { buildInsiderSignalColumns, insiderSignalsCoverageNotice } from "./signals-model";
 
 const InsiderPane = insiderModule.panes![0]!.component;
 const tui = createOpenTuiTestHarness();
@@ -125,12 +125,28 @@ test("an empty window, a failure and a refused session each say so in the body",
 
   insiderSignalsCache.reset();
   await mount(async () => { throw new Error("Upstream timed out."); });
+  expect(tui.frame()).toContain("Insider buying unavailable.");
   expect(tui.frame()).toContain("Upstream timed out.");
 
   insiderSignalsCache.reset();
   await mount(async () => { throw new ApiRequestError("Sign in required", 401); });
   expect(tui.frame()).toMatch(/[Ss]ign in/);
   expect(tui.frame()).not.toContain("Sign in required");
+});
+
+test("the footer warns when the window reaches past the filings read, or none has been read whole", async () => {
+  const notice = (window: number, from: string | null) => insiderSignalsCoverageNotice({ window, through: "2026-10-15", coverage: { from, through: from ? "2026-10-14" : null } });
+  expect(notice(30, "2026-08-31")).toBeNull();
+  expect(notice(30, "2026-09-16")).toBeNull();
+  expect(notice(30, "2026-09-17")).toBe("Form 4 filings are read from Sep 17, 2026, so this window leaves out buying before then.");
+  expect(notice(7, "2026-10-01")).toBeNull();
+  expect(notice(7, null)).toBe("Form 4 filings are still being read, so this ranking may leave out buying.");
+
+  await mount(async (window) => ({ ...payload(window), coverage: { from: null, through: null } }));
+  expect(tui.frame()).toContain("[!] as of Oct 14, 2026");
+  insiderSignalsCache.reset();
+  await mount(async (window) => payload(window));
+  expect(tui.frame()).not.toContain("[!]");
 });
 
 test("a narrow pane keeps the reasons and drops the company, then the counts", () => {
