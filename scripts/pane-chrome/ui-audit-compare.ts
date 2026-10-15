@@ -235,6 +235,7 @@ async function main(): Promise<void> {
   const changes: Change[] = [];
   const unpaired: Array<{ engine: string; theme: string; width: string; view: string; missing: "before" | "after" }> = [];
   const missingDirs: string[] = [];
+  const engineHoles: string[] = [];
   let errors = 0;
   if (args.includes("--sheets")) {
     const listDir = async (dir: string) => existsSync(dir) ? (await readdir(dir)).sort() : [];
@@ -272,6 +273,19 @@ async function main(): Promise<void> {
       `${compared.length} picture pairs compared, ${errors} could not be compared, ${unpaired.length} pictures without a partner. A pair that could not be compared or has no partner is not counted as unchanged.`, "",
       "| Engine | Pairs compared | Moved (> 0.05% of pixels, or resized) | Could not compare | Only before | Only after |", "|---|---:|---:|---:|---:|---:|", ...byEngine);
     if (missingDirs.length) md.push("", ...missingDirs.map((line) => `- ${line}`));
+    // Another engine's pictures against the views Chromium pictured in the same run: a view one engine could not draw is listed.
+    for (const dir of dirs.filter((name) => name !== "shots")) {
+      for (const [side, sideDir] of [["before", beforeDir], ["after", afterDir]] as const) {
+        for (const theme of await listDir(join(sideDir, "shots"))) {
+          for (const width of await listDir(join(sideDir, "shots", theme))) {
+            const have = new Set(await listDir(join(sideDir, dir, theme, width)));
+            const lacking = (await listDir(join(sideDir, "shots", theme, width))).filter((file) => !have.has(file));
+            if (lacking.length) engineHoles.push(`${dir.replace(/-shots$/, "")} ${side} ${theme} ${width}: ${lacking.length} of the views Chromium pictured are missing (${lacking.map((file) => file.replace(/\.(jpg|png)$/, "")).join(", ")})`);
+          }
+        }
+      }
+    }
+    if (engineHoles.length) md.push("", "### Views another engine did not picture", "", ...engineHoles.map((line) => `- ${line}`));
     if (errors) md.push("", "### Could not compare", "", ...changes.filter((entry) => entry.status === "error").map((entry) => `- ${entry.engine} ${entry.theme} ${entry.width} ${entry.view}: ${entry.status === "error" ? entry.error : ""}`));
     if (unpaired.length) md.push("", "### Without a partner", "", ...unpaired.map((entry) => `- ${entry.engine} ${entry.theme} ${entry.width} ${entry.view}: no ${entry.missing} picture`));
     const sheets = join(out, "diff-sheets");
@@ -306,10 +320,10 @@ async function main(): Promise<void> {
   }
   await mkdir(out, { recursive: true });
   await Bun.write(join(out, "compare.md"), `${md.join("\n")}\n`);
-  await Bun.write(join(out, "compare.json"), JSON.stringify({ views: { onlyBefore, onlyAfter }, families: familyRows, measures, changes, unpaired, missingDirs }, null, 1));
+  await Bun.write(join(out, "compare.json"), JSON.stringify({ views: { onlyBefore, onlyAfter }, families: familyRows, measures, changes, unpaired, missingDirs, engineHoles }, null, 1));
   console.log(join(out, "compare.md"));
-  if (errors || unpaired.length || missingDirs.length) {
-    console.error(`${errors} pictures could not be compared, ${unpaired.length} have no partner, ${missingDirs.length} picture folders are missing: see compare.md.`);
+  if (errors || unpaired.length || missingDirs.length || engineHoles.length) {
+    console.error(`${errors} pictures could not be compared, ${unpaired.length} have no partner, ${missingDirs.length} picture folders are missing, ${engineHoles.length} engine runs lack views: see compare.md.`);
     process.exitCode = 1;
   }
 }
