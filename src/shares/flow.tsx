@@ -1,21 +1,21 @@
 import type { PluginRegistry } from "../plugins/registry";
 import { getPaneChatSharing } from "./chat";
+import { claimCaptureFlow } from "./capture-flow";
 import { CAPTURE_DIALOG_CHROME, captureDialogSize } from "./capture-preview";
 import { ShareDialog, type ShareResult } from "./dialog";
 import { paneShareLink, paneShareMessage } from "./live";
 
-/** One in-flight capture/dialog per window, including the frames before the overlay mounts. */
-let sharing = false;
 /** Terminal rows the form takes under the preview: destination, channel, caption, link, notice and buttons. */
 const TERMINAL_FORM_ROWS = 25;
 
 /** The same captured view for both destinations. A cancelled dialog creates no public link. */
 export async function shareFocusedPane(registry: PluginRegistry, paneId?: string): Promise<void> {
-  if (sharing) return;
-  const chat = getPaneChatSharing();
-  if (chat && !chat.ready(() => { void shareFocusedPane(registry, paneId); })) return;
-  sharing = true;
+  // One capture flow at a time, Report a Bug's included.
+  const release = claimCaptureFlow();
+  if (!release) return;
   try {
+    const chat = getPaneChatSharing();
+    if (chat && !chat.ready(() => { void shareFocusedPane(registry, paneId); })) return;
     const capture = await registry.capturePaneImage(paneId);
     const getLink = capture.sharePayload ? paneShareLink(capture.sharePayload) : null;
     const targets = chat ? await chat.targets() : [];
@@ -47,6 +47,6 @@ export async function shareFocusedPane(registry: PluginRegistry, paneId?: string
   } catch (error) {
     registry.notify({ body: error instanceof Error ? error.message : "Could not share this pane.", type: "error" });
   } finally {
-    sharing = false;
+    release();
   }
 }

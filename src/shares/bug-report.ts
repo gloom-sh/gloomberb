@@ -1,9 +1,12 @@
 import type { PluginTarget } from "../types/plugin";
+import { truncateWithEllipsis } from "../utils/text-wrap";
 
 /** The public chat channel bug reports go to. */
 export const BUG_REPORT_CHANNEL_ID = "bugs";
-/** One line: what went wrong. The rest of the message is the pane and the app. */
-const BUG_REPORT_MAX_CHARS = 300;
+/** One line: what went wrong. The field takes no more, so nothing typed is cut. The rest of the message is the pane and the app. */
+export const BUG_REPORT_MAX_CHARS = 300;
+/** The pane's name in a report, as the form shows it and the message says it. */
+const BUG_REPORT_PANE_LABEL_MAX_CHARS = 60;
 
 const SURFACE_NAMES: Record<PluginTarget, string> = {
   tui: "terminal",
@@ -19,9 +22,13 @@ export interface BugReportContext {
   surface: PluginTarget;
 }
 
-/** What a report says besides the line: the pane, the app version and where it runs, `GP AAPL · v0.17.3 · desktop`. */
+/**
+ * What a report says besides the line: the pane, the app version and where
+ * it runs, `GP AAPL · v0.17.3 · desktop`. The form shows this same line
+ * under the picture, so a long pane title is cut here, for both.
+ */
 export function bugReportContextLine({ paneLabel, version, surface }: BugReportContext): string {
-  return `${paneLabel} · v${version} · ${SURFACE_NAMES[surface]}`;
+  return `${truncateWithEllipsis(paneLabel, BUG_REPORT_PANE_LABEL_MAX_CHARS)} · v${version} · ${SURFACE_NAMES[surface]}`;
 }
 
 /** The person's line as it is posted: one line, cut to the limit. */

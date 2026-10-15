@@ -8,7 +8,8 @@ import { useThemeColors } from "../theme/theme-context";
 import { Box, Text, useUiCapabilities } from "../ui";
 import { useDialogKeyboard, type PromptContext } from "../ui/dialog";
 import { isPlainKey } from "../utils/keyboard";
-import { BUG_REPORT_CHANNEL_ID, bugReportLine } from "./bug-report";
+import { createOneShot } from "../utils/one-shot";
+import { BUG_REPORT_CHANNEL_ID, BUG_REPORT_MAX_CHARS, bugReportLine } from "./bug-report";
 import { CAPTURE_DIALOG_COLUMNS, CapturePreview } from "./capture-preview";
 import { personalDataQuestion, type PaneImageCapture } from "./pane-image";
 
@@ -34,9 +35,9 @@ export interface BugReportDialogProps extends PromptContext<BugReportSent> {
 /**
  * Report a Bug: the pane's picture as it will be posted, the pane and the
  * app version, and one line saying what went wrong, all public in #bugs. A
- * pane that shows the person's own data asks before sending, as Share does,
- * and Enter in the line does not send it. A failed send keeps the form and
- * the line.
+ * pane that shows the person's own data asks before sending, as Share does:
+ * Enter in the line moves to Send, and Send takes a press of its own. A
+ * failed send keeps the form and the line.
  */
 export function BugReportDialog({
   dialogId,
@@ -61,6 +62,10 @@ export function BugReportDialog({
   // State lags a render behind: two presses in one terminal read would both see `sending` false.
   const sendingRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  // The Enter that moved to Send, held or pressed twice, must not press it:
+  // Send by key waits until the key has been up a moment. A terminal without
+  // the kitty keyboard protocol sends a held key as fresh presses.
+  const [sendKey] = useState(createOneShot);
   const question = capture.personalData ? personalDataQuestion(capture.personalData) : null;
 
   const submit = useCallback(async () => {
@@ -105,20 +110,21 @@ export function BugReportDialog({
     if (event.name === "return" || event.name === "enter" || isPlainKey(event, "space")) {
       event.preventDefault?.();
       event.stopPropagation?.();
-      void submit();
+      if (!sendKey.refuses({ repeat: event.repeat })) void submit();
     }
   }, { scope: dialogId, allowEditable: true });
 
   return (
     <DialogFrame title="Report a Bug" footer="Enter send · Tab next field · Esc cancel" desktopFooter={null}>
       <Box flexDirection="column" gap={1} {...(nativePaneChrome ? { style: { width: fitDialogWidth(CAPTURE_DIALOG_COLUMNS) } } : { width })}>
-        <CapturePreview capture={capture} meta={context} width={width} previewRows={previewRows} />
+        <CapturePreview capture={capture} meta={context} wrapMeta width={width} previewRows={previewRows} />
         <TextField
           label={t("What went wrong")}
           active={activeField === "text"}
           focused={activeField === "text" && !sending}
           value={text}
           placeholder={t("One line")}
+          maxLength={BUG_REPORT_MAX_CHARS}
           width={width}
           onMouseDown={() => setActiveField("text")}
           onChange={(value) => {
@@ -128,8 +134,12 @@ export function BugReportDialog({
           }}
           onSubmit={() => {
             // Holdings and private messages are sent only with the button.
-            if (question) setActiveField("send");
-            else void submit();
+            if (!question) {
+              void submit();
+              return;
+            }
+            sendKey.end();
+            setActiveField("send");
           }}
         />
         <Notice tone="muted">{tf("Everyone in {channel} sees this line and picture.", { channel: `#${BUG_REPORT_CHANNEL_ID}` })}</Notice>

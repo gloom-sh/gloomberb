@@ -4,7 +4,7 @@ import type { LayoutBounds, ResolvedPane } from "../../../../layout/pane-manager
 import type { PluginRegistry } from "../../../../plugins/registry";
 import { paneScreenshotScale, PANE_SCREENSHOT_MIN_WIDTH } from "../../../../remote/pane-screenshot";
 import { base64Bytes, formatCaptureStamp, type PaneImageCapture } from "../../../../shares/pane-image";
-import { panePersonalData } from "../../../../shares/personal-pane";
+import { capturedPersonalData } from "../../../../shares/personal-pane";
 import { resolveTickerForPane, useAppStateRef } from "../../../../state/app/context";
 import type { LayoutConfig } from "../../../../types/config";
 import { useUiCapabilities, type NativeRendererHost } from "../../../../ui";
@@ -53,8 +53,9 @@ interface UseShellPaneCaptureOptions {
 export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
   const { pluginRegistry } = options;
   const dialog = useDialog();
-  // Shared by menu, command, key and plugin calls, including triggers without a repeat flag.
-  const [shareOnce] = useState(createOneShot);
+  // Shared by Share and Report a Bug from a menu, command, key or plugin call,
+  // including triggers without a repeat flag: one capture flow at a time.
+  const [captureOnce] = useState(createOneShot);
   const { publicSharing } = useUiCapabilities();
   const stateRef = useAppStateRef();
   const latest = useRef(options);
@@ -73,6 +74,8 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
     setPaneCaptureStamp(paneId, formatCaptureStamp(capturedAt));
     try {
       let image: Pick<PaneImageCapture, "png" | "width" | "height" | "pixels" | "cells">;
+      // The terminal's picture is the screen's cells, so it shows whatever is drawn over the pane.
+      let drawn: Map<string, LayoutBounds> | null = null;
       if (current.nativePaneChrome) {
         await nextFrames(2);
         const shot = await paintPaneImage({
@@ -83,7 +86,8 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
         });
         image = { png: base64Bytes(shot.pngBase64), width: shot.width, height: shot.height };
       } else {
-        const rect = current.screenRects().get(paneId);
+        drawn = current.screenRects();
+        const rect = drawn.get(paneId);
         if (!rect || !current.nativeRenderer.capturePaneImage) {
           throw new Error("Show the pane on screen to share it.");
         }
@@ -108,11 +112,13 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
           resolveTickerForPane(stateRef.current, paneId),
           stateRef.current.tickers,
         ) : null,
-        personalData: panePersonalData({
+        personalData: capturedPersonalData({
           registry: current.pluginRegistry,
           state: stateRef.current,
           layout: current.layout,
-          pane,
+          paneId,
+          panes: current.paneMap,
+          drawn,
         }),
         ...image,
       };
@@ -124,21 +130,24 @@ export function useShellPaneCapture(options: UseShellPaneCaptureOptions): void {
   useEffect(() => pluginRegistry.bindHost({
     sharePane: (requestedPaneId) => {
       const paneId = requestedPaneId ?? latest.current.focusedPaneId;
-      if (!paneId || shareOnce.refuses()) return;
-      shareOnce.start();
+      if (!paneId || captureOnce.refuses()) return;
+      captureOnce.start();
       // Let a menu/command close before the capture starts. The flow also refuses
       // a second run for the entire dialog/post, even beyond the cooldown's timeout.
       setTimeout(() => {
-        void shareFocusedPane(pluginRegistry, paneId).finally(() => shareOnce.end());
+        void shareFocusedPane(pluginRegistry, paneId).finally(() => captureOnce.end());
       }, 0);
     },
     reportPaneBug: (requestedPaneId) => {
       const paneId = requestedPaneId ?? latest.current.focusedPaneId;
-      if (!paneId) return;
-      // After the menu that chose it has closed; the flow takes one report at a time.
-      setTimeout(() => { void reportPaneBug(pluginRegistry, paneId); }, 0);
+      if (!paneId || captureOnce.refuses()) return;
+      captureOnce.start();
+      // After the menu that chose it has closed.
+      setTimeout(() => {
+        void reportPaneBug(pluginRegistry, paneId).finally(() => captureOnce.end());
+      }, 0);
     },
     capturePaneImage: capture,
     promptDialog: (prompt) => dialog.prompt(prompt),
-  }), [capture, dialog, pluginRegistry, shareOnce]);
+  }), [capture, captureOnce, dialog, pluginRegistry]);
 }

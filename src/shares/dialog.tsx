@@ -10,6 +10,7 @@ import { useThemeColors } from "../theme/theme-context";
 import { Box, Text, useUiCapabilities, useRendererHost } from "../ui";
 import { useDialogKeyboard, type PromptContext } from "../ui/dialog";
 import { isPlainKey } from "../utils/keyboard";
+import { createOneShot } from "../utils/one-shot";
 
 import type { SharePost, ShareTarget } from "./chat";
 
@@ -70,6 +71,9 @@ export function ShareDialog({
   const channelControl = useRef<SelectControl | null>(null);
   const captionRef = useRef(caption);
   captionRef.current = caption;
+  // The Enter that moved to Post, held or pressed twice, must not press it:
+  // Post by key waits until the key has been up a moment.
+  const [postKey] = useState(createOneShot);
   const question = capture.personalData ? personalDataQuestion(capture.personalData) : null;
   const meta = `${capture.title} · ${capture.width}x${capture.height} · ${Math.ceil(capture.png.byteLength / 1024)} KB`;
 
@@ -130,7 +134,7 @@ export function ShareDialog({
       if (activeField === "destination") destinationControl.current?.open();
       else if (activeField === "channel") channelControl.current?.open();
       else if (activeField === "includeLink") toggleIncludeLink(!includeLink);
-      else void submit();
+      else if (!postKey.refuses({ repeat: event.repeat })) void submit();
     }
   }, { scope: dialogId, allowEditable: true });
 
@@ -187,8 +191,12 @@ export function ShareDialog({
             }}
             onSubmit={() => {
               // Holdings and private messages are posted only with the button.
-              if (question) setActiveField("post");
-              else void submit();
+              if (!question) {
+                void submit();
+                return;
+              }
+              postKey.end();
+              setActiveField("post");
             }}
           />
           {getLink ? <Checkbox label={t("Include link")} checked={includeLink} disabled={posting}

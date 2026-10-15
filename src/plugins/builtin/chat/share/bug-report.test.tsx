@@ -3,6 +3,7 @@ import { apiClient } from "../../../../api-client";
 import type { PluginRegistry } from "../../../registry";
 import type { BugReportDialogProps } from "../../../../shares/bug-report-dialog";
 import { reportPaneBug } from "../../../../shares/bug-report-flow";
+import { shareFocusedPane } from "../../../../shares/flow";
 import type { PaneImageCapture } from "../../../../shares/pane-image";
 import type { AppNotificationRequest, GloomPluginContext } from "../../../../types/plugin";
 import { VERSION } from "../../../../version";
@@ -82,8 +83,9 @@ test("Send posts one message to #bugs: the line, the pane, the app version and t
   const f = fixture();
   const { flow, props } = await f.open();
   expect(props.context).toBe(`GP AAPL · v${VERSION} · terminal`);
-  // A second report waits for this one.
+  // A second report waits for this one, and so does Share: one picture and one dialog at a time.
   await reportPaneBug(f.registry, "chart:1");
+  await shareFocusedPane(f.registry, "chart:1");
   expect(f.captures).toBe(1);
 
   props.resolve(await props.send("Chart stops updating after 1D"));
@@ -97,6 +99,16 @@ test("Send posts one message to #bugs: the line, the pane, the app version and t
   expect(toast).toMatchObject({ body: "Bug report posted to #bugs", type: "success", action: { label: "Open" } });
   toast.action!.onClick();
   expect(f.opened).toEqual([{ templateId: "new-chat-pane", options: { arg: "bugs", values: { messageId: "invented-message" } } }]);
+});
+
+test("a long pane title is cut once: the form shows the pane line the message posts", async () => {
+  const f = fixture();
+  f.capture.title = `AAPL ${"Apple Inc. common stock ".repeat(4)}`.trim();
+  const { flow, props } = await f.open();
+  expect(props.context).toBe(`GP ${f.capture.title.slice(0, 54)}... · v${VERSION} · terminal`);
+  props.resolve(await props.send("Title runs off the header"));
+  await flow;
+  expect(f.posts[0]!.text).toBe(`Title runs off the header\n\nPane: ${props.context}`);
 });
 
 test("a closed form keeps what was typed for the next report; a sent one clears it", async () => {

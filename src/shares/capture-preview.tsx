@@ -76,6 +76,8 @@ export interface CapturePreviewProps {
   capture: PaneImageCapture;
   /** The dim line under the picture: what it is and what goes with it. */
   meta: string;
+  /** Wraps `meta` instead of cutting it, for a line that is posted as it reads. */
+  wrapMeta?: boolean;
   /** Terminal: the form's content width and the rows the preview may take. */
   width: number;
   previewRows: number;
@@ -86,7 +88,7 @@ export interface CapturePreviewProps {
  * image on the desktop and the web; in the terminal the pane's own cells when
  * they fit, else a thumbnail of the picture. Share and Report a Bug show it alike.
  */
-export function CapturePreview({ capture, meta, width, previewRows }: CapturePreviewProps) {
+export function CapturePreview({ capture, meta, wrapMeta = false, width, previewRows }: CapturePreviewProps) {
   const colors = useThemeColors();
   const { nativePaneChrome } = useUiCapabilities();
   const previewUrl = useMemo(() => (nativePaneChrome ? pngDataUrl(capture.png) : ""), [capture.png, nativePaneChrome]);
@@ -119,7 +121,9 @@ export function CapturePreview({ capture, meta, width, previewRows }: CapturePre
   return (
     <Box flexDirection="column">
       {preview}
-      <ClippedText fg={colors.textDim} text={meta} width={width} cut={truncateWithEllipsis} />
+      {wrapMeta
+        ? <Text fg={colors.textDim} wrapText>{meta}</Text>
+        : <ClippedText fg={colors.textDim} text={meta} width={width} cut={truncateWithEllipsis} />}
     </Box>
   );
 }
