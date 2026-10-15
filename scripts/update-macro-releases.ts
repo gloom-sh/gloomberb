@@ -27,6 +27,13 @@ const MAX_SILENCE_DAYS = 120;
 const DAY_COMPLETE_HOUR = 17;
 /** BLS refuses readers that do not name themselves with a contact address. */
 const USER_AGENT = "Gloomberb/1.0 (+https://gloom.sh; hello@gloom.sh)";
+/** The page of each BLS release's newest edition, which BLS archives some days after it is out. */
+const BLS_CURRENT_EDITIONS = {
+  cpi: "https://www.bls.gov/news.release/cpi.nr0.htm",
+  jobs: "https://www.bls.gov/news.release/empsit.nr0.htm",
+} as const;
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const COMMENTS: Record<MacroEventKind, string> = {
   cpi: "BLS Consumer Price Index, 8:30 ET.",
   jobs: "BLS Employment Situation (nonfarm payrolls), 8:30 ET.",
@@ -42,6 +49,23 @@ const sortedDates = (dates: Iterable<string>) => [...new Set(dates)].sort();
 function parseBlsArchive(html: string, name: "cpi" | "empsit"): string[] {
   const link = new RegExp(`href="/news\\.release/archives/${name}_(\\d{2})(\\d{2})(\\d{4})\\.htm"`, "g");
   return sortedDates([...withoutComments(html).matchAll(link)].map(([, month, day, year]) => `${year}-${month}-${day}`));
+}
+
+/**
+ * A current edition carries its release date at once, as "embargoed until 8:30 a.m. (ET) Wednesday,
+ * October 14, 2026". Only that form counts, and only when the weekday fits the date; else null, never a guess.
+ */
+function parseBlsCurrentEdition(html: string): string | null {
+  const match = new RegExp(
+    `embargoed\\s+until[^<]{0,200}?\\b(${WEEKDAYS.join("|")}),\\s+(${MONTHS.join("|")})\\s+(\\d{1,2}),\\s+(\\d{4})\\b`,
+  ).exec(withoutComments(html));
+  if (!match) return null;
+  const [, weekday, month, day, year] = match;
+  const date = new Date(Date.UTC(Number(year), MONTHS.indexOf(month!), Number(day)));
+  return date.getUTCFullYear() === Number(year) && date.getUTCMonth() === MONTHS.indexOf(month!)
+    && date.getUTCDate() === Number(day) && WEEKDAYS[date.getUTCDay()] === weekday
+    ? date.toISOString().slice(0, 10)
+    : null;
 }
 
 /** A held meeting links its statement, dated in the link; notation votes and unscheduled meetings say so in the date cell. */
@@ -109,12 +133,28 @@ async function update(): Promise<void> {
   const now = Date.now();
   const clock = zonedDateTimeParts(now, "America/New_York");
   const checkedAt = `${clock.year}-${String(clock.month).padStart(2, "0")}-${String(clock.day).padStart(2, "0")}`;
-  const coveredThrough = clock.hour >= DAY_COMPLETE_HOUR ? checkedAt : addDays(checkedAt, -1);
+  let coveredThrough = clock.hour >= DAY_COMPLETE_HOUR ? checkedAt : addDays(checkedAt, -1);
   const [cpi, jobs, fomc] = await Promise.all(MACRO_EVENT_KINDS.map((kind) => download(MACRO_RELEASE_SOURCES[kind])));
   const read: Record<MacroEventKind, string[]> = {
     cpi: parseBlsArchive(cpi!, "cpi"), jobs: parseBlsArchive(jobs!, "empsit"), fomc: parseFomcStatements(fomc!),
   };
   const problems: string[] = [];
+  // The archives lag the release, so a current edition's date is added to its archive. Where that edition
+  // cannot be read or parsed, the archive only vouches for days through its own last release: coveredThrough
+  // stops there instead of counting a release it may be missing as a normal day.
+  for (const kind of ["cpi", "jobs"] as const) {
+    const embargo = await download(BLS_CURRENT_EDITIONS[kind]).then(parseBlsCurrentEdition, () => null);
+    if (embargo) {
+      read[kind].push(embargo);
+      continue;
+    }
+    console.warn(`warning: ${BLS_CURRENT_EDITIONS[kind]} gave no release date.`);
+    const last = read[kind].at(-1);
+    if (last && last < coveredThrough) coveredThrough = last;
+  }
+  if (coveredThrough < MACRO_RELEASE_TABLE.coveredThrough) {
+    problems.push(`the table covers through ${MACRO_RELEASE_TABLE.coveredThrough}, the readable pages only through ${coveredThrough}`);
+  }
   const days = {} as Record<MacroEventKind, string[]>;
   for (const kind of MACRO_EVENT_KINDS) {
     const published = read[kind].filter((date) => date >= `${FIRST_YEAR}-01-01` && date <= coveredThrough);

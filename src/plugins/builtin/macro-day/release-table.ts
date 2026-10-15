@@ -5,9 +5,9 @@ export const MACRO_RELEASE_TABLE: {
   coveredThrough: string;
   days: Record<"cpi" | "jobs" | "fomc", Record<number, readonly string[]>>;
 } = {
-  checkedAt: "2026-10-10",
+  checkedAt: "2026-10-15",
   /** The last day the lists are complete for: later sessions are left out, release day or not. */
-  coveredThrough: "2026-10-09",
+  coveredThrough: "2026-10-14",
   days: {
     // BLS Consumer Price Index, 8:30 ET.
     cpi: {
@@ -16,7 +16,7 @@ export const MACRO_RELEASE_TABLE: {
       2023: ["01-12", "02-14", "03-14", "04-12", "05-10", "06-13", "07-12", "08-10", "09-13", "10-12", "11-14", "12-12"],
       2024: ["01-11", "02-13", "03-12", "04-10", "05-15", "06-12", "07-11", "08-14", "09-11", "10-10", "11-13", "12-11"],
       2025: ["01-15", "02-12", "03-12", "04-10", "05-13", "06-11", "07-15", "08-12", "09-11", "10-24", "12-18"],
-      2026: ["01-13", "02-13", "03-11", "04-10", "05-12", "06-10", "07-14", "08-12", "09-11"],
+      2026: ["01-13", "02-13", "03-11", "04-10", "05-12", "06-10", "07-14", "08-12", "09-11", "10-14"],
     },
     // BLS Employment Situation (nonfarm payrolls), 8:30 ET.
     jobs: {
