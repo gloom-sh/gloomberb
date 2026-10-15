@@ -165,6 +165,14 @@ test("a resolved quarter shows ERN's figure, basis and fiscal quarter, and a pen
   expect(ttm?.detail).toBe("adj sum");
 });
 
+test("a REIT's pending report names the adjusted basis of its FFO consensus, as ERN does", () => {
+  const [row] = buildEventRows({ symbol: "PLD", dividends: [], splits: [], earnings: [
+    { date: "2026-10-15", dateType: "announcement", currency: "USD", fiscalPeriod: "2026-09", epsEstimate: 1.58, epsAnalysts: 2,
+      epsBasis: "adjusted", dateStatus: "confirmed" },
+  ] }, null, null, "USD");
+  expect(row).toMatchObject({ earningsState: "pending", qEps: 1.58, epsBasis: "adjusted", detail: "confirmed, 2 analysts, adj" });
+});
+
 test("a beat against a negative estimate reads as a beat", () => {
   const [row] = buildEventRows({ symbol: "CRWV", dividends: [], splits: [], earnings: [
     { date: "2026-08-11", dateType: "announcement", epsEstimate: -1.47, epsActual: -1.14, difference: 0.33, surprisePercent: -22.45 },

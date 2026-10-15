@@ -300,7 +300,7 @@ function WebDataTableRowInner<
             alignItems: "center",
             gap: 4,
             // Kept to the columns in view, so a table wider than its pane does not push the action out of sight.
-            ...(action && viewportWidth > 0 ? { maxWidth: Math.max(0, viewportWidth * WEB_CELL_WIDTH - inlinePaddingPx(horizontalPadding) * 2) } : {}),
+            ...(action ? { maxWidth: `calc(100cqw - ${inlinePaddingPx(horizontalPadding) * 2}px)` } : {}),
           }}
         >
           {sectionHeader.expanded !== undefined && (

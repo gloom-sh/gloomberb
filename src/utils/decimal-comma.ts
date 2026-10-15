@@ -18,6 +18,24 @@ export function numberErrorMessage(message: string, value: unknown): string {
   return dotted == null ? message : `${message.replace(/\.$/, "")}; use a dot: ${dotted}`;
 }
 
+const DECIMAL_COMMA_RANGE = /^([+-]?\d+(?:,\d+)?)\s*(-|to|\.\.)\s*([+-]?\d+(?:,\d+)?)$/i;
+
+/**
+ * A range typed with decimal commas, `0,80-0,90`, as the dotted range to type
+ * instead (`0.80-0.90`); null when neither end has a decimal comma.
+ */
+function dottedDecimalRange(value: unknown): string | null {
+  const match = DECIMAL_COMMA_RANGE.exec(typeof value === "string" ? value.trim() : "");
+  if (!match || !`${match[1]}${match[3]}`.includes(",")) return null;
+  return `${match[1]!.replace(",", ".")}${match[2]}${match[3]!.replace(",", ".")}`;
+}
+
+/** `numberErrorMessage` for a range of two numbers: "... got "0,80-0,90"; use a dot: 0.80-0.90". */
+export function rangeErrorMessage(message: string, value: unknown): string {
+  const dotted = dottedDecimalRange(value);
+  return dotted == null ? message : `${message.replace(/\.$/, "")}; use a dot: ${dotted}`;
+}
+
 /** What a number pasted from a sheet reads as. */
 export type PastedNumber =
   | { kind: "number"; value: number }
@@ -73,4 +91,35 @@ export function parsePastedNumber(value: unknown): PastedNumber {
 /** What to tell someone whose number could be read two ways: both readings, and what to type for each. */
 export function ambiguousNumberMessage(text: string, reading: { thousands: number; decimal: number }): string {
   return `${text.trim()} could be ${reading.thousands} (thousands) or ${reading.decimal} (decimal comma); type ${reading.thousands} or ${reading.decimal}`;
+}
+
+/** What a dot and exactly three digits after one to three (`81.000`, `81.250`) could mean. */
+export interface ThousandsDotReadings {
+  /** The number as written, the dot a decimal point: 81. */
+  decimal: number;
+  /** The dot as many locales write it, between thousands: 81000. */
+  thousands: number;
+}
+
+const THOUSANDS_DOT = /^([+-]?)([1-9]\d{0,2})\.(\d{3})$/;
+
+/** Both readings of `81.000`; null for any other text, which has one. */
+export function thousandsDotReadings(value: unknown): ThousandsDotReadings | null {
+  const match = THOUSANDS_DOT.exec(typeof value === "string" ? value.trim() : "");
+  if (!match) return null;
+  const sign = match[1] === "-" ? -1 : 1;
+  return { decimal: sign * Number(`${match[2]}.${match[3]}`), thousands: sign * Number(`${match[2]}${match[3]}`) };
+}
+
+/**
+ * Whether a dot and three digits was meant as a thousands separator, beside a
+ * price it must be near (the last price): the number as written is more than
+ * 90% away from it, while the thousands reading lands within 10%. A plain
+ * dotted number otherwise keeps its meaning, and without a reference it is
+ * read as written.
+ */
+export function meantThousandsDot(readings: ThousandsDotReadings, reference: number | null | undefined): boolean {
+  if (reference == null || !Number.isFinite(reference) || reference === 0) return false;
+  const scale = Math.abs(reference);
+  return Math.abs(readings.decimal - reference) * 10 > scale * 9 && Math.abs(readings.thousands - reference) * 10 <= scale;
 }

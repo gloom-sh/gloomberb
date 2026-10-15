@@ -220,6 +220,29 @@ describe("useAppGlobalShortcuts", () => {
     }]);
   });
 
+  test("Ctrl+Z and Ctrl+Shift+Z restore and redo the layout, except while text is being typed", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(stateWithKeybindings("layout-undo", {}), createRegistry(), (action) => actions.push(action));
+
+    const undo = await emitKeypress({ name: "z", ctrl: true });
+    await emitKeypress({ name: "z", ctrl: true, shift: true });
+    expect(actions).toEqual([{ type: "UNDO_LAYOUT" }, { type: "REDO_LAYOUT" }]);
+    expect(undo.defaultPrevented).toBe(true);
+  });
+
+  test("Ctrl+Z stays with the editor while a field has the keyboard", async () => {
+    const actions: AppAction[] = [];
+    await renderHarness(
+      stateWithKeybindings("layout-undo-typing", {}, { inputCaptured: true }),
+      createRegistry(),
+      (action) => actions.push(action),
+    );
+
+    const event = await emitKeypress({ name: "z", ctrl: true });
+    expect(actions).toEqual([]);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
   test("a plugin shortcut honours its override", async () => {
     let executed = 0;
     const state = stateWithKeybindings("plugin-override", { actions: { "plugin:test-shortcut": "Alt+X" } });

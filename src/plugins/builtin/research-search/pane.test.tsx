@@ -9,6 +9,8 @@ import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { createDefaultConfig } from "../../../types/config";
 import { ResearchSearchPane } from "./pane";
 import { TestPaneProvider } from "../../../test-support/pane";
+import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
+import { attachResearchSearchPersistence, resetResearchSearchPersistence } from "./data";
 
 const PANE_ID = "research-search:test";
 
@@ -79,7 +81,9 @@ interface RecordedRequest {
   body?: unknown;
 }
 
-function installTransport(): { requests: RecordedRequest[] } {
+function installTransport(
+  { documentResponse }: { documentResponse?: () => Promise<Response> } = {},
+): { requests: RecordedRequest[] } {
   const requests: RecordedRequest[] = [];
   setCloudApiFetchTransport(async (url, init) => {
     const parsed = new URL(String(url));
@@ -105,6 +109,7 @@ function installTransport(): { requests: RecordedRequest[] } {
       });
     }
     if (parsed.pathname.startsWith("/cloud/search/documents/")) {
+      if (documentResponse) return documentResponse();
       return jsonResponse({ document: DOCUMENT });
     }
     return jsonResponse({});
@@ -159,6 +164,7 @@ async function renderPane(mode: "results" | "saved" = "results") {
 
 afterEach(() => {
   setCloudApiFetchTransport(null);
+  resetResearchSearchPersistence();
   apiClient.setSessionToken(null);
 });
 
@@ -177,6 +183,35 @@ describe("ResearchSearchPane", () => {
     const frame = await tui.waitForFrameToContain("Tim Cook");
     expect(frame).toContain("Tim Cook");
     expect(frame).toContain("to expand next quarter");
+  });
+
+  // The cached copy paints while the refresh is in flight, but an entitlement
+  // refused on that refresh takes it down rather than leaving it readable.
+  test("a cached document paints before its refresh and a 402 on the refresh re-gates it", async () => {
+    const refresh = Promise.withResolvers<Response>();
+    installTransport({ documentResponse: () => refresh.promise });
+    signIn();
+    const cache = new MemoryPluginPersistence();
+    cache.setResource("document", "transcript:call-1", DOCUMENT, {
+      sourceKey: "research-search",
+      schemaVersion: 1,
+      cachePolicy: { staleMs: -1, expireMs: 60_000 },
+    });
+    attachResearchSearchPersistence(cache);
+
+    await renderPane();
+    await tui.waitForFrameToContain("Apple FQ2 2026 Earnings Call");
+    await pressKey("return");
+    await tui.waitForFrameToContain("to expand next quarter");
+
+    refresh.resolve({
+      ok: false,
+      status: 402,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ error: "pro_required" }),
+    } as Response);
+    const frame = await tui.waitForFrameToContain("part of Gloom Cloud Pro");
+    expect(frame).not.toContain("to expand next quarter");
   });
 
   // A field owns the keyboard, so Tab has to be claimed ahead of the app's

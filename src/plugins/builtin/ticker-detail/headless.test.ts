@@ -128,6 +128,20 @@ test("quote monitor exports retain FX precision and small changes without alteri
   expect(priceColumn.format!(null, { currency: "USD" })).toBe("—");
 });
 
+test("quote monitor shows an index in points, as quote does, whatever its currency", async () => {
+  const index = (symbol: string, currency: string, price: number, change: number) => ({
+    symbol, name: symbol, instrumentType: "INDEX", price, change, changePercent: 0.1, currency, lastUpdated: 1789162140000,
+  });
+  const quotes = [index("^GSPC", "USD", 7805.45, -1.79), index("^N225", "JPY", 67744.29, 33.23)];
+  const ctx = createTestHeadlessContext({ marketData: createTestDataProvider({ getQuote: async (symbol) => quotes.find((quote) => quote.symbol === symbol)! }) });
+  const input = args(["^GSPC", "^N225"]);
+  const text = renderHeadlessPaneText(quoteComparisonHeadless, await quoteComparisonHeadless.load(input, ctx), input, "Quote Monitor");
+  expect(text).toContain("7,805.45");
+  expect(text).toContain("-1.79");
+  expect(text).toContain("+33.23");
+  expect(text).not.toMatch(/[$¥]/);
+});
+
 test("historical prices use remembered exchanges and clip and sort the full OHLCV history", async () => {
   const requests: unknown[] = [];
   const ctx = createTestHeadlessContext({

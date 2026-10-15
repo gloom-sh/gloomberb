@@ -115,6 +115,43 @@ export function buildPaneFunctionLookup(registry: PaneFunctionCatalog): Map<stri
   return lookup;
 }
 
+/** What a function takes after its code, as the catalog writes it: `<ticker>`, `<fund, ticker, or CIK>`, or nothing. */
+function argumentHint({ argKind, argPlaceholder }: Pick<PaneCatalogEntry, "argKind" | "argPlaceholder">): string {
+  if (argPlaceholder) return `<${argPlaceholder}>`;
+  return argKind && argKind !== "none" ? `<${argKind}>` : "";
+}
+
+/** A command-line token that is the code or an alias of a function, with what the function takes. */
+export interface FunctionCode {
+  argument: string;
+}
+
+/**
+ * Whether `token` is the code or an alias of a function (`OVDV`, `EEO`), in any
+ * case: the function `fn` opens for it, not one it merely matches by a keyword
+ * or a label.
+ */
+export function findFunctionCode(registry: PaneFunctionCatalog, token: string): FunctionCode | null {
+  const wanted = normalizeLookupToken(token);
+  const found = wanted ? buildPaneFunctionLookup(registry).get(wanted) : undefined;
+  if (!found || !("paneId" in found && "description" in found)) return null;
+  const pane = registry.panes.get(found.paneId);
+  const headless = pane ? getHeadlessPaneDefinition(found, pane) : undefined;
+  const codes = [
+    found.shortcut?.prefix,
+    ...(found.shortcut?.aliases ?? []),
+    headless?.discovery?.id,
+    ...(headless?.discovery?.aliases ?? []),
+  ];
+  if (!codes.some((code) => code && normalizeLookupToken(code) === wanted)) return null;
+  return {
+    argument: argumentHint({
+      argKind: headless?.argument.kind ?? found.shortcut?.argKind,
+      argPlaceholder: headless?.argument.placeholder ?? found.shortcut?.argPlaceholder,
+    }),
+  };
+}
+
 function sampleArgForTemplate(template: PaneTemplateDef): string {
   switch (template.shortcut?.argKind) {
     case "ticker":
@@ -438,11 +475,6 @@ function readinessCell(readiness: PaneFunctionReadiness): string {
   return cliStyles.muted(label);
 }
 
-function catalogArgument(entry: PaneCatalogEntry): string {
-  if (entry.argPlaceholder) return `<${entry.argPlaceholder}>`;
-  return entry.argKind && entry.argKind !== "none" ? `<${entry.argKind}>` : "";
-}
-
 // Choices longer than this move from the flag into its description, where they can wrap.
 const MAX_INLINE_CHOICES = 24;
 
@@ -473,7 +505,7 @@ export function limitationSentence(text: string): string {
 function renderCatalogEntry(entry: PaneCatalogEntry): string {
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
   const capability = entry.capability;
-  const argument = catalogArgument(entry);
+  const argument = argumentHint(entry);
   const invocation = `${entry.token}${argument ? ` ${argument}` : ""}`;
   const lines = [
     `${cliStyles.accent(entry.token)}  ${cliStyles.bold(entry.label)}`,
@@ -543,25 +575,28 @@ export function renderPaneCatalogReport(
   glossary: GlossaryLookup = { exact: [], partial: [] },
   gap: string | null = null,
   series: readonly SeriesMatch[] = [],
+  /** The `config` command a query names a setting of ("light theme"), printed last, beside the functions. */
+  setting: string | null = null,
 ): string {
   const query = args.query.trim().toLowerCase();
   const exact = query
     ? entries.find((entry) => entry.token.toLowerCase() === query)
       ?? entries.find((entry) => entry.aliases.some((alias) => alias.toLowerCase() === query))
     : undefined;
-  if (exact) return renderCatalogEntry(exact);
+  const withSetting = (text: string) => [text, setting ?? ""].filter(Boolean).join("\n\n");
+  if (exact) return withSetting(renderCatalogEntry(exact));
 
   const width = Math.min(cliTerminalWidth() ?? CATALOG_TEXT_WIDTH, CATALOG_TEXT_WIDTH);
   const terms = renderCatalogGlossary(glossary, width);
   const charted = renderSeriesMatches(args.query.trim(), series, Number.isFinite(args.limit) ? CATALOG_SERIES_LIMIT : series.length, width);
-  const withGap = (text: string) => [gap ? wrapText(gap, width).join("\n") : "", text].filter(Boolean).join("\n\n");
+  const withGap = (text: string) => withSetting([gap ? wrapText(gap, width).join("\n") : "", text].filter(Boolean).join("\n\n"));
   const withTerms = (text: string) => withGap([text, charted, terms].filter(Boolean).join("\n\n"));
   if (args.query && entries.length === 1) return withTerms(renderCatalogEntry(entries[0]!));
 
   const note = (text: string) => wrapText(text, width).map((line) => cliStyles.muted(line)).join("\n");
   if (entries.length === 0) {
     if (charted) return withGap([charted, terms].filter(Boolean).join("\n\n"));
-    if (glossary.exact.length > 0 || gap) return withGap(terms);
+    if (glossary.exact.length > 0 || gap || setting) return withGap(terms);
     return withTerms(note(args.query
       ? `No functions match "${args.query}". Run gloomberb catalog to browse them all.`
       : "No functions are available."));
@@ -586,7 +621,7 @@ export function renderPaneCatalogReport(
       shown.map((entry) => [
         cliStyles.command(entry.token),
         entry.label,
-        catalogArgument(entry),
+        argumentHint(entry),
         readinessCell(entry.capability.reportReadiness),
         entry.description,
       ]),

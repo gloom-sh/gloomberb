@@ -1,5 +1,6 @@
 import { CATALYST_TYPES } from "../../../api-client/catalysts";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import { isoDateOption } from "../../../utils/calendar-date";
 import { fetchCatalystDetail, fetchCatalysts } from "./client";
 import { catalystCell, catalystChangeText, catalystDate, catalystQuery, catalystTickers } from "./model";
 
@@ -11,7 +12,10 @@ function definition(litigation: boolean): HeadlessPaneDefinition<"bundle"> {
     options: [
       { key: "tab", type: "enum", values: [{ value: "calendar" }, { value: "changes" }], defaultValue: "calendar", description: "Dated events or observed revisions." },
       { key: "type", type: "enum", values: CATALYST_TYPES.map((value) => ({ value })), description: "Event type." },
-      ...["agency", "country", "sector", "status", "search", "from", "to"].map((key) => ({ key, type: "string" as const, description: `Filter by ${key}. Dates use YYYY-MM-DD.` })),
+      ...["agency", "country", "sector", "status"].map((key) => ({ key, type: "string" as const, description: `Filter by ${key}.` })),
+      { key: "search", type: "string", description: "Filter by text." },
+      { key: "from", type: "string", placeholder: "YYYY-MM-DD", description: "Start of the calendar window. Dates use YYYY-MM-DD.", normalize: (value) => isoDateOption(value, "from") },
+      { key: "to", type: "string", placeholder: "YYYY-MM-DD", description: "End of the calendar window. Dates use YYYY-MM-DD.", normalize: (value) => isoDateOption(value, "to") },
       { key: "dateField", type: "enum", values: ["any", "announced", "effective", "deadline", "observed"].map((value) => ({ value })), defaultValue: "any", description: "Date field for the calendar window." },
       { key: "upcoming", type: "boolean", defaultValue: false, description: "Only future effective dates and deadlines." },
       { key: "offset", type: "integer", defaultValue: 0, description: "Zero-based event offset." },

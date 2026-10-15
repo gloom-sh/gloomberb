@@ -9,7 +9,7 @@ import type {
 } from "../../../api-client/mna";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 import { createPluginCache } from "../../../data/plugin-cache";
-import { loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 
 /**
  * Deals change when a story or a filing lands, a few times an hour at most,
@@ -119,6 +119,10 @@ const listKey = (params: MnaDealsParams, pro: boolean) =>
   JSON.stringify([params.status ?? "pending", params.target ?? "all", params.region ?? "all",
     params.symbol?.toUpperCase() ?? "", params.query?.trim().toLowerCase() ?? "", params.offset ?? 0, pro ? "full" : "delayed"]);
 
+export function cachedMnaDeals(params: MnaDealsParams, pro: boolean) {
+  return cachedCloudResource(mnaDealsCache, listKey(params, pro), validateMnaDeals);
+}
+
 export function loadMnaDeals(params: MnaDealsParams, pro: boolean, force = false): Promise<CloudResource<MnaDealsPayload>> {
   return loadCloudResource(mnaDealsCache, listKey(params, pro), () => fetchMnaDeals(params), {
     force,
@@ -126,8 +130,14 @@ export function loadMnaDeals(params: MnaDealsParams, pro: boolean, force = false
   });
 }
 
+const dealKey = (id: string, pro: boolean) => `${id}:${pro ? "full" : "delayed"}`;
+
+export function cachedMnaDeal(id: string, pro: boolean) {
+  return cachedCloudResource(mnaDealCache, dealKey(id, pro), validateMnaDeal);
+}
+
 export function loadMnaDeal(id: string, pro: boolean, force = false): Promise<CloudResource<MnaDealPayload>> {
-  return loadCloudResource(mnaDealCache, `${id}:${pro ? "full" : "delayed"}`, () => fetchMnaDeal(id), {
+  return loadCloudResource(mnaDealCache, dealKey(id, pro), () => fetchMnaDeal(id), {
     force,
     validate: validateMnaDeal,
   });

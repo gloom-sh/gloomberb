@@ -108,6 +108,7 @@ function FixedIncomeSectionPane({ section, ...props }: PaneProps & { section: Fi
               flexGrow={1}
               flexBasis={0}
               overflow="hidden"
+              data-gloom-role="nested-pane-content"
             >
               <PaneFooterScope active={value === view}>
                 <View {...props} paneType={paneType} height={contentHeight} focused={props.focused && value === view} />
@@ -147,7 +148,7 @@ export function FixedIncomePane(props: PaneProps) {
       <Box height={contentHeight} flexGrow={1} flexBasis={0} overflow="hidden">
         {FIXED_INCOME_SECTIONS.map(({ value }) => (
           mounted.has(value) || value === section ? (
-            <Box key={value} visible={value === section} height={contentHeight} flexGrow={1} flexBasis={0} overflow="hidden">
+            <Box key={value} visible={value === section} height={contentHeight} flexGrow={1} flexBasis={0} overflow="hidden" data-gloom-role="nested-pane-content">
               <PaneFooterScope active={value === section}>
                 <NestedPaneTabs>
                   <FixedIncomeSectionPane {...props} section={value} height={contentHeight} focused={props.focused && value === section} />

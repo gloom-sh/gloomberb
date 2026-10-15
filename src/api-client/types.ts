@@ -459,10 +459,12 @@ export interface CloudPricePointPayload {
   low?: number;
   close: number;
   volume?: number;
-  /** A coin's daily bar for the UTC day still forming when served; it has no volume yet. */
+  /** A daily bar still forming when served: a coin's UTC day, or the trade date a future is trading. */
   partial?: boolean;
   /** A coin's daily bar whose prices were rebuilt from hourly bars; a day the source left empty has no volume. */
   filled?: boolean;
+  /** A future's closed session whose settlement is not confirmed yet: it closes on the last trade. */
+  unsettled?: boolean;
 }
 
 type CloudEconImpact = "high" | "medium" | "low";

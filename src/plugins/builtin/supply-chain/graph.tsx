@@ -8,7 +8,8 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useShortcut } from "../../../react/input";
 import { useScrollBoxLayout } from "../../../components/use-scrollbox-layout";
 import { isPlainKey } from "../../../utils/keyboard";
-import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth } from "../../../utils/format";
+import { ClippedText } from "../../../components/ui/display";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { drawLine, fillOpaque, parseHex } from "../../../components/chart/native/raster/primitives";
 import { entityLabel, graphNodes } from "./graph-model";
@@ -137,7 +138,8 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
         const tickerWidth = node.entity.ticker ? displayWidth(node.entity.ticker) + 3 : 0;
         const showTicker = company && tickerWidth > 0 && inner >= tickerWidth + 5;
         const prefix = collapsed.includes(node.entity.id) ? "+ " : "";
-        const name = truncateToDisplayWidth(prefix + (showTicker ? node.entity.name : entityLabel(node.entity)), inner - (showTicker ? tickerWidth : 0));
+        const name = prefix + (showTicker ? node.entity.name : entityLabel(node.entity));
+        const nameWidth = inner - (showTicker ? tickerWidth : 0);
         const relation = kind ?? (node.related ? `${node.hops > 1 ? "via " : ""}${role}` : role);
         const confidence = `${Math.round((node.path?.confidence ?? 0) * 100)}%`;
         const detail = node.hops ? `${node.hops}H · ${relation}${inner >= displayWidth(relation ?? "") + 12 ? ` · ${confidence}` : ""}` : showTicker ? "Focus company" : node.entity.name;
@@ -150,10 +152,10 @@ export function SupplyGraph({ data, width, height, focused, selectedId, selected
             <Box flexDirection="column" width="100%">
               <Box flexDirection="row" height={1} gap={desktop ? 1 : 0} overflow="hidden">
                 {!desktop ? <Text fg={accent}>▍</Text> : null}
-                <Text fg={active && !desktop ? colors.selectedText : company ? colors.textBright : colors.textDim} attributes={company ? TextAttributes.BOLD : 0}>{name}</Text>
+                <ClippedText fg={active && !desktop ? colors.selectedText : company ? colors.textBright : colors.textDim} attributes={company ? TextAttributes.BOLD : 0} text={name} width={nameWidth} />
                 {showTicker ? desktop ? <Badge label={node.entity.ticker!} tone="accent" /> : <Text fg={active ? colors.selectedText : colors.textDim}>{` ${node.entity.ticker}`}</Text> : null}
               </Box>
-              <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden"><Text fg={active && !desktop ? colors.selectedText : colors.textDim}>{truncateToDisplayWidth(detail, inner)}</Text></Box>
+              <Box height={1} paddingLeft={desktop ? 0 : 1} overflow="hidden"><ClippedText fg={active && !desktop ? colors.selectedText : colors.textDim} text={detail} width={inner} /></Box>
             </Box>
           </Button>
         </Box>;

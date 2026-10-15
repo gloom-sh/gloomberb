@@ -63,8 +63,9 @@ interface RatioInputDef {
   /** A flow over the period. Quarterly columns multiply it by four. */
   annualized?: boolean;
   /**
-   * A flow over a year: quarterly columns read the trailing four quarters
-   * (TTM), and show "< 4 quarters" rather than annualize a short history.
+   * A flow over a year (leverage and valuation ratios): quarterly columns read
+   * the trailing four quarters (TTM), and show "< 4 quarters" rather than
+   * annualize a short history.
    */
   trailing?: boolean;
   /** A shorter name for quarterly columns, so the label, TTM and its unit fit the label column. */
@@ -189,7 +190,7 @@ const flow = (label: string, read: BalanceLine, operator?: RatioInputDef["operat
   label, operator, format: "money", annualized: true, value: ({ statement }) => reported(read(statement)),
 });
 
-/** A flow a leverage ratio reads over a year: the trailing four quarters in a quarterly column. */
+/** A flow a ratio reads over a year: the trailing four quarters in a quarterly column. */
 const trailingFlow = (
   label: string,
   read: BalanceLine,
@@ -474,7 +475,8 @@ export const RATIO_TABS: RatioTabDef[] = [
         format: "multiple",
         inputs: [
           { label: "Price", format: "perShare", value: ({ price }) => price },
-          { label: "Diluted EPS", operator: "÷", format: "perShare", annualized: true, value: dilutedEps },
+          // The summed quarters withhold EPS as a quarter does, when one has a gap or an unresolved basis.
+          { label: "Diluted EPS", operator: "÷", format: "perShare", trailing: true, value: dilutedEps },
         ],
         compute: ([price, eps]) => over(price!, eps!),
       },
@@ -484,7 +486,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         format: "multiple",
         inputs: [
           { label: "Enterprise Value", format: "money", value: enterpriseValue },
-          flow("EBITDA", line("ebitda"), "÷"),
+          trailingFlow("EBITDA", line("ebitda"), "÷"),
         ],
         // A negative enterprise value makes the multiple meaningless too.
         compute: ([value, ebitda]) => (value! > 0 ? over(value!, ebitda!) : "not-meaningful"),
@@ -493,7 +495,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         id: "ps",
         label: "P/S",
         format: "multiple",
-        inputs: [{ label: "Market Cap", format: "money", value: marketCap }, flow("Revenue", revenue, "÷")],
+        inputs: [{ label: "Market Cap", format: "money", value: marketCap }, trailingFlow("Revenue", revenue, "÷")],
         compute: ([cap, sales]) => over(cap!, sales!),
       },
       {
@@ -511,7 +513,7 @@ export const RATIO_TABS: RatioTabDef[] = [
         label: "FCF Yield",
         format: "percent",
         signed: true,
-        inputs: [flow("Free Cash Flow", freeCashFlow), { label: "Market Cap", operator: "÷", format: "money", value: marketCap }],
+        inputs: [trailingFlow("Free Cash Flow", freeCashFlow), { label: "Market Cap", operator: "÷", format: "money", value: marketCap }],
         compute: ([cash, cap]) => over(cash!, cap!),
       },
     ],

@@ -1,10 +1,11 @@
-import { Box, ScrollBox, Text, type ScrollBoxRenderable } from "../../../ui";
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
+import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from "react";
 import { useShortcut } from "../../../react/input";
 import { TextAttributes } from "../../../ui";
 import type { AppNotificationRequest, GloomPlugin, PaneProps } from "../../../types/plugin";
 import {
   DataTableStackView,
+  DetailScrollBody,
   isTableScrollNearEnd,
   QueryBar,
   usePaneFooter,
@@ -89,18 +90,16 @@ function renderDebugCell(entry: LogEntry, column: DebugColumn, _index: number, s
   return { text: entry.message.replace(/\s+/g, " "), color: state.selected ? colors.selectedText : colors.text };
 }
 
-function DebugEntryDetail({ entry }: { entry: LogEntry }) {
+function DebugEntryDetail({ entry, scrollRef }: { entry: LogEntry; scrollRef: RefObject<ScrollBoxRenderable | null> }) {
   return (
-    <ScrollBox flexGrow={1} scrollY focusable={false}>
-      <Box flexDirection="column" paddingX={1}>
-        <Text fg={colors.text} wrapText selectable>{entry.message}</Text>
-        {entry.data !== undefined && (
-          <Box marginTop={1}>
-            <Text fg={colors.textDim} wrapText selectable>{JSON.stringify(entry.data, null, 2)}</Text>
-          </Box>
-        )}
-      </Box>
-    </ScrollBox>
+    <DetailScrollBody ref={scrollRef} resetScrollKey={entry.id}>
+      <Text fg={colors.text} wrapText selectable>{entry.message}</Text>
+      {entry.data !== undefined ? (
+        <Box marginTop={1}>
+          <Text fg={colors.textDim} wrapText selectable>{JSON.stringify(entry.data, null, 2)}</Text>
+        </Box>
+      ) : null}
+    </DetailScrollBody>
   );
 }
 
@@ -116,6 +115,7 @@ function DebugPane({ focused, width, height }: PaneProps) {
   const levelControl = useRef<SelectControl>(null);
   const sourceControl = useRef<SelectControl>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
   // While on, the cursor rides the newest entry, which keeps the list pinned
   // to the bottom as entries arrive.
   const [autoScroll, setAutoScroll] = useState(true);
@@ -173,7 +173,6 @@ function DebugPane({ focused, width, height }: PaneProps) {
   // chord never clears the log.
   useShortcut((event) => {
     if (!focused || openId || searching || event.targetEditable || event.ctrl || event.meta || event.alt || event.super) return;
-    if (event.name === "l") { event.preventDefault?.(); levelControl.current?.open(); return; }
     if (event.name === "s") { event.preventDefault?.(); sourceControl.current?.open(); return; }
     // Top and end of the log; G also resumes following new entries. Some
     // terminals report Shift+G as an uppercase name.
@@ -268,8 +267,9 @@ function DebugPane({ focused, width, height }: PaneProps) {
         emptyStateTitle={filtered ? "No log entries match the filter." : "No log entries."}
         detailOpen={!!openEntry}
         onBack={() => setOpenId(null)}
+        detailScrollRef={detailScrollRef}
         detailTitle={openEntry ? `${formatTimestamp(openEntry.timestamp)} ${LEVEL_LABELS[openEntry.level]} ${openEntry.source}` : undefined}
-        detailContent={openEntry ? <DebugEntryDetail entry={openEntry} /> : null}
+        detailContent={openEntry ? <DebugEntryDetail entry={openEntry} scrollRef={detailScrollRef} /> : null}
       />
     </Box>
   );

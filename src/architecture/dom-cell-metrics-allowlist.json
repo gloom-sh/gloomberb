@@ -1,28 +1,102 @@
 {
-  "src/components/layout/pane/header.tsx": 2,
-  "src/components/layout/pane/sizing.ts": 3,
-  "src/components/layout/shell/drag/slide.ts": 4,
-  "src/components/layout/shell/pane/layers.tsx": 6,
-  "src/components/ui/select-button.tsx": 2,
-  "src/renderers/dom/data-table/dom.ts": 26,
-  "src/renderers/dom/data-table/index.tsx": 21,
-  "src/renderers/dom/data-table/row.tsx": 11,
-  "src/renderers/dom/desktop/controls.tsx": 6,
-  "src/renderers/dom/desktop/list-view.tsx": 2,
-  "src/renderers/dom/desktop/popover.tsx": 6,
-  "src/renderers/dom/desktop/query-bar.tsx": 1,
-  "src/renderers/dom/desktop/select-field.tsx": 2,
-  "src/renderers/dom/dom-ui-host.tsx": 6,
-  "src/renderers/dom/host/input.tsx": 5,
-  "src/renderers/dom/host/live-frame.ts": 8,
-  "src/renderers/dom/host/mouse.ts": 10,
-  "src/renderers/dom/host/scroll-box.tsx": 22,
-  "src/renderers/dom/host/size-observer.ts": 6,
-  "src/renderers/dom/host/style.ts": 27,
-  "src/renderers/dom/host/surface-fit.ts": 4,
-  "src/renderers/dom/host/tabs.tsx": 2,
-  "src/renderers/dom/host/text.tsx": 2,
-  "src/renderers/dom/input-host.tsx": 4,
-  "src/renderers/dom/native-renderer.ts": 4,
-  "src/renderers/dom/styles.css": 17
+  "src/components/layout/pane/header.tsx": {
+    "uses": 2,
+    "why": "The title bar's inset for the window controls comes from the shell's header geometry, which the terminal shares, in cells."
+  },
+  "src/components/layout/pane/sizing.ts": {
+    "uses": 3,
+    "why": "Panes receive their size in cells (PaneProps); this gives the desktop's taller chrome row in those cells."
+  },
+  "src/components/layout/shell/drag/slide.ts": {
+    "uses": 4,
+    "why": "A dragged pane moves by offsets of the saved layout, which is kept in cells."
+  },
+  "src/components/layout/shell/pane/layers.tsx": {
+    "uses": 6,
+    "why": "Pane rectangles in the saved layout are in cells; this is where they become pixels."
+  },
+  "src/components/ui/select-button.tsx": {
+    "uses": 2,
+    "why": "A select's width is given in cells by the pane, as its terminal button's is."
+  },
+  "src/renderers/dom/data-table/dom.ts": {
+    "uses": 26,
+    "why": "The table's scroll and pointer API speaks rows and columns to callers shared with the terminal (j/k, paging, visible range); a row of text is one line tall."
+  },
+  "src/renderers/dom/data-table/index.tsx": {
+    "uses": 19,
+    "why": "Every pane gives its columns in cells (DataTableColumn.width) and rows are one line tall: the horizontal extent, the overflow decision, virtualization and paging follow from them."
+  },
+  "src/renderers/dom/data-table/row.tsx": {
+    "uses": 10,
+    "why": "Column widths and gaps are cells in the column model every pane uses; a row is one line tall."
+  },
+  "src/renderers/dom/desktop/controls.tsx": {
+    "uses": 6,
+    "why": "Callers give a button's size in cells; a framed field keeps its text one cell off its frame, as the terminal's does."
+  },
+  "src/renderers/dom/desktop/list-view.tsx": {
+    "uses": 2,
+    "why": "The caller gives a list's height in rows."
+  },
+  "src/renderers/dom/desktop/query-bar.tsx": {
+    "uses": 1,
+    "why": "The pane gives its search field's width in cells."
+  },
+  "src/renderers/dom/desktop/select-field.tsx": {
+    "uses": 2,
+    "why": "An inline select is one row tall, the row it sits in."
+  },
+  "src/renderers/dom/dom-ui-host.tsx": {
+    "uses": 6,
+    "why": "Exposes the cell size to components that still size in cells (chart bitmaps, the company logo)."
+  },
+  "src/renderers/dom/host/input.tsx": {
+    "uses": 3,
+    "why": "Callers give a field's width and height in cells; a one-line field is one row tall."
+  },
+  "src/renderers/dom/host/live-frame.ts": {
+    "uses": 8,
+    "why": "A resize's live frame is in cells, the pane's unit, until the pane renders at the new size."
+  },
+  "src/renderers/dom/host/mouse.ts": {
+    "uses": 10,
+    "why": "Pointer handlers receive cell coordinates, the event API every renderer shares."
+  },
+  "src/renderers/dom/host/scroll-box.tsx": {
+    "uses": 22,
+    "why": "The scroller's API (scrollTop, scrollBy, viewport) is in rows and columns for callers shared with the terminal; content insets are given in cells."
+  },
+  "src/renderers/dom/host/size-observer.ts": {
+    "uses": 6,
+    "why": "Observed sizes are reported in cells, as callers expect."
+  },
+  "src/renderers/dom/host/style.ts": {
+    "uses": 27,
+    "why": "Maps the shared Box and Text props that components give in cells (width, height, padding, margin, gap, position) to pixels."
+  },
+  "src/renderers/dom/host/surface-fit.ts": {
+    "uses": 4,
+    "why": "A chart takes its box when its cells come within a cell of it, because panes still count their space in cells."
+  },
+  "src/renderers/dom/host/tabs.tsx": {
+    "uses": 2,
+    "why": "A tab strip is one row tall, the row every caller reserves for it."
+  },
+  "src/renderers/dom/host/text.tsx": {
+    "uses": 2,
+    "why": "The ASCII wordmark draws one glyph per cell."
+  },
+  "src/renderers/dom/input-host.tsx": {
+    "uses": 4,
+    "why": "The viewport is reported in cells (useViewport), the unit every renderer shares."
+  },
+  "src/renderers/dom/native-renderer.ts": {
+    "uses": 4,
+    "why": "The renderer's width and height are reported in cells, the unit every renderer shares."
+  },
+  "src/renderers/dom/styles.css": {
+    "uses": 14,
+    "why": "Defines the cell size and the base line height; status, footer and hint lines are one row; a few insets are one cell, as the terminal's (the floating pane's two-cell grip, a query bar segment)."
+  }
 }

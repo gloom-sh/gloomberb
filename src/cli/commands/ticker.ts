@@ -1,9 +1,9 @@
 import { formatShortDate, parseDisplayDate } from "../../utils/datetime-format";
 import { formatReportedMoney } from "../../utils/reported-money";
-import { convertedPriceEarningsNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
+import { convertedPriceEarningsNote, enterpriseValueLabel, enterpriseValueReconciliationNote, epsConversionNote, fundamentalsCurrency, reportedEnterpriseValue, ttmConversionNote } from "../../utils/fundamentals";
 import { latestFinancialPeriod } from "../../utils/latest-financial-period";
 import { exportedFundamentals, formatPriceEarnings, priceEarningsOnEarnings } from "../../utils/price-earnings";
-import { describeFundamentalMarketCap, selectMarketCapitalization } from "../../utils/market-capitalization";
+import { describeFundamentalMarketCap, marketCapShareBasisNote, selectMarketCapitalization } from "../../utils/market-capitalization";
 import {
   formatCompact,
   formatCurrency,
@@ -32,9 +32,9 @@ import {
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms } from "../../market-data/futures-contract";
 import type { AppConfig } from "../../types/config";
-import type { FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
+import type { DeclaredDividendAction, FinancialStatement, Quote, TickerFinancials } from "../../types/financials";
 import { quoteTradingDay } from "../../market-data/quotes/day-range";
-import { atRegularSessionPrice } from "../../market-data/quotes/regular-session-valuation";
+import { atRegularSessionPrice, regularSessionValuationPrice } from "../../market-data/quotes/regular-session-valuation";
 import { computeTickerPriceReturns } from "../../market-data/ticker-price-returns";
 import { instrumentTypeLabel, isCryptoVenuePerpetual, resolveTickerInstrumentKind } from "../../tickers/instrument-kind";
 import type { SecFilingItem } from "../../types/data-provider";
@@ -69,6 +69,7 @@ import { exportEntriesTable, reportFooterLines, type CliReportTables } from "../
 import type { ReportFreshness } from "../pane-functions/freshness";
 import { fundamentalsFreshness, quotesFreshness } from "../freshness";
 import { forwardDividendBasis } from "../../utils/forward-dividend";
+import { declaredDividends } from "../../utils/declared-dividends";
 import { notTheCoinNote } from "./crypto-hints";
 
 const NEWS_ITEM_LIMIT = 5;
@@ -336,15 +337,49 @@ function reportedMoney(value: number | undefined, currency: string | undefined, 
   return { text: formatReportedMoney(value, currency, perShare), value, unit: currency?.trim() || "ccy?" };
 }
 
+/** The EV line: labelled "(provider)" when it is more than 5% from market cap + debt - cash, "unavailable" when withdrawn. */
+function enterpriseValueFigure(figure: MetricFigure, fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
+  const label = enterpriseValueLabel(fundamentals);
+  if (label === "unavailable") return { text: "unavailable", value: null, unit: figure.unit };
+  return label === "provider" && figure.text !== "—" ? { ...figure, text: `${figure.text} (provider)` } : figure;
+}
+
 function percentFigure(fraction: number | null | undefined, format: (value: number) => string): MetricFigure {
   return fraction != null ? { text: format(fraction), value: fraction * 100, unit: "%" } : { text: "—" };
 }
 
-/** A forward yield says what it annualizes and when, as DVD does; any other yield is the figure alone. */
-function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"]): MetricFigure {
+/** The declared, unpaid distributions a forward yield dated ahead is named from, in their own currency. */
+export interface ForwardYieldDeclarations {
+  rows: DeclaredDividendAction[];
+  currency?: string;
+}
+
+/**
+ * The listing's declared distributions, read only for a forward yield whose
+ * ex-date is still ahead (the one case its basis names one); null otherwise,
+ * and when they cannot be read, which leaves the basis to its dates.
+ */
+export async function loadForwardYieldDeclarations(
+  dataProvider: Pick<MarketContext["dataProvider"], "getCorporateActions">,
+  listing: { symbol: string; exchange: string },
+  fundamentals: TickerFinancials["fundamentals"],
+  now = new Date(),
+): Promise<ForwardYieldDeclarations | null> {
+  const exDate = fundamentals?.dividendYieldBasis === "forward" ? fundamentals.exDividendDate ?? "" : "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(exDate) || exDate <= now.toISOString().slice(0, 10) || !dataProvider.getCorporateActions) return null;
+  try {
+    const actions = await dataProvider.getCorporateActions(listing.symbol, listing.exchange);
+    return { rows: declaredDividends(actions, now), ...(actions.currency ? { currency: actions.currency } : {}) };
+  } catch {
+    return null;
+  }
+}
+
+/** A forward yield says what it annualizes and when, as DVD does (a declared distribution by its ex-date and stated amount); any other yield is the figure alone. */
+function forwardYieldFigure(fundamentals: TickerFinancials["fundamentals"], declared: ForwardYieldDeclarations | null): MetricFigure {
   const figure = percentFigure(fundamentals?.dividendYield, formatFractionPercentCell);
   return fundamentals?.dividendYieldBasis === "forward" && fundamentals.dividendYield != null
-    ? { ...figure, text: `${figure.text} (${forwardDividendBasis(fundamentals.exDividendDate)})` }
+    ? { ...figure, text: `${figure.text} (${forwardDividendBasis(fundamentals.exDividendDate, { declared: declared?.rows, currency: declared?.currency })})` }
     : figure;
 }
 
@@ -361,12 +396,13 @@ function fundamentalsMetrics(
   priceReturns: { return1Y?: number | null; return3Y?: number | null },
   reportingCurrency: string | undefined,
   enterpriseValue = reportedMoney(reportedEnterpriseValue(fundamentals), enterpriseValueCurrency(quote, fundamentals)),
+  declared: ForwardYieldDeclarations | null = null,
 ): FundamentalsMetric[] {
   const signed = (value: number) => colorBySign(formatPercent(value), value);
   const receipt = fundamentals?.sharesOutstanding != null && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
   return [
     { label: "Market Cap", ...marketCap },
-    { label: "Enterprise Value", ...enterpriseValue },
+    { label: "Enterprise Value", ...enterpriseValueFigure(enterpriseValue, fundamentals) },
     // A multiple over a loss is N/M, even beside a positive one the source served from an older period.
     { label: "P/E (TTM)", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.trailingPE, fundamentals?.eps)) },
     { label: "Forward P/E", ...multipleFigure(priceEarningsOnEarnings(fundamentals?.forwardPE, fundamentals?.forwardEps)) },
@@ -375,7 +411,7 @@ function fundamentalsMetrics(
     { label: "EPS (TTM)", ...reportedMoney(fundamentals?.eps, fundamentals?.epsCurrency?.trim() || reportingCurrency, true) },
     {
       label: `Dividend Yield${fundamentals?.dividendYieldBasis ? ` (${fundamentals.dividendYieldBasis})` : ""}`,
-      ...forwardYieldFigure(fundamentals),
+      ...forwardYieldFigure(fundamentals, declared),
     },
     { label: "Revenue (TTM)", ...reportedMoney(fundamentals?.revenue, reportingCurrency) },
     { label: "Net Income (TTM)", ...reportedMoney(fundamentals?.netIncome, reportingCurrency) },
@@ -397,6 +433,34 @@ function fundamentalsMetrics(
   ];
 }
 
+/**
+ * The float and the short interest `fundamentals` prints after the share count: the shares short, short % of float
+ * and days to cover of one settlement, dated, as the JSON gives them and `SI` and `SIW` show them.
+ */
+function floatAndShortInterestMetrics(
+  quote: TickerFinancials["quote"],
+  fundamentals: TickerFinancials["fundamentals"],
+  profile: TickerFinancials["profile"],
+): FundamentalsMetric[] {
+  const finite = (value: number | undefined): value is number => value != null && Number.isFinite(value);
+  const float = fundamentals?.floatShares;
+  const short = fundamentals?.sharesShort;
+  const days = fundamentals?.shortRatio;
+  const date = fundamentals?.shortInterestDate;
+  const receipt = finite(float) && sharesOutstandingInReceipts(quote, fundamentals, profile?.description);
+  return [
+    finite(float) && float > 0
+      ? { label: "Float", text: formatCompact(float), value: float, ...(receipt ? { unit: "ADR equivalent" } : {}) }
+      : { label: "Float", text: "—" },
+    finite(short)
+      ? { label: "Short Interest", text: `${formatCompact(short)}${date ? ` (settled ${date})` : ""}`, value: short, unit: "shares" }
+      : { label: "Short Interest", text: "—" },
+    ...finite(short) && date ? [{ label: "Short Interest Settlement", text: date, value: date, exportOnly: true }] : [],
+    { label: "Short % of Float", ...percentFigure(fundamentals?.shortPercentOfFloat, formatFractionPercentCell) },
+    finite(days) ? { label: "Days to Cover", text: formatNumber(days, 2), value: days } : { label: "Days to Cover", text: "—" },
+  ];
+}
+
 function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, string]> {
   return metrics.filter((metric) => !metric.exportOnly).map((metric) => [metric.label, metric.text]);
 }
@@ -404,26 +468,35 @@ function metricLines(metrics: readonly FundamentalsMetric[]): Array<[string, str
 const TRAILING_MONEY_METRICS = new Set(["EPS (TTM)", "Revenue (TTM)", "Net Income (TTM)", "Operating Cash Flow (TTM)", "Free Cash Flow (TTM)"]);
 
 /**
- * The unit notes under shown fundamentals: what a converted TTM block was converted from, an EPS in another
- * currency than the amounts beside it, and what a P/E on such an EPS divides.
+ * The notes under shown fundamentals: a market cap that does not rest on the share count shown, how a labelled or
+ * withdrawn EV compares with market cap + debt - cash, what a converted TTM block was converted from, an EPS in
+ * another currency than the amounts beside it, and what a P/E on such an EPS divides. `priced` is the snapshot at
+ * the regular session price (atRegularSessionPrice), the figures the lines show, so each note reads those.
  */
-function trailingConversionNotes(
-  fundamentals: TickerFinancials["fundamentals"],
+function fundamentalsNotes(
+  priced: Pick<TickerFinancials, "quote" | "fundamentals">,
   metrics: readonly FundamentalsMetric[],
   quoteCurrency: string | undefined,
 ): string[] {
+  const fundamentals = priced.fundamentals;
   const shown = (label: string) => metrics.some((metric) => metric.label === label && metric.text !== "—");
+  const shareBasis = shown("Market Cap") && shown("Shares Outstanding")
+    ? marketCapShareBasisNote(selectMarketCapitalization(priced.quote, fundamentals), fundamentals?.sharesOutstanding,
+      regularSessionValuationPrice(priced.quote), priced.quote?.currency)
+    : undefined;
   const conversion = [...TRAILING_MONEY_METRICS].some(shown) ? ttmConversionNote(fundamentals) : undefined;
   const eps = shown("EPS (TTM)") ? epsConversionNote(fundamentals) : undefined;
   const priceEarnings = metrics.some((metric) => metric.label === "P/E (TTM)" && typeof metric.value === "number")
     ? convertedPriceEarningsNote(fundamentals, quoteCurrency)
     : undefined;
-  return [conversion, eps, priceEarnings].filter((note): note is string => !!note);
+  const enterpriseValue = shown("Enterprise Value") ? enterpriseValueReconciliationNote(fundamentals) : undefined;
+  return [shareBasis, enterpriseValue, conversion, eps, priceEarnings].filter((note): note is string => !!note);
 }
 
-const VALUATION_METRICS = new Set(["Market Cap", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
+// The share count is the market cap's basis: the cap is the count times the price, or a note says why not.
+const VALUATION_METRICS = new Set(["Market Cap", "Shares Outstanding", "Enterprise Value", "P/E (TTM)", "Forward P/E", "PEG", "EPS (TTM)"]);
 
-type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string };
+type FundamentalsReportData = TickerFinancials & { symbol: string; exchange?: string; declaredDividends?: ForwardYieldDeclarations | null };
 
 /**
  * What a fund's report cannot show yet, and for a US listing where its SEC
@@ -493,9 +566,16 @@ function fundamentalsReportMetrics(snapshot: FundamentalsReportData, view: "fund
   const marketCap: MetricFigure = capitalization
     ? { text: `${formatCompact(capitalization.value)} ${capitalization.currency}`, value: capitalization.value, unit: capitalization.currency }
     : { text: "—" };
-  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials));
-  if (view === "fundamentals") return metrics.filter((metric) => metric.text !== "—");
-  const valuation = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield")) && text !== "—");
+  const metrics = fundamentalsMetrics(quote, fundamentals, financials.profile, marketCap, computeTickerPriceReturns(financials), fundamentalsCurrency(financials),
+    undefined, snapshot.declaredDividends ?? null);
+  if (view === "fundamentals") {
+    return [...metrics, ...floatAndShortInterestMetrics(quote, fundamentals, financials.profile)]
+      .filter((metric) => metric.text !== "—");
+  }
+  const valued = metrics.filter(({ label, text }) => (VALUATION_METRICS.has(label) || label.startsWith("Dividend Yield")) && text !== "—");
+  // The share count follows the market cap it is the basis of.
+  const shares = valued.filter((metric) => metric.label === "Shares Outstanding");
+  const valuation = valued.flatMap((metric) => metric.label === "Shares Outstanding" ? [] : metric.label === "Market Cap" ? [metric, ...shares] : [metric]);
   // A listing with no valuation (a fund) says so rather than printing its price alone.
   return valuation.length === 0 ? [] : [...valuationPriceMetrics(financials).filter((metric) => metric.text !== "—"), ...valuation];
 }
@@ -523,7 +603,7 @@ export function renderFundamentalsReport(
   const fund = fundFactsNote(symbol, financials.exchange || quote?.exchangeName, financials);
   if (lines.length === before) lines.push("", cliStyles.muted([`No ${view} reported for ${financials.symbol}.`, fund].filter(Boolean).join(" ")));
   else if (fund) lines.push(cliStyles.muted(fund));
-  for (const note of trailingConversionNotes(financials.fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  for (const note of fundamentalsNotes(atRegularSessionPrice(financials), metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   if (view === "fundamentals") appendTextSection(lines, "Description", profile?.description);
   return lines.join("\n");
 }
@@ -563,7 +643,7 @@ export function fundamentalsReportTables(
       notes: [
         ...metrics.length === 0
           ? [`No ${view} reported for ${financials.symbol}.`]
-          : trailingConversionNotes(financials.fundamentals, metrics, financials.quote?.currency),
+          : fundamentalsNotes(atRegularSessionPrice(financials), metrics, financials.quote?.currency),
         ...fund ? [fund] : [],
       ],
     }),
@@ -596,8 +676,11 @@ export async function buildTickerReport({
   recentNews = [],
   recentSecFilings = [],
   futuresContract = null,
+  declaredDividends: declared = null,
 }: {
   symbol: string;
+  /** The declared distributions a forward yield dated ahead is named from (loadForwardYieldDeclarations). */
+  declaredDividends?: ForwardYieldDeclarations | null;
   /** The exchange the command named, as a canonical code. */
   listingExchange?: string;
   /** A futures symbol's contract terms and latest confirmed settlement. */
@@ -723,10 +806,11 @@ export async function buildTickerReport({
     ]);
   }
 
-  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials), { text: enterpriseValueText });
+  const metrics = fundamentalsMetrics(quote, priced.fundamentals, profile, { text: marketCapText }, priceReturns, fundamentalsCurrency(financials),
+    { text: enterpriseValueText }, declared);
   const beforeFundamentals = lines.length;
   appendMetricSection(lines, "Fundamentals", metricLines(metrics));
-  for (const note of trailingConversionNotes(fundamentals, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
+  for (const note of fundamentalsNotes(priced, metrics, quote?.currency)) lines.push(cliStyles.muted(note));
   // Where a fund's facts would go: under its fundamentals, or in their place.
   const fund = fundFactsNote(quote?.symbol ?? symbol,
     quote?.tradingExchangeName || listingExchange || quote?.listingExchangeName || quote?.exchangeName || tickerFile?.metadata.exchange, financials, tickerFile);
@@ -939,6 +1023,9 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
 
     const notesFiles = new NotesFiles(dataDir);
     const listingName = listingIdentity(listing, quote).name;
+    // The text report's yield basis, read beside the rest for a forward yield dated ahead only; it never fails the report.
+    const declarations = dependencies.printResult ? null
+      : loadForwardYieldDeclarations(dataProvider, { symbol: requestSymbol, exchange }, resolvedFinancials.fundamentals);
     const [notesResult, newsResult, secFilingsResult] = await Promise.allSettled([
       notesFiles.load(tickerFile?.metadata.ticker ?? normalized),
       dataProvider.getNews({
@@ -1004,6 +1091,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
         recentNews,
         recentSecFilings,
         futuresContract,
+        declaredDividends: await declarations,
     }));
     if (freshness) console.log(`\n${cliFreshnessFooter(freshness)}`);
   });

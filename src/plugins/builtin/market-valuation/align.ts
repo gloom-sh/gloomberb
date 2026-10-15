@@ -71,10 +71,12 @@ export function alignToDenominator(
   withLevels: boolean,
 ): RatioPoint[] {
   if (denominator.length === 0 || numerator.length === 0) return [];
-  const firstMs = parseDateMs(denominator[0]!.date);
+  const times = denominator.map((point) => parseDateMs(point.date));
+  const firstMs = times[0]!;
   const last = denominator[denominator.length - 1]!;
-  const lastMs = parseDateMs(last.date);
+  const lastMs = times[times.length - 1]!;
   const out: RatioPoint[] = [];
+  let cursor = 0;
 
   for (const point of numerator) {
     const t = parseDateMs(point.date);
@@ -84,15 +86,14 @@ export function alignToDenominator(
     if (t >= lastMs) {
       value = last.value;
     } else {
-      let i = 0;
-      while (i + 1 < denominator.length && parseDateMs(denominator[i + 1]!.date) <= t) i += 1;
-      const left = denominator[i]!;
-      const right = denominator[i + 1];
-      if (!right || parseDateMs(left.date) === t) {
+      while (cursor + 1 < times.length && times[cursor + 1]! <= t) cursor += 1;
+      const left = denominator[cursor]!;
+      const right = denominator[cursor + 1];
+      const t0 = times[cursor]!;
+      if (!right || t0 === t) {
         value = left.value;
       } else {
-        const t0 = parseDateMs(left.date);
-        const t1 = parseDateMs(right.date);
+        const t1 = times[cursor + 1]!;
         value = left.value == null || right.value == null || left.value <= 0 || right.value <= 0 ? null
           : left.value + ((t - t0) / (t1 - t0)) * (right.value - left.value);
       }

@@ -8,6 +8,7 @@ import { useThemeColors } from "../../../../theme/theme-context";
 import { t, tf } from "../../../../i18n";
 import type { ChatAttachment } from "../../../../api-client";
 import type { ChatDraftAttachment } from "../controller/attachments";
+import { chatPlainText } from "../markdown";
 import {
   CHAT_IMAGE_TYPES,
   chatImageReviewNote,
@@ -355,7 +356,7 @@ export function DesktopChatAttachmentStrip({
 }
 
 function imageAlt(index: number, count: number, caption: string, author: string): string {
-  const text = caption.replace(/\s+/g, " ").trim();
+  const text = chatPlainText(caption).replace(/\s+/g, " ").trim();
   const position = count > 1 ? ` ${index + 1} of ${count}` : "";
   if (text) return `Image${position}: ${text.length > 120 ? `${text.slice(0, 117)}...` : text}`;
   return `Image${position} from @${author}`;

@@ -3,7 +3,7 @@ import type { DataTableColumn } from "../../../components";
 import type { AppAttentionPayload, AppChart } from "../../../api-client/app-attention";
 import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
 import { fetchAppRank, fetchAttention } from "./client";
-import { appsModel, attentionNumber, hiringModel, remoteText, type AttentionKind } from "./model";
+import { appsModel, appsPreviewNote, attentionNumber, hiringModel, hiringPreviewNote, remoteText, type AttentionKind } from "./model";
 
 /**
  * Numbers print as the pane draws them: shares to a tenth, ratings and
@@ -50,11 +50,14 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       const data = await fetchAttention(kind, args.symbols[0], { limit: Number(args.options.limit) || 100, offset: Number(args.options.offset) || 0, ...(typeof args.options.country === "string" ? { country: args.options.country } : {}), ...(typeof args.options.chart === "string" ? { chart: args.options.chart as AppChart } : {}), days: Number(args.options.days) || 90 }, ctx.apiClient);
       const model = kind === "hiring" ? hiringModel(data as HiringPayload | HiringBoard) : appsModel(data as AppAttentionPayload);
       const offset = Number(args.options.offset) || 0;
-      const nextOffset = kind === "hiring" && "total" in data ? offset + data.companies.length < data.total ? offset + data.companies.length : null : (data as AppAttentionPayload).page?.nextOffset ?? null;
+      // The free preview ignores the offset, so it has no next page to point at.
+      const nextOffset = kind === "hiring" && "total" in data ? !data.preview && offset + data.companies.length < data.total ? offset + data.companies.length : null : (data as AppAttentionPayload).page?.nextOffset ?? null;
+      const lock = kind === "hiring" ? hiringPreviewNote(data as HiringPayload | HiringBoard) : appsPreviewNote(data as AppAttentionPayload);
+      const notes = [...model.notices, ...(nextOffset !== null ? [`Additional observations available with --offset ${nextOffset}.`] : [])];
       return {
-        complete: !model.preview && nextOffset === null,
-        errors: [...model.notices, ...(model.preview ? ["Additional rows and history require Gloom Pro."] : [])],
-        ...(nextOffset !== null ? { notes: [`Additional observations available with --offset ${nextOffset}.`] } : {}),
+        complete: !model.preview && !model.partial && nextOffset === null,
+        ...(lock ? { errors: [lock] } : {}),
+        ...(notes.length ? { notes } : {}),
         sections: Object.entries(model.sections).map(([key, section]) => ({ title: key === "mix" ? kind === "hiring" ? "Role family" : "Countries" : key,
           columns: section.columns.map(reportColumn), empty: section.empty,
           rows: section.rows.map((row) => ({ ...row.values, ...(row.url ? { sourceUrl: row.url } : {}), ...(row.details ? { evidence: row.details } : {}) })) })),

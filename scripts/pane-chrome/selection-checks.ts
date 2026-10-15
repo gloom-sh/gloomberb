@@ -55,7 +55,8 @@ window.__select = {
         if (node.nodeValue.trim().length < min) continue;
         const range = document.createRange();
         range.selectNodeContents(node);
-        const r = range.getBoundingClientRect();
+        // The middle of its first line: the middle of a run wrapped over two lines is the edge between them, where a press may land on neither.
+        const r = range.getClientRects()[0] ?? range.getBoundingClientRect();
         if (r.width < 6 || r.top < 0 || r.bottom > innerHeight) continue;
         return { x: r.x + Math.min(r.width / 2, 60), y: r.y + r.height / 2, text: node.nodeValue.trim() };
       }

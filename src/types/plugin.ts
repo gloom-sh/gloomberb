@@ -3,6 +3,7 @@ import type { AppTickerRepositoryPort } from "../core/app-service-ports";
 import type { HeadlessPaneDefinition, HeadlessPaneFreshness, HeadlessPaneOptionDef } from "./headless";
 
 export type {
+  HeadlessArgumentExpansion,
   HeadlessBundleResult,
   HeadlessBundleSection,
   HeadlessFreshnessStatus,
@@ -106,6 +107,18 @@ export interface PanePortableShareDef {
   prepare?(pane: PaneInstanceConfig, context: { tickers: ReadonlyMap<string, TickerRecord> }): PaneInstanceConfig;
 }
 
+/** What covers a pane when a report of it is refused: see `PaneDef.reportLockNote`. */
+export interface PaneLock {
+  /** Sign-in is the wall of a session that is missing or unverified; pro the one of a plan without access. */
+  gate: "sign-in" | "pro";
+  /** The first symbol the report was asked for, or null. */
+  symbol: string | null;
+  /** The function code the report was run for, for a pane that serves several (EM and GUID). */
+  token?: string;
+  /** The session is signed in and its email is not verified yet. */
+  verifyEmail?: boolean;
+}
+
 export interface PaneDef {
   id: string;
   name: string;
@@ -159,11 +172,12 @@ export interface PaneDef {
   /**
    * What a rendered-view report prints in place of the pane when a sign-in
    * wall or the Pro lock covers all of it: what is locked, what can still be
-   * read without it and where, and how to unlock it. Without it the report
-   * prints the wall's own words. Either way it cites no source, since nothing
-   * was read.
+   * read without it and where, and how to unlock it. A `headless` pane's report
+   * prints it when the server refuses the read (401, 402 or 403). Without it
+   * the report prints the wall's own words, or the refusal. Either way it cites
+   * no source, since nothing was read.
    */
-  reportLockNote?(lock: { gate: "sign-in" | "pro"; symbol: string | null }): string;
+  reportLockNote?(lock: PaneLock): string;
   /**
    * What a rendered-view report needs before it shows anything, such as a
    * sign-in: `gloomberb catalog` lists it under Requires, as it does a
@@ -176,6 +190,12 @@ export interface PaneDef {
    * the last ones. Leave it off for long or paged lists.
    */
   shotFitsRows?: true;
+  /**
+   * A report of the pane grows to the whole text of the page its reader has
+   * open (a docs page), so it is not cut at the first screen. A list the reader
+   * opens from keeps its height.
+   */
+  shotFitsReader?: true;
   /** Add an Excel-compatible CSV action for the pane's single active DataTable. */
   tableExport?: true;
   settings?: PaneSettingsDef | ((context: PaneSettingsContext) => PaneSettingsDef | null);

@@ -2,11 +2,11 @@ import type { PluginModule } from "../../plugin-module";
 import { chatController } from "../../chat/controller";
 import { createCloudTeamCapability } from "./capability";
 import { registerTeamCommands } from "./command";
-import { teamChannelId } from "./model";
+import { teamChannelId } from "../../../../team/model";
 import { TeamPane } from "./pane";
-import { TEAM_PANE_ID, TEAM_PANE_TEMPLATE_ID, openTeamPane } from "./pane-request";
+import { TEAM_PANE_ID, TEAM_PANE_TEMPLATE_ID, openTeamPane } from "../../../../team/pane-request";
 import { TeamStatusWidget } from "./status-widget";
-import { teamStore } from "./store";
+import { teamStore } from "../../../../team/store";
 import { installTeamStateHost } from "./team-state-host";
 import { createCloudViewsCapability, teamViewsStore } from "./views";
 

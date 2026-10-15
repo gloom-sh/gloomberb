@@ -5,22 +5,31 @@ import type { MarketContext } from "../types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { collectShotSymbols } from "./data";
+import { lockNoteLines } from "./lock-note";
+import { lockNoteReason } from "../../plugins/builtin/shared/pro-lock-note";
 import { renderDesktopShot, type PaneScreenshotResult } from "./screenshot";
 import { deriveRenderedFreshness, formatFreshnessLine, type ReportFreshness } from "./freshness";
 import { exportTextTable, reportFooterLines, type CliReportTables } from "../report-tables";
-import { renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
+import { renderedReportFailure, renderedReportFreshness, renderedReportNotices, renderedReportObservations } from "./report-notices";
 
 const DOM_REPORT_WIDTH = 1280;
 const DOM_REPORT_HEIGHT = 720;
+/** A pane whose reader has a page open grows to show all of it, up to about 18,000 px: a report saves no image to bound it. */
+const DOM_REPORT_MAX_HEIGHT_CELLS = 1000;
 const DOM_LIMITATION =
   "Only values visible in the rendered pane are returned; clipped or off-screen data may be omitted.";
-/** The widest a lock note wraps to, as the catalog's text. */
-const LOCK_NOTE_WIDTH = 100;
 const DOM_EVERY_ROW =
   "Every row of the pane's table is returned, including rows scrolled out of view.";
+const DOM_WHOLE_PANE =
+  "The pane was grown to fit the page it has open, so all of its text is returned.";
 
 /** The sign-in wall's buttons, which a rendered view reads as words: `Log in ↵ Sign up free`. */
 const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Email)(?:\s*\u21B5)?(?=\s|$)/g;
+
+/** Whether the wall asks for the account's email to be verified, not for a sign-in. */
+function asksToVerifyEmail(visibleText: string): boolean {
+  return /\bVerify your email\b/i.test(visibleText);
+}
 
 /**
  * A pane behind the sign-in wall, as a report reads it: the wall's headline
@@ -28,10 +37,32 @@ const SIGN_IN_WALL_BUTTONS = /\s*\b(?:Log in|Sign up free|Resend Verification Em
  */
 function signInWallText(visibleText: string): string {
   const headline = visibleText.replace(SIGN_IN_WALL_BUTTONS, "").trim();
-  const needs = /\bVerify your email\b/i.test(visibleText)
+  const needs = asksToVerifyEmail(visibleText)
     ? "Requires a verified email on your Gloom account; resend the verification email in the app."
     : "Requires a free Gloom sign-in: log in or sign up in the app.";
   return headline ? `${headline} ${needs}` : needs;
+}
+
+const LIST_MARKER = /^\s*[\u2022\u25E6\u25AA\u00B7\u2013-]\s*$/;
+
+/**
+ * The words of a pane that is prose, not a table, a line to each block it draws
+ * and wrapped to the terminal's width (100 where it has none): the pane's own title,
+ * which the report's heading says already, is left off its top.
+ */
+function proseLines(render: PaneScreenshotResult["render"], title: string): string[] {
+  const lines = render.visibleLines?.length ? render.visibleLines : [render.visibleText];
+  const width = Math.min(cliTerminalWidth() ?? 100, 100);
+  const titled = lines[0]?.trim() === title ? lines.slice(1) : lines;
+  const body: string[] = [];
+  // A stack's detail opens under its Back button, a control and not part of the page.
+  for (const line of titled[0] === "Back" ? titled.slice(1) : titled) {
+    // A list marker is drawn as a block of its own, ahead of the item's words.
+    const marker = body.at(-1);
+    if (marker !== undefined && LIST_MARKER.test(marker)) body[body.length - 1] = `${marker.trim()} ${line}`;
+    else body.push(line);
+  }
+  return body.flatMap((line) => wrapText(line, width));
 }
 
 function rowsContainEllipsis(rows: DesktopPaneShotRenderedRow[]): boolean {
@@ -195,16 +226,22 @@ export function buildDomPaneReportFromRender(
   // A wall in place of the whole pane: nothing was read, so the report says
   // what is locked and how to reach it, and cites no source.
   const gate = !hasStructuredRows ? result.render.accessGate ?? null : null;
-  const lockNote = gate ? resolved.pane.reportLockNote?.({ gate, symbol: result.symbols[0] ?? null }) ?? null : null;
+  const lockNote = gate
+    ? resolved.pane.reportLockNote?.({
+      gate,
+      symbol: result.symbols[0] ?? null,
+      token: resolved.token,
+      ...gate === "sign-in" && asksToVerifyEmail(result.render.visibleText ?? "") ? { verifyEmail: true } : {},
+    }) ?? null
+    : null;
   const locked = gate === "sign-in" || lockNote ? gate : null;
-  // JSON and CSV say why the report is empty in the note's words, on one line.
-  const lockReason = lockNote?.replace(/\s*\n\s*/g, " ") ?? null;
+  const lockReason = lockNote ? lockNoteReason(lockNote) : null;
   if (hasStructuredRows) {
     textLines.push(...renderDomTables(rows));
   } else if (lockNote) {
-    textLines.push(...wrapText(lockNote, Math.min(cliTerminalWidth() ?? LOCK_NOTE_WIDTH, LOCK_NOTE_WIDTH)));
+    textLines.push(...lockNoteLines(lockNote));
   } else if (result.render.visibleText) {
-    textLines.push(gate === "sign-in" ? signInWallText(result.render.visibleText) : result.render.visibleText);
+    textLines.push(...(gate === "sign-in" ? [signInWallText(result.render.visibleText)] : proseLines(result.render, resolved.label)));
   } else {
     textLines.push(failureReason ?? "No rendered values were available.");
   }
@@ -220,6 +257,8 @@ export function buildDomPaneReportFromRender(
   const complete = failureReason === null && !truncated;
   // Each table published its rows and nothing else was cut: the report is the whole view.
   const everyRow = complete && result.render.reportRows !== undefined;
+  // A reader grown to fit its page (a docs page) and not cut once grown is read whole.
+  const wholePane = complete && !everyRow && resolved.pane.shotFitsReader === true;
   return {
     data: {
       kind: "rendered-view",
@@ -236,7 +275,8 @@ export function buildDomPaneReportFromRender(
       truncated,
       truncationReasons,
       ...(everyRow ? { everyRow } : {}),
-      limitation: everyRow ? DOM_EVERY_ROW : DOM_LIMITATION,
+      ...(wholePane ? { wholePane } : {}),
+      limitation: everyRow ? DOM_EVERY_ROW : wholePane ? DOM_WHOLE_PANE : DOM_LIMITATION,
       ...(lockReason ?? failureReason ? { reason: lockReason ?? failureReason } : {}),
       ...(notices.length > 0 ? { metadata: { ...rendered.facts, notices } } : {}),
       ...(locked ? { locked } : { freshness }),
@@ -267,12 +307,12 @@ export function appendDomReportFooter(
   ].join("\n");
 }
 
-/** How much of the pane a rendered-view report holds: none behind a wall, cut, every row its tables publish, or what the viewport shows. */
-export type DomReportView = "locked" | "clipped" | "every-row" | "visible";
+/** How much of the pane a rendered-view report holds: none behind a wall, cut, every row its tables publish, all of a pane grown to fit, or what the viewport shows. */
+export type DomReportView = "locked" | "clipped" | "every-row" | "whole" | "visible";
 
 export function domReportView(data: Readonly<Record<string, unknown>>): DomReportView {
   if (data.locked) return "locked";
-  return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : "visible";
+  return data.truncated === true ? "clipped" : data.everyRow === true ? "every-row" : data.wholePane === true ? "whole" : "visible";
 }
 
 /** What a rendered-view report says about where its values come from. */
@@ -281,6 +321,8 @@ export function domReportNote(elapsedMs: number, view: DomReportView): string {
     ? "Rendered view: the pane is locked, so no values were read."
     : view === "every-row"
     ? "Rendered view: every row of the pane's table, including rows scrolled out of view."
+    : view === "whole"
+    ? "Rendered view: the pane grown to fit the whole page."
     : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
   return `${source} Render time: ${elapsedMs} ms.`;
 }
@@ -321,13 +363,21 @@ function failedDomReport(
   };
 }
 
+/** A report the rendered pane says it cannot give; the command fails with the pane's words and advice line. */
+class RenderedReportFailure extends Error {
+  constructor(message: string, readonly details?: string) {
+    super(message);
+  }
+}
+
 export async function buildDomFunctionReport(
   resolved: ResolvedPaneFunction,
   context: MarketContext,
   rawArg: string,
 ): Promise<PaneFunctionReport> {
+  let result: PaneScreenshotResult;
   try {
-    const result = await renderDesktopShot({
+    result = await renderDesktopShot({
       resolved,
       context,
       rawArg,
@@ -337,9 +387,18 @@ export async function buildDomFunctionReport(
       theme: null,
       scale: 1,
       watermark: null,
+      fitReader: true,
+      maxHeightCells: DOM_REPORT_MAX_HEIGHT_CELLS,
       options: {},
       captureImage: false,
     });
+  } catch (error) {
+    return failedDomReport(resolved, rawArg, error);
+  }
+  // No header and no partial view: the error alone, and a failed exit, as the plain command gives.
+  const failure = renderedReportFailure(result.render.semanticUi ?? []);
+  if (failure) throw new RenderedReportFailure(failure.message, failure.details);
+  try {
     return buildDomPaneReportFromRender(resolved, result);
   } catch (error) {
     return failedDomReport(resolved, rawArg, error);

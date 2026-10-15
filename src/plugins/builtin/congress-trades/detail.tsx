@@ -1,8 +1,10 @@
 import { aggregateLoadedCongress } from "./aggregates";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, ScrollBox, Text, useRendererHost, type ScrollBoxRenderable } from "../../../ui";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { ClippedText } from "../../../components/ui/display";
 import {
   DataTableView,
+  DetailScrollBody,
   KeyValueRow,
   StatGrid,
   usePaneFooter,
@@ -46,19 +48,24 @@ const DETAIL_ROW = { labelWidth: 16, emphasis: false } as const;
 export function TradeDetail({
   trade,
   width,
+  scrollRef,
 }: {
   trade: CloudCongressTradePayload;
   width: number;
+  scrollRef?: RefObject<ScrollBoxRenderable | null>;
 }) {
   const lineWidth = Math.max(1, width - 2);
+  // The desktop's rows cut long values where they end, by CSS; the terminal at its columns.
+  const desktop = !!useUiCapabilities().nativePaneChrome;
+  const fit = (value: string) => desktop ? value : truncateWithEllipsis(value, Math.max(10, lineWidth - 16));
   return (
-    <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
+    <DetailScrollBody ref={scrollRef}>
       <Box flexDirection="column" width={lineWidth}>
         {/* The detail title already carries the member and ticker. */}
         <KeyValueRow {...DETAIL_ROW} label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
         <KeyValueRow {...DETAIL_ROW} label="party" value={trade.party ?? "--"} />
         <KeyValueRow {...DETAIL_ROW} label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
-        <KeyValueRow {...DETAIL_ROW} label="asset" value={truncateWithEllipsis(trade.assetName, Math.max(10, lineWidth - 16))} />
+        <KeyValueRow {...DETAIL_ROW} label="asset" value={fit(trade.assetName)} />
         <KeyValueRow {...DETAIL_ROW} label="amount" value={trade.amount} color={colors.textBright} />
         <KeyValueRow {...DETAIL_ROW} label="owner" value={trade.owner} />
         <KeyValueRow {...DETAIL_ROW} label="tx return" value={formatCongressReturn(trade.returnSinceTx)} />
@@ -69,16 +76,16 @@ export function TradeDetail({
         <KeyValueRow {...DETAIL_ROW} label="filed" value={trade.filingDate} />
         <KeyValueRow {...DETAIL_ROW} label="lag" value={`${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? " (past 45 days)" : ""}`} tone={(trade.lagDays ?? 0) > 45 ? "warning" : undefined} />
         {trade.filingStatus ? <KeyValueRow {...DETAIL_ROW} label="status" value={trade.filingStatus} /> : null}
-        {trade.subholdingOf ? <KeyValueRow {...DETAIL_ROW} label="subholding" value={truncateWithEllipsis(trade.subholdingOf, Math.max(10, lineWidth - 16))} /> : null}
+        {trade.subholdingOf ? <KeyValueRow {...DETAIL_ROW} label="subholding" value={fit(trade.subholdingOf)} /> : null}
         {trade.description ? (
           <>
             <Text>{" "}</Text>
             <Text fg={colors.textDim}>description</Text>
-            <Text fg={colors.text}>{truncateWithEllipsis(trade.description, lineWidth)}</Text>
+            <ClippedText fg={colors.text} text={trade.description} width={lineWidth} cut={truncateWithEllipsis} wrap />
           </>
         ) : null}
       </Box>
-    </ScrollBox>
+    </DetailScrollBody>
   );
 }
 

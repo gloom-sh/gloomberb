@@ -61,7 +61,7 @@ import {
   useShellVisibleLayout,
 } from "./layout-state";
 import { restoreShellHiddenPanes } from "./visible-layout";
-import { AuthDialogHost } from "../../../plugins/builtin/cloud/auth-dialog";
+import { AuthDialogHost } from "../../../account/auth-dialog";
 import { DeviceSignInDialogHost } from "../../../account/device-signin-dialog";
 import { McpConnectDialogHost } from "../../../plugins/builtin/cloud/mcp-connect/dialog";
 import { BrokerSignInDialogHost } from "../../../brokers/signed-in/sign-in-dialog";

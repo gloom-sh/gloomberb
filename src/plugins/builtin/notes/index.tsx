@@ -1,6 +1,6 @@
 import { apiClient } from "../../../api-client";
 import type { GloomPlugin } from "../../../types/plugin";
-import { teamStore } from "../cloud/team/store";
+import { teamStore } from "../../../team/store";
 import { notesCliCommand } from "./cli";
 import { exportNotesToDirectory, exportSourceLabel } from "./export";
 import { NotesFiles } from "./files";

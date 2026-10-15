@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { HeadlessPaneDefinition, HeadlessPaneResult } from "../../types/plugin";
-import { cloudNewsFreshness } from "../../plugins/builtin/shared/report-freshness";
+import { cloudNewsFreshness, quoteObservation } from "../../plugins/builtin/shared/report-freshness";
+import { createTestQuote } from "../../test-support/data-provider";
 import { formatUtcTime, setDisplayTimeZone } from "../../utils/utc-time";
 import { captureStatusLine, delayLength, deriveHeadlessFreshness, formatFreshnessLine, formatStatusLine, paneStatusLine, periodicityOf, statusLineVariants } from "./freshness";
 
@@ -58,6 +59,21 @@ describe("report freshness", () => {
     ]);
   });
 
+  test("a publication schedule reads right after the date it belongs to, and a narrow line gives it up last", () => {
+    const schedule = "published Fri 9 Oct, next settlement Thu 15 Oct, published Mon 26 Oct";
+    const settlement = rows({
+      source: "FINRA", status: "not-a-feed", basis: "twice-monthly settlement", observedKey: "settlementDate", oldest: null, schedule, publishedAt: "2026-10-09",
+    });
+    const result = { rows: [{ settlementDate: "2026-09-30" }, { settlementDate: "2026-09-15" }] };
+    expect(line(settlement, result))
+      .toBe(`Source: FINRA · Wed 30 Sep 2026 · ${schedule} · not a live feed (twice-monthly settlement)`);
+    const freshness = deriveHeadlessFreshness(settlement, result, NOW);
+    expect(freshness).toMatchObject({ asOf: "2026-09-30", schedule, publishedAt: "2026-10-09" });
+    const variants = statusLineVariants(freshness, { source: true });
+    expect(variants[0]).toContain(schedule);
+    expect(variants.at(-1)).toBe("Wed 30 Sep 2026 · not a live feed (twice-monthly settlement)");
+  });
+
   test("venues polled apart are each dated by their own observation, and the oldest says how far behind the view is", () => {
     const now = Date.parse("2026-10-11T02:24:40Z");
     const venues = rows({ source: "Binance, Bybit", status: "delayed", maxAgeMinutes: 60, note: "funding = current estimate, pays 08:00 UTC",
@@ -108,6 +124,52 @@ describe("report freshness", () => {
     expect(formatStatusLine(quoted)).toBe("US trading day Fri 9 Oct 2026 close · 15 min delayed · markets closed until Mon");
     // Undeclared, dated data is not a dataset.
     expect(deriveHeadlessFreshness(rows({ status: "not-a-feed" }), { rows: [{ asOf: "2026-10-04" }] }, SAT).lagDays).toBeUndefined();
+  });
+
+  test("a table across markets that asks for it dates each market's session, not only the newest row's", () => {
+    const WED = Date.parse("2026-10-14T03:00:00Z"); // every venue closed
+    const quote = (sessionExchange: string, lastUpdated: string) => ({
+      dataSource: "delayed", delayMinutes: 15, sessionExchange, marketState: "CLOSED", lastUpdated: Date.parse(lastUpdated),
+    });
+    const airlines = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-13T15:35:00Z"), quote("EPA", "2026-10-13T15:35:00Z")] };
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), airlines, WED)))
+      .toBe("Source: Gloom Cloud · US, XETRA and EPA Tue 13 Oct 2026 close · 15 min delayed · markets closed until 06:00 UTC");
+    // A venue whose newest row is a day older says so beside the others.
+    const stale = { rows: [quote("NYSE", "2026-10-13T23:45:00Z"), quote("XETRA", "2026-10-12T15:35:00Z")] };
+    expect(formatStatusLine(deriveHeadlessFreshness(rows({ datesEachVenue: true }), stale, WED)))
+      .toMatch(/^US Tue 13 Oct 2026 close, XETRA Mon 12 Oct 2026 session · /);
+    // Undeclared, or one market only, keeps the newest row's line.
+    expect(formatFreshnessLine(deriveHeadlessFreshness(rows(), airlines, WED))).toContain("· US trading day Tue 13 Oct 2026 close ·");
+    expect(deriveHeadlessFreshness(rows({ datesEachVenue: true }), { rows: [quote("NYSE", "2026-10-13T23:45:00Z")] }, WED).venueSessions)
+      .toBeUndefined();
+  });
+
+  test("an index quote's own sessions date its last close and name the open its pre-market waits for", () => {
+    const WED = Date.parse("2026-10-14T11:08:00Z"); // 07:08 in New York, before the 13:30 UTC open
+    const window = (day: string, from: string, to: string) => ({ start: Date.parse(`${day}T${from}:00Z`), end: Date.parse(`${day}T${to}:00Z`) });
+    const index = (symbol: string, listingExchangeName: string, marketState: "PRE" | "CLOSED", lastUpdated: string, timeZone: string, current: ReturnType<typeof window>, last: ReturnType<typeof window>) => (
+      createTestQuote({
+        symbol, instrumentType: "INDEX", listingExchangeName, marketState, lastUpdated: Date.parse(lastUpdated), dataSource: "delayed", providerId: "gloomberb-cloud",
+        // As the service sends it, with fields the app does not read.
+        indexSession: { source: "gloom", symbol, exchange: listingExchangeName, timeZone, fetchedAt: WED, current, regular: [last] } as never,
+      })
+    );
+    const status = (quote: ReturnType<typeof index>) => formatStatusLine(deriveHeadlessFreshness(rows(), { rows: [quoteObservation(quote, WED)] }, WED));
+    const gspc = index("^GSPC", "SNP", "PRE", "2026-10-13T20:33:00Z", "America/New_York", window("2026-10-14", "13:30", "20:00"), window("2026-10-13", "13:30", "20:00"));
+    // A prior close under a pre-market chip says whose close it is and when the market opens, as the equity lines do.
+    expect(status(gspc)).toBe("US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC");
+    // Without the sessions the line is the bare print, as before.
+    expect(status({ ...gspc, indexSession: undefined })).toBe("Tue 13 Oct 2026 20:33 UTC \u00b7 15 min delayed \u00b7 pre-market");
+    // A print from before the last session opened is no close of it.
+    expect(status({ ...gspc, lastUpdated: Date.parse("2026-10-13T12:00:00Z") })).not.toContain("close");
+    // Another market's index keeps its bare date: its publisher's name (OSAKA) is no market, and a closed session has no open to wait for.
+    const n225 = index("^N225", "OSAKA", "CLOSED", "2026-10-14T06:45:00Z", "Asia/Tokyo", window("2026-10-14", "00:00", "06:30"), window("2026-10-14", "00:00", "06:30"));
+    expect(status(n225)).toBe("Wed 14 Oct 2026 close \u00b7 15 min delayed \u00b7 markets closed");
+    // Once the session is open the market says so and the open is behind it.
+    const open = Date.parse("2026-10-14T14:05:00Z");
+    const trading = { ...gspc, marketState: "REGULAR" as const, lastUpdated: Date.parse("2026-10-14T13:50:00Z") };
+    expect(formatStatusLine(deriveHeadlessFreshness(rows(), { rows: [quoteObservation(trading, open)] }, open)))
+      .toBe("Wed 14 Oct 2026 13:50 UTC \u00b7 15 min delayed \u00b7 markets open");
   });
 
   test("a dataset that names its observation ends fn, the pane footer and a capture with one line", () => {

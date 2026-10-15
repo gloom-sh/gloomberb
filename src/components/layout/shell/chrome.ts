@@ -73,6 +73,12 @@ export interface HeaderPromptGeometry {
   width: number;
   /** Columns held at the header's right edge for the market cluster. */
   marketColumns: number;
+  /**
+   * Columns between the prompt and the market cluster: the update status, its
+   * padding and the Help pill share them. Never negative, so a window too narrow
+   * for the header reads as no room rather than a negative width.
+   */
+  updateColumns: number;
 }
 
 /**
@@ -95,14 +101,14 @@ export function resolveHeaderPromptGeometry(options: {
     ? getTitlebarLeadingInset({ platform, windowFullscreen })
     : 0;
   const left = leadingInset + 1;
-  const updateColumns = headerPromptUpdateColumns(termWidth);
-  const marketColumns = headerMarketColumns(termWidth, left, updateColumns);
+  const updateReserve = headerPromptUpdateColumns(termWidth);
+  const marketColumns = headerMarketColumns(termWidth, left, updateReserve);
   const width = Math.max(
     HEADER_PROMPT_MIN_WIDTH,
     Math.min(
       resolveCommandSurfaceWidth({ nativePaneChrome, termWidth }),
-      termWidth - left - updateColumns - marketColumns,
+      termWidth - left - updateReserve - marketColumns,
     ),
   );
-  return { left, width, marketColumns };
+  return { left, width, marketColumns, updateColumns: Math.max(0, termWidth - left - width - marketColumns) };
 }

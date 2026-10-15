@@ -4,6 +4,7 @@ import { DEFAULT_FLOW_FILTERS, FLOW_FILTER_OPTIONS } from "./flow-model";
 import FlowPane from "./flow-pane";
 import HiloPane from "./hilo-pane";
 import { flowHeadless, hiloHeadless } from "./headless";
+import { flowLockNote } from "./lock-note";
 
 
 const HILO_PANE_ID = "scanner-hilo";
@@ -80,6 +81,8 @@ export const scannerModule: PluginModule = {
     },
     {
       id: FLOW_PANE_ID,
+      reportLockNote: flowLockNote,
+      reportRequirements: ["Gloom Cloud Pro"],
       name: "Options Flow",
       icon: "F",
       component: FlowPane,

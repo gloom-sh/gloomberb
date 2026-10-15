@@ -249,6 +249,28 @@ describe("CompositeChart", () => {
     expect(Array.from(bitmap.pixels.slice(0, 3))).toEqual(expectedRgb);
   });
 
+  // A live tick edits the last bar of the series in place, so the scene is
+  // rebuilt from the bar's own values, not from the series object's identity.
+  test("a live tick that moves the last close redraws the legend and the plot", async () => {
+    let setLast: ((value: number) => void) | null = null;
+    const panels = [{ id: "main" }];
+    function LiveChart() {
+      const [last, set] = useState(102);
+      setLast = set;
+      return <CompositeChart width={60} height={12} series={[series("price", "main", "left", "USD", [100, 101, last])]} panels={panels} />;
+    }
+
+    await tui.render(<LiveChart />, { width: 62, height: 14 });
+    await act(async () => {
+      await tui.setup().renderOnce();
+      await tui.setup().renderOnce();
+    });
+    expect(tui.frame()).toContain("$102");
+
+    await act(async () => { setLast?.(150); });
+    await tui.waitForFrameToContain("$150");
+  });
+
   test("does not allocate a native raster when braille rendering is forced", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-composite-braille");
     config.chartPreferences.renderer = "braille";

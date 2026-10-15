@@ -1,13 +1,14 @@
 import { useCallback, useState } from "react";
 import { Button, TextField } from "../../../components";
 import { DialogFrame } from "../../../components/ui/frame";
-import { Box, Text } from "../../../ui";
+import { Box } from "../../../ui";
 import { useDialogKeyboard, type AlertContext } from "../../../ui/dialog";
 import { colors } from "../../../theme/colors";
 import { isPlainKey } from "../../../utils/keyboard";
 import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import { t } from "../../../i18n";
 import { MIN_ACCOUNT_PASSWORD_LENGTH } from "../../../account/auth-model";
+import { ClippedText } from "../../../components/ui/display";
 
 type PasswordDialogField = "current" | "new" | "confirm";
 
@@ -111,7 +112,7 @@ export function PasswordChangeDialog({
           onChange={setConfirmPassword}
           onSubmit={() => { void submit(); }}
         />
-        {error ? <Text fg={colors.negative}>{truncateWithEllipsis(error, fieldWidth)}</Text> : null}
+        {error ? <ClippedText fg={colors.negative} text={error} width={fieldWidth} cut={truncateWithEllipsis} wrap /> : null}
         <Box flexDirection="row" justifyContent="flex-end">
           <Button
             label={submitting ? t("Changing...") : t("Update Password")}

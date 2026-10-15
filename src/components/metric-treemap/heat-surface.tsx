@@ -1,6 +1,7 @@
 import { memo, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities, type BoxRenderable } from "../../ui";
 import { useLiveStretch } from "../../ui/live-stretch";
+import { useSettledLayoutSize } from "../../ui/resize-settle";
 import { blendHex } from "../../theme/colors";
 import {
   heatmapColorDistance,
@@ -91,9 +92,57 @@ export function buildHeatTreemapScene<T>(
   return buildMetricTreemapScene(items, canvas.width, canvas.height, canvas.options, previous);
 }
 
-export interface HeatTreemapSurfaceProps<T> {
-  /** Geometry, from `buildHeatTreemapScene`; rebuilt only when sizes change. */
+export interface HeatTreemapLayout<T> {
   scene: MetricTreemapScene<T>;
+  /** The box is being resized (`useSettledLayoutSize`): hand it to the surface, which then holds still. */
+  resizing: boolean;
+}
+
+interface ShownScene<T> {
+  key: string;
+  canvas: HeatTreemapCanvas;
+  items: readonly MetricTreemapItem<T>[];
+  scene: MetricTreemapScene<T>;
+}
+
+/**
+ * The scene a heat map shows in a `width` by `height` box (cells). Each
+ * layout is seeded with the scene on screen under the same `key` (a tab), so
+ * a refresh nudges tiles instead of reshuffling the board. On the desktop,
+ * while the box is being resized the scene on screen stretches with it and a
+ * refresh's new sizes wait: the board is laid out once, at the size the box
+ * settles on.
+ */
+export function useHeatTreemapScene<T>(
+  items: readonly MetricTreemapItem<T>[],
+  width: number,
+  height: number,
+  key = "",
+): HeatTreemapLayout<T> {
+  const { nativePaneChrome, cellWidthPx, cellHeightPx } = useUiCapabilities();
+  const layout = useSettledLayoutSize(width, height, { enabled: nativePaneChrome === true });
+  const canvas = useMemo(
+    () => heatTreemapCanvas(layout.width, layout.height, { nativePaneChrome, cellWidthPx, cellHeightPx }),
+    [cellHeightPx, cellWidthPx, layout.height, layout.width, nativePaneChrome],
+  );
+  const shownRef = useRef<ShownScene<T> | null>(null);
+  const scene = useMemo(() => {
+    const shown = shownRef.current?.key === key ? shownRef.current : null;
+    // While the box resizes, the scene on screen holds until it is laid out
+    // again, a refresh's new sizes with it: the board relays out once.
+    if (shown && shown.canvas === canvas && (layout.resizing || shown.items === items)) return shown.scene;
+    const next = buildHeatTreemapScene(items, canvas, shown?.scene);
+    shownRef.current = { key, canvas, items, scene: next };
+    return next;
+  }, [canvas, items, key, layout.resizing]);
+  return { scene, resizing: layout.resizing };
+}
+
+export interface HeatTreemapSurfaceProps<T> {
+  /** Geometry, from `useHeatTreemapScene`; rebuilt only when sizes change. */
+  scene: MetricTreemapScene<T>;
+  /** From `useHeatTreemapScene`: while the box resizes, no tile glides, fades or pulses. */
+  resizing: boolean;
   /** Current colours and text, by id; they change with every tick. */
   items: readonly MetricTreemapItem<T>[];
   width: number;
@@ -223,7 +272,7 @@ const VERTICAL_LABEL_STYLE: CSSProperties = {
 
 const DomHeatTile = memo(function DomHeatTile({
   id, rect, canvasWidth, canvasHeight, gap, label, value, valueSuffix, background, foreground,
-  selected, reducedMotion, glide, pulseCount, events,
+  selected, reducedMotion, resizing, glide, pulseCount, events,
 }: {
   id: string;
   rect: TreemapRect;
@@ -237,6 +286,8 @@ const DomHeatTile = memo(function DomHeatTile({
   foreground: string;
   selected: boolean;
   reducedMotion: boolean;
+  resizing: boolean;
+  /** A relayout this render may slide the tile: false for one that came with a new size. */
   glide: boolean;
   pulseCount: number;
   events: SurfaceEvents;
@@ -248,16 +299,22 @@ const DomHeatTile = memo(function DomHeatTile({
   });
   // Where this tile sat before the last relayout, kept to slide it from there.
   const placedRef = useRef(rect);
-  const glideRef = useRef<{ dx: number; dy: number; count: number }>({ dx: 0, dy: 0, count: 0 });
+  const glideRef = useRef<{ dx: number; dy: number; count: number; playing: boolean }>({ dx: 0, dy: 0, count: 0, playing: false });
+  const allowGlide = glide && !resizing;
   if (placedRef.current !== rect) {
     const dx = placedRef.current.x - rect.x;
     const dy = placedRef.current.y - rect.y;
-    if (glide && (Math.abs(dx) >= 0.5 || Math.abs(dy) >= 0.5)) {
-      glideRef.current = { dx, dy, count: glideRef.current.count + 1 };
-    }
+    // A slide belongs to the relayout that moved the tile: a later render
+    // (a tick, a hover, the end of a resize) never plays it again.
+    glideRef.current = allowGlide && (Math.abs(dx) >= 0.5 || Math.abs(dy) >= 0.5)
+      ? { dx, dy, count: glideRef.current.count + 1, playing: true }
+      : { ...glideRef.current, playing: false };
     placedRef.current = rect;
+  } else if (resizing && glideRef.current.playing) {
+    // A resize stops a slide under way: the tile sits where its layout has it.
+    glideRef.current = { ...glideRef.current, playing: false };
   }
-  const motion = heatTileMotion({ reducedMotion, glide, glideCount: glideRef.current.count, pulseCount });
+  const motion = heatTileMotion({ reducedMotion, resizing, glide: glideRef.current.playing, glideCount: glideRef.current.count, pulseCount });
   const colors = useThemeColors();
   const ring = resolveHeatmapSelectionRing(colors);
   // The colour this tile showed before, kept to fade out over the new one.
@@ -274,10 +331,13 @@ const DomHeatTile = memo(function DomHeatTile({
     else if (visible) fadeRef.current = { from: shownRef.current, key: (fadeRef.current?.key ?? 0) + 1 };
     shownRef.current = background;
   }
+  // A resize ends a fade under way, and the pulses due meanwhile are dropped, not saved for later.
+  if (resizing) fadeRef.current = null;
   const fade = fadeRef.current;
   // A finished overlay leaves the DOM, so idle tiles carry no extra nodes.
   const [, setOverlayVersion] = useState(0);
   const pulseDoneRef = useRef(0);
+  if (resizing) pulseDoneRef.current = Math.max(pulseDoneRef.current, pulseCount);
   const pulsing = motion.pulseAnimation != null && pulseCount > pulseDoneRef.current;
   const style: CSSProperties = {
     position: "absolute",
@@ -491,7 +551,7 @@ function DomTooltip<T>({ state, itemsById, otherLines }: {
 const EMPTY_PULSES: ReadonlyMap<string, number> = new Map();
 
 function DomHeatTreemap<T>({
-  scene, items, width, height, selectedId, onSelect, onActivate, otherTooltip, otherSummary: summarizeOther,
+  scene, resizing, items, width, height, selectedId, onSelect, onActivate, otherTooltip, otherSummary: summarizeOther,
 }: HeatTreemapSurfaceProps<T>) {
   const reducedMotion = usePrefersReducedMotion();
   const colors = useThemeColors();
@@ -519,13 +579,14 @@ function DomHeatTreemap<T>({
     );
   }, [itemsById, reducedMotion, scene]);
 
-  // A resize relays out every tile; following the window with a glide would lag it.
+  // The layout a resize settles on comes in at once, as a chart or a table
+  // redraws at its new size: tiles slide only when sizes move at rest.
   const sizeKey = `${scene.width}x${scene.height}`;
-  const lastSizeRef = useRef(sizeKey);
-  const glide = lastSizeRef.current === sizeKey;
+  const restedRef = useRef({ sizeKey, resizing });
+  const glide = !resizing && !restedRef.current.resizing && restedRef.current.sizeKey === sizeKey;
   useEffect(() => {
-    lastSizeRef.current = sizeKey;
-  }, [sizeKey]);
+    restedRef.current = { sizeKey, resizing };
+  }, [resizing, sizeKey]);
 
   const gap = scene.width < NARROW_CANVAS_PX ? 0.5 : 1;
   const otherLines = useMemo(
@@ -603,6 +664,7 @@ function DomHeatTreemap<T>({
               foreground={tileColors.foreground}
               selected={tile.item.id === selectedId}
               reducedMotion={reducedMotion}
+              resizing={resizing}
               glide={glide}
               pulseCount={pulses.get(tile.item.id) ?? 0}
               events={events}
@@ -755,7 +817,7 @@ function TerminalHeatTreemap<T>({
  * calm tiles (ticker, then the move, as space allows), a continuous scale
  * from the theme's down colour to its up colour, and on the desktop a hover
  * tooltip, colour fades, a short pulse on a tile whose move jumps and a glide
- * when sizes change.
+ * when sizes change, none of them while the box is being resized.
  */
 export function HeatTreemapSurface<T>(props: HeatTreemapSurfaceProps<T>) {
   const { nativePaneChrome } = useUiCapabilities();

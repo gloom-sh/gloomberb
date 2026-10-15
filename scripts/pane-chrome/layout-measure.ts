@@ -49,7 +49,10 @@ export interface LayoutMeasure {
   snapped: Array<{ axis: "x" | "y"; px: number; body: number; short: number; path: string }>;
   clipped: Array<{ px: number; path: string }>;
   overrun: Array<{ px: number; path: string }>;
-  cut: Array<{ room: number; text: string; path: string }>;
+  /** `whole` is the element's full text, for telling a cut the page made from one that arrived in the data. */
+  cut: Array<{ room: number; text: string; whole: string; path: string }>;
+  /** Cut text that came that way from the source (a feed's own truncated headline): reported, not a failure. */
+  arrivedCut?: Array<{ room: number; text: string; whole: string; path: string }>;
   detailOpen: boolean;
   text: string;
 }
@@ -203,7 +206,7 @@ export const LAYOUT_MEASURE = (paneId: string) => `(() => {
     const after = lines.filter((m) => m !== l && Math.abs(m.top - l.top) < 2 && m.left >= l.right - 1 && row.contains(m.el));
     const edge = after.length ? Math.min(...after.map((m) => m.left)) : Math.min(row.getBoundingClientRect().right, l.clip.right);
     const room = edge - l.right;
-    if (room >= widthOf("000", l.el)) cut.push({ room: round(room), text: l.text.trimEnd().slice(-30), path: path(l.el) });
+    if (room >= widthOf("000", l.el)) cut.push({ room: round(room), text: l.text.trimEnd().slice(-30), whole: (l.el.textContent ?? "").trim().slice(0, 400), path: path(l.el) });
   }
   const scrollerOf = (el) => { for (let e = el; e && e !== body; e = e.parentElement) { if (/(auto|scroll)/.test(getComputedStyle(e).overflowY)) return e; } return body; };
   const innerRightOf = (el) => {

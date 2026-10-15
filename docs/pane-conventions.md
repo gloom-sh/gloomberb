@@ -7,6 +7,43 @@ at page one, a warning paragraph above a chart, a title repeated in the body.
 This file says what the app does instead. [PLUGINS.md](../PLUGINS.md) has
 the APIs.
 
+## Principles
+
+These come first. Each is one rule, and a change that breaks one is wrong,
+not the rule. Details follow below.
+
+1. **One element, one look.** Every kind of element (button, tab, chip,
+   input, table, heading, empty or locked state, notice) has exactly one
+   convention, defined once in the shared kit. A pane never has its own.
+2. **Same role, same size.** Type size, weight, colour, spacing, radius and
+   borders come from tokens by role (body, heading, metadata, label,
+   positive, negative). No raw px, hex or font-size in pane or plugin code.
+3. **Levels differ on purpose.** Neighbouring levels differ by at least about
+   15% in size, or by weight, colour and space. A step of 1 or 2 px reads as
+   a mistake.
+4. **Extend the kit, never fork it.** If the kit lacks what a pane needs, add
+   it to the kit for every pane and migrate the callers. Never a pane-local
+   variant.
+5. **Plugins are panes.** Built-in and external plugins follow every rule
+   here and use the same components. No plugin ships its own look.
+6. **Change the class, test the whole app.** A UI change is made in the
+   shared component and checked against all panes and plugins before it
+   merges: before and after sheets of every view, not only the pane that
+   prompted it. A change that moves views it should not touch is wrong.
+7. **Look next to the neighbours.** A pane must look like it belongs beside
+   the news reader, a table pane and a form pane at the same width. If you
+   can tell it apart by its style rather than its content, fix it.
+8. **Exceptions are written down.** A real deviation (a dense table, a chart
+   axis) goes in the allowlist with a reason a reviewer accepted. No reason,
+   no exception.
+9. **The browser lays out the desktop and web.** Flex, wrapping and ellipsis,
+   not cell counts. The terminal keeps its own cell layout, byte for byte.
+
+A UI change says in its description what it was checked against: all views,
+both themes, a narrow and a wide pane. Rules 2, 6 and 8 are enforced by CI as
+the checks land (Linear GLO-768); until a check exists, the reviewer enforces
+them.
+
 ## 1. Anatomy
 
 **App chrome** (the shell's, never a pane's): the header holds the command
@@ -47,7 +84,8 @@ never goes there.
 | Limitation on content still worth reading | Inline beside that content | `Notice` |
 | Account state blocks the pane (signed out, unverified, plan) | Body | `SignInWall` (`cloud/auth-actions.tsx`) |
 | Plan gating that only degrades the pane (delayed data, upgrade hint) | Footer, shared wording | `useCloudAccessFooter` (`shared/cloud-upgrade.ts`) |
-| Retry, upgrade, or start button on an empty or failed state | Inside that state | `PaneStatusBody`/`EmptyState` `actions` |
+| Retry (or look again) from an empty or failed state | Inside that state, first, so it answers Enter | `PaneStatusBody`/`EmptyState` `retry` |
+| Upgrade or start button on an empty or failed state | Inside that state | `PaneStatusBody`/`EmptyState` `actions` |
 | An operation finished (saved, exported, failed) | Toast | `notify` |
 | Destructive or irreversible decision | Dialog | `ConfirmDialog`, `tone: "danger"` |
 | Per-instance configuration | Pane settings via the `...` menu | `settings` on the pane def, `usePaneSettingValue` |
@@ -129,7 +167,13 @@ A section header can carry one quiet `action` at its right end for the whole
 group, such as the preset its rows are set to (the Plugins pane's starter
 pack); it is a setting you apply, not a filter, and it also gets a footer key.
 Never build a table from padded `Text` rows: the kit gives the header band,
-gutters and fill to the footer.
+gutters and fill to the footer. A few rows of figures inside a section (an
+overview's positions, a quote book, label and value pairs in columns) are a
+`ColumnGrid`: the terminal sets the columns at the cells you give them, and
+the desktop lays them out as one CSS grid counted in characters, so they
+follow a resize to the pixel and line up with their header. Text that can be
+wider than its track (a column that shrinks to `growFrom`) is clipped at the
+track at every frame of a resize, ending in an ellipsis.
 
 Pick by interaction: `DataTableView` (sortable columns, cursor, Enter opens),
 `DataTableStackView` (same, detail in the pane), `FeedDataTableStackView`
@@ -147,6 +191,10 @@ goes in a cell's `leading` or a column's `headerLeading`: the terminal skips
 it, the text keeps its own selection color, and exports read only the text.
 
 **A table set inline.** A short table that sits in a page between prose (keys in Help, a plan comparison) takes `fitRows` with `virtualize={false}`: the terminal gives it its rows, the desktop and the web make it exactly as tall as its header and rows, where a count of rows is short by the taller header bar. Its box takes no height there either.
+
+**The body under a bar.** What sits under a pane's tabs, query bar and figures takes the rest of the pane by flex on the desktop and the web: spread `FILL_REST` (`components/ui/fill.ts`) on its box, and on the pane's own root box, instead of the rows the terminal counts. A chrome bar is taller than a row there, so a body given `height - 1` rows runs past the footer by the difference. Tables, charts and the 3D surface in that box fill it to the footer. `SeriesListDetail` does this for a series list beside its detail. A pane that shows other panes as views under its own bars (Fixed Income) puts each in a box with `data-gloom-role="nested-pane-content"`, and the view's root takes that box the way a pane's root takes the pane.
+
+**Text that may not fit.** One line that can run past its room (a name in a table cell, a heading, a read under a chart) is `ClippedText`, or `SectionHeading` with a `width`: the terminal cuts it at a count of cells, the desktop and the web at the box's edge in CSS with an ellipsis. Siblings that must stay whole (a ticker, a kind badge) keep their room and the text gives way. Never pass a string already cut with `truncateToDisplayWidth` to a DOM render. `ClippedText` takes the caller's own terminal cut (`cut={truncateWithEllipsis}`) so the terminal frame stays as it was, a `lead` kept whole before the text, and `wrap` for a message or description the desktop should wrap rather than cut. An optional item that shows only when it fits beside the rest (a ticker after a name) goes in a row with `flexWrap: "wrap"`, one line tall and clipped: the browser moves what does not fit to the hidden line, as the terminal's count of columns dropped it.
 
 **Table + detail.** `DataTableStackView` is the "list, then open one" shape:
 Enter or click calls `onActivate`, the pane sets the open item, the stack
@@ -166,6 +214,14 @@ back button or clicking Back pops it. Rules:
   pairs, then the text in short paragraphs in the reader's type, across the
   pane's width on the desktop and the web. `FeedDataTableStackView` takes the
   facts as `detailFacts`; the Changelog and Trials details are the reference.
+- Reading text on the desktop and the web (the article reader, `DetailReader`,
+  Docs) takes one type scale, from `src/components/reader/reader-text.tsx`:
+  metadata, facts, tables and coverage at the app's own size (12px) and
+  dimmer; body 14px at line height 1.6; a lead 15px; section headings 16px
+  bold with space above them; a title 20px bold. In a column under 480px the
+  body is 13.2px and the levels above it follow. Levels differ by weight and
+  space as much as by size, so a reader sits beside the app's tables without
+  shouting. A pane does not set its own reading size.
 - Any other scrolling body is a `ScrollBox`. Leaving `scrollY` out means it
   scrolls vertically, with the wheel and, while the pane is focused, with the
   arrows, j/k, PageUp, PageDown, Home and End; `scrollY={false}` turns that off.
@@ -508,9 +564,10 @@ template, or add it with its reason.
 11. Data panes have a `headless` definition; fetching is in `client.ts`. It declares `freshness` (source, status, schedule) wherever "Gloom Cloud" and the status read from the rows would be wrong, so the report's source, as-of and status line is true.
 12. No `@opentui`, Electrobun or DOM imports; no cell-drawn chrome on the desktop.
 13. A missing repeated pattern went into the kit with its callers migrated, not into the pane.
-14. On the desktop and the web nothing is sized in cells: boxes fill with flex, percentages or CSS units, text wraps in CSS at the width it sits in (a reading measure is a CSS `max-width` in `ch`), and sizes are read from the laid-out page. Nothing ends in a dead band above the footer or a gap at the right edge. `bun run check:pane-layout` measures every function; `src/architecture/dom-cell-metrics.test.ts` keeps cell metrics out of DOM-only code.
+14. On the desktop and the web nothing is sized in cells: boxes fill with flex, percentages or CSS units, text wraps in CSS at the width it sits in (a reading measure is a CSS `max-width` in `ch`), and sizes are read from the laid-out page. Nothing ends in a dead band above the footer or a gap at the right edge. `bun run check:pane-layout` measures every function; `src/architecture/dom-cell-metrics.test.ts` keeps cell metrics out of DOM-only code, and its allowlist says for every file why the uses left stay (a shared API that speaks cells to every renderer, or a size the terminal shares by design).
 15. A chart with a table uses `ChartTableHeader`: named series, one shared selection, `chartTableLayout` at every size, no repeated numbers.
 16. Opening the function again focuses its window (8b): identity in the spec, preferences out of it, a stable `instanceId` for a one-window function.
+17. Nothing animates while its box is being resized. Motion tied to the layout (a glide, a fade, a pulse) reads `resizing` from `useSettledLayoutSize` (`src/ui/resize-settle.ts`), the one signal for a pane resize, a divider, a maximise or restore and a window resize; content placed in percentages of its box holds its layout while the size changes and is laid out once the size settles, as the heat map's tiles are (`useHeatTreemapScene`). `bun run check:pane-chrome --only "market heat map"` drags, resizes the window and maximises with real input and fails on a relayout per move or a tile animating.
 
 ## Reference implementations
 

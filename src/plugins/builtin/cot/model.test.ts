@@ -70,13 +70,18 @@ test("price-source failure leaves report history readable and never substitutes 
 test("every FUT board root the CFTC reports opens by root as an argument; under the cursor a code a security keeps stays the security's", async () => {
   for (const row of FUTURES_CONTRACTS) {
     const code = cotContractCode(row.code);
-    // Each root opens its market, whose front price is that root's own future.
-    if (code) expect(cotPriceMapping(code)?.priceSymbol).toBe(row.symbol);
+    // Each root opens its market, whose front price is that root's own future or, without five years of it, none.
+    if (code) expect([row.symbol, null]).toContain(cotPriceMapping(code)?.priceSymbol ?? null);
     else expect(cotUnknownMarketMessage(row.code)).toBe(`${row.code} (${row.name}) is not reported in the CFTC COT.`);
   }
   expect(["NG", "ho", "RB", "BZ", "HG", "PL", "PA", "ZC", "ZM", "6E", "OJ", "NG=F"].map(cotContractCode))
     .toEqual(["023651", "022651", "111659", "06765T", "085692", "076651", "075651", "002602", "026603", "099741", "040701", "023651"]);
   expect(["TTF", "ALI"].map(cotContractCode)).toEqual([null, null]);
+  // Sector, index and energy roots: priced where the alias has the history, positioning alone where it does not.
+  expect(["XAE", "XAF", "MES", "NIY", "EMD", "RX", "HH"].map(cotContractCode))
+    .toEqual(["138749", "13874C", "13874U", "240743", "33874A", "124606", "023A55"]);
+  expect(["138749", "33874A", "023A55"].map((code) => cotPriceMapping(code)?.priceSymbol ?? null)).toEqual(["XAE=F", null, null]);
+  expect(["SXO", "QM", "MCL"].map(cotContractCode)).toEqual([null, null, null]);
   // Under the cursor, Zoom stays Zoom and NovaGold NovaGold; their futures symbols and a code no security uses claim the market.
   expect(["ZM", "NG", "PL", "ZM=F", "NG=F", "ZW", "6E"].map(cotContractCodeForTicker))
     .toEqual([null, null, null, "026603", "023651", "001602", "099741"]);

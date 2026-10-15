@@ -9,7 +9,8 @@ import type {
 } from "../../../core/connection-health";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox, Text } from "../../../ui";
+import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
+import { ClippedText } from "../../../components/ui/display";
 import { truncateToDisplayWidth } from "../../../utils/format";
 import { formatRelativeAge } from "../../../utils/datetime-format";
 import { nextHeaderSort } from "../../../utils/sort-values";
@@ -28,6 +29,15 @@ const STATUS_ORDER: Record<ConnectionHealthStatus, number> = {
   connected: 3,
   idle: 4,
 };
+
+function connectionKindLabel(kind: string): string {
+  if (kind === "asset-data") return "Market data";
+  if (kind === "news") return "News";
+  if (kind === "api") return "Request";
+  if (kind === "websocket") return "Live feed";
+  if (kind === "capability") return "Plugin";
+  return "Connection";
+}
 
 function statusLabel(status: ConnectionHealthStatus): string {
   if (status === "connected") return "Connected";
@@ -64,12 +74,13 @@ function columnsForWidth(width: number): ConnectionColumn[] {
 
 function ConnectionDetail({ source, width, now }: { source: ConnectionHealthState; width: number; now: number }) {
   const lineWidth = Math.max(24, width - 2);
+  // The desktop's detail row cuts a long value where it ends, by CSS.
+  const desktop = !!useUiCapabilities().nativePaneChrome;
   return (
     <ScrollBox scrollY focusable={false} flexGrow={1} paddingX={1}>
       <Box flexDirection="column" width={lineWidth}>
         <KeyValueRow labelWidth={16} emphasis={false} label="Status" value={statusLabel(source.status)} color={statusColor(source.status)} />
-        <KeyValueRow labelWidth={16} emphasis={false} label="Type" value={source.kind} color={colors.textDim} />
-        {source.ownerId ? <KeyValueRow labelWidth={16} emphasis={false} label="Owner" value={source.ownerId} color={colors.textDim} /> : null}
+        <KeyValueRow labelWidth={16} emphasis={false} label="Type" value={connectionKindLabel(source.kind)} color={colors.textDim} />
         {source.socketState ? <KeyValueRow labelWidth={16} emphasis={false} label="Socket" value={source.socketState} color={statusColor(source.status)} /> : null}
         {source.lastTransitionAt ? (
           <KeyValueRow labelWidth={16} emphasis={false} label="Transition" value={formatRelativeAge(source.lastTransitionAt, now)} color={colors.textMuted} />
@@ -78,7 +89,7 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
         <KeyValueRow labelWidth={16} emphasis={false} label="Operation" value={source.lastOperation ?? "-"} color={colors.textDim} />
         <KeyValueRow labelWidth={16} emphasis={false} label="Latency" value={formatLatency(source.lastLatencyMs)} color={colors.textMuted} />
         {source.currentDetail ? (
-          <KeyValueRow labelWidth={16} emphasis={false} label="Detail" value={truncateToDisplayWidth(source.currentDetail, Math.max(8, lineWidth - 16))} color={source.status === "error" ? colors.negative : colors.textDim} />
+          <KeyValueRow labelWidth={16} emphasis={false} label="Detail" value={desktop ? source.currentDetail : truncateToDisplayWidth(source.currentDetail, Math.max(8, lineWidth - 16))} color={source.status === "error" ? colors.negative : colors.textDim} />
         ) : null}
         {source.lastSuccess ? (
           <KeyValueRow labelWidth={16} emphasis={false}
@@ -103,7 +114,7 @@ function ConnectionDetail({ source, width, now }: { source: ConnectionHealthStat
                 <Box width={7}><Text fg={request.success ? colors.positive : colors.negative}>{request.success ? "ok" : "error"}</Text></Box>
                 <Box width={9}><Text fg={colors.textMuted}>{formatLatency(request.latencyMs)}</Text></Box>
                 <Box width={10}><Text fg={colors.textMuted}>{formatRelativeAge(request.at, now)}</Text></Box>
-                <Text fg={colors.textDim}>{truncateToDisplayWidth(request.error ?? request.operation, Math.max(8, lineWidth - 26))}</Text>
+                <ClippedText fg={colors.textDim} text={request.error ?? request.operation} width={Math.max(8, lineWidth - 26)} />
               </Box>
             ))}
           </>

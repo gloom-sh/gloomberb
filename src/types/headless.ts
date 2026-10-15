@@ -260,6 +260,12 @@ export interface HeadlessPaneFreshness {
   /** Say how old the oldest observation is (`oldest 4 min`): rows polled apart from one source. */
   oldestAge?: boolean;
   /**
+   * Rows quoted on several markets (a US line beside Xetra and Paris ones)
+   * date each market's session in the status line, `US, XETRA and EPA Tue 13
+   * Oct 2026 close`, instead of only the newest row's.
+   */
+  datesEachVenue?: boolean;
+  /**
    * Exports also cite the oldest observation whenever the rows are dated
    * apart, not only when it is a day older: a portfolio valued at one
    * listing's Friday close and another's later print.
@@ -267,6 +273,12 @@ export interface HeadlessPaneFreshness {
   citeOldest?: boolean;
   /** What the figures are, said after the status: `funding = current estimate, pays 08:00 UTC`. */
   note?: string;
+  /**
+   * When the figures reach readers and when the next ones are due, said right
+   * after the as-of date: `published Fri 9 Oct, next settlement Thu 15 Oct,
+   * published Mon 26 Oct` for a settlement a regulator publishes days later.
+   */
+  schedule?: string;
 }
 
 interface HeadlessPaneResultBase {
@@ -297,6 +309,12 @@ interface HeadlessPaneResultBase {
 
 export interface HeadlessRowsResult extends HeadlessPaneResultBase {
   columns?: HeadlessPaneColumn[];
+  /**
+   * The columns the text report prints in place of `columns`, when the
+   * exports carry more than a terminal table should (each cell's source and
+   * as-of beside it). CSV, NDJSON and JSON keep `columns`.
+   */
+  textColumns?: HeadlessPaneColumn[];
   rows: HeadlessPaneRow[];
   /** What the report says when `rows` is empty, in place of "No data.": why there are none. */
   empty?: string;
@@ -403,7 +421,22 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
    * points at GIP's 1-minute bars). `key` is the listing as read, RMS:ASX.
    */
   usListingsOnlyHint?(key: string): string;
+  /**
+   * `fn` exits 1 when the report has no name with data: no rows, or every row
+   * is one of `unavailableSymbols`. A list that gives data for some names
+   * exits 0 and names the others in its errors.
+   */
+  failsWithoutData?: boolean;
   options: HeadlessPaneOptionDef[];
+  /**
+   * Widens the argument before the function runs, so its report, its capture
+   * and its pane all read the same symbols: RV's `--peers` adds a symbol's
+   * competitors. Null runs the argument as typed.
+   */
+  expandArgument?(
+    args: HeadlessPaneLoadArgs,
+    ctx: HeadlessPaneContext,
+  ): Promise<HeadlessArgumentExpansion | null>;
   /** What is true of every load: its source, and whether it is a feed. */
   freshness?: HeadlessPaneFreshness;
   columns?: HeadlessPaneColumn[];
@@ -428,3 +461,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
 }
 
 export type HeadlessPaneResult = HeadlessPaneResultByShape[HeadlessPaneShape];
+
+/** What a function runs with once it has widened its argument (`expandArgument`). */
+export interface HeadlessArgumentExpansion {
+  /** The argument as it would be typed: `DUOL, COUR, CHGG`. */
+  argument: string;
+  /** Merged into the pane's settings, which the load reads as `ctx.settings` and the pane as its own. */
+  settings?: Record<string, unknown>;
+  /** The pane's title when the widened argument needs saying (`RV DUOL + auto peers by industry: Airlines`). */
+  title?: string;
+}

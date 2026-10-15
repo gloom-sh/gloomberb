@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-12",
+ "updatedAt": "2026-10-14",
  "categories": [
   {
    "id": "research",
@@ -618,7 +618,7 @@
    "code": "NI",
    "name": "Topic news",
    "description": "News by topic code or sector",
-   "detail": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or by sector.",
+   "detail": "Market news by topic code (MNA, CB, ENERGY, REG, CRYPTO, EARN, IPO) or by sector. LTR lists public fund and investor letters as links to the publisher's page.",
    "category": "news",
    "arg": "ENERGY",
    "shot": "https://gloom.sh/screenshots/fn/NI.png",
@@ -777,8 +777,8 @@
   {
    "code": "FUT",
    "name": "Futures board",
-   "description": "Front-month futures",
-   "detail": "Front-month contracts across equity index, rates, energy, metals, agriculture, and FX with last price and session change, grouped by sector.",
+   "description": "Most active futures",
+   "detail": "Each root's most active contract across equity index, rates, energy, metals, agriculture, and FX with last price, unit and session change, grouped by sector, naming the nearer month while it still trades.",
    "category": "markets",
    "shot": "https://gloom.sh/screenshots/fn/FUT.png",
    "lesson": "/academy/futures-commodities-energy/futures-from-zero"
@@ -816,7 +816,7 @@
    "code": "POWER",
    "name": "Power and grid buildout",
    "description": "Grid queues and large loads",
-   "detail": "Grid interconnection queues, datacentre and other large-load requests, generation capacity and utility exposure, with a link to the source for every project. Pro shows the full data and history; Free shows three rows per section. EPWR opens the Prices tab, free: day-ahead power prices for 32 European markets in EUR/MWh and the EU carbon (EUA) auction clearing price in EUR/tCO2, each with its daily history.",
+   "detail": "Grid interconnection queues, datacentre and other large-load requests, generation capacity and utility exposure, with a link to the source for every project. Pro shows the full data and history; Free shows three rows per section. EPWR opens the Prices tab, free: day-ahead power prices for 32 European markets in EUR/MWh and the EU carbon (EUA) auction clearing price in EUR/tCO2, each with its daily history. EPWR GAS shows European gas storage from GIE AGSI+: % full, TWh and daily injection and withdrawal for the EU and each member state, against a year ago and the five-year range.",
    "category": "markets",
    "arg": "NEE",
    "access": "pro",
@@ -6329,7 +6329,7 @@
     "developer api",
     "market news"
    ],
-   "updatedAt": "2026-10-07",
+   "updatedAt": "2026-10-14",
    "blocks": [
     {
      "type": "heading",
@@ -6360,7 +6360,7 @@
       [
        "Free key",
        "Free",
-       "Delayed 12 hours."
+       "Delayed 12 hours. Real-time with a paid [Gloom Datasets](/docs/datasets) plan."
       ],
       [
        "Unlimited",
@@ -6380,7 +6380,7 @@
     },
     {
      "type": "paragraph",
-     "text": "Every `/v1/news` request requires a News API key. Use either header style:"
+     "text": "Every `/v1/news` request requires a News API key or a [Gloom Datasets](/docs/datasets) key (`gds_`). Use either header style:"
     },
     {
      "type": "code",
@@ -6595,7 +6595,7 @@
     "cftc",
     "cot"
    ],
-   "updatedAt": "2026-10-08",
+   "updatedAt": "2026-10-14",
    "blocks": [
     {
      "type": "heading",
@@ -6620,7 +6620,7 @@
      "items": [
       "**Alternative data:** GPU rental prices, supply chain, hiring postings and momentum, social mentions, app attention, power and grid, perpetuals, catalysts and litigation, research attention, congressional trades, operating exposure.",
       "**Filings and company text:** KPIs and guidance, executive pay, risk factors, 8-K events, transcripts, credit documents, debt maturities, revenue breakdown, SEC filings, insiders and 13F, document search.",
-      "**News:** Delayed stories, sources and topics.",
+      "**News:** Real-time stories, sources and topics.",
       "**Macro and positioning:** CPI, EIA inventories, COT, yield curves and macro series, central bank rates, short volume and interest, CDS, government awards.",
       "**Market data and fundamentals:** Quotes and history, financial statements, statistics, profiles, earnings, estimates, IPOs, M&A, screener, options and gamma positioning, futures, rate path, crypto, session tape."
      ]
@@ -6644,7 +6644,7 @@
     },
     {
      "type": "paragraph",
-     "text": "They are different keys from the Gloom API's. A Gloom Pro key (`gloom_mcp_`) or a News API key (`gloom_news_`) gets `401 wrong_key` on a dataset route, and a `gds_` key gets `401` on the Gloom API's own routes, such as the [REST API](/docs/rest-api) and the [News API](/docs/news-api)."
+     "text": "They are different keys from the Gloom API's. A Gloom Pro key (`gloom_mcp_`) or a News API key (`gloom_news_`) gets `401 wrong_key` on a dataset route, and a `gds_` key gets `401` on the Gloom API's own routes, such as the [REST API](/docs/rest-api), but reads the [News API](/docs/news-api) at no credit cost."
     },
     {
      "type": "heading",
@@ -7303,9 +7303,9 @@
   {
    "url": "/academy/futures-commodities-energy/futures-from-zero",
    "title": "Futures from zero (FUT)",
-   "summary": "A futures contract is a standard, exchange-traded promise to buy or sell a set quantity on a set month at a price agreed today, settled with daily margin, and FUT shows the front months across markets.",
+   "summary": "A futures contract is a standard, exchange-traded promise to buy or sell a set quantity on a set month at a price agreed today, settled with daily margin, and FUT shows the most active months across markets.",
    "chapter": "Futures, commodities and energy",
-   "minutes": 4
+   "minutes": 5
   },
   {
    "url": "/academy/futures-commodities-energy/curves-and-rolling",

@@ -10,6 +10,7 @@ import {
 import { currentFxClosureStart } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import type { ReportTime } from "../../utils/utc-time";
+import type { QuoteIndexSession } from "../../types/financials";
 
 /** Where the venues behind a quote report stand, as a report says it after the delay. */
 type ReportMarketState = "open" | "pre-market" | "after-hours" | "closed";
@@ -27,6 +28,8 @@ export interface SessionObservation {
   exchange: string;
   marketState?: string;
   time: ReportTime | null;
+  /** The regular sessions an index quote carries, for a publisher the app has no calendar for. */
+  calendar?: QuoteIndexSession;
 }
 
 interface VenueSession {
@@ -35,16 +38,19 @@ interface VenueSession {
   /** The latest regular session that has closed: its local date and open. */
   last?: { date: string; open: number | null };
   timeZone?: string;
+  /** The sessions are the quote's own, not a calendar of the venue. */
+  quoted?: true;
 }
 
 const CLOSED_STATES = new Set(["CLOSED", "PREPRE", "POSTPOST"]);
+const US_EXCHANGE_TIME_ZONE = "America/New_York";
 
 /**
  * A venue's session now, from its calendar (weekends and published holidays),
  * or from the state its source reports when the app has no calendar for it,
  * such as an index publisher or a futures exchange. Null when neither says.
  */
-function venueSession(exchange: string, marketState: string | undefined, now: number): VenueSession | null {
+function venueSession(exchange: string, marketState: string | undefined, now: number, calendar?: QuoteIndexSession): VenueSession | null {
   if (isAlwaysOpenExchange(exchange)) return { state: "always" };
   const next = nextRegularSessionOpen(exchange, now);
   if (next) {
@@ -61,10 +67,24 @@ function venueSession(exchange: string, marketState: string | undefined, now: nu
     return { state: "closed", next, last, timeZone };
   }
   if (marketState === "REGULAR") return { state: "open" };
-  if (marketState === "PRE") return { state: "pre-market" };
-  if (marketState === "POST") return { state: "after-hours" };
-  if (marketState && CLOSED_STATES.has(marketState)) return { state: "closed" };
-  return null;
+  const stated = marketState === "PRE" ? "pre-market" : marketState === "POST" ? "after-hours" : marketState && CLOSED_STATES.has(marketState) ? "closed" : null;
+  if (!stated) return null;
+  return calendar ? { state: stated, ...quotedSessions(calendar, now) } : { state: stated };
+}
+
+/**
+ * An index publisher's sessions (SNP, DJI, NASDAQ GIDS) as its quote dates
+ * them, read like a venue's calendar: the open still to come, and the latest
+ * regular session that has closed.
+ */
+function quotedSessions({ timeZone, current, regular }: QuoteIndexSession, now: number): Pick<VenueSession, "next" | "last" | "timeZone" | "quoted"> {
+  const closed = [...regular, current].filter((window) => window.end <= now).sort((left, right) => right.end - left.end)[0];
+  return {
+    timeZone,
+    quoted: true,
+    ...(current.start > now ? { next: { date: zonedDateKey(current.start, timeZone), open: current.start } } : {}),
+    ...(closed ? { last: { date: zonedDateKey(closed.start, timeZone), open: closed.start } } : {}),
+  };
 }
 
 /** The venue spot FX pairs trade on. It has no session calendar here; its week is in `fx-market-hours`. */
@@ -101,7 +121,50 @@ function closeDateOf(observation: SessionObservation, session: VenueSession, now
 function closeMarketOf(exchange: string, session: VenueSession): string | null {
   if (exchange === FX_VENUE) return "FX";
   if (!session.last || !session.timeZone) return null;
+  // An index publisher's name is no market: a session dated in New York is the US's, any other is a bare date.
+  if (session.quoted) return session.timeZone === US_EXCHANGE_TIME_ZONE ? "US" : null;
   return isUsListingExchange(exchange) ? "US" : exchange;
+}
+
+/** One market's session behind a report that mixes markets: its local date, and whether that session has closed. */
+export interface VenueSessionDate {
+  /** `US` for the US listing venues, which share one calendar, the venue's code elsewhere (`XETRA`, `EPA`). */
+  market: string;
+  /** The session's local date, `YYYY-MM-DD`. */
+  date: string;
+  /** The newest row on that market is its latest close. */
+  close: boolean;
+}
+
+/**
+ * Each market's session, for a report whose rows trade on more than one
+ * (a US line beside Xetra and Paris ones): the newest row of each, dated in
+ * its venue's own day, in the order the markets first appear. Empty when the
+ * rows share one market, or fewer than two can be placed.
+ */
+export function reportVenueSessionDates(observations: readonly SessionObservation[], now: number): VenueSessionDate[] {
+  const newestByMarket = new Map<string, { observation: SessionObservation & { time: ReportTime }; session: VenueSession }>();
+  for (const observation of observations) {
+    const exchange = canonicalExchange(observation.exchange);
+    const time = observation.time;
+    if (!exchange || !time) continue;
+    const session = venueSession(exchange, observation.marketState, now);
+    if (!session || session.state === "always") continue;
+    const market = exchange === FX_VENUE ? "FX" : isUsListingExchange(exchange) ? "US" : exchange;
+    const current = newestByMarket.get(market);
+    if (!current || time.time > current.observation.time.time) newestByMarket.set(market, { observation: { ...observation, time }, session });
+  }
+  if (newestByMarket.size < 2) return [];
+  return [...newestByMarket].map(([market, { observation, session }]) => {
+    // A venue in its session whose newest row is from an earlier day has not printed today: that row is its last close.
+    const exchange = canonicalExchange(observation.exchange);
+    const latestClose = session.state === "open" && session.timeZone ? latestRegularSessionClose(exchange, now) : null;
+    const last = latestClose ? { date: latestClose.date, open: latestRegularSessionOpen(exchange, latestClose.close) } : session.last;
+    const closeDate = closeDateOf(observation, { ...session, last }, now);
+    const date = closeDate
+      ?? (session.timeZone ? zonedDateKey(observation.time.time, session.timeZone) : new Date(observation.time.time).toISOString().slice(0, 10));
+    return { market, date, close: closeDate != null };
+  });
 }
 
 /**
@@ -120,7 +183,7 @@ export function reportMarketSession(
     const exchange = canonicalExchange(observation.exchange);
     if (!exchange) continue;
     const key = `${exchange}:${observation.marketState ?? ""}`;
-    const session = sessions.get(key) ?? venueSession(exchange, observation.marketState, now);
+    const session = sessions.get(key) ?? venueSession(exchange, observation.marketState, now, observation.calendar);
     if (!session) continue;
     sessions.set(key, session);
     if (observation.time && (!newest || observation.time.time > (newest.observation.time?.time ?? -Infinity))) {

@@ -4,7 +4,6 @@ import type { CloudJobsMoverPayload, CloudJobsPosting, CloudJobsSummaryPayload }
 import {
   chartTableChromeRows,
   Badge,
-  Button,
   ChartTableHeader,
   CompositeChart,
   DataTableStackView,
@@ -536,7 +535,7 @@ function CompanyPanel({
     [symbol, companyName],
   );
   const resource = useAsyncResource<JobsCompanyState>(request);
-  const { data, status, error, reload } = resource;
+  const { data, status, error, loading, reload } = resource;
 
   // `r` asks again in every state, including a failed or uncovered company.
   usePaneRefreshKey(reload, { focused });
@@ -555,8 +554,10 @@ function CompanyPanel({
   if ((status === "idle" || status === "loading") && !data) {
     return <PaneStatusBody loading align="center" loadingLabel={`Loading ${symbol} hiring...`} />;
   }
-  if (status === "error" && !data) {
-    return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." actions={<Button label="Try again" onPress={reload} />} />;
+  // A failed look at an uncovered company says so: the old answer left up
+  // would read as the new one.
+  if (status === "error" && (!data || data.kind === "uncovered")) {
+    return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." retry={{ onRetry: reload }} />;
   }
   if (!data) return null;
   if (data.kind === "pending") {
@@ -569,11 +570,13 @@ function CompanyPanel({
     );
   }
   if (data.kind === "uncovered") {
+    // The answer stays on screen while it asks again, so the button says it is asking.
     return (
-      <EmptyState
-        title={`No careers system found for ${symbol}.`}
-        message="Gloomberb reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
-        actions={<Button label="Look again" onPress={reload} />}
+      <PaneStatusBody
+        empty
+        emptyTitle={`No careers system found for ${symbol}.`}
+        emptyMessage="Gloomberb reads companies' own careers systems. This one either has none we can read or lists roles only on third-party job boards."
+        retry={{ onRetry: reload, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }}
       />
     );
   }
@@ -684,7 +687,7 @@ function HomeView({ width, height, focused, registrationId }: { width: number; h
   }, []);
 
   if (status === "loading" && !data) return <PaneStatusBody loading align="center" loadingLabel="Loading hiring data..." />;
-  if (status === "error" && !data) return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." actions={<Button label="Try again" onPress={reload} />} />;
+  if (status === "error" && !data) return <PaneStatusBody error={error ?? "Could not load hiring data."} errorTitle="Could not load hiring data." retry={{ onRetry: reload }} />;
 
   const tableHeight = Math.max(3, height - (nativePaneChrome ? 1 : 0));
   return (

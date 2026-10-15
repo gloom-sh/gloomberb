@@ -12,5 +12,8 @@ test("every board row is its future as a typed argument, and under the cursor on
   // NovaGold, Colgate, Eversource, Zoom, Zscaler, Planet Labs and Thales keep their codes; GC is listed on several venues.
   for (const code of ["NG", "CL", "ES", "ZM", "ZS", "PL", "HO", "GC"]) expect(bareFuturesCode(code)).toBeNull();
   expect(["TTF", "zn", "6E"].map((code) => bareFuturesCode(code)?.symbol)).toEqual(["TTF=F", "ZN=F", "6E=F"]);
+  // SXO and XAE name nothing listed; XAU is Goldmoney, SXT Sensient, RX BioSyent, MES Mitsubishi Estate abroad.
+  expect(["SXO", "xae", "XAU", "SXT", "RX", "MES"].map((code) => bareFuturesCode(code)?.symbol ?? null))
+    .toEqual(["SXO=F", "XAE=F", null, null, null, null]);
   expect([bareFuturesCode("TTF=F"), futuresBoardContract("AAPL"), futuresBoardContractForTicker(null)]).toEqual([null, null, null]);
 });

@@ -3,7 +3,7 @@ import type { TeamAccentColor } from "../../../../api-client";
 import { Badge, Button, Checkbox, FieldLabel, SectionHeading, TextField, type ButtonVariant } from "../../../../components";
 import { colors } from "../../../../theme/colors";
 import { Box, Span, Text, TextAttributes, type BoxRenderable } from "../../../../ui";
-import { TEAM_ACCENT_COLORS, teamAccentHex, teamPrefix } from "./model";
+import { TEAM_ACCENT_COLORS, teamAccentHex, teamPrefix } from "../../../../team/model";
 
 /**
  * Every control in the pane registers under a field id. The pane keeps one

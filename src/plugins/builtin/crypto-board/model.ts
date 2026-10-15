@@ -105,9 +105,13 @@ function buildCryptoRow(
     : isFiniteNumber(asset.circulatingSupply) && asset.circulatingSupply > 0 ? asset.circulatingSupply * price : null;
   const start = asset.history ? Date.parse(`${asset.history.start}T00:00:00Z`) : 0;
   const closes = completedCloses(asset);
-  const history: PricePoint[] = closes.length
-    ? [...closes, { date: new Date(Math.max(now, start + closes.length * DAY_MS)), close: price }]
-    : closes;
+  const prior = rowsByAsset.get(asset)?.row.history;
+  const tail = prior && prior.length === closes.length + 1 ? prior.at(-1) : undefined;
+  const history: PricePoint[] = !closes.length
+    ? closes
+    : tail && tail.close === price
+      ? prior!
+      : [...closes, { date: new Date(Math.max(now, start + closes.length * DAY_MS)), close: price }];
   const updatedAt = quote?.lastUpdated ?? (asset.quoteTime ? Date.parse(asset.quoteTime) : null);
   // The digits follow a price that holds still for the day, so a tick across a
   // power of ten (0.9998 to 1.0002) keeps the row's decimals.

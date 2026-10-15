@@ -11,7 +11,7 @@ import {
 import type { DesktopDeepLinkBridge } from "../../types/desktop-deeplink";
 import type { DesktopWindowBridge } from "../../types/desktop-window";
 import { requestAccountManagementTab } from "../../plugins/builtin/account-management/navigation";
-import { openTeamPane } from "../../plugins/builtin/cloud/team/pane-request";
+import { openTeamPane } from "../../team/pane-request";
 import { chatController } from "../../plugins/builtin/chat/controller";
 import { getShare, type ShareRecord } from "../../shares/api";
 import { openShareLink, registerShareOpener } from "../../shares/open";

@@ -10,9 +10,10 @@ import { useAssetData, useAsyncResource, useAutoRefresh, usePluginPaneState, use
 import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
-import { Box, Text, TextAttributes } from "../../../ui";
+import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
+import { ClippedText } from "../../../components/ui/display";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { displayWidth, truncateToDisplayWidth } from "../../../utils/format";
+import { displayWidth } from "../../../utils/format";
 import { quoteBoardFooterInfo, quoteBoardStatus, renderQuoteBoardCell, useQuoteBoard } from "../shared/use-quote-board";
 import { GpuModelQuery } from "./board";
 import { loadGpuEquityHistory } from "./client";
@@ -66,6 +67,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
   const dataRef = useRef({ quotes, historyMap });
   dataRef.current = { quotes, historyMap };
   const medium = width >= 100;
+  const desktop = !!useUiCapabilities().nativePaneChrome;
   const renderCell = useCallback((item: Row, column: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (!isSectionedItemRow(item)) return EMPTY_TABLE_CELL;
     const row = item.item;
@@ -81,9 +83,10 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
         const variant = [row.gpuModel, ...gpuVariant(reference)].join(" ");
         // The name keeps its room; the variant gives way first.
         const rest = Math.max(0, column.width - displayWidth(name) - 2);
-        return { text: `${name} ${variant}`, content: <Box flexDirection="row" height={1} overflow="hidden">
-          <Text fg={state.selected ? colors.selectedText : colors.text}>{truncateToDisplayWidth(name, column.width)}</Text>
-          {rest >= 4 ? <Text fg={state.selected ? colors.selectedText : colors.textDim}>{`  ${truncateToDisplayWidth(variant, rest)}`}</Text> : null}
+        // On the desktop the variant gives way first at the column's edge, by CSS.
+        return { text: `${name} ${variant}`, content: <Box flexDirection="row" height={1} overflow="hidden" {...(desktop ? { flexShrink: 1, minWidth: 0 } : {})}>
+          <ClippedText fg={state.selected ? colors.selectedText : colors.text} text={name} width={column.width} />
+          {desktop || rest >= 4 ? <ClippedText fg={state.selected ? colors.selectedText : colors.textDim} lead="  " text={variant} width={rest} flex="0 1000 auto" /> : null}
         </Box> };
       }
       case "gpuPrice": return reference ? { text: gpuPrice(reference.pricePerGpuHr), value: reference.pricePerGpuHr, color: colors.textBright } : gapCell;
@@ -104,7 +107,7 @@ export function GpuEquities({ board, models, locked, model, setModel, reloadBoar
       default: return renderQuoteBoardCell(column.id as "price" | "changePercent", dataRef.current.quotes.get(row.symbol),
         { formatPrice: (quote) => gpuPrice(quote.price), formatChange: (quote) => gpuChange(quote.change) });
     }
-  }, [colors]);
+  }, [colors, desktop]);
   return <DataTableView<Row> columns={equityColumns(width)} items={items} rootWidth={width} rootHeight={height} focused={focused}
     rootBefore={<GpuModelQuery models={models} model={model || "H100"} setModel={setModel} width={width} allowAll={false} />}
     selection={{ kind: "id", selectedId: selected, getId: rowKey, onChange: (id) => setSelected(String(id)) }} getItemKey={rowKey}

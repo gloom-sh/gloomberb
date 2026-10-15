@@ -83,7 +83,7 @@ import { getPricePointTimestamp, isPriceHistoryStaleForCurrentWindow } from "../
 import { timeZoneLabel, zonedDateKey, zonedWallClockMs } from "../utils/zoned-date-time";
 import { formatShortDate } from "../utils/datetime-format";
 import { latestSessionStart, latestTradingSessionOpen, listingTimeZone, priorSessionClose } from "../market-data/market/trading-sessions";
-import { futuresGenericCaption, futuresGenericListing, futuresGenericPriceBasis } from "../utils/futures-generic";
+import { futuresGenericCaption, futuresGenericListing, futuresListingPriceBasis } from "../utils/futures-generic";
 import { isOhlcSeriesStyle } from "./spec";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
@@ -1166,8 +1166,10 @@ function baseSecuritySeries(
     : field.unit;
   const generic = field.unitGroup === "price"
     ? futuresGenericListing(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
-  // A generic future on an index, VIX or Treasuries reads in points or 32nds, not dollars.
-  const genericBasis = generic && isMarketFieldId(field.id) ? futuresGenericPriceBasis(generic) : null;
+  // A generic future on an index, VIX or Treasuries reads in points or 32nds, and an index
+  // future's continuous symbol or contract in points, not dollars, as its quote does.
+  const genericBasis = field.unitGroup === "price" && isMarketFieldId(field.id)
+    ? futuresListingPriceBasis(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
   const genericUnit = genericBasis === "points" ? "points" : genericBasis === "thirty-seconds" ? "32nds" : null;
   const unit = field.id === "market.volume" ? volumeUnit ?? ""
     : genericUnit ?? (unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate);
@@ -1235,6 +1237,21 @@ function baseSecuritySeries(
   };
 }
 
+const FRED_CATALOG_UNITS: Readonly<Record<string, string>> = {
+  "percent": "%",
+  "millions of u.s. dollars": "million USD",
+  "millions of dollars": "million USD",
+  "billions of dollars": "billion USD",
+  "billions of u.s. dollars": "billion USD",
+  "billions of us dollars": "billion USD",
+  "dollars per barrel": "USD/barrel",
+  "thousands of persons": "thousand people",
+};
+
+function fredCatalogUnit(units: string): string {
+  return FRED_CATALOG_UNITS[units.toLowerCase()] ?? units;
+}
+
 function baseEconomicSeries(
   spec: ChartSeriesSpec,
   loaded: FredSeriesLoadResult,
@@ -1243,13 +1260,15 @@ function baseEconomicSeries(
   if (spec.source.kind !== "economic") return null;
   const { data } = loaded;
   const units = data.info?.units?.trim() || "value";
+  const catalogUnit = fredCatalogUnit(units);
+  // "Percent Change from Year Ago" and "Percent per Annum" are percent too.
   const isPercent = units.toLowerCase().includes("percent");
   return {
     id: spec.id,
     label: spec.label?.trim() || data.info?.title?.trim() || spec.source.seriesId,
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
-    unit: isPercent ? "%" : units,
-    unitGroup: isPercent ? "percent" : `economic:${units.toLowerCase()}`,
+    unit: isPercent ? "%" : catalogUnit,
+    unitGroup: isPercent ? "percent" : `economic:${catalogUnit.toLowerCase()}`,
     nativeFrequency: "auto",
     timestampMode: "period-end",
     dataShape: "scalar",

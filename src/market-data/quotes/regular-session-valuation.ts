@@ -1,4 +1,4 @@
-import type { Fundamentals, Quote, TickerFinancials } from "../../types/financials";
+import type { EnterpriseValueCheck, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
 import { priceEarningsEps } from "../../utils/fundamentals";
 import { getRegularSessionDisplay } from "../market/status";
 
@@ -39,6 +39,33 @@ interface FigureMoves {
   enterpriseValue: number;
 }
 
+/**
+ * The served EV check at the moved figures, so its note reads the EV and the
+ * market cap the rows show: the EV it describes is the moved one, and the
+ * computed EV moves with the cap. A withdrawn EV, shown nowhere, moves with
+ * the cap as the computed one does. The status stays the one Gloom Cloud
+ * judged.
+ */
+function movedEnterpriseValueCheck(
+  check: EnterpriseValueCheck | undefined,
+  served: number | undefined,
+  enterpriseValue: number | undefined,
+  movedCap: number | undefined,
+): EnterpriseValueCheck | undefined {
+  if (!check || movedCap == null || !Number.isFinite(movedCap) || !Number.isFinite(check.marketCap)) return check;
+  const shift = movedCap - check.marketCap;
+  if (shift === 0 && served === enterpriseValue) return check;
+  const source = check.status !== "withdrawn" && served === check.source && enterpriseValue != null
+    ? enterpriseValue
+    : check.source + shift;
+  return {
+    ...check,
+    source,
+    marketCap: movedCap,
+    ...(check.computed != null && Number.isFinite(check.computed) ? { computed: check.computed + shift } : {}),
+  };
+}
+
 function moveFigures(fundamentals: Fundamentals, currency: string | undefined, moves: FigureMoves): Fundamentals {
   const cap = fundamentals.marketCapCurrency === currency ? fundamentals.marketCap : undefined;
   const movedCap = cap != null ? scaledAmount(cap, moves.marketCap) : undefined;
@@ -47,8 +74,12 @@ function moveFigures(fundamentals: Fundamentals, currency: string | undefined, m
   const enterpriseValue = served != null && Number.isFinite(served) && served !== 0 && movedCap != null && Number.isFinite(movedCap)
     ? Math.round(served + movedCap * (1 - 1 / moves.enterpriseValue)) : served;
   const enterpriseValueRatio = positive(served) && positive(enterpriseValue) ? enterpriseValue / served : null;
+  const check = fundamentals.enterpriseValueCheck?.currency === currency
+    ? movedEnterpriseValueCheck(fundamentals.enterpriseValueCheck, served, enterpriseValue, movedCap)
+    : fundamentals.enterpriseValueCheck;
   return {
     ...fundamentals,
+    ...(check ? { enterpriseValueCheck: check } : {}),
     trailingPE: scaled(fundamentals.trailingPE, moves.trailingPE),
     forwardPE: scaled(fundamentals.forwardPE, moves.forwardPE),
     dividendYield: scaled(fundamentals.dividendYield, 1 / moves.dividendYield),

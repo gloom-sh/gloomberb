@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Database } from "bun:sqlite";
 import { AppPersistence } from "../app-persistence";
 import { ResourceStore } from "../resource-store";
@@ -34,6 +34,36 @@ describe("AppPersistence", () => {
     }, { allowExpired: true });
     expect(listed[0]?.lastAccessedAt).toBeGreaterThan(1);
     persistence.close();
+  });
+
+  // Eviction drops the least recently accessed row first. A quote or price
+  // history read on every tick must stay recent without a write per read, and
+  // without being read with touch: false, which would leave it the first to go.
+  test("a read with a touch interval refreshes a row's eviction order once per interval", () => {
+    const persistence = new AppPersistence(createTempDbPath("resource-touch-interval"));
+    try {
+      setSystemTime(new Date("2026-10-14T10:00:00Z"));
+      const key = { namespace: "market", kind: "quote", entityKey: "AAPL" };
+      persistence.resources.set({ ...key, sourceKey: "provider:gloom" }, { price: 1 }, {
+        cachePolicy: { staleMs: 60_000, expireMs: 3_600_000 },
+        schemaVersion: 1,
+      });
+      const accessed = (options: { touch?: boolean; touchIntervalMs?: number }) =>
+        persistence.resources.list(key, { allowExpired: true, ...options })[0]!.lastAccessedAt;
+      const written = accessed({ touch: false });
+
+      setSystemTime(new Date("2026-10-14T10:05:00Z"));
+      expect(accessed({ touchIntervalMs: 600_000 })).toBe(written);
+      setSystemTime(new Date("2026-10-14T10:11:00Z"));
+      const refreshed = accessed({ touchIntervalMs: 600_000 });
+      expect(refreshed).toBe(Date.parse("2026-10-14T10:11:00Z"));
+      expect(accessed({ touch: false })).toBe(refreshed);
+      setSystemTime(new Date("2026-10-14T10:20:00Z"));
+      expect(accessed({ touch: false })).toBe(refreshed);
+    } finally {
+      setSystemTime();
+      persistence.close();
+    }
   });
 
   test("returns cached resources when last-access touch is locked", () => {

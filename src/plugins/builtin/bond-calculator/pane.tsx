@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Box, ScrollBox } from "../../../ui";
 import { DataTableView, FieldGrid, KeyValueRow, Notice, QueryBar, Section, usePaneNoticeFooter, usePaneTabs, type GridField, type SelectControl } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneSettingValue, usePaneStateValue, useShortcut } from "../../../public/react";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors } from "../../../theme/colors";
@@ -70,6 +71,7 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
   }, [result, draft.quote, update]);
   const selectTab = useCallback((value: string) => { setActiveField(null); setTab(value); }, [setTab]);
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: tab, onSelect: selectTab, focused: focused && !activeField, dense: true });
+  usePaneRefreshKey(() => { void load(); }, { focused });
   useShortcut((event) => {
     if (event.defaultPrevented || event.propagationStopped || event.ctrl || event.alt || event.meta || event.super) return;
     const consume = () => { event.preventDefault(); event.stopPropagation(); };
@@ -77,7 +79,6 @@ export function BondCalculatorPane({ focused, width, height }: PaneProps) {
     // Shifted letters are global chords (Shift+R refreshes everything).
     if (event.targetEditable || event.shift) return;
     if (event.name === "e") { consume(); setTab("valuation"); setActiveField("settlement"); }
-    else if (event.name === "r") { consume(); void load(); }
     else if ((event.name === "j" || event.name === "k") && tab === "valuation") {
       consume();
       const index = activeField ? FIELDS.indexOf(activeField) : -1;

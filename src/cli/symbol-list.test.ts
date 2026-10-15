@@ -20,8 +20,21 @@ test("a plain list gives every symbol, whether on its own line, split by spaces 
 
 test("symbols come from arguments, the file and standard input together, each once", async () => {
   const list = await readSymbolList({ args: ["AAPL,aapl", "-"], readStdin: async () => "$AAPL\nMSFT\r\nmsft\r\n" });
-  expect(list).toEqual({ symbols: ["AAPL", "MSFT"], repeated: 3 });
+  expect(list).toEqual({ symbols: ["AAPL", "MSFT"], repeated: 3, strays: [] });
   // Piped input is read only when no symbol was typed.
-  expect(await readSymbolList({ args: ["NVDA"], stdinPiped: true, readStdin: async () => "XOM" })).toEqual({ symbols: ["NVDA"], repeated: 0 });
-  expect(await readSymbolList({ args: [], stdinPiped: true, readStdin: async () => "XOM" })).toEqual({ symbols: ["XOM"], repeated: 0 });
+  expect(await readSymbolList({ args: ["NVDA"], stdinPiped: true, readStdin: async () => "XOM" })).toEqual({ symbols: ["NVDA"], repeated: 0, strays: [] });
+  expect(await readSymbolList({ args: [], stdinPiped: true, readStdin: async () => "XOM" })).toEqual({ symbols: ["XOM"], repeated: 0, strays: [] });
+});
+
+test("a separator stuck to a symbol in a list is dropped before any lookup and named, not read as part of the ticker", async () => {
+  // The first line holds no delimiter, so each later cell keeps its own trailing `;`.
+  const read = (text: string) => readSymbolList({ args: ["-"], readStdin: async () => text });
+  expect(await read("Symbol\nUPST;\nGME;\n")).toEqual({
+    symbols: ["UPST", "GME"],
+    repeated: 0,
+    strays: ['Ignored the stray ";" after UPST.', 'Ignored the stray ";" after GME.'],
+  });
+  expect(await read("GME\n\"UPST\",\nAMC\n")).toEqual({ symbols: ["GME", "UPST", "AMC"], repeated: 0, strays: ['Ignored the stray "," after UPST.'] });
+  // Typed, only the ends of the list can be stray: in the middle a separator is what splits it.
+  expect(await readSymbolList({ args: ["GME,", "UPST;"] })).toEqual({ symbols: ["GME", "UPST"], repeated: 0, strays: ['Ignored the stray ";" after UPST.'] });
 });

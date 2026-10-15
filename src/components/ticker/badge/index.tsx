@@ -68,6 +68,8 @@ export function TickerBadge({
         // badges; the desktop leaves a hairline of row above and below.
         justifyContent={nativePaneChrome ? "center" : undefined}
         style={nativePaneChrome ? NATIVE_CHIP_STYLE : undefined}
+        role="button"
+        aria-label={symbol}
         data-gloom-context-menu-surface="true"
         onMouseOver={() => {
           onHoverStart?.();

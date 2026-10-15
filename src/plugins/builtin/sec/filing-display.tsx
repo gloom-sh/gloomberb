@@ -1,5 +1,4 @@
-import { Box, Text } from "../../../ui";
-import { colors } from "../../../theme/colors";
+import { EmptyState } from "../../../components";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
 import { transactionTypeLabel, type InsiderTransaction } from "../insider/insider-data";
@@ -21,17 +20,8 @@ export function formatFilingFormLabel(form: string, fallback = "FORM 4"): string
   return value ? `FORM ${value}` : fallback;
 }
 
-export function renderFilingNotice(message: string, width: number) {
-  const lines = wrapNoticeLines(message, width - 4);
-  return (
-    <Box flexDirection="column" paddingX={1} paddingY={1}>
-      {lines.map((line, index) => (
-        <Box key={index} height={1}>
-          <Text fg={colors.textDim}>{line}</Text>
-        </Box>
-      ))}
-    </Box>
-  );
+export function renderFilingNotice(message: string) {
+  return <EmptyState title={message} />;
 }
 
 export function buildInsiderTransactionTitle(transaction: InsiderTransaction): string {
@@ -60,27 +50,4 @@ export function buildInsiderTransactionDetailBody(transaction: InsiderTransactio
     `Ownership: ${transaction.ownershipType === "D" ? "Direct" : transaction.ownershipType === "I" ? "Indirect" : transaction.ownershipType || "—"}${transaction.ownershipNature ? ` — ${transaction.ownershipNature}` : ""}`,
   ];
   return lines.join("\n");
-}
-
-function wrapNoticeLines(text: string, width: number): string[] {
-  const maxWidth = Math.max(width, 12);
-  const words = text.trim().split(/\s+/);
-  const lines: string[] = [];
-  let current = "";
-
-  for (const word of words) {
-    if (!current) {
-      current = word;
-      continue;
-    }
-    if (current.length + 1 + word.length <= maxWidth) {
-      current = `${current} ${word}`;
-    } else {
-      lines.push(current);
-      current = word;
-    }
-  }
-
-  if (current) lines.push(current);
-  return lines;
 }

@@ -1,6 +1,6 @@
 import { apiClient } from "../../../../api-client";
 import type { CommandResultDef, GloomPluginContext } from "../../../../types/plugin";
-import { requestAuthDialog } from "../auth-dialog";
+import { requestAuthDialog } from "../../../../account/auth-dialog";
 import {
   canInviteToTeam,
   canManageTeam,
@@ -9,9 +9,9 @@ import {
   teamChannelId,
   teamLabel,
   userHandle,
-} from "./model";
-import { openTeamPane, type TeamPaneSection } from "./pane-request";
-import { teamStore } from "./store";
+} from "../../../../team/model";
+import { openTeamPane, type TeamPaneSection } from "../../../../team/pane-request";
+import { teamStore } from "../../../../team/store";
 
 const TEAM_SUBCOMMAND = /^(invite|new|settings|members|channels|leave|focus|chat)\b\s*(.*)$/i;
 

@@ -179,6 +179,9 @@ describe("crypto basis against spot", () => {
     slope: { ...payload().slope, frontSymbol: "BTCV26.CME", nextSymbol: "BTCX26.CME" } });
   const spot = (minutesOld: number) => async (symbol: string) =>
     createTestQuote({ symbol, price: 80_000, lastUpdated: NOW - minutesOld * 60_000, marketState: "REGULAR" });
+  // The quote path reports the pair's listing and whether the feed is real-time; the footer names both.
+  const reportingSpot = (minutesOld: number) => async (symbol: string) =>
+    createTestQuote({ symbol, price: 80_000, lastUpdated: NOW - minutesOld * 60_000, marketState: "REGULAR", listingExchangeName: "CCC", dataSource: "live" });
   const row = (lines: string[], code: string) => lines.find((line) => line.includes(code)) ?? "";
 
   test("each contract shows its premium and annualised basis, and the footer names the spot it used", async () => {
@@ -197,6 +200,23 @@ describe("crypto basis against spot", () => {
     expect(row(lines, "BTCH27.CME")).toMatch(/--\s+--\s+--/);
     expect(lines.join("\n")).toMatch(/spot BTC-USD 80,000\.00 · (\d{4}-\d{2}-\d{2} )?\d{2}:\d{2} UTC/);
     expect(lines.join("\n")).not.toContain("Basis blank:");
+  });
+
+  test("the footer names the listing and feed the quote reports, and a short-dated rate is no data warning", async () => {
+    spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload());
+    let lines = await render(130, 30, "curve", { root: "BTC", quote: reportingSpot(2) });
+    expect(lines.join("\n")).toMatch(/spot BTC-USD 80,000\.00 · (\d{4}-\d{2}-\d{2} )?\d{2}:\d{2} UTC \(CCC, real-time\)/);
+    // BTCV26 is 21 days out, so its rate is noisy, but that is how the contract is, not a problem with the data: only the CLI report says so.
+    expect(lines.join("\n")).not.toContain("⚠");
+    await act(async () => tui.setup().mockInput.pressKey("!"));
+    await settle();
+    expect(tui.frame()).not.toMatch(/Data warnings|noisy under 30 days/);
+    // A narrower footer gives the listing up before the price and its time.
+    spy.mockRestore(); futuresCurveCache.reset();
+    spy = spyOn(apiClient, "getCloudFuturesCurve").mockImplementation(async () => btcPayload(BTC_CONTRACTS.slice(0, 2)));
+    lines = await render(98, 30, "curve", { root: "BTC", quote: reportingSpot(2) });
+    expect(lines.join("\n")).toMatch(/spot BTC-USD 80,000\.00 · \d{2}:\d{2} UTC/);
+    expect(lines.join("\n")).not.toContain("(CCC");
   });
 
   test("a print over an hour before the spot is blank, and a data warning counts those thin contracts", async () => {

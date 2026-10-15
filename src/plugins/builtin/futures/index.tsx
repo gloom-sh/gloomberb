@@ -1,6 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Button,
   DataTableView,
   PaneStatusBody,
   QueryBar,
@@ -28,6 +27,7 @@ import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { quoteObservation } from "../shared/report-freshness";
 import {
   boardErrorMessage,
+  boardHeadlineQuote,
   quoteBoardFooterInfo,
   quoteBoardStatus,
   useQuoteBoard,
@@ -59,6 +59,7 @@ import {
   usesSessionText,
   type FuturesColumn,
 } from "./table";
+import { useFuturesBoardTerms } from "./use-board-terms";
 import { useFrontContractReturns } from "./use-front-returns";
 
 const FUTURES_PANE_ID = "futures";
@@ -134,6 +135,8 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
   const paneVisible = usePaneVisible();
   const showsReturns = columns.some((column) => FUTURES_RETURN_COLUMNS[column.id]);
   const returns = useFrontContractReturns(listedContracts, quotes, dataProvider, showsReturns && paneVisible);
+  // The unit a price counts and the month a symbol rolled past, as `quote` reads them.
+  const terms = useFuturesBoardTerms(listedContracts, !!dataProvider && paneVisible);
 
   const visibleCollapsed = effectiveCollapsedSectors(collapsedSectors, searchQuery);
   const rows = useMemo(
@@ -141,15 +144,38 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       query: searchQuery,
       collapsed: collapsedSectors,
       returns,
+      terms,
     }),
-    [collapsedSectors, contractsBySector, quotes, returns, searchQuery, sortPreference],
+    [collapsedSectors, contractsBySector, quotes, returns, searchQuery, sortPreference, terms],
   );
 
   const sessionText = usesSessionText(width);
+  const quotesRef = useRef(quotes);
+  const returnsRef = useRef(returns);
+  const termsRef = useRef(terms);
+  quotesRef.current = quotes;
+  returnsRef.current = returns;
+  termsRef.current = terms;
   const renderCell = useCallback((
     row: FuturesTableRow,
     column: FuturesColumn,
-  ) => renderFuturesCell(row, column, quotes, { sessionText, returns }), [quotes, returns, sessionText]);
+  ) => renderFuturesCell(row, column, quotesRef.current, { sessionText, returns: returnsRef.current, terms: termsRef.current }), [sessionText]);
+  // Everything a cell reads: the headline figures the board shows, the quote's
+  // other fields, whether the last good quote is held over, and the returns.
+  const getRowVersion = useCallback((row: FuturesTableRow) => {
+    if (row.type !== "row") return row.sector;
+    const state = quotes.get(row.contract.symbol);
+    const quote = state?.quote ? boardHeadlineQuote(state.quote) : null;
+    const values = returns.get(row.contract.symbol);
+    const contract = terms.get(row.contract.symbol);
+    return [
+      state?.loading, state?.stale,
+      quote?.price, quote?.change, quote?.changePercent, quote?.previousClose, quote?.volume, quote?.lastUpdated, quote?.marketState, quote?.symbol, quote?.name,
+      values?.loading, values?.values["1W"], values?.values["1M"], values?.values.YTD,
+      contract?.loading, contract?.terms?.spec?.unit, contract?.terms?.deliveryMonth, contract?.terms?.nearest?.contract,
+      contract?.terms?.nearest?.lastTrade,
+    ].join(":");
+  }, [quotes, returns, terms]);
 
   const toggleSector = useCallback((sector: FuturesSector) => {
     setCollapsedSectors((current) => {
@@ -259,7 +285,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
         height={height}
         error={errorMessage ?? "No quotes returned."}
         subject="Futures quotes"
-        actions={<Button label="Retry" variant="secondary" compact onPress={refresh} />}
+        retry={{ onRetry: refresh }}
       />
     );
   }
@@ -297,6 +323,7 @@ export function FuturesPane({ focused, width, height }: PaneProps) {
       onVisibleRangeChange={setVisibleRange}
       renderSectionHeader={renderSectorHeader}
       renderCell={renderCell}
+      getRowVersion={getRowVersion}
       selectedTextOverridesCellColor
       reportEveryRow
       emptyStateTitle={searchQuery.trim()
@@ -361,7 +388,7 @@ export const futuresModule: PluginModule = {
       paneId: FUTURES_PANE_ID,
       label: "Futures Board",
       description:
-        "Front-month futures across equity index, rates, energy, metals, agriculture, livestock, and FX with last price, session change, search, and collapsible sectors.",
+        "Each root's most active futures contract across equity index, equity sectors, rates, energy, metals, agriculture, livestock, and FX with last price, unit, session change, search, and collapsible sectors.",
       keywords: [
         "futures",
         "commodities",

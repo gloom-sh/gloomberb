@@ -128,6 +128,13 @@ export function isFuturesContractSpec(spec: unknown): spec is FuturesContractSpe
     && (row.settlement === "physical" || row.settlement === "cash");
 }
 
+function isNearestContract(value: unknown): boolean {
+  if (!value || typeof value !== "object") return false;
+  const row = value as Record<string, unknown>;
+  return typeof row.contract === "string" && typeof row.contractSymbol === "string"
+    && typeof row.deliveryMonth === "string" && /^\d{4}-(0[1-9]|1[0-2])$/.test(row.deliveryMonth) && optionalDate(row.lastTrade);
+}
+
 export function validateFuturesContractTerms(data: FuturesContractTermsPayload): FuturesContractTermsPayload {
   const settlement = data?.settlement as unknown;
   if (!data || typeof data !== "object" || typeof data.root !== "string"
@@ -138,6 +145,9 @@ export function validateFuturesContractTerms(data: FuturesContractTermsPayload):
       && isDate((settlement as { date?: unknown }).date))) {
     throw new Error("The server returned invalid futures contract terms");
   }
+  // A nearest contract the server worded some other way is left out; the terms still stand.
+  const nearest = data.nearest as unknown;
+  if (nearest != null && !isNearestContract(nearest)) return { ...data, nearest: null };
   return data;
 }
 

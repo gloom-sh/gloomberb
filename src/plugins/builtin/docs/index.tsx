@@ -14,10 +14,10 @@ const DOCS_INSTANCE_ID = "docs";
 
 function requestedTopic(context: PaneTemplateContext, options?: PaneTemplateCreateOptions): DocsTopic {
   const registry = getSharedRegistry();
-  if (!registry) return { kind: "home" };
-  const index = buildRegistryHelpIndex(registry);
+  // The command line (`gloomberb fn DOCS RV`) has no registry: the argument goes to the reader as a search.
+  const index = registry ? buildRegistryHelpIndex(registry) : null;
   const paneId = options?.values?.pane;
-  if (paneId) {
+  if (paneId && registry && index) {
     const instance = findPaneInstance(context.layout, paneId);
     return (instance ? docsTopicForPane(index, registry, instance) : null) ?? { kind: "home" };
   }
@@ -40,6 +40,8 @@ export const docsModule: PluginModule = {
       icon: "?",
       component: DocsPane,
       reportFreshness: { status: "not-a-feed", basis: "documentation" },
+      // A page reads whole in a report, not cut at the first screen.
+      shotFitsReader: true,
       defaultPosition: "right",
       defaultMode: "floating",
       defaultFloatingSize: { width: 96, height: 34 },

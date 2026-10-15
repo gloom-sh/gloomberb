@@ -5,6 +5,7 @@ import { stableStringify } from "../utils/hash";
 import { VERSION } from "../version";
 import {
   SYNC_SNAPSHOT_SCHEMA_VERSION,
+  SyncRevisionConflictError,
   type RegisteredSyncContributor,
   type RegisteredSyncTransport,
   type SyncBaselineStore,
@@ -35,6 +36,16 @@ interface SyncRuntime {
 
 const CLIENT_ID_STORAGE_KEY = "gloomberb.sync.clientId";
 const PUSH_DEBOUNCE_MS = 2500;
+/** How soon after a change contributors date it, so an edit made just before quitting still is. */
+const OBSERVE_DEBOUNCE_MS = 250;
+/** Pushes refused because another device wrote first, each followed by a fresh pull, before giving up until the next sync. */
+const MAX_CONFLICT_RETRIES = 3;
+
+/** What one pull left behind: the stored revision it merged with (0 for none) and that copy's content. */
+interface PullResult {
+  revision: number | null;
+  signature: string | null;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -49,13 +60,17 @@ function resolveClientId(): string {
   return id;
 }
 
+/**
+ * The content of a snapshot as it reads once stored, so one assembled here
+ * (with fields left undefined) compares equal to the same one pulled back.
+ */
 function snapshotContentSignature(snapshot: SyncSnapshot): string {
-  return stableStringify(Object.fromEntries(
+  return stableStringify(JSON.parse(JSON.stringify(Object.fromEntries(
     Object.entries(snapshot.contributors).map(([id, contributor]) => [
       id,
       { schemaVersion: contributor.schemaVersion, payload: contributor.payload },
     ]),
-  ));
+  ))));
 }
 
 export class CloudSyncController {
@@ -64,6 +79,10 @@ export class CloudSyncController {
   private transports = new Map<string, RegisteredSyncTransport>();
   private listeners = new Set<() => void>();
   private pushTimer: ReturnType<typeof setTimeout> | null = null;
+  private observeTimer: ReturnType<typeof setTimeout> | null = null;
+  private observedSinceStart = false;
+  private memos: Record<string, unknown> | null = null;
+  private memosLoaded = false;
   private inFlight: Promise<void> | null = null;
   private syncQueued = false;
   private clientId: string | null = null;
@@ -141,6 +160,7 @@ export class CloudSyncController {
   schedulePush(reason: string): void {
     const runtime = this.runtime;
     if (!runtime) return;
+    this.scheduleObserve(runtime);
     const registration = runtime.getTransport();
     if (!registration?.transport.isAvailable()) {
       this.setStatus({
@@ -176,6 +196,7 @@ export class CloudSyncController {
   private async syncOnce(options: { reason?: string; force?: boolean }): Promise<void> {
     const runtime = this.runtime;
     if (!runtime) return;
+    this.observe(runtime);
     const registration = runtime.getTransport();
     if (!registration?.transport.isAvailable()) {
       this.setStatus({
@@ -187,53 +208,72 @@ export class CloudSyncController {
     }
     const transport = registration.transport;
 
-    // Always pull before push. Another device (TUI, browser, phone) may have
-    // written since this process last synced, and contributors already merge
-    // so local-only edits survive the apply.
-    if (!await this.runPull(runtime, transport)) return;
-    if (!this.isCurrent(runtime, transport)) return;
+    for (let attempt = 0; ; attempt += 1) {
+      // Always pull before push. Another device (TUI, browser, phone) may have
+      // written since this process last synced, and contributors already merge
+      // so local-only edits survive the apply.
+      const pulled = await this.runPull(runtime, transport);
+      if (!pulled || !this.isCurrent(runtime, transport)) return;
 
-    const snapshot = await this.assembleSnapshot(runtime);
-    if (!this.isCurrent(runtime, transport)) return;
-    const signature = snapshotContentSignature(snapshot);
-    if (!options.force && signature === this.lastSignature) return;
+      const snapshot = await this.assembleSnapshot(runtime);
+      if (!this.isCurrent(runtime, transport)) return;
+      const signature = snapshotContentSignature(snapshot);
+      if (!options.force && signature === this.lastSignature) return;
+      if (!options.force && signature === pulled.signature) {
+        // The cloud already holds exactly this: pushing it back would only
+        // bump the revision under another device's next push.
+        this.lastSignature = signature;
+        this.saveBaseline(runtime, snapshot);
+        return;
+      }
 
-    this.setStatus({ phase: "syncing", transportId: transport.id, error: null });
-    try {
-      const result = await transport.pushSnapshot(snapshot, { baseRevision: this.status.revision });
-      if (!this.isCurrent(runtime, transport)) return;
-      this.lastSignature = signature;
-      this.appliedRevision = result.revision;
-      this.saveBaseline(runtime, snapshot);
-      this.setStatus({
-        phase: "synced",
-        transportId: transport.id,
-        revision: result.revision,
-        lastSyncAt: result.updatedAt,
-        error: null,
-      });
-    } catch (error) {
-      if (!this.isCurrent(runtime, transport)) return;
-      this.setStatus({
-        phase: "error",
-        transportId: transport.id,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.setStatus({ phase: "syncing", transportId: transport.id, error: null });
+      try {
+        // The revision this snapshot was merged with. The cloud refuses the
+        // write if another device wrote since, instead of losing that write.
+        const result = await transport.pushSnapshot(snapshot, { baseRevision: pulled.revision });
+        if (!this.isCurrent(runtime, transport)) return;
+        this.lastSignature = signature;
+        this.appliedRevision = result.revision;
+        this.saveBaseline(runtime, snapshot);
+        this.setStatus({
+          phase: "synced",
+          transportId: transport.id,
+          revision: result.revision,
+          lastSyncAt: result.updatedAt,
+          error: null,
+        });
+        return;
+      } catch (error) {
+        if (!this.isCurrent(runtime, transport)) return;
+        if (error instanceof SyncRevisionConflictError && attempt < MAX_CONFLICT_RETRIES) {
+          // Pull whatever the other device wrote, even an older revision than
+          // this process last saw (an account switch, a restored snapshot).
+          this.appliedRevision = null;
+          continue;
+        }
+        this.setStatus({
+          phase: "error",
+          transportId: transport.id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        return;
+      }
     }
   }
 
-  private async runPull(runtime: SyncRuntime, transport: SyncTransport): Promise<boolean> {
+  private async runPull(runtime: SyncRuntime, transport: SyncTransport): Promise<PullResult | null> {
     const baselineState = runtime.getState();
     this.setStatus({ phase: "syncing", transportId: transport.id, error: null });
     try {
       const response = await transport.pullSnapshot();
-      if (!this.isCurrent(runtime, transport)) return false;
+      if (!this.isCurrent(runtime, transport)) return null;
 
       if (response.snapshot && this.shouldApplyPulledRevision(response.revision)) {
         this.assertSnapshotCompatible(response.snapshot, runtime.getContributors());
         this.pulledContributors = response.snapshot.contributors;
         for (const entry of runtime.getContributors()) {
-          if (!this.isCurrent(runtime, transport)) return false;
+          if (!this.isCurrent(runtime, transport)) return null;
           const contributorPayload = response.snapshot.contributors[entry.contributor.id];
           if (!contributorPayload || !entry.contributor.apply) continue;
           await entry.contributor.apply(contributorPayload.payload, {
@@ -245,12 +285,13 @@ export class CloudSyncController {
             isCurrent: () => this.isCurrent(runtime, transport),
             dispatch: runtime.dispatch,
             tickerRepository: runtime.tickerRepository,
+            memo: this.memoFor(runtime, entry.contributor.id),
           });
         }
         if (response.revision != null) this.appliedRevision = response.revision;
       }
 
-      if (!this.isCurrent(runtime, transport)) return false;
+      if (!this.isCurrent(runtime, transport)) return null;
       this.setStatus({
         phase: response.snapshot ? "synced" : "idle",
         transportId: transport.id,
@@ -259,15 +300,18 @@ export class CloudSyncController {
         lastSyncAt: response.updatedAt ?? this.status.lastSyncAt,
         error: null,
       });
-      return true;
+      return {
+        revision: response.snapshot ? response.revision : 0,
+        signature: response.snapshot ? snapshotContentSignature(response.snapshot) : null,
+      };
     } catch (error) {
-      if (!this.isCurrent(runtime, transport)) return false;
+      if (!this.isCurrent(runtime, transport)) return null;
       this.setStatus({
         phase: "error",
         transportId: transport.id,
         error: error instanceof Error ? error.message : String(error),
       });
-      return false;
+      return null;
     }
   }
 
@@ -302,7 +346,11 @@ export class CloudSyncController {
     // carried over instead of being deleted for every other device.
     const payloads: SyncSnapshot["contributors"] = { ...this.pulledContributors };
     for (const entry of contributors) {
-      const payload = await entry.contributor.collect({ state: runtime.getState() });
+      const payload = await entry.contributor.collect({
+        state: runtime.getState(),
+        baselinePayload: this.loadBaseline(runtime)?.[entry.contributor.id] ?? null,
+        memo: this.memoFor(runtime, entry.contributor.id),
+      });
       payloads[entry.contributor.id] = {
         schemaVersion: entry.contributor.schemaVersion,
         updatedAt: createdAt,
@@ -325,6 +373,53 @@ export class CloudSyncController {
       this.baseline = runtime.baselineStore?.load() ?? null;
     }
     return this.baseline;
+  }
+
+  private scheduleObserve(runtime: SyncRuntime): void {
+    if (this.observeTimer) clearTimeout(this.observeTimer);
+    this.observeTimer = setTimeout(() => {
+      this.observeTimer = null;
+      if (this.runtime === runtime) this.observe(runtime);
+    }, OBSERVE_DEBOUNCE_MS);
+  }
+
+  /** Lets contributors date local edits as they happen, whether or not the cloud is reachable. */
+  private observe(runtime: SyncRuntime): void {
+    const launch = !this.observedSinceStart;
+    this.observedSinceStart = true;
+    for (const entry of runtime.getContributors()) {
+      if (!entry.contributor.observe) continue;
+      try {
+        entry.contributor.observe({
+          state: runtime.getState(),
+          baselinePayload: this.loadBaseline(runtime)?.[entry.contributor.id] ?? null,
+          memo: this.memoFor(runtime, entry.contributor.id),
+          launch,
+        });
+      } catch {
+        // A contributor that cannot date an edit leaves it undated, which only
+        // makes it lose a conflict it might have won.
+      }
+    }
+  }
+
+  private memoFor(runtime: SyncRuntime, contributorId: string) {
+    return {
+      get: () => this.loadMemos(runtime)[contributorId] ?? null,
+      set: (value: unknown) => {
+        const memos = { ...this.loadMemos(runtime), [contributorId]: value };
+        this.memos = memos;
+        runtime.baselineStore?.saveMemos?.(memos);
+      },
+    };
+  }
+
+  private loadMemos(runtime: SyncRuntime): Record<string, unknown> {
+    if (!this.memosLoaded) {
+      this.memosLoaded = true;
+      this.memos = runtime.baselineStore?.loadMemos?.() ?? null;
+    }
+    return this.memos ?? {};
   }
 
   private saveBaseline(runtime: SyncRuntime, snapshot: SyncSnapshot): void {
@@ -353,6 +448,11 @@ export class CloudSyncController {
   private resetOperations(): void {
     if (this.pushTimer) clearTimeout(this.pushTimer);
     this.pushTimer = null;
+    if (this.observeTimer) clearTimeout(this.observeTimer);
+    this.observeTimer = null;
+    this.observedSinceStart = false;
+    this.memos = null;
+    this.memosLoaded = false;
     this.inFlight = null;
     this.syncQueued = false;
     this.lastSignature = null;

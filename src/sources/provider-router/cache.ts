@@ -9,6 +9,8 @@ import { brokerContractIdentityKey } from "../../utils/instrument-identity";
 import { providerFinancialsMatchTarget, providerQuoteMatchesTarget } from "./financials";
 
 const MARKET_NAMESPACE = "market";
+/** Quotes and price histories are read on every tick; their eviction order is refreshed at most this often. */
+const HOT_READ_TOUCH_MS = 10 * 60_000;
 // A record written under another version is a miss: bump these instead of
 // repairing older records on read.
 export const FINANCIALS_SCHEMA_VERSION = 13;
@@ -174,6 +176,7 @@ export function listCachedResources<T>(
     sourceKeys,
     allowExpired,
     ...(SCHEMA_VERSIONS[kind] ? { schemaVersion: SCHEMA_VERSIONS[kind] } : {}),
+    ...(kind === "quote" || kind === "price-history" || kind === "price-history-recheck" ? { touchIntervalMs: HOT_READ_TOUCH_MS } : {}),
   }).filter((record) => {
     if (!record.sourceKey.startsWith("provider:") || entityKey.startsWith("contract:")
       || (kind !== "financials" && kind !== "quote")) return true;

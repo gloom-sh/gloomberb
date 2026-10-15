@@ -532,6 +532,8 @@ export function resolveCanonicalQuote(
     overnightChange: priceProvider?.overnightChange,
     overnightChangePercent: priceProvider?.overnightChangePercent,
     overnightPriceKind: priceProvider?.overnightPriceKind,
+    // An index's regular sessions come with the print they date.
+    indexSession: priceProvider?.indexSession,
     bid: resolved.bid as Quote["bid"],
     ask: resolved.ask as Quote["ask"],
     bidSize: resolved.bidSize as Quote["bidSize"],

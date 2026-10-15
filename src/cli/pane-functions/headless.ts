@@ -5,6 +5,7 @@ import { findNamedCollection } from "../../portfolio/collection-name";
 import { apiClient } from "../../api-client";
 import type { MarketContext } from "../types";
 import type {
+  HeadlessArgumentExpansion,
   HeadlessBundleResult,
   HeadlessBundleSection,
   HeadlessPaneColumn,
@@ -37,9 +38,11 @@ import type { ResolvedSeries } from "../../time-series/types";
 import type { PaneFunctionReport } from "./report";
 import type { ResolvedPaneFunction } from "./resolver";
 import { isRecord } from "../../utils/guards";
+import { splitSymbolArgs } from "../symbol-args";
 import { formatUtcTime, localTimeSuffix } from "../../utils/utc-time";
 import { deriveHeadlessFreshness, formatFreshnessLine, staleRowsText, type ReportFreshness } from "./freshness";
 import { accessGateStatus, errorsAccessGate, isProLock } from "./access-gate";
+import { lockedHeadlessReport } from "./lock-note";
 
 interface SerializableHeadlessColumn {
   key: string;
@@ -73,7 +76,7 @@ function normalizeSymbol(value: string): string {
 function normalizeSymbolList(value: string): string[] {
   const symbols: string[] = [];
   const seen = new Set<string>();
-  for (const part of value.split(/[,\s]+/)) {
+  for (const part of splitSymbolArgs([value])) {
     const symbol = normalizeSymbol(part);
     if (!symbol || seen.has(symbol)) continue;
     seen.add(symbol);
@@ -161,22 +164,17 @@ async function loadHeadlessPaneModel(
   return result;
 }
 
-/**
- * Loads the same renderer-neutral model used by `fn`.
- * Both reports and screenshot payloads execute this loader.
- */
-export async function loadResolvedHeadlessPaneModel(
+type HeadlessMarketContext = Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
+  dataProvider: HeadlessPaneContext["marketData"];
+};
+
+/** What a headless loader reads the market, the account and the saved collections through. */
+function createHeadlessPaneContext(
   resolved: ResolvedPaneFunction,
-  context: Pick<MarketContext, "config" | "store" | "refresh" | "resolveBroker"> & Partial<Pick<MarketContext, "persistence" | "seriesCapabilities">> & {
-    dataProvider: HeadlessPaneContext["marketData"];
-  },
-  rawArgument: string,
-  signal: AbortSignal = new AbortController().signal,
-): Promise<LoadedHeadlessPaneModel> {
-  const definition = resolved.headless;
-  if (!definition) throw new Error(`${resolved.token} has no headless pane model.`);
-  const args = buildHeadlessPaneLoadArgs(definition, resolved.token, rawArgument, resolved.options);
-  const headlessContext: HeadlessPaneContext = {
+  context: HeadlessMarketContext,
+  signal: AbortSignal,
+): HeadlessPaneContext {
+  return {
     marketData: context.dataProvider,
     apiClient,
     config: context.config,
@@ -203,7 +201,40 @@ export async function loadResolvedHeadlessPaneModel(
       return { symbol: parsed.symbol, exchange: parsed.exchange ?? ticker?.metadata.exchange };
     },
   };
-  const result = await loadHeadlessPaneModel(definition, args, headlessContext);
+}
+
+/**
+ * The argument a function widens before it runs (`expandArgument`, RV's
+ * `--peers`), with the settings that say how; null when it runs as typed.
+ */
+export async function expandResolvedArgument(
+  resolved: ResolvedPaneFunction,
+  context: HeadlessMarketContext,
+  rawArgument: string,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<HeadlessArgumentExpansion | null> {
+  const definition = resolved.headless;
+  if (!definition?.expandArgument) return null;
+  const args = buildHeadlessPaneLoadArgs(definition, resolved.token, rawArgument, resolved.options);
+  const expansion = await definition.expandArgument(args, createHeadlessPaneContext(resolved, context, signal));
+  throwIfAborted(signal);
+  return expansion;
+}
+
+/**
+ * Loads the same renderer-neutral model used by `fn`.
+ * Both reports and screenshot payloads execute this loader.
+ */
+export async function loadResolvedHeadlessPaneModel(
+  resolved: ResolvedPaneFunction,
+  context: HeadlessMarketContext,
+  rawArgument: string,
+  signal: AbortSignal = new AbortController().signal,
+): Promise<LoadedHeadlessPaneModel> {
+  const definition = resolved.headless;
+  if (!definition) throw new Error(`${resolved.token} has no headless pane model.`);
+  const args = buildHeadlessPaneLoadArgs(definition, resolved.token, rawArgument, resolved.options);
+  const result = await loadHeadlessPaneModel(definition, args, createHeadlessPaneContext(resolved, context, signal));
   return { definition, args, result };
 }
 
@@ -527,6 +558,36 @@ function splitErrors(result: HeadlessPaneResult): { locked: string[]; failed: st
   return { locked: errors.filter(isProLock), failed: errors.filter((error) => !isProLock(error)) };
 }
 
+/**
+ * Why a report with nothing in it is empty, when its pane gave no reason of
+ * its own: the free view left it empty (the report carries a Pro line), or the
+ * symbols asked for are not covered by the function (or hold nothing for the
+ * options chosen). Null when something has
+ * rows, a table states its own reason, an error explains it, or no symbol was
+ * asked for (a board that is empty says nothing about coverage).
+ */
+function emptyReportReason(
+  definition: HeadlessPaneDefinition,
+  result: HeadlessPaneResult,
+  args: HeadlessPaneLoadArgs,
+  token: string | undefined,
+): string | null {
+  if (resultRowCount(definition, result) > 0) return null;
+  const ownReason = definition.shape === "rows" ? !!(result as HeadlessRowsResult).empty
+    : definition.shape === "bundle" && (result as HeadlessBundleResult).sections.some((section) => "empty" in section && !!section.empty);
+  const { locked, failed } = splitErrors(result);
+  if (ownReason || failed.length) return null;
+  if (locked.length) return "Locked: Gloom Pro";
+  const symbols = result.symbols ?? args.symbols;
+  if (!symbols.length) return null;
+  // An option the reader chose (a range, a tab) can leave a covered symbol empty, so coverage is not claimed then.
+  const narrowed = definition.options.some((option) => {
+    const value = args.options[option.key];
+    return value !== undefined && value !== "" && String(value) !== String(option.defaultValue ?? "");
+  });
+  return narrowed ? `No data for ${symbols.join(", ")} with these options.` : `No data for ${symbols.join(", ")}: not covered${token ? ` by ${token}` : ""}.`;
+}
+
 function textNotices(result: HeadlessPaneResult): string[] {
   const notices = result.metadata?.notices;
   if (!Array.isArray(notices)) return [];
@@ -634,15 +695,20 @@ export function renderHeadlessPaneText(
   args: HeadlessPaneLoadArgs,
   fallbackTitle: string,
   freshness: ReportFreshness = deriveHeadlessFreshness(definition, result),
+  /** The function's token, which an empty report names as the one that does not cover the symbol. */
+  token?: string,
 ): string {
   // A long title wraps to a narrow --width like the text under a table; each line stays bold.
   const lines = [...wrapToTerminal(reportTitle(definition, args, result, fallbackTitle)).split("\n").map(cliStyles.bold), ""];
   const notices = textNotices(result);
   if (notices.length) lines.push(...notices, "");
-  switch (definition.shape) {
+  const reason = emptyReportReason(definition, result, args, token);
+  // Said once, not under the heading of each empty table.
+  if (reason) lines.push(reason);
+  else switch (definition.shape) {
     case "rows": {
       const rowsResult = result as HeadlessRowsResult;
-      lines.push(renderRows(rowsResult.rows, rowsResult.columns, definition.columns, rowsResult.empty));
+      lines.push(renderRows(rowsResult.rows, rowsResult.textColumns ?? rowsResult.columns, definition.columns, rowsResult.empty));
       break;
     }
     case "bundle":
@@ -722,7 +788,17 @@ export async function buildHeadlessFunctionReport(
   context: MarketContext,
   rawArgument: string,
 ): Promise<PaneFunctionReport> {
-  const loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
+  let loaded: LoadedHeadlessPaneModel;
+  try {
+    loaded = await loadResolvedHeadlessPaneModel(resolved, context, rawArgument);
+  } catch (error) {
+    // A Pro pane the server refused reports what its wall covers, as its rendered view does.
+    const locked = lockedHeadlessReport(resolved, error, () => (
+      buildHeadlessPaneLoadArgs(resolved.headless!, resolved.token, rawArgument, resolved.options).symbols
+    ));
+    if (locked) return locked;
+    throw error;
+  }
   const { complete, unavailableSymbols, rowCount, symbols } = reportCoverage(loaded);
   const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
   const freshness = deriveHeadlessFreshness(loaded.definition, loaded.result);
@@ -746,6 +822,7 @@ export async function buildHeadlessFunctionReport(
       loaded.args,
       resolved.label,
       freshness,
+      resolved.token,
     ),
     tables: headlessReportTables(
       loaded.definition,

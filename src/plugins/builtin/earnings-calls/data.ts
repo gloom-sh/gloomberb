@@ -216,6 +216,28 @@ export function loadEarningsCalls(
   return loadEarningsCallsWithClient(apiClient, ticker, options);
 }
 
+export function cachedEarningsCalls(
+  ticker: string | null,
+  options?: IssuerListingParams & { limit?: number },
+): EarningsCallsResult | null {
+  const normalizedTicker = ticker?.trim().toUpperCase() || null;
+  const abroad = normalizedTicker ? listingAbroad(normalizedTicker, options?.exchange, options?.name) : null;
+  const limit = listLimit(options?.limit);
+  const cached = persistence?.getResource<CloudEarningsCallListPayload>(LIST_KIND, listKey(normalizedTicker, abroad, limit, 0), {
+    sourceKey: CACHE_SOURCE,
+    schemaVersion: LIST_CACHE_SCHEMA_VERSION,
+    allowExpired: true,
+  });
+  if (!cached) return null;
+  return {
+    ...cached.value,
+    sourceLimit: limit,
+    sourceLimitReached: cached.value.calls.length >= limit,
+    fetchedAt: cached.fetchedAt,
+    stale: cached.stale === true,
+  };
+}
+
 /**
  * The server answers 202 with a pending marker when a call is known but not
  * transcribed yet, having just queued it. That is not a transcript and must

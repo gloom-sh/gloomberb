@@ -1,4 +1,4 @@
-import { expect, spyOn, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import type { Quote } from "../../types/financials";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { QuoteBatchResult, QuoteSubscriptionTarget } from "../../types/data-provider";
@@ -9,6 +9,9 @@ import { DEFAULT_CLI_OPTIONS } from "../options";
 import { printCliResult } from "../result";
 import { setCliColorEnabledOverride } from "../../utils/cli-output";
 import { marketDataCliCommands } from "./market";
+
+// A quote that finds nothing sets the exit status; it must not become the test run's.
+afterEach(() => { process.exitCode = 0; });
 
 const quoteCommand = marketDataCliCommands.find((command) => command.name === "quote")!;
 
@@ -82,10 +85,11 @@ async function quoteRows(args: string[]) {
 }
 
 test("every spelling of a pair quotes the same listing, so its rows are the same row", async () => {
+  // Case is no spelling of its own: a symbol typed twice in two cases is one row (`normalizeSymbols`).
   const spellings: Record<string, string[]> = {
-    "USDNGN=X": ["USDNGN=X", "USD/NGN", "usd/ngn", "USD-NGN", "usd-ngn", "USDNGN", "usdngn", "NGN=X", "USDNGN:CCY"],
-    "EURUSD=X": ["EURUSD=X", "EUR/USD", "eur/usd", "EUR-USD", "eur-usd", "EURUSD", "eurusd", "EURUSD:FX"],
-    "USDJPY=X": ["USDJPY=X", "JPY=X", "jpy=x", "USD/JPY", "usd/jpy", "USD-JPY", "usdjpy"],
+    "USDNGN=X": ["USDNGN=X", "usd/ngn", "USD-NGN", "usdngn", "NGN=X", "USDNGN:CCY"],
+    "EURUSD=X": ["EURUSD=X", "EUR/USD", "eur-usd", "eurusd", "EURUSD:FX"],
+    "USDJPY=X": ["USDJPY=X", "jpy=x", "USD/JPY", "usd-jpy", "usdjpy"],
   };
   for (const [pair, typed] of Object.entries(spellings)) {
     const { rows, asked } = await quoteRows(typed);

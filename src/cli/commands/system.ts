@@ -4,6 +4,7 @@ import { saveConfig } from "../../data/config/store";
 import { builtinPluginGroupMembers } from "../../plugins/ownership";
 import type { AppConfig, TelemetryConfig } from "../../types/config";
 import { canonicalTimeZone } from "../../utils/utc-time";
+import { NIGHTLY_CHANNEL_SUMMARY, parseUpdateChannel, withUpdateChannel } from "../../updater/channel";
 import type { CliCommandDef } from "../../types/plugin";
 import { resolveCliDataDir, withCliServices, withConfigData } from "../context";
 import { CLI_COMMAND_GROUPS } from "../help";
@@ -33,6 +34,8 @@ const STAR_PROMPT_CONFIG_KEY = "starPrompt.enabled";
 const TIMEZONE_CONFIG_KEY = "timezone";
 /** What `config set timezone` takes to go back to UTC alone. */
 const NO_TIMEZONE = "none";
+/** Stable releases, or nightly builds as well. */
+const UPDATE_CHANNEL_CONFIG_KEY = "updates.channel";
 const EDITABLE_CONFIG_KEYS = [
   "baseCurrency",
   "refreshIntervalMinutes",
@@ -41,6 +44,7 @@ const EDITABLE_CONFIG_KEYS = [
   ...Object.keys(TELEMETRY_CONFIG_KEYS),
   STAR_PROMPT_CONFIG_KEY,
   TIMEZONE_CONFIG_KEY,
+  UPDATE_CHANNEL_CONFIG_KEY,
 ];
 
 function isTelemetryConfigKey(key: string): key is TelemetryConfigKey {
@@ -219,6 +223,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
         "config set telemetry.usage false",
         "config set starPrompt.enabled false",
         "config set timezone <Region/City>|none",
+        "config set updates.channel stable|nightly",
         "config get keybindings",
         "config set keybindings.actions.<action> <keys>|null|default",
         "config set keybindings.commands.<keys> <command>|null",
@@ -235,6 +240,11 @@ export function createSystemCliCommands(): CliCommandDef[] {
         title: "Themes",
         lines: [
           `theme takes one of these ids, or its name as config themes lists it: ${getThemeIds().join(", ")}.`,
+        ],
+      }, {
+        title: "Release channel",
+        lines: [
+          `The app updates itself from stable releases. With updates.channel nightly (Release Channel in the command bar) it also installs the nightly build: ${NIGHTLY_CHANNEL_SUMMARY}. Back on stable, a nightly build stays until a newer stable release is out. GLOOMBERB_UPDATE_CHANNEL overrides the setting for one run; npm and Bun installs always follow stable.`,
         ],
       }],
       examples: [
@@ -287,6 +297,7 @@ export function createSystemCliCommands(): CliCommandDef[] {
           "telemetry.attention": context.config.telemetry?.attention === true,
           [STAR_PROMPT_CONFIG_KEY]: context.config.starPrompt?.enabled !== false,
           [TIMEZONE_CONFIG_KEY]: context.config.timezone ?? null,
+          [UPDATE_CHANNEL_CONFIG_KEY]: context.config.updates?.channel ?? "stable",
         };
 
         if (action === "list") {
@@ -347,11 +358,16 @@ export function createSystemCliCommands(): CliCommandDef[] {
           if ((isTelemetryConfigKey(key) || key === STAR_PROMPT_CONFIG_KEY) && value !== "true" && value !== "false") {
             ctx.fail(`Usage: gloomberb config set ${key} true|false`);
           }
+          if (key === UPDATE_CHANNEL_CONFIG_KEY && !parseUpdateChannel(value)) {
+            ctx.fail(`Usage: gloomberb config set ${key} stable|nightly`);
+          }
           // A display name may come unquoted: config set theme White Phosphor.
           const parsedValue = key === "theme"
             ? requireThemeId(args.slice(2).join(" "))
             : key === TIMEZONE_CONFIG_KEY
               ? parseTimezoneSetting(value)
+              : key === UPDATE_CHANNEL_CONFIG_KEY
+              ? parseUpdateChannel(value)
               : key === "refreshIntervalMinutes"
               ? Number(value)
               : isBooleanConfigKey(key)
@@ -363,7 +379,9 @@ export function createSystemCliCommands(): CliCommandDef[] {
               ? { ...context.config, starPrompt: { ...context.config.starPrompt, enabled: parsedValue as boolean } }
               : key === TIMEZONE_CONFIG_KEY
                 ? withTimezone(context.config, parsedValue as string | null)
-                : { ...context.config, [key]: parsedValue };
+                : key === UPDATE_CHANNEL_CONFIG_KEY
+                  ? withUpdateChannel(context.config, parsedValue as "stable" | "nightly")
+                  : { ...context.config, [key]: parsedValue };
           if (!ctx.cliOptions.dryRun) await saveConfig(nextConfig);
           ctx.printResult({
             data: {

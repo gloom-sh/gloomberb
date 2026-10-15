@@ -14,12 +14,14 @@ import {
   formatPercentRaw,
 } from "../../../utils/format";
 import { computeTTM } from "../ticker-detail/financials/aggregation";
+import { declaredDividends } from "../../../utils/declared-dividends";
 import {
   earningsDateStatus,
   earningsEpsBasis,
   epsBasisName,
   epsSurprise,
   inFiscalMonth,
+  showsEpsBasis,
   type EpsBasisName,
 } from "../shared/earnings-report";
 
@@ -46,7 +48,7 @@ export interface EventRow {
   epsEstimate?: number;
   epsDifference?: number;
   surprisePercent?: number;
-  /** A reported figure's basis; the same quarter is named the same way in ERN. */
+  /** A reported figure's basis, or an upcoming estimate's when it is adjusted; the same quarter is named the same way in ERN. */
   epsBasis?: EpsBasisName;
   /** Analysts behind `epsEstimate`, when known. */
   epsAnalysts?: number;
@@ -224,11 +226,12 @@ function ttmRow(
   };
 }
 
-/** A reported row names its basis and beat; a pending one whether its date is announced and its analysts. */
+/** A reported row names its basis and beat; a pending one whether its date is announced, its analysts and an adjusted estimate's basis. */
 function earningsDetail(earning: CorporateActionsData["earnings"][number]): string {
   if (earning.epsActual == null) {
     const status = earningsDateStatus(earning.dateStatus);
-    const parts = [status === "reported" ? null : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null];
+    const parts = [status === "reported" ? null : status, earning.epsAnalysts != null ? `${earning.epsAnalysts} analysts` : null,
+      earningsEpsBasis(earning.epsBasis) === "adjusted" ? BASIS_TEXT.adjusted : null];
     return parts.filter(Boolean).join(", ") || "Pending";
   }
   const basis = BASIS_TEXT[epsBasisName(earningsEpsBasis(earning.epsBasis))];
@@ -341,7 +344,8 @@ export function buildEventRows(
       epsEstimate: earning.epsEstimate,
       epsDifference: earning.epsActual == null ? undefined : earning.difference,
       surprisePercent,
-      epsBasis: earning.epsActual == null ? undefined : epsBasisName(earningsEpsBasis(earning.epsBasis)),
+      epsBasis: showsEpsBasis({ epsActual: earning.epsActual, epsBasis: earningsEpsBasis(earning.epsBasis) })
+        ? epsBasisName(earningsEpsBasis(earning.epsBasis)) : undefined,
       epsAnalysts: earning.epsAnalysts,
       dateStatus: earningsDateStatus(earning.dateStatus) ?? undefined,
       providerId: data?.providerId,
@@ -390,6 +394,19 @@ export function buildEventRows(
       status: "Dividend",
       period: "-",
       detail: "Ex-date",
+      value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
+      tone: "positive",
+    });
+  }
+
+  // Declared and unpaid: its own row at its ex-date, apart from the paid distributions above.
+  for (const dividend of declaredDividends(data)) {
+    rows.push({
+      id: `div-declared:${dividend.exDate}`,
+      date: dividend.exDate,
+      status: "Dividend",
+      period: "-",
+      detail: dividend.payDate ? `Declared, payable ${dividend.payDate}` : "Declared",
       value: formatDistributionAmount(dividend.amount, data?.currency ?? currency),
       tone: "positive",
     });

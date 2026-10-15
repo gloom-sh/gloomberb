@@ -53,6 +53,86 @@ index c26c2c977ee1fc25a8dc144b85bac8626a45f572..8920a2905380228c23cba66c20d9bfd1
  			frame: {
  				width: this.frame.width,
  				height: this.frame.height,
+diff --git a/dist/api/bun/core/Updater.ts b/dist/api/bun/core/Updater.ts
+index 39daf6d341780af8e30c2c50327162863f5977ec..bf4a4b615f84904759d4bcd57be0d899c9464a5f 100644
+--- a/dist/api/bun/core/Updater.ts
++++ b/dist/api/bun/core/Updater.ts
+@@ -132,6 +132,19 @@ let updateInfo: {
+ 	error: string;
+ };
+ 
++// Where updates are fetched from when it is not the channel and baseUrl that
++// version.json names. Only the download URLs read it: the app data folder and
++// the "dev" check keep the installed build's own channel.
++let updateSource: { channel: string; baseUrl: string } | null = null;
++
++function updateSourceChannel(): string {
++	return updateSource?.channel ?? localInfo.channel;
++}
++
++function updateSourceBaseUrl(): string {
++	return updateSource?.baseUrl ?? localInfo.baseUrl;
++}
++
+ function cleanupExtractionFolder(
+ 	extractionFolder: string,
+ 	keepTarHash: string,
+@@ -176,6 +189,12 @@ const Updater = {
+ 		onStatusChangeCallback = callback;
+ 	},
+ 
++	// Checks and downloads from `source` (a channel prefix and the URL its
++	// files sit under) until it is set again; null goes back to version.json.
++	setUpdateSource: (source: { channel: string; baseUrl: string } | null) => {
++		updateSource = source;
++	},
++
+ 	// todo: allow switching channels, by default will check the current channel
+ 	checkForUpdate: async () => {
+ 		emitStatus("checking", "Checking for updates...");
+@@ -196,11 +215,11 @@ const Updater = {
+ 
+ 		const cacheBuster = Math.random().toString(36).substring(7);
+ 		const platformPrefix = getPlatformPrefix(
+-			localInfo.channel,
++			updateSourceChannel(),
+ 			currentOS,
+ 			currentArch,
+ 		);
+-		const updateInfoUrl = `${localInfo.baseUrl.replace(/\/+$/, "")}/${platformPrefix}-update.json?${cacheBuster}`;
++		const updateInfoUrl = `${updateSourceBaseUrl().replace(/\/+$/, "")}/${platformPrefix}-update.json?${cacheBuster}`;
+ 
+ 		try {
+ 			const updateInfoResponse = await fetch(updateInfoUrl);
+@@ -329,11 +348,11 @@ const Updater = {
+ 
+ 				// check if there's a patch file for it
+ 				const platformPrefix = getPlatformPrefix(
+-					localInfo.channel,
++					updateSourceChannel(),
+ 					currentOS,
+ 					currentArch,
+ 				);
+-				const patchUrl = `${localInfo.baseUrl.replace(/\/+$/, "")}/${platformPrefix}-${currentHash}.patch`;
++				const patchUrl = `${updateSourceBaseUrl().replace(/\/+$/, "")}/${platformPrefix}-${currentHash}.patch`;
+ 				emitStatus(
+ 					"fetching-patch",
+ 					`Checking for patch: ${currentHash.slice(0, 8)}`,
+@@ -612,12 +631,12 @@ const Updater = {
+ 
+ 				const cacheBuster = Math.random().toString(36).substring(7);
+ 				const platformPrefix = getPlatformPrefix(
+-					localInfo.channel,
++					updateSourceChannel(),
+ 					currentOS,
+ 					currentArch,
+ 				);
+ 				const tarballName = getTarballFileName(appFileName, currentOS);
+-				const urlToLatestTarball = `${localInfo.baseUrl.replace(/\/+$/, "")}/${platformPrefix}-${tarballName}`;
++				const urlToLatestTarball = `${updateSourceBaseUrl().replace(/\/+$/, "")}/${platformPrefix}-${tarballName}`;
+ 				const prevVersionCompressedTarballPath = join(
+ 					appDataFolder,
+ 					"self-extraction",
 diff --git a/dist/api/bun/proc/native.ts b/dist/api/bun/proc/native.ts
 index f0f6c2532ba2eb467ec1d452a25c835b6db72661..ae77cf58d32392ad4cc8e2103ac7ed27baae8bea 100644
 --- a/dist/api/bun/proc/native.ts

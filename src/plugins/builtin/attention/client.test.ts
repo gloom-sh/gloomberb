@@ -2,8 +2,10 @@ import { afterEach, expect, test } from "bun:test";
 import { setCloudApiFetchTransport } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import type { AttentionPayload } from "../../../api-client/attention";
+import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { attentionCache, fetchAttention, loadAttention, validateAttention } from "./client";
+import { attentionHeadless } from "./headless";
 import { attentionFixture, attentionPreview } from "./test-fixture";
 afterEach(() => { setCloudApiFetchTransport(null); attentionCache.reset(); });
 test("rejects malformed observations and preview history leaks at the read boundary", () => {
@@ -55,4 +57,20 @@ test("listing suffixes remain tied to their exact exchange", async () => {
   data.rows = [{ ...data.rows[0]!, ticker: "VOD", symbol: "VOD:LSE", exchange: "LSE" }];
   expect((await fetchAttention("now", "VOD.L", { getCloudAttention: async () => data })).rows[0]?.symbol).toBe("VOD:LSE");
   await expect(fetchAttention("now", "VOD.L:NASDAQ", { getCloudAttention: async () => data })).rejects.toThrow("different selection");
+});
+
+test("a ticker outside the free preview lists the preview's rows with the lock line, and a board still collecting says so instead of No data", async () => {
+  // The server picks the preview's three rows before it looks the ticker up: one outside them comes back with none.
+  const api = { getCloudAttention: async (_window: string, symbol?: string) => symbol ? { ...attentionPreview(), rows: [], sectors: [], countries: [] } : attentionPreview() };
+  const load = (client: unknown, argument: string | null) => attentionHeadless.load(
+    createTestHeadlessArgs({ argument, rawArgument: argument ?? "" }), createTestHeadlessContext({ apiClient: client as never }));
+
+  const outside = await load(api, "DUOL");
+  expect(outside.sections[0]!.rows).toHaveLength(3);
+  expect(outside.errors).toEqual(["Free shows the top 3 of 6 tickers, not DUOL: the preview can't filter by ticker. Gloom Pro adds the other 3 tickers and hourly history for any ticker."]);
+  expect((await load(api, null)).errors?.[0]).toStartWith("Free shows the top 3 of 6 tickers, for the latest hour.");
+
+  const collecting = { getCloudAttention: async () => ({ ...attentionPreview(), status: "collecting" as const, rows: [], sectors: [], countries: [], counts: { rows: 0, sectors: 0, countries: 0 } }) };
+  expect(await load(collecting, "DUOL")).toMatchObject({ sections: [{ rows: [], empty: "Waiting for privacy-qualified research activity." }] });
+  expect((await load(collecting, "DUOL")).errors).toBeUndefined();
 });

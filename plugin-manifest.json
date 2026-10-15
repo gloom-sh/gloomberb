@@ -677,7 +677,7 @@
           {
             "code": "CTM",
             "name": "Futures Curve",
-            "description": "Listed futures contracts, historical curves, roll yield and open interest including VIX and CME crypto futures."
+            "description": "Listed futures contracts, historical curves, roll yield and open interest including VIX and CME crypto futures, which add basis against spot: Ann Basis = (Last / spot - 1) × 365 / days to expiry, simple actual/365."
           },
           {
             "code": "COT",

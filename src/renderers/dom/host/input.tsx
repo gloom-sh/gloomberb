@@ -16,7 +16,6 @@ import {
 import { editableTextContextMenuItems } from "../../../ui/context-menu";
 import { useRendererHost, useUiCapabilities, type InputRenderable, type TextareaRenderable } from "../../../ui/host";
 import { toKeyEventLike } from "../input-host";
-import { WEB_CELL_WIDTH } from "../../../theme/font-scale";
 import { cellHeight, cellWidth, cleanDomProps, commonStyle } from "./style";
 
 function textInputStyle(props: Record<string, unknown>, multiline: boolean): CSSProperties {
@@ -161,10 +160,35 @@ function useSyncedEditableElement<T extends HTMLInputElement | HTMLTextAreaEleme
 
 type WebVisualCursor = TextareaRenderable["visualCursor"];
 
+/**
+ * How many characters a line of the field holds before it wraps: its text
+ * box over the advance of one character of its own font, as the browser lays
+ * them out. A character is narrower than a terminal cell.
+ */
 function textareaColumnCount(props: Record<string, unknown>, element: HTMLTextAreaElement | null): number {
   if (typeof props.width === "number") return Math.max(1, Math.floor(props.width));
-  const width = element?.clientWidth ?? 0;
-  return Math.max(1, Math.floor(width / WEB_CELL_WIDTH));
+  if (!element) return 1;
+  const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+  const inset = (parseFloat(style?.paddingLeft ?? "") || 0) + (parseFloat(style?.paddingRight ?? "") || 0);
+  return Math.max(1, Math.floor((element.clientWidth - inset) / characterAdvance(element, style)));
+}
+
+const ADVANCES = new Map<string, number>();
+/** One character's advance in the element's font, measured once per font. */
+function characterAdvance(element: HTMLElement, style: CSSStyleDeclaration | undefined): number {
+  const font = style?.font ?? "";
+  const known = ADVANCES.get(font);
+  if (known) return known;
+  const context = element.ownerDocument.createElement("canvas").getContext?.("2d");
+  let advance = 0;
+  if (context && font) {
+    context.font = font;
+    advance = context.measureText("0000000000").width / 10;
+  }
+  // No canvas (a test DOM): a monospace character is about 0.6 of its font size.
+  if (!(advance > 0)) advance = (parseFloat(style?.fontSize ?? "") || 12) * 0.6;
+  ADVANCES.set(font, advance);
+  return advance;
 }
 
 function wrappedLineCount(line: string, columns: number, wrap: boolean): number {

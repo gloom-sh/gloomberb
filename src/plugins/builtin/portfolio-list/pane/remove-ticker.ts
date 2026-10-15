@@ -2,7 +2,7 @@ import { t, tf } from "../../../../i18n";
 import { formatMarketCost, formatMarketQuantity } from "../../../../market-data/market/format";
 import type { AppConfig } from "../../../../types/config";
 import type { TickerRecord } from "../../../../types/ticker";
-import { parseCollectionRef } from "../../cloud/team/collections";
+import { parseCollectionRef } from "../../../../team/collections";
 import { isManualPortfolio, removeTickerFromPortfolio, removeTickerFromWatchlist } from "../mutations";
 
 export interface RemovableCollection {

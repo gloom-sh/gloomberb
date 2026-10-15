@@ -9,7 +9,7 @@ import { wrapTextLines } from "../../../utils/text-wrap";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { loadIvScreen, loadRealizedVolatilities } from "./client";
-import { formatPoints, formatRank, formatVol, readingLabel, sharedDates, shortDate, VCA_DEFINITIONS, verdictLabel } from "./format";
+import { formatPoints, formatRank, formatSpot, formatVol, readingLabel, sharedDates, shortDate, VCA_DEFINITIONS, verdictLabel } from "./format";
 import { projectRichCheap, type RichCheapRow, richCheapDates, screenPaneNotices, type VcaPreset } from "./model";
 import { vcaUniverse } from "./universe";
 
@@ -21,6 +21,7 @@ const COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "Symbol", width: 8, align: "left" },
   { id: "iv30", label: "IV30", width: 7, align: "right" },
   { id: "date", label: "As of", width: 11, align: "right" },
+  { id: "spot", label: "Spot", width: 9, align: "right" },
   { id: "rankDate", label: "Rank as of", width: 11, align: "right" },
   { id: "rank", label: "IVR", width: 5, align: "right" },
   { id: "percentile", label: "IVP", width: 5, align: "right" },
@@ -99,6 +100,7 @@ export function IvScreenPane({ width, height, focused }: PaneProps) {
     switch (id) {
       case "symbol": return { text: row.symbol, color: colors.textBright };
       case "iv30": return { text: formatVol(row.iv30), color: colors.warning };
+      case "spot": return { text: formatSpot(row.spot), color: colors.textDim };
       case "date": return { text: row.date ? readingLabel(row.date, row.method, true)
         : row.status === "queued" || row.status === "backfilling" ? row.status : "--", color: colors.textDim };
       case "rankDate": return { text: row.rankDate ? `${shortDate(row.rankDate)} close` : "--", color: colors.textDim };

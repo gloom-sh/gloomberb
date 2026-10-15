@@ -19,8 +19,8 @@ import { priceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes } from "../../../ui";
-import { truncateToDisplayWidth } from "../../../utils/format";
+import { Box, TextAttributes } from "../../../ui";
+import { ClippedText } from "../../../components/ui/display";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { CPI_NOT_AVAILABLE, getCachedCpiBoard, loadCpiBoard } from "./client";
 import {
@@ -67,14 +67,15 @@ function CpiChart({ row, series, width, height }: { row: CpiRow; series: Resolve
   const colors = useThemeColors();
   const latest = row.history.at(-1)?.[0] ?? null;
   const axis = useMemo(() => cpiTimeAxis(row.history), [row.history]);
-  const read = row.read ? truncateToDisplayWidth(row.read, Math.max(0, width - 2)) : "";
+  // The plain read under the axis; the desktop cuts it where its line ends.
+  const read = row.read && width > 2 ? row.read : "";
   return (
     <Box width={width} height={height} flexDirection="column">
       <CompositeChart series={series} panels={PANELS} width={width} height={Math.max(3, height - (read ? 1 : 0))}
         focused={false} navigable={false} showLegend showTimeAxis cursorDate={latest ? cpiMonthDate(latest) : null}
         viewport={axis?.viewport} xAxis={axis?.xAxis} clipToViewport={!!axis}
         formatValue={legendValue} formatAxisValue={formatPercentAxis} remoteKind="cpi-component-history" />
-      {read ? <Box height={1} paddingX={1}><Text fg={colors.textMuted}>{read}</Text></Box> : null}
+      {read ? <Box height={1} paddingX={1}><ClippedText fg={colors.textMuted} text={read} width={width - 2} /></Box> : null}
     </Box>
   );
 }

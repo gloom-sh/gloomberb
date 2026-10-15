@@ -1,5 +1,6 @@
 export type FuturesSector =
   | "equity-index"
+  | "equity-sectors"
   | "rates"
   | "energy"
   | "metals"
@@ -38,7 +39,10 @@ export interface FuturesContract {
    * unset: the security keeps the code and the future is its `=F` symbol.
    * Checked with `gloomberb quote <code>` signed out on 2026-10-11: each of
    * these was "Not a ticker", or for ZT and ZF a quote last updated in 2023 and
-   * 2021 that search no longer lists.
+   * 2021 that search no longer lists. The sector, index and energy rows were
+   * checked the same way on 2026-10-14: XAR is an ETF, XAU Goldmoney, SXI
+   * Standex, SXT Sensient, RX BioSyent, EMD a closed-end fund, SOX the PHLX
+   * index, and RS1, MES, MYM, M2K, MCL, MNG and HH are listed abroad.
    */
   bareCode?: true;
 }
@@ -58,6 +62,37 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "NQ=F", code: "NQ", name: "E-Mini Nasdaq 100", sector: "equity-index", venue: "CME", tick: 0.25, bareCode: true },
   { symbol: "YM=F", code: "YM", name: "E-Mini Dow", sector: "equity-index", venue: "CBT", tick: 1, bareCode: true },
   { symbol: "RTY=F", code: "RTY", name: "E-Mini Russell 2000", sector: "equity-index", venue: "CME", tick: 0.1, bareCode: true },
+  { symbol: "EMD=F", code: "EMD", name: "E-Mini S&P MidCap 400", sector: "equity-index", venue: "CME", tick: 0.1 },
+  { symbol: "RS1=F", code: "RS1", name: "E-Mini Russell 1000", sector: "equity-index", venue: "CME", tick: 0.1 },
+  { symbol: "NKD=F", code: "NKD", name: "Nikkei 225 (USD)", sector: "equity-index", venue: "CME", tick: 5, bareCode: true },
+  // Quoted in yen: the same index points, each worth 500 yen, so the server has no dollar terms for it.
+  { symbol: "NIY=F", code: "NIY", name: "Nikkei 225 (Yen)", sector: "equity-index", venue: "CME", tick: 5, unit: "index points", bareCode: true },
+  { symbol: "MES=F", code: "MES", name: "Micro E-Mini S&P 500", sector: "equity-index", venue: "CME", tick: 0.25 },
+  { symbol: "MNQ=F", code: "MNQ", name: "Micro E-Mini Nasdaq 100", sector: "equity-index", venue: "CME", tick: 0.25, bareCode: true },
+  { symbol: "MYM=F", code: "MYM", name: "Micro E-Mini Dow", sector: "equity-index", venue: "CBT", tick: 1 },
+  { symbol: "M2K=F", code: "M2K", name: "Micro E-Mini Russell 2000", sector: "equity-index", venue: "CME", tick: 0.1 },
+
+  // CME's E-mini S&P Select Sector futures (XA*) and Select Industry futures
+  // (SX*), named by their S&P index: each sector followed by its industries in
+  // GICS order, then the Dow Jones U.S. Real Estate future on CBOT.
+  { symbol: "XAE=F", code: "XAE", name: "S&P Energy", sector: "equity-sectors", venue: "CME", tick: 0.1, bareCode: true },
+  { symbol: "SXO=F", code: "SXO", name: "S&P Oil & Gas E&P", sector: "equity-sectors", venue: "CME", tick: 0.5, bareCode: true },
+  { symbol: "XAB=F", code: "XAB", name: "S&P Materials", sector: "equity-sectors", venue: "CME", tick: 0.1, bareCode: true },
+  { symbol: "XAI=F", code: "XAI", name: "S&P Industrial", sector: "equity-sectors", venue: "CME", tick: 0.1, bareCode: true },
+  { symbol: "XAY=F", code: "XAY", name: "S&P Consumer Discretionary", sector: "equity-sectors", venue: "CME", tick: 0.1, bareCode: true },
+  { symbol: "SXR=F", code: "SXR", name: "S&P Retail", sector: "equity-sectors", venue: "CME", tick: 1, bareCode: true },
+  { symbol: "XAP=F", code: "XAP", name: "S&P Consumer Staples", sector: "equity-sectors", venue: "CME", tick: 0.1, bareCode: true },
+  { symbol: "XAV=F", code: "XAV", name: "S&P Health Care", sector: "equity-sectors", venue: "CME", tick: 0.1, bareCode: true },
+  { symbol: "SXT=F", code: "SXT", name: "S&P Biotechnology", sector: "equity-sectors", venue: "CME", tick: 1 },
+  { symbol: "XAF=F", code: "XAF", name: "S&P Financial", sector: "equity-sectors", venue: "CME", tick: 0.05, bareCode: true },
+  { symbol: "SXB=F", code: "SXB", name: "S&P Regional Banks", sector: "equity-sectors", venue: "CME", tick: 0.25, bareCode: true },
+  { symbol: "SXI=F", code: "SXI", name: "S&P Insurance", sector: "equity-sectors", venue: "CME", tick: 0.5 },
+  { symbol: "XAK=F", code: "XAK", name: "S&P Technology", sector: "equity-sectors", venue: "CME", tick: 0.1, bareCode: true },
+  { symbol: "SOX=F", code: "SOX", name: "PHLX Semiconductor", sector: "equity-sectors", venue: "CME", tick: 0.5 },
+  { symbol: "XAZ=F", code: "XAZ", name: "S&P Communication Services", sector: "equity-sectors", venue: "CME", tick: 0.05, bareCode: true },
+  { symbol: "XAU=F", code: "XAU", name: "S&P Utilities", sector: "equity-sectors", venue: "CME", tick: 0.1 },
+  { symbol: "XAR=F", code: "XAR", name: "S&P Real Estate", sector: "equity-sectors", venue: "CME", tick: 0.05 },
+  { symbol: "RX=F", code: "RX", name: "Dow Jones U.S. Real Estate", sector: "equity-sectors", venue: "CBT", tick: 0.1 },
 
   { symbol: "ZT=F", code: "ZT", name: "2-Year T-Note", sector: "rates", venue: "CBT", bareCode: true },
   { symbol: "ZF=F", code: "ZF", name: "5-Year T-Note", sector: "rates", venue: "CBT", bareCode: true },
@@ -72,6 +107,12 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
   { symbol: "TTF=F", code: "TTF", name: "Dutch TTF Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001, unit: "EUR / MWh", bareCode: true },
   { symbol: "RB=F", code: "RB", name: "RBOB Gasoline", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001 },
   { symbol: "HO=F", code: "HO", name: "Heating Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.0001 },
+  // Cash settled on the CL and NG final settlements.
+  { symbol: "QM=F", code: "QM", name: "E-Mini Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.025, bareCode: true },
+  { symbol: "MCL=F", code: "MCL", name: "Micro WTI Crude Oil", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.01 },
+  { symbol: "QG=F", code: "QG", name: "E-Mini Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.005, bareCode: true },
+  { symbol: "MNG=F", code: "MNG", name: "Micro Henry Hub Natural Gas", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001 },
+  { symbol: "HH=F", code: "HH", name: "Henry Hub Last Day Financial", sector: "energy", venue: "NYM", everyMonth: true, tick: 0.001 },
 
   { symbol: "GC=F", code: "GC", name: "Gold", sector: "metals", venue: "CMX", tick: 0.1 },
   { symbol: "SI=F", code: "SI", name: "Silver", sector: "metals", venue: "CMX", tick: 0.005 },
@@ -109,6 +150,7 @@ export const FUTURES_CONTRACTS: FuturesContract[] = [
 
 export const FUTURES_SECTOR_LABELS: Record<FuturesSector, string> = {
   "equity-index": "Equity Index",
+  "equity-sectors": "Equity Sectors",
   rates: "Rates",
   energy: "Energy",
   metals: "Metals",
@@ -119,6 +161,7 @@ export const FUTURES_SECTOR_LABELS: Record<FuturesSector, string> = {
 
 export const FUTURES_SECTOR_ORDER: FuturesSector[] = [
   "equity-index",
+  "equity-sectors",
   "rates",
   "energy",
   "metals",

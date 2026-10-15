@@ -2,6 +2,7 @@ import type { ExchangeRateSnapshot } from "./exchange-rate";
 import type {
   AnalystResearchData,
   CorporateActionsData,
+  EarningsEpsBasis,
   Quote,
   QuoteMetadata,
   TickerFinancials,
@@ -94,6 +95,8 @@ export interface EarningsEvent {
   epsRevisionDown7d?: number | null;
   epsRevisionDown30d?: number | null;
   epsActual: number | null;
+  /** "adjusted" when the estimate is the consensus on the adjusted basis the company's reports are on (a REIT's FFO), not a GAAP forecast. */
+  epsBasis?: EarningsEpsBasis | null;
   revenueEstimate: number | null;
   revenueLow?: number | null;
   revenueHigh?: number | null;
@@ -177,6 +180,14 @@ export interface QuoteBatchOptions {
    * provider with no cache answers every target with no quote.
    */
   cacheOnly?: boolean;
+  /**
+   * Ask the sources even for a target whose cached quote is still fresh; that
+   * copy answers only when they cannot. A command that prints quotes once
+   * shows the service's quote of the moment, so every form of one listing
+   * (BRK.B saved on NYSE, BRK-B, BRK.B:NYSE) prints the same quote, never
+   * each form's own copy from whenever it was last asked for.
+   */
+  revalidate?: boolean;
   /** The caller stopped waiting; a transport that can abandon the request does. */
   signal?: AbortSignal;
 }

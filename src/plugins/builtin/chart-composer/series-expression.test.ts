@@ -8,6 +8,7 @@ import {
 } from "./series-expression";
 import { buildSeriesSpec } from "./chart-spec-edit";
 import { buildCustomChartPreset, buildPriceChartPreset } from "./presets";
+import { getSelectedPairStudies } from "./studies";
 
 describe("chart composer expressions", () => {
   test("round-trips bounded provider-neutral capability expressions", () => {
@@ -69,6 +70,28 @@ describe("chart composer expressions", () => {
   test("rejects an invalid leg instead of silently building a partial chart", () => {
     expect(() => buildCustomChartPreset("AAPL:price, MSFT:revenu"))
       .toThrow('Invalid chart series "MSFT:revenu"');
+  });
+
+  test("an unspaced slash between two tickers is their ratio, and a real pair stays one series", () => {
+    const ratio = buildCustomChartPreset("GAA/VOO");
+    expect(ratio.series.map((series) => series.source)).toEqual([
+      expect.objectContaining({ kind: "security", instrument: { symbol: "GAA" }, fieldId: "market.ohlcv" }),
+      expect.objectContaining({ kind: "security", instrument: { symbol: "VOO" }, fieldId: "market.ohlcv" }),
+    ]);
+    expect(getSelectedPairStudies(ratio)).toEqual(["ratio"]);
+    expect(getSelectedPairStudies(buildCustomChartPreset("MSFT:revenue/AAPL:revenue"))).toEqual(["ratio"]);
+    expect(getSelectedPairStudies(buildCustomChartPreset("GAA / VOO"))).toEqual(["ratio"]);
+    expect(getSelectedPairStudies(buildCustomChartPreset("CL=F - ES=F"))).toEqual(["spread"]);
+
+    expect(buildCustomChartPreset("EUR/USD").series).toHaveLength(1);
+    expect(getSelectedPairStudies(buildCustomChartPreset("EUR/USD"))).toEqual([]);
+    expect(buildCustomChartPreset("BTC/USD").series).toHaveLength(1);
+    expect(buildCustomChartPreset("AAPL:EV/EBITDA").series[0]?.source).toMatchObject({
+      kind: "security",
+      instrument: { symbol: "AAPL" },
+      fieldId: "valuation.evEbitda",
+    });
+    expect(getSelectedPairStudies(buildCustomChartPreset("AAPL, MSFT"))).toEqual([]);
   });
 
   test("preserves futures and forex identifiers in direct and custom chart presets", () => {

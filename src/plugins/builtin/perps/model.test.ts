@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpCellText, perpDescription, readingTime,
-  underlyingTicker } from "./model";
+import { baseOfLabel, BOARD_COLUMNS, boardColumns, compareColumns, dayChange, fundingSpread, historyCaption, historyCell, historyChange, historyColumns, historyRows, percent, perpBaseCandidates, perpCellText, perpDescription, readingTime,
+  separatedPairBase, underlyingTicker } from "./model";
 import { fundingNote } from "./freshness";
 import { equityBoard, longShort, longShortPoint, perpHistory, perpRow, venueRow } from "./test-fixture";
 
@@ -123,4 +123,17 @@ test("a market opens the security it tracks on the listing its premium is read a
   expect(underlyingTicker(perpRow({ underlyingSymbol: "SHEL", underlying: quote("SHELL", "LSE") }))).toBe("SHEL");
   expect(underlyingTicker(perpRow())).toBeNull();
   expect(underlyingTicker(perpRow({ marketId: "hyperliquid:xyz:SKHX", assetClass: "stocks", underlyingSymbol: null }))).toBeNull();
+});
+
+test("a pair or plain name reads as the base asset it stands for, and anything else reads as nothing to retry", () => {
+  expect(["BTC-USD", "btc/usd", "BTCUSD", "BTCUSDT", "BTC-USDT", "BTC_USDC", "BTC-PERP", "BTC/USDT:USDT", "1000PEPEUSDT"].map(perpBaseCandidates))
+    .toEqual([["BTC"], ["BTC"], ["BTC"], ["BTC"], ["BTC"], ["BTC"], ["BTC"], ["BTC"], ["1000PEPE"]]);
+  // A plain name keeps its spacing and case free, and lists the contracts to try nearest first as the Market column writes them.
+  expect(["Bitcoin", "ETHEREUM", "brent-crude", "Brent Crude"].map(perpBaseCandidates)).toEqual([["BTC"], ["ETH"], ["BZ", "BRENTOIL · XYZ"], ["BZ", "BRENTOIL · XYZ"]]);
+  // A base asset, a currency alone, an identity and free text are not rewritten.
+  expect(["BTC", "SP500", "USD", "USDT", "TSLA", "xyz:SP500", "what is a perp"].map(perpBaseCandidates)).toEqual([[], [], [], [], [], [], []]);
+  expect(baseOfLabel("BRENTOIL · XYZ")).toBe("BRENTOIL");
+  expect(baseOfLabel("BZ")).toBe("BZ");
+  // Only a pair written with a separator is a board search for its base: BTCUSDT is a symbol the board spells.
+  expect(["BTC-USD", "btc/usd", "BTCUSD", "BTCUSDT", "BTC"].map(separatedPairBase)).toEqual(["BTC", "BTC", null, null, null]);
 });

@@ -30,6 +30,7 @@ import {
   type PaneHint,
   type SectionedRow,
 } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import type { DocsFeed, DocsFunction } from "../../../docs/content";
 import {
   docsEntries,
@@ -48,12 +49,14 @@ import {
   type DocsTopic,
 } from "../../../docs/topics";
 import { t, tf } from "../../../i18n";
+import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { usePaneInstance } from "../../../state/app/context";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { badgeCell } from "../help/table-cells";
+import { READER_COLUMN_FONT } from "../../../components/reader/reader-text";
 import { DocsBlocks } from "./blocks";
 import { useDocsFeed, useDocsLesson } from "./use-docs";
 
@@ -73,12 +76,12 @@ const STACK_LIMIT = 30;
 /** Prose reads best at about seventy columns, however wide the pane. */
 const MEASURE = 72;
 /**
- * On the desktop and the web the text reads a size up from the table text,
- * with more air between lines, at most 69 characters of it to the line (as
- * wide as a screenshot of the measure): the column fills a narrower pane and
- * stops there in a wider one.
+ * On the desktop and the web the text reads at the reader's body size, a step
+ * up from the table text, with more air between lines, at most 69 characters
+ * of it to the line (as wide as a screenshot of the measure): the column fills
+ * a narrower pane and stops there in a wider one.
  */
-const READING_STYLE = { fontSize: "1.1667em", "--cell-h": "1.7em", maxWidth: "69ch" } as const;
+const READING_STYLE = { fontSize: READER_COLUMN_FONT, "--cell-h": "1.7em", maxWidth: "69ch" } as const;
 /** The terminal wraps at `width` columns; the desktop and the web at the reading column's own width. */
 function useTextWidth(width: number): number | "100%" {
   return useUiCapabilities().nativePaneChrome ? "100%" : width;
@@ -179,7 +182,7 @@ function LessonEntry({ url, width, onOpenLink }: { url: string; width: number; o
       <EmptyState
         title="This lesson is not saved for offline reading."
         hint="It is kept once it has been read with a connection."
-        actions={<Button label="Try Again" onPress={lesson.retry} compact />}
+        retry={{ onRetry: lesson.retry }}
       />
     );
   }
@@ -256,7 +259,8 @@ export function DocsPane({ focused, width, height }: PaneProps) {
   const instance = usePaneInstance();
   const requestKey = instance?.params?.topic ?? null;
   const requestAt = instance?.params?.at ?? null;
-  const { feed, offline } = useDocsFeed();
+  const { feed, offline, reload } = useDocsFeed();
+  usePaneRefreshKey(reload, { focused });
   const [stack, setStack] = usePluginPaneState<string[]>("stack", []);
   const [query, setQuery] = usePluginPaneState<string>("query", "");
   const [show, setShow] = usePluginPaneState<DocsShow>("show", "all");
@@ -284,6 +288,12 @@ export function DocsPane({ focused, width, height }: PaneProps) {
     if (!topic) return;
     if (topic.kind === "home" && topic.query && findDocsPage(feed, topic.query.toLowerCase())) {
       openTopic({ kind: "page", slug: topic.query.toLowerCase() });
+      return;
+    }
+    // The command line cannot resolve a mnemonic before the reader runs, so a search that is a function's code opens its entry.
+    const code = topic.kind === "home" && topic.query ? findDocsFunction(feed, topic.query.trim()) ?? findDocsFunction(feed, topic.query.trim().split(/\s+/)[0] ?? "") : null;
+    if (code) {
+      openTopic({ kind: "function", code: code.code });
       return;
     }
     if (topic.kind === "home") setShow("all");
@@ -326,6 +336,14 @@ export function DocsPane({ focused, width, height }: PaneProps) {
   }, [entries, query, show]);
 
   const visibleEntries = useMemo(() => rows.filter(isSectionedItemRow).map((row) => row.item), [rows]);
+  // A request that matches nothing fails a report of the pane (`gloomberb fn DOCS zzzz`) instead of listing the whole index.
+  const requested = requestKey ? parseDocsTopicKey(requestKey) : null;
+  const requestedQuery = requested?.kind === "home" ? requested.query?.trim() ?? "" : "";
+  useRemoteUiNode(feed && requestedQuery && stack.length === 0 && query.trim() === requestedQuery && visibleEntries.length === 0 ? {
+    role: "report-failure",
+    label: "No docs entry",
+    getMetadata: () => ({ message: `No docs entry for ${requestedQuery}.`, details: "Run gloomberb fn DOCS for the index." }),
+  } : null);
   const effectiveSelectedKey = visibleEntries.some((entry) => entry.key === selectedKey)
     ? selectedKey
     : visibleEntries[0]?.key ?? null;

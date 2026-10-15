@@ -1,5 +1,5 @@
 import type { ChatChannel, TeamSummary } from "../../../api-client";
-import { sortTeamChannels } from "../cloud/team/model";
+import { sortTeamChannels } from "../../../team/model";
 import type { ChatSidebarSection } from "./sidebar-store";
 
 interface SidebarHeaderBase {

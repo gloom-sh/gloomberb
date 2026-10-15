@@ -2,7 +2,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadRealizedVolatilities } from "./client";
-import { formatPoints, formatRank, formatStat, formatVol, readingLabel, sharedDates, skewHeader, VCA_DEFINITIONS, verdictLabel } from "./format";
+import { formatPoints, formatRank, formatSpot, formatStat, formatVol, readingLabel, sharedDates, skewHeader, VCA_DEFINITIONS, verdictLabel } from "./format";
 import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, screenCoverage, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 import { listingFateNotes, loadListingFate } from "../../../cli/listing-arg";
@@ -120,6 +120,8 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
         { key: "symbol", header: "Symbol" }, { key: "iv30", header: "IV30", format: percent },
         ...(dates.reading ? [] : [{ key: "date", header: "As of", format: (value: unknown, row?: unknown) =>
           typeof value === "string" ? readingLabel(value, (row as RichCheapRow).method) : "--" }]),
+        // The underlying price each reading was taken at, on the date the title or the As of column gives.
+        { key: "spot", header: "Spot", format: (value: unknown) => typeof value === "number" ? formatSpot(value) : "--" },
         ...(dates.rankApart ? [{ key: "rankDate", header: "Rank as of", format: (value: unknown) => typeof value === "string" ? `${value} close` : "--" }] : []),
         { key: "rank", header: "IVR", format: (value: unknown) => formatRank(value as number | null) },
         { key: "percentile", header: "IVP", format: (value: unknown) => formatRank(value as number | null) },

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { Box, Text, TextAttributes, useUiCapabilities } from "../../../../ui";
 import type { PricePoint, Quote, TickerFinancials } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
@@ -22,7 +22,7 @@ import { t } from "../../../../i18n";
 import { isQuoteStaleForCurrentSession } from "../../../../market-data/quotes/freshness";
 import { formatQuoteNavAsOf } from "../../../../market-data/quotes/time";
 import { useQuoteFlashDirection } from "../../../../components/quote-flash";
-import { appendLiveQuotePoint } from "../../../../time-series/chart-data";
+import { followLiveSparklinePrice } from "../../../../components/price-sparkline/model";
 import {
   PriceAreaSparklineBackground,
   PriceSparkline,
@@ -145,8 +145,13 @@ export function QuoteMonitorCard({
     : cachedFinancials?.priceHistory;
   const assetCategory = quote?.instrumentType ?? ticker?.metadata.assetCategory;
   // Completed bars end at the prior close; the live price closes the line and the stated range.
-  const priceHistory = useMemo(() => barHistory && appendLiveQuotePoint(barHistory, quote, { assetCategory }),
-    [assetCategory, barHistory, quote]);
+  const sparklineRef = useRef<PricePoint[] | undefined>(undefined);
+  const priceHistory = useMemo(() => {
+    if (!barHistory) return undefined;
+    const next = followLiveSparklinePrice(barHistory, quote, { assetCategory, period: chartPeriod, previous: sparklineRef.current });
+    sparklineRef.current = next;
+    return next;
+  }, [assetCategory, barHistory, chartPeriod, quote]);
   const flashFinancials = useMemo<TickerFinancials | null>(
     () => quote ? { quote, annualStatements: [], quarterlyStatements: [], priceHistory: [] } : null,
     [quote],

@@ -264,8 +264,10 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
   },
   OSA: {
     summary: "Build a multi-leg options position and value it at any spot, date and vol shift: payoff, P&L grid, breakevens and Greeks. European pricing, so no early exercise. "
-      + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve.",
+      + "With a NAV and a budget in bps it sizes the position as a hedge: contracts, premium, notional protected and coverage of an equity sleeve. "
+      + "--strategy csp sells a cash-secured put: cash secured, premium, yield on cash and annualised, distance out of the money, break-even, days to expiry and an earnings flag.",
     usage: ["OSA AAPL", "gloomberb fn OSA AAPL --strategy vertical --expiration 2027-01-15",
+      "gloomberb fn OSA KO --strategy csp --strike 85 --expiration 2026-11-20",
       "gloomberb fn OSA SPY --strategy put --strike 700 --expiration 2027-01-15 --nav 100m --budget-bps 50 --sleeve 100m"],
     keys: [key("a", "dd leg"), key("c", "hain"), key("d", "ate"), key("v", "ol shift")],
     data: OPTIONS,
@@ -393,7 +395,7 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["ERN"],
   },
   DVD: {
-    summary: "Cash distributions, trailing yield, the forward yield fundamentals show (latest distribution annualized), and payout growth. Future payments are not forecast.",
+    summary: "Cash distributions, trailing yield, the forward yield fundamentals show (the latest distribution annualized, or the declared one once announced), and payout growth. Future payments are not forecast.",
     usage: ["DVD KO"],
     keys: [STEP],
     data: same("Daily"),
@@ -747,14 +749,14 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: [],
   },
   FUT: {
-    summary: "Front-month futures across equity index, rates, energy, metals, agriculture, livestock and FX with last price and session change, grouped by sector.",
+    summary: "Each root's most active futures contract across equity index, equity sectors, rates, energy, metals, agriculture, livestock and FX with last price, unit and session change, grouped by sector.",
     usage: ["FUT"],
     keys: [SEARCH, OPEN],
     data: same(DELAYED),
     bloomberg: ["GLCO"],
   },
   CTM: {
-    summary: "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest and volume. Takes a FUT root, VX or a CME crypto root (BTC, ETH, SOL, XRP), which also shows each contract's premium to spot and annualised basis against the USD pair quote.",
+    summary: "A futures root's listed contracts as a curve against a week and a month ago, with roll yield, contango or backwardation, and each contract's price, open interest and volume. Takes a FUT root, VX or a CME crypto root (BTC, ETH, SOL, XRP), which also shows each contract's premium to spot and annualised basis against the USD pair quote: Ann Basis = (Last / spot - 1) × 365 / days to expiry, simple actual/365.",
     usage: ["CTM GC", "CTM BTC"],
     keys: [key("d", "ate"), key("c", "urrent"), STEP],
     data: same("Delayed, usually 10 minutes; VIX at settlement"),

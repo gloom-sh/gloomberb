@@ -73,7 +73,7 @@ export class ProviderRouterBatchRoutes {
         : isProviderQuoteUsableForCurrentSession(rawCached.value, target.exchange, target.symbol, { recentAnswer: !rawCached.stale }))
         ? rawCached
         : null;
-      if (cached && !forceRefresh && !cached.stale) {
+      if (cached && !forceRefresh && !cached.stale && !options.revalidate) {
         if (brokerSourceKeys.includes(cached.sourceKey)) {
           misses.push({ index, target });
           return;
@@ -81,6 +81,7 @@ export class ProviderRouterBatchRoutes {
         results[index] = { target, quote: cached.value };
         return;
       }
+      // Revalidated, a fresh copy is still what the quote route answers when no source does.
       misses.push({ index, target });
     });
 

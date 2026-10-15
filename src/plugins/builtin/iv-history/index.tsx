@@ -37,7 +37,9 @@ export const ivHistoryModule: PluginModule = {
     {
       id: "iv-screen-pane", paneId: "iv-screen", label: "Volatility Rich/Cheap",
       description: "IV rank, percentile, one-year IV, term slope, skew and IV/HV across a list, ranked rich to cheap.",
-      keywords: ["vca", "rich", "cheap", "iv rank", "implied volatility", "screen"],
+      // Where a put seller finds rich premium; OSA owns the exact put-selling phrases and ranks first on them.
+      keywords: ["vca", "rich", "cheap", "iv rank", "implied volatility", "screen", "cash-secured puts", "selling puts", "short-put candidates",
+        "csp candidates", "wheel candidates"],
       shortcut: { prefix: "VCA", argKind: "ticker-list" as const, argOptional: true }, headless: ivScreenHeadless,
       createInstance: (_context, options) => ({
         title: "VCA", placement: "floating" as const,

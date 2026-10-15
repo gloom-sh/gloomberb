@@ -94,16 +94,18 @@ describe("heat pulses", () => {
     expect(tracker.update([["A", 0.2], ["B", 1], ["C", 0.5]], 5_700).get("A")).toBe(1);
   });
 
-  test("reduced motion drops the fade, the glide and the pulse", () => {
-    expect(heatTileMotion({ reducedMotion: true, glide: true, glideCount: 2, pulseCount: 3 })).toEqual({});
-    const full = heatTileMotion({ reducedMotion: false, glide: true, glideCount: 1, pulseCount: 3 });
+  test("reduced motion and a resize drop the fade, the glide and the pulse", () => {
+    const motion = (over: Partial<Parameters<typeof heatTileMotion>[0]>) =>
+      heatTileMotion({ reducedMotion: false, resizing: false, glide: true, glideCount: 1, pulseCount: 3, ...over });
+    expect(motion({ reducedMotion: true })).toEqual({});
+    expect(motion({ resizing: true })).toEqual({});
+    const full = motion({});
     expect(full.glideAnimation).toContain("gloom-heat-glide-a");
     expect(full.fadeAnimation).toContain("gloom-heat-fade");
     expect(full.pulseAnimation).toContain("gloom-heat-pulse");
-    expect(heatTileMotion({ reducedMotion: false, glide: true, glideCount: 2, pulseCount: 0 }).glideAnimation).toContain("gloom-heat-glide-b");
-    // A resize does not glide, and a tile that never moved or pulsed has neither.
-    expect(heatTileMotion({ reducedMotion: false, glide: false, glideCount: 2, pulseCount: 0 }).glideAnimation).toBeUndefined();
-    const resting = heatTileMotion({ reducedMotion: false, glide: true, glideCount: 0, pulseCount: 0 });
+    expect(motion({ glideCount: 2 }).glideAnimation).toContain("gloom-heat-glide-b");
+    // A tile that never moved or pulsed has neither.
+    const resting = motion({ glide: false, glideCount: 0, pulseCount: 0 });
     expect(resting.glideAnimation).toBeUndefined();
     expect(resting.pulseAnimation).toBeUndefined();
   });

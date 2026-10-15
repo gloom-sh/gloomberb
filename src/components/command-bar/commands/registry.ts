@@ -251,6 +251,14 @@ export const commands: Command[] = [
     category: "Config",
   },
   {
+    // Not "Update ...": "update" has to land on Check for Updates first.
+    id: "release-channel",
+    prefix: "",
+    label: "Release Channel",
+    description: "Update from stable releases, or from nightly builds as well",
+    category: "Config",
+  },
+  {
     id: "toggle-crash-reports",
     prefix: "",
     label: "Crash Reports",

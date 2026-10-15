@@ -1,4 +1,4 @@
-import type { MarketState } from "../../types/financials";
+import type { MarketState, QuoteIndexSession } from "../../types/financials";
 import { canonicalExchange, EXCHANGE_TIME_ZONES, isUsListingExchange } from "../../utils/exchanges";
 import { hasPublishedApacCalendar, isPublishedApacClosure } from "../published-apac-sessions";
 import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-sessions";
@@ -50,6 +50,7 @@ const REGULAR_OPEN_MINUTES: Record<string, number> = {
   FWB: 8 * 60,
   SWX: 9 * 60,
   VIE: 9 * 60,
+  WBDM: 9 * 60,
   OSL: 9 * 60,
   ICEX: 9 * 60 + 30,
   WSE: 9 * 60,
@@ -89,6 +90,8 @@ const REGULAR_CLOSE_MINUTES: Record<string, number> = {
   JPX: 15 * 60 + 30, HKEX: 16 * 60 + 10, TWSE: 14 * 60 + 30, TPEX: 14 * 60 + 30,
   NSE: 16 * 60, BSE: 16 * 60, ASX: 16 * 60 + 15, SGX: 17 * 60 + 20, KRX: 16 * 60, KOSDAQ: 16 * 60,
   NZX: 17 * 60, SSE: 15 * 60 + 30, SZSE: 15 * 60 + 30,
+  // The Vienna MTF's ETPs and notes trade in continuous auctions to 17:30, with no closing auction.
+  WBDM: 17 * 60 + 30,
   BMV: 15 * 60 + 10, B3: 18 * 60 + 30, BYMA: 17 * 60 + 10, JSE: 17 * 60 + 15,
   // Monday to Thursday: trading at last ends 17:30, after the closing auction.
   // Not later: a complete 5-minute copy ends with its 17:09 bar, which must
@@ -671,4 +674,28 @@ function isTimestampStaleForExchangeSessionUnsafe(
     return !(isLocalTradingDay(canonical, currentDate, weekendDays) && (calendarDaysBehind > 1 || localWeekday(currentDate) === 1));
   }
   return false;
+}
+
+function readSessionWindow(value: unknown): { start: number; end: number } | null {
+  const { start, end } = (value ?? {}) as { start?: unknown; end?: unknown };
+  return typeof start === "number" && typeof end === "number" && Number.isFinite(start) && Number.isFinite(end) && end > start
+    ? { start, end }
+    : null;
+}
+
+/**
+ * The regular sessions an index quote carries, read without trusting the
+ * shape it arrived in: its zone, the session its day follows and the latest
+ * ones. Null when the zone or the current session is missing.
+ */
+export function readIndexSession(value: unknown): QuoteIndexSession | null {
+  const { timeZone, current, regular } = (value ?? {}) as { timeZone?: unknown; current?: unknown; regular?: unknown };
+  const now = readSessionWindow(current);
+  if (typeof timeZone !== "string" || !timeZone.includes("/") || !now) return null;
+  return {
+    timeZone,
+    current: now,
+    // The latest two: the one a print after the close belongs to, and the one before it.
+    regular: Array.isArray(regular) ? regular.flatMap((window) => readSessionWindow(window) ?? []).slice(-2) : [],
+  };
 }

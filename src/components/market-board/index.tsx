@@ -84,13 +84,15 @@ export interface MarketBoardStackProps<T extends MarketBoardRow> {
 const FIT_STEPS = ["labelDetail", "history", "shortAsOf", "changeAsOf", "percentile"] as const;
 /** An as-of date without its year ("09-17"). */
 const SHORT_AS_OF_WIDTH = 5;
+/** The word a stale row's date carries, with its space: "2026-09-17 stale". */
+const STALE_WORD = " stale";
 
 function shortIsoDate(text: string): string {
   return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text.slice(5) : text;
 }
 
 /** Fit the board to the pane rather than cut its right edge mid-value. */
-function fitBoardColumns(candidates: DataTableColumn[], width: number): { columns: DataTableColumn[]; shortAsOf: boolean } {
+function fitBoardColumns(candidates: DataTableColumn[], width: number, wordWidth: number): { columns: DataTableColumn[]; shortAsOf: boolean } {
   const withAsOfWidth = (list: DataTableColumn[], asOfWidth: number | null) => asOfWidth === null
     ? list
     : list.map((column) => column.id === "asOf" ? { ...column, width: asOfWidth } : column);
@@ -100,7 +102,7 @@ function fitBoardColumns(candidates: DataTableColumn[], width: number): { column
     if (getTableWidth(columns) <= width) break;
     if (step === "shortAsOf") {
       shortAsOf = true;
-      columns = withAsOfWidth(columns, SHORT_AS_OF_WIDTH);
+      columns = withAsOfWidth(columns, SHORT_AS_OF_WIDTH + wordWidth);
     } else {
       columns = columns.filter((column) => column.id !== step);
     }
@@ -134,6 +136,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     return compareSortValues(left, right, sort.direction);
   }) : rows, [rows, sort, extraColumns]);
   const open = rows.find((row) => row.id === openId);
+  // A stale row's date carries a word, so the column has room for both and the date is never cut.
+  const wordWidth = rows.some((row) => row.status === "stale") ? STALE_WORD.length : 0;
   const { columns, shortAsOf } = fitBoardColumns([
     { id: "label", label: labelHeader, width: labelWidth, align: "left" },
     ...(rows.some((row) => row.labelDetail !== undefined)
@@ -144,8 +148,8 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     ...(extraColumns?.map((item) => item.column) ?? []),
     { id: "percentile", label: percentileLabel, width: 8, align: "right" },
     { id: "history", label: "1Y", width: 14, align: "left" },
-    { id: "asOf", label: "AS OF", width: asOfWidth, align: "left" },
-  ], width);
+    { id: "asOf", label: "AS OF", width: asOfWidth + wordWidth, align: "left" },
+  ], width, wordWidth);
   const renderCell = (row: T, column: DataTableColumn): DataTableCell => {
     const extra = extraColumns?.find((item) => item.column.id === column.id);
     if (extra) return extra.renderCell(row);
@@ -159,8 +163,10 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? "--", color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };
     const asOf = row.asOfText ?? row.asOf ?? "--";
-    // A narrow board drops the year; the export keeps the full date.
-    return { text: shortAsOf ? shortIsoDate(asOf) : asOf, ...(row.asOf ? { value: row.asOf } : {}),
+    const asOfText = shortAsOf ? shortIsoDate(asOf) : asOf;
+    // A narrow board drops the year; the export keeps the full date. The word
+    // stays with the color, so a stale row is not color alone.
+    return { text: row.status === "stale" ? `${asOfText}${STALE_WORD}` : asOfText, ...(row.asOf ? { value: row.asOf } : {}),
       color: row.status === "stale" ? colors.warning : colors.textDim };
   };
   return <DataTableStackView columns={columns} items={items} getItemKey={(row) => row.id} renderCell={renderCell}

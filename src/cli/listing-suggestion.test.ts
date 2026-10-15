@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import type { TickerSearchCandidate } from "../tickers/search";
-import { describeSuggestion, MAX_SUGGESTED_SYMBOLS, nearestListing, suggestListing, suggestListings, withSuggestion } from "./listing-suggestion";
+import type { TickerRecord } from "../types/ticker";
+import { describeSuggestion, MAX_SUGGESTED_SYMBOLS, nearestListing, suggestListing, suggestListings, suggestUsTicker, withSuggestion } from "./listing-suggestion";
 import { TickerNotFoundError } from "./ticker-resolution";
 
 /** A row as `search` lists it: the symbol, then the name before its provider and type. */
@@ -85,4 +86,30 @@ test("a long list of missing symbols is a stale import, not typos, and costs no 
   searches = 0;
   expect((await suggestListings([...few, "USD-NGN"], deps(search))).every((suggestion) => suggestion === null)).toBe(true);
   expect(searches).toBe(0);
+});
+
+test("a symbol read abroad is a typo for the one US ticker a person likely means, which search then names", async () => {
+  const us = (symbol: string, name: string, exchangeLabel = "NASDAQ") => hit(symbol, name, { exchangeLabel });
+  const search = async (query: string) => query === "AAPL"
+    ? [us("AAPL", "Apple Inc.", "BVC"), us("AAPL", "Apple Inc.")]
+    : [];
+  // APPL is Aptus Pharma on BSE; search lists no AAPL for it, so the match comes from the symbols people mean.
+  expect(await suggestUsTicker("APPL", deps(search))).toEqual({ symbol: "AAPL", name: "Apple Inc." });
+  expect(await suggestUsTicker("appl", deps(search))).toEqual({ symbol: "AAPL", name: "Apple Inc." });
+  // A swap of neighbours is one slip too; a symbol that is not near any, and one too short, are not suggested.
+  expect(await suggestUsTicker("MSTF", deps(async () => [us("MSFT", "Microsoft Corporation")]))).toEqual({ symbol: "MSFT", name: "Microsoft Corporation" });
+  expect(await suggestUsTicker("SXR8", deps(search))).toBeNull();
+  expect(await suggestUsTicker("AAL", deps(search))).toBeNull();
+
+  // The tickers a person saved count when they are US listings; a saved listing abroad does not.
+  const saved = (ticker: string, exchange: string) => ({ metadata: { ticker, exchange } }) as TickerRecord;
+  const withSaved = (...records: TickerRecord[]) => ({ ...deps(async () => [us("ZYGO", "Zygo Corp")]), store: { loadAllTickers: async () => records } });
+  expect(await suggestUsTicker("ZYGP", withSaved(saved("ZYGO", "NASDAQ")))).toEqual({ symbol: "ZYGO", name: "Zygo Corp" });
+  expect(await suggestUsTicker("ZYGP", withSaved(saved("ZYGO", "XETRA")))).toBeNull();
+  // Two US symbols one slip away is a tie, not a guess.
+  expect(await suggestUsTicker("TSLB", withSaved(saved("TSLC", "NYSE")))).toBeNull();
+
+  // Search finding no US listing for the near symbol drops the suggestion; a search that fails keeps the symbol, unnamed.
+  expect(await suggestUsTicker("APPL", deps(async () => [us("AAPL", "Apple Inc.", "BVC")]))).toBeNull();
+  expect(await suggestUsTicker("APPL", deps(async () => { throw new Error("down"); }))).toEqual({ symbol: "AAPL", name: "" });
 });

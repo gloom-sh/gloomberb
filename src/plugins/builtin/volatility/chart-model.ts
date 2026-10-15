@@ -141,7 +141,7 @@ export function volatilityHistorySeries(fred: FredChartInput, colors: Volatility
       const value = values.get(date);
       return { date: new Date(date), observedAt: new Date(date), value: value != null && Number.isFinite(value) ? value : null };
     }), { id, label, color, calendarSpaced: true }),
-    unit: unitGroup === "volatility" ? "%" : "", unitGroup, panelId,
+    unit: unitGroup === "volatility" ? "index" : "", unitGroup, panelId,
   });
   const first = dates[0], last = dates.at(-1);
   return [

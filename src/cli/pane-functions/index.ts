@@ -1,12 +1,14 @@
 import { extname, isAbsolute, relative, resolve } from "path";
-import type { CliCommandContext } from "../../types/plugin";
+import type { CliCommandContext, HeadlessArgumentExpansion } from "../../types/plugin";
 import type { MarketContext } from "../types";
 import { withMarketData } from "../context";
 import { cliStyles, renderStats, type CliStatEntry } from "../../utils/cli-output";
 import {
   filterPaneCatalogEntries,
+  findFunctionCode,
   renderPaneCatalogReport,
   selectPaneCatalogMatches,
+  suggestPaneFunctions,
   type PaneFunctionCatalog,
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
@@ -18,6 +20,7 @@ import {
 } from "./options";
 import { applyListingArgument, resolvePaneFunction, UnknownPaneFunctionError, type ResolvedPaneFunction } from "./resolver";
 import { buildFunctionReport } from "./report";
+import { expandResolvedArgument } from "./headless";
 import { defaultScreenshotPath, renderDesktopShot, shotSizeWarnings, shotStatusIssues } from "./screenshot";
 import {
   buildPaneCatalogEntries,
@@ -25,9 +28,10 @@ import {
 import { incompleteReportGateMessage } from "./access-gate";
 import { withPersistedCloudSession } from "./cloud-session";
 import { ListingArgError, listingReadNotes, loadForListing, quotedListingChoiceNotes } from "../listing-arg";
-import { knownGapMessage, topicPointer } from "../known-gaps";
+import { knownGapMessage, settingsPointer, topicPointer } from "../known-gaps";
 import { selectReportTables } from "../report-tables";
 import { cliOutputWritten } from "../result";
+import type { CatalogCommandHit } from "../unknown-command";
 import { CLI_EXIT_CODES } from "../exit-codes";
 import {
   GLOSSARY,
@@ -54,13 +58,102 @@ async function withPaneRuntime<T>(
     const context: MarketContext = ctx.cliOptions.refresh ? { ...market, refresh: true } : market;
     const registry = await createPaneCatalog(context, ctx.plugins);
     try {
-      const parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions), settings.command);
-      const resolved = await resolvePaneFunction(registry, context, parsed, settings);
+      let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgs(args, ctx.cliOptions), settings.command);
+      let resolved = await resolvePaneFunction(registry, context, parsed, settings);
+      // A function that widens its argument (RV's --peers) runs, reports and captures the widened one.
+      const expansion = await withPersistedCloudSession(context, () => expandResolvedArgument(resolved, context, parsed.arg));
+      if (expansion) {
+        parsed = { ...parsed, arg: expansion.argument };
+        resolved = withExpansion(await resolvePaneFunction(registry, context, parsed, settings), expansion);
+      }
       return await run({ parsed, context, registry, resolved });
     } finally {
       registry.destroy();
     }
   });
+}
+
+/** The resolved function with what its expansion adds to the pane: settings, and a title that says how. */
+function withExpansion(resolved: ResolvedPaneFunction, { settings = {}, title }: HeadlessArgumentExpansion): ResolvedPaneFunction {
+  return {
+    ...resolved,
+    optionSettings: { ...resolved.optionSettings, ...settings },
+    instance: { ...resolved.instance, ...(title ? { title } : {}), settings: { ...resolved.instance.settings, ...settings } },
+  };
+}
+
+/** A word that can be a function code: letters and digits, with the dots and dashes some codes carry. */
+const FUNCTION_CODE_WORD = /^[\w.$-]{1,24}$/;
+
+/** An argument as a shell reads it back: bare when it is one word, in quotes when it is not. */
+function commandWord(argument: string): string {
+  return /^[\w.:,=%+@/-]+$/.test(argument) ? argument : JSON.stringify(argument);
+}
+
+/**
+ * What to run when a command name is a function's code (`gloomberb OVDV KO`,
+ * `gloomberb help OVDV`): `fn` with the reader's own arguments, or the
+ * function's argument hint when they gave none. Null when the word is no
+ * function code or the catalog cannot be read, and the command stays unknown.
+ */
+export async function functionCodeCommand(
+  ctx: CliCommandContext,
+  token: string,
+  args: readonly string[],
+): Promise<{ code: string; command: string } | null> {
+  const word = token.trim();
+  if (!FUNCTION_CODE_WORD.test(word)) return null;
+  try {
+    const found = await withMarketData(ctx, async (market) => {
+      const registry = await createPaneCatalog(market, ctx.plugins);
+      try {
+        return findFunctionCode(registry, word);
+      } finally {
+        registry.destroy();
+      }
+    });
+    if (!found) return null;
+    const code = word.replace(/^\$/, "").toUpperCase();
+    return { code, command: ["gloomberb fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
+  } catch {
+    return null;
+  }
+}
+
+/** How many functions an unknown command word is answered with. */
+const COMMAND_HIT_LIMIT = 3;
+
+/**
+ * The functions the catalog finds for a word typed as a command (`gloomberb
+ * comps`): what `catalog <word>` would list first, as many as are close.
+ * Empty when the word finds none or the catalog cannot be read.
+ */
+export async function catalogCommandHits(ctx: CliCommandContext, token: string): Promise<CatalogCommandHit[]> {
+  const word = token.trim();
+  if (!/^[a-z][\w-]{1,30}$/i.test(word)) return [];
+  try {
+    return await withMarketData(ctx, async (market) => {
+      const registry = await createPaneCatalog(market, ctx.plugins);
+      try {
+        return (await suggestPaneFunctions(registry, market, word)).slice(0, COMMAND_HIT_LIMIT).map((entry) => ({
+          code: entry.token,
+          label: entry.label,
+          argKind: entry.argKind ?? null,
+          argPlaceholder: entry.argPlaceholder ?? null,
+          peers: entry.capability.options.some((option) => option.key === "peers" && option.type === "boolean"),
+        }));
+      } finally {
+        registry.destroy();
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
+/** Whether a list report has no row with data: it is empty, or every row is a name without any. */
+function foundNothing(data: { rowCount: number; unavailableSymbols: readonly string[] }): boolean {
+  return data.rowCount === 0 || data.unavailableSymbols.length >= data.rowCount;
 }
 
 export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
@@ -122,6 +215,8 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
         ...(tabular ? { tables: selectReportTables(report.tables, resolved.tableSection) } : {}),
       });
+      // The report is printed as it is; a list that found data for none of its names says so in the exit status too.
+      if (resolved.headless?.failsWithoutData && foundNothing(report.data)) process.exitCode = CLI_EXIT_CODES.error;
     }, { strictHeadlessOptions: true, tableSection: true });
   });
 }
@@ -244,7 +339,7 @@ function runGlossary(term: string, ctx: CliCommandContext): void {
   const { exact, partial } = lookupGlossary(term);
   const entries = [...exact, ...partial];
   if (entries.length === 0) {
-    ctx.fail(`No glossary entry for "${term}".`, "gloomberb catalog glossary lists every term.");
+    ctx.fail(`No glossary entry for "${term}".`, knownGapMessage(term) ?? "gloomberb catalog glossary lists every term.");
   }
   ctx.printResult({ data: entries.map(glossaryRecord) }, { text: () => renderGlossaryEntries(entries).join("\n") });
 }
@@ -277,6 +372,8 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         const glossary = lookupGlossary(parsed.query);
         // Data no source carries yet is said once: in the text, else as the envelope's warning.
         const gap = knownGapMessage(parsed.query);
+        // A setting is a command, not a function: "light theme" names `config themes` beside THEM.
+        const setting = settingsPointer(parsed.query);
         // The data catalog series the query names, which `fn G` charts.
         const series = findCatalogSeries(ctx.plugins, parsed.query);
         const listed = pointer
@@ -285,9 +382,9 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
         ctx.printResult({
           data: listed,
           ...series.length ? { metadata: { series } } : {},
-          ...gap && ctx.cliOptions.format !== "text" ? { warnings: [gap] } : {},
+          ...(gap || setting) && ctx.cliOptions.format !== "text" ? { warnings: [gap, setting].filter((note): note is string => !!note) } : {},
         }, {
-          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series),
+          text: () => renderPaneCatalogReport(filtered, effectiveParsed, glossary, gap, series, setting),
         });
       } finally {
         registry.destroy();

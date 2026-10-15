@@ -14,20 +14,25 @@
  * (chart panes for the copy screenshot check) or `resize` (a news table, a
  * chart, and a table in a sidebar beside a second table, docked, with a news
  * table floating over them; `&float=chart`, `&float=heat` or `&float=fear`
- * floats a chart, a heat map or the Fear & Greed pane instead, and `&float=g`,
+ * floats a chart, a heat map or the Fear & Greed pane instead (`&heat=market`
+ * makes the heat map the market board of 500 names, `&ticks=1` recolours it
+ * four times a second, and `&dock=heat` docks one in the chart's place), and `&float=g`,
  * `&float=board`, `&float=beside`, `&float=overlay` or `&float=under` one of
  * the charts that sit inside a pane's own layout), `nested` (the first four
  * docked), `stacked` (the chart under a table docked beside a chart),
  * `narrow` (floating panes either side of the width a header keeps Ask Gloom
- * at), `chat` (the chat view over an invented channel, see chat-fixture.tsx)
- * or `cmp` (one chart composer pane on invented 30-minute bars, see
+ * at), `chat` (the chat view over an invented channel, see chat-fixture.tsx),
+ * `cmp` (one chart composer pane on invented 30-minute bars, see
  * createInventedChartSource: `&chart=readout` three listings on two venues,
  * volume and two studies, `pan` one listing with years of bars, `edge` one
- * whose bars start 150 sessions back, `percent` three listings rebased), or
+ * whose bars start 150 sessions back, `percent` three listings rebased),
  * `layout` (one pane that sets text or scrolls content, docked or floating,
- * for the layout checks; see layout-fixture.tsx).
+ * for the layout checks; see layout-fixture.tsx), `des` (DES's overview
+ * over an invented company, see DesPane), or `header` (the app's top bar in
+ * each update state, see header-fixture.tsx; `&host=browser` draws it as the
+ * web app does).
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ThemePicker, type ThemePickerHandle } from "../../src/components/command-bar/theme-picker";
 import { useCommandBarThemePreview } from "../../src/components/command-bar/theme-preview";
 import { OverviewTab } from "../../src/plugins/builtin/ticker-detail/overview-tab";
@@ -45,7 +50,9 @@ import { StaticChartSurface } from "../../src/components/chart/static/chart-surf
 import { DataTableView } from "../../src/components/data-table/view";
 import { ChartTableHeader } from "../../src/components/chart-table/header";
 import { QueryBar } from "../../src/components/ui/query-bar";
-import { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface } from "../../src/components/metric-treemap/heat-surface";
+// A namespace import: the frame budget builds this file against the base
+// branch's sources too, which may not have useHeatTreemapScene.
+import * as heatSurface from "../../src/components/metric-treemap/heat-surface";
 import type { MetricTreemapItem } from "../../src/components/metric-treemap/layout";
 import { PaneSidebar } from "../../src/components/layout/pane/sidebar";
 import { DetachedPaneShell } from "../../src/components/layout/detached-pane-shell";
@@ -73,6 +80,8 @@ import { PriceSparkline } from "../../src/components/price-sparkline/view";
 import { registerAskGloomPaneHandler } from "../../src/ask-gloom/pane-request";
 import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/header";
 import { ChatFixturePane, chatLayout } from "./chat-fixture";
+import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHeaderPlatform, type HeaderFixtureHandle } from "./header-fixture";
+import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
@@ -125,6 +134,8 @@ declare global {
       detachedCloses: number;
       /** `paint`: floats another chart composer pane in, as adding a chart pane does; returns its id. */
       addChartPane?: () => string;
+      /** `header`: sets the top bar's update state and window mode, and counts Help and Restart presses. */
+      header: HeaderFixtureHandle;
     };
   }
 }
@@ -562,14 +573,107 @@ const HEAT_ITEMS: MetricTreemapItem<null>[] = Array.from({ length: 60 }, (_, ind
 });
 const ignoreTile = () => {};
 
-/** A heat map over invented tiles, laid out the way the market heat map lays out its board. */
-function HeatPane({ width, height }: PaneProps) {
+const { HeatTreemapSurface } = heatSurface;
+interface FixtureHeatLayout<T> { scene: ReturnType<typeof heatSurface.buildHeatTreemapScene<T>>; resizing: boolean }
+
+declare global {
+  interface Window {
+    /** Scenes the heat maps committed, and a board refresh with new sizes (`heat=market`), as a snapshot reload brings. */
+    __heat: { builds: number; refresh(): void };
+  }
+}
+const heatRefreshes = new Set<() => void>();
+window.__heat = { builds: 0, refresh: () => heatRefreshes.forEach((refresh) => refresh()) };
+
+/**
+ * The scene as the market heat map's pane lays it out, seeded with the one on
+ * screen. A base branch from before `useHeatTreemapScene` lays it out at
+ * every size it renders at, as its pane did.
+ */
+const useFixtureHeatScene = heatSurface.useHeatTreemapScene ?? function useEveryHeatScene<T>(
+  items: readonly MetricTreemapItem<T>[],
+  width: number,
+  height: number,
+): FixtureHeatLayout<T> {
   const capabilities = useUiCapabilities();
+  const shown = useRef<FixtureHeatLayout<T>["scene"] | null>(null);
   const scene = useMemo(
-    () => buildHeatTreemapScene(HEAT_ITEMS, heatTreemapCanvas(width, height, capabilities)),
-    [capabilities, height, width],
+    () => (shown.current = heatSurface.buildHeatTreemapScene(items, heatSurface.heatTreemapCanvas(width, height, capabilities), shown.current)),
+    [capabilities, height, items, width],
   );
-  return <HeatTreemapSurface scene={scene} items={HEAT_ITEMS} width={width} height={height} selectedId={null} onSelect={ignoreTile} />;
+  return { scene, resizing: false };
+};
+
+/** Counts the scenes a heat map commits: each new one restyles every tile. */
+function useCountedScene<T>(layout: FixtureHeatLayout<T>): FixtureHeatLayout<T> {
+  useLayoutEffect(() => {
+    window.__heat.builds += 1;
+  }, [layout.scene]);
+  return layout;
+}
+
+/** A heat map over invented tiles, laid out the way the market heat map lays out its board. */
+function InventedHeatPane({ width, height }: PaneProps) {
+  const { scene, resizing } = useCountedScene(useFixtureHeatScene(HEAT_ITEMS, width, height));
+  return <HeatTreemapSurface scene={scene} resizing={resizing} items={HEAT_ITEMS} width={width} height={height} selectedId={null} onSelect={ignoreTile} />;
+}
+
+/** Eleven invented sectors of five invented industries each. */
+const MARKET_SECTORS = Array.from({ length: 11 }, (_, sector) => `Sector ${String.fromCharCode(65 + sector)}`);
+/** A deterministic stand-in for Math.random, so both checkouts draw the same board. */
+function seeded(seed: number): () => number {
+  let state = seed >>> 0;
+  return () => {
+    state = (state * 1664525 + 1013904223) >>> 0;
+    return state / 2 ** 32;
+  };
+}
+
+/** 500 invented names in sectors and industries, sized like market caps: a few giants and a long tail. */
+function marketHeatItems(generation: number, moves: readonly number[]): MetricTreemapItem<null>[] {
+  const random = seeded(7 + generation);
+  return moves.map((move, index) => {
+    const sector = MARKET_SECTORS[index % MARKET_SECTORS.length]!;
+    const weight = 4_000 / (index + 8) ** 1.1 * (0.85 + random() * 0.3);
+    return {
+      id: `name-${index}`,
+      label: `N${index}`,
+      weight,
+      colorValue: move,
+      primaryText: `${move >= 0 ? "+" : ""}${move.toFixed(1)}%`,
+      group: sector,
+      subgroup: `${sector} ${Math.floor(index / MARKET_SECTORS.length) % 5}`,
+      data: null,
+    };
+  });
+}
+
+/**
+ * `heat=market`: the market heat map's board as its pane lays it out: 500
+ * names in sectors and industries, and with `ticks=1` a few moves changing
+ * four times a second, as quotes stream in. Tiles are sized by the board a
+ * refresh brings (`window.__heat.refresh()`), coloured by every tick.
+ */
+function MarketHeatPane({ width, height }: PaneProps) {
+  const [moves, setMoves] = useState(() => Array.from({ length: 500 }, (_, index) => Math.sin(index * 1.3) * 3.2));
+  const [generation, setGeneration] = useState(0);
+  useEffect(() => {
+    const refresh = () => setGeneration((value) => value + 1);
+    heatRefreshes.add(refresh);
+    if (params.get("ticks") !== "1") return () => { heatRefreshes.delete(refresh); };
+    const random = seeded(11);
+    const timer = setInterval(() => {
+      setMoves((current) => current.map((move) => (random() < 0.04 ? move + (random() - 0.5) * 1.2 : move)));
+    }, 250);
+    return () => {
+      heatRefreshes.delete(refresh);
+      clearInterval(timer);
+    };
+  }, []);
+  const layoutItems = useMemo(() => marketHeatItems(generation, moves), [generation]); // eslint-disable-line react-hooks/exhaustive-deps
+  const paintItems = useMemo(() => marketHeatItems(generation, moves), [generation, moves]);
+  const { scene, resizing } = useCountedScene(useFixtureHeatScene(layoutItems, width, height));
+  return <HeatTreemapSurface scene={scene} resizing={resizing} items={paintItems} width={width} height={height} selectedId={null} onSelect={ignoreTile} />;
 }
 
 const OVERVIEW_TICKER = createTestTicker("EXMPL", "Example Industries", { exchange: "", assetCategory: "STK" });
@@ -579,6 +683,83 @@ const OVERVIEW_FINANCIALS = createTestFinancials({
 });
 function OverviewPane({ width, height, focused }: PaneProps) {
   return <OverviewTab ticker={OVERVIEW_TICKER} financials={OVERVIEW_FINANCIALS} width={width} height={height} focused={focused} />;
+}
+
+/**
+ * DES's overview over an invented company (`scenario=des`): the quote book,
+ * fundamentals, positions in several accounts, profile and description.
+ * `positions=<n>` sets how many accounts hold it (3 by default), `scale=<n>`
+ * repeats the description, `long=1` gives it long account names, long
+ * classification and site names, dated figures with their muted detail and a
+ * book with large sizes, and `float=1` floats the pane over a plain one.
+ */
+const DES_LONG = params.get("long") === "1";
+/** Account names from 4 to 44 characters, several near the length a column at rest holds, so a name ends close to its track whatever the width. */
+const DES_LONG_ACCOUNTS = [4, 9, 16, 22, 27, 31, 35, 38, 44].map((length) => "Retirement savings account of the invented family partnership".slice(0, length).trimEnd());
+const DES_ACCOUNTS = DES_LONG
+  ? DES_LONG_ACCOUNTS
+  : ["main", "Retirement", "Joint savings", "Trading", "Long term", "Education", "Family trust", "Margin", "Paper"];
+/** A date `days` from today, as the day a registry would list it. */
+const desDay = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+const desPositions = Number(params.get("positions") ?? 3);
+const DES_DESCRIPTION = Array.from({ length: Number(params.get("scale") ?? 1) }, () => "Example Industries builds small instruments for imaginary observatories. The team assembles each device in a bright studio beside the river, checks the lenses twice, and sends a hand written guide with every order. Longer runs use the same tools, but the instruments travel to classrooms, research stations and libraries across several regions.").join(" ");
+const DES_TICKER = createTestTicker("EXMPL", "Example Industries", {
+  exchange: "NASDAQ",
+  assetCategory: "STK",
+  portfolios: DES_ACCOUNTS.slice(0, desPositions),
+  positions: Array.from({ length: desPositions }, (_, index) => ({
+    portfolio: DES_ACCOUNTS[index % DES_ACCOUNTS.length]!, shares: 10 + index * 7, avgCost: 70 + index * 2.5, currency: "USD", broker: "manual",
+  })),
+});
+const DES_FINANCIALS = createTestFinancials({
+  financialCurrency: "USD",
+  quote: createTestQuote({
+    symbol: "EXMPL", name: "Example Industries", price: 105.25, change: 1.25, changePercent: 1.2, previousClose: 104, lastUpdated: Date.UTC(2026, 0, 2),
+    bid: 105.2, ask: 105.3, bidSize: DES_LONG ? 12_345_678 : 300, askSize: DES_LONG ? 98_765_432 : 500, high: 106, low: 103, high52w: 140, low52w: 80, volume: 1_200_000, marketCap: 5e9, marketState: "CLOSED",
+  }),
+  priceHistory: inventedSeries(120, 100, 18),
+  fundamentals: {
+    marketCap: 5e9, enterpriseValue: 5.5e9, trailingPE: 21.5, forwardPE: 19.4, eps: 4.89, dividendYield: 0.017, beta: 1.12, revenue: 2e9,
+    netIncome: 3e8, freeCashFlow: 2e8, profitMargin: 0.15, operatingMargin: 0.22, sharesOutstanding: 47_505_938, floatShares: 42e6,
+    ...(DES_LONG ? {
+      exDividendDate: desDay(6), shortPercentOfFloat: 0.034, shortRatio: 3.2, institutionPercentHeld: 0.71, insiderPercentHeld: 0.04,
+      revenueGrowth: 0.12, pegRatio: 1.4,
+    } : {}),
+  },
+  ...(DES_LONG ? { nextEarnings: { date: desDay(4), timing: "amc" as const, timingSource: "filing" as const } } : {}),
+  profile: DES_LONG
+    ? {
+      description: DES_DESCRIPTION,
+      sector: "Industrials and precision instruments",
+      industry: "Precision measuring instruments and observatory equipment makers",
+      employees: 12_345,
+      website: "https://www.a-very-long-invented-company-website-name-for-testing.example.invalid",
+      fiscalYearEnd: "12-31",
+      sic: "3829",
+      sicDescription: "Measuring and controlling devices not elsewhere classified",
+    }
+    : { description: DES_DESCRIPTION, sector: "Industrials", industry: "Instruments", employees: 12_345, website: "https://example.invalid", fiscalYearEnd: "12-31" },
+});
+function DesPane({ width, height, focused }: PaneProps) {
+  return <OverviewTab ticker={DES_TICKER} financials={DES_FINANCIALS} width={width} height={height} focused={focused} />;
+}
+
+/** DES beside a plain pane, or floating over it (`float=1`). */
+function desLayout(): LayoutConfig {
+  if (params.get("float") === "1") {
+    return {
+      dockRoot: leaf("plain:a"),
+      instances: [instance("des:a"), instance("plain:a")],
+      floating: [{ instanceId: "des:a", x: 10, y: 2, width: 112, height: 44, zIndex: 50 }],
+      detached: [],
+    };
+  }
+  return {
+    dockRoot: { kind: "split", axis: "horizontal", ratio: 0.66, first: leaf("des:a"), second: leaf("plain:a") },
+    instances: [instance("des:a"), instance("plain:a")],
+    floating: [],
+    detached: [],
+  };
 }
 
 /**
@@ -871,6 +1052,7 @@ function chartComposerSpec(kind: string): ChartSpec {
 const PANES = {
   palette: { name: "Surface", component: PalettePane },
   overview: { name: "Overview", component: OverviewPane },
+  des: { name: "DES", component: DesPane },
   paint: { name: "Research", component: PaintPane },
   plain: { name: "Plain", component: PlainPane },
   tabs: { name: "Tabbed", component: TabsPane },
@@ -887,7 +1069,7 @@ const PANES = {
   overlay: { name: "Chart under a toolbar", component: ChartOverlayPane },
   under: { name: "Chart under a table", component: ChartUnderTablePane },
   sidebar: { name: "Sidebar", component: SidebarPane },
-  heat: { name: "Heat map", component: HeatPane },
+  heat: { name: "Heat map", component: params.get("heat") === "market" ? MarketHeatPane : InventedHeatPane },
   chat: { name: "Chat", component: ChatFixturePane },
   "chart-composer": { name: "Chart", component: ChartComposerFixturePane },
   ...LAYOUT_PANES,
@@ -990,13 +1172,15 @@ const FLOATING_RESIZE: Record<string, string> = {
  */
 function resizeLayout(): LayoutConfig {
   const floating = `${FLOATING_RESIZE[params.get("float") ?? ""] ?? "news"}:float`;
+  // `dock=heat`: the heat map docked where the chart is, so a window resize resizes it.
+  const docked = params.get("dock") === "heat" ? "heat:dock" : "chart:dock";
   return {
     dockRoot: {
       kind: "split", axis: "vertical", ratio: 0.55,
-      first: row(["news:dock", "chart:dock"]),
+      first: row(["news:dock", docked]),
       second: row(["sidebar:dock", "table:dock"]),
     },
-    instances: ["news:dock", "chart:dock", "sidebar:dock", "table:dock", floating].map(instance),
+    instances: ["news:dock", docked, "sidebar:dock", "table:dock", floating].map(instance),
     floating: [{ instanceId: floating, x: 50, y: 8, width: 72, height: 22, zIndex: 60 }],
     detached: [],
   };
@@ -1080,6 +1264,7 @@ function config() {
     : scenario === "resize" ? resizeLayout()
     : scenario === "narrow" ? narrowLayout()
     : scenario === "chat" ? chatLayout()
+    : scenario === "des" ? desLayout()
     : scenario === "nested" ? nestedLayout()
     : scenario === "stacked" ? stackedLayout()
     : scenario === "cmp" ? chartComposerLayout()
@@ -1088,7 +1273,8 @@ function config() {
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
   const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];
   if (scenario === "theme") layouts.push({ name: "Alternate", layout: cloneLayout(layout) });
-  return { ...base, theme: params.get("theme") ?? base.theme, layout, layouts, activeLayoutIndex: 0 };
+  const fontSize = Number(params.get("font")) || base.fontSize;
+  return { ...base, theme: params.get("theme") ?? base.theme, fontSize, layout, layouts, activeLayoutIndex: 0 };
 }
 
 const paneRegistry = registry();
@@ -1122,6 +1308,7 @@ window.__paneChrome = {
   clipboardImages: [],
   externalOpens: [],
   detachedCloses: 0,
+  header: { show: ignore, fullscreen: ignore, commandBar: ignore, helpOpens: 0, restarts: 0 },
   capturePane: async (paneId) => `data:image/png;base64,${(await domScreenshot.capturePaneScreenshotPngBase64(paneId)).pngBase64}`,
   captureForAssistant: async (paneId, scale, maxBytes, minWidth) => {
     try {
@@ -1145,6 +1332,11 @@ registerAskGloomPaneHandler(({ paneId, visibleText, args }) => {
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
 if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
 if (scenario === "layout") installLayoutFetches();
+if (scenario === "header") {
+  installHeaderPlatform(platform);
+  installHeaderClock();
+  installHeaderMarketData();
+}
 const rendererHost: RendererHost = {
   ...webRendererHost,
   controlWindow: (action) => { window.__paneChrome.windowControls.push(action); },
@@ -1157,10 +1349,11 @@ const rendererHost: RendererHost = {
 const root = document.getElementById("root")!;
 root.tabIndex = -1;
 createRoot(root).render(
-  <DomHostProviders ui={createWebUiHost(platform)} renderer={rendererHost}>
+  <DomHostProviders ui={params.get("host") === "browser" ? browserUiHost : createWebUiHost(platform)} renderer={rendererHost}>
     <AppProvider config={config()} desktopBridge={detached ? detachedBridge : undefined}>
       {detached
         ? <DetachedPaneShell pluginRegistry={paneRegistry} desktopWindowBridge={detachedBridge} />
+        : scenario === "header" ? <HeaderFixture handle={window.__paneChrome.header} />
         : scenario === "theme" ? <Box flexDirection="column" width="100%" height="100%">
           <Box data-theme-chrome="header"><Header /></Box>
           <Shell pluginRegistry={paneRegistry} />

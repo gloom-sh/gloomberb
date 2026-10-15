@@ -29,6 +29,8 @@ import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
 import { publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
 import { convertCurrency, displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
+import { enterpriseValueReconciliationNote } from "../../../utils/fundamentals";
+import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
 import {
@@ -46,6 +48,7 @@ import type { OverviewFunctionLink, StatField } from "./overview/types";
 import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
 import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../portfolio-list/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
+import { ClippedText } from "../../../components/ui/display";
 
 /** Cells between the Day and 52W ranges when they share a row. */
 const RANGE_PAIR_GAP = 4;
@@ -145,13 +148,15 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
     panelId: "price",
     timeBasis: chartTimeZone ? { kind: "market", timeZone: chartTimeZone } : undefined,
   });
+  // A provider EV off market cap + debt - cash, or why a withdrawn one is unavailable, at the
+  // regular session price the EV beside it is shown at.
+  const enterpriseValueNote = enterpriseValueReconciliationNote(atRegularSessionPrice({ quote, fundamentals }).fundamentals);
   usePaneNoticeFooter({
     registrationId: "overview-notices",
     notices: [
       ...(!quote && financials ? [t("Current quote unavailable. Other research data is still available.")] : []),
       ...(priceSeries.warning ? [priceSeries.warning] : []),
-      ...(fundamentals?.unavailableFields?.includes("enterpriseValue")
-        ? [t("Enterprise value unavailable: the source observation failed validation.")] : []),
+      ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],
@@ -264,8 +269,22 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
         // On the desktop the header keeps half a row clear of the tab bar's edge.
         style={nativePaneChrome ? { paddingTop: Math.round(cellHeightPx / 2) } : undefined}
       >
-        <Box flexDirection={quoteBookInline ? "row" : "column"} gap={quoteBookInline ? 2 : 0} width={contentWidth}>
-          <Box flexDirection="row" width={quoteSummaryWidth} flexShrink={0} minWidth={0} overflow="hidden">
+        <Box
+          flexDirection={quoteBookInline ? "row" : "column"}
+          gap={quoteBookInline && !nativePaneChrome ? 2 : 0}
+          width={nativePaneChrome ? undefined : contentWidth}
+          style={nativePaneChrome && quoteBookInline ? { columnGap: "2ch" } : undefined}
+        >
+          <Box
+            flexDirection="row"
+            width={nativePaneChrome ? undefined : quoteSummaryWidth}
+            // On the desktop the summary takes what the book beside it leaves, so the book keeps to the pane's right edge.
+            flexGrow={nativePaneChrome && quoteBookInline ? 1 : undefined}
+            flexShrink={nativePaneChrome && quoteBookInline ? 1 : 0}
+            flexBasis={nativePaneChrome && quoteBookInline ? 0 : undefined}
+            minWidth={0}
+            overflow="hidden"
+          >
             <CompanyLogo
               symbol={ticker.metadata.ticker}
               assetCategory={ticker.metadata.assetCategory}
@@ -278,7 +297,7 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
             {hasIdentityLine && (
               <Box flexDirection="row" minWidth={0} overflow="hidden">
                 {companyName && (
-                  <Text fg={colors.textDim}>{truncateToDisplayWidth(companyName, companyNameWidth)}</Text>
+                  <ClippedText fg={colors.textDim} text={companyName} width={companyNameWidth} />
                 )}
                 {venueText && <Text flexShrink={0} fg={colors.textDim}>{venueText}</Text>}
                 {quote?.marketState && (
@@ -326,7 +345,13 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
           </Box>
 
           {quote && hasBidAsk && (
-            <QuoteBook quote={quote} assetCategory={moneyOptions.assetCategory} width={quoteBookWidth} />
+            <QuoteBook
+              quote={quote}
+              assetCategory={moneyOptions.assetCategory}
+              width={quoteBookWidth}
+              // The terminal's 30% of the width between 24 and 32 cells, in characters.
+              desktopWidth={quoteBookInline ? "clamp(24ch, 30%, 32ch)" : "min(100%, 32ch)"}
+            />
           )}
         </Box>
 
@@ -435,9 +460,10 @@ function ResolvedOverviewTab({ width, height, focused = false, ticker, financial
 
         {/* Description — last, collapsed */}
         {description && (
-          <Box flexDirection="column" width={contentWidth}>
+          <Box flexDirection="column" width={nativePaneChrome ? undefined : contentWidth}>
             <SectionHeading title={t("Description")} />
-            <Text fg={colors.text} width={contentWidth} wrapMode="word" wrapText>{description}</Text>
+            {/* The desktop wraps it at the pane's own width, so it follows a resize to the pixel. */}
+            <Text fg={colors.text} width={nativePaneChrome ? undefined : contentWidth} wrapMode="word" wrapText>{description}</Text>
           </Box>
         )}
       </Box>

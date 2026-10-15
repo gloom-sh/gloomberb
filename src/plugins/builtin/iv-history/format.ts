@@ -21,6 +21,9 @@ export const VCA_DEFINITIONS = [
  */
 export const skewHeader = (stem: string, sign: string) => `${stem} ${sign} (pts)`;
 
+/** The underlying price a reading was taken at, to the cent. */
+export const formatSpot = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--"
+  : value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 export const formatVol = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "--" : `${(value * 100).toFixed(1)}%`;
 export const formatPoints = (value: number | null | undefined) =>
   value == null || !Number.isFinite(value) ? "--" : `${value >= 0 ? "+" : ""}${(value * 100).toFixed(1)}`;

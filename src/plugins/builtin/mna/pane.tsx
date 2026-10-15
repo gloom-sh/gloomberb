@@ -37,7 +37,7 @@ import { useCloudAccessFooter } from "../shared/cloud-upgrade";
 import { Blurred, UpgradeLabel } from "../shared/locked-rows";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
-import { appendMnaDeals, fetchMnaDeals, loadMnaDeals } from "./client";
+import { appendMnaDeals, cachedMnaDeals, fetchMnaDeals, loadMnaDeals } from "./client";
 import { MnaDealDetail, mnaDealTitle } from "./detail";
 import { DistressBoard } from "./distress/pane";
 import {
@@ -220,7 +220,7 @@ function MnaDealsView({ focused, width, height, symbol }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [paramsKey, pro, session.requestKey],
   );
-  const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
+  const resource = useAsyncResource(loader, { initialData: () => cachedMnaDeals(params, pro), clearOnError: isAccessDenied });
   const first = resource.data?.payload ?? null;
   const [paged, setPaged] = useState<{ owner: MnaDealsPayload; payload: MnaDealsPayload } | null>(null);
   const data = paged && paged.owner === first ? paged.payload : first;

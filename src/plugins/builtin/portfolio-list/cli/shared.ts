@@ -25,6 +25,15 @@ export function failPortfolioCommand(ctx: CliCommandContext, error: unknown, fal
 }
 
 /**
+ * Fails an action that changes a portfolio or watchlist when `--dry-run` was
+ * given. None of them previews, so running it anyway would save the change
+ * under a flag that promises not to; this fails before anything is written.
+ */
+export function refuseDryRun(ctx: CliCommandContext, noun: "watchlist" | "portfolio", action: string): void {
+  if (ctx.cliOptions.dryRun) ctx.fail(`${noun} ${action} has no --dry-run; it changes the ${noun} when it runs.`);
+}
+
+/**
  * The portfolio or watchlist the leading arguments name, and the arguments
  * after it. The first argument is the name (quoted when it has spaces); an
  * unquoted name with spaces still works, as the longest leading run of

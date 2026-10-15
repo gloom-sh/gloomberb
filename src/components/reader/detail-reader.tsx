@@ -1,15 +1,15 @@
-import { forwardRef, useMemo } from "react";
-import { t } from "../../i18n";
+import { forwardRef, useCallback, useMemo } from "react";
+import { t, tf } from "../../i18n";
 import { hoverBg } from "../../theme/colors";
 import { useThemeColors } from "../../theme/theme-context";
-import { Box, Text, useUiCapabilities, type ScrollBoxRenderable } from "../../ui";
+import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../ui";
 import { wrapTextLines } from "../../utils/text-wrap";
-import { MarkdownText } from "../markdown-text";
+import { MarkdownText, markdownLinks, type MarkdownTextProps } from "../markdown-text";
 import { DetailScrollBody } from "../ui/detail-scroll-body";
 import { KeyValueRow } from "../ui/display";
 import { ExternalLink, usePaneLinkMenuEntry } from "../ui/external-link";
 import { parseArticle } from "./article-text";
-import { DESKTOP_LINE_HEIGHT, READER_APP_FONT, READER_COLUMN_FONT, ReaderBlock, ReaderText, type ReaderGeometry } from "./reader-text";
+import { DESKTOP_LINE_HEIGHT, READER_APP_FONT, READER_COLUMN_FONT, READER_HEADING_STYLE, ReaderBlock, ReaderText, type ReaderGeometry } from "./reader-text";
 
 export interface DetailFact {
   label: string;
@@ -50,14 +50,17 @@ const URL_LINE = /^https?:\/\/\S+$/;
 
 const COLUMN_STYLE = { fontSize: READER_COLUMN_FONT, lineHeight: DESKTOP_LINE_HEIGHT } as const;
 const META_STYLE = { marginBottom: "0.8em" } as const;
-/** Its columns come from styles.css: one pair to a row, or two in a wide reader. */
+/**
+ * At the app's own size, as metadata is in every reader. Its columns come from
+ * styles.css: one pair to a row, or two in a wide reader.
+ */
 const FACTS_STYLE = {
   display: "grid",
-  columnGap: "1.6em",
-  rowGap: "0.2em",
-  fontSize: "0.8em",
+  columnGap: "2em",
+  rowGap: "0.3em",
+  fontSize: READER_APP_FONT,
   lineHeight: 1.5,
-  marginBottom: "1.4em",
+  marginBottom: "1.6em",
 } as const;
 const FACT_TEXT_STYLE = { display: "block", lineHeight: "inherit", minWidth: 0 } as const;
 /** Markdown lines take the reader's line height (the host sets Text line height from --cell-h). */
@@ -118,7 +121,7 @@ function NativeDetail({ meta, facts, body, bodyFormat, note }: DetailContentProp
         ) : null}
         {bodyFormat === "markdown" && body ? (
           <Box flexDirection="column" width="100%" style={MARKDOWN_STYLE}>
-            <MarkdownText text={body} paragraphGap={PARAGRAPH_GAP} />
+            <MarkdownBody text={body} paragraphGap={PARAGRAPH_GAP} headingStyle={READER_HEADING_STYLE} />
           </Box>
         ) : blocks.map((block, index) => (
           <Box key={index} flexDirection="column">
@@ -135,6 +138,28 @@ function NativeDetail({ meta, facts, body, bodyFormat, note }: DetailContentProp
       </Box>
     </Box>
   );
+}
+
+/**
+ * Markdown whose `[label](url)` links open outside the app, as the reader's
+ * other links do. The terminal cannot press part of a line, so the pane menu
+ * lists each link there (inside a `PaneLinkMenu`).
+ */
+function MarkdownBody({ text, ...style }: Pick<MarkdownTextProps, "text" | "lineWidth" | "paragraphGap" | "headingStyle">) {
+  const rendererHost = useRendererHost();
+  const links = useMemo(() => markdownLinks(text), [text]);
+  const open = useCallback((href: string) => { void rendererHost.openExternal(href); }, [rendererHost]);
+  return (
+    <>
+      <MarkdownText text={text} onOpenLink={open} {...style} />
+      {links.map((link, index) => <LinkMenuEntry key={index} {...link} onOpen={open} />)}
+    </>
+  );
+}
+
+function LinkMenuEntry({ label, href, onOpen }: { label: string; href: string; onOpen: (href: string) => void }) {
+  usePaneLinkMenuEntry(`link:${href}`, tf("Open {label}", { label }), () => onOpen(href));
+  return null;
 }
 
 function FactValue({ fact }: { fact: DetailFact }) {
@@ -164,7 +189,7 @@ function TerminalDetail({ width, meta, facts, body, bodyFormat, note }: DetailCo
     return (
       <Box flexDirection="column" width={lineWidth}>
         {metaLines.map((line, index) => <Text key={index} fg={colors.textMuted}>{line}</Text>)}
-        <MarkdownText text={body ?? ""} lineWidth={lineWidth} />
+        <MarkdownBody text={body ?? ""} lineWidth={lineWidth} />
       </Box>
     );
   }

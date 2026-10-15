@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
+import { CompositeChart } from "../../../components/chart/composite/composite-chart";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useInputCapture } from "../../../public/react";
 import { useShortcut } from "../../../react/input";
 import { useAppSelector, usePaneInstance, usePaneStateValue } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, ScrollBox } from "../../../ui";
+import { Box, ScrollBox, Text } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKey } from "../../../utils/keyboard";
 import { OPTIONS_CALCULATOR_PANE_ID, describeDraftProblem, draftFromParams, reconcileOptionCalcDraft, updateOptionCalcDraft, type OptionCalcDraft } from "./model";
@@ -20,6 +22,8 @@ import { useThrottledValue } from "../shared/volatility/live-session";
 import { valueBinomialOption, solveBinomialImpliedVolatility, effectiveBinomialSteps } from "./binomial";
 import { draftFromCalculatorInputs, parseCashDividends } from "./inputs";
 import { loadCalculatorSurfaceVol } from "./surface";
+import { loadContractPremiumHistory, premiumSeries } from "./premium-history";
+import type { ResolvedSeries } from "../../../time-series/types";
 import { OptionQuoteContext, optionQuoteContextHeight } from "../options/quote-context";
 import { useCalculatorEvidence, CALCULATOR_IGNORED_DIVIDENDS_NOTICE, type CalculatorScreenshotSnapshot } from "./evidence";
 
@@ -89,6 +93,12 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   // any edit is theirs and ends the link for that input.
   const liveStreaming = useLiveStreamingSetting();
   const reference = draft.marketReference;
+  const contractSymbol = screenshotSnapshot ? null : reference?.contractSymbol ?? null;
+  const loadPremium = useCallback(async () => {
+    if (!contractSymbol) return [];
+    return loadContractPremiumHistory(contractSymbol);
+  }, [contractSymbol]);
+  const premiumResource = useAsyncResource(contractSymbol ? loadPremium : null);
   const priceLinked = !screenshotSnapshot && !!draft.marketPriceSource && !!reference && !!draft.symbol;
   const spotLinked = priceLinked && draft.spot === seed.spot;
   // One stable subscription while the price is linked: dropping the
@@ -253,9 +263,6 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     } else if (american && isPlainKey(event, "d")) {
       consume();
       setActiveFieldId("dividends");
-    } else if (surfaceSource && isPlainKey(event, "r")) {
-      consume();
-      void surfaceResource.reload();
     }
   }, {
     allowEditable: true,
@@ -264,6 +271,7 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
     scope: "options-calculator:fields",
   });
 
+  usePaneRefreshKey(() => { void surfaceResource.reload(); }, { focused: focused && !commandBarOpen && surfaceSource && activeFieldId === null });
   usePaneFooter(OPTIONS_CALCULATOR_PANE_ID, () => ({
     info: [
       ...(problem ? [{ id: "input", parts: [{ text: problem, tone: "warning" as const }] }] : []),
@@ -331,6 +339,15 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
         {linkedDraft.marketReference && <Box paddingX={1} height={referenceHeight} flexShrink={0}>
           <OptionQuoteContext reference={linkedDraft.marketReference} width={resultWidth} height={referenceHeight} snapshot={!liveInputs} scrollable={false} />
         </Box>}
+        {contractSymbol ? (
+          <ContractPremiumChart
+            series={premiumSeries(premiumResource.data ?? [], colors.positive)}
+            loading={premiumResource.loading && !premiumResource.data}
+            unavailable={premiumResource.error != null && !premiumResource.data}
+            width={resultWidth}
+            focused={focused}
+          />
+        ) : null}
 
         <Box flexDirection={pairMetrics ? "row" : "column"} paddingX={1}>
           <KeyValueRow
@@ -362,6 +379,43 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
           <KeyValueRow label="Rho" value={formatSigned(valuation?.rhoPerPoint, 4)} detail="per rate pt" width={metricWidth} />
         </Box>
       </ScrollBox>
+    </Box>
+  );
+}
+
+const PREMIUM_CHART_ROWS = 8;
+
+function ContractPremiumChart({
+  series,
+  loading,
+  unavailable,
+  width,
+  focused,
+}: {
+  series: ResolvedSeries[];
+  loading: boolean;
+  unavailable: boolean;
+  width: number;
+  focused: boolean;
+}) {
+  const empty = unavailable ? "Premium history unavailable." : series.length < 1 ? "No premium history." : undefined;
+  return (
+    <Box flexDirection="column" paddingX={1} height={PREMIUM_CHART_ROWS} flexShrink={0}>
+      {empty && !loading ? (
+        <Text fg={colors.textDim}>{empty}</Text>
+      ) : (
+        <CompositeChart
+          series={series}
+          panels={[{ id: "main" }]}
+          width={width}
+          height={PREMIUM_CHART_ROWS}
+          focused={focused}
+          navigable={false}
+          remoteKind="option-premium-history"
+          formatValue={(value) => formatNumber(value, 2)}
+          emptyMessage={loading ? "Loading..." : "No premium history."}
+        />
+      )}
     </Box>
   );
 }

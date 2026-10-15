@@ -8,14 +8,17 @@ import { serveFixturePage, type FixturePage } from "./page";
  * Frame budget of pane drags and resizes, against a base checkout. Each run
  * drags with real pointer input at 60 moves a second for 1.5 s: a docked and a
  * floating pane across a dense layout (fixture.tsx, `perf`), and, over the
- * `resize` layout, the corner of a floating news table, chart, heat map and
- * Fear & Greed pane and of the charts that sit inside a pane's own layout (G
+ * `resize` layout, the corner of a floating news table, chart, heat map (an
+ * invented one, and the market board of 500 names with ticks) and Fear &
+ * Greed pane and of the charts that sit inside a pane's own layout (G
  * layout, chart over a table, chart beside a table, chart under a toolbar), a
  * dock divider between a news table and a chart and one between the G layout
  * and the chart beside a table (`nested`, each measured on both sides), the
  * divider of a table in a pane's sidebar, a chart composer's plot panned
- * back and forth (`cmp`), and the divider beside a chat whose messages wrap
- * to its width, with the first page of messages and with 500 loaded. It
+ * back and forth (`cmp`), the divider beside a chat whose messages wrap
+ * to its width, with the first page of messages and with 500 loaded, and the
+ * divider beside DES's overview, with three accounts and with nine and a
+ * description three times as long (`des`). It
  * reads what the page's main thread spent (Performance.getMetrics, in thread
  * time), the React commits and the animation frames the page ran, and for a
  * resize how far the frame's edge and the content's edge fell behind the
@@ -171,6 +174,17 @@ const chatDividerDrag = (name: string, fixture: string, prepare?: (cdp: Cdp) => 
   track: { frame: rightOf(pane("chat:a")), content: lastRightOf(`${pane("chat:a")} [data-gloom-role=chat-message]`) },
 });
 const NESTED_DIVIDER = dividerRightOf("chart-bar:dock");
+/** The positions table's last header, by its text, so a branch with padded columns finds it too. */
+const DES_LAST_COLUMN = `(() => { const span = [...document.querySelectorAll("[data-gloom-pane-id='des:a'] span")].find((e) => e.childElementCount === 0 && e.textContent.trim() === "Ret"); return span.getBoundingClientRect().right; })()`;
+/** DES beside a plain pane: its quote book, fundamentals, positions and description fill the width the divider gives it. */
+const desDividerDrag = (name: string, fixture: string): Scenario => ({
+  name,
+  fixture,
+  ready: `!!document.querySelector("[data-gloom-pane-id='des:a'] canvas")`,
+  grab: (cdp) => evaluate(cdp, dividerRightOf("des:a")),
+  path: (start, t) => ({ x: start.x - Math.sin(t * Math.PI * 2) * 200, y: start.y }),
+  track: { frame: rightOf(pane("des:a")), content: DES_LAST_COLUMN },
+});
 
 /** A floating pane's corner, dragged out, in past where it started and out again, as the chart and table resizes do. */
 const cornerResize = (name: string, float: string, paneId: string, content: string, canvas?: string): Scenario => ({
@@ -215,6 +229,8 @@ const SCENARIOS: Scenario[] = [
   cornerResize("chart resize", "chart", "chart:float", "canvas", `${pane("chart:float")} canvas`),
   // Tiles placed in percentages of a map laid out on the cell grid.
   cornerResize("heat map resize", "heat", "heat:float", "[data-gloom-role=heat-treemap]"),
+  // The market heat map's board: 500 names in sectors and industries, recoloured by ticks as the drag goes.
+  cornerResize("market heat map resize", "heat&heat=market&ticks=1", "heat:float", "[data-gloom-role=heat-treemap]"),
   // A chart of a fixed height in a column of text: it follows the width only.
   cornerResize("fear and greed resize", "fear", "fear-greed:float", "[data-gloom-role=composite-chart]", `${pane("fear-greed:float")} [data-gloom-role=composite-chart] canvas`),
   {
@@ -286,6 +302,9 @@ const SCENARIOS: Scenario[] = [
   chatDividerDrag("chat divider drag", "chat"),
   // A reader who paged far back: every page stays in the list.
   chatDividerDrag("chat divider drag, 500 messages", "chat&count=500&latency=0", loadWholeChat),
+  desDividerDrag("DES divider drag", "des"),
+  // Three times the accounts and the description.
+  desDividerDrag("DES divider drag, 3x", "des&positions=9&scale=3"),
   {
     name: "table column drag",
     fixture: "resize",

@@ -1,8 +1,17 @@
-import { expect, setSystemTime, test } from "bun:test";
+import { afterEach, beforeEach, expect, setSystemTime, spyOn, test, type Mock } from "bun:test";
+import { apiClient } from "../../api-client";
 import { marketDataCliCommands } from "./market";
 import { createTestCliContext } from "../../test-support/cli-context";
+import { serializeCliResult } from "../result";
+import { DEFAULT_CLI_OPTIONS } from "../options";
+import { EXPORT_IDENTITY_COLUMNS } from "../export-source";
 
 const options = marketDataCliCommands.find((command) => command.name === "options")!;
+
+// The open-interest date comes from OPX's listing; no test reaches the network for it.
+let listedOpenInterest: Mock<typeof apiClient.optionsPositioning>;
+beforeEach(() => { listedOpenInterest = spyOn(apiClient, "optionsPositioning").mockRejectedValue(new Error("offline")); });
+afterEach(() => listedOpenInterest.mockRestore());
 
 async function warningsFor(chain: object, stored: number, refreshError: unknown): Promise<string[] | undefined> {
   const cli = createTestCliContext({
@@ -80,4 +89,61 @@ test("options fails on an expiry the chain does not list, in dates, and on one t
   // A provider that hands back its nearest expiry for an unlisted date has not answered the request.
   await expect(options.execute(["AAPL", "--expiration", "2028-01-21"], expiryProvider([EXPIRIES[0]!]).cli.context))
     .rejects.toThrow("no expiry 2028-01-21 for AAPL");
+});
+
+test("an options export says on every row what it is, the spot and time behind IV and delta, and the open interest's date", async () => {
+  const expiration = EXPIRIES[1]!;
+  const closeAt = Date.parse("2026-10-12T19:59:59Z");
+  const contract = (side: "C" | "P", strike: number, bid: number, openInterest: number) => ({
+    contractSymbol: `GOOGL280317${side}${String(strike * 1000).padStart(8, "0")}`, strike, currency: "USD", lastPrice: bid,
+    change: 0, percentChange: 0, bid, ask: bid + 0.2, impliedVolatility: 0, inTheMoney: false, expiration, lastTradeDate: closeAt / 1000,
+    volume: 1, openInterest,
+  });
+  const chain = { underlyingSymbol: "GOOGL", expirationDates: EXPIRIES, asOf: new Date(closeAt).toISOString(), dataSource: "delayed",
+    delayMinutes: 15, calls: [contract("C", 350, 60, 120), contract("C", 360, 54, 80)], puts: [contract("P", 350, 50, 95), contract("P", 360, 56, 40)] };
+  const quote = { symbol: "GOOGL", price: 354.5, currency: "USD", change: 1.8, changePercent: 0.5, lastUpdated: Date.parse("2026-10-13T12:28:00Z"),
+    marketState: "PRE", extendedSessionPrint: true, regularClose: 352.72, regularCloseSessionDate: "2026-10-12" };
+  listedOpenInterest.mockResolvedValue({ oiDate: "2026-10-09", expiry: "2028-03-17", strikes: [
+    { strike: 350, callOI: 120, putOI: 95 }, { strike: 360, callOI: 80, putOI: 40 }] } as never);
+  setSystemTime(new Date("2026-10-13T12:41:00Z"));
+  try {
+    const cli = createTestCliContext({ dataProvider: { getOptionsChain: async () => chain, getQuote: async () => quote,
+      getTickerFinancials: async () => ({ quote, fundamentals: { dividendYield: 0 }, annualStatements: [], quarterlyStatements: [], priceHistory: [] }) } });
+    await options.execute(["GOOGL", "--expiration", "2028-03-17"], cli.context);
+    const { result, options: render } = cli.printed[0]!;
+    expect(listedOpenInterest).toHaveBeenCalledWith("open-interest?symbol=GOOGL&expiry=2028-03-17", expect.anything());
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, render).split("\n");
+    const [header, ...rows] = csv.filter((line) => line && !line.startsWith("#"));
+    expect(header).toBe(["Side,Contract,Expiry,Strike,Last,Bid,Ask,IV (annualized decimal),Delta (decimal),Vol,OI",
+      "Spot,Spot basis,Spot as of,OI as of", ...EXPORT_IDENTITY_COLUMNS].join(","));
+    expect(rows).toHaveLength(4);
+    for (const row of rows) {
+      expect(row.split(",").slice(-9)).toEqual(["352.72", "close", "2026-10-12T20:00:00.000Z", "2026-10-09",
+        "GOOGL", "USD", "snapshot", "Gloom Cloud", "2026-10-12T19:59:59.000Z"]);
+    }
+    // JSON carries the same.
+    const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, render));
+    expect(json.metadata).toMatchObject({ symbol: "GOOGL", currency: "USD", interval: "snapshot",
+      model: { spot: 352.72, spotBasis: "close", spotAsOf: "2026-10-12T20:00:00.000Z" }, openInterest: { asOf: "2026-10-09" } });
+    expect(json.source).toMatchObject({ name: "Gloom Cloud", observationDate: "2026-10-12T19:59:59.000Z" });
+    expect(render!.footnote).toBe("Greeks at spot 352.72 (close Mon 12 Oct 20:00 UTC), dividend yield 0%, rate 4% · OI as of Fri 9 Oct");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("a chain that dates its own open interest is labelled with that date, and OPX is not asked", async () => {
+  const put = { contractSymbol: "GOOGL280317P00350000", strike: 350, currency: "USD", lastPrice: 50, change: 0, percentChange: 0,
+    bid: 50, ask: 50.2, impliedVolatility: 0, inTheMoney: false, expiration: EXPIRIES[1]!, lastTradeDate: 0, volume: 1, openInterest: 4815 };
+  // A server with no date for the counts says so with null; the label then never borrows OPX's.
+  for (const [openInterestAsOf, footnote] of [["2026-10-09", "OI as of Fri 9 Oct"], [null, "OI date not published"]] as const) {
+    const chain = { underlyingSymbol: "GOOGL", expirationDates: EXPIRIES, calls: [], puts: [put], openInterestAsOf };
+    const cli = createTestCliContext({ dataProvider: { getOptionsChain: async () => chain } });
+    await options.execute(["GOOGL", "--expiration", "2028-03-17"], cli.context);
+    const { result, options: render } = cli.printed[0]!;
+    expect(render!.footnote).toBe(footnote);
+    const json = JSON.parse(serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "json" }, render));
+    expect(json.metadata.openInterest).toEqual({ asOf: openInterestAsOf, listedAsOf: null, compared: 0, matched: 0 });
+  }
+  expect(listedOpenInterest).not.toHaveBeenCalled();
 });

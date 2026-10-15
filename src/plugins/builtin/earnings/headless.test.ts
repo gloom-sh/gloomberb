@@ -33,6 +33,26 @@ test("ERN rows carry each quarter's basis, the estimate's analysts and whether t
   ]);
 });
 
+test("a REIT's next report shows the calendar's FFO consensus labelled adjusted, on ERN <ticker> and the board", async () => {
+  const pld = report({ symbol: "PLD", name: "Prologis, Inc.", date: addDays(today, 2), timing: "bmo", timingSource: "calendar",
+    fiscalPeriod: "2026-09", epsEstimate: 1.58, epsAnalysts: 2, epsBasis: "adjusted", dateStatus: "confirmed" });
+  const reported = report({ symbol: "PLD", date: addDays(today, -89), timing: "bmo", fiscalPeriod: "2026-06", epsEstimate: 1.53,
+    epsActual: 1.63, epsAnalysts: 4, epsBasis: "adjusted", dateStatus: "reported" });
+  const definition = createEarningsHeadless({
+    calendar: async () => ({ asOf: `${today}T12:00:00.000Z`, from: today, to: addDays(today, 90),
+      reports: [{ ...pld, marketCap: 122.8e9, averageMove: null, averageReports: 0 }] }),
+    history: async () => ({ ...history, symbol: "PLD", name: "Prologis, Inc.", reports: [pld, reported] }),
+    upcoming: async () => [],
+  });
+  const ern = await definition.load({ ...args, rawArgument: "PLD", argument: "PLD", symbols: ["PLD"] }, context);
+  expect(ern.rows.map((row) => [row.dateStatus, row.epsEstimate, row.epsAnalysts, row.epsActual, row.epsBasis])).toEqual([
+    ["confirmed", 1.58, 2, null, "adjusted"],
+    ["reported", 1.53, 4, 1.63, "adjusted"],
+  ]);
+  const board = await definition.load({ rawArgument: "PLD GOOGL", argument: ["PLD", "GOOGL"], symbols: ["PLD", "GOOGL"], options: {} }, context);
+  expect(board.rows.map((row) => [row.symbol, row.epsEstimate, row.epsAnalysts, row.epsBasis])).toEqual([["PLD", 1.58, 2, "adjusted"]]);
+});
+
 test("past the stored horizon the per-ticker calendar's estimate keeps its own analyst count and date flag", async () => {
   const definition = createEarningsHeadless({
     calendar: async () => { throw new Error("unused"); },
@@ -49,6 +69,33 @@ test("past the stored horizon the per-ticker calendar's estimate keeps its own a
   const [next] = (await definition.load(args, context)).rows;
   // A count from another forecast does not describe this estimate.
   expect(next).toMatchObject({ upcoming: true, dateStatus: "confirmed", epsEstimate: -1.52697, epsAnalysts: null, epsBasis: null });
+});
+
+test("ERN board rows carry the status, analysts and basis ERN <ticker> shows, ranked by the served cap", async () => {
+  const day = addDays(today, 1);
+  const calendarReport = (fields: Partial<HistoryReport> & Pick<HistoryReport, "symbol" | "date">) =>
+    ({ ...report(fields), averageMove: null, averageReports: 0 });
+  const definition = createEarningsHeadless({
+    calendar: async () => ({ asOf: `${today}T12:00:00.000Z`, from: today, to: addDays(today, 90), reports: [
+      calendarReport({ symbol: "PEP", date: today, marketCap: 210e9, epsEstimate: 2.26, epsActual: 2.29, epsAnalysts: 15, epsBasis: "adjusted", dateStatus: "reported" }),
+      calendarReport({ symbol: "GOOGL", date: day, marketCap: 4.31e12, epsEstimate: 3.02071, epsAnalysts: 43, dateStatus: "confirmed" }),
+      calendarReport({ symbol: "KO", date: day, marketCap: 386.37e9, epsEstimate: 0.88024, epsAnalysts: 18, epsBasis: null, dateStatus: "confirmed" }),
+    ] }),
+    history: async () => { throw new Error("unused"); },
+    // A company the stored calendar does not carry: its estimate is in another currency, so neither it nor its count is shown.
+    upcoming: async () => [{
+      symbol: "SAP", name: "SAP SE", earningsDate: new Date(`${addDays(today, 20)}T00:00:00Z`), isDateEstimate: true,
+      epsEstimate: 1.6, epsAnalysts: 20, epsActual: null, revenueEstimate: null, revenueActual: null, surprise: null, timing: "",
+      estimateBasis: { epsEstimate: { source: "earningsTrend", sourceValue: 1.6, period: "0q", periodEndDate: "2026-09-30", currency: "EUR" } },
+    }],
+  });
+  const result = await definition.load({ rawArgument: "PEP GOOGL KO SAP", argument: ["PEP", "GOOGL", "KO", "SAP"], symbols: ["PEP", "GOOGL", "KO", "SAP"], options: {} }, context);
+  expect(result.rows.map((row) => [row.symbol, row.dateStatus, row.epsEstimate, row.epsAnalysts, row.epsActual, row.epsBasis, row.marketCap])).toEqual([
+    ["PEP", "reported", 2.26, 15, 2.29, "adjusted", 210e9],
+    ["GOOGL", "confirmed", 3.02071, 43, null, null, 4.31e12],
+    ["KO", "confirmed", 0.88024, 18, null, null, 386.37e9],
+    ["SAP", "projected", null, null, null, null, null],
+  ]);
 });
 
 test("EVTS with a ticker stays the market board and says whether that ticker is on it", async () => {

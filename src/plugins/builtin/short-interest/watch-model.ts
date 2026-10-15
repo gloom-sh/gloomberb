@@ -3,7 +3,9 @@ import type { PricePoint } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { isKnownNonUsListing, listingAbroadVenue } from "../../../utils/sec";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
+import { splitSymbolArgs } from "../../../cli/symbol-args";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
+import { type SettlementFloatStatistics, settlementPercentFloat } from "./model";
 import type { ShortInterestRecord } from "./types";
 
 /** Short interest is published per settlement for each US listing, so a list fetches one symbol at a time. */
@@ -51,6 +53,8 @@ export interface ShortWatchInputs {
   symbol: string;
   records: readonly ShortInterestRecord[] | null;
   floatShares: number | null;
+  /** The statistics' short % of float and its settlement (settlementPercentFloat). */
+  statistics?: SettlementFloatStatistics | null;
   history: readonly PricePoint[] | null;
   error?: string | null;
 }
@@ -76,8 +80,17 @@ export function oneMonthReturn(history: readonly PricePoint[]): { percent: numbe
   target.setUTCMonth(target.getUTCMonth() - 1);
   // 31 March less a month is 3 March; clamp to the month's last day.
   if (target.getUTCMonth() === last.date.getUTCMonth()) target.setUTCDate(0);
-  const base = closes.filter((point) => point.date.getTime() <= target.getTime()).at(-1);
-  if (!base || target.getTime() - base.date.getTime() > RETURN_BASE_TOLERANCE_DAYS * DAY_MS) return null;
+  const targetMs = target.getTime();
+  let base = closes[0]!;
+  for (let index = closes.length - 1; index >= 0; index -= 1) {
+    const point = closes[index]!;
+    if (point.date.getTime() <= targetMs) {
+      base = point;
+      break;
+    }
+  }
+  if (base.date.getTime() > targetMs) return null;
+  if (targetMs - base.date.getTime() > RETURN_BASE_TOLERANCE_DAYS * DAY_MS) return null;
   return { percent: (last.close / base.close - 1) * 100, date: isoDate(last.date) };
 }
 
@@ -92,19 +105,16 @@ function shortWatchSetup(row: Pick<ShortWatchRow, "percentFloat" | "daysToCover"
 
 /**
  * One name's latest settlement, its change from the settlement before, its
- * shares short over the float, and its month's price move. A settlement that
- * carries its own percent of float keeps it; otherwise the float is the
- * snapshot's current float.
+ * shares short over the float, and its month's price move. The percent of
+ * float is the statistics' own when they are of the same settlement, so it
+ * reads as the overview and `fundamentals` do; otherwise the settlement's
+ * shares short over the snapshot's float.
  */
 export function buildShortWatchRow(inputs: ShortWatchInputs): ShortWatchRow {
   const records = [...(inputs.records ?? [])].sort((left, right) => left.settlementDate.getTime() - right.settlementDate.getTime());
   const latest = records.at(-1);
   const prior = records.at(-2);
-  // A float smaller than the shares short is another class's float (BRK.B reports Berkshire's Class A), not a short over 100%.
-  const percentFloat = latest
-    ? latest.shortPercentFloat ?? (finite(inputs.floatShares) && inputs.floatShares >= latest.sharesShort && inputs.floatShares > 0
-      ? latest.sharesShort / inputs.floatShares * 100 : null)
-    : null;
+  const percentFloat = latest ? settlementPercentFloat(latest, inputs.floatShares, inputs.statistics) : null;
   const move = inputs.history ? oneMonthReturn(inputs.history) : null;
   const row = {
     symbol: inputs.symbol,
@@ -154,10 +164,20 @@ export function sharedDate(rows: readonly ShortWatchRow[], key: "settlementDate"
 
 export interface ShortWatchUniverse { symbols: string[]; notice: string | null }
 
-/** US listings only: short interest settlements cover US-traded shares. */
-function listed(ticker: Pick<TickerRecord, "metadata">): boolean {
+const NOT_US_LISTED = "not US-listed";
+const NOT_A_US_TICKER = "not a US ticker symbol";
+const NOT_A_STOCK_OR_FUND = "not a US-listed stock or fund";
+
+/** A US-listed stock or fund; otherwise why this name has no short interest. */
+function listedReason(ticker: Pick<TickerRecord, "metadata">): string | null {
   const category = (ticker.metadata.assetCategory ?? "").toUpperCase().replace(/[\s_-]/g, "");
-  return LISTED_TYPES.has(category) && !isKnownNonUsListing(ticker as TickerRecord);
+  if (!LISTED_TYPES.has(category)) return NOT_A_STOCK_OR_FUND;
+  return isKnownNonUsListing(ticker as TickerRecord) ? NOT_US_LISTED : null;
+}
+
+/** "Left out: ABC.L: not US-listed; XYZ: not a US ticker symbol.", or null when every name was read. */
+function leftOut(skipped: readonly { name: string; reason: string }[]): string | null {
+  return skipped.length ? `Left out: ${skipped.map(({ name, reason }) => `${name}: ${reason}`).join("; ")}.` : null;
 }
 
 function cap(symbols: string[], skipped: string | null): ShortWatchUniverse {
@@ -168,22 +188,40 @@ function cap(symbols: string[], skipped: string | null): ShortWatchUniverse {
   };
 }
 
-const plural = (count: number) => `${count} name${count === 1 ? "" : "s"}`;
-
 /** Every name in the user's portfolios and watchlists. */
 export function ownNamesUniverse(tickers: readonly Pick<TickerRecord, "metadata">[]): ShortWatchUniverse {
   const members = tickers.filter((ticker) => ticker.metadata.portfolios.length > 0 || ticker.metadata.watchlists.length > 0);
-  const symbols = members.filter(listed).map((ticker) => ticker.metadata.ticker.toUpperCase()).filter((symbol) => SYMBOL.test(symbol));
-  const skipped = members.length - symbols.length;
-  return cap(symbols.sort(), skipped ? `${plural(skipped)} left out: short interest covers US-listed shares.` : null);
+  const symbols: string[] = [];
+  const skipped: { name: string; reason: string }[] = [];
+  for (const ticker of members) {
+    const symbol = ticker.metadata.ticker.toUpperCase();
+    const reason = listedReason(ticker) ?? (SYMBOL.test(symbol) ? null : NOT_A_US_TICKER);
+    if (reason) skipped.push({ name: symbol, reason });
+    else symbols.push(symbol);
+  }
+  return cap(symbols.sort(), leftOut(skipped.sort((left, right) => left.name.localeCompare(right.name))));
 }
 
+/** A share class written with a dash (BRK-B, BF-B) is the dotted symbol (BRK.B, BF.B) short interest is filed under. */
+const DASHED_CLASS_SHARE = /^([A-Z]{1,5})-([A-Z])$/;
+
+/**
+ * The names typed or pasted: split by commas, semicolons or blanks, each
+ * without the quote marks or the `$` around it. A name this cannot read as a US
+ * symbol is left out and named with its reason.
+ */
 export function customUniverse(text: string): ShortWatchUniverse {
-  const entries = text.split(/[\s,]+/).map((value) => value.toUpperCase()).filter(Boolean);
-  // A listing abroad (SAN:EPA) is not its symbol's US line, which can be another company's.
-  const valid = entries.filter((entry) => listingAbroadVenue(entry) == null)
-    .map((entry) => parsePublicTickerKey(entry).symbol)
-    .filter((symbol) => SYMBOL.test(symbol));
-  const skipped = entries.length - valid.length;
-  return cap(valid, skipped ? `${plural(skipped)} left out: short interest covers US-listed shares.` : null);
+  const symbols: string[] = [];
+  const skipped: { name: string; reason: string }[] = [];
+  for (const entry of splitSymbolArgs([text]).map((value) => value.replace(/^\$+/, "").toUpperCase())) {
+    // A listing abroad (SAN:EPA) is not its symbol's US line, which can be another company's.
+    if (listingAbroadVenue(entry) != null) {
+      skipped.push({ name: entry, reason: NOT_US_LISTED });
+      continue;
+    }
+    const symbol = parsePublicTickerKey(entry).symbol.replace(DASHED_CLASS_SHARE, "$1.$2");
+    if (SYMBOL.test(symbol)) symbols.push(symbol);
+    else skipped.push({ name: entry, reason: NOT_A_US_TICKER });
+  }
+  return cap(symbols, leftOut(skipped));
 }

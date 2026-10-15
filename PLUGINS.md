@@ -837,7 +837,7 @@ export default {
 
 A `load` that has nothing to return (signed out, a plan the account lacks, history still collecting) throws an `Error` that says why, in the words the plugin's pane uses; the chart shows the message where the line would be, instead of an empty plot.
 
-A definition is checked when it registers: a malformed id, an unknown unit or frequency, both or neither of `load` and `expression`, or a label that names a host or one of the services in the plugin's `hosts` (a catalog says what the data is, not who serves it) is refused. A bad entry in `series` is skipped and logged, so the plugin's other series and panes still load; `ctx.registerSeries` throws instead. `defineSeries` runs the same checks where the definition is written.
+A definition is checked when it registers: a malformed id, an unknown unit or frequency, both or neither of `load` and `expression`, or a label that names a host or one of the services in the plugin's `hosts` (a catalog says what the data is, not who serves it) is refused. A government host (`api.eia.gov`) is the publisher itself, so its agency may be named. A bad entry in `series` is skipped and logged, so the plugin's other series and panes still load; `ctx.registerSeries` throws instead. `defineSeries` runs the same checks where the definition is written.
 
 `ctx.registerSeries` adds series after setup has started, for a list the plugin loads first or a folder it watches; it returns a function that removes the series again, and a plugin's series leave with it when it is switched off or removed.
 
@@ -1355,6 +1355,7 @@ Choose the existing control that owns the interaction you need:
 | Dialog content | `DialogFrame`, `ChoiceDialog`, `ConfirmDialog` (`confirmDialog` asks and resolves a boolean; `status` and `busy` show work the confirm started), `TextPromptDialog`, `PriceSelectorDialog` |
 | Section and document headings | `Section`, `SectionHeading` (`wrap` for long headings) |
 | Labeled values and badges | `KeyValueRow`, `Badge` |
+| A few rows of figures under their headers, or label and value pairs in columns, inside a section | `ColumnGrid` (`ColumnGridColumn`: cells, `growFrom`, `align`, `gapBefore`), `ColumnGridPair` |
 | Inline bars | `RatioBar` (a value against a scale: a count against the largest row, a move against a full-scale move), `RangeTrack` (where a value sits between a low and a high) |
 | Paragraphs, bullets and separators | `Prose`, `BulletList`, `FigureList` (value-first figure lines), `READING_WIDTH`, `Divider` |
 | Loading, empty states, inline feedback | `Spinner`, `EmptyState`, `PaneStatusBody`, `Notice` |
@@ -1379,17 +1380,19 @@ A pane that computes an answer from inputs (a calculator, a sizer) puts its mode
 
 Every menu, dropdown and pop-up list uses `MenuPopover` (or `Menu` inside a `Popover`): filter menus, select fields, multi-selects, suggestions and the pane menu share one look and keyboard model. There is no other floating surface; extend these rather than positioning an absolute box. A card that opens beside something on the page, such as a name under the pointer, passes that element's `Box` ref as the `Popover`'s `anchor` (below it, above it when there is no room, `boundary="pane"` to stay inside the pane) and keeps itself open with `onPointerEnter` and `onPointerLeave`.
 
-`PaneStatusBody` replaces the body only when the caller passes a loading, error, or empty state. Preserve existing data during refresh by passing `loading={loading && !data}` and `error={!data ? error : null}`. Use `Notice` for inline refresh errors. It supports centered states, custom loading labels, and retry `actions`:
+`PaneStatusBody` replaces the body only when the caller passes a loading, error, or empty state. Preserve existing data during refresh by passing `loading={loading && !data}` and `error={!data ? error : null}`. Use `Notice` for inline refresh errors. It supports centered states, custom loading labels, other `actions`, and `retry`:
 
 ```tsx
 <PaneStatusBody loading={loading && !data} error={!data ? error : null}
   empty={!loading && !error && !data} subject="research" align="center"
-  actions={<Button label="Try again" onPress={reload} />}>
+  retry={{ onRetry: reload }}>
   <Section title="Valuation">
     <KeyValueRow label="P/E" value={formattedPE} />
   </Section>
 </PaneStatusBody>
 ```
+
+`retry` draws the Retry button first in the state, so it answers Enter. While the check runs (the promise `onRetry` returns, or `pending`, such as the resource's `loading`) the button says "Retrying..." and ignores presses; when the same empty or failed state comes back, a line under it says "Checked just now." or "Tried again just now.", so a press that changes nothing still shows it ran. Pass `pending` when the old answer stays on screen while asking again, and `label`, `pendingLabel` and `unchanged` when the check has a better verb: `{ onRetry: reload, pending: loading, label: "Look again", pendingLabel: "Looking again...", unchanged: "Still no careers system." }`.
 
 A built-in pane whose body cannot render until the account is right renders `SignInWall` from `src/plugins/builtin/cloud/auth-actions.tsx` rather than its own prompt. The pane passes only the phrase that finishes the headline (`action="browse earnings call transcripts"`) plus `needsVerification` when the session exists but the address is unconfirmed; the component owns the copy, the actions, and the verification branch.
 
@@ -1665,7 +1668,7 @@ Every pane has to work with no mouse, in the terminal and on the desktop. Most o
 - **The pane menu lists everything.** `.`, `Shift+F10` or the Menu key (and the `...` button) open the focused pane's menu: every enabled footer hint with its key, then entries the pane's kit controls add, the zap quick settings as toggles, then Settings, Fullscreen, Move to New Layout (or Move Back), Float, Lock, Close and the window actions. Give a hint a `title` when its key is not the first letter of the action (`{ key: "x", label: "port all", title: "Export All" }`); otherwise the menu reads `[a]dd` as "Add".
 - **Actions without a key** go in the pane menu with `usePaneMenuItems(id, () => items, deps)`. The items follow `PaneFooterScope` like hints, so an inactive tab's items drop out.
 - **Kit controls register themselves.** A focused `DataTableView` whose headers sort (it has `onHeaderClick`) offers "Sort by…" and "Reverse Sort" (`isColumnSortable` leaves out a column its header click ignores; `onSortChange` makes Reverse Sort flip a header that also cycles through unsorted), and moves its cursor on `Home`/`End`/`PageUp`/`PageDown`. A `QueryBar` binds `/` to its search and lists every filter, the view and "Clear Filters". A focused `Tabs` strip lists New/Close/Move Tab for the handlers it has. The first kit `Button` in an `EmptyState` or `PaneStatusBody` `actions` answers `Enter` and shows it; every action there is in the pane menu.
-- An inline action that has to stay a body button (a Retry beside a failure) goes in `ButtonActionScope`, which gives its first kit `Button` Enter and lists every one in the pane menu. Links and ticker badges in a detail go in `PaneLinkMenu`, which lists each as "Open …" in the pane menu.
+- An inline action that has to stay a body button (an action beside a failure) goes in `ButtonActionScope`, which gives its first kit `Button` Enter and lists every one in the pane menu. Links and ticker badges in a detail go in `PaneLinkMenu`, which lists each as "Open …" in the pane menu.
 - `onRootKeyDown` and `onDetailKeyDown` return `true` for a key they handled; the table marks it handled.
 - A stack detail that reads like a document goes in a `DetailScrollBody` (`resetScrollKey` is the open item's id, so the next item starts at the top). Pass its ref to `DataTableStackView` as `detailScrollRef` and j/k and the arrows step it a line at a time instead of a quarter page.
 - **Dialogs**: `useDialogKeyboard` for keys, Enter submits, Esc closes. Dialogs stack on both hosts, so a field editor opened from a dialog returns to it. On the desktop, Tab and Shift+Tab walk a dialog's controls unless the dialog handles Tab itself (a settings list or form ring moves its own cursor), and a focused control shows a ring.

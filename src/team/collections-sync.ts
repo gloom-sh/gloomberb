@@ -4,12 +4,12 @@ import {
   type TeamCollection,
   type TeamCollectionEvent,
   type TeamCollectionItem,
-} from "../../../../api-client";
-import type { AppTickerRepositoryPort } from "../../../../core/app-service-ports";
-import type { AppAction, AppState } from "../../../../core/state/app/types";
-import { useAppDispatch, useAppSelector, useAppStateRef } from "../../../../state/app/context";
-import type { TickerRecord } from "../../../../types/ticker";
-import { debugLog } from "../../../../utils/debug-log";
+} from "../api-client";
+import type { AppTickerRepositoryPort } from "../core/app-service-ports";
+import type { AppAction, AppState } from "../core/state/app/types";
+import { useAppDispatch, useAppSelector, useAppStateRef } from "../state/app/context";
+import type { TickerRecord } from "../types/ticker";
+import { debugLog } from "../utils/debug-log";
 import {
   applyMembership,
   blankTickerRecord,

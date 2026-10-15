@@ -63,6 +63,13 @@ export interface GetResourceOptions {
   schemaVersion?: number;
   allowExpired?: boolean;
   touch?: boolean;
+  /**
+   * A read refreshes a row's place in the eviction order, one write per row. A
+   * row read many times a second (a quote, a price history) asks for it at most
+   * once per this many ms, so it stays recent without a write on every read.
+   * `touch: false` never refreshes it, and a row read that way looks old.
+   */
+  touchIntervalMs?: number;
 }
 
 export interface ListResourceOptions extends GetResourceOptions {
@@ -139,6 +146,10 @@ export class ResourceStore {
           normalizeSourceKey(key.sourceKey),
         );
     });
+  }
+
+  private touchDue(record: { lastAccessedAt: number }, options: GetResourceOptions): boolean {
+    return options.touchIntervalMs == null || Date.now() - record.lastAccessedAt >= options.touchIntervalMs;
   }
 
   private touch(key: ResourceCacheKey): number | null {
@@ -283,7 +294,7 @@ export class ResourceStore {
       return null;
     }
 
-    if (options.touch !== false) {
+    if (options.touch !== false && this.touchDue(record, options)) {
       const touchedAt = this.touch(key);
       if (touchedAt != null) {
         record.lastAccessedAt = touchedAt;
@@ -340,6 +351,7 @@ export class ResourceStore {
     }
     if (options.touch !== false) {
       for (const record of records) {
+        if (!this.touchDue(record, options)) continue;
         const touchedAt = this.touch(record);
         if (touchedAt != null) record.lastAccessedAt = touchedAt;
       }

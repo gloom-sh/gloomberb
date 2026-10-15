@@ -1,5 +1,6 @@
 import { ApiRequestError } from "../../../../api-client/errors";
 import type { ChatAttachment, ChatMessage } from "../../../../api-client";
+import { chatPlainText } from "../markdown";
 
 /** What the server takes: four images a message, each up to 5 MB, as PNG, JPEG, WebP or GIF. */
 export const MAX_CHAT_IMAGES = 4;
@@ -76,10 +77,11 @@ function chatImageCountLabel(count: number): string {
   return count > 1 ? `[${count} images]` : "[image]";
 }
 
-/** A message read as one line: its images as a placeholder in front of the text. */
+/** A message read as one line, without its markdown: its images as a placeholder in front of the text. */
 export function chatTextWithImages(content: string, imageCount = 0): string {
-  if (imageCount <= 0) return content;
-  const text = content.trim();
+  const plain = chatPlainText(content);
+  if (imageCount <= 0) return plain;
+  const text = plain.trim();
   const placeholder = chatImageCountLabel(imageCount);
   return text ? `${placeholder} ${text}` : placeholder;
 }

@@ -1,7 +1,7 @@
 import type { Dispatch } from "react";
 import { apiClient } from "../../../api-client";
 import { t } from "../../../i18n";
-import { teamCollectionLocalId } from "../../../plugins/builtin/cloud/team/collections";
+import { teamCollectionLocalId } from "../../../team/collections";
 import type { DataProvider } from "../../../types/data-provider";
 import type { AppTickerRepositoryPort } from "../../../core/app-service-ports";
 import type { PluginRegistry } from "../../../plugins/registry";

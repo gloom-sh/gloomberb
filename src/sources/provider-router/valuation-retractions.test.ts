@@ -61,6 +61,26 @@ test("standalone marked rows redact contradictory values and show the normal una
   }
 });
 
+test("an enterprise value check stays with the value it describes through merges and refreshes", () => {
+  const check = { status: "differs", source: 61.8e9, currency: "USD", marketCap: 62e9, totalDebt: 2e9, cash: 0.1e9,
+    balanceSheetDate: "2026-06-30", computed: 63.9e9 } as const;
+  const cloud = createTestFinancials({ quote: recorded.quote, fundamentals: { enterpriseValue: 61.8e9, enterpriseValueCheck: check } });
+  const native = createTestFinancials({ fundamentals: { enterpriseValue: 64e9 } });
+  // Another source's EV leads: the cloud's check does not describe it.
+  const nativeFirst = mergeFinancials(native, roundTrip(cloud))?.fundamentals;
+  expect(nativeFirst?.enterpriseValue).toBe(64e9);
+  expect(nativeFirst?.enterpriseValueCheck).toBeUndefined();
+  expect(mergeFinancials(cloud, native)?.fundamentals?.enterpriseValueCheck).toEqual(check);
+  expect(mergeFinancials(createTestFinancials({ fundamentals: { forwardPE: 20 } }), cloud)?.fundamentals?.enterpriseValueCheck)
+    .toEqual(check);
+  // A refresh that withdraws the EV brings its own check over the cached one.
+  const withdrawn = { ...check, status: "withdrawn", source: 128e9 } as const;
+  const refreshed = mergeRefreshedFinancials(cloud, createTestFinancials({ quote: recorded.quote,
+    fundamentals: { unavailableFields: [...fields], enterpriseValueCheck: withdrawn } }));
+  expect(refreshed.fundamentals?.enterpriseValue).toBeUndefined();
+  expect(refreshed.fundamentals?.enterpriseValueCheck).toEqual(withdrawn);
+});
+
 test("malformed optional retraction metadata cannot throw or erase unrelated fields", () => {
   for (const unavailableFields of [42, ["revenue", "unknown"], null]) {
     const malformed = { ...recorded, fundamentals: { ...recorded.fundamentals, unavailableFields } } as unknown as typeof recorded;

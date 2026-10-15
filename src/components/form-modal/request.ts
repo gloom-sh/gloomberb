@@ -12,6 +12,8 @@ export interface ConfirmModalOptions {
   cancelLabel?: string;
   /** Danger unless said otherwise: most confirms guard a deletion. */
   tone?: "default" | "danger";
+  /** What Enter answers: `cancel` for an opt-in a stray Enter must not accept (ConfirmDialog). */
+  defaultAction?: "confirm" | "cancel";
   /** Reads what it acts on when it runs, not when the confirm opened. */
   onConfirm: () => void | Promise<void>;
   /** "stay" keeps the confirm open after it ran; "back" closes it, as "close" does. */

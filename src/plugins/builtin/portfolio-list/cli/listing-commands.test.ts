@@ -65,6 +65,24 @@ test("watchlist and portfolio remove take the listing --exchange or SYM:EXCH nam
     .rejects.toThrow('Ticker "SAN:LSE" was not found in your local data.');
 });
 
+test("watchlist and portfolio actions that change a list refuse --dry-run and write nothing, as no action previews", async () => {
+  const run = await savedSan();
+  const { context, printed } = createTestCliContext({ config: await loadConfig(run.dataDir), store: run.store }, { dryRun: true });
+  const attempts: Array<[CliCommandDef, string[], string]> = [
+    [watchlistCliCommand, ["add", "growth", "SAN"], "watchlist add has no --dry-run; it changes the watchlist when it runs."],
+    [watchlistCliCommand, ["remove", "growth", "SAN"], "watchlist remove has no --dry-run; it changes the watchlist when it runs."],
+    [watchlistCliCommand, ["create", "Fresh"], "watchlist create has no --dry-run; it changes the watchlist when it runs."],
+    [watchlistCliCommand, ["delete", "growth"], "watchlist delete has no --dry-run; it changes the watchlist when it runs."],
+    [portfolioCliCommand, ["remove", "main", "SAN"], "portfolio remove has no --dry-run; it changes the portfolio when it runs."],
+  ];
+  for (const [command, args, message] of attempts) {
+    await expect(command.execute(args, context)).rejects.toThrow(message);
+  }
+  expect(printed).toEqual([]);
+  expect((await run.store.loadTicker("SAN"))?.metadata).toMatchObject({ watchlists: ["growth"], portfolios: ["main"] });
+  expect((await loadConfig(run.dataDir)).watchlists).toEqual([{ id: "growth", name: "Growth" }]);
+});
+
 test("target and position commands change the row of the listing --exchange or SYM:EXCH names, not the bare symbol's", async () => {
   const run = await savedSan();
   // Each command is its own CLI run: it reads the config the last one saved.
@@ -263,4 +281,36 @@ test("a symbol search finds no listing for names the near match search lists, in
   // A spelling of the pair itself is the pair, not a near miss.
   expect((await exec(["add", "Growth", "USD-NGN", "XXXXX"], found)).rows.map((row) => [row.status, row.listing]))
     .toEqual([["added", "USDNGN=X:CCY"], ["not_found", null]]);
+});
+
+test("a list file with a separator left on a symbol adds the symbol and names the separator, never asks which listing `UPST;` is", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const config = { ...createDefaultConfig("/unused"), watchlists: [{ id: "growth", name: "Growth" }] };
+  const searched: string[] = [];
+  // Several listings carry UPST, as search lists it, so a symbol that is not exactly UPST has no answer.
+  const dataProvider = createTestDataProvider({
+    search: async (query) => {
+      searched.push(query);
+      return query === "UPST"
+        ? ["NASDAQ", "BMV"].map((exchange) => ({ providerId: "test", symbol: "UPST", name: "Upstart Holdings Inc.", exchange, type: "Common Stock", currency: "USD" }))
+        : [];
+    },
+    getQuote: async (symbol) => {
+      if (symbol !== "UPST") throw new Error(`Not a ticker: ${symbol}.`);
+      return createTestQuote({ symbol, name: "Upstart Holdings Inc.", listingExchangeName: "NASDAQ", exchangeName: "NASDAQ" });
+    },
+  });
+  const dataDir = await mkdtemp(join(tmpdir(), "gloomberb-stray-"));
+  dataDirs.push(dataDir);
+  // No delimiter on the first line, so the later cells keep their own trailing `;`.
+  const file = join(dataDir, "symbols.txt");
+  await Bun.write(file, "Symbol\nUPST;\n");
+  const cli = createTestCliContext({ config, store, dataProvider });
+  await watchlistCliCommand.execute(["add", "Growth", "--file", file], cli.context);
+  const { result } = cli.printed[0]!;
+  expect((result.data as Array<Record<string, unknown>>).map((row) => [row.status, row.listing])).toEqual([["added", "UPST:NASDAQ"]]);
+  expect(result.warnings).toContain('Ignored the stray ";" after UPST.');
+  expect(searched.filter((query) => query.includes(";"))).toEqual([]);
 });

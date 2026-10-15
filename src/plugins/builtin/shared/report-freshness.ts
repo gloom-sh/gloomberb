@@ -1,7 +1,7 @@
 import type { HeadlessPaneFreshness } from "../../../types/headless";
-import type { Quote } from "../../../types/financials";
+import type { Quote, QuoteIndexSession } from "../../../types/financials";
 import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
-import { delayedFeedLagMs } from "../../../market-data/market/freshness";
+import { delayedFeedLagMs, readIndexSession } from "../../../market-data/market/freshness";
 import { apiClient } from "../../../api-client";
 import { isPerpetualExchange } from "../../../tickers/perpetual-listing";
 import { CLOUD_NEWS_DELAY_HOURS, hasProAccess } from "../../../api-client/plan-rules";
@@ -56,6 +56,8 @@ interface QuoteFreshnessFields {
   /** The venue whose sessions the quote follows, so the report can say whether its market is open. */
   sessionExchange?: string;
   marketState?: Quote["marketState"];
+  /** An index's own regular sessions, for the open and the close its publisher's name does not place. */
+  sessionCalendar?: QuoteIndexSession;
 }
 
 /**
@@ -71,12 +73,14 @@ export function quoteFreshnessFields(
   const exchange = quote.listingExchangeName || quote.exchangeName;
   // A perpetual's venue is read about once a minute, not held back by a feed lag.
   const delayed = quote.dataSource === "delayed" && quote.providerId === CLOUD_QUOTE_PROVIDER_ID && !isPerpetualExchange(exchange);
+  const sessionCalendar = readIndexSession(quote.indexSession);
   return {
     ...(quote.dataSource === "live" || quote.dataSource === "delayed" ? { dataSource: quote.dataSource } : {}),
     stale: isQuoteStaleForCurrentSession(quote, now),
     ...(delayed ? { delayMinutes: delayedFeedLagMs(exchange) / 60_000 } : {}),
     ...(exchange ? { sessionExchange: exchange } : {}),
     ...(quote.marketState ? { marketState: quote.marketState } : {}),
+    ...(sessionCalendar ? { sessionCalendar } : {}),
   };
 }
 

@@ -79,6 +79,7 @@ export function DesktopSeriesEditorFields({ fields }: { fields: SeriesEditorFiel
             <Box flexDirection="row" width="100%" style={{ gap: 6 }}>
               <Box flexGrow={1} minWidth={0}>
                 <SelectField
+                  label={field.label}
                   value={field.value}
                   options={field.options}
                   width="100%"
@@ -89,6 +90,7 @@ export function DesktopSeriesEditorFields({ fields }: { fields: SeriesEditorFiel
             </Box>
           ) : (
             <SelectField
+              label={field.label}
               value={field.value}
               options={field.options}
               width="100%"

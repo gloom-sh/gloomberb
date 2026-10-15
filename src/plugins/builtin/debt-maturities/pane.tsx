@@ -1,6 +1,6 @@
 import { useCallback, useMemo, type ReactNode } from "react";
 import { listingIdentity, useIssuerListing } from "../shared/ticker-request";
-import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
+import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import {
   useAsyncResource,
   useAutoRefresh,
@@ -405,9 +405,6 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
       label: "Principal total", values, value: debtAmount(last), color: colors.warning,
     };
   }, [bars]);
-  const historyWindow = latest
-    ? `${latest.totalPrincipal.percentile.windowStart} to ${latest.asOf}`
-    : "";
   useAutoRefresh(resource.updatedAt, resource.load);
   usePaneRefreshKey(() => void resource.reload(), { focused });
   usePaneNoticeFooter({
@@ -598,8 +595,6 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                           xAxis={barAxis}
                           formatValue={(value) => debtAmount(value)}
                           formatAxisValue={formatCompactAxis}
-                          legendAccessory={<Text fg={colors.textMuted}>{historyWindow}</Text>}
-                          legendAccessoryWidth={historyWindow.length}
                           remoteKind="debt-filing-history"
                           {...historyLink}
                         />

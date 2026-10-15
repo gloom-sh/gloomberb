@@ -10,7 +10,7 @@ import {
   useUiCapabilities,
   type InputRenderable,
 } from "../../ui";
-import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, type ReactNode } from "react";
 import {
   blendHex,
   commandBarBg,
@@ -24,18 +24,33 @@ import {
   useCommandBarPromptBinding,
   type CommandBarPromptBinding,
 } from "../command-bar/panel/prompt-binding";
-import { useAppDispatch, useAppSelector } from "../../state/app/context";
+import { useAppDispatch, useAppSelector, type AppState } from "../../state/app/context";
 import { useViewport } from "../../react/input";
 import { canRetryUpdate } from "../../app/global-shortcuts";
 import { t, tf } from "../../i18n";
-import { truncateToDisplayWidth } from "../../utils/format";
+import { displayWidth, truncateToDisplayWidth } from "../../utils/format";
+import { ClippedText, NATIVE_CLIP_STYLE } from "../ui/display";
 import { resolveMarketSummaryFit, useMarketSummary } from "./market-summary";
 import { resolveHeaderPromptGeometry } from "./shell/chrome";
 import { useWindowFullscreen } from "./window-fullscreen";
 import { WindowControls, WINDOWS_CONTROL_GROUP_WIDTH_PX } from "./window-controls";
-import { Button } from "../ui/button";
+import { Button, terminalButtonColumns } from "../ui/button";
 
 const UPDATE_NOTICE_DURATION_MS = 5_000;
+/**
+ * The failed-update message is cut to the room it has, but not below this many
+ * columns ("Update fa..."): narrower says nothing, so the banner is left out.
+ * The retry hint gives way before the message goes under it.
+ */
+const UPDATE_ERROR_MIN_COLUMNS = 12;
+/** Kept clear after the failed-update banner, so its last character never touches the Help pill. */
+const UPDATE_ERROR_GAP_COLUMNS = 1;
+/** Left padding of the update status's slot, in cells; the desktop's title-bar layout also pads its right. */
+const UPDATE_SLOT_PADDING_COLUMNS = 2;
+/** The Help pill's own props, shared by its button and the width the update status leaves it. */
+const helpButtonProps = () => ({ label: "Open Help", displayLabel: t("Help"), shortcut: "?", compact: true });
+/** The terminal pads the pill's right edge by a cell; the desktop pads it in px. */
+const TERMINAL_HELP_PADDING_COLUMNS = 1;
 
 type HeaderActionEvent = {
   key?: string;
@@ -106,6 +121,28 @@ function nativePromptSurfaceStyle(colors: ReturnType<typeof useThemeColors>, ope
 }
 
 /**
+ * How fast the closed desktop prompt takes the bar's spare room next to the
+ * update slot, which grows by one millionth as much: only empty space, if any.
+ */
+const NATIVE_PROMPT_GROW = 1_000_000;
+/** How much faster the desktop update slot shrinks than an open prompt: it gives all of its room first. */
+const NATIVE_UPDATE_SLOT_SHRINK = 1_000_000;
+/**
+ * How the desktop prompt sits in the bar. Closed it draws no box, so it claims
+ * only its caret and placeholder, then grows toward `width` (the command
+ * sheet's) from the room the update status leaves, showing its key hint once it
+ * has room for it; Help and the market cluster never give any. Open it is the
+ * top of the sheet and keeps the sheet's width: the update status gives all of
+ * its room first (NATIVE_UPDATE_SLOT_SHRINK), and only a window too narrow for
+ * Help and the market cluster beside the open prompt takes from it.
+ */
+function nativePromptFit(width: number, open: boolean) {
+  return open
+    ? { width, flexShrink: 1, minWidth: 0, overflow: "hidden" as const }
+    : { flexBasis: 0, flexGrow: NATIVE_PROMPT_GROW, flexShrink: 0, minWidth: "min-content", maxWidth: width };
+}
+
+/**
  * The command bar's input while the bar is open. Gloomberb's panes are driven
  * by bare single keys, so the input only exists while the bar is open; the idle
  * prompt is an affordance that never takes keyboard focus.
@@ -157,11 +194,17 @@ function HeaderPromptInput({
         placeholderColor={subtleColor}
         cursorColor={colors.textBright}
       />
-      {ghostSuffix && (
+      {ghostSuffix && (nativePaneChrome ? (
+        // The desktop sets the suggestion right after the typed text, one
+        // character per `ch` of the field's font, and cuts it where the field ends.
+        <Box position="absolute" top={0} height={1} flexDirection="row" style={{ left: `${displayWidth(query)}ch`, right: 0 }}>
+          <ClippedText fg={subtleColor} text={ghostSuffix} width={0} />
+        </Box>
+      ) : (
         <Box position="absolute" top={0} left={ghostLeft} width={Math.max(0, width - ghostLeft)} height={1}>
           <Text fg={subtleColor}>{truncateToDisplayWidth(ghostSuffix, Math.max(0, width - ghostLeft))}</Text>
         </Box>
-      )}
+      ))}
     </Box>
   );
 }
@@ -207,7 +250,7 @@ function HeaderCommandPrompt({
 
   return (
     <Box
-      width={width}
+      {...(nativePaneChrome ? nativePromptFit(width, open) : { width })}
       height={1}
       flexDirection="row"
       alignItems="center"
@@ -233,6 +276,21 @@ function HeaderCommandPrompt({
       <Text fg={caretColor} attributes={TextAttributes.BOLD}>{PROMPT_CARET}</Text>
       {open ? (
         binding ? <HeaderPromptInput binding={binding} nativePaneChrome={nativePaneChrome} width={inputWidth} /> : null
+      ) : nativePaneChrome ? (
+        // One line that wraps and hides its second: the key hint drops whole when the
+        // prompt is too narrow for it, and the placeholder never does.
+        <Box
+          flexDirection="row"
+          height={1}
+          flexGrow={1}
+          flexShrink={1}
+          minWidth={0}
+          overflow="hidden"
+          style={{ flexWrap: "wrap", alignContent: "flex-start" }}
+        >
+          <Text fg={mutedColor}>{placeholder}</Text>
+          {shortcut ? <Text fg={shortcutColor}>{`  ${shortcut}`}</Text> : null}
+        </Box>
       ) : (
         <>
           <Text fg={mutedColor}>{placeholder}</Text>
@@ -244,8 +302,126 @@ function HeaderCommandPrompt({
   );
 }
 
-function UpdateStatus({ onRestart }: { onRestart?: () => void }) {
-  const colors = useThemeColors();
+/**
+ * What the header says about an update, before either renderer lays it out:
+ * a spinner and a line while something runs, a line on its own, the
+ * downloaded update with its Restart button, or a failed update with the key
+ * that retries it.
+ */
+type UpdateStatusView =
+  | { kind: "busy"; text: string; parts: StatusPart[] }
+  | { kind: "text"; text: string }
+  | { kind: "restart"; text: string; version: string }
+  | { kind: "failed"; message: string; parts: StatusPart[]; retry: boolean };
+
+/**
+ * A line of the status in the pieces the desktop may treat apart: a `cut`
+ * piece ends in an ellipsis and gives way, the rest stays whole. The download
+ * keeps its percent and the failure the words that say so, while the version
+ * and the error give way.
+ */
+interface StatusPart { text: string; cut: boolean }
+
+/** Stands in for one value while a line is formatted, to find where that value sits in it. */
+const SPLIT_MARK = "\u0000";
+
+/** `marked`, formatted with SPLIT_MARK for `value`, as the pieces around the value: one whole line when it does not show. */
+function partsAround(marked: string, value: string, valueIsCut: boolean): StatusPart[] {
+  const [before, after, ...rest] = marked.split(SPLIT_MARK);
+  if (after === undefined || rest.length > 0) return [{ text: marked.replaceAll(SPLIT_MARK, value), cut: true }];
+  const parts = valueIsCut
+    ? [{ text: before!, cut: false }, { text: `${value}${after}`, cut: true }]
+    : [{ text: before!, cut: true }, { text: `${value}${after}`, cut: false }];
+  return parts.filter((part) => part.text.length > 0);
+}
+
+function resolveUpdateStatusView({
+  canRestart,
+  updateAvailable,
+  updateCheckInProgress,
+  updateNotice,
+  updateProgress,
+}: Pick<AppState, "updateAvailable" | "updateProgress" | "updateCheckInProgress" | "updateNotice"> & {
+  /** A Restart button can apply a downloaded update here. */
+  canRestart: boolean;
+}): UpdateStatusView | null {
+  if (updateProgress) {
+    if (updateProgress.phase === "downloading") {
+      const version = updateAvailable?.version ?? "";
+      const percent = String(updateProgress.percent ?? 0);
+      return {
+        kind: "busy",
+        text: tf("Downloading v{version}: {percent}%", { version, percent }),
+        parts: partsAround(tf("Downloading v{version}: {percent}%", { version, percent: SPLIT_MARK }), percent, false),
+      };
+    }
+    if (updateProgress.phase === "replacing") {
+      const text = t("Installing update...");
+      return { kind: "busy", text, parts: [{ text, cut: true }] };
+    }
+    if (updateProgress.phase === "ready") {
+      // A desktop update waits for the user: the app never relaunches by itself.
+      // The terminal binary is already swapped in and only needs a new launch.
+      if (updateProgress.canRestart && canRestart) {
+        return { kind: "restart", text: t("Update ready"), version: updateAvailable?.version ?? "" };
+      }
+      return { kind: "text", text: t("Update ready, restart to apply") };
+    }
+    if (updateProgress.phase === "done") {
+      return { kind: "text", text: t(updateProgress.message ?? "Update ready, restart to apply") };
+    }
+    if (updateProgress.phase === "error") {
+      // One line: an error that carries a stack or a command's output must not grow the header.
+      const error = (updateProgress.error ?? "Unknown error").replace(/\s+/g, " ").trim();
+      return {
+        kind: "failed",
+        message: tf("Update failed: {error}", { error }),
+        parts: partsAround(tf("Update failed: {error}", { error: SPLIT_MARK }), error, true),
+        retry: canRetryUpdate({ updateAvailable, updateProgress, updateCheckInProgress }),
+      };
+    }
+  }
+  if (updateCheckInProgress) {
+    const text = t("Checking for updates...");
+    return { kind: "busy", text, parts: [{ text, cut: true }] };
+  }
+  if (updateAvailable) {
+    if (updateAvailable.updateAction.kind === "manual") {
+      return {
+        kind: "text",
+        text: tf("v{version} available — run {command}", {
+          version: updateAvailable.version,
+          command: updateAvailable.updateAction.command,
+        }),
+      };
+    }
+    if (updateAvailable.updateAction.kind === "managed") {
+      return {
+        kind: "text",
+        text: tf("v{version} available, update through the package manager that installed Gloomberb", {
+          version: updateAvailable.version,
+        }),
+      };
+    }
+    return { kind: "text", text: tf("v{version} available — starting download...", { version: updateAvailable.version }) };
+  }
+  if (updateNotice) return { kind: "text", text: updateNotice };
+  return null;
+}
+
+/**
+ * What the header says about an update. The terminal cuts it to `columns`,
+ * the room its slot is guaranteed; the desktop and the web let the browser fit
+ * it to the room the bar leaves (NativeUpdateStatus). Either way it never runs
+ * into the Help pill or the market cluster beside it.
+ */
+function UpdateStatus({ columns, onRestart, trailingGap = false }: {
+  columns: number;
+  onRestart?: () => void;
+  /** The desktop title bar keeps a gap after the status as well as before it. */
+  trailingGap?: boolean;
+}) {
+  const { nativePaneChrome = false } = useUiCapabilities();
   const dispatch = useAppDispatch();
   const updateAvailable = useAppSelector((state) => state.updateAvailable);
   const updateProgress = useAppSelector((state) => state.updateProgress);
@@ -262,96 +438,179 @@ function UpdateStatus({ onRestart }: { onRestart?: () => void }) {
     return () => clearTimeout(timeout);
   }, [dispatch, updateAvailable, updateCheckInProgress, updateNotice, updateProgress]);
 
-  if (updateProgress) {
-    if (updateProgress.phase === "downloading") {
-      return (
-        <Box flexDirection="row" gap={1}>
-          <SpinnerMark name="dots" color={colors.headerText} />
-          <Text fg={colors.headerText}>
-            {tf("Downloading v{version}: {percent}%", {
-              version: updateAvailable?.version ?? "",
-              percent: updateProgress.percent ?? 0,
-            })}
-          </Text>
-        </Box>
-      );
-    }
-    if (updateProgress.phase === "replacing") {
-      return (
-        <Box flexDirection="row" gap={1}>
-          <SpinnerMark name="dots" color={colors.headerText} />
-          <Text fg={colors.headerText}>{t("Installing update...")}</Text>
-        </Box>
-      );
-    }
-    if (updateProgress.phase === "ready") {
-      // A desktop update waits for the user: the app never relaunches by itself.
-      // The terminal binary is already swapped in and only needs a new launch.
-      if (updateProgress.canRestart && onRestart) {
-        return (
-          <Box flexDirection="row" gap={1} alignItems="center">
-            <Text fg={colors.headerText}>{t("Update ready")}</Text>
-            <Button compact label="Restart" shortcut={updateKey || undefined} onPress={onRestart} stopPropagation />
-          </Box>
-        );
-      }
-      return <Text fg={colors.headerText}>{t("Update ready, restart to apply")}</Text>;
-    }
-    if (updateProgress.phase === "done") {
-      return <Text fg={colors.headerText}>{t(updateProgress.message ?? "Update ready, restart to apply")}</Text>;
-    }
-    if (updateProgress.phase === "error") {
-      const retry = updateKey && canRetryUpdate({ updateAvailable, updateProgress, updateCheckInProgress });
-      return (
-        <Box flexDirection="row">
-          <Text fg={colors.headerText}>{tf("Update failed: {error}", { error: updateProgress.error ?? "Unknown error" })}</Text>
-          {retry ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{`  ${updateKey} ${t("retry")}`}</Text> : null}
-        </Box>
-      );
-    }
-  }
+  const view = resolveUpdateStatusView({
+    canRestart: !!onRestart,
+    updateAvailable,
+    updateCheckInProgress,
+    updateNotice,
+    updateProgress,
+  });
+  if (!view) return null;
+  return nativePaneChrome
+    ? <NativeUpdateStatus view={view} onRestart={onRestart} trailingGap={trailingGap} updateKey={updateKey} />
+    : <TerminalUpdateStatus view={view} columns={columns} onRestart={onRestart} updateKey={updateKey} />;
+}
 
-  if (updateCheckInProgress) {
+function TerminalUpdateStatus({ columns, onRestart, updateKey, view }: {
+  columns: number;
+  onRestart?: () => void;
+  updateKey: string;
+  view: UpdateStatusView;
+}) {
+  const colors = useThemeColors();
+  if (view.kind === "busy") {
     return (
       <Box flexDirection="row" gap={1}>
         <SpinnerMark name="dots" color={colors.headerText} />
-        <Text fg={colors.headerText}>{t("Checking for updates...")}</Text>
+        <Text fg={colors.headerText}>{view.text}</Text>
       </Box>
     );
   }
-
-  if (updateAvailable) {
-    if (updateAvailable.updateAction.kind === "manual") {
-      return (
-        <Text fg={colors.headerText}>
-          {tf("v{version} available — run {command}", {
-            version: updateAvailable.version,
-            command: updateAvailable.updateAction.command,
-          })}
-        </Text>
-      );
-    }
-    if (updateAvailable.updateAction.kind === "managed") {
-      return (
-        <Text fg={colors.headerText}>
-          {tf("v{version} available, update through the package manager that installed Gloomberb", {
-            version: updateAvailable.version,
-          })}
-        </Text>
-      );
-    }
+  if (view.kind === "restart") {
     return (
-      <Text fg={colors.headerText}>
-        {tf("v{version} available — starting download...", { version: updateAvailable.version })}
-      </Text>
+      <Box flexDirection="row" gap={1} alignItems="center">
+        <Text fg={colors.headerText}>{view.text}</Text>
+        <Button compact label="Restart" shortcut={updateKey || undefined} onPress={onRestart} stopPropagation />
+      </Box>
     );
   }
-
-  if (updateNotice) {
-    return <Text fg={colors.headerText}>{updateNotice}</Text>;
+  if (view.kind === "failed") {
+    const hint = updateKey && view.retry ? `  ${updateKey} ${t("retry")}` : "";
+    const hintColumns = displayWidth(hint);
+    // The message goes first, and keeps its room before the hint takes any.
+    const room = columns - UPDATE_ERROR_GAP_COLUMNS;
+    const showHint = hintColumns > 0 && room - hintColumns >= UPDATE_ERROR_MIN_COLUMNS;
+    const messageColumns = room - (showHint ? hintColumns : 0);
+    if (messageColumns < UPDATE_ERROR_MIN_COLUMNS) return null;
+    return (
+      <Box flexDirection="row" overflow="hidden" paddingRight={UPDATE_ERROR_GAP_COLUMNS}>
+        <ClippedText fg={colors.headerText} text={view.message} width={messageColumns} />
+        {showHint ? <Text fg={blendHex(colors.headerText, colors.header, 0.62)}>{hint}</Text> : null}
+      </Box>
+    );
   }
+  return <Text fg={colors.headerText}>{view.text}</Text>;
+}
 
-  return null;
+/**
+ * Text in the desktop status that gives way: it ends in an ellipsis as its room
+ * shrinks, and goes rather than leave a stub. Alone on its line it goes below
+ * about this many characters; beside a piece that stays whole it takes what
+ * that piece leaves, down to NATIVE_STATUS_PIECE_MIN_CH.
+ */
+const NATIVE_STATUS_TEXT_MIN_CH = 8;
+const NATIVE_STATUS_PIECE_MIN_CH = 3;
+function nativeCutTextStyle(alone: boolean) {
+  return {
+    ...NATIVE_CLIP_STYLE,
+    flexGrow: 1,
+    flexShrink: 1,
+    flexBasis: `${alone ? NATIVE_STATUS_TEXT_MIN_CH : NATIVE_STATUS_PIECE_MIN_CH}ch`,
+    maxWidth: "max-content",
+  } as const;
+}
+/** One cell between the parts of the desktop status, as `gap={1}` puts it in the terminal. */
+const NATIVE_STATUS_GAP = "var(--cell-w)";
+
+/**
+ * The desktop and web update status, fitted by the browser to whatever room
+ * the bar leaves it, never by counting cells. Its parts are given most
+ * important first, and the row is one line tall and wraps: a part that does
+ * not fit whole moves to a second line the row hides, and so does every part
+ * after it, so a button is never cut, a spinner never spins on its own, and
+ * nothing runs under Help. Text that may be cut gives way before anything
+ * moves, ending in an ellipsis (nativeCutTextStyle). `reverse` lays the parts
+ * out right to left, for a status whose most important part is on its right:
+ * Restart stays when "Update ready" goes.
+ */
+function NativeStatusRow({ children, reverse = false, trailingGap }: {
+  children: ReactNode;
+  reverse?: boolean;
+  trailingGap: boolean;
+}) {
+  return (
+    <Box
+      height={1}
+      flexGrow={1}
+      flexShrink={1}
+      minWidth={0}
+      overflow="hidden"
+      paddingLeft={UPDATE_SLOT_PADDING_COLUMNS}
+      paddingRight={trailingGap ? UPDATE_SLOT_PADDING_COLUMNS : 0}
+      style={{
+        flexDirection: reverse ? "row-reverse" : "row",
+        flexWrap: "wrap",
+        alignContent: "flex-start",
+        alignItems: "center",
+        justifyContent: reverse ? "flex-end" : "flex-start",
+      }}
+    >
+      {/* Takes no room and always holds the first line, so even the most important part can leave it. */}
+      <Box width={0} height={1} />
+      {children}
+    </Box>
+  );
+}
+
+/** One piece of a status line, with the whole line as its tooltip in case it is cut. */
+function nativeStatusPiece(part: StatusPart, index: number, { alone, color, title }: { alone: boolean; color: string; title: string }) {
+  return part.cut
+    ? <Text key={index} fg={color} title={title} style={nativeCutTextStyle(alone)}>{part.text}</Text>
+    : <Text key={index} fg={color} title={title}>{part.text}</Text>;
+}
+
+function NativeUpdateStatus({ onRestart, trailingGap, updateKey, view }: {
+  onRestart?: () => void;
+  trailingGap: boolean;
+  updateKey: string;
+  view: UpdateStatusView;
+}) {
+  const colors = useThemeColors();
+  const color = colors.headerText;
+  if (view.kind === "busy") {
+    // Right to left: the percent, then the words, then the spinner, which never shows without them.
+    const alone = view.parts.every((part) => part.cut);
+    return (
+      <NativeStatusRow reverse trailingGap={trailingGap}>
+        {view.parts.map((part, index) => nativeStatusPiece(part, index, { alone, color, title: view.text })).reverse()}
+        <Box flexShrink={0} style={{ marginRight: NATIVE_STATUS_GAP }}>
+          <SpinnerMark name="dots" color={color} />
+        </Box>
+      </NativeStatusRow>
+    );
+  }
+  if (view.kind === "restart") {
+    // Right to left: the button, then the words, which go whole before it does.
+    return (
+      <NativeStatusRow reverse trailingGap={trailingGap}>
+        <Button
+          compact
+          label="Restart"
+          shortcut={updateKey || undefined}
+          title={view.version ? tf("Restart to apply v{version}", { version: view.version }) : undefined}
+          onPress={onRestart}
+          stopPropagation
+        />
+        <Text fg={color} style={{ marginRight: NATIVE_STATUS_GAP }}>{view.text}</Text>
+      </NativeStatusRow>
+    );
+  }
+  if (view.kind === "failed") {
+    // The words that say it failed, then as much of the error as reads, then the retry key.
+    const hint = updateKey && view.retry ? `  ${updateKey} ${t("retry")}` : "";
+    const alone = view.parts.every((part) => part.cut);
+    return (
+      <NativeStatusRow trailingGap={trailingGap}>
+        {view.parts.map((part, index) => nativeStatusPiece(part, index, { alone, color, title: view.message }))}
+        {hint ? <Text fg={blendHex(color, colors.header, 0.62)}>{hint}</Text> : null}
+      </NativeStatusRow>
+    );
+  }
+  return (
+    <NativeStatusRow trailingGap={trailingGap}>
+      {nativeStatusPiece({ text: view.text, cut: true }, 0, { alone: true, color, title: view.text })}
+    </NativeStatusRow>
+  );
 }
 
 /**
@@ -398,17 +657,18 @@ function HeaderMarketSummary({ nativePaneChrome, width }: { nativePaneChrome: bo
 /**
  * Help, one click away on every renderer: the same pane the typed HELP and the
  * `?` key open. It takes its columns from the update status beside it, which
- * is transient, rather than from the prompt or the market cluster.
+ * is transient, rather than from the market cluster; on the desktop and the
+ * web the closed prompt's empty room makes way for it as well.
  */
 function HeaderHelpButton({ nativePaneChrome, onPress }: { nativePaneChrome: boolean; onPress: () => void }) {
   return (
     <Box
       flexShrink={0}
-      paddingRight={nativePaneChrome ? undefined : 1}
+      paddingRight={nativePaneChrome ? undefined : TERMINAL_HELP_PADDING_COLUMNS}
       data-gloom-role="header-help-action"
       style={nativePaneChrome ? { marginRight: 8 } : undefined}
     >
-      <Button compact label="Open Help" displayLabel={t("Help")} shortcut="?" onPress={onPress} stopPropagation />
+      <Button {...helpButtonProps()} onPress={onPress} stopPropagation />
     </Box>
   );
 }
@@ -437,6 +697,14 @@ export function Header({
     windowFullscreen,
   });
   const shortcutLabel = useCommandBarShortcut();
+  // The terminal lays the header out by cell counts, so it works out what is left
+  // for the update status once the Help pill and the slot's padding are paid for.
+  const updateStatusColumns = Math.max(
+    0,
+    prompt.updateColumns
+      - (onOpenHelp ? terminalButtonColumns(helpButtonProps()) + TERMINAL_HELP_PADDING_COLUMNS : 0)
+      - UPDATE_SLOT_PADDING_COLUMNS * (titleBarOverlay ? 2 : 1),
+  );
   // Desktop has its own window chrome to sit on; the terminal has none, so the
   // bar itself wears the prompt's fill and reads as a single strip.
   const headerBg = nativePaneChrome ? colors.header : headerSurface(colors);
@@ -464,6 +732,24 @@ export function Header({
   const marketSummary = prompt.marketColumns > 0
     ? <HeaderMarketSummary nativePaneChrome={nativePaneChrome} width={prompt.marketColumns} />
     : null;
+  // The desktop and the web fit the update status in CSS (NativeUpdateStatus):
+  // its slot takes the room the closed prompt leaves, clips at its own edge, and
+  // gives all of it up before an open prompt gives any. Help, the market
+  // cluster and the caption buttons keep their size.
+  const nativeUpdateSlot = nativePaneChrome ? (
+    <Box
+      flexDirection="row"
+      alignItems="center"
+      flexGrow={1}
+      flexShrink={NATIVE_UPDATE_SLOT_SHRINK}
+      minWidth={0}
+      overflow="hidden"
+      data-gloom-role="header-update-status"
+      style={{ alignSelf: "stretch" }}
+    >
+      <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} trailingGap={!!titleBarOverlay} />
+    </Box>
+  ) : null;
 
   if (titleBarOverlay) {
     return (
@@ -483,9 +769,11 @@ export function Header({
       >
         <Box width={prompt.left} />
         {commandPrompt}
-        <Box flexGrow={1} paddingLeft={2} paddingRight={2} minWidth={0}>
-          <UpdateStatus onRestart={onRestartForUpdate} />
-        </Box>
+        {nativeUpdateSlot ?? (
+          <Box flexGrow={1} paddingLeft={UPDATE_SLOT_PADDING_COLUMNS} paddingRight={UPDATE_SLOT_PADDING_COLUMNS} minWidth={0}>
+            <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} />
+          </Box>
+        )}
         {onOpenHelp ? <HeaderHelpButton nativePaneChrome onPress={onOpenHelp} /> : null}
         {marketSummary}
         {showWindowControls ? <Box flexShrink={0} width={`${WINDOWS_CONTROL_GROUP_WIDTH_PX}px`} /> : null}
@@ -505,9 +793,11 @@ export function Header({
     >
       <Box width={prompt.left} />
       {commandPrompt}
-      <Box flexGrow={1} minWidth={0} paddingLeft={2}>
-        <UpdateStatus onRestart={onRestartForUpdate} />
-      </Box>
+      {nativeUpdateSlot ?? (
+        <Box flexGrow={1} minWidth={0} paddingLeft={UPDATE_SLOT_PADDING_COLUMNS}>
+          <UpdateStatus columns={updateStatusColumns} onRestart={onRestartForUpdate} />
+        </Box>
+      )}
       {onOpenHelp ? <HeaderHelpButton nativePaneChrome={nativePaneChrome} onPress={onOpenHelp} /> : null}
       {marketSummary}
       {showWindowControls ? <WindowControls /> : null}

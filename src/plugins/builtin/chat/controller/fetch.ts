@@ -35,8 +35,11 @@ export async function fetchLatestChannelMessages(
       limit: MESSAGE_PAGE_SIZE,
       after: backfillGaps ? undefined : channel.lastCursor ?? undefined,
     });
-    channel.backfilled = true;
-    if (backfillGaps) channel.backfilledAs = readerId;
+    // A full page asked for while this read was out still happens next time.
+    if (backfillGaps) {
+      channel.backfilled = true;
+      channel.backfilledAs = readerId;
+    }
     if ((!hasIncrementalCursor || backfillGaps) && messages.length < MESSAGE_PAGE_SIZE) {
       channel.reachedOldestMessage = true;
     }

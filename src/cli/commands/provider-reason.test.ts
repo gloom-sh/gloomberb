@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, expect, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { TickerFinancials } from "../../types/financials";
 import type { CliCommandContext } from "../../types/plugin";
@@ -8,6 +8,9 @@ import { createEmptyAnswerProvider, createTestFinancials } from "../../test-supp
 import { createTestCliContext } from "../../test-support/cli-context";
 import { marketDataCliCommands } from "./market";
 import { ticker } from "./ticker";
+
+// A quote that finds nothing sets the exit status; it must not become the test run's.
+afterEach(() => { process.exitCode = 0; });
 
 const REASON = "Spot gold is not quoted; GC=F is the front-month future.";
 const config = createDefaultConfig("/tmp/gloom-provider-reason-test");

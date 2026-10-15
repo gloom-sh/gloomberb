@@ -11,6 +11,7 @@ import {
 } from "../../../../components";
 import { StaticScatterChartSurface } from "../../../../components/chart/static";
 import { scalarPoint, staticSeries } from "../../../../components/chart/static/series";
+import { usePaneRefreshKey } from "../../../../components/data-table/table-pane";
 import { useShortcut, type KeyEventLike } from "../../../../react/input";
 import { usePaneInstance } from "../../../../state/app/context";
 import { colors } from "../../../../theme/colors";
@@ -58,13 +59,12 @@ type RelationshipGraphShortcut =
   | "window"
   | "correlation"
   | "regression"
-  | "refresh"
   | { range: RelationshipRange };
 
 /**
  * [t]ime range cycles and 1-6 pick a range, [p]eriod cycles the correlation
  * window, [c]orr and [f]it toggle their panels. The query bar shows all four,
- * so none needs a footer hint. `r` refreshes this pair's history.
+ * so none needs a footer hint. Plain `r` is the pane refresh key.
  */
 function resolveRelationshipGraphShortcut(
   event: Pick<KeyEventLike, "name" | "key" | "ctrl" | "shift" | "alt" | "meta" | "super">,
@@ -73,8 +73,6 @@ function resolveRelationshipGraphShortcut(
 
   const key = (event.name ?? event.key ?? "").toLowerCase();
   switch (key) {
-    case "r":
-      return "refresh";
     case "t":
       return "range";
     case "p":
@@ -232,6 +230,7 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
     return true;
   }, [alignedDates]);
 
+  usePaneRefreshKey(() => { void reload(); }, { focused });
   useShortcut((event) => {
     if (!focused) return;
     if (isPlainKey(event, "home", "end") && jumpCursor(event.name)) {
@@ -248,9 +247,6 @@ export function RelationshipGraphPane({ focused, width, height }: PaneProps) {
       return;
     }
     switch (shortcut) {
-      case "refresh":
-        void reload();
-        return;
       case "range":
         cycleRange();
         return;

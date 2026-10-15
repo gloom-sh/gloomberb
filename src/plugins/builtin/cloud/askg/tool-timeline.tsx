@@ -30,6 +30,7 @@ import {
   type ToolMark,
   type ToolRowView,
 } from "./tool-display";
+import { ClippedText } from "../../../../components/ui/display";
 
 /** Undo a write; not `u`, which installs an app update whenever one is waiting. */
 export const UNDO_KEY = "z";
@@ -146,7 +147,7 @@ export function ToolTimelineRow({
       </ActionRow>
       {view.line && !expanded ? (
         <Box paddingLeft={2} height={1} overflow="hidden">
-          <Text fg={failed ? colors.textDim : colors.textMuted}>{truncateWithEllipsis(view.line, lineWidth)}</Text>
+          <ClippedText fg={failed ? colors.textDim : colors.textMuted} text={view.line} width={lineWidth} cut={truncateWithEllipsis} />
         </Box>
       ) : null}
       {showDetails ? (
@@ -351,7 +352,7 @@ export function ToolResultDetail({
   return (
     <Box flexDirection="column" flexShrink={0} width={width} height={height}>
       <Box flexDirection="row" height={1} paddingX={1}>
-        <Text fg={colors.textDim}>{truncateWithEllipsis(heading, Math.max(10, width - (canOpenPane ? 18 : 2) - view.meta.length - 2))}</Text>
+        <ClippedText fg={colors.textDim} text={heading} width={Math.max(10, width - (canOpenPane ? 18 : 2) - view.meta.length - 2)} cut={truncateWithEllipsis} />
         <Box flexGrow={1} />
         {view.meta ? <Text fg={colors.textMuted}>{`${view.meta}  `}</Text> : null}
         {canOpenPane ? (

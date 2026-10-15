@@ -154,16 +154,40 @@ export class CloudChatApi {
     );
   }
 
+  /**
+   * `seen`: the app showed them where the reader was looking (the open
+   * channel, a toast in the foreground), which also cancels the phone push
+   * waiting on them. A server that predates it ignores the field.
+   */
   async markNotificationsDelivered(
     notificationIds: string[],
+    options: { seen?: boolean } = {},
   ): Promise<{ delivered: number }> {
     return this.request<{ delivered: number }>(
       "/chat/notifications/delivered",
       {
         method: "POST",
+        body: JSON.stringify({ notificationIds, ...(options.seen ? { seen: true } : {}) }),
+      },
+    );
+  }
+
+  /**
+   * The notifications among these the reader has neither read nor been shown
+   * in front of them, on any device. Throws on a server without the route
+   * (404); the caller raises the alert then, as before.
+   */
+  async getUnseenNotificationIds(notificationIds: string[]): Promise<string[]> {
+    const answer = await this.request<{ notificationIds?: unknown }>(
+      "/chat/notifications/unseen",
+      {
+        method: "POST",
         body: JSON.stringify({ notificationIds }),
       },
     );
+    return Array.isArray(answer?.notificationIds)
+      ? answer.notificationIds.filter((id): id is string => typeof id === "string")
+      : notificationIds;
   }
 
   async openDirectChannel(target: {
@@ -325,6 +349,10 @@ export class CloudChatApi {
 
   subscribeNotifications(listener: ChatNotificationListener): () => void {
     return this.options.socket.subscribeChatNotifications(listener);
+  }
+
+  subscribeChannelState(listener: (state: ChatChannelState) => void): () => void {
+    return this.options.socket.subscribeChatChannelState(listener);
   }
 
   subscribePresence(listener: ChatPresenceListener): () => void {

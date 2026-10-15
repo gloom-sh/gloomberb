@@ -26,6 +26,21 @@ export function renderedReportNotices(semanticUi: readonly RemoteUiNodeSnapshot[
   return { notices, facts };
 }
 
+/**
+ * Why a rendered pane cannot give the report it was asked for, from the
+ * `report-failure` node it publishes: `{ message, details? }`. OMON opened on
+ * an expiry the chain does not list says so in its body; the report fails with
+ * the error the plain command (`options --expiration`) prints, instead of
+ * reading that body back as a view. Null when the pane publishes none.
+ */
+export function renderedReportFailure(semanticUi: readonly RemoteUiNodeSnapshot[]): { message: string; details?: string } | null {
+  const metadata = semanticUi.find((node) => node.role === "report-failure")?.metadata;
+  const message = typeof metadata?.message === "string" ? metadata.message.trim() : "";
+  if (!message) return null;
+  const details = typeof metadata?.details === "string" && metadata.details.trim() ? metadata.details.trim() : undefined;
+  return details ? { message, details } : { message };
+}
+
 const FRESHNESS_STATUSES: readonly HeadlessFreshnessStatus[] = ["live", "delayed", "stale", "not-a-feed"];
 
 /** The `sources` a pane publishes: each a name and a time. */

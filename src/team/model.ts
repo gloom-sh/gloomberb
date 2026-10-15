@@ -4,8 +4,8 @@ import type {
   TeamRole,
   TeamSummary,
   TeamUser,
-} from "../../../../api-client";
-import { blendHex, colors } from "../../../../theme/colors";
+} from "../api-client";
+import { blendHex, colors } from "../theme/colors";
 
 const TEAM_CHANNEL_PREFIX = "team:";
 

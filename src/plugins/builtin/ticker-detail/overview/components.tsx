@@ -1,11 +1,11 @@
 import type { ReactNode } from "react";
-import { ExternalLinkText, RangeTrack, usePaneLinkMenuEntry } from "../../../../components";
+import { ColumnGrid, ColumnGridPair, RangeTrack, usePaneLinkMenuEntry, type ColumnGridCell, type ColumnGridColumn } from "../../../../components";
 import { t, tf } from "../../../../i18n";
 import { formatMarketPriceWithCurrency, liveQuoteFormatOptions, type MarketFormatOptions } from "../../../../market-data/market/format";
 import { colors, hoverBg, priceColor } from "../../../../theme/colors";
 import type { Quote } from "../../../../types/financials";
-import { Box, Text } from "../../../../ui";
-import { displayWidth, formatNumber, padTo, truncateToDisplayWidth } from "../../../../utils/format";
+import { Box, Text, useUiCapabilities } from "../../../../ui";
+import { displayWidth, formatNumber, truncateToDisplayWidth } from "../../../../utils/format";
 import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types";
 import { portfolioPnlLabel } from "../../../../portfolio/position-metrics";
 
@@ -17,6 +17,8 @@ const RANGE_ENDPOINT_WIDTH = 11;
 /** Shortest track worth drawing; below it the label shortens. */
 const RANGE_MIN_TRACK_WIDTH = 6;
 const POSITION_COLUMN_GAP = 1;
+/** The account column never gets narrower than this. */
+const ACCOUNT_MIN_WIDTH = 8;
 
 interface PositionColumn {
   key: keyof Omit<PositionTableRow, "pnlValue" | "pnlBasis" | "quantityUnit">;
@@ -105,27 +107,24 @@ export function CompactRangeBar({
   );
 }
 
-function BookRow({
-  label,
-  value,
-  width,
-  valueColor,
-}: {
-  label: string;
-  value: string;
-  width: number;
-  valueColor: string;
-}) {
-  return (
-    <Box flexDirection="row" height={1} width={width}>
-      <Text fg={colors.textDim}>{padTo(label, BOOK_LABEL_WIDTH)}</Text>
-      {/* Right-aligned, so a size changing length does not slide the price. */}
-      <Text fg={valueColor}>{padTo(value, Math.max(0, width - BOOK_LABEL_WIDTH), "right")}</Text>
-    </Box>
-  );
+/** The quote book's columns: its labels, then the value right-aligned in the rest. */
+function bookColumns(width: number): ColumnGridColumn[] {
+  return [
+    { width: BOOK_LABEL_WIDTH },
+    // Right-aligned, so a size changing length does not slide the price.
+    { width: Math.max(0, width - BOOK_LABEL_WIDTH), growFrom: 0, align: "right" },
+  ];
 }
 
-export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; assetCategory?: string; width: number }) {
+export function QuoteBook({ quote, assetCategory, width, desktopWidth }: {
+  quote: Quote;
+  assetCategory?: string;
+  /** Cells on the terminal. */
+  width: number;
+  /** The desktop's width for the book, in CSS. */
+  desktopWidth?: string;
+}) {
+  const { nativePaneChrome } = useUiCapabilities();
   // Bid, ask and spread keep the instrument's decimals on every tick ($224.58 / $224.60 / $0.02).
   const priceOptions = liveQuoteFormatOptions(quote, quote.currency, assetCategory);
   const bidPrice = quote.bid != null ? formatMarketPriceWithCurrency(quote.bid, quote.currency, priceOptions) : "—";
@@ -140,12 +139,20 @@ export function QuoteBook({ quote, assetCategory, width }: { quote: Quote; asset
     spreadText = `${formatMarketPriceWithCurrency(spread, quote.currency, priceOptions)}${spreadPercent}`;
   }
 
+  const row = (label: string, value: string, color: string): ColumnGridCell[] => [{ text: label, color: colors.textDim }, { text: value, color }];
   return (
-    <Box flexDirection="column" width={width} flexShrink={0}>
-      {/* Neutral: a red ask would read as a loss. */}
-      <BookRow label={t("Bid")} value={bidText} width={width} valueColor={colors.textBright} />
-      <BookRow label={t("Ask")} value={askText} width={width} valueColor={colors.textBright} />
-      <BookRow label={t("Spr")} value={spreadText} width={width} valueColor={colors.textDim} />
+    <Box flexDirection="column" width={nativePaneChrome ? undefined : width} flexShrink={0} style={nativePaneChrome ? { width: desktopWidth } : undefined}>
+      <ColumnGrid
+        columns={bookColumns(width)}
+        width={width}
+        role="quote-book"
+        rows={[
+          // Neutral: a red ask would read as a loss.
+          row(t("Bid"), bidText, colors.textBright),
+          row(t("Ask"), askText, colors.textBright),
+          row(t("Spr"), spreadText, colors.textDim),
+        ]}
+      />
     </Box>
   );
 }
@@ -192,9 +199,12 @@ function LinkedStatCell({
 }) {
   // The pane menu lists each function once, so the keyboard reaches what a click opens.
   usePaneLinkMenuEntry(`function:${link.templateId}`, tf("Open {label}", { label: t(link.name) }), () => onOpen(link));
+  const { nativePaneChrome } = useUiCapabilities();
   return (
     <Box
-      width={width}
+      width={nativePaneChrome ? undefined : width}
+      flexGrow={nativePaneChrome ? 1 : undefined}
+      style={nativePaneChrome ? { minWidth: 0 } : undefined}
       flexDirection="row"
       hoverBackgroundColor={hoverBg()}
       onMouseDown={(event?: { button?: number }) => {
@@ -223,65 +233,64 @@ export function FundamentalsGrid({
   /** Opens a figure's research function; without it figures are plain. */
   onOpenLink?: (link: OverviewFunctionLink) => void;
 }) {
+  const { nativePaneChrome } = useUiCapabilities();
   const columnCount = columns ?? fundamentalsGridColumns(width);
   const availableWidth = width - STAT_COLUMN_GAP * (columnCount - 1);
   const baseColWidth = Math.floor(availableWidth / columnCount);
   const extraWidth = availableWidth - baseColWidth * columnCount;
   const colWidths = Array.from({ length: columnCount }, (_, index) => baseColWidth + (index === columnCount - 1 ? extraWidth : 0));
-  const rows: Array<Array<StatField | null>> = [];
+  // Equal columns on the desktop too, sharing the pane's width there.
+  // A column never gets narrower than its labels, so a label cannot reach the next column.
+  const gridColumns: ColumnGridColumn[] = colWidths.map((colWidth, index) => ({
+    width: colWidth,
+    growFrom: gridLabelWidth(colWidth),
+    gapBefore: index > 0 ? STAT_COLUMN_GAP : 0,
+  }));
+  const rows: ColumnGridCell[][] = [];
   for (let i = 0; i < fields.length; i += columnCount) {
-    rows.push(Array.from({ length: columnCount }, (_, offset) => fields[i + offset] ?? null));
+    rows.push(Array.from({ length: columnCount }, (_, offset): ColumnGridCell => {
+      const field = fields[i + offset];
+      if (!field) return null;
+      const colWidth = colWidths[offset] ?? baseColWidth;
+      const labelWidth = gridLabelWidth(colWidth);
+      const valueWidth = Math.max(1, colWidth - labelWidth);
+      // A long value (an industry, a SIC title) is cut from the end, never from the label side.
+      const value = truncateToDisplayWidth(field.value, valueWidth);
+      const detailRoom = valueWidth - displayWidth(value) - 1;
+      const details = typeof field.detail === "string" ? [field.detail] : field.detail ?? [];
+      // A cut "in 4..." misleads; a title cut to "Semicond..." still names it.
+      const detail = details.find((text) => displayWidth(text) <= detailRoom)
+        ?? (field.clipDetail && details[0] && detailRoom >= 4 ? truncateToDisplayWidth(details[0], detailRoom) : "");
+      const content = (
+        <ColumnGridPair
+          label={t(field.label)}
+          labelWidth={labelWidth}
+          width={colWidth}
+          value={field.value}
+          valueColor={field.valueColor}
+          detail={detail || undefined}
+          url={field.url}
+        />
+      );
+      return {
+        content: field.link && onOpenLink
+          ? <LinkedStatCell link={field.link} width={colWidth} onOpen={onOpenLink}>{content}</LinkedStatCell>
+          : (
+            <Box
+              width={nativePaneChrome ? undefined : colWidth}
+              flexGrow={nativePaneChrome ? 1 : undefined}
+              flexDirection="row"
+              data-gloom-ui="key-value-row"
+              style={nativePaneChrome ? { minWidth: 0 } : undefined}
+            >
+              {content}
+            </Box>
+          ),
+      };
+    }));
   }
 
-  return (
-    <Box flexDirection="column">
-      {rows.map((row, i) => (
-        <Box key={i} flexDirection="row" height={1}>
-          {row.map((field, j) => {
-            const colWidth = colWidths[j] ?? baseColWidth;
-            if (!field) {
-              return (
-                <Box key={j} flexDirection="row">
-                  {j > 0 && <Box width={STAT_COLUMN_GAP} />}
-                  <Box width={colWidth} />
-                </Box>
-              );
-            }
-            const labelWidth = gridLabelWidth(colWidth);
-            const valueWidth = Math.max(1, colWidth - labelWidth);
-            // A long value (an industry, a SIC title) is cut from the end, never from the label side.
-            const value = truncateToDisplayWidth(field.value, valueWidth);
-            const detailRoom = valueWidth - displayWidth(value) - 1;
-            const details = typeof field.detail === "string" ? [field.detail] : field.detail ?? [];
-            // A cut "in 4..." misleads; a title cut to "Semicond..." still names it.
-            const detail = details.find((text) => displayWidth(text) <= detailRoom)
-              ?? (field.clipDetail && details[0] && detailRoom >= 4 ? truncateToDisplayWidth(details[0], detailRoom) : "");
-            const content = (
-              <>
-                <Box width={labelWidth} overflow="hidden">
-                  <Text fg={colors.textDim}>{t(field.label)}</Text>
-                </Box>
-                <Box flexDirection="row" width={valueWidth} justifyContent="flex-end" overflow="hidden">
-                  {field.url
-                    ? <ExternalLinkText url={field.url} label={value} color={field.valueColor ?? colors.text} />
-                    : <Text fg={field.valueColor ?? colors.text}>{value}</Text>}
-                  {detail ? <Text fg={colors.textDim}>{` ${detail}`}</Text> : null}
-                </Box>
-              </>
-            );
-            return (
-              <Box key={j} flexDirection="row">
-                {j > 0 && <Box width={STAT_COLUMN_GAP} />}
-                {field.link && onOpenLink
-                  ? <LinkedStatCell link={field.link} width={colWidth} onOpen={onOpenLink}>{content}</LinkedStatCell>
-                  : <Box width={colWidth} flexDirection="row" data-gloom-ui="key-value-row">{content}</Box>}
-              </Box>
-            );
-          })}
-        </Box>
-      ))}
-    </Box>
-  );
+  return <ColumnGrid columns={gridColumns} rows={rows} role="fundamentals-grid" />;
 }
 
 const POSITION_COLUMNS: readonly PositionColumn[] = [
@@ -301,36 +310,28 @@ function createPositionColumns(width: number, hasFaceQuantity: boolean): Positio
   }));
   const fixedWidth = columns.reduce((sum, column) => sum + column.width, 0) + POSITION_COLUMN_GAP * (columns.length - 1);
   const accountColumn = columns[0]!;
-  accountColumn.width = Math.max(8, width - fixedWidth);
+  accountColumn.width = Math.max(ACCOUNT_MIN_WIDTH, width - fixedWidth);
   return columns;
 }
 
 export function PositionTable({ rows, width }: { rows: PositionTableRow[]; width: number }) {
   const columns = createPositionColumns(width, rows.some(row => row.quantityUnit === "face"));
   const pnlLabel = portfolioPnlLabel(rows.map((row) => row.pnlBasis));
+  const gridColumns: ColumnGridColumn[] = columns.map((column, index) => ({
+    width: column.width,
+    align: column.align,
+    gapBefore: index > 0 ? POSITION_COLUMN_GAP : 0,
+    // The account takes what the figures leave, on the desktop too.
+    ...(column.key === "account" ? { growFrom: ACCOUNT_MIN_WIDTH } : {}),
+  }));
+  const header: ColumnGridCell[] = columns.map((column) => ({
+    text: t(column.key === "pnl" ? pnlLabel : column.label),
+    color: colors.textDim,
+  }));
+  const body = rows.map((row): ColumnGridCell[] => columns.map((column) => ({
+    text: row[column.key],
+    color: column.color?.(row) ?? (column.key === "account" ? colors.textBright : colors.text),
+  })));
 
-  return (
-    <Box flexDirection="column" width={width}>
-      <Box flexDirection="row" height={1}>
-        {columns.map((column, index) => (
-          <Box key={column.key} flexDirection="row">
-            {index > 0 && <Box width={POSITION_COLUMN_GAP} />}
-            <Text fg={colors.textDim}>{padTo(t(column.key === "pnl" ? pnlLabel : column.label), column.width, column.align)}</Text>
-          </Box>
-        ))}
-      </Box>
-      {rows.map((row, rowIndex) => (
-        <Box key={rowIndex} flexDirection="row" height={1}>
-          {columns.map((column, index) => (
-            <Box key={column.key} flexDirection="row">
-              {index > 0 && <Box width={POSITION_COLUMN_GAP} />}
-              <Text fg={column.color?.(row) ?? (column.key === "account" ? colors.textBright : colors.text)}>
-                {padTo(row[column.key], column.width, column.align)}
-              </Text>
-            </Box>
-          ))}
-        </Box>
-      ))}
-    </Box>
-  );
+  return <ColumnGrid columns={gridColumns} rows={[header, ...body]} width={width} role="position-table" />;
 }

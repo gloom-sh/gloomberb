@@ -104,6 +104,11 @@ export const CANONICAL_EXCHANGE_ALIASES: Record<string, string> = {
   XPRA: "PSE",
   VIE: "VIE",
   XWBO: "VIE",
+  // The Vienna MTF, Wiener Boerse's multilateral trading facility, which Gloom
+  // Cloud names by its segment MIC. Its ETPs and notes are its own listings.
+  WBDM: "WBDM",
+  "VIENNA MTF": "WBDM",
+  VMTF: "WBDM",
   TPE: "TWSE",
   TWSE: "TWSE",
   TAI: "TWSE",
@@ -276,6 +281,7 @@ export const EXCHANGE_TIME_ZONES: Record<string, string> = {
   WSE: "Europe/Warsaw",
   PSE: "Europe/Prague",
   VIE: "Europe/Vienna",
+  WBDM: "Europe/Vienna",
   TPEX: "Asia/Taipei",
   TWSE: "Asia/Taipei",
   NSE: "Asia/Kolkata",
@@ -347,6 +353,7 @@ const EXCHANGE_NAMES: Record<string, string> = {
   WSE: "Warsaw Stock Exchange",
   PSE: "Prague Stock Exchange",
   VIE: "Vienna Stock Exchange",
+  WBDM: "Vienna MTF",
   TWSE: "Taiwan Stock Exchange",
   TPEX: "Taipei Exchange",
   NSE: "National Stock Exchange of India",

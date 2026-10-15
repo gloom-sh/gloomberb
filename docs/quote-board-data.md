@@ -27,10 +27,12 @@ a ticker suffix alone is insufficient. Equity, fund and option quotes retain
 their existing positive-price validation. See [CME Clearing Advisory 20-160](https://www.cmegroup.com/notices/clearing/2020/04/Chadv20-160.html)
 for CME's support of zero and negative energy futures prices.
 
-The futures board uses provider continuous/front-month aliases. These do not
-establish an explicit expiry curve, contract quantity, physical-unit conversion,
-or roll-adjusted investment return. Quote validation does not add those
-capabilities.
+The futures board uses Gloom Cloud's continuous aliases, which quote each root's
+most active month and name the nearer month while it still trades (see the
+`Front month` glossary entry). Each row's unit comes from the contract terms
+`quote` shows. The aliases do not establish an explicit expiry curve, contract
+quantity, physical-unit conversion, or roll-adjusted investment return. Quote
+validation does not add those capabilities.
 
 Contract prices in Overview, quote reports and quote-monitor text retain up to
 eight decimal places; contract changes use the same price precision instead of

@@ -1,7 +1,7 @@
 import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint, Quote } from "../../../types/financials";
 import type { SectorDef } from "./sector-data";
-import { getRegularSessionDisplay } from "../../../market-data/market/status";
+import { getCompletedRegularSessionDisplay, getRegularSessionDisplay } from "../../../market-data/market/status";
 import {
   computeTrailingReturn,
   historySessionBefore,
@@ -45,11 +45,22 @@ export async function loadSectorRows(
   ] as const)));
   // The quotes as sent carry any pre-market or after-hours print, for its own column.
   const sentQuotes = new Map(quotes);
+  // Pre-market quotes whose last completed session nothing confirms.
+  const unconfirmed = new Set<string>();
   for (const [symbol, quote] of quotes) {
-    if (quote) quotes.set(symbol, completedSessionQuote(quote, histories.get(symbol) ?? []));
+    if (!quote) continue;
+    const completed = completedSessionQuote(quote, histories.get(symbol) ?? []);
+    quotes.set(symbol, completed.quote);
+    if (!completed.confirmed) unconfirmed.add(symbol);
   }
   const quoteDates = new Map([...quotes].map(([symbol, quote]) => [symbol, quote ? quoteSessionDate(quote) : null]));
-  const asOfDate = [...quoteDates.values(), ...[...histories.values()].map(latestHistoryDate)]
+  // The shared session is the newest one the funds report. A pre-market quote
+  // that cannot say which session it follows reports none: it must not pull
+  // every other fund onto a session that has not traded, unless no fund can say.
+  const datedQuotes = [...quoteDates].filter((entry): entry is [string, string] => entry[1] != null);
+  const confirmedQuotes = datedQuotes.filter(([symbol]) => !unconfirmed.has(symbol));
+  const asOfDate = [...(confirmedQuotes.length > 0 ? confirmedQuotes : datedQuotes).map(([, date]) => date),
+    ...[...histories.values()].map(latestHistoryDate)]
     .filter((date): date is string => date != null).sort().at(-1) ?? null;
 
   const outcomes = await Promise.all(sectors.map(async (sector) => {
@@ -61,10 +72,16 @@ export async function loadSectorRows(
     const headline = getRegularSessionDisplay(quote);
     const lastReportedPrice = headline && Number.isFinite(headline.price) && headline.price > 0 ? headline.price : null;
     const sessionDate = quoteDates.get(sector.etf) ?? null;
+    // A quote flagged stale is not current for the session in progress, which
+    // is all the pre-market and after-hours ask of a fund that has not printed
+    // since. The close of a completed session stays that session's close.
+    const completedClose = quote != null && getCompletedRegularSessionDisplay(quote) != null;
     const priceIssue = !quote || lastReportedPrice == null ? "quote unavailable"
       : !sessionDate ? "quote session unknown"
-      : quote.stale ? `stale quote from ${sessionDate}`
-      : sessionDate !== asOfDate ? `quote from ${sessionDate}; shared session is ${asOfDate}`
+      : quote.stale && !completedClose ? `stale quote from ${sessionDate}`
+      : sessionDate !== asOfDate
+        ? unconfirmed.has(sector.etf) ? "pre-market quote without a confirmed last close"
+          : `quote from ${sessionDate}; shared session is ${asOfDate}`
       : null;
     const price = priceIssue ? null : lastReportedPrice;
     const changePercent = price != null && Number.isFinite(headline?.changePercent) ? headline!.changePercent! : null;
@@ -96,7 +113,8 @@ export async function loadSectorRows(
         quoteUpdatedAt: quote && Number.isFinite(quote.lastUpdated) ? quote.lastUpdated : null,
         quoteDataSource: quote?.dataSource,
         changePercent,
-        ...sectorExtendedFields(price == null ? null : sentQuotes.get(sector.etf)),
+        // A stale quote's extended print is not a current one.
+        ...sectorExtendedFields(price == null || quote?.stale ? null : sentQuotes.get(sector.etf)),
         return1M: month?.value ?? null,
         return1Y: year?.value ?? null,
         returnAsOfDate: asOfDate,
@@ -127,24 +145,33 @@ export async function loadSectorRows(
 }
 
 /**
- * Before the open a pre-market print dates a quote to a session that has not
- * traded yet, while funds without one still report yesterday. Rank every fund
- * on the last completed session, confirmed by the quote's own previous close.
+ * Before the open a pre-market quote dates itself to a session that has not
+ * traded yet, while funds without a print still report yesterday. Rank every
+ * fund on the last completed session. A quote that carries that close
+ * (`regularClose`, as Gloom Cloud sends it) already says which session it is
+ * (sectorQuoteSessionDate). One that does not takes it from its history,
+ * confirmed by the quote's own previous close; without that confirmation the
+ * session is unknown (`confirmed: false`).
  */
-function completedSessionQuote(quote: Quote, history: readonly PricePoint[]): Quote {
-  const sessionDate = quote.marketState === "PRE" ? quoteSessionDate(quote) : null;
+function completedSessionQuote(quote: Quote, history: readonly PricePoint[]): { quote: Quote; confirmed: boolean } {
+  if (quote.marketState !== "PRE" || getCompletedRegularSessionDisplay(quote)) return { quote, confirmed: true };
+  const sessionDate = quoteSessionDate(quote);
   const latestDate = latestHistoryDate(history);
-  if (!sessionDate || !latestDate || sessionDate <= latestDate) return quote;
-  const completed = historySessionBefore(history, sessionDate);
+  if (!sessionDate) return { quote, confirmed: true };
+  if (latestDate && sessionDate <= latestDate) return { quote, confirmed: true };
+  const completed = latestDate ? historySessionBefore(history, sessionDate) : null;
   const previousClose = quote.previousClose;
   if (!completed || previousClose == null || !(previousClose > 0)
-    || Math.abs(completed.close / previousClose - 1) > 0.001) return quote;
+    || Math.abs(completed.close / previousClose - 1) > 0.001) return { quote, confirmed: false };
   return {
-    ...quote,
-    price: completed.close,
-    change: completed.close * completed.changePercent / (100 + completed.changePercent),
-    changePercent: completed.changePercent,
-    changeSessionDate: completed.date,
+    confirmed: true,
+    quote: {
+      ...quote,
+      price: completed.close,
+      change: completed.close * completed.changePercent / (100 + completed.changePercent),
+      changePercent: completed.changePercent,
+      changeSessionDate: completed.date,
+    },
   };
 }
 

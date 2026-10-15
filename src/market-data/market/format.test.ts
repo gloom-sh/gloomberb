@@ -138,6 +138,18 @@ describe("formatMarketPriceWithCurrency", () => {
     expect(formatMarketPriceWithCurrency(1.084567, "USD", { isCashBalance: true })).toBe("$1.084567");
   });
 
+  test("an index level is points, with no currency symbol, wherever it is formatted", () => {
+    // Keyed on the instrument, as the quote table, the quote monitor and the pane cards all format it.
+    const index = { assetCategory: "INDEX" };
+    expect(formatMarketPriceWithCurrency(7805.45, "USD", index)).toBe("7,805.45");
+    expect(formatMarketPriceWithCurrency(67744.29, "JPY", { ...index, priceBasis: "per-unit" })).toBe("67,744.29");
+    expect(formatMarketChangeWithCurrency(-1.79, "USD", index)).toBe("-1.79");
+    expect(formatMarketChangeWithCurrency(38.22, "GBP", index)).toBe("+38.22");
+    // A stock or an ETF is money; an index ETF is not an index.
+    expect(formatMarketPriceWithCurrency(7805.45, "USD", { assetCategory: "ETF" })).toBe("$7,805.45");
+    expect(formatMarketChangeWithCurrency(-1.79, "USD", { assetCategory: "STK" })).toBe("-$1.79");
+  });
+
   test("formats position cost values with tighter equity precision", () => {
     expect(formatMarketCostWithCurrency(119.3687, "HKD", { assetCategory: "STK" })).toBe("HK$119.37");
     expect(formatMarketCostWithCurrency(50.9507, "USD", { assetCategory: "OPT", multiplier: 100 })).toBe("$50.9507");

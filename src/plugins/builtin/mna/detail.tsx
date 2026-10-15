@@ -22,7 +22,7 @@ import { Box, useRendererHost } from "../../../ui";
 import { useAssetData, usePluginTickerActions } from "../../runtime";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { useQuoteBoard } from "../shared/use-quote-board";
-import { loadMnaDeal } from "./client";
+import { cachedMnaDeal, loadMnaDeal } from "./client";
 import {
   dealSpread,
   formatDealValue,
@@ -136,7 +136,7 @@ export function MnaDealDetail({ id, seed, focused, width, height }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [id, pro, session.requestKey],
   );
-  const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
+  const resource = useAsyncResource(loader, { initialData: () => cachedMnaDeal(id, pro), clearOnError: isAccessDenied });
   const payload = resource.data?.payload ?? null;
   const deal = payload?.deal ?? seed;
   const events = payload?.events ?? NO_EVENTS;

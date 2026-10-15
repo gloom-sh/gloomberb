@@ -2,6 +2,8 @@ import type { DataProvider } from "../types/data-provider";
 import type { TickerRecord } from "../types/ticker";
 import { LISTING_SEARCH_LIMIT, searchTickerCandidates, type TickerSearchCandidate } from "../tickers/search";
 import { mapWithConcurrency } from "../utils/concurrency";
+import { isUsListingExchange } from "../utils/exchanges";
+import { STARTER_SYMBOLS } from "../tickers/starter-symbols";
 import { TickerNotFoundError } from "./ticker-resolution";
 
 /** How long a suggestion waits for search; a slow search leaves the plain "not found" as it was. */
@@ -118,18 +120,47 @@ async function searchAsCommand(query: string, { store, dataProvider }: Suggestio
 export async function suggestListing(input: string, deps: SuggestionDeps): Promise<ListingSuggestion | null> {
   const query = input.trim().replace(/^\$/, "");
   if (!query) return null;
+  const candidates = await searchCandidates(query, deps);
+  return candidates ? nearestListing(query, candidates) : null;
+}
+
+/** The search's candidates for a query, or null when it fails or is slow; it never throws and never waits longer than the timeout. */
+async function searchCandidates(query: string, deps: SuggestionDeps): Promise<TickerSearchCandidate[] | null> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    const candidates = await Promise.race([
+    return await Promise.race([
       Promise.resolve().then(() => (deps.search ?? ((text: string) => searchAsCommand(text, deps)))(query)),
       new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), deps.timeoutMs ?? SUGGESTION_TIMEOUT_MS); }),
     ]);
-    return candidates ? nearestListing(query, candidates) : null;
   } catch {
     return null;
   } finally {
     if (timer) clearTimeout(timer);
   }
+}
+
+/**
+ * The US ticker a symbol that quoted on a listing abroad was most likely typed
+ * for: APPL, which is Aptus Pharma on BSE, for AAPL. Search lists no AAPL for
+ * APPL, so the match comes from the US symbols a person is likely to mean (the
+ * starter watchlist and their own saved US tickers) that are one slip away,
+ * and only a single one counts. Search then names it; a US listing it does not
+ * find is no suggestion. Null when nothing is near, and for a symbol too short
+ * for one edit to leave it recognisable.
+ */
+export async function suggestUsTicker(typed: string, deps: SuggestionDeps): Promise<ListingSuggestion | null> {
+  const wanted = compact(typed);
+  if (wanted.length < MIN_TYPO_LENGTH) return null;
+  const saved = (await deps.store.loadAllTickers().catch(() => [])).filter((ticker) => isUsListingExchange(ticker.metadata.exchange));
+  const near = new Set([...STARTER_SYMBOLS, ...saved.map((ticker) => ticker.metadata.ticker)]
+    .map((symbol) => symbol.trim().toUpperCase())
+    .filter((symbol) => compact(symbol).length >= MIN_TYPO_LENGTH && editDistance(wanted, compact(symbol)) === 1));
+  if (near.size !== 1) return null;
+  const [symbol] = near;
+  const candidates = await searchCandidates(symbol!, deps);
+  if (!candidates) return { symbol: symbol!, name: "" };
+  const listed = candidates.find((candidate) => (candidate.label || candidate.symbol).toUpperCase() === symbol && isUsListingExchange(candidate.exchangeLabel));
+  return listed ? { symbol: symbol!, name: candidateName(listed) } : null;
 }
 
 /** The answer for a symbol search lists nothing for, with nothing else said (a company that left its symbol, a wrong exchange, a stopped listing each say more). */

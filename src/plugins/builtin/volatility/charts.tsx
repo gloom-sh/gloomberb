@@ -26,7 +26,7 @@ export function VolatilityHistoryChart({ fred, width, height, focused = false }:
   return <CompositeChart series={series} legendSeries={legendSeries} panels={HISTORY_PANELS} width={width} height={height}
     focused={focused} navigable={false} showLegend showTimeAxis remoteKind="vix-history"
     formatValue={(value, entry) => entry.unitGroup === "ratio" ? value.toFixed(2) : formatCompositeSeriesValue(value, entry)}
-    formatAxisValue={(value, domain) => domain.unitGroup === "ratio" ? value.toFixed(2) : `${value.toFixed(0)}%`}
+    formatAxisValue={(value, domain) => domain.unitGroup === "ratio" ? value.toFixed(2) : value.toFixed(0)}
     colors={{ background: palette.bgColor, grid: palette.gridColor, crosshair: palette.crosshairColor, text: colors.text,
       textDim: palette.axisColor, negative: colors.negative }} />;
 }

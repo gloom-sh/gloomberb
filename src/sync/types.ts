@@ -19,8 +19,29 @@ export interface SyncSnapshot {
   contributors: Record<string, SyncContributorPayload>;
 }
 
+/**
+ * What this device remembers about its own copy of one contributor's data
+ * between syncs, kept across launches: when it last edited it, or which cloud
+ * copy it took. Never sent anywhere.
+ */
+interface SyncContributorMemo {
+  get(): unknown;
+  set(value: unknown): void;
+}
+
 interface SyncCollectContext {
   state: AppState;
+  /** The payload this device last pushed for this contributor, or null when it never synced. */
+  baselinePayload?: unknown;
+  memo?: SyncContributorMemo;
+}
+
+interface SyncObserveContext {
+  state: AppState;
+  baselinePayload: unknown;
+  memo: SyncContributorMemo;
+  /** True for the first look after the app started: a change seen then was made while it was closed. */
+  launch: boolean;
 }
 
 interface SyncApplyContext {
@@ -37,6 +58,7 @@ interface SyncApplyContext {
   isCurrent: () => boolean;
   dispatch: Dispatch<AppAction>;
   tickerRepository: AppTickerRepositoryPort;
+  memo?: SyncContributorMemo;
 }
 
 export interface SyncContributor {
@@ -44,6 +66,12 @@ export interface SyncContributor {
   schemaVersion: number;
   collect(context: SyncCollectContext): unknown | Promise<unknown>;
   apply?(payload: unknown, context: SyncApplyContext): void | Promise<void>;
+  /**
+   * Called before every sync attempt and shortly after local changes, online
+   * or not, so an edit can be dated when it happens rather than when the
+   * network is next reachable.
+   */
+  observe?(context: SyncObserveContext): void;
 }
 
 export interface SyncSnapshotResponse {
@@ -63,7 +91,20 @@ export interface SyncTransport {
   id: string;
   isAvailable(): boolean;
   pullSnapshot(): Promise<SyncSnapshotResponse>;
+  /**
+   * `baseRevision` is the stored revision the snapshot was merged with (0 when
+   * there was none). A transport that can refuse a write made against an older
+   * revision throws `SyncRevisionConflictError`, and the controller pulls again.
+   */
   pushSnapshot(snapshot: SyncSnapshot, options?: { baseRevision?: number | null }): Promise<SyncPushResult>;
+}
+
+/** Another device wrote since this one pulled; its push would have replaced that write. */
+export class SyncRevisionConflictError extends Error {
+  constructor(message = "The synced copy changed since it was pulled.") {
+    super(message);
+    this.name = "SyncRevisionConflictError";
+  }
 }
 
 export interface SyncSettings {
@@ -79,6 +120,9 @@ export interface SyncSettings {
 export interface SyncBaselineStore {
   load(): Record<string, unknown> | null;
   save(payloads: Record<string, unknown>): void;
+  /** Contributor memos by contributor id; see `SyncContributorMemo`. */
+  loadMemos?(): Record<string, unknown> | null;
+  saveMemos?(memos: Record<string, unknown>): void;
 }
 
 export interface RegisteredSyncContributor {

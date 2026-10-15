@@ -3,18 +3,20 @@
  * Panes for the layout checks (layout-checks.ts): one per shared component
  * that sets text or scrolls content (the stack detail reader, the article
  * reader, markdown, prose paragraphs, a table, and a page with a table as tall
- * as its rows and label and value rows), plus the real Trials and
+ * as its rows and label and value rows, a series list beside its detail
+ * under a query bar), plus the real Trials and
  * Changelog panes, whose open items read through the detail reader. Every
  * study, release and article is invented, and nothing is fetched: the Trials
  * registry and the release feed are answered in the page.
  *
  * Scenario options (query string, after `scenario=layout`): `pane=<id>`
- * (trials, changelog, reader, markdown, prose, inline, or a pane of the main
+ * (trials, changelog, reader, markdown, prose, inline, list, or a pane of the main
  * fixture such as table or chart-bar) and `mode=dock` or
  * `mode=float`; a floating pane takes most of the window at a size that is not
  * a whole number of cells.
  */
-import { useRef } from "react";
+import { useRef, useState } from "react";
+import { SeriesListDetail, useSeriesList } from "../../src/plugins/builtin/shared/series-list-detail";
 import { DetailScrollBody } from "../../src/components/ui/detail-scroll-body";
 import { BulletList, Prose } from "../../src/components/ui/prose";
 import { KeyValueRow } from "../../src/components/ui/display";
@@ -78,6 +80,8 @@ const RELEASE_BODY = [
   "## Also in this release",
   "",
   ...Array.from({ length: 8 }, (_, index) => `- ${SENTENCES[(index + 2) % SENTENCES.length]} (#${1720 + index})`),
+  "",
+  "[Full diff](https://example.invalid/compare/v0.9.8...v0.9.9)",
 ].join("\n");
 
 const RELEASES = Array.from({ length: 6 }, (_, index) => ({
@@ -129,7 +133,12 @@ function ChangelogFixturePane(props: PaneProps) {
   );
 }
 
-const ARTICLE = parseArticle([{ text: Array.from({ length: 8 }, (_, index) => SENTENCES.slice(index % 3).join(" ")).join("\n\n") }]);
+/** A document as Search opens one: sections under their headings, key facts above them, the match marked in one. */
+const ARTICLE = parseArticle([
+  { heading: "Results", text: Array.from({ length: 4 }, (_, index) => SENTENCES.slice(index % 3).join(" ")).join("\n\n") },
+  { heading: "Outlook", text: Array.from({ length: 4 }, (_, index) => SENTENCES.slice((index + 1) % 3).join(" ")).join("\n\n") },
+]);
+const FACTS = ["Enrolment of 240 participants at four sites", "Results expected 12 months after the last visit", "Distance walked up 18% at twelve weeks"];
 
 function ReaderFixturePane({ focused, width, height }: PaneProps) {
   return (
@@ -138,7 +147,9 @@ function ReaderFixturePane({ focused, width, height }: PaneProps) {
       title="An invented story about a workshop that builds instruments"
       meta={["Workshop News", "Oct 12, 2026"]}
       lead={SENTENCES.slice(0, 2).join(" ")}
+      facts={FACTS}
       body={ARTICLE}
+      highlight={{ section: 1, terms: ["outcome"] }}
       focused={focused}
       width={width}
       height={height}
@@ -221,8 +232,52 @@ function InlineFixturePane({ width }: PaneProps) {
   );
 }
 
+interface ListRow { id: string; name: string; value: string }
+const LIST_ROWS: ListRow[] = Array.from({ length: 24 }, (_, index) => ({
+  id: `r${index}`,
+  name: `Invented series ${index + 1}`,
+  value: (100 + index * 3.7).toFixed(1),
+}));
+const LIST_RANGE = { value: "1y", options: [{ value: "1y", label: "1Y" }, { value: "5y", label: "5Y" }], onChange: () => {} };
+const listMatches = (row: ListRow, query: string) => row.name.toLowerCase().includes(query);
+const listColumns = (width: number) => [
+  { id: "name", label: "SERIES", width: Math.max(8, width - 12), align: "left" as const },
+  { id: "value", label: "LAST", width: 8, align: "right" as const },
+];
+
+/**
+ * A series list beside its detail under a query bar, as the economic
+ * statistics, GPU history and market valuation panes lay it out: the bar is
+ * taller than a row on the desktop, and the list and detail end at the footer.
+ */
+function ListDetailFixturePane({ focused, width, height }: PaneProps) {
+  const [selectedId, setSelectedId] = useState("r0");
+  const list = useSeriesList({ focused, items: LIST_ROWS, getId: (row) => row.id, matchesQuery: listMatches, selectedId, onSelect: setSelectedId, reload: () => {}, range: LIST_RANGE });
+  return (
+    <SeriesListDetail
+      list={list}
+      width={width}
+      height={height}
+      focused={focused}
+      listWidth={40}
+      searchPlaceholder="filter series"
+      columns={listColumns}
+      rows={list.visible}
+      getRowId={(row) => row.id}
+      renderCell={(row, column) => ({ text: column.id === "name" ? row.name : row.value })}
+      emptyStateTitle="No series"
+      renderDetail={(size) => (
+        <Box flexDirection="column" paddingX={1}>
+          <Prose text={[...SENTENCES, ...SENTENCES, ...SENTENCES].join(" ")} width={Math.max(12, size.width - 2)} />
+        </Box>
+      )}
+    />
+  );
+}
+
 export const LAYOUT_PANES = {
   inline: { name: "Inline", component: InlineFixturePane },
+  list: { name: "List and detail", component: ListDetailFixturePane },
   trials: { name: "Trials", component: TrialsFixturePane },
   changelog: { name: "Changelog", component: ChangelogFixturePane },
   reader: { name: "Reader", component: ReaderFixturePane },

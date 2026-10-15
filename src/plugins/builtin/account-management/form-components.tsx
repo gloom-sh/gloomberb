@@ -15,6 +15,7 @@ import { truncateWithEllipsis } from "../../../utils/text-wrap";
 import type { SelectControl } from "../../../components/ui/select-button";
 import type { ProfileAnalyticsPreview } from "./model";
 import { t } from "../../../i18n";
+import { ClippedText } from "../../../components/ui/display";
 
 export function accountFieldLabelWidth(width: number) {
   const preferred = width >= 28 ? 16 : Math.max(10, Math.floor(width * 0.42));
@@ -132,16 +133,12 @@ export function PublicAnalyticsGroup({
           const valueWidth = Math.max(1, metricWidth - labelTextWidth - 1);
           return (
             <Box key={metric.id} width={metricWidth} height={1} flexDirection="row" gap={1}>
-              <Text fg={colors.textDim}>{truncateWithEllipsis(metric.label, labelTextWidth)}</Text>
-              <Text fg={metricColor(metric.tone)} attributes={TextAttributes.BOLD}>
-                {truncateWithEllipsis(metric.value, valueWidth)}
-              </Text>
+              <ClippedText fg={colors.textDim} text={metric.label} width={labelTextWidth} cut={truncateWithEllipsis} />
+              <ClippedText fg={metricColor(metric.tone)} attributes={TextAttributes.BOLD} text={metric.value} width={valueWidth} cut={truncateWithEllipsis} />
             </Box>
           );
         }) : detail ? (
-          <Text fg={colors.textMuted}>
-            {truncateWithEllipsis(detail, detailWidth)}
-          </Text>
+          <ClippedText fg={colors.textMuted} text={detail} width={detailWidth} cut={truncateWithEllipsis} />
         ) : null}
       </Box>
       {metrics.length === 0 && displayPreview.subtitle ? (

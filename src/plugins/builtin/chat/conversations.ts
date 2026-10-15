@@ -1,5 +1,5 @@
 import type { ChatChannel, ChatUserSummary } from "../../../api-client";
-import { teamStore } from "../cloud/team/store";
+import { teamStore } from "../../../team/store";
 import { formatChatPaneTitle } from "./channel-labels";
 
 /** What the chat controller holds about one conversation, read without a request. */

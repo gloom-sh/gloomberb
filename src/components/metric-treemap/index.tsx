@@ -18,7 +18,7 @@ export {
   type MetricTreemapDirection,
   type MetricTreemapItem,
 } from "./layout";
-export { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface } from "./heat-surface";
+export { buildHeatTreemapScene, heatTreemapCanvas, HeatTreemapSurface, useHeatTreemapScene } from "./heat-surface";
 export { formatHeatTileMove, settleTreemapLayoutItems } from "./heat-tiles";
 
 type PreventableMouseEvent = { preventDefault(): void };

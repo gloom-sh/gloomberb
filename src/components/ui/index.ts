@@ -35,6 +35,8 @@ export { QueryBar, useQueryBarSearch } from "./query-bar";
 export { FieldGrid, GridFieldView, fieldGridColumns, fieldGridRows } from "./field-grid";
 export type { FieldGridProps, GridField } from "./field-grid";
 export { StatGrid, statGridColumns, statGridRows } from "./stat-grid";
+export { ColumnGrid, ColumnGridPair } from "./column-grid";
+export type { ColumnGridCell, ColumnGridColumn, ColumnGridPairProps, ColumnGridProps } from "./column-grid";
 export type { StatGridProps, StatItem } from "./stat-grid";
 export { RatioBar } from "./ratio-bar";
 export type { RatioBarProps } from "./ratio-bar";
@@ -58,7 +60,7 @@ export type { TabsProps } from "./tabs";
 export { SegmentedControl } from "./toggle";
 export type { SegmentedControlProps } from "./toggle";
 export { EmptyState, PaneStatusBody, Notice, loadingText, unavailableText } from "./status";
-export type { EmptyStateProps, PaneStatusBodyProps, NoticeProps } from "./status";
+export type { EmptyStateProps, PaneStatusBodyProps, NoticeProps, StatusRetry } from "./status";
 export { Badge, BulletList, Divider, FigureList, KeyValueRow, Prose, READING_WIDTH, Section, SectionHeading } from "./display";
 export type {
   BadgeProps, BulletListProps, DividerProps, FigureListItem, FigureListProps, KeyValueRowProps, ProseProps, SectionProps,

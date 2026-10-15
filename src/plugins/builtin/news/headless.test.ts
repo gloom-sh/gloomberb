@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { CloudNewsPayload } from "../../../api-client";
+import { renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/plugin";
 import type { NewsQuery } from "../../../news/types";
 import {
@@ -146,4 +147,27 @@ describe("ticker news headless", () => {
 
     expect(seen[0]).toMatchObject({ feed: "ticker", ticker: "NVDA", exchange: "NASDAQ" });
   });
+});
+
+test("the text report lists a story's tickers and prints every time to the second, while JSON keeps the raw values", async () => {
+  const base = story("pair", "neutral", 50, "2026-09-04T20:41:07.000Z");
+  const pair: CloudNewsPayload = { ...base, tickerLinks: [...base.tickerLinks, { ...base.tickerLinks[0]!, symbol: "NVDA", canonicalTicker: "NVDA" }] };
+  const definition = createTickerNewsHeadless({
+    loadNews: async () => ({ items: [pair, stories[0]!], nextCursor: null }),
+    now: () => new Date("2026-09-04T21:00:00.000Z"),
+  });
+  const loadArgs = args("AMD", { sentiment: "any", minImportance: 0, limit: 50 });
+  const result = await definition.load(loadArgs, context);
+  const text = renderHeadlessPaneText(definition, result, loadArgs, "CN");
+
+  expect(text).toContain("2026-09-04 20:41:07 UTC");
+  // A story published on a whole minute reads like the rest, not 20:00.
+  expect(text).toContain("2026-09-04 20:00:00 UTC");
+  expect(text).toMatch(/AMD, NVDA/);
+  expect(text).not.toContain("[");
+  const json = serializeHeadlessPaneResult(definition, result) as { items: Array<{ publishedAt: string; tickers: string[] }> };
+  expect(json.items.map(({ publishedAt, tickers }) => ({ publishedAt, tickers }))).toEqual([
+    { publishedAt: "2026-09-04T20:41:07.000Z", tickers: ["AMD", "NVDA"] },
+    { publishedAt: "2026-09-04T20:00:00.000Z", tickers: ["AMD"] },
+  ]);
 });

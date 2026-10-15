@@ -104,6 +104,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const tradeScrollRef = useRef<ScrollBoxRenderable | null>(null);
+  const detailScrollRef = useRef<ScrollBoxRenderable | null>(null);
   const [savedTab, setActiveTab] = usePluginPaneState<CongressTab>(`${statePrefix}activeTab`, "trades");
   const activeTab = tickerFilter ? "trades" : savedTab;
   const [selectedTradeId, setSelectedTradeId] = useDebouncedPluginPaneState<string | null>(`${statePrefix}selectedTradeId`, null);
@@ -382,7 +383,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const detailContent = detailMode?.kind === "ticker" ? (
     <CongressTradesPane focused={focused} width={width} height={height - 3} paneId="congress-ticker" paneType="congress-trades" tickerFilter={detailMode.ticker} />
   ) : detailTrade ? (
-    <TradeDetail trade={detailTrade} width={width} />
+    <TradeDetail trade={detailTrade} width={width} scrollRef={detailScrollRef} />
   ) : detailMember ? (
     <MemberTradesDetail
       focused={focused}
@@ -442,6 +443,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
             setDetailMode({ kind: "trade", tradeId: trade.id });
           }}
           onRootKeyDown={handleFiltersKey}
+          detailScrollRef={detailScrollRef}
           rootWidth={width}
           rootBefore={filterBar}
           resetScrollKey={`${filterKey}:${mine}`}

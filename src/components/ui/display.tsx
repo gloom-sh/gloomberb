@@ -21,14 +21,20 @@ export interface SectionHeadingProps {
 
 export function SectionHeading({ title, marginTop = 0, width, wrap = false }: SectionHeadingProps) {
   const colors = useThemeColors();
+  const { nativePaneChrome } = useUiCapabilities();
   // English reads in title case; a translation keeps its own casing.
   const translated = t(title);
   const text = translated === title ? titleCase(title) : translated;
   return (
     <Box height={wrap ? undefined : 1} marginTop={marginTop} width={width} overflow="hidden" data-gloom-ui="section-heading">
-      <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText={wrap}>
-        {wrap || width === undefined ? text : truncateToDisplayWidth(text, width)}
-      </Text>
+      {nativePaneChrome && !wrap ? (
+        // The desktop cuts a long heading where its box ends, not at a count of columns.
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} style={{ ...NATIVE_CLIP_STYLE, flex: "1 1 auto" }}>{text}</Text>
+      ) : (
+        <Text fg={colors.textBright} attributes={TextAttributes.BOLD} wrapText={wrap}>
+          {wrap || width === undefined ? text : truncateToDisplayWidth(text, width)}
+        </Text>
+      )}
     </Box>
   );
 }
@@ -71,6 +77,37 @@ export interface KeyValueRowProps {
  * which a count of columns cannot match (a cell is wider than a glyph).
  */
 export const NATIVE_CLIP_STYLE = { display: "block", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "pre" } as const;
+
+export interface ClippedTextProps {
+  text: string;
+  /** The terminal's room for the text, in cells. */
+  width: number;
+  fg?: string;
+  attributes?: number;
+  /** How the text sits in a row on the desktop: by default it gives way to its siblings. */
+  flex?: string;
+  /** Kept whole before the text in both renderers (an indent, a separator). */
+  lead?: string;
+  /** How the terminal cuts it; the caller's own cut keeps its frames as they were. */
+  cut?: (text: string, width: number) => string;
+  /** The desktop wraps it onto more lines instead (a message, a description); the terminal still cuts it. */
+  wrap?: boolean;
+}
+
+/**
+ * One line of text cut where its room ends: in the terminal at `width` cells,
+ * on the desktop and the web by CSS at its box's edge, or wrapped there with
+ * `wrap`. Its box (or its row, with the siblings that keep their room) has to
+ * bound it there.
+ */
+export function ClippedText({ text, width, fg, attributes, flex = "0 1 auto", lead = "", cut = truncateToDisplayWidth, wrap = false }: ClippedTextProps) {
+  const { nativePaneChrome } = useUiCapabilities();
+  const ink = { ...(fg === undefined ? {} : { fg }), ...(attributes === undefined ? {} : { attributes }) };
+  if (!nativePaneChrome) return <Text {...ink}>{`${lead}${cut(text, width)}`}</Text>;
+  return wrap
+    ? <Text {...ink} wrapText style={{ minWidth: 0, flex }}>{`${lead}${text}`}</Text>
+    : <Text {...ink} style={{ ...NATIVE_CLIP_STYLE, flex }}>{`${lead}${text}`}</Text>;
+}
 
 /** Aligned labels and values; a bounded row reserves room for an optional detail. */
 export function KeyValueRow(props: KeyValueRowProps) {
@@ -194,7 +231,12 @@ export function Divider({ width, height, orientation = "horizontal" }: DividerPr
       flexShrink={0}
       border={vertical ? ["left"] : ["top"]}
       borderColor={colors.border}
-      style={{ border: 0, [vertical ? "borderLeft" : "borderTop"]: `1px solid ${colors.border}` }}
+      style={{
+        border: 0,
+        [vertical ? "borderLeft" : "borderTop"]: `1px solid ${colors.border}`,
+        // A vertical rule given no height runs the height of the row it stands in.
+        ...(vertical && height === undefined ? { height: "auto", alignSelf: "stretch" } : {}),
+      }}
       role="separator"
       data-gloom-ui="divider"
     />

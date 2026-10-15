@@ -48,6 +48,42 @@ export function optionCarry(
   return { extrinsic, extrinsicPerYear: days >= MIN_CARRY_DAYS ? extrinsic / spot / (days / 365) : null };
 }
 
+/**
+ * Extrinsic per year net of financing and dividends, a fraction of spot per
+ * year (`gloomberb options --leaps --columns carry-net`):
+ *
+ *   call: (extrinsic - strike x rate x years + spot x dividend yield x years) / spot / years
+ *   put:  (extrinsic + strike x rate x years - spot x dividend yield x years) / spot / years
+ *
+ * A call bought instead of the stock leaves the strike in cash earning the rate
+ * and forgoes the dividends; a put's midpoint already has both in it the other
+ * way round (put-call parity), so the signs turn. Simple interest over the same
+ * years as `optionCarry`. Null when the carry has no yearly figure.
+ */
+export function optionCarryNet(
+  carry: OptionCarry,
+  side: OptionSide,
+  strike: number,
+  spot: number,
+  rate: number,
+  dividendYield: number,
+): number | null {
+  if (carry.extrinsicPerYear == null || !positive(spot) || !positive(strike)) return null;
+  const financing = rate * strike / spot - dividendYield;
+  return side === "call" ? carry.extrinsicPerYear - financing : carry.extrinsicPerYear + financing;
+}
+
+/**
+ * Where the underlying has to finish for a contract bought at its midpoint to
+ * pay back at expiry: strike plus the midpoint for a call, strike less it for a
+ * put. Null without a two-sided quote.
+ */
+export function optionBreakeven(contract: Pick<OptionContract, "bid" | "ask" | "strike">, side: OptionSide): number | null {
+  const mid = optionMid(contract);
+  if (mid == null || !positive(contract.strike)) return null;
+  return side === "call" ? contract.strike + mid : contract.strike - mid;
+}
+
 /** Bid/ask width as a percent of the midpoint; null without a two-sided quote. */
 export function optionSpreadPercent(contract: Pick<OptionContract, "bid" | "ask">): number | null {
   const spread = optionSpread(contract);

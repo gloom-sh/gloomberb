@@ -7,6 +7,7 @@ import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createDefaultConfig } from "../../../types/config";
 import { attachRiskFactorsPersistence, resetRiskFactorsPersistence } from "./data";
 import { riskFactorsHeadless } from "./headless";
+import { riskFactorsModule } from ".";
 import { list, report } from "./test-fixtures";
 
 blockExternalNetwork();
@@ -37,6 +38,7 @@ function run(year = "latest", refresh = false) {
       options: { year, refresh },
       instance: { settings: {} },
       capability: { id: "risk-factors" },
+      pane: riskFactorsModule.panes![0],
     } as never,
     { dataProvider: createTestDataProvider(), config: createDefaultConfig("/tmp/gloomberb-risk-headless-test"), store: { loadTicker: async () => null } } as never,
     "ACME",
@@ -112,4 +114,25 @@ test("empty discovery does not fabricate the current annual report and invalid y
   requests = [];
   await expect(run("2025-26")).rejects.toThrow("four-digit filing year or latest");
   expect(requests).toEqual([]);
+});
+
+test("a RISK read the server refuses behind a wall reports what is locked and the free route, with no source, and `locked` in JSON", async () => {
+  for (const [status, message, gate, who] of [
+    [401, "Unauthorized", "sign-in", "Signed out"],
+    [403, "Email verification required", "sign-in", "Until the email is verified"],
+    [402, "Pro plan required", "pro", "On a free account"],
+  ] as const) {
+    transport(() => new Response(message, { status }));
+    const locked = await run("latest", true);
+    expect(locked.data).toMatchObject({ locked: gate, empty: true, complete: false, unavailableSymbols: ["ACME"] });
+    expect(locked.data.freshness).toBeUndefined();
+    expect(String(locked.data.reason)).toContain(`${who} it shows none of it. Free, with no sign-in: gloomberb filings ACME --form 10-K lists ACME's annual reports`);
+    expect(locked.text).toContain("RISK is part of Gloom Cloud Pro");
+    expect(locked.text).toEndWith("The pane is locked, so no values were read.");
+    expect(locked.text).not.toMatch(/Source:|Unauthorized|Pro plan required/);
+    expect(locked.tables.footer.some((line) => /^Source:|^Retrieval time/.test(line))).toBe(false);
+  }
+  // Any other failure is still the error.
+  transport(() => new Response("Server error", { status: 500 }));
+  await expect(run("2025", true)).rejects.toThrow("Server error");
 });

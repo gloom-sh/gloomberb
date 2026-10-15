@@ -12,6 +12,7 @@ import { normalizeTickerInput } from "../../tickers/search";
 import { slugifyName } from "../../utils/slugify";
 import { ListingArgError, listingReadNotes, resolveCliListing, usListingsOnlyMessage } from "../listing-arg";
 import { listingAbroadVenue } from "../../utils/sec";
+import { splitSymbolArgs, stripStrayEdges } from "../symbol-args";
 import type { MarketContext } from "../types";
 import {
   buildPaneFunctionLookup,
@@ -135,10 +136,11 @@ export async function applyListingArgument(
   }
   const exchange = typeof args.options.exchange === "string" ? args.options.exchange : undefined;
   const { exchange: _exchange, ...options } = args.options;
-  const typed = takesOneTicker ? [args.arg] : args.arg.split(/[,\s]+/).filter(Boolean);
+  const typed = takesOneTicker ? [args.arg] : splitSymbolArgs([args.arg]);
   if (typed.length === 0) return args;
   let listings = await Promise.all(typed.map((raw) => resolveCliListing(raw, exchange, context, { ownExchangeWins: typed.length > 1 })));
-  const notes: string[] = [];
+  // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.
+  const notes: string[] = takesOneTicker ? [] : stripStrayEdges(args.arg).notes;
   const usOnly = headless?.usListingsOnly;
   const abroad = usOnly ? listings.filter((listing) => listingAbroadVenue(listing.key) != null) : [];
   if (usOnly && abroad.length > 0) {

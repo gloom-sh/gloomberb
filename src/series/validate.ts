@@ -67,11 +67,16 @@ export function splitSeriesId(id: string): { namespace: string; name: string } |
  * The words a public label must not contain: the services the registering
  * plugin reaches, taken from its declared hosts (`api.example.com` forbids
  * "example"). A catalog says what a series is, not who serves it.
+ *
+ * A government host (`api.eia.gov`, `www.ons.gov.uk`) is the agency that
+ * publishes the statistic, not a vendor between it and the user, and a
+ * series may name its official publisher, so it forbids nothing.
  */
 export function hostLabelWords(hosts: readonly string[] = []): string[] {
   const words = new Set<string>();
   for (const host of hosts) {
     const labels = host.trim().toLowerCase().split(".").filter(Boolean);
+    if (labels.at(-1) === "gov" || (labels.at(-2) === "gov" && labels.at(-1)?.length === 2)) continue;
     const name = labels.length >= 2 ? labels[labels.length - 2] : labels[0];
     if (name && name.length >= 3) words.add(name);
   }

@@ -14,7 +14,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ResolvedSeries } from "../../../time-series/types";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
-import { loadSeasonalityHistory } from "./client";
+import { cachedSeasonalityHistory, loadSeasonalityHistory } from "./client";
 import { type DailyReturnStat, MONTH_LABELS, OVERLAY_YEAR, projectSeasonality, projectWeekdays, type SeasonalityModel,
   TURN_OF_MONTH_LABELS, type WeekdayModel } from "./model";
 
@@ -156,7 +156,9 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
     if (!snapshot.history.length && snapshot.error) throw new Error(snapshot.error);
     return snapshot;
   }, [instrumentKey, cadence]);
-  const history = useAsyncResource(instrument ? loader : null);
+  const history = useAsyncResource(instrument ? loader : null, {
+    initialData: () => instrument ? cachedSeasonalityHistory({ instrument, cadence }) : null,
+  });
   useEffect(() => () => controller.current?.abort(), [loader]);
   useAutoRefresh(history.updatedAt, history.load);
   usePaneRefreshKey(() => { void history.reload(); }, { focused });

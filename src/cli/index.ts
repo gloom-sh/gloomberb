@@ -37,7 +37,8 @@ import { createSystemCliCommands } from "./commands/system";
 import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
-import { runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import { catalogCommandHits, functionCodeCommand, runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
+import { catalogPointer, type CatalogCommandHit } from "./unknown-command";
 import { catalogFredSeriesIds } from "./series-search";
 
 const { width: SHOT_WIDTH, height: SHOT_HEIGHT } = SHOT_SIZE_LIMITS;
@@ -60,11 +61,11 @@ function createCoreCliCommands(
         usage: ["help [command]", "<command> --help"],
         examples: ["help", "help quote", "quote --help"],
       },
-      execute: (args, ctx) => {
+      execute: async (args, ctx) => {
         const topic = args[0];
         if (topic) {
           const command = lookupCommand(topic);
-          if (!command) failUnknownCommand(topic, allCommands());
+          if (!command) failUnknownCommand(topic, allCommands(), await unknownCommandPointers(ctx, topic, [], allCommands()));
           printCommandHelp(command, ctx);
           return;
         }
@@ -250,6 +251,12 @@ function createCoreCliCommands(
       help: {
         group: CLI_COMMAND_GROUPS.plugins,
         usage: ["update [name]"],
+        sections: [{
+          title: "Updating Gloomberb itself",
+          lines: [
+            "The app updates itself from stable releases. config set updates.channel nightly adds the nightly build of main; see gloomberb help config.",
+          ],
+        }],
         examples: ["update", "update gloom-tv"],
       },
       execute: async (args) => {
@@ -306,16 +313,47 @@ function printCommandHelp(command: CliCommandDef, ctx: CliCommandContext): void 
   ctx.printResult({ data: { ...describeCliCommand(command), sections: command.help?.sections ?? [] } });
 }
 
-function failUnknownCommand(token: string, commands: CliCommandDef[]): never {
-  const suggestion = suggestCliCommand(
+function nearCommand(token: string, commands: CliCommandDef[]): string | null {
+  return suggestCliCommand(
     normalizeCliCommandToken(token),
     commands.flatMap((command) => [command.name, ...(command.aliases ?? [])]),
   );
+}
+
+interface UnknownCommandPointers {
+  /** The word is a function's code: the command that runs it. */
+  fn: { code: string; command: string } | null;
+  /** Functions the catalog finds for the word, read only when it is no code and no command is close to it. */
+  hits: CatalogCommandHit[];
+  /** What the reader typed after the word, which a pointer runs the function with. */
+  args: readonly string[];
+}
+
+/** What an unknown command word may point at: a function's code first, then what the catalog finds for it. */
+async function unknownCommandPointers(
+  ctx: CliCommandContext,
+  token: string,
+  args: readonly string[],
+  commands: CliCommandDef[],
+): Promise<UnknownCommandPointers> {
+  const fn = await functionCodeCommand(ctx, token, args);
+  const hits = fn || nearCommand(token, commands) ? [] : await catalogCommandHits(ctx, token);
+  return { fn, hits, args };
+}
+
+/**
+ * A function's code is pointed at `fn`; a typo of a command at the command;
+ * a word the catalog knows (`comps`, `peers`) at the functions it finds.
+ */
+function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: UnknownCommandPointers): never {
+  if (pointers.fn) fail(`${pointers.fn.code} is a function: ${pointers.fn.command}`);
+  const suggestion = nearCommand(token, commands);
+  const catalog = suggestion ? null : catalogPointer(token, pointers.hits, pointers.args);
   fail(
     `Unknown command "${token}".`,
     suggestion
       ? `Did you mean ${suggestion}? Run gloomberb help to see every command.`
-      : "Run gloomberb help to see every command.",
+      : catalog ? `${catalog}\nRun gloomberb help to see every command.` : "Run gloomberb help to see every command.",
   );
 }
 
@@ -397,14 +435,22 @@ export async function dispatchCli(args: string[], options: DispatchCliOptions = 
 /** Explains why dispatch found no command in `args`, suggesting the closest one. */
 export async function failUnknownCliCommand(args: string[], options: DispatchCliOptions = {}): Promise<never> {
   let token = args[0] ?? "";
+  let parsed: ReturnType<typeof parseCliGlobalArgs> | null = null;
   try {
     // Global flags may come first, so name the token dispatch actually looked up.
-    token = parseCliGlobalArgs(args).args[0] ?? token;
+    parsed = parseCliGlobalArgs(args);
+    token = parsed.args[0] ?? token;
   } catch {
     // dispatchCli already reported flags that do not parse.
   }
   const registry = await createRegistry(options);
-  return failUnknownCommand(token, listedCommands(registry).map((entry) => entry.command));
+  const commands = listedCommands(registry).map((entry) => entry.command);
+  // A function's code typed as a command is pointed at `fn`, and a word the catalog knows at its
+  // functions, with the arguments the reader gave.
+  const pointers = token && parsed
+    ? await unknownCommandPointers(createCliCommandContext("core", registry, parsed.options, parsed.args.slice(1)), token, parsed.args.slice(1), commands)
+    : { fn: null, hits: [], args: [] };
+  return failUnknownCommand(token, commands, pointers);
 }
 
 export async function runCli(args: string[], options: DispatchCliOptions = {}): Promise<boolean> {

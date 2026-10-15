@@ -19,7 +19,7 @@ import {
   teamChannelId,
   teamPrefix,
   userHandle,
-} from "./model";
+} from "../../../../team/model";
 import {
   draftProblem,
   setDraftName,

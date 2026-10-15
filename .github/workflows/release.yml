@@ -4,130 +4,25 @@ on:
   push:
     tags:
       - "v*"
+      # Nightly prereleases tag themselves through the GitHub API, which starts
+      # no workflow, but a nightly tag pushed by hand must not publish to npm
+      # or Homebrew either.
+      - "!v*-nightly.*"
 
 permissions:
   contents: write
   id-token: write
 
 jobs:
+  # The terminal binaries, the signed macOS desktop app and the Windows
+  # desktop installer, shared with the Nightly workflow.
   build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            asset: gloomberb-darwin-arm64
-          # Intel Macs only get the terminal build. GitHub retires this runner
-          # image in 2027; the desktop app stays Apple Silicon only.
-          - os: macos-15-intel
-            asset: gloomberb-darwin-x64
-          - os: ubuntu-latest
-            asset: gloomberb-linux-x64
-          - os: ubuntu-24.04-arm
-            asset: gloomberb-linux-arm64
-          - os: windows-latest
-            asset: gloomberb-windows-x64
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-bun
-
-      - name: Build
-        run: bun run scripts/build.ts
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: ${{ matrix.asset }}
-          path: dist/*
-
-  desktop-macos:
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-bun
-
-      - name: Configure Apple signing
-        uses: ./.github/actions/apple-signing
-        env:
-          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
-          ELECTROBUN_APPLEAPIKEY: ${{ secrets.ELECTROBUN_APPLEAPIKEY }}
-          ELECTROBUN_APPLEAPIKEY_BASE64: ${{ secrets.ELECTROBUN_APPLEAPIKEY_BASE64 }}
-          ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
-          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
-
-      - name: Build signed desktop DMG
-        env:
-          ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
-          ELECTROBUN_APPLEAPIKEY: ${{ secrets.ELECTROBUN_APPLEAPIKEY }}
-          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
-        run: bun run desktop:release
-
-      - name: Build Homebrew app archive
-        run: |
-          set -euo pipefail
-          brew install zstd
-          tmp_dir="$(mktemp -d)"
-          zstd -d -o "$tmp_dir/Gloomberb.app.tar" artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
-          tar -xf "$tmp_dir/Gloomberb.app.tar" -C "$tmp_dir"
-          test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/tui-entry.js"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
-          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
-          "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" help
-          ditto -c -k --keepParent "$tmp_dir/Gloomberb.app" artifacts/stable-macos-arm64-Gloomberb.app.zip
-
-      - name: Verify desktop artifacts
-        run: |
-          set -euo pipefail
-          test -f artifacts/stable-macos-arm64-Gloomberb.dmg
-          test -f artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
-          test -f artifacts/stable-macos-arm64-Gloomberb.app.zip
-          test -f artifacts/stable-macos-arm64-update.json
-          codesign --verify --verbose=4 artifacts/stable-macos-arm64-Gloomberb.dmg
-          xcrun stapler validate -v artifacts/stable-macos-arm64-Gloomberb.dmg
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: gloomberb-desktop-macos-arm64
-          path: artifacts/*
-
-  desktop-windows:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: ./.github/actions/setup-bun
-
-      - name: Build Windows desktop package
-        shell: pwsh
-        run: ./scripts/build-windows-desktop-package.ps1
-
-      - name: Install Inno Setup
-        run: choco install innosetup -y --no-progress
-
-      - name: Build Windows installer
-        shell: pwsh
-        run: ./scripts/build-windows-installer.ps1
-
-      - name: Verify Windows desktop artifacts
-        shell: pwsh
-        run: ./scripts/verify-windows-desktop.ps1
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: gloomberb-desktop-windows-x64
-          path: artifacts/*
+    uses: ./.github/workflows/build-release-assets.yml
+    secrets: inherit
 
   release:
     needs:
       - build
-      - desktop-macos
-      - desktop-windows
     if: ${{ always() && !cancelled() }}
     runs-on: ubuntu-latest
     steps:

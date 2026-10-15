@@ -6,9 +6,11 @@ import {
   formatExpiryList,
   formatOptionDeltaCell,
   formatOptionIvCell,
-  missingExpiryMessage,
   optionRows,
+  optionsBasisFootnote,
+  valueChainAtModelSpot,
 } from "./options-chain";
+import { missingExpiryMessage } from "../../utils/option-expiry";
 
 const at = (date: string) => Date.parse(`${date}T00:00:00Z`) / 1000;
 
@@ -77,4 +79,33 @@ test("rows carry the pane's solved IV and signed delta, and nulls where none can
   // An expiry already past has no time left to value.
   const expired = { ...chain, calls: chain.calls.map((c) => ({ ...c, expiration: at("2020-01-17") })), puts: [] };
   for (const row of optionRows(chainWithModelFigures(expired, { spot: 100, now }))) expect([row.iv, row.delta]).toEqual([null, null]);
+});
+
+test("a chain from the close keeps the close's delta when the stock moves before the open, and says which spot it used", () => {
+  // Quoted at Monday's close against a 100 close; Tuesday's pre-market print is 103.
+  const closeAt = Date.parse("2026-10-12T19:59:59Z");
+  const expiration = at("2026-11-20");
+  const days = (Date.parse("2026-11-20T21:00:00Z") - closeAt) / 86_400_000;
+  const quoted = (side: "C" | "P", strike: number): OptionContract => {
+    const mid = valueOption({ side: side === "C" ? "call" : "put", spot: 100, strike, daysToExpiry: days, rate: 0.04, volatility: 0.22, dividendYield: 0 }).price;
+    return { contractSymbol: `XYZ${side}${strike}`, strike, currency: "USD", lastPrice: mid, change: 0, percentChange: 0,
+      bid: mid - 0.01, ask: mid + 0.01, impliedVolatility: 0, inTheMoney: false, expiration, lastTradeDate: closeAt / 1000 };
+  };
+  const strikes = [90, 95, 100, 105, 110];
+  const chain: OptionsChain = { underlyingSymbol: "XYZ", expirationDates: [expiration], asOf: new Date(closeAt).toISOString(),
+    calls: strikes.map((strike) => quoted("C", strike)), puts: strikes.map((strike) => quoted("P", strike)) };
+  const quote = { symbol: "XYZ", price: 103, currency: "USD", change: 3, changePercent: 3, lastUpdated: Date.parse("2026-10-13T12:20:00Z"),
+    marketState: "PRE" as const, extendedSessionPrint: true, regularClose: 100, regularCloseSessionDate: "2026-10-12" };
+  const { chain: valued, spot } = valueChainAtModelSpot(chain, { spot: 103, quote, dividendYield: 0 }, Date.parse("2026-10-13T12:41:00Z"), "NYSE");
+  expect([spot?.price, spot?.basis, spot?.valuationTime]).toEqual([100, "close", closeAt]);
+  const put = optionRows(valued).find((row) => row.contract === "XYZP95")!;
+  const reproduced = valueOption({ side: "put", spot: 100, strike: 95, daysToExpiry: days, rate: 0.04, volatility: put.iv!, dividendYield: 0 }).delta;
+  expect(put.delta!).toBeCloseTo(reproduced, 6);
+  // The pre-market print would have moved it.
+  expect(Math.abs(put.delta! - valueOption({ side: "put", spot: 103, strike: 95, daysToExpiry: days, rate: 0.04, volatility: put.iv!, dividendYield: 0 }).delta))
+    .toBeGreaterThan(0.05);
+  expect(optionsBasisFootnote({ spot, dividendYield: 0.0234, openInterest: { date: "2026-10-09", listedDate: "2026-10-09", compared: 4, matched: 4 } }))
+    .toBe("Greeks at spot 100.00 (close Mon 12 Oct 20:00 UTC), dividend yield 2.34%, rate 4% · OI as of Fri 9 Oct");
+  expect(optionsBasisFootnote({ spot: null, dividendYield: null, openInterest: { date: null, listedDate: "2026-10-09", compared: 35, matched: 17 } }))
+    .toBe("OI date not published: the counts differ from OPX's 2026-10-09 counts on 18 of 35 contracts");
 });

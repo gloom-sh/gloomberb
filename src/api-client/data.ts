@@ -38,7 +38,7 @@ import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./ben
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
 import type { FuturesContractTermsPayload, FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
-import type { DoeBoardPayload } from "./doe";
+import type { DoeBoardPayload, DoePricesPayload } from "./doe";
 import type { CarbonBoard, CarbonHistory, EuropePowerBoard, EuropePowerHistory, GasStorageBoard, GasStorageHistory, GasStorageSeasonal } from "./europe-energy";
 import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQuery } from "./gpu";
 import type { CpiBoardPayload } from "./cpi";
@@ -584,6 +584,10 @@ export class CloudDataApi {
 
   async getCloudDoeBoard(): Promise<DoeBoardPayload> {
     return this.request<DoeBoardPayload>("/cloud/doe/board");
+  }
+
+  async getCloudDoePrices(): Promise<DoePricesPayload> {
+    return this.request<DoePricesPayload>("/cloud/doe/prices");
   }
 
   async getCloudAttention(window: AttentionWindow = "now", symbol?: string): Promise<AttentionPayload> {

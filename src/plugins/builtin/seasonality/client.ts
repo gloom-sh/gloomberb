@@ -22,6 +22,29 @@ export const SEASONALITY_HISTORY_RESOLUTION: Record<SeasonalityCadence, ManualCh
 /** Daily history is served to five years; a longer request can come back as weekly bars. */
 const BUFFER_RANGE = { monthly: "ALL", daily: "5Y" } as const;
 
+export function cachedSeasonalityHistory(
+  request: { instrument: InstrumentRef; cadence?: SeasonalityCadence },
+): SeasonalityHistory | null {
+  const coordinator = getSharedMarketDataCoordinator();
+  if (!coordinator) return null;
+  const cadence = request.cadence ?? "monthly";
+  const entry = coordinator.getChartEntry({
+    instrument: request.instrument,
+    bufferRange: BUFFER_RANGE[cadence],
+    granularity: "resolution",
+    resolution: SEASONALITY_HISTORY_RESOLUTION[cadence],
+  });
+  const history = resolveEntryValue(entry);
+  if (!history?.length) return null;
+  const now = Date.now();
+  return {
+    history,
+    stale: !!entry.error || (entry.staleAt != null && entry.staleAt <= now),
+    error: entry.error?.message ?? null,
+    fetchedAt: entry.fetchedAt ?? now,
+  };
+}
+
 /**
  * Every month on record: the lookback is cut in the model, so changing it never
  * refetches. Monthly bars, because daily history is only served to 5Y where

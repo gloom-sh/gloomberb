@@ -12,7 +12,8 @@ import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "..
 import { blendHex } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, type ScrollBoxRenderable } from "../../../ui";
+import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { FILL_REST } from "../../../components/ui/fill";
 import { resolveOptionsTarget } from "../../../utils/options";
 import { nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
 import { buildOptionCalcParams, OPTIONS_CALCULATOR_TEMPLATE_ID } from "../options-calculator/model";
@@ -20,6 +21,8 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { CLOUD_QUOTE_DELAY_MINUTES } from "../../../api-client/plan-access";
 import { useLiveSessionRefresh } from "../shared/volatility/live-session";
+import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
+import { hasFreshReadyEntry } from "../../../market-data/coordinator/entries";
 import { createSurfaceDependencies, loadVolatilitySurface, withReusedYieldCurve, type SurfaceLoadRequest } from "./client";
 import { stableSurfaceSheet, SURFACE_LIVE_RELOAD_MS, surfaceFreshnessLabel, type SurfaceSheetAxes } from "./live";
 import { loadStoredSurface, loadSurfaceDates } from "../iv-history/client";
@@ -58,6 +61,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // Only while the table is on screen: loading, a failure or an empty chain
   // leave the strip its keys.
   const [tableOnScreen, setTableOnScreen] = useState(false);
+  const { nativePaneChrome } = useUiCapabilities();
   const tabKeys = activeTab !== "table" || !tableOnScreen;
   const { strip: tabStrip, rows: tabRows } = usePaneTabs({ tabs: TABS, activeValue: activeTab, onSelect: setActiveTab,
     focused: focused && activeTab !== "surface", keyboardNavigation: tabKeys, dense: true });
@@ -118,8 +122,20 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // never collapses to the first few expiries while the rest reload.
   const [live, setLive] = useState<{ key: string; snapshot: SurfaceSnapshot; at: number } | null>(null);
   const liveController = useRef<AbortController | null>(null);
+  const settledRef = useRef<SurfaceSnapshot | null | undefined>(null);
   const liveDependencies = useMemo(() => withReusedYieldCurve(createSurfaceDependencies()), []);
   const reloadLive = useCallback(async () => {
+    const coordinator = getSharedMarketDataCoordinator();
+    const instrument = target?.instrument;
+    const chainInstrument = { symbol: target?.effectiveTicker ?? symbol!, exchange: target?.effectiveExchange ?? "",
+      brokerId: instrument?.brokerId, brokerInstanceId: instrument?.brokerInstanceId, instrument };
+    const shown = settledRef.current;
+    const expiries = shown?.expiries.map((entry) => entry.expiration) ?? [];
+    const freshChain = coordinator != null && expiries.length > 0 && expiries.every((expiration) => {
+      const entry = coordinator.getOptionsEntry({ instrument: chainInstrument, expirationDate: expiration });
+      return hasFreshReadyEntry(entry, SURFACE_LIVE_RELOAD_MS);
+    });
+    if (freshChain) return;
     liveController.current?.abort();
     const abort = new AbortController();
     liveController.current = abort;
@@ -127,10 +143,11 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
       // Each expiry is fitted as its chain arrives, never all together at the end.
       onSnapshot: () => {} }, liveDependencies);
     if (!abort.signal.aborted) setLive({ key: requestKey, snapshot, at: Date.now() });
-  }, [surfaceRequest, liveDependencies]);
+  }, [surfaceRequest, liveDependencies, symbol, target]);
   useEffect(() => () => liveController.current?.abort(), [reloadLive]);
   const liveReload = live?.key === requestKey && (resource.updatedAt == null || live.at > resource.updatedAt) ? live.snapshot : null;
   const settledSnapshot = liveReload ?? resource.data;
+  settledRef.current = settledSnapshot;
   // Stored close surfaces and IV rank come from the Cloud IV history of the underlying.
   const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
   const datesLoader = useCallback(async () => (await loadSurfaceDates(underlying)).dates, [underlying]);
@@ -427,7 +444,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
         focused={focused} onKey={handleKey} metadata={exportMetadata} /> : table;
   const tableShown = activeTab === "table" && !!symbol && !!snapshot && !(!shownDate && liveEmpty);
   useEffect(() => setTableOnScreen(tableShown), [tableShown]);
-  return <Box flexDirection="column" width={width} height={height} overflow="hidden">
+  return <Box flexDirection="column" width={width} overflow="hidden" {...(nativePaneChrome ? FILL_REST : { height })}>
     {tabStrip}
     {!symbol ? <EmptyState title="Choose an underlying ticker." /> : <PaneStatusBody loading={active.loading && !snapshot}
       error={!snapshot ? active.error : null} empty={!snapshot && !active.loading} subject="volatility surface">
@@ -444,7 +461,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
           ? `Stored close · spot ${formatPrice(snapshot.spot)} · captured ${formatCaptureTime(snapshot.stored.capturedAt)} New York`
           : [`Spot ${formatPrice(snapshot?.spot)}${quote?.currency ? ` ${quote.currency}` : ""}`, selectedExpiry?.asOf?.slice(0, 10)].filter(Boolean).join(" · ")} />
       <StatGrid items={ivStats} width={width} />
-      {content}
+      {/* The terminal sizes the view in the rows under the bar and figures; the desktop fills what is left. */}
+      {nativePaneChrome ? <Box flexDirection="column" overflow="hidden" {...FILL_REST}>{content}</Box> : content}
     </PaneStatusBody>}
   </Box>;
 }

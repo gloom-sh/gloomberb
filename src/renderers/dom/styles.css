@@ -85,6 +85,12 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-titlebar-overlay="true"] * {
   cursor: inherit;
 }
+/* A row of text grows with the text size and the title bar does not: at the
+   largest sizes the top bar's buttons and prompt would stand out of it. */
+[data-gloom-role="app-header"][data-titlebar-overlay="true"] button,
+[data-gloom-role="app-header"][data-titlebar-overlay="true"] [role="button"] {
+  max-height: __TITLEBAR_OVERLAY_HEIGHT_PX__px;
+}
 [data-titlebar-overlay="true"] button,
 [data-titlebar-overlay="true"] input,
 [data-titlebar-overlay="true"] textarea,
@@ -267,10 +273,8 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
   max-width: calc(100vw - 48px);
 }
 [data-gloom-role="status-bar"] {
-  flex: 0 0 var(--cell-h);
+  flex: none;
   height: var(--cell-h);
-  min-height: var(--cell-h);
-  max-height: var(--cell-h);
   align-items: center;
   border-top: 1px solid color-mix(in srgb, var(--gloom-border) 72%, transparent);
   font-size: 11.5px;
@@ -284,7 +288,11 @@ button, [data-gloom-interactive="true"] { cursor: pointer; }
 [data-gloom-role="pane-content"] {
   overflow: hidden;
 }
-[data-gloom-role="pane-content"] > * {
+/* A pane shown as a view inside another pane (Fixed Income's sections) gets
+   its space the way a pane gets the pane's: the host's bars are taller than
+   the rows the view was given, so its root never runs past the host's box. */
+[data-gloom-role="pane-content"] > *,
+[data-gloom-role="nested-pane-content"] > * {
   min-width: 0;
   min-height: 0;
   max-height: 100%;
@@ -1123,6 +1131,22 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
   box-shadow: inset -1px 0 0 var(--sg-hairline);
 }
 [data-gloom-role="stat-grid-cell"][data-wide="true"] { grid-column: 1 / -1; box-shadow: none; }
+/* Column grid text whose track can be narrower than it, and the grid itself: clipped
+   without a scroll container where the engine has `overflow: clip`. A text box sets its
+   own overflow inline, hence !important. The margin keeps the antialiased edge of a glyph
+   that ends at the box from being cut. */
+[data-gloom-clip] {
+  overflow: clip !important;
+  overflow-clip-margin: 2px;
+}
+@supports not (overflow: clip) {
+  [data-gloom-clip] {
+    overflow: hidden !important;
+  }
+}
+[data-gloom-clip="text"] {
+  text-overflow: ellipsis !important;
+}
 [data-gloom-role="stat-grid-label"] {
   flex: 0 0 var(--stat-label-w, 10ch);
   width: var(--stat-label-w, 10ch);
@@ -1266,14 +1290,16 @@ html[data-gloom-screenshot="true"] [data-gloom-role="chart-watermark"] {
 }
 
 /* Reading columns (src/components/reader) set their type from their own
-   width, not from a count of cells: 1.45em, or 1.35em under 480px. */
+   width, not from a count of cells: body text at 1.1667em of the app's size
+   (14px), or 1.1em (13.2px) under 480px. The rest of the reader's scale is in
+   em of it (reader-text.tsx). */
 [data-gloom-ui="article-reader"],
 [data-gloom-ui="detail-reader"] {
   container-type: inline-size;
 }
 @container (max-width: 480px) {
   [data-gloom-ui="reader-column"] {
-    --reader-em: 1.35;
+    --reader-em: 1.1;
   }
 }
 /* A detail's facts: label and value pairs, two pairs to a row when the

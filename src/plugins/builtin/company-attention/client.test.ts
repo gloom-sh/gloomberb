@@ -137,3 +137,27 @@ test("individual Play app history defaults to its unranked global source", async
   await attentionHeadless("apps").load(createTestHeadlessArgs({ options: { appId: "com.instagram.barcelona", store: "google-play" } }), context);
   expect(calls).toEqual([["google-play", "com.instagram.barcelona", { country: "GLOBAL", chart: "unranked", days: 90, offset: 0, limit: 100 }, context.signal]]);
 });
+
+test("a free HIRE and APPS preview say what free shows, what Pro adds and where history starts, and keep caveats out of the errors", async () => {
+  const hiring = fixture();
+  hiring.preview = true;
+  hiring.locked = { history: 5, evidence: 57, peers: 17, signals: 0, mix: 21 };
+  hiring.coverage.firstObservedAt = "2026-09-19T00:00:00.000Z";
+  hiring.latest = { ...hiring.latest!, completeness: "partial" };
+  const hire = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring } as never }));
+  expect(hire.errors).toEqual([`Free shows ${hiring.evidence.length} of ${hiring.evidence.length + 57} open roles. Gloom Pro adds the other 57 roles, 5 weeks of history and 17 more peers, with history from 19 Sep 2026.`]);
+  expect(hire.notes).toEqual(["The latest capture has incomplete or unknown coverage."]);
+  expect(hire.sections.find((section) => section.title === "chart")).toMatchObject({ empty: "Weekly history is part of Gloom Pro." });
+
+  // A preview that holds nothing back (a company with no captures) has nothing to unlock.
+  hiring.locked = { history: 0, evidence: 0, peers: 0, signals: 0, mix: 0 };
+  expect((await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["ADYEN:AMS"] }), createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring } as never }))).errors).toBeUndefined();
+
+  const apps = structuredClone(realApps) as AppAttentionPayload;
+  apps.access = "preview";
+  apps.locked = { ...apps.locked, apps: 9, history: 9 };
+  apps.summary.firstObservedAt = "2026-10-04";
+  const report = await attentionHeadless("apps").load(createTestHeadlessArgs({ symbols: [apps.symbol!] }), createTestHeadlessContext({ apiClient: { getCloudAppAttention: async () => apps } as never }));
+  expect(report.errors).toEqual([`Free shows ${apps.apps.length} of ${apps.apps.length + 9} app ranks and the latest day of history. Gloom Pro adds the other 9 ranks and 9 earlier days of history, with history from 4 Oct 2026.`]);
+  expect(report.notes).toEqual(apps.coverage.limitations);
+});

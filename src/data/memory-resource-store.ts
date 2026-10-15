@@ -45,7 +45,7 @@ export class MemoryResourceStore {
       this.delete(key);
       return null;
     }
-    if (options.touch !== false) {
+    if (options.touch !== false && (options.touchIntervalMs == null || Date.now() - record.lastAccessedAt >= options.touchIntervalMs)) {
       record.lastAccessedAt = Date.now();
     }
     record.stale = isStale(record);

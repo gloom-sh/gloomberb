@@ -29,6 +29,9 @@ import { parseWindowModeCommandArg } from "../../layout-items";
 import type { CommandBarRoute } from "../../workflow/types";
 import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 import { reportTelemetryConfig } from "../../../../telemetry/live-config";
+import { NIGHTLY_CHANNEL_SUMMARY, withUpdateChannel } from "../../../../updater/channel";
+import { isPrereleaseVersion } from "../../../../utils/semver";
+import { VERSION } from "../../../../version";
 
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
 
@@ -373,6 +376,50 @@ export function runDirectCommandAction(options: {
       void onCheckForUpdates?.();
       closeAll({ revertThemePreview: false });
       return;
+    case "release-channel": {
+      // The runtime checks again as soon as the channel changes.
+      const setChannel = (channel: "stable" | "nightly") => {
+        const nextConfig = withUpdateChannel(getState().config, channel);
+        dispatch({ type: "SET_CONFIG", config: nextConfig });
+        persistConfig(nextConfig);
+        notify(`${t(command.label)}: ${channel}`, { type: "success" });
+      };
+      // The saved setting flips; GLOOMBERB_UPDATE_CHANNEL still wins for the run it is set on.
+      // Back to stable asks too, to say a nightly build already running stays.
+      if (state.config.updates?.channel === "nightly") {
+        openInlineConfirm({
+          confirmId: "switch-to-stable",
+          title: "Switch to Stable?",
+          body: [
+            isPrereleaseVersion(VERSION)
+              ? "Updates come from stable releases only. This nightly build stays until a newer stable release is out."
+              : "Updates come from stable releases only.",
+          ],
+          confirmLabel: "Switch to Stable",
+          cancelLabel: "Stay on Nightly",
+          tone: "default",
+          onConfirm: async () => { setChannel("stable"); },
+        });
+        return;
+      }
+      openInlineConfirm({
+        confirmId: "switch-to-nightly",
+        title: "Switch to Nightly?",
+        body: [
+          `Nightly is ${NIGHTLY_CHANNEL_SUMMARY}. Stable releases still reach you when they are newer.`,
+          isPrereleaseVersion(VERSION)
+            ? "Switch back to Stable at any time."
+            : "Switch back to Stable at any time: the nightly build stays until a newer stable release is out.",
+        ],
+        confirmLabel: "Switch to Nightly",
+        cancelLabel: "Stay on Stable",
+        tone: "default",
+        // An opt-in to builds that can break: a stray Enter stays on stable.
+        defaultAction: "cancel",
+        onConfirm: async () => { setChannel("nightly"); },
+      });
+      return;
+    }
     case "theme":
       setRootThemeBaseId(getState().config.theme);
       setRootQuery(arg ? `TH ${arg}` : "TH ");

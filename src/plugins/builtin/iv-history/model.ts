@@ -241,6 +241,8 @@ export interface RichCheapRow {
   iv30: number | null;
   date: string | null;
   method: IvMethod | null;
+  /** The underlying price the reading was taken at: the session's close, or the spot at the quote capture. */
+  spot: number | null;
   rank: number | null;
   percentile: number | null;
   /** Trade close the rank is measured on: the newest trade-close session, which a newer quote reading can be ahead of. */
@@ -304,7 +306,7 @@ export function projectRichCheap(rows: readonly IvScreenRow[], hv: ReadonlyMap<s
     return {
       symbol: row.symbol, status: row.coverageStatus ?? row.status, queuedAt: row.coverage?.addedAt ?? null,
       backfilledThrough: row.coverage?.backfilledThrough ?? null, warning: row.warnings?.[0] ?? null,
-      iv30, date: latest?.date ?? null, method: latest?.method ?? null,
+      iv30, date: latest?.date ?? null, method: latest?.method ?? null, spot: latest?.spot ?? null,
       rank: row.iv30?.rank ?? null, percentile, rankDate: row.iv30?.date ?? null,
       termSlope: iv30 != null && latest?.iv90 != null ? iv30 - latest.iv90 : null,
       iv1y: latest?.iv365 ?? null,

@@ -6,6 +6,7 @@
  */
 import { useState } from "react";
 import { ActionRow, MarkdownText, RemoteImage, usePaneLinkMenuEntry } from "../../../components";
+import { READER_HEADING_STYLE } from "../../../components/reader/reader-text";
 import type { DocsBlock } from "../../../docs/content";
 import { tf } from "../../../i18n";
 import { isDarkTheme } from "../../../theme/themes";
@@ -24,6 +25,9 @@ const CALLOUT_LABELS: Record<string, string> = {
   warning: "Watch out",
   example: "Example",
 };
+
+/** The reader's section heading size; the space around it is the blocks' own. */
+const SECTION_HEADING_STYLE = { fontSize: READER_HEADING_STYLE.fontSize, lineHeight: READER_HEADING_STYLE.lineHeight } as const;
 
 const LINK_PATTERN = /\[([^\]]+)\]\(([^)\s]+)\)/g;
 
@@ -122,9 +126,16 @@ function Block({ block, width, onOpenLink }: { block: DocsBlock; width: number; 
     case "paragraph":
       return <MarkdownText text={block.text.replace(/\n/g, " ")} lineWidth={width} onOpenLink={onOpenLink} />;
     case "heading":
-      // A section reads bright; a step inside it, in the text colour.
+      // A section reads bright and, on the desktop and the web, a step larger, as in every reader; a step inside it, in the text colour.
       return (
-        <Text fg={block.level === 2 ? colors.textBright : colors.text} attributes={TextAttributes.BOLD} wrapText selectable width={nativePaneChrome ? "100%" : width}>
+        <Text
+          fg={block.level === 2 ? colors.textBright : colors.text}
+          attributes={TextAttributes.BOLD}
+          wrapText
+          selectable
+          width={nativePaneChrome ? "100%" : width}
+          style={nativePaneChrome && block.level === 2 ? SECTION_HEADING_STYLE : undefined}
+        >
           {block.text.replace(/[*`]/g, "")}
         </Text>
       );

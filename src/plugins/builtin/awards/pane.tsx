@@ -33,7 +33,12 @@ const isRowItem = (item: Item) => item.kind !== "section" && item.kind !== "note
 /** Shares only compare inside one scope and currency, so each pair is its own section. */
 function groupedAggregates<T extends AwardAggregate>(rows: readonly T[], toItem: (row: T) => Item): Item[] {
   const groups = new Map<string, T[]>();
-  for (const row of rows) groups.set(`${awardScope(row.source)} · ${row.currency}`, [...(groups.get(`${awardScope(row.source)} · ${row.currency}`) ?? []), row]);
+  for (const row of rows) {
+    const key = `${awardScope(row.source)} · ${row.currency}`;
+    const members = groups.get(key);
+    if (members) members.push(row);
+    else groups.set(key, [row]);
+  }
   return [...groups].flatMap(([label, members]) => [{ kind: "section" as const, id: `section:${label}`, label, count: members.length }, ...members.map(toItem)]);
 }
 const rowId = (row: AwardRow) => row.id;

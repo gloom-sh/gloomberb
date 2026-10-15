@@ -2,6 +2,7 @@ import { TickerBadgeList } from "../../../../components";
 import { MarkdownText } from "../../../../components/markdown-text";
 import { Button } from "../../../../components/ui/button";
 import { ExternalLinkText } from "../../../../components/ui/external-link";
+import { ClippedText } from "../../../../components/ui/display";
 import type { InlineTickerCatalogEntry } from "../../../../state/hooks/inline-tickers";
 import { colors } from "../../../../theme/colors";
 import { Box, Text } from "../../../../ui";
@@ -39,7 +40,7 @@ export function DetailSpecGrid({ items, width, marginTop = 1 }: { items: DetailS
             return (
               <Box key={item.label} flexDirection="row" width={columnWidth} height={1} overflow="hidden">
                 <Text fg={colors.textMuted}>{labelText}</Text>
-                <Text fg={item.color ?? colors.text}>{truncateWithEllipsis(text(item.value, ""), valueWidth)}</Text>
+                <ClippedText fg={item.color ?? colors.text} text={text(item.value, "")} width={valueWidth} cut={truncateWithEllipsis} />
               </Box>
             );
           })}
@@ -55,7 +56,7 @@ export function InlineSources({ domains, width }: { domains: readonly string[]; 
   return (
     <Box marginTop={1} flexDirection="row" width={width} height={1} overflow="hidden">
       <Text fg={colors.textMuted}>{label}</Text>
-      <Text fg={colors.textDim}>{truncateWithEllipsis(domains.join(", "), Math.max(0, width - label.length))}</Text>
+      <ClippedText fg={colors.textDim} text={domains.join(", ")} width={Math.max(0, width - label.length)} cut={truncateWithEllipsis} />
     </Box>
   );
 }
@@ -74,7 +75,7 @@ export function DetailListLine({
   return (
     <Box flexDirection="row" width={width} height={1} overflow="hidden">
       <Text fg={colors.textMuted}>{prefix}</Text>
-      <Text fg={colors.textDim}>{truncateWithEllipsis(values.join(", "), Math.max(0, width - prefix.length))}</Text>
+      <ClippedText fg={colors.textDim} text={values.join(", ")} width={Math.max(0, width - prefix.length)} cut={truncateWithEllipsis} />
     </Box>
   );
 }
@@ -112,9 +113,7 @@ export function RelatedCompaniesLine({
           fallbackColor={colors.textBright}
         />
       ) : null}
-      <Text fg={colors.textDim}>
-        {truncateWithEllipsis(`${names.length > 0 ? names.join(", ") : ""}${overflow}`, Math.max(0, width - prefix.length - badgeWidth))}
-      </Text>
+      <ClippedText fg={colors.textDim} text={`${names.length > 0 ? names.join(", ") : ""}${overflow}`} width={Math.max(0, width - prefix.length - badgeWidth)} cut={truncateWithEllipsis} />
     </Box>
   );
 }
@@ -135,7 +134,7 @@ export function SourceDetailLines({
       {entries.map((entry, index) => {
         const prefix = entry.domain ? `${entry.domain}${entry.tier ? ` T${entry.tier}` : ""}` : "";
         const body = entry.title ?? entry.note ?? "";
-        const bodyText = truncateWithEllipsis(prefix ? `: ${body}` : body, Math.max(0, width - prefix.length));
+        const bodyText = prefix ? `: ${body}` : body;
         return (
           <Box key={`${entry.domain ?? "source"}:${index}`} flexDirection="row" height={1} width={width} overflow="hidden">
             {prefix ? (
@@ -145,7 +144,7 @@ export function SourceDetailLines({
                 <Text fg={colors.textMuted}>{prefix}</Text>
               )
             ) : null}
-            <Text fg={colors.textMuted}>{bodyText}</Text>
+            <ClippedText fg={colors.textMuted} text={bodyText} width={Math.max(0, width - prefix.length)} cut={truncateWithEllipsis} />
           </Box>
         );
       })}
@@ -217,7 +216,7 @@ export function CompanyCell({
 }) {
   const symbol = tickerSymbol(company.ticker);
   if (!symbol) {
-    return <Text fg={selected ? colors.selectedText : colors.text}>{truncateWithEllipsis(company.name, width)}</Text>;
+    return <ClippedText fg={selected ? colors.selectedText : colors.text} text={company.name} width={width} cut={truncateWithEllipsis} />;
   }
   const badgeWidth = Math.min(11, width);
   return (
@@ -227,9 +226,7 @@ export function CompanyCell({
         width={badgeWidth}
         fallbackColor={selected ? colors.selectedText : colors.textBright}
       />
-      <Text fg={selected ? colors.selectedText : colors.text}>
-        {truncateWithEllipsis(company.name, Math.max(0, width - badgeWidth))}
-      </Text>
+      <ClippedText fg={selected ? colors.selectedText : colors.text} text={company.name} width={Math.max(0, width - badgeWidth)} cut={truncateWithEllipsis} />
     </Box>
   );
 }

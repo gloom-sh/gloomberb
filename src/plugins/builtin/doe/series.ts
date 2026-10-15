@@ -3,6 +3,7 @@ import type { SeriesDefinition, SeriesPoint } from "../../../series/types";
 import { cachedSeriesWarning } from "../shared/series-warning";
 import { loadDoeBoard } from "./client";
 import { DOE_SERIES_OPTIONS } from "./model";
+import { DOE_PRICE_SERIES } from "./prices";
 
 /** Stocks in million barrels, as the pane shows them; flows, rates and gas as published. */
 const UNITS: Record<DoeUnit, { unit: string; scale: number }> = {
@@ -40,7 +41,7 @@ function doeRowPoints(row: DoeSeriesRow): SeriesPoint[] {
   return [...dated(seasonal.year - 1, seasonal.previous), ...dated(seasonal.year, seasonal.current)];
 }
 
-export const DOE_SERIES: readonly SeriesDefinition[] = DOE_SERIES_OPTIONS.map((option): SeriesDefinition => {
+const DOE_SERIES: readonly SeriesDefinition[] = DOE_SERIES_OPTIONS.map((option): SeriesDefinition => {
   const unit = ROW_UNITS[option.value] ?? (option.tab === "gas" ? "bcf" : "kb");
   const gas = option.tab === "gas";
   return {
@@ -60,3 +61,5 @@ export const DOE_SERIES: readonly SeriesDefinition[] = DOE_SERIES_OPTIONS.map((o
     },
   };
 });
+
+export const DOE_CATALOG_SERIES = [...DOE_SERIES, ...DOE_PRICE_SERIES];

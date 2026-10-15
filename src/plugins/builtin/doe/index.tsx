@@ -1,8 +1,9 @@
 import type { DoeTab } from "../../../api-client/doe";
 import type { PaneTemplateCreateOptions, PaneTemplateInstanceConfig } from "../../../types/plugin";
 import type { PluginModule } from "../plugin-module";
-import { DOE_SERIES } from "./series";
+import { DOE_CATALOG_SERIES } from "./series";
 import { doeBoardCache } from "./client";
+import { doePriceCache } from "./prices";
 import { doeHeadless } from "./headless";
 import { DOE_SERIES_OPTIONS, doeSeriesOption } from "./model";
 import { DoePane } from "./pane";
@@ -21,7 +22,7 @@ const shortcut = (prefix: string, tab: DoeTab | null) => ({
 });
 
 export const doeModule: PluginModule = {
-  series: DOE_SERIES,
+  series: DOE_CATALOG_SERIES,
   panes: [{ id: "doe", name: "Oil and Gas Inventories", icon: "D", component: DoePane,
     defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 96, height: 34 },
     tableExport: true, headless: doeHeadless("all") }],
@@ -38,6 +39,12 @@ export const doeModule: PluginModule = {
     shortcut: shortcut("NGS", "gas"), headless: doeHeadless("gas"),
     createInstance: (_context, options) => doeInstance("gas", options),
   }],
-  setup(ctx) { doeBoardCache.attach(ctx.persistence); },
-  dispose() { doeBoardCache.reset(); },
+  setup(ctx) {
+    doeBoardCache.attach(ctx.persistence);
+    doePriceCache.attach(ctx.persistence);
+  },
+  dispose() {
+    doeBoardCache.reset();
+    doePriceCache.reset();
+  },
 };

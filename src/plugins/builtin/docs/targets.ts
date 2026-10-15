@@ -60,12 +60,14 @@ export function docsTopicForPane(
 /**
  * What `DOCS <argument>` asks for: a mnemonic or one of its aliases
  * (`DOCS OMON`, `DOCS ct`), with or without its own argument (`DOCS OMON
- * NVDA`), or words to search the docs for.
+ * NVDA`), or words to search the docs for. Without an index every argument
+ * stays a search, which the reader opens on a matching entry.
  */
-export function docsTopicForArgument(index: HelpFunctionIndex, argument: string): DocsTopic {
+export function docsTopicForArgument(index: HelpFunctionIndex | null, argument: string): DocsTopic {
   const query = argument.trim();
   if (!query) return { kind: "home" };
-  const fn = index.get(query.toUpperCase()) ?? index.get((query.split(/\s+/)[0] ?? "").toUpperCase());
+  // A command line with no registry (`gloomberb fn DOCS RV`) cannot resolve a mnemonic here: the reader does, from its own entries.
+  const fn = index?.get(query.toUpperCase()) ?? index?.get((query.split(/\s+/)[0] ?? "").toUpperCase());
   if (fn) return docsTopicForFunction(fn);
   return { kind: "home", query };
 }

@@ -1,8 +1,9 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
 
 /**
- * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio
- * and fund terms the functions show in their rows, headers and footers.
+ * Plain-words meanings of the rates, auction, energy, perpetual-futures, portfolio,
+ * fund, short interest, quote-board, futures (basis, contango, roll yield) and economic-calendar terms the functions
+ * show in their rows, headers and footers.
  * `catalog glossary` lists them, `catalog explain <term>` prints one, and
  * `fn <function> --explain` and `portfolio show --explain` follow a report with
  * the ones it shows. Only terms a pane or report actually prints belong here.
@@ -286,8 +287,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     definition: "EU Allowance: the right to emit one tonne of CO2 under the EU Emissions Trading System, priced in euros per tonne.",
   },
   {
-    term: "Front month", aliases: ["front-month", "front contract", "continuous contract", "front-month contract"], functions: ["FUT", "CTM"],
-    definition: "The nearest contract still trading. FUT quotes each root's front month by its continuous symbol (TTF=F), which rolls to the next contract as one expires.",
+    term: "Front month", aliases: ["front-month", "front contract", "continuous contract", "front-month contract", "most active", "most active contract"],
+    functions: ["FUT", "CTM"], shown: ["most active"],
+    definition: "The nearest contract still trading, which is the one about to expire. Rolls follow volume: a continuous symbol (CL=F), "
+      + "and FUT with it, moves to the next contract when that one becomes the most active (it holds more open interest, or trades more "
+      + "where none is reported), usually days before expiry, and until then FUT names the nearer contract and its expiry.",
   },
   // Perpetual futures (PERP).
   {
@@ -297,10 +301,11 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
       + "The funding rate keeps its price close to the asset it tracks.",
   },
   {
-    term: "Funding rate", aliases: ["funding", "funding payment", "funding fee", "funding 8h"], functions: ["PERP"],
-    shown: ["Funding %/int", "Funding 8h", "Paid %/int"],
+    term: "Funding rate", aliases: ["funding", "funding payment", "funding fee", "funding 8h", "funding apr", "apr"], functions: ["PERP"],
+    shown: ["Funding %/int", "Funding 8h", "Paid %/int", "APR %"],
     definition: "A regular payment between the two sides of a perpetual contract, set to pull its price toward the asset's. "
-      + "Positive means longs pay shorts, negative means shorts pay longs.",
+      + "Positive means longs pay shorts, negative means shorts pay longs, so a basis trade (long spot, short the perpetual) collects it when positive. "
+      + "APR % is the current 8h rate × 3 × 365: a simple annualisation of the rate now, not funding actually paid.",
   },
   {
     term: "Open interest", short: "OI", aliases: ["open interest usd"], functions: ["PERP"],
@@ -351,7 +356,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "TTM", aliases: ["trailing twelve months", "trailing 12 months", "trailing four quarters", "ltm", "last twelve months"],
     functions: ["FA"],
     definition: "Trailing twelve months: the four latest quarters added up, a year that ends with the latest quarter rather than the fiscal year. "
-      + "FA's quarterly leverage ratios read their flows over it, and show < 4 quarters when fewer are on file.",
+      + "FA's quarterly leverage and valuation ratios (P/E, EV / EBITDA, P/S, FCF yield) read their flows over it, and show < 4 quarters when fewer are on file.",
   },
   // Funds (ETF). Named in what ETF says it cannot show yet.
   {
@@ -369,6 +374,151 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
     term: "Tracking error", aliases: ["index tracking error"], functions: ["ETF"], shown: ["Tracking error", "tracking error"],
     definition: "How loosely a fund follows its index: how much the gap between the fund's return and the index's swings, usually over a year. "
       + "Fees, cash and holdings that differ from the index widen it.",
+  },
+  // Short interest (SI, SIW) and daily short volume (SIV).
+  {
+    term: "Short interest", short: "SI", aliases: ["shares short", "short position", "short positions", "short shares"],
+    functions: ["SI", "SIW"], shown: ["Shares Short", "Short interest"],
+    definition: "The number of shares sold short and not yet bought back, counted across US broker-dealers on each settlement date. "
+      + "It is a position, not trading volume, and it is published seven business days after the date it counts.",
+  },
+  {
+    term: "Settlement", aliases: ["settlement date", "settlement dates", "settled", "reporting settlement date"],
+    functions: ["SI", "SIW"], shown: ["Date", "Settled", "settlement"],
+    definition: "The date short positions are counted, twice a month: the 15th (the business day before when it is not one) and the month's last business day. "
+      + "FINRA publishes each count seven business days later, and the report's source line gives that date and the next settlement's.",
+  },
+  {
+    term: "Days to cover", aliases: ["short ratio", "short interest ratio", "days-to-cover", "dtc"], functions: ["SI", "SIW"],
+    shown: ["Days to cover"],
+    definition: "Shares short divided by the average daily volume FINRA reports with the settlement: how many days of normal trading it would take "
+      + "the shorts to buy their shares back. The overview, fundamentals, SI, SIW and EQS all give FINRA's figure. "
+      + "A higher number means a squeeze would take longer to unwind.",
+  },
+  {
+    term: "Average daily volume", short: "ADV", aliases: ["avg daily vol", "avg daily volume", "average daily share volume", "avg volume"], functions: ["SI"],
+    shown: ["Avg Daily Vol"],
+    definition: "The shares traded per day on average, as FINRA reports it with each settlement. Days to cover divides shares short by it.",
+  },
+  {
+    term: "Float", aliases: ["free float", "public float", "float shares", "floating stock", "% float", "percent of float"],
+    functions: ["SI", "SIW"], shown: ["Float"],
+    definition: "The shares open to public trading: those outstanding less shares held by insiders and strategic holders, never more than the shares outstanding. "
+      + "% Float is shares short over today's float, so a settlement is measured against the float as it is now, not as it was then; "
+      + "SI gives it for the latest settlement only.",
+  },
+  {
+    // SIW's Setup column prints these two words.
+    term: "Crowded", aliases: ["crowded short", "crowded shorts", "crowded trade", "crowded, rising", "crowded rising", "setup"], functions: ["SIW"],
+    shown: ["Crowded", "Crowded, rising"],
+    definition: "SIW's flag for a heavily shorted name: at least 10% of the float short, or five or more days to cover with at least 5% of the float short "
+      + "(days to cover alone when the float is unknown). Crowded, rising adds a price up over the month. A fixed threshold, not a squeeze forecast.",
+  },
+  {
+    term: "Squeeze", aliases: ["short squeeze", "squeezes", "short covering"], functions: ["SIW"], shown: ["Short squeeze watch"],
+    definition: "A price rise that forces short sellers to buy shares back to limit their losses, which lifts the price further. "
+      + "It needs a crowded short and little trading to absorb the buying; SIW lists the names where that could happen and does not predict one.",
+  },
+  {
+    term: "SI change", aliases: ["si chg", "short interest change"], functions: ["SIW"], shown: ["SI Chg %"],
+    definition: "The change in shares short from the settlement before, in percent. A split between the two settlements is not adjusted.",
+  },
+  {
+    term: "1M return", aliases: ["1m", "one month return", "month move"], functions: ["SIW"], shown: ["1M %"],
+    definition: "The price change over one calendar month, from the latest daily close to the last close on or before the same day a month earlier.",
+  },
+  {
+    term: "Short volume", aliases: ["daily short volume", "short sale volume", "exempt volume"], functions: ["SIV"],
+    shown: ["Short volume", "Short %", "Exempt volume"],
+    definition: "Shares sold short in a day's off-exchange trading, which FINRA publishes daily; Short % is its share of the day's volume there. "
+      + "It is a flow of trades, not the open position short interest counts, and it includes exempt volume.",
+  },
+  // Quote boards (QQ). The words a beginner meets in a quote's rows and its status line.
+  {
+    term: "Ticker", aliases: ["tickers", "ticker symbol", "symbol", "stock symbol"], functions: ["QQ"], shown: ["Ticker", "Symbol"],
+    definition: "The short code a security trades under, such as AAPL for Apple or ^GSPC for the S&P 500. Type it after a function: fn QQ AAPL.",
+  },
+  {
+    term: "Pre-market", aliases: ["pre-mkt", "pre-market session", "pre-market trading", "pre-market price"], functions: ["QQ"],
+    shown: ["Pre-Market", "pre-market", "PRE-MKT"],
+    definition: "Trading in a US stock before the regular session opens, from 4:00 to 9:30 am New York time, when fewer trades happen and prices can jump. "
+      + "An index does not trade then: its pre-market status means it has not opened, and its level is still the last close.",
+  },
+  {
+    term: "After hours", aliases: ["after-hrs", "post-market", "extended hours", "after-hours trading"], functions: ["QQ"],
+    shown: ["After Hours", "after hours", "AFTER-HRS"],
+    definition: "Trading in a US stock after the regular session closes, from 4:00 to 8:00 pm New York time. "
+      + "Like the pre-market it is thin, so a price there can move more than the regular close suggests.",
+  },
+  {
+    term: "Regular close", aliases: ["close", "closing price", "last close", "prior close", "regular session", "regular session close"],
+    functions: ["QQ"], shown: ["close", "Close"],
+    definition: "The last price of the regular session, 9:30 am to 4:00 pm New York time for US stocks. "
+      + "From the close until the next open a quote's Last and change stay at it, and pre-market and after-hours prices are shown beside it.",
+  },
+  {
+    term: "Delayed", aliases: ["delayed quote", "delayed quotes", "delay", "15 min delayed", "live", "real-time"], functions: ["QQ", "FUT"],
+    shown: ["delayed", "Delayed"],
+    definition: "A price that reaches you some minutes after it traded; the status line gives the lag, such as 15 min delayed. A live (real-time) price has no lag.",
+  },
+  // Futures (FUT, CTM).
+  {
+    term: "Futures contract", aliases: ["futures", "future", "futures contracts", "contract", "contract month", "expiry", "expiration"],
+    functions: ["FUT", "CTM"], shown: ["CONTRACT", "Contract"],
+    definition: "An agreement to buy or sell something, such as oil, gold or the S&P 500, at a set price on a set date. Each contract has a month (Dec 26) and expires, "
+      + "and most traders close out before then. A contract's own Settlement line says how it ends: in cash or by physical delivery.",
+  },
+  {
+    term: "Settle (futures)", aliases: ["settle", "settle price", "settlement price", "futures settle", "daily settlement price"],
+    functions: ["FUT", "CTM"], shown: ["Settle", "PREV"],
+    definition: "A futures contract's official price for the day, set by its exchange from trading near the close. "
+      + "The day's change and margin are measured from it, and it can differ from the last trade. FUT's PREV is the previous one.",
+  },
+  // Futures basis and curve shape (CTM, FUT, PERP).
+  {
+    term: "Futures basis", aliases: ["basis", "basis trade", "cash and carry", "cash-and-carry", "vs spot", "spot spread"],
+    functions: ["CTM", "FUT", "PERP"], shown: ["Vs Spot", "VS SPOT"],
+    definition: "The gap between a futures price and the spot price of what it tracks, in percent: positive when the future costs more, negative when it costs less. "
+      + "It closes by expiry. A basis trade buys spot and sells the future to earn it. A perpetual has no expiry, so its funding rate plays that part.",
+  },
+  {
+    term: "Annualised basis", aliases: ["annualized basis", "ann basis", "ann. basis", "basis annualised"], functions: ["CTM", "PERP"], shown: ["Ann Basis", "ANN BASIS"],
+    definition: "The basis restated as a yearly rate, so contracts of different length compare with each other and with a perpetual's funding APR: "
+      + "(Last / spot - 1) × 365 / days to expiry, simple rather than compounded, on the latest trade against the spot quote. "
+      + "Inside 30 days a few basis points of spot noise move it by whole points: 10 bp is about ±2 points at 18 days to expiry.",
+  },
+  {
+    term: "Contango", aliases: ["contango curve", "upward curve"], functions: ["CTM", "FUT"], shown: ["contango", "Contango"],
+    definition: "A futures curve that slopes up: each contract costs more than the one before it, and the future trades above spot. "
+      + "A long rolling into the next contract pays that difference, a short earns it, and the basis closes as expiry nears.",
+  },
+  {
+    term: "Backwardation", aliases: ["backwardation curve", "downward curve", "inverted futures curve"], functions: ["CTM", "FUT"], shown: ["backwardation", "Backwardation"],
+    definition: "A futures curve that slopes down: later contracts cost less than nearer ones, and the future trades below spot, often when the asset is scarce now. "
+      + "A long rolling into the next contract earns that difference, a short pays it.",
+  },
+  {
+    term: "Roll yield", aliases: ["roll", "roll return", "annualised roll yield", "annualized roll yield", "ann roll yield", "ann. roll yield"], functions: ["CTM", "FUT"],
+    shown: ["Ann. roll yield", "Annualized Roll Yield"],
+    definition: "What a long future earns or loses as it is rolled into the next contract. CTM's annualised roll yield is the front price over the next contract's "
+      + "less 1, scaled to a year: (front / next - 1) × 365 / days between the two. It is positive in backwardation and negative in contango.",
+  },
+  // The economic calendar (ECO).
+  {
+    term: "Actual", aliases: ["actual release", "actual value"], functions: ["ECO"], shown: ["ACTUAL", "Actual"],
+    definition: "The figure a release came in at, filled in once it is published. A dash means it is still to come.",
+  },
+  {
+    term: "Forecast", aliases: ["forecasts", "consensus", "expected"], functions: ["ECO"], shown: ["FORECAST", "Forecast"],
+    definition: "What economists expected the release to show, the consensus before it comes out. Markets move on the gap between Actual and Forecast more than on the number alone.",
+  },
+  {
+    term: "Prior", aliases: ["previous", "prior value", "previous release"], functions: ["ECO"], shown: ["PRIOR", "Prior"],
+    definition: "The previous release's figure, the one Actual and Forecast are compared with.",
+  },
+  {
+    term: "Impact", short: "IMP", aliases: ["importance", "event impact", "high impact"], functions: ["ECO"],
+    definition: "How much a release usually moves markets: HIGH for the big ones (CPI, jobs, rate decisions), MED and LOW for speeches and smaller data.",
   },
 ];
 
@@ -390,7 +540,10 @@ function names(entry: GlossaryEntry): string[] {
 export interface GlossaryLookup {
   /** The entries the query names: by the term, its abbreviation or an alias. */
   exact: GlossaryEntry[];
-  /** The others whose names start a word with each word of the query: `stop-out` finds stop-out vs average. */
+  /**
+   * The others whose names start a word with each word of the query: `stop-out` finds stop-out vs average.
+   * Those that hold the words whole come first.
+   */
   partial: GlossaryEntry[];
 }
 
@@ -407,7 +560,12 @@ export function lookupGlossary(query: string): GlossaryLookup {
     const have = names(entry).flatMap(words);
     return wanted.every((word) => have.some((name) => name.startsWith(word)));
   });
-  return { exact, partial };
+  // The entries that hold the words whole come before those that only start with them: `float` is the float, not the floating rate note.
+  const whole = (entry: GlossaryEntry) => {
+    const have = names(entry).flatMap(words);
+    return wanted.every((word) => have.includes(word));
+  };
+  return { exact, partial: partial.sort((left, right) => Number(whole(right)) - Number(whole(left))) };
 }
 
 function escapeRegExp(text: string): string {

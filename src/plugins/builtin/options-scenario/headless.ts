@@ -5,9 +5,11 @@ import {
 } from "../../../utils/option-expiry";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import {
-  createScenarioDependencies, loadScenarioMarket, scenarioControlsFromSettings, scenarioPositionFromSettings,
-  type ScenarioMarketSnapshot,
+  createScenarioDependencies, loadScenarioMarket, SCENARIO_STRATEGIES, scenarioControlsFromSettings, scenarioPositionFromSettings,
+  scenarioSpotBasis, type ScenarioMarketSnapshot,
 } from "./client";
+import { cashSecuredPut, cspReportEntries, loadNextEarningsDate } from "./csp";
+import { formatSpotTime } from "../options/model-spot";
 import { buildScenario, currencyLabel, parseLegs, scenarioValueUnit } from "./model";
 import { hedgeInputsFromSettings, hedgeReportEntries, scenarioHedgeBudget } from "./hedge";
 
@@ -33,14 +35,17 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: (args) => `OSA ${args.symbols[0] ?? ""}`,
   description: "A typed or chain-seeded options position valued across spot, date and volatility: its legs, value and Greeks, expiry risk and a "
     + "scenario P&L grid. With --nav and --budget-bps, how many contracts a hedge budget buys, the premium spent, the notional protected and "
-    + "coverage of an equity sleeve.",
+    + "coverage of an equity sleeve. --strategy csp sells a cash-secured put: cash secured, premium, yield on cash, annualised yield, "
+    + "distance out of the money, break-even, days to expiry and whether earnings fall before expiry.",
   discovery: { screenshotReadiness: "ready", limitations: ["European scenario values do not model early assignment or exercise."] },
   options: [
     { key: "tab", type: "enum", values: ["payoff", "grid", "legs"].map((value) => ({ value })), defaultValue: "payoff",
       description: "Initial view", pluginState: { pluginId: "ticker-research", key: "activeTabId" } },
     { key: "legs", type: "string", description: "Semicolon-separated side,strike,YYYY-MM-DD,signed quantity,entry price per share,IV percent[,multiplier]" },
-    { key: "strategy", type: "enum", values: [{ value: "vertical" }, { value: "straddle" }, { value: "put" }],
-      description: "Build a position from current two-sided chain quotes: a call vertical, a straddle, or one long put (a protective put)" },
+    { key: "strategy", type: "enum", values: SCENARIO_STRATEGIES.map((value) => ({ value })),
+      example: "--strategy csp --strike 85 --expiration 2026-11-20",
+      description: "Build a position from current two-sided chain quotes: a call vertical, a straddle, one long put (a protective put), "
+        + "or csp, one short put sold at its midpoint with the cash to buy the shares set aside (a cash-secured put)" },
     { key: "strike", type: "string", description: "The --strategy strike: the put, the vertical's long call or the straddle. Nearest the money when omitted" },
     { key: "expiration", type: "string", placeholder: OPTION_EXPIRATION_PLACEHOLDER, example: "--strategy vertical --expiration 2027-01-15",
       description: `Chain expiry for --strategy, as ${OPTION_EXPIRATION_FORMAT}`, normalize: (value) => expirationOptionSeconds(value) },
@@ -76,6 +81,8 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
         rateExpiration: typedExpiries.length ? Math.min(...typedExpiries) : undefined, signal: ctx.signal,
       }, createScenarioDependencies(ctx.marketData, ctx.apiClient));
     }
+    // A cash-secured put says whether earnings fall before it expires; the calendar is read only for one.
+    const earningsDate = settings.strategy === "csp" ? await loadNextEarningsDate(ctx.marketData, symbol) : null;
     ctx.signal.throwIfAborted();
     const position = scenarioPositionFromSettings(settings, market);
     const controls = position ? scenarioControlsFromSettings(settings, position) : null;
@@ -90,6 +97,10 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
     // A seeded strategy starts at the spot its quote mids imply; the last print is reported beside it.
     const lastPrint = midVolatility && !supplied(settings.spot) && market.spot != null && money(market.spot) !== money(position!.spot)
       ? market.spot : null;
+    const spotBasis = position ? scenarioSpotBasis(settings, position, market) : null;
+    const csp = position && settings.strategy === "csp" ? cashSecuredPut(position, spotBasis!, earningsDate) : null;
+    const lastSession = market.underlyingQuote && spotBasis === "implied by option quotes"
+      ? scenarioSpotBasis({}, { spot: market.spot!, legs: [] }, market) : null;
     const chain = market.chain;
     const currency = position ? currencyLabel(position.currency) : null;
     // Value, P&L, risk and the grid add every contract; entry prices and spot are per share.
@@ -111,13 +122,16 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
           ...(midVolatility ? { volatilityFrom: leg.volatilitySource === "mid" ? "quote mid" : "provider" } : {}) })) },
         { title: "Inputs", entries: [
           { key: "spot", label: lastPrint != null ? "Spot implied by option quotes" : "Spot", value: position!.spot,
-            formatted: `${money(position!.spot)} ${PRICE_UNIT}` },
-          ...(lastPrint != null ? [{ key: "last", label: "Last price", value: lastPrint, formatted: `${money(lastPrint)} ${PRICE_UNIT}` }] : []),
+            formatted: `${money(position!.spot)} ${PRICE_UNIT}${lastPrint == null && spotBasis !== "last price" ? ` (${spotBasis})` : ""}` },
+          ...(lastPrint != null ? [{ key: "last", label: "Last price", value: lastPrint,
+            formatted: `${money(lastPrint)} ${PRICE_UNIT}${lastSession && lastSession !== "last price" ? ` (${lastSession})` : ""}` }] : []),
+          { key: "asOf", label: "Valued at", value: new Date(position!.asOf).toISOString(), formatted: formatSpotTime(position!.asOf) },
           { key: "rate", label: "Rate", value: position!.rate, formatted: percent(position!.rate) },
           { key: "dividendYield", label: "Dividend yield", value: position!.dividendYield, formatted: percent(position!.dividendYield) },
           { key: "currency", label: "Currency", value: position!.currency, formatted: currency! },
         ] },
         ...(hedge ? [{ title: "Hedge budget", entries: hedgeReportEntries(hedge) }] : []),
+        ...(csp ? [{ title: "Cash-secured put", entries: cspReportEntries(csp) }] : []),
         { title: `Valuation (${per})`, entries: Object.entries(scenario.valuation).map(([key, value]) => ({ key,
           label: VALUATION_LABELS[key]?.(currency!) ?? key, value, formatted: money(value) })) },
         { title: `Expiry risk (${per})`, entries: [
@@ -136,7 +150,9 @@ export const optionsScenarioHeadless: HeadlessPaneDefinition<"bundle"> = {
       ] : [],
       complete: scenario != null && errors.length === 0,
       unavailableSymbols: scenario ? [] : [symbol], errors,
-      metadata: { scenario, position, controls, market, ...(hedge ? { hedge } : {}), inputSource: suppliedInputs ? "user" : "market",
+      metadata: { scenario, position, controls, market, ...(hedge ? { hedge } : {}), ...(csp ? { csp } : {}),
+        ...(position ? { spot: { price: position.spot, basis: spotBasis, valuedAt: new Date(position.asOf).toISOString() } } : {}),
+        inputSource: suppliedInputs ? "user" : "market",
         unit: position?.currency || "currency unspecified",
         // Leg entry prices and spot are per share; value, P&L, risk, Greeks in currency and the grid are for valueUnit.
         ...(position ? { units: { currency: position.currency, price: PRICE_UNIT, value: valueUnit } } : {}),

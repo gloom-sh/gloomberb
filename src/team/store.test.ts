@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { TeamNotification, TeamReceivedInvitation, TeamSummary, TeamUpdatedEvent } from "../../../../api-client";
-import { MemoryPluginPersistence } from "../../../../test-support/plugin-persistence";
-import type { AppNotificationRequest } from "../../../../types/plugin";
+import type { TeamNotification, TeamReceivedInvitation, TeamSummary, TeamUpdatedEvent } from "../api-client";
+import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
+import type { AppNotificationRequest } from "../types/plugin";
 import { TeamStore, type TeamStoreClient, type TeamStoreSnapshot } from "./store";
 import { createTestTeam, createTestTeamCard } from "./test-fixture";
 

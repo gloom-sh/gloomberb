@@ -16,6 +16,9 @@ describe("resolveKeybindings", () => {
     expect(matchKeybinding(resolved, { ...base, name: "2", super: true })).toMatchObject({ kind: "action", id: "switch-layout", digit: 2 });
     expect(matchKeybinding(resolved, { ...base, name: "w", ctrl: true, alt: true })).toMatchObject({ id: "close-floating-panes" });
     expect(matchKeybinding(resolved, { ...base, name: "w", ctrl: true })).toMatchObject({ id: "pane-close" });
+    expect(matchKeybinding(resolved, { ...base, name: "z", meta: true })).toMatchObject({ id: "layout-undo" });
+    expect(matchKeybinding(resolved, { ...base, name: "z", ctrl: true })).toMatchObject({ id: "layout-undo" });
+    expect(matchKeybinding(resolved, { ...base, name: "z", meta: true, shift: true })).toMatchObject({ id: "layout-redo" });
     expect(matchKeybinding(resolved, { ...base, name: "x" })).toBeNull();
   });
 

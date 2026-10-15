@@ -10,7 +10,7 @@ import { ChatMessageActions, ChatMessageHeader } from "./header";
 import { Button } from "../../../../components/ui";
 import { canReactToMessage } from "../reactions";
 import { TerminalChatReactions } from "./reactions";
-import { ResponsiveTickerBadgeText } from "./inline-tokens";
+import { TerminalChatMessageRow } from "./inline-tokens";
 import { TerminalChatPaneChip } from "./pane-chip";
 import { chatMessagePaneLinks } from "../pane-links/model";
 import { useSlowPendingSend } from "./pending-send";
@@ -149,11 +149,11 @@ export function TerminalChatMessage({
           position={state.grouped ? "relative" : undefined}
         >
           <Box width={messageBodyWidth} height={1}>
-            <ResponsiveTickerBadgeText
-              tokens={line}
-              prewrapped
+            <TerminalChatMessageRow
+              line={line}
               catalog={catalog}
               textColor={state.bodyColor}
+              mutedColor={state.bodyMutedColor}
               openTicker={openTicker}
               userByUsername={userByUsername}
               onUserHover={onUserHover}

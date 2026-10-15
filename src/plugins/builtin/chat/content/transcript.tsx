@@ -10,6 +10,7 @@ import { DesktopChatMessage, desktopChatMessageWidth } from "../message/desktop"
 import { UserProfilePopover } from "../message/profile-popover";
 import { TerminalChatMessage } from "../message/terminal";
 import { NewMessagesJump } from "./new-messages";
+import { useWholeMessageCopy } from "./whole-message-copy";
 
 interface MutableRef<T> {
   current: T;
@@ -138,6 +139,7 @@ export function ChatTranscript({
   useLayoutEffect(() => {
     takeBackScrollPlace();
   }, [takeBackScrollPlace]);
+  useWholeMessageCopy(nativePaneChrome === true, messages);
   const reactionProps = {
     reactionsEnabled,
     currentUserId: user?.id ?? null,

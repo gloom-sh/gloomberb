@@ -135,7 +135,8 @@ export const optionsModule: PluginModule = {
       paneId: "options",
       label: "Options",
       description: "Options chain for the selected ticker.",
-      keywords: ["options", "chain", "calls", "puts", "omon"],
+      // Where a put seller picks the strike; OSA owns the exact put-selling phrases and ranks first on them.
+      keywords: ["options", "chain", "calls", "puts", "omon", "cash-secured puts", "selling puts", "short-put strikes", "csp strikes", "wheel strikes"],
       shortcut: "OMON",
       settings: (_symbol, _context, options) => {
         const expiration = readOptionExpiration(options?.values?.expiration);

@@ -1,6 +1,6 @@
 import type { PluginCapability } from "../../../../capabilities";
-import { teamAccentHex } from "./model";
-import { teamStore, type TeamStoreSnapshot } from "./store";
+import { teamAccentHex } from "../../../../team/model";
+import { teamStore, type TeamStoreSnapshot } from "../../../../team/store";
 
 const CLOUD_TEAM_CAPABILITY_ID = "cloud.team";
 

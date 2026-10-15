@@ -12,7 +12,7 @@ import { Box } from "../../../ui";
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { compareSortValues, nextHeaderSort, type SortPreference } from "../../../utils/sort-values";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
-import { loadCotBoard, loadCotDetail } from "./client";
+import { cachedCotBoard, loadCotBoard, loadCotDetail } from "./client";
 import { COT_CLASSES, COT_MAJOR_CODES, COT_SCOPES, cotChartSeries, cotClass, cotInteger, cotLegendValue, cotMarketName, cotScope, type CotScope } from "./model";
 
 const FAMILIES = [{ value: "legacy", label: "Legacy" }, { value: "disaggregated", label: "Disaggregated" }];
@@ -69,7 +69,7 @@ function CotBoard({ width, height, focused, family, initialCode }: PaneProps & {
   const control = useRef<SelectControl>(null);
   const scopeControl = useRef<SelectControl>(null);
   const loader = useCallback((force: boolean) => loadCotBoard(family, traderClass, force), [family, traderClass, session.requestKey]);
-  const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
+  const resource = useAsyncResource(loader, { initialData: () => cachedCotBoard(family, traderClass), clearOnError: isAccessDenied });
   const data = resource.data?.traderClass === traderClass ? resource.data : null;
   const rows = useMemo(() => {
     // A typed query searches every market; the scope only shapes the unsearched board.

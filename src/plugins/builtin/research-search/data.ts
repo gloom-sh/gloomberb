@@ -52,6 +52,17 @@ function documentKey(docType: CloudSearchDocType, sourceId: string): string {
   return `${docType}:${sourceId}`;
 }
 
+export function cachedSearchDocument(
+  docType: CloudSearchDocType,
+  sourceId: string,
+): CloudSearchDocument | null {
+  return persistence?.getResource<CloudSearchDocument>(DOCUMENT_KIND, documentKey(docType, sourceId), {
+    sourceKey: CACHE_SOURCE,
+    schemaVersion: CACHE_SCHEMA_VERSION,
+    allowExpired: true,
+  })?.value ?? null;
+}
+
 export async function loadSearchDocument(
   docType: CloudSearchDocType,
   sourceId: string,

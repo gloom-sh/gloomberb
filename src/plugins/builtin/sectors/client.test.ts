@@ -3,6 +3,7 @@ import type { DataProvider } from "../../../types/data-provider";
 import type { PricePoint, Quote } from "../../../types/financials";
 import { loadSectorRows } from "./client";
 import { projectSectorRows } from "./headless";
+import { sessionQuotes } from "../../../test-support/test-fixture-session-quotes";
 
 const sectors = [
   { name: "Technology", etf: "XLK" },
@@ -225,4 +226,72 @@ test("shared holiday baselines remain valid and a separate history failure canno
   expect(rows[0]?.row).toMatchObject({ price: 105, return1M: null, return1Y: null });
   expect(rows[1]?.row?.return1Y).toBeCloseTo(5);
   expect(rows[1]?.row).toMatchObject({ return1MStartDate: "2026-09-11", return1YStartDate: "2025-10-10" });
+});
+
+describe("sectors before the open", () => {
+  // Monday 2026-10-12 06:00 ET. Friday closed at 198.78, up 1.00 from 197.78.
+  const board = [
+    { name: "Technology", etf: "XLK" }, { name: "Healthcare", etf: "XLV" }, { name: "Consumer Disc.", etf: "XLY" },
+    { name: "Industrials", etf: "XLI" }, { name: "Utilities", etf: "XLU" },
+  ];
+  const fridayHistory = (complete = true): PricePoint[] => [
+    { date: new Date("2025-10-09"), close: 150 }, { date: new Date("2026-09-09"), close: 180 },
+    { date: new Date("2026-10-08"), close: 197.78 }, ...(complete ? [{ date: new Date("2026-10-09"), close: 198.78 }] : []),
+  ];
+  const { preMarket, afterHours } = sessionQuotes();
+  // Gloom Cloud carries the prior close with a thin fund's quote, nothing having traded today.
+  const noPrint = (symbol: string): Quote => ({
+    ...preMarket, symbol, price: 198.78, change: 0, changePercent: 0, previousClose: 198.78, extendedSessionPrint: false,
+    preMarketPrice: undefined, preMarketChange: undefined, preMarketChangePercent: undefined, lastUpdated: Date.parse("2026-10-09T23:50:00Z"),
+  });
+  const withoutClose = (symbol: string): Quote => ({
+    ...preMarket, symbol, regularClose: undefined, regularCloseSessionDate: undefined, regularChange: undefined, regularChangePercent: undefined,
+  });
+  const load = (fundQuote: (symbol: string) => Quote, others: readonly string[], history = (_symbol: string) => fridayHistory()) => loadSectorRows(board, {
+    getQuote: async (symbol: string) => others.includes(symbol) ? fundQuote(symbol) : { ...preMarket, symbol },
+    getPriceHistory: async (symbol: string) => history(symbol),
+  } as unknown as DataProvider);
+
+  test.each<[string, (symbol: string) => Quote, "PRE" | null]>([
+    ["has no pre-market print yet", noPrint, null],
+    ["is still the after-hours snapshot, flagged stale", (symbol) => ({ ...afterHours, symbol, stale: true }) as Quote, null],
+    ["measures its previous close from a dividend-adjusted price", (symbol) => ({ ...preMarket, symbol, previousClose: 196.9 }) as Quote, "PRE"],
+  ])("a fund whose quote %s still ranks beside the funds that printed", async (_name, quoteOf, extended) => {
+    const rows = await load(quoteOf, ["XLV", "XLI", "XLU"]);
+    for (const { etf, row } of rows) {
+      expect(row, etf).toMatchObject({ price: 198.78, quoteIssue: null, quoteSessionDate: "2026-10-09", returnAsOfDate: "2026-10-09" });
+      expect(row?.changePercent, etf).toBeCloseTo(0.5056, 4);
+      expect(row?.return1M, etf).toBeCloseTo((198.78 / 180 - 1) * 100, 6);
+      // Only a fund with a current pre-market print has one beside its close.
+      expect(row?.extendedSession ?? null, etf).toBe(["XLK", "XLY"].includes(etf) ? "PRE" : extended);
+    }
+  });
+
+  test("a stale quote in the regular session is not a close and stays blank", async () => {
+    const rows = await load((symbol) => ({ ...sessionQuotes(symbol).regular, stale: true }) as Quote, ["XLV"]);
+    expect(rows.find(({ etf }) => etf === "XLV")?.row).toMatchObject({ price: null, quoteIssue: expect.stringContaining("stale quote from") });
+  });
+
+  test("a quote that cannot say which close it follows blanks only itself, with the reason", async () => {
+    // No close sent and a history one session behind: its session cannot be confirmed.
+    const rows = await load(withoutClose, ["XLV", "XLU"], (symbol) => fridayHistory(symbol !== "XLV" && symbol !== "XLU"));
+    for (const { etf, row } of rows) {
+      if (etf === "XLV" || etf === "XLU") expect(row).toMatchObject({ price: null, changePercent: null, quoteIssue: "pre-market quote without a confirmed last close" });
+      else expect(row).toMatchObject({ price: 198.78, quoteIssue: null, returnAsOfDate: "2026-10-09" });
+    }
+    // With no fund able to confirm it, the board keeps the quotes it was given.
+    const alone = await load(withoutClose, board.map(({ etf }) => etf), () => fridayHistory(false));
+    expect(alone.every(({ row }) => row?.price != null && row.returnAsOfDate === "2026-10-12")).toBe(true);
+  });
+
+  test("a fund with no quote shows a dash with the reason while its returns stay", async () => {
+    const provider = {
+      getQuote: async (symbol: string) => { if (symbol === "XLU") throw new Error("no quote"); return { ...preMarket, symbol }; },
+      getPriceHistory: async () => fridayHistory(),
+    } as unknown as DataProvider;
+    const rows = await loadSectorRows(board, provider);
+    expect(rows.find(({ etf }) => etf === "XLU")?.row).toMatchObject({ price: null, changePercent: null, quoteIssue: "quote unavailable", returnAsOfDate: "2026-10-09" });
+    expect(rows.find(({ etf }) => etf === "XLU")?.row?.return1Y).toBeCloseTo((198.78 / 150 - 1) * 100, 6);
+    expect(rows.find(({ etf }) => etf === "XLK")?.row?.price).toBe(198.78);
+  });
 });

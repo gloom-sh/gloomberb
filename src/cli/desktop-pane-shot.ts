@@ -60,9 +60,12 @@ export interface DesktopPaneShotPayload {
   statusLine?: boolean;
   /**
    * The tallest the capture may grow, in cells, to show every row its tables
-   * scroll past; absent keeps the requested height (`--height`, most panes).
+   * scroll past or all the text its reader scrolls past; absent keeps the
+   * requested height (`--height`, most panes).
    */
   maxHeightCells?: number;
+  /** The `data-gloom-role`s of the scrolling boxes the capture grows to fit; the tables' bodies when absent. */
+  fitRoles?: string[];
   tickers: TickerRecord[];
   /** Broker accounts as last synced, by profile, so a broker portfolio shows its equity and cash. */
   brokerAccounts?: Record<string, BrokerAccount[]>;
@@ -127,6 +130,12 @@ interface DesktopPaneShotSurface {
 
 export interface DesktopPaneShotRenderResult {
   visibleText: string;
+  /**
+   * The visible text a line per block of the page, as the browser lays it out,
+   * where `visibleText` has run them together: the words of a pane that is prose
+   * and not a table, to be read as paragraphs. Absent in a capture that did not read it.
+   */
+  visibleLines?: string[];
   /**
    * The rows a report reads, when a table reports every row (an option chain's
    * strike window) rather than those in the viewport; `rows` stays what the
@@ -222,7 +231,13 @@ export async function renderDesktopPaneScreenshot(
       userDataDir: join(tempDir, "chrome-profile"),
       captureImage: options.captureImage !== false,
       statusLine: payload.statusLine ? options.statusLine : undefined,
-      ...(payload.maxHeightCells ? { fitRows: { heightCells: payload.heightCells, maxHeightCells: payload.maxHeightCells } } : {}),
+      ...(payload.maxHeightCells ? {
+        fitRows: {
+          heightCells: payload.heightCells,
+          maxHeightCells: payload.maxHeightCells,
+          roles: payload.fitRoles ?? ["data-table-body-scroll"],
+        },
+      } : {}),
     });
   } finally {
     server?.stop(true);
@@ -458,7 +473,7 @@ async function capturePageScreenshot({
   userDataDir: string;
   captureImage: boolean;
   statusLine?: ShotStatusLine;
-  fitRows?: { heightCells: number; maxHeightCells: number };
+  fitRows?: { heightCells: number; maxHeightCells: number; roles: readonly string[] };
 }): Promise<DesktopPaneShotRenderResult> {
   await mkdir(userDataDir, { recursive: true });
   const port = 43000 + Math.floor(Math.random() * 10000);
@@ -531,9 +546,10 @@ async function capturePageScreenshot({
 }
 
 /**
- * Grows the viewport and the pane by the rows their tables scroll past, up to
- * `maxHeightCells`, then waits for the taller pane to settle: a board a
- * default capture would cut (FUT's last sectors) shows every row.
+ * Grows the viewport and the pane by the rows their tables scroll past, or the
+ * text a reader's body scrolls past, up to `maxHeightCells`, then waits for the
+ * taller pane to settle: a board a default capture would cut (FUT's last
+ * sectors) shows every row, and a docs page its whole text.
  */
 async function growToFitRows(session: CdpSession, size: {
   widthPx: number;
@@ -541,9 +557,11 @@ async function growToFitRows(session: CdpSession, size: {
   deviceScaleFactor: number;
   heightCells: number;
   maxHeightCells: number;
+  roles: readonly string[];
 }): Promise<void> {
+  const selector = size.roles.map((role) => `[data-gloom-role="${role}"]`).join(", ");
   const result = await session.send("Runtime.evaluate", {
-    expression: `Math.max(0, ...[...document.querySelectorAll('[data-gloom-role="data-table-body-scroll"]')]
+    expression: `Math.max(0, ...[...document.querySelectorAll(${JSON.stringify(selector)})]
       .map((element) => element.scrollHeight - element.clientHeight))`,
     returnByValue: true,
   }) as { result?: { value?: unknown } };
@@ -646,6 +664,7 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
         const table = element.closest('[data-gloom-role="data-table"]');
         return !!table && reportedTables.has(table);
       };
+      const managesRows = (element) => element.getAttribute("data-gloom-role") === "data-table-body-scroll";
       const markScrollTruncation = (element) => {
         if (!(element instanceof HTMLElement) || !isVisible(element)) return;
         const reasons = scrollReasons({
@@ -655,8 +674,10 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
           scrollLeft: element.scrollLeft,
           scrollWidth: element.scrollWidth,
           clientWidth: element.clientWidth,
-          scrollbarY: element.getAttribute("data-gloom-scrollbar-y") === "visible",
-          scrollbarX: element.getAttribute("data-gloom-scrollbar-x") === "visible",
+          // A scroll box draws its scrollbar by default and its content is all in the page, so its
+          // measures say what is cut; only a table's body holds rows it has not drawn.
+          scrollbarY: managesRows(element) && element.getAttribute("data-gloom-scrollbar-y") === "visible",
+          scrollbarX: managesRows(element) && element.getAttribute("data-gloom-scrollbar-x") === "visible",
         });
         reasons.forEach((reason) => truncationReasons.add(reason));
         if (!inReportedTable(element)) reasons.forEach((reason) => reportTruncationReasons.add(reason));
@@ -810,8 +831,12 @@ async function readRenderedPaneState(session: CdpSession): Promise<DesktopPaneSh
   if (textShowsEllipsis && !truncationReasons.includes("one or more cells are visibly clipped")) {
     truncationReasons.push("one or more cells are visibly clipped");
   }
+  const visibleLines = (value?.visibleText ?? "").split("\n")
+    .map((line) => line.replace(/\u00a0/g, " ").trimEnd())
+    .filter((line) => line.trim().length > 0);
   return {
     visibleText,
+    visibleLines,
     footerText: typeof value?.footerText === "string" ? value.footerText : "",
     visibleKeyValues: Array.isArray(value?.visibleKeyValues) ? value.visibleKeyValues : [],
     ...(Array.isArray(value?.surfaces) && value.surfaces.length > 0 ? { surfaces: value.surfaces } : {}),

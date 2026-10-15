@@ -1,11 +1,12 @@
+import { ApiRequestError } from "../../../api-client/errors";
 import type {
   HeadlessBundleResult,
-  HeadlessPaneContext,
   HeadlessPaneDefinition,
 } from "../../../types/plugin";
-import { cloudAccountNeed, cloudDeniedStatus, type CloudDeniedStatus } from "../shared/cloud-denied";
+import { explainRefusal } from "../shared/cloud-denied";
 import { formatCompact, formatNumber } from "../../../utils/format";
 import { fetchJobs, fetchJobsMovers, type JobsCloudClient, type JobsCompanyState } from "./client";
+import { jobsLockNote } from "./lock-note";
 import {
   buildMoverRows,
   buildPostingRows,
@@ -14,18 +15,6 @@ import {
   formatShare,
   functionLabel,
 } from "./model";
-
-/**
- * What a refused account needs, and the free preview to try instead: HIRE
- * reads the same careers systems, and is named only when it answers for this
- * company.
- */
-async function jobsDeniedMessage(symbol: string | undefined, status: CloudDeniedStatus, client: Pick<HeadlessPaneContext["apiClient"], "getCloudHiring">): Promise<string> {
-  const need = cloudAccountNeed(status);
-  const preview = await client.getCloudHiring(symbol, { limit: 1 })
-    .then((payload) => !!payload && (symbol ? "symbol" in payload : "companies" in payload), () => false);
-  return `JOBS needs ${need}${preview ? `; HIRE${symbol ? ` ${symbol}` : ""} is free to preview` : ""}.`;
-}
 
 function companyBundle(symbol: string, state: Exclude<JobsCompanyState, { kind: "denied" }>, roleLimit: number): HeadlessBundleResult {
   if (state.kind === "pending") {
@@ -193,14 +182,11 @@ export const jobsHeadless: HeadlessPaneDefinition<"bundle"> = {
     const symbol = args.symbols[0];
     if (symbol) {
       const state = await fetchJobs(symbol, { force: true, client: ctx.apiClient as JobsCloudClient });
-      if (state.kind === "denied") throw new Error(await jobsDeniedMessage(symbol, state.status, ctx.apiClient));
+      if (state.kind === "denied") throw explainRefusal(new ApiRequestError(state.message, state.status), jobsLockNote, { symbol });
       return companyBundle(symbol, state, limit);
     }
-    const payload = await fetchJobsMovers(ctx.apiClient as JobsCloudClient).catch(async (error: unknown) => {
-      const status = cloudDeniedStatus(error);
-      if (status) throw new Error(await jobsDeniedMessage(undefined, status, ctx.apiClient));
-      throw error;
-    });
+    const payload = await fetchJobsMovers(ctx.apiClient as JobsCloudClient)
+      .catch((error: unknown) => { throw explainRefusal(error, jobsLockNote, { symbol: null }); });
     const rows = buildMoverRows(payload.movers).slice(0, Math.max(limit, 15)).map((row) => ({
       ticker: row.ticker,
       company: row.company,

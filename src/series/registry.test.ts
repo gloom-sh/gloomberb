@@ -52,6 +52,8 @@ describe("series validation", () => {
     expect(() => validateSeriesDefinition(loaded({ publisher: "rain.com" }))).toThrow(/names a host/);
     expect(() => validateSeriesDefinition(loaded({ description: "from provider:rain-feed" }))).toThrow(/internal source/);
     expect(() => validateSeriesDefinition(loaded({ name: "Raincoat sales" }), { forbiddenWords: words })).not.toThrow();
+    // A government host is the publisher itself; a vendor's host is still forbidden beside it.
+    expect(hostLabelWords(["api.eia.gov", "www.ons.gov.uk", "api.rainco.example"])).toEqual(["rainco"]);
   });
 });
 

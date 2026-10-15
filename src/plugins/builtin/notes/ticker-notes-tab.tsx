@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Box, Text, type TextareaRenderable } from "../../../ui";
+import { Box, type TextareaRenderable } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { TickerResearchTabProps } from "../../../types/plugin";
-import { colors } from "../../../theme/colors";
 import { MarkdownEditor } from "../../../components/markdown-editor";
 import { EmptyState, usePaneFooter } from "../../../components";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
@@ -178,7 +177,7 @@ export function createNotesTab(registry: NotesStoreRegistry) {
         : [{ id: "mode", parts: [{ text: notesFiles.readOnly ? "read-only" : notesFocused ? "editing" : "viewing", tone: "muted" as const }] }],
     }), [loadError, notesFiles.readOnly, notesFocused]);
 
-    if (!ticker) return <Text fg={colors.textDim}>Select a ticker to view notes.</Text>;
+    if (!ticker) return <EmptyState title="Select a ticker." />;
 
     return (
       <Box flexDirection="column" flexGrow={1}>

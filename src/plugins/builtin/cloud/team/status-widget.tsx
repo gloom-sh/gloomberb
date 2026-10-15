@@ -4,9 +4,9 @@ import { colors } from "../../../../theme/colors";
 import { Box, Span, Text, TextAttributes, useCommandBarShortcut } from "../../../../ui";
 import { usePluginAppActions } from "../../../runtime";
 import { chatController } from "../../chat/controller";
-import { countTeamUpdates, teamAccentHex, teamIdFromChannelId } from "./model";
-import { openTeamPane } from "./pane-request";
-import { teamStore } from "./store";
+import { countTeamUpdates, teamAccentHex, teamIdFromChannelId } from "../../../../team/model";
+import { openTeamPane } from "../../../../team/pane-request";
+import { teamStore } from "../../../../team/store";
 
 /**
  * One chip per team in the status bar, in the team's accent, with the unread

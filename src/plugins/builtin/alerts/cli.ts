@@ -2,12 +2,14 @@ import { withConfigData, withMarketData } from "../../../cli/scoped-context";
 import { CLI_COMMAND_GROUPS } from "../../../cli/help";
 import { dryRunNote } from "../../../cli/helpers";
 import { requireArg, takeOption } from "../../../cli/commands/command-utils";
-import { EXCHANGE_OPTION, listingReadNotes, requireListingArg } from "../../../cli/listing-arg";
+import { EXCHANGE_OPTION, listingReadNotes, requireListingArg, type ListingArg } from "../../../cli/listing-arg";
 import { saveConfig } from "../../../data/config/store";
 import type { AppConfig } from "../../../types/config";
-import type { CliCommandDef } from "../../../types/plugin";
+import type { CliCommandContext, CliCommandDef } from "../../../types/plugin";
+import { getActiveQuoteDisplay } from "../../../market-data/market/status";
+import { settleWithin } from "../../../utils/async-deadline";
 import { cliStyles } from "../../../utils/cli-output";
-import { ambiguousNumberMessage, parsePastedNumber } from "../../../utils/decimal-comma";
+import { ambiguousNumberMessage, meantThousandsDot, parsePastedNumber, thousandsDotReadings, type ThousandsDotReadings } from "../../../utils/decimal-comma";
 import { newYorkToday } from "../earnings/board-model";
 import { createAlert, deserializeAlerts, rearmAlert, serializeAlerts } from "./alert-engine";
 import { ALERTS_KEY } from "./constants";
@@ -43,20 +45,28 @@ const DAYS_RULE = `--days takes a whole number of days from 1 to ${MAX_LEAD_DAYS
 
 /** What `alerts add` was asked for, before any listing or date is looked up. */
 export type AlertAddRequest =
-  | { kind: "price"; symbol: string; condition: AlertCondition; price: number }
+  | {
+    kind: "price"; symbol: string; condition: AlertCondition; price: number;
+    /** A price typed as 81.000, which the last price may show was 81000 with a dot between thousands. */
+    thousandsDot?: ThousandsDotReadings & { text: string };
+  }
   | { kind: "earnings"; symbol: string; leadDays: number }
   | { kind: "macro"; event: MacroAlertEvent; leadDays: number };
 
 const CONDITIONS: readonly AlertCondition[] = ["above", "below", "crosses"];
 
+/** The first word of a price typed with a space between thousands and no quotes (`81 000`): one to three digits. */
+const LEADING_GROUP = /^[+-]?\d{1,3}$/;
+
 /**
  * Reads `alerts add` arguments: `<symbol> above 250`, `<symbol> earnings`, or
  * `CPI` / `FOMC`, with `--days` (already taken out of `args`, `null` when the
- * flag came without a value) for the event forms only. Throws a message that
- * names what the command takes.
+ * flag came without a value) for the event forms only, and `--exchange`, which
+ * a command to type again keeps. Throws a message that names what the command
+ * takes.
  */
-export function parseAlertAddArgs(args: readonly string[], days: string | null | undefined): AlertAddRequest {
-  const [first, second, third] = args;
+export function parseAlertAddArgs(args: readonly string[], days: string | null | undefined, exchange?: string | null): AlertAddRequest {
+  const [first, second, third, ...rest] = args;
   if (!first) throw new Error(ADD_USAGE);
   const leadDays = () => {
     const parsed = days === null ? null : parseLeadDays(days);
@@ -83,11 +93,57 @@ export function parseAlertAddArgs(args: readonly string[], days: string | null |
   }
   if (days !== undefined) throw new Error("--days is for earnings and CPI or FOMC alerts, not price alerts.");
   if (third === undefined) throw new Error(ADD_USAGE);
+  const retype = (price: number) => retypeCommand(first, condition, price, exchange);
+  // `81 000` without quotes arrives as 81 and a stray 000; neither reading is taken for granted.
+  const spaced = rest.length > 0 && LEADING_GROUP.test(third) ? parsePastedNumber([third, ...rest].join(" ")) : null;
+  if (spaced?.kind === "number") {
+    const typed = Number(third);
+    throw new Error(`${[third, ...rest].join(" ")} could be ${spaced.value} (thousands) or ${typed} and a stray ${rest.join(" ")}; type ${retype(spaced.value)} or ${retype(typed)}`);
+  }
   // A price pasted from a sheet (1.350,5, 1,350.5, 1 350,5) reads as it is written; `1,350` could be either, so it asks.
   const pasted = parsePastedNumber(third);
   if (pasted.kind === "ambiguous") throw new Error(ambiguousNumberMessage(third, pasted));
   if (pasted.kind === "invalid") throw new Error("Alert price must be a finite number.");
-  return { kind: "price", symbol: first, condition, price: pasted.value };
+  if (rest.length > 0) throw new Error(`A price alert takes one price, not "${rest.join(" ")}" after ${third}; type ${retype(pasted.value)}`);
+  const thousandsDot = thousandsDotReadings(third);
+  return { kind: "price", symbol: first, condition, price: pasted.value, ...(thousandsDot ? { thousandsDot: { ...thousandsDot, text: third.trim() } } : {}) };
+}
+
+/** `alerts add` as typed, with another price: what an error tells someone to type. */
+function retypeCommand(symbol: string, condition: AlertCondition, price: number, exchange: string | null | undefined): string {
+  return `gloomberb alerts add ${symbol} ${condition} ${price}${exchange ? ` --exchange ${exchange}` : ""}`;
+}
+
+const LAST_PRICE_TIMEOUT_MS = 10_000;
+
+/**
+ * The listing's last price, as the alert will check it, for telling 81.000
+ * typed for 81000 from 81; null when there is none, and the price is then
+ * read as written.
+ */
+async function lastPrice(listing: ListingArg, ctx: Pick<CliCommandContext, "initMarketData">): Promise<number | null> {
+  const quote = await settleWithin(
+    withMarketData(ctx, (market) => market.dataProvider.getQuote(listing.key.toUpperCase(), listing.exchange)),
+    LAST_PRICE_TIMEOUT_MS,
+  );
+  const price = quote ? getActiveQuoteDisplay(quote)?.price ?? quote.price : null;
+  return price != null && Number.isFinite(price) && price !== 0 ? price : null;
+}
+
+/**
+ * Asks which price `81.000` meant when the last price shows it was a dot
+ * between thousands: both readings, and the command to type for each.
+ */
+export function thousandsDotMessage(
+  request: Extract<AlertAddRequest, { kind: "price" }>,
+  listing: string,
+  last: number | null,
+  exchange?: string | null,
+): string | null {
+  const dot = request.thousandsDot;
+  if (!dot || !meantThousandsDot(dot, last)) return null;
+  const retype = (price: number) => retypeCommand(request.symbol, request.condition, price, exchange);
+  return `${dot.text} could be ${dot.thousands} (thousands) or ${dot.decimal} (decimal point), and ${listing.toUpperCase()} last traded at ${Number(last!.toFixed(2))}; type ${retype(dot.thousands)} or ${retype(dot.decimal)}`;
 }
 
 /** One row of `alerts list`: a price alert as stored, or an event alert with its next date. */
@@ -222,13 +278,17 @@ export const alertsCliCommand: CliCommandDef = {
 
     const parseAdd = (): AlertAddRequest => {
       try {
-        return parseAlertAddArgs(args.slice(1), days);
+        return parseAlertAddArgs(args.slice(1), days, exchangeOption);
       } catch (error) {
         return ctx.fail(error instanceof Error ? error.message : String(error));
       }
     };
     const request = action === "add" ? parseAdd() : null;
     const priceListing = request?.kind === "price" ? await requireListingArg(request.symbol, exchangeOption, ctx) : null;
+    if (request?.kind === "price" && request.thousandsDot && priceListing) {
+      const question = thousandsDotMessage(request, priceListing.key, await lastPrice(priceListing, ctx), exchangeOption);
+      if (question) ctx.fail(question);
+    }
     // What a typed listing was read as (7203:TSE as 7203:JPX), said beside what was added.
     let read = priceListing ? listingReadNotes(priceListing) : [];
     let newEventRule: EventAlertRule | null = null;
@@ -309,7 +369,8 @@ export const alertsCliCommand: CliCommandDef = {
         const alert = createAlert(symbol, condition, price, priceListing?.exchange);
         await save({ alerts: [...alerts, alert] });
         ctx.printResult({ data: { changed: !ctx.cliOptions.dryRun, dryRun: ctx.cliOptions.dryRun, alert }, ...(read.length > 0 ? { warnings: read } : {}) }, {
-          text: (data) => `Added alert ${data.alert.id}: ${symbol} ${condition} ${price}.${dryRunNote(data.dryRun)}`,
+          // No full stop after the price, which would read as part of it (below 81.).
+          text: (data) => `Added alert ${data.alert.id}: ${symbol} ${condition} ${price}${dryRunNote(data.dryRun)}`,
         });
         return;
       }

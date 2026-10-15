@@ -25,6 +25,7 @@ const LAYOUTS: Array<{ name: string; query: string }> = [
   { name: "news table, chart, table with sidebar, table, floating news table", query: "scenario=resize" },
   { name: "floating chart", query: "scenario=resize&float=chart" },
   { name: "floating heat map", query: "scenario=resize&float=heat" },
+  { name: "market heat map of 500 names, docked and floating", query: "scenario=resize&float=heat&heat=market&dock=heat" },
   { name: "floating Fear & Greed", query: "scenario=resize&float=fear" },
   { name: "Fear & Greed and canvas charts", query: "scenario=screenshot" },
   { name: "charts inside a pane's layout, docked (G layout, board, beside a table, under a toolbar)", query: "scenario=nested" },
@@ -35,6 +36,7 @@ const LAYOUTS: Array<{ name: string; query: string }> = [
   { name: "floating chart under a table", query: "scenario=resize&float=under" },
   { name: "chart under a table beside a chart, docked", query: "scenario=stacked" },
   { name: "chat beside a plain pane", query: "scenario=chat" },
+  { name: "DES overview beside a plain pane", query: "scenario=des" },
 ];
 
 interface PaneRect { id: string; x: number; y: number; width: number; height: number }

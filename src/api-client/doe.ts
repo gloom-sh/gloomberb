@@ -73,3 +73,22 @@ export interface DoeBoardPayload {
   reports: DoeReportStatus[];
   series: DoeSeriesRow[];
 }
+
+/** One EIA weekly US retail price series, as GET /cloud/doe/prices serves it. */
+interface DoePriceSeries {
+  id: string;
+  /** The EIA source key, which a report cites. */
+  key: string;
+  label: string;
+  unit: "usd-per-gallon";
+  /** [Monday the EIA surveyed, dollars per gallon], oldest first, the last five years. */
+  points: Array<[string, number]>;
+}
+
+export interface DoePricesPayload {
+  source: "EIA";
+  generatedAt: string;
+  status: "available" | "partial" | "unavailable";
+  gaps: string[];
+  series: DoePriceSeries[];
+}

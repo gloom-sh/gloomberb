@@ -27,7 +27,7 @@ import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities } from ".
 import { useDialog, useDialogKeyboard, type DialogApi, type PromptContext } from "../../../../ui/dialog";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
-import { requestAuthDialog } from "../auth-dialog";
+import { requestAuthDialog } from "../../../../account/auth-dialog";
 import {
   currentMcpEndpointUrl,
   MCP_CLIENTS,

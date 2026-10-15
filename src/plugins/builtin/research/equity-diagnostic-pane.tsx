@@ -10,22 +10,20 @@ import type {
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { Button, ChoiceDialog, EmptyState, PaneStatusBody, SectionHeading, Spinner, usePaneFooter, usePaneMenuItems } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { ExternalLinkText, PaneLinkMenu } from "../../../components/ui";
 import { t, tf } from "../../../i18n";
-import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
 import { formatTimeAgo } from "../../../utils/datetime-format";
 import { truncateToDisplayWidth } from "../../../utils/format";
-import { isPlainKey } from "../../../utils/keyboard";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useBoundTicker } from "../shared/ticker-request";
 
 const FOOTER_ID = "equity-diagnostic";
-const REFRESH_SCOPE = "equity-diagnostic:refresh";
 /** Width of the "Observed"/"Reading" label column before the layout stacks. */
 const LABEL_WIDTH = 10;
 const STACK_BELOW_WIDTH = 44;
@@ -494,12 +492,7 @@ export function EquityDiagnosticView({ focused, width, height }: {
   const refresh = useCallback(() => load("refresh"), [load]);
   const retry = useCallback(() => load("cache-first"), [load]);
 
-  useShortcut((event) => {
-    if (!isPlainKey(event, "r")) return;
-    event.preventDefault();
-    event.stopPropagation();
-    refresh();
-  }, { enabled: focused && canRefresh && !loading, scope: REFRESH_SCOPE });
+  usePaneRefreshKey(refresh, { focused, enabled: canRefresh && !loading });
 
   // The report's citations are links a keyboard cannot focus, so `o` opens
   // them: straight away for one, through a chooser for several.
@@ -578,10 +571,9 @@ export function EquityDiagnosticView({ focused, width, height }: {
     return <Box paddingX={1} paddingY={1}><DiagnosticLoading step={loadingStep} /></Box>;
   }
   if (!report) {
-    const retryAction = <Button label="Retry" variant="secondary" onPress={retry} />;
     return failure
-      ? <PaneStatusBody error={failureText(failure)} actions={retryAction} />
-      : <PaneStatusBody empty emptyTitle={t("No diagnostic available yet.")} actions={retryAction} />;
+      ? <PaneStatusBody error={failureText(failure)} retry={{ onRetry: retry }} />
+      : <PaneStatusBody empty emptyTitle={t("No diagnostic available yet.")} retry={{ onRetry: retry }} />;
   }
 
   return (

@@ -67,6 +67,10 @@ On macOS and Windows, desktop updates replace the installed app in place and kee
 
 Updates never restart the app by themselves. The desktop app downloads a new version in the background and then shows **Update ready** in the header with a **Restart** button (`U` does the same, and so does the **Update ready, restart to apply** entry that replaces **Check for Updates** in the command bar). The new version is installed only when you press it, and the app relaunches into it. If you quit without restarting, the installed version stays as it was and the update is offered again at the next launch. The terminal binary downloads and swaps itself in the background the same way, shows **Update ready, restart to apply**, and runs the new version the next time you start it.
 
+### Release channels
+
+The app updates from **stable** releases. **Release Channel** in the command bar (desktop: **Gloomberb > Release Channel...**, terminal: `gloomberb config set updates.channel nightly`) switches to **nightly**, a daily build of main that gets fixes first and can break; stable releases still arrive when they are newer. Switching back to stable never installs an older version: a nightly build stays until a newer stable release is out. `GLOOMBERB_UPDATE_CHANNEL=nightly` overrides the setting for one run. npm and Bun installs, Homebrew and the install script always follow stable. Nightly builds are GitHub prereleases named `vX.Y.Z-nightly.<date>.<run>.g<sha>`, published by the Nightly workflow only for a main commit that passed Verify and Verify Windows.
+
 For the best terminal experience, use a [Kitty](https://sw.kovidgoyal.net/kitty/)-compatible terminal such as Ghostty, Kitty, or WezTerm.
 
 ## What the install script does

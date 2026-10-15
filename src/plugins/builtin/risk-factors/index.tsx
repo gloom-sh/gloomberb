@@ -1,4 +1,5 @@
 import type { PluginModule } from "../plugin-module";
+import { proLockNote } from "../shared/pro-lock-note";
 import { createTickerSurfacePaneTemplate } from "../shared/ticker-surface";
 import {
   attachRiskFactorsPersistence,
@@ -12,6 +13,21 @@ import { isKnownNonUsListing } from "../../../utils/sec";
 
 const description =
   "The company's 10-K risk factors, and what was added, dropped, or rewritten since the prior year.";
+
+/**
+ * RISK is Pro whole (`useProFeatureWall`). The 10-Ks it reads are in the SEC
+ * filing list, which needs no account: `filings` lists them with a link to
+ * each, where Item 1A is the risk factors as written, without RISK's grouping
+ * or its changes since the year before.
+ */
+function riskFactorsLockNote(lock: { gate: "sign-in" | "pro"; symbol: string | null }): string {
+  return proLockNote(lock, {
+    token: "RISK",
+    does: "it groups a 10-K's risk factors by theme and shows what was added, dropped or reworded since the year before",
+    shows: "it",
+    free: (ticker, company) => `gloomberb filings ${ticker} --form 10-K lists ${company}'s annual reports, each with its filing date and a link to the filing, whose Item 1A holds the risk factors as written.`,
+  });
+}
 
 export const riskFactorsModule: PluginModule = {
   setup(ctx) {
@@ -33,6 +49,8 @@ export const riskFactorsModule: PluginModule = {
   panes: [
     {
       id: RISK_FACTORS_PANE_ID,
+      reportLockNote: riskFactorsLockNote,
+      reportRequirements: ["Gloom Cloud Pro"],
       name: "Risk Factors",
       icon: "R",
       component: RiskFactorsPane,

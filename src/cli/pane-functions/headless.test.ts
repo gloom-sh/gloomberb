@@ -372,6 +372,26 @@ test("headless text preserves applicable coverage notices once before the export
 });
 
 
+test("a report with nothing in it says once whether the free view left it empty or the symbol is not covered, unless the pane or an error already says why", () => {
+  const bundle: HeadlessPaneDefinition<"bundle"> = { shape: "bundle", argument: { kind: "ticker" }, options: [], load: () => ({ sections: [] }) };
+  const sections = [{ title: "Latest", rows: [] }, { title: "History", rows: [] }];
+  const asked = { symbols: ["DUOL"], options: {}, argument: "DUOL", rawArgument: "DUOL" };
+  const text = (result: Parameters<typeof renderHeadlessPaneText>[1], token?: string) =>
+    renderHeadlessPaneText(bundle, result, asked, "Company KPIs | DUOL", undefined, token);
+
+  expect(text({ sections }, "KPIS")).toContain("Company KPIs | DUOL\n\nNo data for DUOL: not covered by KPIS.\n");
+  expect(text({ sections }, "KPIS")).not.toContain("Latest");
+  expect(text({ sections, errors: ["Free shows 3 of 6 rows. Gloom Pro adds the other 3."] })).toContain("\nLocked: Gloom Pro\n");
+  // The pane's own reason, and a failure that explains the gap, stay as they were.
+  expect(text({ sections: [{ title: "Latest", rows: [], empty: "No KPI named arr." }] })).toContain("Latest\nNo KPI named arr.");
+  expect(text({ sections, errors: ["The source did not answer."] })).toContain("Latest\nNo data.");
+  // An option the reader chose can empty a covered symbol, so coverage is not claimed.
+  expect(renderHeadlessPaneText({ ...bundle, options: [{ key: "from", type: "string", description: "First date." }] }, { sections }, { ...asked, options: { from: "2030-01-01" } }, "History", undefined, "HP"))
+    .toContain("No data for DUOL with these options.");
+  // A board that was asked for no symbol claims nothing about coverage.
+  expect(renderHeadlessPaneText(bundle, { sections }, { ...asked, symbols: [] }, "Board")).toContain("Latest\nNo data.");
+});
+
 test("a report's caveats print as Notes, what Pro unlocks under Pro, the failures under Errors, and JSON carries all three", async () => {
   const definition: HeadlessPaneDefinition<"rows"> = {
     shape: "rows", argument: { kind: "none" }, options: [], columns: [{ key: "value", header: "Value" }],

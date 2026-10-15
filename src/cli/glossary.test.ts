@@ -11,7 +11,9 @@ test("a term is found by its name, abbreviation or another name, whatever its ca
   expect(lookupGlossary("b/c")).toEqual({ exact: [GLOSSARY.find((entry) => entry.short === "B/C")!], partial: [] });
   expect(terms(lookupGlossary("dealers").exact)).toEqual(["Dealer"]);
   expect(terms(lookupGlossary("discount").partial)).toEqual(["High discount margin", "Premium/discount"]);
-  expect(lookupGlossary("carry")).toEqual({ exact: [], partial: [] });
+  // Carry is no entry of its own, but the basis trade it names is: found as a related term.
+  expect(terms(lookupGlossary("carry").exact)).toEqual([]);
+  expect(terms(lookupGlossary("carry").partial)).toEqual(["Futures basis"]);
   // Every name leads to one entry, so a lookup never has to pick between two.
   const keys = GLOSSARY.flatMap((entry) => [...new Set([entry.term, entry.short, ...entry.aliases].filter(Boolean)
     .map((name) => name!.toLowerCase().replace(/[^a-z0-9]/g, "")))]);
@@ -66,4 +68,79 @@ test("the rebalance table's and ETF's words are found by plain names, and premiu
   // Without targets the table has weights only; "Targets add up to" names no column.
   expect(terms(reportGlossary("PF", "Ticker  Value  Weight  P&L\nTargets add up to 90.0%; 10.0% is unallocated."))).toEqual(["Weight"]);
   expect(terms(reportGlossary("ETF", "Fund facts (fee, NAV, premium) are not available yet; try fn SEC IBIT."))).toEqual(["NAV", "Premium/discount"]);
+});
+
+test("a word that is a term whole is found before the terms that only start with it", () => {
+  // `float` is the float of a stock, not the floating rate note that starts with the same letters.
+  const float = lookupGlossary("float");
+  expect([...terms(float.exact), ...terms(float.partial)]).toEqual(["Float", "FRN"]);
+  // "Monthly-weighted" came first in the glossary, but it only starts with "weight"; Target and Drift hold it whole.
+  expect(terms(lookupGlossary("weight").partial)).toEqual(["Target", "Drift", "Monthly-weighted"]);
+  expect(terms(lookupGlossary("asset").partial)).toEqual(["NAV", "Fed assets"]);
+  expect(["short interest", "shares short", "short ratio", "dtc", "settlement date", "crowded rising", "short squeeze", "% float"].map((query) => terms(lookupGlossary(query).exact)))
+    .toEqual([["Short interest"], ["Short interest"], ["Days to cover"], ["Days to cover"], ["Settlement"], ["Crowded"], ["Squeeze"], ["Float"]]);
+  // Borrow data is not offered, so it has no entry to define.
+  expect(lookupGlossary("borrow fee")).toEqual({ exact: [], partial: [] });
+});
+
+test("SIV's short volume is its own term, apart from short interest", () => {
+  const volume = "Date  Short %  Short volume  Total volume  Exempt volume  Status\n2026-10-13  58.79%  3.57M  6.07M  16.3k  Reported";
+  expect(terms(reportGlossary("SIV", volume))).toEqual(["Short volume"]);
+  expect(reportGlossary("SI", volume).map((entry) => entry.term)).not.toContain("Short volume");
+});
+
+test("a beginner's words for quotes, futures and the calendar are found by plain names, each as its own entry", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["pre-market", "premarket", "PRE-MKT", "after hours", "post-market", "regular close", "close", "delayed", "ticker", "symbol", "futures contract", "futures", "forecast", "prior"].map(exact))
+    .toEqual([["Pre-market"], ["Pre-market"], ["Pre-market"], ["After hours"], ["After hours"], ["Regular close"], ["Regular close"], ["Delayed"], ["Ticker"], ["Ticker"],
+      ["Futures contract"], ["Futures contract"], ["Forecast"], ["Prior"]]);
+  // `settle` was found only as the short-interest Settlement, a date: it is the futures settlement price now,
+  // and the date stays reachable by its own words.
+  expect(exact("settle")).toEqual(["Settle (futures)"]);
+  expect(exact("settlement price")).toEqual(["Settle (futures)"]);
+  expect(exact("settlement")).toEqual(["Settlement"]);
+  expect(exact("settlement date")).toEqual(["Settlement"]);
+  expect(exact("settled")).toEqual(["Settlement"]);
+  expect(terms(lookupGlossary("settle").partial)).toEqual(["Settlement"]);
+});
+
+test("QQ, FUT and ECO explain the quote, futures and calendar words they print", () => {
+  const quotes = [
+    "Ticker  Name       Last     Change  Change %  Pre-Market",
+    "AAPL    Apple Inc. $341.27  +$0.30  +0.09%    $342.68 +0.41%",
+    "",
+    "Source: Gloom Cloud \u00b7 Wed 14 Oct 2026 10:51 UTC \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC",
+  ].join("\n");
+  expect(terms(reportGlossary("QQ", quotes))).toEqual(["Ticker", "Pre-market", "Delayed"]);
+  // An index's prior close is dated in the status line; "closed" is not "close".
+  expect(terms(reportGlossary("QQ", "^GSPC  7,805.45\n\nSource: Gloom Cloud \u00b7 US trading day Tue 13 Oct 2026 close \u00b7 15 min delayed \u00b7 pre-market, opens 13:30 UTC")))
+    .toEqual(["Pre-market", "Regular close", "Delayed"]);
+  expect(terms(reportGlossary("QQ", "AAPL  After Hours\n\nSource: Gloom Cloud \u00b7 15 min delayed \u00b7 markets closed until Thu"))).toEqual(["After hours", "Delayed"]);
+
+  const futures = "SESSION  SYM  CONTRACT              LAST   PREV\nOPEN     CL   WTI Crude Oil Dec 26  94.40  93.17\n\nSource: Gloom Cloud \u00b7 15 min delayed \u00b7 markets open";
+  expect(terms(reportGlossary("FUT", futures))).toEqual(["Delayed", "Futures contract", "Settle (futures)"]);
+  // The curve's own Settle column, and the other functions that do not print these words.
+  expect(terms(reportGlossary("CTM", "Contract  Last  Settle 2026-10-13"))).toEqual(["Futures contract", "Settle (futures)"]);
+  expect(reportGlossary("HP", futures)).toEqual([]);
+
+  const calendar = "TIME (UTC)  IMP   CTY  EVENT     ACTUAL  FORECAST  PRIOR\n12:30  HIGH  US   CPI m/m   -       0.6%      0.4%";
+  expect(terms(reportGlossary("ECO", calendar))).toEqual(["Actual", "Forecast", "Prior", "Impact"]);
+});
+
+test("the futures basis, curve shape and funding words are found by plain names and explained from what CTM and PERP print", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["basis", "basis trade", "cash and carry", "vs spot", "annualised basis", "annualized basis", "ann basis", "contango", "backwardation", "roll yield", "roll", "funding rate", "funding apr"].map(exact))
+    .toEqual([["Futures basis"], ["Futures basis"], ["Futures basis"], ["Futures basis"], ["Annualised basis"], ["Annualised basis"], ["Annualised basis"], ["Contango"], ["Backwardation"],
+      ["Roll yield"], ["Roll yield"], ["Funding rate"], ["Funding rate"]]);
+  // `basis` is the futures basis, and the basis point and the annualised rate it starts a word of follow; funding rate stays one entry that also says what APR % is.
+  const basis = lookupGlossary("basis");
+  expect([terms(basis.exact), terms(basis.partial)]).toEqual([["Futures basis"], ["Basis point", "Annualised basis"]]);
+  expect(GLOSSARY.filter((entry) => /funding rate/i.test(entry.term))).toHaveLength(1);
+  expect(lookupGlossary("funding rate").exact[0]!.definition).toContain("APR % is the current 8h rate × 3 × 365");
+
+  const curve = "Contract  Last  Vs Spot  Ann Basis\nBTCV26  81830.00  +0.25%  +4.3%\n\nFront spread\nLabel  State  Annualized Roll Yield\nBTCX26-BTCV26  contango  -5.71";
+  expect(terms(reportGlossary("CTM", curve))).toEqual(["Futures contract", "Futures basis", "Annualised basis", "Contango", "Roll yield"]);
+  expect(terms(reportGlossary("PERP", "Market  Funding %/int  Premium %  APR %\nBTC  -0.00056% /8h  -0.039%  -0.62%"))).toEqual(["Funding rate", "Premium"]);
+  // Another function's report shows none of them.
+  expect(reportGlossary("HP", curve)).toEqual([]);
 });

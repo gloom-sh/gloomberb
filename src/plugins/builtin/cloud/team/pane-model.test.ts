@@ -12,7 +12,7 @@ import {
   setDraftName,
   setDraftShortName,
 } from "./pane-model";
-import { createTestTeam } from "./test-fixture";
+import { createTestTeam } from "../../../../team/test-fixture";
 
 const team = createTestTeam({ role: "owner" });
 

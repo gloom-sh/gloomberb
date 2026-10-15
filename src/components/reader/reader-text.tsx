@@ -12,18 +12,32 @@ import type { ArticleBlock } from "./article-text";
  * detail reader of list panes.
  */
 
-/** Line height of reading text on the desktop, against its own size. */
-export const DESKTOP_LINE_HEIGHT = 1.65;
-
 /**
- * The reading size on the desktop against the app's own (12px by default):
- * 17.4px, or 16.2px in a column under 480px, where a phone sets its body. A
- * container query in styles.css picks it from the column's own width, so a
- * resize changes it with the layout and nothing counts cells.
+ * The reader's type scale on the desktop and the web, one for every reader
+ * (the article reader, the detail reader, the markdown and docs headings in
+ * them). Reading text sits a step above the app's own size (12px by default)
+ * and every other level is a modest step from it, so the page reads as part
+ * of the app and the levels differ by weight and space as much as by size:
+ *
+ * | Level | Wide | Column under 480px |
+ * |---|---|---|
+ * | Metadata, facts, tables, coverage | 12px, dimmer | 12px |
+ * | Body | 14px, line height 1.6 | 13.2px |
+ * | Lead | 15px | 14.1px |
+ * | Section heading | 16px bold | 15.2px |
+ * | Title | 20px bold | 18.9px |
+ *
+ * The body size comes from `--reader-em`, which a container query in
+ * styles.css lowers in a narrow column, so a resize changes it with the
+ * layout and nothing counts cells. The levels above it are in em of it.
  */
-export const READER_COLUMN_FONT = "calc(var(--reader-em, 1.45) * 1em)";
-/** Back to the app's own size inside a reading column: chips, controls, tables. */
-export const READER_APP_FONT = "calc(1em / var(--reader-em, 1.45))";
+export const READER_COLUMN_FONT = "calc(var(--reader-em, 1.1667) * 1em)";
+/** Back to the app's own size inside a reading column: metadata, chips, controls, tables. */
+export const READER_APP_FONT = "calc(1em / var(--reader-em, 1.1667))";
+/** Line height of reading text on the desktop, against its own size. */
+export const DESKTOP_LINE_HEIGHT = 1.6;
+/** A section heading in reading text: a step above the body, set apart by weight and the space above it. */
+export const READER_HEADING_STYLE = { fontSize: "1.15em", fontWeight: 700, lineHeight: 1.35, margin: "0.9em 0 0.4em" } as const;
 
 export type Segment = { text: string; marked?: boolean; figure?: boolean };
 
@@ -58,14 +72,15 @@ function hasHeaderRow(rows: readonly string[][]): boolean {
 export type TextVariant = "headline" | "meta" | "lead" | "body" | "heading" | "label" | "fact" | "item";
 
 const DESKTOP_VARIANT_STYLE: Record<TextVariant, Record<string, string | number>> = {
-  headline: { fontSize: "1.45em", lineHeight: 1.22, letterSpacing: "-0.01em" },
-  meta: { fontSize: "0.78em", lineHeight: 1.5 },
-  lead: { fontSize: "1.1em", lineHeight: 1.55, marginBottom: "1.1em" },
+  headline: { fontSize: "1.43em", lineHeight: 1.25 },
+  meta: { fontSize: READER_APP_FONT, lineHeight: 1.5 },
+  lead: { fontSize: "1.07em", lineHeight: 1.55, marginBottom: "1em" },
   body: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.9em" },
-  heading: { fontSize: "1.08em", lineHeight: 1.35, margin: "0.6em 0 0.35em" },
-  label: { fontSize: "0.8em", lineHeight: 1.6, marginBottom: "0.3em" },
-  fact: { fontSize: "0.95em", lineHeight: 1.55, marginBottom: "0.35em" },
-  item: { lineHeight: 1.6, marginBottom: "0.3em" },
+  heading: READER_HEADING_STYLE,
+  // Names what follows (key facts, coverage) as a section heading does, without the air above a section.
+  label: { ...READER_HEADING_STYLE, margin: "0 0 0.4em" },
+  fact: { fontSize: "0.93em", lineHeight: 1.55, marginBottom: "0.35em" },
+  item: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.3em" },
 };
 
 function styled(segments: readonly Segment[], color: string, markColor: string, figureColor: string | undefined, attributes: number): StyledText {

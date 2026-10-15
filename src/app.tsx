@@ -14,7 +14,7 @@ import { Header } from "./components/layout/header";
 import { StatusBar } from "./components/layout/status-bar";
 import { useAppChromeShown } from "./components/layout/presentation";
 import { useLinkedLayoutSync } from "./layout-marketplace/linked-sync";
-import { useTeamCollectionsSync } from "./plugins/builtin/cloud/team/collections-sync";
+import { useTeamCollectionsSync } from "./team/collections-sync";
 import { Shell } from "./components/layout/shell";
 import { DetachedPaneShell } from "./components/layout/detached-pane-shell";
 import { TransientLayoutProvider } from "./components/layout/transient-layout";
@@ -50,6 +50,7 @@ import { bindPluginRegistryRuntimeAccess } from "./app/runtime/plugin-bindings";
 import { useAppStartupRuntime } from "./app/runtime/startup";
 import { useTickerRefreshRuntime } from "./app/runtime/ticker-refresh";
 import { useAppUpdateRuntime } from "./app/runtime/update";
+import { resolveUpdateChannel } from "./updater/channel";
 import { createCoreSyncContributors } from "./sync/core-contributors";
 import { useCloudSyncRuntime } from "./sync/react";
 import { RemoteControlHost, type RemoteControlAdapter } from "./remote/app-host";
@@ -278,6 +279,7 @@ function AppInner({
     pluginRegistry,
     stateRef,
     updateAvailable: state.updateAvailable,
+    updateChannel: resolveUpdateChannel(state.config),
     updateCheckInProgress: state.updateCheckInProgress,
     updateProgress: state.updateProgress,
   });

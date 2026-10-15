@@ -24,7 +24,7 @@ import { usePluginAppActions } from "../../../runtime";
 import { SignInWall } from "../auth-actions";
 import { useCloudUpgradeAction } from "../../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../../api-client/plan-access";
-import { teamStore } from "../team/store";
+import { teamStore } from "../../../../team/store";
 import { ThesisDetail } from "./detail";
 import { useBookExposure } from "./exposure";
 import * as flows from "./flows";

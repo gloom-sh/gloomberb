@@ -92,6 +92,22 @@ describe("CommandBar", () => {
     expect(checks).toBe(1);
   });
 
+  // "Release Channel" also matches "update": Enter on a half-typed word must
+  // check for updates, not open the channel switch.
+  test.each(["update", "upd"])("%s lands on Check for Updates before Release Channel", async (query) => {
+    let checks = 0;
+    await tui.render(<CommandBarHarness query={query} onCheckForUpdates={() => { checks += 1; }} />, { width: 100, height: 24 });
+    await tui.waitForFrameToContain("Release Channel");
+    const rows = tui.frame().split("\n");
+    expect(rows.findIndex((line) => line.includes("Check for Updates"))).toBeLessThan(rows.findIndex((line) => line.includes("Release Channel")));
+
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await tui.setup().renderOnce();
+    });
+    expect(checks).toBe(1);
+  });
+
   test("Check for Updates is inert once the terminal binary is swapped in", async () => {
     let checks = 0;
     await tui.render(<CommandBarHarness

@@ -124,3 +124,19 @@ export function missingExpiryText(requested: number, expirations: readonly numbe
     ? `no option contracts returned for${subject ? ` ${subject}` : ""} expiry ${date}; nearest others: ${choices}`
     : `no expiry ${date}${of}; available: ${choices}`;
 }
+
+/**
+ * How a command fails on an expiry the chain cannot show: `options --expiration`
+ * and `fn OMON --expiration` print the same error, with the command that lists
+ * every expiry as its advice line.
+ */
+export function missingExpiryMessage(
+  symbol: string,
+  requested: number,
+  expirations: readonly number[],
+): { message: string; details: string } {
+  return {
+    message: missingExpiryText(requested, expirations, symbol),
+    details: `Run gloomberb options ${symbol} to list every expiry (--json carries them too).`,
+  };
+}

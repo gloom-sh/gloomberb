@@ -1,6 +1,6 @@
 import type { PluginModule } from "../plugin-module";
-import { teamChannelId } from "../cloud/team/model";
-import { teamStore } from "../cloud/team/store";
+import { teamChannelId } from "../../../team/model";
+import { teamStore } from "../../../team/store";
 import { formatChatPaneTitle } from "./channel-labels";
 import {
   DEFAULT_CHAT_CHANNEL_ID,

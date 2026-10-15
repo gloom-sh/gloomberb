@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { CotBoardPayload, CotClass, CotClassSummary, CotContractPayload, CotFamily, CotPayloadBase } from "../../../api-client/cot";
 import { createPluginCache } from "../../../data/plugin-cache";
-import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { cachedCloudResource, loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import type { PricePoint } from "../../../types/financials";
 import { COT_CLASSES, cotPriceMapping } from "./model";
 
@@ -67,10 +67,18 @@ export async function fetchCotBoard(family: CotFamily, traderClass: CotClass, cl
   try { return validateCotBoard(await client.getCloudCotBoard(family, traderClass), family, traderClass); }
   catch (error) { throw unavailable(error); }
 }
+const cotBoardKey = (family: CotFamily, traderClass: CotClass) => `${family}:${traderClass}`;
+const presentCotBoard = (payload: CotBoardPayload, stale: boolean, refreshError: string | null) => ({
+  ...payload, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])],
+  status: stale && payload.status === "available" ? "partial" as const : payload.status,
+});
+export function cachedCotBoard(family: CotFamily, traderClass: CotClass) {
+  const cached = cachedCloudResource(cotBoardCache, cotBoardKey(family, traderClass), (payload) => validateCotBoard(payload, family, traderClass));
+  return cached ? presentCotBoard(cached.payload, false, null) : null;
+}
 export async function loadCotBoard(family: CotFamily, traderClass: CotClass, force = false) {
-  const { payload, stale, refreshError } = await loadCloudResource(cotBoardCache, `${family}:${traderClass}`, () => fetchCotBoard(family, traderClass), { force });
-  return { ...payload, gaps: [...payload.gaps, ...(refreshError ? [refreshError] : [])],
-    status: stale && payload.status === "available" ? "partial" as const : payload.status };
+  const { payload, stale, refreshError } = await loadCloudResource(cotBoardCache, cotBoardKey(family, traderClass), () => fetchCotBoard(family, traderClass), { force });
+  return presentCotBoard(payload, stale, refreshError);
 }
 export async function fetchCotContract(contractCode: string, family: CotFamily, client: Pick<typeof apiClient, "getCloudCotContract"> = apiClient) {
   try { return validateCotContract(await client.getCloudCotContract(contractCode, family), family, contractCode); }

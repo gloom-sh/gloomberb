@@ -259,13 +259,19 @@ describe("pane catalog search", () => {
     expect(order[4]).toBe("ZZZ");
   });
 
-  test("hedging searches put OSA first among the built-in functions", async () => {
+  test("hedging and put-selling searches put OSA first among the built-in functions", async () => {
     const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
     const registry = await createPaneCatalog(context, getLoadablePlugins());
     try {
       const entries = await buildPaneCatalogEntries(registry, context);
       for (const query of ["collar", "hedge", "hedging", "protective put", "put spread"]) {
         expect(filterPaneCatalogEntries(entries, query)[0]?.token, query).toBe("OSA");
+      }
+      // Selling puts: OSA runs the trade, OMON picks the strike, VCA finds the rich premium.
+      for (const query of ["cash secured put", "csp", "put selling", "sell put", "short put", "wheel"]) {
+        const tokens = filterPaneCatalogEntries(entries, query).map(({ token }) => token);
+        expect(tokens[0], query).toBe("OSA");
+        expect(tokens.slice(0, 3).sort(), query).toEqual(["OMON", "OSA", "VCA"]);
       }
     } finally {
       registry.destroy();

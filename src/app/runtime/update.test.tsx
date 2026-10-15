@@ -1,10 +1,12 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer, useRef } from "react";
 import { createOpenTuiTestHarness } from "../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../state/app/context";
 import { createDefaultConfig } from "../../types/config";
 import { setUpdateHost, type ReleaseInfo, type UpdateProgress } from "../../updater";
+import { resolveUpdateChannel, withUpdateChannel } from "../../updater/channel";
 import { VERSION } from "../../version";
+import { debugLog, type LogEntry } from "../../utils/debug-log";
 import { useAppUpdateRuntime } from "./update";
 
 const tui = createOpenTuiTestHarness();
@@ -53,7 +55,7 @@ type Runtime = ReturnType<typeof useAppUpdateRuntime>;
 
 async function mountRuntime(options: { detached?: boolean; initial?: Partial<AppState> } = {}) {
   let runtime!: Runtime;
-  let current!: { state: AppState };
+  let current!: { state: AppState; dispatch: (action: AppAction) => void };
   const config = { ...createDefaultConfig("/tmp/gloomberb-update-runtime-test"), lastLaunchedVersion: VERSION };
   const stateRef: { current: AppState } = { current: { ...createInitialState(config), ...options.initial } };
 
@@ -65,13 +67,14 @@ async function mountRuntime(options: { detached?: boolean; initial?: Partial<App
       stateRef.current = appReducer(stateRef.current, action);
       reactDispatch(action);
     }).current;
-    current = { state };
+    current = { state, dispatch };
     runtime = useAppUpdateRuntime({
       dispatch,
       isDetachedWindow: options.detached ?? false,
       pluginRegistry: {} as never,
       stateRef,
       updateAvailable: state.updateAvailable,
+      updateChannel: resolveUpdateChannel(state.config, undefined),
       updateCheckInProgress: state.updateCheckInProgress,
       updateProgress: state.updateProgress,
     });
@@ -86,7 +89,7 @@ async function mountRuntime(options: { detached?: boolean; initial?: Partial<App
     });
   };
   await settle();
-  return { runtime: () => runtime, state: () => current.state, settle };
+  return { runtime: () => runtime, state: () => current.state, dispatch: (action: AppAction) => current.dispatch(action), settle };
 }
 
 test("downloads in the background, stops at ready, and restarts only when asked", async () => {
@@ -117,10 +120,15 @@ test("a failed apply shows the error and can be tried again", async () => {
   const host = installFakeHost();
   host.onApply = (report) => report({ phase: "error", error: "Failed to replace app" });
   const app = await mountRuntime();
+  const logged: LogEntry[] = [];
+  const unsubscribe = debugLog.subscribe((entry) => { if (entry.source === "update") logged.push(entry); });
 
   act(() => { app.runtime().restartToApplyUpdate(); });
   await app.settle();
+  unsubscribe();
   expect(app.state().updateProgress).toEqual({ phase: "error", error: "Failed to replace app" });
+  // The header cuts the message to its room; the log keeps all of it.
+  expect(logged).toMatchObject([{ level: "error", message: "update failed", data: { error: "Failed to replace app" } }]);
 
   // Retry downloads again and lands on ready, then Restart works once more.
   act(() => { app.runtime().startUpdate(release); });
@@ -142,4 +150,92 @@ test("a popped-out window neither checks nor restarts", async () => {
   await app.settle();
 
   expect(host).toMatchObject({ checks: 0, downloads: 0, applies: 0 });
+});
+
+test("switching channel checks the new one at once and says what it found", async () => {
+  const checked: string[] = [];
+  setUpdateHost({
+    async checkForUpdateDetailed(_version, channel) {
+      checked.push(channel);
+      return channel === "stable"
+        ? { kind: "current", notice: "Staying on v1.0.1-nightly.20261016.5.gabc until a newer stable release" }
+        : { kind: "current" };
+    },
+    async performUpdate() {},
+  });
+  const app = await mountRuntime();
+  expect(checked).toEqual(["stable"]);
+  // The hourly check says nothing in the header.
+  expect(app.state().updateNotice).toBeNull();
+
+  act(() => { app.dispatch({ type: "SET_CONFIG", config: withUpdateChannel(app.state().config, "nightly") }); });
+  await app.settle();
+  expect(checked).toEqual(["stable", "nightly"]);
+  expect(app.state().updateNotice).toBe(`Already on v${VERSION}`);
+
+  act(() => { app.dispatch({ type: "SET_CONFIG", config: withUpdateChannel(app.state().config, "stable") }); });
+  await app.settle();
+  expect(checked).toEqual(["stable", "nightly", "stable"]);
+  expect(app.state().updateNotice).toBe("Staying on v1.0.1-nightly.20261016.5.gabc until a newer stable release");
+});
+
+describe("a nightly build downloaded before the switch back to stable", () => {
+  const nightly: ReleaseInfo = { ...release, version: "99.0.1-nightly.20261016.5.gabcdef0", tagName: "v99.0.1-nightly.20261016.5.gabcdef0", channel: "nightly" };
+
+  /** Nightly offers a build, stable has nothing newer; downloads wait for `finish` when held. */
+  function installChannelHost({ hold = false } = {}) {
+    const host = { checked: [] as string[], finish: () => {} };
+    setUpdateHost({
+      async checkForUpdateDetailed(_version, channel) {
+        host.checked.push(channel);
+        return channel === "nightly" ? { kind: "available", release: nightly } : { kind: "current" };
+      },
+      async performUpdate(_release, onProgress) {
+        onProgress({ phase: "downloading", percent: 10 });
+        const ready = () => onProgress({ phase: "ready", canRestart: true });
+        if (hold) host.finish = ready;
+        else ready();
+      },
+      async applyUpdate() {},
+    });
+    return host;
+  }
+
+  async function switchTo(app: Awaited<ReturnType<typeof mountRuntime>>, channel: "stable" | "nightly") {
+    act(() => { app.dispatch({ type: "SET_CONFIG", config: withUpdateChannel(app.state().config, channel) }); });
+    await app.settle();
+  }
+
+  test("is taken back rather than installed by the restart, and stable checks again", async () => {
+    const host = installChannelHost();
+    const app = await mountRuntime();
+    await switchTo(app, "nightly");
+    await app.settle();
+    expect(app.state().updateProgress).toEqual({ phase: "ready", canRestart: true });
+    expect(app.state().updateAvailable?.version).toBe(nightly.version);
+
+    await switchTo(app, "stable");
+    await app.settle();
+    expect(app.state().updateProgress).toBeNull();
+    expect(app.state().updateAvailable).toBeNull();
+    expect(host.checked).toEqual(["stable", "nightly", "stable"]);
+    expect(app.state().updateNotice).toBe(`Already on v${VERSION}`);
+  });
+
+  test("is taken back when it only finishes downloading after the switch", async () => {
+    const host = installChannelHost({ hold: true });
+    const app = await mountRuntime();
+    await switchTo(app, "nightly");
+    expect(app.state().updateProgress).toEqual({ phase: "downloading", percent: 10 });
+
+    await switchTo(app, "stable");
+    // The download under way is left to finish.
+    expect(app.state().updateProgress).toEqual({ phase: "downloading", percent: 10 });
+    act(() => { host.finish(); });
+    await app.settle();
+    await app.settle();
+    expect(app.state().updateProgress).toBeNull();
+    expect(app.state().updateAvailable).toBeNull();
+    expect(host.checked).toEqual(["stable", "nightly", "stable"]);
+  });
 });

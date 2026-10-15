@@ -6,7 +6,9 @@ import { isPlainKey } from "../../../utils/keyboard";
 import { formatCompact, formatPercentRaw } from "../../../utils/format";
 import { formatMarketPrice, formatSignedMarketPrice, liveQuoteFormatOptions } from "../../../market-data/market/format";
 import { formatExpDate, resolveOptionsTarget } from "../../../utils/options";
-import { expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, missingExpiryText, readOptionExpiration } from "../../../utils/option-expiry";
+import {
+  expiryIsoDate, findListedExpiry, formatDaysToExpiry, daysToExpiry, missingExpiryMessage, missingExpiryText, readOptionExpiration,
+} from "../../../utils/option-expiry";
 import { canonicalTickerKey } from "../../../utils/exchanges";
 import { isOptionsUnavailableError, listedOptionsAlternative, optionsUnavailableTitle } from "../../../market-data/options-alternatives";
 import { useChartQueries, useOptionsQuery, useResolvedEntryValue, useTickerFinancials } from "../../../market-data/hooks";
@@ -72,6 +74,9 @@ import { useIvRank } from "../iv-history/rank";
 import { useOptionsSessionOpen, useThrottledValue } from "../shared/volatility/live-session";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { optionCarry, optionCostOfSpot } from "./carry";
+import { formatModelSpotPrice, modelSpotLabel, optionModelSpot } from "./model-spot";
+import { chainOpenInterestAsOf, loadListedOpenInterest, openInterestAsOfLabel, statedOpenInterestAsOf } from "./open-interest-as-of";
+import { useAsyncResource } from "../../../react/async-resource";
 import {
   ALL_STRIKES,
   STRIKE_WINDOW_PRESETS,
@@ -156,7 +161,7 @@ function optionsSummaryItems({ spot, summary, enrichment, currency, ivRank }: {
     { id: "straddle", label: "Straddle", ...move(enrichment?.expectedMove.straddle, enrichment?.expectedMove.straddlePercent) },
     { id: "sigma", label: "1σ fit", ...move(enrichment?.expectedMove.sigma, enrichment?.expectedMove.sigmaPercent) },
     { id: "skew", label: "Skew", value: skew == null ? "--" : `${skew} pp`, detail: "25d P-C" },
-    { id: "slope", label: "Slope", value: slope == null ? "--" : `${slope} ${slopeAnnualized ? "pp/y" : "pts"}`, detail: slopeTo },
+    { id: "slope", label: "Slope", value: slope == null ? "--" : `${slope} ${slopeAnnualized ? "pp/y" : "pp"}`, detail: slopeTo },
     { id: "volume", label: "Volume", value: summary?.expirationVolume == null ? "--" : formatCompact(summary.expirationVolume, { fixedDecimals: true }) },
     { id: "pc-volume", label: "P/C vol", value: formatRatio(summary?.putCallVolumeRatio) },
     { id: "pc-oi", label: "P/C OI", value: formatRatio(summary?.putCallOpenInterestRatio) },
@@ -374,9 +379,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     () => resolveDefaultStrikeTarget(parsed?.strike, underlyingPrice),
     [strikeChain, parsed?.strike, underlyingPrice == null],
   );
-  const windowSpot = useMemo(() => spot, [strikeChain, spot == null]);
+  // The band reads deltas at the spot and instant the chain's Greeks are valued at, so a strike in it prints a delta in it.
+  const windowSpot = useMemo(() => optionModelSpot(underlyingStale ? null : underlying?.quote, strikeChain, Date.now(), effectiveExchange),
+    [strikeChain, spot == null]);
   const windowDeltas = useMemo(
-    () => strikeWindow.kind === "delta" && strikeChain ? chainDeltasByStrike(strikeChain, windowSpot, dividendYield) : null,
+    () => strikeWindow.kind === "delta" && strikeChain
+      ? chainDeltasByStrike(strikeChain, windowSpot?.price, dividendYield, windowSpot?.valuationTime) : null,
     [dividendYield, strikeChain, strikeWindow.kind, windowSpot],
   );
   const strikeWindowResult = useMemo(
@@ -396,7 +404,7 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
   const expiryAsOfMs = Number.isFinite(chainAsOfMs) ? chainAsOfMs : Date.now();
   const expiryDate = selectedExpiration == null ? "" : expiryIsoDate(selectedExpiration);
   const expiryDays = selectedExpiration == null ? "" : formatDaysToExpiry(selectedExpiration, expiryAsOfMs);
-  useRemoteUiNode(expiryDate && chain ? {
+  useRemoteUiNode(expiryDate && chain && !expirationUnavailable ? {
     role: "report-notice",
     label: "Expiry",
     getMetadata: () => ({
@@ -404,6 +412,12 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       key: "expiry",
       value: { date: expiryDate, daysToExpiry: daysToExpiry(selectedExpiration!, expiryAsOfMs) },
     }),
+  } : null);
+  // `fn OMON --expiration` on a date the chain cannot show fails as `options --expiration` does.
+  useRemoteUiNode(expirationUnavailable && selectedExpiration != null && effectiveTicker ? {
+    role: "report-failure",
+    label: "Expiry unavailable",
+    getMetadata: () => missingExpiryMessage(effectiveTicker, selectedExpiration, availableExpirations),
   } : null);
   // A refresh that failed keeps the last chain, which is then stale.
   const asOfEntry = strikeChain == null ? null : strikeChain === expirationChain ? expirationChainEntry : initialChainEntry;
@@ -494,11 +508,18 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
     () => new Map(liveChain?.puts.map((p) => [p.strike, p]) ?? []),
     [liveChain],
   );
+  // IV and the Greeks are valued at one spot and instant, which the footer
+  // names: the close a chain from the close was quoted against, else the
+  // latest price (docs/research-data.md#greeks-spot-and-time).
+  const underlyingQuote = underlyingStale ? null : underlying?.quote;
+  const modelSpot = useMemo(() => liveChain ? optionModelSpot(underlyingQuote, liveChain, Date.now(), effectiveExchange) : null,
+    [liveChain, underlyingQuote, effectiveExchange]);
+  const greeksSpot = modelSpot?.price;
   // One solve per applied batch: a streamed contract's IV comes from its live
   // midpoint, the rest from the snapshot, all against the same forward.
   const volatilities = useMemo(
-    () => liveChain ? solveChainVolatilities(liveChain, spot, dividendYield) : null,
-    [dividendYield, spot, liveChain],
+    () => liveChain ? solveChainVolatilities(liveChain, greeksSpot, dividendYield, modelSpot?.valuationTime) : null,
+    [dividendYield, greeksSpot, modelSpot?.valuationTime, liveChain],
   );
   const rows = useMemo<OptionTableRow[]>(() => strikes.map((strike) => {
     const call = callsByStrike.get(strike);
@@ -508,14 +529,51 @@ export function OptionsView({ width, height, focused, nestedInTabs = false, ivRa
       call,
       put,
       impliedVolatility: volatilities?.byStrike.get(strike),
-      callGreeks: volatilities ? calculateOptionGreeks(call, "call", spot, dividendYield, volatilities) : undefined,
-      putGreeks: volatilities ? calculateOptionGreeks(put, "put", spot, dividendYield, volatilities) : undefined,
-      callExtrinsicPerYear: call && volatilities ? optionCarry(call, "call", spot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
-      putExtrinsicPerYear: put && volatilities ? optionCarry(put, "put", spot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
+      callGreeks: volatilities ? calculateOptionGreeks(call, "call", greeksSpot, dividendYield, volatilities) : undefined,
+      putGreeks: volatilities ? calculateOptionGreeks(put, "put", greeksSpot, dividendYield, volatilities) : undefined,
+      callExtrinsicPerYear: call && volatilities ? optionCarry(call, "call", greeksSpot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
+      putExtrinsicPerYear: put && volatilities ? optionCarry(put, "put", greeksSpot, volatilities.valuationTime)?.extrinsicPerYear ?? null : null,
       putCostOfSpot: put ? optionCostOfSpot(put, spot) : null,
       isPositionStrike: !!parsed && strike === parsed.strike,
     };
-  }), [callsByStrike, dividendYield, parsed, putsByStrike, spot, strikes, volatilities]);
+  }), [callsByStrike, dividendYield, greeksSpot, parsed, putsByStrike, spot, strikes, volatilities]);
+  // The open interest's session: the chain's own, or for a chain that does not say, OPX's listing of the
+  // same expiry, stated only when the counts are OPX's.
+  const statedOpenInterest = useMemo(() => strikeChain ? statedOpenInterestAsOf(strikeChain) : undefined, [strikeChain]);
+  const listedExpiry = selectedExpiration == null || !effectiveTicker || !strikeChain || statedOpenInterest
+    ? null : expiryIsoDate(selectedExpiration);
+  const listedLoader = useCallback(() => loadListedOpenInterest(effectiveTicker, listedExpiry!), [effectiveTicker, listedExpiry]);
+  const listedOpenInterest = useAsyncResource(listedExpiry ? listedLoader : null);
+  const openInterestAsOf = useMemo(() => statedOpenInterest
+    ?? (strikeChain && listedOpenInterest.data ? chainOpenInterestAsOf(strikeChain, listedOpenInterest.data) : null),
+  [statedOpenInterest, strikeChain, listedOpenInterest.data]);
+  // A report of the pane (`gloomberb fn OMON`) names them too.
+  useRemoteUiNode(modelSpot ? {
+    role: "report-notice",
+    label: "Greeks spot",
+    getMetadata: () => ({
+      text: `Greeks at spot ${formatModelSpotPrice(modelSpot.price)} (${modelSpotLabel(modelSpot)})`,
+      key: "greeksSpot",
+      value: { spot: modelSpot.price, basis: modelSpot.basis === "close" ? "close" : modelSpot.session ?? "last",
+        asOf: new Date(modelSpot.observedAt).toISOString(), valuationTime: new Date(modelSpot.valuationTime).toISOString() },
+    }),
+  } : null);
+  useRemoteUiNode(strikeChain && !listedOpenInterest.loading ? {
+    role: "report-notice",
+    label: "Open interest as of",
+    getMetadata: () => ({ text: openInterestAsOfLabel(openInterestAsOf), key: "openInterestAsOf", value: openInterestAsOf?.date ?? null }),
+  } : null);
+  // What IV and the Greeks are valued at, and the open interest's date. In a
+  // crowded footer it shortens, then gives way to the contract under the cursor.
+  const basisText = [modelSpot ? `spot ${formatModelSpotPrice(modelSpot.price)} ${modelSpotLabel(modelSpot)}` : null,
+    strikeChain && !listedOpenInterest.loading ? openInterestAsOfLabel(openInterestAsOf) : null].filter(Boolean).join(" · ");
+  const shortBasisText = [modelSpot ? `${formatModelSpotPrice(modelSpot.price)} ${modelSpot.basis === "close" ? "close" : modelSpot.session ?? "last"} `
+    + `${new Date(modelSpot.observedAt).toISOString().slice(11, 16)} UTC` : null,
+  strikeChain && !listedOpenInterest.loading ? openInterestAsOf?.date ? `OI ${openInterestAsOf.date.slice(5)}` : "OI undated" : null]
+    .filter(Boolean).join(" · ");
+  usePaneFooter("options-basis", () => ({ info: basisText ? [{ id: "greeks-basis",
+    parts: [{ text: basisText, tone: "muted" as const }],
+    variants: [[{ text: shortBasisText, tone: "muted" as const }], []] }] : [] }), [basisText, shortBasisText]);
   // Figures that summarise the whole expiry move at most once a second, so a
   // busy stream reads as a steady strip rather than flicker.
   // A new expiry, a refreshed snapshot or the underlying price arriving or

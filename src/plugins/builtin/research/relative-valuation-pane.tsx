@@ -159,7 +159,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
   const error = symbols.length > 0 ? peerSnapshot.error : "No tickers selected";
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [sortPreference, setSortPreference] = useState<RelativeSortPreference>(DEFAULT_RELATIVE_SORT);
-  const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
+  const appBaseCurrency = useAppSelector((state) => state.config.baseCurrency);
+  // `--currency` on a capture asks for another currency than the app's.
+  const capCurrency = typeof pane?.settings?.capCurrency === "string" ? pane.settings.capCurrency : null;
+  const baseCurrency = capCurrency ?? appBaseCurrency;
   const quoteTargets = useMemo<QuoteSubscriptionTarget[]>(() => symbols.map((peer) => ({
     symbol: peer,
     exchange: "",
@@ -209,8 +212,11 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
 
   usePaneNoticeFooter({
     registrationId: "relative-valuation-notices",
-    notices: rows.filter((row) => row.fundamentalsProvenance?.stale)
-      .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
+    notices: [
+      ...rows.filter((row) => row.fundamentalsProvenance?.stale)
+        .map((row) => `${row.symbol}: ${RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE}.`),
+      ...rows.flatMap((row) => row.evSalesUnavailable ? [`${row.symbol}: ${row.evSalesUnavailable}`] : []),
+    ],
     focused,
   });
 
@@ -237,7 +243,10 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "forwardPE":
         return { text: formatPriceEarnings(row.notMeaningful.forwardPE ? NOT_MEANINGFUL : row.reportedMultiples.forwardPE), color: colors.text };
       case "evSales":
-        return { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
+        // A withdrawn EV says so; the footer says why.
+        return row.evSales == null && row.evSalesUnavailable
+          ? { text: "EV n/a", color: colors.textDim }
+          : { text: formatNumber(row.evSales ?? undefined, 1), color: colors.text };
       case "fcfYield":
         return { text: formatLevelPercent(row.fcfYield ?? undefined), color: priceColor(row.fcfYield ?? 0) };
       case "revenueGrowth":

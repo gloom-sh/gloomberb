@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DataTableStackView, DataTableView, KeyValueRow, QueryBar, usePaneNoticeFooter, useQueryBarSearch, useTableLoadMore, type DataTableColumn } from "../../../components";
+import { DataTableStackView, DataTableView, KeyValueRow, QueryBar, usePagedRows, usePaneNoticeFooter, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PageRequest } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { colors } from "../../../theme/colors";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
@@ -28,47 +28,42 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const [target, setTarget] = usePluginPaneState<ThirteenFFund | null>("overlap:target", null);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("overlap:selected", null);
   const [selectedPositionId, setSelectedPositionId] = usePluginPaneState<string | null>("overlap:position", null);
-  const [funds, setFunds] = useState<ThirteenFFund[]>([]);
   const [peer, setPeer] = useState<FundDetailData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
   const [fundSort, setFundSort] = useState<{ columnId: "name" | "cik"; direction: SortDirection }>({ columnId: "name", direction: "asc" });
-  const [hasMore, setHasMore] = useState(false);
-  const [offset, setOffset] = useState(0);
-  const moreController = useRef<AbortController | null>(null);
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [mineOnly, setMineOnly] = usePluginPaneState<boolean>("overlap:mine", false);
   const [sort, setSort] = usePluginPaneState<{ id: "weight" | "comparedWeight"; desc: boolean }>("overlap:sort", { id: "weight", desc: true });
   const mine = useMineTickers();
   const { pinTicker } = usePluginTickerActions();
   const [refresh, setRefresh] = useState(0);
   const lastRefresh = useRef(0);
+  const searchPage = useCallback(async ({ offset, signal }: PageRequest) => {
+    const result = await searchThirteenFFunds(query, 50, signal, { offset });
+    const rows = result.filter(fund => fund.cik !== data.cik);
+    return { rows, hasMore: result.length === 50, nextOffset: offset + result.length };
+  }, [query, data.cik]);
+  const paged = usePagedRows(target || !query || isCikQuery(query) ? null : searchPage, { getId: (fund) => fund.cik });
+  const cikFunds = useMemo(() => isCikQuery(query) && !target ? [{ cik: normalizeCik(query), name: query }] : [], [query, target]);
+  const funds = target ? [] : cikFunds.length ? cikFunds : paged.rows;
   useEffect(() => {
     const controller = new AbortController();
-    setError(null); setPeer(null); setFunds([]); setHasMore(false); setOffset(0); setLoadingMore(false); moreController.current?.abort();
-    if (!target && !query) { setLoading(false); return; }
+    setError(null); setPeer(null);
+    if (!target) { setLoading(false); return; }
     setLoading(true);
     const forceRefresh = refresh !== lastRefresh.current;
     lastRefresh.current = refresh;
-    const work = target ? loadFundDetail(target.cik, target.name, controller.signal, { forceRefresh }).then(result => { if (!controller.signal.aborted) setPeer(result); })
-      : isCikQuery(query) ? Promise.resolve().then(() => setFunds([{ cik: normalizeCik(query), name: query }]))
-      : searchThirteenFFunds(query, 50, controller.signal).then(result => { if (!controller.signal.aborted) { setFunds(result.filter(fund => fund.cik !== data.cik)); setHasMore(result.length === 50); setOffset(result.length); } });
-    void work.catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => { controller.abort(); moreController.current?.abort(); };
-  }, [query, target, refresh, data.cik]);
-  const loadMore = useCallback(() => {
-    if (!hasMore || loadingMore || loading || target) return;
-    moreController.current?.abort(); const request = new AbortController(); moreController.current = request; setLoadingMore(true);
-    void searchThirteenFFunds(query, 50, request.signal, { offset }).then(result => {
-      if (request.signal.aborted) return;
-      setFunds(current => [...new Map([...current, ...result.filter(fund => fund.cik !== data.cik)].map(fund => [fund.cik, fund])).values()]);
-      setHasMore(result.length === 50); setOffset(offset + result.length);
-    }).catch(cause => { if (!request.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); }).finally(() => { if (!request.signal.aborted) setLoadingMore(false); });
-  }, [hasMore, loadingMore, loading, target, query, offset, data.cik]);
-  const onScroll = useTableLoadMore(scrollRef, hasMore && !loadingMore && !loading && !target, loadMore);
-  const refreshData = useCallback(() => setRefresh(value => value + 1), []);
+    void loadFundDetail(target.cik, target.name, controller.signal, { forceRefresh })
+      .then(result => { if (!controller.signal.aborted) setPeer(result); })
+      .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    return () => { controller.abort(); };
+  }, [target, refresh]);
+  const loadingMore = paged.loadingMore;
+  const onScroll = useTableLoadMore(scrollRef, paged.hasMore && !loadingMore && !loading && !target, paged.loadMore);
+  const refreshData = useCallback(() => { setRefresh(value => value + 1); paged.reload(); }, [paged.reload]);
   useShortcut(event => {
     if (!focused || !target || event.targetEditable || !isDetailBackNavigationKey(event)) return;
     event.preventDefault?.(); event.stopPropagation?.(); setTarget(null);
@@ -80,7 +75,8 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   });
   const period = peer ? overlapPeriod(data, peer) : null;
   const mismatch = peer && !period;
-  usePaneStatusFooter({ registrationId: "13f-overlap", loading: loading || loadingMore, error, hints: target ? [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", title: mineOnly ? "All Tickers" : "Mine Only", onPress: () => setMineOnly(value => !value) }] : [{ id: "search", key: "/", label: "search", onPress: focusSearch }] });
+  const listError = error ?? paged.error?.message ?? paged.moreError?.message ?? null;
+  usePaneStatusFooter({ registrationId: "13f-overlap", loading: loading || loadingMore || paged.loading, error: listError, hints: target ? [{ id: "mine", key: "m", label: mineOnly ? "all tickers" : "mine", title: mineOnly ? "All Tickers" : "Mine Only", onPress: () => setMineOnly(value => !value) }] : [{ id: "search", key: "/", label: "search", onPress: focusSearch }] });
   usePaneNoticeFooter({ registrationId: "13f-overlap-notice", focused, notices: [...(peer?.warnings ?? []), ...(mismatch ? ["No reporting quarter is loaded for both funds; overlap is unavailable."] : [])] });
   const rows = useMemo(() => (peer ? buildFundOverlap(data, peer) : []).filter(row => !mineOnly || mine.has(row.ticker)).sort((a, b) => ((a[sort.id] ?? -1) - (b[sort.id] ?? -1)) * (sort.desc ? -1 : 1)), [peer, data, mineOnly, mine, sort]);
   const positionColumns: DataTableColumn[] = [{ id: "mine", label: "MINE", width: 5, align: "left" }, { id: "ticker", label: "TICKER", width: 10, align: "left" }, { id: "type", label: "TYPE", width: 6, align: "left" }, { id: "issuer", label: "ISSUER", width: Math.max(18, width - 58), align: "left" }, { id: "weight", label: "FIRST %", width: 12, align: "right" }, { id: "comparedWeight", label: "SECOND %", width: 12, align: "right" }];
@@ -106,6 +102,6 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
     onActivate={fund => { blurSearch(); setTarget(fund); }}
     rootBefore={<QueryBar width={width} search={{ value: query, onChange: setQuery, placeholder: "Second fund name or CIK", focused, ...searchProps, debounceMs: 250 }} />}
     renderCell={(row, column, _index, state) => ({ text: column.id === "name" ? row.name : row.cik, color: state.selected ? colors.selectedText : colors.text })}
-    emptyStateTitle={loading ? "Searching funds..." : query ? "No matching funds." : "Search for a second fund."}
+    emptyStateTitle={loading || paged.loading ? "Searching funds..." : query ? "No matching funds." : "Search for a second fund."}
   />;
 }

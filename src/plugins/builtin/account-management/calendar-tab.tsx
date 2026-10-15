@@ -165,7 +165,7 @@ export function CalendarAccountTab({ width, sessionMarker }: { width: number; se
       <EmptyState
         status="error"
         title={loadError}
-        actions={<Button label={t("Retry")} onPress={() => { void load(); }} />}
+        retry={{ onRetry: () => load(), pending: loading }}
       />
     );
   }

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import { useFxRatesMap } from "../../../../market-data/hooks";
 import { buildPortfolioFinancialsMap } from "../../../../market-data/portfolio-financials";
 import { useAppSelector, usePaneAppConfig } from "../../../../state/app/context";
@@ -84,6 +84,7 @@ export function useBookExposure(collectionId: string | null): BookExposure {
     [baseCurrency, financials, tickers],
   );
   const exchangeRates = useFxRatesMap(trackedCurrencies);
+  const rankedRef = useRef<BookExposure | null>(null);
   return useMemo(() => {
     const priced = scope.kind !== "watchlist";
     const totals = priced
@@ -110,7 +111,20 @@ export function useBookExposure(collectionId: string | null): BookExposure {
         : 0;
       bySymbol.set(symbol, { symbol, value, optionNotional, hasOptions: options });
     }
-    return {
+    const previous = rankedRef.current;
+    const visibleUnchanged = previous != null
+      && previous.scope === scope
+      && previous.baseCurrency === baseCurrency
+      && previous.tickers === tickers
+      && previous.scopes === scopes
+      && previous.bookValue === (totals?.totalMktValue ?? 0)
+      && previous.bySymbol.size === bySymbol.size
+      && [...bySymbol].every(([symbol, exposure]) => {
+        const prior = previous.bySymbol.get(symbol);
+        return prior != null && prior.value === exposure.value && prior.optionNotional === exposure.optionNotional && prior.hasOptions === exposure.hasOptions;
+      });
+    if (visibleUnchanged) return previous;
+    const ranked: BookExposure = {
       scope,
       bySymbol,
       bookValue: totals?.totalMktValue ?? 0,
@@ -122,5 +136,7 @@ export function useBookExposure(collectionId: string | null): BookExposure {
       },
       scopes,
     };
+    rankedRef.current = ranked;
+    return ranked;
   }, [baseCurrency, exchangeRates, financials, portfolioId, scope, scopes, tickers, tickersBySymbol]);
 }

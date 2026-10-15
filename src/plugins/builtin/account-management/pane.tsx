@@ -1019,19 +1019,23 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 />
               </Box>
               <Box flexDirection="row" gap={1}>
-                <Button
-                  label={t("Change Password")}
-                  active={activeField === "passwordAction"}
-                  onPress={openPasswordDialog}
-                  disabled={!!busy}
-                />
-                <Button
-                  label={busy === "delete" ? t("Deleting...") : t("Delete Account")}
-                  variant="danger"
-                  active={activeField === "deleteAccountAction"}
-                  onPress={() => { void deleteAccount(); }}
-                  disabled={!!busy}
-                />
+                <Box ref={fieldNodeRef("passwordAction")} flexDirection="row">
+                  <Button
+                    label={t("Change Password")}
+                    active={activeField === "passwordAction"}
+                    onPress={openPasswordDialog}
+                    disabled={!!busy}
+                  />
+                </Box>
+                <Box ref={fieldNodeRef("deleteAccountAction")} flexDirection="row">
+                  <Button
+                    label={busy === "delete" ? t("Deleting...") : t("Delete Account")}
+                    variant="danger"
+                    active={activeField === "deleteAccountAction"}
+                    onPress={() => { void deleteAccount(); }}
+                    disabled={!!busy}
+                  />
+                </Box>
               </Box>
             </>
           ) : null}

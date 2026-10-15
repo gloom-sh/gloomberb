@@ -42,6 +42,7 @@ export function WebButton({
   variant = "secondary",
   tone,
   disabled = false,
+  pending = false,
   active = false,
   shortcut,
   width,
@@ -62,6 +63,7 @@ export function WebButton({
       aria-keyshortcuts={ariaKeyShortcut(shortcut)}
       title={title}
       aria-expanded={expanded}
+      aria-busy={pending || undefined}
       disabled={disabled}
       onMouseDown={(event) => {
         if (stopPropagation) event.stopPropagation();

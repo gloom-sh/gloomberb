@@ -6,7 +6,7 @@ import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-uti
 import { installTestWebSocket, type TestWebSocket } from "../../../../test-support/cloud-api";
 import { blockExternalNetwork } from "../../../../test-support/network-guard";
 import { Text, useRendererHost } from "../../../../ui";
-import { AuthDialogHost } from "../auth-dialog";
+import { AuthDialogHost } from "../../../../account/auth-dialog";
 import { McpConnectDialogHost, requestMcpConnectDialog } from "./dialog";
 import { registerMcpConnectSection, type McpConnectSectionProps } from "./sections";
 

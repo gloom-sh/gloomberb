@@ -25,6 +25,18 @@ interface ViewBundleOptions {
   aliasRules?: AliasRule[];
   failureMessage: string;
   missingEntryMessage: string;
+  /**
+   * Leave identifiers unminified (whitespace and syntax still are), so the
+   * components keep their names and a page audit can say which one drew an
+   * element (`scripts/pane-chrome/ui-audit.ts`). Bun's `keepNames` alone did
+   * not keep them.
+   */
+  keepNames?: boolean;
+}
+
+/** Bun's minify setting: everything, or everything but identifiers when names are kept. */
+function minifyOption(keepNames: boolean | undefined) {
+  return keepNames ? { whitespace: true, syntax: true, identifiers: false } : true;
 }
 
 // From this file rather than the working directory, so a build started from
@@ -60,6 +72,7 @@ export async function buildViewBundle({
   aliasRules = [],
   failureMessage,
   missingEntryMessage,
+  keepNames,
 }: ViewBundleOptions): Promise<{ script: string; stylesheet: string | null }> {
   const chunks = new Map<string, string>();
   const result = await Bun.build({
@@ -69,7 +82,7 @@ export async function buildViewBundle({
     format: "esm",
     splitting: false,
     sourcemap,
-    minify: true,
+    minify: minifyOption(keepNames),
     define: {
       "process.env.NODE_ENV": "\"production\"",
       __GLOOM_WORLD_MAP_DATA__: JSON.stringify(WORLD_MAP_DATA_SPECIFIER),
@@ -88,7 +101,7 @@ export async function buildViewBundle({
 
   const script = result.outputs.find((output) => output.kind === "entry-point" && output.path.endsWith(".js"));
   if (!script) throw new Error(missingEntryMessage);
-  await buildLazyChunks(outdir, chunks, failureMessage);
+  await buildLazyChunks(outdir, chunks, failureMessage, keepNames);
 
   const stylesheet = result.outputs.find((output) => output.path.endsWith(".css"))?.path ?? null;
   if (stylesheet) await writeFile(stylesheet, withTitlebarOverlayHeight(await readFile(stylesheet, "utf8")));
@@ -181,7 +194,7 @@ function lazyChunkPlugin(rootOutdir: string, emitDir: string, chunks: Map<string
 }
 
 /** Builds each lazy chunk on its own, and the chunks those load in turn. */
-async function buildLazyChunks(rootOutdir: string, chunks: Map<string, string>, failureMessage: string): Promise<void> {
+async function buildLazyChunks(rootOutdir: string, chunks: Map<string, string>, failureMessage: string, keepNames?: boolean): Promise<void> {
   const built = new Set<string>();
   let pending = [...chunks.entries()];
   while (pending.length) {
@@ -197,7 +210,7 @@ async function buildLazyChunks(rootOutdir: string, chunks: Map<string, string>, 
         format: "esm",
         splitting: false,
         sourcemap: "none",
-        minify: true,
+        minify: minifyOption(keepNames),
         plugins: [lazyChunkPlugin(rootOutdir, dirname(output), nested)],
       });
       if (!result.success) {

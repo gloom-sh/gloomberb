@@ -4,6 +4,7 @@ import type { HiringBoard, HiringPayload, HiringSummary } from "../../../api-cli
 import type { AppAttentionPayload, AppCompany } from "../../../api-client/app-attention";
 import { humanLabel } from "../shared/research-cells";
 import { formatNumber } from "../../../utils/format";
+import { countOf, freePreviewNote } from "../shared/free-preview";
 
 export type AttentionKind = "hiring" | "apps";
 export type AttentionTab = "table" | "chart" | "mix" | "peers" | "evidence";
@@ -26,7 +27,10 @@ export interface AttentionModel {
   asOf: string | null;
   preview: boolean;
   locked: number;
+  /** Caveats about the capture, such as incomplete coverage; they never fail a report. */
   notices: string[];
+  /** The latest capture is incomplete or stale, so a report of it is not the whole picture even on Pro. */
+  partial: boolean;
   figures: StatItem[];
   sections: Record<AttentionTab, AttentionSection>;
   /** `since`: the first capture, so a chart still collecting says when it began. */
@@ -57,6 +61,51 @@ const HISTORY_COLUMNS = [column("date", "Week", 12), column("open", "Open roles"
 /** `remoteKnown` rides along for the remote cell; it is not a column of its own. */
 const companyRow = (row: HiringSummary): AttentionRow => ({ id: row.symbol, symbol: row.symbol, values: { symbol: row.symbol, name: row.name, open: row.latest?.openCount ?? null, net: row.latest?.netChange ?? null, remote: row.latest?.remoteShare == null ? null : row.latest.remoteShare * 100, remoteKnown: row.latest?.remoteKnown ?? null, z: row.zScore, signal: humanLabel(row.signal ?? row.status), date: row.latest?.observedAt.slice(0, 10) ?? null } });
 
+/** The weeks of history a free preview holds back; the board has none to hold. */
+const hiringHistoryLocked = (data: HiringBoard | HiringPayload) => !data.preview ? 0 : typeof data.locked === "number" ? data.locked : data.locked.history;
+
+/** "a, b and c". */
+const joinList = (items: readonly string[]) => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
+const grouped = (value: number) => value.toLocaleString("en-US");
+
+/**
+ * The lock line of a free HIRE preview: how many of its rows free shows, what
+ * Pro adds and when its weekly history starts. Null when the preview holds
+ * nothing back (a company with no captures has nothing to unlock).
+ */
+export function hiringPreviewNote(data: HiringBoard | HiringPayload): string | null {
+  if (!data.preview) return null;
+  if ("companies" in data) {
+    if (data.locked <= 0) return null;
+    return freePreviewNote({ shows: `${data.companies.length} of ${grouped(data.total)} companies`, adds: `the other ${grouped(data.locked)}` });
+  }
+  const { evidence, history, peers } = data.locked;
+  if (evidence + history + peers <= 0) return null;
+  const roles = data.evidence.length;
+  return freePreviewNote({
+    shows: evidence > 0 ? `${roles} of ${grouped(roles + evidence)} open roles` : countOf(roles, "open role"),
+    adds: joinList([evidence > 0 ? `the other ${grouped(evidence)} roles` : "", history > 0 ? `${grouped(history)} ${history === 1 ? "week" : "weeks"} of history` : "", peers > 0 ? `${grouped(peers)} more peers` : ""].filter(Boolean)),
+    historyFrom: history > 0 ? data.coverage.firstObservedAt : null,
+  });
+}
+
+/**
+ * The lock line of a free APPS preview: how many app ranks free shows, what
+ * Pro adds and when its daily history starts. Null when nothing is held back.
+ */
+export function appsPreviewNote(data: AppAttentionPayload): string | null {
+  if (data.access !== "preview") return null;
+  const { apps, history } = data.locked;
+  if (apps + history <= 0) return null;
+  const ranks = data.apps.length;
+  const days = data.history.length;
+  return freePreviewNote({
+    shows: `${apps > 0 ? `${ranks} of ${grouped(ranks + apps)} app ranks` : countOf(ranks, "app rank")}${days ? " and the latest day of history" : ""}`,
+    adds: joinList([apps > 0 ? `the other ${grouped(apps)} ranks` : "", history > 0 ? `${grouped(history)} earlier ${history === 1 ? "day" : "days"} of history` : ""].filter(Boolean)),
+    historyFrom: history > 0 ? data.summary.firstObservedAt : null,
+  });
+}
+
 export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"): AttentionModel {
   const detail = "series" in data ? data : null;
   const companies = "companies" in data ? data.companies : [data];
@@ -71,6 +120,7 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     locked: typeof data.locked === "number" ? data.locked : Object.values(data.locked).reduce((a, b) => a + b, 0),
     // How counts compare is methodology (docs/hiring-app-attention.md); the footer keeps only what is wrong with this capture.
     notices: detail ? [...(latest?.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])] : [],
+    partial: !!detail && (latest?.completeness !== "complete" || detail.status === "stale"),
     // A figure the first capture cannot give yet (a weekly change, a z-score) is left out, not shown as a dash.
     figures: latest ? [
       { label: "Open roles", value: count(latest.openCount) },
@@ -82,7 +132,7 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     ] : [],
     sections: {
       table: { columns: COMPANY_COLUMNS, rows: companies.map(companyRow), empty: "Hiring observations are not available yet." },
-      chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, remoteKnown: row.remoteKnown, coverage: row.completeness }, details: [{ label: "Observed", value: row.observedAt }, { label: "Confidence", value: percent(row.confidence) }, { label: "Capture", value: row.kind }, { label: "Evergreen roles", value: count(row.evergreenCount) }] })), empty: data.preview ? "Full hiring history requires Pro." : "History is accumulating from the first capture." },
+      chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, remoteKnown: row.remoteKnown, coverage: row.completeness }, details: [{ label: "Observed", value: row.observedAt }, { label: "Confidence", value: percent(row.confidence) }, { label: "Capture", value: row.kind }, { label: "Evergreen roles", value: count(row.evergreenCount) }] })), empty: hiringHistoryLocked(data) ? "Weekly history is part of Gloom Pro." : "History is accumulating from the first capture." },
       mix: { columns: [column("label", mixKey === "signals" ? "Signal" : "Group", 28, false, true), column("count", mixKey === "signals" ? "Value" : "Roles", 12, true), column("share", mixKey === "signals" ? "Confidence %" : "Share %", mixKey === "signals" ? 14 : 30, true), ...(mixKey === "signals" ? [column("date", "Observed", 12)] : [])], rows, empty: "No classified observations for this group yet." },
       peers: { columns: COMPANY_COLUMNS, rows: (detail?.peers ?? []).map(companyRow), empty: "No comparable mapped peers yet." },
       evidence: { columns: [column("title", "Role", 32, false, true), column("location", "Location", 24), column("function", "Function", 18), column("seniority", "Seniority", 13), column("date", "Observed", 12), column("confidence", "Confidence %", 13, true)], rows: (detail?.evidence ?? []).map((row): AttentionRow => ({ id: `${row.snapshotId}:${row.id}`, url: row.url ?? row.sourceUrl, values: { title: row.title, location: row.location, function: roleFamily(row.jobFunction), seniority: row.seniority ? humanLabel(row.seniority) : null, date: row.observedAt.slice(0, 10), confidence: row.confidence * 100 }, details: [{ label: "Posting title", value: row.title }, { label: "Location", value: row.location ?? "--" }, { label: "Country", value: row.country ?? "Unknown" }, { label: "Function", value: row.jobFunction ?? "Unclassified" }, { label: "Seniority", value: row.seniority ?? "Unclassified" }, { label: "Remote", value: row.remote === null ? "Unknown" : row.remote ? "Yes" : "No" }, { label: "Observed", value: row.observedAt }, { label: "Revision", value: String(row.revision) }, { label: "Confidence", value: percent(row.confidence) }, { label: "Reporting ticker", value: row.sourceTicker }] })), empty: "No primary posting evidence is available yet." },
@@ -127,6 +177,7 @@ export function appsModel(data: AppAttentionPayload, mix = "countries"): Attenti
     preview: data.access === "preview",
     locked: Object.values(data.locked).reduce((a, b) => a + b, 0),
     notices: [...data.coverage.limitations, ...(data.apps.some((row) => row.stale) ? ["Some app observations are stale."] : [])],
+    partial: data.apps.some((row) => row.stale),
     // Seven-day figures appear once a week of captures can give them.
     figures: [
       { label: "Attention score", value: data.summary.attentionScore?.toFixed(1) ?? "--", detail: "/ 100" },
@@ -137,7 +188,7 @@ export function appsModel(data: AppAttentionPayload, mix = "countries"): Attenti
     ],
     sections: {
       table: { columns: APP_COLUMNS, rows: data.apps.map((row): AttentionRow => ({ id: `${row.sourceId}:${row.appId}`, app: { store: row.store, appId: row.appId, name: row.name, country: row.country, chart: row.chart }, symbol: row.symbol ?? undefined, url: row.appUrl, values: { name: row.name, symbol: row.symbol, country: row.country, chart: row.chart, rank: row.rank, change: row.rankChange7d, rating: row.rating, ratings: row.ratingCount, drift: row.ratingChange7d, growth: row.ratingCountGrowth7d }, details: [{ label: "App", value: row.name }, { label: "Developer", value: row.developer }, { label: "Parent ticker", value: row.symbol ?? "Unmapped" }, { label: "Genres", value: row.genres.join(", ") || "--" }, { label: "Observed", value: row.observedAt }, { label: "Ratings observed", value: row.ratingObservedAt ?? "Unavailable" }, { label: "Mapping confidence", value: percent(row.confidence) }, { label: "Mapping revision", value: row.mappingRevisionId ?? "Unmapped" }, { label: "Capture revision", value: row.revisionId }] })), empty: "No app observations match these filters yet." },
-      chart: { columns: [column("date", "Date", 12), column("score", "Score / 100", 14, true), column("change", "Change", 10, true), column("apps", "Apps", 9, true), column("countries", "Countries", 12, true), column("rating", "Rating / 5", 12, true), column("ratings", "Ratings", 13, true)], rows: data.history.map((point, i, all): AttentionRow => ({ id: point.date, date: point.date, values: { date: point.date, score: point.attentionScore, change: point.attentionScore != null && all[i - 1]?.attentionScore != null ? point.attentionScore - all[i - 1]!.attentionScore! : null, apps: point.appCount, countries: point.countryCount, rating: point.rating, ratings: point.ratingCount } })).reverse(), empty: data.access === "preview" ? "Full app history requires Pro." : "History is accumulating from the first capture." },
+      chart: { columns: [column("date", "Date", 12), column("score", "Score / 100", 14, true), column("change", "Change", 10, true), column("apps", "Apps", 9, true), column("countries", "Countries", 12, true), column("rating", "Rating / 5", 12, true), column("ratings", "Ratings", 13, true)], rows: data.history.map((point, i, all): AttentionRow => ({ id: point.date, date: point.date, values: { date: point.date, score: point.attentionScore, change: point.attentionScore != null && all[i - 1]?.attentionScore != null ? point.attentionScore - all[i - 1]!.attentionScore! : null, apps: point.appCount, countries: point.countryCount, rating: point.rating, ratings: point.ratingCount } })).reverse(), empty: data.access === "preview" && data.locked.history > 0 ? "Daily history is part of Gloom Pro." : "History is accumulating from the first capture." },
       mix: mix === "spreads" ? { columns: [column("name", "App", 28, false, true), column("chart", "Chart", 10), column("best", "Best country", 15), column("bestRank", "Best rank", 11, true), column("worst", "Worst country", 15), column("worstRank", "Worst rank", 12, true), column("spread", "Rank spread", 13, true)], rows: data.spreads.map((row): AttentionRow => ({ id: `${row.appId}:${row.chart}:${row.category}`, values: { name: row.name, chart: row.chart, best: row.bestCountry, bestRank: row.bestRank, worst: row.worstCountry, worstRank: row.worstRank, spread: row.spread } })), empty: "Comparable country observations are accumulating." }
         : { columns: [column("country", "Country", 16, false, true), column("apps", "Apps", 9, true), column("ranked", "Ranked apps", 13, true), column("score", "Score / 100", 14, true), column("velocity", "Places / day", 15, true), column("date", "Observed", 12)], rows: data.countries.map((row): AttentionRow => ({ id: row.country, values: { country: row.country, apps: row.appCount, ranked: row.rankedApps, score: row.attentionScore, velocity: row.rankVelocity7d, date: row.observedAt.slice(0, 10) } })), empty: "Country observations are not available yet." },
       peers: { columns: APP_COMPANIES, rows: (data.symbol ? data.peers : data.companies).map(appCompanyRow), empty: "No comparable mapped companies yet." },

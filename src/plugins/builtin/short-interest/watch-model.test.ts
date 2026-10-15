@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { PricePoint } from "../../../types/financials";
-import { buildShortWatchRow, oneMonthReturn, sortShortWatchRows } from "./watch-model";
+import { createTestTicker } from "../../../test-support/ticker";
+import { buildShortWatchRow, customUniverse, oneMonthReturn, ownNamesUniverse, sortShortWatchRows } from "./watch-model";
 
 const close = (date: string, value: number): PricePoint => ({ date: new Date(`${date}T00:00:00Z`), close: value });
 /** Weekday closes from `from` to `to`, at `value` unless the day has its own close. */
@@ -47,11 +48,27 @@ describe("short watch rows", () => {
     expect(row("HIGH", 12, 100, 1).changePercent).toBeCloseTo(100, 9);
   });
 
-  test("a float smaller than the shares short is not used, so days to cover decides alone", () => {
+  test("a float under half the shares short is not used, so days to cover decides alone", () => {
     // BRK.B: 12.53M short against 1.23M, which is Berkshire's Class A float.
     expect(row("BRK.B", 12.53, 1.234, 3.3)).toMatchObject({ percentFloat: null, setup: null });
     expect(row("BRK.B", 12.53, 1.234, 6)).toMatchObject({ percentFloat: null, setup: "crowded-rising" });
     expect(row("FULL", 100, 100, 1).percentFloat).toBe(100);
+    // Shares lent twice can put short interest above the float, as the overview reads it too.
+    expect(row("SQUEEZE", 140, 100, 1).percentFloat).toBe(140);
+  });
+
+  test("the statistics' percent of float of the same settlement is the one shown", () => {
+    // GLO-760, GME on 2026-10-13: 42.67M short. The statistics divide by the float capped at the 449.1M shares
+    // outstanding (9.50%); the snapshot of an older app build carried the 461.24M float (9.25%).
+    const records = [settlement("2026-09-15", 39_069_126, 4.29), settlement("2026-09-30", 42_673_721, 3.98)];
+    const gme = (statistics: { settlementDate: string; shortPercentOfFloat: number | null }) =>
+      buildShortWatchRow({ symbol: "GME", records, floatShares: 461_240_030, statistics, history: rising });
+    expect(gme({ settlementDate: "2026-09-30", shortPercentOfFloat: 42_673_721 / 449_100_000 }))
+      .toMatchObject({ percentFloat: expect.closeTo(9.502, 3), daysToCover: 3.98 });
+    // Statistics of another settlement are not mixed in: the settlement over the snapshot's float.
+    expect(gme({ settlementDate: "2026-09-15", shortPercentOfFloat: 0.087 }).percentFloat).toBeCloseTo(9.252, 3);
+    // The same settlement without a percent (no float served) has none.
+    expect(gme({ settlementDate: "2026-09-30", shortPercentOfFloat: null }).percentFloat).toBeNull();
   });
 
   test("ranks crowded names that are rising first, then crowded, then the rest, unreported last", () => {
@@ -64,5 +81,33 @@ describe("short watch rows", () => {
     ];
     expect(sortShortWatchRows(rows, "setup", "desc").map((entry) => entry.symbol))
       .toEqual(["UP_HIGH", "UP_LOW", "DOWN", "CALM", "NONE"]);
+  });
+});
+
+describe("short watch names", () => {
+  test("a pasted list reads one name per entry, whatever the separators, quote marks and share class spelling", () => {
+    expect(customUniverse("GME, amc,CVNA ,BRK-B ")).toEqual({ symbols: ["GME", "AMC", "CVNA", "BRK.B"], notice: null });
+    expect(customUniverse("GME;AMC").symbols).toEqual(["GME", "AMC"]);
+    expect(customUniverse(`"GME", 'AMC'; “CVNA”, $BF-B\nBF.B brk.b BRK-B`).symbols).toEqual(["GME", "AMC", "CVNA", "BF.B", "BRK.B"]);
+  });
+
+  test("a name left out is listed with its own reason, never only counted", () => {
+    // BTC-USD and BRK-B-NONSENSE are not class shares: the dash only reads as a dot after one to five letters and one class letter.
+    expect(customUniverse("GME BTC-USD SAN:EPA BRK-B-nonsense 7203.T")).toEqual({
+      symbols: ["GME"],
+      notice: "Left out: BTC-USD: not a US ticker symbol; SAN:EPA: not US-listed; BRK-B-NONSENSE: not a US ticker symbol; 7203.T: not a US ticker symbol.",
+    });
+    expect(customUniverse("")).toEqual({ symbols: [], notice: null });
+  });
+
+  test("your own names name each one left out, by what is wrong with it", () => {
+    const own = { portfolios: ["main"] };
+    const universe = ownNamesUniverse([
+      createTestTicker("UPST", "Upstart", own),
+      createTestTicker("SAN", "Sanofi", { ...own, exchange: "EPA", currency: "EUR" }),
+      createTestTicker("BTC-USD", "Bitcoin", { ...own, assetCategory: "CRYPTO" }),
+      createTestTicker("NOPE", "Not held", { portfolios: [] }),
+    ]);
+    expect(universe).toEqual({ symbols: ["UPST"], notice: "Left out: BTC-USD: not a US-listed stock or fund; SAN: not US-listed." });
   });
 });

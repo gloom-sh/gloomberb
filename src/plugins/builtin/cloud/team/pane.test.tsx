@@ -6,9 +6,9 @@ import { createTestPaneConfig, TestPaneProvider } from "../../../../test-support
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
 import { createChatTestHarness } from "../../chat/test-harness";
 import { TeamPane } from "./pane";
-import { requestTeamPaneView } from "./pane-request";
-import { teamStore } from "./store";
-import { createTestTeam } from "./test-fixture";
+import { requestTeamPaneView } from "../../../../team/pane-request";
+import { teamStore } from "../../../../team/store";
+import { createTestTeam } from "../../../../team/test-fixture";
 
 // The pane hosts team chat, so it needs the chat API defaults and cleanup too.
 const tui = createChatTestHarness();

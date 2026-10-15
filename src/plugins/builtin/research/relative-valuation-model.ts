@@ -1,6 +1,6 @@
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
-import { reportedEnterpriseValue } from "../../../utils/fundamentals";
+import { enterpriseValueReconciliationNote, enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures } from "../../../market-data/quotes/regular-session-valuation";
 import type { Quote, TickerFinancials } from "../../../types/financials";
@@ -70,6 +70,9 @@ export function relativeValuationValues(snapshot: TickerFinancials | null) {
         ? fundamentals.enterpriseToRevenue
         : enterpriseValue != null && fundamentals?.revenue != null && fundamentals.revenue > 0
           ? enterpriseValue / fundamentals.revenue : null,
+    /** Why EV/S is missing when the provider's EV was withdrawn, as `valuation` says it; null otherwise. */
+    evSalesUnavailable: enterpriseValueWithdrawn(fundamentals)
+      ? enterpriseValueReconciliationNote(fundamentals) ?? "EV unavailable." : null,
     fcfYield: capitalization && fundamentals?.financialCurrency === capitalization.currency
       && fundamentals.freeCashFlow != null && Number.isFinite(fundamentals.freeCashFlow) && capitalization.value > 0
       ? fundamentals.freeCashFlow / capitalization.value : null,

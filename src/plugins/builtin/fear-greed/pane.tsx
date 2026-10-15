@@ -91,7 +91,7 @@ export function FearGreedPane({ paneId, focused, width, height }: PaneProps) {
             segments={FEAR_GREED_GAUGE_SEGMENTS}
             minWidth={isDesktopWeb ? Math.min(34, Math.max(1, width - 2)) : undefined}
           />
-          <IndexHistoryChart data={data} width={width} />
+          <IndexHistoryChart data={data} width={width} focused={focused} />
           <Box paddingX={1} marginTop={2}>
             <SectionHeading title="Indicators" />
           </Box>

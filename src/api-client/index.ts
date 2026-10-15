@@ -12,7 +12,7 @@ import {
   parseCloudLayoutEntry,
   parseCloudLayoutList,
 } from "../layout-marketplace/cloud";
-import type { SyncSnapshot } from "../sync/types";
+import { SyncRevisionConflictError, type SyncSnapshot } from "../sync/types";
 import { withDeadline } from "../utils/async-deadline";
 import { CloudASKGApi } from "./askg";
 import { CloudAuthApi } from "./auth";
@@ -60,7 +60,8 @@ export type {
 /** Server-side caps for `/assist/command`; enforced here so a 422 is never sent. */
 const ASSIST_QUERY_MAX_LENGTH = 200;
 const ASSIST_COMMAND_LIMIT = 150;
-const ASSIST_ARG_OPTION_LIMIT = 64;
+/** The futures curve's root list is the longest a command sends: 76 since GLO-783. */
+export const ASSIST_ARG_OPTION_LIMIT = 128;
 const ASSIST_ARG_OPTION_VALUE_MAX_LENGTH = 40;
 const ASSIST_ARG_OPTION_LABEL_MAX_LENGTH = 60;
 const ASSIST_REQUEST_TIMEOUT_MS = 6_000;
@@ -450,14 +451,24 @@ class GloomApiClient {
     return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", { method: "GET" });
   }
 
+  /**
+   * `baseRevision` goes out as If-Match: the server ignores the body field and
+   * would replace a snapshot another device wrote since this one pulled. With
+   * the header it refuses that write (409), raised as SyncRevisionConflictError
+   * so the controller pulls again instead.
+   */
   async putSyncSnapshot(snapshot: SyncSnapshot, options?: { baseRevision?: number | null }): Promise<CloudSyncPushResponse> {
-    return this.request<CloudSyncPushResponse>("/sync/snapshot", {
-      method: "PUT",
-      body: JSON.stringify({
-        snapshot,
-        baseRevision: options?.baseRevision ?? null,
-      }),
-    });
+    const baseRevision = options?.baseRevision ?? null;
+    try {
+      return await this.request<CloudSyncPushResponse>("/sync/snapshot", {
+        method: "PUT",
+        ...(baseRevision !== null ? { headers: { "If-Match": String(baseRevision) } } : {}),
+        body: JSON.stringify({ snapshot, baseRevision }),
+      });
+    } catch (error) {
+      if (error instanceof ApiRequestError && error.status === 409) throw new SyncRevisionConflictError(error.message);
+      throw error;
+    }
   }
 
   async getMarketplaceLayout(
@@ -636,6 +647,7 @@ class GloomApiClient {
   getChatState = this.chat.getState.bind(this.chat);
   updateChatChannelState = this.chat.updateChannelState.bind(this.chat);
   markChatNotificationsDelivered = this.chat.markNotificationsDelivered.bind(this.chat);
+  getUnseenChatNotificationIds = this.chat.getUnseenNotificationIds.bind(this.chat);
   openDirectChannel = this.chat.openDirectChannel.bind(this.chat);
   openGroupChannel = this.chat.openGroupChannel.bind(this.chat);
   getMessages = this.chat.getMessages.bind(this.chat);
@@ -648,6 +660,7 @@ class GloomApiClient {
   subscribeChatReactions = this.chat.subscribeReactions.bind(this.chat);
   connectChannel = this.chat.connectChannel.bind(this.chat);
   subscribeChatNotifications = this.chat.subscribeNotifications.bind(this.chat);
+  subscribeChatChannelState = this.chat.subscribeChannelState.bind(this.chat);
   subscribeChatPresence = this.chat.subscribePresence.bind(this.chat);
   getChatDiscordLink = this.chat.getDiscordLink.bind(this.chat);
   unlinkChatDiscord = this.chat.unlinkDiscord.bind(this.chat);
@@ -812,6 +825,7 @@ class GloomApiClient {
   getCloudAwards = this.data.getCloudAwards.bind(this.data);
   getCloudAward = this.data.getCloudAward.bind(this.data);
   getCloudDoeBoard = this.data.getCloudDoeBoard.bind(this.data);
+  getCloudDoePrices = this.data.getCloudDoePrices.bind(this.data);
   getCloudAttention = this.data.getCloudAttention.bind(this.data);
   getCloudPowerBoard = this.data.getCloudPowerBoard.bind(this.data);
   getCloudPowerHistory = this.data.getCloudPowerHistory.bind(this.data);

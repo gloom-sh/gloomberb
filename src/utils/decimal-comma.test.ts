@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { ambiguousNumberMessage, dottedDecimal, numberErrorMessage, parsePastedNumber } from "./decimal-comma";
+import { ambiguousNumberMessage, dottedDecimal, meantThousandsDot, numberErrorMessage, parsePastedNumber, thousandsDotReadings } from "./decimal-comma";
 
 test("a digits-comma-digits value reads as the dotted number, and nothing else does", () => {
   expect(dottedDecimal("4,5")).toBe("4.5");
@@ -63,4 +63,24 @@ test("text that is not a number, or whose marks do not group in threes, is inval
   }
   expect(parsePastedNumber(null)).toEqual({ kind: "invalid" });
   expect(parsePastedNumber(250)).toEqual({ kind: "invalid" });
+});
+
+test("a dot and three digits reads as thousands only when the number as written is far from the last price and the thousands reading near it", () => {
+  expect(thousandsDotReadings("81.000")).toEqual({ decimal: 81, thousands: 81000 });
+  expect(thousandsDotReadings("-81.250")).toEqual({ decimal: -81.25, thousands: -81250 });
+  // Other dotted numbers have one reading.
+  for (const text of ["81.5", "81.25", "81.0000", "0.125", "1234.000", "81.", "1.350.000", "81,000"]) expect(thousandsDotReadings(text)).toBeNull();
+
+  const meant = (text: string, last: number | null) => meantThousandsDot(thousandsDotReadings(text)!, last);
+  expect(meant("81.000", 81_634.5)).toBe(true);
+  expect(meant("81.250", 81_634.5)).toBe(true);
+  // Within 10% of the last price, inclusive, and no further. (A thousands reading that near puts the number as written over 99.8% away.)
+  expect(meant("110.000", 100_000)).toBe(true);
+  expect(meant("90.000", 100_000)).toBe(true);
+  expect(meant("110.001", 100_000)).toBe(false);
+  expect(meant("89.999", 100_000)).toBe(false);
+  // A price near the number as written keeps it; without a last price it reads as written.
+  expect(meant("81.000", 81.2)).toBe(false);
+  expect(meant("81.000", null)).toBe(false);
+  expect(meant("81.000", 0)).toBe(false);
 });

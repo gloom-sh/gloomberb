@@ -260,7 +260,7 @@ const chartComposerTemplates: PaneTemplateDef[] = [
       type: "text",
       // Empty falls back to the active ticker in createInstance, as `G` with no argument does.
       required: false,
-      body: ["Enter comma-separated SYMBOL:field or FRED:series expressions, or leave empty to chart the active ticker."],
+      body: ["Enter comma-separated SYMBOL:field or FRED:series expressions, or leave empty to chart the active ticker. A/B charts the ratio. EUR/USD stays one series."],
     }],
     canCreate: () => true,
     createInstance: (context, options) => {

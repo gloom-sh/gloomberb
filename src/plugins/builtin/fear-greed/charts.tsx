@@ -111,6 +111,7 @@ function SentimentPlot({
   valueFormat,
   updatedAt,
   overlays,
+  focused = false,
 }: {
   rating: FearGreedRating;
   points: FearGreedIndicator["points"];
@@ -118,6 +119,7 @@ function SentimentPlot({
   valueFormat: FearGreedValueFormat;
   updatedAt: Date | null;
   overlays?: StaticChartOverlay[];
+  focused?: boolean;
 }) {
   const chartWidth = Math.max(24, width - 2);
   const chartHeight = width >= 96 ? 12 : 10;
@@ -143,6 +145,7 @@ function SentimentPlot({
             mode="line"
             colors={palette}
             overlays={overlays}
+            focused={focused}
             showTimeAxis
             timeAxisColor={colors.textDim}
             yAxisColor={colors.textDim}
@@ -224,7 +227,7 @@ function ChartStats({
 
 // The gauge above already shows the score, its rating and what the series is,
 // so the history is the plot alone.
-export function IndexHistoryChart({ data, width }: { data: FearGreedData; width: number }) {
+export function IndexHistoryChart({ data, width, focused = false }: { data: FearGreedData; width: number; focused?: boolean }) {
   return (
     <Box flexDirection="column" paddingX={1}>
       <SentimentPlot
@@ -233,6 +236,7 @@ export function IndexHistoryChart({ data, width }: { data: FearGreedData; width:
         width={width}
         valueFormat="score"
         updatedAt={data.overall.updatedAt}
+        focused={focused}
       />
     </Box>
   );

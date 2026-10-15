@@ -73,7 +73,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   } : null, [dataProvider, exchange, symbol]);
   // Another ticker's holders stay up until its own answer, and a failed
   // refresh keeps the last holders; the failure goes to the footer.
-  const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, { keepPreviousData: true });
+  const { data, loading, error, reload } = useAsyncResource<HolderData>(loadHolders, {
+    initialData: () => symbol && dataProvider?.getCachedQuery
+      ? dataProvider.getCachedQuery("getHolders", [symbol, exchange]).getSnapshot().result?.value ?? null
+      : null,
+    keepPreviousData: true,
+  });
 
   // The values' own currency: dollars from the 13F filings on a London line, not its pence.
   const currency = holderValueCurrency(data, ticker?.metadata.currency || "USD")!;

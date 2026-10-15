@@ -47,7 +47,7 @@ export function validateSocialMentions(payload: SocialMentionsPayload, symbol: s
     || payload.wikipedia !== undefined && !validWikipedia(payload.wikipedia)
     || payload.reddit !== undefined && !validReddit(payload.reddit)
     || !Array.isArray(payload.pending) || !Array.isArray(payload.warnings) || payload.warnings.some((warning) => typeof warning !== "string"))
-    throw new Error("Gloom Cloud returned invalid social mention history");
+    throw new Error("Social mention history is invalid");
   return payload;
 }
 
@@ -55,7 +55,7 @@ export async function fetchSocialMentions(symbol: string, range: SocialMentionsR
   client: Pick<typeof apiClient, "getCloudSocialMentions"> = apiClient): Promise<SocialMentionsPayload> {
   try { return validateSocialMentions(await client.getCloudSocialMentions(symbol, range), symbol, range); }
   catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) throw new Error("Social mentions are not available on this Gloom Cloud server yet");
+    if (error instanceof ApiRequestError && error.status === 404) throw new Error("Social mentions are not available yet");
     throw error;
   }
 }
@@ -77,7 +77,7 @@ export async function loadSocialMentionPosts(symbol: string, date: string): Prom
   const result = await socialMentionPostsCache.load(`${symbol}:${date}`, async () => {
     const data = await apiClient.getCloudSocialMentionPosts(symbol, date);
     if (data?.symbol !== symbol || data.day !== date || !Array.isArray(data.posts) || !data.posts.every(validPost))
-      throw new Error("Gloom Cloud returned invalid social posts");
+      throw new Error("Social posts are invalid");
     return data;
   });
   if (result.error && !result.data) throw result.error;

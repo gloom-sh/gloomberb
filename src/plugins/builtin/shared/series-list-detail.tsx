@@ -10,6 +10,7 @@ import {
 } from "../../../components";
 import type { DataTableViewProps } from "../../../components/data-table/view";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { FILL_REST } from "../../../components/ui/fill";
 import { useShortcut } from "../../../react/input";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import { isPlainKey } from "../../../utils/keyboard";
@@ -171,13 +172,17 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
   // pane height leaves its lower content clipped outside the scroll viewport.
   const detailHeight = split ? bodyHeight : Math.max(1, bodyHeight - tableHeight);
   const bodyFocused = focused && !list.searchFocused;
+  // On the desktop and the web the query bar is taller than a row, so the
+  // split table and the detail take what is left under it by flex and end at
+  // the pane footer; the row counts above stay the terminal's.
+  const fill = nativePaneChrome ? FILL_REST : null;
 
   return (
-    <Box flexDirection="column" width={width} height={height}>
+    <Box flexDirection="column" width={width} {...(fill ?? { height })}>
       <QueryBar width={width} search={{ ...list.search, placeholder: searchPlaceholder }} filters={filters} view={list.range} />
-      <Box flexDirection={split ? "row" : "column"} flexGrow={1} overflow="hidden">
+      <Box flexDirection={split ? "row" : "column"} flexGrow={1} overflow="hidden" {...(fill ? { flexBasis: 0, minHeight: 0 } : {})}>
         <Box flexDirection="column" width={listWidth} flexShrink={0}>
-          <Box flexDirection="column" width={listWidth} height={tableHeight} flexShrink={0} overflow="hidden">
+          <Box flexDirection="column" width={listWidth} overflow="hidden" {...(fill && split ? fill : { height: tableHeight, flexShrink: 0 })}>
             <DataTableView<Row, Column>
               focused={bodyFocused}
               rootWidth={listWidth}
@@ -201,8 +206,8 @@ export function SeriesListDetail<Row, Column extends DataTableColumn, R extends 
           </Box>
         </Box>
 
-        <Box flexDirection="column" flexGrow={1} width={detailWidth} height={detailHeight} overflow="hidden">
-          <ScrollBox height={detailHeight} scrollY focusable={false}>
+        <Box flexDirection="column" width={detailWidth} overflow="hidden" {...(fill ? split ? { flexGrow: 1, minHeight: 0 } : fill : { flexGrow: 1, height: detailHeight })}>
+          <ScrollBox scrollY focusable={false} {...(fill ? fill : { height: detailHeight })}>
             {renderDetail({ width: detailContentWidth, height: detailHeight, focused: bodyFocused })}
           </ScrollBox>
         </Box>
