@@ -15,11 +15,17 @@ import { FITTED, colourName, variantShape } from "./ui-audit-report";
  * the colour of their rules, which is a state's or a theme's) before and after,
  * and its looks: the same shapes less what their content or state decides (an
  * icon's width, a weight that marks the active tab or a footer's key), so two
- * key caps that differ by a glyph's width count once, and the font sizes, weights, radii, shadows, rule colours and
- * pane insets in use. `--sheets` also compares every view's picture in both
- * runs (`shots/<theme>/<width>/`, and `<browser>-shots/` beside them) pixel
- * by pixel, and lays out a sheet per family of the views that changed, before
- * over after, with views that did not change beside them.
+ * key caps that differ by a glyph's width count once, and the font sizes,
+ * weights, radii, shadows, rule colours and pane insets in use, with the views
+ * only one run measured. `--sheets` also compares every view's picture in
+ * both runs (`shots/<theme>/<width>/`, and `<browser>-shots/` beside them)
+ * pixel by pixel, and lays out a sheet per family of the views that changed,
+ * before over after, with views that did not change beside them.
+ *
+ * Coverage is explicit: a picture ImageMagick could not read or compare (a
+ * truncated file) is an error, a picture with no partner in the other run is
+ * listed, and either makes the command exit 1. Neither ever counts as
+ * unchanged.
  */
 
 interface ResultLine { id: string; kind: string; token: string; width: number; measure: AuditMeasure }
@@ -108,17 +114,60 @@ function top<K>(map: Map<K, Set<string>>, count = 12): string {
   return [...map].sort((a, b) => b[1].size - a[1].size).slice(0, count).map(([key, set]) => `${key} (${set.size})`).join(", ");
 }
 
-function run(command: string[]): string {
-  const result = Bun.spawnSync(command, { stdout: "pipe", stderr: "pipe" });
-  return `${result.stdout.toString()}${result.stderr.toString()}`;
+export interface CommandResult { exitCode: number; stdout: string; stderr: string }
+export type Command = (argv: string[]) => CommandResult;
+
+const spawn: Command = (argv) => {
+  try {
+    const result = Bun.spawnSync(argv, { stdout: "pipe", stderr: "pipe" });
+    return { exitCode: result.exitCode ?? -1, stdout: result.stdout.toString(), stderr: result.stderr.toString() };
+  } catch (error) {
+    return { exitCode: -1, stdout: "", stderr: error instanceof Error ? error.message : String(error) };
+  }
+};
+
+/**
+ * One view's two pictures set side by side. `compared` gives the share of
+ * pixels that differ (0 when none do); `resized` when the two are not the same
+ * size, so a pixel count says nothing; `error` when either picture could not
+ * be read or compared. An error is never a 0.
+ */
+export type PixelComparison =
+  | { status: "compared"; change: number }
+  | { status: "resized"; before: string; after: string }
+  | { status: "error"; error: string };
+
+function firstLine(text: string): string {
+  return text.trim().split("\n")[0] ?? "";
 }
 
-/** Share of pixels that differ between two pictures of one view, 0 when equal. */
-function pixelChange(before: string, after: string): number {
-  const output = run(["compare", "-metric", "AE", "-fuzz", "2%", before, after, "null:"]);
-  const differing = Number.parseFloat(output.trim().split(/\s/)[0] ?? "0");
-  const size = run(["identify", "-format", "%w %h", after]).split(" ").map(Number);
-  return Number.isFinite(differing) && size[0] && size[1] ? differing / (size[0] * size[1]) : 0;
+/** A picture's size; ImageMagick's warnings (a truncated JPEG) count as failures. */
+function dimensions(file: string, command: Command): { width: number; height: number } | { error: string } {
+  const result = command(["identify", "-regard-warnings", "-format", "%w %h\n", file]);
+  if (result.exitCode !== 0) return { error: `identify ${file} failed (exit ${result.exitCode}): ${firstLine(result.stderr) || "no message"}` };
+  const match = /^(\d+) (\d+)$/.exec(firstLine(result.stdout));
+  const width = Number(match?.[1]), height = Number(match?.[2]);
+  if (!match || !(width > 0) || !(height > 0)) return { error: `identify ${file} gave no size: "${firstLine(result.stdout)}"` };
+  return { width, height };
+}
+
+export function pixelChange(before: string, after: string, command: Command = spawn): PixelComparison {
+  const a = dimensions(before, command);
+  if ("error" in a) return { status: "error", error: a.error };
+  const b = dimensions(after, command);
+  if ("error" in b) return { status: "error", error: b.error };
+  if (a.width !== b.width || a.height !== b.height) return { status: "resized", before: `${a.width}x${a.height}`, after: `${b.width}x${b.height}` };
+  // Exit 0: the same within the fuzz; 1: pixels differ (the count is on stderr); anything else failed.
+  const result = command(["compare", "-regard-warnings", "-metric", "AE", "-fuzz", "2%", before, after, "null:"]);
+  if (result.exitCode !== 0 && result.exitCode !== 1) return { status: "error", error: `compare failed (exit ${result.exitCode}): ${firstLine(result.stderr) || "no message"}` };
+  const text = result.stderr.trim();
+  if (!/^\d+(?:\.\d+)?(?:e[+-]?\d+)?$/i.test(text)) return { status: "error", error: `compare gave no pixel count: "${text.slice(0, 120)}"` };
+  return { status: "compared", change: Number(text) / (b.width * b.height) };
+}
+
+function run(command: string[]): void {
+  const result = spawn(command);
+  if (result.exitCode !== 0) throw new Error(`${command[0]} failed (exit ${result.exitCode}): ${firstLine(result.stderr)}`);
 }
 
 async function main(): Promise<void> {
@@ -176,44 +225,79 @@ async function main(): Promise<void> {
     ...measures.map((row) => `| ${row.name} | ${row.before} | ${row.after} | ${row.beforeValues} | ${row.afterValues} |`),
   ];
 
-  let changes: Array<{ view: string; theme: string; width: string; engine: string; change: number }> = [];
+  // Which views each run measured: a view only one run has is listed, never counted as unchanged.
+  const onlyBefore = [...before.views].filter((view) => !after.views.has(view)).sort();
+  const onlyAfter = [...after.views].filter((view) => !before.views.has(view)).sort();
+  md.splice(3, 0, ``,
+    `Views in both runs: ${[...after.views].filter((view) => before.views.has(view)).length}. Only before: ${onlyBefore.length}${onlyBefore.length ? ` (${onlyBefore.join(", ")})` : ""}. Only after: ${onlyAfter.length}${onlyAfter.length ? ` (${onlyAfter.join(", ")})` : ""}.`);
+
+  type Change = { view: string; theme: string; width: string; engine: string } & PixelComparison;
+  const changes: Change[] = [];
+  const unpaired: Array<{ engine: string; theme: string; width: string; view: string; missing: "before" | "after" }> = [];
+  const missingDirs: string[] = [];
+  let errors = 0;
   if (args.includes("--sheets")) {
-    const pairs: Array<{ engine: string; dir: string }> = [{ engine: "chromium", dir: "shots" }];
-    for (const name of existsSync(afterDir) ? await readdir(afterDir) : []) {
-      const match = /^(\w+)-shots$/.exec(name);
-      if (match && existsSync(join(beforeDir, name))) pairs.push({ engine: match[1]!, dir: name });
-    }
-    for (const { engine, dir } of pairs) {
-      for (const theme of existsSync(join(afterDir, dir)) ? await readdir(join(afterDir, dir)) : []) {
-        for (const width of await readdir(join(afterDir, dir, theme))) {
-          for (const file of await readdir(join(afterDir, dir, theme, width))) {
-            const beforeFile = join(beforeDir, dir, theme, width, file);
-            if (!existsSync(beforeFile)) continue;
-            changes.push({ view: file.replace(/\.(jpg|png)$/, ""), theme, width, engine, change: pixelChange(beforeFile, join(afterDir, dir, theme, width, file)) });
+    const listDir = async (dir: string) => existsSync(dir) ? (await readdir(dir)).sort() : [];
+    const shotDirs = async (dir: string) => (await listDir(dir)).filter((name) => name === "shots" || /^\w+-shots$/.test(name));
+    const dirs = [...new Set([...await shotDirs(beforeDir), ...await shotDirs(afterDir)])];
+    for (const dir of dirs) {
+      const engine = dir === "shots" ? "chromium" : dir.replace(/-shots$/, "");
+      for (const side of [beforeDir, afterDir]) if (!existsSync(join(side, dir))) missingDirs.push(`${engine}: no pictures in the ${side === beforeDir ? "before" : "after"} run (${join(side, dir)})`);
+      for (const theme of [...new Set([...await listDir(join(beforeDir, dir)), ...await listDir(join(afterDir, dir))])]) {
+        for (const width of [...new Set([...await listDir(join(beforeDir, dir, theme)), ...await listDir(join(afterDir, dir, theme))])]) {
+          const beforeFiles = new Set(await listDir(join(beforeDir, dir, theme, width)));
+          const afterFiles = new Set(await listDir(join(afterDir, dir, theme, width)));
+          for (const file of [...new Set([...beforeFiles, ...afterFiles])].sort()) {
+            const view = file.replace(/\.(jpg|png)$/, "");
+            if (!beforeFiles.has(file) || !afterFiles.has(file)) {
+              unpaired.push({ engine, theme, width, view, missing: beforeFiles.has(file) ? "after" : "before" });
+              continue;
+            }
+            const comparison = pixelChange(join(beforeDir, dir, theme, width, file), join(afterDir, dir, theme, width, file));
+            if (comparison.status === "error") errors += 1;
+            changes.push({ view, theme, width, engine, ...comparison });
           }
         }
       }
     }
+    const moved = (entry: Change) => entry.status === "resized" || (entry.status === "compared" && entry.change > 0.0005);
+    const changedViews = new Set(changes.filter(moved).map((entry) => entry.view));
+    const failedViews = new Set(changes.filter((entry) => entry.status === "error").map((entry) => entry.view));
+    const compared = changes.filter((entry) => entry.status !== "error");
+    const byEngine = [...new Set(changes.map((entry) => entry.engine).concat(unpaired.map((entry) => entry.engine)))].map((engine) => {
+      const mine = changes.filter((entry) => entry.engine === engine);
+      return `| ${engine} | ${mine.filter((entry) => entry.status !== "error").length} | ${mine.filter(moved).length} | ${mine.filter((entry) => entry.status === "error").length} | ${unpaired.filter((entry) => entry.engine === engine && entry.missing === "after").length} | ${unpaired.filter((entry) => entry.engine === engine && entry.missing === "before").length} |`;
+    });
+    md.push("", "## Pictures compared", "",
+      `${compared.length} picture pairs compared, ${errors} could not be compared, ${unpaired.length} pictures without a partner. A pair that could not be compared or has no partner is not counted as unchanged.`, "",
+      "| Engine | Pairs compared | Moved (> 0.05% of pixels, or resized) | Could not compare | Only before | Only after |", "|---|---:|---:|---:|---:|---:|", ...byEngine);
+    if (missingDirs.length) md.push("", ...missingDirs.map((line) => `- ${line}`));
+    if (errors) md.push("", "### Could not compare", "", ...changes.filter((entry) => entry.status === "error").map((entry) => `- ${entry.engine} ${entry.theme} ${entry.width} ${entry.view}: ${entry.status === "error" ? entry.error : ""}`));
+    if (unpaired.length) md.push("", "### Without a partner", "", ...unpaired.map((entry) => `- ${entry.engine} ${entry.theme} ${entry.width} ${entry.view}: no ${entry.missing} picture`));
     const sheets = join(out, "diff-sheets");
     await rm(sheets, { recursive: true, force: true });
     await mkdir(join(sheets, ".work"), { recursive: true });
-    const changedViews = new Set(changes.filter((entry) => entry.change > 0.0005).map((entry) => entry.view));
-    md.push("", "## Views that moved", "", `${changedViews.size} of ${new Set(changes.map((entry) => entry.view)).size} views differ by more than 0.05% of their pixels in some engine, theme or width.`, "");
+    md.push("", "## Views that moved", "", `${changedViews.size} of ${new Set(changes.map((entry) => entry.view)).size} views differ by more than 0.05% of their pixels, or in size, in some engine, theme or width; ${failedViews.size} could not be compared somewhere.`, "");
+    const worst = (view: string) => Math.max(0, ...changes.filter((entry) => entry.view === view && entry.status === "compared").map((entry) => entry.status === "compared" ? entry.change : 0));
     for (const family of families) {
       const views = [...(after.families.get(family)?.values() ?? [])].flatMap((set) => [...set]);
       const unique = [...new Set(views)];
-      const moved = unique.filter((view) => changedViews.has(view)).slice(0, 16);
-      const still = unique.filter((view) => !changedViews.has(view)).slice(0, 4);
-      if (moved.length === 0) continue;
+      const movedViews = unique.filter((view) => changedViews.has(view) || failedViews.has(view)).sort((x, y) => worst(y) - worst(x)).slice(0, 16);
+      const still = unique.filter((view) => !changedViews.has(view) && !failedViews.has(view)).slice(0, 4);
+      if (movedViews.length === 0) continue;
       const tiles: string[] = [];
-      for (const view of [...moved, ...still]) {
+      for (const view of [...movedViews, ...still]) {
         const beforeShot = join(beforeDir, "shots", "white", "1280", `${view}.jpg`);
         const afterShot = join(afterDir, "shots", "white", "1280", `${view}.jpg`);
         if (!existsSync(beforeShot) || !existsSync(afterShot)) continue;
         const tile = join(sheets, ".work", `${family}-${view}.jpg`);
-        run(["convert", beforeShot, "-resize", "560x", afterShot, "-resize", "560x", "-background", "#202020", "-splice", "0x0", "-append", tile]);
-        const change = Math.max(0, ...changes.filter((entry) => entry.view === view).map((entry) => entry.change));
-        tiles.push("-label", `${view}  ${changedViews.has(view) ? `moved ${(change * 100).toFixed(1)}%` : "unchanged"}`, tile);
+        try {
+          run(["convert", beforeShot, "-resize", "560x", afterShot, "-resize", "560x", "-background", "#202020", "-splice", "0x0", "-append", tile]);
+        } catch {
+          continue;
+        }
+        const label = failedViews.has(view) ? "could not compare" : changedViews.has(view) ? `moved ${(worst(view) * 100).toFixed(1)}%` : "unchanged";
+        tiles.push("-label", `${view}  ${label}`, tile);
       }
       if (tiles.length === 0) continue;
       run(["montage", ...tiles, "-tile", "4x", "-geometry", "+8+8", "-background", "#1b1b1b", "-fill", "#e0e0e0", "-font", "JetBrains-Mono", "-pointsize", "11", "-title", `${family}: before above after, white 1280px`, join(sheets, `${family}.jpg`)]);
@@ -222,8 +306,12 @@ async function main(): Promise<void> {
   }
   await mkdir(out, { recursive: true });
   await Bun.write(join(out, "compare.md"), `${md.join("\n")}\n`);
-  await Bun.write(join(out, "compare.json"), JSON.stringify({ families: familyRows, measures, changes }, null, 1));
+  await Bun.write(join(out, "compare.json"), JSON.stringify({ views: { onlyBefore, onlyAfter }, families: familyRows, measures, changes, unpaired, missingDirs }, null, 1));
   console.log(join(out, "compare.md"));
+  if (errors || unpaired.length || missingDirs.length) {
+    console.error(`${errors} pictures could not be compared, ${unpaired.length} have no partner, ${missingDirs.length} picture folders are missing: see compare.md.`);
+    process.exitCode = 1;
+  }
 }
 
-await main();
+if (import.meta.main) await main();
