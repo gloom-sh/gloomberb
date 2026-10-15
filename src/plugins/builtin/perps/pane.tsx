@@ -22,10 +22,10 @@ import { useCommandValue } from "../shared/command-tab";
 import { useOpenDescription } from "../shared/open-description";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
-import { cachedPerpSelection, cachedPerpsBoard, cachedPerpsCompare, cachedPerpsRankings, loadPerpSelection, loadPerpsBoard, loadPerpsCompare,
+import { boardSearchText, cachedPerpSelection, cachedPerpsBoard, cachedPerpsCompare, cachedPerpsRankings, loadPerpSelection, loadPerpsBoard, loadPerpsCompare,
   loadPerpsHistoryForRange, loadPerpsRankings } from "./client";
 import { perpFreshness, perpObservation } from "./freshness";
-import { ASSET_FILTERS, BOARD_SORTS, boardColumns, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
+import { APR_FOOTNOTE, ASSET_FILTERS, BOARD_SORTS, boardColumns, compact, compareColumns, dayChange, fundingInterval, fundingSpread, historyCaption, historyCell, historyChange, historyColumns,
   HISTORY_METRICS, historyRows, historySeries, historyValue, inPoints, isMarketTab, label, longShortReason, marketLabel, metricLabel, openingTab, perpCell, PERP_TABS, percent,
   positioningFields, price, rankingColumns, rankingRows, RANKINGS, ratioText, share, sortLabel, time, underlyingTicker, venueLabel, venueName, venuesOf, type HistoryMetric,
   type PerpColumnId, type PerpTab, type RankingKey } from "./model";
@@ -67,7 +67,7 @@ function MarketEvidence({ row, data, width, height }: { row: PerpBoardRow; data:
     ["Market", [["Venue", venueLabel(row)], ["Contract symbol", row.symbol], ["Observed", time(row.observedAt)], ["Source as of", time(row.sourceAsOf)],
       ["Mark", `${price(row.markPrice)} ${row.quoteCurrency}`], ["Oracle", `${price(row.oraclePrice)} ${row.quoteCurrency}`], ["Premium vs oracle", percent(row.premium)]]],
     ["Funding", [["Funding", `${percent(row.fundingRate, 5)} / ${fundingInterval(row)}`, row.fundingKind === "last-paid" ? "Last paid" : row.fundingKind === "continuous" ? "Continuous rate" : "Current rate"],
-      ["Funding 8h / APR", `${percent(row.fundingRate8h, 4)} / ${percent(row.fundingApr, 2)}`],
+      ["Funding 8h / APR", `${percent(row.fundingRate8h, 4)} / ${percent(row.fundingApr, 2)}`, "APR = current 8h rate × 3 × 365"],
       ...(row.predictedFundingRate != null ? [["Predicted funding", `${percent(row.predictedFundingRate)} / ${row.predictedFundingIntervalHours ?? "--"}h`] as [string, string]] : []),
       ...(row.nextFundingAt ? [["Next funding", time(row.nextFundingAt)] as [string, string]] : [])]],
     ["Open Interest", [["Open interest", `${compact(row.openInterestBase)} ${row.baseAsset} · ${compact(row.openInterestUsd)} USD`],
@@ -216,7 +216,7 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   const [selectedId, setSelected] = usePluginPaneState<string | null>("perps:board-selected", null);
   const querySearch = useQueryBarSearch();
   // Asset class, search and order are the server's; the venue narrows what it returned.
-  const query = useMemo(() => ({ ...(asset !== "all" ? { assetClass: asset } : {}), ...(search.trim() ? { search: search.trim() } : {}), sort }), [asset, search, sort]);
+  const query = useMemo(() => ({ ...(asset !== "all" ? { assetClass: asset } : {}), ...(search.trim() ? { search: boardSearchText(search) } : {}), sort }), [asset, search, sort]);
   const loader = useCallback((force: boolean) => loadPerpsBoard(query, accessKey, force), [query, accessKey]);
   const resource = useAsyncResource(loader, { initialData: () => cachedPerpsBoard(query, accessKey), clearOnError: isAccessDenied, keepPreviousData: true });
   const data = resource.data?.payload;
@@ -230,7 +230,9 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
   const line = usePerpStatusLine(rows, rows, resource.updatedAt);
   usePaneStatusFooter({ registrationId: "perps:board", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
-  usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
+  // The APR % column carries its own definition for as long as the pane is wide enough to show it.
+  usePaneNoticeFooter({ registrationId: "perps:board-notice", focused, notices: [...resource.data?.refreshError ? [resource.data.refreshError] : [],
+    ...rows.length && columns.some((column) => column.id === "fundingApr") ? [APR_FOOTNOTE] : []] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="view perpetual markets" needsVerification={session.needsVerification} />;
   const narrow = (apply: () => void) => { apply(); setSelected(null); };
   const lock = locked ? <LockedPreview text={moreText(locked, "markets")} onPress={upgrade} role="perps-board-upgrade" /> : null;
@@ -320,7 +322,8 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { void resource.reload(); }, { focused: focused && !querySearch.active });
   usePaneStatusFooter({ registrationId: "perps:compare", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
-  usePaneNoticeFooter({ registrationId: "perps:compare-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
+  usePaneNoticeFooter({ registrationId: "perps:compare-notice", focused, notices: [...resource.data?.refreshError ? [resource.data.refreshError] : [],
+    ...rows.length && columns.some((column) => column.id === "fundingApr") ? [APR_FOOTNOTE] : []] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="compare perpetual venues" needsVerification={session.needsVerification} />;
   const figures: StatItem[] = spread ? [{ id: "spread", label: "Funding spread 8h", value: spread.text, detail: spread.detail }] : [];
   const lock = locked ? <LockedPreview text={moreText(locked, locked === 1 ? "contract" : "contracts")} onPress={upgrade} role="perps-compare-upgrade" /> : null;
@@ -435,7 +438,8 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
           ] : []} />
         <PaneStatusBody loading={!data && resource.loading} error={!data ? resource.error : null} subject="perpetual market">
           {active ? tab === "history" ? <History key={active.marketId} market={active} accessKey={accessKey} width={width} height={listHeight - 1} focused={focused && !querySearch.active} range={range} metric={metric} refreshMarket={refreshMarket} />
-            : <MarketEvidence row={active} data={data!} width={width} height={listHeight - 1} /> : <EmptyState title="No market matches." />}
+            : <MarketEvidence row={active} data={data!} width={width} height={listHeight - 1} />
+            : <EmptyState title="No market matches." message={data?.suggestions?.length ? `Try ${data.suggestions.join(", ")}.` : undefined} />}
         </PaneStatusBody>
       </>}
   </Box>;

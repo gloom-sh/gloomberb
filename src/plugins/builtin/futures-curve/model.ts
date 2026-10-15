@@ -282,6 +282,10 @@ export interface CurveSpot {
   asOf: string | null;
   status: "ok" | "stale" | "missing";
   reason: string | null;
+  /** The listing the quote path reports for the pair (`CCC`), when it reports one. */
+  venue?: string;
+  /** Whether the quote is real-time or held back, as the quote path reports it. */
+  feed?: "real-time" | "delayed";
 }
 
 export interface SpotQuote {
@@ -289,6 +293,8 @@ export interface SpotQuote {
   lastUpdated: number;
   stale?: boolean;
   dataSource?: string;
+  listingExchangeName?: string;
+  exchangeName?: string;
 }
 
 const positive = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value > 0;
@@ -303,16 +309,20 @@ function quoteAge(ms: number): string {
 /** Judges one spot quote at `now`: usable, older than the rule allows, or absent. */
 export function curveSpot(symbol: string, quote: SpotQuote | null | undefined, now: number): CurveSpot {
   if (!quote || !positive(quote.price)) return { symbol, price: null, asOf: null, status: "missing", reason: `no ${symbol} quote` };
+  // What the quote path says about the quote itself, kept beside the price so the footer can name it.
+  const venue = (quote.listingExchangeName || quote.exchangeName)?.trim();
+  const feed: CurveSpot["feed"] = quote.dataSource === "live" ? "real-time" : quote.dataSource === "delayed" ? "delayed" : undefined;
+  const source = { ...venue ? { venue } : {}, ...feed ? { feed } : {} };
   const time = quote.lastUpdated;
   if (!Number.isFinite(time) || time <= 0) {
-    return { symbol, price: quote.price, asOf: null, status: "stale", reason: `${symbol} quote has no time` };
+    return { symbol, price: quote.price, asOf: null, status: "stale", reason: `${symbol} quote has no time`, ...source };
   }
   const asOf = new Date(time).toISOString().replace(".000Z", "Z");
   const age = now - time;
   const limit = SPOT_STALE_MS + (quote.dataSource === "delayed" ? DELAYED_SPOT_MS : 0);
-  if (age > limit) return { symbol, price: quote.price, asOf, status: "stale", reason: `${symbol} quote is ${quoteAge(age)} old` };
-  if (quote.stale === true) return { symbol, price: quote.price, asOf, status: "stale", reason: `${symbol} quote is stale` };
-  return { symbol, price: quote.price, asOf, status: "ok", reason: null };
+  if (age > limit) return { symbol, price: quote.price, asOf, status: "stale", reason: `${symbol} quote is ${quoteAge(age)} old`, ...source };
+  if (quote.stale === true) return { symbol, price: quote.price, asOf, status: "stale", reason: `${symbol} quote is stale`, ...source };
+  return { symbol, price: quote.price, asOf, status: "ok", reason: null, ...source };
 }
 
 /** How far the contract trades over (positive) or under spot, in percent. */
@@ -398,6 +408,56 @@ export function thinContractCount(basis: Iterable<ContractBasis>): number {
 /** The footer warning that thin contracts have no basis: the pane's `!` notice, which keeps the footer row for the quote times. */
 export function thinContractsNotice(count: number): string {
   return `Basis blank on ${count} thin contract${count === 1 ? "" : "s"} (last print over 1h before spot)`;
+}
+
+/** What the quote path reports of the spot itself, as the footer names it: `CCC, real-time`. Null when it reports neither. */
+export function curveSpotSource(spot: Pick<CurveSpot, "venue" | "feed">): string | null {
+  const parts = [spot.venue, spot.feed].filter((part): part is string => !!part);
+  return parts.length ? parts.join(", ") : null;
+}
+
+/** What Ann Basis is: Vs Spot is the same ratio before it is annualised. */
+export const BASIS_FORMULA = "(Last / spot - 1) × 365 / days to expiry";
+/** The two basis columns' convention in one line. */
+export const BASIS_CONVENTION = `Ann Basis = ${BASIS_FORMULA}: simple actual/365, the latest trade against the spot quote.`;
+
+/** Why one priced-or-not contract has no basis against a usable spot, in the order `contractBasis` decides it. */
+function blankReason(row: Pick<FuturesContract, "price" | "stale">, basis: ContractBasis): string | null {
+  if (basis.vsSpotPct != null) return null;
+  if (!positive(row.price)) return "no price";
+  if (row.stale) return "price over two sessions old";
+  return basis.thin ? "last trade over 1h before the spot quote" : null;
+}
+
+/**
+ * The contracts whose basis cells are blank against a good spot, grouped by cause and named, so a blank is never
+ * unexplained: the far months of a curve print rarely, and a print an hour before the spot is not read against it.
+ */
+export function blankBasisNote(rows: readonly Pick<FuturesContract, "symbol" | "price" | "stale">[], basis: CurveBasisRows): string | null {
+  const groups = new Map<string, string[]>();
+  for (const row of rows) {
+    const cell = basis.get(row.symbol);
+    const reason = cell ? blankReason(row, cell) : null;
+    if (reason) groups.set(reason, [...groups.get(reason) ?? [], curveContractCode(row.symbol)]);
+  }
+  return groups.size ? `Basis blank for ${[...groups].map(([reason, codes]) => `${codes.join(", ")} (${reason})`).join("; ")}.` : null;
+}
+
+/** Under this many days to expiry a few basis points of spot move the annualised rate by whole points. */
+const SHORT_DATED_DAYS = 30;
+/** The noise the note sizes the swing against: ten basis points of spot, a quote's usual gap to the contract's print. */
+const SPOT_NOISE_PCT = 0.1;
+
+/** The note for contracts showing an annualised basis inside `SHORT_DATED_DAYS`: what 10 bp of spot noise does to each. */
+export function shortDatedBasisNote(rows: readonly Pick<FuturesContract, "symbol" | "expiration">[], basis: CurveBasisRows, spot: CurveSpot | null): string | null {
+  if (!spot || spot.status !== "ok" || spot.asOf == null) return null;
+  const spotTime = Date.parse(spot.asOf);
+  const near = rows.flatMap((row) => {
+    if (basis.get(row.symbol)?.annualisedBasisPct == null) return [];
+    const days = daysToExpiry(spotTime, row.expiration);
+    return days != null && days > 0 && days < SHORT_DATED_DAYS ? [`${curveContractCode(row.symbol)} (${days}d) by ±${(SPOT_NOISE_PCT * 365 / days).toFixed(1)} points`] : [];
+  });
+  return near.length ? `Ann Basis is noisy under ${SHORT_DATED_DAYS} days to expiry: 10 bp of spot noise moves ${near.join(", ")}.` : null;
 }
 
 /** A past date for the as-of view: empty (or "latest") for the live curve, else YYYY-MM-DD no later than today. */

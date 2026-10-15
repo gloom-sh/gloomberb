@@ -20,17 +20,17 @@ afterEach(reset);
 async function remount() { await tui.destroy(); reset(); }
 /** The mounted app state and its dispatch, for a test that changes the instance the way the app does. */
 let app: { state: AppState; dispatch: Dispatch<AppAction> } | null = null;
-async function mount(settings: Record<string, unknown>, instance: Partial<PaneInstanceConfig> = {}, runtime = createTestPluginRuntime()) {
+async function mount(settings: Record<string, unknown>, instance: Partial<PaneInstanceConfig> = {}, runtime = createTestPluginRuntime(), width = 110) {
   const id = instance.instanceId ?? "perps:test";
   const state = createInitialState(createTestPaneConfig("/tmp/perps-pane-test", { paneId: "perps", instanceId: id, settings, ...instance }));
   function Harness() {
     const [current, dispatch] = useReducer(appReducer, state);
     app = { state: current, dispatch };
     return <TestPaneProvider state={current} dispatch={dispatch} paneId={id} pluginId="market-overview" runtime={runtime}>
-      <PaneFooterProvider>{(footer) => <Box width={110} height={25} flexDirection="column"><Box height={24}><PerpsPane width={110} height={24} focused /></Box><PaneFooterBar footer={footer} width={110} focused /><PaneFooterKeys paneId={id} footer={footer} focused /></Box>}</PaneFooterProvider>
+      <PaneFooterProvider>{(footer) => <Box width={width} height={25} flexDirection="column"><Box height={24}><PerpsPane width={width} height={24} focused /></Box><PaneFooterBar footer={footer} width={width} focused /><PaneFooterKeys paneId={id} footer={footer} focused /></Box>}</PaneFooterProvider>
     </TestPaneProvider>;
   }
-  await act(async () => { await tui.render(<Harness />, { width: 110, height: 25 }); });
+  await act(async () => { await tui.render(<Harness />, { width, height: 25 }); });
 }
 /** Answers each perpetuals route from its own payload and records every request. */
 function serve({ board = perpBoard(), rankings = perpRankings(), compare = perpBoard() }: { board?: PerpBoardPayload; rankings?: PerpRankingsPayload; compare?: PerpBoardPayload } = {}) {
@@ -152,11 +152,41 @@ test("compare spreads 8h funding between the venues it shows, dates each venue, 
   expect(one).not.toContain("Funding spread");
 });
 
+test("a table that shows the APR % column says what it is in the footer, and a market nothing matches says which to try", async () => {
+  serve({ board: perpBoard({ rows: [perpRow(), venueRow("bybit")] }) });
+  await mount({ market: "", tab: "board" }, {}, createTestPluginRuntime(), 160);
+  const board = await tui.waitForFrameToContain("APR %");
+  expect(board).toContain("⚠");
+  await act(async () => tui.setup().mockInput.pressKey("!"));
+  // The warning wraps inside its box.
+  expect(await tui.waitForFrameToContain("not funding actually paid")).toContain("APR = current 8h rate × 3 × 365");
+  await tui.emitKeypress({ name: "escape" });
+  // A pane too narrow for the column has no APR to explain.
+  await remount();
+  serve({ board: perpBoard({ rows: [perpRow(), venueRow("bybit")] }) });
+  await mount({ market: "", tab: "board" });
+  expect(await tui.waitForFrameToContain("OBSERVED UTC")).not.toMatch(/APR %|⚠/);
+  await remount();
+  serve({ compare: perpBoard({ rows: [venueRow("binance"), venueRow("bybit")] }) });
+  await mount({ market: "", tab: "compare" }, {}, createTestPluginRuntime(), 160);
+  await tui.waitForFrameToContain("APR %");
+  await act(async () => tui.setup().mockInput.pressKey("!"));
+  expect(await tui.waitForFrameToContain("APR = current 8h rate × 3 × 365")).toContain("Data warnings");
+  await remount();
+  // A typed name the board does not spell reads as its base asset; one nothing matches names the markets nearest to it.
+  const calls = serve({ board: perpBoard({ rows: [venueRow("binance", { marketId: "binance:BZUSDT", symbol: "BZUSDT", baseAsset: "BZ", displayName: "Brent Crude" })] }) });
+  await mount({ market: "brentt" });
+  const none = await tui.waitForFrameToContain("No market matches.");
+  expect(none).toContain("Try BZ.");
+  expect(calls.some((url) => url.includes("search=BRENT"))).toBe(true);
+});
+
 test("evidence distinguishes source time, raw interval, reference price and retained revision", async () => {
   const board = perpBoard();
   setCloudApiFetchTransport(async (url) => Response.json(String(url).includes("/market?") ? { ...board, evidence: [{ kind: "funding", period_at: board.asOf, received_at: board.asOf, superseded_at: null, fingerprint: "revision-one", payload: {} }], methodologyUrl: "https://gloom.sh/docs/perpetuals" } : board));
   await mount({ tab: "evidence" });
   const frame = await tui.waitForFrameToContain("Funding 8h / APR");
+  expect(frame).toContain("APR = current 8h rate × 3 × 365");
   // A crypto perp has no listed underlying, so the reference-price rows are left out rather than shown as unavailable.
   expect(frame).not.toContain("Underlying last");
   expect(frame).toContain("Source as of");

@@ -11,7 +11,9 @@ test("a term is found by its name, abbreviation or another name, whatever its ca
   expect(lookupGlossary("b/c")).toEqual({ exact: [GLOSSARY.find((entry) => entry.short === "B/C")!], partial: [] });
   expect(terms(lookupGlossary("dealers").exact)).toEqual(["Dealer"]);
   expect(terms(lookupGlossary("discount").partial)).toEqual(["High discount margin", "Premium/discount"]);
-  expect(lookupGlossary("carry")).toEqual({ exact: [], partial: [] });
+  // Carry is no entry of its own, but the basis trade it names is: found as a related term.
+  expect(terms(lookupGlossary("carry").exact)).toEqual([]);
+  expect(terms(lookupGlossary("carry").partial)).toEqual(["Futures basis"]);
   // Every name leads to one entry, so a lookup never has to pick between two.
   const keys = GLOSSARY.flatMap((entry) => [...new Set([entry.term, entry.short, ...entry.aliases].filter(Boolean)
     .map((name) => name!.toLowerCase().replace(/[^a-z0-9]/g, "")))]);
@@ -123,4 +125,22 @@ test("QQ, FUT and ECO explain the quote, futures and calendar words they print",
 
   const calendar = "TIME (UTC)  IMP   CTY  EVENT     ACTUAL  FORECAST  PRIOR\n12:30  HIGH  US   CPI m/m   -       0.6%      0.4%";
   expect(terms(reportGlossary("ECO", calendar))).toEqual(["Actual", "Forecast", "Prior", "Impact"]);
+});
+
+test("the futures basis, curve shape and funding words are found by plain names and explained from what CTM and PERP print", () => {
+  const exact = (query: string) => terms(lookupGlossary(query).exact);
+  expect(["basis", "basis trade", "cash and carry", "vs spot", "annualised basis", "annualized basis", "ann basis", "contango", "backwardation", "roll yield", "roll", "funding rate", "funding apr"].map(exact))
+    .toEqual([["Futures basis"], ["Futures basis"], ["Futures basis"], ["Futures basis"], ["Annualised basis"], ["Annualised basis"], ["Annualised basis"], ["Contango"], ["Backwardation"],
+      ["Roll yield"], ["Roll yield"], ["Funding rate"], ["Funding rate"]]);
+  // `basis` is the futures basis, and the basis point and the annualised rate it starts a word of follow; funding rate stays one entry that also says what APR % is.
+  const basis = lookupGlossary("basis");
+  expect([terms(basis.exact), terms(basis.partial)]).toEqual([["Futures basis"], ["Basis point", "Annualised basis"]]);
+  expect(GLOSSARY.filter((entry) => /funding rate/i.test(entry.term))).toHaveLength(1);
+  expect(lookupGlossary("funding rate").exact[0]!.definition).toContain("APR % is the current 8h rate × 3 × 365");
+
+  const curve = "Contract  Last  Vs Spot  Ann Basis\nBTCV26  81830.00  +0.25%  +4.3%\n\nFront spread\nLabel  State  Annualized Roll Yield\nBTCX26-BTCV26  contango  -5.71";
+  expect(terms(reportGlossary("CTM", curve))).toEqual(["Futures contract", "Futures basis", "Annualised basis", "Contango", "Roll yield"]);
+  expect(terms(reportGlossary("PERP", "Market  Funding %/int  Premium %  APR %\nBTC  -0.00056% /8h  -0.039%  -0.62%"))).toEqual(["Funding rate", "Premium"]);
+  // Another function's report shows none of them.
+  expect(reportGlossary("HP", curve)).toEqual([]);
 });

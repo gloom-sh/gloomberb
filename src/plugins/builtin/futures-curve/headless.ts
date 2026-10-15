@@ -3,7 +3,7 @@ import { futuresSpecLines } from "../../../market-data/futures-contract";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneEntry, HeadlessPaneFreshness } from "../../../types/plugin";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 import { fetchFuturesCurve, loadCurveSpot, loadFuturesCurveAsOf } from "./client";
-import { basisSpotSymbol, catalogueCurveUnit, contractBasis, curveAsOfDate, curveBasisPercent, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpreadLabel, curveTimestamp, curveUnitLabel, normalizeCurveRoot, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
+import { basisSpotSymbol, BASIS_CONVENTION, blankBasisNote, catalogueCurveUnit, curveAsOfDate, curveBasisPercent, curveBasisRows, curveChangeText, curveContractCode, curvePrice, curveRoundedPrice, curveSpotLabel, curveSpotSource, curveSpreadLabel, curveTimestamp, curveUnitLabel, normalizeCurveRoot, shortDatedBasisNote, thinContractCount, unsupportedCurveRootMessage, type ContractBasis } from "./model";
 
 /** The root a report shows when none is given. */
 const DEFAULT_ROOT = "ES";
@@ -73,7 +73,9 @@ function specEntries(data: FuturesCurvePayload): HeadlessPaneEntry[] {
 
 export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
   discovery: { aliases: ["CTM"], dataRequirements: ["Gloom Cloud futures curve endpoint"],
-    limitations: ["Listed-contract catalogues can be incomplete.", "Ghosts and percentiles use the same listed contracts.", "Cboe VIX is daily settlement."] },
+    limitations: ["Listed-contract catalogues can be incomplete.", "Ghosts and percentiles use the same listed contracts.", "Cboe VIX is daily settlement.",
+    "Ann Basis is simple actual/365 on the latest trade against the spot quote, and noisy under 30 days to expiry."],
+    intents: ["futures basis trade", "cash and carry", "basis against spot"] },
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "root", description: "FUT root such as CL, ES, ZN or VX, or a CME crypto root (BTC, ETH, SOL, XRP). Defaults to ES." },
   // Only the pane reads the tab; the report always carries both.
   options: [{ key: "tab", description: "Curve or the full contract table.", type: "enum",
@@ -93,11 +95,15 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
       date ? loadFuturesCurveAsOf(root, date, ctx.apiClient) : fetchFuturesCurve(root, ctx.apiClient),
       spotSymbol ? loadCurveSpot(spotSymbol, ctx.marketData, now) : null,
     ]);
-    const bases = spot ? data.contracts.map((row) => contractBasis(row, spot)) : [];
+    const bases = spot ? curveBasisRows(data.contracts, spot) : null;
     const unit = curveUnitLabel(data);
     const terms = specEntries(data);
+    const source = spot ? curveSpotSource(spot) : null;
     const notices = [...args.argument ? [] : [`Showing ${DEFAULT_ROOT}. Try fn CTM ${EXAMPLE_ROOT}.`],
-      ...spot ? [spot.status === "ok" ? `Basis against ${curveSpotLabel(spot, root, now)}.` : `Basis blank: ${spot.reason}.`] : []];
+      ...spot ? [spot.status === "ok" ? `Basis against ${curveSpotLabel(spot, root, now)}${source ? ` (${source})` : ""}; not the CME reference rate.` : `Basis blank: ${spot.reason}.`] : []];
+    // The footnotes under the table: the convention, why a cell is blank, and where a short-dated rate is not to be trusted.
+    // Against a spot that is not usable every cell is blank for the spot's reason, which the notice above already gives.
+    const notes = spot && bases ? [BASIS_CONVENTION, ...spot.status === "ok" ? [blankBasisNote(data.contracts, bases), shortDatedBasisNote(data.contracts, bases, spot)].filter((note): note is string => !!note) : []] : [];
     // Dated by the contracts' own quotes; the same-contract history rows are a year of context, not observations.
     const quoted = data.contracts.map((row) => row.asOf);
     const freshness: HeadlessPaneFreshness = date
@@ -109,7 +115,7 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
       sections: [
         { title: "Contracts", columns: contractColumns(root, data.settlementDate ?? null,
           { basis: !!spot, last: data.source !== "cboe", notice: data.contracts.some((row) => row.firstNotice) }),
-          rows: data.contracts.map((row, index) => contractRow(row, data, root, !!date, bases[index])) },
+          rows: data.contracts.map((row) => contractRow(row, data, root, !!date, bases?.get(row.symbol))) },
         { title: "Front spread", rows: [{ label: curveSpreadLabel(data.slope), ...data.slope, value: curveRoundedPrice(data.slope.value, root),
           annualizedRollYield: data.slope.annualizedRollYield == null ? null : Number(data.slope.annualizedRollYield.toFixed(2)),
           percentile: rank(data.slope.percentile), rollPercentile: rank(data.slope.rollPercentile) }] },
@@ -117,7 +123,8 @@ export const futuresCurveHeadless: HeadlessPaneDefinition<"bundle"> = {
         ...data.ghosts.map((ghost) => ({ title: `${ghost.label} same-contract history`, rows: ghost.points.map((point) => ({ ...point })) })),
       ],
       errors: data.gaps,
-      metadata: { ...data, quoteUnit: unit, ...(spot ? { spot, basisBlankedThin: thinContractCount(bases) } : {}), ...(args.argument ? {} : { defaultArgument: DEFAULT_ROOT }),
+      ...(notes.length ? { notes } : {}),
+      metadata: { ...data, quoteUnit: unit, ...(spot && bases ? { spot, basisBlankedThin: thinContractCount(bases.values()) } : {}), ...(args.argument ? {} : { defaultArgument: DEFAULT_ROOT }),
         ...(notices.length ? { notices } : {}),
         complete: data.status === "available", percentileBasis: "Same-contract observations within one year; actual sample start/end retained" },
     };

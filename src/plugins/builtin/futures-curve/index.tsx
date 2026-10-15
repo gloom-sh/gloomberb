@@ -1,7 +1,7 @@
 import type { PluginModule } from "../plugin-module";
 import { futuresCurveCache } from "./client";
 import { futuresCurveHeadless } from "./headless";
-import { CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
+import { BASIS_FORMULA, CURVE_HORIZONS, CURVE_ROOTS, curveRootForTicker, DEFAULT_CURVE_HORIZON, normalizeCurveRoot } from "./model";
 import { FuturesCurvePane } from "./pane";
 
 export const futuresCurveModule: PluginModule = {
@@ -17,8 +17,8 @@ export const futuresCurveModule: PluginModule = {
     }),
   }],
   paneTemplates: [{ id: "futures-curve-pane", paneId: "futures-curve", label: "Futures Curve",
-    description: "Listed futures contracts, historical curves, roll yield and open interest including VIX and CME crypto futures.",
-    keywords: ["ctm", "futures", "curve", "term structure", "contango", "backwardation", "roll", "vix", "crude oil", "natural gas"],
+    description: `Listed futures contracts, historical curves, roll yield and open interest including VIX and CME crypto futures, which add basis against spot: Ann Basis = ${BASIS_FORMULA}, simple actual/365.`,
+    keywords: ["ctm", "futures", "curve", "term structure", "contango", "backwardation", "roll", "basis", "basis trade", "carry", "annualised basis", "vix", "crude oil", "natural gas"],
     shortcut: { prefix: "CTM", aliases: ["CT"], argKind: "text", argPlaceholder: "root", argOptional: true,
       argOptions: () => CURVE_ROOTS },
     headless: futuresCurveHeadless,
