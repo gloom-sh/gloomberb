@@ -338,7 +338,7 @@ window.__chatFake = fake;
 
 /** What the Chat pane does with its channel and a message a notification pointed at. */
 export function ChatFixturePane(props: PaneProps) {
-  return lifecycle ? <ChatMountFixture {...props} /> : <ChatFixtureContent {...props} />;
+  return lifecycle ? <ChatMountFixture {...props} /> : renderChatFixtureContent(props);
 }
 
 /** Keep the real content mounted while its host is hidden or outside the viewport. */
@@ -352,12 +352,12 @@ function ChatMountFixture(props: PaneProps) {
     {strip}
     {mode !== "unmounted" && <Box visible={mode !== "inactive"} flexGrow={1}
       style={{ minHeight: 0, ...(mode === "offscreen" ? { transform: "translateY(200vh)" } : {}) }}>
-      <ChatFixtureContent {...props} focused={props.focused && mode === "chat"} />
+      {renderChatFixtureContent({ ...props, focused: props.focused && mode === "chat" })}
     </Box>}
   </Box>;
 }
 
-function ChatFixtureContent(props: PaneProps) {
+function renderChatFixtureContent(props: PaneProps) {
   return params.get("latencyCheck") === "1"
     ? <ChatLatencyPane {...props} controller={controller} />
     : <ChatListFixturePane {...props} />;
