@@ -23,6 +23,8 @@ import { click, evaluate, frames, type Cdp } from "./browser";
 export interface Alternative {
   /** Stable across reloads: group signature, which of the groups with it, place in the group. */
   id: string;
+  /** The labels of its group, to tell a group a press revealed from one it relabelled. */
+  groupLabels: string[];
   label: string;
   /** The label, told apart from another alternative with the same label in the same state. */
   name: string;
@@ -71,6 +73,7 @@ const HELPERS = `(() => {
         out.push({
           el,
           id: signature + "#" + occurrence + "/" + index,
+          groupLabels: labels,
           label: labels[index],
           place: (groupIndex + 1) + "." + (index + 1),
           selected: el.getAttribute("aria-selected") === "true" || el.getAttribute("aria-checked") === "true",
@@ -95,8 +98,11 @@ const HELPERS = `(() => {
       if (!entry) return { error: "not on the page" };
       if (entry.disabled) return { error: "disabled" };
       if (entry.hidden) return { error: "not laid out" };
+      // Marked, so the press is checked on this very element even when its group's labels change with it.
+      for (const marked of document.querySelectorAll("[data-tab-visit-target]")) marked.removeAttribute("data-tab-visit-target");
+      entry.el.setAttribute("data-tab-visit-target", "");
       entry.el.scrollIntoView({ block: "nearest", inline: "center" });
-      return { ok: true };
+      return { ok: true, place: entry.place, label: entry.label };
     },
     point(scope, id) {
       const entry = entries(scope).find((candidate) => candidate.id === id);
@@ -109,8 +115,14 @@ const HELPERS = `(() => {
       if (!hit || !(hit === entry.el || entry.el.contains(hit))) return { error: "covered by " + (hit?.getAttribute?.("data-gloom-role") || hit?.tagName?.toLowerCase() || "nothing") };
       return { x, y };
     },
-    selected(scope, id) {
-      const entry = entries(scope).find((candidate) => candidate.id === id);
+    /** The pressed alternative: the marked element, or (re-rendered) the one with its identity, or its label in its place. */
+    selected(scope, id, place, label) {
+      const all = entries(scope);
+      const marked = document.querySelector("[data-tab-visit-target]");
+      // A choice may relabel itself once chosen ("Auto" reads "Auto (5m)").
+      const entry = all.find((candidate) => candidate.el === marked)
+        ?? all.find((candidate) => candidate.id === id)
+        ?? all.find((candidate) => candidate.place === place && (candidate.label === label || candidate.label.startsWith(label + " ")));
       if (!entry) return { error: "gone after the press" };
       if (!entry.hasState) return { error: "the page does not say which one is selected" };
       return entry.selected ? { ok: true } : { error: "not selected after the press" };
@@ -134,7 +146,7 @@ async function listAlternatives(cdp: Cdp, scope: string): Promise<Alternative[]>
  */
 async function selectAlternative(cdp: Cdp, scope: string, id: string, settle: () => Promise<void>): Promise<{ ok: true } | { ok: false; reason: string }> {
   await helpers(cdp);
-  const aimed = await evaluate<{ ok?: true; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(id)})`);
+  const aimed = await evaluate<{ ok?: true; place?: string; label?: string; error?: string }>(cdp, `window.__tabVisits.aim(${JSON.stringify(scope)}, ${JSON.stringify(id)})`);
   if (aimed.error) return { ok: false, reason: aimed.error };
   await frames(cdp, 2);
   const at = await evaluate<{ x?: number; y?: number; error?: string }>(cdp, `window.__tabVisits.point(${JSON.stringify(scope)}, ${JSON.stringify(id)})`);
@@ -142,7 +154,7 @@ async function selectAlternative(cdp: Cdp, scope: string, id: string, settle: ()
   await click(cdp, { x: at.x, y: at.y });
   await settle();
   await helpers(cdp);
-  const selected = await evaluate<{ ok?: true; error?: string }>(cdp, `window.__tabVisits.selected(${JSON.stringify(scope)}, ${JSON.stringify(id)})`);
+  const selected = await evaluate<{ ok?: true; error?: string }>(cdp, `window.__tabVisits.selected(${JSON.stringify(scope)}, ${JSON.stringify(id)}, ${JSON.stringify(aimed.place)}, ${JSON.stringify(aimed.label)})`);
   return selected.error ? { ok: false, reason: selected.error } : { ok: true };
 }
 
@@ -168,23 +180,21 @@ export async function visitAlternatives({ cdp, scope, reset, settle, record, dep
   const visits: TabVisit[] = [];
   await reset();
   const first = await listAlternatives(cdp, scope);
-  const queue: Array<{ path: Alternative[]; known: Set<string> }> = [];
-  const known = new Set(first.map((entry) => entry.id));
-  const enqueue = (path: Alternative[], alternatives: Alternative[], parentKnown: Set<string>) => {
+  const queue: Array<{ path: Alternative[]; parent: Alternative[] }> = [];
+  const enqueue = (path: Alternative[], alternatives: Alternative[], parent: Alternative[]) => {
     for (const alternative of alternatives) {
-      if (parentKnown.has(alternative.id) && path.length > 0) continue;
       if (alternative.selected) continue;
       const next = [...path, alternative];
       const named = next.map(({ id, name }) => ({ id, name }));
       if (alternative.disabled) visits.push({ path: named, status: "skipped", reason: "disabled" });
       else if (alternative.hidden) visits.push({ path: named, status: "skipped", reason: "not laid out (inside a view that is not open, or hidden at this size)" });
       else if (next.length > depth) visits.push({ path: named, status: "skipped", reason: `revealed ${next.length} presses deep; the sweep opens ${depth}` });
-      else queue.push({ path: next, known: new Set([...parentKnown, ...alternatives.map((entry) => entry.id)]) });
+      else queue.push({ path: next, parent });
     }
   };
-  enqueue([], first, known);
+  enqueue([], first, []);
   for (let index = 0; index < queue.length; index += 1) {
-    const { path, known: before } = queue[index]!;
+    const { path } = queue[index]!;
     const named = path.map(({ id, name }) => ({ id, name }));
     await reset();
     let failure: string | null = null;
@@ -204,10 +214,34 @@ export async function visitAlternatives({ cdp, scope, reset, settle, record, dep
       continue;
     }
     visits.push({ path: named, status: "measured" });
-    const revealed = (await listAlternatives(cdp, scope)).filter((entry) => !before.has(entry.id));
-    enqueue(path, revealed, before);
+    // What this press revealed: alternatives in a group the state before it did not have, or new in one it had.
+    const stateBefore = path.length > 1 ? queue[index]!.parent : first;
+    const now = await listAlternatives(cdp, scope);
+    enqueue(path, now.filter((entry) => isRevealed(entry, stateBefore)), now);
   }
   return visits;
+}
+
+/** The label without what a choice adds once chosen ("Auto (5m)" is "Auto"). */
+function baseLabel(label: string): string {
+  return label.replace(/\s+\(.*\)$/, "");
+}
+
+/**
+ * Whether a press revealed `entry`: no group before it shares half its labels
+ * (a relabelled or re-chosen group is the same group), or the group that does
+ * lacked this label.
+ */
+function isRevealed(entry: Alternative, before: Alternative[]): boolean {
+  const labels = new Set(entry.groupLabels.map(baseLabel));
+  let best: Set<string> | null = null, bestScore = 0;
+  for (const group of new Set(before.map((alternative) => alternative.groupLabels.map(baseLabel).join("|")))) {
+    const other = new Set(group.split("|"));
+    const shared = [...labels].filter((label) => other.has(label)).length;
+    const score = shared / new Set([...labels, ...other]).size;
+    if (score > bestScore) { bestScore = score; best = other; }
+  }
+  return bestScore < 0.5 || !best!.has(baseLabel(entry.label));
 }
 
 /** A view's name from its path: "Positioning > Disaggregated". */
