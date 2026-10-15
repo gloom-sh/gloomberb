@@ -469,7 +469,7 @@ export function KellySizerPane({ focused, width, height }: PaneProps) {
   // History mode says what it is waiting for, or why it has no inputs, before any sizing warning.
   const historyStatus = mode !== "history" || historyInputs ? null
     : historyEntry?.error ? { text: historyEntry.error.message, tone: "negative" as const }
-      : historyPoints ? { text: `under ${KELLY_HISTORY_MIN_PERIODS} monthly returns`, tone: "warning" as const }
+      : historyPoints ? { text: `need ${KELLY_HISTORY_MIN_PERIODS} months with a gain and a loss`, tone: "warning" as const }
         : { text: "loading history", tone: "muted" as const };
   usePaneFooter(KELLY_PANE_ID, () => ({
     info: historyStatus

@@ -84,7 +84,7 @@ export function ratePathCurves(data: RatePathPayload, palette?: RatePathPalette)
     id: meeting.date, label: meetingLabel(meeting.date), x: Date.parse(meeting.date),
     value: meeting.impliedRate, asOf: meeting.asOf,
   }));
-  const series: CurveSeries[] = [{ id: "implied", label: "EFFR", role: "primary", style: "step", asOf: data.asOf, color: palette?.path, points }];
+  const series: CurveSeries[] = [{ id: "implied", label: "Implied meeting rate", role: "primary", style: "step", asOf: data.asOf, color: palette?.path, points }];
   for (const key of ["targetLower", "targetUpper"] as const) {
     const metric = data.current[key];
     if (metric.value == null) continue;

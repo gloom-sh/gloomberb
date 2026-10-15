@@ -113,13 +113,21 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   // A new query starts from an empty list; a refresh keeps the rows it has.
   const browser = usePagedRows(showTickerHoldings ? null : loadPage, { getId: rowId });
   const { loading, loadingMore, rows } = browser;
+  const [reportPaint, setReportPaint] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    void Promise.all(browser.pages.map((page) => page.reportsLoaded ?? Promise.resolve())).then(() => {
+      if (alive) setReportPaint((value) => value + 1);
+    }, () => {});
+    return () => { alive = false; };
+  }, [browser.pages]);
   const error = browser.error?.message ?? null;
   // A refresh clears the pages' warnings until it answers.
   const pagesSettled = !loading && !browser.error;
   const warning = useMemo(() => {
     const notes = [...(pagesSettled ? browser.pages.map((page) => page.warning) : []), browser.moreError?.message];
     return [...new Set(notes.filter(Boolean))].join(" ") || null;
-  }, [browser.moreError, browser.pages, pagesSettled]);
+  }, [browser.moreError, browser.pages, pagesSettled, reportPaint]);
   const [detailSeed, setDetailSeed] = useState<FundSeed | null>(() => (
     initialCik ? { cik: String(initialCik), name: normalizedQuery || String(initialCik) } : null
   ));
@@ -157,7 +165,7 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   }, { allowEditable: true });
 
   const browserSort = useMemo(() => browserSortFor(sortPreference, browserMode), [sortPreference, browserMode]);
-  const sortedRows = useMemo(() => sortBrowserRows(rows, browserSort), [rows, browserSort]);
+  const sortedRows = useMemo(() => sortBrowserRows(rows, browserSort), [rows, browserSort, reportPaint]);
   const columns = useMemo(() => {
     if (browserMode !== "performance") return buildBrowserColumns(false);
     const history = rows[0]?.priorReturns ?? [];

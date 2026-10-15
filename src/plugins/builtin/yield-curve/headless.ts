@@ -153,20 +153,31 @@ export function createYieldCurveHeadless(
       const compareAsOf = comparePoints ? curveAsOf(comparePoints) : null;
       const compareAt = (maturity: string) => comparePoints?.find((point) => point.maturity === maturity)?.yield ?? null;
       // The stored curve brings its look-backs; the FRED fallback's load after it, and a failure leaves the move blank.
-      const lookbacks = data.lookbacks ?? (session ? await loadLookbacks(session, context).catch(() => ({})) : {});
+      const lookbacks: YieldLookbackCurves = data.lookbacks ?? (session ? await loadLookbacks(session, context).catch(() => ({})) : {});
       const change1d = new Map(yieldTenorRows(points, lookbacks).map((row) => [row.id, row.change1d]));
       const rows = [...points].sort((a, b) => a.maturityYears - b.maturityYears);
       const missing = points.filter((point) => point.yield == null);
       const missingTenors = missing.map((point) => point.maturity);
-      // On a past date a tenor the publisher has no yield for was most likely not issued yet: a note, not an error.
-      const notIssued = requestedDate && missing.length < points.length ? missing.filter((point) => !point.error).map((point) => point.maturity) : [];
-      const unavailable = missingTenors.filter((maturity) => !notIssued.includes(maturity));
+      // A blank on a past date is not evidence the tenor was unissued. Leave the cell empty.
+      const pastBlanks = requestedDate && missing.length < points.length
+        ? missing.filter((point) => !point.error).map((point) => point.maturity) : [];
+      const unavailable = missingTenors.filter((maturity) => !pastBlanks.includes(maturity));
       const spreads = curveSpreadFigures(data, lookbacks);
       const spread = (id: string) => bp(spreads.find((entry) => entry.id === id)?.value ?? null);
       const twosTens = spread("2s10s");
+      const fredNames = new Set<string>();
+      for (const curvePoints of [points, ...Object.values(lookbacks)]) {
+        for (const point of curvePoints ?? []) {
+          const source = point.source?.trim();
+          if (source) fredNames.add(source);
+        }
+      }
+      const seriesSource = fredNames.size > 0 ? [...fredNames].join(", ")
+        : data.seriesSource ? data.seriesSource
+        : data.seriesSource === null ? "FRED" : CURVE_PUBLISHERS[curve];
       return {
-        // Each curve is its official publisher's daily close; a past date is a historical curve, not a feed.
-        freshness: { source: CURVE_PUBLISHERS[curve], status: "not-a-feed", tradingDayMarket: CURVE_MARKETS[curve],
+        // A stored curve cites its publisher. FRED's fallback cites info.source, not that publisher.
+        freshness: { source: seriesSource, status: "not-a-feed", tradingDayMarket: CURVE_MARKETS[curve],
           ...(requestedDate ? { basis: "historical curve" } : { basis: "daily curve", cadence: "daily" }) },
         ...(comparePoints ? { columns: compareColumns(compareAsOf) } : {}),
         rows: rows.map((point) => {
@@ -180,7 +191,6 @@ export function createYieldCurveHeadless(
               : {}),
           };
         }),
-        ...(notIssued.length ? { notes: [`Not issued then: ${notIssued.join(", ")}`] } : {}),
         errors: [
           ...yieldCurveErrors(points),
           ...(unavailable.length ? [`Tenors unavailable: ${unavailable.join(", ")}`] : []),

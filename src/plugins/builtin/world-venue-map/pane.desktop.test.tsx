@@ -82,12 +82,13 @@ const basemap = (container: HTMLElement) => container.querySelector('[data-gloom
 const hints = (container: HTMLElement) => [...container.querySelectorAll('[data-gloom-role="pane-hint"]')].map((hint) => hint.textContent?.trim()).join(" ");
 
 describe("MAP on the desktop and the web", () => {
-  test("< and > narrow and widen the sidebar from the keyboard, and the footer names them", async () => {
+  test("< and > narrow and widen the sidebar from the keyboard without a footer hint", async () => {
     serve();
     const container = await mount({ layers: [], venues: true });
     await until(container, "City 0");
-    expect(hints(container)).toContain("[<] sidebar");
-    expect(hints(container)).toContain("[>]");
+    expect(hints(container)).toContain("zoom in");
+    expect(hints(container)).not.toContain("sidebar");
+    expect(hints(container)).not.toContain("[<]");
     const start = sidebarCells(container);
 
     // Shift+comma and Shift+period on a US layout report these characters.

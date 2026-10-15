@@ -30,7 +30,7 @@ import {
   compareDate, curveIdOf, CURVE_OPTIONS, curveSpreadFigures, loadComparePoints, loadCurveData, parseCompareInput,
   parseCurveArgument, type CurveId,
 } from "./curves";
-import { forwardCurve } from "./forward";
+import { forwardCurve, type CurveBasis } from "./forward";
 import { loadYieldCurveLookbacks, yieldCurveDate } from "./history";
 import { curveAsOf, isYieldObservationDate, type YieldPoint, yieldCurveErrors } from "./treasury-data";
 import { loadWorldRows, type WorldRow } from "./world";
@@ -38,15 +38,17 @@ import { loadWorldRows, type WorldRow } from "./world";
 type GcTab = "curve" | "world";
 const TABS = [{ label: "Curve", value: "curve" }, { label: "World", value: "world" }];
 const EMPTY_POINTS: YieldPoint[] = [];
-/** What each curve plots, in the legend's first words. */
-const CAPTIONS: Partial<Record<CurveId, string>> = {
-  "us-real": "Real yield % by maturity",
-  "us-breakeven": "Breakeven % by maturity",
-  gb: "Zero-coupon yield % by maturity",
+/** Axis word for the loaded curve's basis. */
+const BASIS_LABEL: Record<CurveBasis, string> = {
+  par: "Par yield",
+  zero: "Zero rate",
+  benchmark: "Benchmark yield",
+  spread: "Spread",
 };
-const YIELD_CAPTION = "Yield % by maturity";
-/** A breakeven is not a yield, so its curve and column say what it is. */
-const valueName = (curve: CurveId) => curve === "us-breakeven" ? "Breakeven" : "Yield";
+const basisText = (basis: CurveBasis | undefined): string | null => basis ? BASIS_LABEL[basis] : null;
+/** TIPS par yields are real yields, and the breakeven curve is the spread readers call a breakeven. */
+const CURVE_LEVEL: Partial<Record<CurveId, string>> = { "us-real": "Real par yield", "us-breakeven": "Breakeven" };
+const curveLevel = (curve: CurveId, basis: CurveBasis | undefined): string | null => CURVE_LEVEL[curve] ?? basisText(basis);
 const TENOR: DataTableColumn = { id: "tenor", label: "Tenor", width: 7, align: "left" };
 const YIELD: DataTableColumn = { id: "yield", label: "Yield", width: 8, align: "right" };
 const CHANGE_1D: DataTableColumn = { id: "change1d", label: "1D chg", width: 8, align: "right" };
@@ -268,29 +270,31 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   useChartTableSelection({ rows, getId: tenorKey, getDate: tenorPosition, selectedId, onSelect: setSelectedTenor,
     focused: focused && !editing });
   const compareName = curveLookbackLabel(compareLabel);
+  const level = curveLevel(curve, current?.basis);
+  const levelName = level ?? "Yield";
   const series = useMemo(() => differenceView
     ? [yieldDifferenceSeries(rows, compareName, { positive: colors.positive, negative: colors.negative })]
     : yieldCurveChartSeries(points, lookbackCurves,
       { current: colors.positive, ghosts: curveGhostColors(colors), compare: colors.warning, forward: colors.borderFocused },
-      { compare: comparing ? { label: compareLabel, points: comparePoints ?? [] } : null, forward, label: valueName(curve) }),
-  [colors, compareLabel, compareName, comparePoints, comparing, curve, differenceView, forward, lookbackCurves, points, rows]);
+      { compare: comparing ? { label: compareLabel, points: comparePoints ?? [] } : null, forward, label: levelName }),
+  [colors, compareLabel, compareName, comparePoints, comparing, differenceView, forward, levelName, lookbackCurves, points, rows]);
   // Mixed tenor dates still draw the curve: the As of column and the footer
   // warning say which tenors differ.
   const mixedDates = new Set(rows.flatMap((row) => row.yield == null ? [] : [row.asOf])).size > 1;
   const columns = useMemo<DataTableColumn[]>(() => [
-    TENOR, curve === "us-breakeven" ? { ...YIELD, label: valueName(curve), width: 10 } : YIELD,
+    TENOR, { ...YIELD, label: levelName, width: Math.max(8, levelName.length) },
     ...(comparing
       ? [{ id: "compare", label: compareName || "vs", width: Math.max(8, compareName.length + 1), align: "right" as const },
         { id: "changeCompare", label: "Chg", width: 8, align: "right" as const }, CHANGE_1D]
       : LOOKBACK_COLUMNS),
     ...(forward.length ? [FORWARD] : []),
     ...(mixedDates ? [AS_OF_COLUMN] : []),
-  ], [compareName, comparing, curve, forward.length, mixedDates]);
-  const caption = differenceView ? `Change vs ${compareName}` : CAPTIONS[curve] ?? YIELD_CAPTION;
+  ], [compareName, comparing, forward.length, levelName, mixedDates]);
+  const caption = differenceView ? `Change vs ${compareName}` : level ? `${level} % by maturity` : "Yield % by maturity";
   const formatValue = differenceView ? formatBp : formatYield;
   // The strip's label shares its row with the curve's shape and the point. A
   // curve with fewer than two yields has neither, so the tenors take the band.
-  const strip = curveStrip(series, formatValue, { caption: differenceView ? "Change" : "Yield %", selectedPointId: selectedId });
+  const strip = curveStrip(series, formatValue, { caption: differenceView ? "Change" : level ? `${level} %` : "Yield %", selectedPointId: selectedId });
   const renderCell = useCallback((row: YieldTenorRow, column: DataTableColumn) => {
     if (column.id === "tenor") return { text: row.id };
     if (column.id === "asOf") return { text: row.asOf ?? "--", color: colors.textMuted };
@@ -403,7 +407,8 @@ function WorldTab({ onOpen, focused, width, height }: {
     points: row.points.filter((point) => point.years > 0)
       .map((point) => ({ id: point.tenor, label: point.tenor, x: point.years, value: point.yield })),
   })), [rows, selectedId]);
-  const strip = curveStrip(series, formatYield, { caption: "Yield %" });
+  const level = basisText(rows.find((row) => row.id === selectedId)?.basis);
+  const strip = curveStrip(series, formatYield, { caption: level ? `${level} %` : "Yield %" });
   const renderCell = useCallback((row: WorldRow, column: DataTableColumn) => {
     if (column.id === "market") return { text: row.market };
     if (column.id === "asOf") return { text: row.asOf, color: colors.textMuted };
@@ -428,9 +433,9 @@ function WorldTab({ onOpen, focused, width, height }: {
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={WORLD_COLUMNS}
           chart={strip ? {
             render: (size) => <CurveSurface series={series} width={size.width} height={size.height} display="chart"
-              caption={YIELD_CAPTION} xScale="log" formatValue={formatYield} formatChange={formatYieldChange}
+              caption={level ? `${level} % by maturity` : "Yield % by maturity"} xScale="log" formatValue={formatYield} formatChange={formatYieldChange}
               formatAxisValue={formatPercentAxis} primarySeriesId={selectedId ?? undefined} />,
-            minRows: curveSurfaceMinRows({ series, width, caption: YIELD_CAPTION }),
+            minRows: curveSurfaceMinRows({ series, width, caption: level ? `${level} % by maturity` : "Yield % by maturity" }),
             strip,
           } : null} />}
       />

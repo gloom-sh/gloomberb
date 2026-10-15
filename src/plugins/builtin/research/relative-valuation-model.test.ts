@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import type { Quote, TickerFinancials } from "../../../types/financials";
-import { relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
+import { formatRelativePrice, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 
 const snapshot: TickerFinancials = {
   annualStatements: [],
@@ -13,6 +13,14 @@ const snapshot: TickerFinancials = {
 function live(overrides: Partial<Quote>): Quote {
   return { symbol: "PLD", price: 110, change: 11, changePercent: 11, currency: "USD", lastUpdated: 2_000, ...overrides };
 }
+
+test("a missing price currency stays blank, and an explicit code still prints", () => {
+  expect(formatRelativePrice(10, null)).toBe("10.00");
+  expect(formatRelativePrice(10, undefined)).toBe("10.00");
+  expect(formatRelativePrice(10, "USD")).toBe("$10.00");
+  expect(formatRelativePrice(10, "EUR")).toBe("€10.00");
+  expect(formatRelativePrice(null, "USD")).toBe("-");
+});
 
 test("a live quote moves price-based values with the price and keeps the fundamentals", () => {
   const values = relativeValuationValues(withLiveQuote(snapshot, live({})));

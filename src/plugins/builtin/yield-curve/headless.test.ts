@@ -48,7 +48,7 @@ describe("yield curve headless model", () => {
     }, getCloudFredSeries: async (id: string, options: { endDate: string }) => {
       calls.push(`${id}:${options.endDate}`);
       return {
-        info: { id, units: "Percent", frequency: "Daily" },
+        info: { id, units: "Percent", frequency: "Daily", source: "Board of Governors of the Federal Reserve System (US)" },
         observations: [{ date: "2024-03-01", value: id === "DGS2" ? 4.54 : 4.19 }],
         stale: id === "DGS30",
       };
@@ -59,6 +59,7 @@ describe("yield curve headless model", () => {
     expect(calls.slice(TREASURY_MATURITIES.length)).toEqual(TREASURY_MATURITIES.map(({ seriesId }) => `${seriesId}:2024-02-29`));
     expect(result.metadata).toMatchObject({ requestedDate: "2024-03-02", asOf: "2024-03-01", spread2Y10YBasisPoints: -35, missingTenors: [], stale: true });
     expect(result.errors).toEqual(["Some Treasury sources are stale cached data."]);
+    expect(result.freshness).toMatchObject({ source: "Board of Governors of the Federal Reserve System (US)" });
   });
 
   test("prints each tenor's move since the previous session in basis points, blank without one", async () => {
@@ -113,16 +114,18 @@ describe("yield curve headless model", () => {
     expect(lines.find((line) => line.startsWith("10Y"))!.split(/\s+/)).toEqual(["10Y", "10", "5.24%", "2026-10-09", "5.30%", "-6bp"]);
   });
 
-  test("tenors not yet issued on a past date are a note, not an error; a gap in the latest curve still is one", async () => {
+  test("a null yield on a past date stays blank; a gap in the latest curve is still an error", async () => {
     const yields = { "3M": 3.3, "6M": 3.49, "10Y": 5.94 };
     const past = await createYieldCurveHeadless(stored(yields, null)).load({ ...args, options: { date: "2026-10-09" } }, {} as HeadlessPaneContext);
-    expect(past.notes).toEqual([`Not issued then: ${["1M", "1Y", "2Y", "3Y", "5Y", "7Y", "20Y", "30Y"].join(", ")}`]);
+    expect(past.notes).toBeUndefined();
     expect(past.errors).toEqual([]);
+    expect(past.rows.find((row) => row.maturity === "1M")).toMatchObject({ yield: null });
     // The tenors stay in the metadata as they were.
     expect(past.metadata).toMatchObject({ missingTenors: ["1M", "1Y", "2Y", "3Y", "5Y", "7Y", "20Y", "30Y"] });
     const text = renderHeadlessPaneText(createYieldCurveHeadless(), past, args, "GC");
-    expect(text).toContain("Notes: Not issued then:");
+    expect(text).not.toContain("Not issued");
     expect(text).not.toContain("Errors:");
+    expect(text.split("\n").find((line) => line.startsWith("1M "))!.split(/\s+/)).toContain("-");
 
     const latest = await createYieldCurveHeadless(stored(yields, null)).load(args, {} as HeadlessPaneContext);
     expect(latest.notes).toBeUndefined();

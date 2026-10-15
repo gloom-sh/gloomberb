@@ -178,9 +178,11 @@ export function PaneSidebar({
     (resize?.onResizeEnd ?? resize?.onResize)?.(next);
   }, [resize, resolveDragWidth, stopLiveDrag]);
 
-  // The keyboard moves the divider too: `<` and `>` while the pane is focused,
-  // shown in the footer and listed in the pane menu. Each press is a finished
-  // resize, so it persists.
+  // The keyboard moves the divider too: `<` and `>` while the pane is focused.
+  // They are bound and listed in the pane menu, not drawn in the footer: the
+  // width of a list is not one of the pane's actions, and the divider shows
+  // where it is (on the desktop its tooltip names the keys). Each press is a
+  // finished resize, so it persists.
   const resizeRegistrationId = `pane-sidebar-resize:${useId()}`;
   const canNarrow = !!resize && width > resize.min;
   const canWiden = !!resize && width < resize.max;
@@ -189,14 +191,25 @@ export function PaneSidebar({
     const next = Math.min(resize.max, Math.max(resize.min, width + delta));
     if (next !== width) (resize.onResizeEnd ?? resize.onResize)(next);
   };
-  usePaneFooter(resizeRegistrationId, () => (resize ? {
-    // After the pane's own actions, which register at order 0.
-    order: 1,
-    hints: [
-      { id: "sidebar-narrow", key: NARROW_KEY, label: " sidebar", title: t("Narrow Sidebar"), onPress: () => stepResize(-KEYBOARD_RESIZE_STEP), disabled: !canNarrow },
-      { id: "sidebar-widen", key: WIDEN_KEY, label: "", title: t("Widen Sidebar"), onPress: () => stepResize(KEYBOARD_RESIZE_STEP), disabled: !canWiden },
-    ],
-  } : null), [!!resize, canNarrow, canWiden, resize?.min, resize?.max, width]);
+  usePaneFooter(resizeRegistrationId, () => {
+    if (!resize) return null;
+    const steps = [
+      { id: "sidebar-narrow", key: NARROW_KEY, title: "Narrow Sidebar", delta: -KEYBOARD_RESIZE_STEP, disabled: !canNarrow },
+      { id: "sidebar-widen", key: WIDEN_KEY, title: "Widen Sidebar", delta: KEYBOARD_RESIZE_STEP, disabled: !canWiden },
+    ];
+    return {
+      // After the pane's own actions, which register at order 0.
+      order: 1,
+      keys: steps.map(({ id, key, delta, disabled }) => ({ id, key, label: "", onPress: () => stepResize(delta), disabled })),
+      // A bound that is reached drops out, as a disabled footer hint did.
+      menu: steps.filter((step) => !step.disabled).map(({ id, key, title, delta }) => ({
+        id: `pane-sidebar:${id}`,
+        label: title,
+        accelerator: key,
+        onSelect: () => stepResize(delta),
+      })),
+    };
+  }, [!!resize, canNarrow, canWiden, resize?.min, resize?.max, width]);
 
   const borderWidth = nativePaneChrome ? 0 : width > 1 ? 1 : 0;
   const listWidth = Math.max(width - borderWidth, 1);

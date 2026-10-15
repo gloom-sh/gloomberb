@@ -56,7 +56,7 @@ export async function loadEventSources(provider: DataProvider, symbol: string): 
     actions: actionsData,
     estimates: estimatesData,
     financials: financialsData,
-    currency: actionsData?.currency ?? estimatesData?.currency ?? financialsData?.quote?.currency ?? "USD",
+    currency: actionsData?.currency ?? estimatesData?.currency ?? financialsData?.quote?.currency ?? "",
     actionsError: settledError(actions),
     estimatesError: settledError(estimates),
     financialsError: settledError(financials),

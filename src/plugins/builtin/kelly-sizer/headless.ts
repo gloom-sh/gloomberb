@@ -86,7 +86,7 @@ export const kellyHeadless: HeadlessPaneDefinition<"bundle"> = {
       return {
         complete: false,
         unavailableSymbols: [symbol],
-        errors: [`${symbol}: fewer than ${KELLY_HISTORY_MIN_PERIODS} monthly returns in the last ${years} year${years === 1 ? "" : "s"}.`],
+        errors: [`${symbol}: need at least ${KELLY_HISTORY_MIN_PERIODS} monthly returns, including a gain and a loss, in the last ${years} year${years === 1 ? "" : "s"}.`],
         sections: [],
       };
     }

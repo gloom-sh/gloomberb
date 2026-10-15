@@ -21,8 +21,9 @@ export function formatPerShare(amount: number, currency: string | null, maxDigit
 /** A headline amount: "$1.8B", "€420M", "GBP 1.2B". */
 export function formatDealValue(value: number | null, currency: string | null): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return MISSING;
-  const code = (currency ?? "USD").toUpperCase();
   const compact = formatCompact(value, { fixedDecimals: false });
+  const code = currency?.trim().toUpperCase() ?? "";
+  if (!code) return compact;
   const sign = CURRENCY_SIGNS[code];
   return sign ? `${sign}${compact}` : `${code} ${compact}`;
 }

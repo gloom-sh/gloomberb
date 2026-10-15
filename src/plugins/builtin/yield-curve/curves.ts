@@ -73,6 +73,19 @@ export interface CurveData {
   lookbacks: YieldLookbackCurves | null;
   /** Null for the FRED fallback: its spreads follow from the points and look-backs. */
   spreads: CurveSpreadFigure[] | null;
+  /**
+   * FRED `info.source` when these points are the constant-maturity fallback.
+   * Null when that fallback came back without series info. Absent on a stored curve.
+   */
+  seriesSource?: string | null;
+}
+
+function fredSeriesSource(points: readonly YieldPoint[]): string | null {
+  const sources = [...new Set(points.flatMap((point) => {
+    const source = point.source?.trim();
+    return source ? [source] : [];
+  }))];
+  return sources.length ? sources.join(", ") : null;
 }
 
 type CurveClient = Pick<typeof apiClient, "getCloudCurve" | "getCloudYieldCurve" | "getCloudFredSeries">;
@@ -105,7 +118,8 @@ async function loadFredCurve(requestedDate: string, client: CurveClient): Promis
   const points = completeYieldCurve(requestedDate
     ? await loadHistoricalYieldCurve(requestedDate, (id, options) => client.getCloudFredSeries(id, options))
     : await loadYieldCurve(() => client.getCloudYieldCurve()));
-  return { curve: "us", requestedDate, basis: "par", couponsPerYear: 2, points, lookbacks: null, spreads: null };
+  return { curve: "us", requestedDate, basis: "par", couponsPerYear: 2, points, lookbacks: null, spreads: null,
+    seriesSource: fredSeriesSource(points) };
 }
 
 /** The spreads GC shows: the stored curve's, or for FRED's curve its own with no percentile. */

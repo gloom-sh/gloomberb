@@ -16,6 +16,8 @@ import { canReactToMessage } from "../reactions";
  * The chat pane's keys, shown in its footer and listed in its pane menu. The
  * hints are the bindings for everything but Enter and `i`, which the chat's
  * own handler owns because they depend on the composer and the selection.
+ * With no message selected both open the composer, as a click on it does, so
+ * the footer leaves that out and only the pane menu lists Compose.
  */
 export function useChatFooter({
   composing,
@@ -240,8 +242,6 @@ export function useChatFooter({
       if (openTargets.length > 0) hints.push({ id: "open", key: "o", label: "pen", title: openTargetTitle, onPress: () => { void latest.current.openSelectedTargets(); } });
       // Every author but a Discord ghost has a card, if only their name and a way to write to them.
       if (author) hints.push({ id: "profile", key: "p", label: "rofile", title: "Show Profile", onPress: () => latest.current.toggleAuthorProfile() });
-    } else if (!composing && canSend) {
-      hints.push({ id: "compose", key: "i", label: " compose", title: "Compose", onPress: () => queueMicrotask(() => latest.current.focusComposer()) });
     }
     if (canSend && notificationChannelId) {
       const channelId = notificationChannelId;
@@ -261,6 +261,9 @@ export function useChatFooter({
     }
 
     const menu: ContextMenuItem[] = [];
+    if (!composing && !selectedMessage && canSend) {
+      menu.push({ id: "compose", label: "Compose", accelerator: "Enter", onSelect: () => queueMicrotask(() => latest.current.focusComposer()) });
+    }
     // No key of its own: a stray press would start a conversation. The pane
     // menu (.) and a right-click on the name reach it.
     if (authorMessageLabel) {

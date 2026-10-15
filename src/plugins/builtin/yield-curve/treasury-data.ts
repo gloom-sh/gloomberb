@@ -4,6 +4,8 @@ export interface YieldPoint {
   maturity: string;      // "1M", "3M", "6M", "1Y", "2Y", "3Y", "5Y", "7Y", "10Y", "20Y", "30Y"
   maturityYears: number; // 0.083, 0.25, 0.5, 1, 2, 3, 5, 7, 10, 20, 30
   yield: number | null;  // percent, e.g., 4.29
+  /** FRED `info.source` when this point came from a FRED series. Absent on a stored curve. */
+  source?: string;
   asOf?: string | null;  // FRED observation date, absent on older servers
   stale?: boolean;
   fetchedAt?: string;

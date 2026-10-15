@@ -54,7 +54,7 @@ The desktop app and TUI share the command language and plugin system. The [brows
 | `Enter` / `Esc` | Open the selected row / go back |
 | `/` | Search in the focused pane |
 | `h` / `l` | Switch tabs |
-| `<` / `>` | Narrow or widen a pane's sidebar, such as the list beside the map (the footer names them; the divider also drags) |
+| `<` / `>` | Narrow or widen a pane's sidebar, such as the list beside the map (the pane menu lists them; the divider also drags) |
 | `Ctrl+Left` / `Ctrl+Right` | Scroll a focused table horizontally |
 | `m` | Cycle chart mode |
 | `Alt+Enter` | Run the newest notification's action, such as Revert or Review |

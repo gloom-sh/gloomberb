@@ -1,8 +1,21 @@
 import { expect, test } from "bun:test";
-import { chartWindow, expiryAxis, formatDistance, strikeAxis } from "./model";
+import { chartWindow, expiryAxis, formatDistance, openInterestTotal, strikeAxis, strikeChartOpenInterest } from "./model";
 
 const rows = (entries: Array<[number, number]>) => entries.map(([strike, weight]) => ({ strike, weight }));
 const weight = (row: { weight: number }) => row.weight;
+
+test("missing open interest stays blank and is not plotted as zero", () => {
+  expect(openInterestTotal({ callOI: null, putOI: null })).toBeNull();
+  expect(openInterestTotal({ callOI: 5, putOI: null })).toBeNull();
+  expect(openInterestTotal({ callOI: null, putOI: 0 })).toBeNull();
+  expect(openInterestTotal({ callOI: 0, putOI: 0 })).toBe(0);
+  expect(openInterestTotal({ callOI: 5, putOI: 2 })).toBe(7);
+  expect(strikeChartOpenInterest({ callOI: null, putOI: null })).toEqual({ call: null, put: null });
+  const zero = strikeChartOpenInterest({ callOI: 0, putOI: 0 });
+  expect(zero.call).toBe(0);
+  expect(zero.put).toBe(-0);
+  expect(strikeChartOpenInterest({ callOI: 4, putOI: 2 })).toEqual({ call: 4, put: -2 });
+});
 
 test("the chart keeps the strikes around spot, not the deep puts that hold open interest", () => {
   // Half the weight sits within 1% of spot, so the window is the 3% floor

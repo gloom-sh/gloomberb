@@ -60,6 +60,8 @@ import {
   formatPayout,
   formatRatio,
   formatStrike,
+  openInterestTotal,
+  strikeChartOpenInterest,
   isPositioningTab,
   POSITIONING_TABS,
   strikeAxis,
@@ -83,7 +85,9 @@ const strikeKey = (row: { strike: number }) => String(row.strike);
 const expiryKey = (row: ExpiryOpenInterest) => row.date;
 /** Sep 29: the OI session is days old, so the footer leaves out its year. */
 const shortDate = (date: string) => expiryLabel(date).replace(/ '\d\d$/, "");
-const total = (row: { callOI: number | null; putOI: number | null }) => (row.callOI ?? 0) + (row.putOI ?? 0);
+const expirySize = (row: { callOI: number; putOI: number }) => row.callOI + row.putOI;
+const reportedOpenInterest = (row: { callOI: number | null; putOI: number | null }) =>
+  (row.callOI == null ? 0 : row.callOI) + (row.putOI == null ? 0 : row.putOI);
 
 function strikeColumns(changes: boolean): DataTableColumn[] {
   return [
@@ -300,7 +304,7 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const maxPain = expiries.find((row) => row.date === shownExpiry)?.maxPain ?? null;
   const strikeRows = useMemo(() => sortRows(strikes, strikeSort, (row, id) =>
     id === "strike" ? row.strike : (row[id as keyof StrikeOpenInterest] as number | null)), [strikes, strikeSort]);
-  const strikeWindow = useMemo(() => chartWindow(strikes, total, spot, [maxPain]), [strikes, spot, maxPain]);
+  const strikeWindow = useMemo(() => chartWindow(strikes, reportedOpenInterest, spot, [maxPain]), [strikes, spot, maxPain]);
   const strikeChart = useMemo(() => strikeWindow.length >= 3 ? strikeAxis(strikeWindow.map((row) => row.strike)) : null, [strikeWindow]);
   const nearestSpotStrike = useMemo(() => spot == null ? null : strikes.reduce<StrikeOpenInterest | null>((best, row) =>
     !best || Math.abs(row.strike - spot) < Math.abs(best.strike - spot) ? row : best, null), [spot, strikes]);
@@ -313,10 +317,10 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     focused, enabled: tab === "strikes",
   });
   const strikeSeries = useMemo(() => strikeChart ? [
-    staticSeries(strikeWindow.map((row) => scalarPoint(strikeChart.toDate(row.strike), row.callOI ?? 0)),
+    staticSeries(strikeWindow.map((row) => scalarPoint(strikeChart.toDate(row.strike), strikeChartOpenInterest(row).call)),
       { id: "calls", label: "Call OI", color: colors.positive, style: "columns", calendarSpaced: true }),
     // Puts hang below zero so the two sides of a strike never cover each other.
-    staticSeries(strikeWindow.map((row) => scalarPoint(strikeChart.toDate(row.strike), -(row.putOI ?? 0))),
+    staticSeries(strikeWindow.map((row) => scalarPoint(strikeChart.toDate(row.strike), strikeChartOpenInterest(row).put)),
       { id: "puts", label: "Put OI", color: colors.negative, style: "columns", calendarSpaced: true }),
   ] : [], [colors.negative, colors.positive, strikeChart, strikeWindow]);
   const callTotal = expiries.find((row) => row.date === shownExpiry);
@@ -333,8 +337,11 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
   const selectedStrikeRow = strikes.find((row) => strikeKey(row) === strikeSelectedId) ?? null;
   const strikeStrip = useMemo<ChartStripSpec | null>(() => strikeWindow.length < 3 ? null : {
     label: "Open interest by strike",
-    values: strikeWindow.map(total),
-    value: selectedStrikeRow ? `${formatStrike(selectedStrikeRow.strike)} ${formatCompact(total(selectedStrikeRow))}` : "",
+    values: strikeWindow.flatMap((row) => {
+      const value = openInterestTotal(row);
+      return value == null ? [] : [value];
+    }),
+    value: selectedStrikeRow ? `${formatStrike(selectedStrikeRow.strike)} ${formatCompact(openInterestTotal(selectedStrikeRow) ?? undefined)}` : "",
     color: colors.textMuted,
   }, [colors.textMuted, selectedStrikeRow, strikeWindow]);
   const renderStrike = useCallback((row: StrikeOpenInterest, column: DataTableColumn): DataTableCell => {
@@ -379,21 +386,21 @@ function OptionsPositioningView({ width, height, focused, symbol }: PaneProps & 
     const calls = expiries.reduce((sum, row) => sum + row.callOI, 0);
     const puts = expiries.reduce((sum, row) => sum + row.putOI, 0);
     const change = changes ? expiries.reduce((sum, row) => sum + (row.callChange ?? 0) + (row.putChange ?? 0), 0) : null;
-    const largest = expiries.reduce((best, row) => total(row) > total(best) ? row : best);
+    const largest = expiries.reduce((best, row) => expirySize(row) > expirySize(best) ? row : best);
     return [
       { id: "oi", label: "Open interest", value: formatCompact(calls + puts),
         detail: change == null ? undefined : formatCountChange(change),
         split: [{ id: "calls", value: calls, color: colors.positive }, { id: "puts", value: puts, color: colors.negative }] },
       { id: "pc", label: "P/C OI", value: formatRatio(calls > 0 ? puts / calls : null) },
-      { id: "largest", label: "Largest expiry", value: expiryLabel(largest.date), detail: formatCompact(total(largest)) },
+      { id: "largest", label: "Largest expiry", value: expiryLabel(largest.date), detail: formatCompact(expirySize(largest)) },
       { id: "spot", label: "Spot", value: formatLevel(spot) },
     ];
   }, [changes, colors.negative, colors.positive, expiries, spot]);
   const selectedExpiryRow = expiries.find((row) => row.date === expirySelectedId) ?? null;
   const expiryStrip = useMemo<ChartStripSpec | null>(() => expiries.length < 3 ? null : {
     label: "Open interest by expiry",
-    values: expiries.map(total),
-    value: selectedExpiryRow ? `${expiryLabel(selectedExpiryRow.date)} ${formatCompact(total(selectedExpiryRow))}` : "",
+    values: expiries.map(expirySize),
+    value: selectedExpiryRow ? `${expiryLabel(selectedExpiryRow.date)} ${formatCompact(expirySize(selectedExpiryRow))}` : "",
     color: colors.textMuted,
   }, [colors.textMuted, expiries, selectedExpiryRow]);
   const renderExpiry = useCallback((row: ExpiryOpenInterest, column: DataTableColumn): DataTableCell => {

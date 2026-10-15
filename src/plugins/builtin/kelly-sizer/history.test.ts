@@ -39,3 +39,8 @@ test("too few months, or no history, gives no inputs instead of a size", () => {
   expect(estimateKellyHistoryInputs(closes([0.1, -0.05, 0.1, 0.02, -0.01]), 5)).toBeNull();
   expect(estimateKellyHistoryInputs([], 5)).toBeNull();
 });
+
+test("a window with no gain or no loss gives no inputs instead of a zero payoff", () => {
+  expect(estimateKellyHistoryInputs(closes(Array.from({ length: 8 }, () => 0.1)), 5)).toBeNull();
+  expect(estimateKellyHistoryInputs(closes(Array.from({ length: 8 }, () => -0.05)), 5)).toBeNull();
+});

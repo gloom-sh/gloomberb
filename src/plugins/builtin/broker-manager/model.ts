@@ -46,10 +46,10 @@ function formatBrokerMode(value: unknown): string {
 
 function summarizeBrokerAccounts(accounts: BrokerAccount[]): string {
   if (accounts.length === 0) return "0 acct";
-  const currencies = new Set(accounts.map((account) => account.currency || "USD"));
+  const currencies = new Set(accounts.map((account) => account.currency || ""));
   const canSum = currencies.size === 1 && accounts.every((account) => typeof account.netLiquidation === "number");
   if (!canSum) return `${accounts.length} acct${accounts.length === 1 ? "" : "s"}`;
-  const currency = currencies.values().next().value ?? "USD";
+  const currency = currencies.values().next().value ?? "";
   const total = accounts.reduce((sum, account) => sum + (account.netLiquidation ?? 0), 0);
   return formatCurrency(total, currency);
 }

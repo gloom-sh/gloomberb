@@ -88,11 +88,13 @@ function curveOnOrBefore(results: readonly PromiseSettledResult<TreasurySeriesRe
     const result = results[index]!;
     const data = result.status === "fulfilled" ? result.value : null;
     const point = data?.observations.find((entry) => entry.date === asOf);
+    const source = data?.payload.info?.source?.trim();
     return {
       maturity,
       maturityYears: years,
       yield: point?.value ?? null,
       asOf: point ? asOf : null,
+      ...(source ? { source } : {}),
       stale: data?.payload.stale ?? false,
       fetchedAt: data?.payload.fetchedAt,
       error: result.status === "rejected"

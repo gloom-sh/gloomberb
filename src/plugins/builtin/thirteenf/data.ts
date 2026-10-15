@@ -58,6 +58,37 @@ async function loadReportsForFunds(
   return { reports, ...(failures.length ? { warning: failures.join(" ") } : {}) };
 }
 
+function copyReportFields(rows: FundBrowserRow[], nextRows: FundBrowserRow[]) {
+  const byId = new Map(nextRows.map((row) => [row.id, row]));
+  for (const row of rows) {
+    const next = byId.get(row.id);
+    if (!next) continue;
+    row.name = next.name;
+    row.periodOfReport = next.periodOfReport;
+    row.filedAsOfDate = next.filedAsOfDate;
+    row.tableValueTotal = next.tableValueTotal;
+    row.tableEntryTotal = next.tableEntryTotal;
+    if ("estQuarterReturn" in next) row.estQuarterReturn = next.estQuarterReturn;
+  }
+}
+
+function fillReports(
+  result: BrowserLoadResult,
+  rows: FundBrowserRow[],
+  pending: Promise<{ reports: Map<string, ThirteenFPeriodReport>; warning?: string }>,
+  rebuild: (reports: Map<string, ThirteenFPeriodReport>) => FundBrowserRow[],
+  signal?: AbortSignal,
+) {
+  result.reportsLoaded = pending.then(({ reports, warning }) => {
+    if (signal?.aborted) return;
+    copyReportFields(rows, rebuild(reports));
+    if (warning) result.warning = [result.warning, warning].filter(Boolean).join(" ");
+  }).catch((error: unknown) => {
+    if (signal?.aborted) return;
+    throw error;
+  });
+}
+
 export interface BrowserLoadResult {
   rows: FundBrowserRow[];
   period?: string;
@@ -65,6 +96,7 @@ export interface BrowserLoadResult {
   warning?: string;
   hasMore?: boolean;
   nextOffset?: number;
+  reportsLoaded?: Promise<void>;
 }
 
 export async function loadBrowserRows(
@@ -75,7 +107,8 @@ export async function loadBrowserRows(
 ): Promise<BrowserLoadResult> {
   const warnings: string[] = [];
   const result = await loadBrowserPage(tab, query, signal, { ...options, onWarning: warning => warnings.push(warning) });
-  return { ...result, warning: [...new Set([result.warning, ...warnings].filter(Boolean))].join(" ") || undefined };
+  if (warnings.length) result.warning = [...new Set([result.warning, ...warnings].filter(Boolean))].join(" ") || undefined;
+  return result;
 }
 
 async function loadBrowserPage(
@@ -106,34 +139,36 @@ async function loadBrowserPage(
       catch (error) { if (signal?.aborted) throw error; options.onWarning?.(`${previous}: performance ranking unavailable.`); return new Map<string, number | null>(); }
     }));
     const funds: ThirteenFFund[] = topFunds.map((fund) => ({ cik: fund.cik, name: fund.name }));
-    const { reports, warning } = await loadReportsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), {
-      from, to, signal, ...apiOptions,
-      periods: new Map(topFunds.map((fund) => [fund.cik, fund.periodOfReport])),
-    });
-    return {
-      rows: buildBrowserRows({ topFunds, reports, source: "performance" }).map(row => ({ ...row, priorReturns: quarters.map((previous, index) => ({ quarter: previous, value: history[index]?.get(row.cik) ?? null })) })),
-      warning,
+    const rows = buildBrowserRows({ topFunds, source: "performance" }).map(row => ({ ...row, priorReturns: quarters.map((previous, index) => ({ quarter: previous, value: history[index]?.get(row.cik) ?? null })) }));
+    const result: BrowserLoadResult = {
+      rows,
       quarter,
       period: topFunds[0]?.periodOfReport,
       hasMore: topFunds.length >= browserLimit,
       nextOffset: offset + topFunds.length,
     };
+    fillReports(result, rows, loadReportsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), {
+      from, to, signal, ...apiOptions,
+      periods: new Map(topFunds.map((fund) => [fund.cik, fund.periodOfReport])),
+    }), (reports) => buildBrowserRows({ topFunds, reports, source: "performance" }), signal);
+    return result;
   }
 
   if (tab === "latest") {
     const filings = await listThirteenFFilings(isoDateDaysAgo(21, now), to, latestLimit, signal, pageApiOptions);
     const selected = dedupeLatestForms(filings);
-    const { reports, warning } = await loadReportsForFunds(selected.map((form) => ({ cik: form.cik, name: form.companyName })), {
-      from, to, signal, ...apiOptions,
-      periods: new Map(selected.map((form) => [form.cik, form.periodOfReport])),
-    });
-    return {
-      rows: buildBrowserRows({ latestFilings: filings, reports, source: "latest" }),
-      warning,
+    const rows = buildBrowserRows({ latestFilings: filings, source: "latest" });
+    const result: BrowserLoadResult = {
+      rows,
       period: filings[0]?.periodOfReport,
       hasMore: filings.length >= latestLimit,
       nextOffset: offset + filings.length,
     };
+    fillReports(result, rows, loadReportsForFunds(selected.map((form) => ({ cik: form.cik, name: form.companyName })), {
+      from, to, signal, ...apiOptions,
+      periods: new Map(selected.map((form) => [form.cik, form.periodOfReport])),
+    }), (reports) => buildBrowserRows({ latestFilings: filings, reports, source: "latest" }), signal);
+    return result;
   }
 
   if (tab === "byTicker") {
@@ -155,18 +190,23 @@ async function loadBrowserPage(
     try {
       const holders = await lookupThirteenFHoldersByCusip(cusip, periodOfReport, signal, apiOptions);
       const pageCiks = holders.ciks.slice(offset, offset + browserLimit);
-      const { reports, warning } = await loadReportsForFunds(pageCiks.map((cik) => ({ cik, name: cik })), {
-        from, to, signal, ...apiOptions,
-        periods: new Map(pageCiks.map((cik) => [cik, holders.periodOfReport])),
-      });
-      const funds = pageCiks.map((cik) => ({ cik, name: reports.get(cik)?.filings.at(-1)?.companyName || cik }));
-      return {
-        rows: buildBrowserRows({ funds, reports, source: "ticker" }),
-        warning,
+      const funds = pageCiks.map((cik) => ({ cik, name: cik }));
+      const rows = buildBrowserRows({ funds, source: "ticker" });
+      const result: BrowserLoadResult = {
+        rows,
         period: holders.periodOfReport,
         hasMore: holders.ciks.length > offset + pageCiks.length,
         nextOffset: offset + pageCiks.length,
       };
+      fillReports(result, rows, loadReportsForFunds(funds, {
+        from, to, signal, ...apiOptions,
+        periods: new Map(pageCiks.map((cik) => [cik, holders.periodOfReport])),
+      }), (reports) => buildBrowserRows({
+        funds: pageCiks.map((cik) => ({ cik, name: reports.get(cik)?.filings.at(-1)?.companyName || cik })),
+        reports,
+        source: "ticker",
+      }), signal);
+      return result;
     } catch (error) {
       return {
         rows: [],
@@ -195,26 +235,27 @@ async function loadBrowserPage(
   }
   const found = await searchThirteenFFunds(trimmed, browserLimit, signal, pageApiOptions);
   const funds = oneFundPerCik(found);
-  const [{ reports, warning }, topFunds] = await Promise.all([
-    loadReportsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), { from, to, signal, ...apiOptions }),
-    listTopThirteenFFunds(quarter, browserLimit, signal, apiOptions).catch(() => []),
-  ]);
+  const topFunds = await listTopThirteenFFunds(quarter, browserLimit, signal, apiOptions).catch((): ThirteenFTopFund[] => []);
   const topByCik = new Map(topFunds.map((fund) => [fund.cik, fund]));
   const matchedTopFunds = funds
     .map((fund) => topByCik.get(fund.cik))
     .filter((fund): fund is ThirteenFTopFund => !!fund);
-  return {
-    rows: buildBrowserRows({
-      funds: oneFundPerCik(found, reports),
-      topFunds: matchedTopFunds,
-      reports,
-      source: "funds",
-    }),
+  const rows = buildBrowserRows({ funds: oneFundPerCik(found), topFunds: matchedTopFunds, source: "funds" });
+  const result: BrowserLoadResult = {
+    rows,
     quarter,
-    warning,
     hasMore: found.length >= browserLimit,
     nextOffset: offset + found.length,
   };
+  fillReports(result, rows, loadReportsForFunds(funds.slice(0, Math.min(browserLimit, FORM_ENRICHMENT_LIMIT)), {
+    from, to, signal, ...apiOptions,
+  }), (reports) => buildBrowserRows({
+    funds: oneFundPerCik(found, reports),
+    topFunds: matchedTopFunds,
+    reports,
+    source: "funds",
+  }), signal);
+  return result;
 }
 
 export async function loadFundDetail(

@@ -2,7 +2,7 @@ import { type LayoutConfig, type PaneBinding, type PaneInstanceConfig } from "..
 import type { PaneSettingField, PaneTemplateContext, PaneTemplateCreateOptions, PaneTemplateInstanceConfig, PaneTemplateDef } from "../../../types/plugin";
 import { getFocusedCollectionId, getFocusedTickerSymbol } from "../../../state/app/context";
 import { resolveInstrumentForPane, resolveListingForPane } from "../../../core/state/app/instrument";
-import { resolveTickerOpenTarget } from "../../../tickers/open-target";
+import { resolveTickerOpenTarget, tickerOpenFailureMessage } from "../../../tickers/open-target";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { scopedBrokerContractIdentityKey } from "../../../utils/instrument-identity";
 import { tickerSelectionFromSearchResult } from "../../../tickers/selection";
@@ -120,9 +120,10 @@ async function resolvePaneTemplateOptions(
     && (tickerNamed || !template.shortcut.argOptional);
   if (resolvesTicker) {
     if (resolvedOptions?.instrument === null && !resolvedOptions.ticker) {
-      const publicTarget = await resolveTickerOpenTarget({ query: resolvedOptions.symbol ?? resolvedOptions.arg ?? baseContext.activeTicker ?? "",
+      const publicQuery = resolvedOptions.symbol ?? resolvedOptions.arg ?? baseContext.activeTicker ?? "";
+      const publicTarget = await resolveTickerOpenTarget({ query: publicQuery,
         tickers: state.tickers, tickerRepository: deps.tickerRepository, dataProvider: deps.dataProvider, publicOnly: true });
-      if (!publicTarget) throw new Error("Could not resolve the selected public listing.");
+      if (!publicTarget) throw new Error(tickerOpenFailureMessage(publicQuery.trim().toUpperCase()));
       deps.dispatch({ type: "UPDATE_TICKER", ticker: publicTarget.ticker });
       if (publicTarget.created) deps.pluginRegistry.events.emit("ticker:added", { symbol: publicTarget.symbol, ticker: publicTarget.ticker });
       resolvedOptions = { ...resolvedOptions, symbol: publicTarget.symbol, ticker: publicTarget.ticker, listing: resolvedOptions.listing ?? publicTarget.listing };

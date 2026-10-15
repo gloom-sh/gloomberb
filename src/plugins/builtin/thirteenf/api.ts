@@ -38,7 +38,8 @@ interface Forms13FRequestOptions extends Forms13FReadOptions {
 
 let forms13FPersistence: PluginPersistence | null = null;
 const failedRefreshes = new Set<string>();
-const activeRequests = new Map<string, object>();
+// The promise is the generation. A newer download replaces it, and the replaced one must not write.
+const activeRequests = new Map<string, Promise<unknown>>();
 
 export function attachThirteenFApiPersistence(persistence: PluginPersistence) {
   if (forms13FPersistence !== persistence) resetThirteenFApiPersistence();
@@ -104,54 +105,69 @@ async function fetchForms13F<T>(
   const key = cacheKey(path, searchParams);
   const store = forms13FPersistence;
   const cacheOptions = { sourceKey: CACHE_SOURCE, schemaVersion: CACHE_SCHEMA_VERSION };
-  const cached = options.cache !== false ? store?.getResource<T>(CACHE_KIND, key, cacheOptions) : null;
-  if (!options.forceRefresh && !failedRefreshes.has(key) && cached && !cached.stale) return cached.value;
+  const cached = options.cache !== false ? store?.getResource<T>(CACHE_KIND, key, cacheOptions) ?? null : null;
+  if (cached != null && !options.forceRefresh && !cached.stale && !failedRefreshes.has(key)) return cached.value;
 
-  const request = {};
-  activeRequests.set(key, request);
-  const current = () => forms13FPersistence === store && activeRequests.get(key) === request;
-  try {
-    options.signal?.throwIfAborted();
-    let value: T;
-    try {
-      value = await apiClient.getCloudSec13F(path, params) as T;
-    } catch {
-      options.signal?.throwIfAborted();
-      const url = `${FORMS_13F_BASE_URL}${path}?${searchParams.toString()}`;
-      const response = await httpFetch(url, {
-        headers: { Accept: "application/json" },
-        signal: options.signal,
-      });
-      if (!response.ok) throw new ApiRequestError(`Forms13F ${response.status} for ${path}`, response.status);
-      value = await response.json() as T;
-    }
-    options.signal?.throwIfAborted();
-    if (current()) {
-      failedRefreshes.delete(key);
-      if (value != null && options.cache !== false) {
-        store?.setResource(CACHE_KIND, key, value, { ...cacheOptions, cachePolicy: FORMS_13F_CACHE_POLICY });
-      }
-    }
-    return value;
-  } catch (error) {
-    options.signal?.throwIfAborted();
-    if (current()) failedRefreshes.add(key);
-    if (isPermanentClientError(error)) {
-      if (current()) store?.deleteResource(CACHE_KIND, key, { sourceKey: CACHE_SOURCE });
-      throw error;
-    }
-    const retained = options.cache !== false
-      ? store?.getResource<T>(CACHE_KIND, key, { ...cacheOptions, allowExpired: true }) : null;
-    // A caller may retain old research only when it can surface its provenance.
-    if (!retained || !options.onWarning) throw error;
-    const retrieved = new Date(retained.fetchedAt);
-    const age = Number.isFinite(retrieved.getTime()) ? `retrieved ${retrieved.toISOString()}` : "with unavailable retrieval time";
-    const reason = (error instanceof Error ? error.message : String(error)).trim() || "Request failed";
-    options.onWarning(`${key}: refresh failed: ${reason}. Retained data ${age}.`);
-    return retained.value;
-  } finally {
-    if (activeRequests.get(key) === request) activeRequests.delete(key);
+  if (!options.forceRefresh) {
+    const pending = activeRequests.get(key) as Promise<T> | undefined;
+    if (pending) return cached != null ? cached.value : pending;
   }
+
+  const slot: { promise?: Promise<T> } = {};
+  const current = () => forms13FPersistence === store && activeRequests.get(key) === slot.promise;
+  const promise = (async (): Promise<T> => {
+    // Yield once so the caller can publish this promise before a synchronous abort settles it.
+    await Promise.resolve();
+    try {
+      options.signal?.throwIfAborted();
+      let value: T;
+      try {
+        value = await apiClient.getCloudSec13F(path, params, { signal: options.signal }) as T;
+      } catch {
+        options.signal?.throwIfAborted();
+        const url = `${FORMS_13F_BASE_URL}${path}?${searchParams.toString()}`;
+        const response = await httpFetch(url, {
+          headers: { Accept: "application/json" },
+          signal: options.signal,
+        });
+        if (!response.ok) throw new ApiRequestError(`Forms13F ${response.status} for ${path}`, response.status);
+        value = await response.json() as T;
+      }
+      options.signal?.throwIfAborted();
+      if (current()) {
+        failedRefreshes.delete(key);
+        if (value != null && options.cache !== false) {
+          store?.setResource(CACHE_KIND, key, value, { ...cacheOptions, cachePolicy: FORMS_13F_CACHE_POLICY });
+        }
+      }
+      return value;
+    } catch (error) {
+      options.signal?.throwIfAborted();
+      if (current()) failedRefreshes.add(key);
+      if (isPermanentClientError(error)) {
+        if (current()) store?.deleteResource(CACHE_KIND, key, { sourceKey: CACHE_SOURCE });
+        throw error;
+      }
+      const retained = options.cache !== false
+        ? store?.getResource<T>(CACHE_KIND, key, { ...cacheOptions, allowExpired: true }) : null;
+      // A caller may retain old research only when it can surface its provenance.
+      if (!retained || !options.onWarning) throw error;
+      const retrieved = new Date(retained.fetchedAt);
+      const age = Number.isFinite(retrieved.getTime()) ? `retrieved ${retrieved.toISOString()}` : "with unavailable retrieval time";
+      const reason = (error instanceof Error ? error.message : String(error)).trim() || "Request failed";
+      options.onWarning(`${key}: refresh failed: ${reason}. Retained data ${age}.`);
+      return retained.value;
+    } finally {
+      if (activeRequests.get(key) === slot.promise) activeRequests.delete(key);
+    }
+  })();
+  slot.promise = promise;
+  activeRequests.set(key, promise);
+  if (cached != null && !options.forceRefresh) {
+    void promise.catch(() => {});
+    return cached.value;
+  }
+  return promise;
 }
 
 function mapFund(raw: any): ThirteenFFund | null {
@@ -318,6 +334,7 @@ export async function listThirteenFFormHoldings(
 ): Promise<ThirteenFHoldingRecord[]> {
   const rows: ThirteenFHoldingRecord[] = [];
   for (let offset = 0; offset < MAX_FORM_ROWS; offset += FORM_PAGE_LIMIT) {
+    signal?.throwIfAborted();
     const page = await listThirteenFFormHoldingsPage(cik, accessionNumber, signal, {
       ...options,
       offset,

@@ -2,6 +2,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { act, useReducer } from "react";
 import { setCloudApiFetchTransport, type CloudWorldVenueMapPayload } from "../../../api-client";
 import { resetGeoCatalogCache } from "../../../api-client/geo";
+import { EMPTY_FOOTER, type CombinedPaneFooter } from "../../../components/layout/pane/footer/model";
+import { paneFooterMenuItems } from "../../../components/layout/shell/menu";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
 import { createTestPaneConfig, TestPaneFrame } from "../../../test-support/pane";
@@ -92,23 +94,32 @@ describe("world map layers", () => {
 });
 
 describe("the sidebar's keys in the terminal", () => {
+  let footer: CombinedPaneFooter = EMPTY_FOOTER;
   function SidebarPane() {
     const id = "world-venue-map:keys";
     const [state, dispatch] = useReducer(appReducer, null, () => createInitialState(createTestPaneConfig("/tmp/world-map-keys-test", { paneId: "world-venue-map", instanceId: id, settings: { layers: [], venues: true } })));
     return (
       <TestPaneFrame state={state} dispatch={dispatch} paneId={id} pluginId="market-overview" runtime={createTestPluginRuntime()} width={110} height={30} footerKeys>
-        {(body) => <WorldVenueMapPane paneId={id} paneType="world-venue-map" width={body.width} height={body.height} focused />}
+        {(body, current) => {
+          footer = current;
+          return <WorldVenueMapPane paneId={id} paneType="world-venue-map" width={body.width} height={body.height} focused />;
+        }}
       </TestPaneFrame>
     );
   }
 
   /** The column of the divider the sidebar draws beside its header row. */
   const divider = () => tui.frame().split("\n").find((line) => line.includes("MIC"))!.indexOf("│");
+  /** The pane menu's entries with their keys, as `.` lists them. */
+  const menu = () => paneFooterMenuItems(footer).flatMap((item) => (item.type === "divider" || item.type === "role" ? [] : [`${item.label} ${item.accelerator ?? ""}`.trim()]));
 
-  test("< and > narrow and widen it, as a plain terminal reports them and as one speaking the kitty protocol does, and the footer names them", async () => {
+  test("< and > narrow and widen it, as a plain terminal reports them and as one speaking the kitty protocol does; the pane menu lists them and the footer does not", async () => {
     serve("absent");
     await act(async () => { await tui.render(<SidebarPane />, { width: 110, height: 30 }); });
-    expect(await tui.waitForFrameToContain("[<] sidebar")).toContain("[>]");
+    const footerRow = (await tui.waitForFrameToContain("[/]search")).trimEnd().split("\n").at(-1)!;
+    expect(footerRow).not.toContain("[<]");
+    expect(footerRow).not.toContain("sidebar");
+    expect(menu()).toEqual(expect.arrayContaining(["Narrow Sidebar <", "Widen Sidebar >"]));
     const start = divider();
     expect(start).toBeGreaterThan(20);
 
@@ -124,5 +135,16 @@ describe("the sidebar's keys in the terminal", () => {
     await tui.emitKeypress({ name: ">", sequence: ">" });
     await tui.renderFrames(2);
     expect(divider()).toBe(start + 4);
+
+    // At its widest, Widen leaves the menu and `>` does nothing; Narrow still works.
+    for (let press = 0; press < 30; press += 1) await tui.emitKeypress({ name: ">", sequence: ">" });
+    await tui.renderFrames(2);
+    const widest = divider();
+    expect(widest).toBeGreaterThan(start + 4);
+    expect(menu()).not.toContain("Widen Sidebar >");
+    expect(menu()).toContain("Narrow Sidebar <");
+    await tui.emitKeypress({ name: ">", sequence: ">" });
+    await tui.renderFrames(2);
+    expect(divider()).toBe(widest);
   });
 });

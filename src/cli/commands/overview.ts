@@ -428,7 +428,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
     }),
   }, {
     dateKey: "date",
-    empty: fredEmptyMessage(startDate, latest),
+    empty: fredEmptyMessage(startDate, latest == null ? null : exportRow(latest)),
     ...(notes.length ? { footnote: notes.join("\n"), exportNotes: notes } : {}),
     exportIdentity: { symbolOrSeries: seriesId, currencyOrUnit: unit, interval },
     textColumns: [
@@ -486,7 +486,7 @@ async function runYieldCurve(rawArgs: string[], ctx: Parameters<CliCommandDef["e
         key: "changeBasisPoints",
         header: "1D bp",
         align: "right",
-        format: (value) => typeof value === "number" ? formatBasisPoints(value / 100) : "-",
+        format: (value) => typeof value === "number" ? formatBasisPoints(value / 100, 1) : "-",
       },
       { key: "date", header: "Date" },
       { key: "seriesId", header: "Series" },
