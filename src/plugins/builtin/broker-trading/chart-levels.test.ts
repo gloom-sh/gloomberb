@@ -52,8 +52,8 @@ test("live draft levels are read-only, follow both prices, and terminal orders d
   expect(levels.every((level) => !level.editable && !level.actionable)).toBe(true);
   expect(levels.find((level) => level.label?.includes("Sell"))?.color).toBe(colors.negative);
   expect(levels.filter((level) => level.id.startsWith("order:"))).toHaveLength(2);
-  expect(levels.at(-1)?.label).toBe("Average cost · 10.00");
+  expect(levels.at(-1)).toMatchObject({ label: "Average cost", axisLabel: "10.00" });
   expect(ticketChartLevels({ draft: { ...draft, limitPrice: 10.26 }, editing: true, orders: [], colors })[0]?.value).toBe(10.26);
   expect(ticketChartLevels({ draft, editing: false, orders: [], colors })).toEqual([]);
-  expect(ticketChartLevels({ draft: { ...draft, limitPrice: 0.00125 }, editing: true, orders: [], colors })[0]?.label).toBe("Draft limit · 0.00125");
+  expect(ticketChartLevels({ draft: { ...draft, limitPrice: 0.00125 }, editing: true, orders: [], colors })[0]).toMatchObject({ label: "Draft limit", axisLabel: "0.00125" });
 });

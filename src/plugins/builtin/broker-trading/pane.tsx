@@ -9,7 +9,7 @@ import type { BrokerInstanceConfig } from "../../../types/config";
 import type { BrokerContractRef } from "../../../types/instrument";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { BrokerAccount, BrokerOrder } from "../../../types/trading";
-import { Box } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { usePluginAppActions, usePluginBrokerActions } from "../../runtime";
 import { BrokerTradingController } from "./controller";
 import { takeTradeIntent } from "./command";
@@ -32,6 +32,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   const trade = useResearchTrading();
   const publish = trade?.publish;
   const colors = useThemeColors();
+  const native = useUiCapabilities().nativePaneChrome;
+  const [ticketContentHeight, setTicketContentHeight] = useState<number>();
   const [openOrders, setOpenOrders] = useState<BrokerOrder[]>([]);
   const visible = usePaneVisible();
   const getState = useAppGetState();
@@ -266,10 +268,11 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   useEffect(() => () => publish?.({ levels: [] }), [publish]);
   const ordersHeight = docked ? Math.min(12, Math.max(7, Math.floor(height * 0.25))) : 0;
   const receipt = state.phase === "result" ? state.receipt : undefined;
+  const ticketHeight = Math.min(height - ordersHeight - (docked ? 1 : 0), docked && !native ? ticketContentHeight ?? Infinity : Infinity);
   return <Box flexDirection="column" width={width} height={height}>
-    <Box visible={docked || page !== "orders"} height={height - ordersHeight}>
+    <Box visible={docked || page !== "orders"} height={docked && native ? undefined : ticketHeight} maxHeight={ticketHeight} flexShrink={0}>
     <PaneFooterScope active={page !== "orders"}>
-    <BrokerTicketView blocked={ordersBusy} width={width} height={height - ordersHeight} focused={focused && page !== "orders"} onCapture={onCapture} docked={docked} onClose={onClose} model={{
+    <BrokerTicketView onContentHeight={setTicketContentHeight} blocked={ordersBusy} width={width} height={ticketHeight} focused={focused && page !== "orders"} onCapture={onCapture} docked={docked} onClose={onClose} model={{
     brokerName: broker.name, symbol: ticketContract.localSymbol ?? ticketContract.symbol, accounts, accountId,
     accountChoices, accountChoiceValue: accountChoices && accountId ? ticketAccountChoiceKey(instance.id, accountId) : undefined,
     accountType: accounts.find((account) => account.accountId === accountId)?.accountType,
@@ -282,7 +285,7 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   }} onEdit={onEdit} onAction={onAction} onAccountChange={onTicketAccountChange} />
     </PaneFooterScope>
     </Box>
-    <Box visible={docked || page === "orders"} onMouseDown={() => setPage("orders")} height={docked ? ordersHeight : height}><PaneFooterScope active={page === "orders"}>
+    <Box visible={docked || page === "orders"} onMouseDown={() => setPage("orders")} marginTop={docked ? 1 : 0} flexShrink={0} height={docked ? ordersHeight : height}><PaneFooterScope active={page === "orders"}>
       <BrokerOrdersView latestOrder={state.result} blocked={ticketBusy} onBusy={setOrdersBusy} compact={docked} contract={docked ? ticketContract : undefined} onOrders={setOpenOrders} broker={broker} instance={instance} accounts={accounts} accountId={accountId}
         onAccountChange={onAccountChange} onModify={onModify} onBack={ticketContract.symbol ? () => setPage("ticket") : undefined} width={width} height={docked ? ordersHeight : height} focused={focused && page === "orders"} active={trade?.visible !== false && (docked || page === "orders")} />
     </PaneFooterScope></Box>

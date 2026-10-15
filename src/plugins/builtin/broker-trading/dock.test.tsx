@@ -100,6 +100,29 @@ test("F6 releases a numeric field to the chart and Escape closes without a mutat
   expect(f.demo.calls.filter((call) => call.method === "placeOrder")).toHaveLength(0);
 });
 
+test("orders follow the ticket content in entry and Working, leaving spare height below the list", async () => {
+  const f = await mount();
+  await f.command();
+  await tui.waitForFrameToContain("Buy 2 AAPL");
+  await tui.waitForFrameToContain("Open Orders");
+  const gapAfter = (text: string) => {
+    const lines = tui.frame().split("\n");
+    const actionRow = lines.findIndex((line) => line.includes(text));
+    const ordersRow = lines.findIndex((line) => line.includes("Open Orders"));
+    expect(actionRow).toBeGreaterThan(0);
+    expect(ordersRow).toBeGreaterThan(actionRow);
+    expect(ordersRow - actionRow).toBeLessThanOrEqual(3);
+  };
+  gapAfter("Buy 2 AAPL");
+  await tui.emitKeypress({ name: "enter" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Review Order");
+  await tui.emitKeypress({ name: "tab" }, { trackPropagation: true });
+  await tui.emitKeypress({ name: "enter" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Refresh · Orders · New");
+  gapAfter("Refresh · Orders · New");
+  expect(f.demo.calls.filter((call) => call.method === "placeOrder")).toHaveLength(1);
+});
+
 test("commands, review, UNKNOWN and its lock survive closing and wide/narrow transitions", async () => {
   const f = await mount("unknown");
   await f.command();

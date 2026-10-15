@@ -1433,12 +1433,14 @@ describe("CompositeChart", () => {
       formatAxisValue={(value) => value.toFixed(1)}
       series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
       panels={[{ id: "main" }]} levels={{ seriesId: "price", items: [
-        { id: "exact", value: 105.25, axisLabel: "105.25", color: "#00cc66", editable: false, actionable: false },
-        { id: "on-grid", value: 104, axisLabel: "104.00", color: "#00cc66", editable: false, actionable: false },
+        { id: "exact", value: 105.25, label: "Buy 10 working", axisLabel: "105.25", color: "#00cc66", editable: false, actionable: false },
+        { id: "on-grid", value: 104, label: "Average cost", axisLabel: "104.00", color: "#00cc66", editable: false, actionable: false },
       ] }} />, { width: 62, height: 30 });
     await tui.waitForFrameToContain("105.25");
     expect(tui.frame()).toContain("104.0");
-    expect(tui.frame()).not.toContain("104.00");
+    expect(tui.frame()).toContain("Average cost 104.00");
+    expect(tui.frame()).not.toContain("Buy 10 working 105.25");
+    expect(tui.frame().split("\n").find((line) => line.includes("Average cost"))!.slice(0, 6)).not.toContain("104.00");
   });
 
   test("a price level on the last price's row leaves the last price on the axis", async () => {

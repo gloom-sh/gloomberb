@@ -30,7 +30,7 @@ export function ticketChartLevels({ draft, editing, orders, latestOrder, avgCost
   const add = (id: string, value: number | undefined, label: string, color: string, dashed = false) => {
     if (value === undefined || !Number.isFinite(value) || value <= 0) return;
     const axisLabel = value.toLocaleString("en-US", { minimumFractionDigits, maximumFractionDigits: Math.max(8, minimumFractionDigits) });
-    levels.push({ id, value, axisLabel, label: `${label} · ${axisLabel}`, color, editable: false, actionable: false, dashed });
+    levels.push({ id, value, axisLabel, label, color, editable: false, actionable: false, dashed });
   };
   if (draft && editing) {
     const color = draft.action === "SELL" ? colors.negative : colors.positive;
@@ -43,7 +43,7 @@ export function ticketChartLevels({ draft, editing, orders, latestOrder, avgCost
     ? [...orders.filter((order) => brokerOrderKey(order) !== resultKey), latestOrder] : orders;
   for (const order of projected) {
     if (!canChangeBrokerOrder(order)) continue;
-    const label = `${order.action === "BUY" ? "Buy" : "Sell"} ${order.remaining} · ${brokerOrderStatus(order.status) === "Partially filled" ? "partial" : "working"}`;
+    const label = `${order.action === "BUY" ? "Buy" : "Sell"} ${order.remaining} ${brokerOrderStatus(order.status) === "Partially filled" ? "partial" : "working"}`;
     const color = order.action === "SELL" ? colors.negative : colors.positive;
     add(`order:${brokerOrderKey(order)}`, order.limitPrice ?? order.stopPrice, label, color);
     if (order.orderType === "STP LMT") add(`stop:${brokerOrderKey(order)}`, order.stopPrice, `${label} stop`, color);
