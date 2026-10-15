@@ -10,6 +10,8 @@ import { heatSteps } from "./heat-checks";
 import { headerSteps } from "./header-checks";
 import { layoutSteps } from "./layout-checks";
 import { selectionSteps } from "./selection-checks";
+import { tabSweepSteps } from "./tab-sweep-checks";
+import { readerSteps } from "./reader-checks";
 import { checkFirstPaint, checkThemePreview } from "./paint";
 
 /**
@@ -1519,6 +1521,8 @@ const steps: Step[] = [
   ...layoutSteps,
   ...selectionSteps,
   ...axisSteps,
+  ...tabSweepSteps,
+  ...readerSteps,
 ];
 
 async function openScenario(cdp: Cdp, page: FixturePage, scenario: string): Promise<void> {

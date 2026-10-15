@@ -31,9 +31,10 @@
  * to the invented bars' last close),
  * `layout` (one pane that sets text or scrolls content, docked or floating,
  * for the layout checks; see layout-fixture.tsx), `des` (DES's overview
- * over an invented company, see DesPane), or `header` (the app's top bar in
+ * over an invented company, see DesPane), `header` (the app's top bar in
  * each update state, see header-fixture.tsx; `&host=browser` draws it as the
- * web app does), or `kit` (the kit page: every design-system family in every
+ * web app does), `tab-sweep` (what the layout sweep's tab visits are checked
+ * against, tab-sweep-fixture.tsx), or `kit` (the kit page: every design-system family in every
  * state, see kit-fixture.tsx; `&family=<id>` shows one, `&theme=paper` and
  * `&font=` as everywhere).
  */
@@ -91,6 +92,7 @@ import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHead
 import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
 import { KitPage } from "./kit-fixture";
+import { TabSweepFixture } from "./tab-sweep-fixture";
 // A namespace import: the frame budget builds this file against the base branch's
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
@@ -1467,6 +1469,7 @@ createRoot(root).render(
         ? <DetachedPaneShell pluginRegistry={paneRegistry} desktopWindowBridge={detachedBridge} />
         : scenario === "header" ? <HeaderFixture handle={window.__paneChrome.header} />
         : scenario === "kit" ? <KitPage family={params.get("family")} />
+        : scenario === "tab-sweep" ? <TabSweepFixture />
         : scenario === "theme" ? <Box flexDirection="column" width="100%" height="100%">
           <Box data-theme-chrome="header"><Header /></Box>
           <Shell pluginRegistry={paneRegistry} />

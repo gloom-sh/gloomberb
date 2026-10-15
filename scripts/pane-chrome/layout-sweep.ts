@@ -1,16 +1,20 @@
 import { appendFile, mkdir } from "fs/promises";
 import { join, resolve } from "path";
 import { takeOption } from "../tui-benchmark-harness";
-import { cacheDir, click, evaluate, launchBrowser, type Cdp } from "./browser";
+import { cacheDir, evaluate, launchBrowser } from "./browser";
 import { LAYOUT_SIZES } from "./layout-checks";
 import { LAYOUT_MEASURE, layoutFailures, type LayoutMeasure } from "./layout-measure";
+import { pathName, visitAlternatives, type TabVisit } from "./tab-visits";
 import { createReplay, discover, fallbackInstance, key, loadLayout, readCatalog, routeDirectReads, serveWebApp, settle, shot } from "./web-app";
 
 /**
  * Every function in the catalog on the real web build, docked and floating, at
  * three window sizes, with its detail opened where Enter opens one and, docked,
- * each of its tabs: where each pane's content stops against its footer and its
- * width (layout-measure.ts).
+ * every view its tabs and choices lead to, each opened for real and confirmed
+ * selected (tab-visits.ts): where each pane's content stops against its footer
+ * and its width (layout-measure.ts). A tab that could not be opened fails the
+ * sweep with the reason; `coverage-*.json` lists every alternative as
+ * measured, unmeasured or skipped (disabled, not laid out, too deep).
  * The layout checks hold a few fixtures to this in CI; this is the whole
  * registry, on demand.
  *
@@ -39,21 +43,6 @@ function layoutFor(instance: Record<string, unknown>, mode: "dock" | "float", wi
   return { dockRoot: null, instances: [instance], floating: [{ instanceId: id, x: 2.5, y: 2.25, width: Math.round(columns * 78) / 100 + 0.37, height: Math.round(rows * 78) / 100 + 0.41, zIndex: 50 }], detached: [] };
 }
 
-/** Tabs and the query bar's view choices (role radio), which switch what the pane shows as tabs do. */
-const TABS = "[role=tab], [role=radio]";
-
-/** The labels of the tabs not showing, in the pane and its title bar. */
-function tabLabels(cdp: Cdp, scope: string): Promise<string[]> {
-  return evaluate<string[]>(cdp, `[...new Set([...(document.querySelector(${JSON.stringify(scope)})?.querySelectorAll(${JSON.stringify(TABS)}) ?? [])].filter((el) => el.getAttribute("aria-selected") !== "true" && el.getAttribute("aria-checked") !== "true" && !el.disabled && el.getBoundingClientRect().width > 0).map((el) => el.textContent.trim()).filter(Boolean))].slice(0, 20)`);
-}
-
-async function clickTab(cdp: Cdp, scope: string, label: string): Promise<boolean> {
-  const at = await evaluate<{ x: number; y: number } | null>(cdp, `(() => { const el = [...(document.querySelector(${JSON.stringify(scope)})?.querySelectorAll(${JSON.stringify(TABS)}) ?? [])].find((tab) => tab.textContent.trim() === ${JSON.stringify(label)}); const r = el?.getBoundingClientRect(); return r && r.width > 0 ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`);
-  if (!at) return false;
-  await click(cdp, at);
-  return true;
-}
-
 async function main(): Promise<void> {
   if (!await Bun.file(join(web, "index.html")).exists()) throw new Error(`No web build in ${web}; run bun run web:build first.`);
   const catalog = readCatalog(root, cacheDir("layout-sweep-home"))
@@ -64,6 +53,7 @@ async function main(): Promise<void> {
   const { cdp } = browser;
   const rows: string[] = [];
   const results: unknown[] = [];
+  const coverage: Array<TabVisit & { token: string; mode: string; size: string }> = [];
   try {
     // Reads the web app makes straight from another site (the release feed) go through the same reads.
     await routeDirectReads(cdp, replay);
@@ -77,9 +67,9 @@ async function main(): Promise<void> {
           const cell = await evaluate<{ width: number; height: number }>(cdp, `({ width: parseFloat(getComputedStyle(document.body).getPropertyValue("--cell-w")) || 8, height: parseFloat(getComputedStyle(document.body).getPropertyValue("--cell-h")) || 18 })`);
           await loadLayout(cdp, app.url, replay, layoutFor(instance, mode, size.width, size.height, cell), instance.instanceId as string);
           await settle(cdp, scope);
-          const record = async (view: string) => {
+          const record = async (view: string): Promise<boolean> => {
             const measure = await evaluate<LayoutMeasure>(cdp, LAYOUT_MEASURE(instance.instanceId as string));
-            if (measure.missing) return;
+            if (measure.missing) return false;
             // A headline a feed sent already cut is the source's, not a count of columns.
             measure.arrivedCut = measure.cut.filter((entry) => replay.arrived(entry.whole));
             measure.cut = measure.cut.filter((entry) => !measure.arrivedCut!.includes(entry));
@@ -87,22 +77,30 @@ async function main(): Promise<void> {
             await shot(cdp, scope, join(out, "shots", `${name}.jpg`));
             const failures = layoutFailures(measure);
             results.push({ token: entry.token, paneId: entry.paneId, mode, size, view, failures, measure });
-            if (failures.length > 0) rows.push(`| ${entry.token} | ${view} | ${mode} ${size.width}x${size.height} | ${failures.join("; ").replace(/\|/g, "/")} |`);
+            if (failures.length > 0) rows.push(`| ${entry.token} | ${view.replace(/\|/g, "/")} | ${mode} ${size.width}x${size.height} | ${failures.join("; ").replace(/\|/g, "/")} |`);
+            return true;
           };
-          const tabs = await tabLabels(cdp, scope);
           await record("root");
           const before = await evaluate<string>(cdp, `document.querySelector(${JSON.stringify(scope)})?.innerText ?? ""`);
           await key(cdp, "Enter", "Enter", 13);
           await settle(cdp, scope, 700, 6_000);
           if (await evaluate<string>(cdp, `document.querySelector(${JSON.stringify(scope)})?.innerText ?? ""`) !== before) await record("detail");
-          // Every tab of the root, docked: a floating pane draws the same tabs.
-          if (mode === "dock" && tabs.length > 0) {
-            await loadLayout(cdp, app.url, replay, layoutFor(instance, mode, size.width, size.height, cell), instance.instanceId as string);
-            await settle(cdp, scope);
-            for (const label of tabs) {
-              if (!await clickTab(cdp, scope, label)) continue;
-              await settle(cdp, scope, 700, 6_000);
-              await record(`tab ${label}`);
+          // Every view the tabs and choices lead to, docked: a floating pane draws the same ones.
+          if (mode === "dock") {
+            const visits = await visitAlternatives({
+              cdp,
+              scope,
+              reset: async () => {
+                await loadLayout(cdp, app.url, replay, layoutFor(instance, mode, size.width, size.height, cell), instance.instanceId as string);
+                await settle(cdp, scope);
+              },
+              settle: () => settle(cdp, scope, 700, 6_000),
+              record: (path) => record(`tab ${pathName(path)}`),
+            });
+            const sizeName = `${size.width}x${size.height}`;
+            for (const visit of visits) {
+              coverage.push({ token: entry.token, mode, size: sizeName, ...visit });
+              if (visit.status === "unmeasured") rows.push(`| ${entry.token} | tab ${pathName(visit.path).replace(/\|/g, "/")} | ${mode} ${sizeName} | not measured: the switch did not happen (${visit.reason}) |`);
             }
           }
         }
@@ -114,7 +112,14 @@ async function main(): Promise<void> {
     app.stop();
   }
   await Bun.write(join(out, `results-${shardIndex}of${shardCount}.json`), JSON.stringify(results, null, 1));
-  const summary = ["| Function | View | Layout | What fails |", "|---|---|---|---|", ...rows].join("\n");
+  await Bun.write(join(out, `coverage-${shardIndex}of${shardCount}.json`), JSON.stringify(coverage, null, 1));
+  const count = (status: TabVisit["status"]) => coverage.filter((visit) => visit.status === status).length;
+  const skipped = coverage.filter((visit) => visit.status === "skipped");
+  const reasons = [...new Set(skipped.map((visit) => visit.reason ?? ""))].map((reason) => `${skipped.filter((visit) => visit.reason === reason).length} ${reason}`);
+  const summary = [
+    "| Function | View | Layout | What fails |", "|---|---|---|---|", ...rows, "",
+    `Tabs and choices, docked at ${LAYOUT_SIZES.length} sizes: ${count("measured")} views measured, ${count("unmeasured")} not measured (above), ${skipped.length} skipped${reasons.length ? `: ${reasons.join("; ")}` : ""}.`,
+  ].join("\n");
   await Bun.write(join(out, `summary-${shardIndex}of${shardCount}.md`), `${summary}\n`);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `### Pane layout sweep\n\n${summary}\n`);
   console.log(`\n${rows.length} failing views in ${catalog.length} functions; ${join(out, `summary-${shardIndex}of${shardCount}.md`)}`);
