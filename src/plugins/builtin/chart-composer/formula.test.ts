@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { parseFormulaExpression } from "./formula";
-import { buildCustomChartPreset } from "./presets";
+import { appendCatalogSuggestion, buildCustomChartPreset, buildEmptyChartPreset, buildPriceChartPreset } from "./presets";
 import { getSelectedPairStudies } from "./studies";
+import { buildSeriesCatalogSuggestions } from "./series-catalog";
+import { seriesCatalogEntry } from "../../../series/registry";
+import { FUTURES_SERIES } from "../futures/series";
 
 const legs = (expression: string) => parseFormulaExpression(expression)?.legs
   .map(({ text, weight, perBarrel }) => ({ text, weight, perBarrel }));
@@ -26,6 +29,19 @@ describe("series formulas", () => {
     expect(legs("84*RB=F - CL=F")?.[0]).toEqual({ text: "RB=F", weight: 84, perBarrel: false });
     // A minus inside a ticker stays in it.
     expect(legs("2*BRK-B - SPY")?.map(({ text }) => text)).toEqual(["BRK-B", "SPY"]);
+    expect(legs("2*BRK-B:NYSE - SPY")?.map(({ text }) => text)).toEqual(["BRK-B:NYSE", "SPY"]);
+  });
+
+  test("a tight minus subtracts after a listing's exchange or field, unless it spells the field", () => {
+    expect(legs("42*HO=F:NYM-CL=F:NYM")).toEqual([
+      { text: "HO=F:NYM", weight: 42, perBarrel: true },
+      { text: "CL=F:NYM", weight: -1, perBarrel: false },
+    ]);
+    expect(legs("42*HO=F:NYM:close-CL=F:close")?.map(({ text }) => text)).toEqual(["HO=F:NYM:close", "CL=F:close"]);
+    expect(legs("(2*42*RB=F:NYM+42*HO=F:NYM-3*CL=F:NYM)/3")?.map(({ weight }) => weight)).toEqual([84, 42, -3]);
+    // Field names are matched without their punctuation, so a hyphen can be part of one.
+    expect(legs("2*GC=F:price-sales - SI=F")?.map(({ text }) => text)).toEqual(["GC=F:price-sales", "SI=F"]);
+    expect(legs("2*GC=F:free-cash-flow - SI=F")?.map(({ text }) => text)).toEqual(["GC=F:free-cash-flow", "SI=F"]);
   });
 
   test("only the whole formula, in brackets, is divided by a number", () => {
@@ -75,5 +91,37 @@ describe("series formulas", () => {
     expect(buildCustomChartPreset("CL=F + BZ=F").series.map(({ axis }) => axis)).toEqual(["auto", "auto"]);
     expect(getSelectedPairStudies(buildCustomChartPreset("HO=F - BZ=F"))).toEqual(["spread"]);
     expect(buildCustomChartPreset("HO=F - BZ=F").studies.some(({ kind }) => kind === "formula")).toBe(false);
+  });
+
+  test("G's series search finds the catalog's crack spreads and adds one to the chart, reusing a leg it already has", () => {
+    const registered = FUTURES_SERIES.map((definition) => seriesCatalogEntry({ definition, pluginId: "builtin" }));
+    const search = (query: string) => buildSeriesCatalogSuggestions(query, { symbol: "AAPL" }, [], 8, registered);
+    expect(search("crack").map(({ label }) => label)).toEqual([
+      "3:2:1 crack spread", "Heating oil crack vs WTI", "Heating oil crack vs Brent",
+    ]);
+    const crack321 = search("refining margin")[0]!;
+    expect(crack321).toMatchObject({
+      formula: "(2*42*RB=F + 42*HO=F - 3*CL=F)/3",
+      description: "(2*42*RB=F + 42*HO=F - 3*CL=F)/3 · USD/barrel · daily",
+      detail: "Futures",
+    });
+
+    // On an empty chart it is the chart G opens for the formula.
+    const preset = buildCustomChartPreset(crack321.formula!);
+    const added = appendCatalogSuggestion(buildEmptyChartPreset(), crack321).spec;
+    expect([added.series, added.studies]).toEqual([preset.series, preset.studies]);
+
+    // Beside AAPL, a charted CL=F is reused and the chart's formula is replaced.
+    const wti = search("crack")[1]!;
+    const chart = appendCatalogSuggestion(appendCatalogSuggestion(buildPriceChartPreset("AAPL"), crack321).spec, wti);
+    expect(chart.spec.series.map(({ source }) => source.kind === "security" ? source.instrument.symbol : "")).toEqual(["AAPL", "RB=F", "HO=F", "CL=F"]);
+    const formulas = chart.spec.studies.filter(({ kind }) => kind === "formula");
+    expect(formulas).toEqual([expect.objectContaining({ parameters: { divisor: 1, weight1: 42, perBarrel1: 1, weight2: -1 } })]);
+    expect(formulas[0]!.inputSeriesIds).toEqual([chart.spec.series[2]!.id, chart.spec.series[3]!.id]);
+    expect(chart.series).toBe(chart.spec.series[3]!);
+    expect(chart.spec.studies.some(({ kind }) => kind === "volume")).toBe(true);
+    // Its legs count toward the chart's ten series.
+    expect(() => appendCatalogSuggestion(buildCustomChartPreset("SPY, QQQ, IWM, DIA, TLT, GLD, SLV, USO, UNG"), wti))
+      .toThrow("Charts support up to 10 base series.");
   });
 });

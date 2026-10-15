@@ -2,7 +2,8 @@ import { currencyPairSpelling } from "../../../utils/currency-pair";
 import { dashedCoinPair } from "../../../utils/crypto-pair";
 import { GALLONS_PER_BARREL } from "../../../time-series/price-units";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
-import { parseSeriesExpression, type ParsedSeriesExpression } from "./series-expression";
+import { parseSeriesExpression, resolveChartFieldAlias, type ParsedSeriesExpression } from "./series-expression";
+import { getTimeSeriesField } from "../../../time-series/field-catalog";
 
 /**
  * Series formulas: a sum of series each times a number, the whole optionally
@@ -55,10 +56,23 @@ export function looksLikeFormula(expression: string): boolean {
   return /[*×+()]/.test(expression) || /\s-\s|^\s*-/.test(expression);
 }
 
-/** A tight `-` subtracts after a futures or FX listing, a number or a bracket; elsewhere it is part of a ticker (BRK-B). */
-function minusIsOperator(atom: string, previous: Token | undefined): boolean {
-  if (atom) return /=[FX]$/i.test(atom) || NUMBER.test(atom);
-  return !previous || previous.kind !== "atom";
+const LISTING = /=[FX]$/i;
+
+/**
+ * A tight `-` subtracts after a futures or FX listing, a number or a bracket;
+ * elsewhere it is part of a ticker (BRK-B). A listing may carry its exchange
+ * or a field (HO=F:NYM-CL=F:NYM), unless the hyphen goes on to spell a field
+ * (GC=F:gross-margin).
+ */
+function minusIsOperator(atom: string, previous: Token | undefined, rest: string): boolean {
+  if (!atom) return !previous || previous.kind !== "atom";
+  if (LISTING.test(atom) || NUMBER.test(atom)) return true;
+  const parts = atom.split(":");
+  if (parts.length < 2 || !LISTING.test(parts[0]!) || !parseSeriesExpression(atom)) return false;
+  const words = rest.match(/^[^\s*×+()/:]*/)![0].split("-");
+  return !words.some((_, index) => getTimeSeriesField(resolveChartFieldAlias(
+    [parts.at(-1)!, ...words.slice(0, index + 1)].join("-"),
+  )));
 }
 
 function tokenize(expression: string): Token[] {
@@ -76,7 +90,7 @@ function tokenize(expression: string): Token[] {
     } else if (char === "*" || char === "×" || char === "+" || char === "(" || char === ")") {
       flush();
       tokens.push({ kind: char === "×" ? "*" : char, text: char });
-    } else if (char === "-" && (minusIsOperator(atom, tokens.at(-1)) || /\s/.test(expression[index - 1] ?? " "))) {
+    } else if (char === "-" && (minusIsOperator(atom, tokens.at(-1), expression.slice(index + 1)) || /\s/.test(expression[index - 1] ?? " "))) {
       flush();
       tokens.push({ kind: "-", text: char });
     } else if (char === "/" && !atom && tokens.at(-1)?.kind === ")") {

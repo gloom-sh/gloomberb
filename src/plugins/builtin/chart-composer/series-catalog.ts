@@ -14,6 +14,7 @@ import {
   publicTickerKey,
 } from "../../../utils/exchanges";
 import { parseSeriesExpression, type ParsedSeriesExpression } from "./series-expression";
+import { parseFormulaExpression } from "./formula";
 
 export interface SeriesCatalogInstrument {
   symbol: string;
@@ -22,13 +23,21 @@ export interface SeriesCatalogInstrument {
   assetCategory?: string;
 }
 
-export interface SeriesCatalogSuggestion {
+interface SeriesCatalogSuggestionText {
   id: string;
   label: string;
   description: string;
   detail: string;
-  expression: ParsedSeriesExpression;
 }
+
+/**
+ * One series to add, or a catalog formula (`42*HO=F - CL=F`): its legs join
+ * the chart with the study that weighs them.
+ */
+export type SeriesCatalogSuggestion = SeriesCatalogSuggestionText & (
+  | { expression: ParsedSeriesExpression; formula?: never }
+  | { formula: string; expression?: never }
+);
 
 export interface SeriesSearchAnalysis {
   directInstrument: SeriesCatalogInstrument | null;
@@ -297,7 +306,10 @@ function registeredSeriesSuggestions(
   if (!query.trim() || registered.length === 0) return [];
   const instrument = analysis.directInstrument ?? defaultInstrument;
   const tickerQuery = analysis.directInstrument ? analysis.metricQuery : query;
-  const hits: Array<{ entry: SeriesCatalogEntry; rank: number; expression: ParsedSeriesExpression }> = [];
+  const hits: Array<{ entry: SeriesCatalogEntry; rank: number } & (
+    | { expression: ParsedSeriesExpression; formula?: never }
+    | { formula: string; expression?: never }
+  )> = [];
   for (const entry of registered) {
     let template = entry.expression;
     let text = query;
@@ -310,18 +322,39 @@ function registeredSeriesSuggestions(
     }
     if (!matchesAliasQuery(text, entry.name, entry.expression, entry.id, entry.group ?? "", ...(entry.tags ?? []))) continue;
     const parsed = parseSeriesExpression(template);
-    if (!parsed) continue;
+    if (!parsed) {
+      if (!entry.input && catalogFormula(template)) hits.push({ entry, rank: registeredMatchRank(entry, text), formula: template });
+      continue;
+    }
     const label = entry.input ? `${publicTickerKey(instrument.symbol, instrument.exchange)} · ${entry.name}` : entry.name;
     hits.push({ entry, rank: registeredMatchRank(entry, text), expression: { ...parsed, label } });
   }
   hits.sort((left, right) => left.rank - right.rank || left.entry.name.length - right.entry.name.length);
-  return hits.map(({ entry, expression }): SeriesCatalogSuggestion => ({
-    id: suggestionId(expression),
-    label: expression.kind === "capability" ? expression.label ?? entry.name : `${entry.expression} · ${entry.name}`,
-    description: [entry.group, entry.unit, entry.frequency].filter(Boolean).join(" · "),
-    detail: entry.group ?? "Series",
-    expression,
-  }));
+  return hits.map(({ entry, expression, formula }): SeriesCatalogSuggestion => {
+    const description = [entry.group, entry.unit, entry.frequency].filter(Boolean).join(" · ");
+    const detail = entry.group ?? "Series";
+    if (formula !== undefined) {
+      // A formula runs long: its name leads, and the formula is in the description.
+      const formulaDescription = [formula, entry.unit, entry.frequency].filter(Boolean).join(" · ");
+      return { id: `formula:${formula}`, label: entry.name, description: formulaDescription, detail, formula };
+    }
+    return {
+      id: suggestionId(expression),
+      label: expression.kind === "capability" ? expression.label ?? entry.name : `${entry.expression} · ${entry.name}`,
+      description,
+      detail,
+      expression,
+    };
+  });
+}
+
+/** Whether a catalog series is a formula G can chart: a registered one that does not read is left out. */
+function catalogFormula(expression: string): boolean {
+  try {
+    return parseFormulaExpression(expression) !== null;
+  } catch {
+    return false;
+  }
 }
 
 export function buildCapabilitySeriesSuggestions(

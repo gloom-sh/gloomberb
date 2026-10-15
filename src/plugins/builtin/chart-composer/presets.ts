@@ -6,11 +6,12 @@ import {
 } from "../../../time-series/types";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
-import { buildCustomSeries, buildSeriesSpec, panelsForSeries } from "./chart-spec-edit";
+import { appendChartSeries, buildCustomSeries, buildSeriesSpec, panelsForSeries } from "./chart-spec-edit";
 import { currencyPairSpelling } from "../../../utils/currency-pair";
 import { dashedCoinPair } from "../../../utils/crypto-pair";
 import {
   CHART_FIELD_IDS,
+  formatSeriesExpression,
   normalizeInstrument,
   parseChartExpression,
   parseSeriesExpression,
@@ -19,6 +20,7 @@ import {
 } from "./series-expression";
 import { setBuiltinStudies, setPairStudies, type PairStudySelection } from "./studies";
 import { looksLikeFormula, parseFormulaExpression, type ParsedFormula } from "./formula";
+import type { SeriesCatalogSuggestion } from "./series-catalog";
 
 function chartSpec(
   series: ChartSeriesSpec[],
@@ -67,29 +69,74 @@ function derivedPair(expression: string): { series: ParsedSeriesExpression[]; fo
 /** The study id of a chart's series formula; a chart draws one. */
 const FORMULA_STUDY_ID = "formula";
 
-/** A formula's legs as series, with the study that sums them in the Formula panel. */
-function formulaChartPreset(formula: ParsedFormula): ChartSpec {
-  // A leg taken per barrel (42*HO=F) is a price per gallon; beside one per
-  // barrel (CL=F) it reads on its own axis, not flattened along the crude's.
+/**
+ * A leg taken per barrel (42*HO=F) is a price per gallon; beside one per
+ * barrel (CL=F) it reads on its own axis, not flattened along the crude's.
+ */
+function placeFormulaLeg(formula: ParsedFormula, index: number, series: ChartSeriesSpec): ChartSeriesSpec {
   const mixed = formula.legs.some((leg) => leg.perBarrel) && formula.legs.some((leg) => !leg.perBarrel);
-  const series = buildCustomSeries(formula.legs.map((leg) => leg.series)).map((entry, index) => (
-    mixed && entry.panelId === "main" && !formula.legs[index]!.perBarrel ? { ...entry, axis: "right" as const } : entry
-  ));
+  return mixed && series.panelId === "main" && !formula.legs[index]!.perBarrel ? { ...series, axis: "right" } : series;
+}
+
+/** The study that weighs a formula's legs, charted as the given series, in the Formula panel. */
+function formulaStudy(formula: ParsedFormula, inputSeriesIds: string[]): ChartStudySpec {
   const parameters: ChartStudySpec["parameters"] = { divisor: formula.divisor };
   formula.legs.forEach((leg, index) => {
     parameters[`weight${index + 1}`] = leg.weight;
     if (leg.perBarrel) parameters[`perBarrel${index + 1}`] = 1;
   });
-  return chartSpec(series, {
-    studies: [{
-      id: FORMULA_STUDY_ID,
-      kind: "formula",
-      inputSeriesIds: series.map((entry) => entry.id),
-      parameters,
-      panelId: "formula",
-      axis: "auto",
-    }],
+  return { id: FORMULA_STUDY_ID, kind: "formula", inputSeriesIds, parameters, panelId: "formula", axis: "auto" };
+}
+
+/** A formula's legs as series, with the study that sums them in the Formula panel. */
+function formulaChartPreset(formula: ParsedFormula): ChartSpec {
+  const series = buildCustomSeries(formula.legs.map((leg) => leg.series))
+    .map((entry, index) => placeFormulaLeg(formula, index, entry));
+  return chartSpec(series, { studies: [formulaStudy(formula, series.map((entry) => entry.id))] });
+}
+
+/**
+ * The chart with a formula added: a leg already charted is reused, the rest
+ * join the series, and the formula replaces the one the chart had.
+ */
+function appendChartFormula(spec: ChartSpec, expression: string): { spec: ChartSpec; series: ChartSeriesSpec } {
+  const formula = parseFormulaExpression(expression);
+  if (!formula) throw new Error(`"${expression}" is not a formula.`);
+  const key = (series: ChartSeriesSpec) => formatSeriesExpression(series).toLowerCase();
+  const legs = formula.legs.map((leg) => key(buildSeriesSpec(leg.series, 0)));
+  const missing = legs.filter((leg) => !spec.series.some((series) => key(series) === leg)).length;
+  if (spec.series.length + missing > MAX_CHART_COMPOSER_SERIES) {
+    throw new Error(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
+  }
+  let next: ChartSpec = { ...spec, studies: spec.studies.filter((study) => study.id !== FORMULA_STUDY_ID) };
+  const inputs = formula.legs.map((leg, index) => {
+    const charted = next.series.find((series) => key(series) === legs[index]);
+    if (charted) return charted;
+    const appended = appendChartSeries(next, leg.series);
+    const placed = placeFormulaLeg(formula, index, appended.series);
+    next = { ...appended.spec, series: appended.spec.series.map((series) => series.id === placed.id ? placed : series) };
+    return placed;
   });
+  const studies = [...next.studies, formulaStudy(formula, inputs.map((series) => series.id))];
+  const known = new Set(next.panels.map((panel) => panel.id));
+  return {
+    spec: {
+      ...next,
+      studies,
+      panels: [...next.panels, ...panelsForSeries(next.series, studies).filter((panel) => !known.has(panel.id))],
+    },
+    series: inputs.at(-1)!,
+  };
+}
+
+/** The chart with a catalog suggestion added: one series, or a formula's legs and its study. */
+export function appendCatalogSuggestion(
+  spec: ChartSpec,
+  suggestion: SeriesCatalogSuggestion,
+): { spec: ChartSpec; series: ChartSeriesSpec } {
+  return suggestion.formula !== undefined
+    ? appendChartFormula(spec, suggestion.formula)
+    : appendChartSeries(spec, suggestion.expression);
 }
 
 /**

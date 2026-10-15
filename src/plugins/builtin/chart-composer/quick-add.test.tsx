@@ -22,6 +22,10 @@ import { createDefaultConfig } from "../../../types/config";
 import type { ChartSpec } from "../../../time-series/types";
 import { buildPriceChartPreset } from "./presets";
 import { ChartSeriesQuickAdd, isChartQuickAddMouseTarget } from "./quick-add";
+import { setSharedRegistryForTests, type PluginRegistry } from "../../registry";
+import { seriesCatalogEntry } from "../../../series/registry";
+import { createTestDataProvider } from "../../../test-support/data-provider";
+import { FUTURES_SERIES } from "../futures/series";
 
 const tui = createOpenTuiTestHarness();
 let capturedInputProps: Record<string, any> | null = null;
@@ -50,6 +54,7 @@ const { waitForFrameToContain, waitForFrameToExclude } = tui;
 
 afterEach(() => {
   capturedInputProps = null;
+  setSharedRegistryForTests(undefined);
 });
 
 describe("chart series inline quick add", () => {
@@ -133,6 +138,50 @@ describe("chart series inline quick add", () => {
     expect(closedFrame).toContain("add series");
     expect(closedFrame).not.toContain("MSFT · Revenue");
     expect(renderedWidth).toBe(14);
+  });
+
+  test("finds a catalog crack spread and adds its legs with the formula", async () => {
+    const catalog = FUTURES_SERIES.map((definition) => seriesCatalogEntry({ definition, pluginId: "builtin" }));
+    setSharedRegistryForTests({
+      marketData: createTestDataProvider({ search: async () => [] }),
+      capabilityManifests: () => [],
+      invokeCapability: async () => [],
+      series: { subscribe: () => () => {}, getVersion: () => 0, refresh: async () => {}, catalog: () => catalog },
+    } as unknown as PluginRegistry);
+    const initial = createInitialState(createDefaultConfig("/tmp/gloomberb-chart-quick-add-formula"));
+    let updatedSpec: ChartSpec | undefined;
+    await tui.render(
+      <AppContext.Provider value={createStaticAppStore(initial)}>
+        <ChartSeriesQuickAdd
+          spec={buildPriceChartPreset("AAPL")}
+          setSpec={(next) => {
+            updatedSpec = next;
+          }}
+          focused
+          width={92}
+          height={8}
+          shortcutEnabled
+          shortcutBlocked={false}
+          onActivatePane={() => {}}
+        />
+      </AppContext.Provider>,
+      { width: 92, height: 8 },
+    );
+    await act(async () => {
+      await tui.setup().renderOnce();
+    });
+    await emitKey("n", "n");
+    await act(async () => {
+      await tui.setup().mockInput.typeText("refining margin");
+      await tui.setup().renderOnce();
+    });
+    await waitForFrameToContain("3:2:1 crack spread");
+    await emitKey("return", "\r");
+    expect(updatedSpec?.series.map(({ source }) => source.kind === "security" ? source.instrument.symbol : "")).toEqual(["AAPL", "RB=F", "HO=F", "CL=F"]);
+    expect(updatedSpec?.studies.find(({ kind }) => kind === "formula")).toMatchObject({
+      inputSeriesIds: updatedSpec!.series.slice(1).map(({ id }) => id),
+      parameters: { divisor: 3, weight1: 84, weight2: 42, weight3: -3 },
+    });
   });
 
   test("releases focus capture when the input blurs", async () => {

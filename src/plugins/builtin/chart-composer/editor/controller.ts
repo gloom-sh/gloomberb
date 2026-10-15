@@ -20,7 +20,6 @@ import {
 } from "../chart-spec";
 import { chartSeriesLabel, formatSeriesExpression, parseSeriesExpression } from "../series-expression";
 import {
-  appendChartSeries,
   applySeriesStyle,
   applySeriesTimestampMode,
   buildSeriesSpec,
@@ -33,7 +32,7 @@ import {
   setBuiltinStudies,
   setPairStudies,
 } from "../studies";
-import { buildEmptyChartPreset } from "../presets";
+import { appendCatalogSuggestion, buildEmptyChartPreset } from "../presets";
 import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "../series-catalog";
 import { useSeriesCatalogSuggestions } from "../use-series-catalog";
 import type {
@@ -307,13 +306,19 @@ export function useSeriesEditorController({
       setError(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
       return;
     }
+    let appended: ReturnType<typeof appendCatalogSuggestion>;
+    try {
+      appended = appendCatalogSuggestion(draft, suggestion);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      return;
+    }
     catalogCommitLockRef.current = true;
     queueMicrotask(() => {
       catalogCommitLockRef.current = false;
     });
-    const appended = appendChartSeries(draft, suggestion.expression);
     setDraft(appended.spec);
-    setSelectedIndex(appended.spec.series.length - 1);
+    setSelectedIndex(appended.spec.series.indexOf(appended.series));
     updateKeyboardFocus("series");
     setExpression(formatSeriesExpression(appended.series));
     clearQuickAddInput();

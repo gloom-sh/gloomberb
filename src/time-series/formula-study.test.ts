@@ -81,6 +81,21 @@ describe("formula studies", () => {
     expect(error(bare, CL)).toEqual(["formula: XX=F is in USD per an unknown quantity and CL=F is USD / barrel: a formula needs every leg in one known unit."]);
   });
 
+  test("a saved formula with a multiplier or divisor no formula was written with is an error, not a silent 1", () => {
+    const error = (parameters: Record<string, number>) => resolveStudies([HO, CL], [formula(["HO=F", "CL=F"], parameters)]);
+    // A value that is not a number is dropped when a spec loads, so it arrives missing.
+    expect(error({ weight1: 42, perBarrel1: 1, divisor: 1 })).toMatchObject({
+      series: [], errors: ["formula: The multiplier of CL=F is missing or not a number; write the formula again."],
+    });
+    expect(error({ weight1: Number.NaN, weight2: -1 }).errors).toEqual(["formula: The multiplier of HO=F is missing or not a number; write the formula again."]);
+    expect(error({ weight1: 0, weight2: -1 }).errors).toEqual(["formula: HO=F has a multiplier of 0, which removes it; leave it out of the formula instead."]);
+    expect(error({ weight1: 42, perBarrel1: 1, weight2: -1, divisor: 0 }).errors).toEqual(["formula: A formula cannot be divided by 0."]);
+    expect(error({ weight1: 42, perBarrel1: 1, weight2: -1, divisor: Number.POSITIVE_INFINITY }).errors)
+      .toEqual(["formula: The formula's divisor is not a number; write the formula again."]);
+    // No divisor is a divisor of 1.
+    expect(error({ weight1: 42, perBarrel1: 1, weight2: -1 }).series[0]?.points[0]?.value).toBeCloseTo(42 * 2.5 - 70, 9);
+  });
+
   test("a rebased or log chart of a future no longer states its contract unit", () => {
     expect(applyResolvedSeriesTransform(HO, "percent").statedUnit).toBeUndefined();
     expect(applyResolvedSeriesTransform(HO, "raw").statedUnit).toBe("USD / gallon");

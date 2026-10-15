@@ -967,30 +967,40 @@ interface FormulaTerms {
   divisor: number;
 }
 
-/** A formula study's terms: `weight1`, `perBarrel1`, ... per input, and `divisor`. */
-function formulaTerms(spec: Pick<ChartStudySpec, "parameters" | "inputSeriesIds">): FormulaTerms {
-  const parameter = (key: string) => spec.parameters[key];
-  const divisor = parameter("divisor");
+/**
+ * A formula study's terms: `weight1`, `perBarrel1`, ... per input, and an
+ * optional `divisor`. A saved or hand-edited spec can carry a multiplier or
+ * divisor no formula was written with (a value that is not a number is
+ * dropped when the spec loads, so it arrives missing); that is an error, not
+ * a silent 1.
+ */
+function formulaTerms(spec: ChartStudySpec, inputs: readonly ResolvedSeries[]): FormulaTerms | { error: string } {
+  const weights: number[] = [];
+  for (const [index, input] of inputs.entries()) {
+    const weight = spec.parameters[`weight${index + 1}`];
+    if (!isFiniteNumber(weight)) return { error: `The multiplier of ${legName(input)} is missing or not a number; write the formula again.` };
+    if (weight === 0) return { error: `${legName(input)} has a multiplier of 0, which removes it; leave it out of the formula instead.` };
+    weights.push(weight);
+  }
+  const divisor = spec.parameters.divisor ?? 1;
+  if (!isFiniteNumber(divisor)) return { error: "The formula's divisor is not a number; write the formula again." };
+  if (divisor === 0) return { error: "A formula cannot be divided by 0." };
   return {
-    weights: spec.inputSeriesIds.map((_, index) => {
-      const weight = parameter(`weight${index + 1}`);
-      return isFiniteNumber(weight) ? weight : 1;
-    }),
-    perBarrel: spec.inputSeriesIds.map((_, index) => parameter(`perBarrel${index + 1}`) === 1),
-    divisor: isFiniteNumber(divisor) && divisor !== 0 ? divisor : 1,
+    weights,
+    perBarrel: inputs.map((_, index) => spec.parameters[`perBarrel${index + 1}`] === 1),
+    divisor,
   };
 }
 
 /** Each input's unit once its multiplier is applied: 42 gallons of a per-gallon price are a barrel's worth. */
-function formulaLegUnits(spec: ChartStudySpec, inputs: readonly ResolvedSeries[]): string[] {
-  const { perBarrel } = formulaTerms(spec);
-  return inputs.map((input, index) => perBarrel[index] ? perBarrelUnit(input.unit) : input.unit);
+function formulaLegUnits(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): string[] {
+  return inputs.map((input, index) => terms.perBarrel[index] ? perBarrelUnit(input.unit) : input.unit);
 }
 
 /** Why a formula's legs cannot be summed, or null when every leg counts the same known unit. */
-function formulaUnitMismatch(spec: ChartStudySpec, inputs: readonly ResolvedSeries[]): string | null {
+function formulaUnitMismatch(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): string | null {
   if (inputs.length < 2) return null;
-  const units = formulaLegUnits(spec, inputs);
+  const units = formulaLegUnits(terms, inputs);
   const signatures = inputs.map((input, index) => knownUnitSignature({ unit: units[index]!, unitGroup: input.unitGroup }));
   const other = signatures.findIndex((signature, index) => index > 0 && (signature === null || signature !== signatures[0]));
   if (signatures[0] !== null && other < 0) return null;
@@ -1040,10 +1050,14 @@ function alignedSamples(inputs: readonly ResolvedSeries[]): Array<{ point: TimeS
 }
 
 /** A weighted sum of the inputs over a divisor, in the unit the legs share once converted. */
-function resolveFormula(spec: ChartStudySpec, inputs: readonly ResolvedSeries[], color: string): ResolvedSeries[] {
-  const terms = formulaTerms(spec);
+function resolveFormula(
+  spec: ChartStudySpec,
+  inputs: readonly ResolvedSeries[],
+  terms: FormulaTerms,
+  color: string,
+): ResolvedSeries[] {
   const first = inputs[0]!;
-  const unit = formulaLegUnits(spec, inputs)[0]!;
+  const unit = formulaLegUnits(terms, inputs)[0]!;
   // Rounded off the float's last digits: 42 × 4.6233 - 96.12 is 98.0586, not 98.05860000000001.
   const points = alignedSamples(inputs).map(({ point, values }) => derivedPoint(
     { point, value: 0 },
@@ -1216,12 +1230,15 @@ function resolveStudySpecs(
         return;
       }
     }
+    let terms: FormulaTerms | null = null;
     if (spec.kind === "formula") {
-      const mismatch = formulaUnitMismatch(spec, inputs as ResolvedSeries[]);
+      const read = formulaTerms(spec, inputs as ResolvedSeries[]);
+      const mismatch = "error" in read ? read.error : formulaUnitMismatch(read, inputs as ResolvedSeries[]);
       if (mismatch) {
         errors.push(`${spec.id}: ${mismatch}`);
         return;
       }
+      terms = read as FormulaTerms;
     }
     const color = spec.color ?? KIND_COLORS[spec.kind] ?? STUDY_COLORS[index % STUDY_COLORS.length]!;
     if (spec.kind === "realized-vol") {
@@ -1274,7 +1291,7 @@ function resolveStudySpecs(
       resolved.push(...outputs);
       return;
     }
-    else if (spec.kind === "formula") outputs = resolveFormula(spec, inputs as ResolvedSeries[], color);
+    else if (spec.kind === "formula" && terms) outputs = resolveFormula(spec, inputs as ResolvedSeries[], terms, color);
     else if (spec.kind === "volume") {
       outputs = resolveVolume(spec, input, color, nameVolumeInput);
       if (!input.volumeUnit && outputs.some((output) => output.points.length > 0)) {

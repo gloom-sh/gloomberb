@@ -216,7 +216,7 @@ G "42*HO=F - CL=F"
 G "(2*42*RB=F + 42*HO=F - 3*CL=F)/3"
 ```
 
-The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided by a number. A futures price is in its contract's unit, as FUT and `quote` print it: heating oil and gasoline are USD / gallon, crude USD / barrel. A 42 on a per-gallon series makes it per barrel (42 gallons to the barrel), so both formulas above are crack spreads in USD / barrel; any other number keeps the unit, and series in different units do not add up. `catalog crack` lists the heating-oil and 3:2:1 cracks.
+The number goes on either side of its series (`HO=F*42`), and only the whole formula, in brackets, is divided by a number. A futures price is in its contract's unit, as FUT and `quote` print it: heating oil and gasoline are USD / gallon, crude USD / barrel. A 42 on a per-gallon series makes it per barrel (42 gallons to the barrel), so both formulas above are crack spreads in USD / barrel; any other number keeps the unit, and series in different units do not add up. `catalog crack` lists the heating-oil and 3:2:1 cracks, and so does G's own series search (`n`, then `crack` or `refining margin`): picking one adds its legs to the chart, reusing any already there, and replaces the chart's formula.
 
 #### Your own series
 

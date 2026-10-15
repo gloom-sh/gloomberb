@@ -18,7 +18,7 @@ import { colors } from "../../../theme/colors";
 import type { ChartSpec } from "../../../time-series/types";
 import { getSharedRegistry } from "../../registry";
 import { MAX_CHART_COMPOSER_SERIES } from "./chart-spec";
-import { appendChartSeries } from "./chart-spec-edit";
+import { appendCatalogSuggestion } from "./presets";
 import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "./series-catalog";
 import { useSeriesCatalogSuggestions } from "./use-series-catalog";
 import { clampIndex } from "../../../utils/math";
@@ -266,11 +266,18 @@ export function ChartSeriesQuickAdd({
       setError(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
       return;
     }
+    let next: ChartSpec;
+    try {
+      next = appendCatalogSuggestion(spec, suggestion).spec;
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      return;
+    }
     commitLockRef.current = true;
     queueMicrotask(() => {
       commitLockRef.current = false;
     });
-    setSpec(appendChartSeries(spec, suggestion.expression).spec);
+    setSpec(next);
     clearInput();
     setSelectedIndex(0);
     setError(null);
