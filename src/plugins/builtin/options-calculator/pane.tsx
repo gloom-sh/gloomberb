@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FieldGrid, KeyValueRow, QueryBar, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
+import { FieldGrid, KeyValueRow, QueryBar, unavailableText, usePaneFooter, usePaneNoticeFooter, type GridField } from "../../../components";
 import { CompositeChart } from "../../../components/chart/composite/composite-chart";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useAsyncResource, useInputCapture } from "../../../public/react";
@@ -192,29 +192,33 @@ export function OptionsCalculatorPane({ focused, width, height }: PaneProps) {
   ], [draft, linkedDraft, spotText, daysRunning, updateDraft, american, surfaceSource, effectiveDraft.volatility, surface?.volatility]);
 
   const calculation = useMemo(() => {
-    const unavailable = seedError ?? (american ? dividendInput.error : null)
-      ?? (surfaceSource && !draft.symbol ? "Choose an underlying ticker for surface IV." : null)
-      ?? (surfaceSource && !surfaceResource.loading && surface?.volatility == null ? surface?.error ?? surfaceResource.error ?? "Surface IV unavailable." : null);
-    if (unavailable || surfaceSource && surface?.volatility == null) {
-      return { valuation: null, implied: { volatility: null, note: null }, problem: unavailable };
+    const inputProblem = seedError ?? (american ? dividendInput.error : null)
+      ?? (surfaceSource && !draft.symbol ? "Choose an underlying ticker for surface IV." : null);
+    const surfaceMissing = surfaceSource && surface?.volatility == null;
+    const surfaceNotice = surfaceMissing && !surfaceResource.loading
+      ? surface?.error ?? unavailableText("Surface IV")
+      : null;
+    if (inputProblem || surfaceMissing) {
+      return { valuation: null, implied: { volatility: null, note: null }, problem: inputProblem, loadNotice: surfaceNotice };
     }
     try {
       const options = { exercise: "american" as const, steps: draft.steps ?? 400, dividends: dividendInput.dividends };
       return { valuation: american ? valueBinomialOption(effectiveDraft, options) : valueOption(effectiveDraft),
         effectiveSteps: american ? effectiveBinomialSteps(effectiveDraft, options) : null,
         implied: american ? solveBinomialImpliedVolatility(effectiveDraft, effectiveDraft.marketPrice, options)
-          : solveImpliedVolatility(effectiveDraft, effectiveDraft.marketPrice), problem: describeDraftProblem(effectiveDraft) };
-    } catch (error) {
-      return { valuation: null, implied: { volatility: null, note: null }, problem: error instanceof Error ? error.message : String(error) };
+          : solveImpliedVolatility(effectiveDraft, effectiveDraft.marketPrice), problem: describeDraftProblem(effectiveDraft), loadNotice: null };
+    } catch {
+      return { valuation: null, implied: { volatility: null, note: null }, problem: null, loadNotice: unavailableText("Option value") };
     }
   }, [effectiveDraft, american, draft.steps, dividendInput, surfaceSource, surface,
-    surfaceResource.loading, surfaceResource.error, seedError]);
-  const { valuation, implied, problem, effectiveSteps } = calculation;
+    surfaceResource.loading, seedError, draft.symbol]);
+  const { valuation, implied, problem, effectiveSteps, loadNotice } = calculation;
   const notices = useMemo(() => [...(surfaceSource ? surface?.warnings ?? [] : []),
+    ...(loadNotice ? [loadNotice] : []),
     ...(!american && dividendInput.dividends.length ? [CALCULATOR_IGNORED_DIVIDENDS_NOTICE] : [])],
-  [surfaceSource, surface?.warnings, american, dividendInput.dividends]);
+  [surfaceSource, surface?.warnings, american, dividendInput.dividends, loadNotice]);
   useCalculatorEvidence({ draft: effectiveDraft, valuation, implied, surface: surfaceSource ? surface : null,
-    effectiveSteps, loading: surfaceSource && surfaceResource.loading, error: problem, notices });
+    effectiveSteps, loading: surfaceSource && surfaceResource.loading, error: problem ?? loadNotice, notices });
   const setModel = (model: string) => { updateDraft({ pricingModel: model as "european" | "american" }); setActiveFieldId(null); };
   const setVolSource = (source: string) => {
     updateDraft({ volSource: source as "input" | "surface" });
@@ -398,7 +402,7 @@ function ContractPremiumChart({
   width: number;
   focused: boolean;
 }) {
-  const empty = unavailable ? "Premium history unavailable." : series.length < 1 ? "No premium history." : undefined;
+  const empty = unavailable ? unavailableText("Premium history") : series.length < 1 ? "No premium history." : undefined;
   return (
     <Box flexDirection="column" paddingX={1} height={PREMIUM_CHART_ROWS} flexShrink={0}>
       {empty && !loading ? (

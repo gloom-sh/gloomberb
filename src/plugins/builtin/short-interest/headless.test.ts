@@ -88,6 +88,15 @@ describe("short interest headless model", () => {
       sharesShort: 12_000_000,
     });
   });
+
+  test("a gloom payload with rows says the full history is unavailable", async () => {
+    const headless = createShortInterestHeadless({
+      loadRecords: async () => ({ records, source: "gloom", cloudSessionRequired: false }),
+    });
+    const result = await headless.load(args(), createTestHeadlessContext());
+    expect(result.rows.length).toBeGreaterThan(0);
+    expect(result.errors).toEqual(["Full history unavailable; showing the latest two settlements."]);
+  });
 });
 
 describe("what --explain finds in the reports", () => {

@@ -5,6 +5,7 @@ import {
   DataTableView,
   formatPercentAxis,
   PaneStatusBody,
+  unavailableText,
   scalarPoint,
   StatGrid,
   staticSeries,
@@ -159,8 +160,8 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
           ? `Cached ${new Date(entry.fetchedAt).toISOString().slice(0, 10)} · refresh failed`
           : null);
       })
-      .catch((err) => {
-        setError(err instanceof Error ? err.message : String(err));
+      .catch(() => {
+        setError(unavailableText("Series history"));
       })
       .finally(() => {
         setLoading(false);
@@ -224,8 +225,9 @@ export function EconDetailView({ event, width, height, focused }: EconDetailView
       <Box flexDirection="column" width={width} height={height}>
         <StatGrid items={mapping ? [...releaseItems, { id: "series", label: "Series", value: mapping.seriesId }] : releaseItems} width={width} />
         <PaneStatusBody
+          subject={mapping && !loading && !data ? "Series history" : undefined}
           loading={!!mapping && loading && !data}
-          error={mapping && !loading && !data ? error : null}
+          error={mapping && !loading && !data ? unavailableText("Series history") : null}
           empty={!mapping}
           emptyTitle="No historical data available for this indicator"
           align="center"

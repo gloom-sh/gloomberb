@@ -64,9 +64,23 @@ describe("world map layers", () => {
     const settled = tui.frame();
     expect(settled).toContain("VENUE");
     expect(settled).not.toContain("Not found");
+    expect(settled).not.toMatch(/\blive\b/);
     expect(settled).not.toMatch(/layer|unavailable|Chokepoint/i);
     expect(frame).not.toContain("Loading map layers");
     expect(requests).toContain("/cloud/geo/layers");
+  });
+
+  test("a failed venue load says venues are unavailable", async () => {
+    setCloudApiFetchTransport(async (url) => {
+      const { pathname } = new URL(String(url));
+      if (pathname === "/market/venues") return Response.json({ error: "Gloom Cloud venues exploded" }, { status: 500 });
+      if (pathname.startsWith("/cloud/geo/")) return Response.json({ error: "Not found" }, { status: 404 });
+      return Response.json({ error: "unexpected" }, { status: 500 });
+    });
+    await mount({});
+    const frame = await tui.waitForFrameToContain("World venues unavailable.");
+    expect(frame).not.toContain("Gloom Cloud venues exploded");
+    expect(frame).not.toMatch(/\blive\b/);
   });
 
   test("a preset opens its layers with the entity table and linked tickers", async () => {

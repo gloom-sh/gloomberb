@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useShortcut, useUpdatedAgo } from "../../../public/react";
-import { CompositeChart, DataTableStackView, EmptyState, PaneStatusBody, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, StatGrid } from "../../../components";
+import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { CompositeChart, DataTableStackView, EmptyState, PaneStatusBody, unavailableText, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, StatGrid } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { colors } from "../../../theme/colors";
 import type { SocialMentionPost, SocialMentionsRange } from "../../../api-client/social-mentions";
 import { ApiRequestError } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
-import { isPlainKey } from "../../../utils/keyboard";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -44,14 +44,20 @@ function PostBlock({ post, width }: { post: SocialMentionPost; width: number }) 
   </Box>;
 }
 
-function DayDetail({ symbol, row, recent, width, height }: {
-  symbol: string; row: SocialDayRow; recent: SocialMentionPost[]; width: number; height: number;
+function DayDetail({ symbol, row, recent, width, height, focused }: {
+  symbol: string; row: SocialDayRow; recent: SocialMentionPost[]; width: number; height: number; focused: boolean;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
   // Today is still open on the server; its posts come with the history.
   const loader = useCallback(() => loadSocialMentionPosts(symbol, row.day), [symbol, row.day]);
   const posts = useAsyncResource(row.closed ? loader : null);
   const list = (row.closed ? posts.data : null) ?? recent.filter((post) => post.day === row.day);
+  const postsFailure = unavailableText("Top posts");
+  usePaneNoticeFooter({
+    registrationId: "social-mentions:posts",
+    focused,
+    notices: list.length > 0 && posts.error ? [postsFailure] : [],
+  });
   const lineWidth = Math.max(1, width - 2);
   return <Box flexDirection="column" flexGrow={1} flexBasis={0} minHeight={0}>
     <StatGrid width={width} items={[
@@ -60,7 +66,7 @@ function DayDetail({ symbol, row, recent, width, height }: {
       { id: "stance", label: "Stance", value: socialStance(row.stance), detail: stanceWord(row.stance) },
     ]} />
     <ScrollBox scrollY width={width} height={nativePaneChrome ? undefined : Math.max(1, height - 3)} flexGrow={1} flexBasis={0} minHeight={0} contentOptions={{ paddingX: 1 }}>
-      <PaneStatusBody loading={posts.loading && !list.length} error={!list.length ? posts.error : null} subject="top posts"
+      <PaneStatusBody loading={posts.loading && !list.length} error={!list.length && posts.error ? postsFailure : null} errorTitle={!list.length && posts.error ? postsFailure : undefined} subject="top posts"
         empty={!posts.loading && !list.length} emptyTitle="No top posts for this day.">
         <Box flexDirection="column" gap={1} width={lineWidth}>
           {list.map((post) => <PostBlock key={post.id} post={post} width={lineWidth} />)}
@@ -109,10 +115,12 @@ export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "
     return () => clearTimeout(timer);
   }, [pending, resource.updatedAt, resource.reload]);
   useAutoRefresh(resource.updatedAt, resource.load);
-  useShortcut((event) => { if (focused && isPlainKey(event, "r")) { event.preventDefault(); void resource.reload(); } });
+  const sentence = unavailableText("Social mentions");
+  const blocked = isCloudSessionRequired(resource.error);
+  usePaneRefreshKey(() => { void resource.reload(); }, { focused });
   usePaneNoticeFooter({ registrationId: "social-mentions:notices", focused,
-    notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
-  usePaneStatusLinkFooter({ registrationId: "social-mentions", focused, loading: resource.loading || pending, error: resource.error,
+    notices: [...(data?.warnings ?? []), ...(data && ((resource.error && !blocked) || resource.data?.refreshError) ? [sentence] : [])] });
+  usePaneStatusLinkFooter({ registrationId: "social-mentions", focused, loading: resource.loading || pending, error: !data && resource.error && !blocked ? sentence : null,
     url: selected?.topPost?.url ?? (symbol ? `https://x.com/search?q=%24${symbol}` : null), showOpenHint: true,
     info: data ? [
       ...(updatedAgo ? [{ id: "updated", parts: [{ text: updatedAgo, tone: "muted" as const }] }] : []),
@@ -124,14 +132,14 @@ export function SocialMentionsPane({ width, height, focused }: Pick<PaneProps, "
   if (!symbol) return <EmptyState title="This ticker cannot be searched as a cashtag." message="Use a symbol of up to six letters and digits, starting with a letter." />;
   const latest = summary?.latest ?? null;
   return <Box flexDirection="column" width={width} height={height}>
-    <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} subject="social mentions"
+    <PaneStatusBody loading={resource.loading && !data} error={!data && resource.error && !blocked ? sentence : null} subject="Social mentions"
       empty={!resource.loading && !resource.error && !!data && !data.x.days.length && !pending} emptyTitle="No mention history yet.">
       {data ? <DataTableStackView<SocialDayRow, SocialColumn>
         focused={focused} rootWidth={width} rootHeight={height} emptyStateTitle="Counting mentions." columns={SOCIAL_COLUMNS} items={rows} freezeFirstColumn
         getItemKey={rowKey} renderCell={renderCell} resetScrollKey={identity}
         selection={{ kind: "index", selectedIndex: rows.length ? selectedIndex : -1, onChange: (index) => setSelectedId(rows[index] ? rowKey(rows[index]!) : null) }}
         onActivate={(row) => setOpenId(rowKey(row))} detailOpen={!!openRow} onBack={() => setOpenId(null)}
-        detailTitle={openRow?.day} detailContent={openRow ? <DayDetail symbol={symbol} row={openRow} recent={data.topPosts} width={width} height={Math.max(3, height - 2)} /> : null}
+        detailTitle={openRow?.day} detailContent={openRow ? <DayDetail symbol={symbol} row={openRow} recent={data.topPosts} width={width} height={Math.max(3, height - 2)} focused={focused} /> : null}
         sortColumnId={sort.column} sortDirection={sort.direction}
         onHeaderClick={(column) => setSort((current) => ({ column: column as SocialSort["column"], direction: current.column === column && current.direction === "desc" ? "asc" : "desc" }))}
         rootBefore={<Box flexDirection="column" flexShrink={0}>

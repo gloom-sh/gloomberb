@@ -10,6 +10,7 @@ import {
   unavailableText,
   useChartTableSelection,
   usePaneFooter,
+  usePaneNoticeFooter,
   type DataTableCell,
 } from "../../../components";
 import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
@@ -46,8 +47,8 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
 
   const skipNonUs = isKnownNonUsEquityTicker(ticker);
   const request = useCallback(() => loadShortInterestWithFloat(symbol!), [symbol]);
-  const resource = useAsyncResource(symbol && !skipNonUs ? request : null, { clearOnError: true });
-  const { error, updatedAt, reload: refresh } = resource;
+  const resource = useAsyncResource(symbol && !skipNonUs ? request : null);
+  const { updatedAt, reload: refresh } = resource;
   const records = resource.data?.records ?? EMPTY_RECORDS;
   const latestSettlements = resource.data?.source === "gloom" && records.length > 0;
   const cloudSessionRequired = latestSettlements && resource.data?.cloudSessionRequired === true;
@@ -102,9 +103,15 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
     }
   }, []);
 
+  const loadSentence = unavailableText("Short interest");
+  usePaneNoticeFooter({
+    registrationId: "short-interest:notices",
+    focused,
+    notices: records.length > 0 && status === "error" ? [loadSentence] : [],
+  });
   usePaneFooter("short-interest", () => ({
     info: [
-      ...loadingErrorFooterInfo(status === "loading", status === "error" ? error?.slice(0, 60) : null),
+      ...loadingErrorFooterInfo(status === "loading", null),
       ...(latestSettlements ? [{
         id: "source",
         parts: [{
@@ -113,7 +120,7 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
         }],
       }] : []),
     ],
-  }), [cloudSessionRequired, error, status, latestSettlements]);
+  }), [cloudSessionRequired, status, latestSettlements]);
 
   if (!ticker || !symbol) {
     return <EmptyState title="No ticker selected." message="Select a ticker to view short interest." />;
@@ -123,10 +130,9 @@ function ShortInterestView({ width, height, focused }: { width: number; height: 
   return (
     <PaneStatusBody
       loading={noRecords && (status === "idle" || status === "loading")}
-      error={noRecords && status === "error" ? error : null}
+      error={noRecords && status === "error" ? loadSentence : null}
       empty={noRecords && status === "loaded"}
-      subject="short interest"
-      errorTitle={unavailableText("Short interest")}
+      subject="Short interest"
       emptyTitle={skipNonUs ? "US equities only" : "No short interest data"}
       emptyMessage={skipNonUs ? "Short interest data is available for US equities." : `No short interest found for ${symbol}.`}
     >

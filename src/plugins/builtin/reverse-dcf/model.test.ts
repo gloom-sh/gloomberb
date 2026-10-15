@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { FinancialStatement, TickerFinancials } from "../../../types/financials";
+import { unavailableText } from "../../../components/ui/status";
 import { dcfValue, projectReverseDcf, solveImpliedGrowth } from "./model";
 
 const financials = (fundamentals: TickerFinancials["fundamentals"], annual: Partial<FinancialStatement>[] = []): TickerFinancials =>
@@ -34,5 +35,9 @@ describe("reverse DCF", () => {
     expect(projectReverseDcf(financials({ ...fundamentals, financialCurrency: "TWD" }), { symbol: "X", discountRate: 0.09 }).error)
       .toBe("Cash flows are in TWD and the market value in USD.");
     expect(projectReverseDcf(financials({ ...fundamentals, freeCashFlow: -1 }), { symbol: "X", discountRate: 0.09 }).implied).toBeNull();
+    const { enterpriseValue: _enterpriseValue, ...noValue } = fundamentals;
+    expect(projectReverseDcf(financials(noValue), { symbol: "X", discountRate: 0.09 }).error).toBe(unavailableText("Enterprise value"));
+    const { freeCashFlow: _freeCashFlow, ...noCash } = fundamentals;
+    expect(projectReverseDcf(financials(noCash), { symbol: "X", discountRate: 0.09 }).error).toBe(unavailableText("Free cash flow"));
   });
 });

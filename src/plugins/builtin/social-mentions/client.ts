@@ -1,5 +1,6 @@
 import { apiClient } from "../../../api-client";
-import { ApiRequestError } from "../../../api-client/errors";
+import { isAccessDenied } from "../../../api-client/errors";
+import { unavailableText } from "../../../components/ui/status";
 import type { SocialMentionDayPosts, SocialMentionPost, SocialMentionsPayload, SocialMentionsRange } from "../../../api-client/social-mentions";
 import { createPluginCache } from "../../../data/plugin-cache";
 
@@ -55,8 +56,8 @@ export async function fetchSocialMentions(symbol: string, range: SocialMentionsR
   client: Pick<typeof apiClient, "getCloudSocialMentions"> = apiClient): Promise<SocialMentionsPayload> {
   try { return validateSocialMentions(await client.getCloudSocialMentions(symbol, range), symbol, range); }
   catch (error) {
-    if (error instanceof ApiRequestError && error.status === 404) throw new Error("Social mentions are not available yet");
-    throw error;
+    if (isAccessDenied(error)) throw error;
+    throw new Error(unavailableText("Social mentions"));
   }
 }
 export interface SocialMentionsResource { payload: SocialMentionsPayload; stale: boolean; refreshError: string | null }
@@ -69,8 +70,9 @@ export function cachedSocialMentions(symbol: string, range: SocialMentionsRange)
 }
 export async function loadSocialMentions(symbol: string, range: SocialMentionsRange, force = false): Promise<SocialMentionsResource> {
   const result = await socialMentionsCache.load(cacheKey(symbol, range), () => fetchSocialMentions(symbol, range), { force });
-  if (result.error instanceof ApiRequestError && [401, 403].includes(result.error.status ?? 0)) throw result.error;
-  return { payload: validateSocialMentions(result.data, symbol, range), stale: result.stale, refreshError: result.refreshError ?? null };
+  if (isAccessDenied(result.error)) throw result.error;
+  if (!result.data) throw new Error(unavailableText("Social mentions"));
+  return { payload: validateSocialMentions(result.data, symbol, range), stale: result.stale, refreshError: result.refreshError ? unavailableText("Social mentions") : null };
 }
 
 export async function loadSocialMentionPosts(symbol: string, date: string): Promise<SocialMentionPost[]> {

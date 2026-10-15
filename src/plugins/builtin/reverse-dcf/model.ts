@@ -1,3 +1,4 @@
+import { unavailableText } from "../../../components/ui/status";
 import type { TickerFinancials } from "../../../types/financials";
 import { reportedEnterpriseValue } from "../../../utils/fundamentals";
 
@@ -75,8 +76,8 @@ export function projectReverseDcf(financials: TickerFinancials | null, options: 
   if (currency && valueCurrency && currency !== valueCurrency) {
     return { ...empty, error: `Cash flows are in ${currency} and the market value in ${valueCurrency}.` };
   }
-  if (enterpriseValue == null || !(enterpriseValue > 0)) return { ...empty, error: "Enterprise value unavailable." };
-  if (freeCashFlow == null) return { ...empty, error: "Free cash flow unavailable." };
+  if (enterpriseValue == null || !(enterpriseValue > 0)) return { ...empty, error: unavailableText("Enterprise value") };
+  if (freeCashFlow == null) return { ...empty, error: unavailableText("Free cash flow") };
   if (!(freeCashFlow > 0)) return { ...empty, error: "Free cash flow over the last twelve months is negative, so no growth rate prices it." };
   return {
     ...empty,

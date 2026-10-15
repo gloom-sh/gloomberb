@@ -4,8 +4,11 @@ import {
   confirmDialog,
   DataTableView,
   FieldLabel,
+  PaneStatusBody,
   StatGrid,
   TextField,
+  unavailableText,
+  usePaneNoticeFooter,
   usePaneTabs,
   type DataTableCell,
   type DataTableColumn,
@@ -231,6 +234,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     () => ACCOUNT_TAB_FIELD_ORDER[activeTab][0] ?? "username",
   );
   const [message, setMessage] = useState<{ tone: "info" | "success" | "error"; text: string } | null>(null);
+  const [profileMissing, setProfileMissing] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState<AccountBusy>(null);
 
   // A requested tab switches the open pane; one requested before it mounted wins over the restored tab once.
@@ -475,6 +480,8 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
   const loadProfile = useCallback(async () => {
     if (!apiClient.isSignedIn()) {
       setProfile(null);
+      setProfileMissing(false);
+      setNotice(null);
       setDraft(profileToDraft(null));
       return;
     }
@@ -484,12 +491,13 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       const nextProfile = await apiClient.getAccountProfile();
       setProfile(nextProfile);
       setDraft(profileToDraft(nextProfile));
+      setProfileMissing(false);
+      setNotice(null);
       setMessage(null);
-    } catch (error) {
-      setMessage({
-        tone: "error",
-        text: error instanceof Error ? error.message : t("Failed to load account profile."),
-      });
+    } catch {
+      setMessage(null);
+      if (profileRef.current) setNotice(unavailableText("Account profile"));
+      else setProfileMissing(true);
     }
   }, []);
 
@@ -574,10 +582,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
               await apiClient.changePassword(currentPassword, newPassword);
               setMessage({ tone: "success", text: t("Password changed.") });
             } catch (error) {
-              setMessage({
-                tone: "error",
-                text: error instanceof Error ? error.message : t("Failed to change password."),
-              });
+              setMessage(null);
               throw error;
             } finally {
               setBusy(null);
@@ -620,6 +625,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
     const current = draftRef.current;
     const bio = bioRef.current?.editBuffer.getText() ?? current.bio;
     if (!current.username.trim() || !current.name.trim()) {
+      setNotice(null);
       setMessage({ tone: "error", text: t("Username and full name are required.") });
       return;
     }
@@ -646,12 +652,11 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       setProfile(nextProfile);
       setDraft(profileToDraft(nextProfile));
       await chatController.refreshSession().catch(() => {});
+      setNotice(null);
       setMessage({ tone: "success", text: t("Account profile saved.") });
-    } catch (error) {
-      setMessage({
-        tone: "error",
-        text: error instanceof Error ? error.message : t("Failed to save account profile."),
-      });
+    } catch {
+      setMessage(null);
+      setNotice(unavailableText("Account profile"));
     } finally {
       setBusy(null);
     }
@@ -674,12 +679,11 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
         positionAlertsEnabled: nextProfile.positionAlertsEnabled,
       }));
       setProfile(nextProfile);
+      setNotice(null);
       setMessage({ tone: "success", text: t("Email alerts are off.") });
-    } catch (error) {
-      setMessage({
-        tone: "error",
-        text: error instanceof Error ? error.message : t("Failed to update alert settings."),
-      });
+    } catch {
+      setMessage(null);
+      setNotice(unavailableText("Email alerts"));
     } finally {
       setBusy(null);
     }
@@ -730,17 +734,21 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       setDraft(profileToDraft(null));
       setHasSession(false);
       await chatController.refreshSession().catch(() => {});
+      setNotice(null);
       setMessage({ tone: "success", text: t("Account deleted.") });
-    } catch (error) {
-      setMessage({
-        tone: "error",
-        text: error instanceof Error ? error.message : t("Failed to delete account."),
-      });
+    } catch {
+      setMessage(null);
+      setNotice(unavailableText("Account"));
     } finally {
       setBusy(null);
     }
   }, [busy, dialog]);
 
+  usePaneNoticeFooter({
+    registrationId: "account-management:notices",
+    focused,
+    notices: notice ? [notice] : [],
+  });
   useAccountManagementFooter({
     busy,
     // The Calendar and Agents tabs save nothing and show their own status.
@@ -797,6 +805,9 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       <ScrollBox ref={scrollRef} height={Math.max(3, bodyHeight - tabRows)} scrollY focusable={false}>
         <Box flexDirection="column" width={contentWidth} gap={1}>
           {activeTab === "profile" ? (
+            profileMissing && !profile ? (
+              <PaneStatusBody subject="Account profile" error={unavailableText("Account profile")} />
+            ) : (
             <>
               <FieldRow twoColumns={twoColumns}>
                 <CheckboxRow
@@ -927,6 +938,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
                 <Button label={busy === "profile" ? t("Saving...") : t("Save Profile")} variant="primary" onPress={() => { void saveProfile(); }} disabled={!!busy} />
               </Box>
             </>
+            )
           ) : null}
 
           {activeTab === "emails" ? (
@@ -978,7 +990,7 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
           ) : null}
 
           {activeTab === "calendar" ? (
-            <CalendarAccountTab width={contentWidth} sessionMarker={sessionMarker} />
+            <CalendarAccountTab width={contentWidth} sessionMarker={sessionMarker} focused={focused} />
           ) : null}
 
           {activeTab === "pro" ? (

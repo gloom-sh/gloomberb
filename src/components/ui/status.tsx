@@ -251,7 +251,9 @@ export function PaneStatusBody({
         <EmptyStateBody
           status={status}
           title={status === "error" ? errorTitle ?? (subject ? unavailableText(subject) : error!) : emptyTitle ?? t("Nothing to show yet.")}
-          message={status === "error" ? (errorTitle || subject ? error! : undefined) : emptyMessage}
+          message={status === "error"
+            ? ((errorTitle || subject) && error && error !== (errorTitle ?? unavailableText(subject!)) ? error : undefined)
+            : emptyMessage}
           actions={actions}
           retry={retry}
           feedback={feedback}

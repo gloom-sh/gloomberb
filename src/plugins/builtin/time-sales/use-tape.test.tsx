@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { unavailableText } from "../../../components/ui/status";
 import { act, useState } from "react";
 import { createOpenTuiTestHarness } from "../../../renderers/opentui/test-utils";
 import { Text } from "../../../ui";
@@ -107,7 +108,8 @@ test("failed manual refresh keeps the dated tape while a changed account clears 
   expect(latest!.loading).toBe(true);
   await settle(() => harness.requests[1]!.reject(new Error("Refresh unavailable")));
   expect(latest!.data?.generatedAt).toBe(initial.generatedAt);
-  expect(latest!.error).toBe("Refresh unavailable");
+  expect(latest!.error).toBe(unavailableText("Tape"));
+  expect(latest!.error).not.toContain("Refresh unavailable");
   expect(latest!.loading).toBe(false);
   await settle(changeSession);
   expect(latest!.data).toBeNull();

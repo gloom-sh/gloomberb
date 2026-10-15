@@ -4,6 +4,7 @@ import { act, useReducer } from "react";
 import { setCloudApiFetchTransport, type CloudWorldVenueMapPayload } from "../../../api-client";
 import { resetGeoCatalogCache } from "../../../api-client/geo";
 import { createDomUiHost } from "../../../renderers/dom/dom-ui-host";
+import { WebDialogHostProvider } from "../../../renderers/dom/dialog-host";
 import { WebInputHostProvider } from "../../../renderers/dom/input-host";
 import { createDomTestHarness } from "../../../renderers/dom/test-utils";
 import { appReducer, createInitialState } from "../../../state/app/context";
@@ -50,9 +51,11 @@ function Pane({ settings }: { settings: Record<string, unknown> }) {
   return (
     <UiHostProvider ui={createDomUiHost("linux")} renderer={noopRendererHost}>
       <WebInputHostProvider>
-        <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="market-overview" runtime={createTestPluginRuntime()} width={130} height={32} footerKeys>
-          {(body) => <WorldVenueMapPane paneId={PANE_ID} paneType="world-venue-map" width={body.width} height={body.height} focused />}
-        </TestPaneFrame>
+        <WebDialogHostProvider>
+          <TestPaneFrame state={state} dispatch={dispatch} paneId={PANE_ID} pluginId="market-overview" runtime={createTestPluginRuntime()} width={130} height={32} footerKeys>
+            {(body) => <WorldVenueMapPane paneId={PANE_ID} paneType="world-venue-map" width={body.width} height={body.height} focused />}
+          </TestPaneFrame>
+        </WebDialogHostProvider>
       </WebInputHostProvider>
     </UiHostProvider>
   );

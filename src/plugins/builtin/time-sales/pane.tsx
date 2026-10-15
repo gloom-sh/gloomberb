@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from "react";
 import { Box } from "../../../ui";
 import { usePaneSettingValue, useShortcut } from "../../../public/react";
 import { DataTableStackView, KeyValueRow, PaneStatusBody, StatGrid, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, usePaneTicker, type DataTableColumn } from "../../../components";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import type { TapeQuote, TapeSnapshot, TapeTrade } from "../../../api-client/tape";
@@ -77,14 +78,14 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
     data?.quotes.flatMap((quote) => [quote.bid, quote.ask]) ?? []))?.digits ?? 2, [data, symbol]);
   const freeze = () => { setPaused(frozen || !resource.data ? null : { data: resource.data, epoch: resource.epoch }); setDetail(null); };
   const reload = () => { setPaused(null); setDetail(null); setRefresh((value) => value + 1); };
+  usePaneRefreshKey(reload, { focused });
   useShortcut((event) => {
     if (!focused || event.targetEditable || event.ctrl || event.meta) return;
     if (event.name === "space") { event.preventDefault(); freeze(); }
-    if (event.name === "r") { event.preventDefault(); reload(); }
   });
   usePaneFooter("time-sales:actions", () => ({ hints: [{ id: "pause", key: "space", label: frozen ? "resume" : "pause", onPress: freeze }] }), [frozen, resource.data, resource.epoch]);
-  usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : [])] });
-  usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: resource.error,
+  usePaneNoticeFooter({ registrationId: "time-sales:notices", focused, notices: [...(data?.gaps ?? []), ...(resource.transport ? [resource.transport] : []), ...(data && resource.error ? [resource.error] : [])] });
+  usePaneStatusFooter({ registrationId: "time-sales:status", loading: resource.loading, error: data ? null : resource.error,
     info: data ? [{ id: "feed", parts: [{ text: `${data.feed === "sip" ? "real-time" : "15m delayed"} · ${tapeStampNewYork(data.asOf)}`, tone: "muted" }] },
       ...(frozen ? [{ id: "paused", parts: [{ text: "paused", tone: "warning" as const }] }] : []),
       ...(!data.connected || resource.snapshotOnly ? [{ id: "snapshot", parts: [{ text: "snapshot", tone: "warning" as const }] }] : [])] : [] });
@@ -93,7 +94,7 @@ function TimeSalesView({ width, height, focused, symbol, exchange }: PaneProps &
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="time-sales-signin" action="view time and sales" needsVerification={session.needsVerification} />;
   return <Box width={width} height={height} flexDirection="column">
     {tabStrip}
-    <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} empty={!!data && !rows.length} subject={tab === "quotes" ? "NBBO observations" : "trade observations"}>
+    <PaneStatusBody loading={resource.loading && !data} error={!data ? resource.error : null} errorTitle={!data && resource.error && !isCloudSessionRequired(resource.error) ? resource.error : undefined} empty={!!data && !rows.length} subject={tab === "quotes" ? "NBBO observations" : "trade observations"}>
       {data && stats ? <DataTableStackView<TapeRow> columns={tab === "quotes" ? QUOTES : TRADES} items={rows}
         focused={focused} rootWidth={width} rootHeight={Math.max(3, height - tabRows)}
         selection={{ kind: "id", selectedId: selected, getId: (row) => row.id, onChange: setSelected }}

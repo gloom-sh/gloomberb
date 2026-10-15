@@ -11,7 +11,7 @@ import { daysToExpiryFrom, interpolateTotalVariance, logForwardMoneyness } from 
 import type { YieldPoint } from "../yield-curve/treasury-data";
 import { isFiniteNumber } from "../../../utils/guards";
 import { abortable, abortError } from "../../../utils/async-deadline";
-import { errorMessage } from "../../../utils/errors";
+import { unavailableText } from "../../../components/ui/status";
 
 export interface CalculatorSurfaceRequest {
   symbol: string;
@@ -79,9 +79,10 @@ export function projectCalculatorSurfaceVol(
   request: Pick<CalculatorSurfaceRequest, "symbol" | "strike" | "daysToExpiry">,
 ): CalculatorSurfaceVol {
   // Only the brackets price the option: other loaded expiries' caveats do not apply to it.
+  const failureText = (message: string) => message.startsWith("Treasury:") ? "Treasury rate unavailable" : message;
   const failures = (expirations: readonly number[]) => snapshot.failures
     .filter((failure) => failure.expiration == null || expirations.includes(failure.expiration))
-    .map((failure) => `${failure.expiration == null ? "Surface" : expiryLabel(failure.expiration)}: ${failure.message}`);
+    .map((failure) => `${failure.expiration == null ? "Surface" : expiryLabel(failure.expiration)}: ${failureText(failure.message)}`);
   if (snapshot.symbol !== parsePublicTickerKey(request.symbol).symbol || !positive(snapshot.spot)) {
     return empty("Surface snapshot does not match the requested underlying mark", failures([]));
   }
@@ -91,11 +92,15 @@ export function projectCalculatorSurfaceVol(
   const selected = brackets.map((expiration) => snapshot.expiries.find((expiry) => expiry.expiration === expiration));
   const slices = selected.filter((expiry): expiry is SurfaceExpiry => expiry != null);
   const warnings = [...new Set([...slices.flatMap((expiry) => expiry.warnings), ...surfaceCalendarWarnings(slices), ...failures(brackets)])];
+  const treasuryFailed = snapshot.failures.some((failure) =>
+    (failure.expiration == null || brackets.includes(failure.expiration)) && failure.message.startsWith("Treasury:"));
   for (let index = 0; index < selected.length; index += 1) {
     const expiry = selected[index];
     if (!expiry || expiry.stale || expiry.error || expiry.state !== "ready" || !expiry.fit
       || !positive(expiry.forward) || !isFiniteNumber(expiry.rate) || !isFiniteNumber(expiry.dividendYield)) {
-      return empty(`${expiryLabel(brackets[index]!)} surface is ${expiry?.stale ? "stale" : "unavailable"}; both tenor brackets are required`, warnings);
+      return empty(treasuryFailed
+        ? unavailableText("Surface IV")
+        : `${expiryLabel(brackets[index]!)} surface is ${expiry?.stale ? "stale" : "unavailable"}; both tenor brackets are required`, warnings);
     }
   }
   const left = selected[0]!, right = selected.at(-1)!;
@@ -164,13 +169,13 @@ export async function loadCalculatorSurfaceVol(
     if (request.signal?.aborted) throw abortError(CANCELLED);
     const quote = resolveEntryValue(quoteEntry);
     if (!quote || quote.stale || quoteEntry.error || (quoteEntry.staleAt != null && quoteEntry.staleAt <= now)
-      || !positive(quote.price)) return empty(quoteEntry.error?.message ?? "A current underlying quote is required for the surface");
+      || !positive(quote.price)) return empty(quoteEntry.error ? unavailableText("Surface IV") : "A current underlying quote is required for the surface");
     const quoteTarget = parsePublicTickerKey(quote.symbol);
     if (quoteTarget.symbol !== target.symbol || (quoteTarget.exchange && exchange
       && canonicalExchange(quoteTarget.exchange) !== canonicalExchange(exchange))) return empty("Underlying quote identity does not match the requested ticker");
     const chain = resolveEntryValue(initial);
     if (!chain || initial.error || (initial.staleAt != null && initial.staleAt <= now)) {
-      return empty(initial.error?.message ?? "Current option expiry catalogue unavailable");
+      return empty(initial.error ? unavailableText("Surface IV") : "Current option expiry catalogue unavailable");
     }
     const requiredExpiries = bracketingExpiries(chain.expirationDates, request.daysToExpiry / 365, now);
     if (!requiredExpiries.length) return empty("Requested tenor is outside the listed surface range; extrapolation is unavailable");
@@ -189,6 +194,11 @@ export async function loadCalculatorSurfaceVol(
     return projectCalculatorSurfaceVol(snapshot, { ...request, symbol: target.symbol });
   } catch (error) {
     if (request.signal?.aborted || (error instanceof Error && error.name === "AbortError")) throw abortError(CANCELLED);
-    return empty(errorMessage(error));
+    const message = error instanceof Error ? error.message : "";
+    const kept = message.startsWith("Options chain identity")
+      || message.startsWith("Surface quotes contain")
+      || message.startsWith("Options source returned")
+      || message.startsWith("Surface quote currency");
+    return empty(kept ? message : unavailableText("Surface IV"));
   }
 }

@@ -32,6 +32,7 @@ test("QR on a listing abroad says where the finest bars are instead of loading a
   // A US listing loads its tape and keeps the source's own gaps.
   const us = await report("AAPL");
   expect(us.asked).toEqual(["AAPL"]);
-  expect(us.result.errors).toEqual(["Observed window only"]);
+  expect(us.result.errors ?? []).toEqual([]);
+  expect(us.result.notes).toEqual(["Observed window only"]);
   expect(us.result.sections.map(({ title }) => title)).toEqual(["Observed window", "Regular session", "Trades", "NBBO"]);
 });

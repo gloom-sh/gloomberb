@@ -1,3 +1,4 @@
+import { unavailableText } from "../../../components/ui/status";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { DataTableColumn } from "../../../components";
 import { colors } from "../../../theme/colors";
@@ -210,11 +211,13 @@ export interface EconCalendarLoadResult extends EconCalendarCacheEntry {
   refreshError?: string;
 }
 
-export function loadCalendar(
+export async function loadCalendar(
   force = false,
   loader: () => Promise<EconEvent[]> = fetchEconCalendar,
 ): Promise<EconCalendarLoadResult> {
-  return cache.load(CACHE_KEY, loader, { force });
+  const result = await cache.load(CACHE_KEY, loader, { force });
+  if (!result.refreshError) return result;
+  return { ...result, refreshError: unavailableText("Economic calendar") };
 }
 
 function parseNumeric(value: string | null): number | null {

@@ -1,7 +1,9 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { TapeSnapshot } from "../../../api-client/tape";
+import { unavailableText } from "../../../components/ui/status";
 import { fetchTape, validateTape } from "./client";
+import { isCloudSessionRequired } from "../shared/research-cloud-session";
 import { useAppVisible } from "../../../state/app/activity";
 
 export type TapeClient = Pick<typeof apiClient, "subscribeTape" | "getCloudTape"> & { snapshotOnly?: boolean };
@@ -34,14 +36,14 @@ export function useTape(symbol: string, exchange: string, sessionKey: unknown, r
         if (bootstrapEpoch === epoch.current && !controller.signal.aborted) accept(data);
       }, (error) => {
         if (!active || controller.signal.aborted || bootstrapEpoch !== epoch.current) return;
-        setState((current) => ({ ...current, loading: false, error: error instanceof Error ? error.message : "Tape unavailable" }));
+        setState((current) => ({ ...current, loading: false, error: error instanceof Error && isCloudSessionRequired(error.message) ? error.message : unavailableText("Tape") }));
       });
     };
     const unsubscribe = client.subscribeTape(symbol, exchange, (event) => {
       if (!active) return;
       if (event.type === "data") {
         try { accept(validateTape(event.payload, symbol, exchange)); }
-        catch (error) { setState((current) => ({ ...current, loading: false, error: error instanceof Error ? error.message : "Tape snapshot unavailable" })); }
+        catch (error) { setState((current) => ({ ...current, loading: false, error: error instanceof Error && isCloudSessionRequired(error.message) ? error.message : unavailableText("Tape snapshot") })); }
       } else if (event.type === "reset") {
         // Invalidate both the bootstrap and any frozen copy before the new session arrives.
         abort.abort();

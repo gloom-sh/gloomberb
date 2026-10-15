@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
+import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, unavailableText, usePaneFooter, usePaneNoticeFooter,
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { instrumentFromTicker } from "../../../market-data/request-types";
@@ -62,8 +62,10 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
   const model = useMemo(() => inputs.data ? projectReverseDcf(inputs.data.financials, { symbol: symbol ?? "", discountRate }) : null,
     [inputs.data, discountRate, symbol]);
 
+  const failedLoad = unavailableText("Reverse DCF");
+  const showing = !!model && !model.error;
   usePaneNoticeFooter({ registrationId: "reverse-dcf-notices", focused,
-    notices: [...new Set([identityError, inputs.error, inputs.data?.error].filter((value): value is string => !!value))] });
+    notices: showing && (inputs.error || inputs.data?.error) ? [failedLoad] : [] });
   usePaneFooter("reverse-dcf", () => ({ info: [
     ...(inputs.loading ? [{ id: "loading", parts: [{ text: "loading fundamentals", tone: "muted" as const }] }] : []),
     ...(inputs.data?.stale ? [{ id: "stale", parts: [{ text: "stale fundamentals", tone: "warning" as const }] }] : []),
@@ -91,8 +93,8 @@ export function ReverseDcfPane({ width, height, focused }: PaneProps) {
 
   return <Box width={width} height={height} flexDirection="column" overflow="hidden">
     <QueryBar width={width} filters={[{ id: "discount", label: "Discount", value: String(discount), options: DISCOUNT_OPTIONS, onChange: setDiscount }]} />
-    {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="reverse DCF" loading={inputs.loading && !model}
-      error={!model ? inputs.error ?? identityError ?? null : model.error} empty={false}>
+    {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="Reverse DCF" loading={inputs.loading && !model}
+      error={!model ? (inputs.error ? failedLoad : identityError ?? null) : model.error} empty={false}>
       {model && !model.error ? <>
         <StatGrid items={stats} width={width} />
         <DataTableView<Row> focused={focused} columns={COLUMNS} items={model.sensitivity} rootWidth={width} rootHeight={contentHeight}

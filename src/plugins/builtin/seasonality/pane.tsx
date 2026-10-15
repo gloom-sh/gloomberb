@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import { CompositeChart, DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter,
+import { CompositeChart, DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, unavailableText, usePaneFooter,
   usePaneNoticeFooter, usePaneTabs, usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
 import { resolveChartPalette } from "../../../components/chart/core/palette";
 import { staticSeries } from "../../../components/chart/static/series";
@@ -175,8 +175,10 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
   const series = useMemo(() => model ? overlaySeries(model, colors) : [], [model, colors]);
   const runningMonth = model?.years[0]?.partial && model.asOf ? model.asOf.getUTCMonth() : null;
 
+  const historyFailure = unavailableText(cadence === "daily" ? "Daily price history" : "Monthly price history");
+  const showing = !!model || !!weekdayModel;
   usePaneNoticeFooter({ registrationId: "seasonality-notices", focused,
-    notices: [...new Set([identityError, history.error, history.data?.error].filter((value): value is string => !!value))] });
+    notices: showing && (history.error || history.data?.error) ? [historyFailure] : [] });
   const closes = model?.asOf ? `monthly closes to ${model.asOf.toISOString().slice(0, 7)}`
     : weekdayModel?.start ? `daily closes ${weekdayModel.start} to ${weekdayModel.asOf}` : null;
   usePaneFooter("seasonality", () => ({ info: [
@@ -197,7 +199,8 @@ export function SeasonalityPane({ width, height, focused }: PaneProps) {
     {strip}
     {queryRows ? <QueryBar width={width} filters={[{ id: "lookback", label: "Lookback", value: String(lookback), options: LOOKBACK_OPTIONS, onChange: setLookback }]} /> : null}
     {!symbol ? <EmptyState title="Select a ticker." /> : <PaneStatusBody subject="seasonality" loading={history.loading && !model && !weekdayModel}
-      error={!model && !weekdayModel ? history.error ?? identityError ?? null : null}
+      errorTitle={!showing && history.error ? historyFailure : undefined}
+      error={!showing ? (history.error ? historyFailure : identityError ?? null) : null}
       empty={model ? !model.years.length : !!weekdayModel && !weekdayModel.start}>
       {weekdayModel ? <>
         <StatGrid items={stats} width={width} />

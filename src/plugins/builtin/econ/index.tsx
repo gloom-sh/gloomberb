@@ -3,10 +3,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
   DataTableStackView,
+  PaneStatusBody,
   QueryBar,
+  unavailableText,
   usePaneFooter,
+  usePaneNoticeFooter,
   type DataTableCell,
-  type DataTableKeyEvent,
   type PaneFooterSegment,
 } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
@@ -46,7 +48,7 @@ import {
   type ImpactFilter,
 } from "./calendar-model";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
-import { handleRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { tableColumnWidth } from "../../../components/ui/table-layout";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
@@ -71,8 +73,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const events = calendar.data?.data ?? NO_EVENTS;
   const stale = calendar.data?.stale ?? false;
   const fetchedAt = calendar.data?.fetchedAt ?? null;
-  // A cache that could not be refreshed arrives as a result, not a failure.
-  const error = calendar.error ?? (loading ? null : calendar.data?.refreshError ?? null);
+  const failure = !loading && (calendar.error || calendar.data?.refreshError) ? unavailableText("Economic calendar") : null;
   // The selected row and the open event are remembered by event id, so a
   // reload or a shared layout comes back to the same release.
   const [selectedKey, setSelectedKey] = usePluginPaneState<string | null>("selectedKey", null);
@@ -192,9 +193,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     returnToPresent();
   }, [forcedResult, returnToPresent, setSelectedKey]);
 
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent) => (
-    handleRefreshKey(event, () => void calendar.reload(), { stopPropagation: true })
-  ), [calendar.reload]);
+  usePaneRefreshKey(() => { void calendar.reload(); }, { focused });
 
   const columns = useMemo<EconCalendarColumn[]>(() => {
     // The header names the zone, so the column is as wide as the header needs.
@@ -224,7 +223,7 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   }, [width]);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
-  const emptyStateHint = !loading && !error
+  const emptyStateHint = !loading && !failure
     ? [
         impactFilter !== "all" ? `impact: ${impactFilter}` : null,
         countryFilter !== "all" ? `country: ${countryFilter}` : null,
@@ -254,10 +253,14 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     label: "Listed through",
     getMetadata: () => ({ text: listedAfter, key: "listedThrough", value: listedThrough }),
   } : null);
+  usePaneNoticeFooter({
+    registrationId: "econ-calendar:notices",
+    focused,
+    notices: events.length > 0 && failure ? [failure] : [],
+  });
   usePaneStatusFooter({
     registrationId: "econ-calendar",
     loading,
-    error,
     info: calendarStatus,
   });
   // The filter keys step through the choices; Shift steps back. The pane menu
@@ -361,6 +364,15 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
     <Box flexGrow={1} />
   );
 
+  if (!detailEvent && events.length === 0 && failure) {
+    return (
+      <Box flexDirection="column" width={width} height={height}>
+        {filterControls}
+        <PaneStatusBody subject="Economic calendar" error={failure} />
+      </Box>
+    );
+  }
+
   return (
     <DataTableStackView<DisplayRow, EconCalendarColumn>
       focused={focused}
@@ -371,7 +383,6 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       rootWidth={width}
       rootHeight={Math.max(1, height - 1)}
       rootBefore={filterControls}
-      onRootKeyDown={handleRootKeyDown}
       selection={{
         kind: "index",
         selectedIndex: eventIdxToRowIdx.get(selectedIdx) ?? selectedIdx,
