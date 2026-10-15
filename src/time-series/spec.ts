@@ -58,6 +58,14 @@ const STUDIES = new Set<ChartStudyKind>([
   "correlation",
 ]);
 
+/**
+ * A chart of capability series alone (CHOKE's vessel transits) is a dataset:
+ * dated by its newest observation, not by a market's session.
+ */
+export function isDatasetChart(spec: Pick<ChartSpec, "series">): boolean {
+  return spec.series.length > 0 && spec.series.every(({ source }) => source.kind === "capability");
+}
+
 export function isOhlcSeriesStyle(style: SeriesStyle): boolean {
   return style === "candles" || style === "ohlc" || style === "hlc";
 }

@@ -278,6 +278,7 @@ export function WebTextField({
   accessibleLabel,
   value,
   placeholder,
+  maxLength,
   focused,
   disabled = false,
   width,
@@ -356,6 +357,7 @@ export function WebTextField({
           type={type}
           autoComplete={autoComplete}
           placeholder={placeholder}
+          {...(maxLength === undefined ? {} : { maxLength })}
           focused={focused}
           textColor={resolvedTextColor}
           focusedTextColor={resolvedTextColor}

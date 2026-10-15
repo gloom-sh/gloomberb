@@ -44,6 +44,8 @@ export interface PluginHostActions {
   /** `options.fieldKey` starts the cursor on that setting, as a setting picked in the command bar does. */
   openPaneSettings(paneId?: string, options?: { fieldKey?: string }): void;
   sharePane(paneId?: string): void;
+  /** Report a Bug for a pane (the focused one when omitted): its picture and a line, posted to #bugs. Not on the plugin API. */
+  reportPaneBug(paneId?: string): void;
   /**
    * A picture of a pane (the focused one when omitted) as it looks now, its
    * footer reading as a dated status line. Not on the plugin API.
@@ -114,6 +116,7 @@ export function createDefaultHostActions(current?: () => Pick<PluginHostActions,
     openBuiltInWorkflow: () => {},
     openPaneSettings: () => {},
     sharePane: () => {},
+    reportPaneBug: () => {},
     capturePaneImage: async () => { throw new Error("Pictures of panes are not available here."); },
     promptDialog: async () => undefined,
     openWindowMode: () => {},

@@ -21,7 +21,7 @@ Dense layers show counts until you zoom in. On the desktop and the web the map z
 
 ## Series in G
 
-`GEO:<name>` charts a map series beside anything else, for example `G XOM, GEO:HORMUZ`. `CHOKE` opens the main chokepoints' daily transits, `CHOKE SUEZ` one of them. Transits are published some days after the ships pass, so a chart of map series alone ends at its newest observation rather than today, and the legend leads with that date (`Oct 4`); a series whose last value is older carries its own date. The chart editor's series search finds map series by name. `CORR FRO, STNG, GEO:HORMUZ` correlates a map series with tickers; see [research data](research-data.md#charts-comparisons-and-correlations) for how a count is paired with returns.
+`GEO:<name>` charts a map series beside anything else, for example `G XOM, GEO:HORMUZ`. `CHOKE` opens the main chokepoints' daily transits, `CHOKE SUEZ` one of them. Transits are published some days after the ships pass, so a chart of map series alone ends at its newest observation rather than today, and the legend leads with that date (`Oct 4`); a series whose last value is older carries its own date. Panned or zoomed back, the chart says how far its data goes in the footer (`newest Oct 11`). The chart editor's series search finds map series by name. `CORR FRO, STNG, GEO:HORMUZ` correlates a map series with tickers; see [research data](research-data.md#charts-comparisons-and-correlations) for how a count is paired with returns.
 
 ## From the shell
 

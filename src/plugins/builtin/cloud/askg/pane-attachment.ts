@@ -1,3 +1,4 @@
+import { paneFunctionLabel } from "../../../../ask-gloom/pane-context";
 import type { AskGloomPaneAttachment } from "../../../../ask-gloom/pane-request";
 import type { ASKGSessionContext, JsonValue } from "./protocol";
 
@@ -38,9 +39,7 @@ function sharesPaneContents(attached: ASKGAttachedPane): boolean {
 
 /** What the chip says: the function and what it shows, such as `DES AAPL`. */
 export function attachedPaneLabel(pane: AskGloomPaneAttachment): string {
-  const title = pane.title.trim() || pane.paneType;
-  if (!pane.code) return title;
-  return title.split(/\s+/)[0]?.toUpperCase() === pane.code ? title : `${pane.code} ${title}`;
+  return paneFunctionLabel(pane);
 }
 
 /** Drops whole lines from the end, then characters, until `fits` holds. */

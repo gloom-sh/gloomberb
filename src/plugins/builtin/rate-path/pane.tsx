@@ -60,7 +60,8 @@ function bpText(value: number | null): string { return value == null ? "--" : ra
 /** Days to a meeting, counted in UTC dates like the schedule. */
 function daysUntil(date: string, today = new Date().toISOString().slice(0, 10)): string {
   const days = Math.round((Date.parse(date) - Date.parse(today)) / DAY_MS);
-  return days <= 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
+  if (days < 0) return date;
+  return days === 0 ? "today" : days === 1 ? "tomorrow" : `in ${days} days`;
 }
 function meetingCell(row: RateMeeting, column: DataTableColumn, moves: ReadonlyMap<string, number | null>): DataTableCell {
   if (column.id === "date") return { text: row.date };

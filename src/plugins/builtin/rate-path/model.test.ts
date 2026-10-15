@@ -32,7 +32,7 @@ describe("rate-path integration boundary", () => {
     const curves = ratePathCurves(validateRatePath(data));
     // What the path is read against comes before the look-backs, so a narrow legend keeps it.
     expect(curves.map((entry) => [entry.id, entry.role, entry.label])).toEqual([
-      ["implied", "primary", "EFFR"], ["targetLower", "reference", "Target range"], ["targetUpper", "reference", "Target range"],
+      ["implied", "primary", "Implied meeting rate"], ["targetLower", "reference", "Target range"], ["targetUpper", "reference", "Target range"],
       ["sep", "marker", "SEP median"], ["1W", "ghost", "1W"],
     ]);
     expect(curves.find((entry) => entry.id === "sep")!.points).toEqual([{ id: "sep-2026", label: "SEP 2026", x: Date.parse("2026-12-31"), value: 4.1, asOf: "2026-09-16" }]);

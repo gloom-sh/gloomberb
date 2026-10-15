@@ -54,6 +54,27 @@ describe("broker manager rows", () => {
     });
   });
 
+  test("a missing currency stays blank, and an explicit code still sums", () => {
+    const config = {
+      ...createDefaultConfig("/tmp/gloomberb-broker-manager"),
+      brokerInstances: [createInstance()],
+    };
+    const summary = (accounts: Array<{ accountId: string; name: string; currency?: string; netLiquidation: number }>) =>
+      buildBrokerProfileRows(config, new Map([["demo", createAdapter()]]), { "demo-live": accounts })[0]?.accountSummary;
+    expect(summary([
+      { accountId: "A", name: "A", netLiquidation: 100 },
+      { accountId: "B", name: "B", netLiquidation: 50 },
+    ])).toBe("150.00");
+    expect(summary([
+      { accountId: "A", name: "A", currency: "EUR", netLiquidation: 100 },
+      { accountId: "B", name: "B", currency: "EUR", netLiquidation: 50 },
+    ])).toBe("€150.00");
+    expect(summary([
+      { accountId: "A", name: "A", netLiquidation: 100 },
+      { accountId: "B", name: "B", currency: "USD", netLiquidation: 50 },
+    ])).toBe("2 accts");
+  });
+
   test("uses generated portfolio sync time when the profile has no direct timestamp", () => {
     const config = {
       ...createDefaultConfig("/tmp/gloomberb-broker-manager"),

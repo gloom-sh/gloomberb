@@ -52,6 +52,8 @@ export interface TextFieldProps {
   labelWidth?: number;
   value?: string;
   placeholder?: string;
+  /** The most characters it takes; typing and pasting stop there. */
+  maxLength?: number;
   focused?: boolean;
   disabled?: boolean;
   width?: number;
@@ -126,6 +128,7 @@ function TextFieldControl({
   active,
   value,
   placeholder,
+  maxLength,
   focused,
   disabled = false,
   width,
@@ -172,6 +175,7 @@ function TextFieldControl({
         accessibleLabel={accessibleLabel}
         value={value}
         placeholder={placeholder}
+        maxLength={maxLength}
         focused={focused && !disabled}
         disabled={disabled}
         width={width}
@@ -237,6 +241,7 @@ function TextFieldControl({
           value={value}
           selectable={!isPassword}
           placeholder={isPassword ? "" : placeholder}
+          {...(maxLength === undefined ? {} : { maxLength })}
           focused={focused && !disabled}
           textColor={isPassword ? backgroundColor : textColor}
           placeholderColor={placeholderColor}

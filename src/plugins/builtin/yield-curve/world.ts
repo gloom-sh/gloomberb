@@ -1,6 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { CloudCurvePoint, CloudWorldCurves } from "../../../api-client/yield-curves";
 import { isCurveId, type CurveId } from "./curves";
+import type { CurveBasis } from "./forward";
 
 export interface WorldRow {
   id: CurveId;
@@ -17,6 +18,8 @@ export interface WorldRow {
   thirtyYearChange: number | null;
   /** 10Y minus 2Y. */
   twosTens: number | null;
+  /** The basis the publisher printed: par, zero, benchmark, or spread. */
+  basis: CurveBasis;
   twosTensChange: number | null;
   /** The whole latest curve, for the chart. */
   points: CloudCurvePoint[];
@@ -43,6 +46,7 @@ function worldRows(payload: CloudWorldCurves): WorldRow[] {
       twoYearChange: minus(now("2Y"), before("2Y")), tenYearChange: minus(now("10Y"), before("10Y")),
       thirtyYearChange: minus(now("30Y"), before("30Y")),
       twosTens, twosTensChange: minus(twosTens, minus(before("10Y"), before("2Y"))),
+      basis: entry.curve.basis,
       points: entry.points,
     }];
   });

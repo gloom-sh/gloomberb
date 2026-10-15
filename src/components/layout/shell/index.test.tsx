@@ -346,6 +346,36 @@ describe("Shell", () => {
     }
   });
 
+  test("the terminal's picture of a pane asks about a personal pane floating over it, and not about one beside it", async () => {
+    const config = createDefaultConfig("/tmp/gloomberb-shell-test");
+    // A chart docked, and the person's holdings in the other pane.
+    const registry = Object.assign(createShellPluginRegistry(), { getPanePluginId: () => "builtin", getBrokerPluginId: () => undefined });
+    Object.assign(registry.panes.get("portfolio-list")!, { personalData: () => null });
+    Object.assign(registry.panes.get(TICKER_RESEARCH_PANE_ID)!, { personalData: "holdings" });
+    const picture = async (layout: LayoutConfig, paneId: string) => {
+      await renderShell(createShellStateWithLayout(config, layout, paneId), { registry, width: 80, height: 16 });
+      // The terminal host's picture of the screen; what it asks about is decided beside it.
+      Object.assign(tui.setup().renderer, { capturePaneImage: async () => ({ png: new Uint8Array(), width: 1, height: 1 }) });
+      return (await registry.capturePaneImage(paneId)).personalData;
+    };
+
+    const floating = floatingOverDockLayout(config, [{ instanceId: "ticker-detail:float", x: 30, y: 4 }]);
+    expect(await picture(floating, "portfolio-list:main")).toBe("holdings");
+    expect(await picture(floating, "ticker-detail:float")).toBe("holdings");
+
+    const beside = floatingOverDockLayout(config, []);
+    beside.dockRoot = {
+      kind: "split",
+      axis: "horizontal",
+      ratio: 0.5,
+      first: { kind: "pane", instanceId: "portfolio-list:main" },
+      second: { kind: "pane", instanceId: "ticker-detail:main" },
+    };
+    beside.instances.push({ ...requireLayoutInstance(config, "ticker-detail:main") });
+    expect(await picture(beside, "portfolio-list:main")).toBeNull();
+    expect(await picture(beside, "ticker-detail:main")).toBe("holdings");
+  });
+
   test("shows a Pop Out action in the pane menu when a desktop bridge is available", async () => {
     const config = createDefaultConfig("/tmp/gloomberb-shell-test");
     await renderShell(createShellStateWithLayout(config, singleDockedPaneLayout(config)), {

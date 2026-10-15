@@ -27,6 +27,7 @@ import { parseChartSpec } from "./chart-spec";
 import { paneSchemas } from "./headless-schema";
 import { barHistoryFreshness, REPORTED_DATA } from "../shared/report-freshness";
 import { inferSeriesFrequency } from "../../../series/csv";
+import { isDatasetChart } from "../../../time-series/spec";
 
 export interface ChartPaneModel extends HeadlessSeriesResult {
   /** The renderer consumes the full model; generic reports project series and metadata. */
@@ -285,7 +286,7 @@ function seriesAttribution(series: readonly HeadlessSeries[]): Pick<HeadlessPane
 function chartFreshness(series: readonly HeadlessSeries[], spec: ChartSpec): HeadlessPaneFreshness {
   const order = ["1wk", "1mo"];
   const resolutions = series.map((entry) => (entry as HeadlessSeries & { historyResolution?: string }).historyResolution);
-  const dataset = spec.series.length > 0 && spec.series.every(({ source }) => source.kind === "capability");
+  const dataset = isDatasetChart(spec);
   if (!series.length || resolutions.some((resolution) => !resolution)) {
     return { ...REPORTED_DATA, basis: "reported and published data", ...(dataset ? { dataset } : {}), ...economicChartDates(series, spec), ...seriesAttribution(series) };
   }

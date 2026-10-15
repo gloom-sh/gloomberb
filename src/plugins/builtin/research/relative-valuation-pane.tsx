@@ -21,7 +21,7 @@ import { normalizeSymbol } from "../../../utils/exchanges";
 import { colors, priceColor } from "../../../theme/colors";
 import { extendedSessionStateLabel, type ExtendedSession } from "../../../market-data/market/status";
 import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
-import { formatCompact, formatCurrency, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
+import { formatCompact, formatLevelPercent, formatNumber, formatPercent, formatPercentRaw } from "../../../utils/format";
 import { parseDisplayDate } from "../../../utils/datetime-format";
 import { convertMarketCapitalization } from "../../../utils/market-capitalization";
 import { usePluginTickerActions } from "../../runtime";
@@ -29,7 +29,7 @@ import { handleRefreshKey, useClampSelectedIndex } from "../../../components/dat
 import { useAsyncResource } from "../../../react/async-resource";
 import { useBoundTicker as useSymbolBinding } from "../shared/ticker-request";
 import { useFxRatesMap } from "../../../market-data/hooks";
-import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
+import { RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE, formatRelativePrice, relativeValuationValues, withLiveQuote } from "./relative-valuation-model";
 
 type ExtendedColumnId = "preMarket" | "afterHours" | "overnight";
 type RelativeColumnId = "symbol" | "price" | "changePercent" | ExtendedColumnId | "marketCap" | "trailingPE" | "forwardPE" | "evSales" | "fcfYield" | "revenueGrowth" | "operatingMargin";
@@ -227,7 +227,7 @@ export function RelativeValuationPane({ focused, width, height }: PaneProps) {
       case "symbol":
         return { text: row.symbol, color: row.error || row.quoteStale || row.fundamentalsProvenance?.stale ? colors.warning : colors.textBright, attributes: TextAttributes.BOLD };
       case "price":
-        return { text: row.price != null ? formatCurrency(row.price, row.currency ?? "USD") : "-", color: colors.text };
+        return { text: formatRelativePrice(row.price, row.currency), color: colors.text };
       case "changePercent":
         return { text: row.changePercent != null ? formatPercentRaw(row.changePercent) : "-", color: priceColor(row.changePercent ?? 0) };
       case "preMarket":

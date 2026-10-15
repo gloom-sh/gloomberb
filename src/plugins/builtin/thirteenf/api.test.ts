@@ -83,13 +83,71 @@ test("a failed forced refresh retains the original retrieval date only for consu
   expect(warnings[0]).toContain(new Date(original.fetchedAt).toISOString());
   expect(warnings[0]).toContain("503");
   expect(store.getResource("forms13f-api", key, { sourceKey: "forms13f" })).toEqual(original);
-  await expect(searchThirteenFFunds("Berkshire", 1)).rejects.toThrow("503");
+  const callsAtReopen = calls;
+  expect(await searchThirteenFFunds("Berkshire", 1)).toEqual(expected);
+  for (let i = 0; i < 40 && calls === callsAtReopen; i++) await Promise.resolve();
+  expect(calls).toBe(callsAtReopen + 1);
+  for (let i = 0; i < 40; i++) await Promise.resolve();
   unavailable = false;
   const callsBeforeRecovery = calls;
   expect(await searchThirteenFFunds("Berkshire", 1)).toEqual(expected);
+  for (let i = 0; i < 40 && calls === callsBeforeRecovery; i++) await Promise.resolve();
   expect(calls).toBe(callsBeforeRecovery + 1);
+  for (let i = 0; i < 40; i++) await Promise.resolve();
   await searchThirteenFFunds("Berkshire", 1);
   expect(calls).toBe(callsBeforeRecovery + 1);
+});
+
+test("a second caller for a missing response awaits the download already in flight", async () => {
+  let calls = 0;
+  let release: ((response: Response) => void) | undefined;
+  setHttpFetchTransport(async () => {
+    calls += 1;
+    return new Promise<Response>((resolve) => { release = resolve; });
+  });
+  const first = searchThirteenFFunds("Berkshire", 1);
+  for (let i = 0; i < 30 && calls === 0; i++) await Promise.resolve();
+  expect(calls).toBe(1);
+  const second = searchThirteenFFunds("Berkshire", 1);
+  expect(calls).toBe(1);
+  release!(Response.json([{ cik: "1067983", name: "Berkshire Hathaway" }]));
+  const expected = [{ cik: "0001067983", name: "Berkshire Hathaway" }];
+  expect(await first).toEqual(expected);
+  expect(await second).toEqual(expected);
+  expect(calls).toBe(1);
+});
+
+test("returns a stale cached response before its refresh, and a second caller shares that refresh", async () => {
+  const store = new MemoryPluginPersistence();
+  attachThirteenFApiPersistence(store);
+  const key = "/funds?name=Berkshire&offset=0&limit=1";
+  store.seedResource("forms13f-api", key, [{ cik: "1067983", name: "Old name" }], {
+    sourceKey: "forms13f", schemaVersion: 1, stale: true,
+  });
+  let release: ((response: Response) => void) | undefined;
+  let calls = 0;
+  setHttpFetchTransport(async () => {
+    calls += 1;
+    return new Promise<Response>((resolve) => { release = resolve; });
+  });
+  const first = searchThirteenFFunds("Berkshire", 1);
+  const stale = await Promise.race([
+    first,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("stale cache waited for refresh")), 500)),
+  ]);
+  expect(stale).toEqual([{ cik: "0001067983", name: "Old name" }]);
+  for (let i = 0; i < 30 && calls === 0; i++) await Promise.resolve();
+  expect(calls).toBe(1);
+  expect(await searchThirteenFFunds("Berkshire", 1)).toEqual([{ cik: "0001067983", name: "Old name" }]);
+  expect(calls).toBe(1);
+  release!(Response.json([{ cik: "1067983", name: "Current name" }]));
+  for (let i = 0; i < 40; i++) {
+    const stored = store.getResource<Array<{ name: string }>>("forms13f-api", key, { sourceKey: "forms13f" });
+    if (stored && !stored.stale && stored.value[0]?.name === "Current name") break;
+    await Promise.resolve();
+  }
+  expect(await searchThirteenFFunds("Berkshire", 1)).toEqual([{ cik: "0001067983", name: "Current name" }]);
+  expect(calls).toBe(1);
 });
 
 test("stale but unexpired research refreshes, and a late request cannot overwrite newer cache", async () => {

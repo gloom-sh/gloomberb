@@ -44,6 +44,14 @@ export interface PersistedTranscript {
   messages: ChatMessage[];
 }
 
+/** Who the unread messages of one channel are from, by account id. */
+export interface ChannelUnreadPeople {
+  /** Everyone who sent an unread message there. */
+  senders: string[];
+  /** The ones among them with an unread message that mentions you. */
+  mentioners: string[];
+}
+
 export interface ChatControllerSnapshot {
   channelId: string;
   channels: ChatChannel[];
@@ -63,6 +71,13 @@ export interface ChatControllerSnapshot {
   draftAttachments: ChatDraftAttachment[];
   replyToId: string | null;
   unreadMentionCount: number;
+  /**
+   * Who sent the unread messages of each channel with any, by channel id: what
+   * the app badge counts people from. Empty unless the badge asked for it
+   * ({@link ChatController.trackUnreadPeople}). A channel whose unread messages
+   * are not on this device yet lists only the ones that are, until they load.
+   */
+  unreadPeople: Record<string, ChannelUnreadPeople>;
 }
 
 type ChatConnection = {

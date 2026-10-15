@@ -48,6 +48,20 @@ export function formatPayout(value: number | null | undefined): string {
   return value == null ? "--" : formatCompact(value);
 }
 
+/** Both sides, or blank when either was not reported. A reported zero stays zero. */
+export function openInterestTotal(row: { callOI: number | null; putOI: number | null }): number | null {
+  if (row.callOI == null || row.putOI == null) return null;
+  return row.callOI + row.putOI;
+}
+
+/** Strike-chart levels. A missing side is omitted. Puts hang below zero. */
+export function strikeChartOpenInterest(row: { callOI: number | null; putOI: number | null }): { call: number | null; put: number | null } {
+  return {
+    call: row.callOI,
+    put: row.putOI == null ? null : -row.putOI,
+  };
+}
+
 /**
  * The strikes a chart keeps: those around spot, out to one and a half times
  * the distance (in log terms) inside which half the weight sits, between 3%

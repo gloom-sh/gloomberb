@@ -85,10 +85,10 @@ test("the chart names the curve and its look-backs, and the tenors show how far 
   // The tab strip, then the query bar, then the figures.
   expect(lines()[0]).toMatch(/Curve +World/);
   expect(lines()[2]).toMatch(/2s10s \+40bp +\+7bp 1D +3m10y \+70bp +\+12bp 1D +5s30s \+40bp +\+7bp 1D/);
-  expect(lines()[3]).toMatch(/Yield % by maturity {3}● Yield {3}● 1W ago {3}● 1M ago/);
+  expect(lines()[3]).toMatch(/Par yield % by maturity {3}● Par yield {3}● 1W ago {3}● 1M ago/);
   // A log axis gives the short end room to label its tenors.
   expect(frameText).toMatch(/\n1M +3M +6M +1Y .*10Y +30Y +\n/);
-  expect(frameText).toMatch(/TENOR +YIELD +1D CHG +1W CHG +1M CHG/);
+  expect(frameText).toMatch(/TENOR +PAR YIELD +1D CHG +1W CHG +1M CHG/);
   // 1M is 4.00% against 3.95% the day before, 3.90% a week back and 4.20% a month back.
   expect(frameText).toMatch(/1M +4\.00% +\+5bp +\+10bp +-20bp/);
   expect(readout().trim()).toBe("1M 4.00%  1W ago +10bp  1M ago -20bp");
@@ -123,7 +123,7 @@ test("a short pane keeps the tenors and turns the chart into a strip, then drops
   let rows = lines();
   // The first spread keeps its row above the strip.
   expect(rows[2]).toMatch(/^ 2s10s \+40bp/);
-  expect(rows[3]).toMatch(/^ ● Yield % .*1M 4\.00%/);
+  expect(rows[3]).toMatch(/^ ● Par yield % .*1M 4\.00%/);
   expect(rows[4]).toMatch(/TENOR/);
   expect(rows.filter((line) => /^ \d+[MY] +\d\.\d\d%/.test(line)).length).toBeGreaterThanOrEqual(4);
   await tui.destroy();

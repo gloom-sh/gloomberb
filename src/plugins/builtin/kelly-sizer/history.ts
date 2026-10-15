@@ -17,7 +17,7 @@ export interface KellyHistoryInputs {
   winProbability: number;
   /** Mean return of the up months, as a fraction. */
   upsideReturn: number;
-  /** Mean return of the down months, as a negative fraction (0 when none fell). */
+  /** Mean return of the down months, as a negative fraction. */
   downsideReturn: number;
   /** Up months over all months. */
   wins: number;
@@ -48,7 +48,8 @@ const dateKey = (time: number) => new Date(time).toISOString().slice(0, 10);
 /**
  * Win rate, mean gain and mean loss of non-overlapping 21-session returns,
  * counted back from the last daily close so the newest month is complete.
- * Null when the window holds fewer than `KELLY_HISTORY_MIN_PERIODS` of them.
+ * Null when the window holds fewer than `KELLY_HISTORY_MIN_PERIODS` of them,
+ * or every one of them is a gain, or every one of them is a loss.
  */
 export function estimateKellyHistoryInputs(points: readonly PricePoint[], yearsInput: number): KellyHistoryInputs | null {
   const years = clampKellyHistoryYears(yearsInput);
@@ -66,7 +67,8 @@ export function estimateKellyHistoryInputs(points: readonly PricePoint[], yearsI
   if (returns.length < KELLY_HISTORY_MIN_PERIODS) return null;
   const gains = returns.filter((value) => value > 0);
   const losses = returns.filter((value) => value < 0);
-  const mean = (values: number[]) => values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
+  if (gains.length === 0 || losses.length === 0) return null;
+  const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
   return {
     winProbability: gains.length / returns.length,
     upsideReturn: mean(gains),

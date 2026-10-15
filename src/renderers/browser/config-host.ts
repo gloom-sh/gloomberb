@@ -29,6 +29,7 @@ const BROWSER_RESEARCH_NEWS_ID = "ticker-news:research";
 const BROWSER_WORLD_INDICES_ID = "world-indices:main";
 const BROWSER_SECTORS_ID = "sectors:main";
 const BROWSER_ECON_CALENDAR_ID = "econ-calendar:main";
+const BROWSER_HELP_ID = "help:main";
 
 function column(first: string, second: string, ratio = 0.5): DockLayoutNode {
   return {
@@ -80,19 +81,71 @@ export function createBrowserResearchLayout(symbol: string): LayoutConfig {
   };
 }
 
-function createBrowserDefaultConfig(dataDir: string, search = ""): AppConfig {
+/**
+ * The calm first screen (`calm` arm of `web_first_screen`): two of the same
+ * panes, the company's research and Help on its basics, side by side in a
+ * landscape window and stacked in a portrait one, as on a phone. The research
+ * pane owns the symbol exactly as in the six-pane workspace.
+ */
+function createBrowserCalmLayout(symbol: string, portrait: boolean): LayoutConfig {
+  return {
+    dockRoot: {
+      kind: "split",
+      axis: portrait ? "vertical" : "horizontal",
+      ratio: portrait ? 0.55 : 0.6,
+      first: { kind: "pane", instanceId: BROWSER_RESEARCH_PANE_ID },
+      second: { kind: "pane", instanceId: BROWSER_HELP_ID },
+    },
+    instances: [
+      {
+        instanceId: BROWSER_RESEARCH_PANE_ID,
+        paneId: TICKER_RESEARCH_PANE_ID,
+        binding: { kind: "fixed", symbol },
+        settings: { hideTabs: false },
+      },
+      { instanceId: BROWSER_HELP_ID, paneId: "help", binding: { kind: "none" } },
+    ],
+    floating: [],
+    detached: [],
+  };
+}
+
+/** Which first screen a new visitor opens on; see first-screen.ts. */
+export type BrowserFirstScreen = "control" | "calm";
+
+function createBrowserDefaultConfig(
+  dataDir: string,
+  search = "",
+  firstScreen: BrowserFirstScreen = "control",
+  portrait = false,
+): AppConfig {
   const config = createDefaultConfig(dataDir);
   const entry = researchEntryFromSearch(search) ?? { symbol: "NVDA", tab: "overview" };
   // A first visit starts with a research workspace around one company. Saved
   // layouts retain their existing panes and bindings when a visitor returns.
   config.layouts[0] = {
     name: "Research",
-    layout: createBrowserResearchLayout(entry.symbol),
+    layout: firstScreen === "calm"
+      ? createBrowserCalmLayout(entry.symbol, portrait)
+      : createBrowserResearchLayout(entry.symbol),
     paneState: { [BROWSER_RESEARCH_PANE_ID]: { activeTabId: entry.tab } },
     focusedPaneId: BROWSER_RESEARCH_PANE_ID,
   };
   config.layout = config.layouts[0].layout;
   return browserReady(config);
+}
+
+/**
+ * A first visit's workspace for the screen it was given, built the way
+ * `loadConfig` builds the six-pane one. Only for a browser with no saved
+ * workspace: a returning visitor keeps theirs.
+ */
+export function createBrowserFirstScreenConfig(
+  dataDir: string,
+  firstScreen: BrowserFirstScreen,
+  { search = "", portrait = false }: { search?: string; portrait?: boolean } = {},
+): AppConfig {
+  return createBrowserDefaultConfig(dataDir, search, firstScreen, portrait);
 }
 
 export function createBrowserConfigStore(storage: StorageLike, search = ""): ConfigStoreHost {

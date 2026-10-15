@@ -384,6 +384,8 @@ describe("event rows", () => {
     expect(rows[0]?.annualEps).toBeUndefined();
     expect(rows[2]?.qEps).toBeUndefined();
     expect(rows[2]?.annualEps).toBeUndefined();
+    const unlabelled = buildEventRows({ ...data, currency: undefined }, null, null, "");
+    expect(unlabelled.find((row) => row.status === "Dividend")?.value).toBe("0.26");
   });
 });
 

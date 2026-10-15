@@ -91,8 +91,8 @@ function BrokerConfigFieldEditor({
 function accountDetail(account: BrokerAccount): string {
   const parts = [
     account.accountId,
-    account.netLiquidation != null ? tf("{value} net liq", { value: formatCurrency(account.netLiquidation, account.currency || "USD") }) : null,
-    account.buyingPower != null ? tf("{value} buying power", { value: formatCurrency(account.buyingPower, account.currency || "USD") }) : null,
+    account.netLiquidation != null ? tf("{value} net liq", { value: formatCurrency(account.netLiquidation, account.currency || "") }) : null,
+    account.buyingPower != null ? tf("{value} buying power", { value: formatCurrency(account.buyingPower, account.currency || "") }) : null,
   ];
   return parts.filter(Boolean).join(" · ");
 }

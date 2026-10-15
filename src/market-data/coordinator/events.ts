@@ -67,10 +67,14 @@ export class MarketDataCoordinatorEvents {
     return (this.keyListeners.get(key)?.size ?? 0) > 0;
   }
 
+  getKeyVersion(key: string): number {
+    return this.keyVersions.get(key) ?? 0;
+  }
+
   getKeysVersion(keys: readonly string[]): number {
     let version = 0;
     for (const key of new Set(keys)) {
-      version += this.keyVersions.get(key) ?? 0;
+      version += this.getKeyVersion(key);
     }
     return version;
   }

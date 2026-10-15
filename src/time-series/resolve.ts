@@ -84,7 +84,7 @@ import { timeZoneLabel, zonedDateKey, zonedWallClockMs } from "../utils/zoned-da
 import { formatShortDate } from "../utils/datetime-format";
 import { latestSessionStart, latestTradingSessionOpen, listingTimeZone, priorSessionClose } from "../market-data/market/trading-sessions";
 import { futuresGenericCaption, futuresGenericListing, futuresListingPriceBasis } from "../utils/futures-generic";
-import { isOhlcSeriesStyle } from "./spec";
+import { isDatasetChart, isOhlcSeriesStyle } from "./spec";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
   ChartResolutionResult,
@@ -590,6 +590,21 @@ function followLatestMarketObservation(
   return {
     start: bounds.start === null ? null : bounds.start + shift,
     end: latest,
+  };
+}
+
+/**
+ * The dates a capability series (CHOKE's transits) is asked for. A view the
+ * user panned or zoomed keeps the range's dates loaded too: the chart's
+ * navigation stops at the newest observation it has, so a series asked for
+ * the moved view alone ended where the view did, and the view could never go
+ * forward to the newest data again, not even by zooming out.
+ */
+function capabilityRequestBounds(view: DateBounds, range: DateBounds, moved: boolean): DateBounds {
+  if (!moved) return view;
+  return {
+    start: view.start === null || range.start === null ? null : Math.min(view.start, range.start),
+    end: view.end === null || range.end === null ? null : Math.max(view.end, range.end),
   };
 }
 
@@ -1957,13 +1972,14 @@ async function resolveChartSpecPass(
         if (!sources.resolveCapabilitySeries) {
           throw new Error(`Chart series capability "${seriesSpec.source.capabilityId}" is unavailable. Enable its plugin or provider.`);
         }
+        const capabilityBounds = capabilityRequestBounds(requestVisibleBounds, initialVisibleBounds, movedWindow);
         const capabilityViewport: ChartSpec["viewport"] = {
           ...spec.viewport,
-          ...(requestVisibleBounds.start !== null && requestVisibleBounds.end !== null
+          ...(capabilityBounds.start !== null && capabilityBounds.end !== null
             ? {
                 dateWindow: {
-                  start: new Date(requestVisibleBounds.start).toISOString(),
-                  end: new Date(requestVisibleBounds.end).toISOString(),
+                  start: new Date(capabilityBounds.start).toISOString(),
+                  end: new Date(capabilityBounds.end).toISOString(),
                 },
               }
             : {}),
@@ -2142,10 +2158,9 @@ async function resolveChartSpecPass(
     ? latestSessionView(primaryRaw, rawSeries.filter((entry) => entry.observationKind === "market"),
       extendedHistories.has(primaryRaw?.id ?? ""), quoteReferences.get(primaryRaw?.id ?? ""))
     : null;
-  const capabilityOnly = spec.series.length > 0 && spec.series.every(({ source }) => source.kind === "capability");
   const bounds = hasExplicitWindow
     ? requestVisibleBounds
-    : sessionView?.bounds ?? (capabilityOnly
+    : sessionView?.bounds ?? (isDatasetChart(spec)
       ? endAtNewestObservation(initialVisibleBounds, rawSeries)
       : followLatestMarketObservation(initialVisibleBounds, rawSeries));
   if (sessionView?.priorClose != null && primaryRaw?.transform === "raw"

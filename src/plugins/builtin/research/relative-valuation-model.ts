@@ -1,9 +1,15 @@
+import { formatCurrency } from "../../../utils/format";
 import { comparablePriceEarnings, notMeaningfulMultiples } from "../../../utils/price-earnings";
 import { selectMarketCapitalization } from "../../../utils/market-capitalization";
 import { enterpriseValueReconciliationNote, enterpriseValueWithdrawn, reportedEnterpriseValue } from "../../../utils/fundamentals";
 import { getExtendedSessionDisplay, getQuoteSessionFields } from "../../../market-data/market/status";
 import { atRegularSessionPrice, movePriceDerivedFigures } from "../../../market-data/quotes/regular-session-valuation";
 import type { Quote, TickerFinancials } from "../../../types/financials";
+
+export function formatRelativePrice(price: number | null | undefined, currency: string | null | undefined): string {
+  if (price == null) return "-";
+  return formatCurrency(price, currency ?? "");
+}
 
 export const RELATIVE_VALUATION_STALE_QUOTE_NOTICE = "Quote stale: quote-based values unavailable";
 export const RELATIVE_VALUATION_STALE_FUNDAMENTALS_NOTICE = "Fundamentals stale: retained values may be out of date";

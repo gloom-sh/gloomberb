@@ -27,6 +27,7 @@
  * the plain one instead of docking it beside it.
  */
 import { useState } from "react";
+import { ChatLatencyPane, installChatLatencyRuntime } from "./chat-latency-fixture";
 import { apiClient, type AccountProfile, type AuthUser, type ChatChannel, type ChatMessage, type ChatUserSummary } from "../../src/api-client";
 import { ApiRequestError } from "../../src/api-client/errors";
 import { ChatContent } from "../../src/plugins/builtin/chat/content";
@@ -90,7 +91,9 @@ const PHRASES = [
   "ok",
   "Posting the notes from yesterday later today, nothing surprising in them but a couple of the charts are worth a look.",
 ];
-const BASE_TIME = Date.UTC(2026, 0, 5, 9, 0, 0);
+const BASE_TIME = params.get("recent") === "1"
+  ? Date.now() - (Number(params.get("count") ?? 90) + 1) * 120_000
+  : Date.UTC(2026, 0, 5, 9, 0, 0);
 const IMAGE = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="180"><rect width="320" height="180" fill="#2a3f5f"/><circle cx="160" cy="90" r="50" fill="#9fb8d8"/></svg>')}`;
 
 function invented(index: number, extra: Partial<ChatMessage> = {}): ChatMessage {
@@ -243,9 +246,9 @@ apiClient.updateChatChannelState = async (channelId, body) => ({
   channelId, notificationsEnabled: body.notificationsEnabled ?? false, lastReadMessageId: body.readThroughMessageId ?? null, unreadCount: 0,
 });
 apiClient.getMessages = async (channelId, options) => {
-  if (channelId !== "everyone") return [];
+  if (channelId !== "everyone" && params.get("latencyCheck") !== "1") return [];
   const limit = options?.limit ?? 50;
-  const all = fake.messages;
+  const all = channelId === "everyone" ? fake.messages : fake.messages.map((message) => ({ ...message, id: `${channelId}:${message.id}`, channelId }));
   if (options?.before) {
     fake.historyRequests += 1;
     if (held) await held.promise; else await new Promise((done) => setTimeout(done, latency));
@@ -302,6 +305,7 @@ function createController(): ChatController {
 }
 
 const controller = createController();
+if (params.get("latencyCheck") === "1") await installChatLatencyRuntime(controller);
 const runtime = createTestPluginRuntime({
   createPaneFromTemplate: (templateId, options) => {
     fake.opened.push(`template:${templateId}${options?.arg ? `:${options.arg}` : ""}`);
@@ -310,7 +314,13 @@ const runtime = createTestPluginRuntime({
 window.__chatFake = fake;
 
 /** What the Chat pane does with its channel and a message a notification pointed at. */
-export function ChatFixturePane({ focused, width, height }: PaneProps) {
+export function ChatFixturePane(props: PaneProps) {
+  return params.get("latencyCheck") === "1"
+    ? <ChatLatencyPane {...props} controller={controller} />
+    : <ChatListFixturePane {...props} />;
+}
+
+function ChatListFixturePane({ focused, width, height }: PaneProps) {
   const [channelId, setChannelId] = useState("everyone");
   const [target, setTarget] = useState(params.get("target") ?? undefined);
   return (

@@ -38,6 +38,16 @@ describe("relative time", () => {
     expect(formatTimeAgo("not a date")).toBe("unknown");
   });
 
+  test("cached older dates are byte-identical to local date formatting across calendar boundaries", () => {
+    setSystemTime(new Date("2027-01-10T12:00:00Z"));
+    for (const value of ["2024-02-29T23:59:59Z", "2025-12-31T23:30:00Z", "2026-01-01T00:00:00Z", "2026-10-25T01:30:00Z"]) {
+      const date = new Date(value);
+      const previous = date.toLocaleDateString("en-US", { month: "numeric", day: "numeric", year: "2-digit" });
+      expect(formatTimeAgo(value)).toBe(previous);
+      expect(formatTimeAgo(date, { short: true })).toBe(previous);
+    }
+  });
+
   test("handles UTC ISO timestamps with explicit offsets", () => {
     const fiveMinutesAgo = new Date(Date.now() - 5 * 60_000).toISOString().replace("Z", "+00:00");
     expect(formatTimeAgo(fiveMinutesAgo)).toBe("5m ago");

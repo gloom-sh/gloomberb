@@ -257,6 +257,7 @@ async function findThirteenFFund(
   if (isCikQuery(query)) return { cik: normalizeCik(query), name: query };
   // A small output limit must not hide other matching managers during lookup.
   const result = await search(query, 25);
+  await result.reportsLoaded;
   const candidates = [...new Map(result.rows.map((row) => [row.cik, row])).values()];
   const exact = candidates.filter((row) => row.name.toLocaleLowerCase() === query.toLocaleLowerCase());
   if (exactOnly) return exact.length === 1 ? { cik: exact[0]!.cik, name: exact[0]!.name } : null;
@@ -603,6 +604,7 @@ export function createThirteenFHeadless(
 
       const tab = browserTab(view === "ticker-holdings" ? requestedView : view, query);
       const result = await dependencies.loadBrowser(tab, query, limit, args, ctx);
+      await result.reportsLoaded;
       const more = result.hasMore || result.rows.length > limit;
       const browserRows = sortBrowserRows(result.rows, browserSortFor(DEFAULT_BROWSER_SORT, tab)).slice(0, limit);
       // A search finds managers that stopped filing; say which, since the Period column alone reads like any other.

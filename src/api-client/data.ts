@@ -953,8 +953,11 @@ export class CloudDataApi {
   async getCloudSec13F(
     path: string,
     params: Record<string, string | number | undefined> = {},
+    options?: { signal?: AbortSignal },
   ): Promise<unknown> {
-    return this.request<unknown>(cloudSec13FPath(path, params));
+    return this.request<unknown>(cloudSec13FPath(path, params), {
+      signal: options?.signal,
+    });
   }
 
   /**

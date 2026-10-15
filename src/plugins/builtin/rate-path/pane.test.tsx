@@ -63,7 +63,7 @@ test("the path fits the body: short panes give the meetings the room instead of 
   }
   // With room the chart draws above the meetings, and the last meeting sits on the footer.
   const lines = await render(84, 29);
-  expect(lines.join("\n")).toContain("Implied EFFR");
+  expect(lines.join("\n")).toContain("Implied meeting rate");
   expect(lines.join("\n")).not.toContain("TENOR");
   expect(lines[27]).toContain("2027-09-15");
 });
@@ -77,7 +77,7 @@ test("the path names what it plots: one target range, the SEP dots, meetings by 
   // The floor and the ceiling draw one band, named once.
   expect(legend!.split("Target range")).toHaveLength(2);
   expect(legend).not.toContain("Target floor");
-  expect(legend).toContain("● EFFR");
+  expect(legend).toContain("● Implied meeting rate");
   expect(legend).toContain("● SEP median");
   expect(legend).toContain("● 1W ago");
   // The axis and the readout name meetings by month and year, and moves read in bp like VS NOW.
@@ -121,6 +121,15 @@ test("meetings that differ keep their rank and quote time", async () => {
   const header = lines.find((line) => line.includes("MEETING"));
   expect(header).toContain("PCTL 1Y");
   expect(header).toContain("AS OF UTC");
+});
+
+test("a meeting already past prints its date instead of today", async () => {
+  const data = payload();
+  data.meetings[0] = { ...data.meetings[0]!, date: "2020-01-15" };
+  spy = spyOn(apiClient, "getCloudRatePath").mockResolvedValue(data);
+  const frame = (await render(120, 40)).join("\n");
+  expect(frame).toContain("Jan 15 · 2020-01-15");
+  expect(frame).not.toContain("Jan 15 · today");
 });
 
 test("the first screen leads with the next meeting's odds and prices every meeting in moves", async () => {

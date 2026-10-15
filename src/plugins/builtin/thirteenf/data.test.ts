@@ -1,12 +1,19 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { apiClient } from "../../../api-client";
 import { MemoryPluginPersistence } from "../../../test-support/plugin-persistence";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
 import {
   attachThirteenFApiPersistence,
   resetThirteenFApiPersistence,
 } from "./api";
-import { loadBrowserRows, loadFilingPositions, loadFundDetail } from "./data";
+import { loadBrowserRows as loadRankedRows, loadFilingPositions, loadFundDetail } from "./data";
 import { buildFundHoldingRows, hasComparable13FQuarter } from "./model";
+
+async function loadBrowserRows(...args: Parameters<typeof loadRankedRows>) {
+  const result = await loadRankedRows(...args);
+  await result.reportsLoaded;
+  return result;
+}
 
 afterEach(() => {
   setHttpFetchTransport(null);
@@ -227,6 +234,83 @@ describe("13F data cache", () => {
     expect(first.nextOffset).toBe(1);
     expect(second.nextOffset).toBe(2);
   });
+});
+
+test("ranked rows paint before filing reports, then take the reconciled totals", async () => {
+  let releaseReports: (() => void) | undefined;
+  let formCalls = 0;
+  const reportsGate = new Promise<void>((resolve) => { releaseReports = resolve; });
+  const form = {
+    accession_number: "original", cik: "1067983", company_name: "Fund", period_of_report: "2026-06-30",
+    filed_as_of_date: "2026-08-14", submission_type: "13F-HR", table_value_total: 100, table_entry_total: 2,
+  };
+  setHttpFetchTransport(async (url) => {
+    const request = new URL(String(url));
+    const path = request.pathname.split("/").at(-1);
+    if (path === "forms") {
+      formCalls += 1;
+      await reportsGate;
+      return json([
+        form,
+        { ...form, accession_number: "addition", filed_as_of_date: "2026-08-20", submission_type: "13F-HR/A", amendment_type: "NEW HOLDINGS", table_value_total: 50, table_entry_total: 1 },
+      ]);
+    }
+    if (path === "filings") return json([{ ...form }]);
+    if (path === "funds") return json([{ cik: "1067983", name: "Fund" }]);
+    if (path === "topfunds") return json([{ cik: "1067983", name: "Fund", period_of_report: "2026-06-30", pnl: 4 }]);
+    if (path === "tickers") return json([{ cusip: "111111111", ticker: "AAA" }]);
+    if (path === "holders") return json({ period_of_report: "2026-06-30", ciks: ["1067983"] });
+    return json([]);
+  });
+  const pages = await Promise.race([
+    Promise.all([
+      loadRankedRows("latest", "latest"),
+      loadRankedRows("funds", "Fund"),
+      loadRankedRows("byTicker", "AAA"),
+      loadRankedRows("performance", ""),
+    ]),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("ranked rows waited for reports")), 500)),
+  ]);
+  for (let i = 0; i < 30 && formCalls === 0; i++) await Promise.resolve();
+  expect(formCalls).toBeGreaterThan(0);
+  expect(pages.map((page) => page.rows[0]?.name)).toEqual(["Fund", "Fund", "0001067983", "Fund"]);
+  expect(pages[0]?.rows[0]?.tableValueTotal).toBe(100);
+  expect(pages[1]?.rows[0]?.tableValueTotal).toBeUndefined();
+  expect(pages[2]?.rows[0]?.tableValueTotal).toBeUndefined();
+  expect(pages[3]?.rows[0]).toMatchObject({ estQuarterReturn: 4, tableValueTotal: undefined });
+  releaseReports!();
+  await Promise.all(pages.map((page) => page.reportsLoaded));
+  expect(pages[0]?.rows[0]).toMatchObject({ tableValueTotal: 150, tableEntryTotal: 3 });
+  expect(pages[1]?.rows[0]).toMatchObject({ name: "Fund", tableValueTotal: 150, tableEntryTotal: 3 });
+  expect(pages[2]?.rows[0]).toMatchObject({ name: "Fund", tableValueTotal: 150, tableEntryTotal: 3 });
+  expect(pages[3]?.rows[0]).toMatchObject({ periodOfReport: "2026-06-30", estQuarterReturn: 4, tableValueTotal: 150, tableEntryTotal: 3 });
+});
+
+test("abort during a holdings page stops the walk", async () => {
+  const controller = new AbortController();
+  let formCalls = 0;
+  const spy = spyOn(apiClient, "getCloudSec13F").mockImplementation((async (path: string, _params: unknown, options?: { signal?: AbortSignal }) => {
+    expect(options?.signal).toBe(controller.signal);
+    if (path === "/form") {
+      formCalls += 1;
+      controller.abort();
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }
+    throw new Error("cloud down");
+  }) as never);
+  setHttpFetchTransport(async (url) => {
+    if (new URL(String(url)).pathname.endsWith("/forms")) return json([{
+      accession_number: "current", cik: "1067983", company_name: "Fund", period_of_report: "2026-06-30",
+      filed_as_of_date: "2026-08-14", submission_type: "13F-HR", table_value_total: 100, table_entry_total: 200,
+    }]);
+    throw new Error(`unexpected ${url}`);
+  });
+  try {
+    await expect(loadFundDetail("1067983", "Fund", controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+    expect(formCalls).toBe(1);
+  } finally {
+    spy.mockRestore();
+  }
 });
 
 function json(value: unknown): Response {

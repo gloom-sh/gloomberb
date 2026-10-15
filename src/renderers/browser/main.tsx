@@ -15,10 +15,29 @@ import {
   restoreBrowserCloudSession,
 } from "./cloud-transport";
 import { loadWebBundledPlugins } from "./bundled-plugins";
-import { BROWSER_DATA_DIR, hasSavedBrowserConfig, installBrowserConfigStore } from "./config-host";
+import {
+  BROWSER_DATA_DIR,
+  createBrowserFirstScreenConfig,
+  hasSavedBrowserConfig,
+  installBrowserConfigStore,
+} from "./config-host";
 import { browserRendererHost, browserUiHost } from "./ui-host";
 import { createBrowserDeepLinkBridge } from "./deeplink-bridge";
-import { initializeBrowserResearchActivity, recordResearchActivity } from "../../api-client/research-activity";
+import {
+  exposeFirstScreen,
+  FIRST_SCREEN_EXPERIMENT,
+  FIRST_SCREEN_PLACEMENT,
+  observeLandingLinks,
+  watchFirstScreenEngagement,
+} from "./first-screen";
+import {
+  exposeWebExperiment,
+  initializeBrowserResearchActivity,
+  recordResearchActivity,
+} from "../../api-client/research-activity";
+import { subscribeCommandBarQuery } from "../../components/command-bar/panel/prompt-binding";
+import { marketplaceLayoutIdFromSearch } from "../../layout-marketplace/api";
+import { paneShareIdFromSearch } from "../../shares/location";
 import { flushPendingPersistence } from "../../state/persist-scheduler";
 import { loadOfficialPluginIds } from "../../plugins/marketplace/feed";
 import { crashReportsEnabled, installCrashReporter, reportCrash } from "../../telemetry/crash-reports";
@@ -30,7 +49,12 @@ import {
 } from "../../telemetry/crash-reports-dom";
 import { currentTelemetryConfig } from "../../telemetry/live-config";
 import { attentionCountsEnabled, installAttentionCounter } from "../../telemetry/attention-counts";
-import { installUsageCounter, recordRestoredFunctions, usageCountsEnabled } from "../../telemetry/usage-counts";
+import {
+  installUsageCounter,
+  recordRestoredFunctions,
+  subscribeFunctionOpens,
+  usageCountsEnabled,
+} from "../../telemetry/usage-counts";
 import { installWindowUsageFlush } from "../../telemetry/usage-counts-dom";
 import type { AppConfig } from "../../types/config";
 
@@ -48,6 +72,9 @@ const root = createRoot(appRootElement);
 root.render(<div className="gloom-loading">Starting Gloomberb...</div>);
 
 async function boot(): Promise<void> {
+  // Read before anything can save a workspace or tidy the address.
+  const savedLayout = hasSavedBrowserConfig();
+  const search = location.search;
   installBrowserConfigStore();
   let loadedConfig: AppConfig | null = null;
   installCrashReporter({
@@ -72,7 +99,7 @@ async function boot(): Promise<void> {
   });
   installBrowserFetchTransports();
   // Read the saved Usage switch before any research activity or attribution.
-  const config = await loadConfig(BROWSER_DATA_DIR);
+  let config = await loadConfig(BROWSER_DATA_DIR);
   loadedConfig = config;
   initializeBrowserResearchActivity();
   installFocusScopeRelease();
@@ -86,10 +113,35 @@ async function boot(): Promise<void> {
   await restoreBrowserCloudSession();
   recordResearchActivity("workspace_opened");
   // Nothing was restored on a first visit, only the starter workspace shown.
-  if (!hasSavedBrowserConfig()) recordRestoredFunctions([]);
+  if (!savedLayout) recordRestoredFunctions([]);
+  // A first visit's workspace is chosen before the dock paints, while the
+  // plugins download; see first-screen.ts.
+  const firstScreen = exposeFirstScreen({
+    savedLayout,
+    handoff: !!marketplaceLayoutIdFromSearch(search) || !!paneShareIdFromSearch(search),
+    expose: (signal) => exposeWebExperiment(FIRST_SCREEN_EXPERIMENT, { placement: FIRST_SCREEN_PLACEMENT, signal }),
+  });
+  const [externalPlugins, screen] = await Promise.all([bundledPlugins, firstScreen]);
+  if (screen === "calm") {
+    config = createBrowserFirstScreenConfig(BROWSER_DATA_DIR, "calm", {
+      search,
+      portrait: window.innerHeight > window.innerWidth,
+    });
+    loadedConfig = config;
+  }
   applyLanguageFromConfig(config);
-  const externalPlugins = await bundledPlugins;
-  const deepLinkBridge = createBrowserDeepLinkBridge();
+  try {
+    watchFirstScreenEngagement({
+      counted: screen !== null,
+      session: sessionStorage,
+      layout: config.layout,
+      record: () => recordResearchActivity("first_screen_engaged", undefined, undefined, { placement: FIRST_SCREEN_PLACEMENT }),
+      sources: { subscribeFunctionOpens, subscribeCommandBarQuery },
+    });
+  } catch {
+    /* Blocked storage: the first action is not measured. */
+  }
+  const deepLinkBridge = observeLandingLinks(createBrowserDeepLinkBridge());
   root.render(
     <DomErrorBoundary label="Browser renderer crashed" fallback={(error) => (
       <div className="gloom-fatal">
