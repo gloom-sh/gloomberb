@@ -1408,7 +1408,11 @@ describe("CompositeChart", () => {
     expect(edits).toHaveLength(4);
   });
 
-  test("external level labels remain outside the bitmap surface and follow price updates", async () => {
+  test("external level labels reserve space outside the bitmap and follow prices without moving the plot", async () => {
+    await tui.render(<CaptureChartSurfaceProvider><CompositeChart width={60} height={12}
+      series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+      panels={[{ id: "main" }]} /></CaptureChartSurfaceProvider>, { width: 62, height: 14 });
+    const plainWidth = capturedSurfaceProps!.width;
     let move!: (price: number) => void;
     function Chart() {
       const [value, setValue] = useState(104); move = setValue;
@@ -1418,11 +1422,15 @@ describe("CompositeChart", () => {
     }
     await tui.render(<Chart />, { width: 62, height: 14 });
     await tui.waitForFrameToContain("Draft 104");
+    const reservedPlotWidth = capturedSurfaceProps!.width;
+    expect(reservedPlotWidth).toBeLessThan(plainWidth!);
+    expect(tui.frame().split("\n").find((line) => line.includes("Draft 104"))!.indexOf("Draft")).toBeGreaterThan(reservedPlotWidth!);
     // Bitmap hosts may omit their children. Labels must be siblings of the surface.
     expect(JSON.stringify(capturedSurfaceProps?.children?.map((child: any) => child.props.children))).not.toContain("Draft");
     await act(async () => move(106));
     await tui.waitForFrameToContain("Draft 106");
     expect(tui.frame()).not.toContain("Draft 104");
+    expect(capturedSurfaceProps!.width).toBe(reservedPlotWidth);
   });
 
   test("a price level on the last price's row leaves the last price on the axis", async () => {

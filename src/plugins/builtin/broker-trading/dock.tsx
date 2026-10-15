@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Button, PaneFooterScope, usePaneFooter } from "../../../components";
+import { Button, PaneFooterScope, PaneSidebar, SectionHeading, usePaneMenuItems } from "../../../components";
 import { usePaneStateValue } from "../../../state/app/context";
-import { useThemeColors } from "../../../theme/theme-context";
-import { Box, Text, useUiCapabilities } from "../../../ui";
+import { Box, useUiCapabilities } from "../../../ui";
 import { useShortcut } from "../../../react/input";
 import { useDialogState } from "../../../ui/dialog";
 import { ResearchTradingProvider, type ResearchTradeProjection } from "../shared/research-trading";
@@ -19,7 +18,6 @@ export function ResearchTradeWorkspace({ width, height, focused, symbol, tabId, 
   selectTab(id: string): void; onCapture(captured: boolean): void;
   children(width: number, focused: boolean): ReactNode;
 }) {
-  const c = useThemeColors();
   const { nativePaneChrome, cellWidthPx = 8 } = useUiCapabilities();
   const panelWidth = tradeDockWidth(width, !!nativePaneChrome, cellWidthPx);
   const [intent, setIntent] = usePaneStateValue<string | null>("brokerTradeIntent", null);
@@ -59,22 +57,21 @@ export function ResearchTradeWorkspace({ width, height, focused, symbol, tabId, 
     if (event.name !== "escape" || event.defaultPrevented || event.targetEditable) return;
     event.preventDefault(); event.stopPropagation(); close();
   }, { enabled: focused && split && !panelFocused && !dialogOpen, phase: "after", scope: "research:trade-close" });
-  usePaneFooter("research:trade-focus", () => focused && split ? { hints: [{ id: "trade-focus", key: "F6", label: panelFocused ? "Chart" : "Ticket", onPress: () => setPanelFocused((value) => !value) }] } : null, [focused, split, panelFocused]);
-  const edge = projection.mode === "simulation" ? c.positive : c.negative;
+  usePaneMenuItems("research:trade-focus", () => focused && split ? [{ id: "trade-focus", accelerator: "F6", label: panelFocused ? "Focus chart" : "Focus ticket", onSelect: () => setPanelFocused((value) => !value) }] : null, [focused, split, panelFocused]);
   return <ResearchTradingProvider value={context}>
     <Box flexDirection="row" width={width} height={height} overflow="hidden">
       <Box visible={tabId !== "broker-trade" && !(visible && !docked && chartTab)} width={split ? width - panelWidth! : width} height={height} flexDirection="column" overflow="hidden" onMouseDown={() => setPanelFocused(false)}>
         <PaneFooterScope active={!visible || !panelFocused}>{children(split ? width - panelWidth! : width, focused && (!visible || !panelFocused))}</PaneFooterScope>
       </Box>
-      {mounted ? <Box visible={visible} onMouseDown={() => setPanelFocused(true)} width={split ? panelWidth! : width} height={height} flexShrink={0} flexDirection="column" paddingLeft={!nativePaneChrome ? 1 : 0}
-        style={nativePaneChrome ? { borderLeft: `3px solid ${edge}` } : undefined}>
-        {!nativePaneChrome ? <Box position="absolute" left={0} top={0} width={1} height={height} backgroundColor={edge} /> : null}
-        <PaneFooterScope active={visible && panelFocused}>
-          <Box flexDirection="row" paddingX={1} justifyContent="space-between" height={nativePaneChrome ? 1.5 : 1} flexShrink={0}>
-            {split ? <Text fg={c.textBright}>{symbol}</Text> : <Box flexGrow={1} />}<Button label="Close trade panel" displayLabel="Close" variant="plain" onPress={close} />
-          </Box>
-          <BrokerTradeTab width={split ? panelWidth! - 1 : width - 1} height={height - (nativePaneChrome ? 1.5 : 1)} focused={focused && visible && panelFocused} onCapture={onCapture} docked={split} onClose={close} />
-        </PaneFooterScope>
+      {mounted ? <Box visible={visible} onMouseDown={() => setPanelFocused(true)} width={split ? panelWidth! : width} height={height} flexShrink={0} flexDirection="column">
+        <PaneSidebar width={split ? panelWidth! : width} height={height} focused={false} side="right" surface="body">
+          {({ listWidth }) => <PaneFooterScope active={visible && panelFocused}>
+            <Box flexDirection="row" paddingX={1} justifyContent="space-between" height={1} flexShrink={0}>
+              {split ? <SectionHeading title="Trade" /> : <Box flexGrow={1} />}<Button label="Close trade panel" displayLabel="Close" variant="plain" onPress={close} />
+            </Box>
+            <BrokerTradeTab width={listWidth} height={height - 1} focused={focused && visible && panelFocused} onCapture={onCapture} docked={split} onClose={close} />
+          </PaneFooterScope>}
+        </PaneSidebar>
       </Box> : null}
     </Box>
   </ResearchTradingProvider>;

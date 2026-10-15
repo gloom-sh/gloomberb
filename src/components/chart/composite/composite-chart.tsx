@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useCompositeChartKeyboard } from "./use-composite-chart-keyboard";
 import { useCompositeViewport } from "./use-composite-viewport";
 import { CompositePanelSurface } from "./panel-surface";
+import { levelLabelGutter } from "./level-labels";
 import { MINIMUM_AXIS_LABEL_WIDTH, compositeAxisLabelWidth } from "./panel-labels";
 import { isVerticalWheelDirection } from "./panel-gestures";
 import { type ChartToolSpan, CHART_DRAWING_COLORS, isDrawingTool, type ChartDrawing } from "./tools";
@@ -306,7 +307,8 @@ function ThemedCompositeChart({
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;
   const horizontalReserved = leftAxisWidth + rightAxisWidth
     + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0));
-  const plotWidth = Math.max(1, totalWidth - horizontalReserved);
+  const annotationWidth = levelLabelGutter(levels?.items ?? [], totalWidth - horizontalReserved);
+  const plotWidth = Math.max(1, totalWidth - horizontalReserved - annotationWidth);
   const watermarkScale = isDesktopWeb
     ? chartWatermarkScale(plotWidth * cellWidthPx, plotHeight * cellHeightPx)
     : null;
@@ -419,7 +421,7 @@ function ThemedCompositeChart({
   ]);
 
   const leftPadding = leftAxisWidth + (leftAxisWidth ? axisGap : 0);
-  const rightPadding = rightAxisWidth + (rightAxisWidth ? axisGap : 0);
+  const rightPadding = rightAxisWidth + (rightAxisWidth ? axisGap : 0) + annotationWidth;
   const timeAxisLayout = scene && showTimeAxis
     ? buildCompositeTimeAxisLayout(scene, plotWidth)
     : null;
@@ -603,6 +605,7 @@ function ThemedCompositeChart({
           panel={panel}
           scene={scene}
           plotWidth={plotWidth}
+          annotationWidth={annotationWidth}
           leftAxisWidth={leftAxisWidth}
           rightAxisWidth={rightAxisWidth}
           axisGap={axisGap}

@@ -82,6 +82,7 @@ interface CompositePanelSurfaceProps {
   panel: CompositePanelScene;
   scene: CompositeChartScene;
   plotWidth: number;
+  annotationWidth?: number;
   leftAxisWidth: number;
   rightAxisWidth: number;
   axisGap: number;
@@ -129,6 +130,7 @@ export function CompositePanelSurface({
   panel,
   scene,
   plotWidth,
+  annotationWidth = 0,
   leftAxisWidth,
   rightAxisWidth,
   axisGap,
@@ -462,6 +464,8 @@ export function CompositePanelSurface({
     };
   }, [colors.textDim, formatAxisValue, panel]);
   const levelMarkers = useMemo(() => levelDomain ? [...projectedLevels]
+    // Read-only annotated values live in the gutter, at their own precision.
+    .filter(({ level }) => level.editable || !level.label)
     // The picked level's label first, then alerts', when they compete for room.
     .sort((left, right) => Number(right.level.id === selectedLevelId) - Number(left.level.id === selectedLevelId)
       || Number(left.level.editable) - Number(right.level.editable))
@@ -798,11 +802,23 @@ export function CompositePanelSurface({
     updateCursor,
   ]);
 
+  const annotations = (isDesktopWeb
+        ? layoutLevelLabels(projectedLevels, plotSize.height * cellHeightPx, cellHeightPx)
+        : fitAxisLabels(projectedLevels.filter((entry) => entry.level.label), [], (entry) => entry.yRatio * Math.max(1, panel.height - 1)).map((entry) => ({ ...entry, below: false }))
+      ).map((entry) => {
+        const { level, yRatio } = entry;
+        const labelStyle = isDesktopWeb ? levelLabelStyle(entry, colors.background) : undefined;
+        return <Box key={`annotation:${level.id}`} position="absolute" left={annotationWidth ? 0 : leftAxisWidth + (leftAxisWidth ? axisGap : 0) + 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
+          width={Math.min(annotationWidth || plotWidth - 2, (level.label?.length ?? 0) + 2)} backgroundColor={isDesktopWeb ? undefined : colors.background} zIndex={20}
+          style={labelStyle} data-gloom-role="chart-level-label">
+          <Text fg={labelStyle?.color ?? level.color} wrapMode="none">{level.label}</Text>
+        </Box>;
+      });
   return (
     <Box
       flexDirection="row"
       height={panel.height}
-      width={plotWidth + leftAxisWidth + rightAxisWidth + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0))}
+      width={plotWidth + leftAxisWidth + rightAxisWidth + annotationWidth + axisGap * ((leftAxisWidth ? 1 : 0) + (rightAxisWidth ? 1 : 0))}
       position="relative"
       // Desktop: spans the chart's box and takes its share of the height, so
       // when a resize draws the box at a new size between renders the plot
@@ -877,18 +893,7 @@ export function CompositePanelSurface({
       >
         {textLines.map((line, index) => <Text key={index} fg={colors.text}>{line}</Text>)}
       </ChartSurface>
-      {(isDesktopWeb
-        ? layoutLevelLabels(projectedLevels, plotSize.height * cellHeightPx, cellHeightPx)
-        : fitAxisLabels(projectedLevels.filter((entry) => entry.level.label), [], (entry) => entry.yRatio * Math.max(1, panel.height - 1)).map((entry) => ({ ...entry, below: false }))
-      ).map((entry) => {
-        const { level, yRatio } = entry;
-        const labelStyle = isDesktopWeb ? levelLabelStyle(entry, colors.background) : undefined;
-        return <Box key={`annotation:${level.id}`} position="absolute" left={leftAxisWidth + (leftAxisWidth ? axisGap : 0) + 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
-          width={Math.min(plotWidth - 2, (level.label?.length ?? 0) + 2)} backgroundColor={isDesktopWeb ? undefined : colors.background} zIndex={20}
-          style={labelStyle} data-gloom-role="chart-level-label">
-          <Text fg={labelStyle?.color ?? level.color} wrapMode="none">{level.label}</Text>
-        </Box>;
-      })}
+      {annotationWidth ? <Box width={annotationWidth} height={panel.height} position="relative" overflow="hidden" flexShrink={0} style={isDesktopWeb ? { height: "100%" } : undefined} data-gloom-role="chart-level-gutter">{annotations}</Box> : annotations}
       {rightAxisWidth > 0 ? (
         <>
           <Box width={axisGap} />

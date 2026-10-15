@@ -1,10 +1,18 @@
 import { expect, test } from "bun:test";
 import { contrastRatio } from "../../../theme/color-utils";
-import { layoutLevelLabels, levelLabelStyle } from "./level-labels";
+import { layoutLevelLabels, levelLabelStyle, levelLabelGutter } from "./level-labels";
 import type { ProjectedLevel } from "./levels";
 
 const level = (id: string, yRatio: number, color = "#00cc66"): ProjectedLevel => ({
   yRatio, level: { id, value: 10, label: id, color, editable: false, actionable: false },
+});
+
+test("the annotation gutter stays stable while editing and leaves unlabelled charts unchanged", () => {
+  expect(levelLabelGutter([], 100)).toBe(0);
+  expect(levelLabelGutter([{ ...level("drawing", 0.5).level, editable: true }], 100)).toBe(0);
+  expect(levelLabelGutter([level("Draft 9.99", 0.5).level], 100)).toBe(32);
+  expect(levelLabelGutter([level("Draft 1000.01", 0.5).level], 100)).toBe(32);
+  expect(levelLabelGutter([level("Draft", 0.5).level], 60)).toBe(20);
 });
 
 test("annotations clear their SVG line by three pixels, flipping only at the top edge", () => {

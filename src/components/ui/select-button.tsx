@@ -145,6 +145,8 @@ export function SelectButton<T extends string = string>({
           options={options.map((option) => ({
             value: option.value,
             label: option.label,
+            description: option.description,
+            short: option.short,
             disabled: option.disabled,
           }))}
           disabled={disabled}

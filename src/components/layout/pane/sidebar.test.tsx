@@ -42,13 +42,13 @@ describe("pane sidebar metrics", () => {
   });
 });
 
-test("renders a terminal divider and keeps nested actions from selecting their row", async () => {
+test.each(["left", "right"] as const)("renders the %s sidebar divider and keeps nested actions from selecting their row", async (side) => {
   let selections = 0;
   let actions = 0;
 
   await act(async () => {
     await tui.render(
-      <PaneSidebar width={20} height={4} focused keyboardFocused>
+      <PaneSidebar width={20} height={4} focused keyboardFocused side={side}>
         <PaneSidebarRow
           active={false}
           ariaLabel="Alpha conversation"
@@ -89,7 +89,7 @@ test("renders a terminal divider and keeps nested actions from selecting their r
   expect(row).toBeGreaterThanOrEqual(0);
   expect(labelColumn).toBeGreaterThanOrEqual(0);
   expect(actionColumn).toBeGreaterThanOrEqual(0);
-  expect(lines.slice(0, 4).every((line) => line[19] === "│")).toBe(true);
+  expect(lines.slice(0, 4).every((line) => line[side === "right" ? 0 : 19] === "│")).toBe(true);
 
   await act(async () => {
     await tui.setup().mockMouse.click(labelColumn, row);
@@ -146,13 +146,14 @@ test("dragging the terminal divider reports a clamped width and commits once", a
 describe("desktop pane sidebar", () => {
   const { render, window: testWindow } = createDomTestHarness({ capabilities: { nativePaneChrome: true } });
 
-  test("dragging the divider sizes the sidebar's box as the pointer moves and reports the width when it is let go", async () => {
+  test.each(["left", "right"] as const)("dragging the %s divider follows the pointer and commits the width", async (side) => {
     const widths: number[] = [];
     const committed: number[] = [];
     const container = await render(
       <PaneSidebar
         width={20}
         height={10}
+        side={side}
         focused
         resize={{ min: 12, max: 26, onResize: (next) => widths.push(next), onResizeEnd: (next) => committed.push(next) }}
       >
@@ -178,13 +179,13 @@ describe("desktop pane sidebar", () => {
     };
     await act(async () => mouse("mousedown", handle, 20));
     await act(async () => {
-      mouse("mousemove", testWindow.document as never, 24.5);
+      mouse("mousemove", testWindow.document as never, side === "right" ? 15.5 : 24.5);
       await new Promise((resolve) => setTimeout(resolve, 30));
     });
     // The box follows the pointer to the pixel, before the content renders at it.
     expect(sidebar.style.width).toBe(`${24.5 * WEB_CELL_WIDTH}px`);
     expect(widths).toEqual([]);
-    await act(async () => mouse("mouseup", testWindow.document as never, 24.5));
+    await act(async () => mouse("mouseup", testWindow.document as never, side === "right" ? 15.5 : 24.5));
 
     expect(committed).toEqual([25]);
     expect(widths).toEqual([]);
