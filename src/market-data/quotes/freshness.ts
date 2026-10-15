@@ -1,13 +1,16 @@
 import type { Quote } from "../../types/financials";
-import { isUsListingExchange } from "../../utils/exchanges";
+import { canonicalExchange, isUsListingExchange } from "../../utils/exchanges";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import { getPublishedUsEquitySession } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "./clock";
 import {
   activeUsExtendedHoursSession,
+  isAlwaysOpenExchange,
   isTimestampStaleForExchangeSession,
   isUsPriorSessionPremarketQuote,
   isUsRegularCloseQuoteInPostSession,
+  latestRegularSessionClose,
+  latestRegularSessionOpen,
 } from "../market/freshness";
 
 // Give the next regular session's NAV time to publish after its actual close.
@@ -88,6 +91,32 @@ export function isQuoteStaleForCurrentSession(quote: Quote | null | undefined, n
     now,
     quote.marketState,
   );
+}
+
+/** Spot FX: its week is in `fx-market-hours`, not a session calendar. */
+const FX_VENUE = "CCY";
+/** Every venue with sessions has had one within this long; Spring Festival can close TWSE for twelve days. */
+const LONGEST_SESSION_GAP_MS = 14 * 24 * 60 * 60_000;
+
+/**
+ * Whether a quote's last print is older than its venue's latest completed
+ * regular session: a whole session traded since, so the state its source
+ * reports says where the market is, not where this price is (a delisted
+ * line read as OPEN). Only a quote already stale for its session can be;
+ * the last session's close before the open, an after-hours print after it,
+ * and round-the-clock venues and FX keep their state. A venue without a
+ * calendar counts a print older than any venue goes between sessions.
+ */
+export function isQuoteBeforeLatestSession(quote: Quote | null | undefined, now = Date.now()): boolean {
+  if (!quote || !isQuoteStaleForCurrentSession(quote, now)) return false;
+  const venue = canonicalExchange(quote.listingExchangeName || quote.exchangeName);
+  if (venue === FX_VENUE || isAlwaysOpenExchange(venue)) return false;
+  const printed = quote.lastUpdated;
+  if (!Number.isFinite(printed) || printed <= 0 || printed > now) return false;
+  const latest = latestRegularSessionClose(venue, now);
+  if (!latest) return now - printed > LONGEST_SESSION_GAP_MS;
+  const open = latestRegularSessionOpen(venue, latest.close);
+  return open != null ? printed < open : zonedDateKey(printed, latest.timeZone) < latest.date;
 }
 
 export function hasFreshQuoteForCurrentSession(

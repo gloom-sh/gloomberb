@@ -15,6 +15,7 @@ import {
 import { findUsListingOfCompany, type UsListing } from "../tickers/us-listing";
 import {
   describeTickerChange,
+  movedAwayChange,
   quotedListing,
   startTickerChangeLookup,
   tickerChangeLine,
@@ -39,6 +40,7 @@ import {
   typedExchangeCode,
 } from "../utils/exchanges";
 import { withMarketData } from "./scoped-context";
+import { failWithFields } from "./errors";
 import { stripStrayEdges } from "./symbol-args";
 import { isNoProviderMessage } from "../sources/provider-errors";
 import { dashedCoinPair } from "../utils/crypto-pair";
@@ -260,7 +262,9 @@ export interface ListingDataRequest {
    * What became of the symbol (`loadListingFate`), for a command a listing
    * that stopped trading has nothing for (history, options): a request no
    * source serves fails with `fate.note` instead of the source's miss, and the
-   * change line leads any listings the failure names.
+   * change line leads any listings the failure names. A symbol whose company
+   * moved, with nothing new listed under it, fails naming its new symbol
+   * whatever came back (`failMovedSymbol`).
    */
   fate?: () => Promise<ListingFate>;
 }
@@ -683,9 +687,19 @@ export interface ListingFate {
    * for a symbol that trades as it always has.
    */
   note: string | null;
+  /**
+   * The change when the symbol's company trades under another symbol now
+   * and its own quote shows nothing new listed under it (`movedAwayChange`):
+   * the old line, stopped or named for that company. Whatever data comes
+   * back under the symbol is then another security's (a listing abroad with
+   * the same letters, or the new symbol's bars under the old one), so a
+   * command serves none and names the new symbol (`failMovedSymbol`). Null
+   * without a quote to tell by.
+   */
+  moved: (TickerChange & { tradesAs: string }) | null;
 }
 
-const NO_FATE: ListingFate = { endedOn: null, change: null, note: null };
+const NO_FATE: ListingFate = { endedOn: null, change: null, note: null, moved: null };
 /** How long a fate whose change lookup started late waits for it. */
 const LATE_CHANGE_WAIT_MS = 2_000;
 
@@ -702,7 +716,26 @@ export function describeListingFate(
   const abroad = !!quote && !!bareListingNote({ symbol, request: { symbol, exchange: listing.exchange ?? "" } }, quote);
   const change = abroad ? null : describeTickerChange(symbol, changes, tradingListing(quote, now));
   const note = tickerChangeLine(change) ?? (endedOn ? `${symbol} stopped trading ${endedOn}; no history or options served` : null);
-  return { endedOn, change, note };
+  return { endedOn, change, note, moved: quote ? movedAwayChange(change) : null };
+}
+
+/**
+ * "HFC became DINO on 2022-03-15: `gloomberb history DINO`": a symbol whose
+ * company moved, with the command that asks for it under its new symbol.
+ */
+export function movedSymbolLine(change: TickerChange & { tradesAs: string }, retry: string | null): string {
+  return retry ? `${change.note}: \`${retry}\`` : change.note;
+}
+
+/**
+ * Fails a command that has nothing to serve for a symbol whose company
+ * moved (`ListingFate.moved`) with `movedSymbolLine`; `--json` reads the
+ * change as quote rows carry it (`tickerChange`) and the command that asks
+ * for the new symbol (`retry`). Exits as any failure does.
+ */
+export function failMovedSymbol(change: TickerChange & { tradesAs: string }, request: ListingDataRequest): never {
+  const retry = retryCommand(request, change.tradesAs);
+  return failWithFields(movedSymbolLine(change, retry), "ticker_moved", { tickerChange: change, retry });
 }
 
 /**
@@ -802,8 +835,9 @@ export function tradingBoardNote(
  * calls what it returned empty, and a listing's exchange is one its symbol does
  * not trade on, the command ends in that message instead of the request's own
  * "unavailable". With `request`, a bare symbol no source serves ends naming
- * its other listings (`otherListingsMessage`). A request that succeeds costs no
- * extra lookup.
+ * its other listings (`otherListingsMessage`), and with `request.fate` a symbol
+ * whose company moved ends naming its new symbol, served or not. A request
+ * that succeeds costs no extra lookup beyond the fate the command reads anyway.
  */
 export async function loadForListing<T>(
   listings: ListingForLoad | readonly ListingForLoad[],
@@ -823,12 +857,20 @@ export async function loadForListing<T>(
     await checkVenues();
     if (request && all.length === 1 && isNoProviderError(error)) {
       const [other, fate] = await Promise.all([otherListingsMessage(all[0]!, deps, request), request.fate?.() ?? null]);
+      // Nothing served either way: a company that moved is under its new symbol, before any other listing.
+      const moved = movedAwayChange(fate?.change);
+      if (moved) failMovedSymbol(moved, request);
       if (other) ctx.fail(other.message, [fate?.note, other.details].filter(Boolean).join("\n"));
       if (fate?.note) ctx.fail(`${fate.note}.`);
     }
     throw error;
   }
   if (isMiss?.(value)) await checkVenues();
+  // Data came back, but the symbol's company moved and nothing new lists there: the data is another security's.
+  if (request?.fate && all.length === 1) {
+    const { moved } = await request.fate();
+    if (moved) failMovedSymbol(moved, request);
+  }
   return value;
 }
 

@@ -172,7 +172,7 @@ test("a symbol whose company moved says where it trades now, as watchlist and po
   expect(fb.change).toMatchObject({ kind: "moved", tradesAs: "META", listed: "ProShares S&P 500 Dynamic Daily Buffer ETF" });
   // Nothing lists the old symbol any more: the failure says where it went.
   expect((await failed(resolveCliTicker("TRCH", tickerStore(), online)))?.message)
-    .toBe('No ticker match found for "TRCH". TRCH changed to MMAT on 2021-07-06, then to MMATQ on 2024-08-21.');
+    .toBe('No ticker match found for "TRCH". TRCH became MMAT on 2021-07-06, then MMATQ on 2024-08-21.');
 
   // A symbol with no change, an offline service, or a long list adds nothing and fails nothing.
   const offline = provider(async () => { throw new Error("fetch failed"); });

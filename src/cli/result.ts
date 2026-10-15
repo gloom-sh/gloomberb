@@ -53,6 +53,8 @@ export interface CliErrorObject {
   message: string;
   details?: unknown;
   retryable?: boolean;
+  /** What the failure says beside its message, such as the `tickerChange` of a symbol whose company moved. */
+  [field: string]: unknown;
 }
 
 export interface CliResultColumn<Row = Record<string, unknown>> extends CliTableColumn {

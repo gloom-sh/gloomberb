@@ -40,7 +40,7 @@ describe("describeTickerChange", () => {
   });
 
   test("with nothing listed there, or only the company's own old line, the symbol just changed", () => {
-    const changed = "FB changed to META on 2022-06-09";
+    const changed = "FB became META on 2022-06-09";
     expect(describeTickerChange("FB", FB, null)?.note).toBe(changed);
     // A quote that stopped before the change, or that is the company that left, is its old line.
     expect(describeTickerChange("FB", FB, { name: "ProShares Trust", lastTraded: Date.parse("2022-06-08T20:00:00Z") })?.note).toBe(changed);
@@ -53,7 +53,7 @@ describe("describeTickerChange", () => {
 
   test("follows a company through each later symbol", () => {
     expect(describeTickerChange("TRCH", TRCH, null)?.note)
-      .toBe("TRCH changed to MMAT on 2021-07-06, then to MMATQ on 2024-08-21");
+      .toBe("TRCH became MMAT on 2021-07-06, then MMATQ on 2024-08-21");
     expect(describeTickerChange("TRCH", { ...TRCH, moved: { ...TRCH.moved!, name: null } }, { name: "Torchlight Fund" })?.note)
       .toBe("TRCH now lists Torchlight Fund; the former TRCH trades as MMATQ (changed to MMAT on 2021-07-06, then MMATQ on 2024-08-21)");
   });
@@ -65,7 +65,7 @@ describe("describeTickerChange", () => {
     expect(metv?.note).toBe("METV was META until 2022-01-31");
     // Typing META or METV got what was typed: no line beside it.
     expect(tickerChangeLine(metv)).toBeNull();
-    expect(tickerChangeLine(describeTickerChange("FB", FB, null))).toBe("FB changed to META on 2022-06-09");
+    expect(tickerChangeLine(describeTickerChange("FB", FB, null))).toBe("FB became META on 2022-06-09");
     expect(formerly("MMATQ", [
       { from: "MMAT", to: "MMATQ", date: "2024-08-21" },
       { from: "TRCH", to: "MMAT", date: "2021-07-06" },

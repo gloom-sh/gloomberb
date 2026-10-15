@@ -3,6 +3,7 @@ import { blendHex, colors, priceColor, type ThemeColors } from "../../theme/colo
 import { isFiniteNumber } from "../../utils/guards";
 import { canonicalExchange, isKnownExchangeCode } from "../../utils/exchanges";
 import { quoteTradingDay } from "../quotes/day-range";
+import { isQuoteBeforeLatestSession } from "../quotes/freshness";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
 const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
@@ -58,6 +59,15 @@ export function marketStateLabel(state: MarketState): string {
     case "POSTPOST":
     case "CLOSED": return "CLOSED";
   }
+}
+
+/** What a quote's session reads as once its last print is older than its venue's latest completed session. */
+const STALE_SESSION_LABEL = "STALE";
+
+/** A quote's market state as a status cell names it (marketStateLabel), STALE for a print older than its venue's latest session. */
+export function quoteMarketStateLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
+  if (!quote?.marketState) return null;
+  return isQuoteBeforeLatestSession(quote, now) ? STALE_SESSION_LABEL : marketStateLabel(quote.marketState);
 }
 
 /** An extended session's column, named as marketStateLabel names its state. */
@@ -136,19 +146,35 @@ function overnightSessionDisplay(quote: Quote): ExtendedSessionDisplay | null {
 }
 
 /**
- * A quote's session as a status cell names it: the overnight session while
- * the quote is priced by it, else its market state (marketStateLabel). The
- * exchange stays closed overnight, so the state alone reads CLOSED.
+ * A quote's session as a status cell names it: STALE when its last print is
+ * older than its venue's latest completed session (isQuoteBeforeLatestSession),
+ * the overnight session while the quote is priced by it, else its market
+ * state (marketStateLabel). The exchange stays closed overnight, so the state
+ * alone reads CLOSED.
  */
-export function quoteSessionLabel(quote: Quote | null | undefined): string | null {
+export function quoteSessionLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
   if (!quote?.marketState) return null;
+  if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
   return overnightSessionDisplay(quote) ? "OVERNIGHT" : marketStateLabel(quote.marketState);
 }
 
-/** The color of quoteSessionLabel: an extended session's while the overnight session prices the quote. */
-export function quoteSessionColor(quote: Quote | null | undefined, palette: ThemeColors = colors): string {
+/**
+ * The color of quoteSessionLabel: STALE in the warning color every stale
+ * mark uses, an extended session's while the overnight session prices the quote.
+ */
+export function quoteSessionColor(quote: Quote | null | undefined, palette: ThemeColors = colors, now = Date.now()): string {
   if (!quote?.marketState) return palette.textDim;
+  if (isQuoteBeforeLatestSession(quote, now)) return palette.warning;
   return overnightSessionDisplay(quote) ? marketStateColor("POST", palette) : marketStateColor(quote.marketState, palette);
+}
+
+/**
+ * The market state a session dot pictures for a quote: none for one whose
+ * last print is older than its venue's latest session, so it draws as a quote
+ * with no known session rather than an open market.
+ */
+export function quoteDotMarketState(quote: Quote | null | undefined, now = Date.now()): MarketState | undefined {
+  return quote && !isQuoteBeforeLatestSession(quote, now) ? quote.marketState : undefined;
 }
 
 /** Closed prices are final snapshots, so they should not look live or directional. */

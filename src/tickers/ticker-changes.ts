@@ -153,9 +153,9 @@ function day(date: string): number {
   return Date.parse(`${date}T00:00:00Z`);
 }
 
-/** "to META on 2022-06-09, then MMATQ on 2024-08-21": each later hop of a chain. */
-function laterHops(hops: readonly TickerChangeHop[], lead: string): string {
-  return hops.slice(1).map((hop) => `, then ${lead}${hop.to} on ${hop.date}`).join("");
+/** ", then MMATQ on 2024-08-21": each later hop of a chain. */
+function laterHops(hops: readonly TickerChangeHop[]): string {
+  return hops.slice(1).map((hop) => `, then ${hop.to} on ${hop.date}`).join("");
 }
 
 /**
@@ -168,13 +168,23 @@ export function tickerChangeLine(change: TickerChange | null | undefined): strin
 }
 
 /**
+ * The change when the company that held the symbol trades under another now
+ * and nothing new lists under it (HFC became DINO): the symbol has no data of
+ * its own. Null for a symbol a new security took (FB lists a fund), one its
+ * holder renamed into (META), and one with no change.
+ */
+export function movedAwayChange(change: TickerChange | null | undefined): (TickerChange & { tradesAs: string }) | null {
+  return change?.kind === "moved" && !change.listed && change.tradesAs ? { ...change, tradesAs: change.tradesAs } : null;
+}
+
+/**
  * The note for a symbol's changes. `current` is what the command found
  * trading under the symbol: null when nothing does, left out when it did not
  * look. A quote that stopped before the change, or that names the issuer that
  * left, is that issuer's old line rather than a new listing.
  *
  * "FB now lists ProShares S&P 500 Dynamic Daily Buffer ETF; Meta Platforms trades as META (changed 2022-06-09)"
- * "FB changed to META on 2022-06-09"
+ * "HFC became DINO on 2022-03-15"
  * "METV was META until 2022-01-31" (data only: `tickerChangeLine` prints none)
  */
 export function describeTickerChange(
@@ -197,10 +207,10 @@ export function describeTickerChange(
     const listed = listedHere ? current?.name?.trim() || payload.listedName || "another security" : null;
     const when = moved.hops.length === 1
       ? `changed ${first.date}`
-      : `changed to ${first.to} on ${first.date}${laterHops(moved.hops, "")}`;
+      : `changed to ${first.to} on ${first.date}${laterHops(moved.hops)}`;
     const note = listed
       ? `${symbol} now lists ${listed}; ${issuer ?? `the former ${symbol}`} trades as ${moved.symbol} (${when})`
-      : `${symbol} changed to ${first.to} on ${first.date}${laterHops(moved.hops, "to ")}`;
+      : `${symbol} became ${first.to} on ${first.date}${laterHops(moved.hops)}`;
     return { symbol, kind: "moved", note, changes: moved.hops, tradesAs: moved.symbol, issuer, listed };
   }
   if (formerly) {

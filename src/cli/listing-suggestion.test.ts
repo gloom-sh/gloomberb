@@ -71,7 +71,7 @@ test("a single symbol's plain no-match error gains the suggestion, and every oth
   expect((suggested as Error).message).toBe('No ticker match found for "USD-NGN"; did you mean USDNGN=X (US Dollar/Nigerian Naira)?');
   expect(await withSuggestion(plain, "USD-NGN", deps(async () => []))).toBe(plain);
   // A symbol that changed or stopped trading already says why.
-  const changed = new TickerNotFoundError('No ticker match found for "TRCH". TRCH changed to MMAT on 2021-07-06.');
+  const changed = new TickerNotFoundError('No ticker match found for "TRCH". TRCH became MMAT on 2021-07-06.');
   expect(await withSuggestion(changed, "TRCH", deps(async () => [hit("MMAT", "Meta Materials")]))).toBe(changed);
   const other = new Error("Gloom Cloud did not answer.");
   expect(await withSuggestion(other, "USD-NGN", deps(async () => [NGN]))).toBe(other);

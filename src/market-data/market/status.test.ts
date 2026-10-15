@@ -10,8 +10,12 @@ import {
   getSessionMoveDisplay,
   getTradedSessionMoveDisplay,
   marketStateCountdown,
+  quoteDotMarketState,
+  quoteMarketStateLabel,
+  quoteSessionColor,
   quoteSessionLabel,
 } from "./status";
+import { colors } from "../../theme/colors";
 
 describe("marketStateCountdown", () => {
   test("adds precision as the US session boundary approaches", () => {
@@ -177,8 +181,10 @@ describe("the overnight session", () => {
     // A position is worth the overnight price, from the daily reference.
     expect(getActiveQuoteDisplay(overnight)).toEqual({ price: 198.95, change: 1.17, changePercent: 0.5916 });
     expect(getSessionMoveDisplay(overnight)?.session).toBe("OVERNIGHT");
-    expect(quoteSessionLabel(overnight)).toBe("OVERNIGHT");
-    expect(quoteSessionLabel(weekend)).toBe("CLOSED");
+    // Sunday evening in New York, as the overnight quote is.
+    const sunday = Date.parse("2026-10-12T00:35:00Z");
+    expect(quoteSessionLabel(overnight, sunday)).toBe("OVERNIGHT");
+    expect(quoteSessionLabel(weekend, sunday)).toBe("CLOSED");
   });
 
   test("says a bid and ask midpoint is one, and a board of moves leaves it out", () => {
@@ -195,5 +201,42 @@ describe("the overnight session", () => {
       expect(getExtendedSessionDisplay(quote)?.session).not.toBe("OVERNIGHT");
       expect(quoteSessionLabel(quote)).not.toBe("OVERNIGHT");
     }
+  });
+});
+
+describe("a quote older than its venue's latest completed session", () => {
+  // Thursday 15 Oct 2026: 08:00 New York time is the pre-market, 10:00 the regular session.
+  const preMarket = Date.parse("2026-10-15T12:00:00Z");
+  const regular = Date.parse("2026-10-15T14:00:00Z");
+  const nyse = (marketState: Quote["marketState"], lastUpdated: string): Quote => ({
+    symbol: "XYZ", price: 10, change: 0, changePercent: 0, currency: "USD", listingExchangeName: "NYSE",
+    marketState, lastUpdated: Date.parse(lastUpdated),
+  });
+
+  test("reads STALE, never the session its source states, once a whole session traded after its print", () => {
+    // Last printed Tuesday; Wednesday's session has completed since.
+    const behind = nyse("REGULAR", "2026-10-13T20:00:00Z");
+    expect(quoteSessionLabel(behind, regular)).toBe("STALE");
+    expect(quoteMarketStateLabel(behind, regular)).toBe("STALE");
+    expect(quoteSessionColor(behind, colors, regular)).toBe(colors.warning);
+    expect(quoteDotMarketState(behind, regular)).toBeUndefined();
+    // A delisted line years old, with no venue named, is stale whatever its source says.
+    const delisted = { ...behind, listingExchangeName: undefined, lastUpdated: Date.parse("2022-03-14T23:00:00Z"), stale: true };
+    expect(quoteSessionLabel({ ...delisted, marketState: "POST" }, regular)).toBe("STALE");
+  });
+
+  test("the last session's close or after-hours print keeps its state before the open and through the next session", () => {
+    const close = nyse("PRE", "2026-10-14T20:00:00Z");
+    expect(quoteSessionLabel(close, preMarket)).toBe("PRE-MKT");
+    expect(quoteSessionLabel(nyse("PRE", "2026-10-14T23:30:00Z"), preMarket)).toBe("PRE-MKT");
+    // No trade yet in Thursday's session: Wednesday's close is the latest completed one.
+    expect(quoteSessionLabel({ ...close, marketState: "REGULAR" }, regular)).toBe("OPEN");
+    expect(quoteDotMarketState({ ...close, marketState: "REGULAR" }, regular)).toBe("REGULAR");
+  });
+
+  test("an FX pair or a coin keeps its state: neither has a session to fall behind", () => {
+    const fx: Quote = { ...nyse("REGULAR", "2026-10-12T14:00:00Z"), symbol: "EURUSD=X", listingExchangeName: "CCY", stale: true };
+    expect(quoteSessionLabel(fx, regular)).toBe("OPEN");
+    expect(quoteSessionLabel({ ...fx, symbol: "BTC-USD", listingExchangeName: "CCC" }, regular)).toBe("OPEN");
   });
 });

@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import { createDefaultConfig } from "../../types/config";
 import type { Quote, TickerFinancials } from "../../types/financials";
 import type { HeadlessPaneContext } from "../../types/headless";
@@ -155,6 +155,8 @@ test("quote, RV and valuation read the same close after hours, with the extended
   const closes = [117.15, 138.11, 336.64];
   const capMeasuredAt = [116.9, 138.11, 336.64];
   const saturday = Date.parse("2026-10-10T12:00:00Z");
+  // Read on the Saturday the quotes are from: a later week would find them a session behind.
+  setSystemTime(saturday);
 
   const quoted = await compare(symbols.map((symbol) => financials.get(symbol)!.quote!));
   const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({
@@ -197,12 +199,15 @@ test("quote, RV and valuation read the same close after hours, with the extended
   expect(renderHeadlessPaneText(relativeValuationHeadless, peers, args, "Relative Valuation"))
     .toMatch(/NEM +\$117\.15 +-0\.59% +\$116\.96 -0\.16% +124\.43B USD/);
   expect(deriveHeadlessFreshness(relativeValuationHeadless, peers, saturday)).toMatchObject({ asOfClose: "2026-10-09" });
+  setSystemTime();
 });
 
 test("quote gives the overnight session its own column and names it, saying when its price is a midpoint", async () => {
   const traded = sessionQuotes("XLK").overnight;
   const marked = sessionQuotes("XLE").overnightMark;
-  const { rows, text } = await compare([traded, marked]);
+  // Sunday evening in New York, as the overnight quotes are.
+  setSystemTime(new Date("2026-10-12T00:35:00Z"));
+  const { rows, text } = await compare([traded, marked]).finally(() => setSystemTime());
   expect(rows.map(({ rawPrice, changePercent, extendedSession, rawExtendedPrice, extendedChangePercent, extendedMark, session }) =>
     ({ rawPrice, changePercent, extendedSession, rawExtendedPrice, extendedChangePercent, extendedMark, session }))).toEqual([
     { rawPrice: 198.78, changePercent: 0.51, extendedSession: "OVERNIGHT", rawExtendedPrice: 198.95, extendedChangePercent: 0.09, extendedMark: false, session: "OVERNIGHT" },

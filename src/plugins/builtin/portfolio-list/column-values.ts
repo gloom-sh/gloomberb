@@ -28,6 +28,7 @@ import {
   marketChangeColor,
   marketPriceColor,
   marketStateDot,
+  quoteDotMarketState,
   type ActiveQuoteDisplay,
 } from "../../../market-data/market/status";
 import { formatOptionTicker } from "../../../utils/options";
@@ -354,8 +355,8 @@ export function getColumnValue(
 
   switch (col.id) {
     case "ticker": {
-      const marketState = quote?.marketState;
-      const statusDot = marketStateDot(marketState);
+      // A print older than its venue's latest session pictures no session, not the market's current one.
+      const statusDot = marketStateDot(quoteDotMarketState(quote));
       return { text: `${statusDot} ${tickerDisplayName(ticker)}` };
     }
     case "name":

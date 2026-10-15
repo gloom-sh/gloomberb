@@ -27,7 +27,7 @@ import {
   getExtendedSessionDisplay,
   getQuoteSessionFields,
   getRegularSessionDisplay,
-  marketStateLabel,
+  quoteMarketStateLabel,
 } from "../../market-data/market/status";
 import type { FuturesContractTermsPayload } from "../../api-client/futures-curve";
 import { futuresContractLines, futuresSettleText, isFuturesInstrument, loadFuturesContractTerms } from "../../market-data/futures-contract";
@@ -59,8 +59,10 @@ import { NotesFiles } from "../../plugins/builtin/notes/files";
 import { isKnownNonUsListing } from "../../utils/sec";
 import { canonicalExchange, exchangeLabel, isKnownExchangeCode, isUsListingExchange } from "../../utils/exchanges";
 import {
-  failIfNotTraded, ListingArgError, listingChoiceNotes, listingIdentity, loadBareVenues, resolveCliListing, type CliListing,
+  failIfNotTraded, failMovedSymbol, ListingArgError, listingChoiceNotes, listingFateLoader, listingIdentity, loadBareVenues,
+  resolveCliListing, type CliListing, type ListingDataRequest,
 } from "../listing-arg";
+import { movedAwayChange } from "../../tickers/ticker-changes";
 import { isNotATickerMessage } from "../not-a-ticker";
 import { sharesOutstandingInReceipts } from "../../utils/depositary-receipt";
 import { cliFreshnessFooter } from "../result";
@@ -714,7 +716,7 @@ export async function buildTickerReport({
     listingVenueLabel(listingExchange, quote, financials, tickerFile) || undefined,
     (quote?.currency || financials.quoteMetadata?.currency || tickerFile?.metadata.currency)
       ? `Currency ${quote?.currency || financials.quoteMetadata?.currency || tickerFile?.metadata.currency}` : undefined,
-    quote?.marketState ? marketStateLabel(quote.marketState) : undefined,
+    quoteMarketStateLabel(quote) ?? undefined,
     quote?.dataSource ? `Source ${quote.dataSource.toUpperCase()}` : undefined,
   ].filter((part): part is string => !!part);
   if (summaryParts.length > 0) {
@@ -989,6 +991,17 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     const toBase = createBaseConverter(dataProvider, config.baseCurrency);
     // A bare symbol's venues load beside its research, to name the company it was read as when several list it.
     const venues = loadBareVenues(listing, { store, dataProvider });
+    // So does what became of the symbol, read from the research's quote as `history` reads it: a
+    // company that moved (HFC became DINO), with nothing new listed there, has no profile of its own.
+    const researchQuote = Promise.withResolvers<Quote | null>();
+    const fate = listingFateLoader(listing, { dataProvider }, researchQuote.promise);
+    const request: ListingDataRequest = { command: "ticker", noun: "research", fate };
+    /** Nothing to show: a company that moved is under its new symbol. */
+    const failIfMovedAway = async () => {
+      researchQuote.resolve(null);
+      const moved = movedAwayChange((await fate()).change);
+      if (moved) failMovedSymbol(moved, request);
+    };
 
     let financials: TickerFinancials | null = null;
     try {
@@ -996,6 +1009,7 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     } catch (error) {
       // A known exchange the symbol is not listed on: say where it is.
       await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });
+      await failIfMovedAway();
       const reason = error instanceof Error ? error.message : String(error);
       // A symbol no listing carries is not a failed fetch, and the message already names it.
       if (isNotATickerMessage(reason)) failCommand(reason);
@@ -1016,10 +1030,15 @@ export async function ticker(symbol: string, dependencies: TickerCommandDependen
     );
     if (!financials || (!hasResearchData && !tickerFile?.metadata.positions.some((position) => position.shares !== 0))) {
       await failIfNotTraded(listing, { store, dataProvider }, { fail: failCommand });
+      await failIfMovedAway();
       failCommand(`No research data available for ${normalized}.`);
     }
     const resolvedFinancials = financials as TickerFinancials;
     const quote = resolvedFinancials.quote;
+    // The quote is the old line's (stopped, or named for the company that left): the profile and figures are another security's.
+    researchQuote.resolve(quote ?? null);
+    const { moved } = await fate();
+    if (moved) failMovedSymbol(moved, request);
 
     const notesFiles = new NotesFiles(dataDir);
     const listingName = listingIdentity(listing, quote).name;

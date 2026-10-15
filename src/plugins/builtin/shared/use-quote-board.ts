@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
 import { useQuoteEntries } from "../../../market-data/hooks";
-import { getRegularSessionDisplay, quoteSessionColor, quoteSessionLabel } from "../../../market-data/market/status";
+import { getRegularSessionDisplay, quoteDotMarketState, quoteSessionColor, quoteSessionLabel } from "../../../market-data/market/status";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { QueryEntry } from "../../../market-data/result-types";
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
@@ -650,7 +650,7 @@ export function renderQuoteBoardCell(
       if (format.sessionText) {
         return { text: quoteSessionLabel(quote) ?? "—", color: quoteSessionColor(quote) };
       }
-      const dot = marketStatusDot(quote?.marketState);
+      const dot = marketStatusDot(quoteDotMarketState(quote));
       // The dot is a picture; the export says which session it means.
       return { text: dot.char, value: quoteSessionLabel(quote), color: dot.color };
     }

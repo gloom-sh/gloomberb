@@ -1,6 +1,6 @@
 import type { HeadlessPaneFreshness } from "../../../types/headless";
 import type { Quote, QuoteIndexSession } from "../../../types/financials";
-import { isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
+import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../../../market-data/quotes/freshness";
 import { delayedFeedLagMs, readIndexSession } from "../../../market-data/market/freshness";
 import { apiClient } from "../../../api-client";
 import { isPerpetualExchange } from "../../../tickers/perpetual-listing";
@@ -74,13 +74,15 @@ export function quoteFreshnessFields(
   // A perpetual's venue is read about once a minute, not held back by a feed lag.
   const delayed = quote.dataSource === "delayed" && quote.providerId === CLOUD_QUOTE_PROVIDER_ID && !isPerpetualExchange(exchange);
   const sessionCalendar = readIndexSession(quote.indexSession);
+  // A print older than its venue's latest session says nothing of where that market stands now (no "markets open" beside it).
+  const session = !isQuoteBeforeLatestSession(quote, now);
   return {
     ...(quote.dataSource === "live" || quote.dataSource === "delayed" ? { dataSource: quote.dataSource } : {}),
     stale: isQuoteStaleForCurrentSession(quote, now),
     ...(delayed ? { delayMinutes: delayedFeedLagMs(exchange) / 60_000 } : {}),
-    ...(exchange ? { sessionExchange: exchange } : {}),
-    ...(quote.marketState ? { marketState: quote.marketState } : {}),
-    ...(sessionCalendar ? { sessionCalendar } : {}),
+    ...(exchange && session ? { sessionExchange: exchange } : {}),
+    ...(quote.marketState && session ? { marketState: quote.marketState } : {}),
+    ...(sessionCalendar && session ? { sessionCalendar } : {}),
   };
 }
 

@@ -22,18 +22,30 @@ class CliFailure extends Error {
   readonly code: string;
   readonly details?: unknown;
   readonly retryable?: boolean;
+  /** What a structured format carries beside the message; text prints the message alone. */
+  readonly fields?: Record<string, unknown>;
 
-  constructor(message: string, details?: unknown, code = CLI_ERROR_CODE, retryable?: boolean) {
+  constructor(message: string, details?: unknown, code = CLI_ERROR_CODE, retryable?: boolean, fields?: Record<string, unknown>) {
     super(message);
     this.name = "CliFailure";
     this.code = code;
     this.details = details;
     this.retryable = retryable;
+    this.fields = fields;
   }
 }
 
 export function fail(message: string, details?: unknown, code?: string): never {
   throw new CliFailure(message, details, code);
+}
+
+/**
+ * Fails with its own code and the fields `--json` reads beside the message:
+ * `{ ok: false, error: { code, message, ...fields } }`. Text prints the
+ * message alone, and the exit status is any failure's.
+ */
+export function failWithFields(message: string, code: string, fields: Record<string, unknown>): never {
+  throw new CliFailure(message, undefined, code, undefined, fields);
 }
 
 export function closeAndFail(persistence: AppPersistence, message: string, details?: string): never {
@@ -57,6 +69,7 @@ function cliErrorObject(error: unknown): CliErrorObject {
       message: error.message,
       details: error.details,
       retryable: error.retryable,
+      ...error.fields,
     };
   }
   // Gloom Cloud refused what was asked (an unknown series, a bad date): the input was wrong, not the program.
