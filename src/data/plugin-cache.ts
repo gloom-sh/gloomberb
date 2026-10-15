@@ -53,6 +53,14 @@ export function createPluginCache<T, Stored = T>(options: {
       persistence = next;
     },
     reset,
+    subscribe(key: string, listener: () => void): () => void {
+      let query = queries.get(key);
+      if (!query) {
+        query = new CachedQuery({ read: (allowExpired) => read(key, allowExpired) });
+        queries.set(key, query);
+      }
+      return query.subscribe(listener);
+    },
     get(key: string, { allowExpired = false } = {}): PluginCacheResult<T> | null {
       const cached = read(key, allowExpired) ?? queries.get(key)?.getSnapshot().result;
       if (!cached || (!allowExpired && cached.expiresAt <= Date.now())) return null;

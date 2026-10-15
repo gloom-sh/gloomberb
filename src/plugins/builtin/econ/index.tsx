@@ -18,6 +18,7 @@ import type { PluginModule } from "../plugin-module";
 import { colors, blendHex } from "../../../theme/colors";
 import type { EconEvent } from "./types";
 import { FRED_CATALOG_SERIES } from "./fred-catalog";
+import { startHighImpactPrintWatch } from "./print-watch";
 import { EconDetailView } from "./detail-view";
 import {
   COUNTRY_CYCLE,
@@ -31,6 +32,7 @@ import {
   formatCountdown,
   formatStaleness,
   getCalendarCache,
+  subscribeCalendar,
   impactIndicator,
   loadCalendar,
   matchesCountry,
@@ -67,10 +69,13 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   // loadCalendar serves a fresh cache without a request, so the pane can always
   // ask and still follow the global cadence once the cache goes stale.
   const calendar = useAsyncResource<CalendarResult>(loadEvents, { initialData: cachedEvents });
+  const [, setPrintTick] = useState(0);
+  useEffect(() => subscribeCalendar(() => setPrintTick((tick) => tick + 1)), []);
+  const printed = getCalendarCache({ allowExpired: true });
   const { loading } = calendar;
-  const events = calendar.data?.data ?? NO_EVENTS;
-  const stale = calendar.data?.stale ?? false;
-  const fetchedAt = calendar.data?.fetchedAt ?? null;
+  const events = printed?.data ?? calendar.data?.data ?? NO_EVENTS;
+  const stale = printed?.stale ?? calendar.data?.stale ?? false;
+  const fetchedAt = printed?.fetchedAt ?? calendar.data?.fetchedAt ?? null;
   // A cache that could not be refreshed arrives as a result, not a failure.
   const error = calendar.error ?? (loading ? null : calendar.data?.refreshError ?? null);
   // The selected row and the open event are remembered by event id, so a
@@ -405,6 +410,8 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   );
 }
 
+let stopPrintWatch: (() => void) | null = null;
+
 export const economicCalendarModule: PluginModule = {
   series: FRED_CATALOG_SERIES,
   panes: [{
@@ -429,8 +436,12 @@ export const economicCalendarModule: PluginModule = {
   }],
   setup(ctx) {
     attachEconCalendarPersistence(ctx.persistence);
+    stopPrintWatch?.();
+    stopPrintWatch = startHighImpactPrintWatch(ctx);
   },
   dispose() {
+    stopPrintWatch?.();
+    stopPrintWatch = null;
     resetEconCalendarPersistence();
   },
 };

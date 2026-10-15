@@ -168,6 +168,28 @@ export function matchesCountry(event: EconEvent, filter: CountryFilter): boolean
   return true;
 }
 
+export const PRINT_PENDING_MS = 20 * 60 * 1000;
+export const PRINT_POLL_MS = 15_000;
+export const PRINT_IDLE_MS = 60_000;
+
+export function hasPendingHighImpactPrint(events: readonly EconEvent[], now: number): boolean {
+  return events.some((event) => {
+    if (event.impact !== "high" || event.actual) return false;
+    const releasedFor = now - event.date.getTime();
+    return releasedFor >= 0 && releasedFor <= PRINT_PENDING_MS;
+  });
+}
+
+export function landedHighImpactPrints(
+  previous: ReadonlyMap<string, string | null>,
+  next: readonly EconEvent[],
+): EconEvent[] {
+  return next.filter((event) => {
+    if (event.impact !== "high" || event.actual == null || !previous.has(event.id)) return false;
+    return previous.get(event.id) == null;
+  });
+}
+
 export function formatCountdown(ms: number): string {
   if (ms <= 60_000) return "in <1m";
   const totalMin = Math.floor(ms / 60_000);
@@ -204,6 +226,10 @@ function deserializeEvents(events: PersistedEconEvent[]): EconEvent[] {
 
 export function getCalendarCache(options?: { allowExpired?: boolean }): EconCalendarCacheEntry | null {
   return cache.get(CACHE_KEY, options);
+}
+
+export function subscribeCalendar(listener: () => void): () => void {
+  return cache.subscribe(CACHE_KEY, listener);
 }
 
 export interface EconCalendarLoadResult extends EconCalendarCacheEntry {
