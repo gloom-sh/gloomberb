@@ -61,7 +61,7 @@ The **filing cutoff** (`as-of`) uses filing publication dates and retained super
 
 Search returns up to 50 paths or companies per section, within four hops, 201 nodes and 400 links. Search work and its frontier are also bounded. The footer's warning detail and report metadata identify incomplete searches: result, path, response, state, frontier or time limits. A complete result means the bounded query finished over available disclosures, not that the commercial supply chain is complete. **Path** returns the routes found within those bounds and selected filters; it never claims every real-world route. Narrow filters or reduce depth to inspect constrained results.
 
-Free accounts receive a one-hop graph and up to three results in each commercial and related direction section, with evidence. A free preview always uses the latest snapshot; historical filing cutoffs require Pro. Preview reports remain explicitly incomplete. Pro unlocks the requested depth through four hops and the full result limits. Graph caches are separated by account, entitlement, company, target and filters; successful responses refresh after five minutes. Refresh failures retain their original timestamp and appear as stale in the pane.
+Free accounts receive a one-hop graph and up to three results in each commercial and related direction section, with evidence. A free preview always uses the latest snapshot; historical filing cutoffs require Pro. Preview reports remain explicitly incomplete. Pro unlocks the requested depth through four hops and the full result limits. Graph caches are separated by account, entitlement, company, target and filters; successful responses refresh after five minutes. Refresh failures retain their original timestamp.
 
 ## Coverage and limitations
 
@@ -73,7 +73,7 @@ Country, exchange and identifiers remain separate from names. Korean `.KS`/`.KQ`
 
 Unresolved names remain unresolved. Anonymous customer concentrations are never matched to a named company. Geographic, channel and customer cohorts are labelled **customer group** and never become company nodes or ribbons. Named corporate groups also remain distinct from listed company entities, have no tradable ticker and stay in Table and Evidence; their disclosures must not be attributed to a parent or subsidiary. An individually anonymous customer may appear in Flow. Annual reporting, disclosure thresholds, source availability and extraction throughput leave gaps. Absence is not proof of no relationship.
 
-Verification can promote a lead when stronger evidence arrives. Conflicting values supersede rather than average: an earlier rumor cannot override a later filed amount. Unverified leads expire after 90 days; company/call evidence generally ages after 12 months and reporting after six months. Filing revisions follow the newer disclosure. Cached results are separated by account, entitlement and evidence selection, refreshed hourly and marked stale when refresh fails.
+Verification can promote a lead when stronger evidence arrives. Conflicting values supersede rather than average: an earlier rumor cannot override a later filed amount. Unverified leads expire after 90 days; company/call evidence generally ages after 12 months and reporting after six months. Filing revisions follow the newer disclosure. Cached results are separated by account, entitlement and evidence selection, refreshed hourly, and kept with their time when refresh fails.
 
 ## CLI and REST
 

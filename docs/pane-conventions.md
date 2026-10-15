@@ -241,9 +241,9 @@ superseded requests, appends by id, keeps what is loaded when a page fails,
 and starts over when the loader changes (a new query, sort or filter); the
 pane changes `resetScrollKey` with it. Its `loadMore` goes to
 `useTableLoadMore(scrollRef, hasMore && !detailOpen, loadMore)` in
-`onBodyScrollActivity`, which fires within 8 rows of the end. The footer
-shows `loading more` while a page is in flight. Restoring a persisted open
-item past the first page expands to that page first. Client-side "reveal
+`onBodyScrollActivity`, which fires within 8 rows of the end. The body shows
+the spinner and `Loading...` while a page is in flight. Restoring a persisted
+open item past the first page expands to that page first. Client-side "reveal
 more of what is loaded" uses the same scroll helper.
 
 ## 5b. A chart over a table

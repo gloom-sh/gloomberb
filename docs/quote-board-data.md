@@ -7,8 +7,8 @@ same normalizer as quote metadata. Older providers may omit the exchange, which
 leaves that part of the identity unverified. The router does not invent it.
 
 Rejected responses can fall through to another source. If a refresh cannot
-supply a valid quote, the board retains its previous value and reports stale
-status in the existing footer. An initial failure leaves the value unavailable.
+supply a valid quote, the board retains its previous value. The footer keeps
+that quote's age. An initial failure leaves the value unavailable.
 Source stale flags and invalid observation times remain ineligible.
 
 The futures board (`FUT`) opens on the quotes already cached, however old, and

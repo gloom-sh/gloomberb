@@ -24,7 +24,7 @@ Ranks are ordinal positions within a bounded chart, not downloads, revenue or ma
 
 ## Access, freshness and coverage
 
-Both panes fetch through authenticated Gloom Cloud routes. Free previews keep source evidence and show the standard Pro upgrade action; full history and remaining observations require Pro. Persistent caches are partitioned by account and entitlement. A failed refresh retains the last valid response, marks it stale and exposes the failure. The pane shows observation dates, not a manufactured current timestamp.
+Both panes fetch through authenticated Gloom Cloud routes. Free previews keep source evidence and show the standard Pro upgrade action; full history and remaining observations require Pro. Persistent caches are partitioned by account and entitlement. A failed refresh retains the last valid response and exposes the failure. The pane shows observation dates, not a manufactured current timestamp.
 
 Use the API coverage routes for current deployment coverage: `/cloud/hiring/coverage` and `/cloud/app-attention/coverage`. No fixed company or country coverage claim is embedded in the app: it reads the captured payload. Additional countries and public sources can be added server-side without a new client.
 
