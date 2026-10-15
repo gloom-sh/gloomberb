@@ -15,17 +15,43 @@ import type { SyncSnapshot } from "../../src/sync/types";
 import { ChatContent } from "../../src/plugins/builtin/chat/content";
 import type { ChatController } from "../../src/plugins/builtin/chat/controller";
 import type { PaneProps } from "../../src/types/plugin";
+import { cloneLayout, type LayoutConfig, type SavedLayout } from "../../src/types/config";
+
+/** Saved but inactive panes still participate in workspace sync. */
+export function chatLatencyLayouts(layout: LayoutConfig): SavedLayout[] {
+  const layouts: SavedLayout[] = [{ name: "Fixture", layout: cloneLayout(layout) }];
+  if (params.get("workspace") !== "large") return layouts;
+  for (let index = 1; index <= 8; index++) {
+    const instances = Array.from({ length: 80 }, (_, pane) => ({
+      instanceId: `chat:saved-${index}-${pane}`, paneId: "chat", binding: { kind: "none" as const },
+      settings: { channelId: `saved-${pane}`, sidebarWidth: 24 },
+    }));
+    layouts.push({
+      name: `Saved ${index}`,
+      layout: {
+        instances, dockRoot: null, detached: [],
+        floating: instances.map(({ instanceId }, pane) => ({ instanceId, x: pane % 8 * 10, y: Math.floor(pane / 8) * 4, width: 80, height: 30, zIndex: pane })),
+      },
+      paneState: Object.fromEntries(instances.map(({ instanceId }) => [instanceId, { draft: "Saved draft text. ".repeat(500), selected: 400 }])),
+    });
+  }
+  return layouts;
+}
 
 const params = new URLSearchParams(location.search);
 const browser = params.get("host") === "browser";
 let tickerRepository: JsonTickerRepository;
 let chatLatencyRegistry: PluginRegistry;
-const chatLatencyStats = { pulls: 0, pushes: 0, observes: 0, collects: 0, syncMs: 0, storageWrites: 0 };
+const chatLatencyStats = { pulls: 0, pushes: 0, observes: 0, collects: 0, syncMs: 0, storageWrites: 0, timings: {} as Record<string, number[]> };
 let snapshot: SyncSnapshot | null = null;
 let revision = 0;
-const measure = <T,>(run: () => T): T => {
+const measure = <T,>(name: string, run: () => T): T => {
   const start = performance.now();
-  try { return run(); } finally { chatLatencyStats.syncMs += performance.now() - start; }
+  try { return run(); } finally {
+    const ms = performance.now() - start;
+    chatLatencyStats.syncMs += ms;
+    (chatLatencyStats.timings[name] ??= []).push(ms);
+  }
 };
 
 declare global {
@@ -67,11 +93,14 @@ export async function installChatLatencyRuntime(controller: ChatController): Pro
     setup(ctx) {
       ctx.persistence.setState("session", { sessionToken: "fixture", user: { id: "u0", username: "ada", emailVerified: true } }, { schemaVersion: 1 });
       controller.attachPersistence(ctx.persistence, ctx.resume);
+      if (params.get("workspace") === "large") {
+        for (let index = 0; index < 80; index++) controller.setChannelDraft(`saved-${index}`, "Saved draft text. ".repeat(500));
+      }
       for (const contributor of createCoreSyncContributors()) {
         ctx.registerSyncContributor({
           ...contributor,
-          collect: (context) => { chatLatencyStats.collects++; return measure(() => contributor.collect(context)); },
-          ...(contributor.observe ? { observe: (context) => { chatLatencyStats.observes++; measure(() => contributor.observe!(context)); } } : {}),
+          collect: (context) => { chatLatencyStats.collects++; return measure(`collect:${contributor.id}`, () => contributor.collect(context)); },
+          ...(contributor.observe ? { observe: (context) => { chatLatencyStats.observes++; measure(`observe:${contributor.id}`, () => contributor.observe!(context)); } } : {}),
         });
       }
       ctx.registerSyncTransport({
@@ -83,14 +112,18 @@ export async function installChatLatencyRuntime(controller: ChatController): Pro
   });
 }
 
-export function ChatLatencyPane({ controller, ...props }: PaneProps & { controller: ChatController }) {
+export function ChatLatencySync() {
   const state = useAppSelector((value) => value);
   const getState = useAppGetState();
   const dispatch = useAppDispatch();
-  const [channelId, onChannelChange] = usePaneSettingValue("channelId", "everyone");
   useEffect(() => chatLatencyRegistry.bindHost({ getConfig: () => getState().config }), [getState]);
   useCloudSyncRuntime({ state, getState, dispatch, tickerRepository, pluginRegistry: chatLatencyRegistry, initialized: true });
   useEffect(() => () => cloudSyncController.clearRuntime(), []);
+  return null;
+}
+
+export function ChatLatencyPane({ controller, ...props }: PaneProps & { controller: ChatController }) {
+  const [channelId, onChannelChange] = usePaneSettingValue("channelId", "everyone");
   return <PluginRenderProvider pluginId="chat-latency" runtime={chatLatencyRegistry}>
     <ChatContent {...props} controller={controller} channelId={channelId} onChannelChange={onChannelChange} />
   </PluginRenderProvider>;

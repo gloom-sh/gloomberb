@@ -1,6 +1,6 @@
 # Chat input workload
 
-Linear: GLO-790
+Linear: GLO-789, GLO-790
 
 Run `bun scripts/pane-chrome/chat-latency.ts --check --label chat-latency`.
 `--quick` uses 500 messages; `--recent` dates them within the last day instead
@@ -114,3 +114,125 @@ large saved workspace, signed-in/Pro all-pane sweep, or sustained leak test
 is claimed. The native RPC is a stub, not a measured native process. Timing
 thresholds would be unreliable on the shared host, so CI gates structural
 work only.
+
+## Follow-up investigation on `adb3a28fb`
+
+**Investigation only, not a product fix.** The application source is unchanged.
+There is no failing-before/passing-after reproduction of the blank-channel
+report, and no windowing implementation or bounded-open regression gate yet.
+The measurements below are baseline observations, not before/after gains.
+
+### Additional harness coverage
+
+The same harness now also accepts:
+
+- `--lifecycle`: mount the chat initially hidden, reveal it through a real
+  title-bar tab, then hide, move offscreen and unmount/remount it with incoming
+  messages. Switch between populated, empty, pending and failed channels;
+  resolve a previous channel's request after leaving it; switch with `[` and
+  `]`. Verify visible rows or visible loading/error/empty text without a
+  subsequent scroll or input. The host wrapper is fixture-only.
+- `--multiple`: run alongside two more real chat panes. The fake connections
+  are per channel, so closing one cannot disconnect another. The fixture's
+  app-wide sync runtime stays mounted when a pane unmounts.
+- `--large-workspace`: eight additional saved layouts with 80 panes each,
+  long per-pane session state, and 80 long channel drafts written through the
+  controller's normal draft persistence. These are invented stress data,
+  not an exported personal workspace.
+- `--open-only`: capture opening/switching profiles without the input phase.
+
+Opening now records `firstVisibleMs`, `latestVisibleMs`, estimated paint
+`ms`, mounted `rows`, and component `renderedRows`. The old DOM-presence
+selector was insufficient: an offscreen row counted as shown, and the prefix
+`m` for everyone also matched `macro:m`. It now checks the requested channel
+and waits for its actual latest message to intersect the scrollport and the
+page viewport. These are layout observations, not GPU pixel visibility.
+Do not compare the new timings directly with the older DOM-presence metric.
+
+The lifecycle scenarios pass on the baseline, including the rejected response
+remaining a visible error. That does not disprove an intermittent report or
+identify its cause. A first-frame compositor failure, native process timing,
+and real service/network races are not reproduced by this fixture.
+
+### Whole-transcript mounting remains the opening bottleneck
+
+The structural observation is unambiguous: opening each channel mounts all
+40, 200 or 500 messages, respectively. At 500, that includes the offscreen
+headers, text and image rows. The target for follow-up work is the
+latest loaded messages within two 60 Hz frames (about 33 ms), with mounting
+and first-layout work bounded by the viewport rather than loaded history.
+There is no timing gate while that structural change is missing.
+
+For completeness, the following is the new probe's `verified-baseline` run,
+not a speed comparison. The shared host was heavily contended (load average
+about 32); these timings are **not suitable for setting a regression budget**.
+An earlier run of the original probe on the same application revision had
+500-message desktop cold/warm opens of 457/339 ms and web 377/368 ms. The large
+spread is another reason not to gate wall-clock times on this machine.
+
+| Profile | Messages | Cold first/latest in view, ms | Cold estimated paint, ms | Warm estimated paint, ms | Repeated switches, ms | Mounted rows |
+|---|---:|---|---:|---:|---|---:|
+| Desktop | 40 | 291.4 / 291.4 | 307.0 | 183.1 | 202.4 / 102.4 | 40 |
+| Desktop | 200 | 738.2 / 738.2 | 750.1 | 623.6 | 399.7 / 408.6 | 200 |
+| Desktop | 500 | 835.4 / 835.4 | 854.4 | 708.9 | 1131.6 / 959.1 | 500 |
+| Web | 40 | 217.4 / 217.4 | 226.0 | 69.8 | 75.2 / 49.9 | 40 |
+| Web | 200 | 730.4 / 730.4 | 765.4 | 640.2 | 422.5 / 487.6 | 200 |
+| Web | 500 | 1820.6 / 1820.6 | 1880.8 | 1288.4 | 950.7 / 1489.3 | 500 |
+
+| Profile | Messages | Draft | Key to estimated paint p50 / p95 / p99, ms | Unchanged row renders |
+|---|---:|---|---|---:|
+| Desktop | 40 | Text | 27.8 / 143.5 / 246.5 | 0 |
+| Desktop | 40 | Upload | 25.4 / 132.0 / 176.8 | 0 |
+| Desktop | 200 | Text | 23.7 / 90.3 / 113.0 | 0 |
+| Desktop | 200 | Upload | 24.1 / 234.0 / 234.0 | 0 |
+| Desktop | 500 | Text | 30.2 / 128.9 / 166.8 | 0 |
+| Desktop | 500 | Upload | 74.1 / 391.5 / 467.5 | 0 |
+| Web | 40 | Text | 112.8 / 355.0 / 537.7 | 0 |
+| Web | 40 | Upload | 39.5 / 256.0 / 266.0 | 0 |
+| Web | 200 | Text | 60.2 / 290.6 / 345.5 | 0 |
+| Web | 200 | Upload | 41.9 / 491.8 / 604.5 | 0 |
+| Web | 500 | Text | 63.3 / 380.6 / 401.6 | 0 |
+| Web | 500 | Upload | 79.0 / 316.0 / 362.9 | 0 |
+
+All keys arrived and the drafts survived the round trips. This retains the
+structural protection from PR #1845; it does not establish a wall-clock input
+budget under contention.
+
+### Large workspace sync
+
+The per-contributor timings and profiles are retained with each run. In the
+initial 500-message large-workspace run, `core.config` observation during
+input took 5.2 ms on desktop and 6.6/7.7 ms on web; collection took 6.0 ms and
+6.8/5.9 ms, respectively. Only one observation/collection occurred during each
+of those typing workloads. No observer or collector ran during the desktop
+upload workload that nevertheless had a 124 ms key-to-paint p95.
+
+Source-mapped CPU samples attributed about 3.5 ms directly, or 7.6 ms including
+callees, to `snapshotContentSignature` in the web upload profile; none appeared
+in that desktop upload profile. The text profiles had 7.9 ms desktop and
+7.1 ms web inclusive totals. These are sampled CPU totals, not exact per-call
+durations.
+The web profile also had about 103 ms directly in local JSON storage over the
+whole workload; that is not interchangeable with sync observer/signature
+cost. No sync implementation was changed: these results do not establish it
+as the dominant opening or typing cause. The native persistence bridge is
+still a stub, so this is not a native storage-latency measurement.
+
+### Remaining delivery and verification
+
+Split the next implementation work: first obtain a failing main reproduction
+for the blank pane (preferably the affected native host and a frame trace),
+and separately implement bounded transcript mounting. No shared cause is
+proven. The latter must retain target-message navigation, selection/copy and
+browser find, pagination, historical anchors, sticky bottom, unread and
+pending-send behavior, replies, reactions and attachments. A tail-only slice
+without those paths is not a complete fix.
+
+The lifecycle checks added here are preventive coverage that passes on main,
+not evidence of a fixed blank-pane bug. Chromium's geometry checks do not
+prove a WebKit or compositor fix. No real Mac, sign-in/Pro sweep, all-pane
+before/after contact sheets, resize-budget comparison, glyph-track audit, or
+terminal byte-capture comparison was performed for this investigation. No
+application renderer, stylesheet, component or sync source changed, but that
+source-level fact is not a substitute for those acceptance checks when a
+product fix is made.

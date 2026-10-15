@@ -116,12 +116,17 @@ jobs:
       - name: Keep draft and upload work independent of transcript length
         run: bun scripts/pane-chrome/chat-latency.ts --quick --check --label chat-latency
 
+      - name: Show chat after mount and asynchronous channel transitions
+        run: bun scripts/pane-chrome/chat-latency.ts --lifecycle --multiple --quick --check --label chat-lifecycle
+
       - name: Keep chat input profiles
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: chat-latency
-          path: ~/.cache/gloomberb-pane-chrome/chat-latency
+          path: |
+            ~/.cache/gloomberb-pane-chrome/chat-latency
+            ~/.cache/gloomberb-pane-chrome/chat-lifecycle
           if-no-files-found: ignore
 
       - name: Keep screenshots of failed steps

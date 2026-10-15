@@ -80,6 +80,7 @@ import { PriceSparkline } from "../../src/components/price-sparkline/view";
 import { registerAskGloomPaneHandler } from "../../src/ask-gloom/pane-request";
 import { PANE_HEADER_ASK_MIN_WIDTH } from "../../src/components/layout/pane/header";
 import { ChatFixturePane, chatLayout } from "./chat-fixture";
+import { chatLatencyLayouts, ChatLatencySync } from "./chat-latency-fixture";
 import { HeaderFixture, installHeaderClock, installHeaderMarketData, installHeaderPlatform, type HeaderFixtureHandle } from "./header-fixture";
 import { browserUiHost } from "../../src/renderers/browser/ui-host";
 import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixture";
@@ -1271,7 +1272,7 @@ function config() {
     : scenario === "layout" ? layoutLayout(params)
     : chromeLayout();
   if (scenario === "theme-detached") layout.detached.push({ instanceId: "chart:theme", x: 0, y: 0, width: 80, height: 24 });
-  const layouts = [{ name: "Fixture", layout: cloneLayout(layout) }];
+  const layouts = scenario === "chat" ? chatLatencyLayouts(layout) : [{ name: "Fixture", layout: cloneLayout(layout) }];
   if (scenario === "theme") layouts.push({ name: "Alternate", layout: cloneLayout(layout) });
   const fontSize = Number(params.get("font")) || base.fontSize;
   return { ...base, theme: params.get("theme") ?? base.theme, fontSize, layout, layouts, activeLayoutIndex: 0 };
@@ -1361,6 +1362,7 @@ createRoot(root).render(
         </Box> : <Shell pluginRegistry={paneRegistry} />}
       {(scenario.startsWith("theme") || scenario === "paint") && <ThemeControls />}
       {scenario === "paint" && <PaneAdder />}
+      {scenario === "chat" && params.get("latencyCheck") === "1" && <ChatLatencySync />}
       <Ready />
     </AppProvider>
   </DomHostProviders>,
