@@ -23,6 +23,7 @@ interface ChatControllerViewOptions {
   getListenerSnapshot: (channelId: string) => ChatControllerSnapshot;
   getVisibleMessages: (channelId: string) => ChatMessage[];
   getUnreadMentionCount: (channelId: string) => number;
+  getUnreadPeople: () => ChatControllerSnapshot["unreadPeople"];
 }
 
 interface ChannelListenerEntry {
@@ -78,6 +79,7 @@ export class ChatControllerView {
       draftAttachments: channel.draftAttachments.map(publicDraftAttachment),
       replyToId: channel.replyToId,
       unreadMentionCount: this.options.getUnreadMentionCount(normalizedChannelId),
+      unreadPeople: this.options.getUnreadPeople(),
     };
   }
 

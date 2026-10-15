@@ -68,6 +68,7 @@ import {
 } from "../edit-window";
 import { ChatControllerRealtime } from "./realtime";
 import { ChatControllerChannels } from "./channels";
+import { ChatControllerUnreadPeople } from "./unread-people";
 import { ChatControllerView } from "./view";
 import { ChatControllerMessageLoading } from "./message-loading";
 import { ChatControllerStorage } from "./storage";
@@ -149,6 +150,13 @@ export class ChatController {
     getListenerSnapshot: (channelId) => this.getSnapshot(channelId),
     getVisibleMessages: (channelId) => this.getVisibleMessages(channelId),
     getUnreadMentionCount: (channelId) => this.getUnreadMentionCount(channelId),
+    getUnreadPeople: () => this.unreadPeople.snapshot(),
+  });
+  private readonly unreadPeople = new ChatControllerUnreadPeople({
+    getChannels: () => this.channelCatalog.getChannels(),
+    getChannelStates: () => this.storage.channelStates.entries(),
+    getUser: () => this.session.user,
+    onChange: () => this.emit(),
   });
   private readonly messageLoading = new ChatControllerMessageLoading({
     ensureChannelState: (channelId) => this.ensureChannelState(channelId),
@@ -786,6 +794,7 @@ export class ChatController {
 
   private emit(channelId?: string): void {
     this.view.emit(channelId);
+    this.unreadPeople.sync();
   }
 
   private applyChannelState(state: ChatChannelState): void {
@@ -803,6 +812,7 @@ export class ChatController {
   private stopRealtime(): void {
     this.realtime.stopAll();
     this.alerts.clear();
+    this.unreadPeople.clear();
   }
 
   private applySignedOutSession(): void {
