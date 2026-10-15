@@ -19,7 +19,7 @@ import { createReplay, discover, fallbackInstance, key, loadLayout, readCatalog,
  * registry, on demand.
  *
  *   bun run web:build
- *   bun run check:pane-layout [--only TRIAL,CHG] [--shard 0/3] [--out <dir>] [--root <checkout>] [--web <build>] [--replay <dir>]
+ *   bun run check:pane-layout [--only TRIAL,CHG] [--shard 0/3] [--depth 2] [--out <dir>] [--root <checkout>] [--web <build>] [--replay <dir>]
  *
  * Functions open through the command bar, signed out, so a function behind
  * sign-in shows its gate. The page reads Gloom Cloud as web-app.ts describes,
@@ -32,6 +32,8 @@ const args = process.argv.slice(2);
 const root = resolve(takeOption(args, "--root") ?? join(import.meta.dir, "../.."));
 const web = resolve(takeOption(args, "--web") ?? join(root, "dist/web"));
 const only = takeOption(args, "--only")?.split(",");
+/** Presses in a row the tab visits follow from the first view (tab-visits.ts); deeper ones are listed as skipped. */
+const depth = Number(takeOption(args, "--depth") ?? 2);
 const [shardIndex, shardCount] = (takeOption(args, "--shard") ?? "0/1").split("/").map(Number) as [number, number];
 const out = resolve(takeOption(args, "--out") ?? cacheDir("layout-sweep"));
 const replay = createReplay(resolve(takeOption(args, "--replay") ?? cacheDir("layout-sweep-replay")));
@@ -96,6 +98,7 @@ async function main(): Promise<void> {
               },
               settle: () => settle(cdp, scope, 700, 6_000),
               record: (path) => record(`tab ${pathName(path)}`),
+              depth,
             });
             const sizeName = `${size.width}x${size.height}`;
             for (const visit of visits) {
@@ -118,7 +121,7 @@ async function main(): Promise<void> {
   const reasons = [...new Set(skipped.map((visit) => visit.reason ?? ""))].map((reason) => `${skipped.filter((visit) => visit.reason === reason).length} ${reason}`);
   const summary = [
     "| Function | View | Layout | What fails |", "|---|---|---|---|", ...rows, "",
-    `Tabs and choices, docked at ${LAYOUT_SIZES.length} sizes: ${count("measured")} views measured, ${count("unmeasured")} not measured (above), ${skipped.length} skipped${reasons.length ? `: ${reasons.join("; ")}` : ""}.`,
+    `Tabs and choices, docked at ${LAYOUT_SIZES.length} sizes, up to ${depth} presses deep: ${count("measured")} views measured, ${count("unmeasured")} not measured (above), ${skipped.length} skipped${reasons.length ? `: ${reasons.join("; ")}` : ""}.`,
   ].join("\n");
   await Bun.write(join(out, `summary-${shardIndex}of${shardCount}.md`), `${summary}\n`);
   if (process.env.GITHUB_STEP_SUMMARY) await appendFile(process.env.GITHUB_STEP_SUMMARY, `### Pane layout sweep\n\n${summary}\n`);
