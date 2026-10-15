@@ -13,6 +13,7 @@ import { SegmentedControl } from "./toggle";
 import { Tabs } from "./tabs";
 import { useQueryBarKeys } from "./query-bar-keys";
 import { useCaptureDatesData } from "../layout/pane/capture-status";
+import { useChartViewReset } from "../chart/core/view-reset";
 
 export interface QueryBarSearch {
   value: string;
@@ -54,6 +55,13 @@ export interface QueryBarSelectFilter<T extends string = string> extends QueryBa
   title?: string;
   /** Draw the options inline (one click) instead of a menu. For four or fewer short values. */
   inline?: boolean;
+  /**
+   * The options are the range a chart in this pane shows (1D, 1Y, MAX). Choosing
+   * the one already selected sends the pane's charts back to it, as `0` does
+   * after a pan or zoom, and does nothing to a chart that was not moved. Inline
+   * filters only.
+   */
+  chartRange?: boolean;
 }
 
 export interface QueryBarMultiFilter extends QueryBarFilterBase {
@@ -112,6 +120,8 @@ export interface QueryBarView<T extends string = string> {
   /** Terminal: left/right cycle the view while this is true. */
   focused?: boolean;
   shortcutScope?: string;
+  /** The options are a chart's range; see `QueryBarSelectFilter.chartRange`. */
+  chartRange?: boolean;
 }
 
 export interface QueryBarProps {
@@ -240,6 +250,15 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
   const inputRef = search?.inputRef ?? localInputRef;
   const [openRequest, setOpenRequest] = useState<{ id: string; token: number } | null>(null);
   const narrowingCount = filters.filter(isNarrowing).length;
+  const resetChartView = useChartViewReset();
+  /** A choice on a control; one that picks a chart's range, made again, resets the charts' view instead. */
+  const choose = <T extends string>(
+    control: { value: T; onChange: (value: T) => void; chartRange?: boolean },
+    next: T,
+  ) => {
+    if (control.chartRange && next === control.value) resetChartView();
+    else control.onChange(next);
+  };
 
   const resetAll = useCallback(() => {
     for (const filter of filters) {
@@ -398,7 +417,10 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
         hint: option.hint,
         color: option.color,
       })),
-      onSelect: (value: string) => { if (value !== filter.value) filter.onChange(value); },
+      onSelect: (value: string) => {
+        if (value !== filter.value) filter.onChange(value);
+        else if (filter.chartRange) resetChartView();
+      },
       onToggle: () => {},
       onReset: () => { if (filter.defaultValue !== undefined) filter.onChange(filter.defaultValue); },
     };
@@ -431,7 +453,10 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
         view={view ? {
           value: view.value,
           options: view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled })),
-          onChange: view.onChange,
+          onChange: (value: string) => {
+            if (value !== view.value) view.onChange(value);
+            else if (view.chartRange) resetChartView();
+          },
         } : undefined}
         onClearAll={narrowingCount >= 2 ? resetAll : undefined}
         meta={meta}
@@ -478,7 +503,7 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
               <TerminalChoiceStrip
                 options={filter.options.map((option) => ({ value: option.value, label: option.short ?? option.label, hint: option.hint, disabled: option.disabled }))}
                 value={filter.value}
-                onChange={filter.onChange}
+                onChange={(value) => choose(filter, value)}
               />
             </Box>
           );
@@ -511,7 +536,7 @@ export function QueryBar({ width, search, filters = [], view, meta: given, asOf,
           <TerminalChoiceStrip
             options={view.options.map((option) => ({ value: option.value, label: option.label, hint: option.hint, disabled: option.disabled }))}
             value={view.value}
-            onChange={view.onChange}
+            onChange={(value) => choose(view, value)}
             focused={view.focused}
             shortcutScope={view.shortcutScope}
           />

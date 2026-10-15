@@ -118,7 +118,7 @@ export function MarketValuationPane({ focused, width, height }: PaneProps) {
     selectedId: indicatorId,
     onSelect: setIndicatorId,
     reload: refresh,
-    range: { value: range, options: RANGE_VIEW_OPTIONS, onChange: setRange },
+    range: { value: range, options: RANGE_VIEW_OPTIONS, onChange: setRange, chartRange: true },
   });
   const { selected } = list;
   const selectedView = selected?.view;

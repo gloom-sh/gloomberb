@@ -21,6 +21,7 @@ import { isIntradayResolution } from "../../../time-series/resolution";
 import { downsampleCompositeChartScene } from "./downsample";
 import { reuseResolvedSeriesList } from "./panel-series";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
+import { useChartViewResetListener } from "../core/view-reset";
 import { useShowChartTextFallback } from "../native/use-chart-text-fallback";
 import { StaticXAxisLabels, StaticXMarkerLabels, StaticXMarkerOverlay } from "./axis-overlays";
 import { formatCompositeCursorAxisDate } from "./format";
@@ -207,6 +208,8 @@ function ThemedCompositeChart({
     viewport, viewportResetKey, visibleSeries, marketTimelineSeries,
     allowHistoricalBackfill, onViewportChange,
   });
+  // The pane's range control asks for this when its selected range is chosen again.
+  useChartViewResetListener(resetViewport, interactive && navigable);
   const legendRows = showLegend && (visibleSeries.length > 0 || legendAccessory)
     ? 1
     : 0;

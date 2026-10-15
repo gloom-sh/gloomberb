@@ -139,7 +139,7 @@ export function EconStatisticsPane({ focused, width, height }: PaneProps) {
     selectedId: statId,
     onSelect: setStatId,
     reload,
-    range: { value: range, options: RANGE_OPTIONS, onChange: setRange },
+    range: { value: range, options: RANGE_OPTIONS, onChange: setRange, chartRange: true },
   });
   const { selected, searchFocused } = list;
   const rows = useMemo(() => withCategoryHeaders(list.visible), [list.visible]);

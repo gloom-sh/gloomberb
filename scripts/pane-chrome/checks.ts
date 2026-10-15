@@ -343,6 +343,19 @@ async function panChartBack(cdp: Cdp, drags: number): Promise<ChartWindow[]> {
   return after;
 }
 
+/** Where a button of the chart composer's range strip sits, by its label. */
+async function rangeButton(cdp: Cdp, label: string): Promise<Point> {
+  const rect = await evaluate<Rect | null>(cdp, `__check.rect([...document.querySelectorAll(".gloom-qb-inline[data-item-id=range] button[role=radio]")]
+    .find((button) => button.textContent.trim() === ${JSON.stringify(label)}))`);
+  return center(rect ?? fail(`the range strip has no ${label}`));
+}
+
+/** The range the strip marks as selected. */
+const selectedRange = (cdp: Cdp) => evaluate<string | null>(cdp, `document.querySelector(".gloom-qb-inline[data-item-id=range] button[data-active=true]")?.textContent.trim() ?? null`);
+
+const sameWindow = (a: ChartWindow, b: ChartWindow, tolerance = 60_000) => Math.abs(a.viewStart - b.viewStart) <= tolerance
+  && Math.abs(a.viewEnd - b.viewEnd) <= tolerance && a.dataStart === b.dataStart && a.dataEnd === b.dataEnd;
+
 const PRESS_POINTS = [["grip", "grip"], ["title", "title"], ["empty bar", "empty"]] as const;
 const EDGES = [
   { edge: "left", by: { x: -64, y: 0 }, moves: { x: 1, y: 0 }, grows: { x: -1, y: 0 } },
@@ -1092,6 +1105,55 @@ const steps: Step[] = [
       // The source has nothing older: the view rests on the first bar, not half a screen of nothing before it.
       if (last.dataStart - last.viewStart > span * 0.05) fail("the view kept going past the oldest bar", { oldest: day(last.dataStart), view: day(last.viewStart) });
       if (views.at(-2)!.viewStart !== last.viewStart) fail("the view did not come to rest at the oldest bar", views.slice(-2).map((view) => day(view.viewStart)));
+    },
+  },
+  {
+    name: "chart composer: choosing the selected range again returns a panned or zoomed view to it, and leaves one that was not moved alone",
+    scenario: "cmp&chart=pan",
+    async run(cdp) {
+      const plot = await loadedChartPlot(cdp);
+      const opened = await chartWindow(cdp);
+      const selected = await selectedRange(cdp);
+      if (!selected) fail("the range strip marks no range");
+
+      // Not moved: nothing to go back to, so nothing reloads or redraws.
+      await click(cdp, await rangeButton(cdp, selected));
+      await evaluate(cdp, "new Promise((done) => setTimeout(done, 700))");
+      const still = await chartWindow(cdp);
+      if (!sameWindow(opened, still)) fail("the selected range moved a view that was never moved", { opened, still });
+
+      // Panned back: the same press returns the view, and the bars it loaded stay.
+      await drag(cdp, { x: plot.x + plot.width * 0.2, y: plot.y + plot.height * 0.5 }, [{ x: plot.x + plot.width * 0.8, y: plot.y + plot.height * 0.5 }], 16);
+      await evaluate(cdp, "new Promise((done) => setTimeout(done, 700))");
+      const panned = await chartWindow(cdp);
+      if (panned.viewStart >= opened.viewStart - 60_000) fail("the drag did not pan the view back", { opened, panned });
+      await click(cdp, await rangeButton(cdp, selected));
+      if (!await waitFor(cdp, `(() => { const view = document.querySelector("[data-gloom-role=composite-chart]")?.dataset.gloomView?.split(":").map(Number); return !!view && Math.abs(view[0] - ${opened.viewStart}) <= 60000 && Math.abs(view[1] - ${opened.viewEnd}) <= 60000; })()`, 5_000)) {
+        fail("the selected range did not return a panned view", { opened, now: await chartWindow(cdp) });
+      }
+
+      // Zoomed in with the wheel: the same.
+      await zoomIn(cdp, center(plot));
+      const zoomed = await chartWindow(cdp);
+      if (zoomed.viewEnd - zoomed.viewStart >= (opened.viewEnd - opened.viewStart) * 0.9) fail("the wheel did not zoom the view in", { opened, zoomed });
+      await click(cdp, await rangeButton(cdp, selected));
+      if (!await waitFor(cdp, `(() => { const view = document.querySelector("[data-gloom-role=composite-chart]")?.dataset.gloomView?.split(":").map(Number); return !!view && Math.abs(view[0] - ${opened.viewStart}) <= 60000 && Math.abs(view[1] - ${opened.viewEnd}) <= 60000; })()`, 5_000)) {
+        fail("the selected range did not return a zoomed view", { opened, now: await chartWindow(cdp) });
+      }
+
+      // A different range still changes the range, and its own press goes back to that one.
+      const other = selected === "1M" ? "1W" : "1M";
+      await click(cdp, await rangeButton(cdp, other));
+      if (!await waitFor(cdp, `document.querySelector(".gloom-qb-inline[data-item-id=range] button[data-active=true]")?.textContent.trim() === ${JSON.stringify(other)}`)) {
+        fail("a different range was not selected", { selected: await selectedRange(cdp) });
+      }
+      await evaluate(cdp, "new Promise((done) => setTimeout(done, 900))");
+      const shorter = await chartWindow(cdp);
+      await zoomIn(cdp, center(plot));
+      await click(cdp, await rangeButton(cdp, other));
+      if (!await waitFor(cdp, `(() => { const view = document.querySelector("[data-gloom-role=composite-chart]")?.dataset.gloomView?.split(":").map(Number); return !!view && Math.abs(view[0] - ${shorter.viewStart}) <= 60000 && Math.abs(view[1] - ${shorter.viewEnd}) <= 60000; })()`, 5_000)) {
+        fail("the newly selected range did not return a zoomed view", { shorter, now: await chartWindow(cdp) });
+      }
     },
   },
   {

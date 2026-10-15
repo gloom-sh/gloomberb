@@ -18,6 +18,7 @@ import {
   type MultiSelectRowAction,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
+import { useChartViewReset, useChartViewResetListener } from "../../../components/chart/core/view-reset";
 import { formatCompositeDatasetDate } from "../../../components/chart/composite/format";
 import type { CompositeChartLevels, CompositeLevelEdit } from "../../../components/chart/composite/levels";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
@@ -758,6 +759,12 @@ function ChartComposerSurface({
       commitRuntimeViewport();
     }, AUTO_VIEWPORT_DEBOUNCE_MS);
   }, [authoredViewportKey, commitRuntimeViewport, setStoredInteractionViewport, spec.viewport.resolution]);
+  // The view the pane keeps (the window a pan asked for, the one saved with the
+  // pane and restored when it reopens) is the pane's to clear with the chart's
+  // own, whether or not the chart holds a moved view of its own.
+  useChartViewResetListener(() => {
+    if (activeRuntimeViewport || requestViewportRef.current) handleChartViewportChange(null, "reset");
+  });
   usePaneSharePreparation(paneId, async () => {
     if (runtimeViewportTimerRef.current !== null) {
       clearTimeout(runtimeViewportTimerRef.current);
@@ -793,12 +800,20 @@ function ChartComposerSurface({
     }
   }, [dialog, setInteractionCaptured, setSpec, spec]);
 
+  const resetChartView = useChartViewReset();
+  /** The range the bar shows as selected; a fixed window or a period count leaves a range to pick. */
+  const rangeReselects = !spec.viewport.dateWindow && spec.viewport.maxPoints === undefined;
   const setRange = useCallback((range: TimeRange) => {
+    // The range already showing: a view moved off it goes back to it, as `0` does.
+    if (rangeReselects && range === spec.viewport.range) {
+      resetChartView();
+      return;
+    }
     setSpec({
       ...spec,
       viewport: { ...spec.viewport, range, dateWindow: undefined, maxPoints: undefined },
     });
-  }, [setSpec, spec]);
+  }, [rangeReselects, resetChartView, setSpec, spec]);
   const setResolution = useCallback((next: ChartResolution) => {
     setSpec({ ...spec, viewport: { ...spec.viewport, resolution: next } });
   }, [setSpec, spec]);
@@ -1039,7 +1054,7 @@ function ChartComposerSurface({
       <QueryBar
         width={width}
         filters={[
-          { id: "range", label: "Range", inline: true,
+          { id: "range", label: "Range", inline: true, chartRange: rangeReselects,
             value: spec.viewport.dateWindow ? "" : spec.viewport.range,
             options: RANGE_OPTIONS,
             onChange: (value: string) => setRange(value as TimeRange) },

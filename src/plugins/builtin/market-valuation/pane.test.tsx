@@ -159,6 +159,21 @@ describe("MarketValuationPane", () => {
   });
 });
 
+test("the selected range's key, pressed again, returns a zoomed detail chart to that range and leaves an unmoved one alone", async () => {
+  const resting = await renderPane({ indicator: "tobins-q" });
+  // The default range is the second of three, so key 2 is the selected one.
+  await tui.emitKeypress({ name: "2", sequence: "2" }, { trackPropagation: true });
+  await settle();
+  expect(tui.frame()).toBe(resting);
+
+  await tui.emitKeypress({ name: "=", sequence: "+", shift: true }, { trackPropagation: true });
+  await settle();
+  expect(tui.frame()).not.toBe(resting);
+  await tui.emitKeypress({ name: "2", sequence: "2" }, { trackPropagation: true });
+  await settle();
+  expect(tui.frame()).toBe(resting);
+});
+
 test("a short stacked pane leads its detail with monetary basis and extrema dates", async () => {
   const frame = await renderPane({ indicator: "tobins-q" }, 48, 25);
   expect(frame).toContain("38.0T");

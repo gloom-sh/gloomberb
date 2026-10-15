@@ -333,7 +333,7 @@ export function WebQueryBar({ search, items, view, onClearAll, meta, leading, op
               disabled={option.disabled}
               data-active={option.value === view.value ? "true" : undefined}
               onMouseDown={(event) => event.stopPropagation()}
-              onClick={() => { if (option.value !== view.value) view.onChange(option.value); }}
+              onClick={() => view.onChange(option.value)}
             >
               <span className="gloom-qb-text">{option.label}</span>
             </button>

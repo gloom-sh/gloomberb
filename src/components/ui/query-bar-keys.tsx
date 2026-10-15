@@ -4,6 +4,7 @@ import { useShortcut } from "../../react/input";
 import type { ContextMenuItem } from "../../types/context-menu";
 import { useOptionalDialog, type AlertContext, type PromptContext } from "../../ui/dialog";
 import { usePaneMenuItems } from "../layout/pane/footer";
+import { useChartViewReset } from "../chart/core/view-reset";
 import { ChoiceDialog } from "./choice-dialog";
 import { MultiSelectDialogContent } from "./multi-select/dialog";
 import type { QueryBarFilter, QueryBarSearch, QueryBarView } from "./query-bar";
@@ -37,9 +38,10 @@ export function useQueryBarKeys({
   focusSearch: () => void;
 }) {
   const dialog = useOptionalDialog();
+  const resetChartView = useChartViewReset();
   const registrationId = `query-bar:${useId()}`;
-  const latest = useRef({ filters, view, resetAll, focusSearch });
-  latest.current = { filters, view, resetAll, focusSearch };
+  const latest = useRef({ filters, view, resetAll, focusSearch, resetChartView });
+  latest.current = { filters, view, resetAll, focusSearch, resetChartView };
 
   // A pane that binds "/" itself keeps it; this covers every other search.
   useShortcut((event) => {
@@ -49,7 +51,14 @@ export function useQueryBarKeys({
     latest.current.focusSearch();
   }, { phase: "after", enabled: !!search && search.focused && !search.active });
 
-  const choose = async (title: string, options: readonly ChoiceOption[], current: string, apply: (value: string) => void) => {
+  /** `reselect` runs when the option already selected is chosen again. */
+  const choose = async (
+    title: string,
+    options: readonly ChoiceOption[],
+    current: string,
+    apply: (value: string) => void,
+    reselect?: () => void,
+  ) => {
     if (!dialog) return;
     const value = await dialog.prompt<string>({
       closeOnClickOutside: true,
@@ -69,6 +78,7 @@ export function useQueryBarKeys({
       ),
     });
     if (value && value !== current) apply(value);
+    else if (value && reselect) reselect();
   };
 
   const signature = [
@@ -144,7 +154,13 @@ export function useQueryBarKeys({
           onSelect: () => {
             const current = find();
             if (!current || current.kind === "toggle" || current.kind === "text" || current.kind === "multi") return;
-            void choose(t(current.title ?? current.label), current.options, String(current.value), (value) => current.onChange(value));
+            void choose(
+              t(current.title ?? current.label),
+              current.options,
+              String(current.value),
+              (value) => current.onChange(value),
+              current.chartRange ? latest.current.resetChartView : undefined,
+            );
           },
         });
       }
@@ -156,7 +172,15 @@ export function useQueryBarKeys({
         label: `${t("View")}: ${t(currentLabel)}…`,
         onSelect: () => {
           const current = latest.current.view;
-          if (current) void choose(t("View"), current.options, String(current.value), (value) => current.onChange(value));
+          if (current) {
+            void choose(
+              t("View"),
+              current.options,
+              String(current.value),
+              (value) => current.onChange(value),
+              current.chartRange ? latest.current.resetChartView : undefined,
+            );
+          }
         },
       });
     }
