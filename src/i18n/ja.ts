@@ -152,6 +152,7 @@ export const ja: Record<string, string> = {
   "Toggle Status Bar": "ステータスバーを切り替え",
   "Toggle Value Flashing": "値の点滅を切り替え",
   "Check for Updates": "アップデートを確認",
+  "Update Channel": "アップデートチャネル",
   "Crash Reports": "クラッシュレポート",
   "Usage Counts": "利用回数",
   "Change Theme": "テーマを変更",

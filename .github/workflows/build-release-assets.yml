@@ -1,0 +1,179 @@
+name: Build Release Assets
+
+# The builds a release publishes: the terminal binaries, the signed and
+# notarized macOS desktop app, and the Windows desktop installer. Release runs
+# it for a stable tag as the tag is; Nightly runs it for a main commit under a
+# nightly version, with the desktop files named nightly-* so they can never be
+# taken for a stable manifest.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: Commit to build. Empty builds the commit that started the run.
+        type: string
+        default: ""
+      version:
+        description: Version to build as, written to package.json in the runner only. Empty keeps package.json's.
+        type: string
+        default: ""
+      channel:
+        description: "stable keeps Electrobun's stable-* desktop file names; nightly renames them nightly-*."
+        type: string
+        default: stable
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            asset: gloomberb-darwin-arm64
+          # Intel Macs only get the terminal build. GitHub retires this runner
+          # image in 2027; the desktop app stays Apple Silicon only.
+          - os: macos-15-intel
+            asset: gloomberb-darwin-x64
+          - os: ubuntu-latest
+            asset: gloomberb-linux-x64
+          - os: ubuntu-24.04-arm
+            asset: gloomberb-linux-arm64
+          - os: windows-latest
+            asset: gloomberb-windows-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+        run: npm pkg set "version=$BUILD_VERSION"
+
+      - name: Build
+        run: bun run scripts/build.ts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: dist/*
+
+  desktop-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+        run: npm pkg set "version=$BUILD_VERSION"
+
+      - name: Configure Apple signing
+        uses: ./.github/actions/apple-signing
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+          ELECTROBUN_APPLEAPIKEY: ${{ secrets.ELECTROBUN_APPLEAPIKEY }}
+          ELECTROBUN_APPLEAPIKEY_BASE64: ${{ secrets.ELECTROBUN_APPLEAPIKEY_BASE64 }}
+          ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+
+      - name: Build signed desktop DMG
+        env:
+          ELECTROBUN_APPLEAPIISSUER: ${{ secrets.ELECTROBUN_APPLEAPIISSUER }}
+          ELECTROBUN_APPLEAPIKEY: ${{ secrets.ELECTROBUN_APPLEAPIKEY }}
+          ELECTROBUN_DEVELOPER_ID: ${{ secrets.ELECTROBUN_DEVELOPER_ID }}
+        run: bun run desktop:release
+
+      - name: Build Homebrew app archive
+        run: |
+          set -euo pipefail
+          brew install zstd
+          tmp_dir="$(mktemp -d)"
+          zstd -d -o "$tmp_dir/Gloomberb.app.tar" artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
+          tar -xf "$tmp_dir/Gloomberb.app.tar" -C "$tmp_dir"
+          test -x "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb"
+          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/tui-entry.js"
+          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/index.js"
+          test -f "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb-tui/node_modules/@opentui/core-darwin-arm64/libopentui.dylib"
+          "$tmp_dir/Gloomberb.app/Contents/Resources/gloomberb" help
+          ditto -c -k --keepParent "$tmp_dir/Gloomberb.app" artifacts/stable-macos-arm64-Gloomberb.app.zip
+
+      - name: Verify desktop artifacts
+        run: |
+          set -euo pipefail
+          test -f artifacts/stable-macos-arm64-Gloomberb.dmg
+          test -f artifacts/stable-macos-arm64-Gloomberb.app.tar.zst
+          test -f artifacts/stable-macos-arm64-Gloomberb.app.zip
+          test -f artifacts/stable-macos-arm64-update.json
+          codesign --verify --verbose=4 artifacts/stable-macos-arm64-Gloomberb.dmg
+          xcrun stapler validate -v artifacts/stable-macos-arm64-Gloomberb.dmg
+
+      - name: Name the desktop files for the nightly channel
+        if: ${{ inputs.channel == 'nightly' }}
+        run: |
+          set -euo pipefail
+          cd artifacts
+          for file in stable-*; do mv "$file" "nightly-${file#stable-}"; done
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gloomberb-desktop-macos-arm64
+          path: artifacts/*
+
+  desktop-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - uses: ./.github/actions/setup-bun
+
+      - name: Set the build version
+        if: ${{ inputs.version != '' }}
+        shell: bash
+        env:
+          BUILD_VERSION: ${{ inputs.version }}
+        run: npm pkg set "version=$BUILD_VERSION"
+
+      - name: Build Windows desktop package
+        shell: pwsh
+        run: ./scripts/build-windows-desktop-package.ps1
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Build Windows installer
+        shell: pwsh
+        run: ./scripts/build-windows-installer.ps1
+
+      - name: Verify Windows desktop artifacts
+        shell: pwsh
+        run: ./scripts/verify-windows-desktop.ps1
+
+      - name: Name the desktop files for the nightly channel
+        if: ${{ inputs.channel == 'nightly' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd artifacts
+          for file in stable-*; do mv "$file" "nightly-${file#stable-}"; done
+          ls -l
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gloomberb-desktop-windows-x64
+          path: artifacts/*

@@ -152,6 +152,7 @@ export const zhCN: Record<string, string> = {
   "Toggle Status Bar": "切换状态栏",
   "Toggle Value Flashing": "切换数值闪烁",
   "Check for Updates": "检查更新",
+  "Update Channel": "更新通道",
   "Crash Reports": "崩溃报告",
   "Usage Counts": "使用统计",
   "Change Theme": "更换主题",

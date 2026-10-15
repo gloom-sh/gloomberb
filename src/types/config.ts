@@ -230,6 +230,18 @@ export interface TelemetryConfig {
 }
 
 /**
+ * Which builds the app updates to. `stable` is the tagged releases; `nightly`
+ * adds the daily prerelease built from main.
+ */
+export type UpdateChannel = "stable" | "nightly";
+
+/** How this machine updates the app. Absent means the stable channel. */
+export interface UpdatesConfig {
+  /** Only `nightly` is saved; stable is the default. `GLOOMBERB_UPDATE_CHANNEL` overrides it. */
+  channel?: UpdateChannel;
+}
+
+/**
  * The one-time line in the terminal's status bar asking to star Gloomberb on
  * GitHub. Absent means on and not shown yet. Kept on this machine only.
  */
@@ -297,6 +309,8 @@ export interface AppConfig {
   keybindings?: KeybindingsConfig;
   telemetry?: TelemetryConfig;
   starPrompt?: StarPromptConfig;
+  /** The update channel. Kept on this machine only. */
+  updates?: UpdatesConfig;
   /**
    * The IANA zone (`Asia/Tokyo`) the CLI and function reports show a local
    * time in, beside every UTC time. Absent prints UTC alone. Trading-day dates

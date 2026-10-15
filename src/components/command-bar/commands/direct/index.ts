@@ -29,6 +29,9 @@ import { parseWindowModeCommandArg } from "../../layout-items";
 import type { CommandBarRoute } from "../../workflow/types";
 import { recordFunctionOpen } from "../../../../telemetry/usage-counts";
 import { reportTelemetryConfig } from "../../../../telemetry/live-config";
+import { NIGHTLY_CHANNEL_SUMMARY, withUpdateChannel } from "../../../../updater/channel";
+import { isPrereleaseVersion } from "../../../../utils/semver";
+import { VERSION } from "../../../../version";
 
 type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
 
@@ -373,6 +376,36 @@ export function runDirectCommandAction(options: {
       void onCheckForUpdates?.();
       closeAll({ revertThemePreview: false });
       return;
+    case "update-channel": {
+      // The runtime checks again as soon as the channel changes.
+      const setChannel = (channel: "stable" | "nightly") => {
+        const nextConfig = withUpdateChannel(getState().config, channel);
+        dispatch({ type: "SET_CONFIG", config: nextConfig });
+        persistConfig(nextConfig);
+        notify(`${t(command.label)}: ${channel}`, { type: "success" });
+      };
+      // The saved setting flips; GLOOMBERB_UPDATE_CHANNEL still wins for the run it is set on.
+      if (state.config.updates?.channel === "nightly") {
+        setChannel("stable");
+        closeAll({ revertThemePreview: false });
+        return;
+      }
+      openInlineConfirm({
+        confirmId: "switch-to-nightly",
+        title: "Switch to Nightly?",
+        body: [
+          `Nightly is ${NIGHTLY_CHANNEL_SUMMARY}. Stable releases still reach you when they are newer.`,
+          isPrereleaseVersion(VERSION)
+            ? "Switch back to Stable at any time."
+            : "Switch back to Stable at any time: the nightly build stays until a newer stable release is out.",
+        ],
+        confirmLabel: "Switch to Nightly",
+        cancelLabel: "Stay on Stable",
+        tone: "default",
+        onConfirm: async () => { setChannel("nightly"); },
+      });
+      return;
+    }
     case "theme":
       setRootThemeBaseId(getState().config.theme);
       setRootQuery(arg ? `TH ${arg}` : "TH ");

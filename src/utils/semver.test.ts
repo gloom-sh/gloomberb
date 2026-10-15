@@ -14,6 +14,26 @@ describe("compareSemver", () => {
     expect(compareSemver("1.0.0-beta.1", "1.0.0-beta.2")).toBeLessThan(0);
   });
 
+  // Nightly builds are `<next patch>-nightly.<date>.<run>.g<sha7>`; the update
+  // channels depend on these orderings.
+  test("orders nightly builds between the releases around them", () => {
+    const nightly = "0.16.5-nightly.20261015.42.gabc1234";
+    expect(compareSemver(nightly, "0.16.5")).toBeLessThan(0);
+    expect(compareSemver(nightly, "0.16.4")).toBeGreaterThan(0);
+    expect(compareSemver("0.16.5-nightly.20261016.43.g0000000", nightly)).toBeGreaterThan(0);
+  });
+
+  test("compares prerelease numbers by value, never by the characters of a sha", () => {
+    // Same day: the run number decides, whatever the shas look like.
+    expect(compareSemver("0.16.5-nightly.20261015.9.gfff", "0.16.5-nightly.20261015.10.g000")).toBeLessThan(0);
+    // A later day wins over a higher run number.
+    expect(compareSemver("0.16.5-nightly.20261016.1.g000", "0.16.5-nightly.20261015.99.gfff")).toBeGreaterThan(0);
+    // Digits sort below words, and a shorter tag below a longer one that starts the same.
+    expect(compareSemver("1.0.0-alpha.1", "1.0.0-alpha.beta")).toBeLessThan(0);
+    expect(compareSemver("1.0.0-alpha", "1.0.0-alpha.1")).toBeLessThan(0);
+    expect(compareSemver("1.0.0-rc.1", "1.0.0-rc.1")).toBe(0);
+  });
+
   test("returns null rather than guessing when either side is not a version", () => {
     // Plugins pin to tags like "main" or a commit; comparing those as versions
     // would report an update forever or never.

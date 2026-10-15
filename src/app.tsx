@@ -50,6 +50,7 @@ import { bindPluginRegistryRuntimeAccess } from "./app/runtime/plugin-bindings";
 import { useAppStartupRuntime } from "./app/runtime/startup";
 import { useTickerRefreshRuntime } from "./app/runtime/ticker-refresh";
 import { useAppUpdateRuntime } from "./app/runtime/update";
+import { resolveUpdateChannel } from "./updater/channel";
 import { createCoreSyncContributors } from "./sync/core-contributors";
 import { useCloudSyncRuntime } from "./sync/react";
 import { RemoteControlHost, type RemoteControlAdapter } from "./remote/app-host";
@@ -278,6 +279,7 @@ function AppInner({
     pluginRegistry,
     stateRef,
     updateAvailable: state.updateAvailable,
+    updateChannel: resolveUpdateChannel(state.config),
     updateCheckInProgress: state.updateCheckInProgress,
     updateProgress: state.updateProgress,
   });

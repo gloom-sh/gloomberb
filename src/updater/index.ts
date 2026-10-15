@@ -1,5 +1,18 @@
-import { compareSemver } from "../utils/semver";
-import { GITHUB_LATEST_RELEASE_API_URL } from "./github-releases";
+import type { UpdateChannel } from "../types/config";
+import { compareSemver, isPrereleaseVersion } from "../utils/semver";
+import {
+  GITHUB_LATEST_RELEASE_API_URL,
+  GITHUB_RELEASES_API_URL,
+  newestRelease,
+  type GitHubReleaseAsset,
+} from "./github-releases";
+
+/**
+ * How many of the newest releases the nightly channel looks through. Nightly
+ * builds are only published for a new main, so any stable release outside this
+ * window is older than the nightly builds inside it.
+ */
+const NIGHTLY_RELEASE_WINDOW = 30;
 
 function getRuntimeProcess(): Pick<NodeJS.Process, "platform" | "arch" | "argv" | "execPath" | "getBuiltinModule"> | null {
   return (globalThis as { process?: NodeJS.Process }).process ?? null;
@@ -14,6 +27,11 @@ export interface ReleaseInfo {
   compressed?: boolean;
   /** SHA-256 of the downloaded GitHub release asset. */
   checksum?: string;
+  /**
+   * The channel the release was found on, so a desktop download fetches from
+   * the same release the check picked. Absent means stable.
+   */
+  channel?: UpdateChannel;
 }
 
 export interface UpdateProgress {
@@ -45,12 +63,21 @@ export type UpdateAction =
 
 export type UpdateCheckResult =
   | { kind: "available"; release: ReleaseInfo }
-  | { kind: "current" }
+  /** `notice`: why a newer-looking state is not an update, such as a nightly build waiting for a stable release. */
+  | { kind: "current"; notice?: string }
   | { kind: "disabled" }
   | { kind: "error"; error: string };
 
+/**
+ * On the stable channel a nightly build is never replaced by an older stable
+ * release: it stays until a stable release passes it.
+ */
+export function stableHoldNotice(currentVersion: string): string {
+  return `Staying on v${currentVersion} until a newer stable release`;
+}
+
 export interface UpdateHost {
-  checkForUpdateDetailed(currentVersion: string): Promise<UpdateCheckResult>;
+  checkForUpdateDetailed(currentVersion: string, channel: UpdateChannel): Promise<UpdateCheckResult>;
   /** Downloads and stages the update, ending in `ready` (or `error`). It never relaunches the app. */
   performUpdate(release: ReleaseInfo, onProgress: (p: UpdateProgress) => void): Promise<void>;
   /** Installs the staged update and relaunches the app. Only runs on an explicit request. */
@@ -88,7 +115,7 @@ function parseAssetDigest(digest: string | undefined): string | undefined {
 }
 
 function resolveReleaseAsset(
-  assets: { name: string; browser_download_url: string; digest?: string }[],
+  assets: GitHubReleaseAsset[],
 ): { name: string; browser_download_url: string; compressed: boolean; checksum?: string } | null {
   const assetBaseName = getAssetBaseName();
   const gzAsset = assets.find((asset) => asset.name === `${assetBaseName}.gz`);
@@ -271,24 +298,50 @@ export function canRestartToApply(progress: UpdateProgress | null | undefined): 
   return progress?.phase === "ready" && progress.canRestart === true;
 }
 
+interface LatestReleasePayload {
+  tag_name: string;
+  published_at: string;
+  assets: GitHubReleaseAsset[];
+}
+
+/**
+ * The newest release of any kind, nightly builds included, that carries this
+ * platform's binary. Null when the list has none.
+ */
+function pickNightlyChannelRelease(payload: unknown): LatestReleasePayload | null {
+  if (!Array.isArray(payload)) return null;
+  const releases = payload as Array<LatestReleasePayload & { draft?: boolean }>;
+  return newestRelease(releases, (release) => Array.isArray(release.assets) && resolveReleaseAsset(release.assets) !== null);
+}
+
+/**
+ * Asks GitHub for the release this install should run on `channel`. Stable
+ * reads `releases/latest`, which never returns a prerelease. Nightly reads the
+ * newest releases and takes the highest version, so a nightly build is
+ * offered the stable release once it passes the nightly's version. Only the
+ * self-updating binary follows nightly: npm, Bun and package-manager installs
+ * update from stable releases whatever the setting says.
+ */
 export async function checkForUpdateDetailed(
   currentVersion: string,
+  channel: UpdateChannel = "stable",
 ): Promise<UpdateCheckResult> {
   if (updateHost) {
-    return updateHost.checkForUpdateDetailed(currentVersion);
+    return updateHost.checkForUpdateDetailed(currentVersion, channel);
   }
 
   const updateAction = detectUpdateAction();
   if (!updateAction) {
     return { kind: "disabled" };
   }
+  const nightly = channel === "nightly" && updateAction.kind === "self";
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
   try {
     const controller = new AbortController();
     timeout = setTimeout(() => controller.abort(), 5000);
 
-    const res = await fetch(GITHUB_LATEST_RELEASE_API_URL, {
+    const res = await fetch(nightly ? `${GITHUB_RELEASES_API_URL}?per_page=${NIGHTLY_RELEASE_WINDOW}` : GITHUB_LATEST_RELEASE_API_URL, {
       signal: controller.signal,
       headers: { Accept: "application/vnd.github+json" },
     });
@@ -297,16 +350,22 @@ export async function checkForUpdateDetailed(
       return { kind: "error", error: `GitHub returned ${res.status}` };
     }
 
-    const data = (await res.json()) as {
-      tag_name: string;
-      published_at: string;
-      assets: { name: string; browser_download_url: string; digest?: string }[];
-    };
+    const payload = await res.json();
+    let data = payload as LatestReleasePayload;
+    if (nightly) {
+      const picked = pickNightlyChannelRelease(payload);
+      if (!picked) return { kind: "current" };
+      data = picked;
+    }
 
     const version = data.tag_name.replace(/^v/, "");
     // A tag that does not parse as a version is not an update.
     if ((compareSemver(version, currentVersion) ?? 0) <= 0) {
-      return { kind: "current" };
+      // A nightly build on the stable channel waits for a newer stable release
+      // rather than going back to an older one, and says so.
+      return !nightly && isPrereleaseVersion(currentVersion)
+        ? { kind: "current", notice: stableHoldNotice(currentVersion) }
+        : { kind: "current" };
     }
 
     const asset = resolveReleaseAsset(data.assets);
@@ -333,6 +392,7 @@ export async function checkForUpdateDetailed(
         updateAction,
         compressed: asset.compressed,
         ...(asset.checksum ? { checksum: asset.checksum } : {}),
+        ...(nightly ? { channel } : {}),
       },
     };
   } catch (error: unknown) {

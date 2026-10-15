@@ -620,3 +620,112 @@ describe("performUpdate", () => {
     }
   });
 });
+
+describe("update channels", () => {
+  const digest = `sha256:${"ab".repeat(32)}`;
+  function release(tag: string, options: { prerelease?: boolean; draft?: boolean; withAsset?: boolean } = {}) {
+    return {
+      tag_name: tag,
+      published_at: "2026-10-15T03:00:00Z",
+      prerelease: options.prerelease ?? tag.includes("-"),
+      draft: options.draft ?? false,
+      assets: options.withAsset === false ? [] : [{
+        name: expectedAssetName(true),
+        browser_download_url: `https://example.com/${tag}/gloomberb.gz`,
+        digest,
+      }],
+    };
+  }
+
+  /** Runs `body` as the standalone binary, with GitHub answering `latest` and `list`. */
+  async function asStandaloneBinary(
+    github: { latest?: ReturnType<typeof release>; list?: ReturnType<typeof release>[] },
+    body: (requests: string[]) => Promise<void>,
+    binary = "/Applications/gloomberb",
+    argv = [binary],
+  ) {
+    const originalExecPath = process.execPath;
+    const originalArgv = process.argv;
+    const requests: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = String(input);
+      requests.push(url);
+      return new Response(JSON.stringify(url.endsWith("/releases/latest") ? github.latest : github.list), { status: 200 });
+    }) as typeof fetch;
+    try {
+      Object.defineProperty(process, "execPath", { value: binary, configurable: true });
+      Object.defineProperty(process, "argv", { value: argv, configurable: true });
+      await body(requests);
+    } finally {
+      Object.defineProperty(process, "execPath", { value: originalExecPath, configurable: true });
+      Object.defineProperty(process, "argv", { value: originalArgv, configurable: true });
+    }
+  }
+
+  const NIGHTLY_OLD = "v0.3.3-nightly.20261015.4.gfff0000";
+  const NIGHTLY_NEW = "v0.3.3-nightly.20261016.5.g0000fff";
+
+  test("stable reads releases/latest only, which never holds a prerelease", async () => {
+    await asStandaloneBinary({ latest: release("v0.3.2"), list: [release(NIGHTLY_NEW)] }, async (requests) => {
+      const result = await checkForUpdateDetailed("0.3.1", "stable");
+      expect(result).toMatchObject({ kind: "available", release: { version: "0.3.2", tagName: "v0.3.2" } });
+      expect(result.kind === "available" && result.release.channel).toBeFalsy();
+      expect(requests).toEqual(["https://api.github.com/repos/gloom-sh/gloomberb/releases/latest"]);
+    });
+  });
+
+  test("nightly takes the highest version, prereleases included, that has this platform's binary", async () => {
+    const list = [
+      release("v0.3.4-nightly.20261017.6.gaaaaaaa", { draft: true }),
+      release("v0.3.4-nightly.20261017.7.gbbbbbbb", { withAsset: false }),
+      release(NIGHTLY_OLD),
+      release(NIGHTLY_NEW),
+      release("v0.3.2"),
+    ];
+    await asStandaloneBinary({ list }, async (requests) => {
+      await expect(checkForUpdateDetailed("0.3.2", "nightly")).resolves.toMatchObject({
+        kind: "available",
+        release: { version: NIGHTLY_NEW.slice(1), tagName: NIGHTLY_NEW, channel: "nightly", updateAction: { kind: "self" } },
+      });
+      expect(requests).toEqual(["https://api.github.com/repos/gloom-sh/gloomberb/releases?per_page=30"]);
+      // Already on the newest nightly build: nothing to do.
+      await expect(checkForUpdateDetailed(NIGHTLY_NEW.slice(1), "nightly")).resolves.toEqual({ kind: "current" });
+    });
+  });
+
+  test("a nightly build is offered the stable release once it passes the nightly's version", async () => {
+    await asStandaloneBinary({ list: [release("v0.3.3"), release(NIGHTLY_NEW), release(NIGHTLY_OLD)] }, async () => {
+      await expect(checkForUpdateDetailed(NIGHTLY_NEW.slice(1), "nightly")).resolves.toMatchObject({
+        kind: "available",
+        release: { version: "0.3.3", tagName: "v0.3.3" },
+      });
+    });
+  });
+
+  test("back on stable, a nightly build stays until a newer stable release, and says so", async () => {
+    await asStandaloneBinary({ latest: release("v0.3.2") }, async () => {
+      await expect(checkForUpdateDetailed(NIGHTLY_NEW.slice(1), "stable")).resolves.toEqual({
+        kind: "current",
+        notice: `Staying on ${NIGHTLY_NEW} until a newer stable release`,
+      });
+    });
+    await asStandaloneBinary({ latest: release("v0.3.3") }, async () => {
+      await expect(checkForUpdateDetailed(NIGHTLY_NEW.slice(1), "stable")).resolves.toMatchObject({
+        kind: "available",
+        release: { version: "0.3.3" },
+      });
+    });
+  });
+
+  test("npm and Bun installs follow stable on either channel", async () => {
+    const bun = "/opt/homebrew/bin/bun";
+    const argv = [bun, "/Users/ada/.bun/install/global/node_modules/gloomberb/bin/gloomberb"];
+    await asStandaloneBinary({ latest: release("v0.3.2"), list: [release(NIGHTLY_NEW)] }, async (requests) => {
+      await expect(checkForUpdateDetailed("0.3.1", "nightly")).resolves.toMatchObject({
+        kind: "available",
+        release: { version: "0.3.2", updateAction: { kind: "manual" } },
+      });
+      expect(requests).toEqual(["https://api.github.com/repos/gloom-sh/gloomberb/releases/latest"]);
+    }, bun, argv);
+  });
+});

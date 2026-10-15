@@ -251,6 +251,12 @@ function createCoreCliCommands(
       help: {
         group: CLI_COMMAND_GROUPS.plugins,
         usage: ["update [name]"],
+        sections: [{
+          title: "Updating Gloomberb itself",
+          lines: [
+            "The app updates itself from stable releases. config set updates.channel nightly adds the nightly build of main; see gloomberb help config.",
+          ],
+        }],
         examples: ["update", "update gloom-tv"],
       },
       execute: async (args) => {

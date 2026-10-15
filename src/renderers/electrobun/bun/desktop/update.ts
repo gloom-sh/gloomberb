@@ -1,28 +1,56 @@
 import type Electrobun from "electrobun/bun";
 import type { UpdateStatusEntry } from "electrobun/bun";
-import type {
-  ReleaseInfo,
-  UpdateCheckResult,
-  UpdateProgress,
+import type { UpdateChannel } from "../../../../types/config";
+import {
+  stableHoldNotice,
+  type ReleaseInfo,
+  type UpdateCheckResult,
+  type UpdateProgress,
 } from "../../../../updater";
+import {
+  GITHUB_RELEASES_API_URL,
+  githubReleaseDownloadBaseUrl,
+  isPrereleaseRelease,
+  newestRelease,
+  type GitHubReleaseListing,
+} from "../../../../updater/github-releases";
+import { compareSemver, isPrereleaseVersion } from "../../../../utils/semver";
 
 type ElectrobunUpdater = typeof Electrobun.Updater;
 
 /**
  * The part of Electrobun's updater this flow uses. Tests pass a fake, because
  * the real module cannot be loaded or exercised outside the packaged app.
+ * `setUpdateSource` is Gloomberb's patch (patches/electrobun@*.patch).
  */
 export type ElectrobunUpdaterApi = Pick<
   ElectrobunUpdater,
-  "checkForUpdate" | "downloadUpdate" | "applyUpdate" | "updateInfo" | "clearStatusHistory" | "onStatusChange"
+  "checkForUpdate" | "downloadUpdate" | "applyUpdate" | "updateInfo" | "clearStatusHistory" | "onStatusChange" | "setUpdateSource"
 > & {
   localInfo: Pick<ElectrobunUpdater["localInfo"], "channel" | "baseUrl">;
 };
 
+/** The newest releases, newest first, as GitHub lists them. */
+type ListReleases = () => Promise<GitHubReleaseListing[]>;
+
+const NIGHTLY_RELEASE_WINDOW = 30;
+
+async function listGitHubReleases(): Promise<GitHubReleaseListing[]> {
+  const response = await fetch(`${GITHUB_RELEASES_API_URL}?per_page=${NIGHTLY_RELEASE_WINDOW}`, {
+    headers: { Accept: "application/vnd.github+json" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!response.ok) throw new Error(`GitHub returned ${response.status}`);
+  const data: unknown = await response.json();
+  if (!Array.isArray(data)) throw new Error("GitHub returned an unexpected releases payload");
+  return data as GitHubReleaseListing[];
+}
+
 export interface ElectrobunDesktopUpdater {
-  check(currentVersion: string): Promise<UpdateCheckResult>;
+  /** `channel` defaults to stable, which reads the release version.json names exactly as before channels. */
+  check(currentVersion: string, channel?: UpdateChannel): Promise<UpdateCheckResult>;
   /** Downloads and stages the update, ending in `ready`. It never relaunches the app. */
-  download(currentVersion: string, onProgress: (progress: UpdateProgress) => void): Promise<void>;
+  download(currentVersion: string, onProgress: (progress: UpdateProgress) => void, channel?: UpdateChannel): Promise<void>;
   /**
    * Installs the staged update, which quits the app and relaunches it. Only the
    * user's Restart gets here. A repeat request while one is running, or after it
@@ -35,6 +63,21 @@ function desktopReleasePlatformPrefix(channel: string): string {
   const os = process.platform === "darwin" ? "macos" : process.platform === "win32" ? "win" : "linux";
   const arch = process.arch === "arm64" ? "arm64" : "x64";
   return `${channel}-${os}-${arch}`;
+}
+
+/**
+ * The prefix of a release's desktop files. Both channels build with
+ * Electrobun's `stable` environment; the nightly workflow renames its copies
+ * `nightly-*`, so a stable and a nightly manifest can never be mistaken for
+ * each other.
+ */
+function desktopFilesChannel(release: GitHubReleaseListing): "stable" | "nightly" {
+  return isPrereleaseRelease(release) ? "nightly" : "stable";
+}
+
+function hasDesktopManifest(release: GitHubReleaseListing): boolean {
+  const manifest = `${desktopReleasePlatformPrefix(desktopFilesChannel(release))}-update.json`;
+  return release.assets?.some((asset) => asset.name === manifest) === true;
 }
 
 function mapDesktopUpdateStatus(entry: UpdateStatusEntry): UpdateProgress | null {
@@ -79,7 +122,10 @@ function mapDesktopUpdateStatus(entry: UpdateStatusEntry): UpdateProgress | null
   }
 }
 
-export function createElectrobunDesktopUpdater(updater: ElectrobunUpdaterApi): ElectrobunDesktopUpdater {
+export function createElectrobunDesktopUpdater(
+  updater: ElectrobunUpdaterApi,
+  { listReleases = listGitHubReleases }: { listReleases?: ListReleases } = {},
+): ElectrobunDesktopUpdater {
   let downloadInProgress = false;
   /**
    * The release whose download finished and waits for the user's Restart. Kept
@@ -106,9 +152,43 @@ export function createElectrobunDesktopUpdater(updater: ElectrobunUpdaterApi): E
     };
   }
 
-  async function check(currentVersion: string): Promise<UpdateCheckResult> {
+  /**
+   * Nightly: the highest version among the newest releases that has this
+   * platform's desktop manifest, nightly or stable, fetched from that release's
+   * own files. Electrobun only compares build hashes, so the version check
+   * here is what keeps it from going backwards.
+   */
+  async function checkNightly(currentVersion: string): Promise<UpdateCheckResult> {
+    const target = newestRelease(await listReleases(), hasDesktopManifest);
+    if (!target?.tag_name || (compareSemver(target.tag_name, currentVersion) ?? 0) <= 0) {
+      return { kind: "current" };
+    }
+    const filesChannel = desktopFilesChannel(target);
+    const baseUrl = githubReleaseDownloadBaseUrl(target.tag_name);
+    updater.setUpdateSource({ channel: filesChannel, baseUrl });
+
+    const info = await updater.checkForUpdate();
+    if (info.error) return { kind: "error", error: info.error };
+    // The same build as the one installed.
+    if (!info.updateAvailable) return { kind: "current" };
+
+    return {
+      kind: "available",
+      release: {
+        version: target.tag_name.replace(/^v/, ""),
+        tagName: target.tag_name,
+        downloadUrl: `${baseUrl}/${desktopReleasePlatformPrefix(filesChannel)}-update.json`,
+        publishedAt: target.published_at ?? "",
+        updateAction: { kind: "desktop" },
+        channel: "nightly",
+      },
+    };
+  }
+
+  async function check(currentVersion: string, updateChannel: UpdateChannel = "stable"): Promise<UpdateCheckResult> {
     // A downloaded update stays the answer until the user restarts into it, and
-    // asking Electrobun again would discard its ready flag.
+    // asking Electrobun again would discard its ready flag. Its source stays
+    // put too, whatever the channel says now: applying reads it again.
     if (readyRelease) return { kind: "available", release: readyRelease };
     try {
       const [channel, baseUrl] = await Promise.all([
@@ -119,12 +199,21 @@ export function createElectrobunDesktopUpdater(updater: ElectrobunUpdaterApi): E
         return { kind: "disabled" };
       }
 
+      if (updateChannel === "nightly") return await checkNightly(currentVersion);
+
+      // Stable is the release version.json names, as it always was.
+      updater.setUpdateSource(null);
       const info = await updater.checkForUpdate();
       if (info.error) {
         return { kind: "error", error: info.error };
       }
       if (!info.updateAvailable) {
         return { kind: "current" };
+      }
+      // A nightly build back on stable keeps running until a stable release
+      // passes it, rather than installing an older one.
+      if (isPrereleaseVersion(currentVersion) && (compareSemver(info.version, currentVersion) ?? -1) <= 0) {
+        return { kind: "current", notice: stableHoldNotice(currentVersion) };
       }
 
       return {
@@ -142,6 +231,7 @@ export function createElectrobunDesktopUpdater(updater: ElectrobunUpdaterApi): E
   async function download(
     currentVersion: string,
     onProgress: (progress: UpdateProgress) => void,
+    updateChannel: UpdateChannel = "stable",
   ): Promise<void> {
     if (downloadInProgress) {
       onProgress({
@@ -167,7 +257,7 @@ export function createElectrobunDesktopUpdater(updater: ElectrobunUpdaterApi): E
 
     try {
       onProgress({ phase: "downloading", percent: 0 });
-      const result = await check(currentVersion);
+      const result = await check(currentVersion, updateChannel);
       if (result.kind === "error") {
         onProgress({ phase: "error", error: result.error });
         return;

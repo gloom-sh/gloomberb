@@ -41,8 +41,8 @@ function followUpdateFlow(
 
 export function installElectrobunUpdateHost(): void {
   setUpdateHost({
-    checkForUpdateDetailed(currentVersion: string): Promise<UpdateCheckResult> {
-      return backendRequest("update.check", { currentVersion });
+    checkForUpdateDetailed(currentVersion, channel): Promise<UpdateCheckResult> {
+      return backendRequest("update.check", { currentVersion, channel });
     },
     performUpdate(release: ReleaseInfo, onProgress: (progress: UpdateProgress) => void): Promise<void> {
       return followUpdateFlow(

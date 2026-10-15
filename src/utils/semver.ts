@@ -26,6 +26,46 @@ export function parseSemver(value: string | null | undefined): ParsedSemver | nu
   };
 }
 
+const NUMERIC_IDENTIFIER = /^\d+$/;
+
+/** Digit strings by value, without the precision limit of `Number` (a date and run can be long). */
+function compareDigits(a: string, b: string): number {
+  const left = a.replace(/^0+(?=\d)/, "");
+  const right = b.replace(/^0+(?=\d)/, "");
+  if (left.length !== right.length) return left.length - right.length;
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+/**
+ * Semver precedence for two prerelease tags: dot-separated identifiers left to
+ * right, digits by value, digits below words, words in ASCII order, and a tag
+ * that runs out first is older. `nightly.20261015.9` is older than
+ * `nightly.20261015.10`, which a plain string comparison gets backwards.
+ */
+function comparePrerelease(a: string, b: string): number {
+  const left = a.split(".");
+  const right = b.split(".");
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const l = left[index];
+    const r = right[index];
+    if (l === undefined) return -1;
+    if (r === undefined) return 1;
+    if (l === r) continue;
+    const leftNumeric = NUMERIC_IDENTIFIER.test(l);
+    const rightNumeric = NUMERIC_IDENTIFIER.test(r);
+    if (leftNumeric && rightNumeric) {
+      const order = compareDigits(l, r);
+      if (order !== 0) return order;
+      continue;
+    }
+    if (leftNumeric) return -1;
+    if (rightNumeric) return 1;
+    return l < r ? -1 : 1;
+  }
+  // Only spellings differ (`01` against `1`): keep the order total.
+  return a === b ? 0 : a < b ? -1 : 1;
+}
+
 /** Negative when `a` is older than `b`, positive when newer, `null` when either is not a version. */
 export function compareSemver(a: string | null | undefined, b: string | null | undefined): number | null {
   const left = parseSemver(a);
@@ -34,11 +74,16 @@ export function compareSemver(a: string | null | undefined, b: string | null | u
   if (left.major !== right.major) return left.major - right.major;
   if (left.minor !== right.minor) return left.minor - right.minor;
   if (left.patch !== right.patch) return left.patch - right.patch;
-  // A release outranks its own prerelease; two prereleases compare as strings.
+  // A release outranks its own prerelease.
   if (left.prerelease === right.prerelease) return 0;
   if (left.prerelease === null) return 1;
   if (right.prerelease === null) return -1;
-  return left.prerelease < right.prerelease ? -1 : 1;
+  return comparePrerelease(left.prerelease, right.prerelease);
+}
+
+/** A version with a prerelease tag, such as a nightly build (`0.17.5-nightly.20261015.42.gabc1234`). */
+export function isPrereleaseVersion(value: string | null | undefined): boolean {
+  return parseSemver(value)?.prerelease != null;
 }
 
 /** `v1.2.3` and `1.2.3` are the same version; keep one spelling for display. */

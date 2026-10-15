@@ -27,6 +27,7 @@ import { isRecord } from "../../../utils/guards";
 import { debugLog } from "../../../utils/debug-log";
 import { DEFAULT_THEME, themes } from "../../../theme/themes";
 import { sanitizeStarPrompt } from "../../../app/star-prompt/model";
+import { sanitizeUpdatesConfig } from "../../../updater/channel";
 
 const configLog = debugLog.createLogger("config");
 const reportedUnknownThemes = new Set<string>();
@@ -106,6 +107,7 @@ export function normalizeLoadedConfig(
     ...withKeybindings(sanitizeKeybindings(candidate.keybindings)),
     ...withTelemetry(sanitizeTelemetry(candidate.telemetry)),
     ...withStarPrompt(sanitizeStarPrompt(candidate.starPrompt)),
+    ...withUpdates(sanitizeUpdatesConfig(candidate.updates)),
   };
 
   const needsSave =
@@ -169,6 +171,8 @@ export function normalizeConfigForSave(config: AppConfig): AppConfig {
   Object.assign(persisted, withTelemetry(sanitizeTelemetry(config.telemetry)));
   delete persisted.starPrompt;
   Object.assign(persisted, withStarPrompt(sanitizeStarPrompt(config.starPrompt)));
+  delete persisted.updates;
+  Object.assign(persisted, withUpdates(sanitizeUpdatesConfig(config.updates)));
 
   return persisted;
 }
@@ -183,6 +187,10 @@ function withTelemetry(telemetry: TelemetryConfig | undefined): Pick<AppConfig, 
 
 function withStarPrompt(starPrompt: AppConfig["starPrompt"]): Pick<AppConfig, "starPrompt"> {
   return starPrompt ? { starPrompt } : {};
+}
+
+function withUpdates(updates: AppConfig["updates"]): Pick<AppConfig, "updates"> {
+  return updates ? { updates } : {};
 }
 
 /** Only the switches that are set survive; an empty object is the same as none. */

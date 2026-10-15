@@ -1,0 +1,138 @@
+name: Nightly
+
+# A prerelease of main for the nightly update channel, once a day. It builds
+# only when main moved since the last nightly build, and publishes only a
+# commit Verify and Verify Windows passed on. It never commits (the version is
+# set in each runner, see build-release-assets.yml), never moves a stable tag,
+# and never becomes the latest release: the stable updater, install.sh,
+# Homebrew and npm read releases/latest or their own registries, and GitHub
+# leaves prereleases out of that. scripts/nightly.ts holds the decisions.
+on:
+  schedule:
+    # 04:40 UTC, after the day's merges in Europe and America.
+    - cron: "40 4 * * *"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the prerelease. Off builds everything and publishes nothing.
+        type: boolean
+        default: true
+      force:
+        description: Build even when main has not moved since the last nightly build.
+        type: boolean
+        default: false
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      publish: ${{ steps.plan.outputs.publish }}
+      sha: ${{ steps.plan.outputs.sha }}
+      version: ${{ steps.plan.outputs.version }}
+      previous_tag: ${{ steps.plan.outputs.previous_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      - id: plan
+        name: Decide whether to build, and the version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NIGHTLY_PUBLISH: ${{ github.event_name == 'schedule' || inputs.publish }}
+          NIGHTLY_FORCE: ${{ inputs.force == true }}
+        run: bun run scripts/nightly.ts plan
+
+  build:
+    needs: plan
+    if: ${{ needs.plan.outputs.build == 'true' }}
+    uses: ./.github/workflows/build-release-assets.yml
+    with:
+      ref: ${{ needs.plan.outputs.sha }}
+      version: ${{ needs.plan.outputs.version }}
+      channel: nightly
+    secrets: inherit
+
+  publish:
+    needs:
+      - plan
+      - build
+    # Every build must have passed: a nightly build with a platform missing is not published.
+    if: ${{ needs.plan.outputs.publish == 'true' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      NIGHTLY_SHA: ${{ needs.plan.outputs.sha }}
+      NIGHTLY_TAG: v${{ needs.plan.outputs.version }}
+      NIGHTLY_PREVIOUS_TAG: ${{ needs.plan.outputs.previous_tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+
+      - uses: ./.github/actions/setup-bun
+        with:
+          install: "false"
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Check nightly assets
+        run: |
+          set -euo pipefail
+          for asset in \
+            gloomberb-darwin-arm64.gz gloomberb-darwin-x64.gz gloomberb-linux-x64.gz gloomberb-linux-arm64.gz gloomberb-windows-x64.exe.gz \
+            nightly-macos-arm64-update.json nightly-macos-arm64-Gloomberb.app.tar.zst nightly-macos-arm64-Gloomberb.dmg \
+            nightly-win-x64-update.json nightly-win-x64-Gloomberb.tar.zst nightly-win-x64-GloomberbSetup.exe; do
+            test -f "dist/$asset" || { echo "Missing $asset" >&2; exit 1; }
+          done
+          # A stable-named desktop file in a nightly release could be taken for a stable manifest.
+          if compgen -G "dist/stable-*" >/dev/null; then
+            echo "Stable-named desktop files in a nightly build:" >&2
+            ls dist/stable-* >&2
+            exit 1
+          fi
+
+      - name: Write release notes
+        run: bun run scripts/nightly.ts notes > "$RUNNER_TEMP/nightly-notes.md"
+
+      # Uploaded as a draft first, so no updater sees a release with half its
+      # files; published as a prerelease that is never the latest release.
+      - name: Publish the prerelease
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.exe dist/*.gz dist/*.json dist/*.zip dist/*.zst)
+          gh release create "$NIGHTLY_TAG" "${files[@]}" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$NIGHTLY_SHA" \
+            --title "Nightly ${NIGHTLY_TAG#v}" \
+            --notes-file "$RUNNER_TEMP/nightly-notes.md" \
+            --prerelease \
+            --latest=false \
+            --draft
+          gh release edit "$NIGHTLY_TAG" --repo "$GITHUB_REPOSITORY" --draft=false --prerelease --latest=false
+          test "$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)" != "$NIGHTLY_TAG"
+
+      - name: Prune old nightly builds
+        env:
+          NIGHTLY_PRUNE_DAYS: ${{ vars.NIGHTLY_PRUNE_DAYS }}
+          NIGHTLY_KEEP_TAG: v${{ needs.plan.outputs.version }}
+        run: bun run scripts/nightly.ts prune

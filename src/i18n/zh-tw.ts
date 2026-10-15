@@ -152,6 +152,7 @@ export const zhTW: Record<string, string> = {
   "Toggle Status Bar": "切換狀態列",
   "Toggle Value Flashing": "切換數值閃爍",
   "Check for Updates": "檢查更新",
+  "Update Channel": "更新通道",
   "Crash Reports": "當機報告",
   "Usage Counts": "使用統計",
   "Change Theme": "更換主題",

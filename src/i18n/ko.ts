@@ -150,6 +150,7 @@ export const ko: Record<string, string> = {
   "Toggle Status Bar": "상태 표시줄 전환",
   "Toggle Value Flashing": "값 깜박임 전환",
   "Check for Updates": "업데이트 확인",
+  "Update Channel": "업데이트 채널",
   "Crash Reports": "충돌 보고",
   "Usage Counts": "사용 횟수",
   "Change Theme": "테마 변경",

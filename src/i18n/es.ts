@@ -151,6 +151,7 @@ export const es: Record<string, string> = {
   "Toggle Status Bar": "Alternar barra de estado",
   "Toggle Value Flashing": "Alternar parpadeo de valores",
   "Check for Updates": "Buscar actualizaciones",
+  "Update Channel": "Canal de actualizaciones",
   "Crash Reports": "Informes de fallos",
   "Usage Counts": "Recuento de uso",
   "Change Theme": "Cambiar tema",

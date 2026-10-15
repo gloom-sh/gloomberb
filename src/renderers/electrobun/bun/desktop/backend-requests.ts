@@ -44,12 +44,15 @@ export async function handleDesktopBackendRequest(
     case "update.check":
       return desktopUpdater.check(
         typeof request.payload.currentVersion === "string" ? request.payload.currentVersion : "",
+        request.payload.channel === "nightly" ? "nightly" : "stable",
       );
     case "update.start": {
       const { release, currentVersion } = request.payload;
       void desktopUpdater.download(
         typeof currentVersion === "string" ? currentVersion : release.version,
         (progress) => sendUpdateProgress(rpc, progress),
+        // The download comes from the release the check found, on its channel.
+        release.channel === "nightly" ? "nightly" : "stable",
       );
       return null;
     }

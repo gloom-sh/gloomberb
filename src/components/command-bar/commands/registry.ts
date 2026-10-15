@@ -251,6 +251,13 @@ export const commands: Command[] = [
     category: "Config",
   },
   {
+    id: "update-channel",
+    prefix: "",
+    label: "Update Channel",
+    description: "Update from stable releases, or from nightly builds as well",
+    category: "Config",
+  },
+  {
     id: "toggle-crash-reports",
     prefix: "",
     label: "Crash Reports",
