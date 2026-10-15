@@ -50,6 +50,8 @@ export const READER_COLUMN_STYLE = {
 export const READER_APP_FONT = "calc(1em / var(--reader-em, 1.1667))";
 /** Line height of reading text on the desktop, against its own size. */
 export const DESKTOP_LINE_HEIGHT = 1.6;
+/** The space between two blocks of reading text (paragraphs, a list), in every reader. */
+export const READER_PARAGRAPH_GAP = "0.9em";
 /** A section heading in reading text: a step above the body, set apart by weight and the space above it. */
 export const READER_HEADING_STYLE = { fontSize: `${TYPE.heading / TYPE.body}em`, fontWeight: WEIGHT.bold, lineHeight: 1.35, margin: "0.9em 0 0.4em" } as const;
 
@@ -85,19 +87,26 @@ function hasHeaderRow(rows: readonly string[][]): boolean {
 
 export type TextVariant = "headline" | "meta" | "lead" | "body" | "heading" | "label" | "fact" | "item";
 
+/**
+ * The role a reading block plays, the same in every reader (here, markdown,
+ * Docs), for the pane chrome checks that hold the readers to one layout.
+ */
+const READER_ROLE: Partial<Record<TextVariant, string>> = { body: "reader-paragraph", heading: "reader-heading", label: "reader-heading" };
+
 const DESKTOP_VARIANT_STYLE: Record<TextVariant, Record<string, string | number>> = {
   headline: { fontSize: `${TYPE.title / TYPE.body}em`, lineHeight: 1.25 },
   meta: { fontSize: READER_APP_FONT, lineHeight: 1.5 },
   // The body's size, set apart by its brighter colour (the caller) and the space after it.
-  lead: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "1em" },
-  body: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.9em" },
+  lead: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: READER_PARAGRAPH_GAP },
+  body: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: READER_PARAGRAPH_GAP },
   heading: READER_HEADING_STYLE,
-  // Names what follows (key facts, coverage) as a section heading does, without the air above a section.
-  label: { ...READER_HEADING_STYLE, margin: "0 0 0.4em" },
+  // Names what follows (key facts, coverage): a section heading in all but name.
+  label: READER_HEADING_STYLE,
   // A key fact is a sentence: a prose bullet at the body's size, as list items
-  // and markdown bullets are. Label and value facts (DetailReader) stay at the app's size.
-  fact: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.3em" },
-  item: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.3em" },
+  // and markdown and Docs bullets are, one after another with no space between.
+  // Label and value facts (DetailReader) stay at the app's size.
+  fact: { lineHeight: DESKTOP_LINE_HEIGHT },
+  item: { lineHeight: DESKTOP_LINE_HEIGHT },
 };
 
 function styled(segments: readonly Segment[], color: string, markColor: string, figureColor: string | undefined, attributes: number): StyledText {
@@ -145,15 +154,16 @@ export function ReaderText({
         wrapText
         selectable
         width="100%"
-        style={{ display: "block", ...DESKTOP_VARIANT_STYLE[variant], ...(bullet ? { marginBottom: 0 } : {}) }}
+        style={{ display: "block", ...DESKTOP_VARIANT_STYLE[variant] }}
         content={content}
+        data-gloom-role={READER_ROLE[variant]}
       >
         {content ? undefined : text}
       </Text>
     );
     if (!bullet) return textNode;
     return (
-      <Box flexDirection="row" width="100%" style={{ marginBottom: DESKTOP_VARIANT_STYLE[variant].marginBottom }} data-gloom-role="reader-bullet">
+      <Box flexDirection="row" width="100%" data-gloom-role="reader-bullet">
         <Text fg={colors.textDim} style={{ fontSize: DESKTOP_VARIANT_STYLE[variant].fontSize, lineHeight: DESKTOP_VARIANT_STYLE[variant].lineHeight, width: "2ch", flexShrink: 0 }}>{"\u2022"}</Text>
         <Box flexGrow={1} minWidth={0}>{textNode}</Box>
       </Box>
@@ -215,7 +225,7 @@ export function ReaderBlock({
       return <ReaderText text={block.text} geometry={geometry} color={colors.text} variant="body" segments={segments} />;
     case "list":
       return (
-        <Box flexDirection="column" style={geometry.desktop ? { marginBottom: "0.9em" } : undefined}>
+        <Box flexDirection="column" style={geometry.desktop ? { marginBottom: READER_PARAGRAPH_GAP } : undefined}>
           {block.items.map((item, index) => (
             <ReaderText key={index} text={item} geometry={geometry} color={colors.text} variant="item" />
           ))}

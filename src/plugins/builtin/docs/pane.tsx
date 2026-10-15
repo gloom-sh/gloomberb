@@ -56,7 +56,7 @@ import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import { badgeCell } from "../help/table-cells";
-import { READER_COLUMN_FONT, READER_MEASURE } from "../../../components/reader/reader-text";
+import { DESKTOP_LINE_HEIGHT, READER_COLUMN_FONT, READER_MEASURE } from "../../../components/reader/reader-text";
 import { DocsBlocks } from "./blocks";
 import { useDocsFeed, useDocsLesson } from "./use-docs";
 
@@ -76,13 +76,12 @@ const STACK_LIMIT = 30;
 /** Prose reads best at about seventy columns, however wide the pane. */
 const MEASURE = 72;
 /**
- * On the desktop and the web the text reads at the reader's body size, a step
- * up from the table text, with more air between lines, at most 69 characters
- * of it to the line (as wide as a screenshot of the measure): the column fills
- * a narrower pane and stops there in a wider one.
+ * On the desktop and the web the text reads as in every reader
+ * (reader-text.tsx): the body size, a step up from the table text, the
+ * reading line height, centred at the measure; the column fills a narrower
+ * pane and stops there in a wider one.
  */
-/** The one reading column (reader-text.tsx): the reader's type, centred at the measure. */
-const READING_STYLE = { fontSize: READER_COLUMN_FONT, "--cell-h": "1.7em", maxWidth: READER_MEASURE, alignSelf: "center" } as const;
+export const DOCS_READING_STYLE = { fontSize: READER_COLUMN_FONT, "--cell-h": `${DESKTOP_LINE_HEIGHT}em`, maxWidth: READER_MEASURE, alignSelf: "center" } as const;
 /** The terminal wraps at `width` columns; the desktop and the web at the reading column's own width. */
 function useTextWidth(width: number): number | "100%" {
   return useUiCapabilities().nativePaneChrome ? "100%" : width;
@@ -245,7 +244,7 @@ function TopicView({ topic, feed, width, scrollRef, onOpenTopic, onOpenLink, onS
   return (
     <DetailScrollBody ref={scrollRef} resetScrollKey={docsTopicKey(topic)}>
       <PaneLinkMenu>
-        <Box flexDirection="column" width={nativePaneChrome ? "100%" : measure} data-gloom-role="docs-body" style={nativePaneChrome ? READING_STYLE : undefined}>
+        <Box flexDirection="column" width={nativePaneChrome ? "100%" : measure} data-gloom-role="docs-body" style={nativePaneChrome ? DOCS_READING_STYLE : undefined}>
           {body}
         </Box>
       </PaneLinkMenu>

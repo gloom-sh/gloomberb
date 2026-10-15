@@ -31,6 +31,9 @@ import { DataTableView } from "../../src/components/data-table/view";
 import { ArticleReader } from "../../src/components/reader/article-reader";
 import { parseArticle } from "../../src/components/reader/article-text";
 import { DetailReader } from "../../src/components/reader/detail-reader";
+import type { DocsBlock } from "../../src/docs/content";
+import { DocsBlocks } from "../../src/plugins/builtin/docs/blocks";
+import { DOCS_READING_STYLE } from "../../src/plugins/builtin/docs/pane";
 import { PaneHeader } from "../../src/components/layout/pane/header";
 import { PaneFooterBar } from "../../src/components/layout/pane/footer";
 import { PageStackView } from "../../src/components/ui/page-stack-view";
@@ -450,15 +453,29 @@ function SurfacesFamily() {
 }
 
 function ReaderFamily() {
-  const body = parseArticle([{ text: PARAGRAPH }, { heading: "Guidance", text: `${PARAGRAPH}\n\n- ${PARAGRAPH}\n- Margins widened for a third quarter.` }]);
-  // Key facts, the article's list and the markdown's bullets are one prose bullet (reader-checks.ts holds them to it).
+  // The same text in each reader: two paragraphs, a section heading, a paragraph and a list (reader-checks.ts holds them to one layout).
+  const short = "Margins widened for a third quarter.";
+  const body = parseArticle([{ text: `${PARAGRAPH}\n\n${PARAGRAPH}` }, { heading: "Guidance", text: `${PARAGRAPH}\n\n- ${PARAGRAPH}\n- ${short}` }]);
+  const docs: DocsBlock[] = [
+    { type: "paragraph", text: PARAGRAPH },
+    { type: "paragraph", text: PARAGRAPH },
+    { type: "heading", level: 2, text: "Guidance" },
+    { type: "paragraph", text: PARAGRAPH },
+    { type: "list", items: [PARAGRAPH, short] },
+  ];
+  const column = { flex: "1 1 0", minWidth: 0, height: 1100, border: "1px solid var(--gloom-hairline)" };
   return (
     <Box flexDirection="row" style={{ gap: "var(--gloom-space-lg)", width: "100%", alignItems: "flex-start" }}>
-      <Box flexDirection="column" style={{ flex: "1 1 0", minWidth: 0, height: 720, border: "1px solid var(--gloom-hairline)" }} data-kit-reader="article">
-        <ArticleReader articleKey="kit" title="Storage maker beats on revenue and widens margins" meta={["Wire", "Oct 14, 2026 at 9:31 AM"]} lead={PARAGRAPH} facts={["Revenue rose 8% to $5.1 billion.", "Margin rose to 46%."]} body={body} focused={false} width={60} height={30} />
+      <Box flexDirection="column" style={column} data-kit-reader="article">
+        <ArticleReader articleKey="kit" title="Storage maker beats on revenue and widens margins" meta={["Wire", "Oct 14, 2026 at 9:31 AM"]} lead={PARAGRAPH} facts={["Revenue rose 8% to $5.1 billion.", "Margin rose to 46%."]} body={body} focused={false} width={60} height={60} />
       </Box>
-      <Box flexDirection="column" style={{ flex: "1 1 0", minWidth: 0, height: 720, border: "1px solid var(--gloom-hairline)" }} data-kit-reader="detail">
-        <DetailReader width={60} facts={[{ label: "Status", value: "Recruiting" }, { label: "Phase", value: "2" }]} body={`## Highlights\n\n- **Calmer reading.** ${PARAGRAPH}\n- ${PARAGRAPH}`} bodyFormat="markdown" />
+      <Box flexDirection="column" style={column} data-kit-reader="detail">
+        <DetailReader width={60} facts={[{ label: "Status", value: "Recruiting" }, { label: "Phase", value: "2" }]} body={`${PARAGRAPH}\n\n${PARAGRAPH}\n\n## Guidance\n\n${PARAGRAPH}\n\n- **Calmer reading.** ${PARAGRAPH}\n- ${short}`} bodyFormat="markdown" />
+      </Box>
+      <Box flexDirection="column" style={{ ...column, padding: "var(--gloom-space-md) var(--gloom-inset)" }} data-kit-reader="docs">
+        <Box flexDirection="column" width="100%" style={DOCS_READING_STYLE}>
+          <DocsBlocks blocks={docs} width={60} onOpenLink={noop} />
+        </Box>
       </Box>
     </Box>
   );

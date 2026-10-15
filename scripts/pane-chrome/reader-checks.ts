@@ -1,11 +1,14 @@
 import { evaluate, frames, type Cdp } from "./browser";
 
 /**
- * One prose bullet in every reader (reader-text.tsx): the article reader's key
- * facts and list items and the detail reader's markdown bullets are set at the
- * reading size and line height, with the same dim dot and the same hang, while
- * the detail reader's label and value facts stay at the app's size. On the kit
- * page's readers (kit-fixture.tsx), from the browser's computed styles.
+ * Every reader lays reading text out the same way (reader-text.tsx): the
+ * article reader, the detail reader's markdown and Docs set paragraphs, a
+ * section heading and prose bullets (an article's key facts and lists,
+ * markdown and Docs lists) at one size and line height, with one paragraph
+ * gap, one space around a heading, and the same dim dot and hang. The detail
+ * reader's label and value facts stay at the app's size. On the kit page's
+ * readers (kit-fixture.tsx), which hold the same text, from the browser's
+ * computed styles and boxes.
  */
 
 interface ReaderStep {
@@ -14,51 +17,85 @@ interface ReaderStep {
   run(cdp: Cdp): Promise<void>;
 }
 
-interface Bullet { reader: string; text: string; fontSize: string; lineHeight: string; dot: string; hang: number }
+interface Bullet { text: string; fontSize: string; lineHeight: string; dot: string; hang: number }
+interface ReaderLayout {
+  reader: string;
+  paragraph: { fontSize: string; lineHeight: string; gap: number } | null;
+  heading: { fontSize: string; fontWeight: string; above: number; below: number } | null;
+  listGap: number | null;
+  bullets: Bullet[];
+}
 
 const MEASURE = `(() => {
-  const bullets = [];
+  const round = (value) => Math.round(value * 10) / 10;
+  const box = (el) => el.getBoundingClientRect();
+  const out = [];
   for (const reader of document.querySelectorAll("[data-kit-reader]")) {
-    for (const row of reader.querySelectorAll("[data-gloom-role=reader-bullet]")) {
-      // The article reader: a dot, then the text in a box beside it. Markdown: one line whose first run is the dot.
-      const dot = row.children[0];
+    const blocks = [...reader.querySelectorAll("[data-gloom-role=reader-paragraph], [data-gloom-role=reader-heading], [data-gloom-role=reader-bullet]")];
+    const role = (el) => el.getAttribute("data-gloom-role");
+    const paragraphs = blocks.filter((el) => role(el) === "reader-paragraph");
+    const first = paragraphs[0], second = paragraphs[1];
+    const heading = blocks.find((el) => role(el) === "reader-heading" && el.textContent.trim().toLowerCase() === "guidance");
+    const at = heading ? blocks.indexOf(heading) : -1;
+    const before = at > 0 ? blocks[at - 1] : null, after = at >= 0 ? blocks[at + 1] : null;
+    const firstBullet = blocks.findIndex((el, index) => role(el) === "reader-bullet" && index > at);
+    const bullets = blocks.filter((el) => role(el) === "reader-bullet").map((row) => {
+      // The innermost box holding the dot: its colour is the dot's.
+      let dot = row.children[0];
+      while (dot && dot.children.length === 1) dot = dot.children[0];
       const rest = row.children[1];
       const text = rest?.querySelector("span, div") ?? rest;
       const style = getComputedStyle(text ?? row);
-      bullets.push({
-        reader: reader.getAttribute("data-kit-reader"),
-        text: (row.textContent || "").slice(0, 40),
-        fontSize: style.fontSize,
-        lineHeight: style.lineHeight,
-        dot: dot ? getComputedStyle(dot).color : "none",
-        hang: Math.round((rest.getBoundingClientRect().left - row.getBoundingClientRect().left) * 10) / 10,
-      });
-    }
+      return { text: (row.textContent || "").slice(0, 30), fontSize: style.fontSize, lineHeight: style.lineHeight, dot: dot ? getComputedStyle(dot).color : "none", hang: round(box(rest).left - box(row).left) };
+    });
+    const style = first ? getComputedStyle(first) : null;
+    out.push({
+      reader: reader.getAttribute("data-kit-reader"),
+      paragraph: first && second ? { fontSize: style.fontSize, lineHeight: style.lineHeight, gap: round(box(second).top - box(first).bottom) } : null,
+      heading: heading && before && after ? { fontSize: getComputedStyle(heading).fontSize, fontWeight: getComputedStyle(heading).fontWeight, above: round(box(heading).top - box(before).bottom), below: round(box(after).top - box(heading).bottom) } : null,
+      listGap: firstBullet > 0 ? round(box(blocks[firstBullet]).top - box(blocks[firstBullet - 1]).bottom) : null,
+      bullets,
+    });
   }
   const facts = document.querySelector("[data-kit-reader=detail] [data-gloom-ui=detail-facts]");
-  const body = document.querySelector("[data-kit-reader=detail] [data-gloom-ui=reader-column]");
-  return { bullets, factSize: facts ? getComputedStyle(facts).fontSize : null, bodySize: body ? getComputedStyle(body).fontSize : null };
+  return { readers: out, factSize: facts ? getComputedStyle(facts).fontSize : null };
 })()`;
 
 function fail(message: string, detail?: unknown): never {
   throw new Error(detail === undefined ? message : `${message}\n     ${JSON.stringify(detail)}`);
 }
 
+const near = (a: number, b: number) => Math.abs(a - b) <= 0.5;
+
 export const readerSteps: ReaderStep[] = [{
-  name: "readers: key facts, article list items and markdown bullets are one prose bullet at the reading size; label and value facts stay at the app's",
+  name: "readers: the article reader, markdown and Docs set paragraphs, a section heading and prose bullets alike; label and value facts stay at the app's size",
   scenario: "kit&family=reader",
   async run(cdp) {
-    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+    // Wide enough that each of the three columns reads at the full size (narrower than 480px steps it down).
+    await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1900, height: 1300, deviceScaleFactor: 1, mobile: false });
     await frames(cdp, 3);
-    const { bullets, factSize, bodySize } = await evaluate<{ bullets: Bullet[]; factSize: string | null; bodySize: string | null }>(cdp, MEASURE);
-    const article = bullets.filter((bullet) => bullet.reader === "article");
-    const detail = bullets.filter((bullet) => bullet.reader === "detail");
-    // Two key facts and two list items in the article, two markdown bullets in the detail.
-    if (article.length !== 4 || detail.length !== 2) fail("the kit's readers do not show the bullets this check measures", bullets);
-    const first = bullets[0]!;
-    const differ = bullets.filter((bullet) => bullet.fontSize !== first.fontSize || bullet.lineHeight !== first.lineHeight || bullet.dot !== first.dot || Math.abs(bullet.hang - first.hang) > 0.5);
-    if (differ.length) fail("prose bullets differ between readers", bullets);
-    if (first.fontSize !== bodySize) fail(`prose bullets are ${first.fontSize}, the reading text ${bodySize}`, bullets);
-    if (!factSize || parseFloat(factSize) >= parseFloat(first.fontSize)) fail(`label and value facts are ${factSize}, not the app's size under the reading text`);
+    try {
+      const { readers, factSize } = await evaluate<{ readers: ReaderLayout[]; factSize: string | null }>(cdp, MEASURE);
+      if (readers.length !== 3 || readers.some((reader) => !reader.paragraph || !reader.heading || reader.listGap === null)) fail("a kit reader is missing the blocks this check measures", readers);
+      const counts = Object.fromEntries(readers.map((reader) => [reader.reader, reader.bullets.length]));
+      // Key facts and the list in the article; the list in markdown and Docs.
+      if (counts.article !== 4 || counts.detail !== 2 || counts.docs !== 2) fail("the kit readers do not show the bullets this check measures", counts);
+      const [base] = readers;
+      const problems: string[] = [];
+      for (const reader of readers) {
+        const p = reader.paragraph!, h = reader.heading!, bp = base!.paragraph!, bh = base!.heading!;
+        if (p.fontSize !== bp.fontSize || p.lineHeight !== bp.lineHeight || !near(p.gap, bp.gap)) problems.push(`${reader.reader} paragraphs ${p.fontSize}/${p.lineHeight}, gap ${p.gap}; ${base!.reader} ${bp.fontSize}/${bp.lineHeight}, gap ${bp.gap}`);
+        if (h.fontSize !== bh.fontSize || h.fontWeight !== bh.fontWeight || !near(h.above, bh.above) || !near(h.below, bh.below)) problems.push(`${reader.reader} heading ${h.fontSize} ${h.fontWeight}, ${h.above} above, ${h.below} below; ${base!.reader} ${bh.fontSize} ${bh.fontWeight}, ${bh.above} above, ${bh.below} below`);
+        if (!near(reader.listGap!, base!.listGap!)) problems.push(`${reader.reader} list ${reader.listGap} under its paragraph; ${base!.reader} ${base!.listGap}`);
+        for (const bullet of reader.bullets) {
+          const b0 = base!.bullets[0]!;
+          if (bullet.fontSize !== bp.fontSize || bullet.lineHeight !== bp.lineHeight || bullet.dot !== b0.dot || !near(bullet.hang, b0.hang)) problems.push(`${reader.reader} bullet "${bullet.text}" ${bullet.fontSize}/${bullet.lineHeight}, dot ${bullet.dot}, hang ${bullet.hang}; paragraphs ${bp.fontSize}/${bp.lineHeight}, first bullet dot ${b0.dot}, hang ${b0.hang}`);
+        }
+      }
+      if (problems.length) fail("the readers lay reading text out differently", problems);
+      if (!factSize || parseFloat(factSize) >= parseFloat(base!.paragraph!.fontSize)) fail(`label and value facts are ${factSize}, not the app's size under the reading text`);
+    } finally {
+      await cdp.send("Emulation.setDeviceMetricsOverride", { width: 1400, height: 900, deviceScaleFactor: 1, mobile: false });
+    }
   },
 }];

@@ -21,6 +21,7 @@ import { titleCase } from "../ui/header-case";
 import { blockWords, markTerms, type ArticleBlock } from "./article-text";
 import {
   READER_APP_FONT,
+  READER_PARAGRAPH_GAP,
   READER_COLUMN_FONT,
   READER_COLUMN_STYLE,
   DESKTOP_LINE_HEIGHT,
@@ -377,7 +378,7 @@ function ArticleReaderView({
         <ReaderText text={lead} geometry={geometry} color={colors.textBright} variant="lead" />
       ) : null}
       {!raw && facts.length > 0 ? (
-        <Box flexDirection="column" style={desktop ? { margin: "0.3em 0 1em" } : undefined}>
+        <Box flexDirection="column" style={desktop ? { marginBottom: READER_PARAGRAPH_GAP } : undefined}>
           <ReaderText text={readerLabel("Key facts")} geometry={geometry} color={labelColor} variant="label" />
           {facts.map((fact, index) => (
             <ReaderText key={index} text={fact} geometry={geometry} color={colors.text} variant="fact" segments={figureSegments(fact)} figureColor={colors.textBright} />
@@ -402,7 +403,7 @@ function ArticleReaderView({
         </Box>
       ) : null}
       {children ? (
-        <Box flexDirection="column" style={desktop ? { marginTop: lead || blocks.length > 0 ? "0.8em" : 0 } : undefined}>
+        <Box flexDirection="column" style={desktop ? { marginTop: !childrenLabel && (lead || blocks.length > 0) ? "0.8em" : 0 } : undefined}>
           {childrenLabel ? <ReaderText text={readerLabel(childrenLabel)} geometry={geometry} color={labelColor} variant="label" /> : null}
           <Box flexDirection="column" style={desktop ? { fontSize: READER_APP_FONT, lineHeight: "normal" } : undefined}>
             {children}
