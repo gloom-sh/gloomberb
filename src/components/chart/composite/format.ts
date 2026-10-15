@@ -500,6 +500,13 @@ export function formatCompositeCursorAxisDate(
 
 const MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
+/** A dataset observation's day as the axis words it, `Oct 4`, with the year when the chart ends in another. */
+export function formatCompositeDatasetDate(date: Date, endTime: number | undefined): string {
+  const text = `${MONTH_NAMES[date.getUTCMonth()]} ${date.getUTCDate()}`;
+  const endYear = endTime === undefined ? null : new Date(endTime).getUTCFullYear();
+  return endYear === null || endYear === date.getUTCFullYear() ? text : `${text} ${date.getUTCFullYear()}`;
+}
+
 /**
  * When a value carried under the cursor was observed: its time when it is
  * from the cursor's own day, else its date (`Sep 2`, with the year when that

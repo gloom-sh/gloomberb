@@ -5,7 +5,13 @@ import { CANONICAL_EXCHANGE_ALIASES } from "../../../utils/exchanges";
 import { displayWidth, formatPercentRaw, truncateToDisplayWidth } from "../../../utils/format";
 import type { ResolvedSeries } from "../../../time-series/types";
 import { consumeChartMouseEvent, type ChartMouseEvent } from "../core/pointer";
-import { formatCompositeCarriedStamp, formatCompositePointDetails, formatCompositeSeriesValue, seriesPriceReference } from "./format";
+import {
+  formatCompositeCarriedStamp,
+  formatCompositeDatasetDate,
+  formatCompositePointDetails,
+  formatCompositeSeriesValue,
+  seriesPriceReference,
+} from "./format";
 import type { CompositeChartProps, CompositeChartScene } from "./types";
 import { seriesCueCssBackground, type SeriesLineCue } from "./series-cues";
 
@@ -45,15 +51,6 @@ function axisPriceReference(scene: CompositeChartScene | null, series: ResolvedS
   return own;
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
-
-/** `Oct 4`, the axis's own wording, with the year when the chart ends in another. */
-function legendDateText(date: Date, endTime: number | undefined): string {
-  const text = `${MONTHS[date.getUTCMonth()]} ${date.getUTCDate()}`;
-  const endYear = endTime === undefined ? null : new Date(endTime).getUTCFullYear();
-  return endYear === null || endYear === date.getUTCFullYear() ? text : `${text} ${date.getUTCFullYear()}`;
-}
-
 /**
  * A dataset's values arrive days late, so the legend dates them. Idle, one
  * date leads the legend when it is every value's; otherwise, and under the
@@ -72,7 +69,7 @@ function legendValueDates(
     valued += 1;
     if (entry.observationKind === "dataset" && cursorValue.point) dates.set(entry.id, cursorValue.point.date);
   }
-  const text = new Map([...dates].map(([id, date]) => [id, legendDateText(date, scene?.endTime)] as const));
+  const text = new Map([...dates].map(([id, date]) => [id, formatCompositeDatasetDate(date, scene?.endTime)] as const));
   const cursorDate = scene?.cursorDate;
   if (cursorDate) {
     const cursorDay = cursorDate.toISOString().slice(0, 10);

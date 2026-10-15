@@ -18,6 +18,7 @@ import {
   type MultiSelectRowAction,
 } from "../../../components/ui";
 import { CompositeChart } from "../../../components/chart/composite";
+import { formatCompositeDatasetDate } from "../../../components/chart/composite/format";
 import type { CompositeChartLevels, CompositeLevelEdit } from "../../../components/chart/composite/levels";
 import type { PaneProps, TickerResearchTabProps } from "../../../types/plugin";
 import type { ChartResolution, TimeRange } from "../../../components/chart/core/types";
@@ -46,6 +47,7 @@ import {
 import { colors } from "../../../theme/colors";
 import { isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
 import { isMarketFieldId } from "../../../time-series/field-catalog";
+import { isDatasetChart } from "../../../time-series/spec";
 import { CHART_COMPOSER_PANE_ID } from "../../../types/config";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { SeriesEditorDialog } from "./editor";
@@ -934,12 +936,28 @@ function ChartComposerSurface({
   }, [anchoredVwapOn]);
   const anchorable = anchoredVwapOn && !pickingAnchor;
   const footerAnchor = useCallback(() => setPickingAnchor(true), []);
+  // A dataset (CHOKE's transits) panned or zoomed back from its newest
+  // observation says how far its data goes, as its legend dates a value.
+  const newestBeyondView = useMemo(() => {
+    const end = viewport?.end.getTime();
+    if (!activeRuntimeViewport || !isDatasetChart(spec) || end === undefined || !Number.isFinite(end)) return null;
+    let newest = Number.NEGATIVE_INFINITY;
+    for (const entry of plottedSeries) {
+      for (const point of entry.points) {
+        const time = point.date.getTime();
+        if (point.value != null && Number.isFinite(time) && time > newest) newest = time;
+      }
+    }
+    return newest > end ? formatCompositeDatasetDate(new Date(newest), end) : null;
+  }, [activeRuntimeViewport, plottedSeries, spec, viewport]);
   usePaneFooter(footerId, () => ({
     info: resolution.loading
       ? [{ id: "loading", parts: [{ text: "loading", tone: "muted" as const }] }]
       : pickingAnchor
         ? [{ id: "anchor", parts: [{ text: "pick a bar to anchor VWAP", tone: "muted" as const }] }]
-        : [],
+        : newestBeyondView
+          ? [{ id: "newest", asOf: true, parts: [{ text: `newest ${newestBeyondView}`, tone: "muted" as const }] }]
+          : [],
     hints: [
       { id: "series", key: "s", label: "eries", onPress: footerSeries },
       { id: "indicators", key: "i", label: "ndicators", onPress: openIndicators, disabled: indicatorsDisabled },
@@ -947,7 +965,7 @@ function ChartComposerSurface({
       { id: "resolution", key: "t", label: "imeframe", onPress: footerResolution },
       ...(anchorable ? [{ id: "vwap-anchor", key: "v", label: "wap anchor", title: "Anchor VWAP", onPress: footerAnchor }] : []),
     ],
-  }), [resolution.loading, pickingAnchor, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
+  }), [resolution.loading, pickingAnchor, newestBeyondView, footerSeries, openIndicators, indicatorsDisabled, openFormulas, formulasDisabled, footerResolution, anchorable, footerAnchor]);
 
   // A fixed window (a GIP session) highlights no range, so the bar names it.
   const dateWindowLabel = useMemo(() => {
