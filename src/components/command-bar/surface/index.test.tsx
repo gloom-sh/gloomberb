@@ -7,6 +7,7 @@ import type { CommandDef, PaneTemplateCreateOptions, WizardStep } from "../../..
 import { CommandBarHarness, createCommandBarTestControls, expectSingleBackControl, makeDataProvider } from "./test-harness";
 import { createTestTicker } from "../../../test-support/ticker";
 import { cpiModule } from "../../../plugins/builtin/cpi";
+import { insiderModule } from "../../../plugins/builtin/insider";
 import type { AppContextStoreValue } from "../../../state/app/context";
 
 const tui = createOpenTuiTestHarness();
@@ -715,6 +716,37 @@ describe("CommandBar", () => {
 
     expect(created).toEqual([{ templateId: "cpi-pane", options: undefined }]);
     expect(searchQueries).toEqual([]);
+  });
+
+  // INS works on the loaded security: alone it takes the active ticker, and
+  // with none it opens the market's insider buying instead of ticker search.
+  test.each([["none", undefined], ["AAPL", "AAPL"]] as const)("INS alone with active ticker %s", async (_active, symbol) => {
+    const created: Array<{ templateId: string; options?: PaneTemplateCreateOptions }> = [];
+    await tui.render(<CommandBarHarness
+      query="INS"
+      live
+      selectedTicker={symbol}
+      configurePluginRegistry={(pluginRegistry) => {
+        mutablePaneRegistryMap(pluginRegistry.paneTemplates).set("insider-pane", insiderModule.paneTemplates![0]!);
+        pluginRegistry.createPaneFromTemplateAsync = async (templateId, options) => {
+          created.push({ templateId, options });
+        };
+      }}
+    />, {
+      width: 100,
+      height: 20,
+    });
+
+    await tui.setup().renderOnce();
+    expect(tui.frame()).toContain(symbol ? "Shortcut: Insider for AAPL" : "Shortcut: Insider");
+    expect(tui.frame()).not.toContain("Enter to choose ticker");
+    await act(async () => {
+      tui.setup().mockInput.pressEnter();
+      await Bun.sleep(0);
+      await tui.setup().renderOnce();
+    });
+
+    expect(created.map(({ templateId, options }) => [templateId, options?.symbol])).toEqual([["insider-pane", symbol]]);
   });
 
   test("consumes enter before focused pane shortcuts when executing a pane shortcut", async () => {

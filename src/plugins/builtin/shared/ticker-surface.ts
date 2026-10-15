@@ -34,6 +34,12 @@ export interface TickerSurfacePaneTemplateOptions {
     options: PaneTemplateCreateOptions | undefined,
     symbol: string,
   ) => boolean;
+  /**
+   * Opens the pane on no ticker when none is typed or active, titled this,
+   * instead of asking for one (INS alone is the market's insider buying).
+   * With a ticker typed or active the pane opens on it as before.
+   */
+  withoutTickerTitle?: string;
 }
 
 function resolveTickerSurfaceSymbol(
@@ -98,14 +104,21 @@ export function createTickerSurfacePaneTemplate(
       ...(templateOptions.shortcutAliases?.length ? { aliases: templateOptions.shortcutAliases } : {}),
       argPlaceholder: "ticker",
       argKind: "ticker",
+      ...(templateOptions.withoutTickerTitle ? { openWithoutArg: true } : {}),
     },
     canCreate: (context, createOptions) => {
       const symbol = resolveTickerSurfaceSymbol(context, createOptions);
-      return symbol !== null && (templateOptions.canCreate?.(context, createOptions, symbol) ?? true);
+      if (symbol === null) return !!templateOptions.withoutTickerTitle;
+      return templateOptions.canCreate?.(context, createOptions, symbol) ?? true;
     },
     createInstance: (context, createOptions) => {
       const symbol = resolveTickerSurfaceSymbol(context, createOptions);
-      if (!symbol) return null;
+      if (!symbol) {
+        // One window per function: no id, binding or settings, so opening it again finds it.
+        return templateOptions.withoutTickerTitle
+          ? { title: templateOptions.withoutTickerTitle, placement: "floating" }
+          : null;
+      }
       return createTickerSurfacePaneInstance(
         context,
         createOptions,

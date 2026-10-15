@@ -6,6 +6,8 @@ import { loadParsedInsiderFilings } from "./client";
 import { createInsiderHeadless } from "./headless";
 import type { ParsedInsiderFiling } from "./model";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import type { InsiderSignalsPayload } from "../../../api-client/insider-signals";
+import { insiderSignalsCache } from "./signals-client";
 
 const parsed: ParsedInsiderFiling[] = [
   {
@@ -179,5 +181,46 @@ describe("insider headless model", () => {
     const shown = await headless.load(args("Lisa T. Su", 2), createTestHeadlessContext());
     expect(shown.rows.map((row) => [row.insider, row.insiderName, row.role])).toEqual([["SU LISA T", "Lisa T. Su", "CEO"]]);
     expect(requestedLimits).toEqual([2, 2, 2]);
+  });
+});
+
+describe("insider report without a ticker", () => {
+  // Invented company and people.
+  const signals = (window: number, rows: InsiderSignalsPayload["rows"]): InsiderSignalsPayload => ({
+    window, through: "2026-10-15", asOf: "2026-10-14", coverage: { from: "2026-08-31", through: "2026-10-14" }, rows,
+  });
+  const row: InsiderSignalsPayload["rows"][number] = {
+    ticker: "NWBI", issuerCik: "9900001", company: "Northwind Biologics Inc", score: 78,
+    reasons: ["3 insiders, $1.2M in 14 days", "CFO raised stake 56%"], insiders: 3, buys: 3, value: 1_152_500, shares: 95_000,
+    firstBuy: "2026-10-01", lastBuy: "2026-10-14", lastFiled: "2026-10-14",
+    signals: { clusterInsiders: 3, repeatBuys: 1, usualRatio: null, stakeIncreasePct: 136.4, newPosition: false },
+    buyers: [{ name: "Rivera Ana", role: "CEO", value: 496_000, buys: 1, lastBuy: "2026-10-01" }, { name: "Okafor Ben", role: "Director", value: 354_000, buys: 1, lastBuy: "2026-10-14" }],
+  };
+
+  test("ranks the companies whose insiders are buying, with the reasons and the buyers under each", async () => {
+    const asked: unknown[] = [];
+    const apiClient = { getCloudSecInsiderSignals: async (params: { window?: number; limit?: number }) => {
+      asked.push(params);
+      return signals(params.window ?? 30, params.window === 7 ? [] : [row]);
+    } } as never;
+    const load = (window: number) => createInsiderHeadless().load(
+      { rawArgument: "", argument: "", symbols: [], options: { name: "", limit: 20, window } },
+      createTestHeadlessContext({ apiClient }),
+    );
+    try {
+      const report = await load(30);
+      expect(report.columns?.map((column) => column.header)).toEqual(["Ticker", "Company", "Score", "Why", "Buyers", "Bought", "Last Buy", "Filed", "Top Buyers"]);
+      expect(report.rows[0]).toMatchObject({
+        ticker: "NWBI",
+        score: 78,
+        why: "3 insiders, $1.2M in 14 days · CFO raised stake 56%",
+        filingDate: "2026-10-14",
+        buyers: "Ana Rivera (CEO) $496k; Ben Okafor (Director) $354k",
+      });
+      expect((await load(7)).empty).toBe("No open-market insider buying in the last 7 days.");
+      expect(asked).toEqual([{ window: 30, limit: 20 }, { window: 7, limit: 20 }]);
+    } finally {
+      insiderSignalsCache.reset();
+    }
   });
 });

@@ -358,6 +358,14 @@ const TICKER_PANE_IDS = new Set([
   "ibkr-trading",
 ]);
 
+/**
+ * Ticker panes that also have a view without a ticker, which an unbound
+ * instance shows: INS alone ranks the market's insider buying. Normalizing a
+ * layout leaves such an instance unbound instead of removing it or linking it
+ * to a list.
+ */
+const TICKERLESS_VIEW_PANE_IDS = new Set(["insider"]);
+
 export const DEFAULT_COLUMNS: ColumnConfig[] = [
   { id: "ticker", label: "TICKER", width: 8, align: "left" },
   { id: "price", label: "LAST", width: 10, align: "right", format: "currency" },
@@ -811,7 +819,7 @@ export function normalizePaneLayout(
   let nextLayout = layout;
   if (fallbackAvailable) {
     const nextInstances: PaneInstanceConfig[] = layout.instances.map((instance) => {
-      if (!isTickerPaneInstance(instance)) return instance;
+      if (!isTickerPaneInstance(instance) || TICKERLESS_VIEW_PANE_IDS.has(instance.paneId)) return instance;
       if (instance.binding?.kind === "fixed" || instance.binding?.kind === "follow") return instance;
       return {
         ...instance,
@@ -847,6 +855,7 @@ export function normalizePaneLayout(
       if (
         isTickerPaneInstance(instance)
         && instance.paneId !== TICKER_RESEARCH_PANE_ID
+        && !TICKERLESS_VIEW_PANE_IDS.has(instance.paneId)
         && instance.binding?.kind !== "follow"
         && instance.binding?.kind !== "fixed"
       ) {

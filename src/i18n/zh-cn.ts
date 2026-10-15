@@ -375,7 +375,7 @@ export const zhCN: Record<string, string> = {
   "Institutional holders by value and position change": "按市值与持仓变动排列的机构股东",
   "Institutional holders for the selected ticker.": "所选股票的机构股东。",
   "SEC Form 4 insider transaction activity": "SEC Form 4 内部人交易动态",
-  "Insider transaction activity for the selected ticker.": "所选股票的内部人交易动态。",
+  "Insider transactions for a ticker; alone, the companies whose insiders are buying.": "某只股票的内部人交易；不指定股票时，列出内部人正在买入的公司。",
   "Recent SEC filings for US equities": "美股最新 SEC 申报文件",
   "Recent SEC filings for the selected ticker.": "所选股票的最新 SEC 申报文件。",
   "Price trigger alerts with desktop notifications": "带桌面通知的价格触发提醒",

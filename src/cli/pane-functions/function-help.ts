@@ -1068,8 +1068,8 @@ export const FUNCTION_HELP: Readonly<Record<string, FunctionHelp>> = {
     bloomberg: ["13F"],
   },
   INS: {
-    summary: "Insider buys, sells, awards and gifts from Form 4 filings, with insider name, size and price. US equities.",
-    usage: ["INS NVDA"],
+    summary: "Insider buys, sells, awards and gifts from Form 4 filings, with insider name, size and price. US equities. Alone it ranks the companies whose insiders are buying in the open market, with why.",
+    usage: ["INS NVDA", "INS"],
     keys: [OPEN, key("f", "ilter")],
     data: AS_FILED,
     bloomberg: ["INS"],

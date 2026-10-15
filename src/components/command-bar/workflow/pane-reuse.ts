@@ -104,7 +104,7 @@ interface OtherSettings {
   identity: readonly string[] | undefined;
   /** The template is the only one that opens its pane type. */
   onlyTemplate: boolean;
-  /** The spec names a ticker or params, or the form takes no argument or an optional one. */
+  /** The spec names a ticker or params, or the form takes no argument, an optional one, or opens without one. */
   bareFormOk: boolean;
 }
 
@@ -150,7 +150,8 @@ export function findReusablePaneInstance(
   const other: OtherSettings = {
     identity: options.paneDef?.identitySettings,
     onlyTemplate: isOnlyTemplateForPane(template, templates),
-    bareFormOk: namesATarget(spec) || !template.shortcut?.argPlaceholder || template.shortcut.argOptional === true,
+    bareFormOk: namesATarget(spec) || !template.shortcut?.argPlaceholder || template.shortcut.argOptional === true
+      || template.shortcut.openWithoutArg === true,
   };
   const matches = candidates.filter((instance) => showsWhatSpecNames(instance, spec, other));
   return matches.find((instance) => instance.instanceId === options.focusedPaneId) ?? matches[0] ?? null;

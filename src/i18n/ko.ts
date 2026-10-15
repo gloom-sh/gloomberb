@@ -373,7 +373,7 @@ export const ko: Record<string, string> = {
   "Institutional holders by value and position change": "보유가치 및 포지션 변동별 기관투자자",
   "Institutional holders for the selected ticker.": "선택 종목의 기관투자자.",
   "SEC Form 4 insider transaction activity": "SEC Form 4 내부자 거래 내역",
-  "Insider transaction activity for the selected ticker.": "선택 종목의 내부자 거래 내역.",
+  "Insider transactions for a ticker; alone, the companies whose insiders are buying.": "종목의 내부자 거래. 종목 없이 열면 내부자가 매수 중인 기업 목록.",
   "Recent SEC filings for US equities": "미국 주식의 최신 SEC 공시",
   "Recent SEC filings for the selected ticker.": "선택 종목의 최신 SEC 공시.",
   "Price trigger alerts with desktop notifications": "데스크톱 알림이 있는 목표가 알림",

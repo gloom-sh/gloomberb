@@ -35,6 +35,7 @@ import type { CloudCurveHistory, CloudCurveId, CloudCurveView, CloudWorldCurves 
 import type { CdxBoardPayload, CloudCreditBoardParams, SovrBoardPayload } from "./credit-boards";
 import type { ShortVolumePayload, ShortVolumeScope } from "./short-volume";
 import type { BeneficialOwnersPayload, CloudBeneficialOwnersParams } from "./beneficial-owners";
+import type { CloudInsiderSignalsParams, InsiderSignalsPayload } from "./insider-signals";
 import type { SocialMentionDayPosts, SocialMentionsPayload, SocialMentionsRange } from "./social-mentions";
 import type { FuturesContractTermsPayload, FuturesCurveAsOfPayload, FuturesCurvePayload } from "./futures-curve";
 import type { CotBoardPayload, CotContractPayload, CotFamily, CotClass } from "./cot";
@@ -81,6 +82,7 @@ import {
   cloudExchangeRatePath,
   cloudSec13FPath,
   cloudSecBeneficialOwnersPath,
+  cloudSecInsiderSignalsPath,
   cloudSecFilingContentPath,
   cloudSecFilingDocumentsPath,
   cloudSecFilingsPath,
@@ -930,6 +932,15 @@ export class CloudDataApi {
     options?: { signal?: AbortSignal },
   ): Promise<BeneficialOwnersPayload> {
     return this.request<BeneficialOwnersPayload>(cloudSecBeneficialOwnersPath(params), {
+      signal: options?.signal,
+    });
+  }
+
+  async getCloudSecInsiderSignals(
+    params: CloudInsiderSignalsParams = {},
+    options?: { signal?: AbortSignal },
+  ): Promise<InsiderSignalsPayload> {
+    return this.request<InsiderSignalsPayload>(cloudSecInsiderSignalsPath(params), {
       signal: options?.signal,
     });
   }

@@ -4,6 +4,7 @@ import {
   findPaneInstance,
   findPrimaryPaneInstance,
   materializeDetachedPanesAsFloating,
+  normalizePaneLayout,
   resolveFollowBindingInstance,
   resolvePaneInstance,
   type LayoutConfig,
@@ -157,5 +158,31 @@ describe("materializeDetachedPanesAsFloating", () => {
     expect(next.floating).toEqual([
       { instanceId: "chat:main", x: 14, y: 6, width: 48, height: 18 },
     ]);
+  });
+});
+
+describe("normalizePaneLayout", () => {
+  // INS alone is the market's insider buying: its unbound pane is a view, not
+  // a pane that lost its ticker, so loading a layout neither drops it nor
+  // links it to the portfolio list as it does an unbound quote monitor.
+  test("keeps an unbound INS pane unbound and links or drops other unbound ticker panes", () => {
+    const layout: LayoutConfig = {
+      dockRoot: { kind: "split", axis: "horizontal", ratio: 0.5, first: { kind: "pane", instanceId: "list" }, second: { kind: "split", axis: "vertical", ratio: 0.5, first: { kind: "pane", instanceId: "ins" }, second: { kind: "pane", instanceId: "quote" } } },
+      instances: [
+        createPaneInstance("portfolio-list", { instanceId: "list", binding: { kind: "none" } }),
+        createPaneInstance("insider", { instanceId: "ins", binding: { kind: "none" } }),
+        createPaneInstance("quote-monitor", { instanceId: "quote", binding: { kind: "none" } }),
+      ],
+      floating: [],
+      detached: [],
+    };
+    const bindings = (next: LayoutConfig) => Object.fromEntries(next.instances.map((instance) => [instance.instanceId, instance.binding]));
+
+    expect(bindings(normalizePaneLayout(layout, { defaultFollowSourceInstanceId: "list" }))).toEqual({
+      list: { kind: "none" },
+      ins: { kind: "none" },
+      quote: { kind: "follow", sourceInstanceId: "list" },
+    });
+    expect(bindings(normalizePaneLayout(layout))).toEqual({ list: { kind: "none" }, ins: { kind: "none" } });
   });
 });

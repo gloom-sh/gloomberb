@@ -139,6 +139,11 @@ export function useCommandBarPaneTemplateActions({
         { preserveListingKey: true },
       );
       if (!resolvedTicker) {
+        // Typed alone with no active ticker: the pane's own view without one (INS's insider buying).
+        if (!trimmedArg && template.shortcut?.openWithoutArg) {
+          await openPaneTemplateDirect(template);
+          return;
+        }
         openModeRoute("ticker-search", trimmedArg, {
           action: "pane-template",
           templateId: template.id,

@@ -7,6 +7,7 @@ import { isUsListingExchange, normalizeSymbol, parsePublicTickerKey, publicTicke
 import { nonUsSecListingVenue } from "../utils/sec";
 import type { HistoryRetention } from "../sources/history-retention";
 import type { CloudBeneficialOwnersParams } from "./beneficial-owners";
+import type { CloudInsiderSignalsParams } from "./insider-signals";
 import type { RevenueBreakdownView } from "./revenue-breakdown";
 
 export type CloudHistoryParams = {
@@ -442,6 +443,14 @@ export function cloudSecBeneficialOwnersPath(params: CloudBeneficialOwnersParams
   if (params.limit != null) search.set("limit", String(params.limit));
   if (params.offset != null) search.set("offset", String(params.offset));
   return appendQuery("/cloud/sec/beneficial-owners", search);
+}
+
+/** Companies ranked by recent open-market insider buying. */
+export function cloudSecInsiderSignalsPath(params: CloudInsiderSignalsParams = {}): string {
+  const search = new URLSearchParams();
+  if (params.window != null) search.set("window", String(params.window));
+  if (params.limit != null) search.set("limit", String(params.limit));
+  return appendQuery("/cloud/sec/insider-signals", search);
 }
 
 export function cloudSecFilingDocumentsPath(

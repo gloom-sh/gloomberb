@@ -43,7 +43,9 @@ export function buildRootShortcutFeedback({
           ? `Shortcut: ${rootShortcutIntent.label} for ${symbol} · Tab to accept`
           : `Shortcut: ${rootShortcutIntent.label} for ${symbol}`;
       }
-      return `Shortcut: ${rootShortcutIntent.label} · Enter to choose ticker`;
+      return rootShortcutIntent.template.shortcut?.openWithoutArg && !rootShortcutIntent.argText
+        ? `Shortcut: ${rootShortcutIntent.label}`
+        : `Shortcut: ${rootShortcutIntent.label} · Enter to choose ticker`;
     }
     if (argKind === "ticker-list") {
       if (rootShortcutIntent.argText) {
