@@ -4,23 +4,15 @@ import { DialogActions } from "../components/ui/dialog-actions";
 import { DialogFrame, fitDialogWidth } from "../components/ui/frame";
 import { t } from "../i18n";
 import { useAppLanguage } from "../i18n/react";
-import {
-  paneImageThumbnail,
-  personalDataQuestion,
-  pngDataUrl,
-  type PaneImageCapture,
-} from "./pane-image";
+import { personalDataQuestion, type PaneImageCapture } from "./pane-image";
+import { CAPTURE_DIALOG_COLUMNS, CapturePreview } from "./capture-preview";
 import { useThemeColors } from "../theme/theme-context";
-import { Box, ImageSurface, Span, Text, TextAttributes, useUiCapabilities, useRendererHost } from "../ui";
+import { Box, Text, useUiCapabilities, useRendererHost } from "../ui";
 import { useDialogKeyboard, type PromptContext } from "../ui/dialog";
 import { isPlainKey } from "../utils/keyboard";
-import { truncateWithEllipsis } from "../utils/text-wrap";
+import { createOneShot } from "../utils/one-shot";
 
 import type { SharePost, ShareTarget } from "./chat";
-import { ClippedText } from "../components/ui/display";
-
-/** The widest the dialog gets, in cells; the preview is as wide as the form. */
-export const SHARE_DIALOG_COLUMNS = 72;
 
 type ShareField = "destination" | "channel" | "caption" | "includeLink" | "post";
 
@@ -38,51 +30,6 @@ export interface ShareDialogProps extends PromptContext<ShareResult> {
   getLink: (() => Promise<string>) | null;
   defaultIncludeLink: boolean;
   onIncludeLinkChange: (value: boolean) => void;
-}
-
-/** The terminal's stand-in for the picture where it cannot draw images: half blocks, two pixels a cell. */
-function ThumbnailRows({ capture, cols, rows }: { capture: PaneImageCapture; cols: number; rows: number }) {
-  const lines = useMemo(() => (
-    capture.pixels ? paneImageThumbnail({ width: capture.width, height: capture.height, pixels: capture.pixels }, cols, rows) : []
-  ), [capture, cols, rows]);
-  return (
-    <Box flexDirection="column" alignItems="center" width={cols}>
-      {lines.map((line, row) => (
-        <Text key={row}>
-          {line.map((cell, col) => <Span key={col} fg={cell.top} bg={cell.bottom}>▀</Span>)}
-        </Text>
-      ))}
-    </Box>
-  );
-}
-
-/** The terminal's preview of a pane that fits: its own cells, as the picture draws them. */
-function CellRows({ cells }: { cells: NonNullable<PaneImageCapture["cells"]> }) {
-  const rows = useMemo(() => {
-    const result: Array<Array<{ text: string; fg: string; bg: string; bold: boolean }>> = [];
-    for (let row = 0; row < cells.rows; row += 1) {
-      const spans: Array<{ text: string; fg: string; bg: string; bold: boolean }> = [];
-      for (const cell of cells.cells.slice(row * cells.cols, (row + 1) * cells.cols)) {
-        if (!cell.char) continue;
-        const last = spans.at(-1);
-        if (last && last.fg === cell.fg && last.bg === cell.bg && last.bold === cell.bold) last.text += cell.char;
-        else spans.push({ text: cell.char, fg: cell.fg, bg: cell.bg, bold: cell.bold });
-      }
-      result.push(spans);
-    }
-    return result;
-  }, [cells]);
-  return (
-    <Box flexDirection="column" width={cells.cols}>
-      {rows.map((spans, row) => (
-        <Text key={row}>
-          {spans.map((span, index) => (
-            <Span key={index} fg={span.fg} bg={span.bg} attributes={span.bold ? TextAttributes.BOLD : 0}>{span.text}</Span>
-          ))}
-        </Text>
-      ))}
-    </Box>
-  );
 }
 
 /**
@@ -124,7 +71,9 @@ export function ShareDialog({
   const channelControl = useRef<SelectControl | null>(null);
   const captionRef = useRef(caption);
   captionRef.current = caption;
-  const previewUrl = useMemo(() => (nativePaneChrome ? pngDataUrl(capture.png) : ""), [capture.png, nativePaneChrome]);
+  // The Enter that moved to Post, held or pressed twice, must not press it:
+  // Post by key waits until the key has been up a moment.
+  const [postKey] = useState(createOneShot);
   const question = capture.personalData ? personalDataQuestion(capture.personalData) : null;
   const meta = `${capture.title} · ${capture.width}x${capture.height} · ${Math.ceil(capture.png.byteLength / 1024)} KB`;
 
@@ -185,7 +134,7 @@ export function ShareDialog({
       if (activeField === "destination") destinationControl.current?.open();
       else if (activeField === "channel") channelControl.current?.open();
       else if (activeField === "includeLink") toggleIncludeLink(!includeLink);
-      else void submit();
+      else if (!postKey.refuses({ repeat: event.repeat })) void submit();
     }
   }, { scope: dialogId, allowEditable: true });
 
@@ -195,38 +144,10 @@ export function ShareDialog({
     ...(target.description ? { description: target.description } : {}),
   })), [targets]);
 
-  const preview = nativePaneChrome ? (
-    <ImageSurface
-      src={previewUrl}
-      alt={capture.title}
-      objectFit="contain"
-      style={{
-        width: "100%",
-        height: `min(46vh, calc(${fitDialogWidth(SHARE_DIALOG_COLUMNS)} * ${capture.height / Math.max(1, capture.width)}))`,
-        border: `1px solid ${colors.border}`,
-        borderRadius: 6,
-        backgroundColor: colors.bg,
-      }}
-    />
-  ) : capture.cells && capture.cells.cols <= width && capture.cells.rows <= previewRows ? (
-    // A pane that fits shows as its own cells. Kitty images stay out of the
-    // terminal preview: a dialog covers them, its own included.
-    <Box width={width} alignItems="center">
-      <CellRows cells={capture.cells} />
-    </Box>
-  ) : (
-    <Box width={width} alignItems="center">
-      <ThumbnailRows capture={capture} cols={width} rows={previewRows} />
-    </Box>
-  );
-
   return (
     <DialogFrame title="Share" footer="Enter select · Tab next field · Esc cancel" desktopFooter={null}>
-      <Box flexDirection="column" gap={1} {...(nativePaneChrome ? { style: { width: fitDialogWidth(SHARE_DIALOG_COLUMNS) } } : { width })}>
-        <Box flexDirection="column">
-          {preview}
-          <ClippedText fg={colors.textDim} text={meta} width={width} cut={truncateWithEllipsis} />
-        </Box>
+      <Box flexDirection="column" gap={1} {...(nativePaneChrome ? { style: { width: fitDialogWidth(CAPTURE_DIALOG_COLUMNS) } } : { width })}>
+        <CapturePreview capture={capture} meta={meta} width={width} previewRows={previewRows} />
         <SelectButton
           label={t("Destination")}
           title={t("Destination")}
@@ -270,8 +191,12 @@ export function ShareDialog({
             }}
             onSubmit={() => {
               // Holdings and private messages are posted only with the button.
-              if (question) setActiveField("post");
-              else void submit();
+              if (!question) {
+                void submit();
+                return;
+              }
+              postKey.end();
+              setActiveField("post");
             }}
           />
           {getLink ? <Checkbox label={t("Include link")} checked={includeLink} disabled={posting}

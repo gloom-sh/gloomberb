@@ -95,6 +95,10 @@ export async function loadQuoteEntry({
   resolveQuote,
 }: LoadQuoteEntryOptions): Promise<QueryEntry<Quote>> {
   const key = buildQuoteKey(instrument);
+  if (!options.forceRefresh) {
+    const current = quoteStore.get(key);
+    if (hasFreshQuoteEntry(current, instrument, SNAPSHOT_CACHE_TTL_MS)) return current;
+  }
   const flightKey = options.forceRefresh ? `${key}|refresh` : key;
   return runSingleFlight(flightKey, async () => {
     quoteStore.update(key, loadingEntry);

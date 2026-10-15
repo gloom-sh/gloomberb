@@ -48,6 +48,8 @@ export interface TextFieldProps {
   labelWidth?: number;
   value?: string;
   placeholder?: string;
+  /** The most characters it takes; typing and pasting stop there. */
+  maxLength?: number;
   focused?: boolean;
   width?: number;
   inputRef?: RefObject<InputRenderable | null>;
@@ -119,6 +121,7 @@ function TextFieldControl({
   active,
   value,
   placeholder,
+  maxLength,
   focused,
   width,
   inputRef,
@@ -163,6 +166,7 @@ function TextFieldControl({
         label={label}
         value={value}
         placeholder={placeholder}
+        maxLength={maxLength}
         focused={focused}
         width={width}
         inputRef={inputRef}
@@ -226,6 +230,7 @@ function TextFieldControl({
           value={value}
           selectable={!isPassword}
           placeholder={isPassword ? "" : placeholder}
+          {...(maxLength === undefined ? {} : { maxLength })}
           focused={focused}
           textColor={isPassword ? backgroundColor : textColor}
           placeholderColor={placeholderColor}

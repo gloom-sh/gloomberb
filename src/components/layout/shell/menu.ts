@@ -25,6 +25,9 @@ const MENU_MAX_WIDTH = 44;
 
 export const MENU_Z_INDEX = 10_000;
 
+/** The pane menu entry that opens Report a Bug, in the main window's and a popped-out window's menu. */
+export const REPORT_BUG_MENU_LABEL = "Report a Bug";
+
 /** One row of the kit pane menu; a divider row is skipped by the keyboard. */
 export interface PaneMenuEntry {
   id: string;
@@ -107,6 +110,8 @@ export function menuForPane(
   openDocs?: () => void,
   /** A new Ask Gloom conversation with this pane attached, the same as the button beside the `?`. */
   askGloom?: () => void,
+  /** Report a Bug: the pane's picture and a line to #bugs; absent where it cannot be posted or pictured. */
+  reportBug?: () => void,
 ): ContextMenuItem[] {
   const baseActions: ContextMenuItem[] = [...paneItems];
   if (baseActions.length > 0) baseActions.push(contextMenuDivider("pane:own-actions-divider"));
@@ -140,6 +145,9 @@ export function menuForPane(
       accelerator: accelerators.share,
       onSelect: sharePane,
     });
+  }
+  if (reportBug) {
+    baseActions.push({ id: "report-bug", label: REPORT_BUG_MENU_LABEL, onSelect: reportBug });
   }
   if (copyPaneScreenshot) {
     baseActions.push({

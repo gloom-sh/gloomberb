@@ -41,13 +41,23 @@ function scalarArgs(source: ArgSource, privateFields: PaneSharePrivateFields | u
  * that opens this pane (a chart opened with `GP` stays `GP`), else the first
  * template that opens it.
  */
-function functionCode(registry: Pick<PluginRegistry, "paneTemplates">, paneType: string, title: string): string | null {
+export function functionCode(registry: Pick<PluginRegistry, "paneTemplates">, paneType: string, title: string): string | null {
   const prefixes = [...registry.paneTemplates.values()]
     .filter((template) => template.paneId === paneType && template.shortcut?.prefix)
     .map((template) => template.shortcut!.prefix.toUpperCase());
   const token = title.trim().split(/\s+/)[0]?.toUpperCase() ?? "";
   if (token && prefixes.includes(token)) return token;
   return prefixes[0] ?? null;
+}
+
+/**
+ * A pane named by its function and what it shows, such as `DES AAPL`: its
+ * title, led by its function code unless the title already starts with it.
+ */
+export function paneFunctionLabel(pane: { title: string; code: string | null; paneType: string }): string {
+  const title = pane.title.trim() || pane.paneType;
+  if (!pane.code) return title;
+  return title.split(/\s+/)[0]?.toUpperCase() === pane.code ? title : `${pane.code} ${title}`;
 }
 
 export interface PaneAttachmentSource {

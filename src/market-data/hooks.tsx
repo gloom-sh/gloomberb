@@ -135,6 +135,125 @@ function buildTickerFinancialsKeys(tickers: TickerRecord[], options: TickerInstr
   return keys;
 }
 
+/**
+ * A new object so memo dependencies move, over the map that already holds
+ * every unchanged entry. Copying that map would visit every instrument.
+ */
+class RetainedMapView<K, V> extends Map<K, V> {
+  constructor(private readonly backing: Map<K, V>) {
+    super();
+  }
+
+  override get size(): number {
+    return this.backing.size;
+  }
+
+  override get(key: K): V | undefined {
+    return this.backing.get(key);
+  }
+
+  override has(key: K): boolean {
+    return this.backing.has(key);
+  }
+
+  override forEach(callback: (value: V, key: K, map: Map<K, V>) => void, thisArg?: unknown): void {
+    this.backing.forEach((value, key) => {
+      callback.call(thisArg, value, key, this);
+    });
+  }
+
+  override keys(): MapIterator<K> {
+    return this.backing.keys();
+  }
+
+  override values(): MapIterator<V> {
+    return this.backing.values();
+  }
+
+  override entries(): MapIterator<[K, V]> {
+    return this.backing.entries();
+  }
+
+  override [Symbol.iterator](): MapIterator<[K, V]> {
+    return this.backing[Symbol.iterator]();
+  }
+}
+
+interface PatchedMapSlot<K, V> {
+  key: K;
+  versionKeys: readonly string[];
+  read: () => V | null | undefined;
+}
+
+interface PatchedMapState<K, V> {
+  signature: string;
+  coordinator: SharedCoordinator | null;
+  slots: Array<PatchedMapSlot<K, V>>;
+  versions: number[];
+  backing: Map<K, V>;
+  view: Map<K, V>;
+}
+
+function slotVersion(
+  slot: PatchedMapSlot<unknown, unknown>,
+  versionOf: ((key: string) => number) | null,
+  aggregate: number,
+): number {
+  if (!versionOf) return aggregate;
+  let version = 0;
+  for (const key of slot.versionKeys) version += versionOf(key);
+  return version;
+}
+
+function usePatchedMap<K, V>(
+  signature: string,
+  coordinator: SharedCoordinator | null,
+  aggregateVersion: number,
+  versionOf: ((key: string) => number) | null,
+  createSlots: () => Array<PatchedMapSlot<K, V>>,
+): Map<K, V> {
+  const stateRef = useRef<PatchedMapState<K, V> | null>(null);
+  let state = stateRef.current;
+  if (!state || state.signature !== signature || state.coordinator !== coordinator) {
+    const slots = createSlots();
+    const backing = new Map<K, V>();
+    const versions: number[] = [];
+    for (const slot of slots) {
+      const value = slot.read();
+      if (value != null) backing.set(slot.key, value);
+      versions.push(slotVersion(slot, versionOf, aggregateVersion));
+    }
+    const view = new RetainedMapView(backing);
+    state = { signature, coordinator, slots, versions, backing, view };
+    stateRef.current = state;
+    return view;
+  }
+
+  let changed = false;
+  for (let index = 0; index < state.slots.length; index += 1) {
+    const slot = state.slots[index]!;
+    const version = slotVersion(slot, versionOf, aggregateVersion);
+    if (version === state.versions[index]) continue;
+    state.versions[index] = version;
+    const value = slot.read();
+    if (value == null) {
+      if (state.backing.delete(slot.key)) changed = true;
+    } else if (state.backing.get(slot.key) !== value) {
+      state.backing.set(slot.key, value);
+      changed = true;
+    }
+  }
+  if (!changed) return state.view;
+  const view = new RetainedMapView(state.backing);
+  state.view = view;
+  return view;
+}
+
+function versionOfCoordinator(coordinator: SharedCoordinator | null): ((key: string) => number) | null {
+  if (!coordinator || typeof coordinator.getKeyVersion !== "function") return null;
+  return (key) => coordinator.getKeyVersion(key);
+}
+
 export function useTickerFinancialsMap(
   tickers: TickerRecord[],
   options: TickerInstrumentOptions = {},
@@ -145,19 +264,30 @@ export function useTickerFinancialsMap(
   const subscriptionKeys = useMemo(() => buildTickerFinancialsKeys(tickers, options), [optionsKey, tickerKey]);
   const keysVersion = useCoordinatorKeysVersion(subscriptionKeys);
 
-  return useMemo(() => {
-    if (!coordinator) return new Map<string, TickerFinancials>();
-    const result = new Map<string, TickerFinancials>();
-    for (const ticker of tickers) {
-      const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, options);
-      if (!instrument) continue;
-      const financials = coordinator.getTickerFinancialsSync(instrument);
-      if (financials) {
-        result.set(ticker.metadata.ticker, financials);
+  return usePatchedMap(
+    `${tickerKey}\0${optionsKey}`,
+    coordinator,
+    keysVersion,
+    versionOfCoordinator(coordinator),
+    () => {
+      if (!coordinator) return [];
+      const slots: Array<PatchedMapSlot<string, TickerFinancials>> = [];
+      for (const ticker of tickers) {
+        const instrument = instrumentFromTicker(ticker, ticker.metadata.ticker, options);
+        if (!instrument) continue;
+        slots.push({
+          key: ticker.metadata.ticker,
+          versionKeys: [
+            buildSnapshotKey(instrument),
+            buildQuoteKey(instrument),
+            buildChartKey(createBaselineChartRequest(instrument)),
+          ],
+          read: () => coordinator.getTickerFinancialsSync(instrument),
+        });
       }
-    }
-    return result;
-  }, [coordinator, keysVersion, optionsKey, tickerKey, subscriptionKeys]);
+      return slots;
+    },
+  );
 }
 
 export function useQuoteEntry(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): QueryEntry<Quote> | null {
@@ -197,15 +327,23 @@ export function useQuoteEntries(
   const keysVersion = useCoordinatorKeysVersion(keys);
   const coordinator = getSharedMarketDataCoordinator();
 
-  return useMemo(() => {
-    if (!coordinator) return new Map<string, QueryEntry<Quote>>();
-    return new Map(
-      instruments.map((instrument) => [
-        buildQuoteKey(instrument),
-        coordinator.getQuoteEntry(instrument),
-      ]),
-    );
-  }, [coordinator, instrumentKey, keysVersion]);
+  return usePatchedMap(
+    instrumentKey,
+    coordinator,
+    keysVersion,
+    versionOfCoordinator(coordinator),
+    () => {
+      if (!coordinator) return [];
+      return instruments.map((instrument) => {
+        const key = buildQuoteKey(instrument);
+        return {
+          key,
+          versionKeys: [key],
+          read: () => coordinator.getQuoteEntry(instrument),
+        };
+      });
+    },
+  );
 }
 
 export function useChartQueries(
@@ -219,7 +357,8 @@ export function useChartQueries(
   const keysVersion = useCoordinatorKeysVersion(keys);
   const coordinator = getSharedMarketDataCoordinator();
   const appActive = useAppVisible();
-  const wasActiveRef = useRef(appActive);
+  const paneVisible = usePaneVisible();
+  const wasPaneVisibleRef = useRef(paneVisible);
   const entries = useMemo(() => (
     coordinator
       ? requests.map((request) => [buildChartKey(request), coordinator.getChartEntry(request)] as const)
@@ -229,15 +368,15 @@ export function useChartQueries(
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
     if (!coordinator) {
-      wasActiveRef.current = appActive;
+      wasPaneVisibleRef.current = paneVisible;
       return;
     }
     if (!appActive) {
-      wasActiveRef.current = false;
+      wasPaneVisibleRef.current = false;
       return;
     }
-    const forceRefresh = refreshIntervalMs > 0 && !wasActiveRef.current;
-    wasActiveRef.current = true;
+    const forceRefresh = refreshIntervalMs > 0 && paneVisible && !wasPaneVisibleRef.current;
+    wasPaneVisibleRef.current = paneVisible;
     const loadRequests = () => {
       loadChartRequests(coordinator, requests, { forceRefresh });
     };
@@ -247,17 +386,17 @@ export function useChartQueries(
     }
     const timeout = setTimeout(loadRequests, debounceMs);
     return () => clearTimeout(timeout);
-  }, [appActive, debounceMs, refreshIntervalMs, requestKey]);
+  }, [appActive, debounceMs, paneVisible, refreshIntervalMs, requestKey]);
 
   useEffect(() => {
     const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator || !appActive || refreshIntervalMs <= 0 || requests.length === 0) return;
+    if (!coordinator || !paneVisible || refreshIntervalMs <= 0 || requests.length === 0) return;
 
     const interval = setInterval(() => {
       loadChartRequests(coordinator, requests, { forceRefresh: true });
     }, refreshIntervalMs);
     return () => clearInterval(interval);
-  }, [appActive, refreshIntervalMs, requestKey]);
+  }, [paneVisible, refreshIntervalMs, requestKey]);
 
   return useMemo(() => new Map(entries), [entries]);
 }

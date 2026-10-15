@@ -218,6 +218,10 @@ export class MarketDataCoordinator {
     return this.events.getVersion();
   }
 
+  getKeyVersion(key: string): number {
+    return this.events.getKeyVersion(key);
+  }
+
   getKeysVersion(keys: readonly string[]): number {
     return this.events.getKeysVersion(keys);
   }
