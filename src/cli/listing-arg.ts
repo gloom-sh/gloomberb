@@ -45,7 +45,7 @@ import { stripStrayEdges } from "./symbol-args";
 import { isNoProviderMessage } from "../sources/provider-errors";
 import { dashedCoinPair } from "../utils/crypto-pair";
 import { currencyPairSpelling } from "../utils/currency-pair";
-import { isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
+import { isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession } from "../market-data/quotes/freshness";
 import { formatMarketPriceWithCurrency, quoteFormatOptions } from "../market-data/market/format";
 import { zonedDateKey } from "../utils/zoned-date-time";
 import { bareFuturesCode, futuresContractByCode } from "../market-data/futures-board";
@@ -700,7 +700,7 @@ export interface ListingFate {
 }
 
 const NO_FATE: ListingFate = { endedOn: null, change: null, note: null, moved: null };
-/** How long a fate whose change lookup started late waits for it. */
+/** How long a fate waits for a change lookup it started late, or for a stopped line's. */
 const LATE_CHANGE_WAIT_MS = 2_000;
 
 /** `ListingFate` from a listing's quote (null when it has none) and its ticker changes. */
@@ -752,14 +752,22 @@ export async function loadListingFate(
   const request = listing.request ?? { symbol: listing.symbol, exchange: listing.exchange ?? "" };
   const lookup = options.changes ?? startTickerChangeLookup(dataProvider, listing.symbol, listing.exchange);
   try {
-    const [quote, changes] = await Promise.all([
-      options.quote !== undefined ? options.quote : dataProvider.getQuote(request.symbol, request.exchange).catch(() => null),
-      options.changes ? lookup.settle() : lookup.settle(LATE_CHANGE_WAIT_MS),
-    ]);
+    const quote = await (options.quote !== undefined
+      ? options.quote
+      : dataProvider.getQuote(request.symbol, request.exchange).catch(() => null));
+    // A lookup started beside the command's request gets a short grace once that is ready, so a slow
+    // one never holds a symbol that trades. A line that stopped is waited for: only its company can
+    // have moved, and then the answer decides whether the command serves anything at all.
+    const changes = await lookup.settle(!options.changes || mayHaveMoved(quote) ? LATE_CHANGE_WAIT_MS : undefined);
     return describeListingFate(listing, quote, changes);
   } catch {
     return NO_FATE;
   }
+}
+
+/** Whether a quote's line stopped: a whole session traded without it, or it ended long ago. */
+function mayHaveMoved(quote: Quote | null, now = Date.now()): boolean {
+  return !!quote && (isQuoteBeforeLatestSession(quote, now) || endedTradingDate(quote, now) != null);
 }
 
 /**

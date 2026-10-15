@@ -156,3 +156,17 @@ test("quote of a moved symbol names its new symbol beside the old line's last pr
   expect(offline.error).toBeNull();
   expect(offline.printed!.result.data).toHaveLength(1);
 });
+
+test("a stopped line waits for a slow change lookup before serving, while a symbol that trades never waits on one", async () => {
+  // Bars answer at once (a cached history); the change answers 500 ms later, past the short grace.
+  const slow = source((symbol) => Bun.sleep(500).then(() => CHANGES[symbol] ?? null));
+  expect(((await runHistory(["HFC"], slow)).error as Error).message).toBe("HFC became DINO on 2022-03-15: `gloomberb history DINO`");
+  // A lookup that hangs: META's bars come back without waiting for it.
+  const hung = source((_symbol, options) => new Promise((_resolve, reject) => {
+    options?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+  }));
+  const started = performance.now();
+  const meta = await runHistory(["META"], hung);
+  expect(meta.error).toBeNull();
+  expect(performance.now() - started).toBeLessThan(1_500);
+});
