@@ -50,6 +50,13 @@ test("catalog lists the series it finds with what fn G charts, after the functio
   expect(report).toContain("CAP:day-ahead:gb");
   expect(report).toContain("Chart one with gloomberb fn G <chart>.");
   expect(report).not.toContain("No functions match");
+  // A formula is quoted so the shell passes it to fn G whole; a plain expression is not.
+  const crack = [{ series: [{ id: "fut:crack", name: "Heating oil crack", unit: "USD/barrel", frequency: "daily" as const,
+    group: "Futures", expression: "42*HO=F - CL=F" }, ...plugins[0]!.series] }];
+  const quoted = strip(renderPaneCatalogReport([], parsePaneCatalogArgs(["crack"]), undefined, null, findCatalogSeries(crack, "heating oil")));
+  expect(quoted).toContain('"42*HO=F - CL=F"');
+  expect(strip(renderPaneCatalogReport([], parsePaneCatalogArgs(["apple"]), undefined, null, findCatalogSeries(plugins, "apple"))))
+    .toMatch(/ \^VXAPL:close\n/);
 });
 
 test("search lists a series the query names before the tickers, one it merely mentions after them", () => {

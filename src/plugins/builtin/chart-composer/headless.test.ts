@@ -4,6 +4,8 @@ import { chartHeadless, chartResolutionDrop, economicChartDates, type ChartPaneM
 import { setPairStudies } from "./studies";
 import { buildCustomChartPreset, buildIntradayPriceChartPreset } from "./presets";
 import { createTestHeadlessContext } from "../../../test-support/headless";
+import { resetFuturesPriceUnits } from "../../../market-data/futures-contract";
+import type { FuturesContractTermsPayload } from "../../../api-client/futures-curve";
 
 const history = ["2026-08-27", "2026-08-28", "2026-08-31", "2026-09-01", "2026-09-02", "2026-09-03"]
   .flatMap((date, day) => [0, 1].map((bar) => ({
@@ -52,10 +54,55 @@ test("an unavailable currency spread reaches headless errors even with normalize
     const result = await chartHeadless("chart-composer-pane").load({
       argument: "TARGET:NASDAQ,ACQUIRER:NASDAQ", rawArgument: "TARGET:NASDAQ,ACQUIRER:NASDAQ", symbols: ["TARGET:NASDAQ", "ACQUIRER:NASDAQ"], options: {},
     }, { ...fixture().context, marketData: provider, settings: { chartSpec: spec } });
-    expect(result.errors).toEqual([expect.stringContaining("pair:spread: spread cannot subtract")]);
+    expect(result.errors).toEqual(["pair:spread: TARGET has no known unit and ACQUIRER has no known unit: a spread needs both in one known unit."]);
     expect(result.unavailableSymbols).toEqual([]);
     expect(result.series.map(({ id }) => id)).toEqual([...spec.series.map(({ id }) => id), "pair:ratio"]);
     expect(result.series.every(({ points }) => points.length > 0)).toBe(true);
+  }
+});
+
+test("fn G 42*HO=F - CL=F charts the heating-oil crack per barrel, in the units the contracts trade in", async () => {
+  resetFuturesPriceUnits();
+  const closes: Record<string, number[]> = { "HO=F": [2.5, 2.6, 2.4], "CL=F": [70, 71, 72] };
+  const days = ["2026-09-01", "2026-09-02", "2026-09-03"];
+  const bars = (symbol: string) => days.map((day, index) => {
+    const close = closes[symbol]![index]!;
+    return { date: new Date(`${day}T00:00:00Z`), open: close, high: close, low: close, close, volume: 10 };
+  });
+  const quote = (symbol: string) => ({ symbol, price: closes[symbol]!.at(-1)!, change: 0, changePercent: 0, currency: "USD",
+    instrumentType: "FUTURE" as const, lastUpdated: Date.parse("2026-09-03T20:00:00Z") });
+  const terms = (symbol: string): FuturesContractTermsPayload => ({
+    symbol, root: symbol.slice(0, 2), name: symbol, contract: null, contractSymbol: null, deliveryMonth: null,
+    spec: { unit: symbol === "HO=F" ? "USD / gallon" : "USD / barrel", size: "", pointValue: 1, tick: 0.01, tickValue: 0.01, settlement: "physical" },
+    lastTrade: null, firstNotice: null, inDelivery: false, settlement: null,
+  });
+  const marketData = createTestDataProvider({
+    getTickerFinancials: async (symbol) => ({ quote: quote(symbol), annualStatements: [], quarterlyStatements: [], priceHistory: [] }),
+    getQuote: async (symbol) => quote(symbol),
+    getQuoteMetadata: async (symbol) => ({ symbol, currency: "USD", instrumentType: "FUTURE", source: {} }),
+    getDetailedPriceHistory: async (symbol) => bars(symbol),
+    getPriceHistoryForResolution: async (symbol) => bars(symbol),
+  });
+  // The chart G opens for the argument.
+  const chartSpec = buildCustomChartPreset("42*HO=F - CL=F");
+  chartSpec.viewport.dateWindow = { start: "2026-09-01", end: "2026-09-04" };
+  try {
+    const result = await chartHeadless("chart-composer-pane").load({
+      argument: "42*HO=F - CL=F", rawArgument: "42*HO=F - CL=F", symbols: [], options: {},
+    }, createTestHeadlessContext({
+      marketData,
+      apiClient: { getCloudFuturesContract: async (symbol: string) => terms(symbol) } as never,
+      settings: { chartSpec },
+    })) as ChartPaneModel;
+    expect(result.errors).toEqual([]);
+    expect(result.series.map(({ label, unit }) => [label, unit])).toEqual([
+      [expect.stringContaining("HO=F"), "USD / gallon"],
+      [expect.stringContaining("CL=F"), "USD / barrel"],
+      ["42×HO=F - CL=F", "USD / barrel"],
+    ]);
+    expect(result.series[2]!.points.map(({ value }) => value)).toEqual([35, 38.2, 28.8]);
+  } finally {
+    resetFuturesPriceUnits();
   }
 });
 

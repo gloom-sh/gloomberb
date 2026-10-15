@@ -158,6 +158,8 @@ export function applyResolvedSeriesTransform(
   const percent = transform === "percent" || transform === "yoy" || transform === "qoq";
   return {
     ...series,
+    // A rebased or log value no longer counts what the price did.
+    ...(series.statedUnit ? { statedUnit: undefined } : {}),
     transform,
     rawUnit: series.rawUnit ?? series.unit,
     unit: percent ? "%" : transform === "index100" ? "index" : "log",

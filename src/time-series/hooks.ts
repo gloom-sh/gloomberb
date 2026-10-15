@@ -5,6 +5,7 @@ import { instrumentFromTicker } from "../market-data/request-types";
 import { useAssetData, useCapabilityInvoker } from "../plugins/runtime";
 import { getSharedRegistry } from "../plugins/registry";
 import { createChartSeriesResolver } from "../capabilities";
+import { loadFuturesPriceUnit } from "../market-data/futures-contract";
 import { useAppSelector } from "../state/app/context";
 import type { FredSeriesRequest } from "../sources/gloomberb-cloud/fred-series";
 import type { TickerRecord } from "../types/ticker";
@@ -80,6 +81,7 @@ export function useResolvedChartSpec(
     loadFredSeries: loadFred,
     resolveCapabilitySeries: createChartSeriesResolver(capabilityInvoker),
     capabilityRefreshMs: registeredSeriesRefreshMs,
+    loadFuturesPriceUnit: (symbol: string) => loadFuturesPriceUnit(symbol),
   }), [capabilityInvoker, dataProvider]);
   return useChartResolution(hydratedSpec, sources, { ...options, snapshot });
 }

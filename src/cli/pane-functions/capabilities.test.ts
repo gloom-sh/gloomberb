@@ -26,6 +26,7 @@ import {
   type PaneCatalogEntry,
 } from "./catalog";
 import { createPaneCatalog } from "./discovery";
+import { findCatalogSeries } from "../series-search";
 import { parsePaneFunctionArgs } from "./options";
 
 const dummyPane = {
@@ -272,6 +273,26 @@ describe("pane catalog search", () => {
         const tokens = filterPaneCatalogEntries(entries, query).map(({ token }) => token);
         expect(tokens[0], query).toBe("OSA");
         expect(tokens.slice(0, 3).sort(), query).toEqual(["OMON", "OSA", "VCA"]);
+      }
+    } finally {
+      registry.destroy();
+    }
+  });
+
+  test("crack spread and refining margin searches find G alone, with the per-barrel crack presets it charts", async () => {
+    const context = { config: createDefaultConfig("/tmp/capabilities-test") } as MarketContext;
+    const plugins = getLoadablePlugins();
+    const registry = await createPaneCatalog(context, plugins);
+    try {
+      const entries = await buildPaneCatalogEntries(registry, context);
+      for (const query of ["crack", "crack spread", "refining margin"]) {
+        const ranked = filterPaneCatalogEntries(entries, query);
+        expect(selectPaneCatalogMatches(ranked, query, 10).shown.map(({ token }) => token), query).toEqual(["G"]);
+        expect(findCatalogSeries(plugins, query).map(({ unit, expression }) => `${unit} ${expression}`).sort(), query).toEqual([
+          "USD/barrel (2*42*RB=F + 42*HO=F - 3*CL=F)/3",
+          "USD/barrel 42*HO=F - BZ=F",
+          "USD/barrel 42*HO=F - CL=F",
+        ]);
       }
     } finally {
       registry.destroy();

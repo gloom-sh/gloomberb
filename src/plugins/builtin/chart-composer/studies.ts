@@ -20,7 +20,7 @@ const STUDY_DEFAULTS = {
   atr14: { kind: "atr", panelId: "atr", parameters: { period: 14 } },
   "realized-vol": { kind: "realized-vol", panelId: "realized-vol", parameters: { window: 30, estimator: "close-to-close" } },
 } as const satisfies Record<string, {
-  kind: Exclude<ChartStudyKind, "ratio" | "spread" | "correlation">;
+  kind: Exclude<ChartStudyKind, "ratio" | "spread" | "correlation" | "formula">;
   panelId: string;
   parameters: ChartStudySpec["parameters"];
 }>;

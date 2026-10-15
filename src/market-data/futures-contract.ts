@@ -3,6 +3,7 @@ import type { FuturesContractSpec, FuturesContractTermsPayload } from "../api-cl
 import { classifyInstrumentType } from "../tickers/instrument-kind";
 import type { Quote } from "../types/financials";
 import { parsePublicTickerKey } from "../utils/exchanges";
+import { futuresBoardContract, type FuturesContract } from "./futures-board";
 import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, withCurrencyMinorDigits } from "./market/format";
 
 /**
@@ -158,4 +159,56 @@ export async function loadFuturesContractTerms(
 ): Promise<FuturesContractTermsPayload> {
   // The terms are the contract's wherever it is listed: GC=F:CMX asks for GC=F.
   return validateFuturesContractTerms(await client.getCloudFuturesContract(parsePublicTickerKey(symbol).symbol));
+}
+
+/**
+ * What a futures price counts: the exchange's unit from the contract terms
+ * ("USD / gallon"), the catalog's where the server has none ("EUR / MWh"),
+ * else null. FUT's Unit column and the chart composer read it the same way.
+ */
+export function futuresPriceUnit(
+  contract: Pick<FuturesContract, "unit"> | null | undefined,
+  terms?: Pick<FuturesContractTermsPayload, "spec"> | null,
+): string | null {
+  return terms?.spec?.unit ?? contract?.unit ?? null;
+}
+
+/** The terms change with a roll, and a roll is decided once a day. */
+const PRICE_UNIT_TTL_MS = 30 * 60_000;
+/** A failed request is asked again sooner than a settled answer. */
+const PRICE_UNIT_RETRY_MS = 60_000;
+const priceUnits = new Map<string, { at: number; ttl: number; unit: string | null }>();
+const priceUnitsInFlight = new Map<string, Promise<string | null>>();
+
+/**
+ * A futures symbol's price unit (`futuresPriceUnit`), asked once per symbol
+ * and kept for the rest of the session's roll window. A symbol whose terms
+ * cannot be had falls back to the catalog's unit, or null.
+ */
+export function loadFuturesPriceUnit(
+  symbol: string,
+  load: (symbol: string) => Promise<FuturesContractTermsPayload> = loadFuturesContractTerms,
+): Promise<string | null> {
+  const key = parsePublicTickerKey(symbol).symbol.trim().toUpperCase();
+  const cached = priceUnits.get(key);
+  if (cached && Date.now() - cached.at < cached.ttl) return Promise.resolve(cached.unit);
+  const pending = priceUnitsInFlight.get(key);
+  if (pending) return pending;
+  const contract = futuresBoardContract(key);
+  const request = load(key)
+    .then((terms) => ({ unit: futuresPriceUnit(contract, terms), ttl: PRICE_UNIT_TTL_MS }))
+    .catch(() => ({ unit: futuresPriceUnit(contract, null), ttl: PRICE_UNIT_RETRY_MS }))
+    .then(({ unit, ttl }) => {
+      priceUnits.set(key, { at: Date.now(), ttl, unit });
+      return unit;
+    })
+    .finally(() => { priceUnitsInFlight.delete(key); });
+  priceUnitsInFlight.set(key, request);
+  return request;
+}
+
+/** Forgets every remembered price unit (tests). */
+export function resetFuturesPriceUnits(): void {
+  priceUnits.clear();
+  priceUnitsInFlight.clear();
 }

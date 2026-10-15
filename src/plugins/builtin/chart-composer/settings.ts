@@ -182,14 +182,26 @@ function replaceChartSeriesFromExpression(
     existingBySource.set(key, [...(existingBySource.get(key) ?? []), series]);
   }
 
+  const authoredIds = new Map<string, string>();
   const series = authored.series.map((entry) => {
     const matches = existingBySource.get(sourceKey(entry));
-    return matches?.shift() ?? entry;
+    const kept = matches?.shift() ?? entry;
+    authoredIds.set(entry.id, kept.id);
+    return kept;
   });
   const seriesIds = new Set(series.map((entry) => entry.id));
-  const retainedStudies = spec.studies.filter((study) => (
-    study.inputSeriesIds.every((seriesId) => seriesIds.has(seriesId))
-  ));
+  // A typed formula replaces the chart's formula; a typed list keeps it while its legs remain.
+  const authoredFormulas = authored.studies.filter((study) => study.kind === "formula").map((study) => ({
+    ...study,
+    inputSeriesIds: study.inputSeriesIds.map((id) => authoredIds.get(id) ?? id),
+  }));
+  const retainedStudies = [
+    ...spec.studies.filter((study) => (
+      (authoredFormulas.length === 0 || study.kind !== "formula")
+      && study.inputSeriesIds.every((seriesId) => seriesIds.has(seriesId))
+    )),
+    ...authoredFormulas,
+  ];
   const builtinStudies = getSelectedBuiltinStudies(spec);
   const pairStudies = getSelectedPairStudies(spec);
   const panels = reconcileBasePanels(spec.panels, authored.panels, series, retainedStudies);

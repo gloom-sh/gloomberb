@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import type { FuturesContractTermsPayload } from "../api-client/futures-curve";
 import {
   fitFuturesContractLines,
@@ -6,6 +6,8 @@ import {
   futuresSettleText,
   futuresTickText,
   isFuturesInstrument,
+  loadFuturesPriceUnit,
+  resetFuturesPriceUnits,
   validateFuturesContractTerms,
 } from "./futures-contract";
 
@@ -57,5 +59,38 @@ test("only futures symbols are looked up, and a malformed answer is refused", ()
   for (const bad of [{ ...gold, settlement: { price: 4216.3, date: "10/09/2026" } }, { ...gold, spec: { ...gold.spec!, tick: 0 } },
     { ...gold, inDelivery: undefined }, { error: "Not a futures symbol with known contract terms" }]) {
     expect(() => validateFuturesContractTerms(bad as FuturesContractTermsPayload)).toThrow("invalid futures contract terms");
+  }
+});
+
+test("a futures price unit is asked once per symbol at a time, and a failed ask falls back to the catalog and is retried", async () => {
+  resetFuturesPriceUnits();
+  let asked = 0;
+  const terms = async () => {
+    asked += 1;
+    return gold;
+  };
+  const [first, second] = await Promise.all([loadFuturesPriceUnit("GC=F", terms), loadFuturesPriceUnit("gc=f", terms)]);
+  expect([first, second, asked]).toEqual(["USD / troy oz", "USD / troy oz", 1]);
+  expect(await loadFuturesPriceUnit("GC=F", terms)).toBe("USD / troy oz");
+  expect(asked).toBe(1);
+
+  const failing = async (): Promise<FuturesContractTermsPayload> => {
+    asked += 1;
+    throw new Error("offline");
+  };
+  // The server has no unit for TTF; the catalog does.
+  expect(await loadFuturesPriceUnit("TTF=F", async () => ({ ...gold, symbol: "TTF=F", spec: null }))).toBe("EUR / MWh");
+  const now = Date.now();
+  setSystemTime(now);
+  try {
+    expect(await loadFuturesPriceUnit("BZ=F", failing)).toBeNull();
+    const brent = async () => ({ ...gold, symbol: "BZ=F", spec: { ...gold.spec!, unit: "USD / barrel" } });
+    setSystemTime(now + 30_000);
+    expect(await loadFuturesPriceUnit("BZ=F", brent)).toBeNull();
+    setSystemTime(now + 61_000);
+    expect(await loadFuturesPriceUnit("BZ=F", brent)).toBe("USD / barrel");
+  } finally {
+    setSystemTime();
+    resetFuturesPriceUnits();
   }
 });

@@ -241,6 +241,16 @@ export function formatCompositeSeriesValue(
   series: ResolvedSeries,
   referencePrice = seriesPriceReference(series),
 ): string {
+  if (series.statedUnit) {
+    // The number alone: the legend prints the unit beside it, as FUT prints
+    // a price beside its unit (4.6242 USD / gallon, not $4.6242).
+    const currency = unitCurrencyCode(series.unit) ?? undefined;
+    return formatMarketPrice(value, {
+      assetCategory: series.priceAssetCategory,
+      ...(currency ? { currency } : {}),
+      ...stablePriceOptions(series.unit, series.priceAssetCategory, referencePrice),
+    });
+  }
   return formatChartLegendValue(value, series.unit, series.unitGroup, series.priceAssetCategory, referencePrice);
 }
 

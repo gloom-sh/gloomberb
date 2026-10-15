@@ -17,6 +17,7 @@ import type {
   TimeSeriesPoint,
 } from "./types";
 import { isFiniteNumber } from "../utils/guards";
+import { GALLONS_PER_BARREL, isPerBarrelUnit, isPerGallonUnit, perBarrelUnit, quantityIdentity, unitCurrencyToken } from "./price-units";
 
 export interface StudyResolutionResult {
   series: ResolvedSeries[];
@@ -94,17 +95,25 @@ function outputSeries(
     axis?: Exclude<SeriesAxis, "auto">;
     nativeFrequency?: SeriesPeriod;
     historyResolution?: ManualChartResolution | null;
+    /** The unit the legend states; by default the input's, while the output keeps its unit. */
+    statedUnit?: string | null;
+    /** The kind of price the output is, for its decimals; by default the input's, while the output keeps its unit. */
+    priceAssetCategory?: string | null;
   },
 ): ResolvedSeries {
   const historyResolution = options.historyResolution === undefined ? input.historyResolution : options.historyResolution;
+  const sameUnit = (options.unit ?? input.unit) === input.unit && (options.unitGroup ?? input.unitGroup) === input.unitGroup;
+  const statedUnit = options.statedUnit === undefined ? sameUnit ? input.statedUnit : undefined : options.statedUnit ?? undefined;
   return {
     id: options.id ?? spec.id,
     label: options.label,
     color: options.color,
     unit: options.unit ?? input.unit,
     unitGroup: options.unitGroup ?? input.unitGroup,
-    priceAssetCategory: (options.unit ?? input.unit) === input.unit
-      && (options.unitGroup ?? input.unitGroup) === input.unitGroup ? input.priceAssetCategory : undefined,
+    ...(statedUnit ? { statedUnit } : {}),
+    priceAssetCategory: options.priceAssetCategory === undefined
+      ? sameUnit ? input.priceAssetCategory : undefined
+      : options.priceAssetCategory ?? undefined,
     nativeFrequency: options.nativeFrequency ?? input.nativeFrequency,
     ...(historyResolution !== undefined ? { historyResolution } : {}),
     ...(input.historyStart && historyResolution === input.historyResolution ? { historyStart: input.historyStart } : {}),
@@ -699,22 +708,25 @@ function seriesCurrency(series: ResolvedSeries): string | null {
 }
 
 function unitFactorIdentity(value: string): string {
-  const token = value.trim();
+  // "US cents", as futures terms word a grain's quote, is the USX the quote names.
+  const token = unitCurrencyToken(value) ?? value.trim();
   if (/^[A-Za-z]{3}$/.test(token)) {
     const { currency, divisor } = resolveCurrencyUnit(token);
     return `${currency}:${divisor}`;
   }
-  return token.toLowerCase().replace(/^shares$/, "share");
+  return quantityIdentity(token);
 }
 
-function knownUnitSignature(series: ResolvedSeries): string | null {
+function knownUnitSignature(series: Pick<ResolvedSeries, "unit" | "unitGroup">): string | null {
   const unit = series.unit.trim();
   if (!unit || /(?:^|\W)(?:currency|unknown|unspecified|n\/a)(?:$|\W)/i.test(unit)
     || /^(?:units?|[-?]+)$/i.test(unit)) return null;
-  if (unit.split("/").some((part) => !part.trim() || /^[-?]+$/.test(part.trim()))) return null;
+  const parts = unit.split("/");
+  if (parts.some((part) => !part.trim() || /^[-?]+$/.test(part.trim()))) return null;
 
   const monetary = series.unitGroup.match(/^(price|currency-total|per-share)(?::([^:]+))?$/);
-  const currency = unit.match(/^([A-Za-z]{3})(?:$|\/)/)?.[1];
+  // A futures contract writes its unit spaced ("USD / gallon"); a catalog series does not ("USD/gallon").
+  const currency = unitCurrencyToken(parts[0]!);
   if (monetary && (!currency || (monetary[2] && unitFactorIdentity(monetary[2]) !== unitFactorIdentity(currency)))) return null;
 
   // Currency alone does not establish a price's physical/share basis. A scalar
@@ -724,7 +736,54 @@ function knownUnitSignature(series: ResolvedSeries): string | null {
   const basis = monetary && !unit.includes("/") ? monetary[1] : "";
   // Keep currency scale and compound order: GBp/GBX are pence, not pounds;
   // USD/EUR cannot subtract EUR/USD.
-  return `${basis ?? ""}|${unit.split("/").map(unitFactorIdentity).join("/")}`;
+  return `${basis ?? ""}|${parts.map(unitFactorIdentity).join("/")}`;
+}
+
+/** A leg as an error names it: its ticker (HO=F), else its label. */
+function legName(series: ResolvedSeries): string {
+  return series.listing?.symbol || series.label;
+}
+
+/** What a leg's unit is, in words: "is USD / gallon", "is in %", "is in USD per an unknown quantity". */
+function unitPhrase(series: ResolvedSeries, unit: string): string {
+  const text = unit.trim();
+  // A rate reads as itself (HO=F is USD / gallon); an amount or a scale is what a leg is in (REVENUE is in USD).
+  if (knownUnitSignature({ unit: text, unitGroup: series.unitGroup }) !== null) return text.includes("/") ? `is ${text}` : `is in ${text}`;
+  if (unitCurrencyToken(text) && /^price(?::|$)/.test(series.unitGroup)) return `is in ${text} per an unknown quantity`;
+  return "has no known unit";
+}
+
+function unitCurrency(series: ResolvedSeries, unit: string): string | null {
+  const token = unitCurrencyToken(unit.split("/")[0] ?? "");
+  return token ? unitFactorIdentity(token) : seriesCurrency(series);
+}
+
+/**
+ * Why two legs cannot be added or subtracted, naming each one's unit and the
+ * fix: a per-gallon leg beside a per-barrel one is 42 gallons short of it.
+ */
+function unitMismatchMessage(
+  kind: "spread" | "formula",
+  left: { series: ResolvedSeries; unit: string },
+  right: { series: ResolvedSeries; unit: string },
+): string {
+  // Two fields of one listing are told apart by their labels.
+  const [leftName, rightName] = legName(left.series) === legName(right.series)
+    ? [left.series.label, right.series.label]
+    : [legName(left.series), legName(right.series)];
+  const named = `${leftName} ${unitPhrase(left.series, left.unit)} and ${rightName} ${unitPhrase(right.series, right.unit)}`;
+  const leftCurrency = unitCurrency(left.series, left.unit);
+  const rightCurrency = unitCurrency(right.series, right.unit);
+  const gallons = isPerGallonUnit(left.unit) && isPerBarrelUnit(right.unit) ? leftName
+    : isPerBarrelUnit(left.unit) && isPerGallonUnit(right.unit) ? rightName : null;
+  if (gallons && leftCurrency === rightCurrency) {
+    return `${named}: write ${GALLONS_PER_BARREL}*${gallons} to compare per barrel.`;
+  }
+  const subject = kind === "spread" ? "a spread" : "a formula";
+  if (leftCurrency && rightCurrency && leftCurrency !== rightCurrency) return `${named}: ${subject} does not convert currencies.`;
+  const known = knownUnitSignature({ unit: left.unit, unitGroup: left.series.unitGroup }) !== null
+    && knownUnitSignature({ unit: right.unit, unitGroup: right.series.unitGroup }) !== null;
+  return `${named}: ${subject} needs ${kind === "spread" ? "both" : "every leg"} in one${known ? "" : " known"} unit.`;
 }
 
 function unitFactors(unit: string): { numerator: string[]; denominator: string[] } {
@@ -895,6 +954,135 @@ function resolvePairStudy(
   })];
 }
 
+/** Formulas of levels, which carry each input's latest value to the other inputs' dates. */
+function isLevelFormula(kind: ChartStudyKind): boolean {
+  return kind === "ratio" || kind === "spread" || kind === "formula";
+}
+
+interface FormulaTerms {
+  /** Each input's multiplier, in input order. */
+  weights: number[];
+  /** Whether an input's multiplier carries the 42 gallons that make its per-gallon price per barrel. */
+  perBarrel: boolean[];
+  divisor: number;
+}
+
+/**
+ * A formula study's terms: `weight1`, `perBarrel1`, ... per input, and an
+ * optional `divisor`. A saved or hand-edited spec can carry a multiplier or
+ * divisor no formula was written with (a value that is not a number is
+ * dropped when the spec loads, so it arrives missing); that is an error, not
+ * a silent 1.
+ */
+function formulaTerms(spec: ChartStudySpec, inputs: readonly ResolvedSeries[]): FormulaTerms | { error: string } {
+  const weights: number[] = [];
+  for (const [index, input] of inputs.entries()) {
+    const weight = spec.parameters[`weight${index + 1}`];
+    if (!isFiniteNumber(weight)) return { error: `The multiplier of ${legName(input)} is missing or not a number; write the formula again.` };
+    if (weight === 0) return { error: `${legName(input)} has a multiplier of 0, which removes it; leave it out of the formula instead.` };
+    weights.push(weight);
+  }
+  const divisor = spec.parameters.divisor ?? 1;
+  if (!isFiniteNumber(divisor)) return { error: "The formula's divisor is not a number; write the formula again." };
+  if (divisor === 0) return { error: "A formula cannot be divided by 0." };
+  return {
+    weights,
+    perBarrel: inputs.map((_, index) => spec.parameters[`perBarrel${index + 1}`] === 1),
+    divisor,
+  };
+}
+
+/** Each input's unit once its multiplier is applied: 42 gallons of a per-gallon price are a barrel's worth. */
+function formulaLegUnits(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): string[] {
+  return inputs.map((input, index) => terms.perBarrel[index] ? perBarrelUnit(input.unit) : input.unit);
+}
+
+/** Why a formula's legs cannot be summed, or null when every leg counts the same known unit. */
+function formulaUnitMismatch(terms: FormulaTerms, inputs: readonly ResolvedSeries[]): string | null {
+  if (inputs.length < 2) return null;
+  const units = formulaLegUnits(terms, inputs);
+  const signatures = inputs.map((input, index) => knownUnitSignature({ unit: units[index]!, unitGroup: input.unitGroup }));
+  const other = signatures.findIndex((signature, index) => index > 0 && (signature === null || signature !== signatures[0]));
+  if (signatures[0] !== null && other < 0) return null;
+  const right = Math.max(1, other);
+  return unitMismatchMessage("formula", { series: inputs[0]!, unit: units[0]! }, { series: inputs[right]!, unit: units[right]! });
+}
+
+function formatFormulaNumber(value: number): string {
+  return String(Number(value.toPrecision(10)));
+}
+
+/**
+ * A formula as the legend names it, from the terms it was written with:
+ * `42×HO=F - CL=F`, `(2×42×RB=F + 42×HO=F - 3×CL=F)/3`.
+ */
+function formulaLabel(inputs: readonly ResolvedSeries[], terms: FormulaTerms): string {
+  const sum = inputs.map((input, index) => {
+    const weight = terms.weights[index]!;
+    const magnitude = Math.abs(weight);
+    const factors = terms.perBarrel[index]
+      ? [...(magnitude === GALLONS_PER_BARREL ? [] : [formatFormulaNumber(magnitude / GALLONS_PER_BARREL)]), String(GALLONS_PER_BARREL)]
+      : magnitude === 1 ? [] : [formatFormulaNumber(magnitude)];
+    const term = [...factors, legName(input)].join("×");
+    if (index === 0) return weight < 0 ? `-${term}` : term;
+    return `${weight < 0 ? "-" : "+"} ${term}`;
+  }).join(" ");
+  return terms.divisor === 1 ? sum : `(${sum})/${formatFormulaNumber(terms.divisor)}`;
+}
+
+/** Every input's value on each date they share, each carried forward to the others' dates. */
+function alignedSamples(inputs: readonly ResolvedSeries[]): Array<{ point: TimeSeriesPoint; values: number[] }> {
+  return alignTimeSeries(inputs, { mode: "intersection", carryForward: true }).flatMap((row) => {
+    const aligned = inputs.map((input) => row.values[input.id]);
+    if (aligned.some((entry) => !isFiniteNumber(entry?.value))) return [];
+    const availability = Math.max(...aligned.map((entry) => entry!.point.availableAt?.getTime() ?? entry!.point.date.getTime()));
+    return [{
+      values: aligned.map((entry) => entry!.value as number),
+      point: {
+        date: new Date(row.date),
+        observedAt: new Date(row.date),
+        availableAt: Number.isFinite(availability) ? new Date(availability) : undefined,
+        value: null,
+        provenance: { quality: "derived" as const },
+      },
+    }];
+  });
+}
+
+/** A weighted sum of the inputs over a divisor, in the unit the legs share once converted. */
+function resolveFormula(
+  spec: ChartStudySpec,
+  inputs: readonly ResolvedSeries[],
+  terms: FormulaTerms,
+  color: string,
+): ResolvedSeries[] {
+  const first = inputs[0]!;
+  const unit = formulaLegUnits(terms, inputs)[0]!;
+  // Rounded off the float's last digits: 42 × 4.6233 - 96.12 is 98.0586, not 98.05860000000001.
+  const points = alignedSamples(inputs).map(({ point, values }) => derivedPoint(
+    { point, value: 0 },
+    Number((values.reduce((sum, value, index) => sum + value * terms.weights[index]!, 0) / terms.divisor).toPrecision(12)),
+  ));
+  const frequencies = new Set(inputs.map((input) => input.nativeFrequency));
+  const resolutions = new Set(inputs.map((input) => input.historyResolution));
+  return [outputSeries(spec, first, {
+    label: formulaLabel(inputs, terms),
+    points,
+    color,
+    unit,
+    unitGroup: first.unitGroup,
+    statedUnit: inputs.some((input) => input.statedUnit) ? unit : null,
+    // A weighted sum is no traded price: its decimals are a value's, not a contract's tick.
+    priceAssetCategory: null,
+    // As the pair formulas: as-of levels, constant until an input changes.
+    style: "step",
+    interpolation: "step-after",
+    axis: "left",
+    nativeFrequency: frequencies.size === 1 ? first.nativeFrequency : "auto",
+    historyResolution: resolutions.size === 1 ? first.historyResolution : null,
+  })];
+}
+
 function requiredInputs(kind: ChartStudyKind): number {
   return kind === "ratio" || kind === "spread" || kind === "correlation" ? 2 : 1;
 }
@@ -955,7 +1143,7 @@ function resolveInterruptedStudy(
       }
       // A valid unaffected peer remains usable for as-of ratio/spread levels.
       // Correlations instead restart their shared observations and returns.
-      if (spec.kind === "ratio" || spec.kind === "spread") {
+      if (isLevelFormula(spec.kind)) {
         if (previous && !previous.provenance?.priceHistoryIntegrity && !previous.provenance?.valuationPriceIssues?.length) points.unshift(previous);
       }
       return { ...cursor.input, points };
@@ -964,7 +1152,7 @@ function resolveInterruptedStudy(
     for (const output of segment.series) {
       const points = output.points.filter((point) => effectiveTimeSeriesPointTime(point) > start);
       const gap = gaps.get(start);
-      if (gap && spec.kind !== "ratio" && spec.kind !== "spread" && spec.kind !== "volume") {
+      if (gap && !isLevelFormula(spec.kind) && spec.kind !== "volume") {
         // A gap just outside the visible window still invalidates the next
         // warmup observations. Keep those nulls and their original diagnostic
         // explicit so clipping cannot hide why a study is unavailable.
@@ -1026,7 +1214,7 @@ function resolveStudySpecs(
 
   studySpecs.forEach((spec, index) => {
     if (spec.visible === false) return;
-    const required = requiredInputs(spec.kind);
+    const required = spec.kind === "formula" ? Math.max(1, spec.inputSeriesIds.length) : requiredInputs(spec.kind);
     const inputs = spec.inputSeriesIds.map((id) => spec.kind === "realized-vol"
       ? historicalPriceSeries?.get(id) ?? byId.get(id) : byId.get(id));
     if (inputs.length !== required || inputs.some((input) => !input)) {
@@ -1038,9 +1226,19 @@ function resolveStudySpecs(
       const pairedInput = inputs[1]!;
       const inputUnit = knownUnitSignature(input);
       if (inputUnit === null || inputUnit !== knownUnitSignature(pairedInput)) {
-        errors.push(`${spec.id}: spread cannot subtract ${pairedInput.label} (${pairedInput.unit || "unit unknown"}) from ${input.label} (${input.unit || "unit unknown"}); inputs require matching known units, currencies and scales.`);
+        errors.push(`${spec.id}: ${unitMismatchMessage("spread", { series: input, unit: input.unit }, { series: pairedInput, unit: pairedInput.unit })}`);
         return;
       }
+    }
+    let terms: FormulaTerms | null = null;
+    if (spec.kind === "formula") {
+      const read = formulaTerms(spec, inputs as ResolvedSeries[]);
+      const mismatch = "error" in read ? read.error : formulaUnitMismatch(read, inputs as ResolvedSeries[]);
+      if (mismatch) {
+        errors.push(`${spec.id}: ${mismatch}`);
+        return;
+      }
+      terms = read as FormulaTerms;
     }
     const color = spec.color ?? KIND_COLORS[spec.kind] ?? STUDY_COLORS[index % STUDY_COLORS.length]!;
     if (spec.kind === "realized-vol") {
@@ -1093,6 +1291,7 @@ function resolveStudySpecs(
       resolved.push(...outputs);
       return;
     }
+    else if (spec.kind === "formula" && terms) outputs = resolveFormula(spec, inputs as ResolvedSeries[], terms, color);
     else if (spec.kind === "volume") {
       outputs = resolveVolume(spec, input, color, nameVolumeInput);
       if (!input.volumeUnit && outputs.some((output) => output.points.length > 0)) {

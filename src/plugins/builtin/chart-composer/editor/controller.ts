@@ -10,7 +10,7 @@ import type {
   SeriesTimestampMode,
   SeriesTransform,
 } from "../../../../time-series/types";
-import { validateChartSpec } from "../../../../time-series/spec";
+import { hasStudyInputCount, validateChartSpec } from "../../../../time-series/spec";
 import { isPlainKey } from "../../../../utils/keyboard";
 import { getSharedRegistry } from "../../../registry";
 import {
@@ -20,7 +20,6 @@ import {
 } from "../chart-spec";
 import { chartSeriesLabel, formatSeriesExpression, parseSeriesExpression } from "../series-expression";
 import {
-  appendChartSeries,
   applySeriesStyle,
   applySeriesTimestampMode,
   buildSeriesSpec,
@@ -33,7 +32,7 @@ import {
   setBuiltinStudies,
   setPairStudies,
 } from "../studies";
-import { buildEmptyChartPreset } from "../presets";
+import { appendCatalogSuggestion, buildEmptyChartPreset } from "../presets";
 import type { SeriesCatalogInstrument, SeriesCatalogSuggestion } from "../series-catalog";
 import { useSeriesCatalogSuggestions } from "../use-series-catalog";
 import type {
@@ -67,11 +66,10 @@ function pruneSpec(spec: ChartSpec): ChartSpec {
     selectedPairStudies,
   );
   const seriesIds = new Set(rebound.series.map((series) => series.id));
-  const studies = rebound.studies.filter((study) => {
-    const requiredInputs = study.kind === "ratio" || study.kind === "spread" || study.kind === "correlation" ? 2 : 1;
-    return study.inputSeriesIds.length === requiredInputs
-      && study.inputSeriesIds.every((id) => seriesIds.has(id));
-  });
+  // A formula whose leg was removed goes with it: its multipliers are per leg.
+  const studies = rebound.studies.filter((study) => (
+    hasStudyInputCount(study) && study.inputSeriesIds.every((id) => seriesIds.has(id))
+  ));
   const panels = [...rebound.panels];
   if (!panels.some((panel) => panel.id === "main")) panels.unshift({ id: "main" });
   return { ...rebound, panels, studies };
@@ -308,13 +306,19 @@ export function useSeriesEditorController({
       setError(`Charts support up to ${MAX_CHART_COMPOSER_SERIES} base series.`);
       return;
     }
+    let appended: ReturnType<typeof appendCatalogSuggestion>;
+    try {
+      appended = appendCatalogSuggestion(draft, suggestion);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+      return;
+    }
     catalogCommitLockRef.current = true;
     queueMicrotask(() => {
       catalogCommitLockRef.current = false;
     });
-    const appended = appendChartSeries(draft, suggestion.expression);
     setDraft(appended.spec);
-    setSelectedIndex(appended.spec.series.length - 1);
+    setSelectedIndex(appended.spec.series.indexOf(appended.series));
     updateKeyboardFocus("series");
     setExpression(formatSeriesExpression(appended.series));
     clearQuickAddInput();

@@ -84,6 +84,8 @@ import { timeZoneLabel, zonedDateKey, zonedWallClockMs } from "../utils/zoned-da
 import { formatShortDate } from "../utils/datetime-format";
 import { latestSessionStart, latestTradingSessionOpen, listingTimeZone, priorSessionClose } from "../market-data/market/trading-sessions";
 import { futuresGenericCaption, futuresGenericListing, futuresListingPriceBasis } from "../utils/futures-generic";
+import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
+import { contractPriceUnit } from "./price-units";
 import { isDatasetChart, isOhlcSeriesStyle } from "./spec";
 import { SERIES_COLORS } from "../theme/series-colors";
 import type {
@@ -112,6 +114,12 @@ export interface ChartResolveSources {
    * it is charted; nothing for a series that keeps what it loaded.
    */
   capabilityRefreshMs?: (source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>) => number | undefined;
+  /**
+   * What a futures price counts, from its contract terms ("USD / gallon"), so
+   * the chart states it and a formula can tell gallons from barrels. Null where
+   * the terms do not say. Without it a future's price is in its currency alone.
+   */
+  loadFuturesPriceUnit?: (symbol: string) => Promise<string | null>;
   /** Provider-neutral boundary for plugin-owned chart series. */
   resolveCapabilitySeries?: (
     source: Extract<ChartSeriesSpec["source"], { kind: "capability" }>,
@@ -153,6 +161,8 @@ const tailRequestsInFlight = new WeakMap<DataProvider, Map<string, Promise<Price
 export class ChartResolveCache {
   readonly financialsByInstrument = new Map<string, Promise<TickerFinancials | null>>();
   readonly quoteMetadataByInstrument = new Map<string, Promise<QuoteMetadata | null>>();
+  /** Each futures symbol's contract price unit, asked once per chart once known. */
+  readonly futuresPriceUnits = new Map<string, Promise<string | null>>();
   readonly priceHistoryByRequest = new Map<string, Promise<LoadedPriceHistory>>();
   readonly priceHistoryExpiryByRequest = new Map<string, number>();
   readonly priceHistoryRefreshAfter = new Map<string, number>();
@@ -710,7 +720,7 @@ export function seedChartResolutionResult(
     const history = historyByInstrument.get(instrumentKey(seriesSpec.source));
     if (!history?.length) return;
     const facts = readSeedListingFacts(seriesSpec.source.instrument);
-    const resolved = baseSecuritySeries(seriesSpec, emptyFinancials(history), index, resolution, facts?.quoteMetadata);
+    const resolved = baseSecuritySeries(seriesSpec, emptyFinancials(history), index, resolution, facts?.quoteMetadata, facts?.contractUnit);
     if (!resolved?.points.length) return;
     series.push(resolved);
     if (facts?.resolutionSupport?.length) support.push(facts.resolutionSupport);
@@ -1160,6 +1170,8 @@ function baseSecuritySeries(
   index: number,
   marketResolution?: ManualChartResolution | null,
   quoteMetadata: QuoteMetadata | null | undefined = financials.quoteMetadata,
+  /** What a futures contract's price counts ("USD / gallon"), from its terms. */
+  contractUnit?: string | null,
 ): ResolvedSeries | null {
   if (spec.source.kind !== "security") return null;
   const field = getTimeSeriesField(spec.source.fieldId);
@@ -1186,8 +1198,11 @@ function baseSecuritySeries(
   const genericBasis = field.unitGroup === "price" && isMarketFieldId(field.id)
     ? futuresListingPriceBasis(spec.source.instrument.symbol, spec.source.instrument.exchange) : null;
   const genericUnit = genericBasis === "points" ? "points" : genericBasis === "thirty-seconds" ? "32nds" : null;
+  // A future's price in a currency counts what its contract terms say: heating
+  // oil is USD / gallon and crude USD / barrel, which a bare USD does not tell apart.
+  const statedUnit = !genericUnit && unitTemplate === "currency" ? contractPriceUnit(contractUnit, currency) : null;
   const unit = field.id === "market.volume" ? volumeUnit ?? ""
-    : genericUnit ?? (unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate);
+    : statedUnit ?? genericUnit ?? (unitTemplate.startsWith("currency") && currency ? unitTemplate.replace("currency", currency) : unitTemplate);
   const currencyUnitGroup = genericUnit ? `${field.unitGroup}:${genericUnit}`
     : unknownBondBasis && field.unitGroup === "price" ? "price:unknown"
     : field.unit.startsWith("currency") && currency
@@ -1217,6 +1232,7 @@ function baseSecuritySeries(
     color: spec.color ?? SERIES_COLORS[index % SERIES_COLORS.length]!,
     unit,
     unitGroup: currencyUnitGroup,
+    ...(statedUnit ? { statedUnit } : {}),
     priceAssetCategory: marketField && field.unitGroup === "price" && !unknownBondBasis
       ? financials.quote?.instrumentType || quoteMetadata?.instrumentType : undefined,
     volumeUnit,
@@ -1947,6 +1963,30 @@ async function resolveChartSpecPass(
     };
   };
 
+  // What a future's price counts, asked once per symbol beside its history.
+  // Index and Treasury futures read in points or 32nds, which their unit already says.
+  const loadPriceUnit = (
+    source: Extract<ChartSeriesSpec["source"], { kind: "security" }>,
+    instrumentType: string | undefined,
+  ): Promise<string | null> => {
+    const { symbol, exchange } = source.instrument;
+    if (!sources.loadFuturesPriceUnit || getTimeSeriesField(source.fieldId)?.unitGroup !== "price" || !isMarketFieldId(source.fieldId)
+      || (classifyInstrumentType(instrumentType) !== "future" && kindFromListingSyntax(symbol, exchange) !== "future")
+      || futuresListingPriceBasis(symbol, exchange)) return Promise.resolve(null);
+    const key = symbol.trim().toUpperCase();
+    let pending = cache.futuresPriceUnits.get(key);
+    if (!pending) {
+      pending = sources.loadFuturesPriceUnit(key).catch(() => null).then((unit) => {
+        // Terms that did not say are asked again on a later pass, when the source allows.
+        if (unit === null) cache.futuresPriceUnits.delete(key);
+        else cache.revision += 1;
+        return unit;
+      });
+      cache.futuresPriceUnits.set(key, pending);
+    }
+    return pending;
+  };
+
   const loadEconomicSeries = (request: FredSeriesRequest) => {
     const key = `${request.seriesId.trim().toUpperCase()}|${request.startDate}|${request.sortOrder}`;
     let pending = cache.fredSeriesByRequest.get(key);
@@ -2022,6 +2062,8 @@ async function resolveChartSpecPass(
       const needsFinancials = !isPriceOnlyMarketFieldId(source.fieldId)
         || !source.instrument.exchange?.trim();
       const financialsPromise = needsFinancials ? loadFinancials(source) : Promise.resolve(null);
+      // A continuous future (HO=F) is known by its symbol: its terms load beside its history.
+      void loadPriceUnit(source, undefined);
       let resolvedSource = source;
       let financials: TickerFinancials | null;
       let history: LoadedPriceHistory | null;
@@ -2072,10 +2114,12 @@ async function resolveChartSpecPass(
       );
       const quoteMetadata = mergeQuoteMetadata(existingMetadata, needsMetadata ? await loadQuoteMetadata(resolvedSource) : null);
       if (quoteMetadata || merged.quoteMetadata) merged = { ...merged, quoteMetadata };
+      const contractUnit = await loadPriceUnit(resolvedSource, merged.quote?.instrumentType || quoteMetadata?.instrumentType);
       if (marketField) {
         // Same precedence as baseSecuritySeries: the quote's own facts first.
         const listingFacts = mergeQuoteMetadata(merged.quote ? quoteMetadataFromQuote(merged.quote) : undefined, quoteMetadata);
         if (listingFacts?.currency || listingFacts?.instrumentType) rememberSeedListingFacts(source.instrument, { quoteMetadata: listingFacts });
+        if (contractUnit) rememberSeedListingFacts(source.instrument, { contractUnit });
       }
       if (history) {
         // Classification must be available before combining observations. A
@@ -2107,6 +2151,7 @@ async function resolveChartSpecPass(
         index,
         history?.resolution,
         quoteMetadata,
+        contractUnit,
       );
       if (!result) throw new Error(`Unknown field ${source.fieldId}.`);
       if (marketField && history?.historyStart !== undefined && Number.isFinite(history.historyStart)) {
@@ -2120,7 +2165,7 @@ async function resolveChartSpecPass(
         quoteReferences.set(seriesSpec.id, { close: reference.previousClose, time: reference.lastUpdated });
       }
       if (realizedVolInputs.has(seriesSpec.id)) {
-        const historicalResult = baseSecuritySeries(resolvedSpec, historical, index, history?.resolution, quoteMetadata);
+        const historicalResult = baseSecuritySeries(resolvedSpec, historical, index, history?.resolution, quoteMetadata, contractUnit);
         if (historicalResult) historicalPriceSeries.set(seriesSpec.id, historicalResult);
       }
       const reportedForwardPE = merged.fundamentals?.forwardPE;

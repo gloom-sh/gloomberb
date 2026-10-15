@@ -3,6 +3,7 @@ import type { Quote } from "../../../types/financials";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import type { BoardQuoteMap } from "../shared/use-quote-board";
 import { FUTURES_SECTOR_ORDER, type FuturesContract, type FuturesSector } from "../../../market-data/futures-board";
+import { futuresPriceUnit } from "../../../market-data/futures-contract";
 import type { FuturesReturnHorizon } from "./returns";
 import type { FuturesTermsMap } from "./use-board-terms";
 import type { FrontReturnsMap } from "./use-front-returns";
@@ -117,12 +118,12 @@ export function futuresContractHeadline(
 const MOST_ACTIVE_MIN = ", most active";
 
 /**
- * What a row's price counts, as `quote` says it: the exchange's unit from the
- * contract terms ("USD / barrel"), the catalog's where the server has none
- * ("EUR / MWh"), else null.
+ * What a row's price counts, as `quote` and the chart composer say it: the
+ * exchange's unit from the contract terms ("USD / barrel"), the catalog's
+ * where the server has none ("EUR / MWh"), else null.
  */
 export function futuresUnitLabel(contract: FuturesContract, terms?: Pick<FuturesContractTermsPayload, "spec"> | null): string | null {
-  return terms?.spec?.unit ?? contract.unit ?? null;
+  return futuresPriceUnit(contract, terms);
 }
 
 function matchesFuturesSearch(contract: FuturesContract, query: string, quote?: Quote | null): boolean {
