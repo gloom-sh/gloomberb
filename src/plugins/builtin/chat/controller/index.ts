@@ -255,6 +255,16 @@ export class ChatController {
     return this.view.getSnapshot(channelId);
   }
 
+  /**
+   * Keeps who sent each channel's unread messages (`unreadPeople` in the
+   * snapshot) current until the returned stop is called, reading what the
+   * device does not hold. Nothing is read, and the snapshot leaves it empty,
+   * unless something tracks it: only the app badge needs it.
+   */
+  trackUnreadPeople(): () => void {
+    return this.unreadPeople.track();
+  }
+
   /** Channels with unread messages, from the counts and messages already held; no request. */
   listUnreadInbox() {
     return listUnreadInboxItems({

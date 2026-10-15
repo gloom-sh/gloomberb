@@ -44,6 +44,8 @@ export function unreadBadgeCount(snapshot: BadgeSnapshot, notices: readonly Noti
 interface UnreadBadgeOptions {
   controller: {
     subscribe(listener: (snapshot: BadgeSnapshot) => void): () => void;
+    /** Starts reading who the unread messages are from; the returned stop ends it. */
+    trackUnreadPeople(): () => void;
   };
   log: {
     get(): readonly NotificationLogEntry[];
@@ -56,7 +58,9 @@ interface UnreadBadgeOptions {
  * Keeps the app badge on {@link unreadBadgeCount}: one `setBadge` per change
  * of the label, none while it stays the same (past 99 it reads `99+` however
  * many more arrive), and a clear when stopped, as when the plugin is turned
- * off. Signing out zeroes the count, which clears it. Returns the stop.
+ * off. Signing out zeroes the count, which clears it. While it runs the
+ * controller reads who the unread messages are from; a host with no badge
+ * never starts it, so reads nothing extra. Returns the stop.
  */
 export function watchUnreadBadge({ controller, log, setBadge }: UnreadBadgeOptions): () => void {
   let applied = "";
@@ -75,6 +79,7 @@ export function watchUnreadBadge({ controller, log, setBadge }: UnreadBadgeOptio
     if (snapshot) apply(appBadgeLabel(unreadBadgeCount(snapshot, log.get())));
   };
 
+  const stopTracking = controller.trackUnreadPeople();
   const stopController = controller.subscribe((next) => {
     snapshot = next;
     update();
@@ -84,6 +89,7 @@ export function watchUnreadBadge({ controller, log, setBadge }: UnreadBadgeOptio
   return () => {
     stopController();
     stopLog();
+    stopTracking();
     snapshot = null;
     apply("");
   };

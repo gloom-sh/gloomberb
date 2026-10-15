@@ -73,8 +73,9 @@ export interface ChatControllerSnapshot {
   unreadMentionCount: number;
   /**
    * Who sent the unread messages of each channel with any, by channel id: what
-   * the app badge counts people from. A channel whose unread messages are not
-   * on this device yet lists only the ones that are, until they load.
+   * the app badge counts people from. Empty unless the badge asked for it
+   * ({@link ChatController.trackUnreadPeople}). A channel whose unread messages
+   * are not on this device yet lists only the ones that are, until they load.
    */
   unreadPeople: Record<string, ChannelUnreadPeople>;
 }

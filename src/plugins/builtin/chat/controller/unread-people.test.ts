@@ -20,8 +20,10 @@ const channels: ChatChannel[] = [
 
 let controller: ChatController;
 let reads: Array<{ channelId: string; after?: string; before?: string; limit?: number }>;
+let everyRead: string[];
 let serverMessages: ChatMessage[];
 let serverStates: ChatChannelState[];
+let stopTracking: (() => void) | undefined;
 let pushChannelState: ((state: ChatChannelState) => void) | undefined;
 
 const original = {
@@ -59,13 +61,14 @@ async function settle() {
   await new Promise((resolve) => setTimeout(resolve, 5));
 }
 
-async function signIn() {
+async function signIn({ tracking = true } = {}) {
   const persistence = new MemoryPluginPersistence();
   persistence.setState("session", {
     sessionToken: "token-123",
     user: { id: "u-me", username: "vince", emailVerified: true },
   }, { schemaVersion: 1 });
   controller.attachPersistence(persistence);
+  if (tracking) stopTracking = controller.trackUnreadPeople();
   await controller.refreshSession();
   await settle();
 }
@@ -73,9 +76,11 @@ async function signIn() {
 beforeEach(() => {
   controller = new ChatController();
   reads = [];
+  everyRead = [];
   serverMessages = [];
   serverStates = [];
   pushChannelState = undefined;
+  stopTracking = undefined;
   apiClient.getSession = async () => ({
     id: "u-me",
     name: "Vince",
@@ -101,6 +106,7 @@ beforeEach(() => {
   };
   // The server's answer: the newest `limit` messages strictly between `after` and `before`, oldest first.
   apiClient.getMessages = async (channelId, options = {}) => {
+    everyRead.push(channelId);
     // The chat's own latest-page reads of the default channel are not what is checked here.
     if (options.after) reads.push({ channelId, ...options });
     let list = serverMessages.filter((message) => message.channelId === channelId);
@@ -189,5 +195,45 @@ describe("unread people", () => {
 
     controller.clearSession();
     expect(controller.getSnapshot().unreadPeople).toEqual({});
+  });
+
+  test("reads nothing, and leaves the people empty, until something tracks them", async () => {
+    serverMessages = [post(1, bo, "marker", "grp:desk"), post(2, ann, "lunch?", "grp:desk"), post(1, ann, "marker"), post(2, cy, "@vince hi")];
+    serverStates = [state("grp:desk", "grp:desk:m0001", 1), state("everyone", "everyone:m0001", 1)];
+    await signIn({ tracking: false });
+
+    expect(controller.getSnapshot().unreadPeople).toEqual({});
+    // The chat's own read of the default channel aside, no unread message was asked for.
+    expect(reads).toEqual([]);
+    expect(everyRead).not.toContain("grp:desk");
+
+    stopTracking = controller.trackUnreadPeople();
+    await settle();
+    expect(who("grp:desk")).toEqual({ senders: [ann.id], mentioners: [] });
+    expect(reads.map((read) => read.channelId)).toContain("grp:desk");
+
+    // Stopped, as when the badge is turned off: the people go, and nothing more is read.
+    stopTracking();
+    reads = [];
+    serverMessages.push(post(3, bo, "again", "grp:desk"));
+    pushChannelState?.(state("grp:desk", "grp:desk:m0001", 2));
+    await settle();
+    expect(controller.getSnapshot().unreadPeople).toEqual({});
+    expect(reads).toEqual([]);
+  });
+
+  test("reads only the newest 300 unread messages of a channel", async () => {
+    serverMessages = [
+      post(1, ann, "marker"),
+      post(2, cy, "@vince older than the newest 300"),
+      ...Array.from({ length: 147 }, (_, index) => post(index + 3, bo, "noise")),
+      post(150, ann, "@vince inside the newest 300"),
+      ...Array.from({ length: 250 }, (_, index) => post(index + 151, bo, "noise")),
+    ];
+    serverStates = [state("everyone", "everyone:m0001", 399)];
+    await signIn();
+
+    expect(reads).toHaveLength(3);
+    expect(who("everyone")).toEqual({ senders: [ann.id, bo.id], mentioners: [ann.id] });
   });
 });

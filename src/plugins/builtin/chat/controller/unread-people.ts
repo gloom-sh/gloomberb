@@ -4,8 +4,13 @@ import { chatMessageMentionsUsername, normalizeChatUsername } from "./utils";
 
 /** The most messages the server returns for one request. */
 const PAGE_SIZE = 100;
-/** A channel with more unread than this many pages reads its newest ones only. */
-const MAX_PAGES = 30;
+/**
+ * A channel reads at most this many pages of its unread messages, the newest
+ * ones: 300. A mention older than that in a channel with more than 300 unread
+ * is not counted, which keeps a busy channel left unread for weeks from
+ * costing hundreds of requests at every launch.
+ */
+const MAX_PAGES = 3;
 const RETRY_AFTER_FAILURE_MS = 60_000;
 
 interface Reader {
@@ -73,19 +78,36 @@ interface UnreadPeopleOptions {
  * Who each channel's unread messages are from, for the app badge. The server
  * keeps a count per channel and a read marker, not the senders, so they come
  * from the messages after the marker: the ones this device holds, and for a
- * channel whose unread messages are not all here, the rest read from the
- * server once (then only what is new). Nothing is guessed: a channel that
- * has not loaded yet reports the unread messages it does hold.
+ * channel whose unread messages are not all here, the newest 300 of the rest
+ * read from the server once (then only what is new). Nothing is guessed: a
+ * channel that has not loaded yet reports the unread messages it does hold.
+ *
+ * Only a host that keeps an app badge needs this, so it does nothing, and
+ * makes no request, until something asks to {@link track} it.
  */
 export class ChatControllerUnreadPeople {
   private readonly loaded = new Map<string, LoadedUnread>();
   private readonly inFlight = new Set<string>();
   private generation = 0;
+  private trackers = 0;
 
   constructor(private readonly options: UnreadPeopleOptions) {}
 
+  /** Starts keeping the people current for as long as the returned stop has not been called. */
+  track(): () => void {
+    this.trackers += 1;
+    if (this.trackers === 1) this.options.onChange();
+    let stopped = false;
+    return () => {
+      if (stopped) return;
+      stopped = true;
+      this.trackers -= 1;
+      if (this.trackers === 0) this.clear();
+    };
+  }
+
   snapshot(): Record<string, ChannelUnreadPeople> {
-    const reader = this.reader();
+    const reader = this.trackers > 0 ? this.reader() : null;
     if (!reader) return {};
     const channels = new Map(this.options.getChannels().map((channel) => [channel.id, channel]));
     const people: Record<string, ChannelUnreadPeople> = {};
@@ -102,7 +124,7 @@ export class ChatControllerUnreadPeople {
 
   /** Starts reading what is missing for channels whose unread messages are not all here. Cheap when nothing is. */
   sync(): void {
-    const reader = this.reader();
+    const reader = this.trackers > 0 ? this.reader() : null;
     if (!reader || !this.options.getUser()?.emailVerified) return;
     const channels = new Map(this.options.getChannels().map((channel) => [channel.id, channel]));
     for (const [channelId, state] of this.options.getChannelStates()) {

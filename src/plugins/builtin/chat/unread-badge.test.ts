@@ -66,7 +66,17 @@ function dmsFrom(count: number): Snapshot {
 
 function fakeController(initial: Snapshot) {
   const listeners = new Set<(next: Snapshot) => void>();
+  let tracking = 0;
   return {
+    trackUnreadPeople() {
+      tracking += 1;
+      return () => {
+        tracking -= 1;
+      };
+    },
+    get tracking() {
+      return tracking;
+    },
     subscribe(listener: (next: Snapshot) => void) {
       listeners.add(listener);
       listener(initial);
@@ -212,6 +222,13 @@ describe("watchUnreadBadge", () => {
     controller.emit(dmsFrom(9));
     appendNotificationLog({ body: "NVDA above 120", refId: "price:a1" }, 1);
     expect(labels).toEqual(["4", ""]);
+  });
+
+  test("has the controller read who the unread messages are from only while it runs", () => {
+    const { controller, stop } = watch(dmsFrom(1));
+    expect(controller.tracking).toBe(1);
+    stop();
+    expect(controller.tracking).toBe(0);
   });
 
   test("keeps updating when the host throws", () => {
