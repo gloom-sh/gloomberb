@@ -1,11 +1,10 @@
-import type { Pointer } from "bun:ffi";
 import { appIconColors, appIconSvg } from "./app-icon";
 import { getTheme } from "../../../../theme/themes";
-import { objcOrNull, type Objc } from "./macos-objc";
+import { objcOrNull, type Objc, type ObjcId } from "./macos-objc";
 
 let appliedThemeId: string | null = null;
 
-function createImage(objc: Objc, svg: string): Pointer | null {
+function createImage(objc: Objc, svg: string): ObjcId | null {
   const bytes = Buffer.from(svg);
   const data = objc.sendBytes(
     objc.send(objc.getClass("NSData"), objc.selector("alloc")),
