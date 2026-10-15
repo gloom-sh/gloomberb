@@ -261,8 +261,8 @@ function ProfileTicket({ broker, instance, contract, width, height, focused, ord
   useEffect(() => {
     const orders = openOrders.filter((order) => ticketOrderMatches(order, ticketContract, instance.id, accountId));
     const latestOrder = state.result && ticketOrderMatches(state.result, ticketContract, instance.id, accountId) ? state.result : undefined;
-    publish?.({ mode, busy, contract: ticketContract, levels: ticketChartLevels({ draft, editing: state.phase === "editing" && trade?.visible !== false, orders, latestOrder, avgCost: position?.avgCost, position: position?.quantity, colors }) });
-  }, [publish, mode, busy, draft, trade?.visible, state.phase, state.result, openOrders, ticketContract, instance.id, accountId, position?.avgCost, position?.quantity, colors]);
+    publish?.({ mode, busy, contract: ticketContract, levels: ticketChartLevels({ draft, editing: state.phase === "editing" && trade?.visible !== false, orders, latestOrder, avgCost: position?.avgCost, position: position?.quantity, colors, priceStep: caps?.priceStep, priceDecimals: caps?.priceDecimals }) });
+  }, [publish, mode, busy, draft, trade?.visible, state.phase, state.result, openOrders, ticketContract, instance.id, accountId, position?.avgCost, position?.quantity, colors, caps?.priceStep, caps?.priceDecimals]);
   useEffect(() => () => publish?.({ levels: [] }), [publish]);
   const ordersHeight = docked ? Math.min(12, Math.max(7, Math.floor(height * 0.25))) : 0;
   const receipt = state.phase === "result" ? state.receipt : undefined;

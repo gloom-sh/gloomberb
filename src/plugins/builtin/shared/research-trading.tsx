@@ -1,8 +1,7 @@
 import { createContext, useContext } from "react";
-import { Button } from "../../../components";
+import { usePaneMenuItems } from "../../../components";
 import type { CompositeChartLevel } from "../../../components/chart/composite/levels";
 import { useShortcut } from "../../../react/input";
-import { Box } from "../../../ui";
 import { useDialogState } from "../../../ui/dialog";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { BrokerContractRef } from "../../../types/instrument";
@@ -38,7 +37,7 @@ export function researchTradeMatches(trade: ResearchTradeProjection | null, list
   return !contract.exchange || !exchange || canonicalExchange(contract.exchange) === exchange;
 }
 
-/** Chart-header actions, absent outside a trading-capable Research pane. */
+/** Trading actions stay in the pane menu and keyboard, not the range toolbar. */
 export function ResearchTradeActions({ focused }: { focused: boolean }) {
   const trade = useResearchTrading();
   const dialog = useDialogState((state) => state.isOpen);
@@ -47,9 +46,9 @@ export function ResearchTradeActions({ focused }: { focused: boolean }) {
     if (event.name !== "b" && event.name !== "s") return;
     event.preventDefault(); event.stopPropagation(); trade.open(event.name === "b" ? "BUY" : "SELL");
   }, { enabled: focused && !!trade && !dialog, phase: "before", scope: "research:trade-open" });
-  if (!trade) return null;
-  return <Box flexDirection="row" gap={1} flexShrink={0}>
-    <Button label="Buy" variant="primary" tone="positive" width={7} onPress={() => trade.open("BUY")} disabled={trade.busy} stopPropagation />
-    <Button label="Sell" variant="primary" tone="negative" width={7} onPress={() => trade.open("SELL")} disabled={trade.busy} stopPropagation />
-  </Box>;
+  usePaneMenuItems("research:trade-open", () => trade ? [
+    { id: "trade-buy", label: "Buy", accelerator: "b", enabled: !trade.busy, onSelect: () => trade.open("BUY") },
+    { id: "trade-sell", label: "Sell", accelerator: "s", enabled: !trade.busy, onSelect: () => trade.open("SELL") },
+  ] : null, [trade]);
+  return null;
 }

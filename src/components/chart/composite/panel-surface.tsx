@@ -12,7 +12,7 @@ import { colors as themeColors } from "../../../theme/colors";
 import { consumeChartMouseEvent, getGlobalMouseX, getLocalPlotPointer, type ChartMouseEvent } from "../core/pointer";
 import { useStaticChartBitmapSize } from "./bitmap";
 import { useMeasuredCells } from "../../../ui/measured-cells";
-import { PriceAxisLabels } from "./price-axis-labels";
+import { PriceAxisLabels, placeAxisTicks } from "./price-axis-labels";
 import { layoutLevelLabels, levelLabelStyle } from "./level-labels";
 import { formatCompositeCursorValue, type CompositeAxisValueFormatter } from "./format";
 import {
@@ -468,7 +468,7 @@ export function CompositePanelSurface({
     .map(({ level, yRatio }) => ({
       side: levelDomain.side,
       yRatio,
-      label: formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain),
+      label: level.axisLabel ?? (formatAxisValue ? formatAxisValue(level.value, levelDomain) : formatCompositeCursorValue(level.value, levelDomain)),
       color: level.color,
     })) : [], [formatAxisValue, levelDomain, projectedLevels, selectedLevelId]);
   const buildAxisMarkers = (side: "left" | "right") => {
@@ -488,8 +488,14 @@ export function CompositePanelSurface({
     // A label is a row tall, so close levels would stack into an unreadable
     // pile and hide the last price: each keeps its line, and only the labels
     // with a row to themselves show. Desktop badges sit between rows.
+    const grid = fractionalViewport
+      ? placeAxisTicks({ ticks: side === "left" ? leftAxisTicks : rightAxisTicks, height: panel.height, cellHeightPx }).map((tick) => ({
+        ...toAxisMarker({ yRatio: tick.ratio, label: tick.label, color: colors.textDim }),
+        pixelY: tick.topPercent / 100 * Math.max(panel.height * cellHeightPx - 1, 1),
+      }))
+      : [...(side === "left" ? leftAxisLabels : rightAxisLabels)].map(([row, label]) => ({ row, pixelY: row * cellHeightPx, label, color: colors.textDim }));
     const markers = [
-      ...fitAxisLabels(levelLabels, fixed, (marker) => fractionalViewport ? marker.pixelY / cellHeightPx : marker.row),
+      ...fitAxisLabels(levelLabels, [...fixed, ...grid], (marker) => fractionalViewport ? marker.pixelY / cellHeightPx : marker.row),
       ...fixed,
     ];
     return markers.length > 0 ? markers : undefined;
@@ -883,8 +889,9 @@ export function CompositePanelSurface({
       ).map((entry) => {
         const { level, yRatio } = entry;
         const labelStyle = isDesktopWeb ? levelLabelStyle(entry, colors.background) : undefined;
-        return <Box key={`annotation:${level.id}`} position="absolute" left={leftAxisWidth + (leftAxisWidth ? axisGap : 0) + 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
-          width={Math.min(plotWidth - 2, (level.label?.length ?? 0) + 2)} backgroundColor={isDesktopWeb ? undefined : colors.background} zIndex={20}
+        const labelWidth = Math.min(plotWidth - 2, (level.label?.length ?? 0) + 2);
+        return <Box key={`annotation:${level.id}`} position="absolute" left={leftAxisWidth + (leftAxisWidth ? axisGap : 0) + plotWidth - labelWidth - 1} top={yRatio * Math.max(0, panel.height - 1)} height={1}
+          width={labelWidth} flexDirection="row" justifyContent="flex-end" backgroundColor={colors.background} zIndex={20}
           style={labelStyle} data-gloom-role="chart-level-label">
           <Text fg={labelStyle?.color ?? level.color} wrapMode="none">{level.label}</Text>
         </Box>;

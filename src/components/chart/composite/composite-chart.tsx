@@ -295,12 +295,13 @@ function ThemedCompositeChart({
     availableAxisWidth,
     Math.max(
       Math.min(MINIMUM_AXIS_LABEL_WIDTH, maximumAxisWidth),
+      ...(levels?.items ?? []).map((level) => level.axisLabel?.length ?? 0),
       ...(layoutPanels ?? []).flatMap((panel) => [
         compositeAxisLabelWidth(panel.axes.left, formatAxisValue, includeCursorLabels),
         compositeAxisLabelWidth(panel.axes.right, formatAxisValue, includeCursorLabels),
       ]).map((width) => includeCursorLabels ? width : Math.min(width, maximumAxisWidth)),
     ),
-  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, layoutPanels, maximumAxisWidth]);
+  ), [availableAxisWidth, formatAxisValue, includeCursorLabels, layoutPanels, maximumAxisWidth, levels?.items]);
   const leftAxisWidth = hasLeftAxis ? resolvedAxisWidth : 0;
   const rightAxisWidth = hasRightAxis ? resolvedAxisWidth : 0;
   const axisGap = resolvedAxisWidth > 0 ? 1 : 0;

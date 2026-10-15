@@ -1418,11 +1418,27 @@ describe("CompositeChart", () => {
     }
     await tui.render(<Chart />, { width: 62, height: 14 });
     await tui.waitForFrameToContain("Draft 104");
+    expect(tui.frame().split("\n").find((line) => line.includes("Draft 104"))!.indexOf("Draft")).toBeGreaterThan(40);
+    const plotWidth = capturedSurfaceProps?.width;
     // Bitmap hosts may omit their children. Labels must be siblings of the surface.
     expect(JSON.stringify(capturedSurfaceProps?.children?.map((child: any) => child.props.children))).not.toContain("Draft");
     await act(async () => move(106));
     await tui.waitForFrameToContain("Draft 106");
     expect(tui.frame()).not.toContain("Draft 104");
+    expect(capturedSurfaceProps?.width).toBe(plotWidth);
+  });
+
+  test("exact level prices ignore coarse grid formatting and yield to grid labels", async () => {
+    await tui.render(<CompositeChart width={60} height={28}
+      formatAxisValue={(value) => value.toFixed(1)}
+      series={[series("price", "main", "left", "USD", [100, 101, 102, 103, 104, 105, 106, 107, 108])]}
+      panels={[{ id: "main" }]} levels={{ seriesId: "price", items: [
+        { id: "exact", value: 105.25, axisLabel: "105.25", color: "#00cc66", editable: false, actionable: false },
+        { id: "on-grid", value: 104, axisLabel: "104.00", color: "#00cc66", editable: false, actionable: false },
+      ] }} />, { width: 62, height: 30 });
+    await tui.waitForFrameToContain("105.25");
+    expect(tui.frame()).toContain("104.0");
+    expect(tui.frame()).not.toContain("104.00");
   });
 
   test("a price level on the last price's row leaves the last price on the axis", async () => {

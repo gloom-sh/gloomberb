@@ -39,7 +39,7 @@ test("the label halo is an opaque two-pixel background stroke behind AA-contrast
     const style = levelLabelStyle(entry, background!);
     expect(style.WebkitTextStroke).toBe(`2px ${background}`);
     expect(style.paintOrder).toBe("stroke fill");
-    expect(style.backgroundColor).toBeUndefined();
+    expect(style.backgroundColor).toBe(background);
     expect(contrastRatio(style.color!, background!)).toBeGreaterThanOrEqual(4.5);
   }
   expect(levelLabelStyle({ ...level("buy", 0.5), below: false }, "#000000").color).toBe("#00cc66");

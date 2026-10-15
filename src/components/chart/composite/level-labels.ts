@@ -24,6 +24,7 @@ export function levelLabelStyle({ yRatio, below, level }: ProjectedLevel & { bel
     transform: below ? `translateY(${GAP}px)` : `translateY(calc(-100% - ${GAP}px))`,
     pointerEvents: "none",
     paddingInline: 4,
+    backgroundColor: background,
     color: blendForContrast(level.color, background, higherContrast("#000000", "#ffffff", background), 4.5),
     WebkitTextStroke: `${HALO}px ${background}`,
     paintOrder: "stroke fill",

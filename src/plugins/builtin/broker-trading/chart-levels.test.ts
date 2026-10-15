@@ -46,6 +46,9 @@ test("live draft levels are read-only, follow both prices, and terminal orders d
   const draft = { ...f.draft, orderType: "STP LMT" as const, limitPrice: 10.25, stopPrice: 10.1 };
   const levels = ticketChartLevels({ draft, editing: true, orders, avgCost: 10, position: 25, colors });
   expect(levels.slice(0, 2).map((level) => [level.value, level.dashed])).toEqual([[10.25, true], [10.1, true]]);
+  expect(levels.slice(0, 2).map((level) => level.axisLabel)).toEqual(["10.25", "10.10"]);
+  expect(ticketChartLevels({ draft, editing: true, orders: [], colors, priceStep: 0.005 })[0]?.axisLabel).toBe("10.250");
+  expect(ticketChartLevels({ draft, editing: true, orders: [], colors, priceDecimals: 4 })[0]?.axisLabel).toBe("10.2500");
   expect(levels.every((level) => !level.editable && !level.actionable)).toBe(true);
   expect(levels.find((level) => level.label?.includes("Sell"))?.color).toBe(colors.negative);
   expect(levels.filter((level) => level.id.startsWith("order:"))).toHaveLength(2);

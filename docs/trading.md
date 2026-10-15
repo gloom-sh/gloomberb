@@ -1,8 +1,8 @@
 # Trading
 
-On wide hosts, a trading panel docks beside the chart inside Research's Chart and Overview tabs. Buy/Sell in the chart header, or `b`/`s` while the chart has focus, opens it. Review, results and Open orders stay inside the panel. Escape from outside a field or review, or Close, restores the full chart. At less than 100 terminal columns or about 900 desktop pixels, the full-screen Trade tab is the fallback; a 90x30 terminal does not squeeze a chart beside the ticket.
+On wide hosts, a trading panel docks beside the chart inside Research's Chart and Overview tabs. Buy/Sell in the pane menu, or `b`/`s` while the chart has focus, opens it. Review, results and Open orders stay inside the panel. Escape from outside a field or review, or Close, restores the full chart. At less than 100 terminal columns or about 900 desktop pixels, the full-screen Trade tab is the fallback; a 90x30 terminal does not squeeze a chart beside the ticket.
 
-The ticket uses the selected broker's quote, account, capabilities, and order preview. Trading must be enabled for the broker profile. When several accounts are available, choose one explicitly. SIM and LIVE appear beside the account name and have different whole-panel accent edges.
+The ticket uses the selected broker's quote, account, capabilities, and order preview. Trading must be enabled for the broker profile. When several accounts are available, choose one explicitly. SIM and LIVE appear beside the account name. The panel uses a neutral split border.
 
 Open the command bar with **Ctrl+P**. `BUY AAPL 10` or `SELL AAPL 10` opens Research with its trade panel (or the narrow Trade fallback), with the side and quantity filled in. An optional fourth argument supplies a limit price, for example `BUY AAPL 10 150`. The ticket focuses the primary Buy or Sell action; the command does not request a preview or submit an order. Without an explicit price, editable price defaults come from the broker's quote.
 
@@ -33,7 +33,7 @@ Quantity, limit and stop prices support **minus/plus**, **Up/Down**, and the **m
 
 ## Keyboard
 
-The footer shows actions relevant to the current screen. Tab and Shift+Tab walk the controls. Arrow keys change the selected option or move through lists. Character shortcuts do not intercept text typed into a field; move focus out of the field first. Disabled actions stay disabled when invoked by a key.
+The footer shows at most three ticket actions relevant to the current screen. The pane menu keeps the remaining keyboard actions, including F6. Tab and Shift+Tab walk the controls. Arrow keys change the selected option or move through lists. Character shortcuts do not intercept text typed into a field; move focus out of the field first. Disabled actions stay disabled when invoked by a key.
 
 | Screen | Key | Action |
 |---|---|---|
@@ -80,7 +80,7 @@ The footer shows actions relevant to the current screen. Tab and Shift+Tab walk 
 
 ## Price context
 
-Average position cost, working/partially filled orders and the edited limit/stop prices appear as labelled horizontal chart levels for the ticket's ticker. Buy is green and Sell is red in the default theme; draft levels are dashed. Levels outside the visible price range are clipped, and crowded labels yield rather than overlap. These are read-only overlays in Stage 1: use Open orders (`o`), select a row, change its price and review. Drag-to-modify is not implemented.
+Average position cost, working/partially filled orders and the edited limit/stop prices appear as labelled horizontal chart levels for the ticket's ticker. Buy is green and Sell is red in the default theme; draft levels are dashed. Compact labels sit at the right end of their lines on opaque chart-background chips, without reserving a gutter. Exact price tags use the instrument precision, independent of the grid formatter, and yield to grid labels when crowded. Levels outside the visible price range are clipped. These are read-only overlays in Stage 1: use Open orders (`o`), select a row, change its price and review. Drag-to-modify is not implemented.
 
 Results retain the exact submitted preview as a receipt. The “Estimates from order preview” section shows saved cost, fees, commission and buying power after, not settled charges or a current account balance. Missing preview figures say Not reported. After a lost placement acknowledgement, Filled and Remaining say Not confirmed. After an uncertain replacement or cancellation, retained quantities are labelled Last known until a matching broker response confirms them. Closing or resizing the panel does not discard a pending submission or an unknown-outcome lock.
 
@@ -92,6 +92,6 @@ Desktop inputs have accessible names even when their visible labels sit in a sep
 
 The terminal draws a cell grid. It does not expose the desktop DOM roles or a native accessibility tree. Terminal screen-reader behaviour depends on the terminal and assistive software, and cursor movement or screen repainting may interrupt reading. No claim of terminal screen-reader compatibility or accessibility certification is made from a screenshot or keyboard smoke test.
 
-Palette checks for the flat panel give label contrast of 4.96:1 in White Phosphor and 5.20:1 in Monokai against the theme background. Callout text remains above 4.5:1. Account-mode text is contrast-adjusted against that background to at least 4.5:1, including Monokai LIVE, without changing its semantic accent edge. Field-focus underlines exceed 3:1 against the well in both themes. These checks do not cover OS forced-colour modes, every surrounding surface, or certify all application chrome.
+Palette checks for the flat panel give label contrast of 4.96:1 in White Phosphor and 5.20:1 in Monokai against the theme background. Callout text remains above 4.5:1. Account-mode text is contrast-adjusted against that background to at least 4.5:1, including Monokai LIVE. Field-focus underlines exceed 3:1 against the well in both themes. These checks do not cover OS forced-colour modes, every surrounding surface, or certify all application chrome.
 
 The keyboard flow is verified at 90 columns by 30 rows with a disposable, synthetic broker profile. It includes command entry, editing, review, deliberate confirmation, result, Orders, replacement review, and cancellation confirmation. The synthetic broker acknowledges cancellation as Pending cancel; this proves the request flow, not completed cancellation. No pointer input is needed for those steps. This verification does not establish that every broker supports every order type or that an order will execute at the displayed quote.

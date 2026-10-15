@@ -61,6 +61,25 @@ test("unreported buying power after is never invented by subtracting an order es
   expect(tui.frame().split("\n").find((line) => line.includes("Broker power after"))).toContain("Not reported");
 });
 
+test("entry and working keep a short footer without dropping the review shortcut", async () => {
+  const f = await mount("simulation", "", "working", { editing: true, fresh: true, initialFocus: "review" });
+  const footer = () => tui.frame().split("\n").find((line) => line.includes("[o]rders")) ?? "";
+  expect(footer()).toContain("[r]eview");
+  expect(footer()).toContain("[o]rders");
+  expect(footer().match(/\[[^\]]+\]/g)).toHaveLength(2);
+  await tui.emitKeypress({ name: "r" }, { trackPropagation: true });
+  await tui.waitForFrameToContain("Review Order");
+  await tui.emitKeypress({ name: "tab" });
+  await tui.emitKeypress({ name: "enter" });
+  await tui.waitForFrameToContain("Working");
+  expect(footer()).toContain("[r]efresh");
+  expect(footer()).toContain("[o]rders");
+  expect(footer()).toContain("[n]ew");
+  expect(footer().match(/\[[^\]]+\]/g)).toHaveLength(3);
+  expect(f.mutations()).toHaveLength(1);
+  f.controller.dispose();
+});
+
 test("result retains broker preview values without pre-submit placeholders", async () => {
   const f = await mount("simulation", "", "working", { fresh: true });
   await tui.emitKeypress({ name: "tab" });

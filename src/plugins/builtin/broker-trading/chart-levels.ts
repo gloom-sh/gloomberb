@@ -18,14 +18,19 @@ export function ticketOrderMatches(order: Pick<BrokerOrder, "accountId" | "broke
 }
 
 /** A read-only projection. No broker operation is attached to a chart level. */
-export function ticketChartLevels({ draft, editing, orders, latestOrder, avgCost, position, colors }: {
+export function ticketChartLevels({ draft, editing, orders, latestOrder, avgCost, position, colors, priceStep, priceDecimals }: {
   draft?: BrokerOrderRequest; editing: boolean; orders: readonly BrokerOrder[]; latestOrder?: BrokerOrder;
-  avgCost?: number; position?: number; colors: ThemeColors;
+  avgCost?: number; position?: number; colors: ThemeColors; priceStep?: number; priceDecimals?: number;
 }): CompositeChartLevel[] {
   const levels: CompositeChartLevel[] = [];
+  const tickDigits = priceStep !== undefined && Number.isFinite(priceStep) && priceStep > 0
+    ? (priceStep.toLocaleString("en-US", { useGrouping: false, maximumFractionDigits: 18 }).split(".")[1]?.length ?? 0)
+    : priceDecimals;
+  const minimumFractionDigits = tickDigits !== undefined && Number.isInteger(tickDigits) && tickDigits >= 0 && tickDigits <= 18 ? tickDigits : 2;
   const add = (id: string, value: number | undefined, label: string, color: string, dashed = false) => {
     if (value === undefined || !Number.isFinite(value) || value <= 0) return;
-    levels.push({ id, value, label: `${label} · ${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 8 })}`, color, editable: false, actionable: false, dashed });
+    const axisLabel = value.toLocaleString("en-US", { minimumFractionDigits, maximumFractionDigits: Math.max(8, minimumFractionDigits) });
+    levels.push({ id, value, axisLabel, label: `${label} · ${axisLabel}`, color, editable: false, actionable: false, dashed });
   };
   if (draft && editing) {
     const color = draft.action === "SELL" ? colors.negative : colors.positive;

@@ -16,6 +16,8 @@ export interface CompositeChartLevel {
   actionable: boolean;
   /** Optional read-only annotation, independent of drawing-tool selection. */
   label?: string;
+  /** Exact instrument price, independent of the grid's compact tick formatter. */
+  axisLabel?: string;
   dashed?: boolean;
 }
 
