@@ -52,3 +52,11 @@ function getSnapshot(): CommandBarPromptBinding | null {
 export function useCommandBarPromptBinding(): CommandBarPromptBinding | null {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
+
+/**
+ * Calls `listener` with the open screen's query each time the bar publishes
+ * its prompt, and with an empty one when it closes. For code outside React.
+ */
+export function subscribeCommandBarQuery(listener: (query: string) => void): () => void {
+  return subscribe(() => listener(binding?.query ?? ""));
+}

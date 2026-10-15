@@ -10,7 +10,7 @@ Neither contains anything from your workspace: no tickers, arguments, portfolios
 
 The usage setting also covers command bar searches. When you are signed in, a search you finish in the command bar (you pause typing or run something, never each keystroke) is stored with your account to improve search: its text, the AI suggestions it got and the result you picked. Searches are deleted with your account.
 
-The usage setting also covers research milestones, such as opening research, viewing a tab, saving a ticker, onboarding steps and upgrade actions. Signed-in activity is linked to your account. The browser uses an anonymous visitor ID; the desktop app can continue an ID passed by the website. Events include feature, tab and onboarding desk IDs, prompt interactions, campaign attribution, referrer URLs and experiment assignments, but not the ticker you saved or the contents of your research.
+The usage setting also covers research milestones, such as opening research, viewing a tab, saving a ticker, onboarding steps, upgrade actions, and on a first visit to the web app that you took a first action (not which one). Signed-in activity is linked to your account. The browser uses an anonymous visitor ID; the desktop app can continue an ID passed by the website. Events include feature, tab and onboarding desk IDs, prompt interactions, campaign attribution, referrer URLs and experiment assignments, but not the ticker you saved or the contents of your research.
 
 To turn either off, run `Crash Reports` or `Usage Counts` from the command bar, or:
 

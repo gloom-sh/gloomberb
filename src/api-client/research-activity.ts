@@ -28,7 +28,10 @@ export type ResearchActivity =
   | "onboarding_signed_in"
   | "onboarding_pro_viewed"
   | "onboarding_completed"
-  | "onboarding_skipped";
+  | "onboarding_skipped"
+  // The first action of a web visitor counted in the first-screen experiment,
+  // in that first session. Keep in sync with the server's list.
+  | "first_screen_engaged";
 export type ResearchFeature =
   | "overview"
   | "chart"
@@ -451,7 +454,10 @@ function webExperimentAttribution(): { experiments?: string } {
  * visitors on term.gloom.sh with an analytics id (no Do Not Track or Global
  * Privacy Control) and not driven by automation are asked. See web-experiments.ts.
  */
-export function exposeWebExperiment(experiment: string): Promise<string | null> {
+export function exposeWebExperiment(
+  experiment: string,
+  { placement, signal }: { placement?: string; signal?: AbortSignal } = {},
+): Promise<string | null> {
   if (!researchTelemetryAllowed()) return Promise.resolve(null);
   if (getCurrentPluginTarget() !== "web") return Promise.resolve(null);
   try {
@@ -468,7 +474,8 @@ export function exposeWebExperiment(experiment: string): Promise<string | null> 
         attribution: attributionPayload(),
         experiment: key,
         variant,
-      }),
+        ...(placement && ACTIVITY_ID.test(placement) ? { placement } : {}),
+      }, signal),
     });
   } catch {
     return Promise.resolve(null);
