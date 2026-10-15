@@ -166,6 +166,9 @@ test("the first screen's exposure and first action say where, never what", async
     return new Response(JSON.stringify({ accepted: true, variant: "calm" }));
   });
   expect(await exposeWebExperiment("web_first_screen", { placement: "first-screen" })).toBe("calm");
+  // Milestones are sent once per session and identity; an account of its own
+  // keeps this test's out of the signed-out ones other tests count on.
+  signIn("research-first-screen");
   recordResearchActivity("first_screen_engaged", undefined, undefined, { placement: "first-screen" });
   await Bun.sleep(0);
   const exposure = bodies.find((body) => body.event === "experiment_exposed");
