@@ -376,7 +376,7 @@ export function runDirectCommandAction(options: {
       void onCheckForUpdates?.();
       closeAll({ revertThemePreview: false });
       return;
-    case "update-channel": {
+    case "release-channel": {
       // The runtime checks again as soon as the channel changes.
       const setChannel = (channel: "stable" | "nightly") => {
         const nextConfig = withUpdateChannel(getState().config, channel);
@@ -385,7 +385,7 @@ export function runDirectCommandAction(options: {
         notify(`${t(command.label)}: ${channel}`, { type: "success" });
       };
       // The saved setting flips; GLOOMBERB_UPDATE_CHANNEL still wins for the run it is set on.
-      // Both ways ask: "update" then Enter lands on this row first.
+      // Back to stable asks too, to say a nightly build already running stays.
       if (state.config.updates?.channel === "nightly") {
         openInlineConfirm({
           confirmId: "switch-to-stable",
@@ -414,6 +414,8 @@ export function runDirectCommandAction(options: {
         confirmLabel: "Switch to Nightly",
         cancelLabel: "Stay on Stable",
         tone: "default",
+        // An opt-in to builds that can break: a stray Enter stays on stable.
+        defaultAction: "cancel",
         onConfirm: async () => { setChannel("nightly"); },
       });
       return;

@@ -137,6 +137,7 @@ export function ConfirmModalContent({
       confirmLabel={t(confirm.confirmLabel)}
       cancelLabel={t(confirmCancelLabel(confirm.cancelLabel))}
       confirmVariant={confirm.tone === "default" ? "primary" : "danger"}
+      defaultAction={confirm.defaultAction}
       width={contentWidth}
       status={status}
       busy={pending}

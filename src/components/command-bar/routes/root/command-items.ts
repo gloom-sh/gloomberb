@@ -160,7 +160,7 @@ export function createRootCommandItemBuilder({
         return state.config.telemetry?.attention === true
           ? "Currently on: share ticker research counts"
           : "Currently off: opt in to sharing ticker research counts";
-      case "update-channel":
+      case "release-channel":
         if (resolveUpdateChannel(state.config) === "nightly") return `Currently nightly: ${NIGHTLY_CHANNEL_SUMMARY}`;
         return isPrereleaseVersion(VERSION)
           ? "Currently stable: this nightly build stays until a newer stable release"
@@ -184,7 +184,7 @@ export function createRootCommandItemBuilder({
         return state.config.telemetry?.usage === false ? "off" : "on";
       case "toggle-attention-counts":
         return state.config.telemetry?.attention === true ? "on" : "off";
-      case "update-channel":
+      case "release-channel":
         return resolveUpdateChannel(state.config);
       default:
         return command.prefix || undefined;
@@ -195,10 +195,13 @@ export function createRootCommandItemBuilder({
     switch (command.id) {
       case "set-portfolio-position":
         return "edit position update position modify position manual position portfolio position";
+      // "update" is a whole word here so it lands on this command before Set
+      // Portfolio Position (whose keywords say "update position") and Release
+      // Channel, which keeps the word further back.
       case "check-for-updates":
-        return state.updateProgress?.phase === "ready" ? "check for updates restart relaunch" : "";
-      case "update-channel":
-        return "nightly stable beta prerelease release channel";
+        return state.updateProgress?.phase === "ready" ? "update check for updates restart relaunch" : "update";
+      case "release-channel":
+        return "nightly stable beta prerelease update updates channel";
       default:
         return "";
     }

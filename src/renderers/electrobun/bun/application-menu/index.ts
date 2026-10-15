@@ -37,7 +37,7 @@ function buildApplicationMenu(keybindings: ResolvedKeybindings): ApplicationMenu
         { role: "about" },
         { type: "divider" },
         commandItem("Check for Updates...", { type: "check-for-updates" }),
-        openCommandBar("Update Channel...", "Update Channel"),
+        openCommandBar("Release Channel...", "Release Channel"),
         { type: "divider" },
         { role: "hide" },
         { role: "hideOthers" },

@@ -242,9 +242,9 @@ export function createSystemCliCommands(): CliCommandDef[] {
           `theme takes one of these ids, or its name as config themes lists it: ${getThemeIds().join(", ")}.`,
         ],
       }, {
-        title: "Update channel",
+        title: "Release channel",
         lines: [
-          `The app updates itself from stable releases. With updates.channel nightly it also installs the nightly build: ${NIGHTLY_CHANNEL_SUMMARY}. Back on stable, a nightly build stays until a newer stable release is out. GLOOMBERB_UPDATE_CHANNEL overrides the setting for one run; npm and Bun installs always follow stable.`,
+          `The app updates itself from stable releases. With updates.channel nightly (Release Channel in the command bar) it also installs the nightly build: ${NIGHTLY_CHANNEL_SUMMARY}. Back on stable, a nightly build stays until a newer stable release is out. GLOOMBERB_UPDATE_CHANNEL overrides the setting for one run; npm and Bun installs always follow stable.`,
         ],
       }],
       examples: [

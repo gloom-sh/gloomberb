@@ -36,6 +36,12 @@ export interface ConfirmDialogProps extends PromptContext<boolean> {
    * opens on its own while the person may be typing. Esc and `n` always answer.
    */
   keyGraceMs?: number;
+  /**
+   * What Enter answers. `cancel` is for an opt-in a stray Enter must not
+   * accept: Enter takes the cancel button, which is drawn as the primary one,
+   * and only `y` or the confirm button confirms.
+   */
+  defaultAction?: "confirm" | "cancel";
 }
 
 export function ConfirmDialog({
@@ -52,7 +58,9 @@ export function ConfirmDialog({
   onClose,
   formButtons = false,
   keyGraceMs = 0,
+  defaultAction = "confirm",
 }: ConfirmDialogProps) {
+  const enterCancels = defaultAction === "cancel";
   const desktop = useUiHost().kind === "desktop-web";
   const openedAt = useRef(Date.now());
   const confirm = useCallback(() => resolve(true), [resolve]);
@@ -71,7 +79,13 @@ export function ConfirmDialog({
       event.preventDefault();
       return;
     }
-    if (event.name === "enter" || event.name === "return" || isPlainKey(event, "y")) {
+    const enter = event.name === "enter" || event.name === "return";
+    if (enter && enterCancels) {
+      event.preventDefault();
+      cancel();
+      return;
+    }
+    if (enter || isPlainKey(event, "y")) {
       event.preventDefault();
       if (Date.now() - openedAt.current < keyGraceMs) return;
       confirm();
@@ -88,13 +102,25 @@ export function ConfirmDialog({
 
   // The desktop shows the keys on the buttons instead of a footer line; a
   // confirm with no key line keeps its buttons plain there too.
+  // One primary button, the one Enter answers.
   const keys = footer !== "";
-  const confirmButton = <Button label={confirmLabel} variant={confirmVariant} disabled={busy} desktopShortcut={keys ? "Enter" : undefined} onPress={confirm} />;
-  const cancelButton = <Button label={cancelLabel} variant="secondary" disabled={busy} desktopShortcut={keys ? "Esc" : undefined} onPress={cancel} />;
+  const confirmButton = (
+    <Button
+      label={confirmLabel}
+      variant={enterCancels && confirmVariant === "primary" ? "secondary" : confirmVariant}
+      disabled={busy}
+      desktopShortcut={keys ? (enterCancels ? "Y" : "Enter") : undefined}
+      onPress={confirm}
+    />
+  );
+  const cancelButton = <Button label={cancelLabel} variant={enterCancels ? "primary" : "secondary"} disabled={busy} desktopShortcut={keys ? (enterCancels ? "Enter" : "Esc") : undefined} onPress={cancel} />;
+  const keyLine = enterCancels
+    ? tf("y {action} · Enter or Esc {cancel}", { action: t(confirmLabel).toLowerCase(), cancel: t(cancelLabel).toLowerCase() })
+    : tf("Enter {action} · Esc cancel", { action: t(confirmLabel).toLowerCase() });
   return (
     <DialogFrame
       title={title}
-      footer={footer ?? tf("Enter {action} · Esc cancel", { action: t(confirmLabel).toLowerCase() })}
+      footer={footer ?? keyLine}
       desktopFooter={null}
       onClose={onClose}
     >

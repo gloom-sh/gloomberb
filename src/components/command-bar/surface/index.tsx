@@ -80,7 +80,7 @@ export function CommandBar({
   // Without an updater (the web terminal) neither checking nor a channel means anything.
   const availableCommands = useMemo(() => onCheckForUpdates
     ? allAvailableCommands
-    : allAvailableCommands.filter((command) => command.id !== "check-for-updates" && command.id !== "update-channel"), [allAvailableCommands, onCheckForUpdates]);
+    : allAvailableCommands.filter((command) => command.id !== "check-for-updates" && command.id !== "release-channel"), [allAvailableCommands, onCheckForUpdates]);
   const {
     applyThemePreview,
     clearThemePreview,

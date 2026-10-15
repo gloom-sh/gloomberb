@@ -58,6 +58,33 @@ describe("confirm modal", () => {
     expect(frame()).not.toContain('Delete "Research"?');
   });
 
+  // An opt-in to builds that can break: Enter, the key that ran the command,
+  // keeps stable; only y or the button switches.
+  test("Release Channel's switch to nightly takes Enter as Stay on Stable", async () => {
+    const storeRef: { current: AppContextStoreValue | null } = { current: null };
+    await render(
+      <CommandBarHarness query="release channel" live storeRef={storeRef} onCheckForUpdates={() => {}} />,
+      { width: 90, height: 30 },
+    );
+    await session.setup.renderOnce();
+    await press(ENTER);
+    await waitForForm("Switch to Nightly?");
+    await press(ENTER);
+    await settle();
+    expect(frame()).not.toContain("Switch to Nightly?");
+    expect(storeRef.current!.getState().config.updates).toBeUndefined();
+
+    await act(async () => {
+      storeRef.current!.dispatch({ type: "SET_COMMAND_BAR", open: true, query: "release channel" });
+    });
+    await session.setup.renderOnce();
+    await press(ENTER);
+    await waitForForm("Switch to Nightly?");
+    await press({ name: "y", sequence: "y" });
+    await settle();
+    expect(storeRef.current!.getState().config.updates).toEqual({ channel: "nightly" });
+  });
+
   test("n cancels a confirm from a bar picker and leaves nothing open", async () => {
     await render(
       <CommandBarHarness
