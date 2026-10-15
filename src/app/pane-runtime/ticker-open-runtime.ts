@@ -21,6 +21,7 @@ import type { DataProvider } from "../../types/data-provider";
 import type { PinTickerOptions } from "../../types/plugin";
 import {
   resolveTickerOpenTarget,
+  tickerOpenFailureMessage,
   type TickerOpenTarget,
 } from "../../tickers/open-target";
 import { AmbiguousTickerError, findExactTickerSearchMatch } from "../../tickers/search";
@@ -73,7 +74,7 @@ export function useAppTickerOpenRuntime({
         tickerRepository,
       });
       if (!target && canPresentFeedback()) {
-        pluginRegistry.notify({ body: `Could not open ${rawSymbol}.`, type: "error" });
+        pluginRegistry.notify({ body: tickerOpenFailureMessage(rawSymbol), type: "error" });
       }
       return target;
     } catch (err) {
