@@ -20,8 +20,8 @@ import type { ArticleBlock } from "./article-text";
  *
  * | Level | Wide | Column under 480px |
  * |---|---|---|
- * | Metadata, facts, tables, coverage | 12px, dimmer | 12px |
- * | Body and lead (the lead is bright, not bigger) | 14px, line height 1.6 | 13.2px |
+ * | Metadata, label and value facts, tables, coverage | 12px, dimmer | 12px |
+ * | Body, lead (bright, not bigger), and every prose bullet: key facts, list items, markdown | 14px, line height 1.6 | 13.2px |
  * | Section heading | 16px bold, bright, space above | 15.1px |
  * | Title | 20px bold | 18.9px |
  *
@@ -29,7 +29,8 @@ import type { ArticleBlock } from "./article-text";
  * the space above it. The body size comes from `--reader-em`, which a
  * container query in styles.css lowers in a narrow column, so a resize
  * changes it with the layout and nothing counts cells. The levels above it
- * are in em of it.
+ * are in em of it. A bullet is a dim dot two characters wide, its wrapped
+ * lines hanging under the text, in the article reader and in markdown alike.
  */
 export const READER_COLUMN_FONT = `calc(var(--reader-em, ${TYPE.body / TYPE.ui}) * 1em)`;
 /** The reading measure: every reader centres its column at this width, in its own type. */
@@ -93,8 +94,9 @@ const DESKTOP_VARIANT_STYLE: Record<TextVariant, Record<string, string | number>
   heading: READER_HEADING_STYLE,
   // Names what follows (key facts, coverage) as a section heading does, without the air above a section.
   label: { ...READER_HEADING_STYLE, margin: "0 0 0.4em" },
-  // At the app's size, as the detail reader's facts are.
-  fact: { fontSize: READER_APP_FONT, lineHeight: 1.55, marginBottom: "0.35em" },
+  // A key fact is a sentence: a prose bullet at the body's size, as list items
+  // and markdown bullets are. Label and value facts (DetailReader) stay at the app's size.
+  fact: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.3em" },
   item: { lineHeight: DESKTOP_LINE_HEIGHT, marginBottom: "0.3em" },
 };
 
@@ -151,8 +153,8 @@ export function ReaderText({
     );
     if (!bullet) return textNode;
     return (
-      <Box flexDirection="row" width="100%" style={{ marginBottom: DESKTOP_VARIANT_STYLE[variant].marginBottom }}>
-        <Text fg={colors.textDim} style={{ fontSize: DESKTOP_VARIANT_STYLE[variant].fontSize, lineHeight: DESKTOP_VARIANT_STYLE[variant].lineHeight, width: "1.3em", flexShrink: 0 }}>{"\u2022"}</Text>
+      <Box flexDirection="row" width="100%" style={{ marginBottom: DESKTOP_VARIANT_STYLE[variant].marginBottom }} data-gloom-role="reader-bullet">
+        <Text fg={colors.textDim} style={{ fontSize: DESKTOP_VARIANT_STYLE[variant].fontSize, lineHeight: DESKTOP_VARIANT_STYLE[variant].lineHeight, width: "2ch", flexShrink: 0 }}>{"\u2022"}</Text>
         <Box flexGrow={1} minWidth={0}>{textNode}</Box>
       </Box>
     );

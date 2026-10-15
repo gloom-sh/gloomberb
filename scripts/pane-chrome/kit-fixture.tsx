@@ -450,13 +450,14 @@ function SurfacesFamily() {
 }
 
 function ReaderFamily() {
-  const body = parseArticle([{ text: PARAGRAPH }, { heading: "Guidance", text: `${PARAGRAPH}\n\n${PARAGRAPH}` }]);
+  const body = parseArticle([{ text: PARAGRAPH }, { heading: "Guidance", text: `${PARAGRAPH}\n\n- ${PARAGRAPH}\n- Margins widened for a third quarter.` }]);
+  // Key facts, the article's list and the markdown's bullets are one prose bullet (reader-checks.ts holds them to it).
   return (
     <Box flexDirection="row" style={{ gap: "var(--gloom-space-lg)", width: "100%", alignItems: "flex-start" }}>
-      <Box flexDirection="column" style={{ flex: "1 1 0", minWidth: 0, height: 560, border: "1px solid var(--gloom-hairline)" }}>
+      <Box flexDirection="column" style={{ flex: "1 1 0", minWidth: 0, height: 720, border: "1px solid var(--gloom-hairline)" }} data-kit-reader="article">
         <ArticleReader articleKey="kit" title="Storage maker beats on revenue and widens margins" meta={["Wire", "Oct 14, 2026 at 9:31 AM"]} lead={PARAGRAPH} facts={["Revenue rose 8% to $5.1 billion.", "Margin rose to 46%."]} body={body} focused={false} width={60} height={30} />
       </Box>
-      <Box flexDirection="column" style={{ flex: "1 1 0", minWidth: 0, height: 560, border: "1px solid var(--gloom-hairline)" }}>
+      <Box flexDirection="column" style={{ flex: "1 1 0", minWidth: 0, height: 720, border: "1px solid var(--gloom-hairline)" }} data-kit-reader="detail">
         <DetailReader width={60} facts={[{ label: "Status", value: "Recruiting" }, { label: "Phase", value: "2" }]} body={`## Highlights\n\n- **Calmer reading.** ${PARAGRAPH}\n- ${PARAGRAPH}`} bodyFormat="markdown" />
       </Box>
     </Box>

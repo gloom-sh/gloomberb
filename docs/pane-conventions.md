@@ -105,7 +105,7 @@ column under 480px steps every reading level down together (13.2px body).
 | Pane chrome | Title bar 20px, title 12px bold whatever the focus (focus changes colour, never weight), 8px inset, hairline below (accent when focused). Footer 20px, 12px, hairline above; hints are ghost buttons: key bright, word dim. Detail back row: the band, Back as its first segment. |
 | Shell | App header and status bar at 12px, theme text roles (no greys of their own); status bar items are ghost buttons. |
 | Dialogs, menus, popovers, toasts, command bar | One floating surface: raised fill, 1px control border, `lg` radius, the elevation shadow; 16px inside a dialog, 4px inside a menu; menu items 24px, `md` radius, hover fill. |
-| Readers (`ArticleReader`, `DetailReader`, Docs, `MarkdownText`) | One column, centred at 66ch of the reading size, the pane's inset on each side, 12px above and 16px below; title 20, headings 16 bold bright (a list's label too), body and lead 14, metadata and facts 12; bullets a dim dot. |
+| Readers (`ArticleReader`, `DetailReader`, Docs, `MarkdownText`) | One column, centred at 66ch of the reading size, the pane's inset on each side, 12px above and 16px below; title 20, headings 16 bold bright (a list's label too), body and lead 14, metadata and label and value facts 12. Every prose bullet (an article's key facts and lists, markdown lists) is body text: 14, a dim dot, the text hanging 2ch in. |
 | Chart chrome | Legends and axes 12px dim. Labels a heat map, treemap or map fits to its own shapes are allowed to size themselves. |
 
 ### Exceptions

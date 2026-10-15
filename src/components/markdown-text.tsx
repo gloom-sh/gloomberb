@@ -505,6 +505,8 @@ function MarkdownLine({
         wrapText: true,
         wrapMode: "word",
         style: nativePaneChrome ? nativeLineStyle(parsed) : wrappedTextStyle(),
+        // The readers' prose bullet (reader-text.tsx), which the pane chrome checks hold markdown to.
+        ...(nativePaneChrome && parsed.segments[0]?.text === "\u2022 " ? { "data-gloom-role": "reader-bullet" } : {}),
       }
     : {};
 
