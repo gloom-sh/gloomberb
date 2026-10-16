@@ -666,14 +666,16 @@ function buildCursorValues(
  * as a bar stands for the time from its open until the next. A time before
  * the first bar in view lands on none, and so does one past the plot's right
  * edge while the chart is panned back from its newest bar, rather than
- * pinning the cursor to an edge the time is not at.
+ * pinning the cursor to an edge the time is not at. A chart showing its
+ * newest bar lands any later time on it, so a monthly series still reads its
+ * latest month on a day after it.
  */
 function linkedCursorDate(scene: CompositeChartScene, requested: Date): Date | null {
   const target = requested.getTime();
   const { dates, timeScale } = scene;
   if (!Number.isFinite(target) || dates.length === 0) return null;
   const plotEnd = unprojectCompositeTimestamp(timeScale, 1);
-  const newest = timeScale.kind === "market" ? timeScale.anchors.at(-1)?.timestamp : undefined;
+  const newest = timeScale.kind === "market" ? timeScale.anchors.at(-1)?.timestamp : scene.newestTime;
   if (target > plotEnd && (newest === undefined || newest > plotEnd)) return null;
   let low = 0;
   let high = dates.length;
@@ -685,18 +687,29 @@ function linkedCursorDate(scene: CompositeChartScene, requested: Date): Date | n
   return dates[low - 1] ?? null;
 }
 
+/** The bar another chart's cursor time lands on (see `linkedCursorDate`), as its timestamp. */
+export function compositeLinkedCursorTime(scene: CompositeChartScene, time: number): number | null {
+  return linkedCursorDate(scene, new Date(time))?.getTime() ?? null;
+}
+
 /**
  * The last instant of the bar a cursor is on, which is the time it is shared
  * at: a bar stands until the next one or its own interval ends, whichever is
  * first. Another chart then lands on its last bar at or before it, so a daily
  * cursor shows the day's last intraday bar, whose close is the day's, and an
- * intraday cursor shows its own day's bar rather than the next one's.
+ * intraday cursor shows its own day's bar rather than the next one's. On
+ * calendar time the newest bar, with no next one, stands as long as the one
+ * before it did, so a series' latest month lands a daily chart on that
+ * month's latest day rather than its first.
  */
 export function compositeCursorAsOf(scene: CompositeChartScene, date: Date): number {
   const start = date.getTime();
   const next = scene.dates.find((entry) => entry.getTime() > start)?.getTime() ?? Number.POSITIVE_INFINITY;
-  const cadenceEnd = scene.timeScale.kind === "market" ? start + scene.timeScale.cadenceMs : Number.POSITIVE_INFINITY;
-  const end = Math.min(next, cadenceEnd);
+  const previous = scene.dates.findLast((entry) => entry.getTime() < start)?.getTime();
+  const intervalEnd = scene.timeScale.kind === "market" ? start + scene.timeScale.cadenceMs
+    : next === Number.POSITIVE_INFINITY && previous !== undefined ? start + (start - previous)
+      : Number.POSITIVE_INFINITY;
+  const end = Math.min(next, intervalEnd);
   return Number.isFinite(end) ? end - 1 : start;
 }
 
@@ -862,6 +875,7 @@ export function buildCompositeChartScene(
     cursorDate,
     cursorXRatio,
     cursorValues: buildCursorValues(panelScenes, cursorDate, { startTime, endTime, timeScale }),
+    newestTime: lastTime,
     ...(timeZone ? { timeZone } : {}),
   };
 }

@@ -181,6 +181,8 @@ export interface CompositeChartScene {
   cursorPanels?: CompositePanelScene[];
   /** IANA zone the time axis and cursor read in: the venue's for intraday market bars, else UTC. */
   timeZone?: string;
+  /** The newest observation's time, in view or not. */
+  newestTime?: number;
 }
 
 export interface BuildCompositeChartSceneOptions {
@@ -269,8 +271,11 @@ export interface CompositeChartProps {
   /** Permit panning into an older unloaded window so the owner can backfill it. */
   allowHistoricalBackfill?: boolean;
   cursorDate?: Date | null;
-  /** A crosshair shared with other charts, such as the others in a layout tab. */
-  cursorLink?: CompositeCursorLink;
+  /**
+   * A crosshair shared with other charts. By default an interactive chart
+   * with a time axis in a pane shares its layout tab's; null keeps it out.
+   */
+  cursorLink?: CompositeCursorLink | null;
   viewport?: {
     start: Date;
     end: Date;

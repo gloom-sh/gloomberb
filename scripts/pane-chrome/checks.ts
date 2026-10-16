@@ -1254,6 +1254,62 @@ const steps: Step[] = [
     },
   },
   {
+    name: "chart composer: IV history, a monthly macro series and Fear & Greed's charts in one tab follow its crosshair and each other's, each reading its own series, and clear with it",
+    scenario: "cmp&linked=mixed",
+    async run(cdp) {
+      const panes = ["chart-composer:a", "iv-history:a", "macro:a", "fear-greed:a"];
+      // Every chart in each pane: its crosshair, the time under it, its series' axis tags and any pointer-height tag, and its legend.
+      const charts = `Object.fromEntries(${JSON.stringify(panes)}.map((id) => [id,
+        [...(__check.pane(id)?.querySelectorAll("[data-gloom-role=composite-chart]") ?? [])].map((chart) => ({
+          line: !!chart.querySelector("[data-gloom-role=chart-crosshair-x]"),
+          time: chart.querySelector("[data-gloom-role=chart-time-axis]")?.getAttribute("data-gloom-cursor") ?? null,
+          tags: chart.querySelectorAll("[data-gloom-role=chart-series-axis-tag]").length,
+          pointerTags: chart.querySelectorAll("[data-gloom-role=chart-price-axis-cursor]").length,
+          legend: [...chart.querySelectorAll("[data-gloom-role=composite-chart-legend-series]")].map((entry) => entry.textContent).join(" | "),
+        }))]))`;
+      type Chart = { line: boolean; time: string | null; tags: number; pointerTags: number; legend: string };
+      type Charts = Record<string, Chart[]>;
+      await loadedChartPlot(cdp);
+      const rest = await waitFor<Charts | null>(cdp, `(() => { const c = ${charts}; return ${JSON.stringify(panes)}.every((id) => c[id].length > 0) && c["fear-greed:a"].length > 1 ? c : null; })()`, 10_000)
+        ?? fail("a pane did not draw its charts", await evaluate(cdp, charts));
+      if (Object.values(rest).flat().some((chart) => chart.line)) fail("a chart drew a crosshair before any pointer was on a chart", rest);
+      const day = (label: string | null) => label?.match(/\d{4}-\d{2}-\d{2}/)?.[0] ?? null;
+      // Every chart shows the crosshair as the one under the pointer does: the line, its time and
+      // its series tagged on its axis, no pointer-height tag, and in a legend of moving series
+      // (not the macro chart's flat mean) the values at that time.
+      const followed = `(() => {
+        const c = ${charts}, rest = ${JSON.stringify(rest)};
+        return Object.entries(c).every(([id, list]) => list.every((chart, index) => chart.line && chart.time && chart.tags > 0
+          && chart.pointerTags === 0 && (id !== "iv-history:a" || chart.legend !== rest[id][index].legend))) ? c : null;
+      })()`;
+      // The composer's crosshair: IV history and every Fear & Greed chart on its day, the macro series on its month.
+      const composer = await plotRect(cdp, "chart-composer:a");
+      await mouse(cdp, "mouseMoved", composer.x + composer.width * 0.6, composer.y + composer.height * 0.5, false);
+      const fromComposer = await waitFor<Charts | null>(cdp, followed)
+        ?? fail("a chart did not follow the chart composer's crosshair with its own readout", await evaluate(cdp, charts));
+      const at = day(fromComposer["chart-composer:a"]![0]!.time);
+      const days = [...fromComposer["iv-history:a"]!, ...fromComposer["fear-greed:a"]!].map((chart) => day(chart.time));
+      if (!at || days.some((entry) => entry !== at)) fail("the daily charts are not on the composer's day", { at, days });
+      const month = day(fromComposer["macro:a"]![0]!.time);
+      if (!month || month.slice(0, 7) !== at.slice(0, 7)) fail("the monthly series is not on the composer's month", { at, month });
+      // Fear & Greed's index chart: its sibling indicators follow it, and so do the other panes.
+      const index = await evaluate<Rect | null>(cdp, `__check.rect(__check.pane("fear-greed:a")?.querySelector("[data-gloom-role=composite-chart-panel]"))`)
+        ?? fail("Fear & Greed has no chart plot");
+      // Late in its history, where the composer's three months of bars are.
+      await mouse(cdp, "mouseMoved", index.x + index.width * 0.85, index.y + index.height * 0.5, false);
+      const fromIndex = await waitFor<Charts | null>(cdp, `(() => { const c = ${followed}; return c && c["fear-greed:a"][0].time !== ${JSON.stringify(fromComposer["fear-greed:a"]![0]!.time)} ? c : null; })()`)
+        ?? fail("a chart did not follow Fear & Greed's index chart", await evaluate(cdp, charts));
+      const indexDay = day(fromIndex["fear-greed:a"]![0]!.time);
+      const siblings = fromIndex["fear-greed:a"]!.slice(1).map((chart) => day(chart.time));
+      if (siblings.some((entry) => entry !== indexDay)) fail("Fear & Greed's indicators are not on the index chart's day", { indexDay, siblings });
+      if (day(fromIndex["iv-history:a"]![0]!.time) !== indexDay) fail("IV history is not on the index chart's day", { indexDay, iv: fromIndex["iv-history:a"]![0]!.time });
+      // The pointer leaves the charts: every one clears, its legend back on the latest values.
+      await mouse(cdp, "mouseMoved", composer.x + composer.width * 0.5, composer.y - 60, false);
+      const cleared = `(() => { const c = ${charts}, rest = ${JSON.stringify(rest)}; return Object.entries(c).every(([id, list]) => list.every((chart, i) => !chart.line && chart.legend === rest[id][i].legend)); })()`;
+      if (!await waitFor(cdp, cleared)) fail("a chart kept the crosshair after the pointer left the plots", await evaluate(cdp, charts));
+    },
+  },
+  {
     name: "idle: a pane with two tables renders nothing while nothing moves",
     scenario: "resize",
     async run(cdp) {

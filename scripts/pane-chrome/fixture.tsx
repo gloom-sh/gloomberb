@@ -25,7 +25,10 @@
  * `cmp` (one chart composer pane on invented 30-minute bars, see
  * createInventedChartSource: `&chart=readout` three listings on two venues,
  * volume and two studies, `pan` one listing with years of bars, `edge` one
- * whose bars start 150 sessions back, `percent` three listings rebased),
+ * whose bars start 150 sessions back, `percent` three listings rebased;
+ * `&linked=1` adds a daily chart composer under it, `&linked=mixed` IV
+ * history, a monthly macro series and Fear & Greed beside it, all dated up
+ * to the invented bars' last close),
  * `layout` (one pane that sets text or scrolls content, docked or floating,
  * for the layout checks; see layout-fixture.tsx), `des` (DES's overview
  * over an invented company, see DesPane), or `header` (the app's top bar in
@@ -89,6 +92,9 @@ import { LAYOUT_PANES, installLayoutFetches, layoutLayout } from "./layout-fixtu
 // sources too, which may not have every capture yet.
 import * as domScreenshot from "../../src/utils/dom-screenshot";
 import { ChartComposerPane } from "../../src/plugins/builtin/chart-composer/pane";
+import { IvHistoryChart } from "../../src/plugins/builtin/iv-history/charts";
+import type { IvHistoryModel } from "../../src/plugins/builtin/iv-history/model";
+import { scalarLine, SeriesDetailChart } from "../../src/plugins/builtin/shared/series-detail-chart";
 import { buildComparisonChartPreset, buildPriceChartPreset } from "../../src/plugins/builtin/chart-composer/presets";
 import { appendChartSeries } from "../../src/plugins/builtin/chart-composer/chart-spec-edit";
 import { setBuiltinStudies } from "../../src/plugins/builtin/chart-composer/studies";
@@ -1040,6 +1046,57 @@ function ChartComposerFixturePane(props: PaneProps) {
   );
 }
 
+/** A made-up series ending on the invented bars' last close, one point every `stepDays`, so it shares their dates. */
+function recentSeries(count: number, base: number, swing: number, stepDays = 1) {
+  const end = Math.floor(sourceNow() / DAY_MS) * DAY_MS;
+  return Array.from({ length: count }, (_, index) => {
+    const close = base + swing * Math.sin(index / 9) + (swing / 4) * Math.sin(index * 1.7);
+    return { date: new Date(end - (count - 1 - index) * stepDays * DAY_MS), open: close, high: close + 1, low: close - 1, close, volume: 0 };
+  });
+}
+
+function recentFearGreed(): FearGreedData {
+  const updatedAt = new Date(sourceNow());
+  return {
+    ...INVENTED_FEAR_GREED,
+    overall: { ...INVENTED_FEAR_GREED.overall, updatedAt, history: recentSeries(250, 50, 22) },
+    indicators: INVENTED_FEAR_GREED.indicators.map((indicator, index) => ({
+      ...indicator, updatedAt, points: recentSeries(180, 45 + index * 3, 12 + index),
+    })),
+  };
+}
+
+/** IV history's chart on invented daily vols: IV 30d, 90d and HV over their spread. */
+function IvHistoryFixturePane({ width, height, focused }: PaneProps) {
+  const model = useMemo(() => {
+    const vols = (base: number, swing: number) => recentSeries(250, base, swing).map(({ date, close }) => ({ date, value: close / 100 }));
+    const iv30 = vols(28, 6), hv = vols(24, 5);
+    return {
+      iv30, iv90: vols(30, 3), iv365: [], quoteIv30: [], hv,
+      spread: iv30.map((entry, index) => ({ date: entry.date, value: entry.value! - hv[index]!.value! })),
+    } as unknown as IvHistoryModel;
+  }, []);
+  return <IvHistoryChart model={model} width={width} height={height} hvLabel="HV 30d" focused={focused} />;
+}
+
+/** A macro series' detail chart on an invented monthly rate, five years to the invented bars' month. */
+function MacroSeriesFixturePane({ width, height, focused }: PaneProps) {
+  const { points, lines } = useMemo(() => {
+    const end = new Date(sourceNow());
+    const points = Array.from({ length: 60 }, (_, index) => {
+      const month = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - 59 + index, 1));
+      return { date: month.toISOString().slice(0, 10), value: 3 + 1.5 * Math.sin(index / 7) };
+    });
+    const axis = { unit: "%", unitGroup: "percent", nativeFrequency: "monthly" as const };
+    return { points, lines: [scalarLine(axis, "rate", "Invented rate", "#4c9aff", points)] };
+  }, []);
+  return (
+    <SeriesDetailChart stats={[]} width={width} height={height} focused={focused} points={points} lines={lines}
+      axis={{ unit: "%", unitGroup: "percent", nativeFrequency: "monthly" }} mean={3} resetKey="rate"
+      formatValue={(value) => `${value.toFixed(2)}%`} />
+  );
+}
+
 function chartComposerSpec(kind: string): ChartSpec {
   if (kind === "percent") return { ...buildComparisonChartPreset(["ALFA:NASDAQ", "BRVO:NASDAQ", "CHRL:XETR"]), viewport: { range: "3M", resolution: "30m" } };
   let spec = buildPriceChartPreset(kind === "edge" ? "EDGE:NASDAQ" : "ALFA:NASDAQ");
@@ -1075,6 +1132,8 @@ const PANES = {
   heat: { name: "Heat map", component: params.get("heat") === "market" ? MarketHeatPane : InventedHeatPane },
   chat: { name: "Chat", component: ChatFixturePane },
   "chart-composer": { name: "Chart", component: ChartComposerFixturePane },
+  "iv-history": { name: "IV history", component: IvHistoryFixturePane },
+  macro: { name: "Macro series", component: MacroSeriesFixturePane },
   ...LAYOUT_PANES,
 };
 
@@ -1243,10 +1302,25 @@ function themeLayout(): LayoutConfig {
   };
 }
 
-/** One chart composer pane across the window; with `linked=1`, a daily one under it that shares its crosshair. */
+/**
+ * One chart composer pane across the window; with `linked=1`, a daily one
+ * under it that shares its crosshair, and with `linked=mixed`, IV history, a
+ * macro series and Fear & Greed's charts around it that share it.
+ */
 function chartComposerLayout(): LayoutConfig {
   const instanceId = "chart-composer:a";
   const spec = chartComposerSpec(params.get("chart") ?? "pan");
+  if (params.get("linked") === "mixed") {
+    return {
+      dockRoot: {
+        kind: "split", axis: "vertical", ratio: 0.5,
+        first: row([instanceId, "iv-history:a"]), second: row(["macro:a", "fear-greed:a"]),
+      },
+      instances: [{ ...instance(instanceId), settings: { chartSpec: spec } }, instance("iv-history:a"), instance("macro:a"), instance("fear-greed:a")],
+      floating: [],
+      detached: [],
+    };
+  }
   if (params.get("linked") === "1") {
     const daily = buildPriceChartPreset("BRVO:NASDAQ");
     return {
@@ -1358,6 +1432,7 @@ registerAskGloomPaneHandler(({ paneId, visibleText, args }) => {
 });
 // The pane reads its data from the cache on mount, so it renders with the invented data at once.
 if (scenario === "screenshot" || params.get("float") === "fear") await loadFearGreed(true, async () => INVENTED_FEAR_GREED);
+if (scenario === "cmp" && params.get("linked") === "mixed") await loadFearGreed(true, async () => recentFearGreed());
 if (scenario === "layout") installLayoutFetches();
 if (scenario === "header") {
   installHeaderPlatform(platform);

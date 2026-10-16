@@ -894,6 +894,59 @@ describe("CompositeChart", () => {
     expect(cursors()).toEqual({ a: null, b: null });
   });
 
+  // Panes do not wire the link: every interactive time chart in a pane joins
+  // its tab's. Two charts in one pane are two sources, so either follows the
+  // other, and an owner's resting cursor (a table's selected row) gives way
+  // to the shared one until it clears.
+  test("charts in a pane join their tab's cursor, a sibling and a chart resting on a selected row included", async () => {
+    const shortcuts: Record<string, (event: KeyEventLike) => void> = {};
+    const host = (id: string): InputHost => ({
+      useShortcut(handler) { shortcuts[id] = handler; },
+      useBeforeShortcut() {},
+      useViewport: () => ({ width: 80, height: 24 }),
+    });
+    const chartSeries = [series("price", "main", "left", "USD", [100, 103, 101])];
+    const panels = [{ id: "main" }];
+    const selectedRow = new Date("2025-01-01T00:00:00Z");
+    const chart = (id: string, props: Partial<Parameters<typeof CompositeChart>[0]> = {}) => (
+      <InputHostProvider host={host(id)}>
+        <CompositeChart width={60} height={8} series={chartSeries} panels={panels} {...props} />
+      </InputHostProvider>
+    );
+    await tui.render(
+      <AppContext value={createStaticAppStore(createInitialState(createDefaultConfig("/tmp/gloomberb-tab-cursor")))}>
+        <Box flexDirection="column">
+          <PaneInstanceProvider paneId="iv:a">
+            {chart("a", { focused: true })}
+            {chart("b")}
+          </PaneInstanceProvider>
+          <PaneInstanceProvider paneId="board:a">
+            {chart("c", { cursorDate: selectedRow, onCursorDateChange: () => {} })}
+          </PaneInstanceProvider>
+        </Box>
+      </AppContext>,
+      { width: 62, height: 24 },
+    );
+    const press = async (key: string) => {
+      await act(async () => shortcuts.a?.(keyEvent(key)));
+      await act(async () => tui.setup().renderOnce());
+    };
+    const cursors = () => {
+      const rows = tui.frame().split("\n");
+      const day = (from: number) => rows.slice(from, from + 8).join("\n").match(/2025-01-0\d/)?.[0] ?? null;
+      return { a: day(0), b: day(8), c: day(16) };
+    };
+    await act(async () => tui.setup().renderOnce());
+    expect(cursors()).toEqual({ a: null, b: null, c: "2025-01-01" });
+
+    await press("left");
+    expect(cursors()).toEqual({ a: "2025-01-03", b: "2025-01-03", c: "2025-01-03" });
+    await press("left");
+    expect(cursors()).toEqual({ a: "2025-01-02", b: "2025-01-02", c: "2025-01-02" });
+    await press("escape");
+    expect(cursors()).toEqual({ a: null, b: null, c: "2025-01-01" });
+  });
+
   test("zooms with plus and resets the interaction viewport with zero", async () => {
     const viewportChanges: Array<{ start: string; end: string } | null> = [];
     const viewportInteractions: string[] = [];

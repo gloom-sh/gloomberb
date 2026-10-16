@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useCompositeChartKeyboard } from "./use-composite-chart-keyboard";
 import { useCompositeViewport } from "./use-composite-viewport";
 import { CompositePanelSurface } from "./panel-surface";
@@ -11,6 +11,7 @@ import { ChartToolbar, CHART_TOOLBAR_WIDTH } from "./toolbar";
 import { AsciiText, Box, ChartSurface, Text, useUiCapabilities, type BoxRenderable } from "../../../ui";
 import { useLiveStretch } from "../../../ui/live-stretch";
 import { useOptionalPaneInstanceId } from "../../../state/app/context";
+import { useTabCursorLink } from "../../../state/app/tab-cursor";
 import { useThemeColors, useThemeId } from "../../../theme/theme-context";
 import { themedSeriesColor, themeSeriesColors } from "../../../theme/series-colors";
 import { assignSeriesLineCues } from "./series-cues";
@@ -32,6 +33,7 @@ import {
   applyCompositeChartCursor,
   buildCompositeChartScene,
   compositeCursorAsOf,
+  compositeLinkedCursorTime,
   resizeCompositePanel,
 } from "./scene";
 import { buildCompositeTimeAxisLayout, buildCompositeViewportTimeAxisLayout } from "./time-axis";
@@ -63,7 +65,6 @@ function chartWatermarkScale(plotWidthPx: number, plotHeightPx: number): number 
 
 const NO_X_MARKERS: readonly CompositeChartXMarker[] = [];
 const subscribeToNothing = () => () => {};
-const noLinkedCursor = () => null;
 const holdsNothing = () => false;
 
 /**
@@ -342,26 +343,43 @@ function ThemedCompositeChart({
   const normalizedCursorTimestamp = resolvedCursorTimestamp !== null && Number.isFinite(resolvedCursorTimestamp)
     ? resolvedCursorTimestamp
     : null;
-  // A custom x axis is not time, so there is no time to share.
-  const link = xAxis ? undefined : cursorLink;
-  const sharedCursorTimestamp = useSyncExternalStore(link?.subscribe ?? subscribeToNothing, link?.time ?? noLinkedCursor);
-  const holdsSharedCursor = useSyncExternalStore(link?.subscribe ?? subscribeToNothing, link?.held ?? holdsNothing);
+  // A custom x axis is not time, so there is no time to share. Otherwise an
+  // interactive chart in a pane shares its crosshair with every chart in the
+  // pane's layout tab, its siblings in the pane included: each chart is its
+  // own source, so they never take turns. A chart that stops taking the
+  // pointer for a while (under a dialog) keeps its place, so a cursor it
+  // holds stays shared.
+  const chartId = useId();
+  const tabLink = useTabCursorLink(
+    cursorLink === undefined && !xAxis && paneInstanceId !== null ? `${paneInstanceId}${chartId}` : null,
+  );
+  const link = xAxis ? undefined
+    : cursorLink === undefined ? interactive ? tabLink : undefined
+      : cursorLink ?? undefined;
+  const subscribeToLink = link?.subscribe ?? subscribeToNothing;
+  const sharedTime = link?.time;
+  // Charts sharing a cursor show one: another chart's while it holds it, in
+  // place of this one's own. An owner's resting cursor, such as a table's
+  // selected row, comes back when it clears. A chart renders again when the
+  // bar the shared cursor lands on here changes, not on every move: a daily
+  // chart under a 30-minute one's cursor moves once a session.
+  const showsSharedCursor = useSyncExternalStore(subscribeToLink, useCallback(() => sharedTime?.() != null, [sharedTime]));
+  const sharedCursorBar = useSyncExternalStore(subscribeToLink, useCallback(() => {
+    const time = sharedTime?.() ?? null;
+    return time === null || !baseScene ? null : compositeLinkedCursorTime(baseScene, time);
+  }, [baseScene, sharedTime]));
+  const holdsSharedCursor = useSyncExternalStore(subscribeToLink, link?.held ?? holdsNothing);
   const publishCursor = link?.publish;
-  // Charts sharing a cursor show one: another chart's while it holds it,
-  // unless an owner holds this one's.
-  const linkedCursorTimestamp = cursorDate === undefined || normalizedCursorTimestamp === null
-    ? sharedCursorTimestamp
-    : null;
   const scene = useMemo(() => {
     if (!baseScene) return null;
-    if (linkedCursorTimestamp !== null) {
-      return applyCompositeChartCursor(baseScene, new Date(linkedCursorTimestamp), "linked");
+    if (showsSharedCursor) {
+      return applyCompositeChartCursor(baseScene, sharedCursorBar === null ? null : new Date(sharedCursorBar), "linked");
     }
     return applyCompositeChartCursor(
       baseScene,
       normalizedCursorTimestamp === null ? null : new Date(normalizedCursorTimestamp),
     );
-  }, [baseScene, linkedCursorTimestamp, normalizedCursorTimestamp]);
+  }, [baseScene, normalizedCursorTimestamp, sharedCursorBar, showsSharedCursor]);
   const lastCursorTimestampRef = useRef<number | null>(normalizedCursorTimestamp);
   const renderedCursorTimestampRef = useRef<number | null>(normalizedCursorTimestamp);
   if (renderedCursorTimestampRef.current !== normalizedCursorTimestamp) {
@@ -388,9 +406,9 @@ function ThemedCompositeChart({
   }, [cursorDate, holdsSharedCursor, link, updateCursor]);
   // Esc on a chart showing another chart's cursor clears it, as on that chart.
   const updateKeyboardCursor = useCallback((date: Date | null) => {
-    if (date === null && linkedCursorTimestamp !== null) link?.clear();
+    if (date === null && showsSharedCursor) link?.clear();
     updateCursor(date);
-  }, [link, linkedCursorTimestamp, updateCursor]);
+  }, [link, showsSharedCursor, updateCursor]);
 
   const {
     armedTool,
@@ -664,7 +682,7 @@ function ThemedCompositeChart({
           onSelectDrawing={setSelectedDrawingId}
           onActivate={activateFromPointer}
           onCursorDateChange={updateCursor}
-          sharedCursor={linkedCursorTimestamp !== null}
+          sharedCursor={showsSharedCursor}
           onPanViewport={panViewport}
           onZoomViewport={zoomViewport}
           onSetViewport={setViewportRange}

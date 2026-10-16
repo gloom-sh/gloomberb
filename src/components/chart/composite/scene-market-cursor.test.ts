@@ -169,6 +169,15 @@ test("a cursor time from another chart lands on the bar at or before it, and on 
   const panned = applyCompositeChartCursor(earlier, new Date("2026-01-09T15:00:00Z"), "linked");
   expect(panned.cursorDate).toBeNull();
   expect(panned.cursorXRatio).toBeNull();
+  // A monthly series, on calendar time, reads its latest month on any later day, but not panned back from it.
+  const months = ["2025-01-01", "2025-02-01", "2025-03-01", "2025-04-01"];
+  const monthly = createTestResolvedSeries({ id: "M", color: "#ffffff", points: months.map((month, index) => ({ date: new Date(month), value: index })) });
+  const latest = buildCompositeChartScene([monthly], [{ id: "main" }], { width: 101, height: 20 })!;
+  expect(applyCompositeChartCursor(latest, new Date("2025-10-16T15:00:00Z"), "linked").cursorDate?.toISOString()).toBe("2025-04-01T00:00:00.000Z");
+  const back = buildCompositeChartScene([monthly], [{ id: "main" }], {
+    width: 101, height: 20, viewport: { start: new Date(months[0]!), end: new Date(months[1]!) }, clipToViewport: true,
+  })!;
+  expect(applyCompositeChartCursor(back, new Date("2025-10-16T15:00:00Z"), "linked").cursorDate).toBeNull();
 });
 
 test("a cursor is shared as its bar's last instant, so a daily and an intraday chart land on the same session", () => {
@@ -191,4 +200,10 @@ test("a cursor is shared as its bar's last instant, so a daily and an intraday c
   const closeAsOf = compositeCursorAsOf(intradayScene, new Date("2026-01-07T20:30:00Z"));
   expect(closeAsOf).toBe(Date.parse("2026-01-07T21:00:00Z") - 1);
   expect(applyCompositeChartCursor(dailyScene, new Date(closeAsOf), "linked").cursorDate?.toISOString()).toBe("2026-01-07T00:00:00.000Z");
+  // A monthly series on calendar time shares a month through its end, its newest one included.
+  const monthly = createTestResolvedSeries({ id: "M", color: "#ffffff", points: ["2025-11-01", "2025-12-01", "2026-01-01"].map((month, index) => ({ date: new Date(month), value: index })) });
+  const monthlyScene = buildCompositeChartScene([monthly], [{ id: "main" }], { width: 101, height: 20 })!;
+  expect(compositeCursorAsOf(monthlyScene, new Date("2025-11-01"))).toBe(Date.parse("2025-12-01") - 1);
+  expect(applyCompositeChartCursor(dailyScene, new Date(compositeCursorAsOf(monthlyScene, new Date("2026-01-01"))), "linked").cursorDate?.toISOString())
+    .toBe("2026-01-08T00:00:00.000Z");
 });

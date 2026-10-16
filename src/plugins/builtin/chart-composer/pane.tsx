@@ -124,7 +124,6 @@ import { canonicalExchange } from "../../../utils/exchanges";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
 import type { InstrumentRef } from "../../../market-data/request-types";
-import { useTabCursorLink } from "../../../state/app/tab-cursor";
 
 const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
 const AUTO_VIEWPORT_DEBOUNCE_MS = 350;
@@ -284,8 +283,6 @@ function ChartComposerSurface({
   const { cellWidthPx = 8 } = useUiCapabilities();
   const desktopWeb = useUiCapabilities().nativePaneChrome === true;
   const paneId = usePaneInstanceId();
-  // Every chart in the tab shows the crosshair at the time this one's is at.
-  const cursorLink = useTabCursorLink(paneId);
   const liveStreaming = useLiveStreamingSetting();
   const dialogOpen = useDialogState((state) => state.isOpen);
   const authoredViewportKey = useMemo(() => JSON.stringify({
@@ -1117,7 +1114,6 @@ function ChartComposerSurface({
           viewport={viewport}
           clipToViewport={!!spec.viewport.dateWindow}
           viewportResetKey={authoredViewportKey}
-          cursorLink={cursorLink}
           width={Math.max(1, width)}
           height={Math.max(4, height - 1)}
           focused={focused}
