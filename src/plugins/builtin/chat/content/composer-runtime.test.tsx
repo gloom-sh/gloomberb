@@ -3,6 +3,7 @@ import { act, useLayoutEffect, useRef, useState, type MutableRefObject } from "r
 import type { ChatMessage } from "../../../../api-client";
 import type { TextareaRenderable } from "../../../../ui";
 import { createOpenTuiTestHarness } from "../../../../renderers/opentui/test-utils";
+import type { ComposerShareLink } from "../pane-links/composer";
 import { useChatComposerRuntime } from "./composer-runtime";
 import type { ChatContentController } from "./types";
 
@@ -63,6 +64,8 @@ describe("useChatComposerRuntime", () => {
         setSelectedIdx: () => {},
         updateComposerRows: () => {},
         useDefaultControllerChannel: false,
+        draftLinksRef: { current: [] },
+        setDraftLinks: () => {},
       }).sendMessage;
       return null;
     }
@@ -121,6 +124,8 @@ describe("useChatComposerRuntime", () => {
         setSelectedIdx: () => {},
         updateComposerRows: () => {},
         useDefaultControllerChannel: false,
+        draftLinksRef: { current: [] },
+        setDraftLinks: () => {},
       }).sendMessage;
       return null;
     }
@@ -155,6 +160,7 @@ describe("useChatComposerRuntime", () => {
           text = next;
           textarea.onContentChange?.();
         },
+        text: () => text,
         bound: () => textarea.onContentChange !== undefined,
       };
     }
@@ -178,9 +184,11 @@ describe("useChatComposerRuntime", () => {
       const inputValueRef = { current: "" };
       // Stable, as the pane's are: a new callback each render would rebind the textarea by accident.
       const updateComposerRows = () => {};
+      const draftLinksRef = { current: [] as ComposerShareLink[] };
       const view = {
         sendMessage: () => {},
         show: (_textarea: TextareaRenderable | null) => {},
+        links: () => draftLinksRef.current,
       };
       const controller = {
         ...sendingController(sent),
@@ -217,6 +225,8 @@ describe("useChatComposerRuntime", () => {
           setSelectedIdx: () => {},
           updateComposerRows,
           useDefaultControllerChannel: false,
+          draftLinksRef,
+          setDraftLinks: (links) => { draftLinksRef.current = links; },
         }).sendMessage;
         return textarea ? <ComposerMount inputRef={inputRef} textarea={textarea} /> : null;
       }
@@ -248,6 +258,40 @@ describe("useChatComposerRuntime", () => {
 
       expect(drafts).toContain("hello after sign-in");
       expect(sent).toEqual([{ channelId: "everyone", content: "hello after sign-in", replyToId: undefined }]);
+    });
+
+    test("a pasted share link leaves the field for a chip, and goes out after the text as a link", async () => {
+      const sent: SentMessage[] = [];
+      const drafts: string[] = [];
+      const { Harness, view } = renderComposer(sent, drafts);
+      const composer = fakeTextarea();
+      const link = `https://term.gloom.sh/api/shares/${"b".repeat(32)}/open`;
+      await act(async () => {
+        await tui.render(<Harness />, { width: 1, height: 1 });
+      });
+      await act(async () => {
+        view.show(composer.textarea);
+        await tui.setup().renderOnce();
+      });
+
+      await act(async () => {
+        composer.type("Chain for the week ");
+        composer.type(`Chain for the week ${link}`);
+        await tui.setup().renderOnce();
+      });
+      expect(composer.text()).toBe("Chain for the week ");
+      expect(view.links()).toEqual([{ kind: "share", id: "b".repeat(32), url: link }]);
+      // Saved the way it will be sent, so a reload or another device gets the chip back.
+      expect(drafts.at(-1)).toBe(`Chain for the week \n\n${link}`);
+
+      // Typing goes on in the field; the chip waits above it.
+      await act(async () => {
+        composer.type(`Chain for the week h`);
+        view.sendMessage();
+        await tui.setup().renderOnce();
+      });
+      expect(sent).toEqual([{ channelId: "everyone", content: `Chain for the week h\n\n${link}`, replyToId: undefined }]);
+      expect(view.links()).toEqual([]);
     });
 
     test("follows the textarea when it is replaced, and lets go of the old one", async () => {

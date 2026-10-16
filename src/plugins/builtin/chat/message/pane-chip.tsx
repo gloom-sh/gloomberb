@@ -1,11 +1,15 @@
 import { createElement, useState } from "react";
 import type { ChatAttachment } from "../../../../api-client";
+import { IconButton } from "../../../../components/ui";
+import { tf } from "../../../../i18n";
 import { Box, Text, TextAttributes } from "../../../../ui";
 import { blendHex, colors } from "../../../../theme/colors";
 import { useThemeColors } from "../../../../theme/theme-context";
 import { formatInlinePreview } from "../layout";
 import { wirePaneTarget, type ChatMessagePaneLink } from "../pane-links/model";
 import { chatPaneLinkPane, useSharePreview } from "../pane-links/previews";
+import type { ComposerShareLink } from "../pane-links/composer";
+import { DESKTOP_DRAFT_STRIP_STYLE } from "../attachments/desktop";
 
 /**
  * A chip for something a message opens in the terminal: a shared pane (its
@@ -62,6 +66,7 @@ export function DesktopChatPaneChip({
   dimmed,
   onOpen,
   onPreviewError,
+  onRemove,
 }: {
   link: ChatMessagePaneLink;
   /** The picture the sender posted with the link: the chip's thumbnail. */
@@ -70,6 +75,8 @@ export function DesktopChatPaneChip({
   onOpen: (link: ChatMessagePaneLink) => void;
   /** The picture did not load, perhaps because its signed link expired. */
   onPreviewError?: (attachment: ChatAttachment) => void;
+  /** In the composer: the x at the chip's end that takes the link back out. */
+  onRemove?: () => void;
 }) {
   const themeColors = useThemeColors();
   const content = useChatPaneChipContent(link);
@@ -138,34 +145,36 @@ export function DesktopChatPaneChip({
     },
   }, text);
   const label = [content.title, content.detail].filter(Boolean).join(", ");
-  return createElement("button", {
-    type: "button",
-    "data-gloom-role": "chat-pane-chip",
-    "data-gloom-pane-link": link.kind === "share" ? `share:${link.id}` : link.link.kind,
+  const text = compact
+    ? createElement("span", {
+      key: "text",
+      style: { display: "flex", flexDirection: "row", gap: 6, minWidth: 0, alignItems: "baseline" },
+    }, line(content.title, "title"), content.detail ? line(content.detail, "detail") : null)
+    : createElement("span", {
+      key: "text",
+      style: { display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, flex: "1 1 auto", gap: 1 },
+    }, line(content.title, "title"), line(content.detail, "detail"));
+  const frame = {
+    boxSizing: "border-box",
+    display: "flex",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: compact ? 6 : 8,
+    height,
+    width: compact ? "auto" : `min(100%, ${CHIP_MAX_WIDTH}px)`,
+    maxWidth: "100%",
+    flex: "none",
+    margin: "2px 0",
+    padding: compact ? "0 10px 0 5px" : "4px 10px 4px 4px",
+    border: `1px solid ${border}`,
+    borderRadius: 6,
+    background: surface,
+    opacity: dimmed ? 0.6 : 1,
+    overflow: "hidden",
+  };
+  const pressable = {
     "aria-label": label || undefined,
     title: link.kind === "share" ? link.url : undefined,
-    style: {
-      boxSizing: "border-box",
-      display: "flex",
-      flexDirection: "row",
-      alignItems: "center",
-      gap: compact ? 6 : 8,
-      height,
-      width: compact ? "auto" : `min(100%, ${CHIP_MAX_WIDTH}px)`,
-      maxWidth: "100%",
-      flex: "none",
-      margin: "2px 0",
-      padding: compact ? "0 10px 0 5px" : "4px 10px 4px 4px",
-      border: `1px solid ${border}`,
-      borderRadius: 6,
-      background: surface,
-      opacity: dimmed ? 0.6 : 1,
-      cursor: "pointer",
-      font: "inherit",
-      color: "inherit",
-      textAlign: "left",
-      overflow: "hidden",
-    },
     onMouseEnter: () => setHovered(true),
     onMouseLeave: () => setHovered(false),
     // A press on the chip is not a press on the row behind it.
@@ -174,15 +183,96 @@ export function DesktopChatPaneChip({
       event.stopPropagation();
       onOpen(link);
     },
-  }, lead, compact
-    ? createElement("span", {
-      key: "text",
-      style: { display: "flex", flexDirection: "row", gap: 6, minWidth: 0, alignItems: "baseline" },
-    }, line(content.title, "title"), content.detail ? line(content.detail, "detail") : null)
-    : createElement("span", {
-      key: "text",
-      style: { display: "flex", flexDirection: "column", justifyContent: "center", minWidth: 0, flex: "1 1 auto", gap: 1 },
-    }, line(content.title, "title"), line(content.detail, "detail")));
+  };
+  const buttonReset = { cursor: "pointer", font: "inherit", color: "inherit", textAlign: "left" };
+  const dataAttributes = {
+    "data-gloom-role": "chat-pane-chip",
+    "data-gloom-pane-link": link.kind === "share" ? `share:${link.id}` : link.link.kind,
+  };
+  if (!onRemove) {
+    return createElement("button", { type: "button", ...dataAttributes, ...pressable, style: { ...frame, ...buttonReset } }, lead, text);
+  }
+  // The same chip with its x inside the frame, where a waiting image keeps its own.
+  return createElement("div", { ...dataAttributes, style: { ...frame, paddingRight: 4 } },
+    createElement("button", {
+      key: "open",
+      type: "button",
+      ...pressable,
+      style: {
+        ...buttonReset,
+        display: "flex",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: frame.gap,
+        flex: "1 1 auto",
+        minWidth: 0,
+        height: "100%",
+        padding: 0,
+        border: "none",
+        background: "transparent",
+      },
+    }, lead, text),
+    <IconButton key="remove" icon="close" label={tf("Remove {name}", { name: content.title })} onPress={onRemove} />);
+}
+
+/** The share links waiting in the composer, above the field: the chips the message will show, each with its x. */
+export function DesktopComposerPaneChips({
+  links,
+  onOpen,
+  onRemove,
+}: {
+  links: readonly ComposerShareLink[];
+  onOpen: (link: ChatMessagePaneLink) => void;
+  onRemove: (id: string) => void;
+}) {
+  if (links.length === 0) return null;
+  return (
+    <Box flexDirection="column" data-gloom-role="chat-draft-links" style={DESKTOP_DRAFT_STRIP_STYLE}>
+      {links.map((link) => (
+        <DesktopChatPaneChip key={link.id} link={link} dimmed={false} onOpen={onOpen} onRemove={() => onRemove(link.id)} />
+      ))}
+    </Box>
+  );
+}
+
+/** The terminal's composer rows for waiting share links: the chip a message draws, then its x at the row's end. */
+export function TerminalComposerPaneChips({
+  links,
+  width,
+  onOpen,
+  onRemove,
+}: {
+  links: readonly ComposerShareLink[];
+  width: number;
+  onOpen: (link: ChatMessagePaneLink) => void;
+  onRemove: (id: string) => void;
+}) {
+  // Lined up with the field's text after its prompt, as a message's chips line up with its text.
+  const inset = 3;
+  const removeWidth = 3;
+  return (
+    <>
+      {links.map((link) => (
+        <Box key={link.id} width={width} height={1} flexDirection="row">
+          <Box width={inset} />
+          <TerminalChatPaneChip
+            link={link}
+            width={Math.max(1, width - inset - removeWidth - 1)}
+            selected={false}
+            selectedTextColor={colors.textBright}
+            onOpen={onOpen}
+          />
+          <Box flexGrow={1} />
+          <TerminalComposerChipRemove link={link} onRemove={onRemove} />
+        </Box>
+      ))}
+    </>
+  );
+}
+
+function TerminalComposerChipRemove({ link, onRemove }: { link: ComposerShareLink; onRemove: (id: string) => void }) {
+  const content = useChatPaneChipContent(link);
+  return <IconButton icon="close" label={tf("Remove {name}", { name: content.title })} onPress={() => onRemove(link.id)} />;
 }
 
 /** One row in the terminal: the pane's letter, the title and the pane, cut to the line. */

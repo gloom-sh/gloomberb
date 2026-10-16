@@ -150,9 +150,9 @@ export const commands: Command[] = [
   {
     id: "share-pane",
     prefix: "",
-    aliases: ["share pane", "share to chat"],
+    aliases: ["share pane", "share link", "copy link"],
     label: "Share",
-    description: "Post a picture of the focused pane to chat or copy its link",
+    description: "Copy a link to the focused pane",
     category: "Config",
   },
   {

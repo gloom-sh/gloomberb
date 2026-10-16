@@ -35,8 +35,8 @@ export interface BugReportDialogProps extends PromptContext<BugReportSent> {
 /**
  * Report a Bug: the pane's picture as it will be posted, the pane and the
  * app version, and one line saying what went wrong, all public in #bugs. A
- * pane that shows the person's own data asks before sending, as Share does:
- * Enter in the line moves to Send, and Send takes a press of its own. A
+ * pane that shows the person's own data asks before sending: Enter in the
+ * line moves to Send, and Send takes a press of its own. A
  * failed send keeps the form and the line.
  */
 export function BugReportDialog({

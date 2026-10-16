@@ -3,6 +3,7 @@ import type { TextareaRenderable } from "../../../../ui";
 import type { ChatMessage } from "../../../../api-client";
 import type { ChatContentController } from "./types";
 import type { ChatPrependAnchor } from "./scroll";
+import { splitComposerDraft, type ComposerShareLink } from "../pane-links/composer";
 
 type ChatSnapshot = ReturnType<ChatContentController["getSnapshot"]>;
 
@@ -19,6 +20,10 @@ interface ChatSnapshotStateArgs {
   inputRef: MutableRef<TextareaRenderable | null>;
   inputValueRef: MutableRef<string>;
   onComposerStateChange?: (draft: string, cursorOffset: number) => void;
+  /** The share links at the end of the saved draft, drawn as chips above the field. */
+  draftLinksRef: MutableRef<ComposerShareLink[]>;
+  /** Sets the chips; also updates `draftLinksRef`. */
+  onDraftLinksChange: (links: ComposerShareLink[]) => void;
   prependAnchorRef: MutableRef<ChatPrependAnchor | null>;
   setFollowMessages: Dispatch<SetStateAction<boolean>>;
   setSelectedIdx: Dispatch<SetStateAction<number>>;
@@ -26,30 +31,40 @@ interface ChatSnapshotStateArgs {
   useDefaultControllerChannel: boolean;
 }
 
+function sameLinks(a: readonly ComposerShareLink[], b: readonly ComposerShareLink[]): boolean {
+  return a.length === b.length && a.every((link, index) => link.url === b[index]!.url);
+}
+
 function syncDraftFromSnapshot({
   applyingExternalDraftRef,
+  draftLinksRef,
   inputRef,
   inputValueRef,
   onComposerStateChange,
+  onDraftLinksChange,
   snapshot,
   updateComposerRows,
 }: {
   applyingExternalDraftRef: MutableRef<boolean>;
+  draftLinksRef: MutableRef<ComposerShareLink[]>;
   inputRef: MutableRef<TextareaRenderable | null>;
   inputValueRef: MutableRef<string>;
   onComposerStateChange?: (draft: string, cursorOffset: number) => void;
+  onDraftLinksChange: (links: ComposerShareLink[]) => void;
   snapshot: ChatSnapshot;
   updateComposerRows: (draft: string) => void;
 }) {
-  if (inputValueRef.current !== snapshot.draft) {
-    inputValueRef.current = snapshot.draft;
-    updateComposerRows(snapshot.draft);
-    onComposerStateChange?.(snapshot.draft, snapshot.draft.length);
+  const { text, links } = splitComposerDraft(snapshot.draft);
+  if (!sameLinks(draftLinksRef.current, links)) onDraftLinksChange(links);
+  if (inputValueRef.current !== text) {
+    inputValueRef.current = text;
+    updateComposerRows(text);
+    onComposerStateChange?.(text, text.length);
   }
   const textarea = inputRef.current;
-  if (textarea && textarea.editBuffer.getText() !== snapshot.draft) {
+  if (textarea && textarea.editBuffer.getText() !== text) {
     applyingExternalDraftRef.current = true;
-    textarea.setText(snapshot.draft);
+    textarea.setText(text);
     applyingExternalDraftRef.current = false;
   }
 }
@@ -69,6 +84,8 @@ export function useChatSnapshotState({
   inputRef,
   inputValueRef,
   onComposerStateChange,
+  draftLinksRef,
+  onDraftLinksChange,
   prependAnchorRef,
   setFollowMessages,
   setSelectedIdx,
@@ -128,9 +145,11 @@ export function useChatSnapshotState({
       setDraftAttachments(snapshot.draftAttachments);
       syncDraftFromSnapshot({
         applyingExternalDraftRef,
+        draftLinksRef,
         inputRef,
         inputValueRef,
         onComposerStateChange,
+        onDraftLinksChange,
         snapshot,
         updateComposerRows,
       });
@@ -149,9 +168,11 @@ export function useChatSnapshotState({
     applyingExternalDraftRef,
     channelId,
     controller,
+    draftLinksRef,
     inputRef,
     inputValueRef,
     onComposerStateChange,
+    onDraftLinksChange,
     prependAnchorRef,
     setFollowMessages,
     setSelectedIdx,

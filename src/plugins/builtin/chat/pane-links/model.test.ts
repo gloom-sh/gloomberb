@@ -12,7 +12,7 @@ describe("chatMessagePaneLinks", () => {
   });
 
   test("takes the share links its chips stand for out of the text, and the gaps they leave", () => {
-    // What Share > Post to chat sends: the caption, a blank line, the link.
+    // What the composer sends with a link chip: the text, a blank line, the link.
     expect(chatMessagePaneLinks({ content: `Chain for the week\n\n${link(ID)}` })).toEqual({
       links: [{ kind: "share", id: ID, url: link(ID) }],
       content: "Chain for the week",

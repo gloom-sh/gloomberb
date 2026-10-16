@@ -86,7 +86,7 @@ export interface CapturePreviewProps {
 /**
  * A pane's picture as it will be posted, with one dim line under it: the
  * image on the desktop and the web; in the terminal the pane's own cells when
- * they fit, else a thumbnail of the picture. Share and Report a Bug show it alike.
+ * they fit, else a thumbnail of the picture. Report a Bug shows it.
  */
 export function CapturePreview({ capture, meta, wrapMeta = false, width, previewRows }: CapturePreviewProps) {
   const colors = useThemeColors();

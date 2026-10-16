@@ -943,7 +943,7 @@ export interface GloomPluginContext {
   pinTicker(symbol: string, options?: PinTickerOptions): void;
   navigateTicker(symbol: string, options?: { sourcePaneId?: string | null }): void;
   openPaneSettings(paneId?: string): void;
-  /** Opens Share for a pane instance (the focused pane when omitted): post a picture or copy a live link. */
+  /** Shares a pane instance (the focused pane when omitted): copies a live link to it. */
   sharePane(paneId?: string): void;
 
   on<K extends keyof PluginEvents>(event: K, handler: (payload: PluginEvents[K]) => void): () => void;

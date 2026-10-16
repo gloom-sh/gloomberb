@@ -3,7 +3,7 @@ import { apiClient } from "../../../../api-client";
 import type { PluginRegistry } from "../../../registry";
 import type { BugReportDialogProps } from "../../../../shares/bug-report-dialog";
 import { reportPaneBug } from "../../../../shares/bug-report-flow";
-import { shareFocusedPane } from "../../../../shares/flow";
+import { sharePaneLink } from "../../../../shares/flow";
 import type { PaneImageCapture } from "../../../../shares/pane-image";
 import type { AppNotificationRequest, GloomPluginContext } from "../../../../types/plugin";
 import { VERSION } from "../../../../version";
@@ -13,7 +13,7 @@ import { installPaneChatSharing } from "./flow";
 const original = {
   signedIn: apiClient.isSignedIn, verified: apiClient.isVerified,
   channels: chatController.getChannels, snapshot: chatController.getSnapshot,
-  conversations: chatController.listConversations, post: chatController.postImage,
+  post: chatController.postImage,
 };
 let disposeChat: (() => void) | undefined;
 afterEach(() => {
@@ -21,7 +21,6 @@ afterEach(() => {
   apiClient.isVerified = original.verified;
   chatController.getChannels = original.channels;
   chatController.getSnapshot = original.snapshot;
-  chatController.listConversations = original.conversations;
   chatController.postImage = original.post;
   disposeChat?.();
 });
@@ -38,7 +37,6 @@ function fixture({ signedIn = true } = {}) {
   apiClient.isVerified = () => true;
   chatController.getChannels = () => [{ id: "bugs", name: "bugs", created_at: "2026-01-01" }];
   chatController.getSnapshot = () => ({ user: { emailVerified: true } }) as any;
-  chatController.listConversations = () => null;
   chatController.postImage = async (channelId, image, text) => {
     posts.push({ channelId, image: { name: image.name, type: image.type, data: image.data as Uint8Array }, text });
     return { id: "invented-message" } as any;
@@ -53,9 +51,7 @@ function fixture({ signedIn = true } = {}) {
     }),
   } as unknown as PluginRegistry;
   const ctx = {
-    notify: (toast: AppNotificationRequest) => { toasts.push(toast); },
     createPaneFromTemplate: (templateId: string, options: unknown) => { opened.push({ templateId, options }); },
-    configState: { get: () => undefined, set: async () => {} },
   } as unknown as GloomPluginContext;
   disposeChat = installPaneChatSharing(ctx);
   return {
@@ -83,10 +79,15 @@ test("Send posts one message to #bugs: the line, the pane, the app version and t
   const f = fixture();
   const { flow, props } = await f.open();
   expect(props.context).toBe(`GP AAPL · v${VERSION} · terminal`);
-  // A second report waits for this one, and so does Share: one picture and one dialog at a time.
+  // A second report waits for this one, and so does Share: one at a time.
   await reportPaneBug(f.registry, "chart:1");
-  await shareFocusedPane(f.registry, "chart:1");
+  let shareReads = 0;
+  await sharePaneLink({
+    notify: f.registry.notify, promptDialog: f.registry.promptDialog, copyText: async () => {},
+    readShareView: async () => { shareReads += 1; return { sharePayload: null, personalData: null }; },
+  }, "chart:1");
   expect(f.captures).toBe(1);
+  expect(shareReads).toBe(0);
 
   props.resolve(await props.send("Chart stops updating after 1D"));
   await flow;

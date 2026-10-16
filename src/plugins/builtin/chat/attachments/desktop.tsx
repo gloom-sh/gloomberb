@@ -325,6 +325,9 @@ function DraftAttachmentChip({
   );
 }
 
+/** Where what waits for the next message sits above the field: the images, then the share links. */
+export const DESKTOP_DRAFT_STRIP_STYLE = { gap: 6, padding: "6px 10px 2px 10px", flex: "none" } as const;
+
 /** The images waiting in the composer, above the field. */
 export function DesktopChatAttachmentStrip({
   attachments,
@@ -341,7 +344,7 @@ export function DesktopChatAttachmentStrip({
       flexDirection="row"
       flexWrap="wrap"
       data-gloom-role="chat-draft-attachments"
-      style={{ gap: 6, padding: "6px 10px 2px 10px", flex: "none" }}
+      style={DESKTOP_DRAFT_STRIP_STYLE}
     >
       {attachments.map((attachment) => (
         <DraftAttachmentChip

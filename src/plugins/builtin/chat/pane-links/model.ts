@@ -22,15 +22,16 @@ export interface ChatMessagePaneLinks {
 }
 
 /** A message rarely carries more; past this the rest stay plain links. */
-const MAX_SHARE_CHIPS = 3;
+export const MAX_SHARE_CHIPS = 3;
 const NONE: ChatMessagePaneLinks = { links: [], content: "" };
 const memo = new WeakMap<object, ChatMessagePaneLinks>();
 
 /**
- * The text without the given link tokens. A line that held nothing but such
- * links goes with them, and so does a blank line left doubled where it stood.
+ * The text without the given link tokens (their indexes in
+ * `tokenizeInlineLinks`). A line that held nothing but such links goes with
+ * them, and so does a blank line left doubled where it stood.
  */
-function withoutLinks(content: string, drop: ReadonlySet<number>): string {
+export function withoutLinks(content: string, drop: ReadonlySet<number>): string {
   const lines: Array<{ text: string; removed: boolean }> = [{ text: "", removed: false }];
   let dropped = false;
   tokenizeInlineLinks(content).forEach((token, index) => {

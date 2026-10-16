@@ -58,6 +58,7 @@ import { usePluginAppActions } from "../../../runtime";
 import { openTeamPane } from "../../../../team/pane-request";
 import { openChatPaneLink } from "../pane-links/open";
 import type { ChatMessagePaneLink } from "../pane-links/model";
+import { splitComposerDraft, type ComposerShareLink } from "../pane-links/composer";
 import { teamStore } from "../../../../team/store";
 import { requestAccountManagementTab } from "../../account-management/navigation";
 import {
@@ -141,9 +142,18 @@ export function ChatContent({
     sidebarWidth,
   });
   const composerTextWidthRef = useRef(initialWidthMetrics.composerTextWidth);
-  const inputValueRef = useRef(initialSnapshot.draft);
-  const [composerDraft, setComposerDraft] = useState(initialSnapshot.draft);
-  const [composerCursorOffset, setComposerCursorOffset] = useState(initialSnapshot.draft.length);
+  // The saved draft is the message as it will be sent; share links at its end
+  // are chips above the field, and the field holds the rest.
+  const [initialDraft] = useState(() => splitComposerDraft(initialSnapshot.draft));
+  const inputValueRef = useRef(initialDraft.text);
+  const draftLinksRef = useRef<ComposerShareLink[]>(initialDraft.links);
+  const [draftLinks, setDraftLinksState] = useState(initialDraft.links);
+  const setDraftLinks = useCallback((links: ComposerShareLink[]) => {
+    draftLinksRef.current = links;
+    setDraftLinksState(links);
+  }, []);
+  const [composerDraft, setComposerDraft] = useState(initialDraft.text);
+  const [composerCursorOffset, setComposerCursorOffset] = useState(initialDraft.text.length);
   const [mentionSelectedIndex, setMentionSelectedIndex] = useState(0);
   const [dismissedMentionKey, setDismissedMentionKey] = useState<string | null>(null);
   const syncComposerState = useCallback((draft: string, cursorOffset = getComposerCursorOffset(inputRef.current, draft)) => {
@@ -154,7 +164,7 @@ export function ChatContent({
     const draft = inputRef.current?.editBuffer.getText() ?? inputValueRef.current;
     syncComposerState(draft, getComposerCursorOffset(inputRef.current, draft));
   }, [syncComposerState]);
-  const [composerRows, setComposerRows] = useState(() => estimateComposerHeight(initialSnapshot.draft, initialWidthMetrics.composerTextWidth));
+  const [composerRows, setComposerRows] = useState(() => estimateComposerHeight(initialDraft.text, initialWidthMetrics.composerTextWidth));
   const updateComposerRows = useCallback((draft: string) => {
     const nextRows = estimateComposerHeight(draft, composerTextWidthRef.current);
     setComposerRows((current) => (current === nextRows ? current : nextRows));
@@ -195,6 +205,8 @@ export function ChatContent({
     inputRef,
     inputValueRef,
     onComposerStateChange: syncComposerState,
+    draftLinksRef,
+    onDraftLinksChange: setDraftLinks,
     prependAnchorRef,
     setFollowMessages,
     setSelectedIdx,
@@ -328,6 +340,7 @@ export function ChatContent({
     replyTo,
     stackHeader: stackedNav && !channelListOpen,
     draftAttachmentCount: draftAttachments.length,
+    draftLinkCount: draftLinks.length,
     promptRows: canSend && !nativePaneChrome ? chatHandlePromptRows(handlePrompt, contentWidth) : 0,
   });
   const {
@@ -619,6 +632,7 @@ export function ChatContent({
     inputPlaceholder,
     replyPreview,
     replaceComposerDraft,
+    replaceDraftLinks,
     returnToComposer,
     sendMessage,
   } = useChatComposerRuntime({
@@ -648,11 +662,22 @@ export function ChatContent({
     updateComposerRows,
     useDefaultControllerChannel,
     draftAttachmentCount: draftAttachments.length,
+    draftLinksRef,
+    setDraftLinks,
     onPastedImagePaths: !nativePaneChrome && canAttach ? handlePastedImagePaths : undefined,
     onConversationStartError: reportConversationStartError,
     onDiscordCommand: handleDiscordCommand,
   });
   replaceComposerDraftRef.current = replaceComposerDraft;
+  const removeDraftLink = useCallback((id: string) => {
+    replaceDraftLinks(draftLinksRef.current.filter((link) => link.id !== id));
+  }, [replaceDraftLinks]);
+  // A pasted link is one chip: Backspace in an empty field takes it back out.
+  const removeLastDraftLink = useCallback(() => {
+    if (draftLinksRef.current.length === 0) return false;
+    replaceDraftLinks(draftLinksRef.current.slice(0, -1));
+    return true;
+  }, [replaceDraftLinks]);
 
   // The handle field takes the keyboard the way the composer does: the
   // channel, its draft and the composer stay as they are underneath.
@@ -865,7 +890,7 @@ export function ChatContent({
     setSelectedIdx,
     stickyTranscript,
     useDefaultControllerChannel,
-    composerLayoutKey: editingMessage ? "" : draftAttachments.map((attachment) => attachment.status).join(","),
+    composerLayoutKey: `${editingMessage ? "" : draftAttachments.map((attachment) => attachment.status).join(",")}:${draftLinks.length}`,
     highlightMessage,
     clearHover,
     clearHighlight,
@@ -932,6 +957,8 @@ export function ChatContent({
     returnToComposer,
     retryMessage,
     removeLastDraftAttachment,
+    draftLinksRef,
+    removeLastDraftLink,
     scrollRef,
     selectedIdx,
     setFollowMessages,
@@ -1176,6 +1203,9 @@ export function ChatContent({
         onAttachFiles={attachFiles}
         onRemoveAttachment={removeDraftAttachment}
         onRetryAttachment={retryDraftAttachment}
+        draftLinks={draftLinks}
+        onOpenDraftLink={openPaneLink}
+        onRemoveDraftLink={removeDraftLink}
         attachPickerRef={attachPickerRef}
       />
       {nativePaneChrome && dropActive && <DesktopChatDropOverlay />}

@@ -1,8 +1,9 @@
 /**
- * Share and Report a Bug each picture a pane and open a dialog on it. One of
- * them runs at a time per window, from the capture until its dialog closes or
- * its post lands, so starting either while the other runs (its capture
- * frames included, before its dialog mounts) does nothing.
+ * Share makes a pane's link, and Report a Bug pictures a pane and opens a
+ * dialog on it. One of them runs at a time per window, from the start until
+ * the link is copied, the dialog closes or the post lands, so starting either
+ * while the other runs (Report a Bug's capture frames included, before its
+ * dialog mounts) does nothing.
  */
 let inFlight = false;
 

@@ -1,6 +1,5 @@
 import type { PaneDef, PanePersonalData, PanePersonalDataContext } from "../types/plugin";
 import type { NativePaneImage } from "../ui/host";
-import type { SharePayload } from "./payload";
 
 /** A picture of one pane as it looked when it was taken, ready to post. */
 export interface PaneImageCapture {
@@ -11,8 +10,6 @@ export interface PaneImageCapture {
   capturedAt: string;
   /** What personal data the pane shows, so posting it asks first; null for market data. */
   personalData: PanePersonalData | null;
-  /** The same view, projected through the existing public sharing rules at capture time. */
-  sharePayload?: Extract<SharePayload, { kind: "pane" }> | null;
   png: Uint8Array;
   width: number;
   height: number;
@@ -65,18 +62,23 @@ export function isOnPortfolio(context: Pick<PanePersonalDataContext, "config" | 
   return context.config.portfolios.some((portfolio) => portfolio.id === context.activeCollectionId);
 }
 
-/** The confirmation a picture of personal data asks before it is posted. */
-export function personalDataQuestion(kind: PanePersonalData): string {
+/** What a pane of the person's own data shows, as the questions before it leaves the device say it. */
+export function personalDataNotice(kind: PanePersonalData): string {
   switch (kind) {
     case "holdings":
-      return "This shows your holdings. Post it?";
+      return "This shows your holdings.";
     case "account":
-      return "This shows your account details. Post it?";
+      return "This shows your account details.";
     case "messages":
-      return "This shows private messages. Post it?";
+      return "This shows private messages.";
     case "personal":
-      return "This shows your own data. Post it?";
+      return "This shows your own data.";
   }
+}
+
+/** The confirmation a picture of personal data asks before it is posted. */
+export function personalDataQuestion(kind: PanePersonalData): string {
+  return `${personalDataNotice(kind)} Post it?`;
 }
 
 function hex(channel: number): string {

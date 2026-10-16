@@ -8,6 +8,7 @@ import { BugReportDialog, type BugReportSent } from "./bug-report-dialog";
 import { claimCaptureFlow } from "./capture-flow";
 import { CAPTURE_DIALOG_CHROME, captureDialogSize } from "./capture-preview";
 import { getPaneChatSharing } from "./chat";
+import { readyToShare } from "./ready";
 
 /** What was typed, kept when the form closes without sending; a sent report clears it. */
 const draft = { text: "" };
@@ -38,9 +39,9 @@ export async function reportPaneBug(registry: PluginRegistry, paneId?: string): 
   const release = claimCaptureFlow();
   if (!release) return;
   try {
-    if (!chat.ready(() => { void reportPaneBug(registry, paneId); }, "bug-report")) return;
+    if (!readyToShare((notification) => registry.notify(notification), () => { void reportPaneBug(registry, paneId); }, "report a bug")) return;
     // The chat session and channels load while the pane is pictured.
-    const [capture] = await Promise.all([registry.capturePaneImage(paneId), chat.targets()]);
+    const [capture] = await Promise.all([registry.capturePaneImage(paneId), chat.prepare()]);
     const context: BugReportContext = {
       paneLabel: paneFunctionLabel({ title: capture.title, paneType: capture.paneType, code: functionCode(registry, capture.paneType, capture.title) }),
       version: VERSION,
@@ -62,11 +63,7 @@ export async function reportPaneBug(registry: PluginRegistry, paneId?: string): 
         previewRows={previewRows}
         initialText={draft.text}
         onTextChange={(text) => { draft.text = text; }}
-        send={(line) => chat.post(
-          capture,
-          { channelId: BUG_REPORT_CHANNEL_ID, caption: line, includeLink: false },
-          bugReportMessage(line, context),
-        )}
+        send={(line) => chat.post(capture, BUG_REPORT_CHANNEL_ID, bugReportMessage(line, context))}
       />,
     });
     if (!sent) return;

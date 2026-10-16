@@ -99,7 +99,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   ) : null;
   const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen };
   const { links: paneLinks, content } = chatMessagePaneLinks(msg);
-  // A share posted with its picture (what Share > Post to chat sends): the
+  // A share link sent with one picture, such as a pasted screenshot: the
   // picture is the chip's thumbnail rather than a second copy below it.
   const chipPreview = paneLinks.length === 1 && paneLinks[0]!.kind === "share"
     && msg.attachments?.length === 1 && !msg.attachmentReview

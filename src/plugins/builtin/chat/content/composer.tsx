@@ -15,6 +15,9 @@ import type { ChatDraftAttachment } from "../controller/attachments";
 import { DesktopChatAttachButton, DesktopChatAttachmentStrip } from "../attachments/desktop";
 import { TerminalChatAttachmentRows } from "../attachments/terminal";
 import type { TransferFile } from "../attachments/transfer";
+import { DesktopComposerPaneChips, TerminalComposerPaneChips } from "../message/pane-chip";
+import type { ComposerShareLink } from "../pane-links/composer";
+import type { ChatMessagePaneLink } from "../pane-links/model";
 
 const DESKTOP_CHAT_INPUT_TOP_MARGIN_PX = 6;
 
@@ -57,6 +60,10 @@ interface ChatComposerAreaProps {
   onAttachFiles: (files: TransferFile[]) => void;
   onRemoveAttachment: (localId: string) => void;
   onRetryAttachment: (localId: string) => void;
+  /** Share links pasted into the field, waiting as the chips the message will show. */
+  draftLinks: readonly ComposerShareLink[];
+  onOpenDraftLink: (link: ChatMessagePaneLink) => void;
+  onRemoveDraftLink: (id: string) => void;
   /** Filled by the desktop attach button, so the pane menu can open its picker. */
   attachPickerRef: { current: (() => void) | null };
 }
@@ -121,6 +128,9 @@ export function ChatComposerArea({
   onAttachFiles,
   onRemoveAttachment,
   onRetryAttachment,
+  draftLinks,
+  onOpenDraftLink,
+  onRemoveDraftLink,
   attachPickerRef,
 }: ChatComposerAreaProps) {
   const commandBarShortcut = useCommandBarShortcut();
@@ -218,6 +228,12 @@ export function ChatComposerArea({
         />
       ))}
 
+      {draftLinks.length > 0 && (nativePaneChrome ? (
+        <DesktopComposerPaneChips links={draftLinks} onOpen={onOpenDraftLink} onRemove={onRemoveDraftLink} />
+      ) : (
+        <TerminalComposerPaneChips links={draftLinks} width={contentWidth} onOpen={onOpenDraftLink} onRemove={onRemoveDraftLink} />
+      ))}
+
       <MessageComposer
         inputRef={inputRef}
         initialValue={inputValueRef.current}
@@ -261,6 +277,7 @@ export function getChatComposerAreaHeight({
   replyTo,
   mentionSuggestionCount,
   draftAttachmentCount = 0,
+  draftLinkCount = 0,
   promptRows = 0,
 }: {
   canSend: boolean;
@@ -271,6 +288,8 @@ export function getChatComposerAreaHeight({
   mentionSuggestionCount?: number;
   /** The terminal draws a row per waiting image; the desktop strip sizes itself. */
   draftAttachmentCount?: number;
+  /** The same for waiting share links, which an edit shows too. */
+  draftLinkCount?: number;
   /** Terminal rows the handle prompt above the composer takes. */
   promptRows?: number;
 }) {
@@ -278,5 +297,6 @@ export function getChatComposerAreaHeight({
   return promptRows + getMessageComposerBlockHeight({ height: composerHeight, nativePaneChrome })
     + (editingMessage || replyTo ? 1 : 0)
     + Math.max(0, mentionSuggestionCount ?? 0)
-    + (!nativePaneChrome && !editingMessage ? draftAttachmentCount : 0);
+    + (!nativePaneChrome && !editingMessage ? draftAttachmentCount : 0)
+    + (!nativePaneChrome ? draftLinkCount : 0);
 }

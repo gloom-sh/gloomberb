@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
+import { act } from "react";
 import type { ChatMessage } from "../../../../api-client";
 import { registerShareOpener } from "../../../../shares/open";
 import { createTestPluginRuntime } from "../../../../test-support/plugin-runtime";
@@ -103,4 +104,32 @@ test("a news post that still ends in the publisher's address draws the story chi
 
   await tui.clickFrameText("Story");
   expect(opened).toEqual(["template:news-story-pane:story-1", "template:news-story-pane:story-1"]);
+});
+
+test("a share link pasted into the composer is its chip above the field; Enter sends the text then the link, and Backspace in an empty field takes the chip back", async () => {
+  const link = `https://term.gloom.sh/api/shares/${SHARE}/open`;
+  const controller = createController({ messages: [makeMessage(1)], sessionToken: "token-123" });
+  const sent: string[] = [];
+  (controller as any).send = (content: string) => { sent.push(content); return true; };
+  await tui.mountChat(controller, { width: 72, height: 14 });
+
+  await tui.clickFrameText("Type a message...");
+  await act(async () => {
+    await tui.setup().mockInput.typeText("Chain");
+    await tui.setup().mockInput.pasteBracketedText(` ${link}`);
+  });
+  const frame = await tui.waitForFrameToContain("DES SAMPL Options · Research");
+  expect(frame).not.toContain("term.gloom.sh");
+  const rows = frame.split("\n");
+  const chipRow = rows.findIndex((row) => row.includes("DES SAMPL Options"));
+  // Right above the field, which keeps what was typed.
+  expect(rows[chipRow + 2]).toContain("> Chain");
+  await tui.emitKeypress({ name: "return" });
+  expect(sent).toEqual([`Chain\n\n${link}`]);
+
+  await act(async () => { await tui.setup().mockInput.pasteBracketedText(link); });
+  await tui.waitForFrameToContain("DES SAMPL Options · Research");
+  await tui.emitKeypress({ name: "backspace" });
+  await tui.waitForFrameToExclude("DES SAMPL Options");
+  expect(tui.frame()).toContain("Type a message...");
 });
