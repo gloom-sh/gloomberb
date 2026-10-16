@@ -92,10 +92,11 @@ test("a link that cannot be made says why in a toast and copies nothing", async 
   expect(none.toasts).toEqual([{ body: "A public link is unavailable for this pane.", type: "error" }]);
 
   const offline = fixture();
-  offline.createShare = async () => { throw new Error("Network is unreachable"); };
+  // The browser and Bun word a dropped connection differently; the toast says the same.
+  offline.createShare = async () => { throw new TypeError("Failed to fetch"); };
   await sharePaneLink(offline.host, "test:1");
   expect(offline.copied).toEqual([]);
-  expect(offline.toasts).toEqual([{ body: "Network is unreachable", type: "error" }]);
+  expect(offline.toasts).toEqual([{ body: "Couldn't reach Gloom Cloud. Check your connection and try again.", type: "error" }]);
 
   const signedOut = fixture({}, { signedIn: false });
   await sharePaneLink(signedOut.host, "test:1");

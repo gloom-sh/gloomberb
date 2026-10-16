@@ -129,6 +129,7 @@ declare global {
       >;
       /** Panes whose `?` asked for their docs, in order. */
       docs: string[];
+      /** Toasts, each the end of a Share: the link copied, or what stopped it. */
       shares: number;
       /** Panes handed to Ask Gloom (its button, menu entry or key), in order. */
       asks: string[];
@@ -1153,7 +1154,9 @@ function registry(): PluginRegistry {
     getContextMenuItems: () => [],
     resolvePaneQuickSettings: () => [],
     hasPaneSettings: () => false,
-    notify: () => {},
+    // Share ends in one toast, the link copied or why not (here it cannot reach
+    // the service); nothing else on these pages toasts, so the page counts them all.
+    notify: () => { window.__paneChrome.shares++; },
     openPaneSettings: () => {},
     openCommandBar: () => {},
     showPane: () => {},
@@ -1167,13 +1170,6 @@ function registry(): PluginRegistry {
     // The shell binds its actions here as it mounts (togglePaneFullscreen among them).
     bindHost(actions: object) {
       Object.assign(this, actions);
-      if ("promptDialog" in actions) {
-        const prompt = actions.promptDialog as PluginRegistry["promptDialog"];
-        Object.assign(this, { promptDialog: (options: Parameters<typeof prompt>[0]) => {
-          window.__paneChrome.shares++;
-          return prompt(options);
-        } });
-      }
       return () => {};
     },
   } as unknown as PluginRegistry;

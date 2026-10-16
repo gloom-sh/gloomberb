@@ -1385,7 +1385,7 @@ const steps: Step[] = [
     },
   },
   {
-    name: "popped-out window: one Share entry opens its picture by pointer and held key",
+    name: "popped-out window: one Share entry shares at once by pointer and held key, with no dialog",
     scenario: "detached",
     async run(cdp) {
       await click(cdp, await pointOf(cdp, "tabs:a", "action"));
@@ -1394,26 +1394,22 @@ const steps: Step[] = [
       if (shares !== 1) fail("expected one Share entry", shares);
       const target = await evaluate<Rect>(cdp, `__check.rect([...document.querySelectorAll('[role="menuitem"]')].find(e => e.textContent.startsWith('Share')))`);
       await click(cdp, center(target));
-      if (!await waitFor(cdp, `!!document.querySelector('[role="dialog"]')`)) fail("Share did not open");
-      const press = async (key: string, code: string, modifiers: number, autoRepeat = false) => {
-        await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code, modifiers, autoRepeat });
-        if (!autoRepeat) await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code, modifiers });
-      };
-      await press("Escape", "Escape", 0);
+      if (!await waitFor(cdp, "window.__paneChrome.shares === 1")) fail("Share did not finish");
+      if (await evaluate<boolean>(cdp, `!!document.querySelector('[role="dialog"]:not(.gloom-popover)')`)) fail("Share opened a dialog");
+      const repeatShareKey = () => cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "S", code: "KeyS", modifiers: 10, autoRepeat: true });
       await sleep(KEY_UP_FOR_MS);
       await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "S", code: "KeyS", modifiers: 10 });
-      if (!await waitFor(cdp, "window.__paneChrome.shares === 2")) fail("Share key did not open");
-      await press("Escape", "Escape", 0);
-      for (let i = 0; i < 5; i++) await press("S", "KeyS", 10, true);
+      if (!await waitFor(cdp, "window.__paneChrome.shares === 2")) fail("Share key did not share");
+      for (let i = 0; i < 5; i++) await repeatShareKey();
       await sleep(200);
-      if (await evaluate<number>(cdp, "window.__paneChrome.shares") !== 2) fail("a held key opened Share twice");
+      if (await evaluate<number>(cdp, "window.__paneChrome.shares") !== 2) fail("a held key shared twice");
       await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "S", code: "KeyS", modifiers: 10 });
       // Native menu and older terminals can repeat without the platform flag.
       await holdKey(cdp, { key: "S", code: "KeyS", keyCode: 83, modifiers: 10 }, HELD_MS, { flagRepeats: false });
-      if (await evaluate<number>(cdp, "window.__paneChrome.shares") !== 2) fail("unflagged repeats reopened Share");
+      if (await evaluate<number>(cdp, "window.__paneChrome.shares") !== 2) fail("unflagged repeats shared again");
       await sleep(KEY_UP_FOR_MS);
       await holdKey(cdp, { key: "S", code: "KeyS", keyCode: 83, modifiers: 10 }, 0);
-      if (!await waitFor(cdp, "window.__paneChrome.shares === 3")) fail("a later Share press did not open");
+      if (!await waitFor(cdp, "window.__paneChrome.shares === 3")) fail("a later Share press did not share");
     },
   },
   {

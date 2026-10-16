@@ -62,7 +62,9 @@ export async function createShare(payload: SharePayload, fetchImpl?: ShareFetch)
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 401) throw new Error("Sign in to Gloom Cloud to share.");
       if (error instanceof ApiRequestError && error.status === 403) throw new Error("Verify your Gloom Cloud email to share.");
-      throw error;
+      if (error instanceof ApiRequestError) throw error;
+      // The request never got an answer: "Failed to fetch", "Unable to connect", a timeout.
+      throw new Error("Couldn't reach Gloom Cloud. Check your connection and try again.");
     }
   }
   if (!body || typeof body !== "object") throw new Error("The share service returned an invalid response.");

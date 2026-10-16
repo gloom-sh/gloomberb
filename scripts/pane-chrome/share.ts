@@ -18,9 +18,6 @@ async function point(cdp: Cdp, expression: string) {
   if (!result) throw new Error(`No pointer target: ${expression}`);
   return result;
 }
-const byText = (selector: string, text: string) => `[...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.textContent.trim() === ${JSON.stringify(text)})`;
-const dialog = `document.querySelector('[role="dialog"]')`;
-
 /** Real web app, real keys and pointers, a loopback-only stand-in API. Never posts to a public channel. */
 export async function checkGlobalShare(root: string): Promise<void> {
   const build = Bun.spawn([process.execPath, "run", "web:build"], { cwd: root, stdout: "ignore", stderr: "pipe" });
@@ -36,11 +33,18 @@ export async function checkGlobalShare(root: string): Promise<void> {
     const shot = await cdp.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
     await Bun.write(join(shots, `${name}.png`), Buffer.from(shot.data, "base64"));
   };
-  const opened = async () => {
-    if (!await waitFor(cdp, `!!${dialog}`, 15_000)) throw new Error("Share dialog did not open");
-    if (await evaluate<number>(cdp, `document.querySelectorAll('[role="dialog"]').length`) !== 1) throw new Error("More than one Share dialog");
-    if (!await waitFor(cdp, `!!document.querySelector('input[placeholder="Optional"]')`)) throw new Error("Share form did not render");
+  // Each Share makes one link, copies it and says so, with no dialog on the way.
+  const copied = async (count: number, what: string) => {
+    if (!await waitFor(cdp, `window.__linkCopiedToasts >= ${count}`, 15_000)) throw new Error(`${what}: no "Link copied" toast`);
+    if (api.shares.length !== count) throw new Error(`${what}: ${api.shares.length} links for ${count} shares`);
+    const link = await evaluate<string>(cdp, "navigator.clipboard.readText()");
+    const id = count.toString(16).padStart(32, "a");
+    if (link !== `https://term.gloom.sh/api/shares/${id}/open`) throw new Error(`${what}: wrong clipboard link ${link}`);
+    if (await evaluate<number>(cdp, "window.__shareDialogCount") !== 0) throw new Error(`${what}: Share opened a dialog`);
   };
+  const lastSettings = () => (api.shares.at(-1) as {
+    data: { layout: { layout: { instances: Array<{ settings?: Record<string, unknown> }> } } };
+  }).data.layout.layout.instances[0]?.settings ?? {};
   try {
     // No external HTTP or websocket access, including telemetry and bundled-plugin feeds.
     await cdp.send("Network.enable");
@@ -49,8 +53,14 @@ export async function checkGlobalShare(root: string): Promise<void> {
       localStorage.setItem('gloomberb.web.config.v1', ${JSON.stringify(JSON.stringify(shareFixtureConfig("/share-fixture")))});
       Object.defineProperty(navigator, 'doNotTrack', { value: '1' });
       window.__shareDialogCount = 0;
+      window.__linkCopiedToasts = 0;
       new MutationObserver(records => { for (const record of records) for (const node of record.addedNodes) {
-        if (node.nodeType === 1 && (node.matches?.('[role="dialog"]') || node.querySelector?.('[role="dialog"]'))) window.__shareDialogCount++;
+        if (node.nodeType !== 1) continue;
+        // A dialog other than a menu's popover.
+        const modal = '[role="dialog"]:not(.gloom-popover)';
+        if (node.matches?.(modal) || node.querySelector?.(modal)) window.__shareDialogCount++;
+        const toast = node.matches?.('.gloom-toast') ? node : node.querySelector?.('.gloom-toast');
+        if (toast?.textContent.includes('Link copied')) window.__linkCopiedToasts++;
       }}).observe(document, { childList: true, subtree: true });
     ` });
     await cdp.send("Browser.grantPermissions", { origin: api.url, permissions: ["clipboardReadWrite", "clipboardSanitizedWrite"] });
@@ -69,31 +79,29 @@ export async function checkGlobalShare(root: string): Promise<void> {
     const shareItem = await point(cdp, `[...document.querySelectorAll('[role="menuitem"]')].find(e => e.textContent.trim().startsWith("Share"))`);
     await screenshot("menu");
     await click(cdp, shareItem);
-    await opened();
-    await screenshot("dialog");
-    await key(cdp, "Escape", "Escape");
+    await copied(1, "Share from the pane menu");
+    await screenshot("copied");
     await sleep(800);
 
-    // A genuine held-key event opens once, including repeats after dismissing it.
+    // A genuine held-key event shares once, repeats and all.
     await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key: "S", code: "KeyS", windowsVirtualKeyCode: 83, modifiers: 10 });
-    await opened();
-    const count = await evaluate<number>(cdp, "window.__shareDialogCount");
-    for (let i = 0; i < 8; i++) await key(cdp, "S", "KeyS", 10, true);
-    await key(cdp, "Escape", "Escape");
+    await copied(2, "Cmd/Ctrl+Shift+S");
     for (let i = 0; i < 8; i++) await key(cdp, "S", "KeyS", 10, true);
     await sleep(500);
-    if (await evaluate(cdp, `!!${dialog} || window.__shareDialogCount !== ${count}`)) throw new Error("Held Share key opened another dialog");
+    if (api.shares.length !== 2) throw new Error("Held Share key made another link");
     await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key: "S", code: "KeyS", modifiers: 10 });
     // Keep a hold refused even when the platform does not mark its repeats.
     for (let i = 0; i < 45; i++) {
       await key(cdp, "S", "KeyS", 10);
       await sleep(33);
     }
-    if (await evaluate(cdp, `!!${dialog} || window.__shareDialogCount !== ${count}`)) throw new Error("Unflagged hold reopened Share");
+    await sleep(500);
+    if (api.shares.length !== 2) throw new Error("Unflagged hold shared again");
     await sleep(800);
 
-    // Both old phrases find ONE command, and keyboard activation opens the same dialog.
-    for (const phrase of ["share pane", "share to chat"]) {
+    // Each phrase finds ONE command, and keyboard activation shares the same way.
+    let count = 2;
+    for (const phrase of ["share pane", "copy link"]) {
       await key(cdp, "p", "KeyP", 2);
       await cdp.send("Input.insertText", { text: phrase });
       if (!await waitFor(cdp, `!!document.querySelector('[data-command-bar-row-selected="true"]')`)) throw new Error("Command bar did not find Share");
@@ -106,53 +114,28 @@ export async function checkGlobalShare(root: string): Promise<void> {
       const selected = await evaluate<string>(cdp, `document.querySelector('[data-command-bar-row-selected="true"]').textContent`);
       if (selected.trim() !== "Share") throw new Error(`Wrong command: ${selected}`);
       await key(cdp, "Enter", "Enter");
-      await opened();
-      await key(cdp, "Escape", "Escape");
+      await copied(++count, `Command bar "${phrase}"`);
       await sleep(800);
     }
 
     // Share while the chart's pan is still waiting for its debounced settings write.
     const plot = await point(cdp, `document.querySelector('[data-gloom-role="composite-chart-panel"]')`);
     await drag(cdp, plot, [{ x: plot.x - 65, y: plot.y }], 3);
-    // Copy link uses the existing public payload and clipboard, with no chat upload.
     await key(cdp, "S", "KeyS", 10);
-    await opened();
-    await click(cdp, await point(cdp, byText("button", "Post to chat")));
-    await click(cdp, await point(cdp, byText('[role="option"]', "Copy link")));
-    await click(cdp, await point(cdp, `[...document.querySelectorAll('button')].find(e => e.textContent.trim().startsWith('Copy link') && !e.hasAttribute('aria-haspopup'))`));
-    if (!await waitFor(cdp, `!${dialog}`)) throw new Error("Copy link did not finish");
-    if (api.shares.length !== 1 || api.uploads.length !== 0) throw new Error("Copy link changed chat or created duplicate links");
-    const payload = api.shares[0] as { data: { layout: { layout: { instances: Array<{ settings?: Record<string, unknown> }> } } } };
-    if (!payload.data.layout.layout.instances[0]?.settings?.chartInteractionViewport) throw new Error("Global Share lost the chart's pending pan");
-    const copied = await evaluate<string>(cdp, "navigator.clipboard.readText()");
-    if (!copied.startsWith("https://term.gloom.sh/api/shares/")) throw new Error(`Wrong clipboard link: ${copied}`);
-
+    await copied(++count, "Share after a pan");
+    if (!lastSettings().chartInteractionViewport) throw new Error("Share lost the chart's pending pan");
     await sleep(800);
+
     // Draw, then share before the drawing store's debounce expires.
     await key(cdp, "D", "KeyD", 8);
     await drag(cdp, { x: plot.x - 100, y: plot.y + 20 }, [{ x: plot.x + 70, y: plot.y - 30 }], 3);
-    // Post carries the same view by default. Opt-out is remembered on reopening.
     await key(cdp, "S", "KeyS", 10);
-    await opened();
-    await cdp.send("Input.insertText", { text: "Example view" });
-    await click(cdp, await point(cdp, `[...document.querySelectorAll('button')].find(e => e.textContent.trim().startsWith('Post') && !e.hasAttribute('aria-haspopup'))`));
-    if (!await waitFor(cdp, `!${dialog}`, 15_000)) throw new Error("Post did not finish");
-    if (api.messages.length !== 1 || !String(api.messages[0]?.content).startsWith("Example view\n\nhttps://term.gloom.sh/api/shares/")) throw new Error("Post omitted its view link");
-    const drawnPayload = api.shares[1] as typeof payload;
-    const drawings = drawnPayload?.data.layout.layout.instances[0]?.settings?.chartDrawings;
-    if (!Array.isArray(drawings) || drawings.length !== 1) throw new Error("Global Share lost the chart's new drawing");
-    await sleep(800);
-    await key(cdp, "S", "KeyS", 10);
-    await opened();
-    await click(cdp, await point(cdp, `document.querySelector('input[type="checkbox"]')`));
-    await key(cdp, "Escape", "Escape");
-    await sleep(800);
-    await key(cdp, "S", "KeyS", 10);
-    await opened();
-    if (await evaluate(cdp, `document.querySelector('input[type="checkbox"]').checked`)) throw new Error("Include link preference was not remembered");
-    await key(cdp, "Escape", "Escape");
+    await copied(++count, "Share after a drawing");
+    const drawings = lastSettings().chartDrawings;
+    if (!Array.isArray(drawings) || drawings.length !== 1) throw new Error("Share lost the chart's new drawing");
+    if (api.messages.length !== 0 || api.uploads.length !== 0) throw new Error("Share posted to chat");
     await Bun.write(join(shots, "requests.json"), JSON.stringify({ shares: api.shares, messages: api.messages, requests: api.requests }, null, 2));
-    console.log(`ok   global Share: real pointer menu, aliases, keys/repeat, copy, post, remembered link (${shots})`);
+    console.log(`ok   global Share: real pointer menu, aliases, keys/repeat, link copied with no dialog, pending pan and drawing (${shots})`);
   } catch (error) {
     await screenshot("failure");
     console.error(await evaluate(cdp, "document.body.innerText"));
