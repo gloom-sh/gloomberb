@@ -377,21 +377,37 @@ const HELD_MS = 1_500;
 const KEY_UP_FOR_MS = 800;
 
 /**
- * Moves the pointer over a pane's chart plot and waits for the crosshair to
- * sit under it: the horizontal line at the pointer, the vertical one on the
- * nearest observation.
+ * Moves the pointer over a pane's chart plot, to the spot `spot` picks in the
+ * plot's box, and waits for the crosshair to sit under it: the vertical line
+ * on the nearest observation and no horizontal line on an ordinary hover.
+ * Then, with the ruler armed, the horizontal line sits at the pointer's
+ * height: the chart reads the pointer back into its columns and rows, down to
+ * the plot's last row. Arming a tool shows its key hint in the footer, which
+ * moves the plot, so the spot is picked again from the plot as it then is.
+ * A chart with no toolbar (`levelTool: false`) has the first check only.
  */
-async function crosshairUnder(cdp: Cdp, paneId: string, at: Point): Promise<void> {
-  await mouse(cdp, "mouseMoved", at.x, at.y, false);
+async function crosshairUnder(cdp: Cdp, paneId: string, spot: (plot: Rect) => Point, { levelTool = true } = {}): Promise<void> {
   const crosshair = `(() => {
     const pane = __check.pane(${JSON.stringify(paneId)});
     const x = pane?.querySelector("[data-gloom-role=chart-crosshair-x]")?.getBoundingClientRect();
     const y = pane?.querySelector("[data-gloom-role=chart-crosshair-y]")?.getBoundingClientRect();
-    return x && y ? { x: Math.round(x.x + x.width / 2), y: Math.round(y.y + y.height / 2) } : null;
+    return x ? { x: Math.round(x.x + x.width / 2), y: y ? Math.round(y.y + y.height / 2) : null } : null;
   })()`;
-  const under = `(() => { const lines = ${crosshair}; return lines && Math.abs(lines.x - ${at.x}) <= 4 && Math.abs(lines.y - ${at.y}) <= 2; })()`;
-  if (!await waitFor(cdp, under)) {
-    fail(`the crosshair in ${paneId} is not under the pointer`, { pointer: { x: Math.round(at.x), y: Math.round(at.y) }, crosshair: await evaluate(cdp, crosshair) });
+  const at = spot(await plotRect(cdp, paneId));
+  await mouse(cdp, "mouseMoved", at.x, at.y, false);
+  if (!await waitFor(cdp, `(() => { const lines = ${crosshair}; return lines && Math.abs(lines.x - ${at.x}) <= 4 && lines.y === null; })()`)) {
+    fail(`the crosshair in ${paneId} is not a vertical line under the pointer`, { pointer: { x: Math.round(at.x), y: Math.round(at.y) }, crosshair: await evaluate(cdp, crosshair) });
+  }
+  if (!levelTool) return;
+  await armTool(cdp, paneId, "Ruler");
+  try {
+    const level = spot(await plotRect(cdp, paneId));
+    await mouse(cdp, "mouseMoved", level.x, level.y, false);
+    if (!await waitFor(cdp, `(() => { const lines = ${crosshair}; return lines && lines.y !== null && Math.abs(lines.x - ${level.x}) <= 4 && Math.abs(lines.y - ${level.y}) <= 2; })()`)) {
+      fail(`the level line in ${paneId} is not under the pointer`, { pointer: { x: Math.round(level.x), y: Math.round(level.y) }, crosshair: await evaluate(cdp, crosshair) });
+    }
+  } finally {
+    await armTool(cdp, paneId, "Pan");
   }
 }
 
@@ -497,10 +513,9 @@ const nestedChartSteps: Step[] = NESTED_CHARTS.flatMap((paneId) => [
     name: `${paneId} chart: the crosshair sits under the pointer across the plot`,
     scenario: "nested",
     async run(cdp: Cdp) {
-      const plot = await plotRect(cdp, paneId);
-      await crosshairUnder(cdp, paneId, { x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 });
+      await crosshairUnder(cdp, paneId, (plot) => ({ x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 }));
       // Clear of the chart's drawing toolbar at the plot's top left.
-      await crosshairUnder(cdp, paneId, { x: plot.x + plot.width * 0.5, y: plot.y + 3 });
+      await crosshairUnder(cdp, paneId, (plot) => ({ x: plot.x + plot.width * 0.5, y: plot.y + 3 }));
     },
   },
   {
@@ -533,8 +548,7 @@ const nestedChartSteps: Step[] = NESTED_CHARTS.flatMap((paneId) => [
       const latest = await evaluate<string>(cdp, legend);
       const seen = new Set<string>();
       for (const share of [0.12, 0.5, 0.92]) {
-        const at = { x: plot.x + plot.width * share, y: plot.y + plot.height * 0.6 };
-        await crosshairUnder(cdp, paneId, at);
+        await crosshairUnder(cdp, paneId, (rect) => ({ x: rect.x + rect.width * share, y: rect.y + rect.height * 0.6 }), { levelTool: false });
         const geometry = `(() => {
           const pane = ${pane};
           const rect = (selector) => pane?.querySelector(selector)?.getBoundingClientRect();
@@ -619,9 +633,9 @@ nestedChartSteps.push({
   name: "board:dock chart: the crosshair sits under the pointer across the kit's chart band",
   scenario: "nested",
   async run(cdp: Cdp) {
-    const plot = await plotRect(cdp, "board:dock");
-    await crosshairUnder(cdp, "board:dock", { x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 });
-    await crosshairUnder(cdp, "board:dock", { x: plot.x + plot.width * 0.5, y: plot.y + 3 });
+    // The kit's chart band has no toolbar to arm a level tool with.
+    await crosshairUnder(cdp, "board:dock", (plot) => ({ x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 }), { levelTool: false });
+    await crosshairUnder(cdp, "board:dock", (plot) => ({ x: plot.x + plot.width * 0.5, y: plot.y + 3 }), { levelTool: false });
   },
 });
 
@@ -1058,25 +1072,12 @@ const steps: Step[] = [
     name: "chart: the crosshair sits under the pointer across the plot",
     scenario: "resize",
     async run(cdp) {
-      const plot = await evaluate<Rect | null>(cdp, `__check.rect(__check.pane("chart:dock")?.querySelector("[data-gloom-role=composite-chart-panel]"))`)
-        ?? fail("chart:dock has no plot");
       // Short of the empty offset after the last observation, where the line stays on it.
-      for (const at of [
-        { x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 },
-        { x: plot.x + plot.width * 0.5, y: plot.y + plot.height * 0.5 },
+      for (const spot of [
+        (plot: Rect) => ({ x: plot.x + plot.width * 0.85, y: plot.y + plot.height - 3 }),
+        (plot: Rect) => ({ x: plot.x + plot.width * 0.5, y: plot.y + plot.height * 0.5 }),
       ]) {
-        await mouse(cdp, "mouseMoved", at.x, at.y, false);
-        const crosshair = `(() => {
-          const pane = __check.pane("chart:dock");
-          const x = pane?.querySelector("[data-gloom-role=chart-crosshair-x]")?.getBoundingClientRect();
-          const y = pane?.querySelector("[data-gloom-role=chart-crosshair-y]")?.getBoundingClientRect();
-          return x && y ? { x: Math.round(x.x + x.width / 2), y: Math.round(y.y + y.height / 2) } : null;
-        })()`;
-        // The vertical line snaps to the nearest observation; the horizontal one is the pointer's.
-        const under = `(() => { const lines = ${crosshair}; return lines && Math.abs(lines.x - ${at.x}) <= 4 && Math.abs(lines.y - ${at.y}) <= 2; })()`;
-        if (!await waitFor(cdp, under)) {
-          fail("the crosshair is not under the pointer", { pointer: { x: Math.round(at.x), y: Math.round(at.y) }, crosshair: await evaluate(cdp, crosshair) });
-        }
+        await crosshairUnder(cdp, "chart:dock", spot);
       }
     },
   },
