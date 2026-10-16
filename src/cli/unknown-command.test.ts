@@ -1,5 +1,10 @@
 import { expect, test } from "bun:test";
-import { catalogPointer, type CatalogCommandHit } from "./unknown-command";
+import { getLoadablePlugins } from "../plugins/catalog";
+import { createDefaultConfig } from "../types/config";
+import { nearFunctionCodes } from "./pane-functions/catalog";
+import { createPaneCatalog } from "./pane-functions/discovery";
+import type { MarketContext } from "./types";
+import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
 
 const RV: CatalogCommandHit = { code: "RV", label: "Relative Valuation", argKind: "tickers", argPlaceholder: null, peers: true };
 const EQS: CatalogCommandHit = { code: "EQS", label: "Equity Screener", argKind: "none", argPlaceholder: null, peers: false };
@@ -23,4 +28,27 @@ test("several functions are listed with the catalog search, and none says nothin
     "Search the catalog: gloomberb catalog screener",
   ].join("\n"));
   expect(catalogPointer("zzqx", [], ["AAPL"])).toBeNull();
+});
+
+test("a ticker typed as a command is pointed at quote and search, and taken for no function code", async () => {
+  expect(tickerPointer("PLTR")).toBe("To quote it: gloomberb quote PLTR\nFind the ticker: gloomberb search PLTR");
+  for (const ticker of ["BRK.B", "BTC-USD", "^GSPC", "7203:TSE"]) expect(tickerPointer(ticker), ticker).toContain(`gloomberb quote ${ticker}`);
+  // A command word is lowercase: `comps` keeps only the catalog's answer.
+  expect(tickerPointer("comps")).toBeNull();
+  expect(tickerPointer("2024")).toBeNull();
+
+  const context = { config: createDefaultConfig("/tmp/unknown-command-test") } as MarketContext;
+  const registry = await createPaneCatalog(context, getLoadablePlugins());
+  try {
+    // Most are one slip from a code (CLTR, BETA, QQ, PF, BT); typed as a command, none is read as one.
+    for (const ticker of ["PLTR", "META", "QQQ", "PFE", "BTC", "AAPL", "NVDA", "TSLA"]) {
+      expect(nearFunctionCodes(registry, ticker, { commandWord: true }), ticker).toEqual([]);
+    }
+    expect(nearFunctionCodes(registry, "PLTR").map(({ code }) => code)).toContain("CLTR");
+    // A slip from a code that keeps its first letter still is, as a command or after `fn`.
+    expect(nearFunctionCodes(registry, "RCDF", { commandWord: true })).toEqual([{ code: "RDCF", label: "Reverse DCF" }]);
+    expect(nearFunctionCodes(registry, "RCDF")).toEqual([{ code: "RDCF", label: "Reverse DCF" }]);
+  } finally {
+    registry.destroy();
+  }
 });

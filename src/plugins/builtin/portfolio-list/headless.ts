@@ -7,6 +7,7 @@ import type {
   HeadlessRowsResult,
 } from "../../../types/plugin";
 import type { TickerRecord } from "../../../types/ticker";
+import type { Quote } from "../../../types/financials";
 import { formatNumber, formatPercentRaw } from "../../../utils/format";
 import {
   collectionQuoteHeadline,
@@ -23,7 +24,7 @@ import {
   type CollectionMatch,
 } from "./cli/render";
 import { VALUATION_BASIS_LABELS, type PortfolioValuationBasis } from "../../../portfolio/valuation-basis";
-import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
+import { EXTENDED_SESSION_LABELS, quoteHeadlineTime, type ExtendedSession } from "../../../market-data/market/status";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
   CASH_SYMBOL,
@@ -148,6 +149,11 @@ function withListingLabels(columns: HeadlessPaneColumn[], tickers: readonly Tick
   });
 }
 
+/** When the price a row shows was observed: in a pre-market nothing has traded in, the close it stands at. */
+function headlineTime(quote: Quote | undefined): number | null {
+  return quote ? quoteHeadlineTime(quote) : null;
+}
+
 function finite(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -224,7 +230,8 @@ async function portfolioHoldings(
       seen.add(ticker.metadata.ticker);
       return {
         ...quoteFreshnessFields(quotes.get(ticker.metadata.ticker)),
-        updatedAt: quotes.get(ticker.metadata.ticker)?.lastUpdated ?? null,
+        // When the price shown was observed, as `quote` dates it (quoteHeadlineTime).
+        updatedAt: headlineTime(quotes.get(ticker.metadata.ticker)),
         symbol: ticker.metadata.ticker,
         // The name the listing's quote gives now, as `quote` names it, else the saved one.
         name: currentListingName(ticker, quotes.get(ticker.metadata.ticker)) ?? ticker.metadata.name ?? null,
@@ -342,7 +349,7 @@ async function watchlistHoldings(
     const { headline, extended } = collectionQuoteHeadline(quote);
     return {
       ...quoteFreshnessFields(quote),
-      updatedAt: quote?.lastUpdated ?? null,
+      updatedAt: headlineTime(quote),
       symbol: ticker.metadata.ticker,
       name: currentListingName(ticker, quote) ?? ticker.metadata.name ?? null,
       exchange: ticker.metadata.exchange || null,

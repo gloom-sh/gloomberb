@@ -17,6 +17,7 @@ import { pricePointIntegrityFlags, pricePointValues } from "../utils/price-histo
 import { formatUtcTime } from "../utils/utc-time";
 import { historyCoverageNotice } from "../sources/history-coverage";
 import { barPeriodToDate, type BarPeriodToDate } from "../market-data/market/bar-period";
+import { barSizeFromGap, medianBarGap } from "../time-series/bar-spacing";
 
 const PRICE_KEYS = ["open", "high", "low", "close"] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -108,32 +109,25 @@ function isUtcMidnight(time: number): boolean {
   return new Date(time).toISOString().endsWith("T00:00:00.000Z");
 }
 
-function medianGap(times: readonly number[]): number | null {
-  const finite = times.filter(Number.isFinite).sort((left, right) => left - right);
-  const gaps = finite.slice(1).map((time, index) => time - finite[index]!).filter((gap) => gap > 0).sort((left, right) => left - right);
-  return gaps.length > 0 ? gaps[Math.floor((gaps.length - 1) / 2)]! : null;
-}
-
 /** Without a declared cadence, bar spacing decides: daily bars may be stamped at the session open. */
 function looksIntraday(times: readonly number[]): boolean {
   const finite = times.filter(Number.isFinite);
   if (finite.length < 2) return finite.some((time) => !isUtcMidnight(time));
-  const gap = medianGap(finite);
+  const gap = medianBarGap(finite);
   return gap != null && gap < INTRADAY_MAX_GAP_MS;
 }
 
 /** The bar size served: as the source declared it, otherwise read from the typical spacing of the bars. */
 function historyInterval(times: readonly number[], resolution: ManualChartResolution | null): ManualChartResolution | null {
   if (resolution) return resolution;
-  const gap = medianGap(times);
+  const gap = medianBarGap(times);
   if (gap == null) return null;
   if (gap < INTRADAY_MAX_GAP_MS) {
     return INTRADAY_RESOLUTIONS.reduce((best, candidate) => (
       Math.abs(CHART_RESOLUTION_STEP_MS[candidate] - gap) < Math.abs(CHART_RESOLUTION_STEP_MS[best] - gap) ? candidate : best
     ));
   }
-  const days = gap / DAY_MS;
-  return days >= 25 ? "1mo" : days >= 6 ? "1wk" : "1d";
+  return barSizeFromGap(gap);
 }
 
 /**

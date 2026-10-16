@@ -4,7 +4,7 @@ import { isFiniteNumber } from "../../utils/guards";
 import { canonicalExchange, isKnownExchangeCode } from "../../utils/exchanges";
 import { quoteTradingDay } from "../quotes/day-range";
 import { isQuoteBeforeLatestSession } from "../quotes/freshness";
-import { regularSessionCloseOn } from "./freshness";
+import { preMarketOpenOn, regularSessionCloseOn } from "./freshness";
 
 const CLOSED_CHANGE_MUTING_RATIO = 0.55;
 const US_SESSION_TIME = new Intl.DateTimeFormat("en-US", {
@@ -168,10 +168,23 @@ function overnightSessionDisplay(quote: Quote): ExtendedSessionDisplay | null {
  * alone reads CLOSED.
  */
 export function quoteSessionLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
+  return sessionLabel(quote, now, true);
+}
+
+/**
+ * quoteSessionLabel as an export keeps it, one of a fixed set: the market
+ * state (`PRE-MKT`) in a pre-market nothing has traded in yet, where the
+ * status cell names the close (`Thu close`).
+ */
+export function quoteSessionStateLabel(quote: Quote | null | undefined, now = Date.now()): string | null {
+  return sessionLabel(quote, now, false);
+}
+
+function sessionLabel(quote: Quote | null | undefined, now: number, standingClose: boolean): string | null {
   if (!quote?.marketState) return null;
   if (isQuoteBeforeLatestSession(quote, now)) return STALE_SESSION_LABEL;
   if (overnightSessionDisplay(quote)) return "OVERNIGHT";
-  const awaiting = preMarketCloseAwaitingPrint(quote);
+  const awaiting = standingClose ? preMarketCloseAwaitingPrint(quote) : null;
   return awaiting ? closeLabel(awaiting.date) : marketStateLabel(quote.marketState);
 }
 
@@ -226,7 +239,8 @@ export function exchangeShortName(exchangeName?: string, fullExchangeName?: stri
  */
 export function getActiveQuoteDisplay(quote: Quote | null | undefined): ActiveQuoteDisplay | null {
   if (!quote) return null;
-  if ((quote.marketState === "PRE" || quote.marketState === "PREPRE") && quote.preMarketPrice != null) {
+  // A pre-market price of 0 is no print.
+  if ((quote.marketState === "PRE" || quote.marketState === "PREPRE") && isPositive(quote.preMarketPrice)) {
     return { price: quote.preMarketPrice, change: quote.preMarketChange, changePercent: quote.preMarketChangePercent };
   }
   const extendedPrice = (quote.marketState === "POST" || quote.marketState === "POSTPOST") ? quote.postMarketPrice : undefined;
@@ -301,21 +315,45 @@ function completedRegularClose(quote: Quote): number | null {
 }
 
 /**
+ * Whether a pre-market quote's pre-market price is a trade: not missing or
+ * 0, not the regular close carried forward, and, when the source projects
+ * its last print into the pre-market fields (`projected`), not the quote's
+ * own price.
+ */
+function hasPreMarketPrint(quote: Quote, close: number, projected: boolean): boolean {
+  const price = quote.preMarketPrice;
+  if (!isPositive(price) || price === close) return false;
+  return !(projected && price === quote.price);
+}
+
+/**
  * The completed regular session a pre-market quote's headline still shows
- * while nothing has traded in the pre-market: the source says so
- * (extendedSessionPrint false) or sends no pre-market price. Its exchange-local
- * date and when it closed, so the quote reads as that close (`Thu close`, at
- * 20:00 UTC), not as the pre-market or the after-hours print before it. Null
- * once a pre-market trade prints, in any other session, and while the quote
- * cannot say which close its headline is or its venue's hours are unknown.
+ * while nothing has traded in the pre-market, its exchange-local date and
+ * when it closed, so the quote reads as that close (`Thu close`, at 20:00
+ * UTC), not as the pre-market or the after-hours print before it. Only when
+ * the quote cannot hold a pre-market trade: never when the source says it
+ * does (extendedSessionPrint true); when it says nothing has traded (false),
+ * while its pre-market price is no trade (hasPreMarketPrint), its own price
+ * included while that was last updated before the pre-market opened; when it
+ * does not say, while there is no pre-market price other than the close and
+ * its last update is from before the venue's pre-market opened today. Null in
+ * any other session, and while the quote cannot say which close its headline
+ * is or its venue's hours are unknown.
  */
 function preMarketCloseAwaitingPrint(quote: Quote | null | undefined): { date: string; closedAt: number } | null {
-  if (quote?.marketState !== "PRE") return null;
-  if (quote.extendedSessionPrint !== false && isFiniteNumber(quote.preMarketPrice)) return null;
-  const date = completedRegularSession(quote)?.date;
-  if (!date) return null;
-  const closedAt = regularSessionCloseOn(quote.listingExchangeName || quote.exchangeName, date);
-  return closedAt == null ? null : { date, closedAt };
+  if (quote?.marketState !== "PRE" || quote.extendedSessionPrint === true) return null;
+  const session = completedRegularSession(quote);
+  const today = quoteTradingDay(quote);
+  if (!session?.date || !today) return null;
+  const exchange = quote.listingExchangeName || quote.exchangeName;
+  const opened = preMarketOpenOn(exchange, today);
+  // Last updated before today's pre-market opened: the price is carried from the last session.
+  const carried = opened != null && Number.isFinite(quote.lastUpdated) && quote.lastUpdated < opened;
+  const saysNoTrade = quote.extendedSessionPrint === false;
+  if (!saysNoTrade && !carried) return null;
+  if (hasPreMarketPrint(quote, session.close, saysNoTrade && carried)) return null;
+  const closedAt = regularSessionCloseOn(exchange, session.date);
+  return closedAt == null ? null : { date: session.date, closedAt };
 }
 
 /**
@@ -398,9 +436,10 @@ export function getExtendedSessionDisplay(quote: Quote | null | undefined): Exte
   if (state === "PRE" || state === "PREPRE") {
     // Nothing has traded in the pre-market: its figures are the close carried forward, no print.
     if (state === "PRE" && preMarketCloseAwaitingPrint(quote)) return null;
-    if (isFiniteNumber(quote.preMarketPrice)) {
+    // A pre-market price of 0 is no print.
+    if (isPositive(quote.preMarketPrice)) {
       // Against the close the headline shows, so the two cannot disagree about it.
-      const close = state === "PRE" && quote.preMarketPrice > 0 ? completedRegularClose(quote) : null;
+      const close = state === "PRE" ? completedRegularClose(quote) : null;
       if (close != null) {
         const change = quote.preMarketPrice - close;
         return { session: "PRE", price: quote.preMarketPrice, change, changePercent: (change / close) * 100 };

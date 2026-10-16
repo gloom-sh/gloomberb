@@ -106,6 +106,21 @@ test("a watchlist reads by name, and an unknown id lists the ones that exist", a
     .rejects.toThrow(`Unknown portfolio or watchlist "default". Portfolios and watchlists: Main (main), U1234567 (${BROKER.id}), Tech (tech).`);
 });
 
+test("a watchlist and a portfolio date a pre-market quote nothing has traded in by the close they show, as quote does", async () => {
+  // Fri 16 Oct 2026 before 08:00 UTC trades: the price is Thursday's last after-hours print, the row shows Thursday's close.
+  const waiting = (symbol: string) => createTestQuote({
+    symbol, price: 500.4, change: 0.4, changePercent: 0.08, previousClose: 500, regularClose: 500, regularCloseSessionDate: "2026-10-15",
+    regularChange: 2, regularChangePercent: 0.4, changeSessionDate: "2026-10-16", marketState: "PRE", extendedSessionPrint: false,
+    listingExchangeName: "NASDAQ", lastUpdated: Date.parse("2026-10-15T23:59:00Z"),
+  });
+  const ctx = { ...context(), marketData: createTestDataProvider({ getQuote: async (symbol) => waiting(symbol) }) } as HeadlessPaneContext;
+  const close = Date.parse("2026-10-15T20:00:00Z");
+  expect((await collectionHoldingsHeadless.load(args("tech"), ctx)).rows[0]).toMatchObject({ price: 500, updatedAt: close });
+  const held = (await collectionHoldingsHeadless.load(args(BROKER.id), ctx)).rows.filter((row) => row.symbol);
+  expect(held.length).toBeGreaterThan(0);
+  expect(held.map((row) => row.updatedAt)).toEqual(held.map(() => close));
+});
+
 test("the text Ticker column names two listings of one symbol SAN:EPA and SAN:NYSE, while JSON and CSV keep the stored key", async () => {
   const membership = { portfolios: ["main"], watchlists: ["growth"] };
   const held = (portfolio: string) => ({ portfolio, shares: 5, avgCost: 10, currency: "USD", broker: "manual" });

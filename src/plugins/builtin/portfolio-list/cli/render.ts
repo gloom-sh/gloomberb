@@ -28,6 +28,7 @@ import {
   exchangeShortName,
   getActiveQuoteDisplay,
   getExtendedSessionDisplay,
+  quoteHeadlineTime,
   type ActiveQuoteDisplay,
   type ExtendedSession,
   type ExtendedSessionDisplay,
@@ -377,7 +378,7 @@ export async function valuePortfolioPositions({
           priceBasis: position.priceBasis ?? null, quantityUnit: metrics.priceBasis === "percent-of-par" ? "face" : null, quotePriceBasis: quote?.priceBasis ?? null,
           // Last as shown, the regular close after it; market value and P&L are at `valuationPrice`.
           quotePrice: known(headline?.price), ...quoteMoveColumns(headline), ...extendedQuoteFields(extended), quoteCurrency,
-          volume: known(quote?.volume), quoteAsOf: quote?.lastUpdated ?? null,
+          volume: known(quote?.volume), quoteAsOf: quote ? quoteHeadlineTime(quote) : null,
           costBasis: known(direction * costBasisBase), marketValue,
           unrealizedPnl: known(pnl), baseCurrency: currency, dateAcquired: position.dateAcquired ?? null,
           pnlBasis: selectedPnl.basis, brokerUnrealizedPnl: known(position.unrealizedPnl), brokerPnlCurrency: positionCurrency, brokerPnlAsOf: null } });
@@ -948,7 +949,8 @@ async function valueWatchlistRows({
         ...hasPerpetuals ? { fundingRate8h: known(funding) } : {},
         marketCap,
         marketCapCurrency: currency,
-        quoteAsOf: known(quote?.lastUpdated),
+        // When the price shown was observed, as `quote` dates it.
+        quoteAsOf: quote ? known(quoteHeadlineTime(quote)) : null,
       },
     });
   }

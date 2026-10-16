@@ -371,6 +371,20 @@ export function regularSessionCloseOn(exchange: string | undefined, date: string
   return close?.date === date ? close.close : null;
 }
 
+/** The US pre-market opens at 04:00 New York. */
+const US_PRE_MARKET_OPEN_MINUTES = 4 * 60;
+
+/**
+ * When a US listing's pre-market opened on `date` (its New York
+ * `YYYY-MM-DD`): 04:00 there. Null for any other venue, whose pre-market
+ * hours are not known, and for a date that does not parse.
+ */
+export function preMarketOpenOn(exchange: string | undefined, date: string): number | null {
+  if (!isUsListingExchange(canonicalExchange(exchange)) || isoLocalDateToUtcDay(date) == null) return null;
+  return zonedWallClockToUtcMs("America/New_York", Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10)),
+    Math.floor(US_PRE_MARKET_OPEN_MINUTES / 60), US_PRE_MARKET_OPEN_MINUTES % 60, 0);
+}
+
 /**
  * The UTC minute of the day the venue's regular session closed, for the latest
  * session at or before `time` (20:00 UTC is 1200 while New York is on daylight
@@ -531,7 +545,7 @@ function formatUsSessionState(timestampMs: number): UsSessionState {
   const minute = Number(parts.find((part) => part.type === "minute")?.value ?? "0");
   const totalMinutes = hour * 60 + minute;
 
-  if (totalMinutes < 4 * 60) return "PREPRE";
+  if (totalMinutes < US_PRE_MARKET_OPEN_MINUTES) return "PREPRE";
   if (totalMinutes < 9 * 60 + 30) return "PRE";
   if (totalMinutes < 16 * 60) return "REGULAR";
   if (totalMinutes < 20 * 60) return "POST";

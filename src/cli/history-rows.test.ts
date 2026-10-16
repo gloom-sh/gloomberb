@@ -225,4 +225,15 @@ describe("a weekly or monthly bar whose period runs on", () => {
     // Daily bars are left as their source marks them.
     expect(formingPeriodBar(bars(["2026-10-15", "2026-10-16"], "1d"), "NASDAQ", Date.parse("2026-10-16T15:00:00Z"))).toBeNull();
   });
+
+  test("a week that starts on a holiday ends with that calendar week, however its bar is dated", () => {
+    // Labor Day week: Monday 7 Sep closed, Friday the 11th its last session. On Saturday the 12th it is complete,
+    // dated by its Monday or by its first session, Tuesday the 8th; on Friday morning it still forms.
+    const saturday = Date.parse("2026-09-12T12:00:00Z");
+    for (const date of ["2026-09-07", "2026-09-08"]) {
+      expect(formingPeriodBar(bars(["2026-08-31", date], "1wk"), "NASDAQ", saturday), date).toBeNull();
+      expect(formingPeriodBar(bars(["2026-08-31", date], "1wk"), "NASDAQ", Date.parse("2026-09-11T12:00:00Z"))?.periodToDate, date)
+        .toEqual({ period: "week", through: "2026-09-10" });
+    }
+  });
 });

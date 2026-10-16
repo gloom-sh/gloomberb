@@ -1,5 +1,5 @@
 import { resolveCanonicalQuote } from "../../../market-data/quotes/resolution";
-import { expect, test } from "bun:test";
+import { expect, setSystemTime, test } from "bun:test";
 import type { HeadlessPaneContext, HeadlessPaneLoadArgs } from "../../../types/headless";
 import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestHeadlessContext } from "../../../test-support/headless";
@@ -161,6 +161,51 @@ test("historical prices use remembered exchanges and clip and sort the full OHLC
   expect(requests).toEqual([["ABC", "LSE", "1M"]]);
   expect(result.rows.map((row) => row.close)).toEqual([18, 22]);
   expect(result.rows[1]).toEqual({ date: "2026-03-09T00:00:00.000Z", open: 20, high: 23, low: 19, close: 22, volume: 100 });
+});
+
+test("historical prices mark a monthly bar whose month runs on and date it by the last session it covers", async () => {
+  // Fri 16 Oct 2026 08:14 UTC: New York has not opened; Thursday's session is the latest close.
+  setSystemTime(new Date("2026-10-16T08:14:00Z"));
+  try {
+    const monthly = ["2026-08-01", "2026-09-01", "2026-10-01"].map((date) => ({ date: new Date(date), close: 100 }));
+    // A bare symbol is read on its quote's venue.
+    const ctx = createTestHeadlessContext({
+      marketData: createTestDataProvider({
+        getPriceHistory: async () => monthly,
+        getQuote: async (symbol) => ({ symbol, price: 100, change: 0, changePercent: 0, currency: "USD", listingExchangeName: "NASDAQ", lastUpdated: Date.now() }),
+      }),
+    });
+    const result = await historicalPricesHeadless.load(args(["CSCO"], { range: "ALL" }), ctx);
+    expect(result.rows.map((row) => row.partial === true)).toEqual([false, false, true]);
+    expect(result.freshness).toMatchObject({ basis: "monthly bars", periodToDate: { period: "month", through: "2026-10-15" } });
+    const text = renderHeadlessPaneText(historicalPricesHeadless, result, args(["CSCO"], { range: "ALL" }), "HP CSCO");
+    expect(text).toContain("month to date, through Thu 15 Oct 2026");
+    // September's bar on its own is complete.
+    const september = createTestHeadlessContext({ marketData: createTestDataProvider({ getPriceHistory: async () => monthly.slice(0, 2) }) });
+    const complete = await historicalPricesHeadless.load(args(["CSCO:NASDAQ"], { range: "ALL" }), september);
+    expect(complete.rows.some((row) => row.partial)).toBe(false);
+    expect(complete.freshness).not.toHaveProperty("periodToDate");
+  } finally {
+    setSystemTime();
+  }
+});
+
+test("historical prices read daily bars across a holiday as daily, not as a week still forming", async () => {
+  // Golden Week closed Shanghai from 1 to 7 Oct 2026. On Thu 8 Oct, while it trades, the last two daily bars are 8 days apart.
+  setSystemTime(new Date("2026-10-08T03:00:00Z"));
+  try {
+    const days = ["2026-09-22", "2026-09-23", "2026-09-24", "2026-09-28", "2026-09-29", "2026-09-30", "2026-10-08"];
+    const ctx = createTestHeadlessContext({
+      resolveInstrument: async () => ({ symbol: "600519", exchange: "SSE" }),
+      marketData: createTestDataProvider({ getPriceHistory: async () => days.map((date) => ({ date: new Date(date), close: 1500 })) }),
+    });
+    const result = await historicalPricesHeadless.load(args(["600519:SSE"], { range: "1M" }), ctx);
+    expect(result.rows.some((row) => row.partial)).toBe(false);
+    expect(result.freshness).toMatchObject({ basis: "daily closes" });
+    expect(result.freshness).not.toHaveProperty("periodToDate");
+  } finally {
+    setSystemTime();
+  }
 });
 
 test("historical price exports preserve tiny OHLC values without changing raw data", async () => {

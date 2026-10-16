@@ -38,7 +38,7 @@ import { brokerCliCommand, ibkrCliCommand } from "./commands/broker";
 import { listPlugins, updatePlugins } from "./commands/plugins";
 import { installListedPlugin, removePlugin } from "../plugins/installer";
 import { catalogCommandHits, functionCodeCommand, nearFunctionCodeCommand, runPaneCatalog, runPaneFunction, runPaneScreenshot } from "./pane-functions";
-import { catalogPointer, type CatalogCommandHit } from "./unknown-command";
+import { catalogPointer, tickerPointer, type CatalogCommandHit } from "./unknown-command";
 import { catalogFredSeriesIds } from "./series-search";
 
 const { width: SHOT_WIDTH, height: SHOT_HEIGHT } = SHOT_SIZE_LIMITS;
@@ -349,21 +349,24 @@ async function unknownCommandPointers(
 /**
  * A function's code is pointed at `fn`; a typo of a command at the command;
  * a typo of a function's code (`RCDF`) at that function; a word the catalog
- * knows (`comps`, `peers`) at the functions it finds.
+ * knows (`comps`, `peers`) at the functions it finds. A word written as a
+ * ticker (`PLTR`) is also pointed at `quote` and `search`.
  */
 function failUnknownCommand(token: string, commands: CliCommandDef[], pointers: UnknownCommandPointers): never {
   if (pointers.fn) fail(`${pointers.fn.code} is a function: ${pointers.fn.command}`);
+  const ticker = tickerPointer(token);
   const suggestion = nearCommand(token, commands);
   if (!suggestion && pointers.nearFn) {
-    fail(`Unknown command "${token}". Did you mean the function ${pointers.nearFn.code} (${pointers.nearFn.label})?`, `Run: ${pointers.nearFn.command}`);
+    fail(
+      `Unknown command "${token}". Did you mean the function ${pointers.nearFn.code} (${pointers.nearFn.label})?`,
+      [`Run: ${pointers.nearFn.command}`, ticker].filter(Boolean).join("\n"),
+    );
   }
   const catalog = suggestion ? null : catalogPointer(token, pointers.hits, pointers.args);
-  fail(
-    `Unknown command "${token}".`,
-    suggestion
-      ? `Did you mean ${suggestion}? Run gloomberb help to see every command.`
-      : catalog ? `${catalog}\nRun gloomberb help to see every command.` : "Run gloomberb help to see every command.",
-  );
+  const help = suggestion
+    ? `Did you mean ${suggestion}? Run gloomberb help to see every command.`
+    : catalog ? `${catalog}\nRun gloomberb help to see every command.` : "Run gloomberb help to see every command.";
+  fail(`Unknown command "${token}".`, ticker ? `${ticker}\n${help}` : help);
 }
 
 const CLI_DESCRIPTION = "Market research and portfolio tracker for the terminal";

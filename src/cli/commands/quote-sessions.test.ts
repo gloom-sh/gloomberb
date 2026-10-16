@@ -10,6 +10,7 @@ import { serializeCliResult } from "../result";
 import { renderHeadlessPaneText } from "../pane-functions/headless";
 import { quoteComparisonHeadless } from "../../plugins/builtin/ticker-detail/headless";
 import { relativeValuationHeadless } from "../../plugins/builtin/research/relative-valuation-headless";
+import { boardHeadlineQuote } from "../../plugins/builtin/shared/use-quote-board";
 import { deriveHeadlessFreshness } from "../pane-functions/freshness";
 import { quotesFreshness, valuationFreshness } from "../freshness";
 import { marketDataCliCommands } from "./market";
@@ -217,4 +218,46 @@ test("quote gives the overnight session its own column and names it, saying when
   expect(text.split("\n").find((line) => line.startsWith("XLK"))).toMatch(/\$198\.78 +\+0\.51% +\$198\.95 \+0\.09% +OVERNIGHT/);
   expect(text.split("\n").find((line) => line.startsWith("XLE"))).toMatch(/\$198\.95 mid \+0\.09% +OVERNIGHT/);
   expect(text).not.toMatch(/After Hours|Pre-Market/);
+});
+
+test("a pre-market nothing has traded in reads as the close it stands at in quote, QQ, the boards and the watchlist, and exports keep the state", async () => {
+  // PLTR on Fri 16 Oct 2026 at 08:14 UTC: no pre-market trade; the price is Thursday's last after-hours print at 23:59 UTC.
+  const waiting: Quote = {
+    symbol: "PLTR", name: "Palantir Technologies Inc.", currency: "USD", price: 200.66, change: 0.16, changePercent: 0.0798,
+    previousClose: 200.5, regularClose: 200.5, regularCloseSessionDate: "2026-10-15", regularChange: -0.47, regularChangePercent: -0.2339,
+    changeSessionDate: "2026-10-16", marketState: "PRE", extendedSessionPrint: false, listingExchangeName: "NASDAQ",
+    lastUpdated: Date.parse("2026-10-15T23:59:00Z"),
+  };
+  // Another name that has traded in it, at 08:03:45.
+  const printed: Quote = { ...waiting, symbol: "SOFI", price: 201.29, preMarketPrice: 201.29, extendedSessionPrint: true,
+    lastUpdated: Date.parse("2026-10-16T08:03:45Z") };
+  const thursdayClose = "2026-10-15T20:00:00.000Z";
+  setSystemTime(new Date("2026-10-16T08:14:00Z"));
+  try {
+    const { rows, text } = await compare([waiting, printed]);
+    expect(rows.map(({ session, sessionLabel, updatedAt }) => ({ session, sessionLabel, updatedAt }))).toEqual([
+      { session: "PRE-MKT", sessionLabel: "Thu close", updatedAt: thursdayClose },
+      { session: "PRE-MKT", sessionLabel: "PRE-MKT", updatedAt: "2026-10-16T08:03:45.000Z" },
+    ]);
+    expect(text.split("\n").find((line) => line.startsWith("PLTR"))).toContain("Thu close");
+    // CSV keeps the state the Session column always held.
+    const cli = createTestCliContext({ config, dataProvider: {
+      getQuotesBatch: async () => [{ target: { symbol: "PLTR", exchange: "" }, quote: waiting }],
+    } });
+    await marketDataCliCommands.find((command) => command.name === "quote")!.execute(["PLTR"], cli.context);
+    const [{ result, options }] = cli.printed as [PrintedCliResult];
+    const csv = serializeCliResult(result, { ...DEFAULT_CLI_OPTIONS, format: "csv" }, options).split("\n");
+    expect(csv[1]).toContain(`,PRE-MKT,USD,`);
+    expect(csv[1]).toContain(thursdayClose);
+
+    // QQ, a board's row and the watchlist report date it by the same close.
+    const ctx = { signal: new AbortController().signal, marketData: createTestDataProvider({ getQuote: async () => waiting }) } as HeadlessPaneContext;
+    const board = await quoteComparisonHeadless.load({ symbols: ["PLTR"], argument: ["PLTR"], rawArgument: "PLTR", options: {} }, ctx);
+    expect(board.rows[0]).toMatchObject({ price: 200.5, extendedSession: null, updatedAt: Date.parse(thursdayClose) });
+    expect(boardHeadlineQuote(waiting)).toMatchObject({ price: 200.5, change: -0.47, lastUpdated: Date.parse(thursdayClose) });
+    // A quote with a pre-market trade keeps its time.
+    expect(boardHeadlineQuote(printed).lastUpdated).toBe(printed.lastUpdated);
+  } finally {
+    setSystemTime();
+  }
 });

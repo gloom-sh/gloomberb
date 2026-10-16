@@ -128,8 +128,10 @@ export async function functionCodeCommand(
 
 /**
  * The one function code a command name is a slip from (`gloomberb RCDF PLTR`
- * for RDCF), with the command that runs it on the reader's arguments. Null
- * when no code, or more than one, is that close, or the catalog cannot be read.
+ * for RDCF), with the command that runs it on the reader's arguments, read
+ * as a command word is (nearFunctionCodes), so a ticker is not taken for one.
+ * Null when no code, or more than one, is that close, or the catalog cannot
+ * be read.
  */
 export async function nearFunctionCodeCommand(
   ctx: CliCommandContext,
@@ -142,7 +144,7 @@ export async function nearFunctionCodeCommand(
     const near = await withMarketData(ctx, async (market) => {
       const registry = await createPaneCatalog(market, ctx.plugins);
       try {
-        return nearFunctionCodes(registry, word);
+        return nearFunctionCodes(registry, word, { commandWord: true });
       } finally {
         registry.destroy();
       }

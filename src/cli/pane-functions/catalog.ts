@@ -161,6 +161,12 @@ export interface NearFunctionCode {
 
 /** Typed names shorter than this are too short for one slip to leave them recognisable (`HQ` is a slip from a dozen codes). */
 const MIN_CODE_TYPO_LENGTH = 3;
+/**
+ * A word typed as a command is as likely a ticker as a slip from a code
+ * (`PLTR`, `META`, `QQQ`): it is read as a slip only from this length and
+ * when its first letter is the code's.
+ */
+const MIN_COMMAND_WORD_TYPO_LENGTH = 4;
 /** Near codes an unknown one is answered with; more than this many is no suggestion. */
 const NEAR_CODE_LIMIT = 3;
 
@@ -170,15 +176,25 @@ const NEAR_CODE_LIMIT = 3;
  * among the mnemonics the command bar takes, each named by the code it is
  * near (`DES` for Ticker Research, whose code is T). Empty when none is that
  * close, the name is too short to tell, or so many are that none stands out.
+ * A word typed as a command (`commandWord`, `gloomberb RCDF PLTR`) is held to
+ * MIN_COMMAND_WORD_TYPO_LENGTH and the code's first letter, so a ticker typed
+ * there is not taken for a code.
  */
-export function nearFunctionCodes(registry: PaneFunctionCatalog, name: string): NearFunctionCode[] {
+export function nearFunctionCodes(
+  registry: PaneFunctionCatalog,
+  name: string,
+  { commandWord = false }: { commandWord?: boolean } = {},
+): NearFunctionCode[] {
   const wanted = normalizeLookupToken(name);
-  if (wanted.length < MIN_CODE_TYPO_LENGTH) return [];
+  if (wanted.length < (commandWord ? MIN_COMMAND_WORD_TYPO_LENGTH : MIN_CODE_TYPO_LENGTH)) return [];
   const near = new Map<PaneTemplateDef, string>();
   for (const template of registry.paneTemplates.values()) {
     const prefix = template.shortcut?.prefix;
     if (!prefix) continue;
-    const code = [prefix, ...template.shortcut?.aliases ?? []].find((candidate) => typoDistance(wanted, normalizeLookupToken(candidate)) === 1);
+    const code = [prefix, ...template.shortcut?.aliases ?? []].find((candidate) => {
+      const known = normalizeLookupToken(candidate);
+      return (!commandWord || known[0] === wanted[0]) && typoDistance(wanted, known) === 1;
+    });
     if (code) near.set(template, code.toUpperCase());
   }
   if (near.size > NEAR_CODE_LIMIT) return [];

@@ -18,6 +18,7 @@ import {
   getRegularSessionDisplay,
   quoteHeadlineTime,
   quoteSessionLabel,
+  quoteSessionStateLabel,
   type ExtendedSession,
 } from "../../market-data/market/status";
 import { formatCompact, formatCurrency, formatDistributionAmount, formatNumber, formatPercent, formatPercentRaw } from "../../utils/format";
@@ -279,7 +280,8 @@ const QUOTE_LEAD_COLUMNS = [
   extendedColumn("PRE"),
   extendedColumn("POST"),
   extendedColumn("OVERNIGHT"),
-  { key: "session", header: "Session", shrink: false },
+  // An export keeps the market state (PRE-MKT); the table names the close a pre-market with no trade stands at (Thu close).
+  { key: "session", header: "Session", shrink: false, format: (_value: unknown, row: QuoteRow) => row.sessionLabel },
 ];
 
 type QuoteRow = ReturnType<typeof quoteRows>[number];
@@ -401,7 +403,8 @@ function quoteRows(results: QuoteCliRecord[], now = Date.now()) {
       extendedChangePercent: roundedPercent(extended?.changePercent),
       // The extended price is the session's bid and ask midpoint, nothing having traded in it.
       extendedMark: extended?.mark === true,
-      session: quoteSessionLabel(quote) ?? "",
+      session: quoteSessionStateLabel(quote, now) ?? "",
+      sessionLabel: quoteSessionLabel(quote, now) ?? "",
       // The close the shown move is measured from: the one before the session Last is.
       previousClose: price(display?.change != null ? display.price - display.change : quote?.previousClose),
       dayRange: quote?.low != null && quote.high != null

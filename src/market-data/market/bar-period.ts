@@ -27,17 +27,23 @@ function utcDate(time: number): string {
   return new Date(time).toISOString().slice(0, 10);
 }
 
-/** The first day after the period a bar dated `date` starts: the next month's 1st, or a week on. */
+/**
+ * The first day after the calendar period a bar dated `date` falls in: the
+ * next month's 1st, or the Monday after its week. Weekly bars are dated by
+ * the Monday their week starts, a holiday Monday included (Labor Day week's
+ * is 7 Sep 2026), and on every venue, Sunday-to-Thursday ones too; a bar
+ * dated by its week's first session (Tue 8 Sep) is read in the same week.
+ */
 function periodEnd(date: string, period: BarPeriod): string | null {
   const start = Date.parse(`${date.slice(0, 10)}T00:00:00Z`);
   if (!Number.isFinite(start)) return null;
-  if (period === "week") return utcDate(start + 7 * DAY_MS);
   const day = new Date(start);
+  if (period === "week") return utcDate(start + (7 - (day.getUTCDay() + 6) % 7) * DAY_MS);
   return utcDate(Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 1));
 }
 
 /**
- * Whether the weekly or monthly bar dated `date` (the start of its period)
+ * Whether the weekly or monthly bar dated `date` (in its period, periodEnd)
  * was still forming at `now`, and through which day: October's monthly bar
  * on Fri 16 Oct before the open runs through Thu 15 Oct. It forms while its
  * venue trades a regular session in the period or has one still to come in

@@ -45,6 +45,24 @@ function catalogHitCommand(hit: CatalogCommandHit, args: readonly string[]): { c
 }
 
 /**
+ * A word typed the way a ticker is written: capitals, with the digits and
+ * punctuation of a listing's key (`PLTR`, `BRK.B`, `BTC-USD`, `^GSPC`,
+ * `7203:TSE`).
+ */
+const TICKER_SHAPED = /^\^?[A-Z0-9][A-Z0-9.=-]{0,11}(?::[A-Z0-9]{1,8})?$/;
+
+/**
+ * What a ticker typed as a command (`gloomberb PLTR`) is answered with: the
+ * command that quotes it and the search that finds it. Null for a word not
+ * written as a ticker.
+ */
+export function tickerPointer(token: string): string | null {
+  const word = token.trim();
+  if (!TICKER_SHAPED.test(word) || !/[A-Z]/.test(word)) return null;
+  return [`To quote it: gloomberb quote ${word}`, `Find the ticker: gloomberb search ${word}`].join("\n");
+}
+
+/**
  * What an unknown command word is answered with when it names something the
  * catalog has (`peers`, `comps`): one function as a command to run, several
  * as a list, with the catalog search for more. Null when the catalog has

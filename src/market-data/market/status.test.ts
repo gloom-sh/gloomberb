@@ -265,8 +265,39 @@ describe("a pre-market nothing has traded in yet", () => {
     expect(getExtendedSessionDisplay(projected)).toBeNull();
     expect(quoteSessionLabel(projected, now)).toBe("Thu close");
     expect(getSessionMoveDisplay(projected)).toEqual(getRegularSessionDisplay(waiting));
-    // So does one that sends no pre-market price and does not say.
-    expect(quoteSessionLabel({ ...waiting, extendedSessionPrint: undefined }, now)).toBe("Thu close");
+    // So does one that sends no pre-market price, or 0, or the close, and does not say, its last update from before 08:00 UTC.
+    for (const preMarketPrice of [undefined, 0, 200.5]) {
+      const silent = { ...waiting, extendedSessionPrint: undefined, preMarketPrice };
+      expect(quoteSessionLabel(silent, now)).toBe("Thu close");
+      expect(getExtendedSessionDisplay(silent)).toBeNull();
+    }
+  });
+
+  test("a quote that may hold a pre-market trade is never read as the close", () => {
+    const sinceOpen = Date.parse("2026-10-16T08:03:45Z");
+    const cases: Array<[string, Quote]> = [
+      // The source says a trade printed, though it sent no pre-market price.
+      ["print flagged, no price", { ...waiting, extendedSessionPrint: true }],
+      // The source does not say, and the quote was updated after the pre-market opened at 08:00 UTC.
+      ["unflagged, updated since the open", { ...waiting, extendedSessionPrint: undefined, lastUpdated: sinceOpen }],
+      // The source does not say, and sends a pre-market price that is not the close.
+      ["unflagged, a pre-market price", { ...waiting, extendedSessionPrint: undefined, preMarketPrice: 200.66 }],
+      // Fields from two sources: one says nothing traded, the other carries a pre-market trade.
+      ["mixed sources", { ...waiting, preMarketPrice: 201.29, preMarketChange: 0.79, preMarketChangePercent: 0.394 }],
+      ["mixed sources, its price", { ...waiting, price: 201.29, preMarketPrice: 201.29, lastUpdated: sinceOpen }],
+    ];
+    for (const [name, quote] of cases) {
+      expect(quoteSessionLabel(quote, now), name).toBe("PRE-MKT");
+      expect(quoteHeadlineTime(quote), name).toBe(quote.lastUpdated);
+    }
+    expect(getExtendedSessionDisplay(cases.find(([name]) => name === "mixed sources")![1])).toMatchObject({ session: "PRE", price: 201.29 });
+    // A pre-market price of 0 is no print: no $0 pre-market figure, and no $0 position.
+    const zero = { ...waiting, extendedSessionPrint: undefined, preMarketPrice: 0, preMarketChange: -200.66, lastUpdated: sinceOpen };
+    expect(quoteSessionLabel(zero, now)).toBe("PRE-MKT");
+    expect(getExtendedSessionDisplay(zero)).toBeNull();
+    expect(getActiveQuoteDisplay(zero)?.price).toBe(200.66);
+    // Another venue's pre-market hours are not known: a quote that does not say stays the pre-market's.
+    expect(quoteSessionLabel({ ...waiting, extendedSessionPrint: undefined, listingExchangeName: "LSE" }, now)).toBe("PRE-MKT");
   });
 
   test("a pre-market trade is the pre-market again, at that trade's time", () => {
