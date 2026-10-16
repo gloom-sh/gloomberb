@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatCloudDateTime, mapCloudFinancials, mapQuote } from "./normalizers";
+import { formatCloudDateTime, formatCloudHistoryEnd, mapCloudFinancials, mapQuote } from "./normalizers";
 import type { CloudQuotePayload } from "../../api-client";
 import { mergeQuoteContribution, normalizeQuoteContribution } from "../../market-data/quotes/contributions";
 import { resolveCanonicalQuote, resolveTickerFinancialsQuoteState } from "../../market-data/quotes/resolution";
@@ -49,6 +49,28 @@ test("intraday boundaries use venue time or explicit UTC while daily dates stay 
   expect(formatCloudDateTime(summer, true, "CCC")).toBe("2026-07-15 01:02:03");
   expect(formatCloudDateTime(winter, false, "NASDAQ")).toBe("2026-01-15");
   expect(formatCloudDateTime(summer, false)).toBe("2026-07-15");
+});
+
+test("a daily window ending now holds today's bar once the session has settled, and only then", () => {
+  const end = (time: string, exchange: string) => formatCloudHistoryEnd(new Date(time), false, exchange);
+  // Gloom Cloud reads a date-only end as exclusive: 16 Oct 22:12Z must reach 17 Oct to hold Friday's bar.
+  expect(end("2026-10-16T22:12:00Z", "NASDAQ")).toBe("2026-10-17");
+  expect(end("2026-10-16T20:31:00Z", "NASDAQ")).toBe("2026-10-17");
+  // The session trades, has just closed (its bar not settled), or has not opened: today's date, the quote forms the day.
+  for (const time of ["2026-10-16T15:00:00Z", "2026-10-16T20:20:00Z", "2026-10-16T09:00:00Z"]) {
+    expect(end(time, "NASDAQ"), time).toBe("2026-10-16");
+  }
+  // After UTC midnight, Friday's bar is already inside the window; a weekend names no new session.
+  expect(end("2026-10-17T02:00:00Z", "NASDAQ")).toBe("2026-10-17");
+  expect(end("2026-10-17T15:00:00Z", "NASDAQ")).toBe("2026-10-17");
+  // Tokyo closed at 06:30Z, London trades until 15:30Z.
+  expect(end("2026-10-16T08:00:00Z", "JPX")).toBe("2026-10-17");
+  expect(end("2026-10-16T08:00:00Z", "LSE")).toBe("2026-10-16");
+  expect(end("2026-10-16T17:00:00Z", "LSE")).toBe("2026-10-17");
+  // Without a venue whose sessions are known the date stands, and intraday ends keep their time.
+  expect(end("2026-10-16T22:12:00Z", "")).toBe("2026-10-16");
+  expect(end("2026-10-16T22:12:00Z", "CCC")).toBe("2026-10-16");
+  expect(formatCloudHistoryEnd(new Date("2026-10-16T22:12:00Z"), true, "NASDAQ")).toBe("2026-10-16 18:12:00");
 });
 
 describe("cloud quote wire values", () => {

@@ -20,6 +20,7 @@ import {
 } from "../../api-client";
 import { normalizePriceValueByDivisor, resolveCurrencyUnit } from "../../utils/currency-units";
 import { resolveExchangeTimeZone } from "../../utils/exchanges";
+import { latestSettledSessionDate } from "../../utils/price-history";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 import { createProviderMiss } from "../provider-errors";
 import { reconcileQuoteDayRange } from "../../market-data/quotes/day-range";
@@ -391,6 +392,25 @@ export function formatCloudDateTime(
   const month = padTimePart(date.getUTCMonth() + 1);
   const day = padTimePart(date.getUTCDate());
   return `${year}-${month}-${day}`;
+}
+
+const DAY_MS = 24 * 60 * 60_000;
+
+/**
+ * The end of a window of bars that ends now. Gloom Cloud reads a date-only end
+ * as exclusive, so a daily or longer window ending on today's date holds no
+ * bar of today. Once today's regular session has settled its bar is final and
+ * the window ends the day after, so the bar is served as the range requests
+ * serve it. While the session trades, or before it opens, today's date stands:
+ * the day's bar is the live quote's then. Intraday ends carry their time.
+ */
+export function formatCloudHistoryEnd(end: Date, includeTime: boolean, exchange = ""): string {
+  const formatted = formatCloudDateTime(end, includeTime, exchange);
+  if (includeTime) return formatted;
+  const settled = latestSettledSessionDate(exchange, end.getTime());
+  return settled && settled >= formatted
+    ? new Date(Date.parse(`${settled}T00:00:00Z`) + DAY_MS).toISOString().slice(0, 10)
+    : formatted;
 }
 
 const HISTORY_OUTPUT_SIZE: Record<TimeRange, number> = {
