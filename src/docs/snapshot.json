@@ -1,7 +1,7 @@
 {
  "format": 1,
  "site": "https://gloom.sh",
- "updatedAt": "2026-10-14",
+ "updatedAt": "2026-10-15",
  "categories": [
   {
    "id": "research",
@@ -268,7 +268,7 @@
    "code": "OPX",
    "name": "Options positioning",
    "description": "Open interest, max pain, gamma",
-   "detail": "Open interest by strike with max pain, each expiry's put/call ratio, and dealer gamma by strike with its flip level. Open interest is the prior session's. GEX and MAXPAIN open it too.",
+   "detail": "Open interest by strike with max pain, each expiry's put/call ratio, and dealer gamma by strike with its flip level. Open interest is about two sessions old; the footer names its date. GEX and MAXPAIN open it too.",
    "category": "research",
    "arg": "SPY",
    "shot": "https://gloom.sh/screenshots/fn/OPX.png",
@@ -1299,8 +1299,8 @@
   {
    "code": "INS",
    "name": "Insider transactions",
-   "description": "Form 4 activity",
-   "detail": "Insider buys, sells, awards, and gifts from Form 4 filings with insider name, size, and price. US equities only.",
+   "description": "Form 4 activity and insider buying",
+   "detail": "Insider buys, sells, awards, and gifts from Form 4 filings with insider name, size, and price. Alone it ranks the companies whose insiders are buying in the market, with why: clusters, repeat buys, size against their usual. US equities only.",
    "category": "ownership",
    "arg": "NVDA",
    "shot": "https://gloom.sh/screenshots/fn/INS.png",
@@ -1692,7 +1692,7 @@
     "desktop",
     "tui"
    ],
-   "updatedAt": "2026-10-11",
+   "updatedAt": "2026-10-15",
    "blocks": [
     {
      "type": "heading",
@@ -1714,6 +1714,10 @@
     {
      "type": "paragraph",
      "text": "The desktop app and Homebrew cask require Apple Silicon. Intel Macs can use the [browser version](#browser); check [release assets](https://github.com/gloom-sh/gloomberb/releases/latest) for terminal binary availability."
+    },
+    {
+     "type": "paragraph",
+     "text": "Coming from Bloomberg? [What runs on a Mac](/answers/bloomberg-terminal-on-mac)."
     },
     {
      "type": "heading",
@@ -1823,6 +1827,23 @@
        "`bun install -g gloomberb@latest`"
       ]
      ]
+    },
+    {
+     "type": "heading",
+     "level": 3,
+     "text": "Release channels"
+    },
+    {
+     "type": "paragraph",
+     "text": "The app updates from **stable** releases, the ones on the [changelog](/changelog). **Nightly** is a daily build of main that gets fixes first and can break. To switch, run **Release Channel** from the command bar (on the Mac, also **Gloomberb > Release Channel...**), or in a terminal:"
+    },
+    {
+     "type": "code",
+     "code": "gloomberb config set updates.channel nightly"
+    },
+    {
+     "type": "paragraph",
+     "text": "Switching back to stable never installs an older version: your nightly build stays until a newer stable release is out. Nightly applies to the desktop app and the terminal app; Homebrew, Bun and the install script always get stable."
     },
     {
      "type": "paragraph",
@@ -4267,6 +4288,10 @@
      "text": "Pro unlocks the full board, history and Changes. Free, signed in or not, shows the three latest rows. Asks and AWS spot update hourly, other rates every 6 to 24 hours."
     },
     {
+     "type": "paragraph",
+     "text": "The public [GPU rental price index](/gpu-prices) lists every model without an account, with a page per model such as [H100 rental price per hour](/gpu-prices/h100)."
+    },
+    {
      "type": "heading",
      "level": 2,
      "text": "Keep in mind"
@@ -6122,6 +6147,10 @@
      "text": "A Bloomberg workbook ports with find and replace: `BDP(` to `GLOOM(`, `BDH(` to `GLOOMH(`. Bloomberg tickers answer as Bloomberg does, down to London prices in pence (`CRNCY` is `GBp`), so the workbook's own arithmetic still holds."
     },
     {
+     "type": "paragraph",
+     "text": "Coming from Bloomberg? [BDP and BDH next to their Sheets formulas](/answers/bloomberg-bdp-bdh-google-sheets)."
+    },
+    {
      "type": "table",
      "headers": [
       "",
@@ -6339,6 +6368,10 @@
     {
      "type": "paragraph",
      "text": "The News API is Gloomberb's market news for your own product, backend, model pipeline, or dashboard. It is not needed to use the app and is billed separately from [Gloom Cloud](/docs/cloud-and-data)."
+    },
+    {
+     "type": "paragraph",
+     "text": "The [financial news API](/news) page shows the live wire and has the Get API key button."
     },
     {
      "type": "paragraph",

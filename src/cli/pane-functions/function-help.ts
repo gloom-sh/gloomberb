@@ -68,10 +68,10 @@ const QUOTES: FunctionFreshness = { free: "15 minutes delayed, crypto real-time"
 /** US option chains and the quotes behind them. */
 const OPTIONS: FunctionFreshness = { free: DELAYED, pro: REAL_TIME };
 const FX: FunctionFreshness = { free: DELAYED, pro: REAL_TIME };
-/** Open interest settles once a session; spot and the quotes behind gamma follow the plan. */
+/** Open interest is counted once a session and reaches Gloom about two sessions late; spot and the quotes behind gamma follow the plan. */
 const OPX_DATA: FunctionFreshness = {
-  free: "Open interest as of the prior session; spot and gamma 15 minutes delayed",
-  pro: "Open interest as of the prior session; spot and gamma real-time",
+  free: "Open interest about two sessions old, its date in the footer; spot and gamma 15 minutes delayed",
+  pro: "Open interest about two sessions old, its date in the footer; spot and gamma real-time",
 };
 const NEWS: FunctionFreshness = { free: "12 hours delayed", pro: REAL_TIME };
 const US_SCANNER: FunctionFreshness = { free: DELAYED, pro: REAL_TIME };

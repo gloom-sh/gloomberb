@@ -6,7 +6,7 @@
 
 ## Open interest timing
 
-OCC counts open positions after each session's close and publishes them overnight, so during a session OPX shows the previous session's counts. The footer names the session (`OI as of Sep 30`). A contract with no reported count is left out rather than read as zero.
+Open interest is counted after each session's close, but the counts reach OPX about two sessions late: on a Friday they are Wednesday's. The footer names the session (`OI as of Sep 30`). A contract with no reported count is left out rather than read as zero.
 
 Change columns compare with the previous session OPX stored. One snapshot is stored per session from 2026-10-01 for these underlyings: SPY, SPX (with SPXW), QQQ, IWM, XSP, VIX, and the 50 others that traded the most options contracts over the five sessions to 2026-09-30 (OCC volume, all exchanges): NVDA, TSLA, TLT, AAPL, META, HYG, INTC, MSFT, AMZN, MU, SPCX, AMD, EWZ, GOOGL, IBIT, ORCL, MSTR, SLV, GLD, SOFI, GME, AVGO, SOXL, PLTR, TQQQ, XLU, XLF, CRWV, NFLX, USO, HOOD, SMCI, IREN, LQD, SMH, DRAM, GOOG, BE, ETHA, MARA, NBIS, IEF, NU, SNDK, XLE, PCG, GDX, NKE, KRE, AMC. Other underlyings show their counts without the change columns. The footer names the session changes are measured from (`chg since Sep 29`); it is the one before unless a session was missed. A strike or expiry listed since counts from zero.
 
@@ -37,4 +37,4 @@ Against vendors that read the chain's own greeks, gamma without carry runs a few
 
 ## Freshness
 
-Open interest is the previous session's on every plan. Spot and the quotes behind gamma are 15 minutes delayed on Free and signed out, and real-time on Pro, as in OMON. While the pane is on screen GEX reprices at the current spot every minute; the volatilities behind it are reread every five minutes while options trade (every fifteen otherwise), once for every reader of that underlying. Open interest and spot in the other tabs reread every five minutes.
+Open interest is about two sessions old on every plan, and the footer names its date. Spot and the quotes behind gamma are 15 minutes delayed on Free and signed out, and real-time on Pro, as in OMON. While the pane is on screen GEX reprices at the current spot every minute; the volatilities behind it are reread every five minutes while options trade (every fifteen otherwise), once for every reader of that underlying. Open interest and spot in the other tabs reread every five minutes.

@@ -33,7 +33,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     screenshotReadiness: "live-dom",
     dataRequirements: ["Cloud listed open interest", "Option chains"],
     limitations: [
-      "Open interest is as of the prior session's close.",
+      "Open interest is about two sessions old; the Expiries heading names its date.",
       "Dealer gamma assumes dealers are long every call and short every put.",
       "NDX and RUT index options are not covered; use QQQ and IWM.",
     ],
@@ -63,7 +63,7 @@ export const optionsPositioningHeadless = (initialTab: PositioningTab): Headless
     ];
     const changes = openInterest.previousOiDate != null;
     return {
-      // Open interest is published once a day for the prior session; the spot beside it is context.
+      // Open interest is counted once a day and arrives about two sessions late, dated in the heading; the spot beside it is context.
       freshness: { asOf: openInterest.oiDate },
       sections: [
         { title: `Expiries · OI as of ${openInterest.oiDate ?? "--"}`, columns: [
