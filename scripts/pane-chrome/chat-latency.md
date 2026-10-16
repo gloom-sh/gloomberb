@@ -362,3 +362,98 @@ protected content. External registry plugins, a real Mac app, native WebKit,
 GPU presentation, production uploads and long-session leak behavior were not
 measured. The desktop persistence bridge remains a fixture stub. Evidence
 and raw profiles are local artifacts, not public market-data attachments.
+
+## Review follow-up (Linear: GLO-790)
+
+Compared `8bb2ac742` with runtime `7e562fb21`, using the existing fixtures and
+checks. No stylesheet, token, layout, new visible text or terminal branch
+changed. `WindowedList` and its props are no longer exported by either public
+component barrel; chat imports the internal module directly. The public API
+snapshot test passes with the addition removed.
+
+### Reproductions and fixes
+
+Six real-input checks were added to `chat-checks.ts`:
+
+| Check | Before | After |
+|---|---|---|
+| Select latest with ArrowUp, Enter to reply, grow composer | Latest message clipped; 90 px from bottom | Entire latest message visible, at bottom, no transient jump control |
+| Click latest Reply, grow composer | Pass | Pass |
+| Drag-select, wheel the anchor out while holding the pointer, extend, Ctrl+C | Whole-message handler replaces the shortened range | Browser-default copy, not intercepted; a fresh selection still copies original markdown |
+| Select latest, wheel it out, press p | Pass | Pass, existing fallback card stays inside the pane |
+| Hide/reveal a scrolled-back tab, with and without an arrival | Moves the reader to another message | Same message and pixel offset, rows visible |
+| Quote click in an unfocused detached shell, then ArrowUp | Jump highlights but keyboard remains unfocused | Both jump highlight and subsequent keyboard selection work |
+
+`scrollToItem` derives pin state after moving instead of unconditionally
+clearing it. Copy remembers disconnected selection edges, including when the
+browser later normalizes them onto live rows. It does not retain extra rows
+or try to reconstruct unseen selected text. Thread background clearing runs
+in capture so a quote can bubble to the shell's focus handler without losing
+its highlight. The existing profile fallback needed no runtime change.
+
+Hidden viewports retain measured heights and offsets instead of accepting
+zero-sized layout as new data. Append following uses the remembered pin,
+not a hidden element's zero extent. An initially hidden mount keeps its pin
+until its first real viewport measurement. The existing three-pane lifecycle
+probe caught that last ordering case during development; all 36 states now
+pass across desktop and web, including hidden open/reveal and late arrivals.
+The detached check supplies the host blur notification, then uses real pointer
+and keyboard input; it is not a native window-manager focus test.
+
+### Timing and bounded work
+
+Ten paired runs of the existing open-only probe at its 1280 by 900 viewport,
+40/200/500 invented messages and both persistence profiles. Five pairs ran
+base first, five head first to balance order on the shared machine. All
+numbers below are median estimated paint times in ms, before / after.
+
+| Profile | Messages | Cold | Warm | Switch 1 | Switch 2 |
+|---|---:|---|---|---|---|
+| Desktop | 40 | 47.70 / 51.00 | 36.20 / 36.05 | 33.55 / 32.45 | 30.30 / 30.20 |
+| Desktop | 200 | 42.15 / 44.00 | 33.70 / 33.95 | 31.45 / 31.80 | 30.15 / 28.45 |
+| Desktop | 500 | 47.20 / 47.00 | 31.00 / 29.35 | 29.10 / 29.10 | 30.85 / 31.10 |
+| Web | 40 | 36.45 / 39.70 | 31.10 / 31.55 | 29.15 / 30.80 | 29.55 / 30.95 |
+| Web | 200 | 40.75 / 41.00 | 30.20 / 30.05 | 27.45 / 29.40 | 30.60 / 30.75 |
+| Web | 500 | 49.75 / 54.15 | 29.30 / 30.40 | 29.45 / 28.70 | 28.75 / 30.45 |
+
+The largest median increase is 8.9%. The first five pairs alone had one 11.8%
+increase at web/40 cold opening; the balanced ten-pair set includes those
+observations rather than discarding them. These remain shared-host timing
+observations, not GPU presentation measurements. Every measured open and
+switch mounted 21 rows, peak and settled, independent of history length.
+All 12 text/upload typing workloads retain zero unchanged-row renders, all
+keys and the draft across channel round trips, preserving PR #1845's gate.
+
+Five alternating resize pairs on the final runtime, before / after:
+
+| Messages | Main-thread ms/frame | React commits |
+|---|---|---|
+| 50 | 2.94 / 2.69 | 19 / 19 |
+| 500 | 2.54 / 2.56 | 19 / 19 |
+
+Every pair meets +0.5 ms/frame and +1 commit (largest time increase 0.05 ms).
+All 183 pointer checks pass, retaining PR #1845, PR #1855 and the original
+windowing checks. Both resize shapes retain per-frame glyph-track checks and
+no release jump. All 20 deterministic rest layouts are pixel-identical.
+No visual treatment changed, so the earlier all-pane dark/light, narrow/wide
+sweep was not repeated for this follow-up. There are no rest-image differences
+to classify as noise. Six styled terminal frames, text/colors/attributes,
+are byte-identical at 64 and 120 columns for open, selected and reply states,
+using the same in-memory fixture under a disposable tmux/HOME.
+
+### Verification limits
+
+Chat, public API and import-boundary tests: 310 pass. Desktop view build,
+dead-code check and Worker typecheck pass. The full local suite has 8,260
+passes and 14 failures outside chat: nine CLI failures reproduce unchanged
+on the baseline; five async earnings-shelf failures disappear on isolated
+rerun, on both sides. The shared dependency tree still lacks the updater API
+required by both revisions, blocking the other local typecheck groups with
+the same four diagnostics. Hosted clean-install checks on runtime
+`7e562fb21` all pass, including typecheck, full tests, registry, pointer checks,
+terminal benchmarks and pane-drag budget; deployment is skipped.
+
+Native WebKit, GPU presentation, production services, protected account
+content and long-session behavior were not exercised. Browser-default copy
+still only copies the browser's surviving selection, not unmounted history.
+No release, merge, deployment or production mutation was performed.
